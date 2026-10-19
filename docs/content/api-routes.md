@@ -24,15 +24,15 @@ The [Contact Form](/example-components/contact-form) example posts to a route li
 
 API route files live in `directory.api` (default: `src/api`). The URL path prefix is always `/api`:
 
-| File Path | URL Route |
-| :--- | :--- |
-| `src/api/health.ts` | `/api/health` |
-| `src/api/contact.ts` | `/api/contact` |
-| `src/api/users/index.ts` | `/api/users` |
-| `src/api/users/[id].ts` | `/api/users/:id` |
-| `src/api/[org]/repos/[id].ts` | `/api/:org/repos/:id` |
-| `src/api/[...path].ts` | `/api/*` (one or more segments) |
-| `src/api/files/[...path].ts` | `/api/files/*` (one or more segments) |
+| File Path                     | URL Route                             |
+| :---------------------------- | :------------------------------------ |
+| `src/api/health.ts`           | `/api/health`                         |
+| `src/api/contact.ts`          | `/api/contact`                        |
+| `src/api/users/index.ts`      | `/api/users`                          |
+| `src/api/users/[id].ts`       | `/api/users/:id`                      |
+| `src/api/[org]/repos/[id].ts` | `/api/:org/repos/:id`                 |
+| `src/api/[...path].ts`        | `/api/*` (one or more segments)       |
+| `src/api/files/[...path].ts`  | `/api/files/*` (one or more segments) |
 
 Static segments take precedence over dynamic segments. For example, `src/api/users/me.ts` is matched before `src/api/users/[id].ts` when navigating to `/api/users/me`.
 
@@ -44,7 +44,7 @@ A final `[...name]` segment is a **required catch-all**. It matches **one or mor
 // src/api/files/[...path].ts   GET /api/files/reports/2026/q1.pdf
 export const GET = async (
   request: Request,
-  context: { params: Record<string, string | string[]>; remoteIp: string }
+  context: { params: Record<string, string | string[]>; remoteIp: string },
 ): Promise<Response> => {
   const segments = context.params.path as string[]; // ["reports", "2026", "q1.pdf"]
   return Response.json({ segments });
@@ -75,7 +75,7 @@ This recording sends two real requests to a dev server whose `src/api/users/[id]
 
 ## The Request and Response Contract & Portability
 
-Bascik uses native web standard `Request` and `Response` objects, and `request.url` reflects the real scheme and host of the incoming request. That makes the handler *function* reusable: a handler that only touches Web APIs (`Request`, `Response`, `URL`, `fetch`, Web Crypto) is plain code you can call from a unit test or from another runtime's wrapper.
+Bascik uses native web standard `Request` and `Response` objects, and `request.url` reflects the real scheme and host of the incoming request. That makes the handler _function_ reusable: a handler that only touches Web APIs (`Request`, `Response`, `URL`, `fetch`, Web Crypto) is plain code you can call from a unit test or from another runtime's wrapper.
 
 Reusable code is not the same as a deployable service. Three more things have to exist on any host before a handler answers traffic: the route table (`src/api/users/[id].ts` to `/api/users/:id`), the method dispatch and `Allow` semantics described above, and whatever the handler imports. A handler that reads `process.env`, opens a database socket, or imports a Node-only package runs where those things exist.
 
@@ -92,7 +92,7 @@ Handlers accept an optional second argument providing parsed route parameters an
 ```ts
 export const GET = async (
   request: Request,
-  context: { params: Record<string, string>; remoteIp: string }
+  context: { params: Record<string, string>; remoteIp: string },
 ): Promise<Response> => {
   return Response.json({
     id: context.params.id,

@@ -15,34 +15,44 @@ describe("collectDeclaredIds", () => {
     ).toEqual(new Set(["first", "second", "icon"]));
   });
 
+  it("collects unquoted and whitespace-spaced ids from HTML", () => {
+    expect(
+      collectDeclaredIds(
+        `<div id = "spaced"></div><span id=unquoted></span><p id = bare-id/></p>`,
+      ),
+    ).toEqual(new Set(["spaced", "unquoted", "bare-id"]));
+  });
+
   it("returns an empty set when no ids are declared", () => {
     expect(collectDeclaredIds("<div><span></span></div>")).toEqual(new Set());
   });
 
   it("deduplicates ids and accepts malformed unclosed tags", () => {
-    expect(collectDeclaredIds('<div id="same"><span id="same"><p id="open">')).toEqual(
-      new Set(["same", "open"]),
-    );
+    expect(
+      collectDeclaredIds('<div id="same"><span id="same"><p id="open">'),
+    ).toEqual(new Set(["same", "open"]));
   });
 
   it("collects ids inside code elements", () => {
-    expect(collectDeclaredIds('<code><span id="example"></span></code>')).toEqual(
-      new Set(["example"]),
-    );
+    expect(
+      collectDeclaredIds('<code><span id="example"></span></code>'),
+    ).toEqual(new Set(["example"]));
   });
 
   it("ignores id-like markup inside comments", () => {
-    expect(collectDeclaredIds('<!-- <div id="commented"></div> --><div id="real"></div>')).toEqual(
-      new Set(["real"]),
-    );
+    expect(
+      collectDeclaredIds(
+        '<!-- <div id="commented"></div> --><div id="real"></div>',
+      ),
+    ).toEqual(new Set(["real"]));
   });
 
   it("ignores id-like markup inside raw-text elements", () => {
     expect(
       collectDeclaredIds(
         '<script type="application/json">{"example":"<div id=\\"scripted\\">"}</script>' +
-        '<style>.sample::before { content: \'<i id="styled">\'; }</style>' +
-        '<textarea><span id="typed"></span></textarea><div id="real"></div>',
+          "<style>.sample::before { content: '<i id=\"styled\">'; }</style>" +
+          '<textarea><span id="typed"></span></textarea><div id="real"></div>',
       ),
     ).toEqual(new Set(["real"]));
   });
@@ -55,17 +65,44 @@ describe("rewriteIdReferencesInHtml", () => {
     );
 
   it.each([
-    ["label for", '<label for="local"></label>', '<label for="scoped-local"></label>'],
+    [
+      "label for",
+      '<label for="local"></label>',
+      '<label for="scoped-local"></label>',
+    ],
     ["form", '<input form="local">', '<input form="scoped-local">'],
     ["list", '<input list="local">', '<input list="scoped-local">'],
-    ["popovertarget", '<button popovertarget="local"></button>', '<button popovertarget="scoped-local"></button>'],
-    ["commandfor", '<button commandfor="local"></button>', '<button commandfor="scoped-local"></button>'],
-    ["aria-activedescendant", '<div aria-activedescendant="local"></div>', '<div aria-activedescendant="scoped-local"></div>'],
-    ["aria-details", '<div aria-details="local"></div>', '<div aria-details="scoped-local"></div>'],
-    ["aria-errormessage", '<div aria-errormessage="local"></div>', '<div aria-errormessage="scoped-local"></div>'],
-  ])("rewrites the resolvable %s single-ID reference", (_name, source, expected) => {
-    expect(rewrite(source)).toBe(expected);
-  });
+    [
+      "popovertarget",
+      '<button popovertarget="local"></button>',
+      '<button popovertarget="scoped-local"></button>',
+    ],
+    [
+      "commandfor",
+      '<button commandfor="local"></button>',
+      '<button commandfor="scoped-local"></button>',
+    ],
+    [
+      "aria-activedescendant",
+      '<div aria-activedescendant="local"></div>',
+      '<div aria-activedescendant="scoped-local"></div>',
+    ],
+    [
+      "aria-details",
+      '<div aria-details="local"></div>',
+      '<div aria-details="scoped-local"></div>',
+    ],
+    [
+      "aria-errormessage",
+      '<div aria-errormessage="local"></div>',
+      '<div aria-errormessage="scoped-local"></div>',
+    ],
+  ])(
+    "rewrites the resolvable %s single-ID reference",
+    (_name, source, expected) => {
+      expect(rewrite(source)).toBe(expected);
+    },
+  );
 
   it.each([
     "aria-labelledby",
@@ -76,13 +113,27 @@ describe("rewriteIdReferencesInHtml", () => {
     "aria-details",
     "itemref",
   ])("rewrites local tokens independently in %s", (attribute) => {
-    expect(rewrite(`<div ${attribute}="external  local\texternal"></div>`)).toBe(
-      `<div ${attribute}="external  scoped-local\texternal"></div>`,
+    expect(
+      rewrite(`<div ${attribute}="external  local\texternal"></div>`),
+    ).toBe(`<div ${attribute}="external  scoped-local\texternal"></div>`);
+  });
+
+  it("rewrites unquoted and whitespace-spaced ID reference attributes", () => {
+    expect(
+      rewrite(
+        '<label for = "local"></label><label for=local></label><a href=#local></a>',
+      ),
+    ).toBe(
+      '<label for = "scoped-local"></label><label for="scoped-local"></label><a href="#scoped-local"></a>',
     );
   });
 
   it("rewrites headers on table cells and for on output as token lists", () => {
-    expect(rewrite('<td headers="external local"></td><th headers="local"></th><output for="external local"></output>')).toBe(
+    expect(
+      rewrite(
+        '<td headers="external local"></td><th headers="local"></th><output for="external local"></output>',
+      ),
+    ).toBe(
       '<td headers="external scoped-local"></td><th headers="scoped-local"></th><output for="external scoped-local"></output>',
     );
   });
@@ -96,8 +147,16 @@ describe("rewriteIdReferencesInHtml", () => {
   it.each([
     ["anchor href", '<a href="#local"></a>', '<a href="#scoped-local"></a>'],
     ["area href", '<area href="#local">', '<area href="#scoped-local">'],
-    ["SVG use href", '<use href="#local"></use>', '<use href="#scoped-local"></use>'],
-    ["SVG use xlink:href", '<use xlink:href="#local"></use>', '<use xlink:href="#scoped-local"></use>'],
+    [
+      "SVG use href",
+      '<use href="#local"></use>',
+      '<use href="#scoped-local"></use>',
+    ],
+    [
+      "SVG use xlink:href",
+      '<use xlink:href="#local"></use>',
+      '<use xlink:href="#scoped-local"></use>',
+    ],
   ])("rewrites a resolvable %s fragment", (_name, source, expected) => {
     expect(rewrite(source)).toBe(expected);
   });
@@ -118,7 +177,11 @@ describe("rewriteIdReferencesInHtml", () => {
   });
 
   it("rewrites every local url fragment in an inline style attribute", () => {
-    expect(rewrite('<path style="fill: url(#local); filter: url(#external)"></path>')).toBe(
+    expect(
+      rewrite(
+        '<path style="fill: url(#local); filter: url(#external)"></path>',
+      ),
+    ).toBe(
       '<path style="fill: url(#scoped-local); filter: url(#external)"></path>',
     );
   });
@@ -130,10 +193,13 @@ describe("rewriteIdReferencesInHtml", () => {
     '<div aria-labelledby=""></div>',
     '<div aria-labelledby="external"></div>',
     '<path fill="url(#external)"></path>',
-    '<div data-example=\'for="local"\'></div>',
-  ])("leaves an unresolvable or inapplicable value byte-identical", (source) => {
-    expect(rewrite(source)).toBe(source);
-  });
+    "<div data-example='for=\"local\"'></div>",
+  ])(
+    "leaves an unresolvable or inapplicable value byte-identical",
+    (source) => {
+      expect(rewrite(source)).toBe(source);
+    },
+  );
 
   it.each([
     '<label for="external"></label>',
@@ -166,18 +232,24 @@ describe("rewriteIdReferencesInHtml", () => {
     '<path marker-mid="url(#external)"></path>',
     '<path marker-end="url(#external)"></path>',
     '<path style="fill: url(#external)"></path>',
-  ])("keeps each unsupported cross-boundary reference unchanged: %s", (source) => {
-    expect(rewrite(source)).toBe(source);
-  });
+  ])(
+    "keeps each unsupported cross-boundary reference unchanged: %s",
+    (source) => {
+      expect(rewrite(source)).toBe(source);
+    },
+  );
 
   it("preserves replacement tokens in resolved IDs", () => {
-    expect(rewrite('<label for="$&"></label><div aria-labelledby="$1 $&"></div>')).toBe(
+    expect(
+      rewrite('<label for="$&"></label><div aria-labelledby="$1 $&"></div>'),
+    ).toBe(
       '<label for="scoped-$&"></label><div aria-labelledby="scoped-$1 scoped-$&"></div>',
     );
   });
 
   it("does not rewrite references inside comments", () => {
-    const source = '<!-- <label for="local"></label> --><label for="local"></label>';
+    const source =
+      '<!-- <label for="local"></label> --><label for="local"></label>';
     expect(rewrite(source)).toBe(
       '<!-- <label for="local"></label> --><label for="scoped-local"></label>',
     );
@@ -185,13 +257,13 @@ describe("rewriteIdReferencesInHtml", () => {
 
   it("does not rewrite references inside raw-text elements", () => {
     const source =
-      '<script>const sample = \'<label for="local">\';</script>' +
+      "<script>const sample = '<label for=\"local\">';</script>" +
       '<textarea><a href="#local"></a></textarea>' +
       '<label for="local"></label>';
     expect(rewrite(source)).toBe(
-      '<script>const sample = \'<label for="local">\';</script>' +
-      '<textarea><a href="#local"></a></textarea>' +
-      '<label for="scoped-local"></label>',
+      "<script>const sample = '<label for=\"local\">';</script>" +
+        '<textarea><a href="#local"></a></textarea>' +
+        '<label for="scoped-local"></label>',
     );
   });
 });
@@ -204,9 +276,8 @@ describe("rewriteIdReferencesInCss", () => {
 
   it("rewrites url(#grad) to match a scoped svg gradient id", () => {
     expect(
-      rewriteIdReferencesInCss(
-        ".icon { fill: url(#grad); }",
-        (id) => id === "grad" ? "bascik__icon__instance__grad" : null,
+      rewriteIdReferencesInCss(".icon { fill: url(#grad); }", (id) =>
+        id === "grad" ? "bascik__icon__instance__grad" : null,
       ),
     ).toBe(".icon { fill: url(#bascik__icon__instance__grad); }");
   });
@@ -231,7 +302,9 @@ describe("rewriteIdReferencesInCss", () => {
     ["double quotes", 'url("#local")', 'url("#scoped-local")'],
     ["extra whitespace", "url( #local )", "url( #scoped-local )"],
   ])("preserves %s while rewriting the fragment", (_name, source, expected) => {
-    expect(rewriteCss(`a { fill: ${source}; }`)).toBe(`a { fill: ${expected}; }`);
+    expect(rewriteCss(`a { fill: ${source}; }`)).toBe(
+      `a { fill: ${expected}; }`,
+    );
   });
 
   it.each([
@@ -296,9 +369,7 @@ describe("rewriteIdReferencesInCss", () => {
   it("does NOT rewrite url text inside a comment", () => {
     expect(
       rewriteCss("/* fill: url(#local) */ .icon { fill: url(#local); }"),
-    ).toBe(
-      "/* fill: url(#local) */ .icon { fill: url(#scoped-local); }",
-    );
+    ).toBe("/* fill: url(#local) */ .icon { fill: url(#scoped-local); }");
   });
 
   it("still rewrites a genuine quoted url() fragment reference", () => {
@@ -309,7 +380,9 @@ describe("rewriteIdReferencesInCss", () => {
 
   it("preserves an escaped-quote string literal while scoping a real url()", () => {
     expect(
-      rewriteCss('.icon::before { content: "a \\" #local"; fill: url(#local); }'),
+      rewriteCss(
+        '.icon::before { content: "a \\" #local"; fill: url(#local); }',
+      ),
     ).toBe(
       '.icon::before { content: "a \\" #local"; fill: url(#scoped-local); }',
     );
@@ -317,7 +390,9 @@ describe("rewriteIdReferencesInCss", () => {
 
   it("preserves a span containing a non-fragment URL while scoping a real fragment", () => {
     expect(
-      rewriteCss('.icon { background: url("sprite.svg#icon"); filter: url(#local); }'),
+      rewriteCss(
+        '.icon { background: url("sprite.svg#icon"); filter: url(#local); }',
+      ),
     ).toBe(
       '.icon { background: url("sprite.svg#icon"); filter: url(#scoped-local); }',
     );
@@ -328,7 +403,7 @@ describe("rewriteIdReferencesInCss", () => {
       "#local",
       "#x",
       "url(#y)",
-      "url(\"#z\")",
+      'url("#z")',
       "#hidden",
       "é",
       "ま",

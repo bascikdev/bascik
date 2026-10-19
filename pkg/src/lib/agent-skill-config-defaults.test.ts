@@ -9,41 +9,69 @@ vi.mock("./userConfig.js", () => ({
   buildConfig: {},
 }));
 
-import { buildDefaultConfig, defaultConfig, devDefaultConfig, serverDefaultConfig } from "./config.ts";
+import {
+  buildDefaultConfig,
+  defaultConfig,
+  devDefaultConfig,
+  serverDefaultConfig,
+} from "./config.ts";
 
 // The published bascik-config agent skill hard-codes the defaults it uses to flag redundant config values.
 // This test keeps that table honest: if a default changes here, the skill's audit script must change too.
-const auditScript = resolve(import.meta.dirname, "../../../skills/bascik-config/scripts/audit-config.mjs");
+const auditScript = resolve(
+  import.meta.dirname,
+  "../../../skills/bascik-config/scripts/audit-config.mjs",
+);
 
-type Defaults = { KNOWN_DEFAULTS: Record<string, unknown>; MODE_DEFAULTS: Record<"dev" | "build" | "server", Record<string, unknown>> };
-const loadAudit = async (): Promise<Defaults> => (await import(pathToFileURL(auditScript).href)) as Defaults;
+type Defaults = {
+  KNOWN_DEFAULTS: Record<string, unknown>;
+  MODE_DEFAULTS: Record<"dev" | "build" | "server", Record<string, unknown>>;
+};
+const loadAudit = async (): Promise<Defaults> =>
+  (await import(pathToFileURL(auditScript).href)) as Defaults;
 
 const lookup = (source: unknown, path: string): unknown =>
-  path.split(".").reduce<unknown>((value, key) => (value as Record<string, unknown> | undefined)?.[key], source);
+  path
+    .split(".")
+    .reduce<unknown>(
+      (value, key) => (value as Record<string, unknown> | undefined)?.[key],
+      source,
+    );
 
 describe("bascik-config agent skill defaults", () => {
   it("matches every mode-independent default in defaultConfig", async () => {
     const { KNOWN_DEFAULTS } = await loadAudit();
     expect(Object.keys(KNOWN_DEFAULTS).length).toBeGreaterThan(30);
     for (const [path, expected] of Object.entries(KNOWN_DEFAULTS)) {
-      const actual = path === "pipeline.exec" ? (lookup(defaultConfig, path) ?? []) : lookup(defaultConfig, path);
+      const actual =
+        path === "pipeline.exec"
+          ? (lookup(defaultConfig, path) ?? [])
+          : lookup(defaultConfig, path);
       expect(actual, path).toEqual(expected);
     }
   });
 
   it("does not list a mode-dependent key as mode-independent", async () => {
     const { KNOWN_DEFAULTS } = await loadAudit();
-    for (const modeDefaults of [devDefaultConfig, buildDefaultConfig, serverDefaultConfig]) {
+    for (const modeDefaults of [
+      devDefaultConfig,
+      buildDefaultConfig,
+      serverDefaultConfig,
+    ]) {
       for (const path of Object.keys(KNOWN_DEFAULTS)) {
         const modeValue = lookup(modeDefaults, path);
-        if (modeValue !== undefined) expect(modeValue, path).toEqual(KNOWN_DEFAULTS[path]);
+        if (modeValue !== undefined)
+          expect(modeValue, path).toEqual(KNOWN_DEFAULTS[path]);
       }
     }
   });
 
   it("matches the build and server mode defaults and the dev base values", async () => {
     const { MODE_DEFAULTS } = await loadAudit();
-    for (const [mode, overrides] of [["build", buildDefaultConfig], ["server", serverDefaultConfig]] as const) {
+    for (const [mode, overrides] of [
+      ["build", buildDefaultConfig],
+      ["server", serverDefaultConfig],
+    ] as const) {
       for (const [path, expected] of Object.entries(MODE_DEFAULTS[mode])) {
         if (path === "pipeline.onExecError") continue; // resolved at run time, not in the defaults table
         const actual = lookup(overrides, path) ?? lookup(defaultConfig, path);

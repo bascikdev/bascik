@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { parseCliOptions } from "./cli.js";
 import {
   E2E_APP_SPEC,
@@ -45,17 +47,18 @@ const mockCp = cp as ReturnType<typeof vi.fn>;
 const mockMkdir = mkdir as ReturnType<typeof vi.fn>;
 const mockWriteFile = writeFile as ReturnType<typeof vi.fn>;
 
-vi.spyOn(console, "log").mockImplementation(() => { });
+vi.spyOn(console, "log").mockImplementation(() => {});
 
 const writtenTo = (suffix: string): string | undefined => {
   for (const call of mockWriteFile.mock.calls) {
-    if (String(call[0]).endsWith(suffix)) return call[1] as string;
+    if (String(call[0]).replace(/\\/g, "/").endsWith(suffix))
+      return call[1] as string;
   }
   return undefined;
 };
 
 const allWrittenPaths = (): string[] =>
-  mockWriteFile.mock.calls.map((c) => String(c[0]));
+  mockWriteFile.mock.calls.map((c) => String(c[0]).replace(/\\/g, "/"));
 
 describe("parseCliOptions", () => {
   it("starts development by default for the non-interactive yes mode", () => {
@@ -114,20 +117,24 @@ describe("PACKAGE_JSON", () => {
     expect(() => JSON.parse(PACKAGE_JSON("my-app"))).not.toThrow();
   });
 
-  it('sets type:module, dev, build, lint, test, and e2e scripts', () => {
+  it("sets type:module, dev, build, lint, test, and e2e scripts", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
     expect(pkg.type).toBe("module");
     expect(pkg.scripts.dev).toBe("bascik");
     expect(pkg.scripts.build).toBe("bascik --build");
-    expect(pkg.scripts.lint).toBe("bascik-language-server --check");
+    // One command for the whole project: `bascik --check` runs the per-file linter and the project-wide checks.
+    expect(pkg.scripts.lint).toBe("bascik --check");
     expect(pkg.scripts.test).toBe("vitest run");
     expect(pkg.scripts["test:watch"]).toBe("vitest");
     expect(pkg.scripts["test:coverage"]).toBe("vitest run --coverage");
-    expect(pkg.scripts.e2e).toBe("playwright test --config e2e/playwright.config.ts");
+    expect(pkg.scripts.e2e).toBe(
+      "playwright test --config e2e/playwright.config.ts",
+    );
   });
 
   it("includes language-server, vitest, coverage-v8, and playwright in devDependencies", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
+    // `bascik --check` skips the per-file checks when the language server is not installed.
     expect(pkg.devDependencies["@bascik/language-server"]).toBeDefined();
     expect(pkg.devDependencies.vitest).toBeDefined();
     expect(pkg.devDependencies["@vitest/coverage-v8"]).toBeDefined();
@@ -137,6 +144,35 @@ describe("PACKAGE_JSON", () => {
   it("includes Bascik as a dependency", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
     expect(pkg.dependencies["@bascik/bascik"]).toBeDefined();
+  });
+
+  it("pins @bascik/bascik and @bascik/language-server to the current workspace versions", () => {
+    const repoRoot = resolve(import.meta.dirname, "../..");
+    const pkgJson = JSON.parse(
+      readFileSync(resolve(repoRoot, "pkg/package.json"), "utf8"),
+    ) as { version: string };
+    const lspJson = JSON.parse(
+      readFileSync(resolve(repoRoot, "lsp/package.json"), "utf8"),
+    ) as { version: string };
+    const adapterJson = JSON.parse(
+      readFileSync(
+        resolve(repoRoot, "adapters/cloudflare/package.json"),
+        "utf8",
+      ),
+    ) as {
+      peerDependencies: Record<string, string>;
+    };
+    const scaffolded = JSON.parse(PACKAGE_JSON("my-app"));
+
+    expect(scaffolded.dependencies["@bascik/bascik"]).toBe(
+      `^${pkgJson.version}`,
+    );
+    expect(scaffolded.devDependencies["@bascik/language-server"]).toBe(
+      `^${lspJson.version}`,
+    );
+    expect(adapterJson.peerDependencies["@bascik/bascik"]).toBe(
+      `^${pkgJson.version}`,
+    );
   });
 
   it("uses the supplied name", () => {
@@ -160,15 +196,21 @@ describe("VITE_CONFIG", () => {
 describe("PLAYWRIGHT_CONFIG", () => {
   it("configures port 8080 webServer and base URL", () => {
     expect(PLAYWRIGHT_CONFIG).toContain("http://localhost:8080");
-    expect(PLAYWRIGHT_CONFIG).toContain("npx bascik --build && npx bascik --server --port 8080");
+    expect(PLAYWRIGHT_CONFIG).toContain(
+      "npx bascik --build && npx bascik --server --port 8080",
+    );
   });
 });
 
 describe("E2E_APP_SPEC", () => {
   it("includes tests for navigation, counter, and mobile menu toggle", () => {
     expect(E2E_APP_SPEC).toContain("navigates pages and checks titles");
-    expect(E2E_APP_SPEC).toContain("counter component increments and decrements count");
-    expect(E2E_APP_SPEC).toContain("mobile navigation toggle expands and collapses menu");
+    expect(E2E_APP_SPEC).toContain(
+      "counter component increments and decrements count",
+    );
+    expect(E2E_APP_SPEC).toContain(
+      "mobile navigation toggle expands and collapses menu",
+    );
   });
 });
 
@@ -177,8 +219,16 @@ describe("VSCODE_LAUNCH_JSON", () => {
     expect(() => JSON.parse(VSCODE_LAUNCH_JSON)).not.toThrow();
     const config = JSON.parse(VSCODE_LAUNCH_JSON);
     expect(config.version).toBe("0.2.0");
-    expect(config.configurations.some((c: { name: string }) => c.name.includes("Debug Dev Server"))).toBe(true);
-    expect(config.configurations.some((c: { name: string }) => c.name.includes("Launch Chrome"))).toBe(true);
+    expect(
+      config.configurations.some((c: { name: string }) =>
+        c.name.includes("Debug Dev Server"),
+      ),
+    ).toBe(true);
+    expect(
+      config.configurations.some((c: { name: string }) =>
+        c.name.includes("Launch Chrome"),
+      ),
+    ).toBe(true);
   });
 });
 
@@ -410,7 +460,9 @@ describe("scaffold", () => {
 
   it("creates all component, page, and e2e directories", async () => {
     await scaffold("my-app", "/tmp");
-    const dirs = mockMkdir.mock.calls.map((c) => String(c[0]));
+    const dirs = mockMkdir.mock.calls.map((c) =>
+      String(c[0]).replace(/\\/g, "/"),
+    );
     expect(dirs.some((d) => d.endsWith(".agents/skills"))).toBe(true);
     expect(dirs.some((d) => d.endsWith(".claude/skills"))).toBe(true);
     expect(dirs.some((d) => d.endsWith("e2e"))).toBe(true);
@@ -430,15 +482,22 @@ describe("scaffold", () => {
   it("writes E2E config and spec files", async () => {
     await scaffold("my-app", "/tmp");
     const paths = allWrittenPaths();
-    expect(paths.some((p) => p.endsWith("e2e/playwright.config.ts"))).toBe(true);
+    expect(paths.some((p) => p.endsWith("e2e/playwright.config.ts"))).toBe(
+      true,
+    );
     expect(paths.some((p) => p.endsWith("e2e/app.spec.ts"))).toBe(true);
   });
 
   it("copies the bundled agent skills into .agents/skills and .claude/skills", async () => {
     await scaffold("my-app", "/tmp");
     expect(mockCp).toHaveBeenCalledTimes(2);
-    const destinations = mockCp.mock.calls.map((c) => String(c[1]).replace(/\\/g, "/"));
-    expect(destinations).toEqual(["/tmp/my-app/.agents/skills", "/tmp/my-app/.claude/skills"]);
+    const destinations = mockCp.mock.calls.map((c) =>
+      String(c[1]).replace(/\\/g, "/"),
+    );
+    expect(destinations).toEqual([
+      "/tmp/my-app/.agents/skills",
+      "/tmp/my-app/.claude/skills",
+    ]);
     for (const call of mockCp.mock.calls) {
       expect(call[0]).toBe(SKILLS_DIR);
       expect(call[2]).toMatchObject({ recursive: true });
@@ -447,7 +506,9 @@ describe("scaffold", () => {
 
   it("skips only the README at the root of the bundled skills folder", async () => {
     await scaffold("my-app", "/tmp");
-    const { filter } = mockCp.mock.calls[0][2] as { filter: (source: string) => boolean };
+    const { filter } = mockCp.mock.calls[0][2] as {
+      filter: (source: string) => boolean;
+    };
     expect(filter(`${SKILLS_DIR}/README.md`)).toBe(false);
     expect(filter(`${SKILLS_DIR}/bascik/SKILL.md`)).toBe(true);
     expect(filter(`${SKILLS_DIR}/bascik/references/README.md`)).toBe(true);
@@ -456,8 +517,12 @@ describe("scaffold", () => {
 
   it("no longer writes skills into .github/skills", async () => {
     await scaffold("my-app", "/tmp");
-    expect(allWrittenPaths().some((p) => p.includes(".github/skills"))).toBe(false);
-    expect(mockMkdir.mock.calls.some((c) => String(c[0]).includes(".github/skills"))).toBe(false);
+    expect(allWrittenPaths().some((p) => p.includes(".github/skills"))).toBe(
+      false,
+    );
+    expect(
+      mockMkdir.mock.calls.some((c) => String(c[0]).includes(".github/skills")),
+    ).toBe(false);
   });
 
   it("writes root config files", async () => {
@@ -470,7 +535,9 @@ describe("scaffold", () => {
     expect(writtenTo(".vscode/launch.json")).toBeDefined();
     const extensionsJson = writtenTo(".vscode/extensions.json");
     expect(extensionsJson).toBeDefined();
-    expect(JSON.parse(extensionsJson!).recommendations).toContain("bascik.bascik-vscode");
+    expect(JSON.parse(extensionsJson!).recommendations).toContain(
+      "bascik.bascik-vscode",
+    );
   });
 
   it("writes all four pages", async () => {
@@ -502,14 +569,20 @@ describe("scaffold", () => {
   it("writes favicon assets", async () => {
     await scaffold("my-app", "/tmp");
     expect(allWrittenPaths().some((p) => p.endsWith("favicon.ico"))).toBe(true);
-    expect(allWrittenPaths().some((p) => p.endsWith("favicon-32x32.png"))).toBe(true);
-    expect(allWrittenPaths().some((p) => p.endsWith("apple-touch-icon.png"))).toBe(true);
+    expect(allWrittenPaths().some((p) => p.endsWith("favicon-32x32.png"))).toBe(
+      true,
+    );
+    expect(
+      allWrittenPaths().some((p) => p.endsWith("apple-touch-icon.png")),
+    ).toBe(true);
     expect(allWrittenPaths().some((p) => p.endsWith("favicon.svg"))).toBe(true);
   });
 
   it("scopes everything under targetDir/projectName", async () => {
     await scaffold("cool-site", "/projects");
-    expect(allWrittenPaths().every((p) => p.startsWith("/projects/cool-site"))).toBe(true);
+    expect(
+      allWrittenPaths().every((p) => p.startsWith("/projects/cool-site")),
+    ).toBe(true);
   });
 
   it("uses cwd as default targetDir", async () => {
@@ -525,4 +598,3 @@ describe("scaffold", () => {
     expect(indexCall?.[1]).toContain("hello-world");
   });
 });
-

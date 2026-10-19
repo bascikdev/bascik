@@ -7,7 +7,11 @@
 
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
-import { parse as parseJsoncRaw, printParseErrorCode, type ParseError } from "jsonc-parser";
+import {
+  parse as parseJsoncRaw,
+  printParseErrorCode,
+  type ParseError,
+} from "jsonc-parser";
 import { parse as parseTomlRaw, TomlError } from "smol-toml";
 
 /**
@@ -43,7 +47,10 @@ export interface DiscoveredConfig {
  * tolerant and returns partial data on errors, so the errors array is always
  * checked and any parse error rejects the input.
  */
-export function parseJsonc(text: string, filename = "wrangler.jsonc"): ParsedWranglerConfig {
+export function parseJsonc(
+  text: string,
+  filename = "wrangler.jsonc",
+): ParsedWranglerConfig {
   const errors: ParseError[] = [];
   const parsed = parseJsoncRaw(text, errors, { allowTrailingComma: true });
 
@@ -57,7 +64,9 @@ export function parseJsonc(text: string, filename = "wrangler.jsonc"): ParsedWra
   }
 
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error(`[bascik] Failed to parse ${filename}: expected a top-level JSON object.`);
+    throw new Error(
+      `[bascik] Failed to parse ${filename}: expected a top-level JSON object.`,
+    );
   }
 
   return parsed as ParsedWranglerConfig;
@@ -66,7 +75,10 @@ export function parseJsonc(text: string, filename = "wrangler.jsonc"): ParsedWra
 /**
  * Computes a 1-based line and column for a character offset within text.
  */
-function lineAndCharacterAt(text: string, offset: number): { line: number; character: number } {
+function lineAndCharacterAt(
+  text: string,
+  offset: number,
+): { line: number; character: number } {
   let line = 1;
   let character = 1;
   const end = Math.min(offset, text.length);
@@ -88,11 +100,20 @@ function lineAndCharacterAt(text: string, offset: number): { line: number; chara
  * line of the parser message only, which never contains source excerpts or
  * raw configuration values.
  */
-export function parseToml(text: string, filename = "wrangler.toml"): ParsedWranglerConfig {
+export function parseToml(
+  text: string,
+  filename = "wrangler.toml",
+): ParsedWranglerConfig {
   try {
     const parsed = parseTomlRaw(text);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      throw new Error(`[bascik] Failed to parse ${filename}: expected a top-level TOML table.`);
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      throw new Error(
+        `[bascik] Failed to parse ${filename}: expected a top-level TOML table.`,
+      );
     }
     return parsed as ParsedWranglerConfig;
   } catch (err) {
@@ -100,7 +121,9 @@ export function parseToml(text: string, filename = "wrangler.toml"): ParsedWrang
       // TomlError.message includes a codeblock with source excerpts and raw
       // values. Only the first line is safe to surface.
       const reason = err.message.split("\n")[0];
-      throw new Error(`[bascik] Failed to parse ${filename} at line ${err.line}: ${reason}.`);
+      throw new Error(
+        `[bascik] Failed to parse ${filename} at line ${err.line}: ${reason}.`,
+      );
     }
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`[bascik] Failed to parse ${filename}: ${msg}`);
@@ -112,7 +135,9 @@ export function parseToml(text: string, filename = "wrangler.toml"): ParsedWrang
  * Returns null if no Wrangler configuration file exists.
  * Throws an actionable error if the discovered configuration file is malformed.
  */
-export async function discoverWranglerConfig(projectRoot: string): Promise<DiscoveredConfig | null> {
+export async function discoverWranglerConfig(
+  projectRoot: string,
+): Promise<DiscoveredConfig | null> {
   for (const filename of WRANGLER_CONFIG_FILES) {
     const filePath = join(projectRoot, filename);
     let raw: string;
@@ -148,7 +173,11 @@ export async function discoverWranglerConfig(projectRoot: string): Promise<Disco
 export async function resolveWorkerName(
   projectRoot: string,
   discoveredConfig?: DiscoveredConfig | null,
-): Promise<{ workerName: string; source: "env" | "config" | "package" | "default"; discoveredConfig?: DiscoveredConfig | null }> {
+): Promise<{
+  workerName: string;
+  source: "env" | "config" | "package" | "default";
+  discoveredConfig?: DiscoveredConfig | null;
+}> {
   const envName =
     process.env.CLOUDFLARE_WORKER_NAME ||
     process.env.WORKER_NAME ||
@@ -158,18 +187,41 @@ export async function resolveWorkerName(
     return { workerName: envName.trim(), source: "env", discoveredConfig };
   }
 
-  const discovered = discoveredConfig !== undefined ? discoveredConfig : await discoverWranglerConfig(projectRoot);
-  if (discovered && discovered.values.name && typeof discovered.values.name === "string" && discovered.values.name.trim()) {
-    return { workerName: discovered.values.name.trim(), source: "config", discoveredConfig: discovered };
+  const discovered =
+    discoveredConfig !== undefined
+      ? discoveredConfig
+      : await discoverWranglerConfig(projectRoot);
+  if (
+    discovered &&
+    discovered.values.name &&
+    typeof discovered.values.name === "string" &&
+    discovered.values.name.trim()
+  ) {
+    return {
+      workerName: discovered.values.name.trim(),
+      source: "config",
+      discoveredConfig: discovered,
+    };
   }
 
   try {
-    const pkgJsonRaw = await readFile(join(projectRoot, "package.json"), "utf8");
+    const pkgJsonRaw = await readFile(
+      join(projectRoot, "package.json"),
+      "utf8",
+    );
     const pkgJson = JSON.parse(pkgJsonRaw) as { name?: string };
-    if (pkgJson.name && typeof pkgJson.name === "string" && pkgJson.name.trim()) {
+    if (
+      pkgJson.name &&
+      typeof pkgJson.name === "string" &&
+      pkgJson.name.trim()
+    ) {
       const name = pkgJson.name.replace(/^@[^/]+\//, "").trim();
       if (name) {
-        return { workerName: name, source: "package", discoveredConfig: discovered };
+        return {
+          workerName: name,
+          source: "package",
+          discoveredConfig: discovered,
+        };
       }
     }
   } catch (err) {
@@ -179,5 +231,9 @@ export async function resolveWorkerName(
     }
   }
 
-  return { workerName: "bascik-site", source: "default", discoveredConfig: discovered };
+  return {
+    workerName: "bascik-site",
+    source: "default",
+    discoveredConfig: discovered,
+  };
 }

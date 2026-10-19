@@ -20,29 +20,55 @@
  * the emitted <code-block> tags are resolved normally by Bascik.
  */
 
-import { createHash } from 'node:crypto';
-import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { marked } from 'marked';
-import { slugFromHeadingHtml } from './heading-slug.ts';
+import { createHash } from "node:crypto";
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  readSync,
+  statSync,
+} from "node:fs";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { marked } from "marked";
+import { slugFromHeadingHtml } from "./heading-slug.ts";
 
 /** Pixel size of a PNG or WebP header, or null when the bytes are neither. */
-function readImageHeader(header: Buffer): { width: number; height: number } | null {
-  if (header.length >= 24 && header.toString('latin1', 1, 4) === 'PNG' && header.toString('latin1', 12, 16) === 'IHDR') {
+function readImageHeader(
+  header: Buffer,
+): { width: number; height: number } | null {
+  if (
+    header.length >= 24 &&
+    header.toString("latin1", 1, 4) === "PNG" &&
+    header.toString("latin1", 12, 16) === "IHDR"
+  ) {
     return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) };
   }
-  if (header.length >= 30 && header.toString('latin1', 0, 4) === 'RIFF' && header.toString('latin1', 8, 12) === 'WEBP') {
-    const format = header.toString('latin1', 12, 16);
-    if (format === 'VP8 ') {
-      return { width: header.readUInt16LE(26) & 0x3fff, height: header.readUInt16LE(28) & 0x3fff };
+  if (
+    header.length >= 30 &&
+    header.toString("latin1", 0, 4) === "RIFF" &&
+    header.toString("latin1", 8, 12) === "WEBP"
+  ) {
+    const format = header.toString("latin1", 12, 16);
+    if (format === "VP8 ") {
+      return {
+        width: header.readUInt16LE(26) & 0x3fff,
+        height: header.readUInt16LE(28) & 0x3fff,
+      };
     }
-    if (format === 'VP8L') {
+    if (format === "VP8L") {
       const bits = header.readUInt32LE(21);
-      return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
+      return {
+        width: (bits & 0x3fff) + 1,
+        height: ((bits >>> 14) & 0x3fff) + 1,
+      };
     }
-    if (format === 'VP8X') {
-      return { width: header.readUIntLE(24, 3) + 1, height: header.readUIntLE(27, 3) + 1 };
+    if (format === "VP8X") {
+      return {
+        width: header.readUIntLE(24, 3) + 1,
+        height: header.readUIntLE(27, 3) + 1,
+      };
     }
   }
   return null;
@@ -56,16 +82,19 @@ function readImageHeader(header: Buffer): { width: number; height: number } | nu
  * ever scaled down to fit the column.
  */
 function imageSize(sitePath: string): { width: number; height: number } | null {
-  if (!sitePath.startsWith('/') || sitePath.includes('..')) return null;
+  if (!sitePath.startsWith("/") || sitePath.includes("..")) return null;
   let descriptor: number | undefined;
   try {
-    descriptor = openSync(join(process.cwd(), 'src/pages', sitePath), 'r');
+    descriptor = openSync(join(process.cwd(), "src/pages", sitePath), "r");
     const header = Buffer.alloc(32);
     const bytesRead = readSync(descriptor, header, 0, 32, 0);
     const size = readImageHeader(header.subarray(0, bytesRead));
     if (!size) return null;
     const density = /@2x\.[a-z]+$/i.test(sitePath) ? 2 : 1;
-    return { width: Math.round(size.width / density), height: Math.round(size.height / density) };
+    return {
+      width: Math.round(size.width / density),
+      height: Math.round(size.height / density),
+    };
   } catch {
     return null;
   } finally {
@@ -78,17 +107,17 @@ function imageSize(sitePath: string): { width: number; height: number } | null {
  * beside the animation with `-still` before the density suffix: `demo@2x.webp` pairs with `demo-still@2x.webp`.
  */
 function stillCopyPath(sitePath: string): string | null {
-  if (!sitePath.startsWith('/') || sitePath.includes('..')) return null;
-  const still = sitePath.replace(/(@\dx)?(\.[a-z0-9]+)$/i, '-still$1$2');
+  if (!sitePath.startsWith("/") || sitePath.includes("..")) return null;
+  const still = sitePath.replace(/(@\dx)?(\.[a-z0-9]+)$/i, "-still$1$2");
   if (still === sitePath) return null;
-  return existsSync(join(process.cwd(), 'src/pages', still)) ? still : null;
+  return existsSync(join(process.cwd(), "src/pages", still)) ? still : null;
 }
 
 /**
  * Site folder for the recordings made by scripts/capture-demos.ts. Their windows have rounded, transparent
  * corners. The square VS Code screenshots in /assets/vscode/ keep the default image border.
  */
-const DEMO_FOLDERS = ['/assets/demos/'];
+const DEMO_FOLDERS = ["/assets/demos/"];
 
 /**
  * Site folders whose images are served with a content-hash query string and cached for a year. These are the
@@ -96,7 +125,10 @@ const DEMO_FOLDERS = ['/assets/demos/'];
  * the hash. scripts/generate-pages-headers.ts reads this list to write the matching `immutable` rule, so a
  * folder is only ever cached forever when its URLs are versioned.
  */
-export const VERSIONED_IMAGE_FOLDERS = ['/assets/demos/', '/assets/vscode/'] as const;
+export const VERSIONED_IMAGE_FOLDERS = [
+  "/assets/demos/",
+  "/assets/vscode/",
+] as const;
 
 const versionCache = new Map<string, { stamp: string; version: string }>();
 
@@ -107,15 +139,19 @@ const versionCache = new Map<string, { stamp: string; version: string }>();
  * after the build. Hashes are cached per file and recomputed when its size or modified time changes.
  */
 function versionedPath(sitePath: string): string {
-  if (!sitePath.startsWith('/') || sitePath.includes('..')) return sitePath;
-  if (!VERSIONED_IMAGE_FOLDERS.some((folder) => sitePath.startsWith(folder))) return sitePath;
+  if (!sitePath.startsWith("/") || sitePath.includes("..")) return sitePath;
+  if (!VERSIONED_IMAGE_FOLDERS.some((folder) => sitePath.startsWith(folder)))
+    return sitePath;
   try {
-    const file = join(process.cwd(), 'src/pages', sitePath);
+    const file = join(process.cwd(), "src/pages", sitePath);
     const { mtimeMs, size } = statSync(file);
     const stamp = `${mtimeMs}:${size}`;
     const cached = versionCache.get(file);
     if (cached?.stamp === stamp) return `${sitePath}?v=${cached.version}`;
-    const version = createHash('sha256').update(readFileSync(file)).digest('hex').slice(0, 10);
+    const version = createHash("sha256")
+      .update(readFileSync(file))
+      .digest("hex")
+      .slice(0, 10);
     versionCache.set(file, { stamp, version });
     return `${sitePath}?v=${version}`;
   } catch {
@@ -132,30 +168,49 @@ function versionedPath(sitePath: string): string {
  *
  * `rest` is whatever follows `src` in the original tag, such as ` alt="..."`.
  */
-function renderImage(src: string, rest: string, narrow?: { src: string; maxWidth: number }): string {
+function renderImage(
+  src: string,
+  rest: string,
+  narrow?: { src: string; maxWidth: number },
+): string {
   const size = imageSize(src);
-  const dimensions = size ? ` width="${size.width}" height="${size.height}"` : '';
-  const demoClass = DEMO_FOLDERS.some((folder) => src.startsWith(folder)) ? ' class="demo-shot"' : '';
+  const dimensions = size
+    ? ` width="${size.width}" height="${size.height}"`
+    : "";
+  const demoClass = DEMO_FOLDERS.some((folder) => src.startsWith(folder))
+    ? ' class="demo-shot"'
+    : "";
   const image = `<img loading="lazy" decoding="async"${demoClass}${dimensions} src="${versionedPath(src)}"${rest}>`;
   const sources: string[] = [];
   // The narrow image has a different shape from the default one, so its sources say how big it is. Without
   // that, the browser would reserve the default image's shape and the page would jump when the real one loads.
   const narrowSize = narrow ? imageSize(narrow.src) : null;
-  const narrowDimensions = narrowSize ? ` width="${narrowSize.width}" height="${narrowSize.height}"` : '';
+  const narrowDimensions = narrowSize
+    ? ` width="${narrowSize.width}" height="${narrowSize.height}"`
+    : "";
   // Reduced motion wins over screen size, so these sources come first: the browser uses the first match.
   const still = stillCopyPath(src);
   const narrowStill = narrow ? stillCopyPath(narrow.src) : null;
   if (narrow && narrowStill) {
-    sources.push(`<source media="(max-width: ${narrow.maxWidth}px) and (prefers-reduced-motion: reduce)" srcset="${versionedPath(narrowStill)}"${narrowDimensions}>`);
+    sources.push(
+      `<source media="(max-width: ${narrow.maxWidth}px) and (prefers-reduced-motion: reduce)" srcset="${versionedPath(narrowStill)}"${narrowDimensions}>`,
+    );
   }
-  if (still) sources.push(`<source media="(prefers-reduced-motion: reduce)" srcset="${versionedPath(still)}">`);
-  if (narrow) sources.push(`<source media="(max-width: ${narrow.maxWidth}px)" srcset="${versionedPath(narrow.src)}"${narrowDimensions}>`);
+  if (still)
+    sources.push(
+      `<source media="(prefers-reduced-motion: reduce)" srcset="${versionedPath(still)}">`,
+    );
+  if (narrow)
+    sources.push(
+      `<source media="(max-width: ${narrow.maxWidth}px)" srcset="${versionedPath(narrow.src)}"${narrowDimensions}>`,
+    );
   if (sources.length === 0) return image;
-  return `<picture>${sources.join('')}${image}</picture>`;
+  return `<picture>${sources.join("")}${image}</picture>`;
 }
 
 /** Escapes text for use inside a double-quoted HTML attribute. */
-const escapeAttribute = (text: string) => text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+const escapeAttribute = (text: string) =>
+  text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
 /**
  * Renders a site image for an HTML page, with the same sizing, lazy loading, and reduced-motion handling as
@@ -164,7 +219,11 @@ const escapeAttribute = (text: string) => text.replace(/&/g, '&amp;').replace(/"
  * `narrow` swaps in a different image on screens up to `maxWidth` pixels wide. A wide side-by-side recording
  * would shrink to unreadable on a phone, so a stacked recording is served there instead.
  */
-export function demoImage(src: string, alt: string, narrow?: { src: string; maxWidth: number }): string {
+export function demoImage(
+  src: string,
+  alt: string,
+  narrow?: { src: string; maxWidth: number },
+): string {
   return renderImage(src, ` alt="${escapeAttribute(alt)}"`, narrow);
 }
 
@@ -207,7 +266,10 @@ interface RenderRange {
  * @param {string} markerId - The marker identifier, e.g. 'source-html'.
  * @returns {Promise<string>} HTML-escaped code ready for a <code-block> slot.
  */
-export async function extractDemoBlock(filePath: string, markerId: string): Promise<string> {
+export async function extractDemoBlock(
+  filePath: string,
+  markerId: string,
+): Promise<string> {
   const block = await readDemoBlock(filePath, markerId);
   if (block.code === undefined) return block.problem;
   return escapeCode(block.code);
@@ -215,7 +277,10 @@ export async function extractDemoBlock(filePath: string, markerId: string): Prom
 
 /** Escapes source code for a <code-block> slot. */
 export function escapeCode(code: string): string {
-  return code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return code
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /**
@@ -225,42 +290,54 @@ export function escapeCode(code: string): string {
 export async function readDemoBlock(
   filePath: string,
   markerId: string,
-): Promise<{ code: string; problem?: undefined } | { code?: undefined; problem: string }> {
+): Promise<
+  { code: string; problem?: undefined } | { code?: undefined; problem: string }
+> {
   let md: string;
   try {
-    md = await readFile(filePath, 'utf8');
+    md = await readFile(filePath, "utf8");
   } catch (err) {
-    console.warn(`[md-renderer] Warning: Could not read file "${filePath}": ${(err as Error).message}`);
+    console.warn(
+      `[md-renderer] Warning: Could not read file "${filePath}": ${(err as Error).message}`,
+    );
     return { problem: `<!-- [md-renderer] File not found: ${filePath} -->` };
   }
-  const markerRe = new RegExp(`<!--\\s*demo:${markerId}\\s*-->`, 'i');
+  const markerRe = new RegExp(`<!--\\s*demo:${markerId}\\s*-->`, "i");
   const markerMatch = markerRe.exec(md);
-  if (!markerMatch) return { problem: `<!-- demo:${markerId} not found in ${filePath} -->` };
+  if (!markerMatch)
+    return { problem: `<!-- demo:${markerId} not found in ${filePath} -->` };
 
   const rest = md.slice(markerMatch.index + markerMatch[0].length);
   // Match the next fenced code block (``` ... ```)
   const codeRe = /^```\w*\n([\s\S]*?)\n^```/m;
   const codeMatch = codeRe.exec(rest);
-  if (!codeMatch) return { problem: `<!-- no code block after demo:${markerId} -->` };
+  if (!codeMatch)
+    return { problem: `<!-- no code block after demo:${markerId} -->` };
   return { code: codeMatch[1] };
 }
 
 export async function renderMd(
   filePath: string,
-  { skipFirstHeading = false, stripDemoBlocks = false, skipToFirstH2 = false }: RenderMdOptions = {},
+  {
+    skipFirstHeading = false,
+    stripDemoBlocks = false,
+    skipToFirstH2 = false,
+  }: RenderMdOptions = {},
 ): Promise<string> {
   let md: string;
   try {
-    md = await readFile(filePath, 'utf8');
+    md = await readFile(filePath, "utf8");
   } catch (err) {
-    console.warn(`[md-renderer] Warning: Could not read file "${filePath}": ${(err as Error).message}`);
+    console.warn(
+      `[md-renderer] Warning: Could not read file "${filePath}": ${(err as Error).message}`,
+    );
     return `<div class="callout"><p><strong>File not found:</strong> <code>${filePath}</code></p></div>`;
   }
   if (skipToFirstH2) {
     const firstH2 = md.match(/^## .+$/m);
     // No H2 means no release entries yet; render nothing rather than the
     // file header (which the page intro already covers).
-    if (!firstH2) return '';
+    if (!firstH2) return "";
     md = md.slice(firstH2.index);
   }
   return _transformMd(md, { skipFirstHeading, stripDemoBlocks });
@@ -282,23 +359,29 @@ export async function renderMdRange(
 ): Promise<string> {
   let md: string;
   try {
-    md = await readFile(filePath, 'utf8');
+    md = await readFile(filePath, "utf8");
   } catch (err) {
-    console.warn(`[md-renderer] Warning: Could not read file "${filePath}": ${(err as Error).message}`);
+    console.warn(
+      `[md-renderer] Warning: Could not read file "${filePath}": ${(err as Error).message}`,
+    );
     return `<div class="callout"><p><strong>File not found:</strong> <code>${filePath}</code></p></div>`;
   }
 
   if (from) {
     const idx = _headingIndex(md, from);
     if (idx === -1) {
-      throw new Error(`[md-renderer] Heading "from: ${from}" not found in ${filePath}`);
+      throw new Error(
+        `[md-renderer] Heading "from: ${from}" not found in ${filePath}`,
+      );
     }
     md = md.slice(idx);
   }
   if (to) {
     const idx = _headingIndex(md, to);
     if (idx === -1) {
-      throw new Error(`[md-renderer] Heading "to: ${to}" not found in ${filePath}`);
+      throw new Error(
+        `[md-renderer] Heading "to: ${to}" not found in ${filePath}`,
+      );
     }
     md = md.slice(0, idx);
   }
@@ -307,11 +390,11 @@ export async function renderMdRange(
 }
 
 function _headingIndex(md: string, headingText: string): number {
-  const escaped = headingText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = headingText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const re = new RegExp(`(^|\\n)(#{1,6} ${escaped}[ \\t]*)(?=\\n|$)`);
   const m = re.exec(md);
   if (!m) return -1;
-  return m[1] === '' ? m.index : m.index + 1;
+  return m[1] === "" ? m.index : m.index + 1;
 }
 
 function _transformMd(
@@ -319,13 +402,16 @@ function _transformMd(
   { skipFirstHeading = false, stripDemoBlocks = false }: RenderMdOptions = {},
 ): string {
   if (stripDemoBlocks) {
-    md = md.replace(/<!--\s*demo:[\w-]+\s*-->\n```[\w-]*\n[\s\S]*?\n```/g, '').trim();
+    md = md
+      // Formatters put a blank line between the marker and its fence, so any whitespace may separate them.
+      .replace(/<!--\s*demo:[\w-]+\s*-->\s*\n```[\w-]*\n[\s\S]*?\n```/g, "")
+      .trim();
   }
 
   let html = marked.parse(md, { async: false });
   // Optionally strip the first heading (h1–h6)
   if (skipFirstHeading) {
-    html = html.replace(/^<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>\n?/, '');
+    html = html.replace(/^<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>\n?/, "");
   }
 
   // Add id attributes to h2 and h3 headings and wrap text in a copyable anchor link.
@@ -338,38 +424,49 @@ function _transformMd(
   // marked already HTML-escapes code content, so it passes safely into the component slot.
   html = html.replace(
     /<pre><code class="language-([^"]+)">([\s\S]*?)<\/code><\/pre>/g,
-    (_, lang, code) => `<code-block data-bascik-prop-lang="${lang}">${code}</code-block>\n`
+    (_, lang, code) =>
+      `<code-block data-bascik-prop-lang="${lang}">${code}</code-block>\n`,
   );
   // Code blocks with no language tag
   html = html.replace(
     /<pre><code>([\s\S]*?)<\/code><\/pre>/g,
-    (_, code) => `<code-block data-bascik-prop-lang="text">${code}</code-block>\n`
+    (_, code) =>
+      `<code-block data-bascik-prop-lang="text">${code}</code-block>\n`,
   );
 
   // Wrap all prose code-blocks in a spacing div so global CSS can add margin-bottom
   // without fighting bascik's component CSS scoping (which hashes .cblock class names).
   html = html.replace(
     /(<code-block[^>]*>[\s\S]*?<\/code-block>)/g,
-    '<div class="prose-codeblock">$1</div>'
+    '<div class="prose-codeblock">$1</div>',
   );
 
   // Convert <blockquote> → <div class="callout">. A blockquote whose first paragraph opens with
   // **See it live** gets the live-demo variant so links to running deployments stand out.
-  html = html.replace(/<blockquote>\n?(?=<p><strong>See it live\b)/g, '<div class="callout callout-live">');
+  html = html.replace(
+    /<blockquote>\n?(?=<p><strong>See it live\b)/g,
+    '<div class="callout callout-live">',
+  );
   html = html.replace(/<blockquote>\n?/g, '<div class="callout">');
-  html = html.replace(/\n?<\/blockquote>/g, '</div>');
+  html = html.replace(/\n?<\/blockquote>/g, "</div>");
 
   // Wrap all tables in <doc-table> component and ensure table header cells have scope="col"
   html = html.replace(/<th(?![^>]*\bscope=)>/g, '<th scope="col">');
-  html = html.replace(/(<table[\s\S]*?<\/table>)/g, '<doc-table>$1</doc-table>');
+  html = html.replace(
+    /(<table[\s\S]*?<\/table>)/g,
+    "<doc-table>$1</doc-table>",
+  );
 
   // Images: lazy loading, the display size, and a reduced-motion still for animated demos.
-  html = html.replace(/<img src="(\/[^"]+)"([^>]*)>/g, (_, src: string, rest: string) => renderImage(src, rest));
+  html = html.replace(
+    /<img src="(\/[^"]+)"([^>]*)>/g,
+    (_, src: string, rest: string) => renderImage(src, rest),
+  );
 
   // Open external links in a new tab
   html = html.replace(
     /<a href="(https?:\/\/[^"]+)"/g,
-    '<a target="_blank" rel="noopener noreferrer" href="$1"'
+    '<a target="_blank" rel="noopener noreferrer" href="$1"',
   );
 
   return html;

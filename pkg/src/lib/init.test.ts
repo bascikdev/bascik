@@ -17,14 +17,14 @@ const mockMkdir = mkdir as ReturnType<typeof vi.fn>;
 const mockReadFile = readFile as ReturnType<typeof vi.fn>;
 const mockWriteFile = writeFile as ReturnType<typeof vi.fn>;
 
-vi.spyOn(console, "log").mockImplementation(() => { });
+vi.spyOn(console, "log").mockImplementation(() => {});
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Return the content written to writeFile for the given path suffix. */
 const writtenTo = (suffix: string): string | undefined => {
   for (const call of mockWriteFile.mock.calls) {
-    if (String(call[0]).endsWith(suffix)) {
+    if (String(call[0]).replace(/\\/g, "/").endsWith(suffix)) {
       return call[1] as string;
     }
   }
@@ -44,7 +44,9 @@ describe("initProject", () => {
 
   it("creates pages and components directories", async () => {
     await initProject();
-    const dirs = mockMkdir.mock.calls.map((c) => String(c[0]));
+    const dirs = mockMkdir.mock.calls.map((c) =>
+      String(c[0]).replace(/\\/g, "/"),
+    );
     expect(dirs.some((d) => d.endsWith("src/pages"))).toBe(true);
     expect(dirs.some((d) => d.endsWith("src/components"))).toBe(true);
     expect(mockMkdir.mock.calls[0][1]).toEqual({ recursive: true });
@@ -75,7 +77,7 @@ describe("initProject", () => {
     expect(html).toBeUndefined();
   });
 
-  it('adds type:module, dependency, and dev/build scripts to package.json', async () => {
+  it("adds type:module, dependency, and dev/build scripts to package.json", async () => {
     mockReadFile.mockResolvedValue('{"name":"my-app"}');
 
     await initProject();

@@ -4,8 +4,14 @@
   border: 1px solid var(--border);
   border-radius: var(--r);
 
-  h3 { color: var(--text); }
-  p  { font-size: 0.875rem; color: var(--text-muted); }
+  h3 {
+    color: var(--text);
+  }
+
+  p {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+  }
 
   &:hover {
     border-color: var(--border-hover);

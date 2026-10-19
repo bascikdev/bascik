@@ -7,50 +7,60 @@ Components are the core building block in Bascik. Each component is a `.html` fi
 The simplest component is just markup. No CSS, no JavaScript required.
 
 <!-- demo:source-usage-hello -->
+
 ```html
 <!DOCTYPE html>
 <html lang="en">
-<body>
-  <hello-card />
-</body>
+  <body>
+    <hello-card />
+  </body>
 </html>
 ```
 
 <!-- demo:source-html-hello -->
+
 ```html
 <article class="hello-card">
   <p class="hello-card-kicker">One file. One tag.</p>
   <h3 class="hello-card-title">Plain HTML, ready to reuse.</h3>
-  <p class="hello-card-body">Bascik replaces the custom tag at build time and ships the finished markup.</p>
+  <p class="hello-card-body">
+    Bascik replaces the custom tag at build time and ships the finished markup.
+  </p>
 </article>
 ```
 
 > **Styles omitted for clarity.** This demo component includes a companion `.css` file that styles the card. The CSS is not shown in the source view so the demo stays focused on the HTML structure. Note that output code examples across the documentation show unminified output (HTML, CSS, JS, and identifier names) for readability.
 
 <!-- demo:output-html-hello -->
+
 ```html
 <!-- dist/index.html -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <style>
-    .bascik__hello-card__hello-card {
-      width: min(100%, 32rem);
-      padding: 24px;
-      background: var(--elevated);
-      border: 1px solid var(--border);
-      border-top: 3px solid var(--accent);
-      border-radius: 6px;
-    }
-  </style>
-</head>
-<body>
-  <article class="bascik__hello-card__hello-card">
-    <p class="bascik__hello-card__hello-card-kicker">One file. One tag.</p>
-    <h3 class="bascik__hello-card__hello-card-title">Plain HTML, ready to reuse.</h3>
-    <p class="hello-card-body">Bascik replaces the custom tag at build time and ships the finished markup.</p>
-  </article>
-</body>
+  <head>
+    <style>
+      .bascik__hello-card__hello-card {
+        width: min(100%, 32rem);
+        padding: 24px;
+        background: var(--elevated);
+        border: 1px solid var(--border);
+        border-top: 3px solid var(--accent);
+        border-radius: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <article class="bascik__hello-card__hello-card">
+      <p class="bascik__hello-card__hello-card-kicker">One file. One tag.</p>
+      <h3 class="bascik__hello-card__hello-card-title">
+        Plain HTML, ready to reuse.
+      </h3>
+      <p class="hello-card-body">
+        Bascik replaces the custom tag at build time and ships the finished
+        markup.
+      </p>
+    </article>
+  </body>
 </html>
 ```
 
@@ -61,11 +71,13 @@ Components can appear in other components too. If `site-layout.html` uses `<page
 Add a `<style>` block to style the component inline. Bascik scopes the CSS to the component at build time so selectors from one component never affect another.
 
 <!-- demo:source-usage-badge -->
+
 ```html
 <comp-badge />
 ```
 
 <!-- demo:source-html-badge -->
+
 ```html
 <style>
   .badge {
@@ -94,6 +106,7 @@ Add a `<style>` block to style the component inline. Bascik scopes the CSS to th
 ```
 
 <!-- demo:output-html-badge -->
+
 ```html
 <span class="bascik__comp-badge__badge">
   <span class="bascik__comp-badge__badge-dot"></span>
@@ -102,6 +115,7 @@ Add a `<style>` block to style the component inline. Bascik scopes the CSS to th
 ```
 
 <!-- demo:output-css-badge -->
+
 ```css
 .bascik__comp-badge__badge {
   display: inline-flex;
@@ -131,55 +145,78 @@ Add a `<style>` block to style the component inline. Bascik scopes the CSS to th
 Add a `<script>` block for interactive behavior. Use `id` on any element you need to target from JS and reach it with `getElementById`.
 
 <!-- demo:source-usage-toggle -->
+
 ```html
 <comp-toggle />
 ```
 
 <!-- demo:source-html-toggle -->
+
 ```html
 <div class="toggle-wrap">
-  <p>Bascik assembles components at build time and ships vanilla HTML files with no framework runtime.</p>
+  <p>
+    Bascik assembles components at build time and ships vanilla HTML files with
+    no framework runtime.
+  </p>
   <div id="detail" hidden>
-    <p>No JavaScript is added to the page. Every script in the output was written by you.</p>
+    <p>
+      No JavaScript is added to the page. Every script in the output was written
+      by you.
+    </p>
   </div>
   <button id="btn" type="button">Read more</button>
 </div>
 ```
 
 <!-- demo:source-js-toggle -->
+
 ```js
-const btn = document.getElementById('btn');
-const detail = document.getElementById('detail');
-btn.addEventListener('click', () => {
+const btn = document.getElementById("btn");
+const detail = document.getElementById("detail");
+btn.addEventListener("click", () => {
   detail.hidden = !detail.hidden;
-  btn.textContent = detail.hidden ? 'Read more' : 'Show less';
+  btn.textContent = detail.hidden ? "Read more" : "Show less";
 });
 ```
 
 > **Styles omitted for clarity.** This demo component includes a companion `.css` file that styles the card. The CSS is not shown in the source view so the demo stays focused on the JavaScript. Note that output code examples across the documentation show unminified output (HTML, CSS, JS, and identifier names) for readability.
 
 <!-- demo:output-html-toggle -->
+
 ```html
 <div class="bascik__comp-toggle__toggle-wrap">
-  <p class="bascik__comp-toggle__el__p">Bascik assembles components at build time and ships vanilla HTML files with no framework runtime.</p>
+  <p class="bascik__comp-toggle__el__p">
+    Bascik assembles components at build time and ships vanilla HTML files with
+    no framework runtime.
+  </p>
   <div id="bascik__comp-toggle__a1b__detail" hidden>
-    <p class="bascik__comp-toggle__el__p">No JavaScript is added to the page. Every script in the output was written by you.</p>
+    <p class="bascik__comp-toggle__el__p">
+      No JavaScript is added to the page. Every script in the output was written
+      by you.
+    </p>
   </div>
-  <button class="bascik__comp-toggle__el__button" id="bascik__comp-toggle__a1b__btn" type="button">Read more</button>
+  <button
+    class="bascik__comp-toggle__el__button"
+    id="bascik__comp-toggle__a1b__btn"
+    type="button"
+  >
+    Read more
+  </button>
 </div>
 <script>
-  (function(){
-  const btn = document.getElementById('bascik__comp-toggle__a1b__btn');
-  const detail = document.getElementById('bascik__comp-toggle__a1b__detail');
-  btn.addEventListener('click', () => {
-    detail.hidden = !detail.hidden;
-    btn.textContent = detail.hidden ? 'Read more' : 'Show less';
-  });
+  (function () {
+    const btn = document.getElementById("bascik__comp-toggle__a1b__btn");
+    const detail = document.getElementById("bascik__comp-toggle__a1b__detail");
+    btn.addEventListener("click", () => {
+      detail.hidden = !detail.hidden;
+      btn.textContent = detail.hidden ? "Read more" : "Show less";
+    });
   })();
 </script>
 ```
 
 <!-- demo:output-css-toggle -->
+
 ```css
 .bascik__comp-toggle__toggle-wrap {
   padding: 24px;
@@ -214,11 +251,13 @@ btn.addEventListener('click', () => {
 All three can live in a single file. Follow the component convention order: place `<style>` blocks above markup, then markup, then `<script>` blocks below markup.
 
 <!-- demo:source-usage-alert -->
+
 ```html
 <comp-alert />
 ```
 
 <!-- demo:source-html-alert -->
+
 ```html
 <style>
   .alert {
@@ -251,62 +290,75 @@ All three can live in a single file. Follow the component convention order: plac
   <button id="close" class="alert-close" aria-label="Dismiss">×</button>
 </div>
 <script>
-  document.getElementById('close').addEventListener('click', () => {
-    document.getElementById('alert').hidden = true;
+  document.getElementById("close").addEventListener("click", () => {
+    document.getElementById("alert").hidden = true;
   });
 </script>
 ```
 
 <!-- demo:output-html-alert -->
+
 ```html
 <!-- dist/index.html -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <style>
-    .bascik__comp-alert__alert {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 14px 16px;
-      border: 1px solid #f59e0b;
-      border-radius: 8px;
-      background: #fffbeb;
-    }
-    .bascik__comp-alert__alert-body {
-      flex: 1;
-      margin: 0;
-      font-size: 0.9rem;
-      color: #92400e;
-    }
-    .bascik__comp-alert__alert-close {
-      background: none;
-      border: none;
-      cursor: pointer;
-      color: #b45309;
-      font-size: 1.2rem;
-      line-height: 1;
-      padding: 0;
-    }
-  </style>
-</head>
-<body>
-  <div class="bascik__comp-alert__alert" id="bascik__comp-alert__a1b__alert">
-    <p class="bascik__comp-alert__alert-body">Scheduled maintenance Sunday, 2am–4am UTC.</p>
-    <button id="bascik__comp-alert__a1b__close" class="bascik__comp-alert__alert-close" aria-label="Dismiss">×</button>
-  </div>
-  <script>
-    (function(){
-      document.getElementById('bascik__comp-alert__a1b__close').addEventListener('click', () => {
-        document.getElementById('bascik__comp-alert__a1b__alert').hidden = true;
-      });
-    })();
-  </script>
-</body>
+  <head>
+    <style>
+      .bascik__comp-alert__alert {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 14px 16px;
+        border: 1px solid #f59e0b;
+        border-radius: 8px;
+        background: #fffbeb;
+      }
+      .bascik__comp-alert__alert-body {
+        flex: 1;
+        margin: 0;
+        font-size: 0.9rem;
+        color: #92400e;
+      }
+      .bascik__comp-alert__alert-close {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #b45309;
+        font-size: 1.2rem;
+        line-height: 1;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bascik__comp-alert__alert" id="bascik__comp-alert__a1b__alert">
+      <p class="bascik__comp-alert__alert-body">
+        Scheduled maintenance Sunday, 2am–4am UTC.
+      </p>
+      <button
+        id="bascik__comp-alert__a1b__close"
+        class="bascik__comp-alert__alert-close"
+        aria-label="Dismiss"
+      >
+        ×
+      </button>
+    </div>
+    <script>
+      (function () {
+        document
+          .getElementById("bascik__comp-alert__a1b__close")
+          .addEventListener("click", () => {
+            document.getElementById("bascik__comp-alert__a1b__alert").hidden =
+              true;
+          });
+      })();
+    </script>
+  </body>
 </html>
 ```
 
 <!-- demo:output-css-alert -->
+
 ```css
 .bascik__comp-alert__alert {
   display: flex;
@@ -340,21 +392,24 @@ All three can live in a single file. Follow the component convention order: plac
 
 Choosing between inline `<style>` or `<script>` blocks and companion `.css` or `.ts`/`.js`/`.mjs` files is a matter of personal preference.
 
-For inline component blocks, keep `<style>` above the component markup and `<script>` below the markup. This convention is now validated by `bascik --check` as an advisory warning (`component-structure-order`).
+For inline component blocks, keep `<style>` above the component markup and `<script>` below the markup. This convention is checked as an advisory warning (`component-structure-order`) by the [linter](/tools/linter), in your editor and in `bascik --check`.
 
 Create a `.css` file or companion script files alongside the `.html` file if you prefer to keep your styles or JavaScript separate. Companion `.css` files in the same component directory are merged automatically. Companion script files explicitly referenced via `<script src="counter.ts"></script>` are resolved, inlined, and scoped at build time. Browsers ignore inline content in a `<script>` that has `src`, so Bascik drops any such content when it inlines the companion and prints a warning. A `.ts` or `.mts` companion has its erasable TypeScript stripped automatically before scoping, with no configuration; see [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
 
 > **Directory Isolation Rule:** Path resolution for companion files is strictly scoped to the component's directory or base filename. A component inside `src/components/demo-counter/` can only reference script or style files located inside its own folder. It cannot access files across other component directories.
 
 <!-- demo:source-usage-card -->
+
 ```html
 <feature-card
   data-bascik-prop-title="Build-time Components"
-  data-bascik-prop-desc="Bascik resolves tags and ships vanilla HTML.">
+  data-bascik-prop-desc="Bascik resolves tags and ships vanilla HTML."
+>
 </feature-card>
 ```
 
 <!-- demo:source-html-card -->
+
 ```html
 <div class="fcard">
   <h3 data-bascik-prop-title></h3>
@@ -365,6 +420,7 @@ Create a `.css` file or companion script files alongside the `.html` file if you
 The directive family also includes `data-bascik-attr-{attribute}="{propName}"` for sending a prop value to an attribute on an element inside the component, and `data-bascik-preserve` for keeping selected `id`, `name`, or `class` values literal. Use content props for text, attribute props for values such as `href`, `src`, and `aria-label`, slots for consumer-authored markup, and [Preserve Scoping](/preserve) only when an external system must bypass normal scoping.
 
 <!-- demo:source-css-card -->
+
 ```css
 .fcard {
   padding: 24px;
@@ -372,17 +428,23 @@ The directive family also includes `data-bascik-attr-{attribute}="{propName}"` f
   border: 1px solid #3a3d40;
   border-radius: 10px;
 
-  h3 { color: #f0f1f2; }
-  p  { font-size: 0.875rem; color: #8d929e; }
+  h3 {
+    color: #f0f1f2;
+  }
+  p {
+    font-size: 0.875rem;
+    color: #8d929e;
+  }
 
   &:hover {
-    border-color: rgba(211,255,141,0.35);
-    box-shadow: 0 0 0 1px rgba(211,255,141,0.12);
+    border-color: rgba(211, 255, 141, 0.35);
+    box-shadow: 0 0 0 1px rgba(211, 255, 141, 0.12);
   }
 }
 ```
 
 <!-- demo:output-html-card -->
+
 ```html
 <div class="bascik__feature-card__fcard">
   <h3>Build-time Components</h3>
@@ -391,6 +453,7 @@ The directive family also includes `data-bascik-attr-{attribute}="{propName}"` f
 ```
 
 <!-- demo:output-css-card -->
+
 ```css
 .bascik__feature-card__fcard {
   padding: 24px;
@@ -409,8 +472,8 @@ The directive family also includes `data-bascik-attr-{attribute}="{propName}"` f
 }
 
 .bascik__feature-card__fcard:hover {
-  border-color: rgba(211,255,141,0.35);
-  box-shadow: 0 0 0 1px rgba(211,255,141,0.12);
+  border-color: rgba(211, 255, 141, 0.35);
+  box-shadow: 0 0 0 1px rgba(211, 255, 141, 0.12);
 }
 ```
 
@@ -490,15 +553,26 @@ If a component does not use a `<slot>` to accept inner children, always prefer s
 Unlike traditional JavaScript frameworks (such as React or Vue 2) that historically required a single root wrapper element or explicit fragment components, Bascik component templates naturally support **multiple top-level HTML elements** in a single `.html` file.
 
 <!-- demo:source-usage-roots -->
+
 ```html
 <roots-demo />
 ```
 
 <!-- demo:source-html-roots -->
+
 ```html
 <style>
-  .roots-title { margin: 0 0 6px; color: #f0f1f2; font-size: 1.1rem; font-weight: 700; }
-  .roots-lead { margin: 0 0 10px; color: #8d929e; font-size: 0.9rem; }
+  .roots-title {
+    margin: 0 0 6px;
+    color: #f0f1f2;
+    font-size: 1.1rem;
+    font-weight: 700;
+  }
+  .roots-lead {
+    margin: 0 0 10px;
+    color: #8d929e;
+    font-size: 0.9rem;
+  }
   .roots-note {
     padding: 8px 12px;
     color: #d3ff8d;
@@ -513,16 +587,29 @@ Unlike traditional JavaScript frameworks (such as React or Vue 2) that historica
 ```
 
 <!-- demo:output-html-roots -->
+
 ```html
 <p class="bascik__roots-demo__roots-title">Release notes</p>
-<p class="bascik__roots-demo__roots-lead">Three top-level elements in one file.</p>
+<p class="bascik__roots-demo__roots-lead">
+  Three top-level elements in one file.
+</p>
 <div class="bascik__roots-demo__roots-note">No wrapper element is added.</div>
 ```
 
 <!-- demo:output-css-roots -->
+
 ```css
-.bascik__roots-demo__roots-title { margin: 0 0 6px; color: #f0f1f2; font-size: 1.1rem; font-weight: 700; }
-.bascik__roots-demo__roots-lead { margin: 0 0 10px; color: #8d929e; font-size: 0.9rem; }
+.bascik__roots-demo__roots-title {
+  margin: 0 0 6px;
+  color: #f0f1f2;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.bascik__roots-demo__roots-lead {
+  margin: 0 0 10px;
+  color: #8d929e;
+  font-size: 0.9rem;
+}
 .bascik__roots-demo__roots-note {
   padding: 8px 12px;
   color: #d3ff8d;
@@ -546,7 +633,10 @@ You can include multiple `<style>` blocks in a single component file. For exampl
 
 ```html
 <style>
-  .card { padding: 16px; background: #1a1b1e; }
+  .card {
+    padding: 16px;
+    background: #1a1b1e;
+  }
 </style>
 
 <div class="card">
@@ -554,7 +644,9 @@ You can include multiple `<style>` blocks in a single component file. For exampl
 </div>
 
 <style media="(min-width: 768px)">
-  .card { padding: 24px; }
+  .card {
+    padding: 24px;
+  }
 </style>
 ```
 
@@ -577,8 +669,8 @@ Component templates can also contain multiple `<script>` tags. Bascik handles ea
 
 Understanding the distinction between **page shells** (`src/pages/*.html`) and **component templates** (`src/components/*.html`) is key to structuring accessible layouts:
 
-* **Component Templates (`src/components/*.html`):** Component markup is scoped at build time. Class names are namespaced, and `id` attributes are hashed per instance (e.g. `id="bascik__comp__a1b2__btn"`).
-* **Page Shells (`src/pages/*.html`):** Page markup is **unscoped vanilla HTML**. IDs, landmarks, and attributes written directly in page files remain literal strings (`id="main-content"`).
+- **Component Templates (`src/components/*.html`):** Component markup is scoped at build time. Class names are namespaced, and `id` attributes are hashed per instance (e.g. `id="bascik__comp__a1b2__btn"`).
+- **Page Shells (`src/pages/*.html`):** Page markup is **unscoped vanilla HTML**. IDs, landmarks, and attributes written directly in page files remain literal strings (`id="main-content"`).
 
 ## Shared Head Tags & Layout Component Decomposition
 
@@ -600,17 +692,17 @@ Page shells can then include `<site-head />` inside their `<head>`:
 <!-- src/pages/index.html -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <site-head />
-  <title>Home - My Site</title>
-</head>
-<body>
-  <site-nav />
-  <main id="main-content">
-    <h1>Welcome</h1>
-  </main>
-  <site-footer />
-</body>
+  <head>
+    <site-head />
+    <title>Home - My Site</title>
+  </head>
+  <body>
+    <site-nav />
+    <main id="main-content">
+      <h1>Welcome</h1>
+    </main>
+    <site-footer />
+  </body>
 </html>
 ```
 
@@ -633,15 +725,15 @@ Placing the skip link at the top of a `<site-nav>` component guarantees it is re
 <!-- src/pages/about.html (Page Shell: unscoped HTML landmark) -->
 <!DOCTYPE html>
 <html lang="en">
-<body>
-  <site-nav />
+  <body>
+    <site-nav />
 
-  <!-- Target landmark: ID remains unscoped and literal for #main-content anchor -->
-  <main id="main-content" class="docs-content">
-    <h1>About Us</h1>
-    <p>Page content...</p>
-  </main>
-</body>
+    <!-- Target landmark: ID remains unscoped and literal for #main-content anchor -->
+    <main id="main-content" class="docs-content">
+      <h1>About Us</h1>
+      <p>Page content...</p>
+    </main>
+  </body>
 </html>
 ```
 

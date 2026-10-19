@@ -9,11 +9,25 @@ import {
   formatFindingsJson,
   type CheckFindings,
 } from "./check.ts";
+import type { LanguageServerDiagnostic } from "./check-language-server.ts";
 
-const { listPagesMock, listComponentsMock, deepReadDirFlatMock } = vi.hoisted(() => ({
+const {
+  listPagesMock,
+  listComponentsMock,
+  deepReadDirFlatMock,
+  runLanguageServerCheckMock,
+} = vi.hoisted(() => ({
   listPagesMock: vi.fn(),
   listComponentsMock: vi.fn(),
   deepReadDirFlatMock: vi.fn(),
+  runLanguageServerCheckMock: vi.fn(),
+}));
+
+// These tests are about the project checks. Whether the language server is installed must not change them, so it
+// is replaced by a stub that reports it missing, and the cases that want its findings say so.
+vi.mock("./check-language-server.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./check-language-server.ts")>()),
+  runLanguageServerCheck: runLanguageServerCheckMock,
 }));
 
 const { userConfigMock, modeOverridesMock } = vi.hoisted(() => ({
@@ -102,8 +116,11 @@ describe("extractCustomTags", () => {
       // The preserved tag's own open tag is still scanned (same as exact-name
       // preserve today); only its inner content is blanked.
       const html =
-        '<vendor-widget><example-tag></example-tag></vendor-widget><used-tag></used-tag>';
-      expect([...extractCustomTags(html)]).toEqual(["vendor-widget", "used-tag"]);
+        "<vendor-widget><example-tag></example-tag></vendor-widget><used-tag></used-tag>";
+      expect([...extractCustomTags(html)]).toEqual([
+        "vendor-widget",
+        "used-tag",
+      ]);
     } finally {
       scoping.preserve = original;
     }
@@ -131,8 +148,12 @@ describe("checkProject", () => {
     listPagesMock.mockReset();
     listComponentsMock.mockReset();
     deepReadDirFlatMock.mockReset();
+    runLanguageServerCheckMock.mockReset();
+    runLanguageServerCheckMock.mockResolvedValue({ status: "missing" });
     Object.keys(userConfigMock).forEach((key) => delete userConfigMock[key]);
-    Object.keys(modeOverridesMock).forEach((key) => delete modeOverridesMock[key]);
+    Object.keys(modeOverridesMock).forEach(
+      (key) => delete modeOverridesMock[key],
+    );
     deepReadDirFlatMock.mockResolvedValue([]);
     originalCwd = process.cwd();
     originalSiteUrl = process.env.BASCIK_SITE_URL;
@@ -148,9 +169,9 @@ describe("checkProject", () => {
     workDir = join(originalCwd, `.check-test-${process.pid}-${Date.now()}`);
     await mkdir(workDir, { recursive: true });
     process.chdir(workDir);
-    errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
-    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
-    logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
   afterEach(async () => {
@@ -218,7 +239,9 @@ describe("checkProject", () => {
     const findings = await checkProject();
     expect(findings.errors).toBe(0);
     expect(findings.warnings).toBe(1);
-    expect(findings.items.some((i) => i.message.includes("lonely-widget"))).toBe(true);
+    expect(
+      findings.items.some((i) => i.message.includes("lonely-widget")),
+    ).toBe(true);
   });
 
   it("detects component usage inside other component files", async () => {
@@ -260,8 +283,12 @@ describe("checkProject", () => {
     const findings = await checkProject();
     expect(findings.errors).toBe(0);
     expect(findings.warnings).toBe(2);
-    expect(findings.items.some((i) => i.message.includes("<ghost-one>"))).toBe(true);
-    expect(findings.items.some((i) => i.message.includes("<ghost-two>"))).toBe(true);
+    expect(findings.items.some((i) => i.message.includes("<ghost-one>"))).toBe(
+      true,
+    );
+    expect(findings.items.some((i) => i.message.includes("<ghost-two>"))).toBe(
+      true,
+    );
   });
 
   it("reports all unused components", async () => {
@@ -272,43 +299,41 @@ describe("checkProject", () => {
     });
     listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
     listComponentsMock.mockResolvedValue({
-      "widget-a": { fileName: join(workDir, "components/widget-a/widget-a.html") },
-      "widget-b": { fileName: join(workDir, "components/widget-b/widget-b.html") },
+      "widget-a": {
+        fileName: join(workDir, "components/widget-a/widget-a.html"),
+      },
+      "widget-b": {
+        fileName: join(workDir, "components/widget-b/widget-b.html"),
+      },
     });
 
     const findings = await checkProject();
     expect(findings.errors).toBe(0);
     expect(findings.warnings).toBe(2);
-    expect(findings.items.some((i) => i.message.includes("widget-a"))).toBe(true);
-    expect(findings.items.some((i) => i.message.includes("widget-b"))).toBe(true);
+    expect(findings.items.some((i) => i.message.includes("widget-a"))).toBe(
+      true,
+    );
+    expect(findings.items.some((i) => i.message.includes("widget-b"))).toBe(
+      true,
+    );
   });
 
-  describe("API Route Validations (Prompt 49)", () => {
-    it("reports error when an API route file exports no recognized method handlers", async () => {
-      await setupProject({
-        "pages/index.html": "<p>hello</p>",
-        "src/api/invalid.ts": "export const helper = () => {};",
-      });
-      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
-      listComponentsMock.mockResolvedValue({});
-
-      const findings = await checkProject();
-      expect(findings.errors).toBeGreaterThan(0);
-      expect(findings.items.some((i) => i.message.includes("no recognized HTTP method handler"))).toBe(true);
-    });
-
+  describe("API route table validations (Prompt 49)", () => {
     it("reports error when two route files resolve to the same URL", async () => {
       await setupProject({
         "pages/index.html": "<p>hello</p>",
         "src/api/users.ts": "export const GET = () => new Response('users');",
-        "src/api/users/index.ts": "export const GET = () => new Response('users index');",
+        "src/api/users/index.ts":
+          "export const GET = () => new Response('users index');",
       });
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({});
 
       const findings = await checkProject();
       expect(findings.errors).toBeGreaterThan(0);
-      expect(findings.items.some((i) => i.category === "route-collision")).toBe(true);
+      expect(findings.items.some((i) => i.category === "route-collision")).toBe(
+        true,
+      );
     });
 
     it("reports ambiguous catch-all pairs as route-collision and malformed catch-alls as invalid-catch-all", async () => {
@@ -316,34 +341,39 @@ describe("checkProject", () => {
         "pages/index.html": "<p>hello</p>",
         "src/api/[...a].ts": "export const GET = () => new Response('a');",
         "src/api/[...b].ts": "export const GET = () => new Response('b');",
-        "src/api/bad/[...x]/y.ts": "export const GET = () => new Response('y');",
-        "src/api/ok/[...rest].ts": "export const GET = () => new Response('ok');",
+        "src/api/bad/[...x]/y.ts":
+          "export const GET = () => new Response('y');",
+        "src/api/ok/[...rest].ts":
+          "export const GET = () => new Response('ok');",
       });
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({});
 
       const findings = await checkProject();
-      const collisions = findings.items.filter((i) => i.category === "route-collision");
+      const collisions = findings.items.filter(
+        (i) => i.category === "route-collision",
+      );
       expect(collisions).toHaveLength(1);
       expect(collisions[0].message).toContain("Ambiguous");
       expect(collisions[0].locations).toHaveLength(2);
-      const invalid = findings.items.filter((i) => i.category === "invalid-catch-all");
+      const invalid = findings.items.filter(
+        (i) => i.category === "invalid-catch-all",
+      );
       expect(invalid).toHaveLength(1);
       expect(invalid[0].message).toContain("must be the last segment");
     });
 
-    it("reports warning when an exported name looks like a method but is not uppercase (e.g. Post or get)", async () => {
+    it("does not judge what a single route file exports: that is the language server's per-file check", async () => {
       await setupProject({
         "pages/index.html": "<p>hello</p>",
-        "src/api/users.ts": "export const get = () => new Response('users');\nexport const POST = () => new Response('created');",
+        "src/api/invalid.ts": "export const helper = () => {};",
+        "src/api/users.ts": "export const get = () => new Response('users');",
       });
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({});
 
       const findings = await checkProject();
-      expect(findings.errors).toBe(0);
-      expect(findings.warnings).toBeGreaterThan(0);
-      expect(findings.items.some((i) => i.message.includes('must be uppercase'))).toBe(true);
+      expect(findings.items).toEqual([]);
     });
   });
 
@@ -356,7 +386,9 @@ describe("checkProject", () => {
       });
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({
-        "unused-card": { fileName: join(workDir, "components/unused-card/unused-card.html") },
+        "unused-card": {
+          fileName: join(workDir, "components/unused-card/unused-card.html"),
+        },
       });
 
       const findings = await checkProject();
@@ -364,12 +396,16 @@ describe("checkProject", () => {
       expect(findings.errors).toBe(0);
       expect(findings.warnings).toBe(2);
 
-      const unmatched = findings.items.find((i) => i.category === "unmatched-tag");
+      const unmatched = findings.items.find(
+        (i) => i.category === "unmatched-tag",
+      );
       expect(unmatched).toBeDefined();
       expect(unmatched?.severity).toBe("warning");
       expect(unmatched?.message).toContain("<model-viewer>");
 
-      const unused = findings.items.find((i) => i.category === "unused-component");
+      const unused = findings.items.find(
+        (i) => i.category === "unused-component",
+      );
       expect(unused).toBeDefined();
       expect(unused?.severity).toBe("warning");
       expect(unused?.message).toContain("unused-card");
@@ -383,10 +419,14 @@ describe("checkProject", () => {
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({});
       const original = (BascikConfig as any).components;
-      (BascikConfig as any).components = { external: ["heading-anchors", "vendor-*"] };
+      (BascikConfig as any).components = {
+        external: ["heading-anchors", "vendor-*"],
+      };
       try {
         const findings = await checkProject();
-        const unmatched = findings.items.filter((i) => i.category === "unmatched-tag");
+        const unmatched = findings.items.filter(
+          (i) => i.category === "unmatched-tag",
+        );
         expect(unmatched.map((i) => i.message)).toEqual(["<my-typo>"]);
       } finally {
         (BascikConfig as any).components = original;
@@ -409,7 +449,8 @@ describe("checkProject", () => {
     it("groups findings by category with every location and line number", async () => {
       await setupProject({
         "pages/index.html": "<p>line1</p>\n<ion-icon></ion-icon>",
-        "pages/gallery.html": "<ion-icon></ion-icon>\n<model-viewer></model-viewer>",
+        "pages/gallery.html":
+          "<ion-icon></ion-icon>\n<model-viewer></model-viewer>",
       });
       listPagesMock.mockResolvedValue([
         join(workDir, "pages/index.html"),
@@ -418,7 +459,9 @@ describe("checkProject", () => {
       listComponentsMock.mockResolvedValue({});
 
       const findings = await checkProject();
-      const ionIcon = findings.items.find((i) => i.message.includes("<ion-icon>"));
+      const ionIcon = findings.items.find((i) =>
+        i.message.includes("<ion-icon>"),
+      );
       expect(ionIcon?.locations).toHaveLength(2);
       expect(ionIcon?.locations[0].line).toBe(2);
       expect(ionIcon?.locations[1].line).toBe(1);
@@ -431,19 +474,24 @@ describe("checkProject", () => {
 
     it("provides suggestion for near-miss component names but not unrelated names", async () => {
       await setupProject({
-        "pages/about.html": "<my-crd></my-crd><xyz-completely-unrelated></xyz-completely-unrelated>",
+        "pages/about.html":
+          "<my-crd></my-crd><xyz-completely-unrelated></xyz-completely-unrelated>",
         "components/my-card/my-card.html": "<div>card</div>",
       });
       listPagesMock.mockResolvedValue([join(workDir, "pages/about.html")]);
       listComponentsMock.mockResolvedValue({
-        "my-card": { fileName: join(workDir, "components/my-card/my-card.html") },
+        "my-card": {
+          fileName: join(workDir, "components/my-card/my-card.html"),
+        },
       });
 
       const findings = await checkProject();
       const myCrd = findings.items.find((i) => i.message.includes("<my-crd>"));
       expect(myCrd?.suggestion).toBe("my-card");
 
-      const unrelated = findings.items.find((i) => i.message.includes("<xyz-completely-unrelated>"));
+      const unrelated = findings.items.find((i) =>
+        i.message.includes("<xyz-completely-unrelated>"),
+      );
       expect(unrelated?.suggestion).toBeUndefined();
 
       const human = formatFindingsHuman(findings);
@@ -459,15 +507,23 @@ describe("checkProject", () => {
       });
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({
-        "dynamic-card": { fileName: join(workDir, "components/dynamic-card/dynamic-card.html") },
-        "truly-unused": { fileName: join(workDir, "components/truly-unused/truly-unused.html") },
+        "dynamic-card": {
+          fileName: join(workDir, "components/dynamic-card/dynamic-card.html"),
+        },
+        "truly-unused": {
+          fileName: join(workDir, "components/truly-unused/truly-unused.html"),
+        },
       });
 
       const findings = await checkProject();
-      const unusedDynamic = findings.items.find((i) => i.message.includes("dynamic-card"));
+      const unusedDynamic = findings.items.find((i) =>
+        i.message.includes("dynamic-card"),
+      );
       expect(unusedDynamic).toBeUndefined();
 
-      const unusedTruly = findings.items.find((i) => i.message.includes("truly-unused"));
+      const unusedTruly = findings.items.find((i) =>
+        i.message.includes("truly-unused"),
+      );
       expect(unusedTruly).toBeDefined();
     });
 
@@ -507,7 +563,9 @@ describe("checkProject", () => {
       listComponentsMock.mockResolvedValue({});
 
       const findings = await checkProject();
-      const cfg = findings.items.find((i) => i.category === "config-validation");
+      const cfg = findings.items.find(
+        (i) => i.category === "config-validation",
+      );
       expect(cfg).toBeDefined();
       expect(cfg?.severity).toBe("error");
       expect(cfg?.message).toContain("http.prt");
@@ -523,7 +581,9 @@ describe("checkProject", () => {
 
       const findings = await checkProject();
       const item = findings.items.find(
-        (i) => i.category === "config-validation" && i.message.includes("directory.pages"),
+        (i) =>
+          i.category === "config-validation" &&
+          i.message.includes("directory.pages"),
       );
       expect(item).toBeDefined();
       expect(item?.severity).toBe("error");
@@ -539,74 +599,31 @@ describe("checkProject", () => {
       listComponentsMock.mockResolvedValue({});
 
       const findings = await checkProject();
-      const item = findings.items.find((i) => i.category === "missing-site-url");
+      const item = findings.items.find(
+        (i) => i.category === "missing-site-url",
+      );
       expect(item).toBeDefined();
       expect(item?.severity).toBe("error");
       expect(item?.message).toContain("BASCIK_SITE_URL");
     });
 
-    it("warns for unknown data-bascik-* attributes and lists known attributes", async () => {
+    it("still finds a component named only in a build script after a quoted > on the tag", async () => {
       await setupProject({
-        "pages/index.html": '<div data-bascik-props="x"></div>',
-      });
-      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
-      listComponentsMock.mockResolvedValue({});
-
-      const findings = await checkProject();
-      const item = findings.items.find((i) => i.category === "unknown-bascik-attribute");
-      expect(item).toBeDefined();
-      expect(item?.severity).toBe("warning");
-      expect(item?.message).toContain("data-bascik-prop-");
-    });
-
-    it("only checks actual open-tag attribute names for unknown data-bascik-*", async () => {
-      await setupProject({
-        "pages/index.html": [
-          '<p>literal data-bascik-not-real text should not be treated as an attribute</p>',
-          '<div data-bascik-propps="x"></div>',
-        ].join("\n"),
-      });
-      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
-      listComponentsMock.mockResolvedValue({});
-
-      const findings = await checkProject();
-      const unknownAttrs = findings.items.filter((i) => i.category === "unknown-bascik-attribute");
-      expect(unknownAttrs).toHaveLength(1);
-      expect(unknownAttrs[0].message).toContain('"data-bascik-propps"');
-      expect(unknownAttrs[0].locations).toEqual([{ filePath: "pages/index.html", line: 2 }]);
-    });
-
-    it("reports data-bascik-build + data-bascik-server conflicts as errors", async () => {
-      await setupProject({
-        "pages/index.html": '<script data-bascik-build data-bascik-server>console.log(1)</script>',
-      });
-      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
-      listComponentsMock.mockResolvedValue({});
-
-      const findings = await checkProject();
-      const item = findings.items.find((i) => i.category === "script-mode-conflict");
-      expect(item).toBeDefined();
-      expect(item?.severity).toBe("error");
-    });
-
-    it("reads script directives after a quoted attribute value containing >", async () => {
-      await setupProject({
-        "pages/index.html": [
-          '<script data-note="a > b" data-bascik-build data-bascik-server>console.log(1)</script>',
+        "pages/index.html":
           '<script data-note="x > y" data-bascik-build>\n  const comp = "dynamic-card";\n</script>',
-        ].join("\n"),
         "components/dynamic-card/dynamic-card.html": "<div>dynamic</div>",
       });
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({
-        "dynamic-card": { fileName: join(workDir, "components/dynamic-card/dynamic-card.html") },
+        "dynamic-card": {
+          fileName: join(workDir, "components/dynamic-card/dynamic-card.html"),
+        },
       });
 
       const findings = await checkProject();
-      const conflicts = findings.items.filter((i) => i.category === "script-mode-conflict");
-      expect(conflicts).toHaveLength(1);
-      expect(conflicts[0].locations).toEqual([{ filePath: "pages/index.html", line: 1 }]);
-      expect(findings.items.find((i) => i.message.includes("dynamic-card"))).toBeUndefined();
+      expect(
+        findings.items.find((i) => i.message.includes("dynamic-card")),
+      ).toBeUndefined();
     });
 
     it("reports duplicate component names with both file paths", async () => {
@@ -619,9 +636,9 @@ describe("checkProject", () => {
       listComponentsMock.mockRejectedValue(
         new Error(
           "error: two component files both define the tag <card>\n" +
-          `  ${join(workDir, "src/components/a/card.html")}\n` +
-          `  ${join(workDir, "src/components/b/card.html")}\n\n` +
-          "rename one file",
+            `  ${join(workDir, "src/components/a/card.html")}\n` +
+            `  ${join(workDir, "src/components/b/card.html")}\n\n` +
+            "rename one file",
         ),
       );
       deepReadDirFlatMock.mockResolvedValue([
@@ -630,7 +647,9 @@ describe("checkProject", () => {
       ]);
 
       const findings = await checkProject();
-      const item = findings.items.find((i) => i.category === "duplicate-component-name");
+      const item = findings.items.find(
+        (i) => i.category === "duplicate-component-name",
+      );
       expect(item).toBeDefined();
       expect(item?.severity).toBe("error");
       expect(item?.locations).toHaveLength(2);
@@ -638,16 +657,21 @@ describe("checkProject", () => {
 
     it("falls back to scanning every configured component root, so <local-card> in a second root is known", async () => {
       await setupProject({
-        "pages/index.html": "<hello-card></hello-card><local-card></local-card>",
+        "pages/index.html":
+          "<hello-card></hello-card><local-card></local-card>",
         "shared/components/hello-card.html": "<div>shared</div>",
         "shared/components/dupe-card.html": "<div>a</div>",
         "src/components/local-card.html": "<div>local</div>",
         "src/components/dupe-card.html": "<div>b</div>",
       });
-      const mutableConfig = BascikConfig as unknown as MutableBascikConfigForTest;
+      const mutableConfig =
+        BascikConfig as unknown as MutableBascikConfigForTest;
       mutableConfig.directory = {
         ...BascikConfig.directory,
-        components: [join(workDir, "shared/components"), join(workDir, "src/components")],
+        components: [
+          join(workDir, "shared/components"),
+          join(workDir, "src/components"),
+        ],
       };
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       // listComponents fails on the cross-root duplicate; --check must still
@@ -655,20 +679,28 @@ describe("checkProject", () => {
       listComponentsMock.mockRejectedValue(
         new Error(
           "error: two component files both define the tag <dupe-card>\n" +
-          `  ${join(workDir, "shared/components/dupe-card.html")}\n` +
-          `  ${join(workDir, "src/components/dupe-card.html")}\n\n` +
-          "rename one file",
+            `  ${join(workDir, "shared/components/dupe-card.html")}\n` +
+            `  ${join(workDir, "src/components/dupe-card.html")}\n\n` +
+            "rename one file",
         ),
       );
       deepReadDirFlatMock.mockImplementation(async (dir: string) =>
-        dir.endsWith("shared/components")
-          ? [join(workDir, "shared/components/hello-card.html"), join(workDir, "shared/components/dupe-card.html")]
-          : [join(workDir, "src/components/local-card.html"), join(workDir, "src/components/dupe-card.html")],
+        dir.replace(/\\/g, "/").endsWith("shared/components")
+          ? [
+              join(workDir, "shared/components/hello-card.html"),
+              join(workDir, "shared/components/dupe-card.html"),
+            ]
+          : [
+              join(workDir, "src/components/local-card.html"),
+              join(workDir, "src/components/dupe-card.html"),
+            ],
       );
 
       const findings = await checkProject();
       expect(deepReadDirFlatMock).toHaveBeenCalledTimes(2);
-      const unknown = findings.items.filter((i) => i.category === "unmatched-tag");
+      const unknown = findings.items.filter(
+        (i) => i.category === "unmatched-tag",
+      );
       expect(unknown.map((i) => i.message)).toEqual([]);
     });
 
@@ -687,38 +719,56 @@ describe("checkProject", () => {
       });
 
       const findings = await checkProject();
-      const item = findings.items.find((i) => i.category === "circular-component-reference");
+      const item = findings.items.find(
+        (i) => i.category === "circular-component-reference",
+      );
       expect(item).toBeDefined();
       expect(item?.severity).toBe("error");
-      expect(item?.message).toContain("<a-card> -> <b-card> -> <c-card> -> <a-card>");
+      expect(item?.message).toContain(
+        "<a-card> -> <b-card> -> <c-card> -> <a-card>",
+      );
     });
 
     it("does not count self-reference inside data-bascik-preserve subtree as a cycle", async () => {
       await setupProject({
         "pages/index.html": "<safe-card></safe-card>",
-        "components/safe-card/safe-card.html": '<div data-bascik-preserve><safe-card></safe-card></div>',
+        "components/safe-card/safe-card.html":
+          "<div data-bascik-preserve><safe-card></safe-card></div>",
       });
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({
-        "safe-card": { fileName: join(workDir, "components/safe-card/safe-card.html") },
+        "safe-card": {
+          fileName: join(workDir, "components/safe-card/safe-card.html"),
+        },
       });
 
       const findings = await checkProject();
-      expect(findings.items.some((i) => i.category === "circular-component-reference")).toBe(false);
+      expect(
+        findings.items.some(
+          (i) => i.category === "circular-component-reference",
+        ),
+      ).toBe(false);
     });
 
     it("does not count component-like tags inside script strings as cycle references", async () => {
       await setupProject({
         "pages/index.html": "<script-card></script-card>",
-        "components/script-card/script-card.html": "<script>const x = '<script-card></script-card>';</script>",
+        "components/script-card/script-card.html":
+          "<script>const x = '<script-card></script-card>';</script>",
       });
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({
-        "script-card": { fileName: join(workDir, "components/script-card/script-card.html") },
+        "script-card": {
+          fileName: join(workDir, "components/script-card/script-card.html"),
+        },
       });
 
       const findings = await checkProject();
-      expect(findings.items.some((i) => i.category === "circular-component-reference")).toBe(false);
+      expect(
+        findings.items.some(
+          (i) => i.category === "circular-component-reference",
+        ),
+      ).toBe(false);
     });
 
     it("does not create a false cycle when a page basename matches a component name", async () => {
@@ -728,11 +778,17 @@ describe("checkProject", () => {
       });
       listPagesMock.mockResolvedValue([join(workDir, "pages/safe-card.html")]);
       listComponentsMock.mockResolvedValue({
-        "safe-card": { fileName: join(workDir, "components/safe-card/safe-card.html") },
+        "safe-card": {
+          fileName: join(workDir, "components/safe-card/safe-card.html"),
+        },
       });
 
       const findings = await checkProject();
-      expect(findings.items.some((i) => i.category === "circular-component-reference")).toBe(false);
+      expect(
+        findings.items.some(
+          (i) => i.category === "circular-component-reference",
+        ),
+      ).toBe(false);
     });
 
     it("marks watchPaths as warning and exec script path failures as error for severity parity", async () => {
@@ -747,9 +803,23 @@ describe("checkProject", () => {
       listComponentsMock.mockResolvedValue({});
 
       const findings = await checkProject();
-      const cfg = findings.items.filter((i) => i.category === "config-validation");
-      expect(cfg.some((i) => i.message.includes("pipeline.watchPaths[0]") && i.severity === "warning")).toBe(true);
-      expect(cfg.some((i) => i.message.includes("pipeline.exec[0].script") && i.severity === "error")).toBe(true);
+      const cfg = findings.items.filter(
+        (i) => i.category === "config-validation",
+      );
+      expect(
+        cfg.some(
+          (i) =>
+            i.message.includes("pipeline.watchPaths[0]") &&
+            i.severity === "warning",
+        ),
+      ).toBe(true);
+      expect(
+        cfg.some(
+          (i) =>
+            i.message.includes("pipeline.exec[0].script") &&
+            i.severity === "error",
+        ),
+      ).toBe(true);
     });
 
     it("marks inlineStyles missing paths as warning for severity parity", async () => {
@@ -763,8 +833,16 @@ describe("checkProject", () => {
       listComponentsMock.mockResolvedValue({});
 
       const findings = await checkProject();
-      const cfg = findings.items.filter((i) => i.category === "config-validation");
-      expect(cfg.some((i) => i.message.includes("assets.inlineStyles[0]") && i.severity === "warning")).toBe(true);
+      const cfg = findings.items.filter(
+        (i) => i.category === "config-validation",
+      );
+      expect(
+        cfg.some(
+          (i) =>
+            i.message.includes("assets.inlineStyles[0]") &&
+            i.severity === "warning",
+        ),
+      ).toBe(true);
     });
 
     it("marks unreadable TLS key/cert paths as error for severity parity", async () => {
@@ -782,9 +860,21 @@ describe("checkProject", () => {
       listComponentsMock.mockResolvedValue({});
 
       const findings = await checkProject();
-      const cfg = findings.items.filter((i) => i.category === "config-validation");
-      expect(cfg.some((i) => i.message.includes("http.tls.keyFile") && i.severity === "error")).toBe(true);
-      expect(cfg.some((i) => i.message.includes("http.tls.certFile") && i.severity === "error")).toBe(true);
+      const cfg = findings.items.filter(
+        (i) => i.category === "config-validation",
+      );
+      expect(
+        cfg.some(
+          (i) =>
+            i.message.includes("http.tls.keyFile") && i.severity === "error",
+        ),
+      ).toBe(true);
+      expect(
+        cfg.some(
+          (i) =>
+            i.message.includes("http.tls.certFile") && i.severity === "error",
+        ),
+      ).toBe(true);
     });
 
     it("uses explicit --config path as finding location when provided", async () => {
@@ -808,7 +898,9 @@ describe("checkProject", () => {
         listComponentsMock.mockResolvedValue({});
 
         const findings = await checkProject();
-        const cfg = findings.items.find((i) => i.category === "config-validation");
+        const cfg = findings.items.find(
+          (i) => i.category === "config-validation",
+        );
         expect(cfg).toBeDefined();
         expect(cfg?.locations[0]?.filePath).toBe("configs/custom.config.ts");
       } finally {
@@ -839,10 +931,14 @@ describe("checkProject", () => {
       listComponentsMock.mockResolvedValue({});
 
       const findings = await checkProject();
-      const item = findings.items.find((i) => i.category === "duplicate-route-resolution");
+      const item = findings.items.find(
+        (i) => i.category === "duplicate-route-resolution",
+      );
       expect(item).toBeDefined();
       expect(item?.severity).toBe("error");
-      expect(item?.message).toContain('Duplicate route output path "/blog/first"');
+      expect(item?.message).toContain(
+        'Duplicate route output path "/blog/first"',
+      );
       expect(item?.locations).toEqual([
         { filePath: join(workDir, "src/pages/blog/first.html") },
         { filePath: join(workDir, "src/pages/blog/first.html") },
@@ -861,54 +957,51 @@ describe("checkProject", () => {
       listComponentsMock.mockResolvedValue({});
 
       const findings = await checkProject();
-      const item = findings.items.find((i) => i.category === "duplicate-route-resolution");
+      const item = findings.items.find(
+        (i) => i.category === "duplicate-route-resolution",
+      );
       expect(item).toBeDefined();
       expect(item?.severity).toBe("error");
-      expect(item?.message).toContain('Case-insensitive route output collision between "/blog/First" and "/blog/first"');
+      expect(item?.message).toContain(
+        'Case-insensitive route output collision between "/blog/First" and "/blog/first"',
+      );
       expect(item?.locations).toEqual([
         { filePath: join(workDir, "src/pages/blog/First.html") },
         { filePath: join(workDir, "src/pages/blog/first.html") },
       ]);
     });
 
-    it("warns when component templates place script before markup and style after markup", async () => {
-      await setupProject({
-        "pages/index.html": "<ordered-card></ordered-card>",
-        "components/ordered-card/ordered-card.html": "<script>1</script><div>Card</div><style>.x{}</style>",
-      });
-      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
-      listComponentsMock.mockResolvedValue({
-        "ordered-card": { fileName: join(workDir, "components/ordered-card/ordered-card.html") },
-      });
-
-      const findings = await checkProject();
-      const ordering = findings.items.filter((i) => i.category === "component-structure-order");
-      expect(ordering.length).toBe(2);
-      expect(ordering.every((i) => i.severity === "warning")).toBe(true);
-    });
-
     it("does not emit missing-required-prop warnings because the cheap global heuristic is too noisy", async () => {
       await setupProject({
         "pages/index.html": "<card-title></card-title>",
-        "components/card-title/card-title.html": "<h2 data-bascik-prop-title></h2>",
+        "components/card-title/card-title.html":
+          "<h2 data-bascik-prop-title></h2>",
       });
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({
-        "card-title": { fileName: join(workDir, "components/card-title/card-title.html") },
+        "card-title": {
+          fileName: join(workDir, "components/card-title/card-title.html"),
+        },
       });
 
       const findings = await checkProject();
-      expect(findings.items.some((i) => i.category === "missing-required-prop")).toBe(false);
+      expect(
+        findings.items.some((i) => i.category === "missing-required-prop"),
+      ).toBe(false);
     });
 
     it("clean project reports no findings and exits clean in findings model", async () => {
       await setupProject({
-        "pages/index.html": "<card-title data-bascik-prop-title=\"Hello\"></card-title>",
-        "components/card-title/card-title.html": "<style>.x{color:red}</style><h2 data-bascik-prop-title></h2><script>1</script>",
+        "pages/index.html":
+          '<card-title data-bascik-prop-title="Hello"></card-title>',
+        "components/card-title/card-title.html":
+          "<style>.x{color:red}</style><h2 data-bascik-prop-title></h2><script>1</script>",
       });
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({
-        "card-title": { fileName: join(workDir, "components/card-title/card-title.html") },
+        "card-title": {
+          fileName: join(workDir, "components/card-title/card-title.html"),
+        },
       });
 
       const findings = await checkProject();
@@ -921,7 +1014,8 @@ describe("checkProject", () => {
       // Each test explicitly sets BascikConfig.directory.out to ensure the
       // dist path matches the workDir, regardless of prior test mutations.
       const setDistOut = (dir: string) => {
-        const mutableConfig = BascikConfig as unknown as MutableBascikConfigForTest;
+        const mutableConfig =
+          BascikConfig as unknown as MutableBascikConfigForTest;
         mutableConfig.directory = { ...BascikConfig.directory, out: dir };
       };
 
@@ -929,7 +1023,8 @@ describe("checkProject", () => {
         setDistOut(join(workDir, "dist"));
         await setupProject({
           "pages/index.html": "<p>ok</p>",
-          "dist/index.html": "<!DOCTYPE html><html><body><p>ok</p></body></html>",
+          "dist/index.html":
+            "<!DOCTYPE html><html><body><p>ok</p></body></html>",
         });
         listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
         listComponentsMock.mockResolvedValue({});
@@ -941,14 +1036,23 @@ describe("checkProject", () => {
         // assert the invariant that the two flags are mutually exclusive.
         const findings = await checkProject();
         const exactlyOne =
-          (findings.distHtmlChecked !== null) !== findings.distHtmlSpecHintNeeded;
-        expect(exactlyOne, "distHtmlChecked and distHtmlSpecHintNeeded must be mutually exclusive").toBe(true);
+          (findings.distHtmlChecked !== null) !==
+          findings.distHtmlSpecHintNeeded;
+        expect(
+          exactlyOne,
+          "distHtmlChecked and distHtmlSpecHintNeeded must be mutually exclusive",
+        ).toBe(true);
       });
 
       it("reports dist-html-spec errors for malformed dist HTML when parse5 is available", async () => {
         // Skip when parse5 is not installed — the unit test cannot install it.
         let parse5Available = false;
-        try { await import("parse5"); parse5Available = true; } catch { /* not installed */ }
+        try {
+          await import("parse5");
+          parse5Available = true;
+        } catch {
+          /* not installed */
+        }
         if (!parse5Available) return;
 
         setDistOut(join(workDir, "dist"));
@@ -957,7 +1061,7 @@ describe("checkProject", () => {
         const corruptHtml =
           "<!DOCTYPE html><html><head>" +
           "<script>(function(){below is a runtime script;-->" +
-          "<meta charset=\"UTF-8\"/></head><body><p>ok</p></body></html>";
+          '<meta charset="UTF-8"/></head><body><p>ok</p></body></html>';
 
         await setupProject({
           "pages/index.html": "<p>ok</p>",
@@ -967,7 +1071,9 @@ describe("checkProject", () => {
         listComponentsMock.mockResolvedValue({});
 
         const findings = await checkProject();
-        const specErrors = findings.items.filter((i) => i.category === "dist-html-spec");
+        const specErrors = findings.items.filter(
+          (i) => i.category === "dist-html-spec",
+        );
         expect(specErrors.length).toBeGreaterThan(0);
         expect(specErrors[0].severity).toBe("error");
         expect(specErrors[0].message).toMatch(/^\[.+\]$/); // e.g. [eof-in-element-that-can-contain-only-text]
@@ -976,14 +1082,21 @@ describe("checkProject", () => {
 
       it("sets distHtmlChecked to file count when parse5 validates dist HTML cleanly", async () => {
         let parse5Available = false;
-        try { await import("parse5"); parse5Available = true; } catch { /* not installed */ }
+        try {
+          await import("parse5");
+          parse5Available = true;
+        } catch {
+          /* not installed */
+        }
         if (!parse5Available) return;
 
         setDistOut(join(workDir, "dist"));
         await setupProject({
           "pages/index.html": "<p>ok</p>",
-          "dist/index.html": "<!DOCTYPE html><html><body><p>ok</p></body></html>",
-          "dist/about.html": "<!DOCTYPE html><html><body><h1>About</h1></body></html>",
+          "dist/index.html":
+            "<!DOCTYPE html><html><body><p>ok</p></body></html>",
+          "dist/about.html":
+            "<!DOCTYPE html><html><body><h1>About</h1></body></html>",
         });
         listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
         listComponentsMock.mockResolvedValue({});
@@ -991,7 +1104,9 @@ describe("checkProject", () => {
         const findings = await checkProject();
         expect(findings.distHtmlChecked).toBe(2);
         expect(findings.distHtmlSpecHintNeeded).toBe(false);
-        expect(findings.items.some((i) => i.category === "dist-html-spec")).toBe(false);
+        expect(
+          findings.items.some((i) => i.category === "dist-html-spec"),
+        ).toBe(false);
       });
 
       it("sets distHtmlChecked to null and distHtmlSpecHintNeeded to false when dist/ does not exist", async () => {
@@ -1007,99 +1122,129 @@ describe("checkProject", () => {
       });
     });
 
-    describe("Scoping compatibility checks", () => {
-      it("flags [id] attribute selectors and element names in :is in component CSS with error severity", async () => {
-        await setupProject({
-          "pages/index.html": "<my-form></my-form>",
-          "components/my-form.html": `<style>
-            #report-form { display: grid; color: #fff; }
-            [id="report-form"] { color: red; }
-            :is(div, span) { font-size: 14px; }
-          </style><form id="report-form"></form>`,
-        });
-
-        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
-        listComponentsMock.mockResolvedValue({
-          "my-form": {
-            name: "my-form",
-            fileName: join(workDir, "components/my-form.html"),
-            fileContent: "",
-          },
-        });
-
-        const findings = await checkProject();
-        const compatErrors = findings.items.filter((i) => i.category === "compatibility");
-        expect(compatErrors.length).toBe(2);
-        expect(compatErrors.every((e) => e.severity === "error")).toBe(true);
-        expect(compatErrors.some((w) => w.message.includes("[id] attribute selectors"))).toBe(true);
-        expect(compatErrors.some((w) => w.message.includes("Element names inside :is()"))).toBe(true);
-        // Valid #id selector and hex color #fff must NOT produce a false-positive warning or error
-        expect(compatErrors.some((w) => w.message.includes("#report-form") && !w.message.includes("[id"))).toBe(false);
-        expect(findings.errors).toBeGreaterThanOrEqual(2);
+    describe("per-file checks from the language server", () => {
+      const diagnostic = (
+        overrides: Partial<LanguageServerDiagnostic> = {},
+      ): LanguageServerDiagnostic => ({
+        filePath: "src/components/my-form.html",
+        line: 3,
+        column: 5,
+        severity: "error",
+        code: "css-id-attribute-selector",
+        message: "[id] attribute selectors cannot be scoped.",
+        ...overrides,
+      });
+      const ran = (
+        diagnostics: LanguageServerDiagnostic[],
+        extra: Record<string, unknown> = {},
+      ) => ({
+        status: "ran" as const,
+        filesChecked: 7,
+        fixedFiles: [] as string[],
+        diagnostics,
+        formatDiagnostic: (d: LanguageServerDiagnostic) =>
+          `${d.filePath}:${d.line}:${d.column} ${d.code}`,
+        ...extra,
       });
 
-      it("flags runtime .id setter, attribute querySelector, and unsupported DOM methods with error severity", async () => {
-        await setupProject({
-          "pages/index.html": "<my-comp></my-comp>",
-          "components/my-comp.html": `<div id="box"></div><script>
-            el.id = "new-id";
-            document.querySelector("[data-active]");
-            el.removeAttribute("class");
-          </script>`,
-        });
-
-        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
-        listComponentsMock.mockResolvedValue({
-          "my-comp": {
-            name: "my-comp",
-            fileName: join(workDir, "components/my-comp.html"),
-            fileContent: "",
-          },
-        });
-
-        const findings = await checkProject();
-        const compatErrors = findings.items.filter((i) => i.category === "compatibility");
-        expect(compatErrors.length).toBe(3);
-        expect(compatErrors.every((e) => e.severity === "error")).toBe(true);
-        expect(compatErrors.some((w) => w.message.includes("Runtime .id assignment"))).toBe(true);
-        expect(compatErrors.some((w) => w.message.includes("Attribute selectors are not rewritten"))).toBe(true);
-        expect(compatErrors.some((w) => w.message.includes("removeAttribute"))).toBe(true);
-      });
-
-      it("checks inline style blocks whatever their end tag spelling, and skips <style-guide> elements", async () => {
-        await setupProject({
-          "pages/index.html": "<my-comp></my-comp>",
-          "components/my-comp.html":
-            '<style-guide>[data-a] text</style-guide><div class="x"></div>' +
-            "<style>[data-b] { color: red; }</style/>" +
-            "<style>[data-c] { color: red; }</style\n foo>",
-        });
-        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
-        listComponentsMock.mockResolvedValue({
-          "my-comp": { name: "my-comp", fileName: join(workDir, "components/my-comp.html"), fileContent: "" },
-        });
-
-        const findings = await checkProject();
-        const compatErrors = findings.items.filter((i) => i.category === "compatibility");
-        expect(compatErrors).toHaveLength(2);
-        expect(compatErrors.every((e) => e.message.includes("Standalone attribute selectors"))).toBe(true);
-      });
-
-      it("flags _middleware.ts in API routes as an error", async () => {
-        await setupProject({
-          "pages/index.html": "<p>ok</p>",
-          "src/api/_middleware.ts": "export default function middleware() {}",
-          "src/api/hello.ts": "export async function GET() { return new Response('hello'); }",
-        });
-
+      beforeEach(async () => {
+        await setupProject({ "pages/index.html": "<p>ok</p>" });
         listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
         listComponentsMock.mockResolvedValue({});
+      });
+
+      it("merges the language server's findings, keeping its rule id, position, and severity", async () => {
+        runLanguageServerCheckMock.mockResolvedValue(
+          ran([
+            diagnostic(),
+            diagnostic({
+              severity: "warning",
+              code: "unknown-bascik-attribute",
+              line: 9,
+            }),
+          ]),
+        );
 
         const findings = await checkProject();
-        const middlewareError = findings.items.find((i) => i.category === "middleware-unsupported");
-        expect(middlewareError).toBeDefined();
-        expect(middlewareError?.severity).toBe("error");
-        expect(middlewareError?.message).toContain("Middleware chains (_middleware.ts) are not supported by design");
+        expect(findings.items.map((i) => i.category)).toEqual([
+          "css-id-attribute-selector",
+          "unknown-bascik-attribute",
+        ]);
+        expect(
+          findings.items.every((i) => i.source === "language-server"),
+        ).toBe(true);
+        expect(findings.items[0].locations).toEqual([
+          { filePath: "src/components/my-form.html", line: 3, column: 5 },
+        ]);
+        expect(findings.errors).toBe(1);
+        expect(findings.warnings).toBe(1);
+        expect(findings.perFileChecked).toBe(7);
+        expect(findings.perFileHint).toBeUndefined();
+      });
+
+      it("labels a finding with no rule id so it is still grouped and attributed", async () => {
+        runLanguageServerCheckMock.mockResolvedValue(
+          ran([diagnostic({ code: undefined })]),
+        );
+        expect((await checkProject()).items[0].category).toBe(
+          "language-server",
+        );
+      });
+
+      it("keeps project findings and per-file findings apart, so neither duplicates the other", async () => {
+        await setupProject({ "pages/index.html": "<ghost-tag></ghost-tag>" });
+        runLanguageServerCheckMock.mockResolvedValue(ran([diagnostic()]));
+
+        const findings = await checkProject();
+        expect(
+          findings.items
+            .filter((i) => i.source === undefined)
+            .map((i) => i.category),
+        ).toEqual(["unmatched-tag"]);
+        expect(
+          findings.items.filter((i) => i.source === "language-server"),
+        ).toHaveLength(1);
+      });
+
+      it("hands the language server the fix flag, and reports the files it rewrote", async () => {
+        runLanguageServerCheckMock.mockResolvedValue(
+          ran([], { fixedFiles: ["src/pages/a.html"] }),
+        );
+
+        const findings = await checkProject({ fix: true });
+        expect(runLanguageServerCheckMock).toHaveBeenCalledWith({ fix: true });
+        expect(findings.fixedFiles).toEqual(["src/pages/a.html"]);
+      });
+
+      it("does not run --fix itself: with no language server it fails loudly instead of reporting nothing fixed", async () => {
+        runLanguageServerCheckMock.mockResolvedValue({ status: "missing" });
+        await expect(checkProject({ fix: true })).rejects.toThrow(
+          "--fix needs @bascik/language-server to apply fixes",
+        );
+        await expect(checkProject({ fix: true })).rejects.toThrow(
+          "npm install --save-dev @bascik/language-server",
+        );
+        runLanguageServerCheckMock.mockResolvedValue({ status: "outdated" });
+        await expect(checkProject({ fix: true })).rejects.toThrow(
+          "needs a newer @bascik/language-server",
+        );
+      });
+
+      it("still runs the project checks and says what was skipped when the language server is not installed", async () => {
+        runLanguageServerCheckMock.mockResolvedValue({ status: "missing" });
+
+        const findings = await checkProject();
+        expect(findings.errors).toBe(0);
+        expect(findings.perFileChecked).toBeNull();
+        expect(findings.perFileHint).toContain("per-file checks skipped");
+        expect(findings.perFileHint).toContain(
+          "npm install --save-dev @bascik/language-server",
+        );
+      });
+
+      it("says to update when the installed language server is too old", async () => {
+        runLanguageServerCheckMock.mockResolvedValue({ status: "outdated" });
+        expect((await checkProject()).perFileHint).toContain("too old");
       });
     });
   });
@@ -1116,6 +1261,8 @@ describe("formatFindingsHuman — dist/ lines", () => {
     items: [],
     distHtmlChecked: null,
     distHtmlSpecHintNeeded: false,
+    perFileChecked: null,
+    fixedFiles: [],
   });
 
   it("shows no dist note when dist was not checked", () => {
@@ -1125,7 +1272,10 @@ describe("formatFindingsHuman — dist/ lines", () => {
   });
 
   it("appends parse5 install hint when distHtmlSpecHintNeeded is true (clean pass)", () => {
-    const out = formatFindingsHuman({ ...base(), distHtmlSpecHintNeeded: true });
+    const out = formatFindingsHuman({
+      ...base(),
+      distHtmlSpecHintNeeded: true,
+    });
     expect(out).toContain("ℹ");
     expect(out).toContain("dist/ HTML not validated");
     expect(out).toContain("install parse5");
@@ -1136,7 +1286,14 @@ describe("formatFindingsHuman — dist/ lines", () => {
       ...base(),
       errors: 1,
       distHtmlSpecHintNeeded: true,
-      items: [{ category: "unused-component", severity: "error", message: "old-card", locations: [{ filePath: "src/components/old-card/old-card.html" }] }],
+      items: [
+        {
+          category: "unused-component",
+          severity: "error",
+          message: "old-card",
+          locations: [{ filePath: "src/components/old-card/old-card.html" }],
+        },
+      ],
     };
     const out = formatFindingsHuman(findings);
     expect(out).toContain("install parse5");
@@ -1158,7 +1315,14 @@ describe("formatFindingsHuman — dist/ lines", () => {
       ...base(),
       errors: 1,
       distHtmlChecked: 8,
-      items: [{ category: "unused-component", severity: "error", message: "old-card", locations: [{ filePath: "src/components/old-card/old-card.html" }] }],
+      items: [
+        {
+          category: "unused-component",
+          severity: "error",
+          message: "old-card",
+          locations: [{ filePath: "src/components/old-card/old-card.html" }],
+        },
+      ],
     };
     const out = formatFindingsHuman(findings);
     expect(out).toContain("✓ 8 dist/ HTML files pass WHATWG spec (parse5)");
@@ -1169,12 +1333,14 @@ describe("formatFindingsHuman — dist/ lines", () => {
       ...base(),
       errors: 1,
       distHtmlChecked: 3,
-      items: [{
-        category: "dist-html-spec",
-        severity: "error",
-        message: "[eof-in-element-that-can-contain-only-text]",
-        locations: [{ filePath: "index.html", line: 43 }],
-      }],
+      items: [
+        {
+          category: "dist-html-spec",
+          severity: "error",
+          message: "[eof-in-element-that-can-contain-only-text]",
+          locations: [{ filePath: "index.html", line: 43 }],
+        },
+      ],
     };
     const out = formatFindingsHuman(findings);
     expect(out).toContain("dist/ HTML spec violations");
@@ -1194,10 +1360,14 @@ describe("formatFindingsJson — dist/ fields", () => {
     items: [],
     distHtmlChecked: null,
     distHtmlSpecHintNeeded: false,
+    perFileChecked: null,
+    fixedFiles: [],
   });
 
   it("includes distHtmlChecked and distHtmlSpecHintNeeded at the top level", () => {
-    const json = JSON.parse(formatFindingsJson({ ...base(), distHtmlChecked: 10 }));
+    const json = JSON.parse(
+      formatFindingsJson({ ...base(), distHtmlChecked: 10 }),
+    );
     expect(json.distHtmlChecked).toBe(10);
     expect(json.distHtmlSpecHintNeeded).toBe(false);
   });
@@ -1208,7 +1378,9 @@ describe("formatFindingsJson — dist/ fields", () => {
   });
 
   it("serializes distHtmlSpecHintNeeded: true when parse5 absent", () => {
-    const json = JSON.parse(formatFindingsJson({ ...base(), distHtmlSpecHintNeeded: true }));
+    const json = JSON.parse(
+      formatFindingsJson({ ...base(), distHtmlSpecHintNeeded: true }),
+    );
     expect(json.distHtmlSpecHintNeeded).toBe(true);
     expect(json.distHtmlChecked).toBeNull();
   });
@@ -1218,16 +1390,140 @@ describe("formatFindingsJson — dist/ fields", () => {
       ...base(),
       errors: 1,
       distHtmlChecked: 3,
-      items: [{
-        category: "dist-html-spec",
-        severity: "error",
-        message: "[eof-in-element-that-can-contain-only-text]",
-        locations: [{ filePath: "index.html", line: 43 }],
-      }],
+      items: [
+        {
+          category: "dist-html-spec",
+          severity: "error",
+          message: "[eof-in-element-that-can-contain-only-text]",
+          locations: [{ filePath: "index.html", line: 43 }],
+        },
+      ],
     };
     const json = JSON.parse(formatFindingsJson(findings));
     expect(json.findings).toHaveLength(1);
     expect(json.findings[0].category).toBe("dist-html-spec");
     expect(json.findings[0].locations[0].line).toBe(43);
+  });
+});
+
+describe("formatFindingsHuman — per-file section and skipped checks", () => {
+  const base = (): CheckFindings => ({
+    errors: 0,
+    warnings: 0,
+    pagesChecked: 5,
+    componentsChecked: 3,
+    items: [],
+    distHtmlChecked: null,
+    distHtmlSpecHintNeeded: false,
+    perFileChecked: null,
+    fixedFiles: [],
+  });
+  const perFileItem = (
+    overrides: Partial<CheckFindings["items"][number]> = {},
+  ): CheckFindings["items"][number] => ({
+    category: "unknown-bascik-attribute",
+    severity: "warning",
+    message: "Unknown attribute.",
+    locations: [{ filePath: "src/pages/b.html", line: 4, column: 2 }],
+    source: "language-server",
+    ...overrides,
+  });
+
+  it("lists per-file findings by file and position under their own heading, apart from project findings", () => {
+    const findings: CheckFindings = {
+      ...base(),
+      warnings: 3,
+      perFileChecked: 12,
+      items: [
+        perFileItem(),
+        perFileItem({
+          locations: [{ filePath: "src/pages/a.html", line: 9, column: 1 }],
+          category: "css-id-attribute-selector",
+        }),
+        {
+          category: "unused-component",
+          severity: "warning",
+          message: "old-card",
+          locations: [{ filePath: "old-card.html" }],
+        },
+      ],
+    };
+    const out = formatFindingsHuman(findings);
+    expect(out).toContain("Unused components (1)");
+    expect(out).toContain("Per-file checks (2)");
+    expect(out).toContain("npx bascik-language-server --check");
+    expect(out.indexOf("src/pages/a.html:9:1")).toBeLessThan(
+      out.indexOf("src/pages/b.html:4:2"),
+    );
+    expect(out).toContain("(css-id-attribute-selector)");
+    expect(out).toContain("✓ 12 files checked by @bascik/language-server");
+  });
+
+  it("uses the language server's own formatter when it provides one", () => {
+    const findings: CheckFindings = {
+      ...base(),
+      warnings: 1,
+      perFileChecked: 1,
+      items: [perFileItem()],
+      perFileFormat: (d) => `custom ${d.filePath} ${d.code}`,
+    };
+    expect(formatFindingsHuman(findings)).toContain(
+      "  custom src/pages/b.html unknown-bascik-attribute",
+    );
+  });
+
+  it("says what was skipped, on a clean project and on one with findings", () => {
+    const hint =
+      "per-file checks skipped: install @bascik/language-server to run them";
+    expect(formatFindingsHuman({ ...base(), perFileHint: hint })).toContain(
+      `ℹ  ${hint}`,
+    );
+    const withFinding: CheckFindings = {
+      ...base(),
+      warnings: 1,
+      perFileHint: hint,
+      items: [
+        {
+          category: "unused-component",
+          severity: "warning",
+          message: "x",
+          locations: [{ filePath: "x.html" }],
+        },
+      ],
+    };
+    expect(formatFindingsHuman(withFinding)).toContain(`ℹ  ${hint}`);
+  });
+
+  it("reports the files --fix rewrote", () => {
+    expect(
+      formatFindingsHuman({
+        ...base(),
+        perFileChecked: 4,
+        fixedFiles: ["src/pages/a.html", "src/pages/b.html"],
+      }),
+    ).toContain("✓ fixed 2 files: src/pages/a.html, src/pages/b.html");
+  });
+
+  it("serializes the per-file fields and marks each per-file finding's source", () => {
+    const json = JSON.parse(
+      formatFindingsJson({
+        ...base(),
+        perFileChecked: 3,
+        fixedFiles: ["a.html"],
+        perFileHint: undefined,
+        items: [perFileItem()],
+      }),
+    );
+    expect(json.perFileChecked).toBe(3);
+    expect(json.perFileHintNeeded).toBe(false);
+    expect(json.fixedFiles).toEqual(["a.html"]);
+    expect(json.findings[0].source).toBe("language-server");
+    expect(json.findings[0].locations[0].column).toBe(2);
+
+    const skipped = JSON.parse(
+      formatFindingsJson({ ...base(), perFileHint: "per-file checks skipped" }),
+    );
+    expect(skipped.perFileChecked).toBeNull();
+    expect(skipped.perFileHintNeeded).toBe(true);
   });
 });

@@ -1,5 +1,9 @@
 import type { BascikResponse } from "./server.ts";
-import { nativeClock, type FrameworkClock, type IntervalHandle } from "./clock.ts";
+import {
+  nativeClock,
+  type FrameworkClock,
+  type IntervalHandle,
+} from "./clock.ts";
 import { eventEmitter } from "./events.ts";
 
 export const DEFAULT_HEARTBEAT_INTERVAL_MS = 20_000;
@@ -40,7 +44,8 @@ export class SseManager {
   private buildErrorListener: (errPayload: SseBuildError) => void;
 
   constructor(options: SseManagerOptions = {}) {
-    this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
+    this.heartbeatIntervalMs =
+      options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
     this.maxConnections = options.maxConnections ?? DEFAULT_MAX_SSE_CONNECTIONS;
     this.clock = options.clock ?? nativeClock;
     // One owner for error publication. The server no longer registers a
@@ -61,7 +66,10 @@ export class SseManager {
     return this.generation;
   }
 
-  public addClient(res: BascikResponse, openPagePath?: string | null): SseClient | null {
+  public addClient(
+    res: BascikResponse,
+    openPagePath?: string | null,
+  ): SseClient | null {
     if (this.destroyed) {
       return null;
     }
@@ -69,7 +77,7 @@ export class SseManager {
       try {
         res.respond(503, { "content-type": "text/plain" });
         res.end("Too Many SSE Connections");
-      } catch { }
+      } catch {}
       return null;
     }
 
@@ -84,7 +92,7 @@ export class SseManager {
       openPagePath: openPagePath ?? null,
       isDraining: false,
       lastActive: this.clock.now(),
-      drainListener: () => { },
+      drainListener: () => {},
     };
     const drainListener = () => {
       client.isDraining = false;
@@ -92,7 +100,7 @@ export class SseManager {
     client.drainListener = drainListener;
     try {
       res.on("drain", drainListener);
-    } catch { }
+    } catch {}
     this.clients.set(client.id, client);
 
     // Send initial connected payload
@@ -109,7 +117,7 @@ export class SseManager {
       // writes (or many open/reconnect cycles) would leak listeners.
       try {
         client.res.off("drain", client.drainListener);
-      } catch { }
+      } catch {}
     }
   }
 
@@ -142,12 +150,17 @@ export class SseManager {
       return ok;
     } catch {
       this.removeClient(client.id);
-      try { client.res.close(); } catch { }
+      try {
+        client.res.close();
+      } catch {}
       return false;
     }
   }
 
-  public broadcastReload(relativePagePath?: string, matchHttpPath?: (openPage: string, targetPage: string) => boolean): void {
+  public broadcastReload(
+    relativePagePath?: string,
+    matchHttpPath?: (openPage: string, targetPage: string) => boolean,
+  ): void {
     if (this.destroyed) return;
     const gen = this.getNextGeneration();
     for (const client of this.clients.values()) {
@@ -182,8 +195,13 @@ export class SseManager {
         continue;
       }
       // If client is still stalled in drain for multiple heartbeats, close it
-      if (client.isDraining && this.clock.now() - client.lastActive > this.heartbeatIntervalMs * 2) {
-        try { client.res.close(); } catch { }
+      if (
+        client.isDraining &&
+        this.clock.now() - client.lastActive > this.heartbeatIntervalMs * 2
+      ) {
+        try {
+          client.res.close();
+        } catch {}
         this.removeClient(client.id);
         continue;
       }
@@ -211,11 +229,15 @@ export class SseManager {
     eventEmitter.removeListener("build-error", this.buildErrorListener);
     if (this.destroyed) return;
     for (const client of this.clients.values()) {
-      try { client.res.off("drain", client.drainListener); } catch { }
+      try {
+        client.res.off("drain", client.drainListener);
+      } catch {}
       // Use res.close() unconditionally on shutdown destroy so that the
       // underlying transport (HTTP/1.1 keep-alive socket or HTTP/2 stream)
       // is immediately terminated rather than lingering until idle timeout.
-      try { client.res.close(); } catch { }
+      try {
+        client.res.close();
+      } catch {}
     }
     this.clients.clear();
     this.destroyed = true;

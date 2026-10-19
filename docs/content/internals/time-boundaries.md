@@ -26,16 +26,16 @@ The internal contract lives in `pkg/src/lib/clock.ts`:
 
 Bascik uses explicit clock ownership in designated semantic-time modules, with static enforcement in `pkg/src/lib/time-boundary.test.ts`.
 
-| Module | Framework-owned time semantics |
-| --- | --- |
-| `api-runtime.ts` | API handler deadlines (`http.apiTimeout`) and abort deadlines |
-| `script-registry.ts` | In-process script invocation deadlines and timeout aborts |
-| `debounce.ts` | Watch and exec trigger debouncing |
-| `exec.ts` | Child process timeout and escalation windows |
-| `rate-limit.ts` | Sliding-window bucket timing and cleanup sweep intervals |
-| `script-cache.ts` | Cache prune throttle and TTL cutoff checks |
-| `sse.ts` | Live-reload heartbeat intervals and stalled-client reaping |
-| `server-lifecycle.ts` | Graceful shutdown drain deadlines |
+| Module                | Framework-owned time semantics                                |
+| --------------------- | ------------------------------------------------------------- |
+| `api-runtime.ts`      | API handler deadlines (`http.apiTimeout`) and abort deadlines |
+| `script-registry.ts`  | In-process script invocation deadlines and timeout aborts     |
+| `debounce.ts`         | Watch and exec trigger debouncing                             |
+| `exec.ts`             | Child process timeout and escalation windows                  |
+| `rate-limit.ts`       | Sliding-window bucket timing and cleanup sweep intervals      |
+| `script-cache.ts`     | Cache prune throttle and TTL cutoff checks                    |
+| `sse.ts`              | Live-reload heartbeat intervals and stalled-client reaping    |
+| `server-lifecycle.ts` | Graceful shutdown drain deadlines                             |
 
 ## Cancellation and Lifecycle Rules
 

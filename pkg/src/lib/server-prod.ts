@@ -23,9 +23,15 @@ import { readdir, readFile } from "node:fs/promises";
 import { join, extname, relative, resolve } from "node:path";
 import { mem } from "./mem.ts";
 import { BascikConfig } from "./config.ts";
-import { serverSidecarRegistry, type SidecarLoadResult } from "./server-sidecar.ts";
+import {
+  serverSidecarRegistry,
+  type SidecarLoadResult,
+} from "./server-sidecar.ts";
 import { setServerHealthState } from "./server-lifecycle.ts";
-import { LIVE_RELOAD_SCRIPT_ATTR, stripLiveReloadScript } from "./live-reload.ts";
+import {
+  LIVE_RELOAD_SCRIPT_ATTR,
+  stripLiveReloadScript,
+} from "./live-reload.ts";
 import { assertProductionBuildState } from "./build-state.ts";
 
 /**
@@ -60,15 +66,15 @@ const loadDistIntoMemory = async (): Promise<void> => {
   } catch (err) {
     throw new Error(
       `[bascik] --server: could not read ${outDirRel}/ directory.\n` +
-      `Run \`bascik --build\` first to generate the production build.\n` +
-      `(${(err as Error).message})`,
+        `Run \`bascik --build\` first to generate the production build.\n` +
+        `(${(err as Error).message})`,
     );
   }
 
   if (htmlFiles.length === 0) {
     console.warn(
       `[bascik] --server: no HTML pages found in ${outDirRel}/. ` +
-      "Run `bascik --build` first.",
+        "Run `bascik --build` first.",
     );
   }
 
@@ -135,9 +141,11 @@ const loadDistIntoMemory = async (): Promise<void> => {
   // placeholder page with no sidecar would 500 on every request, so a missing
   // sidecar is only optional when no page references a server script. A
   // genuinely static release (no sidecar AND no placeholders) passes.
-  const failedPages = mem.pages().filter(
-    (page) => page.serverScriptPlan && "error" in page.serverScriptPlan,
-  );
+  const failedPages = mem
+    .pages()
+    .filter(
+      (page) => page.serverScriptPlan && "error" in page.serverScriptPlan,
+    );
   if (failedPages.length > 0) {
     const first = failedPages[0].serverScriptPlan as { error: Error };
     const sidecarState = sidecarResult.present
@@ -146,13 +154,15 @@ const loadDistIntoMemory = async (): Promise<void> => {
     setServerHealthState("booting");
     throw new Error(
       `[bascik] --server: production startup validation failed. ` +
-      `${failedPages.length} stored page(s) reference an unresolvable or stale server-script ` +
-      `placeholder ${sidecarState}. First failure (${failedPages[0].relativePagePath}): ` +
-      `${first.error.message}. Run \`bascik --build\` to regenerate matching artifacts.`,
+        `${failedPages.length} stored page(s) reference an unresolvable or stale server-script ` +
+        `placeholder ${sidecarState}. First failure (${failedPages[0].relativePagePath}): ` +
+        `${first.error.message}. Run \`bascik --build\` to regenerate matching artifacts.`,
     );
   }
 
-  console.log(`Loaded ${htmlFiles.length} page${htmlFiles.length !== 1 ? "s" : ""} from ${outDirRel}/`);
+  console.log(
+    `Loaded ${htmlFiles.length} page${htmlFiles.length !== 1 ? "s" : ""} from ${outDirRel}/`,
+  );
 };
 
 /**

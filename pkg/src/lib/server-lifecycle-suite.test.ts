@@ -3,23 +3,40 @@ import { createHash } from "node:crypto";
 
 // ─── Hoisted mock factories ───────────────────────────────────────────────────
 
-const { mockServer, mockCreateSecureServer, registeredShutdownFns, mockExecuteServerScripts } = vi.hoisted(() => {
+const {
+  mockServer,
+  mockCreateSecureServer,
+  registeredShutdownFns,
+  mockExecuteServerScripts,
+} = vi.hoisted(() => {
   const mockServer = {
     on: vi.fn().mockReturnThis(),
     once: vi.fn().mockReturnThis(),
     removeListener: vi.fn().mockReturnThis(),
-    listen: vi.fn().mockImplementation(
-      (_port: number, hostnameOrCb: any, cb?: () => void) => {
-        const callback = typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
-        callback?.();
-      },
-    ),
-    close: vi.fn().mockImplementation((cb?: (err?: Error) => void) => { cb?.(); }),
+    listen: vi
+      .fn()
+      .mockImplementation(
+        (_port: number, hostnameOrCb: any, cb?: () => void) => {
+          const callback =
+            typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
+          callback?.();
+        },
+      ),
+    close: vi.fn().mockImplementation((cb?: (err?: Error) => void) => {
+      cb?.();
+    }),
   };
   const mockCreateSecureServer = vi.fn(() => mockServer);
   const registeredShutdownFns: Array<() => void | Promise<void>> = [];
-  const mockExecuteServerScripts = vi.fn(async (html: string, ..._rest: unknown[]) => html);
-  return { mockServer, mockCreateSecureServer, registeredShutdownFns, mockExecuteServerScripts };
+  const mockExecuteServerScripts = vi.fn(
+    async (html: string, ..._rest: unknown[]) => html,
+  );
+  return {
+    mockServer,
+    mockCreateSecureServer,
+    registeredShutdownFns,
+    mockExecuteServerScripts,
+  };
 });
 
 vi.mock("node:http", () => ({
@@ -62,7 +79,14 @@ vi.mock("node:fs", () => ({
 }));
 
 vi.mock("./mem.js", () => ({
-  mem: { getPage: vi.fn(), getPageExact: vi.fn(), trackOpenPage: vi.fn(), untrackOpenPage: vi.fn(), isBooting: false, setBootingDone: vi.fn() },
+  mem: {
+    getPage: vi.fn(),
+    getPageExact: vi.fn(),
+    trackOpenPage: vi.fn(),
+    untrackOpenPage: vi.fn(),
+    isBooting: false,
+    setBootingDone: vi.fn(),
+  },
 }));
 
 vi.mock("./config.js", () => ({
@@ -86,7 +110,11 @@ vi.mock("./config.js", () => ({
       requests: true,
     },
     isProdServer: false,
-    directory: { pages: "src/pages", components: ["src/components"], out: "dist" },
+    directory: {
+      pages: "src/pages",
+      components: ["src/components"],
+      out: "dist",
+    },
   },
 }));
 
@@ -95,7 +123,9 @@ vi.mock("./events.js", () => ({
     on: vi.fn(),
     removeListener: vi.fn(),
   },
-  registerShutdownHandler: vi.fn((fn) => { registeredShutdownFns.push(fn); }),
+  registerShutdownHandler: vi.fn((fn) => {
+    registeredShutdownFns.push(fn);
+  }),
   runShutdownHandlers: vi.fn(async () => {
     for (const fn of registeredShutdownFns) {
       await fn();
@@ -113,8 +143,22 @@ vi.mock("./server-scripts.js", () => {
     // The plan is stored on the page (prompt 67); makePage builds a stub plan
     // carrying the html so the executor can forward it to the spy.
     executeServerScriptPlan: vi.fn(
-      async (plan: any, request: unknown, context: unknown, timeout: number, filePath: string) =>
-        Buffer.from(await mockExecuteServerScripts(plan.__html, request, context, timeout, filePath)),
+      async (
+        plan: any,
+        request: unknown,
+        context: unknown,
+        timeout: number,
+        filePath: string,
+      ) =>
+        Buffer.from(
+          await mockExecuteServerScripts(
+            plan.__html,
+            request,
+            context,
+            timeout,
+            filePath,
+          ),
+        ),
     ),
     streamServerScripts: vi.fn(),
     DEFAULT_SCRIPT_TIMEOUT_MS: 5000,
@@ -125,7 +169,10 @@ vi.mock("./paths.js", () => ({
   // Faithful port of the real getHttpPath so is404Page logic is genuinely
   // exercised: pages/404.html → /404, pages/blog/index.html → /blog/.
   getHttpPath: vi.fn((p: string) =>
-    p.replace(/^pages/, "").replace(/\.html$/, "").replace(/\/index$/, "/")
+    p
+      .replace(/^pages/, "")
+      .replace(/\.html$/, "")
+      .replace(/\/index$/, "/"),
   ),
 }));
 
@@ -140,13 +187,20 @@ vi.mock("./mime.js", () => ({
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
 import { startHttp2Server } from "./http2.ts";
-import { resetActiveRateLimiter, resetSseManager, startServerInstance } from "./server.ts";
+import {
+  resetActiveRateLimiter,
+  resetSseManager,
+  startServerInstance,
+} from "./server.ts";
 import { mem } from "./mem.ts";
 import { BascikConfig } from "./config.ts";
 import { createReadStream } from "node:fs";
 import { stat, readFile, access, open } from "node:fs/promises";
 import { Readable, Writable } from "node:stream";
-import { MAX_BUFFERED_ASSET_BYTES, getOpenStreamedAssetHandles } from "./caching.ts";
+import {
+  MAX_BUFFERED_ASSET_BYTES,
+  getOpenStreamedAssetHandles,
+} from "./caching.ts";
 import { exec, execFile } from "node:child_process";
 import { eventEmitter } from "./events.ts";
 
@@ -158,7 +212,9 @@ const mockMem = mem as unknown as {
   isBooting: boolean;
   setBootingDone: ReturnType<typeof vi.fn>;
 };
-const mockCreateReadStream = createReadStream as unknown as ReturnType<typeof vi.fn>;
+const mockCreateReadStream = createReadStream as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockStat = stat as unknown as ReturnType<typeof vi.fn>;
 const mockOpen = open as unknown as ReturnType<typeof vi.fn>;
 const mockReadFile = readFile as unknown as ReturnType<typeof vi.fn>;
@@ -232,7 +288,9 @@ const getStreamHandler = () => {
   // If the server didn't register a stream listener, check if it's because TLS is disabled
   // and it registered a standard HTTP 'request' listener instead.
   if (!call) {
-    const httpCall = mockServer.on.mock.calls.find((c: any[]) => c[0] === "request");
+    const httpCall = mockServer.on.mock.calls.find(
+      (c: any[]) => c[0] === "request",
+    );
     if (httpCall) {
       // Return a wrapper that converts mockStream / mockHeaders into adapted HTTP objects
       return async (mockStream: any, mockHeaders: any) => {
@@ -264,8 +322,7 @@ const getStreamHandler = () => {
     }
   }
   return call?.[1] as
-    | ((stream: any, headers: any) => Promise<void>)
-    | undefined;
+    ((stream: any, headers: any) => Promise<void>) | undefined;
 };
 
 /**
@@ -274,7 +331,9 @@ const getStreamHandler = () => {
  * page content (the executor mock forwards `__html` to the spy).
  */
 const makePage = (overrides: Record<string, unknown> = {}) => {
-  const { hasServerScripts, ...rest } = overrides as { hasServerScripts?: boolean } & Record<string, unknown>;
+  const { hasServerScripts, ...rest } = overrides as {
+    hasServerScripts?: boolean;
+  } & Record<string, unknown>;
   const page: Record<string, unknown> = {
     relativePagePath: "pages/about.html",
     absolutePagePath: "/abs/pages/about.html",
@@ -285,7 +344,11 @@ const makePage = (overrides: Record<string, unknown> = {}) => {
   };
   if (hasServerScripts) {
     const html = (page.content as Buffer).toString();
-    page.serverScriptPlan = { segments: [{ kind: "static", bytes: Buffer.from(html) }], firstStreamIndex: -1, __html: html };
+    page.serverScriptPlan = {
+      segments: [{ kind: "static", bytes: Buffer.from(html) }],
+      firstStreamIndex: -1,
+      __html: html,
+    };
   }
   return page;
 };
@@ -294,8 +357,49 @@ const makePage = (overrides: Record<string, unknown> = {}) => {
 // Server setup
 // ─────────────────────────────────────────────────────────────────────────────
 
-
-export { describe, it, expect, vi, beforeEach, afterEach, createHash, mockServer, mockCreateSecureServer, registeredShutdownFns, mockExecuteServerScripts, startHttp2Server, resetActiveRateLimiter, resetSseManager, startServerInstance, mem, BascikConfig, createReadStream, stat, readFile, access, open, Readable, Writable, MAX_BUFFERED_ASSET_BYTES, getOpenStreamedAssetHandles, exec, execFile, eventEmitter, mockMem, mockCreateReadStream, mockStat, mockOpen, mockReadFile, mockAccess, mockExec, mockExecFile, makeStream, makeHeaders, getStreamHandler, makePage };
+export {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  createHash,
+  mockServer,
+  mockCreateSecureServer,
+  registeredShutdownFns,
+  mockExecuteServerScripts,
+  startHttp2Server,
+  resetActiveRateLimiter,
+  resetSseManager,
+  startServerInstance,
+  mem,
+  BascikConfig,
+  createReadStream,
+  stat,
+  readFile,
+  access,
+  open,
+  Readable,
+  Writable,
+  MAX_BUFFERED_ASSET_BYTES,
+  getOpenStreamedAssetHandles,
+  exec,
+  execFile,
+  eventEmitter,
+  mockMem,
+  mockCreateReadStream,
+  mockStat,
+  mockOpen,
+  mockReadFile,
+  mockAccess,
+  mockExec,
+  mockExecFile,
+  makeStream,
+  makeHeaders,
+  getStreamHandler,
+  makePage,
+};
 
 describe("startHttp2Server – server setup", () => {
   it("creates a secure server with key and cert", async () => {
@@ -411,12 +515,18 @@ describe("startHttp2Server – rate limiting details", () => {
 
     // Exhaust quota for one IP
     for (let i = 0; i < 502; i++) {
-      const s = { ...makeStream(), session: { socket: { remoteAddress: "1.2.3.4" } } };
+      const s = {
+        ...makeStream(),
+        session: { socket: { remoteAddress: "1.2.3.4" } },
+      };
       await handler(s, makeHeaders("/about", "GET"));
     }
 
     // A different IP should still be allowed
-    const otherStream = { ...makeStream(), session: { socket: { remoteAddress: "9.9.9.9" } } };
+    const otherStream = {
+      ...makeStream(),
+      session: { socket: { remoteAddress: "9.9.9.9" } },
+    };
     await handler(otherStream, makeHeaders("/about", "GET"));
     expect(otherStream.respond).toHaveBeenCalledWith(
       expect.objectContaining({ ":status": 200 }),
@@ -429,7 +539,9 @@ describe("startHttp2Server – rate limiting details", () => {
 
     // Stream with a null session socket/remoteAddress or throwing socket should resolve remoteIp as "unknown"
     const badStream1 = { ...makeStream(), session: { socket: null } };
-    expect(() => handler(badStream1, makeHeaders("/about", "GET"))).not.toThrow();
+    expect(() =>
+      handler(badStream1, makeHeaders("/about", "GET")),
+    ).not.toThrow();
 
     const badStream2 = {
       ...makeStream(),
@@ -437,7 +549,9 @@ describe("startHttp2Server – rate limiting details", () => {
         throw new Error("ERR_HTTP2_NO_SOCKET_MANIPULATION");
       },
     };
-    expect(() => handler(badStream2, makeHeaders("/about", "GET"))).not.toThrow();
+    expect(() =>
+      handler(badStream2, makeHeaders("/about", "GET")),
+    ).not.toThrow();
   });
 });
 
@@ -445,7 +559,9 @@ describe("startHttp2Server – port auto-increment", () => {
   afterEach(() => {
     // Restore default behavior so subsequent tests are unaffected.
     mockServer.listen.mockImplementation(
-      (_port: number, _hostname: string, cb?: () => void) => { cb?.(); },
+      (_port: number, _hostname: string, cb?: () => void) => {
+        cb?.();
+      },
     );
   });
 
@@ -460,7 +576,9 @@ describe("startHttp2Server – port auto-increment", () => {
             string,
             (err: NodeJS.ErrnoException) => void,
           ];
-          const err = Object.assign(new Error("EADDRINUSE"), { code: "EADDRINUSE" });
+          const err = Object.assign(new Error("EADDRINUSE"), {
+            code: "EADDRINUSE",
+          });
           errorHandler(err);
         } else {
           cb?.();
@@ -471,8 +589,18 @@ describe("startHttp2Server – port auto-increment", () => {
     await startHttp2Server();
 
     expect(mockServer.listen).toHaveBeenCalledTimes(2);
-    expect(mockServer.listen).toHaveBeenNthCalledWith(1, 8443, "localhost", expect.any(Function));
-    expect(mockServer.listen).toHaveBeenNthCalledWith(2, 8444, "localhost", expect.any(Function));
+    expect(mockServer.listen).toHaveBeenNthCalledWith(
+      1,
+      8443,
+      "localhost",
+      expect.any(Function),
+    );
+    expect(mockServer.listen).toHaveBeenNthCalledWith(
+      2,
+      8444,
+      "localhost",
+      expect.any(Function),
+    );
   });
 });
 
@@ -481,12 +609,16 @@ describe("startHttp2Server – graceful shutdown", () => {
   let processOnceSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    processOnceSpy = vi.spyOn(process, "once").mockImplementation((event: string | symbol, listener: (...args: any[]) => void) => {
-      const key = String(event);
-      if (!registeredHandlers.has(key)) registeredHandlers.set(key, []);
-      registeredHandlers.get(key)!.push(listener as () => void);
-      return process;
-    });
+    processOnceSpy = vi
+      .spyOn(process, "once")
+      .mockImplementation(
+        (event: string | symbol, listener: (...args: any[]) => void) => {
+          const key = String(event);
+          if (!registeredHandlers.has(key)) registeredHandlers.set(key, []);
+          registeredHandlers.get(key)!.push(listener as () => void);
+          return process;
+        },
+      );
   });
 
   afterEach(() => {
@@ -496,19 +628,25 @@ describe("startHttp2Server – graceful shutdown", () => {
 
   it("registers SIGTERM and SIGINT handlers after the server starts", async () => {
     await startHttp2Server();
-    const events = (process.once as ReturnType<typeof vi.spyOn>).mock.calls.map((c: any[]) => c[0]);
+    const events = (process.once as ReturnType<typeof vi.spyOn>).mock.calls.map(
+      (c: any[]) => c[0],
+    );
     expect(events).toContain("SIGTERM");
     expect(events).toContain("SIGINT");
   });
 
   it("calls server.close() and runShutdownHandlers on SIGTERM", async () => {
     await startHttp2Server();
-    const [, sigTermHandler] = (process.once as ReturnType<typeof vi.spyOn>).mock.calls.find(
-      (c: any[]) => c[0] === "SIGTERM",
-    ) as [string, () => void];
+    const [, sigTermHandler] = (
+      process.once as ReturnType<typeof vi.spyOn>
+    ).mock.calls.find((c: any[]) => c[0] === "SIGTERM") as [string, () => void];
 
     const { runShutdownHandlers } = await import("./events.ts");
-    const mockExit = vi.spyOn(process, "exit").mockImplementation((_code?: string | number | null) => undefined as never);
+    const mockExit = vi
+      .spyOn(process, "exit")
+      .mockImplementation(
+        (_code?: string | number | null) => undefined as never,
+      );
     sigTermHandler();
     expect(mockServer.close).toHaveBeenCalled();
     expect(runShutdownHandlers).toHaveBeenCalled();
@@ -517,12 +655,16 @@ describe("startHttp2Server – graceful shutdown", () => {
 
   it("calls server.close() and runShutdownHandlers on SIGINT", async () => {
     await startHttp2Server();
-    const [, sigIntHandler] = (process.once as ReturnType<typeof vi.spyOn>).mock.calls.find(
-      (c: any[]) => c[0] === "SIGINT",
-    ) as [string, () => void];
+    const [, sigIntHandler] = (
+      process.once as ReturnType<typeof vi.spyOn>
+    ).mock.calls.find((c: any[]) => c[0] === "SIGINT") as [string, () => void];
 
     const { runShutdownHandlers } = await import("./events.ts");
-    const mockExit = vi.spyOn(process, "exit").mockImplementation((_code?: string | number | null) => undefined as never);
+    const mockExit = vi
+      .spyOn(process, "exit")
+      .mockImplementation(
+        (_code?: string | number | null) => undefined as never,
+      );
     sigIntHandler();
     expect(mockServer.close).toHaveBeenCalled();
     expect(runShutdownHandlers).toHaveBeenCalled();
@@ -531,14 +673,18 @@ describe("startHttp2Server – graceful shutdown", () => {
 
   it("ignores a second signal so shutdown runs only once", async () => {
     await startHttp2Server();
-    const [, sigIntHandler] = (process.once as ReturnType<typeof vi.spyOn>).mock.calls.find(
-      (c: any[]) => c[0] === "SIGINT",
-    ) as [string, () => void];
-    const [, sigTermHandler] = (process.once as ReturnType<typeof vi.spyOn>).mock.calls.find(
-      (c: any[]) => c[0] === "SIGTERM",
-    ) as [string, () => void];
+    const [, sigIntHandler] = (
+      process.once as ReturnType<typeof vi.spyOn>
+    ).mock.calls.find((c: any[]) => c[0] === "SIGINT") as [string, () => void];
+    const [, sigTermHandler] = (
+      process.once as ReturnType<typeof vi.spyOn>
+    ).mock.calls.find((c: any[]) => c[0] === "SIGTERM") as [string, () => void];
 
-    const mockExit = vi.spyOn(process, "exit").mockImplementation((_code?: string | number | null) => undefined as never);
+    const mockExit = vi
+      .spyOn(process, "exit")
+      .mockImplementation(
+        (_code?: string | number | null) => undefined as never,
+      );
     sigIntHandler();
     sigTermHandler(); // second signal during shutdown: must be a no-op
     expect(mockServer.close).toHaveBeenCalledTimes(1);
@@ -548,17 +694,34 @@ describe("startHttp2Server – graceful shutdown", () => {
   it("closes open sessions on SIGINT so long-lived SSE streams do not block shutdown", async () => {
     await startHttp2Server();
 
-    const sessionCalls = mockServer.on.mock.calls.filter((c: any[]) => c[0] === "session");
-    const sessionHandler = sessionCalls[sessionCalls.length - 1]?.[1] as (session: { close: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn>; once: ReturnType<typeof vi.fn> }) => void;
+    const sessionCalls = mockServer.on.mock.calls.filter(
+      (c: any[]) => c[0] === "session",
+    );
+    const sessionHandler = sessionCalls[
+      sessionCalls.length - 1
+    ]?.[1] as (session: {
+      close: ReturnType<typeof vi.fn>;
+      destroy: ReturnType<typeof vi.fn>;
+      once: ReturnType<typeof vi.fn>;
+    }) => void;
 
-    const mockSession = { close: vi.fn(), destroy: vi.fn(), once: vi.fn(), on: vi.fn() };
+    const mockSession = {
+      close: vi.fn(),
+      destroy: vi.fn(),
+      once: vi.fn(),
+      on: vi.fn(),
+    };
     sessionHandler(mockSession);
 
-    const [, sigIntHandler] = (process.once as ReturnType<typeof vi.spyOn>).mock.calls.find(
-      (c: any[]) => c[0] === "SIGINT",
-    ) as [string, () => void];
+    const [, sigIntHandler] = (
+      process.once as ReturnType<typeof vi.spyOn>
+    ).mock.calls.find((c: any[]) => c[0] === "SIGINT") as [string, () => void];
 
-    const mockExit = vi.spyOn(process, "exit").mockImplementation((_code?: string | number | null) => undefined as never);
+    const mockExit = vi
+      .spyOn(process, "exit")
+      .mockImplementation(
+        (_code?: string | number | null) => undefined as never,
+      );
     sigIntHandler();
     expect(mockSession.close).toHaveBeenCalled();
     mockExit.mockRestore();
@@ -566,11 +729,15 @@ describe("startHttp2Server – graceful shutdown", () => {
 
   it("exits with code 0 on SIGINT", async () => {
     await startHttp2Server();
-    const [, sigIntHandler] = (process.once as ReturnType<typeof vi.spyOn>).mock.calls.find(
-      (c: any[]) => c[0] === "SIGINT",
-    ) as [string, () => void];
+    const [, sigIntHandler] = (
+      process.once as ReturnType<typeof vi.spyOn>
+    ).mock.calls.find((c: any[]) => c[0] === "SIGINT") as [string, () => void];
 
-    const mockExit = vi.spyOn(process, "exit").mockImplementation((_code?: string | number | null) => undefined as never);
+    const mockExit = vi
+      .spyOn(process, "exit")
+      .mockImplementation(
+        (_code?: string | number | null) => undefined as never,
+      );
     sigIntHandler();
     await Promise.resolve();
     expect(mockExit).toHaveBeenCalledWith(0);
@@ -588,7 +755,10 @@ describe("startHttp2Server – health endpoint", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/_health", "GET"));
     expect(stream.respond).toHaveBeenCalledWith(
-      expect.objectContaining({ ":status": 200, "content-type": expect.stringContaining("json") }),
+      expect.objectContaining({
+        ":status": 200,
+        "content-type": expect.stringContaining("json"),
+      }),
     );
   });
 
@@ -633,13 +803,17 @@ describe("startServerInstance – port conflict handling", () => {
         // Trigger EADDRINUSE
         const err: any = new Error("address in use");
         err.code = "EADDRINUSE";
-        const errorHandler = mockListenServer.once.mock.calls.find((c: any[]) => c[0] === "error")?.[1];
+        const errorHandler = mockListenServer.once.mock.calls.find(
+          (c: any[]) => c[0] === "error",
+        )?.[1];
         errorHandler?.(err);
       }),
       on: vi.fn(),
     };
 
-    await expect(startServerInstance(mockListenServer, "http")).rejects.toThrow(/already in use/);
+    await expect(startServerInstance(mockListenServer, "http")).rejects.toThrow(
+      /already in use/,
+    );
     (BascikConfig as any).isProdServer = false;
   });
 });
@@ -651,10 +825,17 @@ describe("startHttp2Server – cert generation", () => {
   // execFile is promisified; the callback is always the last argument.
   // mkcert gets an options object: execFile(cmd, args, opts, cb) → cb at index 3.
   // openssl has no options:        execFile(cmd, args, cb)       → cb at index 2.
-  type ExecFileCb = (err: Error | null, stdout?: string, stderr?: string) => void;
+  type ExecFileCb = (
+    err: Error | null,
+    stdout?: string,
+    stderr?: string,
+  ) => void;
   const lastArg = (args: unknown[]) => args[args.length - 1] as ExecFileCb;
   const succeed = (...args: unknown[]) => lastArg(args)(null, "", "");
-  const fail = (msg: string) => (...args: unknown[]) => lastArg(args)(new Error(msg));
+  const fail =
+    (msg: string) =>
+    (...args: unknown[]) =>
+      lastArg(args)(new Error(msg));
 
   beforeEach(async () => {
     const { access } = await import("node:fs/promises");
@@ -726,7 +907,9 @@ describe("startHttp2Server – custom cert config error", () => {
     const { access } = await import("node:fs/promises");
     (access as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("ENOENT"));
 
-    await expect(startHttp2Server()).rejects.toThrow("Custom TLS certificate files");
+    await expect(startHttp2Server()).rejects.toThrow(
+      "Custom TLS certificate files",
+    );
     (BascikConfig as any).http.tls = { enabled: true };
     (access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
   });
@@ -754,14 +937,23 @@ describe("startServerInstance signal handler cleanup", () => {
 
     await startServerInstance(mockServer, "http");
 
-    expect(processOnceSpy).toHaveBeenCalledWith("SIGTERM", expect.any(Function));
+    expect(processOnceSpy).toHaveBeenCalledWith(
+      "SIGTERM",
+      expect.any(Function),
+    );
     expect(processOnceSpy).toHaveBeenCalledWith("SIGINT", expect.any(Function));
 
     expect(closeCb).toBeDefined();
     closeCb?.();
 
-    expect(processRemoveListenerSpy).toHaveBeenCalledWith("SIGTERM", expect.any(Function));
-    expect(processRemoveListenerSpy).toHaveBeenCalledWith("SIGINT", expect.any(Function));
+    expect(processRemoveListenerSpy).toHaveBeenCalledWith(
+      "SIGTERM",
+      expect.any(Function),
+    );
+    expect(processRemoveListenerSpy).toHaveBeenCalledWith(
+      "SIGINT",
+      expect.any(Function),
+    );
 
     processOnceSpy.mockRestore();
     processRemoveListenerSpy.mockRestore();
@@ -769,12 +961,16 @@ describe("startServerInstance signal handler cleanup", () => {
 
   it("calls closeAllConnections on server when gracefulShutdown is triggered", async () => {
     let sigIntHandler: (() => void) | undefined;
-    vi.spyOn(process, "once").mockImplementation((event: string | symbol, listener: (...args: any[]) => void) => {
-      if (event === "SIGINT") sigIntHandler = listener as () => void;
-      return process;
-    });
+    vi.spyOn(process, "once").mockImplementation(
+      (event: string | symbol, listener: (...args: any[]) => void) => {
+        if (event === "SIGINT") sigIntHandler = listener as () => void;
+        return process;
+      },
+    );
 
-    const mockExit = vi.spyOn(process, "exit").mockImplementation((() => { }) as any);
+    const mockExit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => {}) as any);
     const mockServerWithCloseAll: any = {
       once: vi.fn().mockReturnThis(),
       on: vi.fn().mockReturnThis(),
@@ -783,7 +979,9 @@ describe("startServerInstance signal handler cleanup", () => {
         callback?.();
         return mockServerWithCloseAll;
       }),
-      close: vi.fn((cb?: (err?: Error) => void) => { cb?.(); }),
+      close: vi.fn((cb?: (err?: Error) => void) => {
+        cb?.();
+      }),
       closeIdleConnections: vi.fn(),
       closeAllConnections: vi.fn(),
       removeListener: vi.fn().mockReturnThis(),
@@ -813,7 +1011,9 @@ describe("startServerInstance signal handler cleanup", () => {
       removeListener: vi.fn().mockReturnThis(),
     };
 
-    await expect(startServerInstance(mockOverflowServer, "http")).rejects.toThrow(RangeError);
+    await expect(
+      startServerInstance(mockOverflowServer, "http"),
+    ).rejects.toThrow(RangeError);
   });
 
   it("uses process.env.PORT when defined", async () => {
@@ -824,7 +1024,8 @@ describe("startServerInstance signal handler cleanup", () => {
       const mockServer: any = {
         once: vi.fn().mockReturnThis(),
         listen: vi.fn((_port: number, hostnameOrCb: any, cb?: () => void) => {
-          const callback = typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
+          const callback =
+            typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
           callback?.();
           return mockServer;
         }),
@@ -833,7 +1034,11 @@ describe("startServerInstance signal handler cleanup", () => {
       };
 
       const origin = await startServerInstance(mockServer, "http");
-      expect(mockServer.listen).toHaveBeenCalledWith(9992, "localhost", expect.any(Function));
+      expect(mockServer.listen).toHaveBeenCalledWith(
+        9992,
+        "localhost",
+        expect.any(Function),
+      );
       expect(origin).toBe("http://localhost:9992");
     } finally {
       if (originalPort !== undefined) {
@@ -854,7 +1059,8 @@ describe("startServerInstance signal handler cleanup", () => {
       const mockServer: any = {
         once: vi.fn().mockReturnThis(),
         listen: vi.fn((_port: number, hostnameOrCb: any, cb?: () => void) => {
-          const callback = typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
+          const callback =
+            typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
           callback?.();
           return mockServer;
         }),
@@ -863,7 +1069,11 @@ describe("startServerInstance signal handler cleanup", () => {
       };
 
       const origin = await startServerInstance(mockServer, "http");
-      expect(mockServer.listen).toHaveBeenCalledWith(9443, "localhost", expect.any(Function));
+      expect(mockServer.listen).toHaveBeenCalledWith(
+        9443,
+        "localhost",
+        expect.any(Function),
+      );
       expect(origin).toBe("http://localhost:9443");
     } finally {
       if (originalServePort !== undefined) {
@@ -887,7 +1097,8 @@ describe("Server-owned RateLimiter lifecycle", () => {
   });
 
   it("getActiveRateLimiter creates limiter and starts its sweep timer", async () => {
-    const { getActiveRateLimiter, resetActiveRateLimiter } = await import("./server.ts");
+    const { getActiveRateLimiter, resetActiveRateLimiter } =
+      await import("./server.ts");
     resetActiveRateLimiter();
 
     const limiter = getActiveRateLimiter();
@@ -896,7 +1107,8 @@ describe("Server-owned RateLimiter lifecycle", () => {
   });
 
   it("resetActiveRateLimiter cleans up timer and resets instance", async () => {
-    const { getActiveRateLimiter, resetActiveRateLimiter } = await import("./server.ts");
+    const { getActiveRateLimiter, resetActiveRateLimiter } =
+      await import("./server.ts");
     const limiter1 = getActiveRateLimiter();
     expect(limiter1.isTimerActive()).toBe(true);
 

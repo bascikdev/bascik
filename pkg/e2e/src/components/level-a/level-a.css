@@ -5,11 +5,13 @@
   background: rgb(5, 15, 5);
   margin-bottom: 16px;
 }
+
 .section-title {
   color: rgb(74, 222, 128);
   margin: 0 0 12px;
   font-size: 1.1rem;
 }
+
 .section-content {
   padding: 4px 0;
 }

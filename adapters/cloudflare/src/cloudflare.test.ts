@@ -17,7 +17,12 @@ import {
   cleanupServerlessFixture,
   createServerlessFixture,
 } from "./serverless-fixture.test-helper.ts";
-import { createGate, startHarness, type Harness, type DeployTarget } from "./cloudflare-harness.test-helper.ts";
+import {
+  createGate,
+  startHarness,
+  type Harness,
+  type DeployTarget,
+} from "./cloudflare-harness.test-helper.ts";
 
 const TARGETS: DeployTarget[] = ["cloudflare-pages", "cloudflare-workers"];
 
@@ -33,7 +38,12 @@ describe.each(TARGETS)("cloudflare adapter in local workerd (%s)", (target) => {
     // deployment folder and dist/ remain.
     await rm(join(root, "src"), { recursive: true, force: true });
     await rename(join(root, "node_modules"), join(root, "node_modules.hidden"));
-    harness = await startHarness({ projectRoot: root, target, bindings: { GREETING: "kv-hello" }, gate });
+    harness = await startHarness({
+      projectRoot: root,
+      target,
+      bindings: { GREETING: "kv-hello" },
+      gate,
+    });
   }, 180_000);
 
   afterAll(async () => {
@@ -42,7 +52,11 @@ describe.each(TARGETS)("cloudflare adapter in local workerd (%s)", (target) => {
   });
 
   it("control: a dynamic page that bypasses the worker is a 404, never an inert placeholder document", async () => {
-    const bypass = await startHarness({ projectRoot: root, target, invocationRoutes: ["/never-matches"] });
+    const bypass = await startHarness({
+      projectRoot: root,
+      target,
+      invocationRoutes: ["/never-matches"],
+    });
     try {
       const res = await bypass.fetch("/account");
       expect(res.status).toBe(404);
@@ -85,7 +99,9 @@ describe.each(TARGETS)("cloudflare adapter in local workerd (%s)", (target) => {
     expect(html).not.toContain("text/bascik-server");
     // Every alias reaches the same composition.
     for (const alias of ["/account/", "/account.html"]) {
-      const aliased = await harness.fetch(alias, { headers: { "x-display-name": "Alias" } });
+      const aliased = await harness.fetch(alias, {
+        headers: { "x-display-name": "Alias" },
+      });
       expect(aliased.status, alias).toBe(200);
       expect(await aliased.text()).toContain("Hello Alias");
     }
@@ -94,9 +110,15 @@ describe.each(TARGETS)("cloudflare adapter in local workerd (%s)", (target) => {
   it("per-request isolation: concurrent requests never see each other's headers", async () => {
     const names = ["A", "B", "C", "D", "E", "F"];
     const bodies = await Promise.all(
-      names.map((n) => harness.fetch("/account", { headers: { "x-display-name": n } }).then((r) => r.text())),
+      names.map((n) =>
+        harness
+          .fetch("/account", { headers: { "x-display-name": n } })
+          .then((r) => r.text()),
+      ),
     );
-    bodies.forEach((body, i) => expect(body).toContain(`Hello ${names[i]} via`));
+    bodies.forEach((body, i) =>
+      expect(body).toContain(`Hello ${names[i]} via`),
+    );
   });
 
   it("HEAD on a dynamic page returns headers with content-length and no body", async () => {
@@ -133,8 +155,12 @@ describe.each(TARGETS)("cloudflare adapter in local workerd (%s)", (target) => {
     gate.release();
     const chunks = await streamed.all();
     const body = chunks.map((c) => c.text).join("");
-    expect(body.indexOf("fast-fragment")).toBeLessThan(body.indexOf("slow-fragment"));
-    expect(body.indexOf("slow-fragment")).toBeLessThan(body.indexOf('data-testid="tail"'));
+    expect(body.indexOf("fast-fragment")).toBeLessThan(
+      body.indexOf("slow-fragment"),
+    );
+    expect(body.indexOf("slow-fragment")).toBeLessThan(
+      body.indexOf('data-testid="tail"'),
+    );
     expect(body).toContain("slow ünï");
     expect(body).not.toContain("text/bascik-server");
   });
@@ -162,14 +188,19 @@ describe.each(TARGETS)("cloudflare adapter in local workerd (%s)", (target) => {
       expect(health.status).toBe(200);
       expect(await health.json()).toEqual({ ok: true });
       const user = await harness.fetch("/api/users/42");
-      expect(await user.json()).toMatchObject({ id: "42", platform: "cloudflare" });
+      expect(await user.json()).toMatchObject({
+        id: "42",
+        platform: "cloudflare",
+      });
     });
 
     it("method policy: 405 + Allow, auto OPTIONS 204 without CORS, derived HEAD", async () => {
       const put = await harness.fetch("/api/users/1", { method: "PUT" });
       expect(put.status).toBe(405);
       expect(put.headers.get("allow")).toBe("DELETE, GET, HEAD, OPTIONS");
-      const options = await harness.fetch("/api/users/1", { method: "OPTIONS" });
+      const options = await harness.fetch("/api/users/1", {
+        method: "OPTIONS",
+      });
       expect(options.status).toBe(204);
       expect(options.headers.get("allow")).toBe("DELETE, GET, HEAD, OPTIONS");
       expect(options.headers.get("access-control-allow-origin")).toBeNull();
@@ -181,17 +212,25 @@ describe.each(TARGETS)("cloudflare adapter in local workerd (%s)", (target) => {
     });
 
     it("POST bodies round-trip and multiple Set-Cookie headers survive", async () => {
-      const res = await harness.fetch("/api/echo", { method: "POST", body: "payload ünï" });
+      const res = await harness.fetch("/api/echo", {
+        method: "POST",
+        body: "payload ünï",
+      });
       expect(res.status).toBe(201);
       expect(await res.text()).toBe("payload ünï");
-      expect(res.headers.getSetCookie()).toEqual(["a=1; Path=/", "b=2; Path=/"]);
+      expect(res.headers.getSetCookie()).toEqual([
+        "a=1; Path=/",
+        "b=2; Path=/",
+      ]);
       expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     });
 
     it("a streamed API body arrives as chunks", async () => {
       const streamed = await harness.streamed("/api/stream");
       const chunks = await streamed.all();
-      expect(chunks.map((c) => c.text).join("")).toBe("chunk1\nchunk2\nchunk3\n");
+      expect(chunks.map((c) => c.text).join("")).toBe(
+        "chunk1\nchunk2\nchunk3\n",
+      );
     });
 
     it("a thrown handler is a generic 500 with nothing leaked", async () => {
@@ -209,7 +248,14 @@ describe.each(TARGETS)("cloudflare adapter in local workerd (%s)", (target) => {
   });
 
   it("private artifacts are unreachable: metadata, sidecar, and worker code never come back", async () => {
-    for (const path of ["/.bascik/server-scripts.json", "/.bascik/manifest.json", "/_worker.js", "/_routes.json", "/worker.js", "/wrangler.jsonc"]) {
+    for (const path of [
+      "/.bascik/server-scripts.json",
+      "/.bascik/manifest.json",
+      "/_worker.js",
+      "/_routes.json",
+      "/worker.js",
+      "/wrangler.jsonc",
+    ]) {
       const res = await harness.fetch(path);
       expect(res.status, path).not.toBe(200);
       const text = await res.text();
@@ -217,7 +263,9 @@ describe.each(TARGETS)("cloudflare adapter in local workerd (%s)", (target) => {
       expect(text, path).not.toContain('"scripts"');
     }
     // A dynamic page alias is the worker's, never a public file.
-    const alias = await harness.fetch("/dashboard.html", { headers: { "x-display-name": "x" } });
+    const alias = await harness.fetch("/dashboard.html", {
+      headers: { "x-display-name": "x" },
+    });
     expect(alias.status).toBe(200);
     expect(await alias.text()).not.toContain("text/bascik-server");
   });
@@ -226,7 +274,9 @@ describe.each(TARGETS)("cloudflare adapter in local workerd (%s)", (target) => {
     // The WHATWG URL parser inside the Worker normalizes `%2e%2e` before the
     // handler runs (a browser does the same), so an encoded traversal is just
     // the normalized path: it can resolve a page, never a private artifact.
-    const normalized = await harness.streamed("/api/%2e%2e/.bascik/server-scripts.json");
+    const normalized = await harness.streamed(
+      "/api/%2e%2e/.bascik/server-scripts.json",
+    );
     expect(normalized.status).not.toBe(200);
     const raw = await harness.streamed("/..%2f.bascik/manifest.json");
     expect(raw.status).not.toBe(200);
@@ -250,7 +300,10 @@ describe("cloudflare adapter: missing binding diagnostics", () => {
     let harness: Harness | undefined;
     try {
       await buildServerlessFixture(root, "cloudflare-pages");
-      harness = await startHarness({ projectRoot: root, target: "cloudflare-pages" });
+      harness = await startHarness({
+        projectRoot: root,
+        target: "cloudflare-pages",
+      });
       const res = await harness.fetch("/account");
       expect(res.status).toBe(200);
       expect(await res.text()).toContain("(none)");

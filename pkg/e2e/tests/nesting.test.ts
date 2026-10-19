@@ -20,70 +20,70 @@
  * The fixture is built with `minify.identifiers: false` so scoped names
  * are readable: e.g. `bascik__nesting-test__card`.
  */
-import { test, expect, type Page, type Locator } from '@playwright/test';
+import { test, expect, type Page, type Locator } from "@playwright/test";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function card(page: Page, n: number): Locator {
-  return page.locator('.bascik__nesting-test__card').nth(n);
+  return page.locator(".bascik__nesting-test__card").nth(n);
 }
 
 function cardTitle(inst: Locator): Locator {
-  return inst.locator('.bascik__nesting-test__card-title');
+  return inst.locator(".bascik__nesting-test__card-title");
 }
 
 function cardBody(inst: Locator): Locator {
-  return inst.locator('.bascik__nesting-test__card-body');
+  return inst.locator(".bascik__nesting-test__card-body");
 }
 
 function badges(inst: Locator): Locator {
-  return inst.locator('.bascik__inner-badge__badge');
+  return inst.locator(".bascik__inner-badge__badge");
 }
 
 // ---------------------------------------------------------------------------
 // Test suite
 // ---------------------------------------------------------------------------
 
-test.describe('nesting-test page', () => {
+test.describe("nesting-test page", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/nesting-test');
+    await page.goto("/nesting-test");
   });
 
   // -------------------------------------------------------------------------
   // Card 1 — parent props
   // -------------------------------------------------------------------------
 
-  test('card 1: title prop is injected', async ({ page }) => {
-    await expect(cardTitle(card(page, 0))).toHaveText('First Card');
+  test("card 1: title prop is injected", async ({ page }) => {
+    await expect(cardTitle(card(page, 0))).toHaveText("First Card");
   });
 
-  test('card 1: body prop is injected', async ({ page }) => {
-    await expect(cardBody(card(page, 0))).toHaveText('Body of the first card.');
+  test("card 1: body prop is injected", async ({ page }) => {
+    await expect(cardBody(card(page, 0))).toHaveText("Body of the first card.");
   });
 
   // -------------------------------------------------------------------------
   // Card 2 — parent props + independence
   // -------------------------------------------------------------------------
 
-  test('card 2: title prop is injected', async ({ page }) => {
-    await expect(cardTitle(card(page, 1))).toHaveText('Second Card');
+  test("card 2: title prop is injected", async ({ page }) => {
+    await expect(cardTitle(card(page, 1))).toHaveText("Second Card");
   });
 
-  test('card 2: title is independent from card 1', async ({ page }) => {
-    await expect(cardTitle(card(page, 1))).not.toHaveText('First Card');
+  test("card 2: title is independent from card 1", async ({ page }) => {
+    await expect(cardTitle(card(page, 1))).not.toHaveText("First Card");
   });
 
   // -------------------------------------------------------------------------
   // Nested badges — count
   // -------------------------------------------------------------------------
 
-  test('card 1: contains 3 inner-badge instances', async ({ page }) => {
+  test("card 1: contains 3 inner-badge instances", async ({ page }) => {
     await expect(badges(card(page, 0))).toHaveCount(3);
   });
 
-  test('card 2: contains 3 inner-badge instances', async ({ page }) => {
+  test("card 2: contains 3 inner-badge instances", async ({ page }) => {
     await expect(badges(card(page, 1))).toHaveCount(3);
   });
 
@@ -91,37 +91,47 @@ test.describe('nesting-test page', () => {
   // Child props threaded through self-closing tags
   // -------------------------------------------------------------------------
 
-  test('card 1: first badge shows "featured" (self-closing with prop)', async ({ page }) => {
-    await expect(badges(card(page, 0)).nth(0)).toHaveText('featured');
+  test('card 1: first badge shows "featured" (self-closing with prop)', async ({
+    page,
+  }) => {
+    await expect(badges(card(page, 0)).nth(0)).toHaveText("featured");
   });
 
-  test('card 1: second badge shows "active" (self-closing with prop)', async ({ page }) => {
-    await expect(badges(card(page, 0)).nth(1)).toHaveText('active');
+  test('card 1: second badge shows "active" (self-closing with prop)', async ({
+    page,
+  }) => {
+    await expect(badges(card(page, 0)).nth(1)).toHaveText("active");
   });
 
-  test('card 1: third badge shows "Default" (self-closing, no prop — fallback)', async ({ page }) => {
-    await expect(badges(card(page, 0)).nth(2)).toHaveText('Default');
+  test('card 1: third badge shows "Default" (self-closing, no prop — fallback)', async ({
+    page,
+  }) => {
+    await expect(badges(card(page, 0)).nth(2)).toHaveText("Default");
   });
 
   // -------------------------------------------------------------------------
   // CSS scoping — parent component
   // -------------------------------------------------------------------------
 
-  test('parent CSS applied: card has correct background color', async ({ page }) => {
+  test("parent CSS applied: card has correct background color", async ({
+    page,
+  }) => {
     const bg = await card(page, 0).evaluate(
       (el) => getComputedStyle(el).backgroundColor,
     );
-    expect(bg).toBe('rgb(20, 20, 20)');
+    expect(bg).toBe("rgb(20, 20, 20)");
   });
 
   // -------------------------------------------------------------------------
   // CSS scoping — child component
   // -------------------------------------------------------------------------
 
-  test('child CSS applied: badge has correct background color', async ({ page }) => {
-    const bg = await badges(card(page, 0)).nth(0).evaluate(
-      (el) => getComputedStyle(el).backgroundColor,
-    );
-    expect(bg).toBe('rgb(30, 58, 95)');
+  test("child CSS applied: badge has correct background color", async ({
+    page,
+  }) => {
+    const bg = await badges(card(page, 0))
+      .nth(0)
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).toBe("rgb(30, 58, 95)");
   });
 });

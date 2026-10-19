@@ -1,38 +1,42 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
-<head>
-  <meta charset="UTF-8">
-  <script data-bascik-routes>
-    export default async function () {
-      const items = [
-        { params: { slug: "alpha" }, data: { title: "Alpha Post", count: 1 } },
-        { params: { slug: "beta" }, data: { title: "Beta Post", count: 2 } },
-        { params: { slug: "author’s-post" }, data: { title: "Unicode Post", count: 3 } }
-      ];
-      return items;
-    }
-  </script>
-  <script data-bascik-build>
-    export default async function () {
-      const { data } = JSON.parse(process.env.BASCIK_ROUTE);
-      return `<title data-testid="doc-title">${data.title}</title>`;
-    }
-  </script>
-</head>
-
-<body>
-  <div data-testid="container">
-    <script data-bascik-build>
+  <head>
+    <meta charset="UTF-8" />
+    <script data-bascik-routes>
       export default async function () {
-        const { params, data } = JSON.parse(process.env.BASCIK_ROUTE);
-        return `<h1 data-testid="post-title">${data.title}</h1><p data-testid="post-slug">${params.slug}</p><span data-testid="post-count">${data.count}</span>`;
+        const items = [
+          {
+            params: { slug: "alpha" },
+            data: { title: "Alpha Post", count: 1 },
+          },
+          { params: { slug: "beta" }, data: { title: "Beta Post", count: 2 } },
+          {
+            params: { slug: "author’s-post" },
+            data: { title: "Unicode Post", count: 3 },
+          },
+        ];
+        return items;
       }
     </script>
-    <script data-bascik-server>
-      console.log('<div data-testid="server-slice">Personalized Slice</div>');
+    <script data-bascik-build>
+      export default async function () {
+        const { data } = JSON.parse(process.env.BASCIK_ROUTE);
+        return `<title data-testid="doc-title">${data.title}</title>`;
+      }
     </script>
-  </div>
-</body>
+  </head>
 
+  <body>
+    <div data-testid="container">
+      <script data-bascik-build>
+        export default async function () {
+          const { params, data } = JSON.parse(process.env.BASCIK_ROUTE);
+          return `<h1 data-testid="post-title">${data.title}</h1><p data-testid="post-slug">${params.slug}</p><span data-testid="post-count">${data.count}</span>`;
+        }
+      </script>
+      <script data-bascik-server>
+        console.log('<div data-testid="server-slice">Personalized Slice</div>');
+      </script>
+    </div>
+  </body>
 </html>

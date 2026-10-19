@@ -10,7 +10,7 @@
   <span id="inline-out" data-testid="ts-inline-out">pending</span>
   <span id="plain-out" data-testid="ts-plain-out">pending</span>
   <script src="ts-strip-test.ts"></script>
-  <script type="text/typescript">
+  <script data-type="custom-meta" data-src="/lazy.js" type="text/typescript">
     const inlineOut = document.getElementById("inline-out") as HTMLElement;
     let inlineHits: number = 0;
     inlineOut.textContent = `inline-typescript-ran:${++inlineHits}`;

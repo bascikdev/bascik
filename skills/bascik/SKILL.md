@@ -19,7 +19,7 @@ Code in this skill is illustrative. Adapt tag names, paths, and values to the pr
 
 - `package.json` depends on `@bascik/bascik`, or the root has `bascik.config.ts` / `bascik.config.js`, or there are `.html` files under `src/components/`.
 - Node.js 22.18 or newer (24 LTS recommended). Node runs `.ts` helpers natively, so no TypeScript build step exists.
-- Standard scripts: `npm run dev` (`bascik`), `npm run build` (`bascik --build`), `npm run lint` (`bascik-language-server --check`).
+- Standard scripts: `npm run dev` (`bascik`), `npm run build` (`bascik --build`), `npm run lint` (`bascik --check`).
 
 ## Project layout
 
@@ -48,15 +48,20 @@ Default pattern: `<style>` above the markup, markup in the middle, `<script>` be
 ```html
 <!-- src/components/like-button/like-button.html -->
 <style>
-  .like { padding: 0.5rem 1rem; border-radius: 6px; }
-  .like.active { background: #d3ff8d; }
+  .like {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+  }
+  .like.active {
+    background: #d3ff8d;
+  }
 </style>
 <button class="like" id="btn" type="button">
   <span data-bascik-prop-label>Like</span>
 </button>
 <script>
-  const btn = document.getElementById('btn');
-  btn.addEventListener('click', () => btn.classList.toggle('active'));
+  const btn = document.getElementById("btn");
+  btn.addEventListener("click", () => btn.classList.toggle("active"));
 </script>
 ```
 
@@ -87,26 +92,26 @@ New components are picked up by the running dev server automatically; no restart
 
 ## Slots, props, and attributes
 
-| Need | Component template | Usage site |
-|---|---|---|
-| Default slot (rich HTML) | `<div data-bascik-slot>fallback</div>` | `<my-card><h2>Title</h2></my-card>` |
-| Named slot | `<div data-bascik-slot="header"></div>` | `<div data-bascik-slot="header"><h1>Hi</h1></div>` inside the tag |
-| Text prop | `<p data-bascik-prop-title></p>` | `<my-card data-bascik-prop-title="Hello" />` |
-| Prop into an attribute | `<img data-bascik-attr-src="image" data-bascik-attr-alt="alt">` | `<my-card data-bascik-prop-image="/a.png" data-bascik-prop-alt="A" />` |
-| Forward attributes | (nothing) | `<my-card class="wide" aria-label="Promo" />` lands on the first root element |
+| Need                     | Component template                                              | Usage site                                                                    |
+| ------------------------ | --------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Default slot (rich HTML) | `<div data-bascik-slot>fallback</div>`                          | `<my-card><h2>Title</h2></my-card>`                                           |
+| Named slot               | `<div data-bascik-slot="header"></div>`                         | `<div data-bascik-slot="header"><h1>Hi</h1></div>` inside the tag             |
+| Text prop                | `<p data-bascik-prop-title></p>`                                | `<my-card data-bascik-prop-title="Hello" />`                                  |
+| Prop into an attribute   | `<img data-bascik-attr-src="image" data-bascik-attr-alt="alt">` | `<my-card data-bascik-prop-image="/a.png" data-bascik-prop-alt="A" />`        |
+| Forward attributes       | (nothing)                                                       | `<my-card class="wide" aria-label="Promo" />` lands on the first root element |
 
 Pass props as `data-bascik-prop-<name>="..."` on the usage tag. A plain attribute such as `label="..."` is not a prop: it is forwarded to the root element and the prop keeps its default. The slot element itself is replaced by the content, so named-slot wrappers disappear: wrap headings and links in a `<div data-bascik-slot="x">` rather than putting the attribute on the `<h1>` or `<a>`. Details: `read-doc.mjs /slots`, `/props`, `/attribute-inheritance`.
 
 ## Script tags at a glance
 
-| Tag | Runs | Use for |
-|---|---|---|
-| `<script>` | Browser | Component and page behavior (scoped, IIFE-wrapped) |
-| `<script data-bascik-build>` | Node, at build time | Markup from files, Markdown, APIs; output replaces the tag |
-| `<script data-bascik-routes>` | Node, at build time | Expanding `[slug].html` templates into many pages |
-| `<script data-bascik-server>` | Node, per request | Personalized markup (needs `bascik --server` or a serverless target) |
-| `<script data-bascik-stream>` | Node, per request, streamed | Slow per-request blocks that should not delay the page shell |
-| `<script data-bascik-dev>` | Browser, dev only | Debug helpers removed from production builds |
+| Tag                           | Runs                        | Use for                                                              |
+| ----------------------------- | --------------------------- | -------------------------------------------------------------------- |
+| `<script>`                    | Browser                     | Component and page behavior (scoped, IIFE-wrapped)                   |
+| `<script data-bascik-build>`  | Node, at build time         | Markup from files, Markdown, APIs; output replaces the tag           |
+| `<script data-bascik-routes>` | Node, at build time         | Expanding `[slug].html` templates into many pages                    |
+| `<script data-bascik-server>` | Node, per request           | Personalized markup (needs `bascik --server` or a serverless target) |
+| `<script data-bascik-stream>` | Node, per request, streamed | Slow per-request blocks that should not delay the page shell         |
+| `<script data-bascik-dev>`    | Browser, dev only           | Debug helpers removed from production builds                         |
 
 Node-side scripts export a default function that returns an HTML string. Details are in the `bascik-scripts` skill.
 
@@ -117,11 +122,14 @@ bascik                      # dev server at http://localhost:8080 with live relo
 bascik --build              # production build to dist/ (HTML, CSS, JS, and identifier minification on)
 bascik --build --only "blog/**"   # rebuild matching pages without cleaning dist/
 bascik --server             # serve a built dist/ (needed for server/stream scripts and API routes)
-bascik --check              # validate pages, components, config, and API routes without building
+bascik --check              # project checks, plus the per-file checks when @bascik/language-server is installed
+bascik --check --fix        # also rewrite fixable findings (needs @bascik/language-server)
 bascik add <package>        # copy components from an installed npm package into src/components/
 bascik init                 # add Bascik to an existing project
-npx @bascik/language-server --check   # lint scoping patterns, unclosed tags, and directives
+npx @bascik/language-server --check   # the per-file checks on their own (bascik --check already runs them)
 ```
+
+`bascik --check` and the linter are not two overlapping tools. `bascik --check` answers project questions (duplicate routes, unused components, config), and the linter answers per-file questions (attribute typos, CSS that cannot be scoped). `bascik --check` runs the linter too, so use it, and reach for the linter alone only on a folder outside the project.
 
 New project: `npm create bascik@latest my-site -y`. Production builds need a site URL for `sitemap.xml` and `robots.txt`: `BASCIK_SITE_URL=https://example.com bascik --build` (or `--site-url`, or `.env`). Full CLI and error output: `read-doc.mjs /cli`.
 
@@ -129,7 +137,7 @@ New project: `npm create bascik@latest my-site -y`. Production builds need a sit
 
 Do not stop at "the file looks right". Run these from the project root:
 
-1. `node <skill-dir>/scripts/verify.mjs` runs `bascik --check` and the language server linter and summarizes both. Add `--build` to also run a production build.
+1. `node <skill-dir>/scripts/verify.mjs` runs `bascik --check` (project and per-file checks) and, for component folders outside the project, the linter, then summarizes each step. Add `--build` to also run a production build.
 2. `node <skill-dir>/scripts/preview.mjs '<my-card data-bascik-prop-title="Hi" />' --count 2` compiles a snippet with the project's real components and config and prints the unminified output, so you can confirm scoped names, slot placement, and script rewrites.
 3. Read the relevant file in `dist/` after a build. A hyphenated tag still present in `dist/` means no component matched it.
 
@@ -139,16 +147,16 @@ Do not stop at "the file looks right". Run these from the project root:
 
 All scripts are dependency-free Node.js (22.18+) and run from the project root. Each prints `--help`.
 
-| Script | Purpose |
-|---|---|
-| [`scripts/verify.mjs`](scripts/verify.mjs) | `bascik --check` plus `@bascik/language-server --check`, with an optional `--build` |
-| [`scripts/preview.mjs`](scripts/preview.mjs) | Compile a snippet, file, or existing page in a temporary build and print the result |
-| [`scripts/list-components.mjs`](scripts/list-components.mjs) | Inventory components with their props, slots, companion files, and `@bascik` descriptions |
-| [`scripts/new-component.mjs`](scripts/new-component.mjs) | Create a component folder that follows the naming and ordering rules |
-| [`scripts/search-docs.mjs`](scripts/search-docs.mjs) | Search the live docs at bascik.dev for a topic |
-| [`scripts/read-doc.mjs`](scripts/read-doc.mjs) | Print the current text of a docs page, such as `/scoped-javascript` |
-| [`scripts/add-example.mjs`](scripts/add-example.mjs) | Copy a tested example component or part of the starter site from bascik.dev into the project (`--list` shows them) |
-| [`scripts/check-links.mjs`](scripts/check-links.mjs) | Find broken internal links, missing assets, and dead `#fragments` in the built `dist/`, honoring `base` |
+| Script                                                       | Purpose                                                                                                            |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| [`scripts/verify.mjs`](scripts/verify.mjs)                   | `bascik --check`, plus the linter on component folders outside the project, with an optional `--build`             |
+| [`scripts/preview.mjs`](scripts/preview.mjs)                 | Compile a snippet, file, or existing page in a temporary build and print the result                                |
+| [`scripts/list-components.mjs`](scripts/list-components.mjs) | Inventory components with their props, slots, companion files, and `@bascik` descriptions                          |
+| [`scripts/new-component.mjs`](scripts/new-component.mjs)     | Create a component folder that follows the naming and ordering rules                                               |
+| [`scripts/search-docs.mjs`](scripts/search-docs.mjs)         | Search the live docs at bascik.dev for a topic                                                                     |
+| [`scripts/read-doc.mjs`](scripts/read-doc.mjs)               | Print the current text of a docs page, such as `/scoped-javascript`                                                |
+| [`scripts/add-example.mjs`](scripts/add-example.mjs)         | Copy a tested example component or part of the starter site from bascik.dev into the project (`--list` shows them) |
+| [`scripts/check-links.mjs`](scripts/check-links.mjs)         | Find broken internal links, missing assets, and dead `#fragments` in the built `dist/`, honoring `base`            |
 
 Run `list-components.mjs` before creating a component so you reuse what exists instead of duplicating it.
 
@@ -161,15 +169,15 @@ node <skill-dir>/scripts/read-doc.mjs /dynamic-routes
 node <skill-dir>/scripts/search-docs.mjs "dynamic routes trailing slash"
 ```
 
-| How do I... | Read |
-|---|---|
-| Write components, slots, props, attributes | `/components`, `/slots`, `/props`, `/attribute-inheritance` |
-| Pass shared `<head>` tags | `/how-to/templating` |
-| Use a library (petite-vue, Alpine.js, HTMX, Tailwind) | `/libraries` |
-| Use a third-party web component | `/how-to/third-party-web-components` |
-| Share components between projects | `/how-to/sharing-components`, `/how-to/publishing-components` |
-| Find answers to edge cases | `/faq` |
-| Use the CLI and the dev server | `/cli`, `/development-server` |
+| How do I...                                           | Read                                                          |
+| ----------------------------------------------------- | ------------------------------------------------------------- |
+| Write components, slots, props, attributes            | `/components`, `/slots`, `/props`, `/attribute-inheritance`   |
+| Pass shared `<head>` tags                             | `/how-to/templating`                                          |
+| Use a library (petite-vue, Alpine.js, HTMX, Tailwind) | `/libraries`                                                  |
+| Use a third-party web component                       | `/how-to/third-party-web-components`                          |
+| Share components between projects                     | `/how-to/sharing-components`, `/how-to/publishing-components` |
+| Find answers to edge cases                            | `/faq`                                                        |
+| Use the CLI and the dev server                        | `/cli`, `/development-server`                                 |
 
 The full page index is at https://bascik.dev/llms.txt.
 
@@ -195,15 +203,15 @@ The script downloads from bascik.dev, maps files to the project's configured fol
 
 ## Companion skills
 
-| Skill | Load it when |
-|---|---|
-| `bascik-components` | Writing component CSS or `<script>` code, adding interactivity, theming, or compiled class and ID names look wrong |
-| `bascik-compatibility` | Deciding whether an HTML, CSS, or JavaScript feature works in browsers and inside a component |
-| `bascik-scripts` | Using `data-bascik-build`, `-routes`, `-server`, `-stream`, API routes, Markdown, or a blog |
-| `bascik-seo` | Titles, descriptions, canonical URLs, social cards, JSON-LD, sitemap, `llms.txt` |
-| `bascik-config` | Creating or editing `bascik.config.ts`, monorepos, deploying, or running `bascik --server` |
-| `bascik-testing` | Writing tests, debugging, validating output, or tuning Lighthouse scores |
-| `bascik-migrate` | Moving a site from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress |
+| Skill                  | Load it when                                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `bascik-components`    | Writing component CSS or `<script>` code, adding interactivity, theming, or compiled class and ID names look wrong |
+| `bascik-compatibility` | Deciding whether an HTML, CSS, or JavaScript feature works in browsers and inside a component                      |
+| `bascik-scripts`       | Using `data-bascik-build`, `-routes`, `-server`, `-stream`, API routes, Markdown, or a blog                        |
+| `bascik-seo`           | Titles, descriptions, canonical URLs, social cards, JSON-LD, sitemap, `llms.txt`                                   |
+| `bascik-config`        | Creating or editing `bascik.config.ts`, monorepos, deploying, or running `bascik --server`                         |
+| `bascik-testing`       | Writing tests, debugging, validating output, or tuning Lighthouse scores                                           |
+| `bascik-migrate`       | Moving a site from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress                                |
 
 If the companions or this skill's `scripts/` folder are missing, the skill was installed as a single file. Reinstall the full set:
 

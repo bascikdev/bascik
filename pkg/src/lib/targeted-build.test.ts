@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
-    directory: { out: "dist", pages: "src/pages", components: ["src/components"] },
+    directory: {
+      out: "dist",
+      pages: "src/pages",
+      components: ["src/components"],
+    },
     isBuild: true,
     generate: {
       manifest: true,
@@ -20,7 +24,11 @@ import { filterPagesByOnlyGlobs } from "./targeted-build.ts";
 import { manifestCollector, type BuildManifest } from "./manifest.ts";
 import { cspHashCollector, type CspHashesManifest } from "./csp-hashes.ts";
 import { generateSitemapFiles } from "./sitemap.ts";
-import { ownershipTracker, finalizeOwnedArtifacts, writeOwnershipInventory } from "./ownership.ts";
+import {
+  ownershipTracker,
+  finalizeOwnedArtifacts,
+  writeOwnershipInventory,
+} from "./ownership.ts";
 import { BascikConfig } from "./config.ts";
 import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -54,11 +62,15 @@ describe("targeted build CLI parsing & glob matching", () => {
   it("rejects --only without --build", () => {
     const devDecision = resolveCliAction(["--only", "blog/**"]);
     expect(devDecision.action).toBe("error");
-    expect(devDecision.errorMessage).toContain("--only only applies to --build");
+    expect(devDecision.errorMessage).toContain(
+      "--only only applies to --build",
+    );
 
     const serverDecision = resolveCliAction(["--server", "--only", "blog/**"]);
     expect(serverDecision.action).toBe("error");
-    expect(serverDecision.errorMessage).toContain("--only only applies to --build");
+    expect(serverDecision.errorMessage).toContain(
+      "--only only applies to --build",
+    );
   });
 
   it("rejects --only with an empty value", () => {
@@ -83,7 +95,11 @@ describe("targeted build CLI parsing & glob matching", () => {
       "src/pages/blog/post-2.html",
     ]);
 
-    const matched2 = filterPagesByOnlyGlobs(pageFiles, ["about.html", "nested/**"], pagesDir);
+    const matched2 = filterPagesByOnlyGlobs(
+      pageFiles,
+      ["about.html", "nested/**"],
+      pagesDir,
+    );
     expect(matched2).toEqual([
       "src/pages/about.html",
       "src/pages/nested/deep/page.html",
@@ -134,7 +150,11 @@ describe("targeted build artifact merging and warnings", () => {
         "gone.html": { hash: "old-gone-hash", size: 50 },
       },
     };
-    await writeFile(join(manifestDir, "manifest.json"), JSON.stringify(initialManifest, null, 2), "utf8");
+    await writeFile(
+      join(manifestDir, "manifest.json"),
+      JSON.stringify(initialManifest, null, 2),
+      "utf8",
+    );
     // Prior ownership: index owned both outputs. This build re-produces index
     // with only index.html, so gone.html is obsolete for the rebuilt owner.
     const sourceIndex = resolve(tempDir, "src/pages/index.html");
@@ -153,12 +173,20 @@ describe("targeted build artifact merging and warnings", () => {
         },
       },
     });
-    ownershipTracker.recordOutput(sourceIndex, "pages/index.html", "index.html", "/");
+    ownershipTracker.recordOutput(
+      sourceIndex,
+      "pages/index.html",
+      "index.html",
+      "/",
+    );
     manifestCollector.recordFile(join(tempDir, "index.html"), "<h1>Index</h1>");
 
     await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true });
 
-    const mergedContent = await readFile(join(manifestDir, "manifest.json"), "utf8");
+    const mergedContent = await readFile(
+      join(manifestDir, "manifest.json"),
+      "utf8",
+    );
     const merged = JSON.parse(mergedContent) as BuildManifest;
 
     expect(merged.files["index.html"]).toBeDefined();
@@ -174,7 +202,11 @@ describe("targeted build artifact merging and warnings", () => {
       "/": { scripts: ["sha256-abc"], styles: [] },
       "/gone": { scripts: [], styles: ["sha256-def"] },
     };
-    await writeFile(join(cspDir, "csp-hashes.json"), JSON.stringify(initialCsp, null, 2), "utf8");
+    await writeFile(
+      join(cspDir, "csp-hashes.json"),
+      JSON.stringify(initialCsp, null, 2),
+      "utf8",
+    );
     // Prior ownership: index owned both routes; this build owns only `/`.
     const sourceIndex = resolve(tempDir, "src/pages/index.html");
     await writeOwnershipInventory({
@@ -192,12 +224,20 @@ describe("targeted build artifact merging and warnings", () => {
         },
       },
     });
-    ownershipTracker.recordOutput(sourceIndex, "pages/index.html", "index.html", "/");
+    ownershipTracker.recordOutput(
+      sourceIndex,
+      "pages/index.html",
+      "index.html",
+      "/",
+    );
     cspHashCollector.recordPage("/", "<script>console.log(1)</script>");
 
     await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true });
 
-    const mergedContent = await readFile(join(cspDir, "csp-hashes.json"), "utf8");
+    const mergedContent = await readFile(
+      join(cspDir, "csp-hashes.json"),
+      "utf8",
+    );
     const merged = JSON.parse(mergedContent) as CspHashesManifest;
 
     expect(merged["/"]).toBeDefined();
@@ -206,11 +246,13 @@ describe("targeted build artifact merging and warnings", () => {
   });
 
   it("warns and skips sitemap generation on targeted build", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     await generateSitemapFiles(["pages/blog/post-1.html"]);
 
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Skipping sitemap and robots.txt generation during targeted build"),
+      expect.stringContaining(
+        "Skipping sitemap and robots.txt generation during targeted build",
+      ),
     );
     warnSpy.mockRestore();
   });

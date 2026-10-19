@@ -9,6 +9,7 @@ A list with a live text filter. Without JavaScript the full list shows and the f
 Pass `<li>` items in the default slot; the slot sits inside the component's `<ul>`. `label` labels the filter box and defaults to "Filter".
 
 <!-- demo:usage -->
+
 ```html
 <filter-list data-bascik-prop-label="Filter languages">
   <li>HTML</li>

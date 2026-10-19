@@ -48,7 +48,8 @@ const { state, buildScriptMocks } = vi.hoisted(() => {
 });
 
 vi.mock("./module-specifiers.ts", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./module-specifiers.ts")>();
+  const actual =
+    await importOriginal<typeof import("./module-specifiers.ts")>();
   buildScriptMocks.scanScript.mockImplementation(actual.scanScript);
   return { ...actual, scanScript: buildScriptMocks.scanScript };
 });
@@ -71,8 +72,16 @@ vi.mock("./config.js", () => ({
   BascikConfig: {
     base: "/",
     isBuild: false,
-    scripts: { cache: { enabled: true }, onBuildScriptError: "error", importRoot: "src" },
-    directory: { pages: "src/pages", components: ["src/components"], out: "dist" },
+    scripts: {
+      cache: { enabled: true },
+      onBuildScriptError: "error",
+      importRoot: "src",
+    },
+    directory: {
+      pages: "src/pages",
+      components: ["src/components"],
+      out: "dist",
+    },
   },
 }));
 
@@ -97,7 +106,9 @@ import { writeFile, unlink, readFile } from "node:fs/promises";
 import { BascikConfig } from "./config.ts";
 import { computePackageIdentity } from "./package-identity.ts";
 
-const mockPackageIdentity = computePackageIdentity as unknown as ReturnType<typeof vi.fn>;
+const mockPackageIdentity = computePackageIdentity as unknown as ReturnType<
+  typeof vi.fn
+>;
 
 const mockExecFile = execFile as unknown as ReturnType<typeof vi.fn>;
 
@@ -128,7 +139,8 @@ const resetReadFileMock = (fn?: (path: string) => Promise<string> | string) => {
 };
 
 const mockReadFile = buildScriptMocks.readFile;
-const origMockImplementation = mockReadFile.mockImplementation.bind(mockReadFile);
+const origMockImplementation =
+  mockReadFile.mockImplementation.bind(mockReadFile);
 mockReadFile.mockImplementation = (fn: any) => {
   resetReadFileMock(fn);
   return mockReadFile;
@@ -168,7 +180,11 @@ mockReadFile.mockResolvedValueOnce = (val: any) => {
 // When execFile runs, runner.mjs writes result.json. In mocked tests, runner.mjs
 // does not actually execute in Node unless execFile is real. Handler runner
 // expects stat(resultFilePath) and readFile(resultFilePath) to return the envelope.
-const resolveWith = (result: string, stdout: string = "", stderr: string = "") => {
+const resolveWith = (
+  result: string,
+  stdout: string = "",
+  stderr: string = "",
+) => {
   mockExecFile.mockImplementation(
     (
       _cmd: unknown,
@@ -197,7 +213,9 @@ const rejectWith = (message: string) =>
 // With per-script isolation (prompt 103), each uncached script maps to its own
 // execFile call. `resolveSequence` registers one successful response
 // per script, in order.
-const resolveSequence = (outputs: Array<{ result?: string; stdout?: string; stderr?: string }>) => {
+const resolveSequence = (
+  outputs: Array<{ result?: string; stdout?: string; stderr?: string }>,
+) => {
   mockExecFile.mockImplementation(
     (
       _cmd: unknown,
@@ -221,12 +239,19 @@ beforeEach(() => {
   buildScriptMocks.writeFile.mockReset().mockResolvedValue(undefined);
   buildScriptMocks.unlink.mockReset().mockResolvedValue(undefined);
   buildScriptMocks.mkdir.mockReset().mockResolvedValue(undefined);
-  buildScriptMocks.mkdtemp.mockReset().mockImplementation(async (prefix: string) => `${prefix}mockdir`);
+  buildScriptMocks.mkdtemp
+    .mockReset()
+    .mockImplementation(async (prefix: string) => `${prefix}mockdir`);
   buildScriptMocks.rm.mockReset().mockResolvedValue(undefined);
   buildScriptMocks.stat.mockReset().mockResolvedValue({ size: 100 });
-  buildScriptMocks.computePackageIdentity.mockReset().mockResolvedValue("pkgid:mock");
+  buildScriptMocks.computePackageIdentity
+    .mockReset()
+    .mockResolvedValue("pkgid:mock");
   clearBuildScriptCaches();
-  (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "error" };
+  (BascikConfig as any).scripts = {
+    ...BascikConfig.scripts,
+    onBuildScriptError: "error",
+  };
 });
 
 describe("executeBuildScripts", () => {
@@ -251,18 +276,22 @@ describe("executeBuildScripts", () => {
     // Build output is reprocessed so it can print component tags. HTML from a CMS or an API
     // may contain directive scripts; they must not run at build time or become server scripts.
     resolveWith(
-      '<p>post</p><script data-bascik-build>steal()</script>' +
-      '<script data-bascik-server>export default () => 1</script><post-card></post-card>',
+      "<p>post</p><script data-bascik-build>steal()</script>" +
+        "<script data-bascik-server>export default () => 1</script><post-card></post-card>",
     );
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = await executeBuildScripts(
       "<article><script data-bascik-build>console.log(await cms())</script></article>",
       "src/pages/blog/[slug].html",
     );
-    expect(result).toBe("<article><p>post</p><post-card></post-card></article>");
-    expect(warn).toHaveBeenCalledWith(expect.stringMatching(
-      /build script output in "pages\/blog\/\[slug\]\.html" contained <script data-bascik-build>, <script data-bascik-server>/,
-    ));
+    expect(result).toBe(
+      "<article><p>post</p><post-card></post-card></article>",
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /build script output in "pages\/blog\/\[slug\]\.html" contained <script data-bascik-build>, <script data-bascik-server>/,
+      ),
+    );
     warn.mockRestore();
   });
 
@@ -290,8 +319,12 @@ describe("executeBuildScripts", () => {
 
   it("appends //# sourceURL comment to temp script when filePath is provided", async () => {
     resolveWith("");
-    await executeBuildScripts("<script data-bascik-build>x()</script>", "src/pages/index.html");
-    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
+    await executeBuildScripts(
+      "<script data-bascik-build>x()</script>",
+      "src/pages/index.html",
+    );
+    const written = (writeFile as ReturnType<typeof vi.fn>).mock
+      .calls[0][1] as string;
     expect(written).toContain("//# sourceURL=src/pages/index.html");
   });
 
@@ -303,7 +336,8 @@ describe("executeBuildScripts", () => {
       "docs/src/pages/internals/time-boundaries.html",
     );
 
-    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
+    const written = (writeFile as ReturnType<typeof vi.fn>).mock
+      .calls[0][1] as string;
     expect(written).toContain(
       `import { renderSectionLabel } from '${pathToFileURL(resolve(process.cwd(), "docs/src/lib/render-nav.ts")).href}';`,
     );
@@ -319,7 +353,8 @@ describe("executeBuildScripts", () => {
       { pageFile: "src/pages/index.html" },
     );
 
-    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
+    const written = (writeFile as ReturnType<typeof vi.fn>).mock
+      .calls[0][1] as string;
     expect(written).toContain(
       `import '${pathToFileURL(resolve(process.cwd(), "src/components/page-badge-helper.ts")).href}'`,
     );
@@ -336,18 +371,30 @@ describe("executeBuildScripts", () => {
       { pageFile: "src/pages/index.html" },
     );
 
-    const tempWrites = (writeFile as ReturnType<typeof vi.fn>).mock.calls
-      .filter(([path]) => String(path).includes("build-") && String(path).endsWith(".mjs"));
+    const tempWrites = (
+      writeFile as ReturnType<typeof vi.fn>
+    ).mock.calls.filter(
+      ([path]) =>
+        String(path).includes("build-") && String(path).endsWith(".mjs"),
+    );
     expect(tempWrites).toHaveLength(2);
     expect(tempWrites[0][1]).toContain("//# sourceURL=src/pages/index.html");
-    expect(tempWrites[1][1]).toContain("//# sourceURL=src/components/page-badge.html");
+    expect(tempWrites[1][1]).toContain(
+      "//# sourceURL=src/components/page-badge.html",
+    );
     // Each uncached script runs in its own child process (prompt 103), so there
     // are two execFile calls, each with its own source file env.
     expect(mockExecFile).toHaveBeenCalledTimes(2);
-    const firstEnv = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
-    const secondEnv = mockExecFile.mock.calls[1][2] as { env?: Record<string, string> };
+    const firstEnv = mockExecFile.mock.calls[0][2] as {
+      env?: Record<string, string>;
+    };
+    const secondEnv = mockExecFile.mock.calls[1][2] as {
+      env?: Record<string, string>;
+    };
     expect(firstEnv.env?.BASCIK_SOURCE_FILE).toBe("src/pages/index.html");
-    expect(secondEnv.env?.BASCIK_SOURCE_FILE).toBe("src/components/page-badge.html");
+    expect(secondEnv.env?.BASCIK_SOURCE_FILE).toBe(
+      "src/components/page-badge.html",
+    );
   });
 
   it("rewrites dynamic relative imports and leaves bare and absolute URL specifiers untouched", async () => {
@@ -363,7 +410,8 @@ describe("executeBuildScripts", () => {
       "docs/src/pages/internals/time-boundaries.html",
     );
 
-    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
+    const written = (writeFile as ReturnType<typeof vi.fn>).mock
+      .calls[0][1] as string;
     expect(written).toContain(
       `await import('${pathToFileURL(resolve(process.cwd(), "docs/src/lib/md-renderer.ts")).href}')`,
     );
@@ -393,19 +441,32 @@ describe("executeBuildScripts", () => {
     expect(rewritten).toContain("`import('./raw.ts') ${import('file:");
     expect(rewritten).toContain("/import\\(['\"]\\.\\/regex\\.ts['\"]\\)/");
     expect(rewritten).toContain("obj.import('./method.ts')");
-    expect(rewritten).toContain("import /* keep-before */ { value as commented } from /* keep-specifier */ 'file:");
-    expect(rewritten).toContain(`import '${pathToFileURL(resolve(baseDir, "side-effect.ts")).href}'`);
-    expect(rewritten).toContain(`from '${pathToFileURL(resolve(baseDir, "exported.ts")).href}'`);
-    expect(rewritten).toContain(`import('${pathToFileURL(resolve(baseDir, "dynamic.ts")).href}')`);
+    expect(rewritten).toContain(
+      "import /* keep-before */ { value as commented } from /* keep-specifier */ 'file:",
+    );
+    expect(rewritten).toContain(
+      `import '${pathToFileURL(resolve(baseDir, "side-effect.ts")).href}'`,
+    );
+    expect(rewritten).toContain(
+      `from '${pathToFileURL(resolve(baseDir, "exported.ts")).href}'`,
+    );
+    expect(rewritten).toContain(
+      `import('${pathToFileURL(resolve(baseDir, "dynamic.ts")).href}')`,
+    );
     expect(rewritten).toContain("const token = '$& $1 $$'");
   });
 
   it.each([
     `if (ready) /import\\(['"]\\.\\/fake\\.ts['"]\\)/.test(source);`,
     `{ markReady(); } /import\\(['"]\\.\\/fake\\.ts['"]\\)/.test(source);`,
-  ])("leaves regex literals after statement boundaries byte-for-byte unchanged", (source) => {
-    expect(resolveBuildScriptImports(source, resolve(process.cwd(), "src/pages"))).toBe(source);
-  });
+  ])(
+    "leaves regex literals after statement boundaries byte-for-byte unchanged",
+    (source) => {
+      expect(
+        resolveBuildScriptImports(source, resolve(process.cwd(), "src/pages")),
+      ).toBe(source);
+    },
+  );
 
   it("removes the temp file after execution", async () => {
     resolveWith("output");
@@ -414,7 +475,10 @@ describe("executeBuildScripts", () => {
   });
 
   it("replaces the script tag with empty string on execution error when onBuildScriptError is 'warn'", async () => {
-    (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "warn" };
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      onBuildScriptError: "warn",
+    };
     rejectWith("syntax error");
     const html =
       "<p>before</p><script data-bascik-build>bad code</script><p>after</p>";
@@ -425,7 +489,10 @@ describe("executeBuildScripts", () => {
   });
 
   it("still removes the temp file when execution fails", async () => {
-    (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "warn" };
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      onBuildScriptError: "warn",
+    };
     rejectWith("error");
     await executeBuildScripts("<script data-bascik-build>bad</script>");
     expect(unlink).toHaveBeenCalledTimes(1);
@@ -458,14 +525,18 @@ describe("executeBuildScripts", () => {
     const html =
       '<aside class="sidebar"><nav><script data-bascik-build>gen()</script></nav></aside>';
     const result = await executeBuildScripts(html);
-    expect(result).toBe('<aside class="sidebar"><nav><p>Generated</p></nav></aside>');
+    expect(result).toBe(
+      '<aside class="sidebar"><nav><p>Generated</p></nav></aside>',
+    );
   });
 
   it("passes BASCIK_BUILD=0 to child process env when not in build mode", async () => {
     resolveWith("");
     (BascikConfig as { isBuild: boolean }).isBuild = false;
     await executeBuildScripts("<script data-bascik-build>x</script>");
-    const opts = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    const opts = mockExecFile.mock.calls[0][2] as {
+      env?: Record<string, string>;
+    };
     expect(opts.env?.BASCIK_BUILD).toBe("0");
   });
 
@@ -473,7 +544,9 @@ describe("executeBuildScripts", () => {
     resolveWith("");
     (BascikConfig as { isBuild: boolean }).isBuild = true;
     await executeBuildScripts("<script data-bascik-build>x</script>");
-    const opts = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    const opts = mockExecFile.mock.calls[0][2] as {
+      env?: Record<string, string>;
+    };
     expect(opts.env?.BASCIK_BUILD).toBe("1");
   });
 
@@ -483,10 +556,18 @@ describe("executeBuildScripts", () => {
       "<script data-bascik-build>x</script>",
       "/abs/project/src/pages/guides/intro.html",
     );
-    const opts = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
-    expect(opts.env?.BASCIK_SOURCE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
-    expect(opts.env?.BASCIK_PAGE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
-    expect(opts.env?.BASCIK_PAGES_DIR).toBe(`${process.cwd()}/src/pages`);
+    const opts = mockExecFile.mock.calls[0][2] as {
+      env?: Record<string, string>;
+    };
+    expect(opts.env?.BASCIK_SOURCE_FILE).toBe(
+      "/abs/project/src/pages/guides/intro.html",
+    );
+    expect(opts.env?.BASCIK_PAGE_FILE).toBe(
+      "/abs/project/src/pages/guides/intro.html",
+    );
+    expect(opts.env?.BASCIK_PAGES_DIR).toBe(
+      resolve(process.cwd(), "src/pages"),
+    );
   });
 
   describe("Node compile cache for build script children", () => {
@@ -510,12 +591,19 @@ describe("executeBuildScripts", () => {
     const childEnv = async (): Promise<Record<string, string>> => {
       resolveWith("");
       await executeBuildScripts("<script data-bascik-build>x</script>");
-      return (mockExecFile.mock.calls[0][2] as { env: Record<string, string> }).env;
+      return (mockExecFile.mock.calls[0][2] as { env: Record<string, string> })
+        .env;
     };
 
     it("shares a project-local compile cache across children by default", async () => {
       expect((await childEnv()).NODE_COMPILE_CACHE).toBe(
-        resolve(process.cwd(), "node_modules", ".cache", "bascik", "compile-cache"),
+        resolve(
+          process.cwd(),
+          "node_modules",
+          ".cache",
+          "bascik",
+          "compile-cache",
+        ),
       );
     });
 
@@ -538,7 +626,9 @@ describe("executeBuildScripts", () => {
     delete process.env.BASCIK_SITE_URL;
     try {
       await executeBuildScripts("<script data-bascik-build>x</script>");
-      const opts = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+      const opts = mockExecFile.mock.calls[0][2] as {
+        env?: Record<string, string>;
+      };
       expect(opts.env && "BASCIK_SITE_URL" in opts.env).toBe(false);
     } finally {
       if (saved !== undefined) process.env.BASCIK_SITE_URL = saved;
@@ -551,7 +641,9 @@ describe("executeBuildScripts", () => {
     process.env.BASCIK_SITE_URL = "https://example.com";
     try {
       await executeBuildScripts("<script data-bascik-build>x</script>");
-      const opts = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+      const opts = mockExecFile.mock.calls[0][2] as {
+        env?: Record<string, string>;
+      };
       expect(opts.env?.BASCIK_SITE_URL).toBe("https://example.com");
     } finally {
       if (saved === undefined) {
@@ -574,8 +666,11 @@ describe("executeBuildScripts", () => {
   });
 
   it("handles a timeout kill gracefully: warns and removes the tag when onBuildScriptError is 'warn'", async () => {
-    (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "warn" };
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      onBuildScriptError: "warn",
+    };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockExecFile.mockImplementation(
       (
         _cmd: unknown,
@@ -584,10 +679,12 @@ describe("executeBuildScripts", () => {
         cb: (err: Error & { killed?: boolean; signal?: string }) => void,
       ) => {
         // Simulate what execFile does on timeout: callback with a killed error
-        cb(Object.assign(new Error("Command timed out"), {
-          killed: true,
-          signal: "SIGTERM",
-        }));
+        cb(
+          Object.assign(new Error("Command timed out"), {
+            killed: true,
+            signal: "SIGTERM",
+          }),
+        );
       },
     );
     const html =
@@ -602,8 +699,7 @@ describe("executeBuildScripts", () => {
 
   it("matches a script tag when an attribute value contains `>`", async () => {
     resolveWith("<p>generated</p>");
-    const html =
-      '<script data-bascik-build data-x="a>b">gen()</script>';
+    const html = '<script data-bascik-build data-x="a>b">gen()</script>';
     const result = await executeBuildScripts(html);
     expect(mockExecFile).toHaveBeenCalledTimes(1);
     expect(result).toBe("<p>generated</p>");
@@ -630,7 +726,9 @@ describe("executeBuildScripts", () => {
     resolveSequence([{ stdout: "<p>first</p>" }, { stdout: "<p>second</p>" }]);
 
     const tag = "<script data-bascik-build>same()</script>";
-    const result = await executeBuildScripts(`<div>${tag}</div><div>${tag}</div>`);
+    const result = await executeBuildScripts(
+      `<div>${tag}</div><div>${tag}</div>`,
+    );
     expect(result).toBe("<div><p>first</p></div><div><p>second</p></div>");
     expect(mockExecFile).toHaveBeenCalledTimes(2);
   });
@@ -643,7 +741,8 @@ describe("executeBuildScripts", () => {
   });
 
   it("preserves exact bytes: Unicode, quotes, backslashes, literal $1/$&, ANSI bytes in returned HTML", async () => {
-    const specialString = "<span>&copy; \u001B[33m2026\u001B[39m Built with Bascik $1 $&</span>";
+    const specialString =
+      "<span>&copy; \u001B[33m2026\u001B[39m Built with Bascik $1 $&</span>";
     resolveWith(specialString);
     const html = `<script data-bascik-build>x</script>`;
     const result = await executeBuildScripts(html);
@@ -651,10 +750,16 @@ describe("executeBuildScripts", () => {
   });
 
   it("forwards stderr output to process.stderr", async () => {
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stderrSpy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
     mockExecFile.mockImplementation(
-      (_cmd: unknown, _args: unknown, _opts: unknown,
-        cb: (err: null, stdout: string, stderr: string) => void) => {
+      (
+        _cmd: unknown,
+        _args: unknown,
+        _opts: unknown,
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => {
         cb(null, "<p>out</p>", "warning: something unusual");
       },
     );
@@ -664,17 +769,16 @@ describe("executeBuildScripts", () => {
   });
 
   it("includes file path and line/column in the error message when filePath is provided", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     rejectWith("syntax error");
-    const html =
-      '<p>first</p>\n<script data-bascik-build>bad()</script>';
-    await expect(executeBuildScripts(html, "src/pages/test-page.html")).rejects.toThrow();
+    const html = "<p>first</p>\n<script data-bascik-build>bad()</script>";
+    await expect(
+      executeBuildScripts(html, "src/pages/test-page.html"),
+    ).rejects.toThrow();
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("test-page.html"),
     );
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("line"),
-    );
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("line"));
     errorSpy.mockRestore();
   });
 
@@ -695,24 +799,31 @@ describe("executeBuildScripts", () => {
   });
 
   it("includes file and line number in the both-attributes error", async () => {
-    const html = '<p>intro</p>\n<script data-bascik-build data-bascik-server>x</script>';
+    const html =
+      "<p>intro</p>\n<script data-bascik-build data-bascik-server>x</script>";
     await expect(
       executeBuildScripts(html, "src/pages/my-page.html"),
     ).rejects.toThrow(
-      expect.objectContaining({ message: expect.stringMatching(/my-page\.html.*line 2/) }),
+      expect.objectContaining({
+        message: expect.stringMatching(/my-page\.html.*line 2/),
+      }),
     );
   });
 
   it("does not treat quoted data-bascik-server text as a conflicting attribute", async () => {
     resolveWith("<p>ok</p>");
-    const html = '<script data-note="data-bascik-server" data-bascik-build>x</script>';
+    const html =
+      '<script data-note="data-bascik-server" data-bascik-build>x</script>';
     const result = await executeBuildScripts(html);
     expect(result).toBe("<p>ok</p>");
   });
 
   it("respects onBuildScriptError: warn", async () => {
-    (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "warn" };
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      onBuildScriptError: "warn",
+    };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     rejectWith("failed script execution");
     const html = "<script data-bascik-build>bad()</script>";
     const result = await executeBuildScripts(html);
@@ -722,51 +833,74 @@ describe("executeBuildScripts", () => {
   });
 
   it("reads script content from double-quoted src file when script tag body is empty", async () => {
-    mockReadFile.mockResolvedValueOnce('console.log("<h1>External Build Header</h1>");');
+    mockReadFile.mockResolvedValueOnce(
+      'console.log("<h1>External Build Header</h1>");',
+    );
     resolveWith("<h1>External Build Header</h1>");
 
     const html = '<script data-bascik-build src="helper.ts"></script>';
-    const result = await executeBuildScripts(html, "src/components/my-comp.html");
+    const result = await executeBuildScripts(
+      html,
+      "src/components/my-comp.html",
+    );
 
     expect(mockReadFile).toHaveBeenCalled();
     expect(result).toBe("<h1>External Build Header</h1>");
   });
 
   it("reads script content from single-quoted src file", async () => {
-    mockReadFile.mockResolvedValueOnce('console.log("<h1>Single Quoted</h1>");');
+    mockReadFile.mockResolvedValueOnce(
+      'console.log("<h1>Single Quoted</h1>");',
+    );
     resolveWith("<h1>Single Quoted</h1>");
 
     const html = "<script data-bascik-build src='helper.ts'></script>";
-    const result = await executeBuildScripts(html, "src/components/my-comp.html");
+    const result = await executeBuildScripts(
+      html,
+      "src/components/my-comp.html",
+    );
 
     expect(mockReadFile).toHaveBeenCalled();
     expect(result).toBe("<h1>Single Quoted</h1>");
   });
 
   it("reads script content from unquoted src file and handles spaces around equals", async () => {
-    mockReadFile.mockResolvedValueOnce('console.log("<h1>Unquoted Header</h1>");');
+    mockReadFile.mockResolvedValueOnce(
+      'console.log("<h1>Unquoted Header</h1>");',
+    );
     resolveWith("<h1>Unquoted Header</h1>");
 
-    const html = '<script data-bascik-build src = ./helper.ts></script>';
-    const result = await executeBuildScripts(html, "src/components/my-comp.html");
+    const html = "<script data-bascik-build src = ./helper.ts></script>";
+    const result = await executeBuildScripts(
+      html,
+      "src/components/my-comp.html",
+    );
 
     expect(mockReadFile).toHaveBeenCalled();
     expect(result).toBe("<h1>Unquoted Header</h1>");
   });
 
   it("respects onBuildScriptError: error", async () => {
-    (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "error" };
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      onBuildScriptError: "error",
+    };
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     rejectWith("failed script execution");
     const html = "<script data-bascik-build>bad()</script>";
-    await expect(executeBuildScripts(html)).rejects.toThrow(/build script error/);
+    await expect(executeBuildScripts(html)).rejects.toThrow(
+      /build script error/,
+    );
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
   });
 
   it("formats the error messages cleanly, removing command failure and node internals", async () => {
-    (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "error" };
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      onBuildScriptError: "error",
+    };
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     mockExecFile.mockImplementation(
       (
@@ -775,15 +909,23 @@ describe("executeBuildScripts", () => {
         _opts: unknown,
         cb: (err: Error) => void,
       ) => {
-        const err = new Error("Command failed: node ...\nnode:internal/modules/esm/resolve:271\n    throw new ERR_MODULE_NOT_FOUND(\n          ^\nError [ERR_MODULE_NOT_FOUND]: Cannot find module './does-not-exist'");
+        const err = new Error(
+          "Command failed: node ...\nnode:internal/modules/esm/resolve:271\n    throw new ERR_MODULE_NOT_FOUND(\n          ^\nError [ERR_MODULE_NOT_FOUND]: Cannot find module './does-not-exist'",
+        );
         cb(err);
       },
     );
 
     const html = "<script data-bascik-build>import './does-not-exist'</script>";
-    await expect(executeBuildScripts(html)).rejects.toThrow(/Error \[ERR_MODULE_NOT_FOUND\]/);
-    await expect(executeBuildScripts(html)).rejects.not.toThrow(/Command failed/);
-    await expect(executeBuildScripts(html)).rejects.not.toThrow(/node:internal/);
+    await expect(executeBuildScripts(html)).rejects.toThrow(
+      /Error \[ERR_MODULE_NOT_FOUND\]/,
+    );
+    await expect(executeBuildScripts(html)).rejects.not.toThrow(
+      /Command failed/,
+    );
+    await expect(executeBuildScripts(html)).rejects.not.toThrow(
+      /node:internal/,
+    );
 
     expect(errorSpy).toHaveBeenCalled();
     const errorLog = errorSpy.mock.calls[0][0];
@@ -805,7 +947,9 @@ describe("executeBuildScripts – page-aware output scope", () => {
   });
 
   it("scopes classes and elements in the output of a script carrying an output scope", async () => {
-    resolveWith('<p class="item global-only">x</p><h2><a href="/">y</a></h2><section class="wrap"></section>');
+    resolveWith(
+      '<p class="item global-only">x</p><h2><a href="/">y</a></h2><section class="wrap"></section>',
+    );
     const result = await executeBuildScripts(
       `<div><script data-bascik-build="page" data-bascik-output-scope="${SCOPE}">console.log(helper())</script></div>`,
       "src/pages/index.html",
@@ -814,8 +958,8 @@ describe("executeBuildScripts – page-aware output scope", () => {
     );
     expect(result).toBe(
       '<div><p class="bascik__my-comp__item global-only">x</p>' +
-      '<h2 class="bascik__my-comp__el__h2"><a class="bascik__my-comp__el__a" href="/">y</a></h2>' +
-      '<section class="bascik__my-comp__wrap"></section></div>',
+        '<h2 class="bascik__my-comp__el__h2"><a class="bascik__my-comp__el__a" href="/">y</a></h2>' +
+        '<section class="bascik__my-comp__wrap"></section></div>',
     );
   });
 
@@ -825,16 +969,22 @@ describe("executeBuildScripts – page-aware output scope", () => {
       '<div><script data-bascik-build="page">console.log(helper())</script></div>',
       "src/pages/index.html",
     );
-    expect(result).toBe('<div><p class="item">x</p><h2><a href="/">y</a></h2></div>');
+    expect(result).toBe(
+      '<div><p class="item">x</p><h2><a href="/">y</a></h2></div>',
+    );
   });
 
   it("does not scope markup inside raw-text elements, comments, or attribute values", async () => {
-    resolveWith('<script>const s = "<a class=\\"item\\">";</script><!-- <a class="item"> --><p title="<a class=item>">z</p><textarea><a></a></textarea>');
+    resolveWith(
+      '<script>const s = "<a class=\\"item\\">";</script><!-- <a class="item"> --><p title="<a class=item>">z</p><textarea><a></a></textarea>',
+    );
     const result = await executeBuildScripts(
       `<script data-bascik-build="page" data-bascik-output-scope="${SCOPE}">console.log(1)</script>`,
       "src/pages/index.html",
     );
-    expect(result).toBe('<script>const s = "<a class=\\"item\\">";</script><!-- <a class="item"> --><p title="<a class=item>">z</p><textarea><a></a></textarea>');
+    expect(result).toBe(
+      '<script>const s = "<a class=\\"item\\">";</script><!-- <a class="item"> --><p title="<a class=item>">z</p><textarea><a></a></textarea>',
+    );
   });
 
   it("does not let replacement tokens in output expand", async () => {
@@ -852,7 +1002,9 @@ describe("executeBuildScripts – page-aware output scope", () => {
       `<script data-bascik-build="page" data-bascik-output-scope="${SCOPE}">console.log(1)</script>`,
       "src/pages/index.html",
     );
-    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls.find(([path]) => String(path).endsWith(".mjs"))?.[1] as string;
+    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([path]) => String(path).endsWith(".mjs"),
+    )?.[1] as string;
     expect(written).not.toContain("output-scope");
   });
 });
@@ -865,7 +1017,8 @@ describe("extractScriptDeps", () => {
   });
 
   it("extracts a ./content/*.md reference in single quotes", () => {
-    const script = "const { renderMd } = await import(r); console.log(await renderMd('./content/foo.md'));";
+    const script =
+      "const { renderMd } = await import(r); console.log(await renderMd('./content/foo.md'));";
     expect(extractScriptDeps(script)).toContain("./content/foo.md");
   });
 
@@ -875,13 +1028,15 @@ describe("extractScriptDeps", () => {
   });
 
   it("extracts references in double quotes", () => {
-    expect(extractScriptDeps(`renderMd("./content/bar.md")`)).toContain("./content/bar.md");
+    expect(extractScriptDeps(`renderMd("./content/bar.md")`)).toContain(
+      "./content/bar.md",
+    );
   });
 
   it("deduplicates identical references", () => {
     const script = "renderMd('./content/dup.md'); renderMd('./content/dup.md')";
     const deps = extractScriptDeps(script);
-    expect(deps.filter(d => d === "./content/dup.md")).toHaveLength(1);
+    expect(deps.filter((d) => d === "./content/dup.md")).toHaveLength(1);
   });
 
   it("extracts multiple distinct references from the same script", () => {
@@ -934,21 +1089,32 @@ describe("extractScriptDeps", () => {
   it.each([
     `if (ready) /import\\(['"]\\.\\/fake\\.ts['"]\\)/.test(source);`,
     `{ markReady(); } /import\\(['"]\\.\\/fake\\.ts['"]\\)/.test(source);`,
-  ])("does not collect generic dependencies from regex literals after statement boundaries", (source) => {
-    expect(extractScriptDeps(source)).toEqual([]);
-  });
+  ])(
+    "does not collect generic dependencies from regex literals after statement boundaries",
+    (source) => {
+      expect(extractScriptDeps(source)).toEqual([]);
+    },
+  );
 
   it("resolves the @/ import-root alias to cwd-relative keys under the default import root", () => {
-    const script = "import { a } from '@/lib/a.ts';\nimport { c } from '../c.ts';";
-    const deps = extractScriptDeps(script, resolve(process.cwd(), "src/pages/nested"));
+    const script =
+      "import { a } from '@/lib/a.ts';\nimport { c } from '../c.ts';";
+    const deps = extractScriptDeps(
+      script,
+      resolve(process.cwd(), "src/pages/nested"),
+    );
     expect(deps).toContain("src/lib/a.ts");
     expect(deps).toContain("src/pages/c.ts");
     expect(deps).not.toContain("lib/a.ts");
   });
 
   it("skips leading-slash specifiers instead of throwing so cache keys stay well-defined", () => {
-    const script = "import { a } from '@/lib/a.ts';\nimport { b } from '/lib/b.ts';";
-    const deps = extractScriptDeps(script, resolve(process.cwd(), "src/pages/nested"));
+    const script =
+      "import { a } from '@/lib/a.ts';\nimport { b } from '/lib/b.ts';";
+    const deps = extractScriptDeps(
+      script,
+      resolve(process.cwd(), "src/pages/nested"),
+    );
     expect(deps).toEqual(["src/lib/a.ts"]);
   });
 
@@ -971,15 +1137,21 @@ describe("extractScriptDeps", () => {
 describe("import-root alias (@/)", () => {
   it("rewrites @/ imports to the import root regardless of page depth", async () => {
     resolveWith("");
-    const expected = pathToFileURL(resolve(process.cwd(), "src/lib/helper.ts")).href;
+    const expected = pathToFileURL(
+      resolve(process.cwd(), "src/lib/helper.ts"),
+    ).href;
 
-    for (const pageFile of ["src/pages/a.html", "src/pages/deeply/nested/b.html"]) {
+    for (const pageFile of [
+      "src/pages/a.html",
+      "src/pages/deeply/nested/b.html",
+    ]) {
       (writeFile as ReturnType<typeof vi.fn>).mockClear();
       await executeBuildScripts(
         "<script data-bascik-build>import { a } from '@/lib/helper.ts';</script>",
         pageFile,
       );
-      const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
+      const written = (writeFile as ReturnType<typeof vi.fn>).mock
+        .calls[0][1] as string;
       expect(written).toContain(`import { a } from '${expected}';`);
     }
   });
@@ -990,43 +1162,69 @@ describe("import-root alias (@/)", () => {
         "<div></div>\n<script data-bascik-build>\nimport { b } from '/lib/helper.ts';\n</script>",
         "src/pages/a.html",
       ),
-    ).rejects.toThrow(/Leading-slash specifier '\/lib\/helper\.ts'.*@\/lib\/helper\.ts.*pages\/a\.html.*line 2/s);
+    ).rejects.toThrow(
+      /Leading-slash specifier '\/lib\/helper\.ts'.*@\/lib\/helper\.ts.*pages\/a\.html.*line 2/s,
+    );
   });
 
   it("rejects a leading-slash import even when onBuildScriptError is warn", async () => {
-    (BascikConfig as any).scripts = { ...(BascikConfig as any).scripts, onBuildScriptError: "warn" };
+    (BascikConfig as any).scripts = {
+      ...(BascikConfig as any).scripts,
+      onBuildScriptError: "warn",
+    };
     try {
       await expect(
-        executeBuildScripts("<script data-bascik-build>import { b } from '/lib/helper.ts';</script>", "src/pages/a.html"),
+        executeBuildScripts(
+          "<script data-bascik-build>import { b } from '/lib/helper.ts';</script>",
+          "src/pages/a.html",
+        ),
       ).rejects.toThrow(/Leading-slash specifier/);
     } finally {
-      (BascikConfig as any).scripts = { ...(BascikConfig as any).scripts, onBuildScriptError: "error" };
+      (BascikConfig as any).scripts = {
+        ...(BascikConfig as any).scripts,
+        onBuildScriptError: "error",
+      };
     }
   });
 
   it("rejects a leading-slash src= with a located error", async () => {
     await expect(
-      executeBuildScripts('<script data-bascik-build src="/lib/entry.ts"></script>', "src/pages/a.html"),
-    ).rejects.toThrow(/Leading-slash specifier '\/lib\/entry\.ts'.*@\/lib\/entry\.ts/s);
+      executeBuildScripts(
+        '<script data-bascik-build src="/lib/entry.ts"></script>',
+        "src/pages/a.html",
+      ),
+    ).rejects.toThrow(
+      /Leading-slash specifier '\/lib\/entry\.ts'.*@\/lib\/entry\.ts/s,
+    );
   });
 
-  it.each(["@/lib/entry.ts"])("reads src=\"%s\" from the import root and re-bases its relative imports", async (src) => {
-    const entryPath = resolve(process.cwd(), "src/lib/entry.ts");
-    mockReadFile.mockImplementation(async (path: string) => {
-      if (String(path) === entryPath) return "import './sibling.ts';";
-      if (String(path).endsWith("result.json")) {
-        return JSON.stringify({ version: 1, kind: "build", result: "" });
-      }
-      throw new Error("ENOENT");
-    });
-    resolveWith("");
+  it.each(["@/lib/entry.ts"])(
+    'reads src="%s" from the import root and re-bases its relative imports',
+    async (src) => {
+      const entryPath = resolve(process.cwd(), "src/lib/entry.ts");
+      mockReadFile.mockImplementation(async (path: string) => {
+        if (String(path) === entryPath) return "import './sibling.ts';";
+        if (String(path).endsWith("result.json")) {
+          return JSON.stringify({ version: 1, kind: "build", result: "" });
+        }
+        throw new Error("ENOENT");
+      });
+      resolveWith("");
 
-    await executeBuildScripts(`<script data-bascik-build src="${src}"></script>`, "src/pages/deeply/nested/page.html");
+      await executeBuildScripts(
+        `<script data-bascik-build src="${src}"></script>`,
+        "src/pages/deeply/nested/page.html",
+      );
 
-    expect(mockReadFile).toHaveBeenCalledWith(entryPath, "utf8");
-    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls.find(([p]) => String(p).endsWith(".mjs"))?.[1] as string;
-    expect(written).toContain(`import '${pathToFileURL(resolve(process.cwd(), "src/lib/sibling.ts")).href}'`);
-  });
+      expect(mockReadFile).toHaveBeenCalledWith(entryPath, "utf8");
+      const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls.find(
+        ([p]) => String(p).endsWith(".mjs"),
+      )?.[1] as string;
+      expect(written).toContain(
+        `import '${pathToFileURL(resolve(process.cwd(), "src/lib/sibling.ts")).href}'`,
+      );
+    },
+  );
 
   it("collectAllScriptDeps includes alias targets so the dev watcher rebuilds on edit", async () => {
     const html = `
@@ -1035,7 +1233,10 @@ describe("import-root alias (@/)", () => {
       </script>
       <script data-bascik-routes src="@/lib/routes-entry.ts"></script>
     `;
-    const deps = await collectAllScriptDeps(html, "src/pages/deeply/nested/page.html");
+    const deps = await collectAllScriptDeps(
+      html,
+      "src/pages/deeply/nested/page.html",
+    );
     expect(deps).toContain("src/lib/alias-helper.ts");
     expect(deps).toContain("src/lib/routes-entry.ts");
   });
@@ -1045,7 +1246,9 @@ describe("import-root alias (@/)", () => {
       <script data-bascik-build src="/lib/slash-entry.ts"></script>
       <script data-bascik-build>import { a } from '@/lib/ok.ts';</script>
     `;
-    await expect(collectAllScriptDeps(html, "src/pages/page.html")).resolves.toEqual(["src/lib/ok.ts"]);
+    await expect(
+      collectAllScriptDeps(html, "src/pages/page.html"),
+    ).resolves.toEqual(["src/lib/ok.ts"]);
   });
 });
 
@@ -1087,7 +1290,10 @@ describe("collectAllScriptDeps", () => {
         console.log(await renderMd('./content/cli.md'));
       </script>
     `;
-    const deps = await collectAllScriptDeps(html, "docs/src/pages/internals/architecture.html");
+    const deps = await collectAllScriptDeps(
+      html,
+      "docs/src/pages/internals/architecture.html",
+    );
     expect(deps).toContain("docs/src/lib/md-renderer.ts");
     expect(deps).toContain("content/cli.md");
     expect(deps).not.toContain("docs/src/pages/internals/content/cli.md");
@@ -1096,40 +1302,58 @@ describe("collectAllScriptDeps", () => {
   it.each([
     ["data-bascik-build", 'src="./scripts/build-entry.ts"'],
     ["data-bascik-routes", "src = ./scripts/routes-entry.ts"],
-  ])("collects external %s scripts and nested imports for watch fileDependencies", async (directive, srcAttribute) => {
-    const mockReadFile = readFile as unknown as ReturnType<typeof vi.fn>;
-    mockReadFile.mockImplementation(async (filePath: string) => {
-      if (String(filePath).endsWith("src/pages/scripts/build-entry.ts") ||
-        String(filePath).endsWith("src/pages/scripts/routes-entry.ts")) {
-        return "import './nested/helper.ts';";
-      }
-      if (String(filePath).endsWith("src/pages/scripts/nested/helper.ts")) {
-        return "export const value = true;";
-      }
-      throw new Error("ENOENT");
-    });
+  ])(
+    "collects external %s scripts and nested imports for watch fileDependencies",
+    async (directive, srcAttribute) => {
+      const mockReadFile = readFile as unknown as ReturnType<typeof vi.fn>;
+      mockReadFile.mockImplementation(async (filePath: string) => {
+        const normalized = String(filePath).replace(/\\/g, "/");
+        if (
+          normalized.endsWith("src/pages/scripts/build-entry.ts") ||
+          normalized.endsWith("src/pages/scripts/routes-entry.ts")
+        ) {
+          return "import './nested/helper.ts';";
+        }
+        if (normalized.endsWith("src/pages/scripts/nested/helper.ts")) {
+          return "export const value = true;";
+        }
+        throw new Error("ENOENT");
+      });
 
-    const deps = await collectAllScriptDeps(
-      `<script ${directive} ${srcAttribute}></script>`,
-      "src/pages/index.html",
-    );
+      const deps = await collectAllScriptDeps(
+        `<script ${directive} ${srcAttribute}></script>`,
+        "src/pages/index.html",
+      );
 
-    expect(deps).toContain(`src/pages/scripts/${directive === "data-bascik-build" ? "build" : "routes"}-entry.ts`);
-    expect(deps).toContain("src/pages/scripts/nested/helper.ts");
-  });
+      expect(deps).toContain(
+        `src/pages/scripts/${directive === "data-bascik-build" ? "build" : "routes"}-entry.ts`,
+      );
+      expect(deps).toContain("src/pages/scripts/nested/helper.ts");
+    },
+  );
 
   it("throws an error when script tag has both data-bascik-build and data-bascik-server", async () => {
-    const html = "<script data-bascik-build data-bascik-server>console.log(1)</script>";
-    await expect(executeBuildScripts(html, "src/pages/index.html")).rejects.toThrow(
-      /has both data-bascik-build and data-bascik-server/,
-    );
+    const html =
+      "<script data-bascik-build data-bascik-server>console.log(1)</script>";
+    await expect(
+      executeBuildScripts(html, "src/pages/index.html"),
+    ).rejects.toThrow(/has both data-bascik-build and data-bascik-server/);
   });
 
   it("throws an error when script tag has both data-bascik-build and data-bascik-routes", async () => {
-    const html = "<script data-bascik-build data-bascik-routes>console.log(1)</script>";
-    await expect(executeBuildScripts(html, "src/pages/index.html")).rejects.toThrow(
-      /has both data-bascik-build and data-bascik-routes/,
-    );
+    const html =
+      "<script data-bascik-build data-bascik-routes>console.log(1)</script>";
+    await expect(
+      executeBuildScripts(html, "src/pages/index.html"),
+    ).rejects.toThrow(/has both data-bascik-build and data-bascik-routes/);
+  });
+
+  it("throws an error when script tag has both data-bascik-build and data-bascik-stream", async () => {
+    const html =
+      "<script data-bascik-build data-bascik-stream>console.log(1)</script>";
+    await expect(
+      executeBuildScripts(html, "src/pages/index.html"),
+    ).rejects.toThrow(/has both data-bascik-build and data-bascik-stream/);
   });
 });
 
@@ -1141,8 +1365,8 @@ describe("build-script output cache", () => {
   it("writes a .json cache entry after a successful script execution", async () => {
     resolveWith("<p>result</p>");
     await executeBuildScripts("<script data-bascik-build>nodeps()</script>");
-    const jsonCall = mockWriteFile.mock.calls.find(
-      ([path]) => String(path).endsWith(".json"),
+    const jsonCall = mockWriteFile.mock.calls.find(([path]) =>
+      String(path).endsWith(".json"),
     );
     expect(jsonCall).toBeDefined();
     const [, content] = jsonCall as [string, string];
@@ -1155,8 +1379,8 @@ describe("build-script output cache", () => {
     (BascikConfig.scripts as any).onBuildScriptError = "warn";
     rejectWith("syntax error");
     await executeBuildScripts("<script data-bascik-build>bad()</script>");
-    const jsonCall = mockWriteFile.mock.calls.find(
-      ([path]) => String(path).endsWith(".json"),
+    const jsonCall = mockWriteFile.mock.calls.find(([path]) =>
+      String(path).endsWith(".json"),
     );
     expect(jsonCall).toBeUndefined();
     (BascikConfig.scripts as any).onBuildScriptError = "error";
@@ -1181,7 +1405,9 @@ describe("build-script output cache", () => {
     const tag = "<script data-bascik-build>unrelated()</script>";
     await executeBuildScripts(tag, "src/pages/unrelated.html");
     expect(mockExecFile).toHaveBeenCalledTimes(1);
-    const jsonWrite = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+    const jsonWrite = mockWriteFile.mock.calls.find(([p]) =>
+      String(p).endsWith(".json"),
+    );
     expect(jsonWrite).toBeDefined();
     const [cachePath, cacheBody] = jsonWrite as [string, string];
 
@@ -1192,7 +1418,9 @@ describe("build-script output cache", () => {
     mockExecFile.mockClear();
     mockReadFile.mockReset();
     mockReadFile.mockImplementation((path: string) =>
-      String(path) === String(cachePath) ? Promise.resolve(cacheBody) : Promise.reject(new Error("ENOENT")),
+      String(path) === String(cachePath)
+        ? Promise.resolve(cacheBody)
+        : Promise.reject(new Error("ENOENT")),
     );
 
     const result = await executeBuildScripts(tag, "src/pages/unrelated.html");
@@ -1209,14 +1437,16 @@ describe("build-script output cache", () => {
     };
     mockReadFile.mockReset();
     mockReadFile.mockImplementation((path: string) => {
-      const p = String(path);
+      const p = String(path).replace(/\\/g, "/");
       for (const [rel, body] of Object.entries(contents)) {
         if (p.endsWith(rel)) return Promise.resolve(body);
       }
       return Promise.reject(new Error("ENOENT"));
     });
-    const tagA = "<script data-bascik-build>import { readFileSync } from 'node:fs'; console.log(readFileSync('dist/generated.json', 'utf8'));</script>";
-    const tagB = "<script data-bascik-build>import { readFileSync } from 'node:fs'; console.log(readFileSync('content/other.txt', 'utf8'));</script>";
+    const tagA =
+      "<script data-bascik-build>import { readFileSync } from 'node:fs'; console.log(readFileSync('dist/generated.json', 'utf8'));</script>";
+    const tagB =
+      "<script data-bascik-build>import { readFileSync } from 'node:fs'; console.log(readFileSync('content/other.txt', 'utf8'));</script>";
     resolveWith("<p>a</p>");
     await executeBuildScripts(tagA, "src/pages/a.html");
     resolveWith("<p>b</p>");
@@ -1238,7 +1468,11 @@ describe("build-script output cache", () => {
     const resultB = await executeBuildScripts(tagB, "src/pages/b.html");
     expect(resultB).toBe("<p>b</p>");
     expect(mockExecFile).not.toHaveBeenCalled();
-    expect(mockReadFile.mock.calls.some(([p]) => String(p).endsWith(".json") && String(p).includes("cache"))).toBe(false);
+    expect(
+      mockReadFile.mock.calls.some(
+        ([p]) => String(p).endsWith(".json") && String(p).includes("cache"),
+      ),
+    ).toBe(false);
 
     // A re-reads its dependency (now changed) and executes against the new key.
     contents["dist/generated.json"] = '{"value":"generation-2"}';
@@ -1267,7 +1501,9 @@ describe("build-script output cache", () => {
     expect(cacheHooks.outputCacheSize).toBe(MAX_IN_MEMORY_SCRIPT_OUTPUTS);
     // Every key the reverse index still holds is a live memo entry.
     expect(cacheHooks.reverseIndexHasStaleKeys()).toBe(false);
-    expect(cacheHooks.reverseIndexKeyCount("content/shared.txt")).toBe(MAX_IN_MEMORY_SCRIPT_OUTPUTS);
+    expect(cacheHooks.reverseIndexKeyCount("content/shared.txt")).toBe(
+      MAX_IN_MEMORY_SCRIPT_OUTPUTS,
+    );
 
     // A per-path clear of the shared dependency empties both structures.
     clearBuildScriptCaches("content/shared.txt");
@@ -1320,13 +1556,18 @@ describe("build-script output cache", () => {
 
   it("reuses cached output for a static component build script", async () => {
     const sourceFile = "src/components/base-head.html";
-    const html = '<script data-bascik-build data-bascik-source-file="src%2Fcomponents%2Fbase-head.html">staticHead()</script>';
+    const html =
+      '<script data-bascik-build data-bascik-source-file="src%2Fcomponents%2Fbase-head.html">staticHead()</script>';
     mockReadFile.mockRejectedValue(new Error("ENOENT"));
-    resolveWith("<meta name=\"static\"> ");
+    resolveWith('<meta name="static"> ');
 
-    expect(await executeBuildScripts(html, sourceFile)).toBe('<meta name="static"> ');
+    expect(await executeBuildScripts(html, sourceFile)).toBe(
+      '<meta name="static"> ',
+    );
     expect(mockExecFile).toHaveBeenCalledTimes(1);
-    const cacheWrite = mockWriteFile.mock.calls.find(([path]) => String(path).endsWith(".json"));
+    const cacheWrite = mockWriteFile.mock.calls.find(([path]) =>
+      String(path).endsWith(".json"),
+    );
     expect(cacheWrite).toBeDefined();
 
     clearBuildScriptCaches();
@@ -1334,23 +1575,31 @@ describe("build-script output cache", () => {
     mockWriteFile.mockClear();
     mockReadFile.mockReset();
     mockReadFile.mockResolvedValueOnce(
-      JSON.stringify({ v: SCRIPT_CACHE_VERSION, output: '<meta name="static"> ' }),
+      JSON.stringify({
+        v: SCRIPT_CACHE_VERSION,
+        output: '<meta name="static"> ',
+      }),
     );
 
-    expect(await executeBuildScripts(html, sourceFile)).toBe('<meta name="static"> ');
+    expect(await executeBuildScripts(html, sourceFile)).toBe(
+      '<meta name="static"> ',
+    );
     expect(mockExecFile).not.toHaveBeenCalled();
   });
 
   it("uses a distinct cache key for each page-aware component build script page", async () => {
     const sourceFile = "src/components/base-head.html";
-    const html = '<script data-bascik-build="page" data-bascik-source-file="src%2Fcomponents%2Fbase-head.html">canonical()</script>';
+    const html =
+      '<script data-bascik-build="page" data-bascik-source-file="src%2Fcomponents%2Fbase-head.html">canonical()</script>';
     const runForPage = (pageFile: string) =>
       executeBuildScripts(html, pageFile, undefined, { pageFile, sourceFile });
     mockReadFile.mockRejectedValue(new Error("ENOENT"));
-    resolveWith("<link rel=\"canonical\">");
+    resolveWith('<link rel="canonical">');
 
     await runForPage("src/pages/first.html");
-    const firstCachePath = mockWriteFile.mock.calls.find(([path]) => String(path).endsWith(".json"))?.[0];
+    const firstCachePath = mockWriteFile.mock.calls.find(([path]) =>
+      String(path).endsWith(".json"),
+    )?.[0];
     expect(firstCachePath).toBeDefined();
 
     mockExecFile.mockClear();
@@ -1359,7 +1608,9 @@ describe("build-script output cache", () => {
     mockReadFile.mockRejectedValue(new Error("ENOENT"));
     await runForPage("src/pages/second.html");
 
-    const secondCachePath = mockWriteFile.mock.calls.find(([path]) => String(path).endsWith(".json"))?.[0];
+    const secondCachePath = mockWriteFile.mock.calls.find(([path]) =>
+      String(path).endsWith(".json"),
+    )?.[0];
     expect(secondCachePath).toBeDefined();
     expect(secondCachePath).not.toEqual(firstCachePath);
     expect(mockExecFile).toHaveBeenCalledTimes(1);
@@ -1369,8 +1620,7 @@ describe("build-script output cache", () => {
     resolveWith("<link rel='canonical' href='/a'>");
     // Same script content, different filePath — must produce different keys,
     // so execFile is called for both rather than the second page hitting the first page's cached canonical URL.
-    mockReadFile
-      .mockRejectedValue(new Error("ENOENT")); // always cache miss
+    mockReadFile.mockRejectedValue(new Error("ENOENT")); // always cache miss
 
     await executeBuildScripts(
       "<script data-bascik-build>canonical()</script>",
@@ -1389,7 +1639,9 @@ describe("build-script output cache", () => {
     // Both pages must have spawned their own child process.
     expect(mockExecFile).toHaveBeenCalledTimes(1);
     // And the cache write path for both must use a .json file (different keys, so two distinct writes).
-    const jsonWrites = mockWriteFile.mock.calls.filter(([p]) => String(p).endsWith(".json"));
+    const jsonWrites = mockWriteFile.mock.calls.filter(([p]) =>
+      String(p).endsWith(".json"),
+    );
     expect(jsonWrites.length).toBe(1);
   });
 
@@ -1402,17 +1654,22 @@ describe("build-script output cache", () => {
     mockReadFile.mockImplementation((path: string) => {
       const p = String(path);
       if (p.includes(".cache")) return Promise.reject(new Error("ENOENT"));
-      if (p.includes("render-nav.ts")) return Promise.resolve("import { NAV } from './nav.ts';");
-      if (p.includes("nav.ts")) return Promise.resolve(`export const NAV = '${navVersion}';`);
+      if (p.includes("render-nav.ts"))
+        return Promise.resolve("import { NAV } from './nav.ts';");
+      if (p.includes("nav.ts"))
+        return Promise.resolve(`export const NAV = '${navVersion}';`);
       return Promise.reject(new Error("ENOENT"));
     });
 
     resolveWith("<p>rendered-v1</p>");
-    const script = "<script data-bascik-build>import '../../docs/scripts/render-nav.ts'</script>";
+    const script =
+      "<script data-bascik-build>import '../../docs/scripts/render-nav.ts'</script>";
 
     await executeBuildScripts(script, "src/pages/test.html");
 
-    const jsonWrite1 = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+    const jsonWrite1 = mockWriteFile.mock.calls.find(([p]) =>
+      String(p).endsWith(".json"),
+    );
     expect(jsonWrite1).toBeDefined();
     const cacheKey1 = jsonWrite1![0];
 
@@ -1425,7 +1682,9 @@ describe("build-script output cache", () => {
 
     await executeBuildScripts(script, "src/pages/test.html");
 
-    const jsonWrite2 = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+    const jsonWrite2 = mockWriteFile.mock.calls.find(([p]) =>
+      String(p).endsWith(".json"),
+    );
     expect(jsonWrite2).toBeDefined();
     const cacheKey2 = jsonWrite2![0];
 
@@ -1435,12 +1694,17 @@ describe("build-script output cache", () => {
   });
 
   describe("scripts that read their page through BASCIK_SOURCE_FILE or BASCIK_PAGE_FILE", () => {
-    const keyForPageVersion = async (script: string, pageVersion: string, helper: string) => {
+    const keyForPageVersion = async (
+      script: string,
+      pageVersion: string,
+      helper: string,
+    ) => {
       mockReadFile.mockImplementation((path: string) => {
-        const p = String(path);
+        const p = String(path).replace(/\\/g, "/");
         if (p.includes(".cache")) return Promise.reject(new Error("ENOENT"));
         if (p.endsWith("og-helper.ts")) return Promise.resolve(helper);
-        if (p.endsWith("src/pages/test.html")) return Promise.resolve(`<title>${pageVersion}</title>`);
+        if (p.endsWith("src/pages/test.html"))
+          return Promise.resolve(`<title>${pageVersion}</title>`);
         return Promise.reject(new Error("ENOENT"));
       });
       // Full clear: the disk cache always misses here, so every run writes its key.
@@ -1448,40 +1712,51 @@ describe("build-script output cache", () => {
       mockWriteFile.mockClear();
       resolveWith(`<meta content="${pageVersion}">`);
       await executeBuildScripts(script, "src/pages/test.html");
-      const jsonWrite = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+      const jsonWrite = mockWriteFile.mock.calls.find(([p]) =>
+        String(p).endsWith(".json"),
+      );
       expect(jsonWrite).toBeDefined();
       return jsonWrite![0] as string;
     };
 
-    const script = "<script data-bascik-build>import { og } from '../../lib/og-helper.ts'; export default og;</script>";
+    const script =
+      "<script data-bascik-build>import { og } from '../../lib/og-helper.ts'; export default og;</script>";
 
     it("folds the page content into the key when an imported helper names the variable", async () => {
-      const helper = "export const og = () => readFile(process.env.BASCIK_SOURCE_FILE, 'utf8');";
+      const helper =
+        "export const og = () => readFile(process.env.BASCIK_SOURCE_FILE, 'utf8');";
       const key1 = await keyForPageVersion(script, "Old title", helper);
       const key2 = await keyForPageVersion(script, "New title", helper);
       expect(key1).not.toEqual(key2);
-      expect(await keyForPageVersion(script, "New title", helper)).toEqual(key2);
+      expect(await keyForPageVersion(script, "New title", helper)).toEqual(
+        key2,
+      );
     });
 
     it("a per-path clear of the page drops the memoized output, so the edit re-runs the script", async () => {
-      const helper = "export const og = () => readFile(process.env.BASCIK_SOURCE_FILE, 'utf8');";
+      const helper =
+        "export const og = () => readFile(process.env.BASCIK_SOURCE_FILE, 'utf8');";
       await keyForPageVersion(script, "Old title", helper);
       mockReadFile.mockImplementation((path: string) => {
-        const p = String(path);
+        const p = String(path).replace(/\\/g, "/");
         if (p.includes(".cache")) return Promise.reject(new Error("ENOENT"));
         if (p.endsWith("og-helper.ts")) return Promise.resolve(helper);
-        if (p.endsWith("src/pages/test.html")) return Promise.resolve("<title>New title</title>");
+        if (p.endsWith("src/pages/test.html"))
+          return Promise.resolve("<title>New title</title>");
         return Promise.reject(new Error("ENOENT"));
       });
       clearBuildScriptCaches("src/pages/test.html");
       mockExecFile.mockClear();
       resolveWith('<meta content="New title">');
-      expect(await executeBuildScripts(script, "src/pages/test.html")).toContain("New title");
+      expect(
+        await executeBuildScripts(script, "src/pages/test.html"),
+      ).toContain("New title");
       expect(mockExecFile).toHaveBeenCalledTimes(1);
     });
 
     it("folds the page content into the key when the inline script names BASCIK_PAGE_FILE", async () => {
-      const inline = "<script data-bascik-build>export default () => process.env.BASCIK_PAGE_FILE;</script>";
+      const inline =
+        "<script data-bascik-build>export default () => process.env.BASCIK_PAGE_FILE;</script>";
       const key1 = await keyForPageVersion(inline, "Old title", "");
       const key2 = await keyForPageVersion(inline, "New title", "");
       expect(key1).not.toEqual(key2);
@@ -1499,12 +1774,16 @@ describe("build-script output cache", () => {
     mockReadFile.mockReset();
     mockWriteFile.mockReset().mockResolvedValue(undefined);
     clearBuildScriptCaches();
-    (BascikConfig as any).scripts = { ...BascikConfig.scripts, cache: { enabled: true } };
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      cache: { enabled: true },
+    };
     let helperVersion = "v1";
     let dependencyReads = 0;
     mockReadFile.mockImplementation((path: string) => {
-      const file = String(path);
-      if (file.includes("script-cache")) return Promise.reject(new Error("ENOENT"));
+      const file = String(path).replace(/\\/g, "/");
+      if (file.includes("script-cache"))
+        return Promise.reject(new Error("ENOENT"));
       if (file.endsWith("docs/src/lib/render-nav.ts")) {
         dependencyReads++;
         return Promise.resolve(`export const label = '${helperVersion}';`);
@@ -1512,17 +1791,22 @@ describe("build-script output cache", () => {
       return Promise.reject(new Error("ENOENT"));
     });
     resolveWith("<p>rendered</p>");
-    const html = "<script data-bascik-build>import { label } from '../../lib/render-nav.ts'; console.log(label);</script>";
+    const html =
+      "<script data-bascik-build>import { label } from '../../lib/render-nav.ts'; console.log(label);</script>";
 
     await executeBuildScripts(html, "docs/src/pages/internals/example.html");
-    const firstKey = mockWriteFile.mock.calls.find(([path]) => String(path).endsWith(".json"))?.[0];
+    const firstKey = mockWriteFile.mock.calls.find(([path]) =>
+      String(path).endsWith(".json"),
+    )?.[0];
 
     helperVersion = "v2";
     clearBuildScriptCaches();
     mockWriteFile.mockClear();
     mockReadFile.mockClear();
     await executeBuildScripts(html, "docs/src/pages/internals/example.html");
-    const secondKey = mockWriteFile.mock.calls.find(([path]) => String(path).endsWith(".json"))?.[0];
+    const secondKey = mockWriteFile.mock.calls.find(([path]) =>
+      String(path).endsWith(".json"),
+    )?.[0];
 
     expect(firstKey).toBeDefined();
     expect(secondKey).toBeDefined();
@@ -1538,7 +1822,8 @@ describe("build-script output cache", () => {
     let dependencyReads = 0;
     mockReadFile.mockImplementation((path: string) => {
       const file = String(path);
-      if (file.includes("script-cache")) return Promise.reject(new Error("ENOENT"));
+      if (file.includes("script-cache"))
+        return Promise.reject(new Error("ENOENT"));
       if (file === resolve(process.cwd(), "src/lib/helper.ts")) {
         dependencyReads++;
         return Promise.resolve(`export const label = '${helperVersion}';`);
@@ -1546,17 +1831,22 @@ describe("build-script output cache", () => {
       return Promise.reject(new Error("ENOENT"));
     });
     resolveWith("<p>rendered</p>");
-    const html = "<script data-bascik-build>import { label } from '@/lib/helper.ts'; console.log(label);</script>";
+    const html =
+      "<script data-bascik-build>import { label } from '@/lib/helper.ts'; console.log(label);</script>";
 
     await executeBuildScripts(html, "src/pages/deeply/nested/example.html");
-    const firstKey = mockWriteFile.mock.calls.find(([path]) => String(path).endsWith(".json"))?.[0];
+    const firstKey = mockWriteFile.mock.calls.find(([path]) =>
+      String(path).endsWith(".json"),
+    )?.[0];
 
     helperVersion = "v2";
     clearBuildScriptCaches();
     mockWriteFile.mockClear();
     mockReadFile.mockClear();
     await executeBuildScripts(html, "src/pages/deeply/nested/example.html");
-    const secondKey = mockWriteFile.mock.calls.find(([path]) => String(path).endsWith(".json"))?.[0];
+    const secondKey = mockWriteFile.mock.calls.find(([path]) =>
+      String(path).endsWith(".json"),
+    )?.[0];
 
     expect(firstKey).toBeDefined();
     expect(secondKey).toBeDefined();
@@ -1579,14 +1869,18 @@ describe("build-script output cache", () => {
 
     // The mocked computePackageIdentity must have been called with the specifier.
     expect(mockPackageIdentity).toHaveBeenCalledWith(["marked"]);
-    const key = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"))?.[0];
+    const key = mockWriteFile.mock.calls.find(([p]) =>
+      String(p).endsWith(".json"),
+    )?.[0];
     expect(key).toBeDefined();
   });
 
   it("does not consult package identity for a script with no package imports", async () => {
     mockPackageIdentity.mockClear();
     resolveWith("<p>local</p>");
-    await executeBuildScripts("<script data-bascik-build>import './local.ts'; console.log('x');</script>");
+    await executeBuildScripts(
+      "<script data-bascik-build>import './local.ts'; console.log('x');</script>",
+    );
     expect(mockPackageIdentity).not.toHaveBeenCalled();
   });
 
@@ -1599,7 +1893,9 @@ describe("build-script output cache", () => {
     );
     // It ran (execFile called) but never wrote a cache entry.
     expect(mockExecFile).toHaveBeenCalledTimes(1);
-    const jsonWrites = mockWriteFile.mock.calls.filter(([p]) => String(p).endsWith(".json"));
+    const jsonWrites = mockWriteFile.mock.calls.filter(([p]) =>
+      String(p).endsWith(".json"),
+    );
     expect(jsonWrites.length).toBe(0);
   });
 
@@ -1621,9 +1917,17 @@ describe("build-script output cache", () => {
         `<script data-bascik-build>const m = await ${importExpr}; console.log(m);</script>`,
         "src/pages/test.html",
       );
-      expect(mockExecFile, `expected ${importExpr} to run`).toHaveBeenCalledTimes(1);
-      const jsonWrites = mockWriteFile.mock.calls.filter(([p]) => String(p).endsWith(".json"));
-      expect(jsonWrites.length, `expected no cache write for ${importExpr}`).toBe(0);
+      expect(
+        mockExecFile,
+        `expected ${importExpr} to run`,
+      ).toHaveBeenCalledTimes(1);
+      const jsonWrites = mockWriteFile.mock.calls.filter(([p]) =>
+        String(p).endsWith(".json"),
+      );
+      expect(
+        jsonWrites.length,
+        `expected no cache write for ${importExpr}`,
+      ).toBe(0);
     }
   });
 
@@ -1639,31 +1943,48 @@ describe("build-script output cache", () => {
     );
     // Static `import('marked')` is fully cacheable: a .json entry is written.
     expect(mockPackageIdentity).toHaveBeenCalledWith(["marked"]);
-    expect(mockWriteFile.mock.calls.some(([p]) => String(p).endsWith(".json"))).toBe(true);
+    expect(
+      mockWriteFile.mock.calls.some(([p]) => String(p).endsWith(".json")),
+    ).toBe(true);
   });
 
   it("skips cache reads and writes entirely when scripts.cache.enabled is false", async () => {
-    (BascikConfig as any).scripts = { ...BascikConfig.scripts, cache: { enabled: false } };
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      cache: { enabled: false },
+    };
     resolveWith("<p>no-cache</p>");
     const result = await executeBuildScripts(
       "<script data-bascik-build>nodeps()</script>",
     );
     expect(result).toBe("<p>no-cache</p>");
     expect(mockExecFile).toHaveBeenCalledTimes(1);
-    const jsonWrites = mockWriteFile.mock.calls.filter(([p]) => String(p).endsWith(".json"));
+    const jsonWrites = mockWriteFile.mock.calls.filter(([p]) =>
+      String(p).endsWith(".json"),
+    );
     expect(jsonWrites.length).toBe(0);
-    (BascikConfig as any).scripts = { ...BascikConfig.scripts, cache: { enabled: true } };
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      cache: { enabled: true },
+    };
   });
 
   it("handles one script failing while a sibling succeeds and onBuildScriptError is 'warn'", async () => {
-    (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "warn" };
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      onBuildScriptError: "warn",
+    };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     // Isolated per-script runs: the first script succeeds, the second rejects.
     let call = 0;
     mockExecFile.mockImplementation(
-      (_cmd: unknown, _args: unknown, _opts: unknown,
-        cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
+      (
+        _cmd: unknown,
+        _args: unknown,
+        _opts: unknown,
+        cb: (err: Error | null, stdout?: string, stderr?: string) => void,
+      ) => {
         call++;
         if (call === 1) {
           state.activeHandlerResult = "<span>Success</span>";
@@ -1686,8 +2007,12 @@ describe("build-script output cache", () => {
   it("throws and identifies the failed script when onBuildScriptError is 'error'", async () => {
     let call = 0;
     mockExecFile.mockImplementation(
-      (_cmd: unknown, _args: unknown, _opts: unknown,
-        cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
+      (
+        _cmd: unknown,
+        _args: unknown,
+        _opts: unknown,
+        cb: (err: Error | null, stdout?: string, stderr?: string) => void,
+      ) => {
         call++;
         if (call === 1) {
           cb(null, "<span>Success</span>", "");
@@ -1699,55 +2024,97 @@ describe("build-script output cache", () => {
 
     const html =
       "<div><script data-bascik-build>good()</script><script data-bascik-build>bad()</script></div>";
-    await expect(executeBuildScripts(html)).rejects.toThrow(/build script error/);
+    await expect(executeBuildScripts(html)).rejects.toThrow(
+      /build script error/,
+    );
   });
 
   it("throws a BuildScriptError that carries the failing script's location as data", async () => {
     rejectWith("ReferenceError: Strin is not defined");
-    const html = "<footer>\n  <span>\n    <script data-bascik-build>Strin()</script>\n  </span>\n</footer>";
+    const html =
+      "<footer>\n  <span>\n    <script data-bascik-build>Strin()</script>\n  </span>\n</footer>";
 
-    const error = await executeBuildScripts(html, "src/pages/about.html").catch((e: unknown) => e);
+    const error = await executeBuildScripts(html, "src/pages/about.html").catch(
+      (e: unknown) => e,
+    );
 
     expect(error).toBeInstanceOf(BuildScriptError);
     // The project-relative path, the same text the stack's frames show, so it opens with Cmd+Click.
-    expect(error).toMatchObject({ sourceFile: "src/pages/about.html", line: 3, column: 5 });
+    expect(error).toMatchObject({
+      sourceFile: "src/pages/about.html",
+      line: 3,
+      column: 5,
+    });
     // The text keeps its existing shape, so the CLI's duplicate-message filter still recognizes it.
-    expect((error as Error).message).toContain('[bascik] build script error in "src/pages/about.html" at (line 3, column 5)');
+    expect((error as Error).message).toContain(
+      '[bascik] build script error in "src/pages/about.html" at (line 3, column 5)',
+    );
   });
 
   it("names a script in a component file by the component file's project path", async () => {
     rejectWith("ReferenceError: Strin is not defined");
     const html = "<footer><script data-bascik-build>Strin()</script></footer>";
 
-    const error = await executeBuildScripts(html, "src/components/site-footer/site-footer.html").catch((e: unknown) => e);
+    const error = await executeBuildScripts(
+      html,
+      "src/components/site-footer/site-footer.html",
+    ).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(BuildScriptError);
-    expect(error).toMatchObject({ sourceFile: "src/components/site-footer/site-footer.html", line: 1, column: 9 });
-    expect((error as Error).message).toContain('in "src/components/site-footer/site-footer.html"');
-    expect((error as Error).message).not.toContain('pages/');
+    expect(error).toMatchObject({
+      sourceFile: "src/components/site-footer/site-footer.html",
+      line: 1,
+      column: 9,
+    });
+    expect((error as Error).message).toContain(
+      'in "src/components/site-footer/site-footer.html"',
+    );
+    expect((error as Error).message).not.toContain("pages/");
   });
 
   it("puts a column after a rewritten import on the same line back where it is in the file", async () => {
     // The module imports `./helper.ts` (rewritten to a longer file URL), then throws on the same line.
-    const html = '<p>x</p>\n<script data-bascik-build>import "./helper.ts"; boom();</script>';
+    const html =
+      '<p>x</p>\n<script data-bascik-build>import "./helper.ts"; boom();</script>';
     let moduleLine = "";
-    mockExecFile.mockImplementation((_cmd: unknown, _args: unknown, _opts: unknown, cb: (err: Error) => void) => {
-      const written = vi.mocked(writeFile).mock.calls.map(([path, text]) => [String(path), String(text)])
-        .filter(([path]) => /build-\d+-/.test(path)).at(-1)?.[1] ?? "";
-      moduleLine = written.split("\n")[1];
-      // V8 reports the column of `boom` in the module as run, after the rewrite.
-      cb(new Error(`ReferenceError: boom is not defined\n    at Module.default (src/pages/col.html:2:${moduleLine.indexOf("boom") + 1})`));
-    });
+    mockExecFile.mockImplementation(
+      (
+        _cmd: unknown,
+        _args: unknown,
+        _opts: unknown,
+        cb: (err: Error) => void,
+      ) => {
+        const written =
+          vi
+            .mocked(writeFile)
+            .mock.calls.map(([path, text]) => [String(path), String(text)])
+            .filter(([path]) => /build-\d+-/.test(path))
+            .at(-1)?.[1] ?? "";
+        moduleLine = written.split("\n")[1];
+        // V8 reports the column of `boom` in the module as run, after the rewrite.
+        cb(
+          new Error(
+            `ReferenceError: boom is not defined\n    at Module.default (src/pages/col.html:2:${moduleLine.indexOf("boom") + 1})`,
+          ),
+        );
+      },
+    );
 
-    const failure = await executeBuildScripts(html, "src/pages/col.html").catch((e: unknown) => e);
+    const failure = await executeBuildScripts(html, "src/pages/col.html").catch(
+      (e: unknown) => e,
+    );
 
     expect(moduleLine).toContain('import "file://');
     const fileColumn = html.split("\n")[1].indexOf("boom") + 1;
-    expect((failure as Error).message).toContain(`at Module.default (src/pages/col.html:2:${fileColumn})`);
+    expect((failure as Error).message).toContain(
+      `at Module.default (src/pages/col.html:2:${fileColumn})`,
+    );
   });
 
   it("forwards stderr for each isolated script run", async () => {
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stderrSpy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
     resolveSequence([
       { stdout: "<p>ok</p>", stderr: "warning from script 0\n" },
       { stdout: "<p>ok2</p>", stderr: "warning from script 1\n" },
@@ -1768,14 +2135,20 @@ describe("build-script output cache", () => {
     mockReadFile.mockImplementation(async (filePath: string) => {
       if (String(filePath).endsWith(".json") && ++callCount === 1) {
         // Only return cached output for first key
-        return JSON.stringify({ v: SCRIPT_CACHE_VERSION, output: "<p>cached-1</p>" });
+        return JSON.stringify({
+          v: SCRIPT_CACHE_VERSION,
+          output: "<p>cached-1</p>",
+        });
       }
       throw new Error("ENOENT");
     });
 
     // One uncached script runs alone in its own child process; the other is
     // served from cache, so execFile is called exactly once.
-    resolveSequence([{ stdout: "<p>batch-2</p>" }, { stdout: "<p>batch-3</p>" }]);
+    resolveSequence([
+      { stdout: "<p>batch-2</p>" },
+      { stdout: "<p>batch-3</p>" },
+    ]);
 
     const html =
       "<script data-bascik-build>c1()</script><script data-bascik-build>u2()</script><script data-bascik-build>u3()</script>";
@@ -1796,7 +2169,9 @@ describe("build-script output cache", () => {
       params: { slug: "post-1" },
     });
 
-    const jsonWrite1 = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+    const jsonWrite1 = mockWriteFile.mock.calls.find(([p]) =>
+      String(p).endsWith(".json"),
+    );
     expect(jsonWrite1).toBeDefined();
     const cacheKey1 = jsonWrite1![0];
 
@@ -1810,7 +2185,9 @@ describe("build-script output cache", () => {
       params: { slug: "post-2" },
     });
 
-    const jsonWrite2 = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+    const jsonWrite2 = mockWriteFile.mock.calls.find(([p]) =>
+      String(p).endsWith(".json"),
+    );
     expect(jsonWrite2).toBeDefined();
     const cacheKey2 = jsonWrite2![0];
 
@@ -1824,12 +2201,16 @@ describe("build-script output cache", () => {
     const route = { params: { slug: "hello" }, data: { title: "Hello World" } };
 
     await executeBuildScripts(template, "src/pages/blog/[slug].html", route);
-    const optsWithRoute = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    const optsWithRoute = mockExecFile.mock.calls[0][2] as {
+      env?: Record<string, string>;
+    };
     expect(optsWithRoute.env?.BASCIK_ROUTE).toBe(JSON.stringify(route));
 
     mockExecFile.mockClear();
     await executeBuildScripts(template, "src/pages/index.html");
-    const optsWithoutRoute = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    const optsWithoutRoute = mockExecFile.mock.calls[0][2] as {
+      env?: Record<string, string>;
+    };
     expect(optsWithoutRoute.env?.BASCIK_ROUTE).toBeUndefined();
   });
 
@@ -1837,19 +2218,35 @@ describe("build-script output cache", () => {
     resolveWith("<p>ok</p>");
     const template = "<script data-bascik-build>x()</script>";
 
-    await executeBuildScripts(template, "src/pages/guides/getting-started.html");
-    const opts1 = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    await executeBuildScripts(
+      template,
+      "src/pages/guides/getting-started.html",
+    );
+    const opts1 = mockExecFile.mock.calls[0][2] as {
+      env?: Record<string, string>;
+    };
     expect(opts1.env?.BASCIK_PAGE_PATH).toBe("/guides/getting-started");
 
     mockExecFile.mockClear();
-    await executeBuildScripts(template, "src/components/pagination.html", null, {
-      pageFile: "src/pages/switch/from-react.html",
-      sourceFile: "src/components/pagination.html",
-    });
-    const opts2 = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    await executeBuildScripts(
+      template,
+      "src/components/pagination.html",
+      null,
+      {
+        pageFile: "src/pages/switch/from-react.html",
+        sourceFile: "src/components/pagination.html",
+      },
+    );
+    const opts2 = mockExecFile.mock.calls[0][2] as {
+      env?: Record<string, string>;
+    };
     expect(opts2.env?.BASCIK_PAGE_PATH).toBe("/switch/from-react");
-    expect(opts2.env?.BASCIK_PAGE_FILE).toBe("src/pages/switch/from-react.html");
-    expect(opts2.env?.BASCIK_SOURCE_FILE).toBe("src/components/pagination.html");
+    expect(opts2.env?.BASCIK_PAGE_FILE).toBe(
+      "src/pages/switch/from-react.html",
+    );
+    expect(opts2.env?.BASCIK_SOURCE_FILE).toBe(
+      "src/components/pagination.html",
+    );
   });
 
   it("passes BASCIK_BASE to child processes and defaults to root", async () => {
@@ -1857,14 +2254,18 @@ describe("build-script output cache", () => {
     const template = "<script data-bascik-build>x()</script>";
 
     await executeBuildScripts(template, "src/pages/index.html");
-    const rootOptions = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    const rootOptions = mockExecFile.mock.calls[0][2] as {
+      env?: Record<string, string>;
+    };
     expect(rootOptions.env?.BASCIK_BASE).toBe("/");
 
     mockExecFile.mockClear();
     (BascikConfig as any).base = "/sub/";
     try {
       await executeBuildScripts(template, "src/pages/about.html");
-      const subOptions = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+      const subOptions = mockExecFile.mock.calls[0][2] as {
+        env?: Record<string, string>;
+      };
       expect(subOptions.env?.BASCIK_BASE).toBe("/sub/");
     } finally {
       (BascikConfig as any).base = "/";
@@ -1886,7 +2287,9 @@ describe("scripts.cache.environment", () => {
     mockReadFile.mockRejectedValue(new Error("ENOENT")); // always cache miss
     resolveWith("<p>result</p>");
     await executeBuildScripts(script);
-    const jsonWrite = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+    const jsonWrite = mockWriteFile.mock.calls.find(([p]) =>
+      String(p).endsWith(".json"),
+    );
     expect(jsonWrite).toBeDefined();
     return jsonWrite![0] as string;
   };
@@ -1900,24 +2303,36 @@ describe("scripts.cache.environment", () => {
 
   it("a changed declared env value produces a different cache key", async () => {
     setEnv("MY_FEATURE_FLAG", "on");
-    const key1 = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    const key1 = await runAndGetCacheKey(
+      "<script data-bascik-build>f()</script>",
+    );
     setEnv("MY_FEATURE_FLAG", "off");
-    const key2 = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    const key2 = await runAndGetCacheKey(
+      "<script data-bascik-build>f()</script>",
+    );
     expect(key1).not.toEqual(key2);
   });
 
   it("an unchanged declared env value reuses the same cache key", async () => {
     setEnv("MY_FEATURE_FLAG", "stable");
-    const key1 = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
-    const key2 = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    const key1 = await runAndGetCacheKey(
+      "<script data-bascik-build>f()</script>",
+    );
+    const key2 = await runAndGetCacheKey(
+      "<script data-bascik-build>f()</script>",
+    );
     expect(key1).toEqual(key2);
   });
 
   it("missing and empty declared env values produce different keys", async () => {
     setEnv("MY_FEATURE_FLAG", undefined);
-    const keyMissing = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    const keyMissing = await runAndGetCacheKey(
+      "<script data-bascik-build>f()</script>",
+    );
     setEnv("MY_FEATURE_FLAG", "");
-    const keyEmpty = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    const keyEmpty = await runAndGetCacheKey(
+      "<script data-bascik-build>f()</script>",
+    );
     expect(keyMissing).not.toEqual(keyEmpty);
   });
 
@@ -1925,39 +2340,51 @@ describe("scripts.cache.environment", () => {
     (BascikConfig as any).scripts.cache.environment = ["A", "B"];
     setEnv("A", "1");
     setEnv("B", "2");
-    const keyAB = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    const keyAB = await runAndGetCacheKey(
+      "<script data-bascik-build>f()</script>",
+    );
 
     (BascikConfig as any).scripts.cache.environment = ["B", "A"];
-    const keyBA = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    const keyBA = await runAndGetCacheKey(
+      "<script data-bascik-build>f()</script>",
+    );
     expect(keyAB).toEqual(keyBA);
   });
 
   it("declaring an env var changes the key even when the value is unchanged", async () => {
     setEnv("MY_FEATURE_FLAG", "same");
     (BascikConfig as any).scripts.cache.environment = [];
-    const keyNoDecl = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    const keyNoDecl = await runAndGetCacheKey(
+      "<script data-bascik-build>f()</script>",
+    );
 
     (BascikConfig as any).scripts.cache.environment = ["MY_FEATURE_FLAG"];
-    const keyDecl = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    const keyDecl = await runAndGetCacheKey(
+      "<script data-bascik-build>f()</script>",
+    );
     expect(keyNoDecl).not.toEqual(keyDecl);
   });
 
   it("warns once per undeclared process.env read when environment is configured", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     setEnv("MY_FEATURE_FLAG", "on");
     resolveWith("<p>result</p>");
     await executeBuildScripts(
       "<script data-bascik-build>console.log(process.env.UNDECLARED_A, process.env.UNDECLARED_A)</script>",
     );
     const warnings = warnSpy.mock.calls.map((c) => String(c[0]));
-    expect(warnings.some((w) => w.includes("process.env.UNDECLARED_A"))).toBe(true);
-    expect(warnings.some((w) => w.includes("process.env.MY_FEATURE_FLAG"))).toBe(false);
+    expect(warnings.some((w) => w.includes("process.env.UNDECLARED_A"))).toBe(
+      true,
+    );
+    expect(
+      warnings.some((w) => w.includes("process.env.MY_FEATURE_FLAG")),
+    ).toBe(false);
     warnSpy.mockRestore();
   });
 
   it("does not warn when environment is not configured", async () => {
     (BascikConfig as any).scripts.cache.environment = undefined;
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     resolveWith("<p>result</p>");
     await executeBuildScripts(
       "<script data-bascik-build>console.log(process.env.ANYTHING)</script>",
@@ -1968,8 +2395,12 @@ describe("scripts.cache.environment", () => {
 
   it("never persists raw env values in the cache entry", async () => {
     setEnv("MY_FEATURE_FLAG", "super-secret-value");
-    const key = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
-    const jsonWrite = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+    const key = await runAndGetCacheKey(
+      "<script data-bascik-build>f()</script>",
+    );
+    const jsonWrite = mockWriteFile.mock.calls.find(([p]) =>
+      String(p).endsWith(".json"),
+    );
     const [, content] = jsonWrite as [string, string];
     expect(content).not.toContain("super-secret-value");
     expect(key).not.toContain("super-secret-value");
@@ -2063,8 +2494,13 @@ describe("packet R6: supplementary build script memoization limits and missing d
 
 describe("Prompt 02: Build script default-export handler contract", () => {
   it("handler returning string markup while console.log logs sentinels to stdout: logs do not enter output", async () => {
-    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    resolveWith("<article><h1>Rendered Article</h1></article>", "sentinel-stdout-log\n");
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    resolveWith(
+      "<article><h1>Rendered Article</h1></article>",
+      "sentinel-stdout-log\n",
+    );
 
     const html = `<main>
       <script data-bascik-build>
@@ -2083,23 +2519,33 @@ describe("Prompt 02: Build script default-export handler contract", () => {
   });
 
   it("missing default export causes build script error", async () => {
-    rejectWith("Directive script (data-bascik-build) missing default export. Expected: export default async function() { ... }");
+    rejectWith(
+      "Directive script (data-bascik-build) missing default export. Expected: export default async function() { ... }",
+    );
     const html = `<script data-bascik-build>
       const a = 1;
     </script>`;
-    await expect(executeBuildScripts(html)).rejects.toThrow(/missing default export/);
+    await expect(executeBuildScripts(html)).rejects.toThrow(
+      /missing default export/,
+    );
   });
 
   it("legacy console.log('<p>old</p>') without handler export errors out", async () => {
-    rejectWith("Directive script (data-bascik-build) missing default export. Expected: export default async function() { ... }");
+    rejectWith(
+      "Directive script (data-bascik-build) missing default export. Expected: export default async function() { ... }",
+    );
     const html = `<script data-bascik-build>
       console.log("<p>old</p>");
     </script>`;
-    await expect(executeBuildScripts(html)).rejects.toThrow(/missing default export/);
+    await expect(executeBuildScripts(html)).rejects.toThrow(
+      /missing default export/,
+    );
   });
 
   it("cached handlers do not log again on cache hits", async () => {
-    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
     resolveWith("<p>first-run</p>", "logged-on-run\n");
 
     const tag = `<script data-bascik-build>
@@ -2121,7 +2567,8 @@ describe("Prompt 02: Build script default-export handler contract", () => {
   });
 
   it("preserves exact bytes: Unicode, quotes, backslashes, literal $1/$&, ANSI bytes in returned string", async () => {
-    const rawMarkup = "<div title=\"hello 'world'\">日本語 \u001b[31mRed\u001b[0m $1 $& \\n \\\\</div>\n";
+    const rawMarkup =
+      "<div title=\"hello 'world'\">日本語 \u001b[31mRed\u001b[0m $1 $& \\n \\\\</div>\n";
     resolveWith(rawMarkup);
 
     const html = `<section>
@@ -2137,15 +2584,20 @@ describe("Prompt 02: Build script default-export handler contract", () => {
 
 describe("dependency scan memo", () => {
   const scans = buildScriptMocks.scanScript;
-  const scansOf = (source: string) => scans.mock.calls.filter(([input]) => input === source).length;
+  const scansOf = (source: string) =>
+    scans.mock.calls.filter(([input]) => input === source).length;
   const helperPath = "src/lib/helper.ts";
   const sharedPath = "src/lib/shared.ts";
   const files = new Map<string, string>();
   const serveFiles = () => {
-    (readFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
-      for (const [relPath, content] of files) if (String(path).endsWith(relPath)) return content;
-      throw new Error("ENOENT");
-    });
+    (readFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (path: string) => {
+        const normalized = String(path).replace(/\\/g, "/");
+        for (const [relPath, content] of files)
+          if (normalized.endsWith(relPath)) return content;
+        throw new Error("ENOENT");
+      },
+    );
   };
   const inline = "import { h } from '@/lib/helper.ts'; console.log(h);";
   const tag = `<script data-bascik-build>${inline}</script>`;
@@ -2153,18 +2605,27 @@ describe("dependency scan memo", () => {
   beforeEach(() => {
     scans.mockClear();
     files.clear();
-    files.set(helperPath, "import { s } from './shared.ts'; export const h = s;");
+    files.set(
+      helperPath,
+      "import { s } from './shared.ts'; export const h = s;",
+    );
     files.set(sharedPath, "export const s = 1;");
     serveFiles();
   });
 
   it("tokenizes each dependency's content once across cache keys, pages, and watch dependency collection", async () => {
     resolveWith("<p>h</p>");
-    const pages = ["src/pages/a.html", "src/pages/b.html", "src/pages/nested/c.html"];
+    const pages = [
+      "src/pages/a.html",
+      "src/pages/b.html",
+      "src/pages/nested/c.html",
+    ];
     for (const page of pages) {
       // Each page folds its own source file into the key, so every page walks the dependency graph.
       expect(await executeBuildScripts(tag, page)).toBe("<p>h</p>");
-      expect(await collectAllScriptDeps(tag, page)).toEqual(expect.arrayContaining([helperPath, sharedPath]));
+      expect(await collectAllScriptDeps(tag, page)).toEqual(
+        expect.arrayContaining([helperPath, sharedPath]),
+      );
     }
     expect(mockExecFile).toHaveBeenCalledTimes(pages.length);
     expect(scansOf(files.get(helperPath)!)).toBe(1);
@@ -2174,14 +2635,21 @@ describe("dependency scan memo", () => {
   it("rescans changed content, follows its new imports, and keys the output by the new bytes", async () => {
     resolveWith("<p>first</p>");
     await executeBuildScripts(tag, "src/pages/a.html");
-    files.set(helperPath, "import { s } from './shared.ts'; import { t } from './added.ts'; export const h = s + t;");
+    files.set(
+      helperPath,
+      "import { s } from './shared.ts'; import { t } from './added.ts'; export const h = s + t;",
+    );
     files.set("src/lib/added.ts", "export const t = 2;");
     clearBuildScriptCaches(helperPath);
     resolveWith("<p>second</p>");
-    expect(await executeBuildScripts(tag, "src/pages/a.html")).toBe("<p>second</p>");
+    expect(await executeBuildScripts(tag, "src/pages/a.html")).toBe(
+      "<p>second</p>",
+    );
     expect(mockExecFile).toHaveBeenCalledTimes(2);
     expect(scansOf(files.get(helperPath)!)).toBe(1);
-    expect(await collectAllScriptDeps(tag, "src/pages/a.html")).toEqual(expect.arrayContaining([helperPath, sharedPath, "src/lib/added.ts"]));
+    expect(await collectAllScriptDeps(tag, "src/pages/a.html")).toEqual(
+      expect.arrayContaining([helperPath, sharedPath, "src/lib/added.ts"]),
+    );
   });
 
   it("keeps a missing dependency missing in the key even when its importer's scan is memoized", async () => {
@@ -2194,15 +2662,23 @@ describe("dependency scan memo", () => {
     files.set(sharedPath, "export const s = 3;");
     clearBuildScriptCaches(sharedPath);
     resolveWith("<p>present</p>");
-    expect(await executeBuildScripts(tag, "src/pages/a.html")).toBe("<p>present</p>");
+    expect(await executeBuildScripts(tag, "src/pages/a.html")).toBe(
+      "<p>present</p>",
+    );
     expect(mockExecFile).toHaveBeenCalledTimes(3);
   });
 
   it("separates identical source text by base directory, import root, and working directory", () => {
     const source = "import './x.ts'; import '@/y.ts'; read('./data/z.json');";
-    const a = extractScriptDeps(source, resolve("src/a"), { importRoot: resolve("src") });
-    const b = extractScriptDeps(source, resolve("src/b"), { importRoot: resolve("src") });
-    const otherRoot = extractScriptDeps(source, resolve("src/a"), { importRoot: resolve("lib") });
+    const a = extractScriptDeps(source, resolve("src/a"), {
+      importRoot: resolve("src"),
+    });
+    const b = extractScriptDeps(source, resolve("src/b"), {
+      importRoot: resolve("src"),
+    });
+    const otherRoot = extractScriptDeps(source, resolve("src/a"), {
+      importRoot: resolve("lib"),
+    });
     expect(a).toEqual(["src/a/x.ts", "src/y.ts", "./data/z.json"]);
     expect(b).toEqual(["src/b/x.ts", "src/y.ts", "./data/z.json"]);
     expect(otherRoot).toEqual(["src/a/x.ts", "lib/y.ts", "./data/z.json"]);
@@ -2210,16 +2686,26 @@ describe("dependency scan memo", () => {
     const [baseDir, importRoot] = [resolve("src/a"), resolve("src")];
     const cwd = vi.spyOn(process, "cwd").mockReturnValue(importRoot);
     try {
-      expect(extractScriptDeps(source, baseDir, { importRoot })).toEqual(["a/x.ts", "y.ts", "./data/z.json"]);
+      expect(extractScriptDeps(source, baseDir, { importRoot })).toEqual([
+        "a/x.ts",
+        "y.ts",
+        "./data/z.json",
+      ]);
     } finally {
       cwd.mockRestore();
     }
     expect(scansOf(source)).toBe(4);
     // A repeated context is a hit, and callers receive their own array.
-    const again = extractScriptDeps(source, resolve("src/a"), { importRoot: resolve("src") });
+    const again = extractScriptDeps(source, resolve("src/a"), {
+      importRoot: resolve("src"),
+    });
     expect(again).toEqual(a);
     again.push("mutated");
-    expect(extractScriptDeps(source, resolve("src/a"), { importRoot: resolve("src") })).toEqual(a);
+    expect(
+      extractScriptDeps(source, resolve("src/a"), {
+        importRoot: resolve("src"),
+      }),
+    ).toEqual(a);
     expect(scansOf(source)).toBe(4);
   });
 
@@ -2232,7 +2718,8 @@ describe("dependency scan memo", () => {
     expect(cacheHooks.dependencyScanSize).toBe(0);
     extractScriptDeps(source, resolve("src"));
     expect(scansOf(source)).toBe(2);
-    for (let index = 0; index < MAX_DEPENDENCY_SCANS + 10; index++) extractScriptDeps(`import './x${index}.ts';`, resolve("src"));
+    for (let index = 0; index < MAX_DEPENDENCY_SCANS + 10; index++)
+      extractScriptDeps(`import './x${index}.ts';`, resolve("src"));
     expect(cacheHooks.dependencyScanSize).toBe(MAX_DEPENDENCY_SCANS);
     // FIFO: the oldest entry was evicted and is scanned again.
     extractScriptDeps(source, resolve("src"));

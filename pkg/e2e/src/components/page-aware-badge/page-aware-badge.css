@@ -1,2 +1,7 @@
-.badge-label { color: rgb(0, 128, 0); }
-em { font-weight: 700; }
+.badge-label {
+  color: rgb(0, 128, 0);
+}
+
+em {
+  font-weight: 700;
+}

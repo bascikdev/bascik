@@ -9,6 +9,7 @@ A dropdown menu with no JavaScript, built on the HTML `popover` attribute. Escap
 `label` is the button text. The default slot holds the menu content, usually links or buttons.
 
 <!-- demo:usage -->
+
 ```html
 <popover-menu data-bascik-prop-label="Account">
   <a href="/example-components">All example components</a>

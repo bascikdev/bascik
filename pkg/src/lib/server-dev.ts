@@ -33,7 +33,7 @@ export interface DevServerOptions {
   /**
    * The parallel exec handle the dev branch of `transpile.ts` started but did
    * not await. The dev lifecycle owner registers each task's outcome with the
-    * failure reporter without blocking boot or scheduling compilation.
+   * failure reporter without blocking boot or scheduling compilation.
    */
   parallel?: ParallelExecHandle;
 }
@@ -57,7 +57,9 @@ export interface DevServerHandle {
  * The caller (`transpile.ts`) runs the transpile/watch pipeline in between
  * and then calls `finishBoot()`.
  */
-export const startDevServer = (options: DevServerOptions = {}): DevServerHandle => {
+export const startDevServer = (
+  options: DevServerOptions = {},
+): DevServerHandle => {
   // Dev-only dependency generations (prompt 138): the `node:module` resolve
   // hook must be registered before the first request can import a runtime
   // module, so it is installed ahead of binding the port. This is the only

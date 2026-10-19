@@ -56,7 +56,10 @@ export interface ExecutionPlan {
  * failure the scheduler should treat as precommit (server) or postcommit
  * (stream). The runner receives the request signal so it can cancel work.
  */
-export type ScriptJobRunner = (id: string, signal: AbortSignal) => Promise<string>;
+export type ScriptJobRunner = (
+  id: string,
+  signal: AbortSignal,
+) => Promise<string>;
 
 /** Where streamed bytes go. Resolving the promise is the demand signal. */
 export interface StreamWriter {
@@ -95,11 +98,15 @@ export const composeBufferedResponse = async (
   signal: AbortSignal = new AbortController().signal,
 ): Promise<Uint8Array> => {
   const outputs = await Promise.all(
-    plan.segments.map((segment) => (segment.kind === "script" ? run(segment.id, signal) : undefined)),
+    plan.segments.map((segment) =>
+      segment.kind === "script" ? run(segment.id, signal) : undefined,
+    ),
   );
   return concat(
     plan.segments.map((segment, i) =>
-      segment.kind === "static" ? segment.bytes : encoder.encode(outputs[i] ?? ""),
+      segment.kind === "static"
+        ? segment.bytes
+        : encoder.encode(outputs[i] ?? ""),
     ),
   );
 };
@@ -146,7 +153,12 @@ export const streamComposedResponse = (
   const abort = new AbortController();
   if (options.signal) {
     if (options.signal.aborted) abort.abort(options.signal.reason);
-    else options.signal.addEventListener("abort", () => abort.abort(options.signal!.reason), { once: true });
+    else
+      options.signal.addEventListener(
+        "abort",
+        () => abort.abort(options.signal!.reason),
+        { once: true },
+      );
   }
   const signal = abort.signal;
 
@@ -160,12 +172,16 @@ export const streamComposedResponse = (
   const ready = Promise.all(serverOutputs.values()).then(() => undefined);
 
   let releaseCommit!: () => void;
-  const committed = new Promise<void>((resolve) => { releaseCommit = resolve; });
+  const committed = new Promise<void>((resolve) => {
+    releaseCommit = resolve;
+  });
 
   // The writer is chosen at commit time for the ReadableStream form.
   let activeWriter: StreamWriter | undefined = writer;
 
-  const runStreamJob = async (segment: ScriptExecutionSegment): Promise<string> => {
+  const runStreamJob = async (
+    segment: ScriptExecutionSegment,
+  ): Promise<string> => {
     try {
       return await run(segment.id, signal);
     } catch (err) {
@@ -188,18 +204,26 @@ export const streamComposedResponse = (
     const streamIndices: number[] = [];
     for (let i = 0; i < plan.segments.length; i++) {
       const segment = plan.segments[i];
-      if (segment.kind === "script" && segment.mode === "stream") streamIndices.push(i);
+      if (segment.kind === "script" && segment.mode === "stream")
+        streamIndices.push(i);
     }
     const streamOutputs = new Map<number, Promise<string>>();
     let nextDue = 0;
     let nextToDispatch = 0;
     const dispatchWindow = (cursor: number): void => {
-      while (nextDue < streamIndices.length && streamIndices[nextDue] < cursor) nextDue++;
-      const limit = Math.min(streamIndices.length, nextDue + STREAM_LOOKAHEAD + 1);
+      while (nextDue < streamIndices.length && streamIndices[nextDue] < cursor)
+        nextDue++;
+      const limit = Math.min(
+        streamIndices.length,
+        nextDue + STREAM_LOOKAHEAD + 1,
+      );
       while (nextToDispatch < limit) {
         if (signal.aborted) return;
         const index = streamIndices[nextToDispatch++];
-        streamOutputs.set(index, runStreamJob(plan.segments[index] as ScriptExecutionSegment));
+        streamOutputs.set(
+          index,
+          runStreamJob(plan.segments[index] as ScriptExecutionSegment),
+        );
       }
     };
 
@@ -211,21 +235,29 @@ export const streamComposedResponse = (
         await sink.write(segment.bytes);
         continue;
       }
-      const output = await (segment.mode === "server" ? serverOutputs.get(i)! : streamOutputs.get(i)!);
+      const output = await (segment.mode === "server"
+        ? serverOutputs.get(i)!
+        : streamOutputs.get(i)!);
       if (signal.aborted) return;
       if (output) await sink.write(encoder.encode(output));
     }
   })();
 
   const toReadableStream = (): ReadableStream<Uint8Array> => {
-    if (writer) throw new Error("toReadableStream() is only available when no writer was supplied.");
+    if (writer)
+      throw new Error(
+        "toReadableStream() is only available when no writer was supplied.",
+      );
     let controller!: ReadableStreamDefaultController<Uint8Array>;
     // Demand gate: each write waits until the reader has asked for more.
     let demand = Promise.resolve();
     let signalDemand: (() => void) | undefined;
     const waitForDemand = (): Promise<void> => {
-      if (controller.desiredSize !== null && controller.desiredSize > 0) return Promise.resolve();
-      demand = new Promise<void>((resolve) => { signalDemand = resolve; });
+      if (controller.desiredSize !== null && controller.desiredSize > 0)
+        return Promise.resolve();
+      demand = new Promise<void>((resolve) => {
+        signalDemand = resolve;
+      });
       return demand;
     };
     activeWriter = {
@@ -236,28 +268,41 @@ export const streamComposedResponse = (
         controller.enqueue(chunk);
       },
     };
-    const stream = new ReadableStream<Uint8Array>({
-      start(c) {
-        controller = c;
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        start(c) {
+          controller = c;
+        },
+        pull() {
+          signalDemand?.();
+          signalDemand = undefined;
+        },
+        cancel(reason) {
+          abort.abort(
+            reason instanceof Error ? reason : new Error("reader canceled"),
+          );
+          signalDemand?.();
+        },
       },
-      pull() {
-        signalDemand?.();
-        signalDemand = undefined;
-      },
-      cancel(reason) {
-        abort.abort(reason instanceof Error ? reason : new Error("reader canceled"));
-        signalDemand?.();
-      },
-    }, { highWaterMark: 1 });
+      { highWaterMark: 1 },
+    );
     releaseCommit();
     void done.then(
       () => {
         if (!signal.aborted) {
-          try { controller.close(); } catch { /* already closed by cancel */ }
+          try {
+            controller.close();
+          } catch {
+            /* already closed by cancel */
+          }
         }
       },
       (err) => {
-        try { controller.error(err); } catch { /* already closed */ }
+        try {
+          controller.error(err);
+        } catch {
+          /* already closed */
+        }
       },
     );
     return stream;
@@ -295,7 +340,8 @@ export interface InvokeResult<T> {
   aborted: boolean;
 }
 
-const toError = (raw: unknown): Error => (raw instanceof Error ? raw : new Error(String(raw)));
+const toError = (raw: unknown): Error =>
+  raw instanceof Error ? raw : new Error(String(raw));
 
 /**
  * Invoke `handler` under a deadline and an upstream signal. Settles exactly
@@ -342,7 +388,9 @@ export const invokeWithDeadline = async <T>(
         reject(controller.signal.reason);
         return;
       }
-      onAbort = () => { if (!settled) reject(controller.signal.reason); };
+      onAbort = () => {
+        if (!settled) reject(controller.signal.reason);
+      };
       controller.signal.addEventListener("abort", onAbort, { once: true });
     });
     abortPromise.catch(() => {});
@@ -355,7 +403,8 @@ export const invokeWithDeadline = async <T>(
       ok: false,
       error: toError(raw),
       timedOut,
-      aborted: !timedOut && (upstream?.aborted === true || controller.signal.aborted),
+      aborted:
+        !timedOut && (upstream?.aborted === true || controller.signal.aborted),
     };
   } finally {
     settled = true;
@@ -367,7 +416,15 @@ export const invokeWithDeadline = async <T>(
 
 // ─── API route method dispatch ───────────────────────────────────────────────
 
-export const ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"] as const;
+export const ALLOWED_METHODS = [
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "OPTIONS",
+  "HEAD",
+] as const;
 export type HttpMethod = (typeof ALLOWED_METHODS)[number];
 
 /** Context every API route handler receives as its second argument. */
@@ -408,13 +465,21 @@ export interface DispatchOptions extends InvokeOptions {
   classifyError?: (error: unknown) => Response | undefined;
 }
 
-const text = (body: string, status: number, headers: Record<string, string> = {}): Response =>
-  new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8", ...headers } });
+const text = (
+  body: string,
+  status: number,
+  headers: Record<string, string> = {},
+): Response =>
+  new Response(body, {
+    status,
+    headers: { "content-type": "text/plain; charset=utf-8", ...headers },
+  });
 
 /** Sorted `Allow` header value for a module: exported methods plus derived HEAD and auto OPTIONS. */
 export const allowHeaderFor = (mod: ApiHandlerModule): string => {
   const allow = new Set<string>();
-  for (const m of ALLOWED_METHODS) if (typeof mod[m] === "function") allow.add(m);
+  for (const m of ALLOWED_METHODS)
+    if (typeof mod[m] === "function") allow.add(m);
   if (allow.has("GET")) allow.add("HEAD");
   allow.add("OPTIONS");
   return Array.from(allow).sort().join(", ");
@@ -459,11 +524,16 @@ export const dispatchApiHandler = async (
     const owned = options.classifyError?.(error);
     if (owned) return owned;
     if (result.timedOut) {
-      options.onError?.(`API route handler timed out (${method} ${new URL(request.url).pathname}) after ${options.timeoutMs}ms`);
+      options.onError?.(
+        `API route handler timed out (${method} ${new URL(request.url).pathname}) after ${options.timeoutMs}ms`,
+      );
       return text("Gateway Timeout", 504);
     }
     if (result.aborted) return text("Client Closed Request", 499);
-    options.onError?.(`API route handler error (${method} ${new URL(request.url).pathname})`, error);
+    options.onError?.(
+      `API route handler error (${method} ${new URL(request.url).pathname})`,
+      error,
+    );
     return text("Internal Server Error", 500);
   }
   const value = result.value;
@@ -474,7 +544,11 @@ export const dispatchApiHandler = async (
     return text("Internal Server Error", 500);
   }
   if (derivedHead) {
-    return new Response(null, { status: value.status, statusText: value.statusText, headers: value.headers });
+    return new Response(null, {
+      status: value.status,
+      statusText: value.statusText,
+      headers: value.headers,
+    });
   }
   return value;
 };

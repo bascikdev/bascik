@@ -11,25 +11,46 @@ import {
   SCRIPT_END_TAG,
   SCRIPT_TAG_PREFIX,
   getHtmlAttributeValue,
+  hasHtmlAttribute,
+  isPageAwareBuildOpenTag,
   scriptOpenTag,
 } from "./html-patterns.ts";
 
 describe("SCRIPT_END_TAG", () => {
   const endTag = new RegExp(`^${SCRIPT_END_TAG}$`, "i");
 
-  it.each(["</script>", "</SCRIPT>", "</script >", "</script\t\n foo>", "</script/>", "</script foo=\"bar\">", "</script <p>"])(
-    "matches the end tag %j that browsers accept",
-    (tag) => expect(endTag.test(tag)).toBe(true),
+  it.each([
+    "</script>",
+    "</SCRIPT>",
+    "</script >",
+    "</script\t\n foo>",
+    "</script/>",
+    '</script foo="bar">',
+    "</script <p>",
+  ])("matches the end tag %j that browsers accept", (tag) =>
+    expect(endTag.test(tag)).toBe(true),
   );
 
-  it.each(["</scripts>", "</script-x>", "</scriptfoo>", "</ script>", "</script", "</script\u00a0>", "</script\u3000>"])("does not match %j", (tag) => {
+  it.each([
+    "</scripts>",
+    "</script-x>",
+    "</scriptfoo>",
+    "</ script>",
+    "</script",
+    "</script\u00a0>",
+    "</script\u3000>",
+  ])("does not match %j", (tag) => {
     expect(endTag.test(tag)).toBe(false);
   });
 
   it("ends a lazy script body at the first end tag, whatever its spelling", () => {
     const re = new RegExp(`<script>([\\s\\S]*?)${SCRIPT_END_TAG}`, "gi");
-    const html = "<script>a()</script\t\n foo><p>between</p><script>b()</scripts></script/><p>after</p>";
-    expect([...html.matchAll(re)].map((match) => match[1])).toEqual(["a()", "b()</scripts>"]);
+    const html =
+      "<script>a()</script\t\n foo><p>between</p><script>b()</scripts></script/><p>after</p>";
+    expect([...html.matchAll(re)].map((match) => match[1])).toEqual([
+      "a()",
+      "b()</scripts>",
+    ]);
   });
 });
 
@@ -64,18 +85,28 @@ describe("html-patterns (Prompt 52)", () => {
     expect(SCRIPT_TAG_PREFIX).toBeDefined();
 
     // Verify regex pattern matching
-    const testRe = new RegExp(`${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`);
+    const testRe = new RegExp(
+      `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+    );
     expect(testRe.test('<script data-bascik-build type="module">')).toBe(true);
   });
 
   it("is imported by build-scripts.ts, routes.ts, and server-scripts.ts", () => {
-    const buildScriptsSource = readFileSync(resolve(__dirname, "build-scripts.ts"), "utf-8");
+    const buildScriptsSource = readFileSync(
+      resolve(__dirname, "build-scripts.ts"),
+      "utf-8",
+    );
     const routesSource = readFileSync(resolve(__dirname, "routes.ts"), "utf-8");
-    const serverScriptsSource = readFileSync(resolve(__dirname, "server-scripts.ts"), "utf-8");
+    const serverScriptsSource = readFileSync(
+      resolve(__dirname, "server-scripts.ts"),
+      "utf-8",
+    );
 
     expect(buildScriptsSource).toMatch(/from ["']\.\/html-patterns(\.ts)?["']/);
     expect(routesSource).toMatch(/from ["']\.\/html-patterns(\.ts)?["']/);
-    expect(serverScriptsSource).toMatch(/from ["']\.\/html-patterns(\.ts)?["']/);
+    expect(serverScriptsSource).toMatch(
+      /from ["']\.\/html-patterns(\.ts)?["']/,
+    );
   });
 
   describe("getHtmlAttributeValue", () => {
@@ -103,7 +134,7 @@ describe("html-patterns (Prompt 52)", () => {
     });
 
     it("handles empty attribute values", () => {
-      const tag = '<input value="" name=\'\'>';
+      const tag = "<input value=\"\" name=''>";
       expect(getHtmlAttributeValue(tag, "value")).toBe("");
       expect(getHtmlAttributeValue(tag, "name")).toBe("");
     });
@@ -115,10 +146,49 @@ describe("html-patterns (Prompt 52)", () => {
     });
 
     it("handles multiple attributes with whitespace around equals and complex values", () => {
-      const tag = '<a href = "https://example.com/api?foo=1&bar=2" title = \'Hello World\' target="_blank">';
-      expect(getHtmlAttributeValue(tag, "href")).toBe("https://example.com/api?foo=1&bar=2");
+      const tag =
+        '<a href = "https://example.com/api?foo=1&bar=2" title = \'Hello World\' target="_blank">';
+      expect(getHtmlAttributeValue(tag, "href")).toBe(
+        "https://example.com/api?foo=1&bar=2",
+      );
       expect(getHtmlAttributeValue(tag, "title")).toBe("Hello World");
       expect(getHtmlAttributeValue(tag, "target")).toBe("_blank");
     });
+  });
+});
+
+describe("hasHtmlAttribute", () => {
+  it.each([
+    ["<script data-bascik-page-aware>", true],
+    ['<script data-bascik-page-aware = "">', true],
+    ["<script DATA-BASCIK-PAGE-AWARE=x>", true],
+    ["<script data-bascik-page-aware/>", true],
+    ["<script data-bascik-page-aware-x>", false],
+    ['<script data-note="data-bascik-page-aware">', false],
+    ["<script data-note='a data-bascik-page-aware b'>", false],
+  ])("%s -> %s", (tag, expected) => {
+    expect(hasHtmlAttribute(tag, "data-bascik-page-aware")).toBe(expected);
+  });
+});
+
+describe("isPageAwareBuildOpenTag", () => {
+  it.each([
+    ['<script data-bascik-build="page">', true],
+    ['<script data-bascik-build = "page">', true],
+    ["<script data-bascik-build=page>", true],
+    ["<script data-bascik-build = 'PAGE' >", true],
+    ['<script data-bascik-build=" page ">', true],
+    ["<script data-bascik-build data-bascik-page-aware>", true],
+    ['<script data-bascik-build data-bascik-page-aware="">', true],
+    ["<script data-bascik-build>", false],
+    ['<script data-bascik-build="">', false],
+    ['<script data-bascik-build="pages">', false],
+    ['<script data-bascik-build="page-x">', false],
+    ["<script data-bascik-build=pager>", false],
+    ['<script data-bascik-build data-note="data-bascik-build=page">', false],
+    ["<script data-bascik-build data-bascik-page-aware-x>", false],
+    ["<script data-bascik-build data-x= data-bascik-page-aware>", false],
+  ])("%s -> %s", (tag, expected) => {
+    expect(isPageAwareBuildOpenTag(tag)).toBe(expected);
   });
 });

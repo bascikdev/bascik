@@ -5,9 +5,9 @@
  * say how long that picture stays on screen. Timing is therefore exact and does not depend on how fast the
  * machine renders.
  */
-import { mkdir, rm, stat } from 'node:fs/promises';
-import { join } from 'node:path';
-import sharp from 'sharp';
+import { mkdir, rm, stat } from "node:fs/promises";
+import { join } from "node:path";
+import sharp from "sharp";
 
 export interface Frame {
   png: Buffer;
@@ -28,7 +28,8 @@ export function pushFrame(frames: Frame[], png: Buffer, hold: number): void {
   else frames.push({ png, hold });
 }
 
-export const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
+export const sleep = (ms: number) =>
+  new Promise<void>((done) => setTimeout(done, ms));
 
 /**
  * Writes `<name>@2x.webp` into `outDir`: a still image for one frame, or a lossless animated WebP plus a
@@ -38,7 +39,11 @@ export const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done
  * Lossless because lossy animations only re-encode the changed rectangle, so each frame leaves a faint ghost of
  * the one before it. Flat UI compresses well without loss anyway.
  */
-export async function writeScene(outDir: string, name: string, frames: Frame[]): Promise<void> {
+export async function writeScene(
+  outDir: string,
+  name: string,
+  frames: Frame[],
+): Promise<void> {
   if (frames.length === 0) throw new Error(`Scene ${name} captured no frames`);
   await mkdir(outDir, { recursive: true });
   const animatedFile = join(outDir, `${name}@2x.webp`);
@@ -52,12 +57,32 @@ export async function writeScene(outDir: string, name: string, frames: Frame[]):
     return;
   }
   const { width = 0, height = 0 } = await sharp(frames[0].png).metadata();
-  const raw = await Promise.all(frames.map(({ png }) => sharp(png).ensureAlpha().raw().toBuffer()));
-  await sharp(Buffer.concat(raw), { raw: { width, height: height * frames.length, channels: 4, pageHeight: height } })
-    .webp({ lossless: true, effort: 6, loop: 0, delay: frames.map((frame) => frame.hold) })
+  const raw = await Promise.all(
+    frames.map(({ png }) => sharp(png).ensureAlpha().raw().toBuffer()),
+  );
+  await sharp(Buffer.concat(raw), {
+    raw: {
+      width,
+      height: height * frames.length,
+      channels: 4,
+      pageHeight: height,
+    },
+  })
+    .webp({
+      lossless: true,
+      effort: 6,
+      loop: 0,
+      delay: frames.map((frame) => frame.hold),
+    })
     .toFile(animatedFile);
-  await sharp(frames[frames.length - 1].png).webp(lossy).toFile(stillFile);
-  const seconds = (frames.reduce((total, frame) => total + frame.hold, 0) / 1000).toFixed(1);
+  await sharp(frames[frames.length - 1].png)
+    .webp(lossy)
+    .toFile(stillFile);
+  const seconds = (
+    frames.reduce((total, frame) => total + frame.hold, 0) / 1000
+  ).toFixed(1);
   const kilobytes = Math.round((await stat(animatedFile)).size / 1024);
-  console.log(`captured ${name} (${frames.length} frames, ${seconds}s loop, ${kilobytes} KB)`);
+  console.log(
+    `captured ${name} (${frames.length} frames, ${seconds}s loop, ${kilobytes} KB)`,
+  );
 }

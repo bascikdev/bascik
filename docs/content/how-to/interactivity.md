@@ -13,15 +13,15 @@ A framework runtime or a client-side router is never needed to make a Bascik pag
 
 ## HTML First
 
-| Need | Use | Notes |
-|---|---|---|
-| Accordion, FAQ, "show more" | `<details>` and `<summary>` | `name="faq"` on several makes them exclusive. In a component, `name` is scoped per instance, so each instance is its own group; add `data-bascik-preserve="name"` to group across instances |
-| Dropdown or popup panel | `<button popovertarget="menu">` and `<div id="menu" popover>` | Bascik rewrites the ID and `popovertarget` together. `popover="manual"` turns off light dismiss. See [Popover Menu](/example-components/popover-menu) |
-| Modal | `<dialog>` and `showModal()` | A two-line script, or an invoker command: `<button commandfor="d" command="show-modal">`. See [Modal Dialog](/example-components/modal-dialog) |
-| Form rules | `required`, `type="email"`, `minlength`, `pattern` | Style with `:user-invalid`, which applies only after the visitor interacts |
-| Native pickers | `<input type="date">`, `<select>`, `<datalist>` | |
-| Page transitions | `@view-transition { navigation: auto; }` in a global stylesheet | Cross-document view transitions; other browsers navigate normally |
-| Carousel | `scroll-snap-type: x mandatory` on the track | Add buttons with a script only if needed |
+| Need                        | Use                                                             | Notes                                                                                                                                                                                       |
+| --------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Accordion, FAQ, "show more" | `<details>` and `<summary>`                                     | `name="faq"` on several makes them exclusive. In a component, `name` is scoped per instance, so each instance is its own group; add `data-bascik-preserve="name"` to group across instances |
+| Dropdown or popup panel     | `<button popovertarget="menu">` and `<div id="menu" popover>`   | Bascik rewrites the ID and `popovertarget` together. `popover="manual"` turns off light dismiss. See [Popover Menu](/example-components/popover-menu)                                       |
+| Modal                       | `<dialog>` and `showModal()`                                    | A two-line script, or an invoker command: `<button commandfor="d" command="show-modal">`. See [Modal Dialog](/example-components/modal-dialog)                                              |
+| Form rules                  | `required`, `type="email"`, `minlength`, `pattern`              | Style with `:user-invalid`, which applies only after the visitor interacts                                                                                                                  |
+| Native pickers              | `<input type="date">`, `<select>`, `<datalist>`                 |                                                                                                                                                                                             |
+| Page transitions            | `@view-transition { navigation: auto; }` in a global stylesheet | Cross-document view transitions; other browsers navigate normally                                                                                                                           |
+| Carousel                    | `scroll-snap-type: x mandatory` on the track                    | Add buttons with a script only if needed                                                                                                                                                    |
 
 Check newer features against [Compatibility](/compatibility) before relying on them.
 
@@ -30,17 +30,25 @@ Check newer features against [Compatibility](/compatibility) before relying on t
 Keep state in variables, write one function that applies all of it to the DOM, and call it after every change and once at the start. Put visual state in attributes (`aria-expanded`, `aria-pressed`, `hidden`) and style those, so the markup always says what the screen shows.
 
 ```html
-<button class="toggle" id="toggle" type="button" aria-expanded="false" aria-controls="panel">Details</button>
+<button
+  class="toggle"
+  id="toggle"
+  type="button"
+  aria-expanded="false"
+  aria-controls="panel"
+>
+  Details
+</button>
 <div class="panel" id="panel" hidden>More detail.</div>
 <script>
-  const toggle = document.getElementById('toggle');
-  const panel = document.getElementById('panel');
+  const toggle = document.getElementById("toggle");
+  const panel = document.getElementById("panel");
   let open = false;
   const render = () => {
-    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute("aria-expanded", String(open));
     panel.hidden = !open;
   };
-  toggle.addEventListener('click', () => {
+  toggle.addEventListener("click", () => {
     open = !open;
     render();
   });
@@ -66,25 +74,27 @@ Keep state in variables, write one function that applies all of it to the DOM, a
 <ul class="list" id="list"></ul>
 <p class="status" id="status" role="status"></p>
 <script>
-  const load = document.getElementById('load');
-  const list = document.getElementById('list');
-  const status = document.getElementById('status');
+  const load = document.getElementById("load");
+  const list = document.getElementById("list");
+  const status = document.getElementById("status");
 
-  load.addEventListener('click', async () => {
+  load.addEventListener("click", async () => {
     load.disabled = true;
-    status.textContent = 'Loading...';
+    status.textContent = "Loading...";
     try {
-      const response = await fetch('/api/items', { headers: { accept: 'application/json' } });
+      const response = await fetch("/api/items", {
+        headers: { accept: "application/json" },
+      });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const items = await response.json();
       for (const item of items) {
-        const li = document.createElement('li');
+        const li = document.createElement("li");
         li.textContent = item.name;
         list.append(li);
       }
       status.textContent = `${items.length} items loaded.`;
     } catch {
-      status.textContent = 'Could not load items. Try again.';
+      status.textContent = "Could not load items. Try again.";
     } finally {
       load.disabled = false;
     }
@@ -106,7 +116,10 @@ const debounce = (fn, ms = 200) => {
     timer = setTimeout(() => fn(...args), ms);
   };
 };
-input.addEventListener('input', debounce(() => search(input.value)));
+input.addEventListener(
+  "input",
+  debounce(() => search(input.value)),
+);
 ```
 
 ## Storage
@@ -114,11 +127,11 @@ input.addEventListener('input', debounce(() => search(input.value)));
 Wrap `localStorage` in `try`, because it throws in some private modes and when storage is blocked. Store small strings or JSON, version the key, and validate what you read:
 
 ```js
-const KEY = 'prefs:v1';
+const KEY = "prefs:v1";
 const readPrefs = () => {
   try {
-    const value = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    return typeof value === 'object' && value ? value : {};
+    const value = JSON.parse(localStorage.getItem(KEY) ?? "{}");
+    return typeof value === "object" && value ? value : {};
   } catch {
     return {};
   }
@@ -133,11 +146,16 @@ A component never reaches into another component's elements. The sender dispatch
 
 ```js
 // in cart-button
-button.dispatchEvent(new CustomEvent('cart:add', { bubbles: true, detail: { sku: button.dataset.sku } }));
+button.dispatchEvent(
+  new CustomEvent("cart:add", {
+    bubbles: true,
+    detail: { sku: button.dataset.sku },
+  }),
+);
 
 // in cart-count
 let count = 0;
-document.addEventListener('cart:add', () => {
+document.addEventListener("cart:add", () => {
   count++;
   badge.textContent = String(count);
 });
@@ -150,11 +168,14 @@ Name events `<feature>:<action>` and put the data in `detail`.
 For many similar children, such as slotted items or generated rows, attach one listener to the container:
 
 ```js
-const list = document.getElementById('list');
-list.addEventListener('click', (event) => {
-  const button = event.target.closest('button');
+const list = document.getElementById("list");
+list.addEventListener("click", (event) => {
+  const button = event.target.closest("button");
   if (!button || !list.contains(button)) return;
-  button.setAttribute('aria-pressed', String(button.getAttribute('aria-pressed') !== 'true'));
+  button.setAttribute(
+    "aria-pressed",
+    String(button.getAttribute("aria-pressed") !== "true"),
+  );
 });
 ```
 
@@ -165,9 +186,13 @@ list.addEventListener('click', (event) => {
 Animate in CSS and turn it off for visitors who ask:
 
 ```css
-.panel { transition: opacity 200ms ease; }
+.panel {
+  transition: opacity 200ms ease;
+}
 @media (prefers-reduced-motion: reduce) {
-  .panel { transition: none; }
+  .panel {
+    transition: none;
+  }
 }
 ```
 

@@ -15,10 +15,11 @@
  * override earlier ones, and a missing explicit path is an error (mirroring
  * Node's `--env-file` versus `--env-file-if-exists` distinction).
  *
- * Server and logging flag overrides (`--port`, `--host`, `--log-level`) are
- * also applied here, written into the environment (BASCIK_SERVER_PORT,
- * BASCIK_SERVER_HOST, BASCIK_LOG_LEVEL) so worker threads, which do not
- * inherit `process.argv`, see the same effective settings.
+ * Server and logging flag overrides (`--port`, `--host`, `--log-level`,
+ * `--quiet`, `--no-pin`) are also applied here, written into the environment
+ * (BASCIK_SERVER_PORT, BASCIK_SERVER_HOST, BASCIK_LOG_LEVEL,
+ * BASCIK_PIN_SERVER_URL) so worker threads, which do not inherit
+ * `process.argv`, see the same effective settings.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -74,7 +75,7 @@ export const loadEnvFiles = (
       if (explicit) {
         throw new Error(
           `[bascik] error: --env-file "${path}" does not exist. ` +
-          `Pass an existing file, or omit the flag to use the default ./.env when present.`,
+            `Pass an existing file, or omit the flag to use the default ./.env when present.`,
         );
       }
       continue;
@@ -98,10 +99,13 @@ export const validateSiteUrl = (value: string): string => {
   } catch {
     // handled below
   }
-  if (!parsed || (parsed.protocol !== "http:" && parsed.protocol !== "https:")) {
+  if (
+    !parsed ||
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+  ) {
     throw new Error(
       `[bascik] error: invalid site URL "${value}".\n` +
-      `  Expected an absolute http or https URL, e.g. "https://example.com".`,
+        `  Expected an absolute http or https URL, e.g. "https://example.com".`,
     );
   }
   return value;
@@ -116,7 +120,8 @@ export const resolveSiteUrl = (
   args: string[],
   env: NodeJS.ProcessEnv,
 ): string | undefined => {
-  const raw = parseEnvFlags(args).siteUrl ?? (env[SITE_URL_ENV_VAR] || undefined);
+  const raw =
+    parseEnvFlags(args).siteUrl ?? (env[SITE_URL_ENV_VAR] || undefined);
   if (raw === undefined) return undefined;
   return validateSiteUrl(raw);
 };
@@ -147,6 +152,9 @@ export const bootEnvironment = (
   }
   if (flags.logLevel !== undefined) {
     process.env.BASCIK_LOG_LEVEL = flags.logLevel;
+  }
+  if (flags.noPin === true) {
+    process.env.BASCIK_PIN_SERVER_URL = "0";
   }
 };
 

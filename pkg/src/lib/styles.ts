@@ -3,7 +3,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { minifyAttributeName } from "./names.ts";
 import { maskCssSyntax } from "./css-tokenizer.ts";
-import { shieldElementContents } from "./shielding.ts";
+import { createContentShield, shieldElementContents } from "./shielding.ts";
 import { readStartTagAttributes } from "./html-scanner.ts";
 import type { BascikComponent } from "./types.ts";
 
@@ -15,30 +15,71 @@ import type { BascikComponent } from "./types.ts";
 // never HTML element names and must not be converted to scoped classes.
 const CSS_UNIT_KEYWORDS = new Set([
   // Relative length
-  "rem", "ex", "rex", "cap", "rcap", "ch", "rch", "ic", "ric", "lh", "rlh",
+  "rem",
+  "ex",
+  "rex",
+  "cap",
+  "rcap",
+  "ch",
+  "rch",
+  "ic",
+  "ric",
+  "lh",
+  "rlh",
   // Viewport
-  "vw", "vh", "vmin", "vmax",
-  "svw", "svh", "svmin", "svmax",
-  "dvw", "dvh", "dvmin", "dvmax",
-  "lvw", "lvh", "lvmin", "lvmax",
+  "vw",
+  "vh",
+  "vmin",
+  "vmax",
+  "svw",
+  "svh",
+  "svmin",
+  "svmax",
+  "dvw",
+  "dvh",
+  "dvmin",
+  "dvmax",
+  "lvw",
+  "lvh",
+  "lvmin",
+  "lvmax",
   // Container query
-  "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax",
+  "cqw",
+  "cqh",
+  "cqi",
+  "cqb",
+  "cqmin",
+  "cqmax",
   // Absolute length
-  "px", "cm", "mm", "in", "pt", "pc",
+  "px",
+  "cm",
+  "mm",
+  "in",
+  "pt",
+  "pc",
   // Angle
-  "deg", "rad", "grad", "turn",
+  "deg",
+  "rad",
+  "grad",
+  "turn",
   // Time  (note: "s" IS an HTML element, so it is intentionally omitted)
   "ms",
   // Frequency
-  "hz", "khz",
+  "hz",
+  "khz",
   // Resolution
-  "dpi", "dpcm", "dppx",
+  "dpi",
+  "dpcm",
+  "dppx",
   // CSS @keyframes pseudo-selectors — not HTML elements
-  "from", "to",
+  "from",
+  "to",
   // Root/structural elements — never inside a component; must not be hashed
   // so that cross-boundary selectors like `html[data-theme="light"] .class`
   // compile correctly in component CSS.
-  "html", "body", "head",
+  "html",
+  "body",
+  "head",
 ]);
 
 export const convertCssElementSelectorsToClasses = (
@@ -63,6 +104,11 @@ export const convertCssElementSelectorsToClasses = (
     return `.${minifyAttributeName(`bascik__${componentName}__el__${elementName}`)}`;
   };
 
+  // Shield strings and url() contents so braces or commas inside string
+  // literals (e.g. `content: "p {"` or `[data-x="a { b"]`) never trigger
+  // element-selector lookaheads.
+  const { css: shielded, restore } = shieldCssStrings(css);
+
   // Pass 1: standalone element selectors after a selector boundary.
   // Handles top-level rules and indented selectors inside at-rules:
   //   p { }
@@ -73,9 +119,10 @@ export const convertCssElementSelectorsToClasses = (
   // The context-aware lookahead confirms we are still in selector position.
   // Element names start with a letter (`[a-z][a-z1-6]*`), so @keyframes stops
   // such as `40%` or `0%, 100%` are never mistaken for element selectors.
-  let result = css.replace(
+  let result = shielded.replace(
     /(^\s*|[;{}]\s*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/gim,
-    (_match, prefix: string, elementName: string) => `${prefix}${toClass(elementName)}`,
+    (_match, prefix: string, elementName: string) =>
+      `${prefix}${toClass(elementName)}`,
   );
 
   // Pass 2: same-line comma-separated selector list, e.g. `h1, h2 { }`.
@@ -86,7 +133,11 @@ export const convertCssElementSelectorsToClasses = (
   //     `;`, `}`, or `)` always appears before the next `{`.
   // Adding `)` to the stop set is essential — it prevents false positives
   // inside :is(), :where(), :has() pseudo-functions (e.g. h2 in :is(p, h2)).
-  result = result.replace(/(?<=,[ \t]*)[a-z][a-z1-6]*(?![\w-])(?=[^{};)]*\{)/g, toClass);
+  result = result.replace(
+    /(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};)]*\{)/g,
+    (_match, prefix: string, elementName: string) =>
+      `${prefix}${toClass(elementName)}`,
+  );
 
   // Pass 3: element selectors in CSS nesting context (W3C CSS Nesting Module).
   // Handles:
@@ -94,12 +145,14 @@ export const convertCssElementSelectorsToClasses = (
   //   - 2023 Relaxed direct combinator nesting without explicit `&`:
   //     `> h2 { }`, `+ li { }`, `~ span { }`.
   result = result.replace(
-    /(?<=&\s*(?:[>+~]\s*)?)[a-z][a-z1-6]*(?![\w-])(?=[^{};]*\{)/g,
-    toClass,
+    /(&\s*(?:[>+~]\s*)?)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
+    (_match, prefix: string, elementName: string) =>
+      `${prefix}${toClass(elementName)}`,
   );
   result = result.replace(
-    /(?<=(?:^|[;{}])\s*[>+~]\s*)[a-z][a-z1-6]*(?![\w-])(?=[^{};]*\{)/g,
-    toClass,
+    /((?:^|[;{}])\s*[>+~]\s*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
+    (_match, prefix: string, elementName: string) =>
+      `${prefix}${toClass(elementName)}`,
   );
 
   // Pass 4: element selectors that are descendants of an already-scoped class.
@@ -118,19 +171,29 @@ export const convertCssElementSelectorsToClasses = (
   do {
     previousResult = result;
     result = result.replace(
-      /(?<=\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})(?::[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*(?:\s*[>+~]\s*|\s+))[a-z][a-z1-6]*(?![\w-])(?=[^{};]*\{)/g,
-      toClass,
+      /((?:\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\([^)]*\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})[^)]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
+      (_match, prefix: string, elementName: string) =>
+        `${prefix}${toClass(elementName)}`,
     );
   } while (result !== previousResult);
 
-  return { css: result, elementsConvertedClasses };
+  return { css: restore(result), elementsConvertedClasses };
 };
 
 /**
  * Helper to inject or append a scoped class onto an open HTML tag without
  * corrupting class-like text nested inside other attribute values.
  */
-export const injectClassIntoTag = (openTag: string, className: string): string => {
+export const injectClassIntoTag = (
+  openTag: string,
+  className: string,
+): string => {
+  if (!/\sclass\s*=/i.test(openTag)) {
+    return openTag.replace(
+      /^<[a-zA-Z0-9-]+/i,
+      (tagHead) => `${tagHead} class="${className}"`,
+    );
+  }
   const stringRanges: Array<{ start: number; end: number }> = [];
   let j = 0;
   let strChar = null;
@@ -151,7 +214,8 @@ export const injectClassIntoTag = (openTag: string, className: string): string =
 
   let replaced = false;
   let finalStr = "";
-  const attrRegexG = /(?:\s)class=(?:"([^"]*)"|'([^']*)')/gi;
+  const attrRegexG =
+    /(?:\s)class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+?))(?=\s|\/>|>|$)/gi;
   let match;
 
   while (!replaced && (match = attrRegexG.exec(openTag)) !== null) {
@@ -160,11 +224,18 @@ export const injectClassIntoTag = (openTag: string, className: string): string =
       (r) => matchStart > r.start && matchStart < r.end,
     );
     if (!isInside) {
-      const classQuote = match[1] !== undefined ? '"' : "'";
-      const classVal = match[1] !== undefined ? match[1] : match[2];
+      const classQuote = match[2] !== undefined ? "'" : '"';
+      const rawUnquoted = match[3];
+      const trailingSlash =
+        rawUnquoted !== undefined && rawUnquoted.endsWith("/") ? "/" : "";
+      const unquotedClean =
+        rawUnquoted !== undefined && rawUnquoted.endsWith("/")
+          ? rawUnquoted.slice(0, -1)
+          : rawUnquoted;
+      const classVal = match[1] ?? match[2] ?? unquotedClean ?? "";
       finalStr =
         openTag.substring(0, matchStart) +
-        ` class=${classQuote}${classVal ? classVal + " " : ""}${className}${classQuote}` +
+        ` class=${classQuote}${classVal ? classVal + " " : ""}${className}${classQuote}${trailingSlash}` +
         openTag.substring(matchStart + match[0].length);
       replaced = true;
     }
@@ -179,6 +250,26 @@ export const injectClassIntoTag = (openTag: string, className: string): string =
   return finalStr;
 };
 
+const shieldNonMarkupHtml = (
+  html: string,
+): { html: string; restore: (value: string) => string } => {
+  const commentShield = createContentShield(html);
+  const withoutComments = html.includes("<!--")
+    ? html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
+        commentShield.hide(comment),
+      )
+    : html;
+  const rawText = shieldElementContents(withoutComments, [
+    "script",
+    "style",
+    "textarea",
+  ]);
+  return {
+    html: rawText.html,
+    restore: (value: string) => commentShield.restore(rawText.restore(value)),
+  };
+};
+
 /**
  * If a component's css styles any element, add bascik classes to those elements
  */
@@ -187,27 +278,45 @@ export const addElementClassesInHtml = (
   componentName: string,
   elementsConvertedClasses: string[] = [],
 ): string => {
-  // Loop through each element that has styling
-  elementsConvertedClasses.forEach((element) => {
-    const bascikClassName = minifyAttributeName(
-      `bascik__${componentName}__el__${element}`,
-    );
-    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    const elPattern = new RegExp(`<${element}(?![\\w.:-])(?:[^>"']|"[^"]*"|'[^']*')*>`, "gis");
-    componentHtml = componentHtml.replace(
-      elPattern,
-      (openTag) => injectClassIntoTag(openTag, bascikClassName),
-    );
-  });
-  return componentHtml;
+  if (elementsConvertedClasses.length === 0) return componentHtml;
+  const shielded = shieldNonMarkupHtml(componentHtml);
+  const elementClassMap = new Map<string, string>();
+  const escapedElements: string[] = [];
+  for (const element of elementsConvertedClasses) {
+    const lower = element.toLowerCase();
+    if (!elementClassMap.has(lower)) {
+      elementClassMap.set(
+        lower,
+        minifyAttributeName(`bascik__${componentName}__el__${element}`),
+      );
+      escapedElements.push(element.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    }
+  }
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+  const combinedPattern = new RegExp(
+    `<(${escapedElements.join("|")})(?![\\w.:-])(?:[^>"']|"[^"]*"|'[^']*')*>`,
+    "gis",
+  );
+  const result = shielded.html.replace(
+    combinedPattern,
+    (openTag, tagName: string) => {
+      const bascikClassName = elementClassMap.get(tagName.toLowerCase());
+      return bascikClassName
+        ? injectClassIntoTag(openTag, bascikClassName)
+        : openTag;
+    },
+  );
+  return shielded.restore(result);
 };
 
 export const getKeyframeNames = (css: string): string[] | null => {
+  if (!css.includes("@keyframes") && !css.includes("@KEYFRAMES")) return null;
   // Anchor on the @keyframes at-rule itself so only the declared animation
   // name is captured — never `from`/`to`/percentage selectors or idents that
   // merely appear later in the stylesheet. Full CSS ident: [\w-]+ covers
   // dashed (fade-in), digit (spin2), and uppercase (pulseFast) names.
-  const matches = css.matchAll(/@keyframes\s+([\w-]+)\s*\{/gi);
+  const { css: shielded } = shieldCssStrings(css);
+  const matches = shielded.matchAll(/@keyframes\s+([\w-]+)\s*\{/gi);
   const names = [...new Set([...matches].map((m) => m[1]))];
   return names.length ? names : null;
 };
@@ -215,35 +324,59 @@ export const getKeyframeNames = (css: string): string[] | null => {
 export const prefixKeyframes = (css: string, componentName: string): string => {
   const keyframeNames = getKeyframeNames(css);
   if (!Array.isArray(keyframeNames)) return css;
-  let result = css;
+  const scopedNames = new Map<string, string>();
   for (const name of keyframeNames) {
     // Skip names that are already scoped — prevents double-scoping when the
     // pipeline runs more than once on the same CSS.
     if (name.startsWith("bascik__")) continue;
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const scoped = minifyAttributeName(
-      `bascik__${componentName}__keyframe__${name}`,
-    );
-    // Rewrite every standalone occurrence of the name — both the @keyframes
-    // declaration and animation references. The word-boundary guards
-    // ((?<![\w-]) / (?![\w-])) ensure `spin` never rewrites `spin-slow`,
-    // `spinFast`, `transform`, or the `@keyframes` keyword itself.
-    result = result.replace(
-      new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`, "g"),
-      () => scoped,
+    scopedNames.set(
+      name,
+      minifyAttributeName(`bascik__${componentName}__keyframe__${name}`),
     );
   }
-  return result;
+  if (scopedNames.size === 0) return css;
+  // Scope @keyframes declarations and animation / animation-name property values
+  // so a keyframe named `color`, `flex`, `grid`, or `in` never clobbers CSS
+  // property names, unrelated declarations, or selectors.
+  const { css: shielded, restore } = shieldCssStrings(css);
+  const replaced = shielded
+    .replace(
+      /(@keyframes\s+)([\w-]+)(?=\s*\{)/gi,
+      (_match, prefix: string, name: string) =>
+        `${prefix}${scopedNames.get(name) ?? name}`,
+    )
+    .replace(
+      /((?:^|[;{]\s*)(?:-[a-z]+-)?animation(?:-name)?\s*:\s*)([^;{}]+)/gim,
+      (_match, prefix: string, value: string) =>
+        `${prefix}${value.replace(
+          /(?<![@.\w#-])([\w-]+)(?![\w(-])/g,
+          (name: string) => scopedNames.get(name) ?? name,
+        )}`,
+    );
+  return restore(replaced);
 };
 
 export const removeIdSelectors = (css: string): string => {
+  if (!/\[id\b/i.test(css)) return css;
   // Strips the [id] / [id="…"] attribute-selector form which cannot be
   // reliably scoped without DOM wrapping.  The hash form (#foo) is now
   // handled by convertCssIdSelectorsToClasses.
   // Shield string literals first so a `}` inside a quoted value (e.g.
   // content: "x}y") can't terminate the rule match early.
   const { css: shielded, restore } = shieldCssStrings(css);
-  return restore(shielded.replace(/\[id\b[^\]]*\].*?{[\s\S]*?}/gim, ""));
+  const replaced = shielded.replace(
+    /((?:^|[;{}])\s*)([^{};]*?\[id\b[^\]]*\][^{};]*?)(\{[\s\S]*?\})/gim,
+    (_match, prefix: string, selectorHeader: string, block: string) => {
+      const keptSelectors = selectorHeader
+        .split(",")
+        .filter((part) => !/\[id\b/i.test(part))
+        .map((part) => part.trim())
+        .filter(Boolean);
+      if (keptSelectors.length === 0) return prefix;
+      return `${prefix}${keptSelectors.join(", ")} ${block}`;
+    },
+  );
+  return restore(replaced);
 };
 
 // ─── CSS #id Selector → Class Conversion ─────────────────────────────────────
@@ -281,6 +414,7 @@ export const convertCssIdSelectorsToClasses = (
   css: string,
   componentName: string,
 ): { css: string; idsConverted: { idName: string; className: string }[] } => {
+  if (!css.includes("#")) return { css, idsConverted: [] };
   const seen = new Map<string, string>();
   const idsConverted: { idName: string; className: string }[] = [];
   // Mask literals first so a hash inside a string literal, a comment, or an
@@ -317,9 +451,12 @@ export const addIdClassesInHtml = (
   scopedIdNames?: Record<string, string>,
 ): string => {
   if (idsConverted.length === 0) return html;
+  const shielded = shieldNonMarkupHtml(html);
+  let result = shielded.html;
   idsConverted.forEach(({ idName, className }) => {
     const scopedId = scopedIdNames?.[idName];
-    if (!html.includes(idName) && (!scopedId || !html.includes(scopedId))) return;
+    if (!result.includes(idName) && (!scopedId || !result.includes(scopedId)))
+      return;
     const escaped = idName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const escapedScoped = scopedId
       ? scopedId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -330,16 +467,19 @@ export const addIdClassesInHtml = (
     const idGroupSingle = escapedScoped
       ? `(?:(?:[^']*__)?${escaped}|${escapedScoped})`
       : `(?:[^']*__)?${escaped}`;
+    const idGroupUnquoted = escapedScoped
+      ? `(?:(?:[^\\s"'=<>` + "`" + `]*__)?${escaped}|${escapedScoped})`
+      : `(?:[^\\s"'=<>` + "`" + `]*__)?${escaped}`;
     // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     const idPattern = new RegExp(
-      `<[a-zA-Z0-9-]+(?:[^>"']|"[^"]*"|'[^']*')*\\sid=(?:"${idGroup}"|'${idGroupSingle}')(?:[^>"']|"[^"]*"|'[^']*')*>`,
+      `<[a-zA-Z0-9-]+(?:[^>"']|"[^"]*"|'[^']*')*\\sid\\s*=\\s*(?:"${idGroup}"|'${idGroupSingle}'|${idGroupUnquoted}(?=\\s|\\/>|>))(?:[^>"']|"[^"]*"|'[^']*')*>`,
       "gi",
     );
-    html = html.replace(idPattern, (openTag) =>
+    result = result.replace(idPattern, (openTag) =>
       injectClassIntoTag(openTag, className),
     );
   });
-  return html;
+  return shielded.restore(result);
 };
 
 /**
@@ -352,19 +492,20 @@ export const addIdClassesInHtml = (
 export const shieldCssStrings = (
   css: string,
 ): { css: string; restore: (s: string) => string } => {
-  const preserved: string[] = [];
-  // Quoted strings (with escape handling) and url(...) contents.
+  const shield = createContentShield(css);
+  // Quoted strings (with escape handling), url(...) contents, and unquoted
+  // attribute-selector values (so a[href$=.pdf] keeps `[...]` visible to
+  // selector passes while hiding `.pdf` from class-selector regexes).
   const shielded = css.replace(
-    /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\)/gi,
-    (match) => {
-      preserved.push(match);
-      return `\x00CSSSTR${preserved.length - 1}\x00`;
-    },
+    /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\)|(\[\s*[\w-]+\s*[~|^$*]?=\s*)([^\]"'\s]+)(?=\s*\])/gi,
+    (match, _str?: string, attrPrefix?: string, unquotedVal?: string) =>
+      attrPrefix !== undefined && unquotedVal !== undefined
+        ? `${attrPrefix}${shield.hide(unquotedVal)}`
+        : shield.hide(match),
   );
   return {
     css: shielded,
-    restore: (s: string) =>
-      s.replace(/\x00CSSSTR(\d+)\x00/g, (_m, i) => preserved[parseInt(i, 10)]),
+    restore: shield.restore,
   };
 };
 
@@ -522,7 +663,8 @@ const cssOpaqueRanges = (css: string): Array<[number, number]> => {
     } else if (char === '"' || char === "'") {
       // A string ends at its unescaped quote, or at an unescaped newline (bad-string).
       let j = i + 1;
-      while (j < css.length && css[j] !== char && css[j] !== "\n") j += css[j] === "\\" ? 2 : 1;
+      while (j < css.length && css[j] !== char && css[j] !== "\n")
+        j += css[j] === "\\" ? 2 : 1;
       const end = Math.min(j + 1, css.length);
       ranges.push([i, end]);
       i = end;
@@ -560,7 +702,10 @@ let cssImportPlanningObserver: (() => void) | null = null;
  * Run `run` synchronously while reporting whether any CSS `@import` planning
  * (and so any file system access) happened. The previous observer is restored.
  */
-export const observeCssImportPlanning = <T>(observer: () => void, run: () => T): T => {
+export const observeCssImportPlanning = <T>(
+  observer: () => void,
+  run: () => T,
+): T => {
   const previous = cssImportPlanningObserver;
   cssImportPlanningObserver = observer;
   try {
@@ -577,14 +722,17 @@ const planCssImports = (
 ): CssImportPlan[] => {
   if (!css || !css.includes("@import")) return [];
   cssImportPlanningObserver?.();
-  const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?/gi;
+  const importRegex =
+    /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?/gi;
   const opaque = cssOpaqueRanges(css);
   let opaqueIndex = 0;
   const plans: CssImportPlan[] = [];
   for (const match of css.matchAll(importRegex)) {
     const start = match.index;
-    while (opaqueIndex < opaque.length && opaque[opaqueIndex][1] <= start) opaqueIndex++;
-    if (opaqueIndex < opaque.length && opaque[opaqueIndex][0] <= start) continue;
+    while (opaqueIndex < opaque.length && opaque[opaqueIndex][1] <= start)
+      opaqueIndex++;
+    if (opaqueIndex < opaque.length && opaque[opaqueIndex][0] <= start)
+      continue;
     const fullStatement = match[0];
     const parsed = parseCssImport(fullStatement);
     if (!parsed || parsed.isRemote) continue;
@@ -620,9 +768,22 @@ const planCssImports = (
         replacement: `/* @import "${parsed.url}" not found */`,
       });
     } else if (visited.has(targetPath)) {
-      plans.push({ fullStatement, parsed, targetPath, dependencyPaths, nextVisited, replacement: "" });
+      plans.push({
+        fullStatement,
+        parsed,
+        targetPath,
+        dependencyPaths,
+        nextVisited,
+        replacement: "",
+      });
     } else {
-      plans.push({ fullStatement, parsed, targetPath, dependencyPaths, nextVisited });
+      plans.push({
+        fullStatement,
+        parsed,
+        targetPath,
+        dependencyPaths,
+        nextVisited,
+      });
     }
   }
   return plans;
@@ -669,11 +830,26 @@ export const resolveCssImports = async (
     }
 
     try {
-      const importedRaw = cleanImportedCss((await readFile(plan.targetPath)).toString());
-      const nestedResolved = await resolveCssImports(importedRaw, plan.targetPath, plan.nextVisited, dependencies);
-      result = replaceCssImport(result, plan.fullStatement, wrapPlannedCss(nestedResolved, plan));
+      const importedRaw = cleanImportedCss(
+        (await readFile(plan.targetPath)).toString(),
+      );
+      const nestedResolved = await resolveCssImports(
+        importedRaw,
+        plan.targetPath,
+        plan.nextVisited,
+        dependencies,
+      );
+      result = replaceCssImport(
+        result,
+        plan.fullStatement,
+        wrapPlannedCss(nestedResolved, plan),
+      );
     } catch (err) {
-      console.warn("[bascik] warning: Failed to read imported CSS file %s:", plan.targetPath, err);
+      console.warn(
+        "[bascik] warning: Failed to read imported CSS file %s:",
+        plan.targetPath,
+        err,
+      );
       result = replaceCssImport(result, plan.fullStatement, "");
     }
   }
@@ -700,11 +876,26 @@ export const resolveCssImportsSync = (
     }
 
     try {
-      const importedRaw = cleanImportedCss(readFileSync(plan.targetPath, "utf-8"));
-      const nestedResolved = resolveCssImportsSync(importedRaw, plan.targetPath, plan.nextVisited, dependencies);
-      result = replaceCssImport(result, plan.fullStatement, wrapPlannedCss(nestedResolved, plan));
+      const importedRaw = cleanImportedCss(
+        readFileSync(plan.targetPath, "utf-8"),
+      );
+      const nestedResolved = resolveCssImportsSync(
+        importedRaw,
+        plan.targetPath,
+        plan.nextVisited,
+        dependencies,
+      );
+      result = replaceCssImport(
+        result,
+        plan.fullStatement,
+        wrapPlannedCss(nestedResolved, plan),
+      );
     } catch (err) {
-      console.warn("[bascik] warning: Failed to read imported CSS file %s:", plan.targetPath, err);
+      console.warn(
+        "[bascik] warning: Failed to read imported CSS file %s:",
+        plan.targetPath,
+        err,
+      );
       result = replaceCssImport(result, plan.fullStatement, "");
     }
   }
@@ -722,7 +913,8 @@ export const resolveCssImportsSync = (
 export const hoistCssImports = (css: string): string => {
   if (!css || !css.includes("@import")) return css;
 
-  const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)[^;]*;/gi;
+  const importRegex =
+    /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)[^;]*;/gi;
   const imports: string[] = [];
   const seen = new Set<string>();
 
@@ -753,7 +945,12 @@ export const getComponentCss = async (
   if (!cssFileName) return;
   try {
     const raw = removeCommentsFromCss((await readFile(cssFileName)).toString());
-    return await resolveCssImports(raw, cssFileName, undefined, importDependencies);
+    return await resolveCssImports(
+      raw,
+      cssFileName,
+      undefined,
+      importDependencies,
+    );
   } catch (error) {
     console.warn("warning: Failed to read css for %s", htmlFileName, error);
   }
@@ -777,11 +974,12 @@ export const scopeCssCustomProperties = (
   componentName: string,
 ): string => {
   if (!css.includes("--")) return css;
-  const propMap = new Map();
+  const propMap = new Map<string, string>();
+  const { css: shielded, restore } = shieldCssStrings(css);
   // Collect --var-name from element-level declarations:  --name:
   const declRegex = /(?<!-)--(\w[\w-]*)(?=\s*:)/gm;
   let m;
-  while ((m = declRegex.exec(css)) !== null) {
+  while ((m = declRegex.exec(shielded)) !== null) {
     const originalName = m[1];
     if (!propMap.has(originalName)) {
       propMap.set(
@@ -792,7 +990,7 @@ export const scopeCssCustomProperties = (
   }
   // Collect --name from @property at-rule declarations:  @property --name {
   const atPropertyRegex = /@property\s+--(\w[\w-]*)\s*\{/gm;
-  while ((m = atPropertyRegex.exec(css)) !== null) {
+  while ((m = atPropertyRegex.exec(shielded)) !== null) {
     const originalName = m[1];
     if (!propMap.has(originalName)) {
       propMap.set(
@@ -802,25 +1000,17 @@ export const scopeCssCustomProperties = (
     }
   }
   if (propMap.size === 0) return css;
-  let result = css;
-  propMap.forEach((scopedName, originalName) => {
-    // Replace @property --original { declarations
-    result = result.replace(
-      new RegExp(`(@property\\s+)--${originalName}(?=\\s*\\{)`, "gm"),
-      (_, p1) => `${p1}--${scopedName}`,
-    );
-    // Replace declarations:  --original:
-    result = result.replace(
-      new RegExp(`(?<!-)--${originalName}(?=\\s*:)`, "gm"),
-      () => `--${scopedName}`,
-    );
-    // Replace var() references:  var(--original)  and  var(--original, fallback)
-    result = result.replace(
-      new RegExp(`var\\(\\s*--${originalName}(\\s*[,)])`, "gm"),
-      (_, p1) => `var(--${scopedName}${p1}`,
-    );
-  });
-  return result;
+  // One pass per pattern over whole names so a later declared property name
+  // never matches inside an earlier generated name or a longer name.
+  const scopeName = (match: string, prefix: string, name: string): string => {
+    const scoped = propMap.get(name);
+    return scoped === undefined ? match : `${prefix}--${scoped}`;
+  };
+  const replaced = shielded
+    .replace(/(@property\s+)--(\w[\w-]*)(?=\s*\{)/gm, scopeName)
+    .replace(/((?<!-))--(\w[\w-]*)(?=\s*:)/gm, scopeName)
+    .replace(/(var\(\s*)--(\w[\w-]*)(?=\s*[,)])/gm, scopeName);
+  return restore(replaced);
 };
 
 // ─── @layer Name Scoping ─────────────────────────────────────────────────────
@@ -839,7 +1029,8 @@ export const scopeCssCustomProperties = (
 export const scopeLayerNames = (css: string, componentName: string): string => {
   if (!css.includes("@layer")) return css;
   const layerNames = new Set<string>();
-  css.replace(
+  const { css: shielded, restore } = shieldCssStrings(css);
+  shielded.replace(
     /@layer\s+([\w-]+(?:\s*,\s*[\w-]+)*)/g,
     (_: string, nameList: string) => {
       nameList.split(",").forEach((n) => layerNames.add(n.trim()));
@@ -847,21 +1038,19 @@ export const scopeLayerNames = (css: string, componentName: string): string => {
     },
   );
   if (layerNames.size === 0) return css;
-  let result = css;
+  const scopedNames = new Map<string, string>();
   layerNames.forEach((name) => {
-    const scoped = minifyAttributeName(
-      `bascik__${componentName}__layer__${name}`,
-    );
-    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    result = result.replace(
-      new RegExp(
-        `(?<=@layer[^{;]*)(?<![\\w-])${escapedName}(?![\\w-])`,
-        "gm",
-      ),
-      () => scoped,
+    scopedNames.set(
+      name,
+      minifyAttributeName(`bascik__${componentName}__layer__${name}`),
     );
   });
-  return result;
+  const replaced = shielded.replace(
+    /(@layer\s+)([\w-]+(?:\s*,\s*[\w-]+)*)/g,
+    (_: string, prefix: string, nameList: string) =>
+      `${prefix}${nameList.replace(/[\w-]+/g, (name) => scopedNames.get(name) ?? name)}`,
+  );
+  return restore(replaced);
 };
 
 // ─── @container Name Scoping ──────────────────────────────────────────────────
@@ -883,8 +1072,9 @@ export const scopeContainerNames = (
 ): string => {
   if (!css.includes("container")) return css;
   const containerNames = new Set<string>();
-  css.replace(
-    /container(?:-name)?\s*:\s*([\w-]+)/g,
+  const { css: shielded, restore } = shieldCssStrings(css);
+  shielded.replace(
+    /(?<![\w-])container(?:-name)?\s*:\s*([\w-]+)/g,
     (_: string, name: string) => {
       if (name !== "none") containerNames.add(name);
       return "";
@@ -895,14 +1085,24 @@ export const scopeContainerNames = (
   // later name match inside an earlier generated name or a longer name.
   const scopedNames = new Map<string, string>();
   containerNames.forEach((name) => {
-    scopedNames.set(name, minifyAttributeName(`bascik__${componentName}__container__${name}`));
+    scopedNames.set(
+      name,
+      minifyAttributeName(`bascik__${componentName}__container__${name}`),
+    );
   });
-  return css
-    .replace(/(?<=@container\s+)([\w-]+)(?=\s*[({])/gm, (name: string) => scopedNames.get(name) ?? name)
-    .replace(/(container(?:-name)?\s*:\s*)([\w-]+)/gm, (match: string, prefix: string, name: string) => {
-      const scoped = scopedNames.get(name);
-      return scoped === undefined ? match : `${prefix}${scoped}`;
-    });
+  const replaced = shielded
+    .replace(
+      /(?<=@container\s+)([\w-]+)(?=\s*[({])/gm,
+      (name: string) => scopedNames.get(name) ?? name,
+    )
+    .replace(
+      /((?<![\w-])container(?:-name)?\s*:\s*)([\w-]+)/gm,
+      (match: string, prefix: string, name: string) => {
+        const scoped = scopedNames.get(name);
+        return scoped === undefined ? match : `${prefix}${scoped}`;
+      },
+    );
+  return restore(replaced);
 };
 
 // ─── view-transition-name Scoping ────────────────────────────────────────────
@@ -919,9 +1119,11 @@ export const scopeViewTransitionNames = (
   css: string,
   componentName: string,
 ): string => {
+  if (!css.includes("view-transition-name")) return css;
   const names = new Set<string>();
-  css.replace(
-    /view-transition-name\s*:\s*([\w-]+)/g,
+  const { css: shielded, restore } = shieldCssStrings(css);
+  shielded.replace(
+    /(?<![\w-])view-transition-name\s*:\s*([\w-]+)/g,
     (_: string, name: string) => {
       if (name !== "none" && name !== "auto") names.add(name);
       return "";
@@ -929,28 +1131,29 @@ export const scopeViewTransitionNames = (
   );
   if (names.size === 0) return css;
 
-  let result = css;
+  const scopedNames = new Map<string, string>();
   names.forEach((name) => {
-    const scoped = minifyAttributeName(
-      `bascik__${componentName}__vtn__${name}`,
+    scopedNames.set(
+      name,
+      minifyAttributeName(`bascik__${componentName}__vtn__${name}`),
     );
-    result = result.replace(
-      new RegExp(`(view-transition-name\\s*:\\s*)${name}\\b`, "gm"),
-      (_, p1) => `${p1}${scoped}`,
-    );
-    for (const pseudo of [
-      "view-transition-old",
-      "view-transition-new",
-      "view-transition-group",
-      "view-transition-image-pair",
-    ]) {
-      result = result.replace(
-        new RegExp(`(::${pseudo}\\()${name}(\\))`, "gm"),
-        (_, p1, p2) => `${p1}${scoped}${p2}`,
-      );
-    }
   });
-  return result;
+  const replaced = shielded
+    .replace(
+      /((?<![\w-])view-transition-name\s*:\s*)([\w-]+)(?![\w-])/gm,
+      (match: string, prefix: string, name: string) => {
+        const scoped = scopedNames.get(name);
+        return scoped === undefined ? match : `${prefix}${scoped}`;
+      },
+    )
+    .replace(
+      /(::view-transition-(?:old|new|group|image-pair)\()([\w-]+)(\))/gm,
+      (match: string, prefix: string, name: string, suffix: string) => {
+        const scoped = scopedNames.get(name);
+        return scoped === undefined ? match : `${prefix}${scoped}${suffix}`;
+      },
+    );
+  return restore(replaced);
 };
 
 // ─── @counter-style Name Scoping ─────────────────────────────────────────────
@@ -963,7 +1166,7 @@ export const scopeViewTransitionNames = (
  *   @counter-style thumbs { … }              →  @counter-style bascik__comp__counter__thumbs { … }
  *   list-style: thumbs                        →  list-style: bascik__comp__counter__thumbs
  *   list-style-type: thumbs                   →  list-style-type: bascik__comp__counter__thumbs
- *   counter(section, thumbs)                  →  counter(section, bascik__comp__counter__thumbs)
+ *   counter(section, thumbs)                  →  counter(section, thumbs) -> scoped
  *   counters(section, ".", thumbs)            →  counters(section, ".", bascik__comp__counter__thumbs)
  *
  * Only names *declared* in this CSS are scoped — built-in counter styles
@@ -974,9 +1177,11 @@ export const scopeCounterStyleNames = (
   css: string,
   componentName: string,
 ): string => {
+  if (!css.includes("@counter-style")) return css;
   const names = new Set<string>();
+  const { css: shielded, restore } = shieldCssStrings(css);
   // Collect all @counter-style declarations
-  css.replace(
+  shielded.replace(
     /@counter-style\s+([\w-]+)\s*\{/g,
     (_: string, name: string) => {
       names.add(name);
@@ -987,7 +1192,10 @@ export const scopeCounterStyleNames = (
 
   const scopedNames = new Map<string, string>();
   names.forEach((name) => {
-    scopedNames.set(name, minifyAttributeName(`bascik__${componentName}__counter__${name}`));
+    scopedNames.set(
+      name,
+      minifyAttributeName(`bascik__${componentName}__counter__${name}`),
+    );
   });
   // One pass per pattern over whole names: rewriting one name at a time let a
   // later name match inside an earlier generated name or a longer name.
@@ -995,15 +1203,19 @@ export const scopeCounterStyleNames = (
     const scoped = scopedNames.get(name);
     return scoped === undefined ? match : `${prefix}${scoped}`;
   };
-  return css
+  const replaced = shielded
     // The @counter-style declaration
     .replace(/(@counter-style\s+)([\w-]+)(?=\s*\{)/gm, scopeName)
     // list-style and list-style-type property references
-    .replace(/(list-style(?:-type)?\s*:\s*)([\w-]+)/gm, scopeName)
+    .replace(/((?<![\w-])list-style(?:-type)?\s*:\s*)([\w-]+)/gm, scopeName)
     // counter() second argument: counter(name, style)
-    .replace(/(counter\([^,)]+,\s*)([\w-]+)(?=[^)]*\))/gm, scopeName)
+    .replace(/((?<![\w-])counter\([^,)]+,\s*)([\w-]+)(?=[^)]*\))/gm, scopeName)
     // counters() third argument: counters(name, sep, style)
-    .replace(/(counters\([^,)]+,\s*[^,)]+,\s*)([\w-]+)(?=[^)]*\))/gm, scopeName);
+    .replace(
+      /((?<![\w-])counters\([^,)]+,\s*[^,)]+,\s*)([\w-]+)(?=[^)]*\))/gm,
+      scopeName,
+    );
+  return restore(replaced);
 };
 
 // ─── anchor-name / @position-try Scoping ─────────────────────────────────────
@@ -1029,16 +1241,19 @@ export const scopeAnchorNames = (
   css: string,
   componentName: string,
 ): string => {
+  if (!css.includes("anchor-name") && !css.includes("@position-try"))
+    return css;
   const names = new Set<string>();
+  const { css: shielded, restore } = shieldCssStrings(css);
   // Collect all anchor-name: --name declarations and @position-try --name declarations
-  css.replace(
-    /anchor-name\s*:\s*--(\w[\w-]*)/g,
+  shielded.replace(
+    /(?<![\w-])anchor-name\s*:\s*--(\w[\w-]*)/g,
     (_: string, name: string) => {
       names.add(name);
       return "";
     },
   );
-  css.replace(
+  shielded.replace(
     /@position-try\s+--(\w[\w-]*)/g,
     (_: string, name: string) => {
       names.add(name);
@@ -1047,29 +1262,25 @@ export const scopeAnchorNames = (
   );
   if (names.size === 0) return css;
 
-  let result = css;
+  const scopedNames = new Map<string, string>();
   names.forEach((name) => {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const scoped = minifyAttributeName(
-      `bascik__${componentName}__anchor__${name}`,
-    );
-    // Scope anchor-name: --name declarations
-    result = result.replace(
-      new RegExp(`(anchor-name\\s*:\\s*)--${escaped}\\b`, "gm"),
-      (_, p1) => `${p1}--${scoped}`,
-    );
-    // Scope position-anchor: --name references
-    result = result.replace(
-      new RegExp(`(position-anchor\\s*:\\s*)--${escaped}\\b`, "gm"),
-      (_, p1) => `${p1}--${scoped}`,
-    );
-    // Scope @position-try --name { ... } at-rules
-    result = result.replace(
-      new RegExp(`(@position-try\\s+)--${escaped}(?=\\s*\\{)`, "gm"),
-      (_, p1) => `${p1}--${scoped}`,
+    scopedNames.set(
+      name,
+      minifyAttributeName(`bascik__${componentName}__anchor__${name}`),
     );
   });
-  return result;
+  const scopeName = (match: string, prefix: string, name: string): string => {
+    const scoped = scopedNames.get(name);
+    return scoped === undefined ? match : `${prefix}--${scoped}`;
+  };
+  const replaced = shielded
+    .replace(/((?<![\w-])anchor-name\s*:\s*)--(\w[\w-]*)(?![\w-])/gm, scopeName)
+    .replace(
+      /((?<![\w-])position-anchor\s*:\s*)--(\w[\w-]*)(?![\w-])/gm,
+      scopeName,
+    )
+    .replace(/(@position-try\s+)--(\w[\w-]*)(?=\s*\{)/gm, scopeName);
+  return restore(replaced);
 };
 
 // ─── Inline <style> Tag Extraction ───────────────────────────────────────────
@@ -1092,28 +1303,39 @@ export const extractInlineStyles = (
   // Mask HTML comments before shielding element contents so that a literal
   // `<style>` reference inside a comment (e.g. "keep CSS in this file's
   // <style> block") is never mistaken for a real style tag opener.
-  // Replace each comment with a same-length run of spaces so all subsequent
-  // string indices remain valid for the restore step.
-  const commentPlaceholders: Array<{ token: string; original: string }> = [];
+  const commentShield = createContentShield(html);
   const htmlWithMaskedComments = html.includes("<!--")
-    ? html.replace(/<!--[\s\S]*?-->/g, (match) => {
-      const token = `\x00BASCIK_COMMENT_${commentPlaceholders.length}\x00`;
-      commentPlaceholders.push({ token, original: match });
-      return token;
-    })
+    ? html.replace(/<!--[\s\S]*?(?:-->|$)/g, (match) =>
+        commentShield.hide(match),
+      )
     : html;
 
-  const shielded = shieldElementContents(htmlWithMaskedComments, ["code", "pre", "script", "textarea"]);
+  const shielded = shieldElementContents(htmlWithMaskedComments, [
+    "code",
+    "pre",
+    "script",
+    "textarea",
+  ]);
 
   const cssBlocks: string[] = [];
-  const collectStyleBlock = (_match: string, openTag: string, styleContent: string): string => {
+  const collectStyleBlock = (
+    _match: string,
+    openTag: string,
+    styleContent: string,
+  ): string => {
     let css = removeCommentsFromCss(styleContent).trim();
     if (!css) return "";
     // Read `media` the way the browser does, so a range query such as
     // `(width > 600px)` is read whole. The first `media` attribute counts.
-    const media = readStartTagAttributes(openTag, 0)
-      .find((attribute) => attribute.name === "media")?.value.trim() ?? "";
-    if (media && media.toLowerCase() !== "all" && media.toLowerCase() !== "screen") {
+    const media =
+      readStartTagAttributes(openTag, 0)
+        .find((attribute) => attribute.name === "media")
+        ?.value.trim() ?? "";
+    if (
+      media &&
+      media.toLowerCase() !== "all" &&
+      media.toLowerCase() !== "screen"
+    ) {
       css = `@media ${media} {\n${css}\n}`;
     }
     cssBlocks.push(css);
@@ -1136,10 +1358,7 @@ export const extractInlineStyles = (
   } while (cleanedHtml !== previousHtml);
 
   // Restore shielded element content first, then restore masked HTML comments.
-  let restoredHtml = shielded.restore(cleanedHtml);
-  for (const { token, original } of commentPlaceholders) {
-    restoredHtml = restoredHtml.replace(token, () => original);
-  }
+  const restoredHtml = commentShield.restore(shielded.restore(cleanedHtml));
 
   return {
     html: restoredHtml,
@@ -1167,12 +1386,18 @@ export const scopeInlineStyleTags = (
   elementsConvertedClasses: string[];
   idsConverted: { idName: string; className: string }[];
 } => {
+  if (!html.includes("<style") && !html.includes("<STYLE")) {
+    return { html, elementsConvertedClasses: [], idsConverted: [] };
+  }
   const allElementClasses: string[] = [];
   const allIdsConverted: { idName: string; className: string }[] = [];
   const processedHtml = html.replace(
     /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
     (_match, open: string, styleContent: string, close: string) => {
-      let css = resolveCssImportsSync(removeCommentsFromCss(styleContent), baseFilePath);
+      let css = resolveCssImportsSync(
+        removeCommentsFromCss(styleContent),
+        baseFilePath,
+      );
       // Shield strings/url() so dots inside them aren't treated as class selectors
       const { css: shieldedCss, restore } = shieldCssStrings(css);
       css = restore(
@@ -1180,16 +1405,16 @@ export const scopeInlineStyleTags = (
           minifyAttributeName(`bascik__${componentName}__${className}`),
         ),
       );
-      const { css: elCss, elementsConvertedClasses } =
-        convertCssElementSelectorsToClasses(css, componentName);
-      css = elCss;
-      allElementClasses.push(...elementsConvertedClasses);
       const { css: idCss, idsConverted } = convertCssIdSelectorsToClasses(
         css,
         componentName,
       );
       css = idCss;
       allIdsConverted.push(...idsConverted);
+      const { css: elCss, elementsConvertedClasses } =
+        convertCssElementSelectorsToClasses(css, componentName);
+      css = elCss;
+      allElementClasses.push(...elementsConvertedClasses);
       css = prefixKeyframes(css, componentName);
       css = removeIdSelectors(css);
       css = scopeCssCustomProperties(css, componentName);

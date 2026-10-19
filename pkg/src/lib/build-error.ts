@@ -62,10 +62,13 @@ export interface LocatedFailure {
  * `AggregateError`, and page processing keeps the original as `cause`. Both are
  * searched, to any depth. A visited set stops a cyclic cause chain from looping.
  */
-export const locateBuildError = (error: unknown): LocatedFailure | undefined => {
+export const locateBuildError = (
+  error: unknown,
+): LocatedFailure | undefined => {
   const seen = new Set<unknown>();
   const visit = (value: unknown): LocatedFailure | undefined => {
-    if (typeof value !== "object" || value === null || seen.has(value)) return undefined;
+    if (typeof value !== "object" || value === null || seen.has(value))
+      return undefined;
     seen.add(value);
     if (value instanceof BuildScriptError) {
       return { file: value.sourceFile, line: value.line, column: value.column };

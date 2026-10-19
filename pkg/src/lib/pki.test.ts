@@ -71,7 +71,9 @@ describe("createSelfSignedCert – certs already exist", () => {
 describe("createSelfSignedCert – OpenSSL SAN cert generation", () => {
   beforeEach(() => {
     mockAccess.mockReset();
-    mockAccess.mockImplementation(() => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
+    mockAccess.mockImplementation(() => {
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
     mockPlatform.mockReturnValue("linux");
   });
 
@@ -85,10 +87,12 @@ describe("createSelfSignedCert – OpenSSL SAN cert generation", () => {
       }
     });
 
-    vi.spyOn(console, "log").mockImplementation(() => { });
+    vi.spyOn(console, "log").mockImplementation(() => {});
     await createSelfSignedCert();
 
-    const opensslCall = mockExecFile.mock.calls.find((c: any[]) => c[0] === "openssl");
+    const opensslCall = mockExecFile.mock.calls.find(
+      (c: any[]) => c[0] === "openssl",
+    );
     expect(opensslCall).toBeDefined();
     const args = opensslCall![1] as string[];
     expect(args).toContain("req");
@@ -108,7 +112,7 @@ describe("createSelfSignedCert – OpenSSL SAN cert generation", () => {
       }
     });
 
-    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await createSelfSignedCert();
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining("Generated self-signed certificate"),
@@ -123,7 +127,9 @@ describe("createSelfSignedCert – OpenSSL SAN cert generation", () => {
 describe("createSelfSignedCert – exec failure", () => {
   beforeEach(() => {
     mockAccess.mockReset();
-    mockAccess.mockImplementation(() => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
+    mockAccess.mockImplementation(() => {
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
   });
 
   it("throws with clear message when openssl fails", async () => {
@@ -151,13 +157,21 @@ describe("ensureCertificates", () => {
   it("throws if custom certificate files are specified but missing", async () => {
     mockAccess.mockRejectedValue(new Error("ENOENT"));
     await expect(
-      ensureCertificates({ keyFile: "custom-key.pem", certFile: "custom-cert.pem" })
-    ).rejects.toThrow("Custom TLS certificate files are configured but could not be found.");
+      ensureCertificates({
+        keyFile: "custom-key.pem",
+        certFile: "custom-cert.pem",
+      }),
+    ).rejects.toThrow(
+      "Custom TLS certificate files are configured but could not be found.",
+    );
   });
 
   it("uses custom certificate paths if they exist", async () => {
     mockAccess.mockResolvedValue(undefined);
-    const paths = await ensureCertificates({ keyFile: "custom-key.pem", certFile: "custom-cert.pem" });
+    const paths = await ensureCertificates({
+      keyFile: "custom-key.pem",
+      certFile: "custom-cert.pem",
+    });
     expect(paths.keyPath).toContain("custom-key.pem");
     expect(paths.certPath).toContain("custom-cert.pem");
   });
@@ -166,13 +180,15 @@ describe("ensureCertificates", () => {
     mockAccess.mockRejectedValue(new Error("ENOENT"));
     mockExecFile.mockImplementation((...args: any[]) => {
       const cb = args[args.length - 1];
-      if (typeof cb === "function") cb(null, { stdout: "mkcert output", stderr: "" });
+      if (typeof cb === "function")
+        cb(null, { stdout: "mkcert output", stderr: "" });
     });
 
-    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const paths = await ensureCertificates();
     expect(paths.keyPath).toContain("bascik-privkey.pem");
-    expect(consoleSpy).toHaveBeenCalledWith("SSL: generated trusted certs via mkcert");
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "SSL: generated trusted certs via mkcert",
+    );
   });
 });
-

@@ -9,7 +9,10 @@ export const getHttpPath = (
 ): string => {
   let normalized = pagePath.replace(/\\/g, "/").replace(/\/+/g, "/");
   const normalizedPagesDir = trimTrailingSlashes(pagesDir.replace(/\\/g, "/"));
-  const configuredRelativeDir = relative(process.cwd(), normalizedPagesDir).replace(/\\/g, "/");
+  const configuredRelativeDir = relative(
+    process.cwd(),
+    normalizedPagesDir,
+  ).replace(/\\/g, "/");
   const sourceRoots = new Set([
     normalizedPagesDir,
     configuredRelativeDir,
@@ -39,9 +42,10 @@ export const getHttpPath = (
         relativeStart = Math.max(relativeStart, markerIndex + marker.length);
       }
     }
-    normalized = relativeStart >= 0
-      ? normalized.slice(relativeStart)
-      : normalized.replace(/^\/+/, "");
+    normalized =
+      relativeStart >= 0
+        ? normalized.slice(relativeStart)
+        : normalized.replace(/^\/+/, "");
   }
 
   const route = normalized.replace(/\.html$/i, "");

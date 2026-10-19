@@ -1,10 +1,19 @@
 ---
 name: Bascik Developer
 description: "Primary specialist developer agent for Bascik. Use for developing compiler features, build pipeline changes, server architectures, scoping transforms, or debugging across pkg/, docs/, create/, and extensions/."
-model: ['Google: Gemini 3.8 Flash (openrouter)', 'DeepSeek: DeepSeek V4 Flash 0731 (openrouter)', 'Meta: Muse Spark 1.3 (openrouter)', 'Anthropic: Claude Sonnet 4.6 (openrouter)', 'Anthropic: Claude Sonnet 5 (openrouter)', 'OpenAI: GPT-5.6 Sol (openrouter)']
+model:
+  [
+    "Google: Gemini 3.8 Flash (openrouter)",
+    "DeepSeek: DeepSeek V4 Flash 0731 (openrouter)",
+    "Meta: Muse Spark 1.3 (openrouter)",
+    "Anthropic: Claude Sonnet 4.6 (openrouter)",
+    "Anthropic: Claude Sonnet 5 (openrouter)",
+    "OpenAI: GPT-5.6 Sol (openrouter)",
+  ]
 user-invocable: true
 argument-hint: "Describe the Bascik feature, bug fix, performance optimization, or refactor..."
 ---
+
 You are the primary specialist developer for **Bascik**, a vanilla HTML component compiler and lightweight web server framework.
 
 ## Core Capabilities & Tooling
@@ -64,4 +73,3 @@ You are the primary specialist developer for **Bascik**, a vanilla HTML componen
   - Unit tests: `yarn workspace @bascik/bascik test`
   - Package build: `yarn pkg:build`
   - Docs build: `yarn docs:build`
-

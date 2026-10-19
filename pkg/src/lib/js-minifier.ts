@@ -8,7 +8,16 @@
  */
 
 /** Segment representing either literal text (strings, regex) or minifiable code */
-type Segment = { literal: boolean; text: string };
+type Segment = {
+  literal: boolean;
+  text: string;
+  /**
+   * Offsets in `text` of each `)` that closes an `if`/`while`/`for`/`with` header. A string in the
+   * header (`if (a === "x")`) splits it across segments, so the closing `)` can sit in a segment
+   * that does not contain its keyword, where no text pattern can recognize it.
+   */
+  controlHeaderCloses?: Set<number>;
+};
 
 /**
  * Test-only instrumentation: counts source characters the scanner examines.
@@ -55,7 +64,11 @@ const CONTROL_HEADER_KEYWORDS = new Set(["if", "while", "for", "with"]);
 
 /** Identifier/number characters: the "word" class the scanner tracks. */
 const isWordChar = (c: string): boolean =>
-  (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_" || c === "$";
+  (c >= "a" && c <= "z") ||
+  (c >= "A" && c <= "Z") ||
+  (c >= "0" && c <= "9") ||
+  c === "_" ||
+  c === "$";
 
 /** `\w` as JS regex defines it: word chars minus `$`. Needed to mirror `\b`. */
 const isRegexWordChar = (c: string): boolean => c !== "$" && isWordChar(c);
@@ -144,7 +157,8 @@ const skipRegexLiteral = (js: string, start: number): number => {
 };
 
 const canStartRegexAfter = (token: string): boolean =>
-  !token || REGEX_PRECEDING_KEYWORDS.has(token) ||
+  !token ||
+  REGEX_PRECEDING_KEYWORDS.has(token) ||
   !["value", ")", "]", "}", "++", "--"].includes(token);
 
 const findTemplateExpressionEnd = (js: string, start: number): number => {
@@ -282,14 +296,20 @@ const scanSegments = (js: string): Segment[] => {
   // Lives outside flushCode because literals never contain code parens.
   const parenIsControlHeader: boolean[] = [];
   let lastParenClosedControlHeader = false;
+  let controlHeaderCloses: Set<number> | undefined;
   let i = 0;
   const len = js.length;
 
   const flushCode = (): void => {
     if (codeAccum) {
-      segments.push({ literal: false, text: codeAccum });
+      segments.push(
+        controlHeaderCloses
+          ? { literal: false, text: codeAccum, controlHeaderCloses }
+          : { literal: false, text: codeAccum },
+      );
       codeAccum = "";
     }
+    controlHeaderCloses = undefined;
     lastRaw = "";
     lastSig = "";
     wordRun = "";
@@ -297,10 +317,17 @@ const scanSegments = (js: string): Segment[] => {
 
   const appendCode = (c: string): void => {
     if (c === "(") {
-      const keyword = isWordChar(lastSig) ? lastWordBeforeSlash(wordRun) : undefined;
-      parenIsControlHeader.push(keyword !== undefined && CONTROL_HEADER_KEYWORDS.has(keyword));
+      const keyword = isWordChar(lastSig)
+        ? lastWordBeforeSlash(wordRun)
+        : undefined;
+      parenIsControlHeader.push(
+        keyword !== undefined && CONTROL_HEADER_KEYWORDS.has(keyword),
+      );
     } else if (c === ")") {
       lastParenClosedControlHeader = parenIsControlHeader.pop() ?? false;
+      if (lastParenClosedControlHeader) {
+        (controlHeaderCloses ??= new Set()).add(codeAccum.length);
+      }
     }
     codeAccum += c;
     if (isSpace(c)) {
@@ -368,7 +395,10 @@ const scanSegments = (js: string): Segment[] => {
         } else if (isWordChar(lastSig)) {
           // Preceded by a word token — regex only if word is an expression keyword (e.g. return /a/)
           const lastWord = lastWordBeforeSlash(wordRun);
-          if (lastWord !== undefined && REGEX_PRECEDING_KEYWORDS.has(lastWord)) {
+          if (
+            lastWord !== undefined &&
+            REGEX_PRECEDING_KEYWORDS.has(lastWord)
+          ) {
             couldBeRegex = true;
           }
         } else if (lastSig === ")") {
@@ -421,7 +451,12 @@ const scanSegments = (js: string): Segment[] => {
         // If stripping a block comment between two word characters (e.g., return/*x*/v),
         // preserve a space so token boundaries aren't lost.
         const nextChar = js[i];
-        if (lastRaw && isWordChar(lastRaw) && nextChar && isWordChar(nextChar)) {
+        if (
+          lastRaw &&
+          isWordChar(lastRaw) &&
+          nextChar &&
+          isWordChar(nextChar)
+        ) {
           appendCode(" ");
         }
         continue;
@@ -475,7 +510,13 @@ export const minifyJs = (js: string): string => {
 
     if (sIdx > 0 && segments[sIdx - 1].literal && /^\s*\n/.test(seg.text)) {
       const firstLine = seg.text.match(/\S.*/)?.[0] ?? "";
-      if (resultLast && firstLine && !/^(?:(?:else|catch|finally|while|instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(firstLine)) {
+      if (
+        resultLast &&
+        firstLine &&
+        !/^(?:(?:else|catch|finally|while|instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
+          firstLine,
+        )
+      ) {
         result += ";";
         resultLast = ";";
       }
@@ -505,19 +546,30 @@ export const minifyJs = (js: string): string => {
     let processedText = "";
     let ptLast = "";
     let ptTail = "";
+    // Offset in `text` of the last character of the most recently appended line.
+    let lineOffset = 0;
+    let prevLineEnd = -1;
 
     const appendProcessed = (s: string): void => {
       processedText += s;
       ptLast = s[s.length - 1];
-      ptTail = s.length >= TAIL_WINDOW ? s.slice(-TAIL_WINDOW) : (ptTail + s).slice(-TAIL_WINDOW);
+      ptTail =
+        s.length >= TAIL_WINDOW
+          ? s.slice(-TAIL_WINDOW)
+          : (ptTail + s).slice(-TAIL_WINDOW);
     };
 
     for (let lIdx = 0; lIdx < lines.length; lIdx++) {
-      const line = lines[lIdx].trim();
+      const rawLine = lines[lIdx];
+      const rawLineOffset = lineOffset;
+      lineOffset += rawLine.length + 1;
+      const line = rawLine.trim();
       if (!line) continue;
+      const lineEnd = rawLineOffset + rawLine.trimEnd().length - 1;
 
       if (!processedText) {
         appendProcessed(line);
+        prevLineEnd = lineEnd;
         continue;
       }
 
@@ -532,11 +584,19 @@ export const minifyJs = (js: string): string => {
       if (/[a-zA-Z0-9_\)$\]'"`]/.test(lastChar)) {
         // Do NOT insert semicolon if line ends with an open control flow / operator
         let endsWithOpenControl = false;
-        if (lastChar === ")") {
-          const prevParen = processedText.lastIndexOf(")", processedText.length - 2);
+        if (lastChar === ")" && seg.controlHeaderCloses?.has(prevLineEnd)) {
+          // `if (a === "x")` then a body on the next line: the scanner saw this `)` close the header.
+          endsWithOpenControl = true;
+        } else if (lastChar === ")") {
+          const prevParen = processedText.lastIndexOf(
+            ")",
+            processedText.length - 2,
+          );
           const region = processedText.slice(prevParen + 1);
           __scanStatsForTests.charsExamined += region.length;
-          endsWithOpenControl = /\b(if|while|for|switch)\s*\([^)]*\)\s*$/.test(region);
+          endsWithOpenControl = /\b(if|while|for|switch)\s*\([^)]*\)\s*$/.test(
+            region,
+          );
         }
         endsWithOpenControl =
           endsWithOpenControl ||
@@ -545,18 +605,29 @@ export const minifyJs = (js: string): string => {
 
         // Do NOT insert semicolon if next line starts with closing/continuation structures
         const startsWithContinuation =
-          /^(else|catch|finally|while|instanceof|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(line);
+          /^(else|catch|finally|while|instanceof|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
+            line,
+          );
 
-        if (!endsWithOpenControl && !startsWithContinuation && !/[;{}:,]\s*$/.test(ptTail)) {
+        if (
+          !endsWithOpenControl &&
+          !startsWithContinuation &&
+          !/[;{}:,]\s*$/.test(ptTail)
+        ) {
           needsSemicolon = true;
         }
       } else if (lastChar === "}") {
         // After }, insert semicolon unless followed by control continuation (else, catch, finally, while, etc.)
-        if (!/^(else|catch|finally|while|instanceof|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(line)) {
+        if (
+          !/^(else|catch|finally|while|instanceof|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
+            line,
+          )
+        ) {
           needsSemicolon = true;
         }
       }
 
+      prevLineEnd = lineEnd;
       if (needsSemicolon) {
         appendProcessed(";" + line);
       } else if (isWordChar(lastChar) && isWordChar(firstChar)) {
@@ -574,7 +645,10 @@ export const minifyJs = (js: string): string => {
     code = code.replace(/\s*([{}();,:=?*!^~%])\s*/g, "$1");
 
     // 4. Strip spaces around < and >
-    code = code.replace(/\s*(<|>|<=|>=|==|===|!=|!==|<<|>>|>>>|\&\&|\|\||\?\?|\+=|-=|\*=|\/=|%=)\s*/g, "$1");
+    code = code.replace(
+      /\s*(<|>|<=|>=|==|===|!=|!==|<<|>>|>>>|\&\&|\|\||\?\?|\+=|-=|\*=|\/=|%=)\s*/g,
+      "$1",
+    );
 
     // 5. Strip spaces around + and - safely (avoid turning + + into ++ or - - into --)
     code = code.replace(/([^\s+-])\s*\+/g, "$1+");
@@ -592,7 +666,11 @@ export const minifyJs = (js: string): string => {
     // and matched, so an empty segment after a word char still emits a space.
     // Preserved for byte identity.
     const codeFirst = code[0];
-    if (result && isWordChar(resultLast) && (codeFirst === undefined || isWordChar(codeFirst))) {
+    if (
+      result &&
+      isWordChar(resultLast) &&
+      (codeFirst === undefined || isWordChar(codeFirst))
+    ) {
       result += " ";
       resultLast = " ";
     }
@@ -612,10 +690,14 @@ export const minifyJs = (js: string): string => {
 export const createMinifyJsMemo = (
   minify: (code: string) => string,
   limits: { maxEntries: number; maxBytes: number },
-): { minify: (code: string) => string; stats: () => { entries: number; bytes: number } } => {
+): {
+  minify: (code: string) => string;
+  stats: () => { entries: number; bytes: number };
+} => {
   const entries = new Map<string, string>();
   let bytes = 0;
-  const sizeOf = (code: string, result: string): number => 2 * (code.length + result.length);
+  const sizeOf = (code: string, result: string): number =>
+    2 * (code.length + result.length);
   return {
     minify: (code: string): string => {
       const cached = entries.get(code);
@@ -630,7 +712,10 @@ export const createMinifyJsMemo = (
       entries.set(code, result);
       bytes += size;
       while (entries.size > limits.maxEntries || bytes > limits.maxBytes) {
-        const [oldestCode, oldestResult] = entries.entries().next().value as [string, string];
+        const [oldestCode, oldestResult] = entries.entries().next().value as [
+          string,
+          string,
+        ];
         entries.delete(oldestCode);
         bytes -= sizeOf(oldestCode, oldestResult);
       }
@@ -640,7 +725,10 @@ export const createMinifyJsMemo = (
   };
 };
 
-const builtInMinifyJsMemo = createMinifyJsMemo(minifyJs, { maxEntries: 512, maxBytes: 16 * 1024 * 1024 });
+const builtInMinifyJsMemo = createMinifyJsMemo(minifyJs, {
+  maxEntries: 512,
+  maxBytes: 16 * 1024 * 1024,
+});
 
 /** `minifyJs` with a bounded memo of recent inputs. Same output for every input. */
 export const memoizedMinifyJs = builtInMinifyJsMemo.minify;

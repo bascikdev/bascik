@@ -7,6 +7,7 @@ Use a custom element from npm on a Bascik page by publishing its file into the o
 Hover over or tab to a heading in the box below. `<heading-anchors>` from [`@zachleat/heading-anchors`](https://github.com/zachleat/heading-anchors) is a custom element that adds a link to every heading that has an `id`. This page loads the same file the recipe below produces.
 
 <!-- demo:heading-anchors-usage -->
+
 ```html
 <heading-anchors>
   <h3 id="install">Install</h3>
@@ -17,6 +18,7 @@ Hover over or tab to a heading in the box below. `<heading-anchors>` from [`@zac
 ```
 
 <!-- demo:heading-anchors-head -->
+
 ```html
 <head>
   <script type="module" src="/assets/vendor/heading-anchors.js"></script>
@@ -36,29 +38,34 @@ This package ships a ready-to-use ES module that registers its own element, so n
 ```ts
 // scripts/publish-heading-anchors.ts: copies a ready-to-use npm browser module
 // into the output directory. Run it as a pipeline.exec step with phase: 'pre'.
-import { copyFile, mkdir } from 'node:fs/promises';
-import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { copyFile, mkdir } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { join } from "node:path";
 
 const outDir = process.env.BASCIK_OUT_DIR;
-if (!outDir) throw new Error('BASCIK_OUT_DIR is not set; run this as a pipeline.exec step');
+if (!outDir)
+  throw new Error(
+    "BASCIK_OUT_DIR is not set; run this as a pipeline.exec step",
+  );
 
 // Resolve from the project's node_modules, wherever the package manager put it.
-const source = createRequire(import.meta.url).resolve('@zachleat/heading-anchors');
+const source = createRequire(import.meta.url).resolve(
+  "@zachleat/heading-anchors",
+);
 
-await mkdir(join(outDir, 'assets/vendor'), { recursive: true });
-await copyFile(source, join(outDir, 'assets/vendor/heading-anchors.js'));
+await mkdir(join(outDir, "assets/vendor"), { recursive: true });
+await copyFile(source, join(outDir, "assets/vendor/heading-anchors.js"));
 ```
 
 Register it as a `pre` step so the file exists before any page references it. The path is illustrative; use your own script name and destination:
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik';
+import { defineConfig } from "@bascik/bascik";
 
 export default defineConfig({
   pipeline: {
-    exec: [{ script: 'scripts/publish-heading-anchors.ts', phase: 'pre' }],
+    exec: [{ script: "scripts/publish-heading-anchors.ts", phase: "pre" }],
   },
 });
 ```
@@ -88,7 +95,7 @@ A hyphenated tag with no component file looks like a typo, so by default every b
 ```ts
 export default defineConfig({
   components: {
-    external: ['heading-anchors'],
+    external: ["heading-anchors"],
   },
 });
 ```

@@ -6,17 +6,24 @@ import {
   isNetworkResetError,
   startServerInstance,
   type BascikRequest,
-  type BascikResponse
+  type BascikResponse,
 } from "./server.ts";
 
-export const adaptHttp1 = (reqMsg: http.IncomingMessage, resMsg: http.ServerResponse): { req: BascikRequest; res: BascikResponse } => {
+export const adaptHttp1 = (
+  reqMsg: http.IncomingMessage,
+  resMsg: http.ServerResponse,
+): { req: BascikRequest; res: BascikResponse } => {
   resMsg.on("error", (err) => {
     if (isNetworkResetError(err)) return;
     console.error("[bascik] HTTP/1.1 response error:", err);
   });
 
   const rawIp = reqMsg.socket.remoteAddress ?? "unknown";
-  const remoteIp = getClientIp(rawIp, reqMsg.headers, BascikConfig.http.trustProxy === true);
+  const remoteIp = getClientIp(
+    rawIp,
+    reqMsg.headers,
+    BascikConfig.http.trustProxy === true,
+  );
 
   const req: BascikRequest = {
     method: reqMsg.method ?? "GET",
@@ -27,13 +34,19 @@ export const adaptHttp1 = (reqMsg: http.IncomingMessage, resMsg: http.ServerResp
   };
 
   const res: BascikResponse = {
-    get headersSent() { return resMsg.headersSent; },
-    get destroyed() { return resMsg.destroyed; },
+    get headersSent() {
+      return resMsg.headersSent;
+    },
+    get destroyed() {
+      return resMsg.destroyed;
+    },
     writable: resMsg,
     respond(status, headers) {
       resMsg.writeHead(status, headers);
     },
-    write(chunk) { return resMsg.write(chunk); },
+    write(chunk) {
+      return resMsg.write(chunk);
+    },
     end(chunk) {
       if (arguments.length === 0 || chunk === undefined) {
         resMsg.end();
@@ -41,9 +54,15 @@ export const adaptHttp1 = (reqMsg: http.IncomingMessage, resMsg: http.ServerResp
         resMsg.end(chunk);
       }
     },
-    close() { resMsg.destroy(); },
-    on(event, cb) { resMsg.on(event, cb); },
-    off(event, cb) { resMsg.off(event, cb); },
+    close() {
+      resMsg.destroy();
+    },
+    on(event, cb) {
+      resMsg.on(event, cb);
+    },
+    off(event, cb) {
+      resMsg.off(event, cb);
+    },
   };
 
   return { req, res };
@@ -70,7 +89,7 @@ export const startHttpServer = async (): Promise<string> => {
         try {
           res.respond(500, { "content-type": "text/plain" });
           res.end("Internal Server Error");
-        } catch { }
+        } catch {}
       }
     });
   });
@@ -82,16 +101,16 @@ export const startHttpServer = async (): Promise<string> => {
       if (typeof server.closeIdleConnections === "function") {
         try {
           server.closeIdleConnections();
-        } catch { }
+        } catch {}
       }
     },
     () => {
       for (const socket of openSockets) {
         try {
           socket.destroy();
-        } catch { }
+        } catch {}
       }
       openSockets.clear();
-    }
+    },
   );
 };

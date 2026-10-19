@@ -17,22 +17,27 @@ In this tutorial, you will create a custom adapter that bundles a Bascik site in
 Create a new file in your project at `adapters/custom-node.ts`:
 
 ```ts
-import { defineAdapter, type AdapterBuildContext, type AdapterBuildResult } from '@bascik/bascik/adapter';
+import {
+  defineAdapter,
+  type AdapterBuildContext,
+  type AdapterBuildResult,
+} from "@bascik/bascik/adapter";
 
 export default defineAdapter({
-  name: 'custom-node',
+  name: "custom-node",
   async build(context: AdapterBuildContext): Promise<AdapterBuildResult> {
-    context.log('Building custom Node deployment bundle...');
+    context.log("Building custom Node deployment bundle...");
 
     return {
-      publicDir: 'dist/.bascik/custom-node/public',
-      notes: ['Custom adapter finished successfully.'],
+      publicDir: "dist/.bascik/custom-node/public",
+      notes: ["Custom adapter finished successfully."],
     };
   },
 });
 ```
 
 Key points:
+
 - The adapter module exports a default object defined with `defineAdapter`.
 - The `name` string identifies your target and determines its default output folder inside `dist/.bascik/<target>/`.
 - The `build` function receives an `AdapterBuildContext` with paths, logger, and the full site graph.
@@ -44,29 +49,35 @@ Production deployments generally serve pure static files directly from object st
 Update `adapters/custom-node.ts` to copy these assets into the adapter's output directory:
 
 ```ts
-import { mkdir, copyFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { defineAdapter, type AdapterBuildContext, type AdapterBuildResult } from '@bascik/bascik/adapter';
+import { mkdir, copyFile } from "node:fs/promises";
+import { join } from "node:path";
+import {
+  defineAdapter,
+  type AdapterBuildContext,
+  type AdapterBuildResult,
+} from "@bascik/bascik/adapter";
 
 export default defineAdapter({
-  name: 'custom-node',
+  name: "custom-node",
   async build(context: AdapterBuildContext): Promise<AdapterBuildResult> {
     const { graph, outDir, distDir, log } = context;
-    const publicDir = join(outDir, 'public');
+    const publicDir = join(outDir, "public");
 
-    log('Preparing public static files...');
+    log("Preparing public static files...");
     await mkdir(publicDir, { recursive: true });
 
     for (const relFile of graph.publicFiles) {
       const src = join(distDir, relFile);
       const dest = join(publicDir, relFile);
-      await mkdir(join(dest, '..'), { recursive: true });
+      await mkdir(join(dest, ".."), { recursive: true });
       await copyFile(src, dest);
     }
 
     return {
       publicDir,
-      notes: [`Copied ${graph.publicFiles.length} static assets to public output directory.`],
+      notes: [
+        `Copied ${graph.publicFiles.length} static assets to public output directory.`,
+      ],
     };
   },
 });
@@ -83,27 +94,31 @@ The runtime provides `handleRequest(webRequest, graph, context)` which accepts s
 Add the entrypoint generation to `adapters/custom-node.ts`:
 
 ```ts
-import { mkdir, copyFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { defineAdapter, type AdapterBuildContext, type AdapterBuildResult } from '@bascik/bascik/adapter';
+import { mkdir, copyFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import {
+  defineAdapter,
+  type AdapterBuildContext,
+  type AdapterBuildResult,
+} from "@bascik/bascik/adapter";
 
 export default defineAdapter({
-  name: 'custom-node',
+  name: "custom-node",
   async build(context: AdapterBuildContext): Promise<AdapterBuildResult> {
     const { graph, outDir, distDir, log } = context;
-    const publicDir = join(outDir, 'public');
+    const publicDir = join(outDir, "public");
 
-    log('Preparing public static files...');
+    log("Preparing public static files...");
     await mkdir(publicDir, { recursive: true });
 
     for (const relFile of graph.publicFiles) {
       const src = join(distDir, relFile);
       const dest = join(publicDir, relFile);
-      await mkdir(join(dest, '..'), { recursive: true });
+      await mkdir(join(dest, ".."), { recursive: true });
       await copyFile(src, dest);
     }
 
-    log('Emitting runtime server script...');
+    log("Emitting runtime server script...");
     const serverCode = `import { createServer } from 'node:http';
 import { handleRequest } from '@bascik/bascik/runtime';
 
@@ -146,8 +161,8 @@ server.listen(port, () => {
 });
 `;
 
-    const workerPath = join(outDir, 'server.mjs');
-    await writeFile(workerPath, serverCode, 'utf8');
+    const workerPath = join(outDir, "server.mjs");
+    await writeFile(workerPath, serverCode, "utf8");
 
     return {
       workerPath,
@@ -226,7 +241,11 @@ my-adapter/
 In your package entrypoint (`src/index.ts`), export the adapter as the default export:
 
 ```ts
-import { defineAdapter, type AdapterBuildContext, type AdapterBuildResult } from '@bascik/bascik/adapter';
+import {
+  defineAdapter,
+  type AdapterBuildContext,
+  type AdapterBuildResult,
+} from "@bascik/bascik/adapter";
 
 export interface MyAdapterOptions {
   memoryMb?: number;
@@ -235,9 +254,11 @@ export interface MyAdapterOptions {
 
 export function createAdapter(options: MyAdapterOptions = {}) {
   return defineAdapter({
-    name: 'my-cloud',
+    name: "my-cloud",
     async build(context: AdapterBuildContext): Promise<AdapterBuildResult> {
-      context.log(`Building with ${options.memoryMb ?? 128}MB memory in ${options.region ?? 'auto'}...`);
+      context.log(
+        `Building with ${options.memoryMb ?? 128}MB memory in ${options.region ?? "auto"}...`,
+      );
       // Build platform bundles...
       return {
         publicDir: `${context.outDir}/public`,
@@ -259,8 +280,8 @@ bascik --build --target my-adapter
 Or configure it with options in their `bascik.config.ts`:
 
 ```ts
-import { defineConfig } from '@bascik/bascik';
-import { createAdapter } from 'my-adapter';
+import { defineConfig } from "@bascik/bascik";
+import { createAdapter } from "my-adapter";
 
 export default defineConfig({
   // Configuration options
@@ -293,24 +314,24 @@ export interface HostingAdapter {
 export function defineAdapter(adapter: HostingAdapter): HostingAdapter;
 ```
 
-| Property | Type | Description |
-| :--- | :--- | :--- |
-| `name` | `string` | Unique identifier for the adapter, used in diagnostic logs and output paths. |
-| `build` | `(context: AdapterBuildContext) => Promise<AdapterBuildResult>` | Async hook called after static build completes. |
+| Property | Type                                                            | Description                                                                  |
+| :------- | :-------------------------------------------------------------- | :--------------------------------------------------------------------------- |
+| `name`   | `string`                                                        | Unique identifier for the adapter, used in diagnostic logs and output paths. |
+| `build`  | `(context: AdapterBuildContext) => Promise<AdapterBuildResult>` | Async hook called after static build completes.                              |
 
 ### `AdapterBuildContext`
 
 The build context provides read-only information about the project, paths, and compiled site graph:
 
-| Property | Type | Description |
-| :--- | :--- | :--- |
-| `graph` | `SiteGraph` | Complete metadata graph of compiled pages, jobs, API routes, and public files. |
-| `distDir` | `string` | Absolute path to the read-only static build folder (`dist/`). |
-| `outDir` | `string` | Assigned output directory (`dist/.bascik/<target>/`). Write all artifacts here. |
-| `projectRoot` | `string` | Absolute path to the root directory containing `package.json`. |
-| `variant` | `string \| undefined` | Optional variant string specified by the caller or target mapping. |
-| `runtimeEntry` | `string` | File path to `@bascik/bascik/runtime` for bundlers that resolve ESM modules. |
-| `log` | `(message: string) => void` | Logging utility for emitting CLI build status lines. |
+| Property       | Type                        | Description                                                                     |
+| :------------- | :-------------------------- | :------------------------------------------------------------------------------ |
+| `graph`        | `SiteGraph`                 | Complete metadata graph of compiled pages, jobs, API routes, and public files.  |
+| `distDir`      | `string`                    | Absolute path to the read-only static build folder (`dist/`).                   |
+| `outDir`       | `string`                    | Assigned output directory (`dist/.bascik/<target>/`). Write all artifacts here. |
+| `projectRoot`  | `string`                    | Absolute path to the root directory containing `package.json`.                  |
+| `variant`      | `string \| undefined`       | Optional variant string specified by the caller or target mapping.              |
+| `runtimeEntry` | `string`                    | File path to `@bascik/bascik/runtime` for bundlers that resolve ESM modules.    |
+| `log`          | `(message: string) => void` | Logging utility for emitting CLI build status lines.                            |
 
 ### `AdapterBuildResult`
 
@@ -339,7 +360,7 @@ export interface SiteGraph {
   release: string; // Deterministic release ID hash for the build
   scriptTimeoutMs: number; // Configured timeout for server scripts
   apiTimeoutMs: number; // Configured timeout for API routes
-  onServerScriptError: 'error' | 'warn' | 'ignore';
+  onServerScriptError: "error" | "warn" | "ignore";
   publicFiles: string[]; // Relative paths of all static assets in dist/
   pages: Record<string, SiteGraphPage>; // Dynamic pages keyed by route path
   apiRoutes: SiteGraphApiRoute[]; // Sorted list of API route handlers
@@ -361,7 +382,7 @@ export interface SiteGraphPage {
 }
 
 export interface DistPageSegment {
-  kind: 'static' | 'script';
+  kind: "static" | "script";
   text?: string; // HTML markup for static segment
   id?: string; // Job ID for script segment
 }
@@ -374,10 +395,10 @@ Describes an individual request-time script execution:
 ```ts
 export interface SiteGraphJob {
   id: string; // Unique job ID within the page
-  mode: 'server' | 'stream'; // Blocking server script vs streaming chunk script
+  mode: "server" | "stream"; // Blocking server script vs streaming chunk script
   source:
-    | { kind: 'module'; path: string }
-    | { kind: 'inline'; code: string; stagedPath: string };
+    | { kind: "module"; path: string }
+    | { kind: "inline"; code: string; stagedPath: string };
   owner: string; // Authoring source location for diagnostic traces
 }
 ```
@@ -402,13 +423,13 @@ export interface SiteGraphApiRoute {
 Adapters bundle `@bascik/bascik/runtime` into their function entry points. The runtime handles routing, parameter extraction, script execution, error trapping, and chunk streaming:
 
 ```ts
-import { handleRequest } from '@bascik/bascik/runtime';
+import { handleRequest } from "@bascik/bascik/runtime";
 
 const response = await handleRequest(request, graph, {
   params: {},
-  remoteIp: request.headers.get('x-forwarded-for') ?? '127.0.0.1',
+  remoteIp: request.headers.get("x-forwarded-for") ?? "127.0.0.1",
   platform: {
-    name: 'my-platform',
+    name: "my-platform",
     env: process.env,
   },
 });
@@ -417,35 +438,35 @@ const response = await handleRequest(request, graph, {
 The runtime accepts standard Web `Request` objects and returns standard Web `Response` objects (with `ReadableStream` bodies for streaming pages), making it compatible with Cloudflare Workers, Fastly Compute, Deno, Bun, and Node 18+.
 
 > **Next:** Inspect the [Cloudflare Adapter](/deployment/cloudflare) guide for a production example with asset routing and Wrangler configuration, or return to [Deployment Overview](/deployment).
-const publicDir = join(import.meta.dirname, 'public');
+> const publicDir = join(import.meta.dirname, 'public');
 
 const server = createServer(async (req, res) => {
-  const url = new URL(req.url ?? '/', \`http://\${req.headers.host ?? 'localhost'}\`);
-  
-  // Standard Web Request/Response conversion
-  const webReq = new Request(url, {
-    method: req.method,
-    headers: req.headers as Record<string, string>,
-  });
+const url = new URL(req.url ?? '/', \`http://\${req.headers.host ?? 'localhost'}\`);
 
-  const webRes = await handleRequest(webReq, graph, {
-    params: {},
-    remoteIp: req.socket.remoteAddress ?? '127.0.0.1',
-    platform: { name: 'custom-node' },
-  });
+// Standard Web Request/Response conversion
+const webReq = new Request(url, {
+method: req.method,
+headers: req.headers as Record<string, string>,
+});
 
-  res.statusCode = webRes.status;
-  webRes.headers.forEach((val, key) => res.setHeader(key, val));
-  
-  if (webRes.body) {
-    const reader = webRes.body.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      res.write(value);
-    }
-  }
-  res.end();
+const webRes = await handleRequest(webReq, graph, {
+params: {},
+remoteIp: req.socket.remoteAddress ?? '127.0.0.1',
+platform: { name: 'custom-node' },
+});
+
+res.statusCode = webRes.status;
+webRes.headers.forEach((val, key) => res.setHeader(key, val));
+
+if (webRes.body) {
+const reader = webRes.body.getReader();
+while (true) {
+const { done, value } = await reader.read();
+if (done) break;
+res.write(value);
+}
+}
+res.end();
 });
 
 server.listen(3000, () => console.log('Server running on http://localhost:3000'));
@@ -462,15 +483,17 @@ server.listen(3000, () => console.log('Server running on http://localhost:3000')
         `Static assets copied to ${publicDir}`,
       ],
     };
-  },
+
+},
 });
-```
+
+````
 
 To run this build:
 
 ```sh
 bascik --build --target ./adapters/custom-node.ts
-```
+````
 
 ## Testing and publishing guidelines
 

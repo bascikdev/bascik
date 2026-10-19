@@ -1,19 +1,24 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Multi Root and Multi Style Test</title>
+  </head>
 
-<head>
-  <meta charset="UTF-8">
-  <title>Multi Root and Multi Style Test</title>
-</head>
+  <body>
+    <h1>Multi Root Test Page</h1>
+    <multi-root-card
+      id="card-1-root"
+      class="custom-usage-class"
+      data-testid="multi-root-1"
+      data-bascik-prop-title="First Card Title"
+    >
+      <p id="slot-p">Custom slotted paragraph</p>
+    </multi-root-card>
 
-<body>
-  <h1>Multi Root Test Page</h1>
-  <multi-root-card id="card-1-root" class="custom-usage-class" data-testid="multi-root-1"
-    data-bascik-prop-title="First Card Title">
-    <p id="slot-p">Custom slotted paragraph</p>
-  </multi-root-card>
-
-  <multi-style-card id="style-card-root" class="style-usage-class"></multi-style-card>
-</body>
-
+    <multi-style-card
+      id="style-card-root"
+      class="style-usage-class"
+    ></multi-style-card>
+  </body>
 </html>

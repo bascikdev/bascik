@@ -13,12 +13,20 @@ vi.mock("node:fs", () => ({
 }));
 
 vi.mock("node:fs/promises", () => ({
-  mkdir: vi.fn(async () => { }),
-  writeFile: vi.fn(async () => { }),
+  mkdir: vi.fn(async () => {}),
+  writeFile: vi.fn(async () => {}),
   readFile: mocks.readFile,
 }));
 
-import { encodeUrlPath, buildSitemapXml, buildRobotsTxt, escapeXml, is404Page, is500Page, generateSitemapFiles } from "./sitemap.ts";
+import {
+  encodeUrlPath,
+  buildSitemapXml,
+  buildRobotsTxt,
+  escapeXml,
+  is404Page,
+  is500Page,
+  generateSitemapFiles,
+} from "./sitemap.ts";
 import { composeSiteUrl } from "./base-path.ts";
 import { getHttpPath } from "./paths.ts";
 import { listPages } from "./file-system.ts";
@@ -31,7 +39,11 @@ vi.mock("./config.js", () => ({
   BascikConfig: {
     base: "/",
     generate: { sitemap: true, robots: true, sitemapLastmod: false },
-    directory: { pages: "/project/src/pages", components: ["/project/src/components"], out: "dist" },
+    directory: {
+      pages: "/project/src/pages",
+      components: ["/project/src/components"],
+      out: "dist",
+    },
     isBuild: true,
   },
 }));
@@ -69,7 +81,9 @@ describe("canonical sitemap paths", () => {
   });
 
   it("maps a nested page to /section/slug", () => {
-    expect(encodeUrlPath(getHttpPath("pages/blog/post.html"))).toBe("/blog/post");
+    expect(encodeUrlPath(getHttpPath("pages/blog/post.html"))).toBe(
+      "/blog/post",
+    );
   });
 
   it("maps a nested index to the parent path", () => {
@@ -77,11 +91,15 @@ describe("canonical sitemap paths", () => {
   });
 
   it("drops index only when it is the final path segment", () => {
-    expect(encodeUrlPath(getHttpPath("pages/index/deep.html"))).toBe("/index/deep");
+    expect(encodeUrlPath(getHttpPath("pages/index/deep.html"))).toBe(
+      "/index/deep",
+    );
   });
 
   it("handles deeply nested paths", () => {
-    expect(encodeUrlPath(getHttpPath("pages/docs/api/reference.html"))).toBe("/docs/api/reference");
+    expect(encodeUrlPath(getHttpPath("pages/docs/api/reference.html"))).toBe(
+      "/docs/api/reference",
+    );
   });
 
   it("percent-encodes sitemap segments and round-trips to the server path", () => {
@@ -102,7 +120,9 @@ describe("buildSitemapXml", () => {
   it("produces valid XML sitemap structure", () => {
     const xml = buildSitemapXml("https://example.com", ["/", "/about"]);
     expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
-    expect(xml).toContain('xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"');
+    expect(xml).toContain(
+      'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"',
+    );
     expect(xml).toContain("<loc>https://example.com/</loc>");
     expect(xml).toContain("<loc>https://example.com/about</loc>");
   });
@@ -120,7 +140,11 @@ describe("buildSitemapXml", () => {
   });
 
   it("composes the site URL, base, and page path", () => {
-    const xml = buildSitemapXml("https://example.com/", ["/", "/about"], "/sub/");
+    const xml = buildSitemapXml(
+      "https://example.com/",
+      ["/", "/about"],
+      "/sub/",
+    );
     expect(xml).toContain("<loc>https://example.com/sub/</loc>");
     expect(xml).toContain("<loc>https://example.com/sub/about</loc>");
     expect(xml).not.toContain("/sub//");
@@ -232,7 +256,12 @@ describe("buildRobotsTxt", () => {
 describe("composeSiteUrl", () => {
   it.each([
     ["https://example.com", "/", "/about", "https://example.com/about"],
-    ["https://example.com/", "/sub/", "/about", "https://example.com/sub/about"],
+    [
+      "https://example.com/",
+      "/sub/",
+      "/about",
+      "https://example.com/sub/about",
+    ],
     ["https://example.com/", "/sub/", "/", "https://example.com/sub/"],
   ])("composes %s, %s, and %s", (siteUrl, base, pagePath, expected) => {
     expect(composeSiteUrl(siteUrl, base, pagePath)).toBe(expected);
@@ -247,6 +276,32 @@ describe("generateSitemapFiles", () => {
     expect(vi.mocked(mkdir).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(writeFile).mock.invocationCallOrder[0],
     );
+  });
+
+  describe("generated: lines", () => {
+    const run = async (level: string | undefined) => {
+      (BascikConfig as Record<string, unknown>).logging =
+        level === undefined ? undefined : { level };
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      await generateSitemapFiles([]);
+      return log.mock.calls.map((call) => String(call[0]));
+    };
+    afterEach(() => {
+      delete (BascikConfig as Record<string, unknown>).logging;
+      vi.restoreAllMocks();
+    });
+
+    it("prints one line per generated file at the default level", async () => {
+      const lines = await run(undefined);
+      expect(
+        lines.filter((l) => l.startsWith("generated:")).length,
+      ).toBeGreaterThan(0);
+    });
+
+    it("prints none at warn, which is what --quiet selects, and still writes the files", async () => {
+      expect(await run("warn")).toEqual([]);
+      expect(writeFile).toHaveBeenCalled();
+    });
   });
 
   it("excludes the 404 page from sitemap.xml", async () => {
@@ -302,7 +357,9 @@ describe("generateSitemapFiles", () => {
 
     expect(xml).toContain("<loc>https://example.com/</loc>");
     expect(xml).toContain("<loc>https://example.com/blog/first-post</loc>");
-    expect(xml).toContain("<loc>https://example.com/blog/author%E2%80%99s-post</loc>");
+    expect(xml).toContain(
+      "<loc>https://example.com/blog/author%E2%80%99s-post</loc>",
+    );
     expect(xml).not.toContain("[");
     expect(xml).not.toContain("]");
   });
@@ -325,19 +382,28 @@ describe("generateSitemapFiles – early-return branches", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset to default enabled state
-    (BascikConfig as Record<string, unknown>).generate = { sitemap: true, robots: true };
+    (BascikConfig as Record<string, unknown>).generate = {
+      sitemap: true,
+      robots: true,
+    };
     vi.mocked(listPages).mockResolvedValue([]);
   });
 
   it("returns without writing files when both sitemap and robots are disabled", async () => {
-    (BascikConfig as Record<string, unknown>).generate = { sitemap: false, robots: false };
+    (BascikConfig as Record<string, unknown>).generate = {
+      sitemap: false,
+      robots: false,
+    };
     delete process.env.BASCIK_SITE_URL;
     await generateSitemapFiles();
     expect(writeFile).not.toHaveBeenCalled();
   });
 
   it("fails the build with a teaching error when BASCIK_SITE_URL is not set", async () => {
-    (BascikConfig as Record<string, unknown>).generate = { sitemap: true, robots: false };
+    (BascikConfig as Record<string, unknown>).generate = {
+      sitemap: true,
+      robots: false,
+    };
     delete process.env.BASCIK_SITE_URL;
     await expect(generateSitemapFiles()).rejects.toThrow(
       /BASCIK_SITE_URL is not set, but generate\.sitemap is enabled/,
@@ -369,7 +435,10 @@ describe("generateSitemapFiles – early-return branches", () => {
   });
 
   it("names generate.robots when only robots is enabled", async () => {
-    (BascikConfig as Record<string, unknown>).generate = { sitemap: false, robots: true };
+    (BascikConfig as Record<string, unknown>).generate = {
+      sitemap: false,
+      robots: true,
+    };
     delete process.env.BASCIK_SITE_URL;
     await expect(generateSitemapFiles()).rejects.toThrow(
       /BASCIK_SITE_URL is not set, but generate\.robots is enabled/,
@@ -383,64 +452,97 @@ describe("generateSitemapFiles – early-return branches", () => {
   });
 
   it("writes only robots.txt when sitemap is disabled but robots is enabled", async () => {
-    (BascikConfig as Record<string, unknown>).generate = { sitemap: false, robots: true };
+    (BascikConfig as Record<string, unknown>).generate = {
+      sitemap: false,
+      robots: true,
+    };
     await generateSitemapFiles();
-    const writtenPaths = vi.mocked(writeFile).mock.calls.map(([f]) => String(f));
+    const writtenPaths = vi
+      .mocked(writeFile)
+      .mock.calls.map(([f]) => String(f));
     expect(writtenPaths.some((p) => p.includes("sitemap.xml"))).toBe(false);
     expect(writtenPaths.some((p) => p.includes("robots.txt"))).toBe(true);
   });
 
   it("writes only sitemap.xml when robots is disabled but sitemap is enabled", async () => {
-    (BascikConfig as Record<string, unknown>).generate = { sitemap: true, robots: false };
+    (BascikConfig as Record<string, unknown>).generate = {
+      sitemap: true,
+      robots: false,
+    };
     await generateSitemapFiles();
-    const writtenPaths = vi.mocked(writeFile).mock.calls.map(([f]) => String(f));
+    const writtenPaths = vi
+      .mocked(writeFile)
+      .mock.calls.map(([f]) => String(f));
     expect(writtenPaths.some((p) => p.includes("sitemap.xml"))).toBe(true);
     expect(writtenPaths.some((p) => p.includes("robots.txt"))).toBe(false);
   });
 
   it("trims trailing slash from the site URL before writing", async () => {
     process.env.BASCIK_SITE_URL = "https://example.com/";
-    (BascikConfig as Record<string, unknown>).generate = { sitemap: false, robots: true };
+    (BascikConfig as Record<string, unknown>).generate = {
+      sitemap: false,
+      robots: true,
+    };
     await generateSitemapFiles();
-    const robotsCall = vi.mocked(writeFile).mock.calls.find(([f]) =>
-      String(f).includes("robots.txt")
+    const robotsCall = vi
+      .mocked(writeFile)
+      .mock.calls.find(([f]) => String(f).includes("robots.txt"));
+    expect(String(robotsCall?.[1])).toContain(
+      "https://example.com/sitemap.xml",
     );
-    expect(String(robotsCall?.[1])).toContain("https://example.com/sitemap.xml");
-    expect(String(robotsCall?.[1])).not.toContain("https://example.com//sitemap.xml");
+    expect(String(robotsCall?.[1])).not.toContain(
+      "https://example.com//sitemap.xml",
+    );
   });
 
   it("warns and skips generated robots.txt when authored src/pages/robots.txt exists", async () => {
     mocks.existsSync.mockImplementation((p: any) => {
-      return String(p).endsWith("pages/robots.txt") || String(p).endsWith("pages\\robots.txt");
+      return (
+        String(p).endsWith("pages/robots.txt") ||
+        String(p).endsWith("pages\\robots.txt")
+      );
     });
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await generateSitemapFiles();
 
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("robots.txt exists, so generate.robots did not write"),
+      expect.stringContaining(
+        "robots.txt exists, so generate.robots did not write",
+      ),
     );
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Your authored robots.txt should include its own \"Sitemap:\" line"),
+      expect.stringContaining(
+        'Your authored robots.txt should include its own "Sitemap:" line',
+      ),
     );
 
-    const writtenPaths = vi.mocked(writeFile).mock.calls.map(([f]) => String(f));
+    const writtenPaths = vi
+      .mocked(writeFile)
+      .mock.calls.map(([f]) => String(f));
     expect(writtenPaths.some((p) => p.includes("robots.txt"))).toBe(false);
   });
 
   it("warns and skips generated sitemap.xml when authored src/pages/sitemap.xml exists", async () => {
     mocks.existsSync.mockImplementation((p: any) => {
-      return String(p).endsWith("pages/sitemap.xml") || String(p).endsWith("pages\\sitemap.xml");
+      return (
+        String(p).endsWith("pages/sitemap.xml") ||
+        String(p).endsWith("pages\\sitemap.xml")
+      );
     });
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await generateSitemapFiles();
 
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("sitemap.xml exists, so generate.sitemap did not write"),
+      expect.stringContaining(
+        "sitemap.xml exists, so generate.sitemap did not write",
+      ),
     );
 
-    const writtenPaths = vi.mocked(writeFile).mock.calls.map(([f]) => String(f));
+    const writtenPaths = vi
+      .mocked(writeFile)
+      .mock.calls.map(([f]) => String(f));
     expect(writtenPaths.some((p) => p.includes("sitemap.xml"))).toBe(false);
   });
 
@@ -448,41 +550,95 @@ describe("generateSitemapFiles – early-return branches", () => {
     mocks.existsSync.mockImplementation((p: any) => {
       return String(p).includes("about/robots.txt");
     });
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await generateSitemapFiles();
 
     expect(warnSpy).not.toHaveBeenCalled();
-    const writtenPaths = vi.mocked(writeFile).mock.calls.map(([f]) => String(f));
+    const writtenPaths = vi
+      .mocked(writeFile)
+      .mock.calls.map(([f]) => String(f));
     expect(writtenPaths.some((p) => p.includes("robots.txt"))).toBe(true);
   });
 
   it("excludes pages with <meta name='bascik-sitemap' content='exclude'>", async () => {
     mocks.existsSync.mockImplementation((p: any) => {
-      if (String(p).endsWith("sitemap.xml") || String(p).endsWith("robots.txt")) return false;
+      if (String(p).endsWith("sitemap.xml") || String(p).endsWith("robots.txt"))
+        return false;
       return true;
     });
     mocks.readFile.mockImplementation(async (p: any) => {
       if (String(p).includes("redirect.html")) {
         return '<meta name="bascik-sitemap" content="exclude"><p>Redirect</p>';
       }
-      return '<p>Normal</p>';
+      return "<p>Normal</p>";
     });
 
     const transpiledPaths = ["pages/index.html", "pages/redirect.html"];
     await generateSitemapFiles(transpiledPaths);
 
-    const sitemapCall = vi.mocked(writeFile).mock.calls.find(([f]) => String(f).includes("sitemap.xml"));
+    const sitemapCall = vi
+      .mocked(writeFile)
+      .mock.calls.find(([f]) => String(f).includes("sitemap.xml"));
     expect(sitemapCall).toBeDefined();
     const xml = String(sitemapCall?.[1]);
     expect(xml).toContain("<loc>https://example.com/</loc>");
     expect(xml).not.toContain("redirect");
   });
 
+  it("does not exclude a page whose exclude meta tag only appears inside an HTML comment or <pre>/<code>/<script>", async () => {
+    mocks.existsSync.mockImplementation((p: any) => {
+      if (String(p).endsWith("sitemap.xml") || String(p).endsWith("robots.txt"))
+        return false;
+      return true;
+    });
+    mocks.readFile.mockImplementation(
+      async () =>
+        '<!-- <meta name="bascik-sitemap" content="exclude"> -->' +
+        '<script>const example = \'<meta name="bascik-sitemap" content="exclude">\';</script>' +
+        '<textarea><meta name="bascik-sitemap" content="exclude"></textarea><p>Docs</p>',
+    );
+
+    await generateSitemapFiles(["pages/seo-guide.html"]);
+    const sitemapCall = vi
+      .mocked(writeFile)
+      .mock.calls.find(([f]) => String(f).includes("sitemap.xml"));
+    const xml = String(sitemapCall?.[1]);
+    expect(xml).toContain("<loc>https://example.com/seo-guide</loc>");
+  });
+
+  it("excludes a dynamic route page when its emitted dist HTML carries the exclude meta tag", async () => {
+    mocks.existsSync.mockImplementation((p: any) => {
+      const s = String(p);
+      if (s.endsWith("sitemap.xml") || s.endsWith("robots.txt")) return false;
+      // Source file does not exist (was [slug].html), but dist file exists
+      if (s.includes("/src/pages/")) return false;
+      return true;
+    });
+    mocks.readFile.mockImplementation(async (p: any) => {
+      if (String(p).includes("draft-post.html")) {
+        return '<head><meta name="bascik-sitemap" content="exclude"></head><body>Draft</body>';
+      }
+      return "<head></head><body>Published</body>";
+    });
+
+    await generateSitemapFiles([
+      "pages/blog/published.html",
+      "pages/blog/draft-post.html",
+    ]);
+    const sitemapCall = vi
+      .mocked(writeFile)
+      .mock.calls.find(([f]) => String(f).includes("sitemap.xml"));
+    const xml = String(sitemapCall?.[1]);
+    expect(xml).toContain("<loc>https://example.com/blog/published</loc>");
+    expect(xml).not.toContain("draft-post");
+  });
+
   it("includes <lastmod> when generate.sitemapLastmod is enabled", async () => {
     (BascikConfig as any).generate.sitemapLastmod = true;
     mocks.existsSync.mockImplementation((p: any) => {
-      if (String(p).endsWith("sitemap.xml") || String(p).endsWith("robots.txt")) return false;
+      if (String(p).endsWith("sitemap.xml") || String(p).endsWith("robots.txt"))
+        return false;
       return true;
     });
     mocks.statSync.mockReturnValue({
@@ -492,7 +648,9 @@ describe("generateSitemapFiles – early-return branches", () => {
     const transpiledPaths = ["pages/index.html"];
     await generateSitemapFiles(transpiledPaths);
 
-    const sitemapCall = vi.mocked(writeFile).mock.calls.find(([f]) => String(f).includes("sitemap.xml"));
+    const sitemapCall = vi
+      .mocked(writeFile)
+      .mock.calls.find(([f]) => String(f).includes("sitemap.xml"));
     expect(sitemapCall).toBeDefined();
     const xml = String(sitemapCall?.[1]);
     expect(xml).toContain("<lastmod>2026-08-15</lastmod>");
@@ -500,7 +658,8 @@ describe("generateSitemapFiles – early-return branches", () => {
 
   it("deduplicates duplicate route paths in sitemap.xml", async () => {
     mocks.existsSync.mockImplementation((p: any) => {
-      if (String(p).endsWith("sitemap.xml") || String(p).endsWith("robots.txt")) return false;
+      if (String(p).endsWith("sitemap.xml") || String(p).endsWith("robots.txt"))
+        return false;
       return false;
     });
     const transpiledPaths = [
@@ -511,7 +670,9 @@ describe("generateSitemapFiles – early-return branches", () => {
     ];
     await generateSitemapFiles(transpiledPaths);
 
-    const sitemapCall = vi.mocked(writeFile).mock.calls.find(([f]) => String(f).includes("sitemap.xml"));
+    const sitemapCall = vi
+      .mocked(writeFile)
+      .mock.calls.find(([f]) => String(f).includes("sitemap.xml"));
     expect(sitemapCall).toBeDefined();
     const xml = String(sitemapCall?.[1]);
     const matches = xml.match(/<loc>/g);

@@ -16,33 +16,34 @@
  * The fixture is built with `minify.identifiers: false` so scoped names
  * are readable (e.g. `bascik__async-query__wrapper`).
  */
-import { test, expect, type Page, type Locator } from '@playwright/test';
+import { test, expect, type Page, type Locator } from "@playwright/test";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function getInstance(page: Page, n: number) {
-  return page.locator('.bascik__async-query__wrapper').nth(n);
+  return page.locator(".bascik__async-query__wrapper").nth(n);
 }
 
 const resultEl = (inst: Locator) => inst.locator('[id$="__result"]');
-const btn = (inst: Locator, suffix: string) => inst.locator(`[id$="__${suffix}"]`);
+const btn = (inst: Locator, suffix: string) =>
+  inst.locator(`[id$="__${suffix}"]`);
 
 // ---------------------------------------------------------------------------
 // Test suite
 // ---------------------------------------------------------------------------
 
-test.describe('async-query-test page', () => {
+test.describe("async-query-test page", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/async-query-test');
+    await page.goto("/async-query-test");
   });
 
   // ── 1. Initial state ─────────────────────────────────────────────────────
 
   test('result starts with "No result"', async ({ page }) => {
     const a = getInstance(page, 0);
-    await expect(resultEl(a)).toHaveText('No result');
+    await expect(resultEl(a)).toHaveText("No result");
   });
 
   // ── 2. setTimeout callback ───────────────────────────────────────────────
@@ -50,12 +51,16 @@ test.describe('async-query-test page', () => {
   // getElementById is scoped per-instance (hash-qualified), so the callback
   // finds and updates only this instance's #result element.
 
-  test('setTimeout callback: getElementById finds element', async ({ page }) => {
+  test("setTimeout callback: getElementById finds element", async ({
+    page,
+  }) => {
     const a = getInstance(page, 0);
 
-    await btn(a, 'timeout-btn').click();
+    await btn(a, "timeout-btn").click();
 
-    await expect(resultEl(a)).toHaveText('timeout: found #result', { timeout: 3000 });
+    await expect(resultEl(a)).toHaveText("timeout: found #result", {
+      timeout: 3000,
+    });
   });
 
   // ── 3. Promise callback ──────────────────────────────────────────────────
@@ -63,12 +68,12 @@ test.describe('async-query-test page', () => {
   // querySelector(".bascik__async-query__result") is document-wide and resolves
   // the FIRST matching element in the DOM — instance A's result.
 
-  test('Promise callback: querySelector finds element', async ({ page }) => {
+  test("Promise callback: querySelector finds element", async ({ page }) => {
     const a = getInstance(page, 0);
 
-    await btn(a, 'promise-btn').click();
+    await btn(a, "promise-btn").click();
 
-    await expect(resultEl(a)).toHaveText('promise: found .result');
+    await expect(resultEl(a)).toHaveText("promise: found .result");
   });
 
   // ── 4. queueMicrotask callback ───────────────────────────────────────────
@@ -76,12 +81,14 @@ test.describe('async-query-test page', () => {
   // getElementById is scoped per-instance, so the callback finds this
   // instance's #result element even in a microtask queue.
 
-  test('queueMicrotask callback: getElementById finds element', async ({ page }) => {
+  test("queueMicrotask callback: getElementById finds element", async ({
+    page,
+  }) => {
     const a = getInstance(page, 0);
 
-    await btn(a, 'microtask-btn').click();
+    await btn(a, "microtask-btn").click();
 
-    await expect(resultEl(a)).toHaveText('microtask: found #result');
+    await expect(resultEl(a)).toHaveText("microtask: found #result");
   });
 
   // ── 5. Instance isolation (setTimeout) ───────────────────────────────────
@@ -89,13 +96,17 @@ test.describe('async-query-test page', () => {
   // getElementById is hash-qualified, so instance A's async callback updates
   // only instance A's result. Instance B remains unaffected.
 
-  test('instance A async query does not affect instance B', async ({ page }) => {
+  test("instance A async query does not affect instance B", async ({
+    page,
+  }) => {
     const a = getInstance(page, 0);
     const b = getInstance(page, 1);
 
-    await btn(a, 'timeout-btn').click();
+    await btn(a, "timeout-btn").click();
 
-    await expect(resultEl(a)).toHaveText('timeout: found #result', { timeout: 3000 });
-    await expect(resultEl(b)).toHaveText('No result');
+    await expect(resultEl(a)).toHaveText("timeout: found #result", {
+      timeout: 3000,
+    });
+    await expect(resultEl(b)).toHaveText("No result");
   });
 });

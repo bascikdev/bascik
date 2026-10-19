@@ -13,7 +13,8 @@ import { relative } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { trimTrailingSlashes } from "./slashes.ts";
 
-const toPosix = (path: string): string => trimTrailingSlashes(path.replace(/\\/g, "/"));
+const toPosix = (path: string): string =>
+  trimTrailingSlashes(path.replace(/\\/g, "/"));
 
 /** Configured component roots with forward slashes and no trailing slash. */
 export const getComponentRoots = (): string[] => {
@@ -44,7 +45,10 @@ export const findComponentRoot = (filePath: string): string | undefined => {
  * the project, otherwise the cwd-relative path (`../shared/components`) so a
  * user can locate it. Never a filesystem-absolute path.
  */
-export const displayComponentRoot = (root: string, cwd = process.cwd()): string => {
+export const displayComponentRoot = (
+  root: string,
+  cwd = process.cwd(),
+): string => {
   const rel = relative(cwd, root).replace(/\\/g, "/");
   if (rel === "" || rel === ".") return "components";
   if (rel.startsWith("../")) return rel;

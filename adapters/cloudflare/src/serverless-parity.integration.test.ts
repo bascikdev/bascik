@@ -24,22 +24,31 @@ import {
   cleanupServerlessFixture,
   createServerlessFixture,
 } from "./serverless-fixture.test-helper.ts";
-import { createGate, startHarness, type Harness, type StreamedResponse } from "./cloudflare-harness.test-helper.ts";
+import {
+  createGate,
+  startHarness,
+  type Harness,
+  type StreamedResponse,
+} from "./cloudflare-harness.test-helper.ts";
 
 /**
  * Header-level differences that are platform facts, not adapter defects.
  * Each entry names the header and why the values legitimately differ.
  */
 const PLATFORM_DIFFERENCES: Record<string, string> = {
-  "transfer-encoding": "Node HTTP/1.1 frames a streamed body as chunked; workerd's local proxy may use its own framing.",
+  "transfer-encoding":
+    "Node HTTP/1.1 frames a streamed body as chunked; workerd's local proxy may use its own framing.",
   connection: "Connection management belongs to the transport.",
   date: "Clock value.",
   "keep-alive": "Transport keep-alive parameters.",
   vary: "Node adds Vary: Accept-Encoding for negotiated static assets; the asset layer decides its own.",
-  "content-encoding": "workerd (like the Cloudflare edge) applies its own compression to Worker responses; Node compresses only what it negotiated itself.",
-  "content-length": "When the edge re-encodes a body it reframes it; the Worker's own content-length is visible only on an identity request.",
+  "content-encoding":
+    "workerd (like the Cloudflare edge) applies its own compression to Worker responses; Node compresses only what it negotiated itself.",
+  "content-length":
+    "When the edge re-encodes a body it reframes it; the Worker's own content-length is visible only on an identity request.",
   etag: "The two static layers compute validators independently.",
-  "cache-control": "Static asset cache policy is host configuration; dynamic responses are compared explicitly.",
+  "cache-control":
+    "Static asset cache policy is host configuration; dynamic responses are compared explicitly.",
   "cf-ray": "Cloudflare request id.",
   server: "Server product token.",
 };
@@ -62,19 +71,27 @@ interface NodeOracle {
 
 const startNodeServer = async (projectRoot: string): Promise<NodeOracle> => {
   const port = await freePort();
-  const cli = resolve(dirname(fileURLToPath(import.meta.url)), "../../../pkg/dist/index.js");
-  const child: ChildProcess = spawn(process.execPath, [cli, "--server", "--port", String(port), "--host", "127.0.0.1"], {
-    cwd: projectRoot,
-    env: { ...process.env, BASCIK_LOG_LEVEL: "silent" },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const cli = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../../pkg/dist/index.js",
+  );
+  const child: ChildProcess = spawn(
+    process.execPath,
+    [cli, "--server", "--port", String(port), "--host", "127.0.0.1"],
+    {
+      cwd: projectRoot,
+      env: { ...process.env, BASCIK_LOG_LEVEL: "silent" },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
   const stderr: string[] = [];
   child.stderr?.on("data", (d) => stderr.push(String(d)));
   const url = new URL(`http://127.0.0.1:${port}/`);
   // Readiness is the health endpoint, never a sleep.
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error(`bascik --server exited early: ${stderr.join("")}`);
+    if (child.exitCode !== null)
+      throw new Error(`bascik --server exited early: ${stderr.join("")}`);
     try {
       const res = await fetch(new URL("/_health/ready", url));
       if (res.status === 200) break;
@@ -94,17 +111,30 @@ const startNodeServer = async (projectRoot: string): Promise<NodeOracle> => {
   };
 };
 
-const rawStreamed = (base: URL, path: string, headers: Record<string, string> = {}): Promise<StreamedResponse> =>
+const rawStreamed = (
+  base: URL,
+  path: string,
+  headers: Record<string, string> = {},
+): Promise<StreamedResponse> =>
   new Promise((resolveResponse, reject) => {
     const start = Date.now();
     const chunks: Array<{ text: string; atMs: number }> = [];
     let firstResolve: ((c: { text: string; atMs: number }) => void) | undefined;
     let ended = false;
     const endResolvers: Array<() => void> = [];
-    const markerWaiters: Array<{ marker: string; resolve: (body: string) => void }> = [];
+    const markerWaiters: Array<{
+      marker: string;
+      resolve: (body: string) => void;
+    }> = [];
     const bodySoFar = () => chunks.map((c) => c.text).join("");
     const req = http.request(
-      { host: base.hostname, port: base.port, path, method: "GET", headers: { "accept-encoding": "identity", ...headers } },
+      {
+        host: base.hostname,
+        port: base.port,
+        path,
+        method: "GET",
+        headers: { "accept-encoding": "identity", ...headers },
+      },
       (res) => {
         res.setEncoding("utf8");
         res.on("data", (text: string) => {
@@ -132,20 +162,46 @@ const rawStreamed = (base: URL, path: string, headers: Record<string, string> = 
           first: (timeoutMs = 5000) =>
             new Promise((ok, fail) => {
               if (chunks.length) return ok(chunks[0]);
-              const watchdog = setTimeout(() => fail(new Error(`no first chunk within ${timeoutMs}ms`)), timeoutMs);
-              firstResolve = (c) => { clearTimeout(watchdog); ok(c); };
+              const watchdog = setTimeout(
+                () => fail(new Error(`no first chunk within ${timeoutMs}ms`)),
+                timeoutMs,
+              );
+              firstResolve = (c) => {
+                clearTimeout(watchdog);
+                ok(c);
+              };
             }),
           until: (marker, timeoutMs = 5000) =>
             new Promise((ok, fail) => {
               if (bodySoFar().includes(marker)) return ok(bodySoFar());
-              const watchdog = setTimeout(() => fail(new Error(`marker "${marker}" not seen within ${timeoutMs}ms`)), timeoutMs);
-              markerWaiters.push({ marker, resolve: (b) => { clearTimeout(watchdog); ok(b); } });
+              const watchdog = setTimeout(
+                () =>
+                  fail(
+                    new Error(
+                      `marker "${marker}" not seen within ${timeoutMs}ms`,
+                    ),
+                  ),
+                timeoutMs,
+              );
+              markerWaiters.push({
+                marker,
+                resolve: (b) => {
+                  clearTimeout(watchdog);
+                  ok(b);
+                },
+              });
             }),
           all: (timeoutMs = 10000) =>
             new Promise((ok, fail) => {
               if (ended) return ok(chunks);
-              const watchdog = setTimeout(() => fail(new Error(`body did not end within ${timeoutMs}ms`)), timeoutMs);
-              endResolvers.push(() => { clearTimeout(watchdog); ok(chunks); });
+              const watchdog = setTimeout(
+                () => fail(new Error(`body did not end within ${timeoutMs}ms`)),
+                timeoutMs,
+              );
+              endResolvers.push(() => {
+                clearTimeout(watchdog);
+                ok(chunks);
+              });
             }),
           destroy: () => req.destroy(),
         });
@@ -163,12 +219,16 @@ interface Observed {
 
 const observe = async (res: Response): Promise<Observed> => {
   const headers: Record<string, string> = {};
-  res.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
+  res.headers.forEach((v, k) => {
+    headers[k.toLowerCase()] = v;
+  });
   return { status: res.status, headers, body: await res.text() };
 };
 
 const comparable = (headers: Record<string, string>): Record<string, string> =>
-  Object.fromEntries(Object.entries(headers).filter(([k]) => !(k in PLATFORM_DIFFERENCES)));
+  Object.fromEntries(
+    Object.entries(headers).filter(([k]) => !(k in PLATFORM_DIFFERENCES)),
+  );
 
 describe("serverless parity: Node oracle versus local workerd", () => {
   let root: string;
@@ -180,7 +240,12 @@ describe("serverless parity: Node oracle versus local workerd", () => {
     root = await createServerlessFixture("parity");
     await buildServerlessFixture(root, "cloudflare-pages");
     node = await startNodeServer(root);
-    cloudflare = await startHarness({ projectRoot: root, target: "cloudflare-pages", bindings: { GREETING: "kv" }, gate });
+    cloudflare = await startHarness({
+      projectRoot: root,
+      target: "cloudflare-pages",
+      bindings: { GREETING: "kv" },
+      gate,
+    });
   }, 180_000);
 
   afterAll(async () => {
@@ -189,7 +254,10 @@ describe("serverless parity: Node oracle versus local workerd", () => {
     if (root) await cleanupServerlessFixture(root);
   });
 
-  const both = async (path: string, init?: RequestInit): Promise<{ node: Observed; cf: Observed }> => ({
+  const both = async (
+    path: string,
+    init?: RequestInit,
+  ): Promise<{ node: Observed; cf: Observed }> => ({
     node: await observe(await fetch(new URL(path, node.url), init)),
     cf: await observe(await cloudflare.fetch(path, init)),
   });
@@ -204,11 +272,17 @@ describe("serverless parity: Node oracle versus local workerd", () => {
       expect(body).toContain("account-greeting");
       // Exactly the property a buffering adapter would exhibit for /dashboard:
       // the whole document present before any gate is released.
-      await expect(streamed.until("does-not-exist", 100)).rejects.toThrow(/not seen/);
+      await expect(streamed.until("does-not-exist", 100)).rejects.toThrow(
+        /not seen/,
+      );
     });
 
     it("a dynamic-route bypass is detectable: routing the page to assets yields a 404, not a 200", async () => {
-      const bypass = await startHarness({ projectRoot: root, target: "cloudflare-pages", invocationRoutes: ["/only-api/*"] });
+      const bypass = await startHarness({
+        projectRoot: root,
+        target: "cloudflare-pages",
+        invocationRoutes: ["/only-api/*"],
+      });
       try {
         const res = await bypass.fetch("/account");
         expect(res.status).toBe(404);
@@ -226,34 +300,54 @@ describe("serverless parity: Node oracle versus local workerd", () => {
   });
 
   it("buffered server page: same status, body, dynamic cache policy, and security headers", async () => {
-    const { node: n, cf } = await both("/account", { headers: { "x-display-name": "Parity" } });
+    const { node: n, cf } = await both("/account", {
+      headers: { "x-display-name": "Parity" },
+    });
     expect(cf.status).toBe(200);
     expect(n.status).toBe(200);
     // Body differs only in the platform name and binding, which is the point.
     expect(n.body).toContain("Hello Parity via node (none)");
     expect(cf.body).toContain("Hello Parity via cloudflare (kv)");
-    expect(n.body.replace("via node (none)", "X").replace(/ip=[^<]*/, "ip")).toBe(
+    expect(
+      n.body.replace("via node (none)", "X").replace(/ip=[^<]*/, "ip"),
+    ).toBe(
       cf.body.replace("via cloudflare (kv)", "X").replace(/ip=[^<]*/, "ip"),
     );
     expect(cf.headers["cache-control"]).toBe("private, no-store");
     expect(n.headers["cache-control"]).toBe("private, no-store");
-    for (const h of ["x-content-type-options", "x-frame-options", "referrer-policy", "cross-origin-opener-policy", "cross-origin-resource-policy"]) {
+    for (const h of [
+      "x-content-type-options",
+      "x-frame-options",
+      "referrer-policy",
+      "cross-origin-opener-policy",
+      "cross-origin-resource-policy",
+    ]) {
       expect(cf.headers[h], h).toBe(n.headers[h]);
     }
     // The Worker sets content-length for a buffered body; the edge keeps it
     // when it does not re-encode (identity request over raw HTTP).
-    const identity = await cloudflare.streamed("/account", { "x-display-name": "Parity" });
+    const identity = await cloudflare.streamed("/account", {
+      "x-display-name": "Parity",
+    });
     await identity.all();
     expect(Number(identity.headers["content-length"])).toBeGreaterThan(0);
   });
 
   it("page aliases resolve identically", async () => {
-    for (const alias of ["/account/", "/account.html", "/index.html", "/index"]) {
-      const { node: n, cf } = await both(alias, { headers: { "x-display-name": "A" } });
+    for (const alias of [
+      "/account/",
+      "/account.html",
+      "/index.html",
+      "/index",
+    ]) {
+      const { node: n, cf } = await both(alias, {
+        headers: { "x-display-name": "A" },
+      });
       expect(cf.status, alias).toBe(n.status);
-      expect(cf.body.replace(/via \w+ \([^)]*\)/, "").replace(/ip=[^<]*/, ""), alias).toBe(
-        n.body.replace(/via \w+ \([^)]*\)/, "").replace(/ip=[^<]*/, ""),
-      );
+      expect(
+        cf.body.replace(/via \w+ \([^)]*\)/, "").replace(/ip=[^<]*/, ""),
+        alias,
+      ).toBe(n.body.replace(/via \w+ \([^)]*\)/, "").replace(/ip=[^<]*/, ""));
     }
   });
 
@@ -271,7 +365,10 @@ describe("serverless parity: Node oracle versus local workerd", () => {
   it("mixed server + stream page: both hosts deliver the shell before the gated job and the rest in order", async () => {
     const nodeStream = await rawStreamed(node.url, "/dashboard");
     const cfStream = await cloudflare.streamed("/dashboard");
-    for (const [label, s] of [["node", nodeStream], ["cloudflare", cfStream]] as const) {
+    for (const [label, s] of [
+      ["node", nodeStream],
+      ["cloudflare", cfStream],
+    ] as const) {
       expect(s.status, label).toBe(200);
       expect(s.headers["content-length"], label).toBeUndefined();
       expect(s.headers["cache-control"], label).toBe("private, no-store");
@@ -282,13 +379,19 @@ describe("serverless parity: Node oracle versus local workerd", () => {
     // Only the Cloudflare side has a GATE binding, so only there can the slow
     // fragment be proven absent before release (the Node oracle's early-flush
     // ordering is covered by the existing HTTP/1.1 and HTTP/2 E2E suites).
-    expect(await cfStream.until("fast-fragment")).not.toContain("slow-fragment");
+    expect(await cfStream.until("fast-fragment")).not.toContain(
+      "slow-fragment",
+    );
     gate.release();
     const nodeBody = (await nodeStream.all()).map((c) => c.text).join("");
     const cfBody = (await cfStream.all()).map((c) => c.text).join("");
     expect(cfBody).toBe(nodeBody);
-    expect(cfBody.indexOf("fast-fragment")).toBeLessThan(cfBody.indexOf("slow-fragment"));
-    expect(cfBody.indexOf("slow-fragment")).toBeLessThan(cfBody.indexOf('data-testid="tail"'));
+    expect(cfBody.indexOf("fast-fragment")).toBeLessThan(
+      cfBody.indexOf("slow-fragment"),
+    );
+    expect(cfBody.indexOf("slow-fragment")).toBeLessThan(
+      cfBody.indexOf('data-testid="tail"'),
+    );
   });
 
   it("stream failure after commit and server failure before commit map the same", async () => {
@@ -325,7 +428,9 @@ describe("serverless parity: Node oracle versus local workerd", () => {
       expect(options.node.status).toBe(204);
       expect(options.cf.headers.allow).toBe(options.node.headers.allow);
       expect(options.cf.headers["access-control-allow-origin"]).toBeUndefined();
-      expect(options.node.headers["access-control-allow-origin"]).toBeUndefined();
+      expect(
+        options.node.headers["access-control-allow-origin"],
+      ).toBeUndefined();
 
       const head = await both("/api/health", { method: "HEAD" });
       expect(head.cf.status).toBe(200);
@@ -349,7 +454,12 @@ describe("serverless parity: Node oracle versus local workerd", () => {
       expect(none.cf.body).toBe(none.node.body);
       expect(none.cf.status).toBe(none.node.status);
 
-      for (const unsafe of ["/api/files/a%2Fb", "/api/files/a%5Cb", "/api/files/%E0%A4%A", "/api/files/a//b"]) {
+      for (const unsafe of [
+        "/api/files/a%2Fb",
+        "/api/files/a%5Cb",
+        "/api/files/%E0%A4%A",
+        "/api/files/a//b",
+      ]) {
         const res = await both(unsafe);
         expect(res.cf.status, `cf ${unsafe}`).toBe(400);
         expect(res.node.status, `node ${unsafe}`).toBe(400);
@@ -362,12 +472,20 @@ describe("serverless parity: Node oracle versus local workerd", () => {
     });
 
     it("POST body, status, and multiple Set-Cookie headers", async () => {
-      const nodeRes = await fetch(new URL("/api/echo", node.url), { method: "POST", body: "hello ünï" });
-      const cfRes = await cloudflare.fetch("/api/echo", { method: "POST", body: "hello ünï" });
+      const nodeRes = await fetch(new URL("/api/echo", node.url), {
+        method: "POST",
+        body: "hello ünï",
+      });
+      const cfRes = await cloudflare.fetch("/api/echo", {
+        method: "POST",
+        body: "hello ünï",
+      });
       expect(cfRes.status).toBe(201);
       expect(nodeRes.status).toBe(201);
       expect(await cfRes.text()).toBe(await nodeRes.text());
-      expect(cfRes.headers.getSetCookie()).toEqual(nodeRes.headers.getSetCookie());
+      expect(cfRes.headers.getSetCookie()).toEqual(
+        nodeRes.headers.getSetCookie(),
+      );
     });
 
     it("streamed API bodies, generic errors, and unknown routes", async () => {
@@ -394,8 +512,36 @@ describe("serverless parity: Node oracle versus local workerd", () => {
     });
   });
 
+  // The asset layer serves a static 404.html at its own URL as a 200. The
+  // Node server answers the custom 404 page with status 404 at every alias,
+  // so a crawler that requests /404 never indexes it as content.
+  it("the custom 404 page answers 404 at its own URL on both hosts", async () => {
+    for (const path of ["/404", "/404/"]) {
+      const { node: n, cf } = await both(path);
+      expect(n.status, `node ${path}`).toBe(404);
+      expect(cf.status, `cf ${path}`).toBe(404);
+      expect(cf.body, path).toBe(n.body);
+      for (const method of ["POST", "DELETE"]) {
+        const denied = await both(path, { method });
+        expect(denied.node.status, `node ${method} ${path}`).toBe(405);
+        expect(denied.cf.status, `cf ${method} ${path}`).toBe(405);
+        expect(denied.node.headers["allow"]).toBe("GET, HEAD");
+        expect(denied.cf.headers["allow"]).toBe("GET, HEAD");
+        expect(denied.cf.body).toBe(denied.node.body);
+      }
+    }
+    const head = await both("/404", { method: "HEAD" });
+    expect(head.cf.status).toBe(404);
+    expect(head.cf.body).toBe("");
+  });
+
   it("no source leaks on either host", async () => {
-    for (const path of ["/.bascik/server-scripts.json", "/src/api/health.ts", "/.env", "/_worker.js"]) {
+    for (const path of [
+      "/.bascik/server-scripts.json",
+      "/src/api/health.ts",
+      "/.env",
+      "/_worker.js",
+    ]) {
       const { node: n, cf } = await both(path);
       expect(n.status, `node ${path}`).not.toBe(200);
       expect(cf.status, `cf ${path}`).not.toBe(200);
@@ -405,9 +551,15 @@ describe("serverless parity: Node oracle versus local workerd", () => {
   it("cold and warm concurrent requests stay isolated under load", async () => {
     const names = Array.from({ length: 24 }, (_, i) => `u${i}`);
     const results = await Promise.all(
-      names.map((n) => cloudflare.fetch("/account", { headers: { "x-display-name": n } }).then((r) => r.text())),
+      names.map((n) =>
+        cloudflare
+          .fetch("/account", { headers: { "x-display-name": n } })
+          .then((r) => r.text()),
+      ),
     );
-    results.forEach((body, i) => expect(body).toContain(`Hello ${names[i]} via`));
+    results.forEach((body, i) =>
+      expect(body).toContain(`Hello ${names[i]} via`),
+    );
   });
 });
 
@@ -418,7 +570,9 @@ describe("serverless parity: failed deployment assembly", () => {
       await buildServerlessFixture(root, "cloudflare-pages");
       const { readFile, writeFile, stat } = await import("node:fs/promises");
       const sidecarPath = join(root, "dist/.bascik/server-scripts.json");
-      const sidecar = JSON.parse(await readFile(sidecarPath, "utf8")) as { scripts: Record<string, unknown> };
+      const sidecar = JSON.parse(await readFile(sidecarPath, "utf8")) as {
+        scripts: Record<string, unknown>;
+      };
       // Drop one entry so a placeholder in dist/account.html has no source.
       const [firstId] = Object.keys(sidecar.scripts);
       delete sidecar.scripts[firstId];
@@ -432,14 +586,89 @@ describe("serverless parity: failed deployment assembly", () => {
       const { execFile } = await import("node:child_process");
       const { promisify } = await import("node:util");
       const run = promisify(execFile);
-      const outcome = await run(process.execPath, ["--input-type=module", "-e", script], {
-        cwd: root,
-        env: { ...process.env, BASCIK_BUILD: "1" },
-      }).catch((e: { stderr: string }) => e);
+      const outcome = await run(
+        process.execPath,
+        ["--input-type=module", "-e", script],
+        {
+          cwd: root,
+          env: { ...process.env, BASCIK_BUILD: "1" },
+        },
+      ).catch((e: { stderr: string }) => e);
       expect(outcome.stderr).toContain("missing from the sidecar");
-      await expect(stat(join(root, "dist/.bascik/cloudflare-pages/public/_worker.js"))).rejects.toThrow();
+      await expect(
+        stat(join(root, "dist/.bascik/cloudflare-pages/public/_worker.js")),
+      ).rejects.toThrow();
     } finally {
       await cleanupServerlessFixture(root);
     }
   }, 120_000);
 });
+
+// A site built with a non-root base is requested with the prefix on every URL.
+// Both variants must serve static pages, assets, and the custom 404 below it,
+// exactly as `bascik --server` does, and nothing outside it.
+for (const target of ["cloudflare-pages", "cloudflare-workers"] as const) {
+  describe(`serverless parity: non-root base (${target})`, () => {
+    let root: string;
+    let node: NodeOracle;
+    let cloudflare: Harness;
+
+    beforeAll(async () => {
+      root = await createServerlessFixture(`base-${target}`, {
+        base: "/docs/",
+      });
+      await buildServerlessFixture(root, target);
+      node = await startNodeServer(root);
+      cloudflare = await startHarness({
+        projectRoot: root,
+        target,
+        bindings: { GREETING: "kv" },
+      });
+    }, 180_000);
+
+    afterAll(async () => {
+      await cloudflare?.dispose();
+      await node?.stop();
+      if (root) await cleanupServerlessFixture(root);
+    });
+
+    it("serves static pages, assets, .well-known, dynamic pages, and API routes below the base", async () => {
+      for (const path of [
+        "/docs/",
+        "/docs/assets/logo.txt",
+        "/docs/style.css",
+        "/docs/.well-known/security.txt",
+        "/docs/api/health",
+      ]) {
+        const n = await observe(await fetch(new URL(path, node.url)));
+        const cf = await observe(await cloudflare.fetch(path));
+        expect(n.status, `node ${path}`).toBe(200);
+        expect(cf.status, `cf ${path}`).toBe(200);
+        expect(cf.body, path).toBe(n.body);
+        expect(cf.headers["content-type"]?.split(";")[0], path).toBe(
+          n.headers["content-type"]?.split(";")[0],
+        );
+      }
+      const account = await cloudflare.fetch("/docs/account");
+      expect(account.status).toBe(200);
+      expect(await account.text()).toContain("via cloudflare");
+    });
+
+    it("answers a missing page below the base with the custom 404 and keeps paths outside the base unserved", async () => {
+      const n = await observe(await fetch(new URL("/docs/nope", node.url)));
+      const cf = await observe(await cloudflare.fetch("/docs/nope"));
+      expect(n.status).toBe(404);
+      expect(cf.status).toBe(404);
+      expect(cf.body).toContain("Custom 404");
+      expect(n.body).toContain("Custom 404");
+      const own = await cloudflare.fetch("/docs/404");
+      expect(own.status).toBe(404);
+      expect(await own.text()).toContain("Custom 404");
+      for (const outside of ["/", "/assets/logo.txt", "/index.html"]) {
+        const res = await cloudflare.fetch(outside, { redirect: "manual" });
+        expect(res.status, `cf ${outside}`).toBe(404);
+        await res.arrayBuffer();
+      }
+    });
+  });
+}

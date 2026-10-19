@@ -11,14 +11,29 @@ vi.mock("./config.js", () => ({
       onBuildScriptError: "error",
       timeout: 30000,
     },
-    directory: { out: "dist", pages: "src/pages", components: ["src/components"] },
+    directory: {
+      out: "dist",
+      pages: "src/pages",
+      components: ["src/components"],
+    },
     isBuild: true,
   },
 }));
 
-import { isScriptCacheEnabledForPath, pruneScriptCache, resetScriptCachePruneThrottle } from "./script-cache.ts";
+import {
+  isScriptCacheEnabledForPath,
+  pruneScriptCache,
+  resetScriptCachePruneThrottle,
+} from "./script-cache.ts";
 import { BascikConfig } from "./config.ts";
-import { mkdir, writeFile, utimes, readdir, rm, realpath } from "node:fs/promises";
+import {
+  mkdir,
+  writeFile,
+  utimes,
+  readdir,
+  rm,
+  realpath,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -51,7 +66,10 @@ describe("script-cache configuration and scoping", () => {
 
   it("matches project-relative include and exclude globs for absolute and relative paths", async () => {
     const originalCwd = process.cwd();
-    const projectRootInput = join(tmpdir(), `bascik-script-cache-paths-${Date.now()}`);
+    const projectRootInput = join(
+      tmpdir(),
+      `bascik-script-cache-paths-${Date.now()}`,
+    );
     await mkdir(projectRootInput, { recursive: true });
     const projectRoot = await realpath(projectRootInput);
     process.chdir(projectRoot);
@@ -63,9 +81,17 @@ describe("script-cache configuration and scoping", () => {
         exclude: ["src/pages/live/**"],
       };
 
-      expect(isScriptCacheEnabledForPath(join(projectRoot, "src/pages/about.html"))).toBe(true);
-      expect(isScriptCacheEnabledForPath(join(projectRoot, "src/pages/live/feed.html"))).toBe(false);
-      expect(isScriptCacheEnabledForPath("src\\pages\\live\\feed.html")).toBe(false);
+      expect(
+        isScriptCacheEnabledForPath(join(projectRoot, "src/pages/about.html")),
+      ).toBe(true);
+      expect(
+        isScriptCacheEnabledForPath(
+          join(projectRoot, "src/pages/live/feed.html"),
+        ),
+      ).toBe(false);
+      expect(isScriptCacheEnabledForPath("src\\pages\\live\\feed.html")).toBe(
+        false,
+      );
       expect(isScriptCacheEnabledForPath("src/pages/about.html")).toBe(true);
 
       (BascikConfig as any).scripts.cache = {
@@ -73,8 +99,14 @@ describe("script-cache configuration and scoping", () => {
         include: ["**/src/pages/**"],
         exclude: ["**/src/pages/live/**"],
       };
-      expect(isScriptCacheEnabledForPath(join(projectRoot, "src/pages/about.html"))).toBe(true);
-      expect(isScriptCacheEnabledForPath(join(projectRoot, "src/pages/live/feed.html"))).toBe(false);
+      expect(
+        isScriptCacheEnabledForPath(join(projectRoot, "src/pages/about.html")),
+      ).toBe(true);
+      expect(
+        isScriptCacheEnabledForPath(
+          join(projectRoot, "src/pages/live/feed.html"),
+        ),
+      ).toBe(false);
     } finally {
       process.chdir(originalCwd);
       await rm(projectRootInput, { recursive: true, force: true });
@@ -114,11 +146,17 @@ describe("script-cache - deterministic clock-driven TTL and throttle boundaries"
     let current = initialNow;
     return {
       now: () => current,
-      set: (value: number) => { current = value; },
-      setTimeout: () => { throw new Error("not used by pruneScriptCache"); },
-      clearTimeout: () => { },
-      setInterval: () => { throw new Error("not used by pruneScriptCache"); },
-      clearInterval: () => { },
+      set: (value: number) => {
+        current = value;
+      },
+      setTimeout: () => {
+        throw new Error("not used by pruneScriptCache");
+      },
+      clearTimeout: () => {},
+      setInterval: () => {
+        throw new Error("not used by pruneScriptCache");
+      },
+      clearInterval: () => {},
     };
   };
 
@@ -126,7 +164,10 @@ describe("script-cache - deterministic clock-driven TTL and throttle boundaries"
 
   beforeEach(async () => {
     resetScriptCachePruneThrottle();
-    tempDir = join(tmpdir(), `bascik-cache-clock-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    tempDir = join(
+      tmpdir(),
+      `bascik-cache-clock-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
     await mkdir(tempDir, { recursive: true });
   });
 

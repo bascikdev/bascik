@@ -23,9 +23,13 @@ transpiled: pages/about.html in 0.3ms
 Server running at http://localhost:8080
 ```
 
+In an interactive terminal, the `Server running at` line is pinned to the top row the moment the server is up, so the address never scrolls away as logs arrive. Piped output and CI print it as an ordinary line instead. In VS Code's terminal, starting the server also clears the terminal's scrollback, as `clear` does, because its sticky scroll feature would otherwise draw an earlier command over the address. Start with `bascik --no-pin`, or set `BASCIK_PIN_SERVER_URL=0` in your shell profile, to turn pinning off and keep your scrollback. Pinning is a terminal setting, so it is a flag and an environment variable rather than a config key.
+
+To see less, run `bascik --quiet` (or `-q`). It hides the per-page, copy, request, and script lines, so a running dev server prints the summary and `Server running at` at boot, then stays silent while you edit until a warning or an error. See [Logging](/configuration#logging) for exactly what each level hides.
+
 This is a real run on a new project. After the server starts, one page is saved and only that page is rebuilt:
 
-![A terminal running bascik on a new project. Four pages transpile in under a quarter of a second and the server is running at localhost:8080. After one file is saved, only that page is rebuilt, in a few milliseconds](/assets/demos/dev-terminal@2x.webp)
+![A terminal running bascik on a new project. The line Server running at localhost:8080 stays pinned to the top row while four pages transpile in under a quarter of a second below it. After one file is saved, only that page is rebuilt, in a few milliseconds](/assets/demos/dev-terminal@2x.webp)
 
 ### Daily Edit-and-Save Loop
 
@@ -56,6 +60,8 @@ Dev mode writes each transpiled HTML page to `dist/` after placing it in the in-
 ### Open-Page Prioritization for Instant Feedback
 
 When you edit a shared component or a global stylesheet used across many pages, Bascik does not make your active browser tab wait for the entire site to recompile. The dev server tracks which pages currently have active live-reload browser tabs connected. It partitions the rebuild queue, transpiles the open page(s) first, stores them in memory, and emits the live-reload signal immediately. Your visible browser window updates in milliseconds while any remaining background pages finish compiling afterwards.
+
+The same order applies when the dev server starts: open pages first, then the home page, then everything else. A tab that connects after compilation has begun, for example one reconnecting after a restart, still moves its page ahead of the pages that have not started. See [Compile Order](/development-server#compile-order).
 
 > **Zero-Refresh Dev Server Reconnection:** If you stop or restart the local development server while working in your code editor, you do not need to click refresh in your browser. As soon as you focus back onto your web page, Bascik's injected live reload client immediately re-establishes the SSE connection and reloads the page automatically.
 
@@ -109,7 +115,7 @@ The same gesture works for relative imports, the `@/` import-root alias, and `sr
 ```html
 <!-- Hold Cmd/Ctrl and click the path to open src/lib/canonical.ts -->
 <script data-bascik-build>
-  import { canonical } from '@/lib/canonical.ts';
+  import { canonical } from "@/lib/canonical.ts";
   export default async () => await canonical();
 </script>
 
@@ -160,9 +166,20 @@ Write standard HTML, plain CSS, and standard JavaScript in one file:
 </article>
 
 <style>
-  .card { padding: 16px; border: 1px solid #3a3d40; border-radius: 8px; }
-  .name { margin: 0 0 8px 0; font-size: 1.1rem; }
-  .role { margin: 0; color: #a0a0a0; font-size: 0.875rem; }
+  .card {
+    padding: 16px;
+    border: 1px solid #3a3d40;
+    border-radius: 8px;
+  }
+  .name {
+    margin: 0 0 8px 0;
+    font-size: 1.1rem;
+  }
+  .role {
+    margin: 0;
+    color: #a0a0a0;
+    font-size: 0.875rem;
+  }
 </style>
 ```
 
@@ -173,13 +190,15 @@ Use custom tags anywhere in your pages without `import` statements or component 
 ```html
 <!DOCTYPE html>
 <html lang="en">
-<head><title>Team Directory</title></head>
-<body>
-  <!-- Bascik auto-discovers <user-card> from src/components/user-card/user-card.html -->
-  <user-card data-bascik-prop-role="Lead Engineer">
-    <span data-bascik-slot="name">Sarah Chen</span>
-  </user-card>
-</body>
+  <head>
+    <title>Team Directory</title>
+  </head>
+  <body>
+    <!-- Bascik auto-discovers <user-card> from src/components/user-card/user-card.html -->
+    <user-card data-bascik-prop-role="Lead Engineer">
+      <span data-bascik-slot="name">Sarah Chen</span>
+    </user-card>
+  </body>
 </html>
 ```
 
@@ -194,6 +213,7 @@ Because Bascik resolves components ahead of time, the HTML and CSS that run in t
 Compare source template code with what appears when inspecting elements in browser DevTools:
 
 **Your Source Code (`src/pages/index.html`):**
+
 ```html
 <user-card data-bascik-prop-role="Lead Engineer">
   <span data-bascik-slot="name">Sarah Chen</span>
@@ -201,6 +221,7 @@ Compare source template code with what appears when inspecting elements in brows
 ```
 
 **Inspected Element in Browser DevTools (`Cmd+Option+I`):**
+
 ```html
 <article class="bascik__user-card__card">
   <h3 class="bascik__user-card__name">
@@ -219,9 +240,9 @@ Open the DevTools **Sources** tab to set breakpoints in component scripts. Becau
 ```html
 <!-- Inside src/components/counter/counter.html -->
 <script>
-  document.querySelector('.counter-btn').addEventListener('click', (e) => {
+  document.getElementById("counter-btn").addEventListener("click", (e) => {
     // Set a breakpoint directly on this line in browser DevTools
-    const count = parseInt(e.target.dataset.count || '0', 10) + 1;
+    const count = parseInt(e.target.dataset.count || "0", 10) + 1;
     e.target.dataset.count = String(count);
   });
 </script>
@@ -269,13 +290,14 @@ During component compilation, Bascik automatically appends a `//# sourceURL` com
 ```html
 <!-- Compiled output injected into page HTML -->
 <script>
-
-(function() {
-  document.getElementById("bascik__counter__a1b2__btn").addEventListener("click", () => {
-    console.log("Button clicked");
-  });
-})();
-//# sourceURL=src/components/counter/counter.html
+  (function () {
+    document
+      .getElementById("bascik__counter__a1b2__btn")
+      .addEventListener("click", () => {
+        console.log("Button clicked");
+      });
+  })();
+  //# sourceURL=src/components/counter/counter.html
 </script>
 ```
 
@@ -285,6 +307,7 @@ When inspecting your application in Chrome DevTools, Firefox Developer Tools, Sa
 - **Accurate Breakpoints:** Clicking a line number in DevTools pauses that instance directly on the original source line. A `debugger;` statement pauses every instance.
 
 Line numbers match while JavaScript is not minified, which is the default for the dev server. `bascik --build` minifies JavaScript by default.
+
 - **Console Log and Error Mapping:** Messages from `console.log()` and uncaught runtime errors reference the component file and line number rather than a compiled monolithic page.
 
 ### Build and Server Script Stack Trace Remapping
@@ -313,17 +336,20 @@ Every scaffolded Bascik project includes co-located unit tests, Playwright end-t
 Test component template contracts right next to the component HTML file:
 
 ```ts
-import { describe, it, expect } from 'vitest';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { describe, it, expect } from "vitest";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
-describe('user-card contract', () => {
-  const filePath = join(process.cwd(), 'src/components/user-card/user-card.html');
+describe("user-card contract", () => {
+  const filePath = join(
+    process.cwd(),
+    "src/components/user-card/user-card.html",
+  );
 
-  it('defines slot and prop placeholders correctly', async () => {
-    const html = await readFile(filePath, 'utf8');
+  it("defines slot and prop placeholders correctly", async () => {
+    const html = await readFile(filePath, "utf8");
     expect(html).toContain('<slot name="name">');
-    expect(html).toContain('data-bascik-prop-role');
+    expect(html).toContain("data-bascik-prop-role");
   });
 });
 ```
@@ -339,12 +365,14 @@ npm run test:watch
 Test user interactions in real browsers using Playwright:
 
 ```ts
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
-test('renders user card with expanded slot content', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.locator('.bascik__user-card__card')).toBeVisible();
-  await expect(page.locator('.bascik__user-card__role')).toHaveText('Lead Engineer');
+test("renders user card with expanded slot content", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bascik__user-card__card")).toBeVisible();
+  await expect(page.locator(".bascik__user-card__role")).toHaveText(
+    "Lead Engineer",
+  );
 });
 ```
 
@@ -363,13 +391,14 @@ npx bascik --check
 ```
 
 Output:
+
 ```terminal
 ✓ Checked 4 pages and 12 components in 14ms (0 errors, 0 warnings)
 ```
 
-Scaffolded projects also include `npm run lint`, which runs the same `@bascik/language-server` checks as the editor extension from the terminal. Each finding names the file, line, column, and rule:
+Scaffolded projects also include `npm run lint`, which is `bascik --check`. It runs the same `@bascik/language-server` checks as the editor extension, plus the project-wide checks, from the terminal. Each finding names the file, line, column, and rule:
 
-![A terminal running npm run lint. It reports two warnings, an undeclared prop on site-header and an unclosed feat-card tag, and two errors in a component, a runtime id assignment and an attribute selector. It ends with Found 2 errors, 2 warnings](/assets/demos/lint@2x.webp)
+![A terminal running npm run lint. It reports two warnings, an undeclared prop on site-header and an unclosed feat-card tag, and two errors, a data-bascik-build attribute on a div and a script with two conflicting directives. It ends with 2 errors, 2 warnings](/assets/demos/lint@2x.webp)
 
 > **Deep Dive:** Read [Component Template Contract Testing](/testing/component-testing) and [End-to-End Browser Testing](/testing/e2e-testing) for complete testing guidelines.
 
@@ -385,6 +414,7 @@ npm run build
 ```
 
 Terminal Output:
+
 ```terminal
 transpiled: pages/index.html -> dist/index.html
 transpiled: pages/about.html -> dist/about.html
@@ -400,16 +430,16 @@ Open `dist/index.html` to see the compiled result. Custom component tags are ful
 ```html
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <title>Team Directory</title>
-  <link rel="stylesheet" href="/css/styles.css">
-</head>
-<body>
-  <article class="bascik__user-card__card">
-    <h3 class="bascik__user-card__name"><span>Sarah Chen</span></h3>
-    <p class="bascik__user-card__role">Lead Engineer</p>
-  </article>
-</body>
+  <head>
+    <title>Team Directory</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <article class="bascik__user-card__card">
+      <h3 class="bascik__user-card__name"><span>Sarah Chen</span></h3>
+      <p class="bascik__user-card__role">Lead Engineer</p>
+    </article>
+  </body>
 </html>
 ```
 
@@ -422,6 +452,7 @@ npx bascik --server
 ```
 
 Terminal Output:
+
 ```terminal
 Serving dist/ at http://localhost:8080
 ```

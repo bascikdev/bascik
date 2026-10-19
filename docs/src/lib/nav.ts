@@ -28,162 +28,186 @@ export interface NavSection {
  * such as "bascik". Order is display order. Every href must exist in NAV.
  */
 export const HOME_SITELINKS: string[] = [
-  '/getting-started',
-  '/why-bascik',
-  '/developer-experience',
-  '/vs-frameworks',
-  '/components',
-  '/scoped-styles',
+  "/getting-started",
+  "/why-bascik",
+  "/developer-experience",
+  "/vs-frameworks",
+  "/components",
+  "/scoped-styles",
 ];
 
 export const NAV: NavSection[] = [
   {
-    section: 'Overview', pages: [
-      { href: '/why-bascik', label: 'Why Bascik' },
-      { href: '/developer-experience', label: 'Developer Experience' },
-      { href: '/vs-frameworks', label: 'Bascik vs Frameworks' },
-      { href: '/getting-started', label: 'Getting Started' },
-    ]
+    section: "Overview",
+    pages: [
+      { href: "/why-bascik", label: "Why Bascik" },
+      { href: "/developer-experience", label: "Developer Experience" },
+      { href: "/vs-frameworks", label: "Bascik vs Frameworks" },
+      { href: "/getting-started", label: "Getting Started" },
+    ],
   },
   {
-    section: 'Components', pages: [
-      { href: '/components', label: 'Components' },
-      { href: '/scoped-styles', label: 'Scoped Styles' },
-      { href: '/scoped-javascript', label: 'Scoped JavaScript' },
-      { href: '/preserve', label: 'Preserve Scoping' },
-      { href: '/slots', label: 'Slots' },
-      { href: '/props', label: 'Props' },
-      { href: '/attribute-inheritance', label: 'Attribute Inheritance' },
-    ]
+    section: "Components",
+    pages: [
+      { href: "/components", label: "Components" },
+      { href: "/scoped-styles", label: "Scoped Styles" },
+      { href: "/scoped-javascript", label: "Scoped JavaScript" },
+      { href: "/preserve", label: "Preserve Scoping" },
+      { href: "/slots", label: "Slots" },
+      { href: "/props", label: "Props" },
+      { href: "/attribute-inheritance", label: "Attribute Inheritance" },
+    ],
   },
   {
-    section: 'Scripts & Routing', pages: [
-      { href: '/build-scripts', label: 'Build Scripts' },
-      { href: '/server-scripts', label: 'Server Scripts' },
-      { href: '/stream-scripts', label: 'Stream Scripts' },
-      { href: '/dynamic-routes', label: 'Dynamic Routes' },
-      { href: '/api-routes', label: 'API Routes' },
-      { href: '/exec-scripts', label: 'Exec Scripts' },
-      { href: '/script-imports', label: 'Script Imports' },
-      { href: '/watch-paths', label: 'Watch Paths' },
-      { href: '/sitemap', label: 'Sitemap & robots.txt' },
-    ]
+    section: "Scripts & Routing",
+    pages: [
+      { href: "/build-scripts", label: "Build Scripts" },
+      { href: "/server-scripts", label: "Server Scripts" },
+      { href: "/stream-scripts", label: "Stream Scripts" },
+      { href: "/dynamic-routes", label: "Dynamic Routes" },
+      { href: "/api-routes", label: "API Routes" },
+      { href: "/exec-scripts", label: "Exec Scripts" },
+      { href: "/script-imports", label: "Script Imports" },
+      { href: "/watch-paths", label: "Watch Paths" },
+      { href: "/sitemap", label: "Sitemap & robots.txt" },
+    ],
   },
   {
-    section: 'Reference', pages: [
-      { href: '/faq', label: 'FAQ' },
-      { href: '/configuration', label: 'Configuration' },
-      { href: '/environment-variables', label: 'Environment Variables' },
-      { href: '/compatibility', label: 'Compatibility' },
-      { href: '/cli', label: 'Command Line Interface (CLI)' },
-      { href: '/package-exports', label: 'Package Exports' },
-      { href: '/development-server', label: 'Development Server' },
-      { href: '/production-server', label: 'Production Server' },
-    ]
+    section: "Reference",
+    pages: [
+      { href: "/faq", label: "FAQ" },
+      { href: "/configuration", label: "Configuration" },
+      { href: "/environment-variables", label: "Environment Variables" },
+      { href: "/compatibility", label: "Compatibility" },
+      { href: "/cli", label: "Command Line Interface (CLI)" },
+      { href: "/package-exports", label: "Package Exports" },
+      { href: "/development-server", label: "Development Server" },
+      { href: "/production-server", label: "Production Server" },
+    ],
   },
   {
-    section: 'Tooling', pages: [
-      { href: '/tools/linter', label: 'Linter' },
-      { href: '/tools/vscode-extension', label: 'VS Code Extension' },
-      { href: '/agent-skills', label: 'Agent Skills' },
-    ]
+    section: "Tooling",
+    pages: [
+      { href: "/tools/linter", label: "Linter" },
+      { href: "/tools/vscode-extension", label: "VS Code Extension" },
+      { href: "/agent-skills", label: "Agent Skills" },
+    ],
   },
   {
-    section: 'Testing & Debugging', pages: [
-      { href: '/testing', label: 'Overview' },
-      { href: '/testing/unit-testing', label: 'Unit Testing' },
-      { href: '/testing/component-testing', label: 'Component Testing' },
-      { href: '/testing/build-scripts', label: 'Build Scripts' },
-      { href: '/testing/server-scripts', label: 'Server Scripts' },
-      { href: '/testing/exec-scripts', label: 'Exec Scripts' },
-      { href: '/testing/e2e-testing', label: 'End-to-End Testing' },
-      { href: '/testing/debugging', label: 'Debugging' },
-      { href: '/testing/source-maps', label: 'Source Maps' },
-      { href: '/testing/linting', label: 'Linting' },
-    ]
+    section: "Testing & Debugging",
+    pages: [
+      { href: "/testing", label: "Overview" },
+      { href: "/testing/unit-testing", label: "Unit Testing" },
+      { href: "/testing/component-testing", label: "Component Testing" },
+      { href: "/testing/build-scripts", label: "Build Scripts" },
+      { href: "/testing/server-scripts", label: "Server Scripts" },
+      { href: "/testing/exec-scripts", label: "Exec Scripts" },
+      { href: "/testing/e2e-testing", label: "End-to-End Testing" },
+      { href: "/testing/debugging", label: "Debugging" },
+      { href: "/testing/source-maps", label: "Source Maps" },
+      { href: "/testing/linting", label: "Linting" },
+    ],
   },
   {
-    section: 'Deployment', pages: [
-      { href: '/deployment', label: 'Overview' },
-      { href: '/deployment/static-hosting', label: 'Static Hosting' },
-      { href: '/deployment/cloudflare', label: 'Cloudflare Adapter' },
-      { href: '/deployment/custom-adapters', label: 'Custom Adapters' },
-    ]
+    section: "Deployment",
+    pages: [
+      { href: "/deployment", label: "Overview" },
+      { href: "/deployment/static-hosting", label: "Static Hosting" },
+      { href: "/deployment/cloudflare", label: "Cloudflare Adapter" },
+      { href: "/deployment/custom-adapters", label: "Custom Adapters" },
+    ],
   },
   {
-    section: 'How-to', pages: [
-      { href: '/how-to/markdown', label: 'Markdown' },
-      { href: '/how-to/page-aware-scripts', label: 'Page-Aware Scripts' },
-      { href: '/how-to/templating', label: 'Templating' },
-      { href: '/how-to/interactivity', label: 'Interactivity' },
-      { href: '/how-to/theming', label: 'Theming' },
-      { href: '/how-to/bundling-npm-packages', label: 'Bundling npm Packages' },
-      { href: '/how-to/third-party-web-components', label: 'Third-Party Web Components' },
-      { href: '/how-to/asset-fingerprinting', label: 'Asset Fingerprinting' },
-      { href: '/how-to/sharing-components', label: 'Sharing Components' },
-      { href: '/how-to/publishing-components', label: 'Publishing Components' },
-      { href: '/how-to/monorepos', label: 'Monorepos' },
-      { href: '/libraries', label: 'JavaScript Libraries' },
-    ]
+    section: "How-to",
+    pages: [
+      { href: "/how-to/markdown", label: "Markdown" },
+      { href: "/how-to/page-aware-scripts", label: "Page-Aware Scripts" },
+      { href: "/how-to/templating", label: "Templating" },
+      { href: "/how-to/interactivity", label: "Interactivity" },
+      { href: "/how-to/theming", label: "Theming" },
+      { href: "/how-to/bundling-npm-packages", label: "Bundling npm Packages" },
+      {
+        href: "/how-to/third-party-web-components",
+        label: "Third-Party Web Components",
+      },
+      { href: "/how-to/asset-fingerprinting", label: "Asset Fingerprinting" },
+      {
+        href: "/how-to/content-security-policy",
+        label: "Content Security Policy",
+      },
+      { href: "/how-to/sharing-components", label: "Sharing Components" },
+      { href: "/how-to/publishing-components", label: "Publishing Components" },
+      { href: "/how-to/monorepos", label: "Monorepos" },
+      { href: "/libraries", label: "JavaScript Libraries" },
+    ],
   },
   {
-    section: 'Example Components', pages: [
-      { href: '/example-components', label: 'Overview' },
-      { href: '/example-components/site-header', label: 'Site Header' },
-      { href: '/example-components/site-footer', label: 'Site Footer' },
-      { href: '/example-components/tab-group', label: 'Tab Group' },
-      { href: '/example-components/modal-dialog', label: 'Modal Dialog' },
-      { href: '/example-components/popover-menu', label: 'Popover Menu' },
-      { href: '/example-components/copy-button', label: 'Copy Button' },
-      { href: '/example-components/filter-list', label: 'Filter List' },
-      { href: '/example-components/contact-form', label: 'Contact Form' },
-      { href: '/example-components/theme-toggle', label: 'Theme Toggle' },
-    ]
+    section: "Example Components",
+    pages: [
+      { href: "/example-components", label: "Overview" },
+      { href: "/example-components/site-header", label: "Site Header" },
+      { href: "/example-components/site-footer", label: "Site Footer" },
+      { href: "/example-components/tab-group", label: "Tab Group" },
+      { href: "/example-components/modal-dialog", label: "Modal Dialog" },
+      { href: "/example-components/popover-menu", label: "Popover Menu" },
+      { href: "/example-components/copy-button", label: "Copy Button" },
+      { href: "/example-components/filter-list", label: "Filter List" },
+      { href: "/example-components/contact-form", label: "Contact Form" },
+      { href: "/example-components/theme-toggle", label: "Theme Toggle" },
+    ],
   },
   {
-    section: 'Lighthouse 100s', pages: [
-      { href: '/lighthouse', label: 'Overview' },
-      { href: '/lighthouse/performance', label: 'Performance' },
-      { href: '/lighthouse/accessibility', label: 'Accessibility' },
-      { href: '/lighthouse/best-practices', label: 'Best Practices' },
-      { href: '/lighthouse/seo', label: 'SEO' },
-      { href: '/lighthouse/agentic-browsing', label: 'Agentic Browsing' },
-    ]
+    section: "Lighthouse 100s",
+    pages: [
+      { href: "/lighthouse", label: "Overview" },
+      { href: "/lighthouse/performance", label: "Performance" },
+      { href: "/lighthouse/accessibility", label: "Accessibility" },
+      { href: "/lighthouse/best-practices", label: "Best Practices" },
+      { href: "/lighthouse/seo", label: "SEO" },
+      { href: "/lighthouse/agentic-browsing", label: "Agentic Browsing" },
+    ],
   },
   {
-    section: 'Internals', pages: [
-      { href: '/internals', label: 'Overview' },
-      { href: '/internals/architecture', label: 'Architecture' },
-      { href: '/internals/transpilation-pipeline', label: 'Transpilation Pipeline' },
-      { href: '/internals/scoping-system', label: 'Scoping System' },
-      { href: '/internals/server', label: 'Server Architecture' },
-      { href: '/internals/time-boundaries', label: 'Time Boundaries' },
-      { href: '/internals/diagnostics', label: 'Diagnostics' },
-      { href: '/internals/minification', label: 'Minification' },
-      { href: '/internals/testing', label: 'Testing Internals' },
-      { href: '/internals/create-app', label: 'Create App' },
-      { href: '/internals/ci-cd', label: 'CI / CD' },
-    ]
+    section: "Internals",
+    pages: [
+      { href: "/internals", label: "Overview" },
+      { href: "/internals/architecture", label: "Architecture" },
+      {
+        href: "/internals/transpilation-pipeline",
+        label: "Transpilation Pipeline",
+      },
+      { href: "/internals/scoping-system", label: "Scoping System" },
+      { href: "/internals/server", label: "Server Architecture" },
+      { href: "/internals/time-boundaries", label: "Time Boundaries" },
+      { href: "/internals/diagnostics", label: "Diagnostics" },
+      { href: "/internals/minification", label: "Minification" },
+      { href: "/internals/testing", label: "Testing Internals" },
+      { href: "/internals/benchmarking", label: "Benchmarking & Profiling" },
+      { href: "/internals/create-app", label: "Create App" },
+      { href: "/internals/ci-cd", label: "CI / CD" },
+    ],
   },
   {
-    section: 'Switch to Bascik', pages: [
-      { href: '/switch', label: 'Overview' },
-      { href: '/switch/from-astro', label: 'From Astro' },
-      { href: '/switch/from-eleventy', label: 'From Eleventy' },
-      { href: '/switch/from-hugo', label: 'From Hugo' },
-      { href: '/switch/from-next', label: 'From Next.js' },
-      { href: '/switch/from-react', label: 'From React' },
-      { href: '/switch/from-svelte', label: 'From Svelte' },
-      { href: '/switch/from-vue', label: 'From Vue' },
-      { href: '/switch/from-wordpress', label: 'From WordPress' },
-    ]
+    section: "Switch to Bascik",
+    pages: [
+      { href: "/switch", label: "Overview" },
+      { href: "/switch/from-astro", label: "From Astro" },
+      { href: "/switch/from-eleventy", label: "From Eleventy" },
+      { href: "/switch/from-hugo", label: "From Hugo" },
+      { href: "/switch/from-next", label: "From Next.js" },
+      { href: "/switch/from-react", label: "From React" },
+      { href: "/switch/from-svelte", label: "From Svelte" },
+      { href: "/switch/from-vue", label: "From Vue" },
+      { href: "/switch/from-wordpress", label: "From WordPress" },
+    ],
   },
   {
-    section: 'Community', pages: [
-      { href: '/releases', label: 'Releases' },
-      { href: '/press', label: 'Press Resources' },
-      { href: '/sponsor', label: 'Sponsor' },
-      { href: 'https://shop.bascik.dev', label: 'Merch', external: true },
-    ]
+    section: "Community",
+    pages: [
+      { href: "/releases", label: "Releases" },
+      { href: "/press", label: "Press Resources" },
+      { href: "/sponsor", label: "Sponsor" },
+      { href: "https://shop.bascik.dev", label: "Merch", external: true },
+    ],
   },
 ];

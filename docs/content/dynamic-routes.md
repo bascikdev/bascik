@@ -21,13 +21,13 @@ To define the routes to generate, place a `<script data-bascik-routes>` element 
 <script data-bascik-routes>
   export default async function () {
     const posts = [
-      { slug: 'hello-world', title: 'Hello World', date: '2026-01-15' },
-      { slug: 'second-post', title: 'Second Post', date: '2026-02-01' }
+      { slug: "hello-world", title: "Hello World", date: "2026-01-15" },
+      { slug: "second-post", title: "Second Post", date: "2026-02-01" },
     ];
 
-    return posts.map(post => ({
+    return posts.map((post) => ({
       params: { slug: post.slug },
-      data: post
+      data: post,
     }));
   }
 </script>
@@ -66,30 +66,30 @@ Inside your template, `<script data-bascik-build>` blocks can read the current r
 ```html
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <script data-bascik-build>
-    export default function () {
-      const route = JSON.parse(process.env.BASCIK_ROUTE || '{}');
-      const { title } = route.data || {};
-      return `<title>${title || 'Blog'} - My Site</title>`;
-    }
-  </script>
-</head>
-<body>
-  <article>
+  <head>
     <script data-bascik-build>
       export default function () {
-        const route = JSON.parse(process.env.BASCIK_ROUTE || '{}');
-        const { params, data } = route;
-        return `
+        const route = JSON.parse(process.env.BASCIK_ROUTE || "{}");
+        const { title } = route.data || {};
+        return `<title>${title || "Blog"} - My Site</title>`;
+      }
+    </script>
+  </head>
+  <body>
+    <article>
+      <script data-bascik-build>
+        export default function () {
+          const route = JSON.parse(process.env.BASCIK_ROUTE || "{}");
+          const { params, data } = route;
+          return `
           <h1>${data.title}</h1>
           <p class="slug">Slug: ${params.slug}</p>
           <p class="date">Published: ${data.date}</p>
         `;
-      }
-    </script>
-  </article>
-</body>
+        }
+      </script>
+    </article>
+  </body>
 </html>
 ```
 
@@ -140,20 +140,20 @@ Generate blog posts from local Markdown files:
 
 ```html
 <script data-bascik-routes>
-  import { readdir, readFile } from 'node:fs/promises';
-  import { join } from 'node:path';
+  import { readdir, readFile } from "node:fs/promises";
+  import { join } from "node:path";
 
   export default async function () {
-    const files = await readdir('./content/posts');
+    const files = await readdir("./content/posts");
     const posts = [];
 
     for (const file of files) {
-      if (!file.endsWith('.md')) continue;
-      const slug = file.replace(/\.md$/, '');
-      const content = await readFile(join('./content/posts', file), 'utf8');
+      if (!file.endsWith(".md")) continue;
+      const slug = file.replace(/\.md$/, "");
+      const content = await readFile(join("./content/posts", file), "utf8");
       posts.push({
         params: { slug },
-        data: { content }
+        data: { content },
       });
     }
 
@@ -169,12 +169,12 @@ Fetch product listings from a CMS or REST API:
 ```html
 <script data-bascik-routes>
   export default async function () {
-    const res = await fetch('https://api.example.com/products');
+    const res = await fetch("https://api.example.com/products");
     const products = await res.json();
 
-    return products.map(product => ({
+    return products.map((product) => ({
       params: { id: String(product.id) },
-      data: product
+      data: product,
     }));
   }
 </script>
@@ -187,15 +187,15 @@ Generate localized pages using multiple parameters in filenames such as `src/pag
 ```html
 <script data-bascik-routes>
   export default async function () {
-    const languages = ['en', 'es', 'fr', 'de'];
-    const pages = ['about', 'pricing', 'contact'];
+    const languages = ["en", "es", "fr", "de"];
+    const pages = ["about", "pricing", "contact"];
 
     const routes = [];
     for (const lang of languages) {
       for (const page of pages) {
         routes.push({
           params: { lang, page },
-          data: { lang, page }
+          data: { lang, page },
         });
       }
     }

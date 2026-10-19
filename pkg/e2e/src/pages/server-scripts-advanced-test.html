@@ -1,31 +1,30 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <title>Server Scripts Advanced Test</title>
+  </head>
 
-<head>
-  <title>Server Scripts Advanced Test</title>
-</head>
+  <body>
+    <h1>Server Scripts Advanced</h1>
 
-<body>
-  <h1>Server Scripts Advanced</h1>
+    <!-- ESM Node.js built-in module imports & HTTP method -->
+    <script data-bascik-server>
+      import { basename } from "node:path";
+      export default function (request) {
+        return `<p id="esm-import-output" data-testid="esm-import-output">ESM Import: ${basename(new URL(request.url).pathname)} | Method: ${request.method}</p>`;
+      }
+    </script>
 
-  <!-- ESM Node.js built-in module imports & HTTP method -->
-  <script data-bascik-server>
-    import { basename } from 'node:path';
-    export default function (request) {
-      return `<p id="esm-import-output" data-testid="esm-import-output">ESM Import: ${basename(new URL(request.url).pathname)} | Method: ${request.method}</p>`;
-    }
-  </script>
+    <!-- Server script inside a component -->
+    <server-script-comp></server-script-comp>
 
-  <!-- Server script inside a component -->
-  <server-script-comp></server-script-comp>
-
-  <!-- ANSI escape code stripping check -->
-  <script data-bascik-server>
-    export default function () {
-      const ansiOutput = '\u001b[31m<p id="ansi-output" data-testid="ansi-output">Clean HTML</p>\u001b[0m';
-      return ansiOutput;
-    }
-  </script>
-</body>
-
+    <!-- ANSI escape code stripping check -->
+    <script data-bascik-server>
+      export default function () {
+        const ansiOutput =
+          '\u001b[31m<p id="ansi-output" data-testid="ansi-output">Clean HTML</p>\u001b[0m';
+        return ansiOutput;
+      }
+    </script>
+  </body>
 </html>

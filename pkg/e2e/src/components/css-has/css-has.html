@@ -45,9 +45,11 @@
       err.textContent = "Card A error!";
       cardA.appendChild(err);
     });
-    document.getElementById("remove-error-btn").addEventListener("click", () => {
-      const err = cardA.querySelector(".error-msg");
-      if (err) cardA.removeChild(err);
-    });
+    document
+      .getElementById("remove-error-btn")
+      .addEventListener("click", () => {
+        const err = cardA.querySelector(".error-msg");
+        if (err) cardA.removeChild(err);
+      });
   </script>
 </div>

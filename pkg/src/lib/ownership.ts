@@ -66,7 +66,9 @@ export interface OwnershipInventory {
 }
 
 export const isTargetedBuild = (): boolean =>
-  Boolean(BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0);
+  Boolean(
+    BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0,
+  );
 
 const outDir = (): string => resolve(process.cwd(), BascikConfig.directory.out);
 const ownershipPath = (): string => join(outDir(), ".bascik", "ownership.json");
@@ -92,7 +94,11 @@ export const outputRouteForKey = (fileKey: string): string => {
 class OwnershipTracker {
   private owners = new Map<
     string,
-    { entry: OwnershipEntry; outputs: Map<string, OwnershipOutput>; scripts: Set<string> }
+    {
+      entry: OwnershipEntry;
+      outputs: Map<string, OwnershipOutput>;
+      scripts: Set<string>;
+    }
   >();
 
   private ensure(sourceAbs: string, relSource: string) {
@@ -119,8 +125,16 @@ class OwnershipTracker {
   }
 
   /** Record one emitted output owned by `sourceAbs`. */
-  recordOutput(sourceAbs: string, relSource: string, fileKey: string, route: string): void {
-    this.ensure(sourceAbs, relSource).outputs.set(fileKey, { file: fileKey, route });
+  recordOutput(
+    sourceAbs: string,
+    relSource: string,
+    fileKey: string,
+    route: string,
+  ): void {
+    this.ensure(sourceAbs, relSource).outputs.set(fileKey, {
+      file: fileKey,
+      route,
+    });
   }
 
   /** Record one sidecar script id owned by `sourceAbs`. */
@@ -133,12 +147,23 @@ class OwnershipTracker {
     // Sort owner keys so the serialized inventory is independent of page
     // traversal / worker dispatch order (requirement: never infer ownership
     // from mutable traversal order).
-    const sources = Array.from(this.owners.keys()).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const sources = Array.from(this.owners.keys()).sort((a, b) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
     for (const source of sources) {
       const o = this.owners.get(source)!;
-      const outputs = Array.from(o.outputs.values()).sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
-      const scripts = Array.from(o.scripts).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-      result[source] = { source, relSource: o.entry.relSource, outputs, scripts };
+      const outputs = Array.from(o.outputs.values()).sort((a, b) =>
+        a.file < b.file ? -1 : a.file > b.file ? 1 : 0,
+      );
+      const scripts = Array.from(o.scripts).sort((a, b) =>
+        a < b ? -1 : a > b ? 1 : 0,
+      );
+      result[source] = {
+        source,
+        relSource: o.entry.relSource,
+        outputs,
+        scripts,
+      };
     }
     return result;
   }
@@ -162,36 +187,43 @@ export const emptyInventory = (): OwnershipInventory => ({
  * corrupt, or carries an incompatible schema/version — each of which is treated
  * as "no reliable ownership", i.e. the safe first-targeted-build behavior.
  */
-export const readOwnershipInventory = async (): Promise<OwnershipInventory | null> => {
-  try {
-    const raw = await readFile(ownershipPath(), "utf8");
-    const parsed = JSON.parse(raw) as OwnershipInventory;
-    if (
-      !parsed ||
-      typeof parsed !== "object" ||
-      parsed.schema !== OWNERSHIP_SCHEMA ||
-      parsed.version !== OWNERSHIP_VERSION ||
-      !parsed.owners ||
-      typeof parsed.owners !== "object"
-    ) {
+export const readOwnershipInventory =
+  async (): Promise<OwnershipInventory | null> => {
+    try {
+      const raw = await readFile(ownershipPath(), "utf8");
+      const parsed = JSON.parse(raw) as OwnershipInventory;
+      if (
+        !parsed ||
+        typeof parsed !== "object" ||
+        parsed.schema !== OWNERSHIP_SCHEMA ||
+        parsed.version !== OWNERSHIP_VERSION ||
+        !parsed.owners ||
+        typeof parsed.owners !== "object"
+      ) {
+        return null;
+      }
+      return parsed;
+    } catch {
       return null;
     }
-    return parsed;
-  } catch {
-    return null;
-  }
-};
+  };
 
 /** Validate a candidate inventory before it is written. */
 export const validateInventory = (inv: OwnershipInventory): void => {
   if (!inv || typeof inv !== "object") {
-    throw new Error("[bascik] ownership: refusing to write an invalid ownership inventory");
+    throw new Error(
+      "[bascik] ownership: refusing to write an invalid ownership inventory",
+    );
   }
   if (inv.schema !== OWNERSHIP_SCHEMA || inv.version !== OWNERSHIP_VERSION) {
-    throw new Error("[bascik] ownership: refusing to write an incompatible ownership inventory");
+    throw new Error(
+      "[bascik] ownership: refusing to write an incompatible ownership inventory",
+    );
   }
   if (!inv.owners || typeof inv.owners !== "object") {
-    throw new Error("[bascik] ownership: refusing to write an inventory without owners");
+    throw new Error(
+      "[bascik] ownership: refusing to write an inventory without owners",
+    );
   }
   for (const [source, entry] of Object.entries(inv.owners)) {
     if (!entry || typeof entry !== "object" || entry.source !== source) {
@@ -240,7 +272,11 @@ export const reconcileOwnership = (
     for (const entry of Object.values(current)) {
       next[entry.source] = entry;
     }
-    return { inventory: { ...emptyInventory(), owners: next }, obsoleteOutputs: [], degradedToAdditive: true };
+    return {
+      inventory: { ...emptyInventory(), owners: next },
+      obsoleteOutputs: [],
+      degradedToAdditive: true,
+    };
   }
 
   const rebuiltSources = new Set(Object.keys(current));
@@ -307,7 +343,7 @@ export const stageJsonArtifact = async (
     try {
       await rename(tmp, targetPath);
     } catch (err) {
-      await rm(tmp, { force: true }).catch(() => { });
+      await rm(tmp, { force: true }).catch(() => {});
       throw err;
     }
   };
@@ -318,7 +354,10 @@ export const stageJsonArtifact = async (
  * Used for the ownership inventory and for full builds where there is no prior
  * artifact set to preserve as a transaction.
  */
-export const atomicWriteJson = async (targetPath: string, content: unknown): Promise<void> => {
+export const atomicWriteJson = async (
+  targetPath: string,
+  content: unknown,
+): Promise<void> => {
   const commit = await stageJsonArtifact(targetPath, content);
   await commit();
 };
@@ -332,13 +371,17 @@ export const pruneOutputFile = async (fileKey: string): Promise<void> => {
     // A non-existent file is fine; any other failure is surfaced but does not
     // roll back already-committed metadata (documented rollback contract).
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      console.warn(`[bascik] warning: could not prune stale output "${fileKey}": ${(err as Error).message}`);
+      console.warn(
+        `[bascik] warning: could not prune stale output "${fileKey}": ${(err as Error).message}`,
+      );
     }
   }
 };
 
 /** Persist an ownership inventory (used by finalize and directly in tests). */
-export const writeOwnershipInventory = async (inv: OwnershipInventory): Promise<void> => {
+export const writeOwnershipInventory = async (
+  inv: OwnershipInventory,
+): Promise<void> => {
   validateInventory(inv);
   await atomicWriteJson(ownershipPath(), inv);
 };
@@ -361,7 +404,8 @@ import {
 
 const manifestPath = (): string => join(outDir(), ".bascik", "manifest.json");
 const cspPath = (): string => join(outDir(), ".bascik", "csp-hashes.json");
-const sidecarPath = (): string => join(outDir(), ".bascik", "server-scripts.json");
+const sidecarPath = (): string =>
+  join(outDir(), ".bascik", "server-scripts.json");
 
 async function readJsonIfPresent<T>(path: string): Promise<T | null> {
   try {
@@ -372,7 +416,9 @@ async function readJsonIfPresent<T>(path: string): Promise<T | null> {
 }
 
 const pageOutputSet = (inv: OwnershipInventory): Set<string> =>
-  new Set(Object.values(inv.owners).flatMap((o) => o.outputs.map((out) => out.file)));
+  new Set(
+    Object.values(inv.owners).flatMap((o) => o.outputs.map((out) => out.file)),
+  );
 
 /**
  * Reconcile the final manifest for a targeted build from the SAME ownership
@@ -389,9 +435,14 @@ const reconcileManifest = (
   priorInventory: OwnershipInventory | null,
 ): Record<string, ManifestEntry> => {
   const ownedNow = pageOutputSet(inv);
-  const ownedBefore = priorInventory ? pageOutputSet(priorInventory) : new Set<string>();
+  const ownedBefore = priorInventory
+    ? pageOutputSet(priorInventory)
+    : new Set<string>();
   const allPageFiles = new Set([...ownedBefore, ...ownedNow]);
-  const allFiles = new Set([...Object.keys(prior?.files ?? {}), ...Object.keys(current)]);
+  const allFiles = new Set([
+    ...Object.keys(prior?.files ?? {}),
+    ...Object.keys(current),
+  ]);
   const result: Record<string, ManifestEntry> = {};
   for (const k of allFiles) {
     if (allPageFiles.has(k)) {
@@ -412,12 +463,21 @@ const reconcileCsp = (
   current: CspHashesManifest,
   priorInventory: OwnershipInventory | null,
 ): CspHashesManifest => {
-  const ownedNow = new Set(Object.values(inv.owners).flatMap((o) => o.outputs.map((out) => out.route)));
+  const ownedNow = new Set(
+    Object.values(inv.owners).flatMap((o) => o.outputs.map((out) => out.route)),
+  );
   const ownedBefore = priorInventory
-    ? new Set(Object.values(priorInventory.owners).flatMap((o) => o.outputs.map((out) => out.route)))
+    ? new Set(
+        Object.values(priorInventory.owners).flatMap((o) =>
+          o.outputs.map((out) => out.route),
+        ),
+      )
     : new Set<string>();
   const allPageRoutes = new Set([...ownedBefore, ...ownedNow]);
-  const allRoutes = new Set([...Object.keys(prior ?? {}), ...Object.keys(current)]);
+  const allRoutes = new Set([
+    ...Object.keys(prior ?? {}),
+    ...Object.keys(current),
+  ]);
   const result: CspHashesManifest = {};
   for (const r of allRoutes) {
     if (allPageRoutes.has(r)) {
@@ -497,8 +557,8 @@ export const finalizeOwnedArtifacts = async (
     if (result.degradedToAdditive) {
       console.warn(
         "[bascik] warning: no compatible ownership inventory found; this targeted build " +
-        "merged additively and could not prune outputs removed outside this process. " +
-        "A fresh ownership inventory was written; run a full build to reconcile the whole site.",
+          "merged additively and could not prune outputs removed outside this process. " +
+          "A fresh ownership inventory was written; run a full build to reconcile the whole site.",
       );
     }
   }
@@ -520,13 +580,19 @@ export const finalizeOwnedArtifacts = async (
 
   const priorManifest = await readJsonIfPresent<BuildManifest>(manifestPath());
   const priorCsp = await readJsonIfPresent<CspHashesManifest>(cspPath());
-  const priorSidecar = await readJsonIfPresent<ServerScriptsSidecar>(sidecarPath());
+  const priorSidecar =
+    await readJsonIfPresent<ServerScriptsSidecar>(sidecarPath());
 
   // ── Stage EVERY artifact and validate it BEFORE any rename ──────────────
   const commits: Array<() => Promise<void>> = [];
 
   if (BascikConfig.generate?.manifest) {
-    const files = reconcileManifest(inv, priorManifest, currentManifest, priorInventory);
+    const files = reconcileManifest(
+      inv,
+      priorManifest,
+      currentManifest,
+      priorInventory,
+    );
     commits.push(await stageJsonArtifact(manifestPath(), { version, files }));
   }
 

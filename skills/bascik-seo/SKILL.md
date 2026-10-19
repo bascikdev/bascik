@@ -13,14 +13,14 @@ Bascik outputs static HTML, so search engines and AI crawlers read every word wi
 
 ## Every page needs
 
-| Tag | Rule |
-|---|---|
-| `<html lang>` and `<meta name="viewport">` | On every page, usually from a shared head component |
-| `<title>` | Unique, 10 to 65 characters, most specific part first: `Pricing - Acme` |
-| `<meta name="description">` | Unique, 50 to 160 characters, written for a person reading search results |
-| `<link rel="canonical">` | Absolute URL of this page, including the base, only when the site URL is known |
-| `og:title`, `og:description`, `og:url`, `og:type` | Social previews; an absolute `og:image` (1200x630) for a large card |
-| One `<h1>` | Matches the title's intent |
+| Tag                                               | Rule                                                                           |
+| ------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `<html lang>` and `<meta name="viewport">`        | On every page, usually from a shared head component                            |
+| `<title>`                                         | Unique, 10 to 65 characters, most specific part first: `Pricing - Acme`        |
+| `<meta name="description">`                       | Unique, 50 to 160 characters, written for a person reading search results      |
+| `<link rel="canonical">`                          | Absolute URL of this page, including the base, only when the site URL is known |
+| `og:title`, `og:description`, `og:url`, `og:type` | Social previews; an absolute `og:image` (1200x630) for a large card            |
+| One `<h1>`                                        | Matches the title's intent                                                     |
 
 ## Rules (must follow)
 
@@ -49,13 +49,13 @@ Also run `node <skills-dir>/bascik/scripts/check-links.mjs` for broken links and
 
 ## Look it up
 
-| How do I... | Read |
-|---|---|
-| Write the essential head tags and JSON-LD | `/lighthouse/seo` |
-| Control `sitemap.xml`, `robots.txt`, and lastmod dates | `/sitemap` |
-| Publish `llms.txt` and support AI agents | `/lighthouse/agentic-browsing` |
-| Generate per-page canonical URLs and titles | `/how-to/page-aware-scripts` |
-| See the helper in a working site | `add-example.mjs starter-site/src/lib/seo.ts`, or the starter site README on GitHub |
-| Serve files under `/.well-known/` | `/deployment#well-known-uris` |
+| How do I...                                            | Read                                                                                |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Write the essential head tags and JSON-LD              | `/lighthouse/seo`                                                                   |
+| Control `sitemap.xml`, `robots.txt`, and lastmod dates | `/sitemap`                                                                          |
+| Publish `llms.txt` and support AI agents               | `/lighthouse/agentic-browsing`                                                      |
+| Generate per-page canonical URLs and titles            | `/how-to/page-aware-scripts`                                                        |
+| See the helper in a working site                       | `add-example.mjs starter-site/src/lib/seo.ts`, or the starter site README on GitHub |
+| Serve files under `/.well-known/`                      | `/deployment#well-known-uris`                                                       |
 
 `node <skills-dir>/bascik/scripts/read-doc.mjs <path>` prints any of these.

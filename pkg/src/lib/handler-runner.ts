@@ -72,8 +72,17 @@ export const runDirectiveHandler = async <T = unknown>(
   // Each script still runs in its own fresh process. Sharing Node's on-disk
   // compile cache only lets later children skip recompiling the same modules
   // (the runner, shared helpers, packages). A user's own setting always wins.
-  if (childEnv.NODE_COMPILE_CACHE === undefined && childEnv.NODE_DISABLE_COMPILE_CACHE === undefined) {
-    childEnv.NODE_COMPILE_CACHE = join(process.cwd(), "node_modules", ".cache", "bascik", "compile-cache");
+  if (
+    childEnv.NODE_COMPILE_CACHE === undefined &&
+    childEnv.NODE_DISABLE_COMPILE_CACHE === undefined
+  ) {
+    childEnv.NODE_COMPILE_CACHE = join(
+      process.cwd(),
+      "node_modules",
+      ".cache",
+      "bascik",
+      "compile-cache",
+    );
   }
 
   const targetFileUrl = pathToFileURL(modulePath).href;
@@ -158,15 +167,27 @@ main().catch((err) => {
 });
 `;
 
-  await writeFile(runnerScriptPath, runnerCode, { encoding: "utf8", mode: 0o600 });
+  await writeFile(runnerScriptPath, runnerCode, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
 
   // The runner's own frames (`at main (file:///…/runner.mjs:29:31)`) sit under
   // every error the user's script throws. They are Bascik's, so they are removed.
-  const runnerReferences = [runnerScriptPath, pathToFileURL(runnerScriptPath).href];
+  const runnerReferences = [
+    runnerScriptPath,
+    pathToFileURL(runnerScriptPath).href,
+  ];
   const withoutRunnerFrames = (text: string): string =>
     text
       .split("\n")
-      .filter((line) => !(line.trimStart().startsWith("at ") && runnerReferences.some((ref) => line.includes(ref))))
+      .filter(
+        (line) =>
+          !(
+            line.trimStart().startsWith("at ") &&
+            runnerReferences.some((ref) => line.includes(ref))
+          ),
+      )
       .join("\n");
 
   await semaphore.acquire();
@@ -176,56 +197,73 @@ main().catch((err) => {
     const spill = await spillLargeEnv(childEnv);
     cleanupSpill = spill.cleanup;
 
-    const { stdout, stderr } = await new Promise<{ stdout: string; stderr: string }>(
-      (resolve, reject) => {
-        let settled = false;
+    const { stdout, stderr } = await new Promise<{
+      stdout: string;
+      stderr: string;
+    }>((resolve, reject) => {
+      let settled = false;
 
-        const settle = (err: Error | null, rawStdout: string, rawStderr: string): void => {
-          if (settled) return;
-          settled = true;
-          const cleanedStdout = rawStdout ? stripAnsiEscapeCodes(rawStdout) : "";
-          const cleanedStderr = rawStderr ? withoutRunnerFrames(stripAnsiEscapeCodes(rawStderr)) : "";
-          if (err) {
-            // One message carries the whole report: what the script wrote to
-            // stderr (its error, and anything it logged first). Callers print
-            // the message once and do not print stderr separately.
-            const failure = err as Error & { killed?: boolean; signal?: string; code?: unknown };
-            const report = cleanedStderr.trim();
-            const timedOut = failure.killed === true && failure.signal === killSignal;
-            // A string code (`ERR_CHILD_PROCESS_STDIO_MAXBUFFER`, `ENOENT`) means Node
-            // itself stopped the child, so the script's stderr is not the reason. A
-            // numeric code is the script's exit code, and stderr is its report.
-            // Checked before the timeout: Node also kills the child, with the same
-            // signal, when its output goes over maxBuffer.
-            const stoppedByNode = typeof failure.code === "string";
-            const withReport = (reason: string): string => (report ? `${reason}\n${report}` : reason);
-            failure.message = stoppedByNode
-              ? withReport(`Directive script (data-bascik-${kind}) failed: ${withoutRunnerFrames(failure.message).split("\n")[0]}`)
-              : timedOut
-                ? withReport(`Directive script (data-bascik-${kind}) timed out after ${timeoutMs}ms`)
-                : report || withoutRunnerFrames(failure.message);
-            reject(Object.assign(failure, { stdout: cleanedStdout, stderr: "" }));
-          } else {
-            resolve({ stdout: cleanedStdout, stderr: cleanedStderr });
-          }
-        };
+      const settle = (
+        err: Error | null,
+        rawStdout: string,
+        rawStderr: string,
+      ): void => {
+        if (settled) return;
+        settled = true;
+        const cleanedStdout = rawStdout ? stripAnsiEscapeCodes(rawStdout) : "";
+        const cleanedStderr = rawStderr
+          ? withoutRunnerFrames(stripAnsiEscapeCodes(rawStderr))
+          : "";
+        if (err) {
+          // One message carries the whole report: what the script wrote to
+          // stderr (its error, and anything it logged first). Callers print
+          // the message once and do not print stderr separately.
+          const failure = err as Error & {
+            killed?: boolean;
+            signal?: string;
+            code?: unknown;
+          };
+          const report = cleanedStderr.trim();
+          const timedOut =
+            failure.killed === true && failure.signal === killSignal;
+          // A string code (`ERR_CHILD_PROCESS_STDIO_MAXBUFFER`, `ENOENT`) means Node
+          // itself stopped the child, so the script's stderr is not the reason. A
+          // numeric code is the script's exit code, and stderr is its report.
+          // Checked before the timeout: Node also kills the child, with the same
+          // signal, when its output goes over maxBuffer.
+          const stoppedByNode = typeof failure.code === "string";
+          const withReport = (reason: string): string =>
+            report ? `${reason}\n${report}` : reason;
+          failure.message = stoppedByNode
+            ? withReport(
+                `Directive script (data-bascik-${kind}) failed: ${withoutRunnerFrames(failure.message).split("\n")[0]}`,
+              )
+            : timedOut
+              ? withReport(
+                  `Directive script (data-bascik-${kind}) timed out after ${timeoutMs}ms`,
+                )
+              : report || withoutRunnerFrames(failure.message);
+          reject(Object.assign(failure, { stdout: cleanedStdout, stderr: "" }));
+        } else {
+          resolve({ stdout: cleanedStdout, stderr: cleanedStderr });
+        }
+      };
 
-        execFile(
-          process.execPath,
-          [...spill.execArgv, runnerScriptPath, ...args],
-          {
-            cwd: process.cwd(),
-            env: childEnv as Record<string, string>,
-            timeout: timeoutMs,
-            maxBuffer,
-            killSignal,
-          },
-          (err, rawStdout, rawStderr) => {
-            settle(err, rawStdout ?? "", rawStderr ?? "");
-          },
-        );
-      },
-    );
+      execFile(
+        process.execPath,
+        [...spill.execArgv, runnerScriptPath, ...args],
+        {
+          cwd: process.cwd(),
+          env: childEnv as Record<string, string>,
+          timeout: timeoutMs,
+          maxBuffer,
+          killSignal,
+        },
+        (err, rawStdout, rawStderr) => {
+          settle(err, rawStdout ?? "", rawStderr ?? "");
+        },
+      );
+    });
 
     // Verify result file exists and is within limit before reading into parent
     let fileStats;

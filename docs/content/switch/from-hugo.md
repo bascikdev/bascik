@@ -62,23 +62,23 @@ Hugo's `baseof.html` with `{{ block "main" . }}` / `{{ define "main" }}` maps to
 <!-- layouts/_default/baseof.html (Hugo - before) -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <title>{{ .Title }} - Acme</title>
-  {{ partial "head-extra.html" . }}
-</head>
-<body>
-  {{ partial "nav.html" . }}
-  <main>{{ block "main" . }}{{ end }}</main>
-  {{ partial "footer.html" . }}
-</body>
+  <head>
+    <title>{{ .Title }} - Acme</title>
+    {{ partial "head-extra.html" . }}
+  </head>
+  <body>
+    {{ partial "nav.html" . }}
+    <main>{{ block "main" . }}{{ end }}</main>
+    {{ partial "footer.html" . }}
+  </body>
 </html>
 
 <!-- layouts/_default/single.html (Hugo - before) -->
 {{ define "main" }}
-  <article>
-    <h1>{{ .Title }}</h1>
-    {{ .Content }}
-  </article>
+<article>
+  <h1>{{ .Title }}</h1>
+  {{ .Content }}
+</article>
 {{ end }}
 ```
 
@@ -86,14 +86,14 @@ Hugo's `baseof.html` with `{{ block "main" . }}` / `{{ define "main" }}` maps to
 <!-- src/components/site-layout/site-layout.html (Bascik - after) -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <title data-bascik-prop-title></title>
-</head>
-<body>
-  <site-nav></site-nav>
-  <main><div data-bascik-slot></div></main>
-  <site-footer />
-</body>
+  <head>
+    <title data-bascik-prop-title></title>
+  </head>
+  <body>
+    <site-nav></site-nav>
+    <main><div data-bascik-slot></div></main>
+    <site-footer />
+  </body>
 </html>
 
 <!-- src/pages/posts/my-post.html (Bascik - after) -->
@@ -108,6 +108,7 @@ Hugo's `baseof.html` with `{{ block "main" . }}` / `{{ define "main" }}` maps to
 ## Template Variables → data-bascik-prop-* and data-bascik-attr-*
 
 Hugo's `{{ .Title }}` and `{{ .Params.description }}` pull values from front matter at build time. In Bascik:
+
 - Use `data-bascik-prop-*` to insert text into elements.
 - Use `data-bascik-attr-{attribute}="{propName}"` to bind prop values directly to element attributes (such as `href`, `src`, or `alt`) while keeping inner text intact.
 
@@ -160,20 +161,29 @@ Hugo's `{{ range .Pages }}` iterates over content at build time. The Bascik equi
 <!-- src/pages/blog.html (Bascik - after) -->
 <ul class="post-list">
   <script data-bascik-build>
-    import { readdir, readFile } from 'node:fs/promises';
-    import matter from 'gray-matter';
+    import { readdir, readFile } from "node:fs/promises";
+    import matter from "gray-matter";
 
     export default async function () {
-      const files = (await readdir('./content/posts')).filter(f => f.endsWith('.md'));
-      const posts = await Promise.all(files.map(async f => {
-        const { data } = matter(await readFile(`./content/posts/${f}`, 'utf8'));
-        const slug = f.replace('.md', '');
-        return { slug, title: data.title, date: data.date };
-      }));
+      const files = (await readdir("./content/posts")).filter((f) =>
+        f.endsWith(".md"),
+      );
+      const posts = await Promise.all(
+        files.map(async (f) => {
+          const { data } = matter(
+            await readFile(`./content/posts/${f}`, "utf8"),
+          );
+          const slug = f.replace(".md", "");
+          return { slug, title: data.title, date: data.date };
+        }),
+      );
       posts.sort((a, b) => new Date(b.date) - new Date(a.date));
-      return posts.map(p =>
-        `<li><a href="/posts/${p.slug}">${p.title}</a><span>${p.date}</span></li>`
-      ).join('\n');
+      return posts
+        .map(
+          (p) =>
+            `<li><a href="/posts/${p.slug}">${p.title}</a><span>${p.date}</span></li>`,
+        )
+        .join("\n");
     }
   </script>
 </ul>
@@ -236,12 +246,12 @@ Post body here.
 ```html
 <!-- src/pages/posts/my-post.html (Bascik - after) -->
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
-  import matter from 'gray-matter';
-  import { marked } from 'marked';
+  import { readFile } from "node:fs/promises";
+  import matter from "gray-matter";
+  import { marked } from "marked";
 
   export default async function () {
-    const src = await readFile('./content/posts/my-post.md', 'utf8');
+    const src = await readFile("./content/posts/my-post.md", "utf8");
     const { data, content } = matter(src);
     return `
       <h1>${data.title}</h1>

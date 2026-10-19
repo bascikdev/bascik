@@ -9,11 +9,12 @@ Two audits check that the browser can interpret the page correctly. Bascik does 
 ```html
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Page Title - Site Name</title>
-</head>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Page Title - Site Name</title>
+  </head>
+</html>
 ```
 
 - **Doctype.** A page without `<!DOCTYPE html>` renders in quirks mode, which changes layout and box-model behavior.
@@ -56,7 +57,7 @@ For a Content Security Policy that does not rely on `'unsafe-inline'`, Bascik ca
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   generate: {
@@ -65,6 +66,6 @@ export default defineConfig({
 });
 ```
 
-The build writes `dist/.bascik/csp-hashes.json`, mapping each page to the hashes of its inline scripts and styles. A post-build script can turn that file into `script-src` and `style-src` directives for your host. See [Deployment Overview](/deployment) for a complete example, and the [FAQ](/faq) for why Bascik emits hashes instead of setting the header itself.
+The build writes `dist/.bascik/csp-hashes.json`, mapping each page to the hashes of its inline scripts and styles. See [Content Security Policy](/how-to/content-security-policy) for a worked recipe, and the [FAQ](/faq) for why Bascik emits hashes instead of setting the policy itself.
 
 > **Treat the header audits as informational.** They report what your host sends, so a perfect score may require platform-specific configuration. Check them against the production URL, not `localhost`.

@@ -1,6 +1,6 @@
-import { chromium } from '@playwright/test';
-import { readFile, writeFile } from 'node:fs/promises';
-import sharp from 'sharp';
+import { chromium } from "@playwright/test";
+import { readFile, writeFile } from "node:fs/promises";
+import sharp from "sharp";
 
 async function generateWebpLogo() {
   const browser = await chromium.launch();
@@ -8,11 +8,13 @@ async function generateWebpLogo() {
 
   let fontData;
   try {
-    fontData = await readFile('docs/fonts/CourierNew-700.ttf');
+    fontData = await readFile("docs/fonts/CourierNew-700.ttf");
   } catch {
-    fontData = await readFile('/System/Library/Fonts/Supplemental/Courier New Bold.ttf');
+    fontData = await readFile(
+      "/System/Library/Fonts/Supplemental/Courier New Bold.ttf",
+    );
   }
-  const fontBase64 = fontData.toString('base64');
+  const fontBase64 = fontData.toString("base64");
 
   await page.setContent(`
   <!DOCTYPE html>
@@ -48,7 +50,7 @@ async function generateWebpLogo() {
   `);
 
   await page.evaluate(() => document.fonts.ready);
-  const logoEl = await page.$('#logo');
+  const logoEl = await page.$("#logo");
   const pngBuffer = await logoEl.screenshot({ omitBackground: true });
   await browser.close();
 
@@ -57,7 +59,7 @@ async function generateWebpLogo() {
     .webp({ quality: 95, lossless: true })
     .toBuffer();
 
-  const outPath = 'docs/src/pages/assets/logo.webp';
+  const outPath = "docs/src/pages/assets/logo.webp";
   await writeFile(outPath, webpBuffer);
   console.log(`Generated ${outPath} (${webpBuffer.length} bytes)`);
 }

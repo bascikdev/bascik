@@ -1,71 +1,80 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Configure custom file watching in Bascik with pipeline.watchPaths. Automatically trigger re-transpilation and live reload on content edits."
+    />
+    <title>Watch Extra Files for Live Reload - Bascik</title>
+  </head>
 
-<head>
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <script data-bascik-build>
-    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    export default async () => await breadcrumbLd();
-  </script>
-  <script data-bascik-build>
-    import { articleSchema } from '@/lib/article-schema.ts';
-    export default async () => await articleSchema();
-  </script>
-  <meta name="description"
-    content="Configure custom file watching in Bascik with pipeline.watchPaths. Automatically trigger re-transpilation and live reload on content edits." />
-  <title>Watch Extra Files for Live Reload - Bascik</title>
-</head>
+  <body>
+    <docs-nav />
 
-<body>
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
 
-  <docs-nav />
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/watch-paths");
+          </script>
+          <script data-bascik-build>
+            import { renderMd } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMd("./content/watch-paths.md");
+          </script>
 
-  <div class="container">
-    <div class="docs-layout">
+          <diagram-figure
+            data-bascik-prop-title="What a saved file triggers in development"
+          >
+            <diagram-steps>
+              <diagram-step
+                data-bascik-prop-title="Change detected"
+                data-bascik-prop-detail="A watched page, component, watch path, or exec input is added, edited, or deleted."
+              />
+              <diagram-step
+                data-bascik-prop-title="Dependents found"
+                data-bascik-prop-detail="Bascik works out which pages use the file."
+              />
+              <diagram-step
+                data-bascik-prop-title="Matching scripts rerun"
+                data-bascik-prop-detail="Only exec scripts that watch the file run, in phase order."
+              />
+              <diagram-step
+                data-bascik-prop-title="Pages rebuild"
+                data-bascik-prop-detail="Known dependents re-transpile. An unknown dependent rebuilds every page."
+              />
+              <diagram-step
+                data-bascik-prop-title="Browser reloads"
+                data-bascik-prop-detail="Reloads publish after the cycle succeeds. A failure shows the overlay instead."
+              />
+            </diagram-steps>
+          </diagram-figure>
 
-      <docs-sidebar />
-
-      <main class="docs-content" id="main-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/watch-paths');
-        </script>
-        <script data-bascik-build>
-          import { renderMd } from '@/lib/md-renderer.ts';
-          export default async () => await renderMd('./content/watch-paths.md');
-        </script>
-
-        <diagram-figure data-bascik-prop-title="What a saved file triggers in development">
-          <diagram-steps>
-            <diagram-step data-bascik-prop-title="Change detected"
-              data-bascik-prop-detail="A watched page, component, watch path, or exec input is added, edited, or deleted." />
-            <diagram-step data-bascik-prop-title="Dependents found"
-              data-bascik-prop-detail="Bascik works out which pages use the file." />
-            <diagram-step data-bascik-prop-title="Matching scripts rerun"
-              data-bascik-prop-detail="Only exec scripts that watch the file run, in phase order." />
-            <diagram-step data-bascik-prop-title="Pages rebuild"
-              data-bascik-prop-detail="Known dependents re-transpile. An unknown dependent rebuilds every page." />
-            <diagram-step data-bascik-prop-title="Browser reloads"
-              data-bascik-prop-detail="Reloads publish after the cycle succeeds. A failure shows the overlay instead." />
-          </diagram-steps>
-        </diagram-figure>
-
-        <docs-pagination />
-
-      </main>
+          <docs-pagination />
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-
-</body>
-
+    <docs-footer />
+  </body>
 </html>

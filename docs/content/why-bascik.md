@@ -9,16 +9,18 @@ The guiding principle behind Bascik is simple: use what already exists. Do not i
 Create one HTML file, then use its filename as a tag anywhere, with no registration, imports, or framework API.
 
 <!-- demo:source-usage -->
+
 ```html
 <!DOCTYPE html>
 <html lang="en">
-<body>
-  <hello-card />
-</body>
+  <body>
+    <hello-card />
+  </body>
 </html>
 ```
 
 <!-- demo:source-html -->
+
 ```html
 <style>
   .hello-card {
@@ -38,29 +40,33 @@ Create one HTML file, then use its filename as a tag anywhere, with no registrat
 ```
 
 <!-- demo:output-html -->
+
 ```html
 <!-- dist/index.html -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <style>
-    .bascik__hello-card__hello-card {
-      padding: 24px;
-      background: #242628;
-      border: 1px solid #3a3d40;
-      border-top: 3px solid #d3ff8d;
-    }
-  </style>
-</head>
-<body>
-  <article class="bascik__hello-card__hello-card">
-    <p class="bascik__hello-card__hello-card-kicker">One file. One tag.</p>
-    <h3 class="bascik__hello-card__hello-card-title">Plain HTML, ready to reuse.</h3>
-    <p class="bascik__hello-card__hello-card-body">
-      Bascik replaces the custom tag at build time and ships the finished markup.
-    </p>
-  </article>
-</body>
+  <head>
+    <style>
+      .bascik__hello-card__hello-card {
+        padding: 24px;
+        background: #242628;
+        border: 1px solid #3a3d40;
+        border-top: 3px solid #d3ff8d;
+      }
+    </style>
+  </head>
+  <body>
+    <article class="bascik__hello-card__hello-card">
+      <p class="bascik__hello-card__hello-card-kicker">One file. One tag.</p>
+      <h3 class="bascik__hello-card__hello-card-title">
+        Plain HTML, ready to reuse.
+      </h3>
+      <p class="bascik__hello-card__hello-card-body">
+        Bascik replaces the custom tag at build time and ships the finished
+        markup.
+      </p>
+    </article>
+  </body>
 </html>
 ```
 
@@ -138,7 +144,7 @@ Every decision in Bascik follows three simple rules:
 - **Be transparent.** There is no hidden runtime, no virtual DOM abstraction, and no framework black box. What you write in source is what ships in `dist/`: plain HTML, CSS, and JavaScript with deterministic, human-readable scoping prefixes.
 - **Use what exists.** Use the standard HTML, CSS, and JavaScript APIs. Do not invent a template language. Do not add a reactive data system. Do not require a runtime. Do not get between the developer and the browser.
 
-![A terminal running bascik on a new project. Four pages transpile in under a quarter of a second and the server is running at localhost:8080. After one file is saved, only that page is rebuilt, in a few milliseconds](/assets/demos/dev-terminal@2x.webp)
+![A terminal running bascik on a new project. The line Server running at localhost:8080 stays pinned to the top row while four pages transpile in under a quarter of a second below it. After one file is saved, only that page is rebuilt, in a few milliseconds](/assets/demos/dev-terminal@2x.webp)
 
 Bascik exports configuration helpers (`defineConfig`) for your build, and nothing for your runtime code. Server scripts, stream scripts, and API routes receive standard web objects and import what they need from their own project or npm. If a task feels like it needs a Bascik helper, the answer is a five-line function in `src/lib/`, not a new export.
 

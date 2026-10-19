@@ -38,7 +38,10 @@
   border-radius: 4px;
   opacity: 1;
   transform: translateY(2px);
-  transition: opacity 160ms, transform 160ms, border-color 160ms;
+  transition:
+    opacity 160ms,
+    transform 160ms,
+    border-color 160ms;
 }
 
 .state-toggle-panel.is-open {

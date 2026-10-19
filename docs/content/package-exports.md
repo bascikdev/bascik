@@ -4,22 +4,22 @@ Bascik ships as a single npm package, `@bascik/bascik`, with a small set of subp
 
 ## Export map
 
-| Import specifier | Purpose | Where it is documented |
-| --- | --- | --- |
-| `@bascik/bascik` | Main entry: `defineConfig`, `composeSiteUrl`, and CLI helpers (`runCli`, `readVersion`, `installProcessCrashHandlers`, `resolveBuildLogPath`, `setupBuildLogging`) | [Configuration](/configuration), [Command Line Interface](/cli) |
-| `@bascik/bascik/config` | `defineConfig` plus the full `BascikConfig` type for `bascik.config.ts` | [Configuration](/configuration) |
-| `@bascik/bascik/runtime` | Host-neutral request execution: buffered and streamed page composition, deadline-bounded invocation, and API route dispatch | [Custom Adapters](/deployment/custom-adapters), [Server Architecture](/internals/server) |
-| `@bascik/bascik/adapter` | Hosting adapter contract: `defineAdapter`, the `SiteGraph` types, and site-graph readers | [Custom Adapters](/deployment/custom-adapters) |
+| Import specifier         | Purpose                                                                                                                                                            | Where it is documented                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| `@bascik/bascik`         | Main entry: `defineConfig`, `composeSiteUrl`, and CLI helpers (`runCli`, `readVersion`, `installProcessCrashHandlers`, `resolveBuildLogPath`, `setupBuildLogging`) | [Configuration](/configuration), [Command Line Interface](/cli)                          |
+| `@bascik/bascik/config`  | `defineConfig` plus the full `BascikConfig` type for `bascik.config.ts`                                                                                            | [Configuration](/configuration)                                                          |
+| `@bascik/bascik/runtime` | Host-neutral request execution: buffered and streamed page composition, deadline-bounded invocation, and API route dispatch                                        | [Custom Adapters](/deployment/custom-adapters), [Server Architecture](/internals/server) |
+| `@bascik/bascik/adapter` | Hosting adapter contract: `defineAdapter`, the `SiteGraph` types, and site-graph readers                                                                           | [Custom Adapters](/deployment/custom-adapters)                                           |
 
 ## `@bascik/bascik`
 
 The main entry re-exports the configuration helper and a few programmatic CLI utilities. Most projects only ever import `defineConfig` from it (or from `/config`).
 
 ```ts
-import { defineConfig, composeSiteUrl } from '@bascik/bascik';
+import { defineConfig, composeSiteUrl } from "@bascik/bascik";
 
 export default defineConfig({
-  base: '/docs/',
+  base: "/docs/",
 });
 ```
 
@@ -32,7 +32,7 @@ export default defineConfig({
 The config subpath is the recommended import for `bascik.config.ts`. It exports `defineConfig` and re-exports every configuration type, including `BascikConfig`.
 
 ```ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   generate: { sitemapLastmod: true },
@@ -57,10 +57,14 @@ The runtime also exports the shared response policy (`dynamicPageHeaders`, `merg
 The adapter subpath defines the hosting adapter contract. A custom adapter is a module whose default export is created with `defineAdapter`; `bascik --build --target <name>` loads it and calls its `build` hook with an `AdapterBuildContext` containing the compiled site graph.
 
 ```ts
-import { defineAdapter, type AdapterBuildContext, type AdapterBuildResult } from '@bascik/bascik/adapter';
+import {
+  defineAdapter,
+  type AdapterBuildContext,
+  type AdapterBuildResult,
+} from "@bascik/bascik/adapter";
 
 export default defineAdapter({
-  name: 'my-cloud',
+  name: "my-cloud",
   async build(context: AdapterBuildContext): Promise<AdapterBuildResult> {
     // Read context.graph, copy context.distDir assets, emit a runtime entrypoint.
     return { publicDir: `${context.outDir}/public` };

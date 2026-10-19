@@ -31,13 +31,29 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   return { ...actual, writeFile };
 });
 
-import { mkdir, mkdtemp, readFile, rm, writeFile, stat as fsStat } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+  stat as fsStat,
+} from "node:fs/promises";
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
-    directory: { out: "dist", pages: "src/pages", components: ["src/components"] },
+    directory: {
+      out: "dist",
+      pages: "src/pages",
+      components: ["src/components"],
+    },
     isBuild: true,
-    generate: { manifest: true, cspHashes: false, sitemap: false, robots: false },
+    generate: {
+      manifest: true,
+      cspHashes: false,
+      sitemap: false,
+      robots: false,
+    },
     only: undefined,
     minify: { identifiers: false },
     http: { compression: true, precompress: true },
@@ -70,7 +86,13 @@ const exists = async (p: string): Promise<boolean> => {
 describe("Prompt 140 - precompressed sidecar producer (http.precompress)", () => {
   let dist: string;
   const cssBody = Buffer.from(".a{color:red}.b{margin:0}\n".repeat(60)); // well above COMPRESSION_MIN_BYTES
-  const pngBody = Buffer.from([0x89, 0x50, 0x4e, 0x47, ...Array.from({ length: 2000 }, (_, i) => i & 0xff)]);
+  const pngBody = Buffer.from([
+    0x89,
+    0x50,
+    0x4e,
+    0x47,
+    ...Array.from({ length: 2000 }, (_, i) => i & 0xff),
+  ]);
   const tinyBody = Buffer.from("p{}"); // below COMPRESSION_MIN_BYTES
 
   beforeEach(async () => {
@@ -108,29 +130,50 @@ describe("Prompt 140 - precompressed sidecar producer (http.precompress)", () =>
       const asset = join(dist, rel);
       for (const enc of ["br", "gz"] as const) {
         expect(await exists(`${asset}.${enc}`), `${rel}.${enc}`).toBe(true);
-        expect(await exists(`${asset}.${enc}.bmeta`), `${rel}.${enc}.bmeta`).toBe(true);
-        const meta = JSON.parse(await readFile(`${asset}.${enc}.bmeta`, "utf8")) as { rawHash?: string };
+        expect(
+          await exists(`${asset}.${enc}.bmeta`),
+          `${rel}.${enc}.bmeta`,
+        ).toBe(true);
+        const meta = JSON.parse(
+          await readFile(`${asset}.${enc}.bmeta`, "utf8"),
+        ) as { rawHash?: string };
         expect(meta.rawHash).toBe(getContentHashEtag(cssBody));
       }
       // Sidecar bytes decode to exactly the raw asset.
-      expect(zlib.brotliDecompressSync(await readFile(`${asset}.br`)).equals(cssBody)).toBe(true);
-      expect(zlib.gunzipSync(await readFile(`${asset}.gz`)).equals(cssBody)).toBe(true);
+      expect(
+        zlib
+          .brotliDecompressSync(await readFile(`${asset}.br`))
+          .equals(cssBody),
+      ).toBe(true);
+      expect(
+        zlib.gunzipSync(await readFile(`${asset}.gz`)).equals(cssBody),
+      ).toBe(true);
     }
 
     // Incompressible and too-small assets get nothing.
     for (const rel of ["logo.png", "tiny.css"]) {
       for (const suffix of [".br", ".br.bmeta", ".gz", ".gz.bmeta"]) {
-        expect(await exists(join(dist, rel) + suffix), `${rel}${suffix}`).toBe(false);
+        expect(await exists(join(dist, rel) + suffix), `${rel}${suffix}`).toBe(
+          false,
+        );
       }
     }
   });
 
   it("records the sidecars in the manifest so the build inventory accounts for them", async () => {
     await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: false });
-    const manifest = JSON.parse(await readFile(join(dist, ".bascik", "manifest.json"), "utf8")) as {
+    const manifest = JSON.parse(
+      await readFile(join(dist, ".bascik", "manifest.json"), "utf8"),
+    ) as {
       files: Record<string, { hash: string; size: number }>;
     };
-    for (const key of ["styles.css.br", "styles.css.br.bmeta", "styles.css.gz", "styles.css.gz.bmeta", "nested/app.js.br"]) {
+    for (const key of [
+      "styles.css.br",
+      "styles.css.br.bmeta",
+      "styles.css.gz",
+      "styles.css.gz.bmeta",
+      "nested/app.js.br",
+    ]) {
       expect(manifest.files[key], key).toBeDefined();
     }
     expect(manifest.files["logo.png.br"]).toBeUndefined();
@@ -164,13 +207,19 @@ describe("Prompt 140 - precompressed sidecar producer (http.precompress)", () =>
   it("a failed sidecar write removes its temp sibling and surfaces the error (nit #9)", async () => {
     // The first temp write lands on disk and then reports ENOSPC: the partial
     // temp sibling must not be left behind, and the error must propagate.
-    writeFileFailure.nextError = Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
+    writeFileFailure.nextError = Object.assign(
+      new Error("ENOSPC: no space left on device"),
+      { code: "ENOSPC" },
+    );
     try {
       const { emitPrecompressedSidecars } = await import("./precompress.ts");
       await expect(emitPrecompressedSidecars()).rejects.toThrow(/ENOSPC/);
       expect(writeFileFailure.nextError).toBeNull();
       const { readdir } = await import("node:fs/promises");
-      const all = [...(await readdir(dist)), ...(await readdir(join(dist, "nested")))];
+      const all = [
+        ...(await readdir(dist)),
+        ...(await readdir(join(dist, "nested"))),
+      ];
       expect(all.filter((n) => n.includes(".tmp"))).toEqual([]);
     } finally {
       writeFileFailure.nextError = null;

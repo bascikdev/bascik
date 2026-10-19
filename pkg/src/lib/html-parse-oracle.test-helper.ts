@@ -14,7 +14,9 @@ const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 
 const isElement = (node: ChildNode): node is Element => "tagName" in node;
 const isTemplate = (node: Element): node is DefaultTreeAdapterTypes.Template =>
-  node.tagName === "template" && node.namespaceURI === HTML_NAMESPACE && "content" in node;
+  node.tagName === "template" &&
+  node.namespaceURI === HTML_NAMESPACE &&
+  "content" in node;
 
 export interface ParsedLocations {
   /** HTML-namespace script elements with an end tag, outside `<template>` and SVG/MathML. */
@@ -32,7 +34,10 @@ export const parsedLocations = (html: string): ParsedLocations => {
       if (node.nodeName === "#comment") {
         const location = node.sourceCodeLocation;
         if (location && html.startsWith("<!--", location.startOffset)) {
-          comments.push({ start: location.startOffset, end: location.endOffset });
+          comments.push({
+            start: location.startOffset,
+            end: location.endOffset,
+          });
         }
         continue;
       }
@@ -40,7 +45,11 @@ export const parsedLocations = (html: string): ParsedLocations => {
       const html5 = node.namespaceURI === HTML_NAMESPACE;
       if (ordinary && html5 && node.tagName === "script") {
         const location = node.sourceCodeLocation;
-        if (location?.endTag) scripts.push({ start: location.startOffset, end: location.endTag.endOffset });
+        if (location?.endTag)
+          scripts.push({
+            start: location.startOffset,
+            end: location.endTag.endOffset,
+          });
       }
       if (isTemplate(node)) visit(node.content, false);
       else visit(node, ordinary && html5);
@@ -53,12 +62,35 @@ export const parsedLocations = (html: string): ParsedLocations => {
 
 /** HTML formatting elements, which the parser re-creates after misnested end tags. */
 const FORMATTING_ELEMENTS = new Set([
-  "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike", "strong", "tt", "u",
+  "a",
+  "b",
+  "big",
+  "code",
+  "em",
+  "font",
+  "i",
+  "nobr",
+  "s",
+  "small",
+  "strike",
+  "strong",
+  "tt",
+  "u",
 ]);
 
 /** HTML elements whose text keeps its whitespace: preformatted, form, or code text. */
 const VERBATIM_ELEMENTS = new Set([
-  "pre", "listing", "xmp", "plaintext", "textarea", "script", "style", "noscript", "iframe", "noembed", "noframes",
+  "pre",
+  "listing",
+  "xmp",
+  "plaintext",
+  "textarea",
+  "script",
+  "style",
+  "noscript",
+  "iframe",
+  "noembed",
+  "noframes",
 ]);
 
 export interface SnapshotOptions {
@@ -96,39 +128,83 @@ const COLLAPSIBLE_WHITESPACE_RE = /[\t\n\r ]+/g;
  * What a browser builds from `html`, as comparable strings. Adjacent text
  * merges across removed comments and scripts, the way a page renders it.
  */
-export const domSnapshot = (html: string, options: SnapshotOptions = {}): DomSnapshot => {
-  const clean = (text: string) => (options.ignoreWhitespace ? text.replace(ASCII_WHITESPACE_RE, "") : text);
+export const domSnapshot = (
+  html: string,
+  options: SnapshotOptions = {},
+): DomSnapshot => {
+  const clean = (text: string) =>
+    options.ignoreWhitespace ? text.replace(ASCII_WHITESPACE_RE, "") : text;
   const cleanText = (text: string, verbatim: boolean) =>
-    options.renderedWhitespace ? (verbatim ? text : text.replace(COLLAPSIBLE_WHITESPACE_RE, "")) : clean(text);
-  const cleanAttribute = (value: string) => (options.renderedWhitespace ? value : clean(value));
+    options.renderedWhitespace
+      ? verbatim
+        ? text
+        : text.replace(COLLAPSIBLE_WHITESPACE_RE, "")
+      : clean(text);
+  const cleanAttribute = (value: string) =>
+    options.renderedWhitespace ? value : clean(value);
   const scripts: string[] = [];
   const out: string[] = [];
   const textOf = (element: Element): string =>
-    element.childNodes.map((child) => ("value" in child && child.nodeName === "#text" ? child.value : "")).join("");
+    element.childNodes
+      .map((child) =>
+        "value" in child && child.nodeName === "#text" ? child.value : "",
+      )
+      .join("");
   const attributesOf = (element: Element): string =>
-    element.attrs.map((attribute) => `${attribute.name}=${JSON.stringify(cleanAttribute(attribute.value))}`).join(" ");
-  const visit = (parent: ParentNode, inTemplate: boolean, verbatim: boolean): void => {
+    element.attrs
+      .map(
+        (attribute) =>
+          `${attribute.name}=${JSON.stringify(cleanAttribute(attribute.value))}`,
+      )
+      .join(" ");
+  const visit = (
+    parent: ParentNode,
+    inTemplate: boolean,
+    verbatim: boolean,
+  ): void => {
     for (const node of parent.childNodes) {
       if (node.nodeName === "#text" && "value" in node) {
         // Text directly in `<html>` or `<head>` is whitespace that never renders.
-        const outsideBody = "tagName" in parent && (parent.tagName === "head" || parent.tagName === "html");
-        out.push(options.renderedWhitespace && outsideBody ? node.value.replace(ASCII_WHITESPACE_RE, "") : cleanText(node.value, verbatim));
+        const outsideBody =
+          "tagName" in parent &&
+          (parent.tagName === "head" || parent.tagName === "html");
+        out.push(
+          options.renderedWhitespace && outsideBody
+            ? node.value.replace(ASCII_WHITESPACE_RE, "")
+            : cleanText(node.value, verbatim),
+        );
         continue;
       }
       if (!isElement(node)) continue;
-      const namespace = node.namespaceURI === HTML_NAMESPACE ? "html" : node.namespaceURI.split("/").pop();
-      if (node.tagName === "script" && options.collectScript?.(node, inTemplate)) {
-        scripts.push(`${namespace}:${attributesOf(node)}:${cleanText(textOf(node), true)}`);
+      const namespace =
+        node.namespaceURI === HTML_NAMESPACE
+          ? "html"
+          : node.namespaceURI.split("/").pop();
+      if (
+        node.tagName === "script" &&
+        options.collectScript?.(node, inTemplate)
+      ) {
+        scripts.push(
+          `${namespace}:${attributesOf(node)}:${cleanText(textOf(node), true)}`,
+        );
         continue;
       }
-      const keepsWhitespace = verbatim ||
-        (namespace === "html" ? VERBATIM_ELEMENTS.has(node.tagName) : node.tagName === "script" || node.tagName === "style");
+      const keepsWhitespace =
+        verbatim ||
+        (namespace === "html"
+          ? VERBATIM_ELEMENTS.has(node.tagName)
+          : node.tagName === "script" || node.tagName === "style");
       const openIndex = out.length;
       out.push(`<${namespace}:${node.tagName} ${attributesOf(node)}>`);
       if (isTemplate(node)) visit(node.content, true, keepsWhitespace);
       else visit(node, inTemplate, keepsWhitespace);
       const isEmpty = out.slice(openIndex + 1).every((part) => part === "");
-      if (options.ignoreEmptyFormattingElements && isEmpty && namespace === "html" && FORMATTING_ELEMENTS.has(node.tagName)) {
+      if (
+        options.ignoreEmptyFormattingElements &&
+        isEmpty &&
+        namespace === "html" &&
+        FORMATTING_ELEMENTS.has(node.tagName)
+      ) {
         out.length = openIndex;
         continue;
       }

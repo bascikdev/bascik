@@ -1,7 +1,8 @@
 # Linting
 
 Bascik projects use two complementary linting tools:
-1. **Bascik Linter (`@bascik/language-server`)**: Validates component tags, undeclared props, slots, mutually exclusive script directives, and CSS/JS scoping rules via CLI (`npm run lint` or `npx @bascik/language-server --check`) or in your editor. See the [Linter](/tools/linter) guide.
+
+1. **Bascik Linter (`@bascik/language-server`)**: Validates component tags, undeclared props, slots, mutually exclusive script directives, and CSS/JS scoping rules in your editor, and from the command line through [`bascik --check`](/cli#static-analysis-with-bascik-check), which is what `npm run lint` runs in a scaffolded project. `bascik --check` adds the project-wide checks, so one CI step covers both. See the [Linter](/tools/linter) guide.
 2. **Web Standards & Accessibility Linter (`webhint`)**: Audits HTML templates for W3C web standards, cross-browser compatibility, and accessibility.
 
 ## Webhint Integration
@@ -16,9 +17,7 @@ Place a `.hintrc` file in your project root:
 
 ```json
 {
-  "extends": [
-    "development"
-  ],
+  "extends": ["development"],
   "hints": {
     "apple-touch-icons": "off",
     "meta-viewport": "off",
@@ -28,27 +27,20 @@ Place a `.hintrc` file in your project root:
     "compat-api/css": [
       "default",
       {
-        "ignore": [
-          "scrollbar-width",
-          "scrollbar-width: none"
-        ]
+        "ignore": ["scrollbar-width", "scrollbar-width: none"]
       }
     ],
     "compat-api/html": [
       "default",
       {
-        "ignore": [
-          "meta[name=theme-color]"
-        ]
+        "ignore": ["meta[name=theme-color]"]
       }
     ]
   },
   "ignoredUrls": [
     {
       "domain": ".*(e2e|dist|test-results|coverage|hint-report).*",
-      "hints": [
-        "*"
-      ]
+      "hints": ["*"]
     }
   ]
 }
@@ -101,10 +93,15 @@ Every form control requires an accessible label, `aria-label`, or `title` attrib
 ```html
 <!-- Accessible text input -->
 <label for="user-email">Email Address</label>
-<input id="user-email" name="email" type="email">
+<input id="user-email" name="email" type="email" />
 
 <!-- Accessible hidden or icon-only input -->
-<input name="csrf_token" type="hidden" title="CSRF Token" aria-label="CSRF Token">
+<input
+  name="csrf_token"
+  type="hidden"
+  title="CSRF Token"
+  aria-label="CSRF Token"
+/>
 ```
 
 ### 3. Valid Custom Element Names

@@ -59,7 +59,9 @@ export const extractRouteParamNames = (pagePath: string): string[] => {
  * `extractRouteParamNames`, which is unchanged.
  */
 export const extractApiRouteParamNames = (routePath: string): string[] =>
-  extractRouteParamNames(routePath).map((name) => (name.startsWith("...") ? name.slice(3) : name));
+  extractRouteParamNames(routePath).map((name) =>
+    name.startsWith("...") ? name.slice(3) : name,
+  );
 
 /** True when the route's final segment is a well-formed catch-all `[...name]`. */
 export const isCatchAllRoute = (routePath: string): boolean => {
@@ -100,7 +102,10 @@ export interface ApiRouteMatch {
  * by segment from the left (static < `[param]` < catch-all), then longer paths,
  * then by path text so the result is fully deterministic.
  */
-const compareApiRoutes = (a: ApiRouteDefinition, b: ApiRouteDefinition): number => {
+const compareApiRoutes = (
+  a: ApiRouteDefinition,
+  b: ApiRouteDefinition,
+): number => {
   if (!a.isDynamic && b.isDynamic) return -1;
   if (a.isDynamic && !b.isDynamic) return 1;
 
@@ -120,7 +125,9 @@ const compareApiRoutes = (a: ApiRouteDefinition, b: ApiRouteDefinition): number 
 };
 
 /** Static routes first, then more specific dynamic routes, catch-all last, then by path. */
-export const sortApiRoutes = (routes: ApiRouteDefinition[]): ApiRouteDefinition[] => {
+export const sortApiRoutes = (
+  routes: ApiRouteDefinition[],
+): ApiRouteDefinition[] => {
   return [...routes].sort(compareApiRoutes);
 };
 
@@ -146,7 +153,10 @@ export const findApiRoutePatternProblems = (
   routes: ReadonlyArray<{ path: string; filePath: string }>,
 ): ApiRoutePatternProblem[] => {
   const problems: ApiRoutePatternProblem[] = [];
-  const bySignature = new Map<string, Array<{ path: string; filePath: string }>>();
+  const bySignature = new Map<
+    string,
+    Array<{ path: string; filePath: string }>
+  >();
 
   for (const route of routes) {
     const segments = route.path.split("/").filter(Boolean);
@@ -194,7 +204,11 @@ export const findApiRoutePatternProblems = (
     }
 
     if (valid && hasCatchAll) {
-      const signature = segments.map((s) => (segmentRank(s) === 2 ? "[...]" : segmentRank(s) === 1 ? "[]" : s)).join("/");
+      const signature = segments
+        .map((s) =>
+          segmentRank(s) === 2 ? "[...]" : segmentRank(s) === 1 ? "[]" : s,
+        )
+        .join("/");
       const list = bySignature.get(signature) ?? [];
       list.push(route);
       bySignature.set(signature, list);
@@ -214,7 +228,9 @@ export const findApiRoutePatternProblems = (
   return problems;
 };
 
-export const normalizeApiRouteDefinition = (def: ApiRouteDefinition): ApiRouteDefinition => {
+export const normalizeApiRouteDefinition = (
+  def: ApiRouteDefinition,
+): ApiRouteDefinition => {
   const isDynamic = def.isDynamic ?? isDynamicRoute(def.path);
   const paramNames =
     def.paramNames && def.paramNames.length > 0
@@ -239,7 +255,8 @@ const unsafeDecodedSegment = (decoded: string | null): string | null => {
   if (decoded === null) return "malformed percent-encoding";
   if (decoded === "") return "empty path segment";
   if (decoded === "." || decoded === "..") return "dot path segment";
-  if (decoded.includes("/") || decoded.includes("\\")) return "encoded path separator";
+  if (decoded.includes("/") || decoded.includes("\\"))
+    return "encoded path separator";
   if (/[\u0000-\u001f\u007f]/.test(decoded)) return "control character";
   return null;
 };
@@ -252,14 +269,19 @@ const splitRawPathname = (rawPathname: string): string[] => {
   return parts;
 };
 
-type CatchAllOutcome = { params: ApiRouteParams } | { invalid: InvalidApiPathError } | null;
+type CatchAllOutcome =
+  { params: ApiRouteParams } | { invalid: InvalidApiPathError } | null;
 
 /**
  * Match a route whose last segment is `[...name]` against raw path segments.
  * A structural mismatch yields `null`; a structural match with an unsafe
  * capture yields `{ invalid }` so precedence is decided before any rejection.
  */
-const matchCatchAll = (routeSegments: string[], name: string, rawSegments: string[]): CatchAllOutcome => {
+const matchCatchAll = (
+  routeSegments: string[],
+  name: string,
+  rawSegments: string[],
+): CatchAllOutcome => {
   const prefixLength = routeSegments.length - 1;
   // Required catch-all: at least one remaining segment.
   if (rawSegments.length < prefixLength + 1) return null;
@@ -271,7 +293,8 @@ const matchCatchAll = (routeSegments: string[], name: string, rawSegments: strin
     const decoded = decodeSegmentOnce(rawSegments[i]);
     if (routeSegment.startsWith("[") && routeSegment.endsWith("]")) {
       const reason = unsafeDecodedSegment(decoded);
-      if (reason) invalid ??= new InvalidApiPathError(`Invalid API path: ${reason}`);
+      if (reason)
+        invalid ??= new InvalidApiPathError(`Invalid API path: ${reason}`);
       else params[routeSegment.slice(1, -1)] = decoded as string;
     } else if (decoded !== routeSegment) {
       return null;
@@ -359,13 +382,21 @@ export const matchApiRoute = <R extends ApiRouteDefinition>(
     const normalized = normalizeApiRouteDefinition(rawRoute);
     // Return the caller's object (with any host-specific fields such as a
     // module loader) but decide with the normalized view.
-    const route: R = { ...rawRoute, isDynamic: normalized.isDynamic, paramNames: normalized.paramNames };
+    const route: R = {
+      ...rawRoute,
+      isDynamic: normalized.isDynamic,
+      paramNames: normalized.paramNames,
+    };
     const routeSegments = route.path.split("/").filter(Boolean);
 
     const lastSegment = routeSegments[routeSegments.length - 1];
-    const catchAllName = lastSegment === undefined ? null : (CATCH_ALL_SEGMENT_RE.exec(lastSegment)?.[1] ?? null);
+    const catchAllName =
+      lastSegment === undefined
+        ? null
+        : (CATCH_ALL_SEGMENT_RE.exec(lastSegment)?.[1] ?? null);
 
-    let outcome: { params: ApiRouteParams } | { invalid: InvalidApiPathError } | null;
+    let outcome:
+      { params: ApiRouteParams } | { invalid: InvalidApiPathError } | null;
     if (catchAllName !== null) {
       rawSegments ??= splitRawPathname(rawPathname);
       outcome = matchCatchAll(routeSegments, catchAllName, rawSegments);
@@ -374,7 +405,10 @@ export const matchApiRoute = <R extends ApiRouteDefinition>(
       outcome = params ? { params } : null;
     }
 
-    if (outcome && (!best || compareApiRoutes(normalized, best.normalized) < 0)) {
+    if (
+      outcome &&
+      (!best || compareApiRoutes(normalized, best.normalized) < 0)
+    ) {
       best = { route, normalized, outcome };
     }
   }
@@ -390,7 +424,10 @@ export const matchApiRoute = <R extends ApiRouteDefinition>(
  * refuses them, so the bundle can never be downloaded from the public origin.
  * One list, imported by both sides, so the two can never disagree.
  */
-export const GENERATED_CONTROL_PATHS: readonly string[] = Object.freeze(["/_worker.js", "/_routes.json"]);
+export const GENERATED_CONTROL_PATHS: readonly string[] = Object.freeze([
+  "/_worker.js",
+  "/_routes.json",
+]);
 
 // ─── Path normalization shared with page lookup ──────────────────────────────
 
@@ -398,9 +435,12 @@ export const GENERATED_CONTROL_PATHS: readonly string[] = Object.freeze(["/_work
  * Normalize a base-relative pathname for page lookup the way `server.ts`
  * does: strip `.html`, map `/index` to `/`, and `x/index` to `x/`.
  */
-export const normalizePagePathname = (pathname: string): { cleanPathname: string; normalizedPath: string } => {
+export const normalizePagePathname = (
+  pathname: string,
+): { cleanPathname: string; normalizedPath: string } => {
   const cleanPathname = pathname.replace(/\.html$/i, "");
-  const normalizedPath = cleanPathname === "/index" ? "/" : cleanPathname.replace(/\/index$/, "/");
+  const normalizedPath =
+    cleanPathname === "/index" ? "/" : cleanPathname.replace(/\/index$/, "/");
   return { cleanPathname, normalizedPath };
 };
 
@@ -411,7 +451,9 @@ export const normalizePagePathname = (pathname: string): { cleanPathname: string
  */
 export const pageLookupCandidates = (pathname: string): string[] => {
   const { cleanPathname, normalizedPath } = normalizePagePathname(pathname);
-  const toggled = cleanPathname.endsWith("/") ? cleanPathname.slice(0, -1) : `${cleanPathname}/`;
+  const toggled = cleanPathname.endsWith("/")
+    ? cleanPathname.slice(0, -1)
+    : `${cleanPathname}/`;
   const out: string[] = [];
   for (const candidate of [pathname, normalizedPath, cleanPathname, toggled]) {
     if (candidate && !out.includes(candidate)) out.push(candidate);
@@ -458,6 +500,8 @@ export const hasHiddenSegment = (pathname: string, base = "/"): boolean => {
   }
   const segments = path.split("/").filter((segment) => segment.length > 0);
   return segments.some(
-    (segment, index) => segment.startsWith(".") && !(index === 0 && segment === WELL_KNOWN_SEGMENT),
+    (segment, index) =>
+      segment.startsWith(".") &&
+      !(index === 0 && segment === WELL_KNOWN_SEGMENT),
   );
 };

@@ -46,10 +46,17 @@ async function assertManifestCorrespondence(
   // Every file recorded in manifest.json must match actual disk file hash & size
   for (const [relPath, entry] of Object.entries(manifest.files)) {
     const diskBuffer = emittedFiles[relPath];
-    expect(diskBuffer, `manifest file ${relPath} missing from disk`).toBeDefined();
+    expect(
+      diskBuffer,
+      `manifest file ${relPath} missing from disk`,
+    ).toBeDefined();
     const diskHash = hashBytes(diskBuffer);
-    expect(entry.hash, `hash mismatch for manifest entry ${relPath}`).toBe(diskHash);
-    expect(entry.size, `size mismatch for manifest entry ${relPath}`).toBe(diskBuffer.length);
+    expect(entry.hash, `hash mismatch for manifest entry ${relPath}`).toBe(
+      diskHash,
+    );
+    expect(entry.size, `size mismatch for manifest entry ${relPath}`).toBe(
+      diskBuffer.length,
+    );
   }
 }
 
@@ -66,11 +73,18 @@ function assertInventoriesMatch(
   for (const key of expectedKeys) {
     // Private internal metadata (.bascik/) contains absolute source paths field by field; public files must match exact hashes
     if (key.startsWith(".bascik/")) {
-      expect(actual.files[key], `${context}: missing metadata ${key}`).toBeDefined();
+      expect(
+        actual.files[key],
+        `${context}: missing metadata ${key}`,
+      ).toBeDefined();
       continue;
     }
-    expect(actual.files[key].hash, `${context}: hash mismatch on ${key}`).toBe(expected.files[key].hash);
-    expect(actual.files[key].size, `${context}: size mismatch on ${key}`).toBe(expected.files[key].size);
+    expect(actual.files[key].hash, `${context}: hash mismatch on ${key}`).toBe(
+      expected.files[key].hash,
+    );
+    expect(actual.files[key].size, `${context}: size mismatch on ${key}`).toBe(
+      expected.files[key].size,
+    );
   }
 
   // CSP hashes must match exactly
@@ -78,7 +92,10 @@ function assertInventoriesMatch(
 }
 
 /** Writes a rich metamorphic fixture containing nested components, deterministic IDs, Unicode, empty & large regions. */
-async function writeMetamorphicFixture(root: string, minified: boolean = false): Promise<void> {
+async function writeMetamorphicFixture(
+  root: string,
+  minified: boolean = false,
+): Promise<void> {
   await createFixtureDirs(root);
   await mkdir(join(root, "src/components-a"), { recursive: true });
   await mkdir(join(root, "src/components-b"), { recursive: true });
@@ -119,7 +136,8 @@ async function writeMetamorphicFixture(root: string, minified: boolean = false):
   );
 
   // Page 1: Unicode, nested components, empty regions, large buffer
-  const largeRepeatedText = "Large payload block with deterministic content. ".repeat(200);
+  const largeRepeatedText =
+    "Large payload block with deterministic content. ".repeat(200);
   await writeFixtureFile(
     root,
     "src/pages/index.html",
@@ -237,14 +255,20 @@ describe("packet B1: metamorphic build artifact comparison and ordering", () => 
         await writeMetamorphicFixture(rootUnminified, false);
         await writeMetamorphicFixture(rootMinified, true);
 
-        const unminifiedRun = await runRealBuild({ projectRoot: rootUnminified });
+        const unminifiedRun = await runRealBuild({
+          projectRoot: rootUnminified,
+        });
         expect(unminifiedRun.stdout).toContain("Build complete");
-        const unminifiedFiles = await readEmittedFiles(join(rootUnminified, "dist"));
+        const unminifiedFiles = await readEmittedFiles(
+          join(rootUnminified, "dist"),
+        );
         const unminifiedInventory = toInventory(unminifiedFiles);
 
         const minifiedRun = await runRealBuild({ projectRoot: rootMinified });
         expect(minifiedRun.stdout).toContain("Build complete");
-        const minifiedFiles = await readEmittedFiles(join(rootMinified, "dist"));
+        const minifiedFiles = await readEmittedFiles(
+          join(rootMinified, "dist"),
+        );
         const minifiedInventory = toInventory(minifiedFiles);
 
         // Both builds must emit the exact same set of public paths
@@ -340,7 +364,11 @@ describe("packet B1: metamorphic build artifact comparison and ordering", () => 
         const inventory2 = toInventory(files2);
 
         // Emitted public files must match identically regardless of component root order
-        assertInventoriesMatch(inventory2, inventory1, "reversed component root order");
+        assertInventoriesMatch(
+          inventory2,
+          inventory1,
+          "reversed component root order",
+        );
       } finally {
         await cleanupFixture(root);
       }
@@ -386,7 +414,11 @@ describe("packet B1: metamorphic build artifact comparison and ordering", () => 
         const workerInventory = toInventory(workerFiles);
 
         // Assert artifact equivalence
-        assertInventoriesMatch(workerInventory, serialInventory, "worker vs workers-disabled");
+        assertInventoriesMatch(
+          workerInventory,
+          serialInventory,
+          "worker vs workers-disabled",
+        );
         await assertManifestCorrespondence(root, workerFiles);
       } finally {
         await cleanupFixture(root);
@@ -416,7 +448,11 @@ describe("packet B1: metamorphic build artifact comparison and ordering", () => 
         };
 
         expect(() => {
-          assertInventoriesMatch(staleWarm, fresh, "warm vs fresh equivalence check");
+          assertInventoriesMatch(
+            staleWarm,
+            fresh,
+            "warm vs fresh equivalence check",
+          );
         }).toThrow(/hash mismatch on index.html/);
       });
     });
@@ -506,7 +542,9 @@ export const circularFromB = () => "circle-B-final";
         });
         expect(targetedEditRun.stdout).toContain("Build complete");
         const afterEditFiles = await readEmittedFiles(join(warmRoot, "dist"));
-        expect(afterEditFiles["index.html"].toString("utf8")).toContain("edited-B");
+        expect(afterEditFiles["index.html"].toString("utf8")).toContain(
+          "edited-B",
+        );
 
         // ── 3. Delete b.ts and run targeted build -> must fail closed ──
         await rm(join(warmRoot, "src/lib/b.ts"));
@@ -519,7 +557,10 @@ export const circularFromB = () => "circle-B-final";
         } catch {
           deleteFailed = true;
         }
-        expect(deleteFailed, "targeted build must fail closed when dependency is deleted").toBe(true);
+        expect(
+          deleteFailed,
+          "targeted build must fail closed when dependency is deleted",
+        ).toBe(true);
 
         // ── 4. Recreate b.ts with final authored state and recover ──
         await writeFixtureFile(warmRoot, "src/lib/b.ts", bFinal);
@@ -541,7 +582,11 @@ export const circularFromB = () => "circle-B-final";
         const freshFinalInventory = toInventory(freshFinalFiles);
 
         // ── 6. Assert equivalence between warm churn history and fresh full build ──
-        assertInventoriesMatch(warmFinalInventory, freshFinalInventory, "warm churn history vs fresh full build");
+        assertInventoriesMatch(
+          warmFinalInventory,
+          freshFinalInventory,
+          "warm churn history vs fresh full build",
+        );
 
         // Both roots must independently satisfy manifest hash and size correspondence
         await assertManifestCorrespondence(warmRoot, warmFinalFiles);

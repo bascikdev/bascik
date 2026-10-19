@@ -18,7 +18,11 @@ export const isFlatString: (value: string) => boolean = new Function(
 ) as (value: string) => boolean;
 
 /** Build a deep cons string the way an iterative splice loop does. */
-export const makeConsString = (base: string, splices: number, insert = "<x>"): string => {
+export const makeConsString = (
+  base: string,
+  splices: number,
+  insert = "<x>",
+): string => {
   let result = base;
   for (let i = 0; i < splices; i++) {
     const at = Math.min(result.length, i * 3);

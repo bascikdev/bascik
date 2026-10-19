@@ -6,15 +6,21 @@ import { mem } from "./mem.ts";
 
 describe("Prompt 38 - Brotli Quality Selection", () => {
   it("selects BROTLI_MAX_QUALITY under --build", () => {
-    expect(getBrotliQuality({ isBuild: true, isProdServer: false })).toBe(zlib.constants.BROTLI_MAX_QUALITY);
+    expect(getBrotliQuality({ isBuild: true, isProdServer: false })).toBe(
+      zlib.constants.BROTLI_MAX_QUALITY,
+    );
   });
 
   it("selects BROTLI_MAX_QUALITY under --server", () => {
-    expect(getBrotliQuality({ isBuild: false, isProdServer: true })).toBe(zlib.constants.BROTLI_MAX_QUALITY);
+    expect(getBrotliQuality({ isBuild: false, isProdServer: true })).toBe(
+      zlib.constants.BROTLI_MAX_QUALITY,
+    );
   });
 
   it("selects BROTLI_MIN_QUALITY in dev mode", () => {
-    expect(getBrotliQuality({ isBuild: false, isProdServer: false })).toBe(zlib.constants.BROTLI_MIN_QUALITY);
+    expect(getBrotliQuality({ isBuild: false, isProdServer: false })).toBe(
+      zlib.constants.BROTLI_MIN_QUALITY,
+    );
   });
 });
 
@@ -66,7 +72,9 @@ describe("Prompt 38 - 500 Error Page and Fallback", () => {
 
     expect(sentStatus).toBe(500);
     expect(sentHeaders["content-type"]).toBe("text/html; charset=utf-8");
-    const bodyStr = Buffer.isBuffer(sentBody) ? sentBody.toString("utf8") : String(sentBody);
+    const bodyStr = Buffer.isBuffer(sentBody)
+      ? sentBody.toString("utf8")
+      : String(sentBody);
     expect(bodyStr).toContain("Custom 500 Page");
     expect(bodyStr).not.toContain(errorMarker);
   });
@@ -79,7 +87,9 @@ describe("Prompt 38 - 500 Error Page and Fallback", () => {
 
     expect(sentStatus).toBe(500);
     expect(sentHeaders["content-type"]).toBe("text/html; charset=utf-8");
-    const bodyStr = Buffer.isBuffer(sentBody) ? sentBody.toString("utf8") : String(sentBody);
+    const bodyStr = Buffer.isBuffer(sentBody)
+      ? sentBody.toString("utf8")
+      : String(sentBody);
     expect(bodyStr).toContain("Internal Server Error");
     expect(bodyStr).not.toContain(errorMarker);
   });
@@ -95,7 +105,9 @@ describe("Prompt 38 - 500 Error Page and Fallback", () => {
 
     expect(sentStatus).toBe(500);
     expect(sentHeaders["content-type"]).toBe("text/html; charset=utf-8");
-    const bodyStr = Buffer.isBuffer(sentBody) ? sentBody.toString("utf8") : String(sentBody);
+    const bodyStr = Buffer.isBuffer(sentBody)
+      ? sentBody.toString("utf8")
+      : String(sentBody);
     expect(bodyStr).toContain("Internal Server Error");
   });
 

@@ -10,20 +10,33 @@ import { readVersion } from "./lib/version.ts";
 import { serverSidecarRegistry } from "./lib/server-sidecar.ts";
 import { cspHashCollector } from "./lib/csp-hashes.ts";
 import { finalizeOwnedArtifacts } from "./lib/ownership.ts";
-import { scanApiRouteFiles, formatApiRouteWarning, buildApiRouteTree } from "./lib/api-routes.ts";
+import {
+  scanApiRouteFiles,
+  formatApiRouteWarning,
+  buildApiRouteTree,
+} from "./lib/api-routes.ts";
 import { withCompilationPublisher } from "./lib/compilation-events.ts";
 import { eventEmitter } from "./lib/events.ts";
-import { assertProductionBuildState, writeBuildState } from "./lib/build-state.ts";
+import {
+  assertProductionBuildState,
+  writeBuildState,
+} from "./lib/build-state.ts";
 import { toleratingExecFailure } from "./lib/exec-policy.ts";
+import { stdout as colorOut } from "./lib/colors.ts";
+import { pinServerUrl } from "./lib/pinned-banner.ts";
 
-export const runTranspile = async (options: { exitOnError?: boolean } = {}): Promise<void> => {
+export const runTranspile = async (
+  options: { exitOnError?: boolean } = {},
+): Promise<void> => {
   const projectRoot = resolve(process.cwd());
   const outputDirectory = resolve(projectRoot, BascikConfig.directory.out);
   const relativeOutputDirectory = relative(projectRoot, outputDirectory);
   if (
     relativeOutputDirectory === "" ||
     relativeOutputDirectory === ".." ||
-    relativeOutputDirectory.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) ||
+    relativeOutputDirectory.startsWith(
+      `..${process.platform === "win32" ? "\\" : "/"}`,
+    ) ||
     isAbsolute(relativeOutputDirectory)
   ) {
     throw new Error(
@@ -31,7 +44,9 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     );
   }
   // Targeted builds added by prompt 33 must skip this full output clean.
-  const isTargetedBuild = Boolean(BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0);
+  const isTargetedBuild = Boolean(
+    BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0,
+  );
   if (isTargetedBuild) {
     await assertProductionBuildState("targeted-build");
   }
@@ -56,8 +71,12 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
         await toleratingExecFailure(() => runExecPhase("post"));
       })(),
     ]);
-    const failures = results.filter(result => result.status === "rejected");
-    if (failures.length) throw new AggregateError(failures.map(result => result.reason), `Build pipeline failed: ${failures.map(result => String(result.reason)).join('; ')}`);
+    const failures = results.filter((result) => result.status === "rejected");
+    if (failures.length)
+      throw new AggregateError(
+        failures.map((result) => result.reason),
+        `Build pipeline failed: ${failures.map((result) => String(result.reason)).join("; ")}`,
+      );
     const version = await readVersion();
     // Prompt 101: all metadata (sidecar, CSP, manifest) and the durable
     // ownership inventory land in ONE ownership transaction. For a targeted
@@ -65,15 +84,21 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     // obsolete outputs; for a full build dist/ was cleaned, so it publishes
     // the current process's state fresh with no merge.
     await finalizeOwnedArtifacts(version, {
-      forTargetedBuild: Boolean(BascikConfig.only && BascikConfig.only.length > 0),
+      forTargetedBuild: Boolean(
+        BascikConfig.only && BascikConfig.only.length > 0,
+      ),
     });
 
     if (BascikConfig.target) {
       // Prompt 133: the deployment bundle is assembled from the finalized
       // dist/ tree and the sidecar it just committed. Failure here is a build
       // failure: a half-assembled bundle is never left behind.
-      const { emitServerlessArtifacts, formatServerlessSummary } = await import("./lib/serverless-artifacts.ts");
-      const result = await emitServerlessArtifacts(BascikConfig.target, { version, projectRoot });
+      const { emitServerlessArtifacts, formatServerlessSummary } =
+        await import("./lib/serverless-artifacts.ts");
+      const result = await emitServerlessArtifacts(BascikConfig.target, {
+        version,
+        projectRoot,
+      });
       console.log("\n" + formatServerlessSummary(result, projectRoot));
     } else {
       // Prompt 48: Warn when API routes are found in src/api/ during static builds
@@ -82,7 +107,11 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
       const apiFiles = await scanApiRouteFiles(absoluteApiDir);
       if (apiFiles.length > 0) {
         try {
-          const routes = buildApiRouteTree(apiFiles, absoluteApiDir, BascikConfig.base);
+          const routes = buildApiRouteTree(
+            apiFiles,
+            absoluteApiDir,
+            BascikConfig.base,
+          );
           const routePaths = routes.map((r) => r.path);
           console.warn("\n" + formatApiRouteWarning(routePaths, apiDir));
         } catch (err) {
@@ -93,7 +122,9 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     await writeBuildState("build", version);
 
     const totalElapsed = performance.now() - overallStart;
-    console.log(`\n✓ Build complete in ${formatDuration(totalElapsed)}`);
+    console.log(
+      `\n${colorOut.green("✓ Build complete")} in ${colorOut.bold(formatDuration(totalElapsed))}`,
+    );
   } else {
     await toleratingExecFailure(() => runExecPhase("pre"));
     // Parallel entries run alongside the dev server and page compilation:
@@ -110,6 +141,9 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     const { startDevServer } = await import("./lib/server-dev.ts");
     const dev = startDevServer({ ...options, parallel });
     const url = await dev.url;
+    // The URL is known as soon as the port is bound, long before pages finish compiling. Pin it to the top
+    // row of an interactive terminal; otherwise it is logged once boot completes, as before.
+    const pinned = url ? await pinServerUrl(url) : undefined;
 
     const publications: [string, unknown][] = [];
     await watchFiles({
@@ -121,7 +155,8 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
         ),
     });
     await toleratingExecFailure(() => runExecPhase("post"));
-    for (const [event, payload] of publications) eventEmitter.emit(event, payload);
+    for (const [event, payload] of publications)
+      eventEmitter.emit(event, payload);
     const version = await readVersion();
     await writeBuildState("development", version);
     const sidecarPath = await serverSidecarRegistry.writeSidecar(version);
@@ -135,8 +170,10 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     await manifestCollector.writeManifest(version);
     await dev.finishBoot();
     const totalElapsed = performance.now() - overallStart;
-    console.log(`✓ All tasks completed in ${formatDuration(totalElapsed)}`);
-    if (url) console.log(`Server running at ${url}`);
+    console.log(
+      `${colorOut.green("✓ All tasks completed")} in ${colorOut.bold(formatDuration(totalElapsed))}`,
+    );
+    if (url && !pinned) console.log(`Server running at ${url}`);
   }
 };
 
@@ -148,4 +185,3 @@ const isMain =
 if (isMain) {
   await runTranspile({ exitOnError: true });
 }
-

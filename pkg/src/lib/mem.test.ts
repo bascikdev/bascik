@@ -73,7 +73,9 @@ describe("storePage + getPage round-trip", () => {
     });
     const page = mem.getPage("gz-test")!;
     expect(gunzipSync(page.gzipContent!).equals(page.content)).toBe(true);
-    expect(brotliDecompressSync(page.compressedContent!).equals(page.content)).toBe(true);
+    expect(
+      brotliDecompressSync(page.compressedContent!).equals(page.content),
+    ).toBe(true);
   });
 
   it("a stale background gzip result never attaches to a page that was re-stored in the meantime", async () => {
@@ -90,7 +92,9 @@ describe("storePage + getPage round-trip", () => {
       expect(Buffer.isBuffer(second.gzipContent)).toBe(true);
     });
     const { gunzipSync } = await import("node:zlib");
-    expect(gunzipSync(second.gzipContent!).toString()).toBe("<html><body>replaced</body></html>");
+    expect(gunzipSync(second.gzipContent!).toString()).toBe(
+      "<html><body>replaced</body></html>",
+    );
   });
 
   it("stores usedComponentsSet as a Set", async () => {
@@ -241,10 +245,18 @@ describe("fileDependencies and pagesDependentOnFile", () => {
       fileDependencies: ["content/testing.md", "scripts/md-renderer.ts"],
     });
 
-    expect(mem.pagesDependentOnFile("content/cli.md")).toEqual(["pages/cli.html"]);
-    expect(mem.pagesDependentOnFile("content/testing.md")).toEqual(["pages/testing.html"]);
-    expect(mem.pagesDependentOnFile("scripts/md-renderer.ts")).toContain("pages/cli.html");
-    expect(mem.pagesDependentOnFile("scripts/md-renderer.ts")).toContain("pages/testing.html");
+    expect(mem.pagesDependentOnFile("content/cli.md")).toEqual([
+      "pages/cli.html",
+    ]);
+    expect(mem.pagesDependentOnFile("content/testing.md")).toEqual([
+      "pages/testing.html",
+    ]);
+    expect(mem.pagesDependentOnFile("scripts/md-renderer.ts")).toContain(
+      "pages/cli.html",
+    );
+    expect(mem.pagesDependentOnFile("scripts/md-renderer.ts")).toContain(
+      "pages/testing.html",
+    );
   });
 
   it("normalizes path strings so absolute, relative, and ./ paths match", async () => {
@@ -255,8 +267,12 @@ describe("fileDependencies and pagesDependentOnFile", () => {
       fileDependencies: ["./content/cli.md"],
     });
 
-    expect(mem.pagesDependentOnFile("content/cli.md")).toEqual(["pages/cli.html"]);
-    expect(mem.pagesDependentOnFile(`${process.cwd()}/content/cli.md`)).toEqual(["pages/cli.html"]);
+    expect(mem.pagesDependentOnFile("content/cli.md")).toEqual([
+      "pages/cli.html",
+    ]);
+    expect(mem.pagesDependentOnFile(`${process.cwd()}/content/cli.md`)).toEqual(
+      ["pages/cli.html"],
+    );
   });
 
   it("updates file dependencies when a page is updated", async () => {
@@ -266,7 +282,9 @@ describe("fileDependencies and pagesDependentOnFile", () => {
       pageContent: "<html></html>",
       fileDependencies: ["content/old.md"],
     });
-    expect(mem.pagesDependentOnFile("content/old.md")).toEqual(["pages/dynamic.html"]);
+    expect(mem.pagesDependentOnFile("content/old.md")).toEqual([
+      "pages/dynamic.html",
+    ]);
 
     await mem.storePage({
       relativePagePath: "pages/dynamic.html",
@@ -275,7 +293,9 @@ describe("fileDependencies and pagesDependentOnFile", () => {
       fileDependencies: ["content/new.md"],
     });
     expect(mem.pagesDependentOnFile("content/old.md")).toEqual([]);
-    expect(mem.pagesDependentOnFile("content/new.md")).toEqual(["pages/dynamic.html"]);
+    expect(mem.pagesDependentOnFile("content/new.md")).toEqual([
+      "pages/dynamic.html",
+    ]);
   });
 });
 
@@ -315,7 +335,9 @@ describe("failed dependencies so a missing helper is tracked", () => {
     mem.recordFailedDependencies(PAGE, ["src/lib/shared-helper.ts"]);
     mem.recordFailedDependencies(other, ["src/lib/shared-helper.ts"]);
     mem.removePage(PAGE);
-    expect(mem.pagesDependentOnFile("src/lib/shared-helper.ts")).toEqual([other]);
+    expect(mem.pagesDependentOnFile("src/lib/shared-helper.ts")).toEqual([
+      other,
+    ]);
   });
 });
 
@@ -391,7 +413,7 @@ describe("openPages tracking", () => {
   it("tracking the same path twice does not duplicate it", () => {
     mem.trackOpenPage("/about");
     mem.trackOpenPage("/about");
-    expect(mem.openPages.filter(p => p === "/about")).toHaveLength(1);
+    expect(mem.openPages.filter((p) => p === "/about")).toHaveLength(1);
   });
 
   it("untracking a path that was never tracked is a no-op", () => {
@@ -439,21 +461,39 @@ describe("storePage precomputes serverScriptPlan", () => {
     const html =
       `<p>a</p><script data-bascik-server>export default function() { return '1'; }</script><p>b</p>` +
       `<script data-bascik-stream>export default function() { return '2'; }</script><p>c</p>`;
-    await mem.storePage({ relativePagePath: "plan-page", absolutePagePath: "plan-page", pageContent: html, usedComponentsNames: [] });
+    await mem.storePage({
+      relativePagePath: "plan-page",
+      absolutePagePath: "plan-page",
+      pageContent: html,
+      usedComponentsNames: [],
+    });
     const page = mem.getPage("plan-page")!;
     expect(page.serverScriptPlan).toBeDefined();
     const plan = page.serverScriptPlan!;
     expect("segments" in plan).toBe(true);
     if (!("segments" in plan)) return;
-    expect(plan.segments.map((s) => (s.kind === "static" ? "static" : s.mode))).toEqual(["static", "server", "static", "stream", "static"]);
+    expect(
+      plan.segments.map((s) => (s.kind === "static" ? "static" : s.mode)),
+    ).toEqual(["static", "server", "static", "stream", "static"]);
     expect(plan.firstStreamIndex).toBe(3);
-    const rebuilt = Buffer.concat(plan.segments.map((s) => (s.kind === "static" ? s.bytes : Buffer.from(s.job.fullTag)))).toString();
+    const rebuilt = Buffer.concat(
+      plan.segments.map((s) =>
+        s.kind === "static" ? s.bytes : Buffer.from(s.job.fullTag),
+      ),
+    ).toString();
     expect(rebuilt).toBe(html);
-    expect((page as unknown as Record<string, unknown>).hasServerScripts).toBeUndefined();
+    expect(
+      (page as unknown as Record<string, unknown>).hasServerScripts,
+    ).toBeUndefined();
   });
 
   it("stores no plan for a page without server scripts", async () => {
-    await mem.storePage({ relativePagePath: "static-page", absolutePagePath: "static-page", pageContent: "<p>static</p>", usedComponentsNames: [] });
+    await mem.storePage({
+      relativePagePath: "static-page",
+      absolutePagePath: "static-page",
+      pageContent: "<p>static</p>",
+      usedComponentsNames: [],
+    });
     expect(mem.getPage("static-page")!.serverScriptPlan).toBeUndefined();
   });
 
@@ -461,17 +501,32 @@ describe("storePage precomputes serverScriptPlan", () => {
     // A documentation page, a blog post, or an escaped code sample contains the directive's name as
     // text. Nothing on it runs per request, so it must stay a plain cacheable, compressible page. The
     // byte pre-filter matches it, so the exact scan is what must decide.
-    const prose = "<p>Add <code>data-bascik-server</code> to a script. Streaming uses data-bascik-stream.</p>";
+    const prose =
+      "<p>Add <code>data-bascik-server</code> to a script. Streaming uses data-bascik-stream.</p>";
     const escaped =
       "<pre><code>&lt;script data-bascik-server&gt;export default () =&gt; 1&lt;/script&gt;</code></pre>";
     const comment = "<!-- <script data-bascik-server>old()</script> -->";
-    for (const [name, html] of [["prose", prose], ["escaped-sample", escaped], ["only-a-mention-in-an-attribute", '<p title="data-bascik-server">x</p>']] as const) {
-      await mem.storePage({ relativePagePath: name, absolutePagePath: name, pageContent: html, usedComponentsNames: [] });
+    for (const [name, html] of [
+      ["prose", prose],
+      ["escaped-sample", escaped],
+      ["only-a-mention-in-an-attribute", '<p title="data-bascik-server">x</p>'],
+    ] as const) {
+      await mem.storePage({
+        relativePagePath: name,
+        absolutePagePath: name,
+        pageContent: html,
+        usedComponentsNames: [],
+      });
       expect(mem.getPage(name)!.serverScriptPlan, name).toBeUndefined();
     }
     // An HTML comment is not a script either, but the exact scan is regex-based and does not parse
     // comments. It is pinned here so a change to that behavior is a deliberate one.
-    await mem.storePage({ relativePagePath: "commented", absolutePagePath: "commented", pageContent: comment, usedComponentsNames: [] });
+    await mem.storePage({
+      relativePagePath: "commented",
+      absolutePagePath: "commented",
+      pageContent: comment,
+      usedComponentsNames: [],
+    });
     expect(mem.getPage("commented")!.serverScriptPlan).toBeDefined();
   });
 
@@ -479,16 +534,30 @@ describe("storePage precomputes serverScriptPlan", () => {
     const html =
       "<p>The <code>data-bascik-server</code> attribute runs code per request.</p>" +
       "<script data-bascik-server>export default function() { return '1'; }</script>";
-    await mem.storePage({ relativePagePath: "mixed", absolutePagePath: "mixed", pageContent: html, usedComponentsNames: [] });
+    await mem.storePage({
+      relativePagePath: "mixed",
+      absolutePagePath: "mixed",
+      pageContent: html,
+      usedComponentsNames: [],
+    });
     const plan = mem.getPage("mixed")!.serverScriptPlan!;
-    expect("segments" in plan && plan.segments.some((segment) => segment.kind === "script")).toBe(true);
+    expect(
+      "segments" in plan &&
+        plan.segments.some((segment) => segment.kind === "script"),
+    ).toBe(true);
   });
 
   it("keeps the plan for a sidecar placeholder, which is a real script", async () => {
-    const html = '<script type="text/bascik-server" data-bascik-server-id="missing-id"></script>';
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const html =
+      '<script type="text/bascik-server" data-bascik-server-id="missing-id"></script>';
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      await mem.storePage({ relativePagePath: "placeholder", absolutePagePath: "placeholder", pageContent: html, usedComponentsNames: [] });
+      await mem.storePage({
+        relativePagePath: "placeholder",
+        absolutePagePath: "placeholder",
+        pageContent: html,
+        usedComponentsNames: [],
+      });
       // The sidecar has no such id, so planning fails. That failure must still be stored (and fail
       // production startup validation), not hidden by the new "no script means no plan" rule.
       const plan = mem.getPage("placeholder")!.serverScriptPlan;
@@ -499,11 +568,16 @@ describe("storePage precomputes serverScriptPlan", () => {
   });
 
   it("stores a planner error on the page instead of throwing, so other pages still load", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const bad = `<script data-bascik-server data-bascik-build>x</script>`;
       await expect(
-        mem.storePage({ relativePagePath: "bad-page", absolutePagePath: "bad-page", pageContent: bad, usedComponentsNames: [] }),
+        mem.storePage({
+          relativePagePath: "bad-page",
+          absolutePagePath: "bad-page",
+          pageContent: bad,
+          usedComponentsNames: [],
+        }),
       ).resolves.not.toThrow();
       const page = mem.getPage("bad-page")!;
       expect(page.serverScriptPlan).toBeDefined();

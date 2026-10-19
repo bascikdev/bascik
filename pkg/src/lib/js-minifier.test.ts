@@ -8,7 +8,9 @@ describe("minifyJs – basic comment stripping and whitespace collapsing", () =>
   });
 
   it("removes line comments", () => {
-    expect(minifyJs("var x = 1; // comment\nvar y = 2;")).toBe("var x=1;var y=2;");
+    expect(minifyJs("var x = 1; // comment\nvar y = 2;")).toBe(
+      "var x=1;var y=2;",
+    );
   });
 
   it("removes line comments at the end of file without newline", () => {
@@ -59,7 +61,9 @@ describe("minifyJs – string and template literal preservation", () => {
   });
 
   it("handles escape sequences in template literals", () => {
-    expect(minifyJs("var s = `he said \\`hi\\``;")).toBe("var s=`he said \\`hi\\``;");
+    expect(minifyJs("var s = `he said \\`hi\\``;")).toBe(
+      "var s=`he said \\`hi\\``;",
+    );
   });
 
   it("handles escape sequences in strings", () => {
@@ -69,24 +73,35 @@ describe("minifyJs – string and template literal preservation", () => {
   });
 
   it("preserves template literals with interpolated expressions", () => {
-    expect(minifyJs("var s = `sum is ${a + b}`;")).toBe("var s=`sum is ${a + b}`;");
+    expect(minifyJs("var s = `sum is ${a + b}`;")).toBe(
+      "var s=`sum is ${a + b}`;",
+    );
   });
 
   it("preserves nested template literals inside interpolated expressions", () => {
-    const input = "const value = `outer ${`See https://example.com/${name}`} tail`; return value;";
+    const input =
+      "const value = `outer ${`See https://example.com/${name}`} tail`; return value;";
     const minified = minifyJs(input);
 
     expect(() => new Function("name", minified)).not.toThrow();
-    expect(new Function("name", minified)("Ada")).toBe("outer See https://example.com/Ada tail");
+    expect(new Function("name", minified)("Ada")).toBe(
+      "outer See https://example.com/Ada tail",
+    );
   });
 
   it("preserves URL slashes after division following a call", () => {
-    const input = "function buildUrl(host){const ratio=Date.now()/1e3;return `https://${host}/${host}/`; } function next(){return `done`;}";
+    const input =
+      "function buildUrl(host){const ratio=Date.now()/1e3;return `https://${host}/${host}/`; } function next(){return `done`;}";
     const minified = minifyJs(input);
 
-    expect(() => new Function("host", `${minified};return buildUrl(host);`)).not.toThrow();
-    expect(new Function("host", `${minified};return buildUrl(host);`)("login.example"))
-      .toBe("https://login.example/login.example/");
+    expect(
+      () => new Function("host", `${minified};return buildUrl(host);`),
+    ).not.toThrow();
+    expect(
+      new Function("host", `${minified};return buildUrl(host);`)(
+        "login.example",
+      ),
+    ).toBe("https://login.example/login.example/");
   });
 });
 
@@ -116,14 +131,18 @@ describe("minifyJs – regex literal after control-statement headers", () => {
   });
 
   it("keeps strings that follow a regex statement after a block-closing brace", () => {
-    const source = 'function f(){}\n/["\']  y/.test(s);\nglobalThis.out = "a    b";';
+    const source =
+      'function f(){}\n/["\']  y/.test(s);\nglobalThis.out = "a    b";';
     const minified = minifyJs(source);
     expect(minified).toContain('"a    b"');
     expect(run(minified, "y").out).toBe("a    b");
   });
 
   it("still treats a slash after a non-control parenthesis as division", () => {
-    for (const source of ["const r = (8) / (4) / 2; globalThis.out = r;", "const f = (x) => x; const r = f(8) / 4 / 2; globalThis.out = r;"]) {
+    for (const source of [
+      "const r = (8) / (4) / 2; globalThis.out = r;",
+      "const f = (x) => x; const r = f(8) / 4 / 2; globalThis.out = r;",
+    ]) {
       const minified = minifyJs(source);
       expect(run(minified, "").threw).toBeUndefined();
       expect(run(minified, "").out).toBe(run(source, "").out);
@@ -132,7 +151,8 @@ describe("minifyJs – regex literal after control-statement headers", () => {
   });
 
   it("preserves a regex containing a backtick inside a template interpolation", () => {
-    const input = "const a = `x ${ /`/.test(y) ? 1 : 2 } z`; globalThis.out = a;";
+    const input =
+      "const a = `x ${ /`/.test(y) ? 1 : 2 } z`; globalThis.out = a;";
     const minified = minifyJs(input);
     expect(() => new Function("y", "globalThis", minified)).not.toThrow();
     const globalObj: Record<string, unknown> = {};
@@ -147,7 +167,9 @@ describe("minifyJs – regex literal handling", () => {
   });
 
   it("preserves a regex literal with flags", () => {
-    expect(minifyJs("var re = /hello world/gi;")).toBe("var re=/hello world/gi;");
+    expect(minifyJs("var re = /hello world/gi;")).toBe(
+      "var re=/hello world/gi;",
+    );
   });
 
   it("does not confuse '/' in a character class with the closing delimiter", () => {
@@ -215,14 +237,45 @@ describe("minifyJs – statement separation (ASI)", () => {
     expect(minifyJs(input)).toBe("if(a){foo()}else{bar()}");
   });
 
+  // Prettier puts a braceless body on its own line when the header and body do not fit on one line.
+  // A string in the header splits it across scanner segments, which once hid the keyword and
+  // emitted `if(a==="x");b=1;else c=2;`, a syntax error.
+  it.each([
+    ['if (a === "x")\n  b = 1;\nelse c = 2;', 'if(a==="x")b=1;else c=2;'],
+    ["if (a === 'x')\n  f(1);\nelse g();", "if(a==='x')f(1);else g();"],
+    ["if (a === `x`)\n  f();\nelse g();", "if(a===`x`)f();else g();"],
+    [
+      "if (a === /x/.source)\n  f();\nelse g();",
+      "if(a===/x/.source)f();else g();",
+    ],
+    ['while (a !== "x")\n  a = next();', 'while(a!=="x")a=next();'],
+    ['for (const k of o["x"])\n  use(k);', 'for(const k of o["x"])use(k);'],
+    [
+      'if (f("a", "b"))\n  g();\nelse if (h("c"))\n  i();\nelse\n  j();',
+      'if(f("a","b"))g();else if(h("c"))i();else j();',
+    ],
+  ])(
+    "keeps a braceless body on the next line attached to its header: %j",
+    (input, expected) => {
+      expect(minifyJs(input)).toBe(expected);
+    },
+  );
+
+  it("still ends a call whose parentheses contain a string before a new statement", () => {
+    expect(minifyJs('f("x")\ng()')).toBe('f("x");g()');
+  });
+
   it("handles try-catch-finally blocks correctly", () => {
     const input = "try {\n  a()\n} catch (e) {\n  b()\n} finally {\n  c()\n}";
     expect(minifyJs(input)).toBe("try{a()}catch(e){b()}finally{c()}");
   });
 
   it("does NOT insert semicolon if next line starts with a ternary or optional chain", () => {
-    const input = "var label = e.heading\n  ? esc(e.navLabel)\n  : esc(e.navLabel)";
-    expect(minifyJs(input)).toBe("var label=e.heading?esc(e.navLabel):esc(e.navLabel)");
+    const input =
+      "var label = e.heading\n  ? esc(e.navLabel)\n  : esc(e.navLabel)";
+    expect(minifyJs(input)).toBe(
+      "var label=e.heading?esc(e.navLabel):esc(e.navLabel)",
+    );
 
     const input2 = "foo\n  ?.bar()";
     expect(minifyJs(input2)).toBe("foo?.bar()");
@@ -257,9 +310,9 @@ describe("minifyJs – statement separation (ASI)", () => {
   });
 
   it("does not treat identifiers beginning with in as the in keyword", () => {
-    expect(minifyJs("const value = fields[field]\ninput.setAttribute('x', 'y');")).toBe(
-      "const value=fields[field];input.setAttribute('x','y');",
-    );
+    expect(
+      minifyJs("const value = fields[field]\ninput.setAttribute('x', 'y');"),
+    ).toBe("const value=fields[field];input.setAttribute('x','y');");
   });
 });
 
@@ -329,6 +382,39 @@ describe("minifyJs – property-based fuzzing", () => {
         expect(typeof result).toBe("string");
       }),
       { numRuns: 200 },
+    );
+  });
+
+  it("keeps braceless if/else bodies on their own lines valid JavaScript", () => {
+    // Generates the shape Prettier writes for long conditions: header, then an indented body.
+    const literal = fc.oneof(
+      fc.constantFrom('"x"', "'y'", "`z`", "1", "a", "/r/.source"),
+    );
+    const condition = fc
+      .tuple(literal, fc.constantFrom("===", "!==", "<", "&&"), literal)
+      .map(([l, op, r]) => `${l} ${op} ${r}`);
+    const statement = fc.constantFrom(
+      "b = 1;",
+      "f();",
+      'g("s");',
+      "o.p = `t`;",
+    );
+    fc.assert(
+      fc.property(
+        fc.constantFrom("if", "while"),
+        condition,
+        statement,
+        statement,
+        (keyword, cond, body, other) => {
+          const source =
+            keyword === "if"
+              ? `if (${cond})\n  ${body}\nelse ${other}`
+              : `while (${cond})\n  ${body}\n${other}`;
+          const minified = minifyJs(source);
+          expect(() => new Function(minified)).not.toThrow();
+        },
+      ),
+      { numRuns: 300 },
     );
   });
 });

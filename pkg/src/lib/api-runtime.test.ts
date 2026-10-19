@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Readable } from "node:stream";
-import { executeApiRoute, createWebRequest, requestOrigin } from "./api-runtime.ts";
+import {
+  executeApiRoute,
+  createWebRequest,
+  requestOrigin,
+} from "./api-runtime.ts";
 import { scriptRegistry } from "./script-registry.ts";
 import type { BascikRequest } from "./server.ts";
 
@@ -30,13 +34,22 @@ describe("API runtime execution", () => {
     expect(req.url).toBe("http://localhost:8080/api/test?search=1");
     expect(req.headers.get("content-type")).toBe("application/json");
     expect(req.headers.get("x-custom")).toBe("hello");
-    expect(Array.from(req.headers.keys()).some((k) => k.startsWith(":"))).toBe(false);
+    expect(Array.from(req.headers.keys()).some((k) => k.startsWith(":"))).toBe(
+      false,
+    );
   });
 
   it("routes to the exported method handler", async () => {
     const dummyModule = {
-      GET: async (_req: Request, ctx: { params: Record<string, string>; remoteIp: string }) => {
-        return Response.json({ ok: true, method: "GET", remoteIp: ctx.remoteIp });
+      GET: async (
+        _req: Request,
+        ctx: { params: Record<string, string>; remoteIp: string },
+      ) => {
+        return Response.json({
+          ok: true,
+          method: "GET",
+          remoteIp: ctx.remoteIp,
+        });
       },
       POST: async (req: Request, _ctx: { params: Record<string, string> }) => {
         const body = await req.json();
@@ -50,7 +63,9 @@ describe("API runtime execution", () => {
       version: 0,
     });
 
-    const webReq = new Request("http://localhost:8080/api/test", { method: "GET" });
+    const webReq = new Request("http://localhost:8080/api/test", {
+      method: "GET",
+    });
     const res = await executeApiRoute({
       filePath: "/app/src/api/test.ts",
       request: webReq,
@@ -75,7 +90,9 @@ describe("API runtime execution", () => {
       version: 0,
     });
 
-    const webReq = new Request("http://localhost:8080/api/test", { method: "DELETE" });
+    const webReq = new Request("http://localhost:8080/api/test", {
+      method: "DELETE",
+    });
     const res = await executeApiRoute({
       filePath: "/app/src/api/test.ts",
       request: webReq,
@@ -90,10 +107,11 @@ describe("API runtime execution", () => {
 
   it("derives HEAD from GET when HEAD is not explicitly exported", async () => {
     const dummyModule = {
-      GET: async () => new Response("hello world", {
-        status: 200,
-        headers: { "x-custom-header": "test" },
-      }),
+      GET: async () =>
+        new Response("hello world", {
+          status: 200,
+          headers: { "x-custom-header": "test" },
+        }),
     };
 
     vi.spyOn(scriptRegistry, "load").mockResolvedValue({
@@ -102,7 +120,9 @@ describe("API runtime execution", () => {
       version: 0,
     });
 
-    const webReq = new Request("http://localhost:8080/api/test", { method: "HEAD" });
+    const webReq = new Request("http://localhost:8080/api/test", {
+      method: "HEAD",
+    });
     const res = await executeApiRoute({
       filePath: "/app/src/api/test.ts",
       request: webReq,
@@ -118,10 +138,11 @@ describe("API runtime execution", () => {
   it("uses explicit HEAD export if defined", async () => {
     const dummyModule = {
       GET: async () => new Response("get body"),
-      HEAD: async () => new Response(null, {
-        status: 204,
-        headers: { "x-explicit-head": "true" },
-      }),
+      HEAD: async () =>
+        new Response(null, {
+          status: 204,
+          headers: { "x-explicit-head": "true" },
+        }),
     };
 
     vi.spyOn(scriptRegistry, "load").mockResolvedValue({
@@ -130,7 +151,9 @@ describe("API runtime execution", () => {
       version: 0,
     });
 
-    const webReq = new Request("http://localhost:8080/api/test", { method: "HEAD" });
+    const webReq = new Request("http://localhost:8080/api/test", {
+      method: "HEAD",
+    });
     const res = await executeApiRoute({
       filePath: "/app/src/api/test.ts",
       request: webReq,
@@ -153,7 +176,9 @@ describe("API runtime execution", () => {
       version: 0,
     });
 
-    const webReq = new Request("http://localhost:8080/api/test", { method: "OPTIONS" });
+    const webReq = new Request("http://localhost:8080/api/test", {
+      method: "OPTIONS",
+    });
     const res = await executeApiRoute({
       filePath: "/app/src/api/test.ts",
       request: webReq,
@@ -167,9 +192,11 @@ describe("API runtime execution", () => {
   });
 
   it("returns 500 when handler returns a non-Response", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => { });
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     const dummyModule = {
-      GET: async () => ({ not: "a response" } as any),
+      GET: async () => ({ not: "a response" }) as any,
     };
 
     vi.spyOn(scriptRegistry, "load").mockResolvedValue({
@@ -178,7 +205,9 @@ describe("API runtime execution", () => {
       version: 0,
     });
 
-    const webReq = new Request("http://localhost:8080/api/test", { method: "GET" });
+    const webReq = new Request("http://localhost:8080/api/test", {
+      method: "GET",
+    });
     const res = await executeApiRoute({
       filePath: "/app/src/api/test.ts",
       request: webReq,
@@ -206,7 +235,9 @@ describe("API runtime execution", () => {
       version: 0,
     });
 
-    const webReq = new Request("http://localhost:8080/api/test", { method: "GET" });
+    const webReq = new Request("http://localhost:8080/api/test", {
+      method: "GET",
+    });
     const res = await executeApiRoute({
       filePath: "/app/src/api/test.ts",
       request: webReq,
@@ -235,7 +266,9 @@ describe("API runtime execution", () => {
         version: 0,
       });
 
-      const jsonStream = Readable.from([Buffer.from(JSON.stringify({ greeting: "hello" }))]);
+      const jsonStream = Readable.from([
+        Buffer.from(JSON.stringify({ greeting: "hello" })),
+      ]);
       const jsonReq = createWebRequest({
         method: "POST",
         path: "/api/json",
@@ -251,7 +284,10 @@ describe("API runtime execution", () => {
         remoteIp: "127.0.0.1",
       });
       expect(jsonRes.status).toBe(200);
-      expect(await jsonRes.json()).toEqual({ ok: true, data: { greeting: "hello" } });
+      expect(await jsonRes.json()).toEqual({
+        ok: true,
+        data: { greeting: "hello" },
+      });
 
       // text
       const textModule = {
@@ -308,7 +344,9 @@ describe("API runtime execution", () => {
       const formReq = createWebRequest({
         method: "POST",
         path: "/api/form",
-        headers: { "content-type": `multipart/form-data; boundary=${formBoundary}` },
+        headers: {
+          "content-type": `multipart/form-data; boundary=${formBoundary}`,
+        },
         remoteIp: "127.0.0.1",
         rawStream: formStream,
       });
@@ -368,7 +406,7 @@ describe("API runtime execution", () => {
           rawStream: stream,
         },
         "http://localhost",
-        100 // maxBodySize = 100
+        100, // maxBodySize = 100
       );
 
       const res = await executeApiRoute({
@@ -416,7 +454,7 @@ describe("API runtime execution", () => {
           rawStream: stream,
         },
         "http://localhost",
-        100
+        100,
       );
 
       const res = await executeApiRoute({
@@ -453,7 +491,10 @@ describe("API runtime execution", () => {
       });
 
       // Chunked stream with no content-length header
-      const stream = Readable.from([Buffer.alloc(60, "x"), Buffer.alloc(60, "y")]);
+      const stream = Readable.from([
+        Buffer.alloc(60, "x"),
+        Buffer.alloc(60, "y"),
+      ]);
       const req = createWebRequest(
         {
           method: "POST",
@@ -463,7 +504,7 @@ describe("API runtime execution", () => {
           rawStream: stream,
         },
         "http://localhost",
-        100
+        100,
       );
 
       const res = await executeApiRoute({
@@ -515,7 +556,7 @@ describe("API runtime execution", () => {
           rawStream: nodeStream,
         },
         "http://localhost",
-        100
+        100,
       );
 
       const res = await executeApiRoute({
@@ -534,7 +575,11 @@ describe("API runtime execution", () => {
       try {
         let aborted = false;
         const dummyModule = {
-          GET: async (_req: Request, _ctx: any, { signal }: { signal: AbortSignal }) => {
+          GET: async (
+            _req: Request,
+            _ctx: any,
+            { signal }: { signal: AbortSignal },
+          ) => {
             return new Promise<Response>((_resolve) => {
               signal.addEventListener("abort", () => {
                 aborted = true;
@@ -581,7 +626,11 @@ describe("API runtime execution", () => {
         let abortCount = 0;
         let signalRef: AbortSignal | undefined;
         const dummyModule = {
-          GET: async (_req: Request, _ctx: any, { signal }: { signal: AbortSignal }) => {
+          GET: async (
+            _req: Request,
+            _ctx: any,
+            { signal }: { signal: AbortSignal },
+          ) => {
             signalRef = signal;
             signal.addEventListener("abort", () => {
               abortCount++;
@@ -623,7 +672,11 @@ describe("API runtime execution", () => {
       try {
         let aborted = false;
         const dummyModule = {
-          GET: async (_req: Request, _ctx: any, { signal }: { signal: AbortSignal }) => {
+          GET: async (
+            _req: Request,
+            _ctx: any,
+            { signal }: { signal: AbortSignal },
+          ) => {
             return new Promise<Response>((_resolve) => {
               signal.addEventListener("abort", () => {
                 aborted = true;
@@ -724,7 +777,8 @@ describe("API runtime execution", () => {
       vi.useFakeTimers();
       try {
         const dummyModule = {
-          GET: async () => new Response("head-content", { headers: { "x-test": "val" } }),
+          GET: async () =>
+            new Response("head-content", { headers: { "x-test": "val" } }),
         };
         vi.spyOn(scriptRegistry, "load").mockResolvedValue({
           filePath: "/app/src/api/head.ts",
@@ -732,7 +786,9 @@ describe("API runtime execution", () => {
           version: 0,
         });
 
-        const webReq = new Request("http://localhost:8080/api/head", { method: "HEAD" });
+        const webReq = new Request("http://localhost:8080/api/head", {
+          method: "HEAD",
+        });
         const res = await executeApiRoute({
           filePath: "/app/src/api/head.ts",
           request: webReq,
@@ -780,7 +836,9 @@ describe("API runtime execution", () => {
     it("cleans up timer when module load throws before invocation", async () => {
       vi.useFakeTimers();
       try {
-        vi.spyOn(scriptRegistry, "load").mockRejectedValue(new Error("load failed"));
+        vi.spyOn(scriptRegistry, "load").mockRejectedValue(
+          new Error("load failed"),
+        );
 
         const webReq = new Request("http://localhost:8080/api/load-fail");
         const res = await executeApiRoute({
@@ -835,7 +893,9 @@ describe("API runtime execution", () => {
     });
 
     it("11. The full error is logged server-side with the route path and cleaned stack trace", async () => {
-      const consoleError = vi.spyOn(console, "error").mockImplementation(() => { });
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
       const dummyModule = {
         GET: async () => {
           throw new Error("Detailed server error message");
@@ -856,13 +916,17 @@ describe("API runtime execution", () => {
       });
 
       expect(consoleError).toHaveBeenCalled();
-      const loggedMsg = consoleError.mock.calls.map((c) => c.join(" ")).join("\n");
+      const loggedMsg = consoleError.mock.calls
+        .map((c) => c.join(" "))
+        .join("\n");
       expect(loggedMsg).toContain("/app/src/api/logging.ts");
       expect(loggedMsg).toContain("Detailed server error message");
     });
 
     it("12. A route file with a syntax error fails only that route with 500", async () => {
-      vi.spyOn(scriptRegistry, "load").mockRejectedValue(new SyntaxError("Unexpected token '<'"));
+      vi.spyOn(scriptRegistry, "load").mockRejectedValue(
+        new SyntaxError("Unexpected token '<'"),
+      );
 
       const webReq = new Request("http://localhost:8080/api/broken");
       const res = await executeApiRoute({
@@ -877,7 +941,9 @@ describe("API runtime execution", () => {
     });
 
     it("13. A client disconnect mid-handler is not logged as a server fault", async () => {
-      const consoleError = vi.spyOn(console, "error").mockImplementation(() => { });
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
       const netError: any = new Error("Client aborted");
       netError.code = "ECONNRESET";
 
@@ -976,7 +1042,9 @@ describe("API runtime execution", () => {
           headers: { host: "app.internal:3000" },
           remoteIp: "127.0.0.1",
         };
-        expect(requestOrigin(httpReq, noTrustConfig)).toBe("http://app.internal:3000");
+        expect(requestOrigin(httpReq, noTrustConfig)).toBe(
+          "http://app.internal:3000",
+        );
 
         const directHttpsConfig = {
           http: {
@@ -984,7 +1052,9 @@ describe("API runtime execution", () => {
             tls: { enabled: true },
           },
         } as any;
-        expect(requestOrigin(httpReq, directHttpsConfig)).toBe("https://app.internal:3000");
+        expect(requestOrigin(httpReq, directHttpsConfig)).toBe(
+          "https://app.internal:3000",
+        );
       });
 
       it("reconstructs HTTPS terminated at trusted proxy forwarded over local HTTP", () => {
@@ -997,7 +1067,9 @@ describe("API runtime execution", () => {
           },
           remoteIp: "10.0.0.1",
         };
-        expect(requestOrigin(req, trustConfig)).toBe("https://public.example.com");
+        expect(requestOrigin(req, trustConfig)).toBe(
+          "https://public.example.com",
+        );
       });
 
       it("reconstructs external hostname and non-default port", () => {
@@ -1010,7 +1082,9 @@ describe("API runtime execution", () => {
           },
           remoteIp: "10.0.0.1",
         };
-        expect(requestOrigin(req, trustConfig)).toBe("https://api.example.com:8443");
+        expect(requestOrigin(req, trustConfig)).toBe(
+          "https://api.example.com:8443",
+        );
 
         const httpReq: BascikRequest = {
           method: "GET",
@@ -1021,7 +1095,9 @@ describe("API runtime execution", () => {
           },
           remoteIp: "10.0.0.1",
         };
-        expect(requestOrigin(httpReq, trustConfig)).toBe("http://api.example.com:8080");
+        expect(requestOrigin(httpReq, trustConfig)).toBe(
+          "http://api.example.com:8080",
+        );
       });
 
       it("ignores forwarded headers when proxy trust is disabled", () => {
@@ -1034,7 +1110,9 @@ describe("API runtime execution", () => {
           },
           remoteIp: "127.0.0.1",
         };
-        expect(requestOrigin(req, noTrustConfig)).toBe("http://app.internal:3000");
+        expect(requestOrigin(req, noTrustConfig)).toBe(
+          "http://app.internal:3000",
+        );
       });
 
       it("never uses the browser Origin header to reconstruct the target URL", () => {
@@ -1046,8 +1124,12 @@ describe("API runtime execution", () => {
           },
           remoteIp: "127.0.0.1",
         };
-        expect(requestOrigin(req, trustConfig)).toBe("http://app.internal:3000");
-        expect(requestOrigin(req, noTrustConfig)).toBe("http://app.internal:3000");
+        expect(requestOrigin(req, trustConfig)).toBe(
+          "http://app.internal:3000",
+        );
+        expect(requestOrigin(req, noTrustConfig)).toBe(
+          "http://app.internal:3000",
+        );
       });
 
       it("handles multi-value and chained proxy headers using the rightmost (immediate proxy) entry", () => {
@@ -1062,7 +1144,9 @@ describe("API runtime execution", () => {
           },
           remoteIp: "10.0.0.1",
         };
-        expect(requestOrigin(req, trustConfig)).toBe("https://trusted.example.com");
+        expect(requestOrigin(req, trustConfig)).toBe(
+          "https://trusted.example.com",
+        );
 
         // Array-valued headers (e.g. from multiple header lines)
         const reqArray: BascikRequest = {
@@ -1074,7 +1158,9 @@ describe("API runtime execution", () => {
           },
           remoteIp: "10.0.0.1",
         };
-        expect(requestOrigin(reqArray, trustConfig)).toBe("https://trusted.example.com");
+        expect(requestOrigin(reqArray, trustConfig)).toBe(
+          "https://trusted.example.com",
+        );
       });
 
       it("falls back safely on missing, malformed, or untrusted schemes", () => {
@@ -1089,7 +1175,9 @@ describe("API runtime execution", () => {
           remoteIp: "10.0.0.1",
         };
         // Falls back to local transport scheme (http)
-        expect(requestOrigin(badSchemeReq, trustConfig)).toBe("http://example.com");
+        expect(requestOrigin(badSchemeReq, trustConfig)).toBe(
+          "http://example.com",
+        );
 
         // Empty/whitespace proto
         const emptyProtoReq: BascikRequest = {
@@ -1101,7 +1189,9 @@ describe("API runtime execution", () => {
           },
           remoteIp: "10.0.0.1",
         };
-        expect(requestOrigin(emptyProtoReq, trustConfig)).toBe("http://example.com");
+        expect(requestOrigin(emptyProtoReq, trustConfig)).toBe(
+          "http://example.com",
+        );
       });
 
       it("rejects malformed authorities and falls back to host/:authority/localhost", () => {
@@ -1115,7 +1205,9 @@ describe("API runtime execution", () => {
           },
           remoteIp: "10.0.0.1",
         };
-        expect(requestOrigin(malformedReq, trustConfig)).toBe("https://app.internal:3000");
+        expect(requestOrigin(malformedReq, trustConfig)).toBe(
+          "https://app.internal:3000",
+        );
 
         // Userinfo (@) in host
         const userinfoReq: BascikRequest = {
@@ -1127,7 +1219,9 @@ describe("API runtime execution", () => {
           },
           remoteIp: "10.0.0.1",
         };
-        expect(requestOrigin(userinfoReq, trustConfig)).toBe("https://app.internal:3000");
+        expect(requestOrigin(userinfoReq, trustConfig)).toBe(
+          "https://app.internal:3000",
+        );
 
         // Invalid port in x-forwarded-host
         const invalidPortReq: BascikRequest = {
@@ -1139,7 +1233,9 @@ describe("API runtime execution", () => {
           },
           remoteIp: "10.0.0.1",
         };
-        expect(requestOrigin(invalidPortReq, trustConfig)).toBe("https://app.internal:3000");
+        expect(requestOrigin(invalidPortReq, trustConfig)).toBe(
+          "https://app.internal:3000",
+        );
 
         // Even if local host is also malformed or missing, falls back to localhost
         const totalFallbackReq: BascikRequest = {
@@ -1150,7 +1246,9 @@ describe("API runtime execution", () => {
           },
           remoteIp: "10.0.0.1",
         };
-        expect(requestOrigin(totalFallbackReq, trustConfig)).toBe("https://localhost");
+        expect(requestOrigin(totalFallbackReq, trustConfig)).toBe(
+          "https://localhost",
+        );
       });
 
       it.each(["[::::]", "[1:2:3]", "999.999.999.999", "256.0.0.1"])(
@@ -1166,8 +1264,12 @@ describe("API runtime execution", () => {
             },
             remoteIp: "10.0.0.1",
           };
-          expect(createWebRequest(forwardedReq, requestOrigin(forwardedReq, trustConfig)).url)
-            .toBe("https://app.internal:3000/api/users?active=true");
+          expect(
+            createWebRequest(
+              forwardedReq,
+              requestOrigin(forwardedReq, trustConfig),
+            ).url,
+          ).toBe("https://app.internal:3000/api/users?active=true");
 
           for (const header of ["host", ":authority"]) {
             const directReq: BascikRequest = {
@@ -1176,42 +1278,66 @@ describe("API runtime execution", () => {
               headers: { [header]: authority },
               remoteIp: "127.0.0.1",
             };
-            expect(createWebRequest(directReq, requestOrigin(directReq, noTrustConfig)).url)
-              .toBe("http://localhost/api/users?active=true");
+            expect(
+              createWebRequest(
+                directReq,
+                requestOrigin(directReq, noTrustConfig),
+              ).url,
+            ).toBe("http://localhost/api/users?active=true");
           }
         },
       );
 
       it.each([
         { authority: "[::ffff:192.0.2.1]", expectedHost: "[::ffff:c000:201]" },
-        { authority: "[::ffff:192.0.2.1]:8443", expectedHost: "[::ffff:c000:201]:8443" },
-        { authority: "public.example.com.", expectedHost: "public.example.com." },
-        { authority: "public.example.com.:8443", expectedHost: "public.example.com.:8443" },
-      ])("preserves valid authority $authority in the Request URL", ({ authority, expectedHost }) => {
-        const forwardedReq: BascikRequest = {
-          method: "GET",
-          path: "/api/users?active=true",
-          headers: {
-            host: "app.internal:3000",
-            "x-forwarded-proto": "https",
-            "x-forwarded-host": authority,
-          },
-          remoteIp: "10.0.0.1",
-        };
-        expect(createWebRequest(forwardedReq, requestOrigin(forwardedReq, trustConfig)).url)
-          .toBe(`https://${expectedHost}/api/users?active=true`);
-
-        for (const header of ["host", ":authority"]) {
-          const directReq: BascikRequest = {
+        {
+          authority: "[::ffff:192.0.2.1]:8443",
+          expectedHost: "[::ffff:c000:201]:8443",
+        },
+        {
+          authority: "public.example.com.",
+          expectedHost: "public.example.com.",
+        },
+        {
+          authority: "public.example.com.:8443",
+          expectedHost: "public.example.com.:8443",
+        },
+      ])(
+        "preserves valid authority $authority in the Request URL",
+        ({ authority, expectedHost }) => {
+          const forwardedReq: BascikRequest = {
             method: "GET",
             path: "/api/users?active=true",
-            headers: { [header]: authority },
-            remoteIp: "127.0.0.1",
+            headers: {
+              host: "app.internal:3000",
+              "x-forwarded-proto": "https",
+              "x-forwarded-host": authority,
+            },
+            remoteIp: "10.0.0.1",
           };
-          expect(createWebRequest(directReq, requestOrigin(directReq, noTrustConfig)).url)
-            .toBe(`http://${expectedHost}/api/users?active=true`);
-        }
-      });
+          expect(
+            createWebRequest(
+              forwardedReq,
+              requestOrigin(forwardedReq, trustConfig),
+            ).url,
+          ).toBe(`https://${expectedHost}/api/users?active=true`);
+
+          for (const header of ["host", ":authority"]) {
+            const directReq: BascikRequest = {
+              method: "GET",
+              path: "/api/users?active=true",
+              headers: { [header]: authority },
+              remoteIp: "127.0.0.1",
+            };
+            expect(
+              createWebRequest(
+                directReq,
+                requestOrigin(directReq, noTrustConfig),
+              ).url,
+            ).toBe(`http://${expectedHost}/api/users?active=true`);
+          }
+        },
+      );
 
       it("supports IPv6 bracketed hosts and ports in authority", () => {
         const ipv6Req: BascikRequest = {
@@ -1223,7 +1349,9 @@ describe("API runtime execution", () => {
           },
           remoteIp: "10.0.0.1",
         };
-        expect(requestOrigin(ipv6Req, trustConfig)).toBe("https://[2001:db8::1]:8443");
+        expect(requestOrigin(ipv6Req, trustConfig)).toBe(
+          "https://[2001:db8::1]:8443",
+        );
       });
 
       it("preserves HTTP/1.1 and HTTP/2 parity", () => {
@@ -1237,10 +1365,14 @@ describe("API runtime execution", () => {
           },
           remoteIp: "10.0.0.1",
         };
-        expect(requestOrigin(h2Req, trustConfig)).toBe("https://h2.example.com");
+        expect(requestOrigin(h2Req, trustConfig)).toBe(
+          "https://h2.example.com",
+        );
 
         // When no proxy header, uses :authority
-        expect(requestOrigin(h2Req, noTrustConfig)).toBe("http://internal-h2:8080");
+        expect(requestOrigin(h2Req, noTrustConfig)).toBe(
+          "http://internal-h2:8080",
+        );
 
         // HTTP/1.1 uses host
         const h1Req: BascikRequest = {
@@ -1252,7 +1384,9 @@ describe("API runtime execution", () => {
           },
           remoteIp: "10.0.0.1",
         };
-        expect(requestOrigin(h1Req, trustConfig)).toBe("https://h1.example.com");
+        expect(requestOrigin(h1Req, trustConfig)).toBe(
+          "https://h1.example.com",
+        );
       });
 
       it("preserves pathname and query-string in createWebRequest", () => {

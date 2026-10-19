@@ -14,13 +14,13 @@ Tag any `<script>` block with `data-bascik-build` and Bascik will execute it as 
 <!-- src/pages/index.html -->
 <!DOCTYPE html>
 <html lang="en">
-<body>
-  <script data-bascik-build>
-    export default async function () {
-      return '<p>This text was generated at build time.</p>';
-    }
-  </script>
-</body>
+  <body>
+    <script data-bascik-build>
+      export default async function () {
+        return "<p>This text was generated at build time.</p>";
+      }
+    </script>
+  </body>
 </html>
 ```
 
@@ -30,9 +30,9 @@ Output in the compiled HTML (`dist/index.html`):
 <!-- dist/index.html -->
 <!DOCTYPE html>
 <html lang="en">
-<body>
-  <p>This text was generated at build time.</p>
-</body>
+  <body>
+    <p>This text was generated at build time.</p>
+  </body>
 </html>
 ```
 
@@ -45,8 +45,8 @@ A build script defines its output through a callable default export:
 ```html
 <script data-bascik-build>
   export default async function () {
-    console.log('Rendering static content at build time');
-    return '<p>Generated content</p>';
+    console.log("Rendering static content at build time");
+    return "<p>Generated content</p>";
   }
 </script>
 ```
@@ -66,11 +66,11 @@ A common pattern is converting Markdown content to HTML at build time:
 
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
-  import { marked } from 'marked';
+  import { readFile } from "node:fs/promises";
+  import { marked } from "marked";
 
   export default async function () {
-    const md = await readFile('./content/intro.md', 'utf8');
+    const md = await readFile("./content/intro.md", "utf8");
     return marked(md);
   }
 </script>
@@ -86,11 +86,13 @@ Read a JSON data file and render HTML markup from it:
 
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
+  import { readFile } from "node:fs/promises";
 
   export default async function () {
-    const items = JSON.parse(await readFile('./content/nav.json', 'utf8'));
-    const links = items.map(item => `<li><a href="${item.href}">${item.label}</a></li>`).join('\n');
+    const items = JSON.parse(await readFile("./content/nav.json", "utf8"));
+    const links = items
+      .map((item) => `<li><a href="${item.href}">${item.label}</a></li>`)
+      .join("\n");
     return `<ul>\n${links}\n</ul>`;
   }
 </script>
@@ -102,10 +104,11 @@ Node.js includes a global `fetch`. Use it to pull remote data at build time so t
 
 ```html
 <script data-bascik-build>
-  const escape = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  const escape = (s) =>
+    String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
   export default async function () {
-    const res = await fetch('https://api.example.com/posts/latest');
+    const res = await fetch("https://api.example.com/posts/latest");
     const { title, excerpt } = await res.json();
     return `<h2>${escape(title)}</h2><p>${escape(excerpt)}</p>`;
   }
@@ -123,14 +126,14 @@ This gives the same client hydration capability as `getStaticProps` in Next.js (
 ```html
 <!-- src/pages/products.html -->
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
+  import { readFile } from "node:fs/promises";
 
   export default async function () {
-    const raw = await readFile('./content/products.json', 'utf8');
+    const raw = await readFile("./content/products.json", "utf8");
     const catalog = JSON.parse(raw);
 
     // Escape < to prevent closing script tags in JSON strings from breaking out
-    const safeJson = JSON.stringify(catalog).replaceAll('<', () => '\\u003c');
+    const safeJson = JSON.stringify(catalog).replaceAll("<", () => "\\u003c");
     return `<script type="application/json" id="catalog-data">${safeJson}<\/script>`;
   }
 </script>
@@ -138,10 +141,10 @@ This gives the same client hydration capability as `getStaticProps` in Next.js (
 <script>
   // Browser client script parses the static payload
   const catalog = JSON.parse(
-    document.getElementById('catalog-data').textContent
+    document.getElementById("catalog-data").textContent,
   );
 
-  console.log('Hydrated products:', catalog);
+  console.log("Hydrated products:", catalog);
 </script>
 ```
 
@@ -183,7 +186,7 @@ Build scripts work inside `<head>` as well as `<body>`. This lets you extract re
   <title>Home</title>
   <site-meta></site-meta>
   <script data-bascik-build>
-    const apiUrl = process.env.API_URL ?? 'https://api.example.com';
+    const apiUrl = process.env.API_URL ?? "https://api.example.com";
     export default () => `<meta name="api-url" content="${apiUrl}" />`;
   </script>
 </head>
@@ -195,8 +198,8 @@ Build scripts are standard Node.js ESM modules, so they can import shared helper
 
 ```html
 <script data-bascik-build>
-  import { renderMd } from '@/lib/md-renderer.ts';
-  export default async () => await renderMd('./content/about.md');
+  import { renderMd } from "@/lib/md-renderer.ts";
+  export default async () => await renderMd("./content/about.md");
 </script>
 ```
 
@@ -208,7 +211,7 @@ Environment variables set in your shell or a `.env` file (Bascik loads `./.env` 
 
 ```html
 <script data-bascik-build>
-  const apiUrl = process.env.API_URL ?? 'https://api.example.com';
+  const apiUrl = process.env.API_URL ?? "https://api.example.com";
   export default () => `<meta name="api-url" content="${apiUrl}" />`;
 </script>
 ```
@@ -222,10 +225,10 @@ When no source provides a value, the variable is **absent** from the script's en
 ```html
 <script data-bascik-build>
   export default function () {
-    if ('BASCIK_SITE_URL' in process.env) {
+    if ("BASCIK_SITE_URL" in process.env) {
       return `<link rel="canonical" href="${process.env.BASCIK_SITE_URL}/about" />`;
     }
-    return '';
+    return "";
   }
 </script>
 ```
@@ -237,7 +240,7 @@ Bascik forwards the normalized `base` config value to every build script as `BAS
 ```html
 <!-- Emit the base once, at build time, into a data attribute. -->
 <script data-bascik-build>
-  export default () => `data-base="${process.env.BASCIK_BASE ?? '/'}"`;
+  export default () => `data-base="${process.env.BASCIK_BASE ?? "/"}"`;
 </script>
 ```
 
@@ -250,7 +253,7 @@ When a build script runs inside a dynamic route template (for example, `src/page
 ```html
 <script data-bascik-build>
   export default function () {
-    const { params, data } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+    const { params, data } = JSON.parse(process.env.BASCIK_ROUTE || "{}");
     return `<h1>${data?.title || params?.slug}</h1>`;
   }
 </script>
@@ -305,9 +308,9 @@ Control failure handling using `scripts.onBuildScriptError` in `bascik.config.ts
 // bascik.config.ts
 export default {
   scripts: {
-    onBuildScriptError: 'error',  // 'error' | 'warn' | 'ignore'
-    onRoutesScriptError: 'error', // 'error' | 'warn' | 'ignore'
-    onServerScriptError: 'error', // 'error' | 'warn' | 'ignore'
+    onBuildScriptError: "error", // 'error' | 'warn' | 'ignore'
+    onRoutesScriptError: "error", // 'error' | 'warn' | 'ignore'
+    onServerScriptError: "error", // 'error' | 'warn' | 'ignore'
   },
 };
 ```
@@ -326,15 +329,17 @@ When build scripts read local files or fetch remote data, wrap operations in `tr
 
 ```ts
 // src/lib/md-renderer.ts
-import { readFile } from 'node:fs/promises';
-import { marked } from 'marked';
+import { readFile } from "node:fs/promises";
+import { marked } from "marked";
 
 export async function renderMd(filePath: string): Promise<string> {
   try {
-    const md = await readFile(filePath, 'utf8');
+    const md = await readFile(filePath, "utf8");
     return marked(md);
   } catch (err) {
-    console.warn(`[md-renderer] Could not read ${filePath}: ${(err as Error).message}`);
+    console.warn(
+      `[md-renderer] Could not read ${filePath}: ${(err as Error).message}`,
+    );
     return `<div class="callout"><p><strong>File not found:</strong> <code>${filePath}</code></p></div>`;
   }
 }
@@ -387,13 +392,13 @@ If your script reads from any of the undetectable sources above, configure `scri
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   scripts: {
     cache: {
       enabled: true,
-      exclude: ['src/pages/live-feed/**', 'src/components/api-cards/**'],
+      exclude: ["src/pages/live-feed/**", "src/components/api-cards/**"],
     },
   },
 });
@@ -405,13 +410,13 @@ Environment variables are not part of the cache key by default, so a script that
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   scripts: {
     cache: {
       enabled: true,
-      environment: ['MY_FEATURE_FLAG', 'API_BASE_URL'],
+      environment: ["MY_FEATURE_FLAG", "API_BASE_URL"],
     },
   },
 });
@@ -441,15 +446,16 @@ rm -rf node_modules/.cache/bascik/script-cache
 For per-request server-side rendering, see [Server Scripts](/server-scripts).
 
 <!-- demo:source-usage -->
+
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
-  import { marked } from 'marked';
+  import { readFile } from "node:fs/promises";
+  import { marked } from "marked";
 
   export default async function () {
-    const md = await readFile('./content/why-bascik.md', 'utf8');
-    const [heading, paragraph] = md.split('\n\n');
-    const title = heading.replace(/^#\s*/, '');
+    const md = await readFile("./content/why-bascik.md", "utf8");
+    const [heading, paragraph] = md.split("\n\n");
+    const title = heading.replace(/^#\s*/, "");
     return `
       <feature-card
         data-bascik-prop-title="${title}"
@@ -461,10 +467,14 @@ For per-request server-side rendering, see [Server Scripts](/server-scripts).
 ```
 
 <!-- demo:output-html -->
+
 ```html
 <!-- The script tag is replaced by the returned HTML string -->
 <div class="bascik__feature-card__fcard">
   <h3 class="bascik__feature-card__el__h3">Why Bascik</h3>
-  <p class="bascik__feature-card__el__p">Bascik is a build tool for HTML components with automatically scoped CSS and JS. Zero runtime. The code that ships is the code you wrote.</p>
+  <p class="bascik__feature-card__el__p">
+    Bascik is a build tool for HTML components with automatically scoped CSS and
+    JS. Zero runtime. The code that ships is the code you wrote.
+  </p>
 </div>
 ```

@@ -28,7 +28,10 @@ const listFiles = async (dir: string): Promise<string[]> => {
   }
 };
 
-const withoutNodeCompileCacheSettings = (): Record<string, string | undefined> => ({
+const withoutNodeCompileCacheSettings = (): Record<
+  string,
+  string | undefined
+> => ({
   NODE_COMPILE_CACHE: undefined,
   NODE_DISABLE_COMPILE_CACHE: undefined,
 });
@@ -38,20 +41,44 @@ describe("build script compile cache", () => {
     const root = fixtureRoot("compile-cache");
     fixtureRoots.push(root);
     await createFixtureDirs(root);
-    await writeFixtureFile(root, "bascik.config.js", `module.exports = {
+    await writeFixtureFile(
+      root,
+      "bascik.config.js",
+      `module.exports = {
   generate: { sitemap: false, robots: false },
-};`);
-    await writeFixtureFile(root, "src/lib/greet.ts", "export const greet = (name: string): string => `hello ${name}`;\n");
+};`,
+    );
+    await writeFixtureFile(
+      root,
+      "src/lib/greet.ts",
+      "export const greet = (name: string): string => `hello ${name}`;\n",
+    );
     for (const name of ["a", "b"]) {
-      await writeFixtureFile(root, `src/pages/${name}.html`, `<!doctype html><html lang="en"><head><title>${name}</title></head><body>
+      await writeFixtureFile(
+        root,
+        `src/pages/${name}.html`,
+        `<!doctype html><html lang="en"><head><title>${name}</title></head><body>
 <p><script data-bascik-build>
   import { greet } from '@/lib/greet.ts';
   export default () => greet(${JSON.stringify(name)}) + ':' + process.pid;
 </script></p>
-</body></html>`);
+</body></html>`,
+      );
     }
-    const cacheDir = join(root, "node_modules", ".cache", "bascik", "compile-cache");
-    const scriptCache = join(root, "node_modules", ".cache", "bascik", "script-cache");
+    const cacheDir = join(
+      root,
+      "node_modules",
+      ".cache",
+      "bascik",
+      "compile-cache",
+    );
+    const scriptCache = join(
+      root,
+      "node_modules",
+      ".cache",
+      "bascik",
+      "script-cache",
+    );
     const pids: string[] = [];
     const page = async (name: string) => {
       const html = await readFile(join(root, "dist", `${name}.html`), "utf8");
@@ -61,7 +88,10 @@ describe("build script compile cache", () => {
     const build = async (env: Record<string, string | undefined>) => {
       // Clear script output caching so every build runs real children.
       await rm(scriptCache, { recursive: true, force: true });
-      await runRealBuild({ projectRoot: root, env: env as Record<string, string> });
+      await runRealBuild({
+        projectRoot: root,
+        env: env as Record<string, string>,
+      });
       return [await page("a"), await page("b")];
     };
 
@@ -75,7 +105,12 @@ describe("build script compile cache", () => {
     expect(await build(withoutNodeCompileCacheSettings())).toEqual(cold);
 
     await rm(cacheDir, { recursive: true, force: true });
-    expect(await build({ ...withoutNodeCompileCacheSettings(), NODE_DISABLE_COMPILE_CACHE: "1" })).toEqual(cold);
+    expect(
+      await build({
+        ...withoutNodeCompileCacheSettings(),
+        NODE_DISABLE_COMPILE_CACHE: "1",
+      }),
+    ).toEqual(cold);
     expect(await listFiles(cacheDir)).toEqual([]);
   }, 120_000);
 });

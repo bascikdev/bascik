@@ -25,53 +25,63 @@
     const box = document.getElementById("box");
 
     document.getElementById("qs-id-btn").addEventListener("click", () => {
-      const el = document.querySelector('#box');
-      result.textContent = el ? "querySelector('#box'): found" : "querySelector('#box'): null";
+      const el = document.querySelector("#box");
+      result.textContent = el
+        ? "querySelector('#box'): found"
+        : "querySelector('#box'): null";
       result.classList.add("found");
     });
 
     document.getElementById("qsa-id-btn").addEventListener("click", () => {
-      const els = document.querySelectorAll('#box');
+      const els = document.querySelectorAll("#box");
       result.textContent = "querySelectorAll('#box'): " + els.length;
       result.classList.add("found");
     });
 
     document.getElementById("closest-id-btn").addEventListener("click", () => {
-      const el = box.closest('#root');
-      result.textContent = el ? "closest('#root'): found" : "closest('#root'): null";
+      const el = box.closest("#root");
+      result.textContent = el
+        ? "closest('#root'): found"
+        : "closest('#root'): null";
       result.classList.add("found");
     });
 
-    document.getElementById("closest-class-btn").addEventListener("click", () => {
-      const el = box.closest('.wrapper');
-      result.textContent = el ? "closest('.wrapper'): found" : "closest('.wrapper'): null";
-      result.classList.add("found");
-    });
+    document
+      .getElementById("closest-class-btn")
+      .addEventListener("click", () => {
+        const el = box.closest(".wrapper");
+        result.textContent = el
+          ? "closest('.wrapper'): found"
+          : "closest('.wrapper'): null";
+        result.classList.add("found");
+      });
 
     document.getElementById("matches-id-btn").addEventListener("click", () => {
-      result.textContent = "matches('#box'): " + box.matches('#box');
+      result.textContent = "matches('#box'): " + box.matches("#box");
       result.classList.add("found");
     });
 
-    document.getElementById("matches-class-btn").addEventListener("click", () => {
-      result.textContent = "matches('.box'): " + box.matches('.box');
-      result.classList.add("found");
-    });
+    document
+      .getElementById("matches-class-btn")
+      .addEventListener("click", () => {
+        result.textContent = "matches('.box'): " + box.matches(".box");
+        result.classList.add("found");
+      });
 
     document.getElementById("classname-btn").addEventListener("click", () => {
-      box.className = 'active';
+      box.className = "active";
       result.textContent = "className set to: " + box.className;
       result.classList.add("found");
     });
 
     document.getElementById("set-attr-btn").addEventListener("click", () => {
-      box.setAttribute('class', 'active');
+      box.setAttribute("class", "active");
       result.textContent = "setAttribute class: " + box.className;
       result.classList.add("found");
     });
 
     document.getElementById("reset-btn").addEventListener("click", () => {
-      box.className = 'box';
+      box.className = "box";
       result.textContent = "reset";
     });
   </script>

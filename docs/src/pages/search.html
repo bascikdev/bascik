@@ -1,8 +1,7 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
-<head>
-  <!--
+  <head>
+    <!--
     Why Bascik maintains a dedicated `/search` page:
     1. Search Engine Integration: the home page WebSite schema declares a Schema.org SearchAction
        pointing at `bascik.dev/search?q=...`. Google retired the Sitelinks Search Box in 2024, but
@@ -11,42 +10,39 @@
     3. Deep Linking: Allows bookmarking and sharing search result URLs directly.
     4. SEO Isolation: Configured with `noindex` below to prevent search engine indexing of dynamic queries.
   -->
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <meta name="robots" content="noindex" />
-  <meta name="bascik-sitemap" content="exclude" />
-  <meta name="description" content="Search the Bascik documentation." />
-  <title>Search - Bascik Docs</title>
-</head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <meta name="robots" content="noindex" />
+    <meta name="bascik-sitemap" content="exclude" />
+    <meta name="description" content="Search the Bascik documentation." />
+    <title>Search - Bascik Docs</title>
+  </head>
 
-<body>
+  <body>
+    <docs-nav />
 
-  <docs-nav />
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
 
-  <div class="container">
-    <div class="docs-layout">
-      <docs-sidebar />
-
-      <main class="docs-content" id="main-content">
-        <!-- Content rendered from docs/content/search.md at build time.
+        <main class="docs-content" id="main-content">
+          <!-- Content rendered from docs/content/search.md at build time.
              To update page content, edit the MD file, not this file. -->
-        <script data-bascik-build>
-          import { renderMd } from '@/lib/md-renderer.ts';
-          export default async () => await renderMd('./content/search.md');
-        </script>
-      </main>
+          <script data-bascik-build>
+            import { renderMd } from "@/lib/md-renderer.ts";
+            export default async () => await renderMd("./content/search.md");
+          </script>
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-
-</body>
-
+    <docs-footer />
+  </body>
 </html>

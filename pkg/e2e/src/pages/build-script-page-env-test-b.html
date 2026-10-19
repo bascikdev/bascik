@@ -1,21 +1,27 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Build Script Page Env Test B</title>
+  </head>
 
-<head>
-  <meta charset="UTF-8">
-  <title>Build Script Page Env Test B</title>
-</head>
-
-<body>
-  <!-- Identical script content to build-script-page-env-test.html.
+  <body>
+    <!-- Identical script content to build-script-page-env-test.html.
        The cache key must differ (filePath component) so this page
        renders its own path, not the other page's cached output. -->
-  <script data-bascik-build>
-    export default function () {
-      return '<p id="page-file">' + (process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '') + '</p>' +
-        '<p id="site-url">' + (process.env.BASCIK_SITE_URL ?? '') + '</p>';
-    }
-  </script>
-</body>
-
+    <script data-bascik-build>
+      export default function () {
+        return (
+          '<p id="page-file">' +
+          (process.env.BASCIK_SOURCE_FILE ??
+            process.env.BASCIK_PAGE_FILE ??
+            "") +
+          "</p>" +
+          '<p id="site-url">' +
+          (process.env.BASCIK_SITE_URL ?? "") +
+          "</p>"
+        );
+      }
+    </script>
+  </body>
 </html>

@@ -28,7 +28,7 @@ When writing property tests for Bascik's compilers and transformers, test agains
 Use customized `fast-check` arbitraries to represent realistic and adversarial inputs:
 
 ```ts
-import fc from 'fast-check';
+import fc from "fast-check";
 
 // Valid CSS and HTML identifiers (handles Unicode, hyphens, alphanumeric)
 export const identifierArb = fc.stringMatching(/^[a-z_][a-z0-9_-]{0,20}$/i);
@@ -38,17 +38,17 @@ export const classNameArb = fc.stringMatching(/^[a-zA-Z][a-zA-Z0-9_-]{1,15}$/);
 
 // Replacement string tokens that trigger JS String.prototype.replace traps
 export const regexTrapStringArb = fc.oneof(
-  fc.constant('$&'),
-  fc.constant('$1'),
-  fc.constant('$2'),
-  fc.constant('$\`'),
-  fc.constant("$\'")
+  fc.constant("$&"),
+  fc.constant("$1"),
+  fc.constant("$2"),
+  fc.constant("$\`"),
+  fc.constant("$\'"),
 );
 
 // Arbitrary HTML attributes (with and without values)
 export const htmlAttrArb = fc.record({
   name: fc.stringMatching(/^[a-z][a-z0-9-]{0,15}$/),
-  value: fc.string({ maxLength: 50 })
+  value: fc.string({ maxLength: 50 }),
 });
 ```
 
@@ -59,12 +59,12 @@ export const htmlAttrArb = fc.record({
 ### Testing String & Replacer Safety
 
 ```ts
-import { describe, it, expect } from 'vitest';
-import fc from 'fast-check';
-import { scopeCss } from './styles.js';
+import { describe, it, expect } from "vitest";
+import fc from "fast-check";
+import { scopeCss } from "./styles.js";
 
-describe('CSS Scoping Property Tests', () => {
-  it('never crashes on arbitrary CSS and scope IDs', () => {
+describe("CSS Scoping Property Tests", () => {
+  it("never crashes on arbitrary CSS and scope IDs", () => {
     fc.assert(
       fc.property(
         fc.string(),
@@ -73,24 +73,24 @@ describe('CSS Scoping Property Tests', () => {
           expect(() => {
             scopeCss(rawCss, scopeId);
           }).not.toThrow();
-        }
+        },
       ),
-      { numRuns: 200 }
+      { numRuns: 200 },
     );
   });
 
-  it('safely handles replacement tokens in class names', () => {
+  it("safely handles replacement tokens in class names", () => {
     fc.assert(
       fc.property(
         fc.string({ maxLength: 100 }),
-        fc.constant('data-test-$1'),
+        fc.constant("data-test-$1"),
         (content, prefix) => {
           // Verify that replacing prefix into content does not trigger regex backreference expansion
           const result = content.replace(/target/g, () => prefix);
-          expect(typeof result).toBe('string');
-        }
+          expect(typeof result).toBe("string");
+        },
       ),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 });
@@ -102,11 +102,11 @@ describe('CSS Scoping Property Tests', () => {
 
 When `fc.assert` fails, `fast-check` shrinks the input to the minimal failing counterexample.
 
-* **Check Seed and Path:** Always record the `seed` and `path` printed in the test failure output to reproduce the exact counterexample:
+- **Check Seed and Path:** Always record the `seed` and `path` printed in the test failure output to reproduce the exact counterexample:
   ```ts
-  fc.assert(property, { seed: 123456789, path: '0:1:0:2' });
+  fc.assert(property, { seed: 123456789, path: "0:1:0:2" });
   ```
-* **Common Root Causes in Bascik:**
+- **Common Root Causes in Bascik:**
   1. **String.prototype.replace with string replacer:** Always use a replacer function `() => value` rather than a bare string `value` when `value` may contain `$` tokens.
   2. **Unescaped regex constructors:** Dynamic regex creation `new RegExp(str)` failing on raw brackets, parentheses, or dots.
   3. **Recursive AST traversal depth:** Deeply nested elements causing stack overflow. Ensure recursion caps or iterative loops exist.

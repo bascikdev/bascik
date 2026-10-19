@@ -1,35 +1,39 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nesting Test</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 32px 24px;
+        background: #111;
+        color: #eee;
+        font-family: sans-serif;
+      }
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nesting Test</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 32px 24px;
-      background: #111;
-      color: #eee;
-      font-family: sans-serif;
-    }
+      .instances {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+    </style>
+  </head>
 
-    .instances {
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-    }
-  </style>
-</head>
+  <body>
+    <h1>Nesting Test</h1>
 
-<body>
-  <h1>Nesting Test</h1>
+    <div class="instances">
+      <nesting-test
+        data-bascik-prop-title="First Card"
+        data-bascik-prop-body="Body of the first card."
+      ></nesting-test>
 
-  <div class="instances">
-    <nesting-test data-bascik-prop-title="First Card" data-bascik-prop-body="Body of the first card."></nesting-test>
-
-    <nesting-test data-bascik-prop-title="Second Card" data-bascik-prop-body="Body of the second card."></nesting-test>
-  </div>
-</body>
-
+      <nesting-test
+        data-bascik-prop-title="Second Card"
+        data-bascik-prop-body="Body of the second card."
+      ></nesting-test>
+    </div>
+  </body>
 </html>

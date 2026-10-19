@@ -15,20 +15,27 @@ const baseDir = resolve(process.cwd(), "src/pages/nested");
 const importRoot = resolve(process.cwd(), "src");
 const rootUrl = (rel: string) => pathToFileURL(resolve(importRoot, rel)).href;
 const baseUrl = (rel: string) => pathToFileURL(resolve(baseDir, rel)).href;
-const rewrite = (source: string) => rewriteModuleSpecifiers(source, baseDir, { importRoot });
+const rewrite = (source: string) =>
+  rewriteModuleSpecifiers(source, baseDir, { importRoot });
 
 describe("classifySpecifier", () => {
-  it.each(["./a.ts", "../a.ts", "./", "../"])("classifies %s as relative", (value) => {
-    expect(classifySpecifier(value)).toBe("relative");
-  });
+  it.each(["./a.ts", "../a.ts", "./", "../"])(
+    "classifies %s as relative",
+    (value) => {
+      expect(classifySpecifier(value)).toBe("relative");
+    },
+  );
 
   it.each(["@/lib/a.ts", "@/"])("classifies %s as root", (value) => {
     expect(classifySpecifier(value)).toBe("root");
   });
 
-  it.each(["/lib/a.ts", "/a", "/"])("classifies %s as root-slash (rejected, not an alias)", (value) => {
-    expect(classifySpecifier(value)).toBe("root-slash");
-  });
+  it.each(["/lib/a.ts", "/a", "/"])(
+    "classifies %s as root-slash (rejected, not an alias)",
+    (value) => {
+      expect(classifySpecifier(value)).toBe("root-slash");
+    },
+  );
 
   it.each([
     "@scope/pkg",
@@ -49,18 +56,32 @@ describe("classifySpecifier", () => {
 describe("hasDynamicImportExpression", () => {
   it("is false for static and string-literal dynamic imports", () => {
     expect(hasDynamicImportExpression(`import { x } from 'pkg';`)).toBe(false);
-    expect(hasDynamicImportExpression(`import * as ns from 'pkg';`)).toBe(false);
-    expect(hasDynamicImportExpression(`import def, { a } from 'pkg';`)).toBe(false);
-    expect(hasDynamicImportExpression(`const y = await import('pkg');`)).toBe(false);
+    expect(hasDynamicImportExpression(`import * as ns from 'pkg';`)).toBe(
+      false,
+    );
+    expect(hasDynamicImportExpression(`import def, { a } from 'pkg';`)).toBe(
+      false,
+    );
+    expect(hasDynamicImportExpression(`const y = await import('pkg');`)).toBe(
+      false,
+    );
     expect(hasDynamicImportExpression(`import 'side-effect';`)).toBe(false);
     expect(hasDynamicImportExpression("import.meta.url")).toBe(false);
   });
 
   it("is true for dynamic non-literal import specifiers", () => {
-    expect(hasDynamicImportExpression("const m = await import(name);")).toBe(true);
-    expect(hasDynamicImportExpression("const m = await import(`./${part}.mjs`);")).toBe(true);
-    expect(hasDynamicImportExpression("const m = await import(foo + '.mjs');")).toBe(true);
-    expect(hasDynamicImportExpression("for (const p of pkgs) await import(p);")).toBe(true);
+    expect(hasDynamicImportExpression("const m = await import(name);")).toBe(
+      true,
+    );
+    expect(
+      hasDynamicImportExpression("const m = await import(`./${part}.mjs`);"),
+    ).toBe(true);
+    expect(
+      hasDynamicImportExpression("const m = await import(foo + '.mjs');"),
+    ).toBe(true);
+    expect(
+      hasDynamicImportExpression("for (const p of pkgs) await import(p);"),
+    ).toBe(true);
     // Member-expression arguments are identifier-prefixed tokens (`(` does not
     // directly follow `import`), so they were never intended to be treated as
     // static literals. They are genuinely dynamic and must classify non-cacheable.
@@ -77,24 +98,42 @@ describe("hasDynamicImportExpression", () => {
 
 describe("rewriteModuleSpecifiers with an import root", () => {
   it("rewrites @/ static imports against the import root", () => {
-    expect(rewrite("import { a } from '@/lib/a.ts';")).toBe(`import { a } from '${rootUrl("lib/a.ts")}';`);
+    expect(rewrite("import { a } from '@/lib/a.ts';")).toBe(
+      `import { a } from '${rootUrl("lib/a.ts")}';`,
+    );
   });
 
   it("rejects a leading-slash static import with a did-you-mean pointing at @/", () => {
-    expect(() => rewrite("import { a } from '/lib/a.ts';")).toThrow(LeadingSlashSpecifierError);
-    expect(() => rewrite("import { a } from '/lib/a.ts';")).toThrow("'/lib/a.ts'");
-    expect(() => rewrite("import { a } from '/lib/a.ts';")).toThrow("@/lib/a.ts");
+    expect(() => rewrite("import { a } from '/lib/a.ts';")).toThrow(
+      LeadingSlashSpecifierError,
+    );
+    expect(() => rewrite("import { a } from '/lib/a.ts';")).toThrow(
+      "'/lib/a.ts'",
+    );
+    expect(() => rewrite("import { a } from '/lib/a.ts';")).toThrow(
+      "@/lib/a.ts",
+    );
   });
 
   it("rejects leading-slash dynamic and export-from specifiers too", () => {
-    expect(() => rewrite("const m = await import('/lib/a.ts');")).toThrow(LeadingSlashSpecifierError);
-    expect(() => rewrite("export { a } from '/lib/a.ts';")).toThrow(LeadingSlashSpecifierError);
+    expect(() => rewrite("const m = await import('/lib/a.ts');")).toThrow(
+      LeadingSlashSpecifierError,
+    );
+    expect(() => rewrite("export { a } from '/lib/a.ts';")).toThrow(
+      LeadingSlashSpecifierError,
+    );
   });
 
   it("resolveSpecifierPath throws for a leading slash and the message names the fix", () => {
-    expect(() => resolveSpecifierPath("/lib/a.ts", baseDir, importRoot)).toThrow(LeadingSlashSpecifierError);
-    expect(() => resolveSpecifierPath("/lib/a.ts", baseDir, importRoot)).toThrow(/@\/lib\/a\.ts/);
-    expect(() => resolveSpecifierPath("/lib/a.ts", baseDir, importRoot)).toThrow(/\.\/lib\/a\.ts/);
+    expect(() =>
+      resolveSpecifierPath("/lib/a.ts", baseDir, importRoot),
+    ).toThrow(LeadingSlashSpecifierError);
+    expect(() =>
+      resolveSpecifierPath("/lib/a.ts", baseDir, importRoot),
+    ).toThrow(/@\/lib\/a\.ts/);
+    expect(() =>
+      resolveSpecifierPath("/lib/a.ts", baseDir, importRoot),
+    ).toThrow(/\.\/lib\/a\.ts/);
   });
 
   it("rewrites dynamic, export-from, and bare side-effect alias imports", () => {
@@ -103,11 +142,13 @@ describe("rewriteModuleSpecifiers with an import root", () => {
       "export { a } from '@/lib/a.ts';",
       "import '@/setup.ts';",
     ].join("\n");
-    expect(rewrite(source)).toBe([
-      `const m = await import('${rootUrl("lib/a.ts")}');`,
-      `export { a } from '${rootUrl("lib/a.ts")}';`,
-      `import '${rootUrl("setup.ts")}';`,
-    ].join("\n"));
+    expect(rewrite(source)).toBe(
+      [
+        `const m = await import('${rootUrl("lib/a.ts")}');`,
+        `export { a } from '${rootUrl("lib/a.ts")}';`,
+        `import '${rootUrl("setup.ts")}';`,
+      ].join("\n"),
+    );
   });
 
   it("keeps ./ and ../ resolved against baseDir, not the import root", () => {
@@ -152,14 +193,26 @@ describe("rewriteModuleSpecifiers with an import root", () => {
 
   it("inserts replacement values literally even when the import root contains $ tokens", () => {
     const dollarRoot = resolve(process.cwd(), "src/$&/$1/$`");
-    const rewritten = rewriteModuleSpecifiers("import a from '@/lib/a.ts';", baseDir, { importRoot: dollarRoot });
-    expect(rewritten).toBe(`import a from '${pathToFileURL(resolve(dollarRoot, "lib/a.ts")).href}';`);
+    const rewritten = rewriteModuleSpecifiers(
+      "import a from '@/lib/a.ts';",
+      baseDir,
+      { importRoot: dollarRoot },
+    );
+    expect(rewritten).toBe(
+      `import a from '${pathToFileURL(resolve(dollarRoot, "lib/a.ts")).href}';`,
+    );
   });
 
   it("supports an import root outside the project (monorepo shared folder)", () => {
     const sharedRoot = resolve(process.cwd(), "../shared");
-    const rewritten = rewriteModuleSpecifiers("import a from '@/lib/a.ts';", baseDir, { importRoot: sharedRoot });
-    expect(rewritten).toBe(`import a from '${pathToFileURL(resolve(process.cwd(), "../shared/lib/a.ts")).href}';`);
+    const rewritten = rewriteModuleSpecifiers(
+      "import a from '@/lib/a.ts';",
+      baseDir,
+      { importRoot: sharedRoot },
+    );
+    expect(rewritten).toBe(
+      `import a from '${pathToFileURL(resolve(process.cwd(), "../shared/lib/a.ts")).href}';`,
+    );
   });
 });
 
@@ -167,21 +220,33 @@ describe("resolveScriptSrcPath", () => {
   const containingDir = resolve(process.cwd(), "src/pages/nested");
 
   it("resolves ./ and ../ against the containing directory", () => {
-    expect(resolveScriptSrcPath("./x.ts", containingDir, importRoot)).toBe(resolve(containingDir, "x.ts"));
-    expect(resolveScriptSrcPath("../x.ts", containingDir, importRoot)).toBe(resolve(containingDir, "../x.ts"));
+    expect(resolveScriptSrcPath("./x.ts", containingDir, importRoot)).toBe(
+      resolve(containingDir, "x.ts"),
+    );
+    expect(resolveScriptSrcPath("../x.ts", containingDir, importRoot)).toBe(
+      resolve(containingDir, "../x.ts"),
+    );
   });
 
   it("resolves bare paths against the containing directory (unchanged behavior)", () => {
-    expect(resolveScriptSrcPath("lib/x.ts", containingDir, importRoot)).toBe(resolve(containingDir, "lib/x.ts"));
+    expect(resolveScriptSrcPath("lib/x.ts", containingDir, importRoot)).toBe(
+      resolve(containingDir, "lib/x.ts"),
+    );
   });
 
   it("resolves @/ against the import root", () => {
-    expect(resolveScriptSrcPath("@/lib/x.ts", containingDir, importRoot)).toBe(resolve(importRoot, "lib/x.ts"));
+    expect(resolveScriptSrcPath("@/lib/x.ts", containingDir, importRoot)).toBe(
+      resolve(importRoot, "lib/x.ts"),
+    );
   });
 
   it("rejects a leading-slash src with a did-you-mean pointing at @/", () => {
-    expect(() => resolveScriptSrcPath("/lib/x.ts", containingDir, importRoot)).toThrow(LeadingSlashSpecifierError);
-    expect(() => resolveScriptSrcPath("/lib/x.ts", containingDir, importRoot)).toThrow("@/lib/x.ts");
+    expect(() =>
+      resolveScriptSrcPath("/lib/x.ts", containingDir, importRoot),
+    ).toThrow(LeadingSlashSpecifierError);
+    expect(() =>
+      resolveScriptSrcPath("/lib/x.ts", containingDir, importRoot),
+    ).toThrow("@/lib/x.ts");
   });
 });
 
@@ -191,7 +256,10 @@ describe("findModuleSpecifiers", () => {
     `{ markReady(); } /import\\(['"]\\.\\/fake\\.ts['"]\\)/.test(source);`,
     `if (ready) /import('fake-package')/.test(source);`,
     `{ markReady(); } /import('fake-package')/.test(source);`,
-  ])("ignores import-like text in a regex after a statement boundary", (source) => {
-    expect(findModuleSpecifiers(source)).toEqual([]);
-  });
+  ])(
+    "ignores import-like text in a regex after a statement boundary",
+    (source) => {
+      expect(findModuleSpecifiers(source)).toEqual([]);
+    },
+  );
 });

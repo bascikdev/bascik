@@ -37,33 +37,36 @@ A template is a full page, like every file in `src/pages/`: it needs `<html>`, `
 <!-- src/pages/blog/[slug].html -->
 <!doctype html>
 <html lang="en">
-<head>
-  <script data-bascik-routes>
-    import { readdir } from 'node:fs/promises';
-
-    export default async function () {
-      const files = await readdir('./content/posts');
-      return files
-        .filter((file) => file.endsWith('.md'))
-        .map((file) => ({ params: { slug: file.replace(/\.md$/, '') } }));
-    }
-  </script>
-  <title>Blog</title>
-</head>
-<body>
-  <article>
-    <script data-bascik-build>
-      import { readFile } from 'node:fs/promises';
-      import { marked } from 'marked';
+  <head>
+    <script data-bascik-routes>
+      import { readdir } from "node:fs/promises";
 
       export default async function () {
-        const { params } = JSON.parse(process.env.BASCIK_ROUTE);
-        const md = await readFile(`./content/posts/${params.slug}.md`, 'utf8');
-        return marked(md);
+        const files = await readdir("./content/posts");
+        return files
+          .filter((file) => file.endsWith(".md"))
+          .map((file) => ({ params: { slug: file.replace(/\.md$/, "") } }));
       }
     </script>
-  </article>
-</body>
+    <title>Blog</title>
+  </head>
+  <body>
+    <article>
+      <script data-bascik-build>
+        import { readFile } from "node:fs/promises";
+        import { marked } from "marked";
+
+        export default async function () {
+          const { params } = JSON.parse(process.env.BASCIK_ROUTE);
+          const md = await readFile(
+            `./content/posts/${params.slug}.md`,
+            "utf8",
+          );
+          return marked(md);
+        }
+      </script>
+    </article>
+  </body>
 </html>
 ```
 
@@ -92,18 +95,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 <!-- src/pages/about.html (Bascik - after) -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <title>About - Acme</title>
-  <link rel="stylesheet" href="/css/styles.css" />
-</head>
-<body>
-  <site-nav></site-nav>
-  <main>
-    <h1>About</h1>
-    <p>We build things.</p>
-  </main>
-  <site-footer />
-</body>
+  <head>
+    <title>About - Acme</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <site-nav></site-nav>
+    <main>
+      <h1>About</h1>
+      <p>We build things.</p>
+    </main>
+    <site-footer />
+  </body>
 </html>
 ```
 
@@ -122,16 +125,16 @@ If many pages share the same outer wrapper, extract it into a layout component t
 <!-- src/pages/about.html (using the layout component) -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <title>About - Acme</title>
-  <link rel="stylesheet" href="/css/styles.css" />
-</head>
-<body>
-  <site-layout>
-    <h1>About</h1>
-    <p>We build things.</p>
-  </site-layout>
-</body>
+  <head>
+    <title>About - Acme</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <site-layout>
+      <h1>About</h1>
+      <p>We build things.</p>
+    </site-layout>
+  </body>
 </html>
 ```
 
@@ -144,7 +147,7 @@ A build script returns strings, not JSX, so escape every value you interpolate. 
 ```jsx
 // pages/products.js (Next.js - before)
 export async function getStaticProps() {
-  const res = await fetch('https://api.example.com/products');
+  const res = await fetch("https://api.example.com/products");
   const products = await res.json();
   return { props: { products } };
 }
@@ -152,8 +155,10 @@ export async function getStaticProps() {
 export default function Products({ products }) {
   return (
     <ul>
-      {products.map(p => (
-        <li key={p.id}>{p.name} - ${p.price}</li>
+      {products.map((p) => (
+        <li key={p.id}>
+          {p.name} - ${p.price}
+        </li>
       ))}
     </ul>
   );
@@ -165,11 +170,9 @@ export default function Products({ products }) {
 <ul>
   <script data-bascik-build>
     export default async function () {
-      const res = await fetch('https://api.example.com/products');
+      const res = await fetch("https://api.example.com/products");
       const products = await res.json();
-      return products
-        .map(p => `<li>${p.name} - $${p.price}</li>`)
-        .join('\n');
+      return products.map((p) => `<li>${p.name} - $${p.price}</li>`).join("\n");
     }
   </script>
 </ul>
@@ -187,9 +190,9 @@ In Bascik, you do not need a runtime framework or synthetic data payloads. When 
 ```html
 <script data-bascik-build>
   export default async function () {
-    const res = await fetch('https://api.example.com/products');
+    const res = await fetch("https://api.example.com/products");
     const products = await res.json();
-    const safeJson = JSON.stringify(products).replaceAll('<', () => '\\u003c');
+    const safeJson = JSON.stringify(products).replaceAll("<", () => "\\u003c");
     return `<script type="application/json" id="products-data">${safeJson}<\/script>`;
   }
 </script>
@@ -197,7 +200,7 @@ In Bascik, you do not need a runtime framework or synthetic data payloads. When 
 <script>
   // Browser JavaScript reads the payload directly:
   const products = JSON.parse(
-    document.getElementById('products-data').textContent
+    document.getElementById("products-data").textContent,
   );
 </script>
 ```
@@ -213,8 +216,8 @@ Move the code that turns data into markup into `src/lib/*.ts` helpers that retur
 
 ```ts
 // src/lib/render.ts (illustrative)
-import type { Post } from '../interfaces/post.ts';
-import { escapeHtml as e } from './site.ts';
+import type { Post } from "../interfaces/post.ts";
+import { escapeHtml as e } from "./site.ts";
 
 export function renderPreview(post: Post): string {
   return `<h3><a href="/posts/${e(post.slug)}">${e(post.title)}</a></h3>`;
@@ -229,9 +232,9 @@ export function renderPreview(post: Post): string {
 <head>
   <site-head></site-head>
   <script data-bascik-build>
-    import { renderHead } from '@/lib/site.ts';
+    import { renderHead } from "@/lib/site.ts";
 
-    export default () => renderHead({ title: 'About - Acme' });
+    export default () => renderHead({ title: "About - Acme" });
   </script>
 </head>
 ```
@@ -272,7 +275,7 @@ Replace the `<Head>` component from `next/head` with regular `<title>` and `<met
 
 ```jsx
 // pages/about.js (Next.js - before)
-import Head from 'next/head';
+import Head from "next/head";
 
 export default function About() {
   return (
@@ -291,18 +294,18 @@ export default function About() {
 <!-- src/pages/about.html (Bascik - after) -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>About - Acme</title>
-  <meta name="description" content="About Acme Corp." />
-  <link rel="stylesheet" href="/css/styles.css" />
-</head>
-<body>
-  <site-nav></site-nav>
-  <h1>About</h1>
-  <site-footer />
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>About - Acme</title>
+    <meta name="description" content="About Acme Corp." />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <site-nav></site-nav>
+    <h1>About</h1>
+    <site-footer />
+  </body>
 </html>
 ```
 

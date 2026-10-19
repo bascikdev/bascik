@@ -25,14 +25,14 @@ List the shared components directory alongside the site's own in `directory.comp
 
 ```ts
 // sites/marketing/bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   directory: {
-    components: ['../../shared/components', 'src/components'],
+    components: ["../../shared/components", "src/components"],
   },
   scripts: {
-    importRoot: '../../shared/scripts',
+    importRoot: "../../shared/scripts",
   },
 });
 ```
@@ -57,11 +57,11 @@ With `scripts.importRoot` pointing at the shared scripts directory, `@/` reaches
 ```html
 <!-- sites/marketing/src/pages/pricing.html -->
 <script data-bascik-build>
-  import { renderMd } from '@/md-renderer.ts';        // shared/scripts/md-renderer.ts
-  import { pricingTable } from './helpers/pricing.ts'; // sites/marketing/src/pages/helpers/pricing.ts
+  import { renderMd } from "@/md-renderer.ts"; // shared/scripts/md-renderer.ts
+  import { pricingTable } from "./helpers/pricing.ts"; // sites/marketing/src/pages/helpers/pricing.ts
 
   export default async function () {
-    const md = await renderMd('./content/pricing.md');
+    const md = await renderMd("./content/pricing.md");
     const table = pricingTable();
     return `${md}\n${table}`;
   }
@@ -90,7 +90,7 @@ A build script in a shared component runs as part of whichever site uses it, so 
 ```html
 <!-- shared/components/site-nav/site-nav.html -->
 <script data-bascik-build>
-  import { links } from '../../scripts/links.ts';
+  import { links } from "../../scripts/links.ts";
   export default () => links();
 </script>
 ```
@@ -104,9 +104,9 @@ Keep design tokens in one stylesheet, such as `shared/styles/tokens.css`, and in
 ```ts
 // sites/marketing/bascik.config.ts
 export default defineConfig({
-  directory: { components: ['src/components', '../../shared/components'] },
-  assets: { inlineStyles: ['../../shared/styles/tokens.css'] },
-  pipeline: { watchPaths: ['../../shared/scripts/', '../../shared/styles/'] },
+  directory: { components: ["src/components", "../../shared/components"] },
+  assets: { inlineStyles: ["../../shared/styles/tokens.css"] },
+  pipeline: { watchPaths: ["../../shared/scripts/", "../../shared/styles/"] },
 });
 ```
 
@@ -129,11 +129,11 @@ The [linter](/tools/linter) only scans below the directory you give it, so a sha
 
 Yarn, npm, or pnpm workspaces at the repository root are optional and orthogonal to Bascik. Bascik resolves bare specifiers such as `marked` or `@bascik/bascik` by climbing `node_modules` from the project directory, so a hoisted root `node_modules` works with no extra configuration. Give each site its own `package.json` with `"type": "module"` and `dev`, `build`, and `check` scripts:
 
-| Tool | Build every site | Run one site |
-|---|---|---|
-| npm | `npm run build --workspaces` | `npm run dev -w marketing` |
+| Tool | Build every site                       | Run one site                   |
+| ---- | -------------------------------------- | ------------------------------ |
+| npm  | `npm run build --workspaces`           | `npm run dev -w marketing`     |
 | Yarn | `yarn workspaces foreach -A run build` | `yarn workspace marketing dev` |
-| pnpm | `pnpm -r run build` | `pnpm --filter marketing dev` |
+| pnpm | `pnpm -r run build`                    | `pnpm --filter marketing dev`  |
 
 Run one dev server per site, each on its own port (`npx bascik --port 3001`). Editing a shared component live-reloads every running site that uses it.
 

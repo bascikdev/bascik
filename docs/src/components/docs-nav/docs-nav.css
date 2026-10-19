@@ -76,16 +76,32 @@
 }
 
 /* Icon visibility driven by data-theme / system preference */
-.theme-icon { display: none; pointer-events: none; }
-.theme-icon-sun { display: block; }
-
-@media (prefers-color-scheme: light) {
-  html:not([data-theme="dark"]) .theme-icon-sun  { display: none; }
-  html:not([data-theme="dark"]) .theme-icon-moon { display: block; }
+.theme-icon {
+  display: none;
+  pointer-events: none;
 }
 
-:root[data-theme="light"] .theme-icon-sun  { display: none; }
-:root[data-theme="light"] .theme-icon-moon { display: block; }
+.theme-icon-sun {
+  display: block;
+}
+
+@media (prefers-color-scheme: light) {
+  html:not([data-theme="dark"]) .theme-icon-sun {
+    display: none;
+  }
+
+  html:not([data-theme="dark"]) .theme-icon-moon {
+    display: block;
+  }
+}
+
+:root[data-theme="light"] .theme-icon-sun {
+  display: none;
+}
+
+:root[data-theme="light"] .theme-icon-moon {
+  display: block;
+}
 
 .dnav-right {
   display: flex;
@@ -103,7 +119,9 @@
   cursor: pointer;
   border-radius: var(--r-sm);
   color: var(--text-muted);
-  transition: color .15s, background .15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
   flex-shrink: 0;
 }
 
@@ -140,17 +158,17 @@
   text-decoration: none;
   display: block;
   position: relative;
-  transition: color .15s;
+  transition: color 0.15s;
 }
 
 /* Parallelogram background: matches the logo's exact angle (7px / 28px ≈ 14°) */
 .dnav-links li a::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   clip-path: polygon(7px 0%, 100% 0%, calc(100% - 7px) 100%, 0% 100%);
   z-index: -1;
-  transition: background .15s;
+  transition: background 0.15s;
 }
 
 .dnav-links li a:hover {
@@ -185,7 +203,7 @@
   touch-action: manipulation;
   z-index: 110;
   border-radius: var(--r-sm);
-  transition: background .15s;
+  transition: background 0.15s;
 }
 
 .dnav-toggle:hover {
@@ -198,7 +216,7 @@
   height: 2px;
   background: var(--text-muted);
   position: relative;
-  transition: background .15s;
+  transition: background 0.15s;
 }
 
 .dnav-toggle-icon::before,
@@ -210,7 +228,9 @@
   background: var(--text-muted);
   position: absolute;
   left: 0;
-  transition: transform .15s, top .15s;
+  transition:
+    transform 0.15s,
+    top 0.15s;
 }
 
 .dnav-toggle-icon::before {
@@ -222,21 +242,39 @@
 }
 
 /* Hamburger → X when expanded */
-.dnav-toggle[aria-expanded="true"] .dnav-toggle-icon { background: transparent; }
-.dnav-toggle[aria-expanded="true"] .dnav-toggle-icon::before { top: 0; transform: rotate(45deg); background: var(--text); }
-.dnav-toggle[aria-expanded="true"] .dnav-toggle-icon::after  { top: 0; transform: rotate(-45deg); background: var(--text); }
+.dnav-toggle[aria-expanded="true"] .dnav-toggle-icon {
+  background: transparent;
+}
+
+.dnav-toggle[aria-expanded="true"] .dnav-toggle-icon::before {
+  top: 0;
+  transform: rotate(45deg);
+  background: var(--text);
+}
+
+.dnav-toggle[aria-expanded="true"] .dnav-toggle-icon::after {
+  top: 0;
+  transform: rotate(-45deg);
+  background: var(--text);
+}
 
 .mobile-only-sections {
   display: none;
 }
 
 @media (max-width: 768px) {
-  .dnav-toggle { display: flex; }
+  .dnav-toggle {
+    display: flex;
+  }
 
-  .dnav-theme-toggle { display: none; }
+  .dnav-theme-toggle {
+    display: none;
+  }
 
   /* Hide compact top-level links on mobile; full list is in the overlay */
-  .dnav-links { display: none; }
+  .dnav-links {
+    display: none;
+  }
 
   /* Full-screen overlay */
   .dnav-links-wrapper {
@@ -254,7 +292,9 @@
     z-index: 99;
   }
 
-  .dnav-toggle[aria-expanded="true"] ~ .dnav-links-wrapper { display: flex; }
+  .dnav-toggle[aria-expanded="true"] ~ .dnav-links-wrapper {
+    display: flex;
+  }
 
   .mobile-only-sections {
     display: block;
@@ -272,13 +312,15 @@
     font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: .1em;
+    letter-spacing: 0.1em;
     color: var(--accent-fg);
     margin-bottom: 12px;
     margin-top: 24px;
   }
 
-  .mobile-sec-heading:first-of-type { margin-top: 0; }
+  .mobile-sec-heading:first-of-type {
+    margin-top: 0;
+  }
 
   .mobile-sec-nav {
     list-style: none;
@@ -289,7 +331,9 @@
     gap: 4px;
   }
 
-  .mobile-sec-nav li { width: 100%; }
+  .mobile-sec-nav li {
+    width: 100%;
+  }
 
   .mobile-sec-nav li a {
     display: block;
@@ -298,7 +342,9 @@
     font-size: 0.875rem;
     color: var(--text-muted);
     text-decoration: none;
-    transition: color .15s, background .15s;
+    transition:
+      color 0.15s,
+      background 0.15s;
   }
 
   .mobile-sec-nav li a:hover {
@@ -326,7 +372,9 @@
     color: var(--text-muted);
     cursor: pointer;
     text-align: left;
-    transition: color .15s, background .15s;
+    transition:
+      color 0.15s,
+      background 0.15s;
   }
 
   .mobile-theme-btn:hover {
@@ -334,6 +382,3 @@
     background: var(--elevated);
   }
 }
-
-
-

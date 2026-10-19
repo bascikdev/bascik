@@ -17,7 +17,7 @@
  * page or content Markdown.
  */
 
-import type { NavPage } from './nav.ts';
+import type { NavPage } from "./nav.ts";
 
 /** True when a NAV page points off-site and should render as an external link. */
 export function isExternalNavPage(page: NavPage): boolean {
@@ -36,12 +36,12 @@ const EXTERNAL_ICON =
   '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>' +
   '<polyline points="15 3 21 3 21 9"/>' +
   '<line x1="10" y1="14" x2="21" y2="3"/>' +
-  '</svg>';
+  "</svg>";
 
 /** Inline visually-hidden style (the standard .sr-only technique) for the label. */
 const SR_ONLY_STYLE =
-  'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;' +
-  'clip:rect(0,0,0,0);white-space:nowrap;border:0';
+  "position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;" +
+  "clip:rect(0,0,0,0);white-space:nowrap;border:0";
 
 /**
  * Renders one sidebar/mobile/footer `<li>` for a NAV page. Internal pages emit a

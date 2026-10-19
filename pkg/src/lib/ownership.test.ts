@@ -16,9 +16,18 @@ import { tmpdir } from "node:os";
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
-    directory: { out: "dist", pages: "src/pages", components: ["src/components"] },
+    directory: {
+      out: "dist",
+      pages: "src/pages",
+      components: ["src/components"],
+    },
     isBuild: true,
-    generate: { manifest: true, cspHashes: true, sitemap: false, robots: false },
+    generate: {
+      manifest: true,
+      cspHashes: true,
+      sitemap: false,
+      robots: false,
+    },
     only: ["blog/**"],
     minify: { identifiers: false },
   },
@@ -38,7 +47,10 @@ import {
 } from "./ownership.ts";
 import { manifestCollector } from "./manifest.ts";
 import { cspHashCollector } from "./csp-hashes.ts";
-import { serverSidecarRegistry, type ServerScriptEntry } from "./server-sidecar.ts";
+import {
+  serverSidecarRegistry,
+  type ServerScriptEntry,
+} from "./server-sidecar.ts";
 import { BascikConfig } from "./config.ts";
 
 const entry = (
@@ -57,8 +69,18 @@ describe("reconcileOwnership", () => {
     const prior: OwnershipInventory = {
       ...emptyInventory(),
       owners: {
-        [a]: entry(a, "pages/a.html", [{ file: "a.html", route: "/a" }], ["scriptA1"]),
-        [b]: entry(b, "pages/b.html", [{ file: "b.html", route: "/b" }], ["scriptB1"]),
+        [a]: entry(
+          a,
+          "pages/a.html",
+          [{ file: "a.html", route: "/a" }],
+          ["scriptA1"],
+        ),
+        [b]: entry(
+          b,
+          "pages/b.html",
+          [{ file: "b.html", route: "/b" }],
+          ["scriptB1"],
+        ),
       },
     };
     // This build rebuilds A (script removed) and leaves B untouched.
@@ -84,7 +106,9 @@ describe("reconcileOwnership", () => {
       },
     };
     const current: Record<string, OwnershipEntry> = {
-      [blog]: entry(blog, "pages/blog/[slug].html", [{ file: "blog/one.html", route: "/blog/one" }]),
+      [blog]: entry(blog, "pages/blog/[slug].html", [
+        { file: "blog/one.html", route: "/blog/one" },
+      ]),
     };
     const r = reconcileOwnership(prior, current);
     expect(r.obsoleteOutputs.sort()).toEqual(["blog/two.html"]);
@@ -126,14 +150,25 @@ describe("ownership inventory persistence & integrity", () => {
   });
 
   it("rejects corrupt ownership metadata by falling back to a safe additive build and warns", async () => {
-    await writeFile(join(tempDir, ".bascik", "ownership.json"), "{ not json", "utf8");
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    await writeFile(
+      join(tempDir, ".bascik", "ownership.json"),
+      "{ not json",
+      "utf8",
+    );
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const inv = await readOwnershipInventory();
     expect(inv).toBeNull();
     const source = resolve(tempDir, "src/pages/index.html");
-    ownershipTracker.recordOutput(source, "pages/index.html", "index.html", "/");
+    ownershipTracker.recordOutput(
+      source,
+      "pages/index.html",
+      "index.html",
+      "/",
+    );
     await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true });
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("no compatible ownership inventory"));
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("no compatible ownership inventory"),
+    );
     // A fresh inventory is written so future builds are correct.
     const fresh = await readOwnershipInventory();
     expect(fresh?.owners[source]).toBeDefined();
@@ -153,7 +188,12 @@ describe("ownership inventory persistence & integrity", () => {
     const bad: OwnershipInventory = {
       ...emptyInventory(),
       owners: {
-        "/src/a.html": { source: "/src/DIFFERENT.html", relSource: "pages/a.html", outputs: [], scripts: [] },
+        "/src/a.html": {
+          source: "/src/DIFFERENT.html",
+          relSource: "pages/a.html",
+          outputs: [],
+          scripts: [],
+        },
       },
     };
     expect(() => validateInventory(bad)).toThrow(/corrupt owner entry/);
@@ -161,43 +201,61 @@ describe("ownership inventory persistence & integrity", () => {
 
   it("finalize writes ownership even when no scripts and no CSP but records outputs", async () => {
     const source = resolve(tempDir, "src/pages/index.html");
-    ownershipTracker.recordOutput(source, "pages/index.html", "index.html", "/");
+    ownershipTracker.recordOutput(
+      source,
+      "pages/index.html",
+      "index.html",
+      "/",
+    );
     await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true });
     const inv = await readOwnershipInventory();
-    expect(inv?.owners[source].outputs).toEqual([{ file: "index.html", route: "/" }]);
+    expect(inv?.owners[source].outputs).toEqual([
+      { file: "index.html", route: "/" },
+    ]);
   });
 
-  it("a failed artifact write leaves the previous valid ownership untouched (rollback contract)", async () => {
-    // Write a valid prior inventory, then force the manifest write to fail so
-    // the finalize transaction aborts before the ownership is replaced.
-    const source = resolve(tempDir, "src/pages/a.html");
-    await writeOwnershipInventory({
-      ...emptyInventory(),
-      owners: { [source]: entry(source, "pages/a.html", [{ file: "a.html", route: "/a" }]) },
-    });
-    const prior = await readOwnershipInventory();
-    expect(prior).not.toBeNull();
-    ownershipTracker.recordOutput(source, "pages/a.html", "a.html", "/a");
+  // The write is made to fail by removing write permission from the folder. Windows ignores those permission bits,
+  // so nothing would fail there. The same rollback runs on every platform; only this way of forcing it is POSIX.
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "a failed artifact write leaves the previous valid ownership untouched (rollback contract)",
+    async () => {
+      // Write a valid prior inventory, then force the manifest write to fail so
+      // the finalize transaction aborts before the ownership is replaced.
+      const source = resolve(tempDir, "src/pages/a.html");
+      await writeOwnershipInventory({
+        ...emptyInventory(),
+        owners: {
+          [source]: entry(source, "pages/a.html", [
+            { file: "a.html", route: "/a" },
+          ]),
+        },
+      });
+      const prior = await readOwnershipInventory();
+      expect(prior).not.toBeNull();
+      ownershipTracker.recordOutput(source, "pages/a.html", "a.html", "/a");
 
-    // Make the .bascik dir read-only so atomicWriteJson's rename fails.
-    if (process.platform !== "win32") {
-      await (await import("node:fs/promises")).chmod(join(tempDir, ".bascik"), 0o500);
-    }
-    let threw = false;
-    try {
-      await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true });
-    } catch {
-      threw = true;
-    } finally {
-      if (process.platform !== "win32") {
-        await (await import("node:fs/promises")).chmod(join(tempDir, ".bascik"), 0o700);
+      // Make the .bascik dir read-only so atomicWriteJson's rename fails.
+      await (
+        await import("node:fs/promises")
+      ).chmod(join(tempDir, ".bascik"), 0o500);
+      let threw = false;
+      try {
+        await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true });
+      } catch {
+        threw = true;
+      } finally {
+        await (
+          await import("node:fs/promises")
+        ).chmod(join(tempDir, ".bascik"), 0o700);
       }
-    }
-    // The previous ownership file must still exist and be valid.
-    const after = await readOwnershipInventory();
-    expect(threw).toBe(true);
-    expect(after?.owners[source].outputs).toEqual([{ file: "a.html", route: "/a" }]);
-  });
+      // The previous ownership file must still exist and be valid.
+      const after = await readOwnershipInventory();
+      expect(threw).toBe(true);
+      expect(after?.owners[source].outputs).toEqual([
+        { file: "a.html", route: "/a" },
+      ]);
+    },
+  );
 
   it("sidecar reconcile retains untouched owners' scripts and prunes removed scripts", async () => {
     const sourceA = resolve(tempDir, "src/pages/a.html");
@@ -206,8 +264,18 @@ describe("ownership inventory persistence & integrity", () => {
     await writeOwnershipInventory({
       ...emptyInventory(),
       owners: {
-        [sourceA]: entry(sourceA, "pages/a.html", [{ file: "a.html", route: "/a" }], ["scriptA"]),
-        [sourceB]: entry(sourceB, "pages/b.html", [{ file: "b.html", route: "/b" }], ["scriptB"]),
+        [sourceA]: entry(
+          sourceA,
+          "pages/a.html",
+          [{ file: "a.html", route: "/a" }],
+          ["scriptA"],
+        ),
+        [sourceB]: entry(
+          sourceB,
+          "pages/b.html",
+          [{ file: "b.html", route: "/b" }],
+          ["scriptB"],
+        ),
       },
     });
     // Prior sidecar on disk holds both scripts.
@@ -217,8 +285,16 @@ describe("ownership inventory persistence & integrity", () => {
         version: "1.0.0",
         schema: 2,
         scripts: {
-          scriptA: { id: "scriptA", mode: "server", source: "a-source" } as ServerScriptEntry,
-          scriptB: { id: "scriptB", mode: "server", source: "b-source" } as ServerScriptEntry,
+          scriptA: {
+            id: "scriptA",
+            mode: "server",
+            source: "a-source",
+          } as ServerScriptEntry,
+          scriptB: {
+            id: "scriptB",
+            mode: "server",
+            source: "b-source",
+          } as ServerScriptEntry,
         },
       }),
       "utf8",
@@ -229,7 +305,9 @@ describe("ownership inventory persistence & integrity", () => {
 
     await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true });
 
-    const sidecar = JSON.parse(await readFile(join(tempDir, ".bascik", "server-scripts.json"), "utf8"));
+    const sidecar = JSON.parse(
+      await readFile(join(tempDir, ".bascik", "server-scripts.json"), "utf8"),
+    );
     // A's removed script pruned; B's untouched script retained from prior.
     expect(sidecar.scripts["scriptA"]).toBeUndefined();
     expect(sidecar.scripts["scriptB"].source).toBe("b-source");

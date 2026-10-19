@@ -17,7 +17,10 @@ import { join, dirname, resolve } from "node:path";
 import { tmpdir, cpus } from "node:os";
 import { fileURLToPath } from "node:url";
 
-const PKG_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "../index.ts");
+const PKG_ENTRY = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../index.ts",
+);
 
 interface DevServer {
   logs(): string;
@@ -63,7 +66,12 @@ const startDevServer = async (root: string): Promise<DevServer> => {
   };
 
   let output = "";
-  const waiters: Array<{ pattern: RegExp; from: number; resolve: (s: string) => void; reject: (err: Error) => void }> = [];
+  const waiters: Array<{
+    pattern: RegExp;
+    from: number;
+    resolve: (s: string) => void;
+    reject: (err: Error) => void;
+  }> = [];
 
   const onData = (d: Buffer): void => {
     output += d.toString();
@@ -89,14 +97,22 @@ const startDevServer = async (root: string): Promise<DevServer> => {
   const onError = (err: Error): void => {
     cleanupListeners();
     for (const waiter of waiters.splice(0)) {
-      waiter.reject(new Error(`Dev server process error: ${err.message}\nOutput:\n${output}`));
+      waiter.reject(
+        new Error(
+          `Dev server process error: ${err.message}\nOutput:\n${output}`,
+        ),
+      );
     }
   };
 
   const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
     cleanupListeners();
     for (const waiter of waiters.splice(0)) {
-      waiter.reject(new Error(`Dev server exited early with code ${code}, signal ${signal}\nOutput:\n${output}`));
+      waiter.reject(
+        new Error(
+          `Dev server exited early with code ${code}, signal ${signal}\nOutput:\n${output}`,
+        ),
+      );
     }
   };
 
@@ -105,12 +121,17 @@ const startDevServer = async (root: string): Promise<DevServer> => {
 
   const waitForLog = (pattern: RegExp, timeoutMs = 30000): Promise<string> => {
     const from = 0;
-    if (pattern.test(output.slice(from))) return Promise.resolve(output.slice(from));
+    if (pattern.test(output.slice(from)))
+      return Promise.resolve(output.slice(from));
     return new Promise<string>((res, rej) => {
       const timer = setTimeout(() => {
         const idx = waiters.findIndex((w) => w.resolve === wrappedRes);
         if (idx >= 0) waiters.splice(idx, 1);
-        rej(new Error(`log ${pattern} not seen within ${timeoutMs}ms. Output:\n${output}`));
+        rej(
+          new Error(
+            `log ${pattern} not seen within ${timeoutMs}ms. Output:\n${output}`,
+          ),
+        );
       }, timeoutMs);
       const wrappedRes = (s: string): void => {
         clearTimeout(timer);
@@ -137,7 +158,11 @@ const startDevServer = async (root: string): Promise<DevServer> => {
   };
 };
 
-const writeAt = async (root: string, rel: string, content: string): Promise<string> => {
+const writeAt = async (
+  root: string,
+  rel: string,
+  content: string,
+): Promise<string> => {
   const abs = join(root, rel);
   await mkdir(dirname(abs), { recursive: true });
   await writeFile(abs, content, "utf8");
@@ -148,9 +173,15 @@ const writeAt = async (root: string, rel: string, content: string): Promise<stri
 const makeHeavyCss = (id: number): string => {
   const rules: string[] = [];
   for (let i = 0; i < 1200; i++) {
-    rules.push(`.card-${id}-${i} { color: #333; padding: 10px; margin: 4px; display: flex; align-items: center; }`);
-    rules.push(`.card-${id}-${i} > span { font-weight: bold; font-size: 14px; }`);
-    rules.push(`@media (min-width: 768px) { .card-${id}-${i} { padding: 20px; } }`);
+    rules.push(
+      `.card-${id}-${i} { color: #333; padding: 10px; margin: 4px; display: flex; align-items: center; }`,
+    );
+    rules.push(
+      `.card-${id}-${i} > span { font-weight: bold; font-size: 14px; }`,
+    );
+    rules.push(
+      `@media (min-width: 768px) { .card-${id}-${i} { padding: 20px; } }`,
+    );
   }
   return rules.join("\n");
 };
@@ -160,24 +191,23 @@ describe("dev boot transpile timing and worker diagnostic", () => {
     const root = await mkdtemp(join(tmpdir(), "bascik-147-dev-"));
     let server: DevServer | null = null;
     try {
-
-    await writeAt(
-      root,
-      "bascik.config.js",
-      `module.exports = {
+      await writeAt(
+        root,
+        "bascik.config.js",
+        `module.exports = {
   directory: { components: ["src/components"] },
   pipeline: { workers: false },
   logging: { level: "info", requests: false },
   generate: { sitemap: false, robots: false },
   minify: { html: false, css: false, js: false, identifiers: false },
 };`,
-    );
+      );
 
-    // Component with heavy scoped styles and client script (DOM scoping, event binding)
-    await writeAt(
-      root,
-      "src/components/heavy-card/heavy-card.html",
-      `<div class="heavy-card" id="card-root">
+      // Component with heavy scoped styles and client script (DOM scoping, event binding)
+      await writeAt(
+        root,
+        "src/components/heavy-card/heavy-card.html",
+        `<div class="heavy-card" id="card-root">
   <style>
     ${makeHeavyCss(1)}
   </style>
@@ -189,14 +219,14 @@ describe("dev boot transpile timing and worker diagnostic", () => {
     });
   </script>
 </div>`,
-    );
+      );
 
-    // Create 40 pages that each instantiate multiple heavy components
-    for (let i = 1; i <= 40; i++) {
-      await writeAt(
-        root,
-        `src/pages/page-${i}.html`,
-        `<!DOCTYPE html>
+      // Create 40 pages that each instantiate multiple heavy components
+      for (let i = 1; i <= 40; i++) {
+        await writeAt(
+          root,
+          `src/pages/page-${i}.html`,
+          `<!DOCTYPE html>
 <html>
 <head><title>Page ${i}</title></head>
 <body>
@@ -207,63 +237,74 @@ describe("dev boot transpile timing and worker diagnostic", () => {
   <heavy-card data-bascik-prop-title="Page ${i} D"></heavy-card>
 </body>
 </html>`,
+        );
+      }
+
+      server = await startDevServer(root);
+      const logs = server.logs();
+
+      // Extract all per-page transpile durations in ms
+      const transpiledLines = logs
+        .split("\n")
+        .filter((line) => line.includes("transpiled: pages/page-"));
+
+      expect(transpiledLines.length).toBe(40);
+
+      const durations: number[] = [];
+      let reportedSum = 0;
+      for (const line of transpiledLines) {
+        const match = line.match(/in\s+(\d+(?:\.\d+)?)(ms|s)/);
+        expect(match).not.toBeNull();
+        const val = parseFloat(match![1]);
+        const unit = match![2];
+        const ms = unit === "s" ? val * 1000 : val;
+        durations.push(ms);
+        reportedSum += ms;
+      }
+
+      // Calculate median
+      const sorted = [...durations].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      expect(median).toBeGreaterThan(0);
+
+      // Bound individual outliers. The first page pays the one-time cold cost
+      // (scoping template recording, scopedCssCache fill, V8 warmup) while the
+      // other pages hit the shared caches, so exactly one cold page may exceed
+      // 5x the median. Every other page must stay within 5x (no staircase), and
+      // the cold page gets a looser bound with an absolute floor so CPU load or
+      // coverage instrumentation does not make it flaky. The sum assertion below
+      // detects cumulative queue time.
+      for (const d of sorted.slice(0, -1)) {
+        expect(d).toBeLessThanOrEqual(median * 5);
+      }
+      expect(sorted[sorted.length - 1]).toBeLessThanOrEqual(
+        Math.max(median * 10, 150),
       );
-    }
 
-    server = await startDevServer(root);
-    const logs = server.logs();
+      // Extract total boot time
+      const totalMatch = logs.match(
+        /✓\s+40\s+pages\s+transpiled\s+in\s+(\d+(?:\.\d+)?)(ms|s)/,
+      );
+      expect(totalMatch).not.toBeNull();
+      const totalVal = parseFloat(totalMatch![1]);
+      const totalUnit = totalMatch![2];
+      const batchWallMs = totalUnit === "s" ? totalVal * 1000 : totalVal;
 
-    // Extract all per-page transpile durations in ms
-    const transpiledLines = logs
-      .split("\n")
-      .filter((line) => line.includes("transpiled: pages/page-"));
+      // (b) Check sum of per-page durations against batch wall time
+      // Under CPU-segment accumulation, the sum of per-page compute cannot exceed wall time.
+      expect(batchWallMs).toBeGreaterThan(0);
+      expect(reportedSum).toBeLessThanOrEqual(batchWallMs * 1.05);
 
-    expect(transpiledLines.length).toBe(40);
-
-    const durations: number[] = [];
-    let reportedSum = 0;
-    for (const line of transpiledLines) {
-      const match = line.match(/in\s+(\d+(?:\.\d+)?)(ms|s)/);
-      expect(match).not.toBeNull();
-      const val = parseFloat(match![1]);
-      const unit = match![2];
-      const ms = unit === "s" ? val * 1000 : val;
-      durations.push(ms);
-      reportedSum += ms;
-    }
-
-    // Calculate median
-    const sorted = [...durations].sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)];
-    expect(median).toBeGreaterThan(0);
-
-    // Bound individual outliers; the sum assertion below detects cumulative queue time.
-    for (const d of durations) {
-      expect(d).toBeLessThanOrEqual(median * 5);
-    }
-
-    // Extract total boot time
-    const totalMatch = logs.match(/✓\s+40\s+pages\s+transpiled\s+in\s+(\d+(?:\.\d+)?)(ms|s)/);
-    expect(totalMatch).not.toBeNull();
-    const totalVal = parseFloat(totalMatch![1]);
-    const totalUnit = totalMatch![2];
-    const batchWallMs = totalUnit === "s" ? totalVal * 1000 : totalVal;
-
-    // (b) Check sum of per-page durations against batch wall time
-    // Under CPU-segment accumulation, the sum of per-page compute cannot exceed wall time.
-    expect(batchWallMs).toBeGreaterThan(0);
-    expect(reportedSum).toBeLessThanOrEqual(batchWallMs * 1.05);
-
-    // (c) Advisory diagnostic check: conditional on runtime elapsed time (no hard 2s failure on fast hardware)
-    const coreCount = cpus().length;
-    // formatDuration rounds seconds, so a printed 2s can straddle the threshold.
-    // Exact threshold behavior is exercised by processAllPages unit tests.
-    if (coreCount >= 4 && batchWallMs > 2010) {
-      expect(logs).toContain("💡 Boot transpilation took");
-      expect(logs).toContain("pipeline.workers: true");
-    } else if (coreCount < 4 || batchWallMs < 1990) {
-      expect(logs).not.toContain("💡 Boot transpilation took");
-    }
+      // (c) Advisory diagnostic check: conditional on runtime elapsed time (no hard 2s failure on fast hardware)
+      const coreCount = cpus().length;
+      // formatDuration rounds seconds, so a printed 2s can straddle the threshold.
+      // Exact threshold behavior is exercised by processAllPages unit tests.
+      if (coreCount >= 4 && batchWallMs > 2010) {
+        expect(logs).toContain("💡 Boot transpilation took");
+        expect(logs).toContain("pipeline.workers: true");
+      } else if (coreCount < 4 || batchWallMs < 1990) {
+        expect(logs).not.toContain("💡 Boot transpilation took");
+      }
     } finally {
       try {
         await server?.close();

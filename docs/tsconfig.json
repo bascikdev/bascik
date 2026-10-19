@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "noUnusedLocals": true,
-    "noUnusedParameters": true, 
+    "noUnusedParameters": true,
     "noEmit": true,
     "strict": true,
     "allowImportingTsExtensions": true,
@@ -14,6 +14,11 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
-  "include": ["scripts/**/*.ts", "src/lib/**/*.ts", "e2e/**/*.ts", "bascik.config.ts"],
+  "include": [
+    "scripts/**/*.ts",
+    "src/lib/**/*.ts",
+    "e2e/**/*.ts",
+    "bascik.config.ts"
+  ],
   "exclude": ["node_modules"]
 }

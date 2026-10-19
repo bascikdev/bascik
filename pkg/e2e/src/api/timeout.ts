@@ -1,7 +1,11 @@
 let lastAbortObserved = false;
 let lastAbortReason = "";
 
-export const GET = async (_req: Request, _ctx: any, { signal }: { signal: AbortSignal }) => {
+export const GET = async (
+  _req: Request,
+  _ctx: any,
+  { signal }: { signal: AbortSignal },
+) => {
   lastAbortObserved = false;
   lastAbortReason = "";
 

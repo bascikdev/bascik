@@ -22,7 +22,12 @@ const { configState } = vi.hoisted(() => ({
     scripts: { timeout: 30000, onServerScriptError: "error" },
     logging: { level: "silent", requests: false },
     isProdServer: false,
-    directory: { pages: "src/pages", components: ["src/components"], api: "src/api", out: "" },
+    directory: {
+      pages: "src/pages",
+      components: ["src/components"],
+      api: "src/api",
+      out: "",
+    },
     minify: { identifiers: false },
   },
 }));
@@ -38,7 +43,10 @@ import { createRequestHandler } from "./server.ts";
 import { apiRouteRegistry } from "./server-api.ts";
 import { scriptRegistry } from "./script-registry.ts";
 import { buildApiRouteTree } from "./api-routes.ts";
-import { executeServerScriptPlan, planServerScripts } from "./server-scripts.ts";
+import {
+  executeServerScriptPlan,
+  planServerScripts,
+} from "./server-scripts.ts";
 import { createWebRequest, requestOrigin } from "./api-runtime.ts";
 
 interface Reply {
@@ -57,30 +65,38 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
   const originalRoutes = (apiRouteRegistry as any).routes;
 
   beforeAll(async () => {
-    (apiRouteRegistry as any).routes = buildApiRouteTree([`${API}/origin.ts`], API);
+    (apiRouteRegistry as any).routes = buildApiRouteTree(
+      [`${API}/origin.ts`],
+      API,
+    );
 
-    vi.spyOn(scriptRegistry, "load").mockImplementation(async (filePath: string) => {
-      if (filePath.startsWith("data:")) {
-        return (scriptRegistry.constructor.prototype as any).load.call(scriptRegistry, filePath);
-      }
-      return {
-        filePath,
-        version: 0,
-        module: {
-          GET: async (req: Request) => {
-            const url = new URL(req.url);
-            return Response.json({
-              url: req.url,
-              origin: url.origin,
-              protocol: url.protocol,
-              host: url.host,
-              pathname: url.pathname,
-              search: url.search,
-            });
+    vi.spyOn(scriptRegistry, "load").mockImplementation(
+      async (filePath: string) => {
+        if (filePath.startsWith("data:")) {
+          return (scriptRegistry.constructor.prototype as any).load.call(
+            scriptRegistry,
+            filePath,
+          );
+        }
+        return {
+          filePath,
+          version: 0,
+          module: {
+            GET: async (req: Request) => {
+              const url = new URL(req.url);
+              return Response.json({
+                url: req.url,
+                origin: url.origin,
+                protocol: url.protocol,
+                host: url.host,
+                pathname: url.pathname,
+                search: url.search,
+              });
+            },
           },
-        },
-      };
-    });
+        };
+      },
+    );
 
     const handle = createRequestHandler();
 
@@ -90,7 +106,7 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
         try {
           res.respond(500, { "content-type": "text/plain" });
           res.end("Internal Server Error");
-        } catch { }
+        } catch {}
       });
     });
     await new Promise<void>((r) => h1.listen(0, "127.0.0.1", r));
@@ -103,7 +119,7 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
         try {
           res.respond(500, { "content-type": "text/plain" });
           res.end("Internal Server Error");
-        } catch { }
+        } catch {}
       });
     });
     await new Promise<void>((r) => h2.listen(0, "127.0.0.1", r));
@@ -117,7 +133,10 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
     await new Promise<void>((r) => h2.close(() => r()));
   });
 
-  const viaHttp1 = (path: string, headers: Record<string, string> = {}): Promise<Reply> =>
+  const viaHttp1 = (
+    path: string,
+    headers: Record<string, string> = {},
+  ): Promise<Reply> =>
     new Promise((resolve, reject) => {
       const req = http.request(
         {
@@ -136,16 +155,19 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
             let data: any;
             try {
               data = JSON.parse(body);
-            } catch { }
+            } catch {}
             resolve({ status: res.statusCode ?? 0, body, data });
           });
-        }
+        },
       );
       req.on("error", reject);
       req.end();
     });
 
-  const viaHttp2 = (path: string, headers: Record<string, string> = {}): Promise<Reply> =>
+  const viaHttp2 = (
+    path: string,
+    headers: Record<string, string> = {},
+  ): Promise<Reply> =>
     new Promise((resolve, reject) => {
       const client = http2.connect(`http://127.0.0.1:${h2Port}`);
       client.on("error", reject);
@@ -166,7 +188,7 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
         let data: any;
         try {
           data = JSON.parse(body);
-        } catch { }
+        } catch {}
         resolve({ status, body, data });
       });
       req.on("error", reject);
@@ -209,30 +231,47 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
       async (authority) => {
         const replies = [
           await viaHttp1("/api/origin?active=true", { host: authority }),
-          await viaHttp2("/api/origin?active=true", { ":authority": authority }),
+          await viaHttp2("/api/origin?active=true", {
+            ":authority": authority,
+          }),
         ];
         for (const reply of replies) {
           expect(reply.status).toBe(200);
-          expect(reply.data.url).toBe("http://localhost/api/origin?active=true");
+          expect(reply.data.url).toBe(
+            "http://localhost/api/origin?active=true",
+          );
         }
       },
     );
 
     it.each([
       { authority: "[::ffff:192.0.2.1]", expectedHost: "[::ffff:c000:201]" },
-      { authority: "[::ffff:192.0.2.1]:8443", expectedHost: "[::ffff:c000:201]:8443" },
+      {
+        authority: "[::ffff:192.0.2.1]:8443",
+        expectedHost: "[::ffff:c000:201]:8443",
+      },
       { authority: "public.example.com.", expectedHost: "public.example.com." },
-      { authority: "public.example.com.:8443", expectedHost: "public.example.com.:8443" },
-    ])("preserves direct authority $authority on both transports", async ({ authority, expectedHost }) => {
-      const replies = [
-        await viaHttp1("/api/origin?active=true", { host: authority }),
-        await viaHttp2("/api/origin?active=true", { ":authority": authority }),
-      ];
-      for (const reply of replies) {
-        expect(reply.status).toBe(200);
-        expect(reply.data.url).toBe(`http://${expectedHost}/api/origin?active=true`);
-      }
-    });
+      {
+        authority: "public.example.com.:8443",
+        expectedHost: "public.example.com.:8443",
+      },
+    ])(
+      "preserves direct authority $authority on both transports",
+      async ({ authority, expectedHost }) => {
+        const replies = [
+          await viaHttp1("/api/origin?active=true", { host: authority }),
+          await viaHttp2("/api/origin?active=true", {
+            ":authority": authority,
+          }),
+        ];
+        for (const reply of replies) {
+          expect(reply.status).toBe(200);
+          expect(reply.data.url).toBe(
+            `http://${expectedHost}/api/origin?active=true`,
+          );
+        }
+      },
+    );
   });
 
   describe("when trustProxy is true", () => {
@@ -253,7 +292,9 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
       expect(res.data.protocol).toBe("https:");
       expect(res.data.host).toBe("app.example.com:8443");
       expect(res.data.origin).toBe("https://app.example.com:8443");
-      expect(res.data.url).toBe("https://app.example.com:8443/api/origin?active=true");
+      expect(res.data.url).toBe(
+        "https://app.example.com:8443/api/origin?active=true",
+      );
     });
 
     it("HTTP/2 reconstructs external https scheme and authority", async () => {
@@ -265,7 +306,9 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
       expect(res.data.protocol).toBe("https:");
       expect(res.data.host).toBe("app.example.com:8443");
       expect(res.data.origin).toBe("https://app.example.com:8443");
-      expect(res.data.url).toBe("https://app.example.com:8443/api/origin?active=true");
+      expect(res.data.url).toBe(
+        "https://app.example.com:8443/api/origin?active=true",
+      );
     });
 
     it("HTTP/1.1 extracts the rightmost entry for multi-hop / spoofed headers", async () => {
@@ -305,32 +348,53 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
     it.each(["[::::]", "[1:2:3]", "999.999.999.999", "256.0.0.1"])(
       "falls back without HTTP 500 for invalid forwarded authority %s on both transports",
       async (authority) => {
-        const headers = { "x-forwarded-proto": "https", "x-forwarded-host": authority };
+        const headers = {
+          "x-forwarded-proto": "https",
+          "x-forwarded-host": authority,
+        };
         const http1Reply = await viaHttp1("/api/origin?active=true", headers);
         const http2Reply = await viaHttp2("/api/origin?active=true", headers);
         expect(http1Reply.status).toBe(200);
-        expect(http1Reply.data.url).toBe(`https://127.0.0.1:${h1Port}/api/origin?active=true`);
+        expect(http1Reply.data.url).toBe(
+          `https://127.0.0.1:${h1Port}/api/origin?active=true`,
+        );
         expect(http2Reply.status).toBe(200);
-        expect(http2Reply.data.url).toBe(`https://127.0.0.1:${h2Port}/api/origin?active=true`);
+        expect(http2Reply.data.url).toBe(
+          `https://127.0.0.1:${h2Port}/api/origin?active=true`,
+        );
       },
     );
 
     it.each([
       { authority: "[::ffff:192.0.2.1]", expectedHost: "[::ffff:c000:201]" },
-      { authority: "[::ffff:192.0.2.1]:8443", expectedHost: "[::ffff:c000:201]:8443" },
+      {
+        authority: "[::ffff:192.0.2.1]:8443",
+        expectedHost: "[::ffff:c000:201]:8443",
+      },
       { authority: "public.example.com.", expectedHost: "public.example.com." },
-      { authority: "public.example.com.:8443", expectedHost: "public.example.com.:8443" },
-    ])("preserves forwarded authority $authority on both transports", async ({ authority, expectedHost }) => {
-      const headers = { "x-forwarded-proto": "https", "x-forwarded-host": authority };
-      const replies = [
-        await viaHttp1("/api/origin?active=true", headers),
-        await viaHttp2("/api/origin?active=true", headers),
-      ];
-      for (const reply of replies) {
-        expect(reply.status).toBe(200);
-        expect(reply.data.url).toBe(`https://${expectedHost}/api/origin?active=true`);
-      }
-    });
+      {
+        authority: "public.example.com.:8443",
+        expectedHost: "public.example.com.:8443",
+      },
+    ])(
+      "preserves forwarded authority $authority on both transports",
+      async ({ authority, expectedHost }) => {
+        const headers = {
+          "x-forwarded-proto": "https",
+          "x-forwarded-host": authority,
+        };
+        const replies = [
+          await viaHttp1("/api/origin?active=true", headers),
+          await viaHttp2("/api/origin?active=true", headers),
+        ];
+        for (const reply of replies) {
+          expect(reply.status).toBe(200);
+          expect(reply.data.url).toBe(
+            `https://${expectedHost}/api/origin?active=true`,
+          );
+        }
+      },
+    );
 
     it("server scripts share the exact same reconstructed request origin", async () => {
       const rawReq = {
@@ -343,12 +407,21 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
         },
         remoteIp: "10.0.0.1",
       };
-      const webReq = createWebRequest(rawReq, requestOrigin(rawReq, configState as any));
+      const webReq = createWebRequest(
+        rawReq,
+        requestOrigin(rawReq, configState as any),
+      );
 
       const plan = planServerScripts(
-        `<p id="test"><script data-bascik-server>export default function(req) { return new URL(req.url).origin; }</script></p>`
+        `<p id="test"><script data-bascik-server>export default function(req) { return new URL(req.url).origin; }</script></p>`,
       );
-      const output = await executeServerScriptPlan(plan, webReq, { remoteIp: "10.0.0.1" }, 1000, "page.html");
+      const output = await executeServerScriptPlan(
+        plan,
+        webReq,
+        { remoteIp: "10.0.0.1" },
+        1000,
+        "page.html",
+      );
       expect(output.toString()).toContain("https://scripts.example.com");
     });
   });

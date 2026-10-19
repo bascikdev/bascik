@@ -1,12 +1,12 @@
-import * as assert from 'node:assert';
-import * as path from 'node:path';
-import * as vscode from 'vscode';
+import * as assert from "node:assert";
+import * as path from "node:path";
+import * as vscode from "vscode";
 
 function getBascikExtension(): vscode.Extension<unknown> | undefined {
   return (
-    vscode.extensions.getExtension('bascik.bascik-vscode') ??
+    vscode.extensions.getExtension("bascik.bascik-vscode") ??
     vscode.extensions.all.find(
-      (ext) => ext.packageJSON?.name === 'bascik-vscode',
+      (ext) => ext.packageJSON?.name === "bascik-vscode",
     )
   );
 }
@@ -30,19 +30,38 @@ async function waitFor(
   assert.fail(message);
 }
 
+/**
+ * The language server publishes diagnostics after a document opens, not before it returns. Waits for one a
+ * test expects and returns it.
+ */
+async function waitForDiagnostic(
+  uri: vscode.Uri,
+  predicate: (diagnostic: vscode.Diagnostic) => boolean,
+  message: string,
+): Promise<vscode.Diagnostic> {
+  let found: vscode.Diagnostic | undefined;
+  await waitFor(() => {
+    found = vscode.languages.getDiagnostics(uri).find(predicate);
+    return found !== undefined;
+  }, message);
+  return found!;
+}
+
 async function definitionsInFile(
   folderName: string,
   relativePath: string,
   needle: string,
-): Promise<vscode.Location[]> {
+): Promise<(vscode.Location | vscode.LocationLink)[]> {
   const folder = getWorkspaceFolder(folderName);
   const document = await vscode.workspace.openTextDocument(
     vscode.Uri.file(path.join(folder.uri.fsPath, relativePath)),
   );
   const index = document.getText().indexOf(needle);
   assert.ok(index >= 0, `${relativePath} should contain ${needle}`);
-  return vscode.commands.executeCommand<vscode.Location[]>(
-    'vscode.executeDefinitionProvider',
+  return vscode.commands.executeCommand<
+    (vscode.Location | vscode.LocationLink)[]
+  >(
+    "vscode.executeDefinitionProvider",
     document.uri,
     document.positionAt(index + Math.max(1, Math.floor(needle.length / 2))),
   );
@@ -60,7 +79,7 @@ async function hoversInFile(
   const index = document.getText().indexOf(needle);
   assert.ok(index >= 0, `${relativePath} should contain ${needle}`);
   return vscode.commands.executeCommand<vscode.Hover[]>(
-    'vscode.executeHoverProvider',
+    "vscode.executeHoverProvider",
     document.uri,
     document.positionAt(index + Math.max(1, Math.floor(needle.length / 2))),
   );
@@ -68,8 +87,8 @@ async function hoversInFile(
 
 function hoverMarkdown(hover: vscode.Hover): string {
   return hover.contents
-    .map((content) => (typeof content === 'string' ? content : content.value))
-    .join('\n');
+    .map((content) => (typeof content === "string" ? content : content.value))
+    .join("\n");
 }
 
 async function completionsInFile(
@@ -93,10 +112,13 @@ async function completionsInFile(
     ),
     content,
   );
-  assert.ok(await vscode.workspace.applyEdit(edit), 'Fixture edit should apply');
+  assert.ok(
+    await vscode.workspace.applyEdit(edit),
+    "Fixture edit should apply",
+  );
   try {
     return await vscode.commands.executeCommand<vscode.CompletionList>(
-      'vscode.executeCompletionItemProvider',
+      "vscode.executeCompletionItemProvider",
       document.uri,
       document.positionAt(cursorOffset),
       triggerCharacter,
@@ -113,25 +135,27 @@ async function completionsInFile(
     );
     assert.ok(
       await vscode.workspace.applyEdit(restore),
-      'Fixture restore should apply',
+      "Fixture restore should apply",
     );
   }
 }
 
 function bascikCompletionLabels(completions: vscode.CompletionList): string[] {
   return completions.items
-    .filter((item) => item.detail === 'Bascik component')
+    .filter((item) => item.detail === "Bascik component")
     .map((item) =>
-      typeof item.label === 'string' ? item.label : item.label.label,
+      typeof item.label === "string" ? item.label : item.label.label,
     );
 }
 
 function completionLabel(item: vscode.CompletionItem): string {
-  return typeof item.label === 'string' ? item.label : item.label.label;
+  return typeof item.label === "string" ? item.label : item.label.label;
 }
 
-function locationUri(location: vscode.Location | vscode.LocationLink): vscode.Uri {
-  return 'targetUri' in location ? location.targetUri : location.uri;
+function locationUri(
+  location: vscode.Location | vscode.LocationLink,
+): vscode.Uri {
+  return "targetUri" in location ? location.targetUri : location.uri;
 }
 
 function firstLocationPath(
@@ -142,24 +166,26 @@ function firstLocationPath(
 }
 
 const documentExtensions: Record<string, string> = {
-  html: 'html',
-  css: 'css',
-  javascript: 'js',
-  typescript: 'ts',
+  html: "html",
+  css: "css",
+  javascript: "js",
+  typescript: "ts",
 };
 const temporaryDocumentUris: vscode.Uri[] = [];
 
-// The extension only analyzes file: documents, so untitled buffers never receive diagnostics.
+// The language server only analyzes file: documents, so untitled buffers never receive diagnostics.
+// Scoping rules apply to component files only, so those tests pass `directory: 'src/components'`.
 async function openWorkspaceDocument(options: {
   language: string;
   content: string;
+  directory?: string;
 }): Promise<vscode.TextDocument> {
-  const folder = getWorkspaceFolder('primary');
+  const folder = getWorkspaceFolder("primary");
   const extension = documentExtensions[options.language] ?? options.language;
   const uri = vscode.Uri.file(
     path.join(
       folder.uri.fsPath,
-      'src',
+      options.directory ?? "src",
       `tmp-doc-${temporaryDocumentUris.length}.${extension}`,
     ),
   );
@@ -171,7 +197,7 @@ async function openWorkspaceDocument(options: {
   return document;
 }
 
-suite('Extension Integration Suite', () => {
+suite("Extension Integration Suite", () => {
   suiteSetup(async () => {
     const ext = getBascikExtension();
     if (ext && !ext.isActive) {
@@ -183,118 +209,118 @@ suite('Extension Integration Suite', () => {
     for (const uri of temporaryDocumentUris) {
       try {
         await vscode.workspace.fs.delete(uri);
-      } catch { }
+      } catch {}
     }
   });
 
-  test('Extension is registered and active', () => {
+  test("Extension is registered and active", () => {
     const ext = getBascikExtension();
-    assert.ok(ext, 'Extension bascik-vscode should be found');
-    assert.strictEqual(ext.isActive, true, 'Extension should be active');
+    assert.ok(ext, "Extension bascik-vscode should be found");
+    assert.strictEqual(ext.isActive, true, "Extension should be active");
   });
 
-  suite('ComponentDefinitionProvider', () => {
-    test('provides definition for top-level component tag', async () => {
+  suite("ComponentDefinitionProvider", () => {
+    test("provides definition for top-level component tag", async () => {
       const locations = await definitionsInFile(
-        'primary',
-        'src/component-nav.html',
-        'my-button',
+        "primary",
+        "src/component-nav.html",
+        "my-button",
       );
 
       assert.ok(
         locations && locations.length > 0,
-        'Definition should be found',
+        "Definition should be found",
       );
-      const targetPath = locations[0].uri.fsPath.replace(/\\/g, '/');
+      const targetPath = firstLocationPath(locations)!.replace(/\\/g, "/");
       assert.ok(
-        targetPath.endsWith('src/components/my-button.html'),
+        targetPath.endsWith("src/components/my-button.html"),
         `Expected location to end with src/components/my-button.html, got ${targetPath}`,
       );
     });
 
-    test('provides definition for nested component tag', async () => {
+    test("provides definition for nested component tag", async () => {
       const locations = await definitionsInFile(
-        'primary',
-        'src/component-nav.html',
-        'my-card',
+        "primary",
+        "src/component-nav.html",
+        "my-card",
       );
 
       assert.ok(
         locations && locations.length > 0,
-        'Definition for nested component should be found',
+        "Definition for nested component should be found",
       );
-      const targetPath = locations[0].uri.fsPath.replace(/\\/g, '/');
+      const targetPath = firstLocationPath(locations)!.replace(/\\/g, "/");
       assert.ok(
-        targetPath.endsWith('src/components/card/my-card.html'),
+        targetPath.endsWith("src/components/card/my-card.html"),
         `Expected location to end with src/components/card/my-card.html, got ${targetPath}`,
       );
     });
 
-    test('provides definition for a component in a second configured components root', async () => {
+    test("provides definition for a component in a second configured components root", async () => {
       // bascik.config.ts in the fixture lists ['src/components', 'shared-components'].
       const locations = await definitionsInFile(
-        'primary',
-        'src/component-nav.html',
-        'shared-pill',
+        "primary",
+        "src/component-nav.html",
+        "shared-pill",
       );
 
       assert.ok(
         locations && locations.length > 0,
-        'Definition in the second root should be found',
+        "Definition in the second root should be found",
       );
-      const targetPath = locations[0].uri.fsPath.replace(/\\/g, '/');
+      const targetPath = firstLocationPath(locations)!.replace(/\\/g, "/");
       assert.ok(
-        targetPath.endsWith('shared-components/shared-pill.html'),
+        targetPath.endsWith("shared-components/shared-pill.html"),
         `Expected location to end with shared-components/shared-pill.html, got ${targetPath}`,
       );
     });
 
-    test('returns undefined for built-in HTML element', async () => {
+    test("returns undefined for built-in HTML element", async () => {
       const doc = await vscode.workspace.openTextDocument({
-        language: 'html',
-        content: '<div><span>Hello</span></div>',
+        language: "html",
+        content: "<div><span>Hello</span></div>",
       });
       const pos = new vscode.Position(0, 2); // position inside 'div'
       const locations = await vscode.commands.executeCommand<vscode.Location[]>(
-        'vscode.executeDefinitionProvider',
+        "vscode.executeDefinitionProvider",
         doc.uri,
         pos,
       );
 
       assert.ok(
         !locations || locations.length === 0,
-        'No definition should be provided for built-in element',
+        "No definition should be provided for built-in element",
       );
     });
 
-    test('returns undefined for unknown component tag', async () => {
+    test("returns undefined for unknown component tag", async () => {
       const doc = await vscode.workspace.openTextDocument({
-        language: 'html',
-        content: '<unknown-widget></unknown-widget>',
+        language: "html",
+        content: "<unknown-widget></unknown-widget>",
       });
       const pos = new vscode.Position(0, 3); // position inside 'unknown-widget'
       const locations = await vscode.commands.executeCommand<vscode.Location[]>(
-        'vscode.executeDefinitionProvider',
+        "vscode.executeDefinitionProvider",
         doc.uri,
         pos,
       );
 
       assert.ok(
         !locations || locations.length === 0,
-        'No definition should be provided for unknown component',
+        "No definition should be provided for unknown component",
       );
     });
 
-    for (const language of ['javascript', 'typescript', 'css']) {
+    for (const language of ["javascript", "typescript", "css"]) {
       test(`does not provide component definitions in ${language}`, async () => {
         const doc = await vscode.workspace.openTextDocument({
           language,
-          content: 'my-button',
+          content: "my-button",
         });
         const locations = await vscode.commands.executeCommand<
           vscode.Location[]
         >(
-          'vscode.executeDefinitionProvider',
+          "vscode.executeDefinitionProvider",
           doc.uri,
           new vscode.Position(0, 3),
         );
@@ -302,120 +328,120 @@ suite('Extension Integration Suite', () => {
       });
     }
 
-    test('isolates conflicting component names between workspace folders', async () => {
+    test("isolates conflicting component names between workspace folders", async () => {
       const primary = await definitionsInFile(
-        'primary',
-        'src/component-nav.html',
-        'conflict-card',
+        "primary",
+        "src/component-nav.html",
+        "conflict-card",
       );
       const secondary = await definitionsInFile(
-        'secondary',
-        'src/component-nav.html',
-        'conflict-card',
+        "secondary",
+        "src/component-nav.html",
+        "conflict-card",
       );
       assert.ok(
-        primary?.[0].uri.fsPath.endsWith(
+        firstLocationPath(primary)?.endsWith(
           path.join(
-            'sample-workspace',
-            'src',
-            'components',
-            'conflict-card.html',
+            "sample-workspace",
+            "src",
+            "components",
+            "conflict-card.html",
           ),
         ),
       );
       assert.ok(
-        secondary?.[0].uri.fsPath.endsWith(
+        firstLocationPath(secondary)?.endsWith(
           path.join(
-            'secondary-workspace',
-            'ui',
-            'components',
-            'conflict-card.html',
-          ),
-        ),
-      );
-    });
-
-    test('resolves components relative to a nested Bascik project root', async () => {
-      const locations = await definitionsInFile(
-        'primary',
-        'nested-project/src/pages/index.html',
-        'nested-widget',
-      );
-      assert.ok(
-        locations && locations.length > 0,
-        'Nested project definition should be found',
-      );
-      assert.ok(
-        locations[0].uri.fsPath.endsWith(
-          path.join(
-            'nested-project',
-            'src',
-            'components',
-            'nested-widget.html',
+            "secondary-workspace",
+            "ui",
+            "components",
+            "conflict-card.html",
           ),
         ),
       );
     });
 
-    test('uses the closest project root when component names overlap', async () => {
+    test("resolves components relative to a nested Bascik project root", async () => {
       const locations = await definitionsInFile(
-        'primary',
-        'nested-project/src/pages/index.html',
-        'conflict-card',
+        "primary",
+        "nested-project/src/pages/index.html",
+        "nested-widget",
       );
       assert.ok(
         locations && locations.length > 0,
-        'Nested conflicting definition should be found',
+        "Nested project definition should be found",
       );
       assert.ok(
-        locations[0].uri.fsPath.endsWith(
+        firstLocationPath(locations)?.endsWith(
           path.join(
-            'nested-project',
-            'src',
-            'components',
-            'conflict-card.html',
+            "nested-project",
+            "src",
+            "components",
+            "nested-widget.html",
+          ),
+        ),
+      );
+    });
+
+    test("uses the closest project root when component names overlap", async () => {
+      const locations = await definitionsInFile(
+        "primary",
+        "nested-project/src/pages/index.html",
+        "conflict-card",
+      );
+      assert.ok(
+        locations && locations.length > 0,
+        "Nested conflicting definition should be found",
+      );
+      assert.ok(
+        firstLocationPath(locations)?.endsWith(
+          path.join(
+            "nested-project",
+            "src",
+            "components",
+            "conflict-card.html",
           ),
         ),
       );
     });
   });
 
-  suite('ComponentHoverProvider', () => {
-    test('describes a component from a nested Bascik project', async () => {
+  suite("ComponentHoverProvider", () => {
+    test("describes a component from a nested Bascik project", async () => {
       const hovers = await hoversInFile(
-        'primary',
-        'nested-project/src/pages/index.html',
-        'nested-widget',
+        "primary",
+        "nested-project/src/pages/index.html",
+        "nested-widget",
       );
-      assert.ok(hovers && hovers.length > 0, 'Component hover should be found');
+      assert.ok(hovers && hovers.length > 0, "Component hover should be found");
       const markdown = hoverMarkdown(hovers[0]);
-      assert.ok(markdown.includes('`<nested-widget>`'), markdown);
+      assert.ok(markdown.includes("`<nested-widget>`"), markdown);
       assert.ok(
-        markdown.includes('src/components/nested-widget.html'),
+        markdown.includes("src/components/nested-widget.html"),
         markdown,
       );
-      for (const prop of ['heading', 'description', 'label', 'content']) {
+      for (const prop of ["heading", "description", "label", "content"]) {
         assert.ok(markdown.includes(`\`${prop}\``), markdown);
       }
       assert.ok(
-        markdown.includes('Nested&nbsp;widget&nbsp;documentation'),
+        markdown.includes("Nested&nbsp;widget&nbsp;documentation"),
         markdown,
       );
-      assert.ok(markdown.includes('<unsafe\\>'), markdown);
-      assert.ok(markdown.includes('Main&nbsp;widget&nbsp;heading.'), markdown);
-      assert.ok(markdown.includes('`actions`'), markdown);
-      assert.ok(markdown.includes('`default`'), markdown);
-      assert.ok(markdown.includes('**Includes:** styles, scripts'), markdown);
+      assert.ok(markdown.includes("<unsafe\\>"), markdown);
+      assert.ok(markdown.includes("Main&nbsp;widget&nbsp;heading."), markdown);
+      assert.ok(markdown.includes("`actions`"), markdown);
+      assert.ok(markdown.includes("`default`"), markdown);
+      assert.ok(markdown.includes("**Includes:** styles, scripts"), markdown);
     });
 
-    test('returns no hover for an unknown component', async () => {
-      const folder = getWorkspaceFolder('primary');
+    test("returns no hover for an unknown component", async () => {
+      const folder = getWorkspaceFolder("primary");
       const document = await vscode.workspace.openTextDocument({
-        language: 'html',
-        content: '<unknown-widget></unknown-widget>',
+        language: "html",
+        content: "<unknown-widget></unknown-widget>",
       });
       const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
-        'vscode.executeHoverProvider',
+        "vscode.executeHoverProvider",
         document.uri,
         new vscode.Position(0, 4),
       );
@@ -425,34 +451,36 @@ suite('Extension Integration Suite', () => {
       );
     });
 
-    test('returns no hover for a built-in element', async () => {
+    test("returns no hover for a built-in element", async () => {
       const document = await vscode.workspace.openTextDocument({
-        language: 'html',
-        content: '<button>Save</button>',
+        language: "html",
+        content: "<button>Save</button>",
       });
       const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
-        'vscode.executeHoverProvider',
+        "vscode.executeHoverProvider",
         document.uri,
         new vscode.Position(0, 3),
       );
       assert.ok(
         !hovers ||
-        hovers.every((hover) => !hoverMarkdown(hover).includes('**Source:**')),
-        'The Bascik component provider should not describe built-in elements',
+          hovers.every(
+            (hover) => !hoverMarkdown(hover).includes("**Source:**"),
+          ),
+        "The Bascik component provider should not describe built-in elements",
       );
     });
   });
 
-  suite('ComponentCompletionItemProvider', () => {
-    test('suggests components matching a partial opening tag', async () => {
+  suite("ComponentCompletionItemProvider", () => {
+    test("suggests components matching a partial opening tag", async () => {
       const completions = await completionsInFile(
-        'primary',
-        'src/component-nav.html',
-        '<my-',
+        "primary",
+        "src/component-nav.html",
+        "<my-",
       );
       assert.deepStrictEqual(bascikCompletionLabels(completions), [
-        'my-button',
-        'my-card',
+        "my-button",
+        "my-card",
       ]);
     });
 
@@ -460,113 +488,113 @@ suite('Extension Integration Suite', () => {
       // The range replaces "<my-", so VS Code filters the typed "<my-" against filterText.
       // Without the "<", the editor hides every item even though the provider returned it.
       const completions = await completionsInFile(
-        'primary',
-        'src/component-nav.html',
-        '<my-',
+        "primary",
+        "src/component-nav.html",
+        "<my-",
       );
-      const items = completions.items.filter((item) => item.detail === 'Bascik component');
-      assert.ok(items.length > 0, 'Expected component items');
+      const items = completions.items.filter(
+        (item) => item.detail === "Bascik component",
+      );
+      assert.ok(items.length > 0, "Expected component items");
       for (const item of items) {
         assert.strictEqual(item.filterText, `<${completionLabel(item)}`);
       }
     });
 
-    test('includes components from every configured root', async () => {
+    test("includes components from every configured root", async () => {
       const completions = await completionsInFile(
-        'primary',
-        'src/component-nav.html',
-        '<shared-',
+        "primary",
+        "src/component-nav.html",
+        "<shared-",
       );
-      assert.ok(
-        bascikCompletionLabels(completions).includes('shared-pill'),
-      );
+      assert.ok(bascikCompletionLabels(completions).includes("shared-pill"));
     });
 
-    test('uses the closest nested project component index', async () => {
+    test("uses the closest nested project component index", async () => {
       const completions = await completionsInFile(
-        'primary',
-        'nested-project/src/pages/index.html',
-        '<',
+        "primary",
+        "nested-project/src/pages/index.html",
+        "<",
       );
       const labels = bascikCompletionLabels(completions);
-      assert.ok(labels.includes('nested-widget'));
-      assert.ok(labels.includes('conflict-card'));
-      assert.ok(!labels.includes('my-button'));
+      assert.ok(labels.includes("nested-widget"));
+      assert.ok(labels.includes("conflict-card"));
+      assert.ok(!labels.includes("my-button"));
     });
 
-    test('uses metadata documentation and a paired default-slot snippet', async () => {
+    test("uses metadata documentation and a paired default-slot snippet", async () => {
       const completions = await completionsInFile(
-        'primary',
-        'nested-project/src/pages/index.html',
-        '<nested-',
+        "primary",
+        "nested-project/src/pages/index.html",
+        "<nested-",
       );
       const item = completions.items.find(
-        (candidate) => completionLabel(candidate) === 'nested-widget',
+        (candidate) => completionLabel(candidate) === "nested-widget",
       );
       assert.ok(item);
       const documentation =
-        typeof item.documentation === 'string'
+        typeof item.documentation === "string"
           ? item.documentation
           : item.documentation?.value;
       assert.ok(
-        documentation?.includes('Nested&nbsp;widget&nbsp;documentation'),
+        documentation?.includes("Nested&nbsp;widget&nbsp;documentation"),
       );
-      assert.ok(documentation?.includes('<unsafe\\>'));
-      assert.ok(documentation?.includes('Main&nbsp;widget&nbsp;heading.'));
+      assert.ok(documentation?.includes("<unsafe\\>"));
+      assert.ok(documentation?.includes("Main&nbsp;widget&nbsp;heading."));
       assert.ok(item.insertText instanceof vscode.SnippetString);
       assert.strictEqual(
         item.insertText.value,
-        '<nested-widget>$0</nested-widget>',
+        "<nested-widget>$0</nested-widget>",
       );
     });
 
-    test('completes non-slot components as self-closing void elements', async () => {
+    test("completes non-slot components as self-closing void elements", async () => {
       const completions = await completionsInFile(
-        'primary',
-        'src/component-nav.html',
-        '<my-b',
+        "primary",
+        "src/component-nav.html",
+        "<my-b",
       );
       const item = completions.items.find(
-        (candidate) => completionLabel(candidate) === 'my-button',
+        (candidate) => completionLabel(candidate) === "my-button",
       );
       assert.ok(item);
       assert.ok(item.insertText instanceof vscode.SnippetString);
-      assert.strictEqual(
-        item.insertText.value,
-        '<my-button />$0',
-      );
+      assert.strictEqual(item.insertText.value, "<my-button />$0");
     });
 
-    test('suggests inferred props inside a component opening tag', async () => {
+    test("suggests inferred props inside a component opening tag", async () => {
       const completions = await completionsInFile(
-        'primary',
-        'nested-project/src/pages/index.html',
-        '<nested-widget ',
+        "primary",
+        "nested-project/src/pages/index.html",
+        "<nested-widget ",
       );
       const labels = completions.items.map(completionLabel);
-      for (const prop of ['heading', 'description', 'label', 'content']) {
-        assert.ok(labels.includes(`data-bascik-prop-${prop}`), labels.join(', '));
+      for (const prop of ["heading", "description", "label", "content"]) {
+        assert.ok(
+          labels.includes(`data-bascik-prop-${prop}`),
+          labels.join(", "),
+        );
       }
     });
 
-    test('does not suggest props already present on the opening tag', async () => {
+    test("does not suggest props already present on the opening tag", async () => {
       const completions = await completionsInFile(
-        'primary',
-        'nested-project/src/pages/index.html',
+        "primary",
+        "nested-project/src/pages/index.html",
         '<nested-widget data-bascik-prop-heading="Example" ',
       );
       assert.ok(
         !completions.items
           .map(completionLabel)
-          .includes('data-bascik-prop-heading'),
+          .includes("data-bascik-prop-heading"),
       );
     });
 
-    test('suggests named slots inside a component body', async () => {
+    test("suggests named slots inside a component body", async () => {
       const completions = await completionsInFile(
-        'primary',
-        'nested-project/src/pages/index.html',
-        '<nested-widget>\n  <div ',
+        "primary",
+        "nested-project/src/pages/index.html",
+        "<nested-widget>\n  <div ",
       );
       assert.ok(
         completions.items
@@ -575,102 +603,124 @@ suite('Extension Integration Suite', () => {
       );
     });
 
-    test('isolates suggestions between workspace folders', async () => {
+    test("isolates suggestions between workspace folders", async () => {
       const primary = bascikCompletionLabels(
         await completionsInFile(
-          'primary',
-          'src/component-nav.html',
-          '<shared-',
+          "primary",
+          "src/component-nav.html",
+          "<shared-",
         ),
       );
       const secondary = bascikCompletionLabels(
         await completionsInFile(
-          'secondary',
-          'src/component-nav.html',
-          '<shared-',
+          "secondary",
+          "src/component-nav.html",
+          "<shared-",
         ),
       );
-      assert.ok(primary.includes('shared-pill'));
-      assert.ok(!secondary.includes('shared-pill'));
+      assert.ok(primary.includes("shared-pill"));
+      assert.ok(!secondary.includes("shared-pill"));
     });
 
-    test('suggests component-demo and its inferred props on manual completion', async () => {
+    test("suggests component-demo and its inferred props on manual completion", async () => {
       const componentCompletions = await completionsInFile(
-        'primary',
-        'src/component-nav.html',
-        '<comp',
+        "primary",
+        "src/component-nav.html",
+        "<comp",
         5,
         undefined,
       );
       const labels = bascikCompletionLabels(componentCompletions);
-      assert.ok(labels.includes('component-demo'), `labels: ${labels.join(', ')}`);
+      assert.ok(
+        labels.includes("component-demo"),
+        `labels: ${labels.join(", ")}`,
+      );
 
       const propCompletions = await completionsInFile(
-        'primary',
-        'src/component-nav.html',
-        '<component-demo ',
+        "primary",
+        "src/component-nav.html",
+        "<component-demo ",
         16,
-        ' ',
+        " ",
       );
       const propLabels = propCompletions.items.map(completionLabel);
       assert.ok(
-        propLabels.includes('data-bascik-prop-file'),
-        `prop labels: ${propLabels.join(', ')}`,
+        propLabels.includes("data-bascik-prop-file"),
+        `prop labels: ${propLabels.join(", ")}`,
       );
     });
 
-    test('suggests mutually exclusive script directives on <script > tags with updated guidance', async () => {
+    test("suggests mutually exclusive script directives on <script > tags with updated guidance", async () => {
       const scriptCompletions = await completionsInFile(
-        'primary',
-        'src/component-nav.html',
-        '<script ',
+        "primary",
+        "src/component-nav.html",
+        "<script ",
         8,
-        ' ',
+        " ",
       );
       const scriptLabels = scriptCompletions.items.map(completionLabel);
       for (const dir of [
-        'data-bascik-build',
-        'data-bascik-routes',
-        'data-bascik-server',
-        'data-bascik-stream',
+        "data-bascik-build",
+        "data-bascik-routes",
+        "data-bascik-server",
+        "data-bascik-stream",
       ]) {
-        assert.ok(scriptLabels.includes(dir), `Expected ${dir} in script completions`);
+        assert.ok(
+          scriptLabels.includes(dir),
+          `Expected ${dir} in script completions`,
+        );
       }
 
-      const buildItem = scriptCompletions.items.find((i) => completionLabel(i) === 'data-bascik-build');
-      assert.ok(buildItem?.documentation, 'Expected documentation for data-bascik-build');
-      const buildDoc = buildItem.documentation instanceof vscode.MarkdownString
-        ? buildItem.documentation.value
-        : String(buildItem.documentation);
+      const buildItem = scriptCompletions.items.find(
+        (i) => completionLabel(i) === "data-bascik-build",
+      );
       assert.ok(
-        buildDoc.includes('The default exported handler function returns HTML markup that replaces this script tag in the generated HTML.'),
-        `Expected updated build doc, got: ${buildDoc}`
+        buildItem?.documentation,
+        "Expected documentation for data-bascik-build",
+      );
+      const buildDoc =
+        buildItem.documentation instanceof vscode.MarkdownString
+          ? buildItem.documentation.value
+          : String(buildItem.documentation);
+      assert.ok(
+        buildDoc.includes(
+          "The default exported handler function returns HTML markup that replaces this script tag in the generated HTML.",
+        ),
+        `Expected updated build doc, got: ${buildDoc}`,
       );
 
-      const routesItem = scriptCompletions.items.find((i) => completionLabel(i) === 'data-bascik-routes');
-      assert.ok(routesItem?.documentation, 'Expected documentation for data-bascik-routes');
-      const routesDoc = routesItem.documentation instanceof vscode.MarkdownString
-        ? routesItem.documentation.value
-        : String(routesItem.documentation);
+      const routesItem = scriptCompletions.items.find(
+        (i) => completionLabel(i) === "data-bascik-routes",
+      );
       assert.ok(
-        routesDoc.includes('The default exported handler function returns an array of dynamic route parameters to generate multiple pages from a template.'),
-        `Expected updated routes doc, got: ${routesDoc}`
+        routesItem?.documentation,
+        "Expected documentation for data-bascik-routes",
+      );
+      const routesDoc =
+        routesItem.documentation instanceof vscode.MarkdownString
+          ? routesItem.documentation.value
+          : String(routesItem.documentation);
+      assert.ok(
+        routesDoc.includes(
+          "The default exported handler function returns an array of dynamic route parameters to generate multiple pages from a template.",
+        ),
+        `Expected updated routes doc, got: ${routesDoc}`,
       );
 
       // If one directive exists, none should be suggested
       const existingCompletions = await completionsInFile(
-        'primary',
-        'src/component-nav.html',
-        '<script data-bascik-build ',
+        "primary",
+        "src/component-nav.html",
+        "<script data-bascik-build ",
         26,
-        ' ',
+        " ",
       );
       const existingLabels = existingCompletions.items.map(completionLabel);
       for (const dir of [
-        'data-bascik-build',
-        'data-bascik-routes',
-        'data-bascik-server',
-        'data-bascik-stream',
+        "data-bascik-build",
+        "data-bascik-routes",
+        "data-bascik-server",
+        "data-bascik-stream",
       ]) {
         assert.ok(
           !existingLabels.includes(dir),
@@ -679,77 +729,92 @@ suite('Extension Integration Suite', () => {
       }
     });
 
-    test('suggests script shorthands (<bascik-...) expanding to complete script blocks', async () => {
+    test("suggests script shorthands (<bascik-...) expanding to complete script blocks", async () => {
       const shorthandCompletions = await completionsInFile(
-        'primary',
-        'src/component-nav.html',
-        '<bascik-',
+        "primary",
+        "src/component-nav.html",
+        "<bascik-",
         8,
-        '-',
+        "-",
       );
       const labels = shorthandCompletions.items.map(completionLabel);
       for (const shorthand of [
-        'bascik-build',
-        'bascik-routes',
-        'bascik-server',
-        'bascik-stream',
+        "bascik-build",
+        "bascik-routes",
+        "bascik-server",
+        "bascik-stream",
       ]) {
-        assert.ok(labels.includes(shorthand), `Expected ${shorthand} in completions`);
+        assert.ok(
+          labels.includes(shorthand),
+          `Expected ${shorthand} in completions`,
+        );
       }
 
-      const buildShorthand = shorthandCompletions.items.find((i) => completionLabel(i) === 'bascik-build');
-      assert.ok(buildShorthand, 'Expected bascik-build item');
-      assert.strictEqual(buildShorthand.filterText, '<bascik-build');
-      const buildInsert = buildShorthand.insertText instanceof vscode.SnippetString
-        ? buildShorthand.insertText.value
-        : String(buildShorthand.insertText);
+      const buildShorthand = shorthandCompletions.items.find(
+        (i) => completionLabel(i) === "bascik-build",
+      );
+      assert.ok(buildShorthand, "Expected bascik-build item");
+      assert.strictEqual(buildShorthand.filterText, "<bascik-build");
+      const buildInsert =
+        buildShorthand.insertText instanceof vscode.SnippetString
+          ? buildShorthand.insertText.value
+          : String(buildShorthand.insertText);
       assert.strictEqual(
         buildInsert,
-        '<script data-bascik-build>\n  export default async function () {\n    return `$0`;\n  }\n</script>'
+        "<script data-bascik-build>\n  export default async function () {\n    return `$0`;\n  }\n</script>",
       );
 
-      const routesShorthand = shorthandCompletions.items.find((i) => completionLabel(i) === 'bascik-routes');
-      assert.ok(routesShorthand, 'Expected bascik-routes item');
-      const routesInsert = routesShorthand.insertText instanceof vscode.SnippetString
-        ? routesShorthand.insertText.value
-        : String(routesShorthand.insertText);
+      const routesShorthand = shorthandCompletions.items.find(
+        (i) => completionLabel(i) === "bascik-routes",
+      );
+      assert.ok(routesShorthand, "Expected bascik-routes item");
+      const routesInsert =
+        routesShorthand.insertText instanceof vscode.SnippetString
+          ? routesShorthand.insertText.value
+          : String(routesShorthand.insertText);
       assert.strictEqual(
         routesInsert,
-        '<script data-bascik-routes>\n  export default async function () {\n    return [\n      $0\n    ];\n  }\n</script>'
+        "<script data-bascik-routes>\n  export default async function () {\n    return [\n      $0\n    ];\n  }\n</script>",
       );
 
-      const serverShorthand = shorthandCompletions.items.find((i) => completionLabel(i) === 'bascik-server');
-      assert.ok(serverShorthand, 'Expected bascik-server item');
-      const serverInsert = serverShorthand.insertText instanceof vscode.SnippetString
-        ? serverShorthand.insertText.value
-        : String(serverShorthand.insertText);
+      const serverShorthand = shorthandCompletions.items.find(
+        (i) => completionLabel(i) === "bascik-server",
+      );
+      assert.ok(serverShorthand, "Expected bascik-server item");
+      const serverInsert =
+        serverShorthand.insertText instanceof vscode.SnippetString
+          ? serverShorthand.insertText.value
+          : String(serverShorthand.insertText);
       assert.strictEqual(
         serverInsert,
-        '<script data-bascik-server>\n  export default async function (request, context, { signal }) {\n    return `$0`;\n  }\n</script>'
+        "<script data-bascik-server>\n  export default async function (request, context, { signal }) {\n    return `$0`;\n  }\n</script>",
       );
 
-      const streamShorthand = shorthandCompletions.items.find((i) => completionLabel(i) === 'bascik-stream');
-      assert.ok(streamShorthand, 'Expected bascik-stream item');
-      const streamInsert = streamShorthand.insertText instanceof vscode.SnippetString
-        ? streamShorthand.insertText.value
-        : String(streamShorthand.insertText);
+      const streamShorthand = shorthandCompletions.items.find(
+        (i) => completionLabel(i) === "bascik-stream",
+      );
+      assert.ok(streamShorthand, "Expected bascik-stream item");
+      const streamInsert =
+        streamShorthand.insertText instanceof vscode.SnippetString
+          ? streamShorthand.insertText.value
+          : String(streamShorthand.insertText);
       assert.strictEqual(
         streamInsert,
-        '<script data-bascik-stream>\n  export default async function (request, context, { signal }) {\n    return `$0`;\n  }\n</script>'
+        "<script data-bascik-stream>\n  export default async function (request, context, { signal }) {\n    return `$0`;\n  }\n</script>",
       );
     });
 
     for (const [context, cursorOffset] of [
       ['<div data-value="<my-">', 21],
-      ['</my-', 5],
-      ['<!-- <my- -->', 9],
+      ["</my-", 5],
+      ["<!-- <my- -->", 9],
       ['<script>const value = "<my-";</script>', 27],
       ['<style>.example { content: "<my-"; }</style>', 31],
     ] as const) {
       test(`does not suggest components in invalid context: ${context}`, async () => {
         const completions = await completionsInFile(
-          'primary',
-          'src/component-nav.html',
+          "primary",
+          "src/component-nav.html",
           context,
           cursorOffset,
         );
@@ -758,28 +823,32 @@ suite('Extension Integration Suite', () => {
     }
   });
 
-  suite('Script Import Definitions', () => {
+  suite("Script Import Definitions", () => {
     const fixtureUri = vscode.Uri.file(
       path.join(
-        getWorkspaceFolder('primary').uri.fsPath,
-        'src',
-        'script-import-nav.html',
+        getWorkspaceFolder("primary").uri.fsPath,
+        "src",
+        "script-import-nav.html",
       ),
     );
 
     const definitionInside = async (
       needle: string,
     ): Promise<vscode.Location[]> => {
-      assert.ok(fixtureUri, 'Workspace folder should be open');
+      assert.ok(fixtureUri, "Workspace folder should be open");
       const doc = await vscode.workspace.openTextDocument(fixtureUri);
       const text = doc.getText();
-      const index = text.indexOf(needle);
+      // A formatter may have rewritten the fixture's quotes, so match either style.
+      const index =
+        [needle, needle.replaceAll("'", '"')]
+          .map((candidate) => text.indexOf(candidate))
+          .find((found) => found >= 0) ?? -1;
       assert.ok(index >= 0, `Fixture should contain ${needle}`);
       // Position the cursor a few characters before the end of the needle so it
       // lands inside the specifier string or attribute value.
       const position = doc.positionAt(index + needle.length - 3);
       return vscode.commands.executeCommand<vscode.Location[]>(
-        'vscode.executeDefinitionProvider',
+        "vscode.executeDefinitionProvider",
         doc.uri,
         position,
       );
@@ -788,30 +857,30 @@ suite('Extension Integration Suite', () => {
     const assertNavHelper = (locations: vscode.Location[] | undefined) => {
       assert.ok(
         locations && locations.length > 0,
-        'Definition should be found',
+        "Definition should be found",
       );
-      const targetPath = locationUri(locations[0]).fsPath.replace(/\\/g, '/');
+      const targetPath = locationUri(locations[0]).fsPath.replace(/\\/g, "/");
       assert.ok(
-        targetPath.endsWith('src/lib/nav-helper.ts'),
+        targetPath.endsWith("src/lib/nav-helper.ts"),
         `Expected location to end with src/lib/nav-helper.ts, got ${targetPath}`,
       );
     };
 
-    test('provides definition for relative import in data-bascik-build script', async () => {
+    test("provides definition for relative import in data-bascik-build script", async () => {
       const locations = await definitionInside(
         "helperFn } from './lib/nav-helper.ts'",
       );
       assertNavHelper(locations);
     });
 
-    test('provides definition for relative import in data-bascik-server script', async () => {
+    test("provides definition for relative import in data-bascik-server script", async () => {
       const locations = await definitionInside(
         "serverHelper } from './lib/nav-helper.ts'",
       );
       assertNavHelper(locations);
     });
 
-    test('provides definition for parent-relative inline import', async () => {
+    test("provides definition for parent-relative inline import", async () => {
       assertNavHelper(
         await definitionInside(
           "parentHelper } from '../src/lib/nav-helper.ts'",
@@ -819,60 +888,60 @@ suite('Extension Integration Suite', () => {
       );
     });
 
-    test('provides definition for src attribute on data-bascik-build script', async () => {
+    test("provides definition for src attribute on data-bascik-build script", async () => {
       const locations = await definitionInside(
         '<script data-bascik-build src="./lib/nav-helper.ts">',
       );
       assertNavHelper(locations);
     });
 
-    test('provides definition for src attribute on data-bascik-server script', async () => {
+    test("provides definition for src attribute on data-bascik-server script", async () => {
       const locations = await definitionInside(
         '<script data-bascik-server src="./lib/nav-helper.ts">',
       );
       assertNavHelper(locations);
     });
 
-    test('provides definition for dynamic import in data-bascik-build script', async () => {
+    test("provides definition for dynamic import in data-bascik-build script", async () => {
       const locations = await definitionInside(
         "await import('./lib/nav-helper.ts')",
       );
       assertNavHelper(locations);
     });
 
-    test('provides definition for export-from in data-bascik-routes with closing-tag whitespace', async () => {
+    test("provides definition for export-from in data-bascik-routes with closing-tag whitespace", async () => {
       const locations = await definitionInside(
         "routeHelper } from './lib/nav-helper.ts'",
       );
       assertNavHelper(locations);
     });
 
-    test('provides definition for unquoted relative src', async () => {
+    test("provides definition for unquoted relative src", async () => {
       const locations = await definitionInside(
-        '<script data-bascik-build src=./lib/nav-helper.ts>',
+        "<script data-bascik-build src=./lib/nav-helper.ts>",
       );
       assertNavHelper(locations);
     });
 
-    test('provides definition for a bare path src resolved relative to the document', async () => {
+    test("provides definition for a bare path src resolved relative to the document", async () => {
       const locations = await definitionInside(
-        '<script data-bascik-routes src=lib/nav-helper.ts>',
+        "<script data-bascik-routes src=lib/nav-helper.ts>",
       );
       assertNavHelper(locations);
     });
 
-    test('provides definition for parent-relative src', async () => {
+    test("provides definition for parent-relative src", async () => {
       const locations = await definitionInside(
-        '<script data-bascik-server src=../src/lib/nav-helper.ts>',
+        "<script data-bascik-server src=../src/lib/nav-helper.ts>",
       );
       assertNavHelper(locations);
     });
 
-    test('returns no definition for a missing relative target', async () => {
-      const locations = await definitionInside('./lib/missing-helper.ts');
+    test("returns no definition for a missing relative target", async () => {
+      const locations = await definitionInside("./lib/missing-helper.ts");
       assert.ok(
         !locations || locations.length === 0,
-        'No definition for missing target',
+        "No definition for missing target",
       );
     });
 
@@ -880,7 +949,7 @@ suite('Extension Integration Suite', () => {
       "// import './lib/nav-helper.ts'",
       `\"import('./lib/nav-helper.ts')\"`,
       "`import('./lib/nav-helper.ts')`",
-      '/import\\([\'"]\\.\\/lib\\/nav-helper\\.ts[\'"]\\)/',
+      "/import\\(['\"]\\.\\/lib\\/nav-helper\\.ts['\"]\\)/",
       `if (ready) /import\\(['"]\\.\\/lib\\/nav-helper\\.ts['"]\\)/`,
       `{ markReady(); } /import\\(['"]\\.\\.\\/lib\\/nav-helper\\.ts['"]\\)/`,
       "obj.import('./lib/nav-helper.ts')",
@@ -889,37 +958,37 @@ suite('Extension Integration Suite', () => {
         const locations = await definitionInside(nonCodeImport);
         assert.ok(
           !locations || locations.length === 0,
-          'No definition for non-code import',
+          "No definition for non-code import",
         );
       });
     }
 
-    test('returns no definition for bare specifier in data-bascik-build script', async () => {
+    test("returns no definition for bare specifier in data-bascik-build script", async () => {
       const locations = await definitionInside("from 'node:fs/promises'");
       assert.ok(
         !locations || locations.length === 0,
-        'No definition for bare specifier',
+        "No definition for bare specifier",
       );
     });
 
-    test('returns no definition for relative import in client script', async () => {
+    test("returns no definition for relative import in client script", async () => {
       const locations = await definitionInside(
         "clientHelper } from './lib/nav-helper.ts'",
       );
       assert.ok(
         !locations || locations.length === 0,
-        'No definition for client script import',
+        "No definition for client script import",
       );
     });
 
-    test('returns no definition for src on a client script', async () => {
+    test("returns no definition for src on a client script", async () => {
       const locations = await definitionInside(
         '<script src="./lib/nav-helper.ts">',
       );
       assert.ok(!locations || locations.length === 0);
     });
 
-    test('returns no definition for alias import in a client script', async () => {
+    test("returns no definition for alias import in a client script", async () => {
       const locations = await definitionInside(
         "clientAliasHelper } from '@/lib/nav-helper.ts'",
       );
@@ -927,26 +996,30 @@ suite('Extension Integration Suite', () => {
     });
   });
 
-  suite('Script Import Definitions: import-root alias (@/)', () => {
+  suite("Script Import Definitions: import-root alias (@/)", () => {
     const fixtureUri = vscode.Uri.file(
       path.join(
-        getWorkspaceFolder('primary').uri.fsPath,
-        'src',
-        'script-import-alias.html',
+        getWorkspaceFolder("primary").uri.fsPath,
+        "src",
+        "script-import-alias.html",
       ),
     );
 
     const definitionInside = async (
       needle: string,
     ): Promise<vscode.Location[]> => {
-      assert.ok(fixtureUri, 'Workspace folder should be open');
+      assert.ok(fixtureUri, "Workspace folder should be open");
       const doc = await vscode.workspace.openTextDocument(fixtureUri);
       const text = doc.getText();
-      const index = text.indexOf(needle);
+      // A formatter may have rewritten the fixture's quotes, so match either style.
+      const index =
+        [needle, needle.replaceAll("'", '"')]
+          .map((candidate) => text.indexOf(candidate))
+          .find((found) => found >= 0) ?? -1;
       assert.ok(index >= 0, `Fixture should contain ${needle}`);
       const position = doc.positionAt(index + needle.length - 3);
       return vscode.commands.executeCommand<vscode.Location[]>(
-        'vscode.executeDefinitionProvider',
+        "vscode.executeDefinitionProvider",
         doc.uri,
         position,
       );
@@ -955,38 +1028,38 @@ suite('Extension Integration Suite', () => {
     const assertNavHelper = (locations: vscode.Location[] | undefined) => {
       assert.ok(
         locations && locations.length > 0,
-        'Definition should be found',
+        "Definition should be found",
       );
-      const targetPath = locationUri(locations[0]).fsPath.replace(/\\/g, '/');
+      const targetPath = locationUri(locations[0]).fsPath.replace(/\\/g, "/");
       assert.ok(
-        targetPath.endsWith('src/lib/nav-helper.ts'),
+        targetPath.endsWith("src/lib/nav-helper.ts"),
         `Expected location to end with src/lib/nav-helper.ts, got ${targetPath}`,
       );
     };
 
-    test('resolves @/ import in data-bascik-build against the import root', async () => {
+    test("resolves @/ import in data-bascik-build against the import root", async () => {
       assertNavHelper(
         await definitionInside("aliasHelper } from '@/lib/nav-helper.ts'"),
       );
     });
 
-    test('returns no definition for a leading-slash import (it is a compile error, not an alias)', async () => {
+    test("returns no definition for a leading-slash import (it is a compile error, not an alias)", async () => {
       const locations = await definitionInside(
         "slashHelper } from '/lib/nav-helper.ts'",
       );
       assert.ok(
         !locations || locations.length === 0,
-        'No definition for leading-slash specifier',
+        "No definition for leading-slash specifier",
       );
     });
 
-    test('resolves @/ export-from in data-bascik-routes', async () => {
+    test("resolves @/ export-from in data-bascik-routes", async () => {
       assertNavHelper(
         await definitionInside("aliasRouteHelper } from '@/lib/nav-helper.ts'"),
       );
     });
 
-    test('resolves @/ dynamic import', async () => {
+    test("resolves @/ dynamic import", async () => {
       assertNavHelper(
         await definitionInside("await import('@/lib/nav-helper.ts')"),
       );
@@ -1000,31 +1073,31 @@ suite('Extension Integration Suite', () => {
       );
     });
 
-    test('returns no definition for a leading-slash src= on a server script', async () => {
+    test("returns no definition for a leading-slash src= on a server script", async () => {
       const locations = await definitionInside(
         '<script data-bascik-server src="/lib/nav-helper.ts">',
       );
       assert.ok(
         !locations || locations.length === 0,
-        'No definition for leading-slash src',
+        "No definition for leading-slash src",
       );
     });
 
-    test('isolates import roots between workspace folders', async () => {
+    test("isolates import roots between workspace folders", async () => {
       const locations = await definitionsInFile(
-        'secondary',
-        'src/script-import-alias.html',
-        '@/lib/nav-helper.ts',
+        "secondary",
+        "src/script-import-alias.html",
+        "@/lib/nav-helper.ts",
       );
       assert.ok(
         locationUri(locations[0]).fsPath.endsWith(
-          path.join('secondary-workspace', 'app', 'lib', 'nav-helper.ts'),
+          path.join("secondary-workspace", "app", "lib", "nav-helper.ts"),
         ),
       );
     });
 
-    test('reports an Error diagnostic for each leading-slash specifier and src= in Bascik scripts, naming the @/ fix', async () => {
-      assert.ok(fixtureUri, 'Workspace folder should be open');
+    test("reports an Error diagnostic for each leading-slash specifier and src= in Bascik scripts, naming the @/ fix", async () => {
+      assert.ok(fixtureUri, "Workspace folder should be open");
       const doc = await vscode.workspace.openTextDocument(fixtureUri);
       // The fixture was already opened by the definition tests above, so
       // onDidOpenTextDocument will not fire again. Show it to trigger the
@@ -1034,14 +1107,14 @@ suite('Extension Integration Suite', () => {
       for (
         let i = 0;
         i < 20 &&
-        !diagnostics.some((d) => d.code === 'leading-slash-specifier');
+        !diagnostics.some((d) => d.code === "leading-slash-specifier");
         i++
       ) {
         await new Promise((r) => setTimeout(r, 50));
         diagnostics = vscode.languages.getDiagnostics(doc.uri);
       }
       const slashDiags = diagnostics.filter(
-        (d) => d.code === 'leading-slash-specifier',
+        (d) => d.code === "leading-slash-specifier",
       );
       assert.strictEqual(
         slashDiags.length,
@@ -1059,96 +1132,96 @@ suite('Extension Integration Suite', () => {
         text.slice(doc.offsetAt(d.range.start), doc.offsetAt(d.range.end)),
       );
       assert.ok(
-        flagged.every((f) => f === '/lib/nav-helper.ts'),
+        flagged.every((f) => f === "/lib/nav-helper.ts"),
         `Ranges should cover the specifier, got ${JSON.stringify(flagged)}`,
       );
       // The client <script type="module"> with '/lib/client-root.js' must not be flagged.
       assert.ok(
-        !diagnostics.some((d) => d.message.includes('client-root.js')),
-        'Client script leading slash must not be flagged',
+        !diagnostics.some((d) => d.message.includes("client-root.js")),
+        "Client script leading slash must not be flagged",
       );
     });
 
-    test('does not treat a scoped package as an alias', async () => {
+    test("does not treat a scoped package as an alias", async () => {
       const locations = await definitionInside("from '@scope/nav-helper.ts'");
       assert.ok(
         !locations || locations.length === 0,
-        'No definition for scoped package',
+        "No definition for scoped package",
       );
     });
 
-    test('returns no definition for a missing alias target', async () => {
+    test("returns no definition for a missing alias target", async () => {
       const locations = await definitionInside("'@/lib/missing-helper.ts'");
       assert.ok(
         !locations || locations.length === 0,
-        'No definition for missing alias target',
+        "No definition for missing alias target",
       );
     });
   });
 
-  suite('Project cache lifecycle', () => {
-    test('invalidates component discovery after creating and deleting a component', async () => {
-      const folder = getWorkspaceFolder('primary');
+  suite("Project cache lifecycle", () => {
+    test("invalidates component discovery after creating and deleting a component", async () => {
+      const folder = getWorkspaceFolder("primary");
       const componentUri = vscode.Uri.file(
-        path.join(folder.uri.fsPath, 'src', 'components', 'cache-widget.html'),
+        path.join(folder.uri.fsPath, "src", "components", "cache-widget.html"),
       );
       const usageUri = vscode.Uri.file(
-        path.join(folder.uri.fsPath, 'src', 'cache-widget-usage.html'),
+        path.join(folder.uri.fsPath, "src", "cache-widget-usage.html"),
       );
       await vscode.workspace.fs.writeFile(
         usageUri,
-        Buffer.from('<cache-widget></cache-widget>'),
+        Buffer.from("<cache-widget></cache-widget>"),
       );
 
       try {
         await vscode.workspace.fs.writeFile(
           componentUri,
-          Buffer.from('<p>Cache fixture</p>'),
+          Buffer.from("<p>Cache fixture</p>"),
         );
         await waitFor(async () => {
           const locations = await definitionsInFile(
-            'primary',
-            'src/cache-widget-usage.html',
-            'cache-widget',
+            "primary",
+            "src/cache-widget-usage.html",
+            "cache-widget",
           );
           return firstLocationPath(locations) === componentUri.fsPath;
-        }, 'Created component should become discoverable');
+        }, "Created component should become discoverable");
 
         await vscode.workspace.fs.delete(componentUri);
         await waitFor(async () => {
           const locations = await definitionsInFile(
-            'primary',
-            'src/cache-widget-usage.html',
-            'cache-widget',
+            "primary",
+            "src/cache-widget-usage.html",
+            "cache-widget",
           );
           return !locations || locations.length === 0;
-        }, 'Deleted component should leave the discovery cache');
+        }, "Deleted component should leave the discovery cache");
       } finally {
         try {
           await vscode.workspace.fs.delete(componentUri);
-        } catch { }
+        } catch {}
         try {
           await vscode.workspace.fs.delete(usageUri);
-        } catch { }
+        } catch {}
       }
     });
 
-    test('uses open HTML contents and restores disk usage after close', async () => {
-      const folder = getWorkspaceFolder('primary');
+    test("uses open HTML contents and restores disk usage after close", async () => {
+      const folder = getWorkspaceFolder("primary");
       const usageUri = vscode.Uri.file(
-        path.join(folder.uri.fsPath, 'src', 'cache-prop-usage.html'),
+        path.join(folder.uri.fsPath, "src", "cache-prop-usage.html"),
       );
       const componentUri = vscode.Uri.file(
         path.join(
           folder.uri.fsPath,
-          'src',
-          'components',
-          'attribute-card.html',
+          "src",
+          "components",
+          "attribute-card.html",
         ),
       );
       await vscode.workspace.fs.writeFile(
         usageUri,
-        Buffer.from('<attribute-card></attribute-card>'),
+        Buffer.from("<attribute-card></attribute-card>"),
       );
 
       try {
@@ -1162,7 +1235,7 @@ suite('Extension Integration Suite', () => {
                   'data-bascik-attr-href references prop "link"',
                 ),
               ),
-          'Missing prop diagnostic should be present initially',
+          "Missing prop diagnostic should be present initially",
         );
 
         const usage = await vscode.workspace.openTextDocument(usageUri);
@@ -1185,11 +1258,11 @@ suite('Extension Integration Suite', () => {
                   'data-bascik-attr-href references prop "link"',
                 ),
               ),
-          'Open usage buffer should satisfy the prop diagnostic',
+          "Open usage buffer should satisfy the prop diagnostic",
         );
 
         await vscode.commands.executeCommand(
-          'workbench.action.revertAndCloseActiveEditor',
+          "workbench.action.revertAndCloseActiveEditor",
         );
         await waitFor(
           () =>
@@ -1200,87 +1273,87 @@ suite('Extension Integration Suite', () => {
                   'data-bascik-attr-href references prop "link"',
                 ),
               ),
-          'Closing the buffer should restore disk-backed prop usage',
+          "Closing the buffer should restore disk-backed prop usage",
         );
       } finally {
         try {
           await vscode.workspace.fs.delete(usageUri);
-        } catch { }
+        } catch {}
       }
     });
 
-    test('updates component discovery after a component rename', async () => {
-      const folder = getWorkspaceFolder('primary');
+    test("updates component discovery after a component rename", async () => {
+      const folder = getWorkspaceFolder("primary");
       const oldUri = vscode.Uri.file(
-        path.join(folder.uri.fsPath, 'src', 'components', 'rename-old.html'),
+        path.join(folder.uri.fsPath, "src", "components", "rename-old.html"),
       );
       const newUri = vscode.Uri.file(
-        path.join(folder.uri.fsPath, 'src', 'components', 'rename-new.html'),
+        path.join(folder.uri.fsPath, "src", "components", "rename-new.html"),
       );
       const usageUri = vscode.Uri.file(
-        path.join(folder.uri.fsPath, 'src', 'rename-usage.html'),
+        path.join(folder.uri.fsPath, "src", "rename-usage.html"),
       );
-      await vscode.workspace.fs.writeFile(oldUri, Buffer.from('<p>Old</p>'));
+      await vscode.workspace.fs.writeFile(oldUri, Buffer.from("<p>Old</p>"));
       await vscode.workspace.fs.writeFile(
         usageUri,
-        Buffer.from('<rename-old></rename-old><rename-new></rename-new>'),
+        Buffer.from("<rename-old></rename-old><rename-new></rename-new>"),
       );
 
       try {
         await waitFor(async () => {
           const locations = await definitionsInFile(
-            'primary',
-            'src/rename-usage.html',
-            'rename-old',
+            "primary",
+            "src/rename-usage.html",
+            "rename-old",
           );
           return firstLocationPath(locations) === oldUri.fsPath;
-        }, 'Original component should be discoverable');
+        }, "Original component should be discoverable");
         await vscode.workspace.fs.rename(oldUri, newUri);
         await waitFor(async () => {
           const oldLocations = await definitionsInFile(
-            'primary',
-            'src/rename-usage.html',
-            'rename-old',
+            "primary",
+            "src/rename-usage.html",
+            "rename-old",
           );
           const newLocations = await definitionsInFile(
-            'primary',
-            'src/rename-usage.html',
-            'rename-new',
+            "primary",
+            "src/rename-usage.html",
+            "rename-new",
           );
           return (
             (!oldLocations || oldLocations.length === 0) &&
             firstLocationPath(newLocations) === newUri.fsPath
           );
-        }, 'Renamed component should replace its old cache entry');
+        }, "Renamed component should replace its old cache entry");
       } finally {
         for (const uri of [oldUri, newUri, usageUri]) {
           try {
             await vscode.workspace.fs.delete(uri);
-          } catch { }
+          } catch {}
         }
       }
     });
 
-    test('discovers and removes a nested project config at runtime', async () => {
-      const folder = getWorkspaceFolder('primary');
-      const projectRoot = path.join(folder.uri.fsPath, 'runtime-project');
+    test("discovers and removes a nested project config at runtime", async () => {
+      const folder = getWorkspaceFolder("primary");
+      const projectRoot = path.join(folder.uri.fsPath, "runtime-project");
       const configUri = vscode.Uri.file(
-        path.join(projectRoot, 'bascik.config.ts'),
+        path.join(projectRoot, "bascik.config.ts"),
       );
       const componentUri = vscode.Uri.file(
-        path.join(projectRoot, 'ui', 'runtime-widget.html'),
+        path.join(projectRoot, "ui", "runtime-widget.html"),
       );
-      const usageUri = vscode.Uri.file(path.join(projectRoot, 'index.html'));
+      const usageUri = vscode.Uri.file(path.join(projectRoot, "index.html"));
       await vscode.workspace.fs.createDirectory(
         vscode.Uri.file(path.dirname(componentUri.fsPath)),
       );
       await vscode.workspace.fs.writeFile(
         componentUri,
-        Buffer.from('<p>Runtime</p>'),
+        Buffer.from("<p>Runtime</p>"),
       );
       await vscode.workspace.fs.writeFile(
         usageUri,
-        Buffer.from('<runtime-widget></runtime-widget>'),
+        Buffer.from("<runtime-widget></runtime-widget>"),
       );
 
       try {
@@ -1290,61 +1363,61 @@ suite('Extension Integration Suite', () => {
         );
         await waitFor(async () => {
           const locations = await definitionsInFile(
-            'primary',
-            'runtime-project/index.html',
-            'runtime-widget',
+            "primary",
+            "runtime-project/index.html",
+            "runtime-widget",
           );
           return firstLocationPath(locations) === componentUri.fsPath;
-        }, 'Nested config should establish a project state');
+        }, "Nested config should establish a project state");
 
         await vscode.workspace.fs.delete(configUri);
         await waitFor(async () => {
           const locations = await definitionsInFile(
-            'primary',
-            'runtime-project/index.html',
-            'runtime-widget',
+            "primary",
+            "runtime-project/index.html",
+            "runtime-widget",
           );
           return !locations || locations.length === 0;
-        }, 'Deleting nested config should remove its project state');
+        }, "Deleting nested config should remove its project state");
       } finally {
         try {
           await vscode.workspace.fs.delete(vscode.Uri.file(projectRoot), {
             recursive: true,
           });
-        } catch { }
+        } catch {}
       }
     });
 
-    for (const ignoredDirectory of ['node_modules', 'dist', '.git']) {
+    for (const ignoredDirectory of ["node_modules", "dist", ".git"]) {
       test(`ignores nested configs under ${ignoredDirectory}`, async () => {
-        const folder = getWorkspaceFolder('primary');
+        const folder = getWorkspaceFolder("primary");
         const root = path.join(
           folder.uri.fsPath,
           ignoredDirectory,
-          'ignored-project',
+          "ignored-project",
         );
-        const usageUri = vscode.Uri.file(path.join(root, 'index.html'));
+        const usageUri = vscode.Uri.file(path.join(root, "index.html"));
         await vscode.workspace.fs.createDirectory(
-          vscode.Uri.file(path.join(root, 'ui')),
+          vscode.Uri.file(path.join(root, "ui")),
         );
         await vscode.workspace.fs.writeFile(
-          vscode.Uri.file(path.join(root, 'bascik.config.ts')),
+          vscode.Uri.file(path.join(root, "bascik.config.ts")),
           Buffer.from("export default { directory: { components: 'ui' } };"),
         );
         await vscode.workspace.fs.writeFile(
-          vscode.Uri.file(path.join(root, 'ui', 'ignored-widget.html')),
-          Buffer.from('<p>Ignored</p>'),
+          vscode.Uri.file(path.join(root, "ui", "ignored-widget.html")),
+          Buffer.from("<p>Ignored</p>"),
         );
         await vscode.workspace.fs.writeFile(
           usageUri,
-          Buffer.from('<ignored-widget></ignored-widget>'),
+          Buffer.from("<ignored-widget></ignored-widget>"),
         );
         try {
           const document = await vscode.workspace.openTextDocument(usageUri);
           const locations = await vscode.commands.executeCommand<
             vscode.Location[]
           >(
-            'vscode.executeDefinitionProvider',
+            "vscode.executeDefinitionProvider",
             document.uri,
             new vscode.Position(0, 3),
           );
@@ -1354,29 +1427,29 @@ suite('Extension Integration Suite', () => {
             await vscode.workspace.fs.delete(vscode.Uri.file(root), {
               recursive: true,
             });
-          } catch { }
+          } catch {}
         }
       });
     }
 
-    test('rebuilds configured component and import roots after config changes', async () => {
-      const folder = getWorkspaceFolder('primary');
+    test("rebuilds configured component and import roots after config changes", async () => {
+      const folder = getWorkspaceFolder("primary");
       const configUri = vscode.Uri.file(
-        path.join(folder.uri.fsPath, 'bascik.config.ts'),
+        path.join(folder.uri.fsPath, "bascik.config.ts"),
       );
       const usageUri = vscode.Uri.file(
-        path.join(folder.uri.fsPath, 'src', 'cache-config-usage.html'),
+        path.join(folder.uri.fsPath, "src", "cache-config-usage.html"),
       );
       const externalRoot = path.join(
         folder.uri.fsPath,
-        '..',
-        'cache-external-components',
+        "..",
+        "cache-external-components",
       );
       const externalComponentUri = vscode.Uri.file(
-        path.join(externalRoot, 'external-widget.html'),
+        path.join(externalRoot, "external-widget.html"),
       );
       const alternateImportUri = vscode.Uri.file(
-        path.join(folder.uri.fsPath, 'alternate-imports', 'cache-helper.ts'),
+        path.join(folder.uri.fsPath, "alternate-imports", "cache-helper.ts"),
       );
       const originalConfig = await vscode.workspace.fs.readFile(configUri);
 
@@ -1386,11 +1459,11 @@ suite('Extension Integration Suite', () => {
       );
       await vscode.workspace.fs.writeFile(
         externalComponentUri,
-        Buffer.from('<p>External component</p>'),
+        Buffer.from("<p>External component</p>"),
       );
       await vscode.workspace.fs.writeFile(
         alternateImportUri,
-        Buffer.from('export const cacheHelper = true;'),
+        Buffer.from("export const cacheHelper = true;"),
       );
       await vscode.workspace.fs.writeFile(
         usageUri,
@@ -1401,7 +1474,7 @@ suite('Extension Integration Suite', () => {
 
       try {
         const escapedRoot = externalRoot
-          .replace(/\\/g, '\\\\')
+          .replace(/\\/g, "\\\\")
           .replace(/'/g, "\\'");
         await vscode.workspace.fs.writeFile(
           configUri,
@@ -1412,66 +1485,66 @@ suite('Extension Integration Suite', () => {
 
         await waitFor(async () => {
           const locations = await definitionsInFile(
-            'primary',
-            'src/cache-config-usage.html',
-            'external-widget',
+            "primary",
+            "src/cache-config-usage.html",
+            "external-widget",
           );
           return firstLocationPath(locations) === externalComponentUri.fsPath;
-        }, 'Changed component root should be discovered');
+        }, "Changed component root should be discovered");
         await waitFor(async () => {
           const locations = await definitionsInFile(
-            'primary',
-            'src/cache-config-usage.html',
-            '@/cache-helper.ts',
+            "primary",
+            "src/cache-config-usage.html",
+            "@/cache-helper.ts",
           );
           return firstLocationPath(locations) === alternateImportUri.fsPath;
-        }, 'Changed import root should be used');
+        }, "Changed import root should be used");
       } finally {
         await vscode.workspace.fs.writeFile(configUri, originalConfig);
         try {
           await vscode.workspace.fs.delete(usageUri);
-        } catch { }
+        } catch {}
         try {
           await vscode.workspace.fs.delete(vscode.Uri.file(externalRoot), {
             recursive: true,
           });
-        } catch { }
+        } catch {}
         try {
           await vscode.workspace.fs.delete(
             vscode.Uri.file(path.dirname(alternateImportUri.fsPath)),
             { recursive: true },
           );
-        } catch { }
+        } catch {}
       }
 
       await waitFor(async () => {
         const locations = await definitionsInFile(
-          'primary',
-          'src/component-nav.html',
-          'my-button',
+          "primary",
+          "src/component-nav.html",
+          "my-button",
         );
         return (
           firstLocationPath(locations)?.endsWith(
-            path.join('src', 'components', 'my-button.html'),
+            path.join("src", "components", "my-button.html"),
           ) ?? false
         );
-      }, 'Restored config should rebuild the original component root');
+      }, "Restored config should rebuild the original component root");
     });
 
-    test('clears diagnostics and recreates state when a workspace folder is removed and added', async () => {
-      const secondary = getWorkspaceFolder('secondary');
+    test("clears diagnostics and recreates state when a workspace folder is removed and added", async () => {
+      const secondary = getWorkspaceFolder("secondary");
       const secondaryIndex =
         vscode.workspace.workspaceFolders?.findIndex(
-          (folder) => folder.name === 'secondary',
+          (folder) => folder.name === "secondary",
         ) ?? -1;
       assert.ok(secondaryIndex >= 0);
       const diagnosticUri = vscode.Uri.file(
-        path.join(secondary.uri.fsPath, 'src', 'cache-folder-lifecycle.html'),
+        path.join(secondary.uri.fsPath, "src", "cache-folder-lifecycle.html"),
       );
       await vscode.workspace.fs.writeFile(
         diagnosticUri,
         Buffer.from(
-          '<script data-bascik-build data-bascik-server>console.log(1)</script>',
+          "<script data-bascik-build data-bascik-server>console.log(1)</script>",
         ),
       );
 
@@ -1479,7 +1552,7 @@ suite('Extension Integration Suite', () => {
         await vscode.workspace.openTextDocument(diagnosticUri);
         await waitFor(
           () => vscode.languages.getDiagnostics(diagnosticUri).length > 0,
-          'Fixture should receive diagnostics before folder removal',
+          "Fixture should receive diagnostics before folder removal",
         );
         assert.strictEqual(
           vscode.workspace.updateWorkspaceFolders(secondaryIndex, 1),
@@ -1488,18 +1561,18 @@ suite('Extension Integration Suite', () => {
         await waitFor(
           () =>
             !vscode.workspace.workspaceFolders?.some(
-              (folder) => folder.name === 'secondary',
+              (folder) => folder.name === "secondary",
             ),
-          'Secondary workspace folder should be removed',
+          "Secondary workspace folder should be removed",
         );
         await waitFor(
           () => vscode.languages.getDiagnostics(diagnosticUri).length === 0,
-          'Removed workspace diagnostics should be cleared',
+          "Removed workspace diagnostics should be cleared",
         );
       } finally {
         if (
           !vscode.workspace.workspaceFolders?.some(
-            (folder) => folder.name === 'secondary',
+            (folder) => folder.name === "secondary",
           )
         ) {
           vscode.workspace.updateWorkspaceFolders(
@@ -1511,47 +1584,47 @@ suite('Extension Integration Suite', () => {
         await waitFor(
           () =>
             vscode.workspace.workspaceFolders?.some(
-              (folder) => folder.name === 'secondary',
+              (folder) => folder.name === "secondary",
             ) ?? false,
-          'Secondary workspace folder should be restored',
+          "Secondary workspace folder should be restored",
         );
         try {
           await vscode.workspace.fs.delete(diagnosticUri);
-        } catch { }
+        } catch {}
       }
 
       await waitFor(async () => {
         const locations = await definitionsInFile(
-          'secondary',
-          'src/component-nav.html',
-          'conflict-card',
+          "secondary",
+          "src/component-nav.html",
+          "conflict-card",
         );
         return (
           firstLocationPath(locations)?.endsWith(
-            path.join('ui', 'components', 'conflict-card.html'),
+            path.join("ui", "components", "conflict-card.html"),
           ) ?? false
         );
-      }, 'Re-added workspace folder should recreate its project state');
+      }, "Re-added workspace folder should recreate its project state");
     });
   });
 
-  suite('Diagnostics', () => {
-    test('reports metadata annotation diagnostics from the unsaved component buffer', async () => {
-      const workspaceFolder = getWorkspaceFolder('primary');
+  suite("Diagnostics", () => {
+    test("reports metadata annotation diagnostics from the unsaved component buffer", async () => {
+      const workspaceFolder = getWorkspaceFolder("primary");
       const componentUri = vscode.Uri.file(
         path.join(
           workspaceFolder.uri.fsPath,
-          'nested-project',
-          'src',
-          'components',
-          'nested-widget.html',
+          "nested-project",
+          "src",
+          "components",
+          "nested-widget.html",
         ),
       );
       const document = await vscode.workspace.openTextDocument(componentUri);
       const originalText = document.getText();
       const replacement = originalText.replace(
-        '@prop heading - Main widget heading.',
-        '@prop heading - Main widget heading.\n@prop heading - Duplicate.\n@slot missing - Missing slot.',
+        "@prop heading - Main widget heading.",
+        "@prop heading - Main widget heading.\n@prop heading - Duplicate.\n@slot missing - Missing slot.",
       );
       const edit = new vscode.WorkspaceEdit();
       edit.replace(
@@ -1569,20 +1642,18 @@ suite('Extension Integration Suite', () => {
             .getDiagnostics(componentUri)
             .map((diagnostic) => diagnostic.code);
           return (
-            codes.includes('component-metadata-duplicate-annotation') &&
-            codes.includes('component-metadata-undeclared-annotation')
+            codes.includes("component-metadata-duplicate-annotation") &&
+            codes.includes("component-metadata-undeclared-annotation")
           );
-        }, 'Metadata annotation diagnostics should be published');
+        }, "Metadata annotation diagnostics should be published");
 
         const diagnostics = vscode.languages.getDiagnostics(componentUri);
         assert.ok(
           diagnostics
             .filter(
               (diagnostic) =>
-                diagnostic.code ===
-                'component-metadata-duplicate-annotation' ||
-                diagnostic.code ===
-                'component-metadata-undeclared-annotation',
+                diagnostic.code === "component-metadata-duplicate-annotation" ||
+                diagnostic.code === "component-metadata-undeclared-annotation",
             )
             .every(
               (diagnostic) =>
@@ -1603,14 +1674,14 @@ suite('Extension Integration Suite', () => {
       }
     });
 
-    test('reports info when an ID reference is not declared in the component', async () => {
-      const workspaceFolder = getWorkspaceFolder('primary');
+    test("reports info when an ID reference is not declared in the component", async () => {
+      const workspaceFolder = getWorkspaceFolder("primary");
       const componentUri = vscode.Uri.file(
         path.join(
           workspaceFolder.uri.fsPath,
-          'src',
-          'components',
-          'id-reference-missing.html',
+          "src",
+          "components",
+          "id-reference-missing.html",
         ),
       );
       const doc = await vscode.workspace.openTextDocument(componentUri);
@@ -1620,15 +1691,15 @@ suite('Extension Integration Suite', () => {
             .getDiagnostics(doc.uri)
             .some((diagnostic) =>
               diagnostic.message.includes(
-                'is not declared in this component and will be left unscoped',
+                "is not declared in this component and will be left unscoped",
               ),
             ),
-        'Missing ID reference diagnostics should be published',
+        "Missing ID reference diagnostics should be published",
       );
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const matches = diagnostics.filter((diagnostic) =>
         diagnostic.message.includes(
-          'is not declared in this component and will be left unscoped',
+          "is not declared in this component and will be left unscoped",
         ),
       );
       assert.strictEqual(matches.length, 2);
@@ -1640,13 +1711,13 @@ suite('Extension Integration Suite', () => {
       );
     });
 
-    test('checks ARIA and itemref ID lists and targets exact missing IDs', async () => {
+    test("checks ARIA and itemref ID lists and targets exact missing IDs", async () => {
       const componentUri = vscode.Uri.file(
         path.join(
-          getWorkspaceFolder('primary').uri.fsPath,
-          'src',
-          'components',
-          'id-reference-aria.html',
+          getWorkspaceFolder("primary").uri.fsPath,
+          "src",
+          "components",
+          "id-reference-aria.html",
         ),
       );
       const document = await vscode.workspace.openTextDocument(componentUri);
@@ -1655,22 +1726,22 @@ suite('Extension Integration Suite', () => {
           vscode.languages
             .getDiagnostics(componentUri)
             .filter((diagnostic) =>
-              diagnostic.message.includes('will be left unscoped'),
+              diagnostic.message.includes("will be left unscoped"),
             ).length === 3,
-        'All missing ARIA and itemref IDs should be diagnosed',
+        "All missing ARIA and itemref IDs should be diagnosed",
       );
       const diagnostics = vscode.languages
         .getDiagnostics(componentUri)
         .filter((diagnostic) =>
-          diagnostic.message.includes('will be left unscoped'),
+          diagnostic.message.includes("will be left unscoped"),
         );
       const targets = diagnostics.map((diagnostic) =>
         document.getText(diagnostic.range),
       );
       assert.deepStrictEqual(targets.sort(), [
-        'missing-description',
-        'missing-item',
-        'missing-title',
+        "missing-description",
+        "missing-item",
+        "missing-title",
       ]);
       assert.ok(
         diagnostics.every(
@@ -1680,14 +1751,14 @@ suite('Extension Integration Suite', () => {
       );
     });
 
-    test('does not report info when an ID reference resolves locally', async () => {
-      const workspaceFolder = getWorkspaceFolder('primary');
+    test("does not report info when an ID reference resolves locally", async () => {
+      const workspaceFolder = getWorkspaceFolder("primary");
       const componentUri = vscode.Uri.file(
         path.join(
           workspaceFolder.uri.fsPath,
-          'src',
-          'components',
-          'id-reference-local.html',
+          "src",
+          "components",
+          "id-reference-local.html",
         ),
       );
       const doc = await vscode.workspace.openTextDocument(componentUri);
@@ -1695,15 +1766,15 @@ suite('Extension Integration Suite', () => {
       assert.ok(
         !diagnostics.some((diagnostic) =>
           diagnostic.message.includes(
-            'is not declared in this component and will be left unscoped',
+            "is not declared in this component and will be left unscoped",
           ),
         ),
       );
     });
 
-    test('does not report component ID reference info for non-component HTML', async () => {
+    test("does not report component ID reference info for non-component HTML", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
         content:
           '<label for="missing">Email</label><a href="#outside">Outside</a>',
       });
@@ -1711,28 +1782,36 @@ suite('Extension Integration Suite', () => {
       assert.ok(
         !diagnostics.some((diagnostic) =>
           diagnostic.message.includes(
-            'is not declared in this component and will be left unscoped',
+            "is not declared in this component and will be left unscoped",
           ),
         ),
       );
     });
 
-    test('ignores ID references inside component raw-text elements', async () => {
-      const workspaceFolder = getWorkspaceFolder('primary');
+    test("ignores ID references inside component raw-text elements", async () => {
+      const workspaceFolder = getWorkspaceFolder("primary");
       const componentUri = vscode.Uri.file(
         path.join(
           workspaceFolder.uri.fsPath,
-          'src',
-          'components',
-          'id-reference-raw-text.html',
+          "src",
+          "components",
+          "id-reference-raw-text.html",
         ),
       );
       const doc = await vscode.workspace.openTextDocument(componentUri);
+      await waitForDiagnostic(
+        doc.uri,
+        (diagnostic) =>
+          diagnostic.message.includes(
+            "is not declared in this component and will be left unscoped",
+          ),
+        "Expected the undeclared ID reference outside the raw-text elements",
+      );
       const diagnostics = vscode.languages
         .getDiagnostics(doc.uri)
         .filter((diagnostic) =>
           diagnostic.message.includes(
-            'is not declared in this component and will be left unscoped',
+            "is not declared in this component and will be left unscoped",
           ),
         );
       assert.deepStrictEqual(
@@ -1743,9 +1822,9 @@ suite('Extension Integration Suite', () => {
       );
     });
 
-    test('warns when data-bascik-preserve contains an unknown token', async () => {
+    test("warns when data-bascik-preserve contains an unknown token", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
         content: '<div data-bascik-preserve="id href"></div>',
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
@@ -1754,27 +1833,27 @@ suite('Extension Integration Suite', () => {
           'Unknown data-bascik-preserve token "href"',
         ),
       );
-      assert.ok(match, 'Expected warning for an unknown preserve token');
+      assert.ok(match, "Expected warning for an unknown preserve token");
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
 
-    test('accepts every valid preserve token', async () => {
+    test("accepts every valid preserve token", async () => {
       const document = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
         content: '<div data-bascik-preserve="class id name"></div>',
       });
       assert.ok(
         !vscode.languages
           .getDiagnostics(document.uri)
           .some((diagnostic) =>
-            diagnostic.message.includes('Unknown data-bascik-preserve token'),
+            diagnostic.message.includes("Unknown data-bascik-preserve token"),
           ),
       );
     });
 
-    test('does not warn for an external form outside a component file', async () => {
+    test("does not warn for an external form outside a component file", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
         content:
           '<form action="https://forms.example/submit"><input name="email"></form>',
       });
@@ -1788,25 +1867,27 @@ suite('Extension Integration Suite', () => {
       );
     });
 
-    test('warns when a component external form does not preserve name attributes', async () => {
-      const workspaceFolder = getWorkspaceFolder('primary');
+    test("warns when a component external form does not preserve name attributes", async () => {
+      const workspaceFolder = getWorkspaceFolder("primary");
       const componentUri = vscode.Uri.file(
         path.join(
           workspaceFolder.uri.fsPath,
-          'src',
-          'components',
-          'external-form.html',
+          "src",
+          "components",
+          "external-form.html",
         ),
       );
       const doc = await vscode.workspace.openTextDocument(componentUri);
       await waitFor(
         () =>
-          vscode.languages.getDiagnostics(doc.uri).some((diagnostic) =>
-            diagnostic.message.includes(
-              'External form actions require data-bascik-preserve="name"',
+          vscode.languages
+            .getDiagnostics(doc.uri)
+            .some((diagnostic) =>
+              diagnostic.message.includes(
+                'External form actions require data-bascik-preserve="name"',
+              ),
             ),
-          ),
-        'Expected warning for an external form with scoped names',
+        "Expected warning for an external form with scoped names",
       );
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find((diagnostic) =>
@@ -1816,14 +1897,14 @@ suite('Extension Integration Suite', () => {
       );
       assert.ok(
         match,
-        'Expected warning for an external form with scoped names',
+        "Expected warning for an external form with scoped names",
       );
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
 
-    test('accepts an external form that preserves name attributes', async () => {
+    test("accepts an external form that preserves name attributes", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
         content:
           '<form action="https://forms.example/submit" data-bascik-preserve="name"><input name="email"></form>',
       });
@@ -1837,9 +1918,26 @@ suite('Extension Integration Suite', () => {
       );
     });
 
-    test('accepts a bare preserve directive on an external form', async () => {
+    test("accepts an empty-valued preserve directive on an external form", async () => {
       const document = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
+        content:
+          '<form action="https://forms.example/submit" data-bascik-preserve=""><input name="email"></form>',
+      });
+      assert.ok(
+        !vscode.languages
+          .getDiagnostics(document.uri)
+          .some((diagnostic) =>
+            diagnostic.message.includes(
+              'External form actions require data-bascik-preserve="name"',
+            ),
+          ),
+      );
+    });
+
+    test("accepts a bare preserve directive on an external form", async () => {
+      const document = await openWorkspaceDocument({
+        language: "html",
         content:
           '<form action="https://forms.example/submit" data-bascik-preserve><input name="email"></form>',
       });
@@ -1854,91 +1952,91 @@ suite('Extension Integration Suite', () => {
       );
     });
 
-    test('warns when no usage supplies the prop named by an attribute directive', async () => {
-      const workspaceFolder = getWorkspaceFolder('primary');
+    test("warns when no usage supplies the prop named by an attribute directive", async () => {
+      const workspaceFolder = getWorkspaceFolder("primary");
       const componentUri = vscode.Uri.file(
         path.join(
           workspaceFolder.uri.fsPath,
-          'src',
-          'components',
-          'attribute-card.html',
+          "src",
+          "components",
+          "attribute-card.html",
         ),
       );
       const doc = await vscode.workspace.openTextDocument(componentUri);
-      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
-      const match = diagnostics.find((diagnostic) =>
-        diagnostic.message.includes(
-          'data-bascik-attr-href references prop "link"',
-        ),
+      const match = await waitForDiagnostic(
+        doc.uri,
+        (diagnostic) =>
+          diagnostic.message.includes(
+            'data-bascik-attr-href references prop "link"',
+          ),
+        "Expected a hint for an attribute directive prop missing from every usage",
       );
-      assert.ok(
-        match,
-        'Expected warning for an attribute directive prop missing from every usage',
-      );
-      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+      // A hint, not a warning: pages built from Markdown or a build script are invisible to the language server.
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Information);
+      assert.strictEqual(match.code, "attr-prop-unsupplied");
     });
 
-    test('reports error when script has both data-bascik-build and data-bascik-server', async () => {
+    test("reports error when script has both data-bascik-build and data-bascik-server", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
         content:
-          '<script data-bascik-build data-bascik-server>\nconsole.log(1);\n</script>',
+          "<script data-bascik-build data-bascik-server>\nconsole.log(1);\n</script>",
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find((d) =>
         d.message.includes(
-          'data-bascik-build and data-bascik-server cannot both appear',
+          "data-bascik-build and data-bascik-server cannot both appear",
         ),
       );
       assert.ok(
         match,
-        'Expected error diagnostic for conflicting script attributes',
+        "Expected error diagnostic for conflicting script attributes",
       );
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
-    test('reports error when script has both data-bascik-routes and data-bascik-server', async () => {
+    test("reports error when script has both data-bascik-routes and data-bascik-server", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
         content:
-          '<script data-bascik-routes data-bascik-server>\nconsole.log(1);\n</script>',
+          "<script data-bascik-routes data-bascik-server>\nconsole.log(1);\n</script>",
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find((d) =>
         d.message.includes(
-          'data-bascik-routes and data-bascik-server cannot both appear',
+          "data-bascik-routes and data-bascik-server cannot both appear",
         ),
       );
       assert.ok(
         match,
-        'Expected error diagnostic for conflicting routes/server script attributes',
+        "Expected error diagnostic for conflicting routes/server script attributes",
       );
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
-    test('reports error when script has both data-bascik-routes and data-bascik-build', async () => {
+    test("reports error when script has both data-bascik-routes and data-bascik-build", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
         content:
-          '<script data-bascik-routes data-bascik-build>\nconsole.log(1);\n</script>',
+          "<script data-bascik-routes data-bascik-build>\nconsole.log(1);\n</script>",
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find((d) =>
         d.message.includes(
-          'data-bascik-routes and data-bascik-build cannot both appear',
+          "data-bascik-routes and data-bascik-build cannot both appear",
         ),
       );
       assert.ok(
         match,
-        'Expected error diagnostic for conflicting routes/build script attributes',
+        "Expected error diagnostic for conflicting routes/build script attributes",
       );
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
-    for (const directive of ['server', 'routes']) {
+    for (const directive of ["server", "routes"]) {
       test(`reports conflict when stream appears with ${directive}`, async () => {
         const document = await openWorkspaceDocument({
-          language: 'html',
+          language: "html",
           content: `<script data-bascik-stream data-bascik-${directive}>export default async () => "";</script>`,
         });
         const match = vscode.languages
@@ -1946,137 +2044,170 @@ suite('Extension Integration Suite', () => {
           .find(
             (diagnostic) =>
               diagnostic.severity === vscode.DiagnosticSeverity.Error &&
-              diagnostic.message.includes('cannot both appear'),
+              diagnostic.message.includes("cannot both appear"),
           );
         assert.ok(match);
       });
     }
 
-    test('reports JS compatibility warning in html script tag', async () => {
+    test("reports JS compatibility warning in html script tag", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
+        directory: "src/components",
         content: '<script>\nelement.id = "custom";\n</script>',
       });
-      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
-      const match = diagnostics.find((d) =>
-        d.message.includes('Runtime .id assignment'),
+      const match = await waitForDiagnostic(
+        doc.uri,
+        (d) => d.message.includes("Runtime .id assignment"),
+        "Expected JS compatibility warning in script block",
       );
-      assert.ok(match, 'Expected JS compatibility warning in script block');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
-    test('reports CSS compatibility warning in an inline style tag', async () => {
+    test("reports CSS compatibility warning in an inline style tag", async () => {
       const document = await openWorkspaceDocument({
-        language: 'html',
-        content: '<style>\n[data-state] { color: red; }\n</style>',
+        language: "html",
+        directory: "src/components",
+        content: "<style>\n[data-state] { color: red; }\n</style>",
       });
-      assert.ok(
-        vscode.languages
-          .getDiagnostics(document.uri)
-          .some((diagnostic) =>
-            diagnostic.message.includes(
-              'Standalone attribute selectors are not scoped',
-            ),
+      await waitForDiagnostic(
+        document.uri,
+        (diagnostic) =>
+          diagnostic.message.includes(
+            "Standalone attribute selectors are not scoped",
           ),
+        "Expected CSS compatibility warning in an inline style tag",
       );
     });
 
-    test('does not report CSS compatibility warning for @import in html style tag', async () => {
+    test("does not report scoping rules in a page, which Bascik does not scope", async () => {
+      const page = await openWorkspaceDocument({
+        language: "html",
+        content:
+          '<style>\n[data-state] { color: red; }\n</style>\n<script>\nelement.id = "custom";\n</script>',
+      });
+      const css = await openWorkspaceDocument({
+        language: "css",
+        content: "[data-state] { color: red; }",
+      });
+      const js = await openWorkspaceDocument({
+        language: "javascript",
+        content: 'document.querySelector("[data-target]");',
+      });
+      for (const document of [page, css, js]) {
+        assert.deepStrictEqual(
+          vscode.languages
+            .getDiagnostics(document.uri)
+            .filter(
+              (diagnostic) =>
+                diagnostic.severity === vscode.DiagnosticSeverity.Error,
+            ),
+          [],
+          `${document.uri.fsPath} is not a component file`,
+        );
+      }
+    });
+
+    test("does not report CSS compatibility warning for @import in html style tag", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
+        directory: "src/components",
         content: '<style>\n@import "theme.css";\n</style>',
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find((d) =>
-        d.message.includes('CSS @import is not processed'),
+        d.message.includes("CSS @import is not processed"),
       );
       assert.ok(
         !match,
-        'Should NOT report CSS compatibility warning for @import in style block',
+        "Should NOT report CSS compatibility warning for @import in style block",
       );
     });
 
-    test('reports unclosed component tag warning', async () => {
+    test("reports unclosed component tag warning", async () => {
       const doc = await vscode.workspace.openTextDocument(
         vscode.Uri.file(
           path.join(
-            getWorkspaceFolder('primary').uri.fsPath,
-            'src',
-            'unclosed-component.html',
+            getWorkspaceFolder("primary").uri.fsPath,
+            "src",
+            "unclosed-component.html",
           ),
         ),
       );
-      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
-      const match = diagnostics.find((d) =>
-        d.message.includes('Component tag <my-button> is unclosed'),
+      const match = await waitForDiagnostic(
+        doc.uri,
+        (d) => d.message.includes("Component tag <my-button> is unclosed"),
+        "Expected unclosed component tag warning",
       );
-      assert.ok(match, 'Expected unclosed component tag warning');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
 
-    test('does not report unclosed component warning when nested component is self-closing', async () => {
+    test("does not report unclosed component warning when nested component is self-closing", async () => {
       const doc = await vscode.workspace.openTextDocument(
         vscode.Uri.file(
           path.join(
-            getWorkspaceFolder('primary').uri.fsPath,
-            'src',
-            'self-closing-component.html',
+            getWorkspaceFolder("primary").uri.fsPath,
+            "src",
+            "self-closing-component.html",
           ),
         ),
       );
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find((d) =>
-        d.message.includes('Component tag <my-card> is unclosed'),
+        d.message.includes("Component tag <my-card> is unclosed"),
       );
       assert.ok(
         !match,
-        'Should NOT report unclosed warning when nested child component is self-closing',
+        "Should NOT report unclosed warning when nested child component is self-closing",
       );
     });
 
-    test('does not report warning for multiple style tags', async () => {
+    test("does not report warning for multiple style tags", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
         content:
-          '<style>.a { color: red; }</style>\n<style>.b { color: blue; }</style>',
+          "<style>.a { color: red; }</style>\n<style>.b { color: blue; }</style>",
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find((d) =>
-        d.message.includes('Component has multiple <style> tags'),
+        d.message.includes("Component has multiple <style> tags"),
       );
-      assert.ok(!match, 'Should not report warning for multiple style tags');
+      assert.ok(!match, "Should not report warning for multiple style tags");
     });
 
-    test('reports companion CSS file conflict when opening html file', async () => {
-      const workspaceFolder = getWorkspaceFolder('primary');
+    test("reports companion CSS file conflict when opening html file", async () => {
+      const workspaceFolder = getWorkspaceFolder("primary");
 
       const companionUri = vscode.Uri.file(
         path.join(
           workspaceFolder.uri.fsPath,
-          'src',
-          'components',
-          'companion.html',
+          "src",
+          "components",
+          "companion.html",
         ),
       );
       const doc = await vscode.workspace.openTextDocument(companionUri);
-      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
-      const match = diagnostics.find((d) =>
-        d.message.includes(
-          'Component has both a companion .css file and an inline <style> tag',
-        ),
+      const match = await waitForDiagnostic(
+        doc.uri,
+        (d) =>
+          d.message.includes(
+            "Component has both a companion .css file and an inline <style> tag",
+          ),
+        "Expected warning for companion CSS file conflict",
       );
-      assert.ok(match, 'Expected warning for companion CSS file conflict');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
 
-    test('does not report compatibility warnings in test or spec files', async () => {
-      const folder = getWorkspaceFolder('primary');
+    test("does not report compatibility warnings in test or spec files", async () => {
+      const folder = getWorkspaceFolder("primary");
       const testFileUri = vscode.Uri.file(
-        path.join(folder.uri.fsPath, 'src', 'example.test.ts'),
+        path.join(folder.uri.fsPath, "src", "example.test.ts"),
       );
       await vscode.workspace.fs.writeFile(
         testFileUri,
-        Buffer.from('document.querySelector("[data-target]");\nelement.id = "custom";'),
+        Buffer.from(
+          'document.querySelector("[data-target]");\nelement.id = "custom";',
+        ),
       );
       try {
         const doc = await vscode.workspace.openTextDocument(testFileUri);
@@ -2085,79 +2216,83 @@ suite('Extension Integration Suite', () => {
         assert.strictEqual(
           diagnostics.length,
           0,
-          'Test and spec files should receive no Bascik scoping diagnostics',
+          "Test and spec files should receive no Bascik scoping diagnostics",
         );
       } finally {
         try {
           await vscode.workspace.fs.delete(testFileUri);
-        } catch { }
+        } catch {}
       }
     });
 
-    test('reports compatibility warning in standalone CSS file', async () => {
+    test("reports compatibility warning in a component companion CSS file", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'css',
-        content: '[data-state] { color: red; }',
+        language: "css",
+        directory: "src/components",
+        content: "[data-state] { color: red; }",
       });
-      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
-      const match = diagnostics.find((d) =>
-        d.message.includes('Standalone attribute selectors are not scoped'),
+      const match = await waitForDiagnostic(
+        doc.uri,
+        (d) =>
+          d.message.includes("Standalone attribute selectors are not scoped"),
+        "Expected CSS warning in a companion CSS file",
       );
-      assert.ok(match, 'Expected CSS warning in standalone CSS file');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
-    test('reports compatibility warning in standalone JS file', async () => {
+    test("reports compatibility warning in a component companion JS file", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'javascript',
+        language: "javascript",
+        directory: "src/components",
         content: 'document.querySelector("[data-target]");',
       });
-      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
-      const match = diagnostics.find((d) =>
-        d.message.includes('Attribute selectors are not rewritten'),
+      const match = await waitForDiagnostic(
+        doc.uri,
+        (d) => d.message.includes("Attribute selectors are not rewritten"),
+        "Expected JS warning in a companion JS file",
       );
-      assert.ok(match, 'Expected JS warning in standalone JS file');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
-    test('reports compatibility warning in standalone TypeScript file', async () => {
+    test("reports compatibility warning in a component companion TypeScript file", async () => {
       const document = await openWorkspaceDocument({
-        language: 'typescript',
+        language: "typescript",
+        directory: "src/components",
         content: 'document.querySelectorAll("[data-target]");',
       });
-      assert.ok(
-        vscode.languages
-          .getDiagnostics(document.uri)
-          .some((diagnostic) =>
-            diagnostic.message.includes('Attribute selectors are not rewritten'),
-          ),
+      await waitForDiagnostic(
+        document.uri,
+        (diagnostic) =>
+          diagnostic.message.includes("Attribute selectors are not rewritten"),
+        "Expected JS warning in a companion TypeScript file",
       );
     });
 
-    test('reports template classList replacement error in standalone TypeScript', async () => {
+    test("reports template classList replacement error in a component companion TypeScript file", async () => {
       const document = await openWorkspaceDocument({
-        language: 'typescript',
+        language: "typescript",
+        directory: "src/components",
         content: 'element.classList.replace("old", `state-${nextState}`);',
       });
-      const match = vscode.languages
-        .getDiagnostics(document.uri)
-        .find((diagnostic) =>
+      const match = await waitForDiagnostic(
+        document.uri,
+        (diagnostic) =>
           diagnostic.message.includes(
-            'Template-literal class names are not rewritten safely',
+            "Template-literal class names are not rewritten safely",
           ),
-        );
-      assert.ok(match, 'Expected template classList replacement diagnostic');
+        "Expected template classList replacement diagnostic",
+      );
       // Every compatibility rule is an error (docs/content/compatibility.md).
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
-    test('does not warn for a hyphenated component filename', async () => {
+    test("does not warn for a hyphenated component filename", async () => {
       const uri = vscode.Uri.file(
         path.join(
-          getWorkspaceFolder('primary').uri.fsPath,
-          'src',
-          'components',
-          'my-button.html',
+          getWorkspaceFolder("primary").uri.fsPath,
+          "src",
+          "components",
+          "my-button.html",
         ),
       );
       await vscode.workspace.openTextDocument(uri);
@@ -2165,176 +2300,185 @@ suite('Extension Integration Suite', () => {
         !vscode.languages
           .getDiagnostics(uri)
           .some((diagnostic) =>
-            diagnostic.message.includes('custom elements should include a hyphen'),
+            diagnostic.message.includes(
+              "custom elements should include a hyphen",
+            ),
           ),
       );
     });
 
-    test('does not report properly nested matching component tags as unclosed', async () => {
+    test("does not report properly nested matching component tags as unclosed", async () => {
       const document = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
         content:
-          '<my-card><my-card></my-card><my-button></my-button></my-card>',
+          "<my-card><my-card></my-card><my-button></my-button></my-card>",
       });
       assert.ok(
         !vscode.languages
           .getDiagnostics(document.uri)
-          .some((diagnostic) => diagnostic.message.includes('is unclosed')),
+          .some((diagnostic) => diagnostic.message.includes("is unclosed")),
       );
     });
 
-    test('reports non-hyphenated component name warning for component files in src/components/', async () => {
-      const workspaceFolder = getWorkspaceFolder('primary');
+    test("reports non-hyphenated component name warning for component files in src/components/", async () => {
+      const workspaceFolder = getWorkspaceFolder("primary");
 
       const nonHyphenatedUri = vscode.Uri.file(
-        path.join(workspaceFolder.uri.fsPath, 'src', 'components', 'card.html'),
+        path.join(workspaceFolder.uri.fsPath, "src", "components", "card.html"),
       );
       // Test file with fsPath ending with src/components/card.html
       const fileDoc = await vscode.workspace.openTextDocument(nonHyphenatedUri);
-      const diagnostics = vscode.languages.getDiagnostics(fileDoc.uri);
-      const match = diagnostics.find((d) =>
-        d.message.includes(
-          'Under WHATWG HTML §4.13, custom elements should include a hyphen',
-        ),
+      const match = await waitForDiagnostic(
+        fileDoc.uri,
+        (d) =>
+          d.message.includes(
+            "Under WHATWG HTML §4.13, custom elements should include a hyphen",
+          ),
+        "Expected non-hyphenated component warning",
       );
-      assert.ok(match, 'Expected non-hyphenated component warning');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
 
-    test('reports non-hyphenated component name warning for files in a second configured components root', async () => {
-      const workspaceFolder = getWorkspaceFolder('primary');
+    test("reports non-hyphenated component name warning for files in a second configured components root", async () => {
+      const workspaceFolder = getWorkspaceFolder("primary");
 
       const uri = vscode.Uri.file(
         path.join(
           workspaceFolder.uri.fsPath,
-          'shared-components',
-          'widget.html',
+          "shared-components",
+          "widget.html",
         ),
       );
       const fileDoc = await vscode.workspace.openTextDocument(uri);
-      const diagnostics = vscode.languages.getDiagnostics(fileDoc.uri);
-      const match = diagnostics.find((d) =>
-        d.message.includes(
-          'Under WHATWG HTML §4.13, custom elements should include a hyphen',
-        ),
-      );
-      assert.ok(
-        match,
-        'Expected non-hyphenated component warning for a file in the second root',
+      const match = await waitForDiagnostic(
+        fileDoc.uri,
+        (d) =>
+          d.message.includes(
+            "Under WHATWG HTML §4.13, custom elements should include a hyphen",
+          ),
+        "Expected non-hyphenated component warning for a file in the second root",
       );
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
 
-    test('reports server script missing default export error', async () => {
+    test("reports server script missing default export error", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
-        content: '<script data-bascik-server>\nconst x = 1;\n</script>',
+        language: "html",
+        content: "<script data-bascik-server>\nconst x = 1;\n</script>",
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find(
-        (d) => d.code === 'server-script-missing-default-export',
+        (d) => d.code === "server-script-missing-default-export",
       );
       assert.ok(
         match,
-        'Expected server-script-missing-default-export diagnostic',
+        "Expected server-script-missing-default-export diagnostic",
       );
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
       assert.ok(
-        match.message.includes('A data-bascik-server script must `export default` a function `(request, context, { signal })`.'),
-        `Expected server script message, got: ${match.message}`
+        match.message.includes(
+          "A data-bascik-server script must `export default` a function `(request, context, { signal })`.",
+        ),
+        `Expected server script message, got: ${match.message}`,
       );
     });
 
-    test('reports build script missing default export error', async () => {
+    test("reports build script missing default export error", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
-        content: '<script data-bascik-build>\nconsole.log(1);\n</script>',
+        language: "html",
+        content: "<script data-bascik-build>\nconsole.log(1);\n</script>",
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find(
-        (d) => d.code === 'server-script-missing-default-export',
+        (d) => d.code === "server-script-missing-default-export",
       );
       assert.ok(
         match,
-        'Expected server-script-missing-default-export diagnostic for build script',
+        "Expected server-script-missing-default-export diagnostic for build script",
       );
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
       assert.ok(
-        match.message.includes('A data-bascik-build script must `export default` a function returning a string. Expected: export default async function() { ... }'),
-        `Expected build script message, got: ${match.message}`
+        match.message.includes(
+          "A data-bascik-build script must `export default` a function returning a string. Expected: export default async function() { ... }",
+        ),
+        `Expected build script message, got: ${match.message}`,
       );
     });
 
-    test('reports routes script missing default export error', async () => {
+    test("reports routes script missing default export error", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
-        content: '<script data-bascik-routes>\nconsole.log(1);\n</script>',
+        language: "html",
+        content: "<script data-bascik-routes>\nconsole.log(1);\n</script>",
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find(
-        (d) => d.code === 'server-script-missing-default-export',
+        (d) => d.code === "server-script-missing-default-export",
       );
       assert.ok(
         match,
-        'Expected server-script-missing-default-export diagnostic for routes script',
+        "Expected server-script-missing-default-export diagnostic for routes script",
       );
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
       assert.ok(
-        match.message.includes('A data-bascik-routes script must `export default` a function returning an array. Expected: export default async function() { ... }'),
-        `Expected routes script message, got: ${match.message}`
+        match.message.includes(
+          "A data-bascik-routes script must `export default` a function returning an array. Expected: export default async function() { ... }",
+        ),
+        `Expected routes script message, got: ${match.message}`,
       );
     });
 
-    test('accepts clean build script with default export and console.log without diagnostics', async () => {
+    test("accepts clean build script with default export and console.log without diagnostics", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
-        content: '<script data-bascik-build>\nconsole.log("building");\nexport default async function () {\n  return "<div>build</div>";\n}\n</script>',
+        language: "html",
+        content:
+          '<script data-bascik-build>\nconsole.log("building");\nexport default async function () {\n  return "<div>build</div>";\n}\n</script>',
       });
       const diagnostics = vscode.languages
         .getDiagnostics(doc.uri)
-        .filter((d) => d.source === 'bascik');
+        .filter((d) => d.source === "bascik");
       assert.strictEqual(
         diagnostics.length,
         0,
-        `Expected 0 diagnostics for clean build script, got: ${JSON.stringify(diagnostics.map((d) => d.message))}`
+        `Expected 0 diagnostics for clean build script, got: ${JSON.stringify(diagnostics.map((d) => d.message))}`,
       );
     });
 
-    test('does not report missing default export on build script with external src', async () => {
+    test("does not report missing default export on build script with external src", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
-        content: '<script data-bascik-build src="@/lib/nav-helper.ts"></script>',
+        language: "html",
+        content:
+          '<script data-bascik-build src="@/lib/nav-helper.ts"></script>',
       });
       const diagnostics = vscode.languages
         .getDiagnostics(doc.uri)
-        .filter((d) => d.code === 'server-script-missing-default-export');
+        .filter((d) => d.code === "server-script-missing-default-export");
       assert.strictEqual(diagnostics.length, 0);
     });
 
-    test('reports stream script href sink warning', async () => {
+    test("reports stream script href sink warning", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
         content:
           '<script data-bascik-stream>\nexport default async (request) => {\n  return `<a href="${x}">link</a>`;\n};\n</script>',
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find(
-        (d) => d.code === 'server-script-sink-url-attribute',
+        (d) => d.code === "server-script-sink-url-attribute",
       );
-      assert.ok(match, 'Expected server-script-sink-url-attribute warning');
+      assert.ok(match, "Expected server-script-sink-url-attribute warning");
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
 
     for (const [code, template] of [
-      ['server-script-sink-event-handler', '<button onclick="${request}">'],
-      ['server-script-sink-unquoted-attribute', '<div title=${request}>'],
-      ['server-script-sink-inline-script', '<script>${request}</script>'],
-      ['server-script-sink-style', '<style>.x { color: ${request}; }</style>'],
-      ['server-script-sink-text-unescaped', '<p>${request.url}</p>'],
+      ["server-script-sink-event-handler", '<button onclick="${request}">'],
+      ["server-script-sink-unquoted-attribute", "<div title=${request}>"],
+      ["server-script-sink-inline-script", "<script>${request}</script>"],
+      ["server-script-sink-style", "<style>.x { color: ${request}; }</style>"],
+      ["server-script-sink-text-unescaped", "<p>${request.url}</p>"],
     ] as const) {
       test(`publishes ${code} through HTML integration`, async () => {
         const document = await openWorkspaceDocument({
-          language: 'html',
+          language: "html",
           content: `<script data-bascik-server>export default async (request) => \`${template}\`;</script>`,
         });
         assert.ok(
@@ -2345,11 +2489,11 @@ suite('Extension Integration Suite', () => {
       });
     }
 
-    for (const extension of ['js', 'ts']) {
+    for (const extension of ["js", "ts"]) {
       test(`publishes API route diagnostics for ${extension.toUpperCase()}`, async () => {
-        const folder = getWorkspaceFolder('primary');
+        const folder = getWorkspaceFolder("primary");
         const uri = vscode.Uri.file(
-          path.join(folder.uri.fsPath, 'src', 'api', `diagnostic.${extension}`),
+          path.join(folder.uri.fsPath, "src", "api", `diagnostic.${extension}`),
         );
         await vscode.workspace.fs.createDirectory(
           vscode.Uri.file(path.dirname(uri.fsPath)),
@@ -2357,9 +2501,9 @@ suite('Extension Integration Suite', () => {
         await vscode.workspace.fs.writeFile(
           uri,
           Buffer.from(
-            extension === 'ts'
-              ? 'export const POST = async (request: Request) => { const body = await request.json(); return Response.json(body); };'
-              : 'export const POST = async (request) => { const body = await request.json(); return Response.json(body); };',
+            extension === "ts"
+              ? "export const POST = async (request: Request) => { const body = await request.json(); return Response.json(body); };"
+              : "export const POST = async (request) => { const body = await request.json(); return Response.json(body); };",
           ),
         );
         try {
@@ -2368,12 +2512,12 @@ suite('Extension Integration Suite', () => {
             () =>
               vscode.languages
                 .getDiagnostics(uri)
-                .some((diagnostic) => diagnostic.message.includes('try/catch')),
-            'API route diagnostic should be published',
+                .some((diagnostic) => diagnostic.message.includes("try/catch")),
+            "API route diagnostic should be published",
           );
           const match = vscode.languages
             .getDiagnostics(uri)
-            .find((diagnostic) => diagnostic.message.includes('try/catch'));
+            .find((diagnostic) => diagnostic.message.includes("try/catch"));
           assert.strictEqual(
             match?.severity,
             vscode.DiagnosticSeverity.Information,
@@ -2381,15 +2525,15 @@ suite('Extension Integration Suite', () => {
         } finally {
           try {
             await vscode.workspace.fs.delete(uri);
-          } catch { }
+          } catch {}
         }
       });
     }
 
-    test('publishes API route error and warning severities', async () => {
-      const folder = getWorkspaceFolder('primary');
+    test("publishes API route error and warning severities", async () => {
+      const folder = getWorkspaceFolder("primary");
       const uri = vscode.Uri.file(
-        path.join(folder.uri.fsPath, 'src', 'api', 'invalid-method.ts'),
+        path.join(folder.uri.fsPath, "src", "api", "invalid-method.ts"),
       );
       await vscode.workspace.fs.createDirectory(
         vscode.Uri.file(path.dirname(uri.fsPath)),
@@ -2397,21 +2541,21 @@ suite('Extension Integration Suite', () => {
       await vscode.workspace.fs.writeFile(
         uri,
         Buffer.from(
-          'export const post = async (): Promise<Response> => new Response();',
+          "export const post = async (): Promise<Response> => new Response();",
         ),
       );
       try {
         await vscode.workspace.openTextDocument(uri);
         await waitFor(
           () => vscode.languages.getDiagnostics(uri).length >= 2,
-          'API route error and warning diagnostics should be published',
+          "API route error and warning diagnostics should be published",
         );
         const diagnostics = vscode.languages.getDiagnostics(uri);
         assert.ok(
           diagnostics.some(
             (diagnostic) =>
               diagnostic.severity === vscode.DiagnosticSeverity.Warning &&
-              diagnostic.message.includes('must be uppercase'),
+              diagnostic.message.includes("must be uppercase"),
           ),
         );
         assert.ok(
@@ -2419,20 +2563,20 @@ suite('Extension Integration Suite', () => {
             (diagnostic) =>
               diagnostic.severity === vscode.DiagnosticSeverity.Error &&
               diagnostic.message.includes(
-                'does not export any recognized HTTP method handler',
+                "does not export any recognized HTTP method handler",
               ),
           ),
         );
       } finally {
         try {
           await vscode.workspace.fs.delete(uri);
-        } catch { }
+        } catch {}
       }
     });
 
-    test('reports conflict error when script has both data-bascik-stream and data-bascik-build', async () => {
+    test("reports conflict error when script has both data-bascik-stream and data-bascik-build", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
         content:
           '<script data-bascik-stream data-bascik-build>\nexport default async () => "";\n</script>',
       });
@@ -2440,28 +2584,28 @@ suite('Extension Integration Suite', () => {
       const match = diagnostics.find(
         (d) =>
           d.message.includes(
-            'data-bascik-build and data-bascik-stream cannot both appear',
+            "data-bascik-build and data-bascik-stream cannot both appear",
           ) ||
           d.message.includes(
-            'data-bascik-stream and data-bascik-build cannot both appear',
+            "data-bascik-stream and data-bascik-build cannot both appear",
           ),
       );
       assert.ok(
         match,
-        'Expected error diagnostic for conflicting stream and build directives',
+        "Expected error diagnostic for conflicting stream and build directives",
       );
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
-    test('clean server script yields zero bascik diagnostics in that block', async () => {
+    test("clean server script yields zero bascik diagnostics in that block", async () => {
       const doc = await openWorkspaceDocument({
-        language: 'html',
+        language: "html",
         content:
           '<script data-bascik-server>\nimport { escape } from "@/lib/server.ts";\nexport default async (request, context, { signal }) => {\n  const user = escape(request.headers.get("x-user") ?? "guest");\n  return `<p>Hello ${user}</p>`;\n};\n</script>',
       });
       const diagnostics = vscode.languages
         .getDiagnostics(doc.uri)
-        .filter((d) => d.source === 'bascik');
+        .filter((d) => d.source === "bascik");
       assert.strictEqual(diagnostics.length, 0);
     });
   });

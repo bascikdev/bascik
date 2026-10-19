@@ -10,13 +10,13 @@ The deepest lesson from McMaster-Carr (see [Real-World Benchmarks](/lighthouse#r
 
 A Bascik site or any statically built HTML page works the same way. Compare the waterfalls:
 
-| Step | Framework SPA | Static HTML (Bascik) |
-| --- | :---: | :---: |
-| 1 | Fetch HTML shell | Fetch complete HTML |
-| 2 | Fetch JS bundle | Browser paints ✓ |
-| 3 | Parse & execute JS | |
-| 4 | Fetch API data | |
-| 5 | Render content | |
+| Step |   Framework SPA    | Static HTML (Bascik) |
+| ---- | :----------------: | :------------------: |
+| 1    |  Fetch HTML shell  | Fetch complete HTML  |
+| 2    |  Fetch JS bundle   |   Browser paints ✓   |
+| 3    | Parse & execute JS |                      |
+| 4    |   Fetch API data   |                      |
+| 5    |   Render content   |                      |
 
 A framework SPA requires five sequential steps before the user sees content. A static HTML page requires one. Every framework adds steps; every step adds latency that compounds across all network conditions.
 
@@ -43,11 +43,7 @@ Sending a 2400 px image to a 375 px phone is one of the most common performance 
 <!-- Width-based srcset with sizes: let the browser pick -->
 <img
   src="photo-800.jpg"
-  srcset="
-    photo-400.jpg  400w,
-    photo-800.jpg  800w,
-    photo-1200.jpg 1200w
-  "
+  srcset="photo-400.jpg 400w, photo-800.jpg 800w, photo-1200.jpg 1200w"
   sizes="(max-width: 600px) 100vw, 800px"
   alt="Team photo"
   width="800"
@@ -66,7 +62,13 @@ The browser only needs to fetch images and iframes that are currently visible. A
 
 ```html
 <!-- Images below the fold -->
-<img src="gallery-1.jpg" alt="Gallery image 1" loading="lazy" width="600" height="400" />
+<img
+  src="gallery-1.jpg"
+  alt="Gallery image 1"
+  loading="lazy"
+  width="600"
+  height="400"
+/>
 
 <!-- Third-party embeds -->
 <iframe
@@ -99,8 +101,8 @@ Most modern CDNs, Cloudflare Images, Imgix, Cloudinary, Bunny.net Transform, sup
 <img
   src="https://cdn.example.com/photo.jpg?w=470&h=318&format=webp"
   srcset="
-    https://cdn.example.com/photo.jpg?w=470&h=318&format=webp  1x,
-    https://cdn.example.com/photo.jpg?w=940&h=636&format=webp  2x
+    https://cdn.example.com/photo.jpg?w=470&h=318&format=webp 1x,
+    https://cdn.example.com/photo.jpg?w=940&h=636&format=webp 2x
   "
   alt="1968 Toyota Land Cruiser"
   width="470"
@@ -177,8 +179,12 @@ Bring a Trailer pins every auction thumbnail to a `470×318` ratio. The page ske
 }
 
 @keyframes shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 ```
 
@@ -247,37 +253,42 @@ Here is a vanilla HTML/JavaScript/CSS pattern to implement dynamic prefetching o
     const preloaded = new Set();
 
     function preload(href) {
-      if (!href || preloaded.has(href) || href.startsWith('#') || href.startsWith('http')) {
+      if (
+        !href ||
+        preloaded.has(href) ||
+        href.startsWith("#") ||
+        href.startsWith("http")
+      ) {
         return;
       }
       preloaded.add(href);
-      const link = document.createElement('link');
-      link.rel = 'prefetch';
+      const link = document.createElement("link");
+      link.rel = "prefetch";
       link.href = href;
       document.head.appendChild(link);
     }
 
     // Dynamic prefetching on all local navigation links
-    document.querySelectorAll('a').forEach((a) => {
-      const href = a.getAttribute('href');
+    document.querySelectorAll("a").forEach((a) => {
+      const href = a.getAttribute("href");
       if (!href) return;
 
       let timer;
-      a.addEventListener('pointerenter', () => {
+      a.addEventListener("pointerenter", () => {
         if (preloaded.has(href)) return;
         // Wait 65ms to avoid prefetching on rapid pointer movements
         timer = setTimeout(() => preload(href), 65);
       });
 
-      a.addEventListener('pointerleave', () => {
+      a.addEventListener("pointerleave", () => {
         if (timer) {
           clearTimeout(timer);
           timer = null;
         }
       });
 
-      a.addEventListener('focus', () => preload(href));
-      a.addEventListener('touchstart', () => preload(href), { passive: true });
+      a.addEventListener("focus", () => preload(href));
+      a.addEventListener("touchstart", () => preload(href), { passive: true });
     });
   })();
 </script>
@@ -316,7 +327,10 @@ A plain `<script src="…">` tag blocks HTML parsing while the browser fetches a
 ```html
 <head>
   <!-- Analytics: fully independent, run as soon as it arrives -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXX"></script>
+  <script
+    async
+    src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXX"
+  ></script>
 
   <!-- App logic: needs the DOM, runs after parsing is complete -->
   <script defer src="/js/app.js"></script>
@@ -342,13 +356,13 @@ npm install --save-dev esbuild
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
-import { transform } from 'esbuild';
+import { defineConfig } from "@bascik/bascik/config";
+import { transform } from "esbuild";
 
 export const build = defineConfig({
   minify: {
     js: async (js) => {
-      const result = await transform(js, { minify: true, loader: 'js' });
+      const result = await transform(js, { minify: true, loader: "js" });
       return result.code;
     },
   },
@@ -367,16 +381,39 @@ McMaster-Carr's pages paint instantly because the CSS needed for the above-the-f
 <head>
   <!-- Critical CSS inlined: zero extra round trips to paint the first screen -->
   <style>
-    *, *::before, *::after { box-sizing: border-box; }
-    body { margin: 0; font-family: system-ui, sans-serif; line-height: 1.5; }
-    header { display: flex; align-items: center; padding: 16px 24px; }
-    .hero { min-height: 60vh; display: grid; place-items: center; }
-    nav a { color: inherit; text-decoration: none; }
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      line-height: 1.5;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      padding: 16px 24px;
+    }
+    .hero {
+      min-height: 60vh;
+      display: grid;
+      place-items: center;
+    }
+    nav a {
+      color: inherit;
+      text-decoration: none;
+    }
   </style>
 
   <!-- Full stylesheet loaded asynchronously - does not block first paint -->
-  <link rel="preload" as="style" href="/css/styles.css"
-        onload="this.onload=null;this.rel='stylesheet'" />
+  <link
+    rel="preload"
+    as="style"
+    href="/css/styles.css"
+    onload="this.onload=null;this.rel='stylesheet'"
+  />
   <noscript><link rel="stylesheet" href="/css/styles.css" /></noscript>
 </head>
 ```
@@ -389,11 +426,11 @@ Keep inlined critical CSS to the minimum needed for above-the-fold visibility, t
 >
 > ```ts
 > // bascik.config.ts
-> import { defineConfig } from '@bascik/bascik/config';
+> import { defineConfig } from "@bascik/bascik/config";
 >
 > export default defineConfig({
 >   assets: {
->     inlineStyles: ['src/css/styles.css'],
+>     inlineStyles: ["src/css/styles.css"],
 >   },
 > });
 > ```
@@ -440,8 +477,8 @@ Web fonts are a common source of both performance and layout problems. Two CSS p
 ```css
 /* 2. Declare the font face */
 @font-face {
-  font-family: 'Inter';
-  src: url('/fonts/inter-var.woff2') format('woff2');
+  font-family: "Inter";
+  src: url("/fonts/inter-var.woff2") format("woff2");
   font-weight: 100 900;
   font-style: normal;
   /* 3. Show text immediately with the fallback font,
@@ -451,8 +488,8 @@ Web fonts are a common source of both performance and layout problems. Two CSS p
 
 /* 4. Minimize layout shift with a metric-matched fallback */
 @font-face {
-  font-family: 'Inter-fallback';
-  src: local('Arial');
+  font-family: "Inter-fallback";
+  src: local("Arial");
   ascent-override: 90%;
   descent-override: 22%;
   line-gap-override: 0%;
@@ -460,7 +497,7 @@ Web fonts are a common source of both performance and layout problems. Two CSS p
 }
 
 body {
-  font-family: 'Inter', 'Inter-fallback', sans-serif;
+  font-family: "Inter", "Inter-fallback", sans-serif;
 }
 ```
 
@@ -485,12 +522,12 @@ To capture and analyze a performance profile of your page:
 
 Once the recording completes, DevTools displays a comprehensive timeline. Here is what to focus on to improve your site's speed:
 
-* **The Frames Track and Screenshots:** Hover over the timeline to see filmstrip screenshots of what your user saw at each millisecond. Look for the exact point where content is first painted (First Contentful Paint) and when the largest element becomes visible (Largest Contentful Paint).
-* **The Experience Track (Layout Shifts):** Look for red bars in this track. Hovering over a layout shift bar highlights the exact DOM elements that moved, letting you know which image or container needs a fixed aspect ratio.
-* **The Main Thread Flame Graph:** This chart shows CPU activity. Each horizontal bar represents a function call, with deeper bars representing nested calls. 
-  * Look for **Long Tasks** (tasks taking longer than 50 milliseconds), which are flagged with a red top-right corner.
-  * Framework sites typically show a dense, colorful block of JavaScript execution during hydration that blocks the main thread.
-  * Bascik sites should show an incredibly clean, sparse Main thread, as they rely on vanilla HTML/JavaScript/CSS with no heavy runtime parsing.
+- **The Frames Track and Screenshots:** Hover over the timeline to see filmstrip screenshots of what your user saw at each millisecond. Look for the exact point where content is first painted (First Contentful Paint) and when the largest element becomes visible (Largest Contentful Paint).
+- **The Experience Track (Layout Shifts):** Look for red bars in this track. Hovering over a layout shift bar highlights the exact DOM elements that moved, letting you know which image or container needs a fixed aspect ratio.
+- **The Main Thread Flame Graph:** This chart shows CPU activity. Each horizontal bar represents a function call, with deeper bars representing nested calls.
+  - Look for **Long Tasks** (tasks taking longer than 50 milliseconds), which are flagged with a red top-right corner.
+  - Framework sites typically show a dense, colorful block of JavaScript execution during hydration that blocks the main thread.
+  - Bascik sites should show an incredibly clean, sparse Main thread, as they rely on vanilla HTML/JavaScript/CSS with no heavy runtime parsing.
 
 ### Exporting and Sharing Performance Traces
 

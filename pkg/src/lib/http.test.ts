@@ -5,10 +5,16 @@ const { mockServer, mockCreateServer } = vi.hoisted(() => {
     on: vi.fn().mockReturnThis(),
     once: vi.fn().mockReturnThis(),
     removeListener: vi.fn().mockReturnThis(),
-    listen: vi.fn().mockImplementation(
-      (_port: number, _hostname: string, cb?: () => void) => { cb?.(); },
-    ),
-    close: vi.fn().mockImplementation((cb?: (err?: Error) => void) => { cb?.(); }),
+    listen: vi
+      .fn()
+      .mockImplementation(
+        (_port: number, _hostname: string, cb?: () => void) => {
+          cb?.();
+        },
+      ),
+    close: vi.fn().mockImplementation((cb?: (err?: Error) => void) => {
+      cb?.();
+    }),
   };
   const mockCreateServer = vi.fn(() => mockServer);
   return { mockServer, mockCreateServer };
@@ -72,7 +78,9 @@ describe("startHttpServer", () => {
     expect(req.remoteIp).toBe("192.168.1.1");
 
     res.respond(200, { "content-type": "text/html" });
-    expect(mockResMsg.writeHead).toHaveBeenCalledWith(200, { "content-type": "text/html" });
+    expect(mockResMsg.writeHead).toHaveBeenCalledWith(200, {
+      "content-type": "text/html",
+    });
 
     res.write("content");
     expect(mockResMsg.write).toHaveBeenCalledWith("content");
@@ -125,12 +133,14 @@ describe("startHttpServer", () => {
     expect(req.remoteIp).toBe("unknown");
 
     res.respond(200, { "content-type": "text/plain" });
-    expect(mockResMsg.writeHead).toHaveBeenCalledWith(200, { "content-type": "text/plain" });
+    expect(mockResMsg.writeHead).toHaveBeenCalledWith(200, {
+      "content-type": "text/plain",
+    });
 
     res.close();
     expect(mockResMsg.destroy).toHaveBeenCalled();
 
-    const cb = () => { };
+    const cb = () => {};
     res.on("close", cb);
     expect(mockResMsg.on).toHaveBeenCalledWith("close", cb);
   });
@@ -146,11 +156,18 @@ describe("startHttpServer", () => {
       end: vi.fn(),
       destroy: vi.fn(),
     });
-    const { res } = adaptHttp1({ method: "GET", url: "/", headers: {}, socket: {} } as any, mockResMsg);
+    const { res } = adaptHttp1(
+      { method: "GET", url: "/", headers: {}, socket: {} } as any,
+      mockResMsg,
+    );
     let drains = 0;
     let closes = 0;
-    const onDrain = () => { drains++; };
-    const onClose = () => { closes++; };
+    const onDrain = () => {
+      drains++;
+    };
+    const onClose = () => {
+      closes++;
+    };
     res.on("drain", onDrain);
     res.on("close", onClose);
     emitter.emit("drain");
@@ -176,7 +193,12 @@ describe("startHttpServer", () => {
 
     const { startServerInstance } = await import("./server.ts");
     (startServerInstance as any).mockImplementation(
-      async (_server: any, _protocol: string, _onShutdown?: () => void, onForceClose?: () => void) => {
+      async (
+        _server: any,
+        _protocol: string,
+        _onShutdown?: () => void,
+        onForceClose?: () => void,
+      ) => {
         forceCloseCb = onForceClose;
         return "http://localhost:8443";
       },
@@ -188,7 +210,9 @@ describe("startHttpServer", () => {
     expect(forceCloseCb).toBeDefined();
 
     const mockSocket = {
-      destroy: vi.fn().mockImplementation(() => { throw new Error("Socket error"); }),
+      destroy: vi.fn().mockImplementation(() => {
+        throw new Error("Socket error");
+      }),
       once: vi.fn(),
     };
 
@@ -197,4 +221,3 @@ describe("startHttpServer", () => {
     expect(mockSocket.destroy).toHaveBeenCalled();
   });
 });
-

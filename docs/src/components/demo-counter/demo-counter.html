@@ -8,7 +8,7 @@
     background: var(--elevated);
     border: 1px solid var(--border);
     border-radius: var(--r);
-    transition: border-color .2s;
+    transition: border-color 0.2s;
   }
 
   .ctr:hover {
@@ -19,7 +19,7 @@
     font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: .1em;
+    letter-spacing: 0.1em;
     color: var(--text-muted);
   }
 
@@ -49,7 +49,9 @@
     background: var(--surface);
     color: var(--text);
     touch-action: manipulation;
-    transition: border-color .15s, background .15s;
+    transition:
+      border-color 0.15s,
+      background 0.15s;
   }
 
   @media (hover: hover) {
@@ -74,15 +76,25 @@
   <span class="ctr-label" data-bascik-prop-label>Counter</span>
   <span class="ctr-count" id="count" data-testid="counter-count">0</span>
   <div class="ctr-btns">
-    <button class="ctr-dec" id="dec" type="button" data-testid="counter-dec">−</button>
-    <button class="ctr-inc" id="inc" type="button" data-testid="counter-inc">+</button>
+    <button class="ctr-dec" id="dec" type="button" data-testid="counter-dec">
+      −
+    </button>
+    <button class="ctr-inc" id="inc" type="button" data-testid="counter-inc">
+      +
+    </button>
   </div>
 </div>
 <script>
-  const count = document.getElementById('count');
-  const dec = document.getElementById('dec');
-  const inc = document.getElementById('inc');
+  const count = document.getElementById("count");
+  const dec = document.getElementById("dec");
+  const inc = document.getElementById("inc");
   let n = 0;
-  dec.addEventListener('click', () => { n--; count.textContent = n; });
-  inc.addEventListener('click', () => { n++; count.textContent = n; });
+  dec.addEventListener("click", () => {
+    n--;
+    count.textContent = n;
+  });
+  inc.addEventListener("click", () => {
+    n++;
+    count.textContent = n;
+  });
 </script>

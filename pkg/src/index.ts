@@ -7,6 +7,7 @@ import { format } from "node:util";
 import { CLI_USAGE, resolveCliAction } from "./lib/cli.ts";
 import { readVersion } from "./lib/version.ts";
 import { installProcessCrashHandlers } from "./lib/crash-net.ts";
+import { stripColors } from "./lib/colors.ts";
 
 export { readVersion, installProcessCrashHandlers };
 
@@ -14,7 +15,9 @@ export const resolveBuildLogPath = (args: string[]): string | undefined => {
   return resolveCliAction(args).flags.log;
 };
 
-export const setupBuildLogging = async (buildLogPath: string): Promise<string> => {
+export const setupBuildLogging = async (
+  buildLogPath: string,
+): Promise<string> => {
   const absoluteLogPath = resolve(process.cwd(), buildLogPath);
   await mkdir(dirname(absoluteLogPath), { recursive: true });
   process.env.BASCIK_BUILD_LOG = absoluteLogPath;
@@ -28,7 +31,11 @@ export const setupBuildLogging = async (buildLogPath: string): Promise<string> =
   const tee = (target: (...args: unknown[]) => void) => {
     return (...args: unknown[]) => {
       target(...args);
-      appendFile(absoluteLogPath, `${format(...args)}\n`, "utf8").catch(() => { });
+      appendFile(
+        absoluteLogPath,
+        `${stripColors(format(...args))}\n`,
+        "utf8",
+      ).catch(() => {});
     };
   };
 
@@ -41,7 +48,10 @@ export const setupBuildLogging = async (buildLogPath: string): Promise<string> =
 
 export const runCli = async (
   args: string[] = process.argv.slice(2),
-  options: { exitOnFinish?: boolean; logger?: (...args: unknown[]) => void } = {}
+  options: {
+    exitOnFinish?: boolean;
+    logger?: (...args: unknown[]) => void;
+  } = {},
 ): Promise<{ action: string; exitCode?: number }> => {
   const exit = (code: number) => {
     if (options.exitOnFinish !== false) {
@@ -90,14 +100,22 @@ export const runCli = async (
           yes: decision.flags.yes,
           dryRun: decision.flags.dryRun,
         });
-        const targetDir = relative(process.cwd(), result.targetComponentsDir).replace(/\\/g, "/") || ".";
+        const targetDir =
+          relative(process.cwd(), result.targetComponentsDir).replace(
+            /\\/g,
+            "/",
+          ) || ".";
         if (decision.flags.dryRun) {
-          logger(`[bascik add] dry run: would copy ${result.copiedFiles.length} file(s) into ${targetDir}.`);
+          logger(
+            `[bascik add] dry run: would copy ${result.copiedFiles.length} file(s) into ${targetDir}.`,
+          );
           for (const f of result.copiedFiles) {
             logger(`  would copy: ${f.destPath}`);
           }
         } else {
-          logger(`[bascik add] successfully added ${result.copiedFiles.length} file(s) into ${targetDir}.`);
+          logger(
+            `[bascik add] successfully added ${result.copiedFiles.length} file(s) into ${targetDir}.`,
+          );
           for (const f of result.copiedFiles) {
             logger(`  added: ${f.destPath}`);
           }
@@ -112,8 +130,21 @@ export const runCli = async (
       }
     }
     case "check": {
-      const { checkProject, formatFindingsHuman, formatFindingsJson } = await import("./lib/check.ts");
-      const findings = await checkProject();
+      const { checkProject, formatFindingsHuman, formatFindingsJson } =
+        await import("./lib/check.ts");
+      const { LanguageServerRequiredError } =
+        await import("./lib/check-language-server.ts");
+      let findings;
+      try {
+        findings = await checkProject({ fix: decision.flags.fix });
+      } catch (error) {
+        // The one expected failure is `--fix` with no language server to apply the fixes. Say so, without a stack.
+        // Anything else is a bug and keeps its stack.
+        if (!(error instanceof LanguageServerRequiredError)) throw error;
+        console.error(error.message);
+        exit(1);
+        return { action: "check", exitCode: 1 };
+      }
       if (decision.flags.json) {
         logger(formatFindingsJson(findings));
       } else {
@@ -144,7 +175,10 @@ export const runCli = async (
       } catch (err) {
         if (options.exitOnFinish !== false) {
           const errMsg = err instanceof Error ? err.message : String(err);
-          if (!errMsg.includes("[bascik] build script error") && !errMsg.includes("[bascik] server script error")) {
+          if (
+            !errMsg.includes("[bascik] build script error") &&
+            !errMsg.includes("[bascik] server script error")
+          ) {
             console.error(errMsg);
           }
           process.exit(1);
@@ -174,4 +208,3 @@ if (isMain) {
     process.exit(1);
   }
 }
-

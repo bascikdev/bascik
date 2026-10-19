@@ -19,13 +19,15 @@
   font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .1em;
+  letter-spacing: 0.1em;
   color: var(--text-muted);
   margin-bottom: 8px;
   margin-top: 20px;
 }
 
-.sidebar-heading:first-child { margin-top: 0; }
+.sidebar-heading:first-child {
+  margin-top: 0;
+}
 
 .sidebar-nav {
   list-style: none;
@@ -46,17 +48,17 @@
   color: var(--text-muted);
   text-decoration: none;
   position: relative;
-  transition: color .15s;
+  transition: color 0.15s;
 }
 
 /* Parallelogram background: same angle as the logo (7px / 28px) */
 .sidebar-nav li a::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   clip-path: polygon(7px 0%, 100% 0%, calc(100% - 7px) 100%, 0% 100%);
   z-index: -1;
-  transition: background .15s;
+  transition: background 0.15s;
 }
 
 .sidebar-nav li a:hover {
@@ -109,7 +111,10 @@
   padding: 0;
 }
 
-.docs-toc li { margin: 0; padding: 0; }
+.docs-toc li {
+  margin: 0;
+  padding: 0;
+}
 
 .docs-toc a {
   display: block;
@@ -120,7 +125,7 @@
   padding: 0 4px 6px 17px;
   text-decoration: none;
   overflow-wrap: anywhere;
-  transition: color .15s;
+  transition: color 0.15s;
 }
 
 .docs-toc a:hover {
@@ -149,7 +154,9 @@
 }
 
 @media (max-width: 1200px) {
-  .docs-toc { display: none !important; }
+  .docs-toc {
+    display: none !important;
+  }
 }
 
 @media (max-width: 768px) {

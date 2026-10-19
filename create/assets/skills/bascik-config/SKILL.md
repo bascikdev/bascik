@@ -34,16 +34,16 @@ It reports values that restate defaults, `siteUrl` in config, exec scripts that 
 
 ```ts
 // bascik.config.ts (minimal example)
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   generate: { sitemapLastmod: true },
 });
 
 // Optional per-mode overrides, deep-merged over the default export:
-export const dev = defineConfig({ /* dev server only */ });
-export const build = defineConfig({ /* bascik --build only */ });
-export const server = defineConfig({ /* bascik --server only */ });
+export const dev = defineConfig({/* dev server only */});
+export const build = defineConfig({/* bascik --build only */});
+export const server = defineConfig({/* bascik --server only */});
 ```
 
 - `bascik.config.js` wins when both `.js` and `.ts` exist. `--config <path>` selects a file explicitly.
@@ -72,14 +72,22 @@ Merge order is: built-in defaults, then the mode's defaults, then your `default`
 
 ```ts
 // bascik.config.ts (illustrative: these script files must already exist)
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   pipeline: {
-    watchPaths: ['src/lib/', 'content/'],
+    watchPaths: ["src/lib/", "content/"],
     exec: [
-      { script: 'scripts/bundle-vendor.ts', phase: 'pre', watch: ['scripts/vendor-entry.ts'] },
-      { script: 'scripts/search-index.ts', phase: 'parallel', watch: ['content/'] },
+      {
+        script: "scripts/bundle-vendor.ts",
+        phase: "pre",
+        watch: ["scripts/vendor-entry.ts"],
+      },
+      {
+        script: "scripts/search-index.ts",
+        phase: "parallel",
+        watch: ["content/"],
+      },
     ],
   },
 });
@@ -97,8 +105,8 @@ export default defineConfig({
 ```ts
 // sites/marketing/bascik.config.ts (illustrative paths)
 export default defineConfig({
-  directory: { components: ['src/components', '../../shared/components'] },
-  pipeline: { watchPaths: ['../../shared/scripts/'] },
+  directory: { components: ["src/components", "../../shared/components"] },
+  pipeline: { watchPaths: ["../../shared/scripts/"] },
 });
 ```
 
@@ -129,22 +137,22 @@ It lists every site with its component roots, import root, base, and Bascik vers
 
 ## Deploy
 
-| Site uses | Deploy |
-|---|---|
-| Only static pages, build scripts, and dynamic routes | `BASCIK_SITE_URL=https://example.com bascik --build`, upload `dist/` to any static host |
+| Site uses                                                 | Deploy                                                                                                   |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Only static pages, build scripts, and dynamic routes      | `BASCIK_SITE_URL=https://example.com bascik --build`, upload `dist/` to any static host                  |
 | `data-bascik-server`, `data-bascik-stream`, or `src/api/` | `bascik --build && bascik --server` on Node, or `bascik --build --target cloudflare` for a Worker bundle |
 
 ## Look it up
 
-| How do I... | Read |
-|---|---|
-| Find an option and its default | `/configuration` |
-| Choose a host, deploy static output | `/deployment`, `/deployment/static-hosting` |
-| Run `bascik --server` (TLS, caching, compression, rate limits, proxies, health checks) | `/production-server` |
-| Deploy to Cloudflare Workers or Pages | `/deployment/cloudflare` |
-| Write exec scripts and pick a phase | `/exec-scripts` |
-| Control the sitemap and robots.txt | `/sitemap` |
-| Set per-environment values | `/environment-variables` |
-| Share components across sites or repositories | `/how-to/monorepos`, `/how-to/sharing-components` |
+| How do I...                                                                            | Read                                              |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Find an option and its default                                                         | `/configuration`                                  |
+| Choose a host, deploy static output                                                    | `/deployment`, `/deployment/static-hosting`       |
+| Run `bascik --server` (TLS, caching, compression, rate limits, proxies, health checks) | `/production-server`                              |
+| Deploy to Cloudflare Workers or Pages                                                  | `/deployment/cloudflare`                          |
+| Write exec scripts and pick a phase                                                    | `/exec-scripts`                                   |
+| Control the sitemap and robots.txt                                                     | `/sitemap`                                        |
+| Set per-environment values                                                             | `/environment-variables`                          |
+| Share components across sites or repositories                                          | `/how-to/monorepos`, `/how-to/sharing-components` |
 
 `node <skills-dir>/bascik/scripts/read-doc.mjs <path>` prints any of these.

@@ -18,6 +18,7 @@ Traditional web frameworks often bundle proprietary templating languages, custom
 Install Handlebars once and import it in any build or server script.
 
 <!-- demo:handlebars-install -->
+
 ```sh
 npm install handlebars
 ```
@@ -25,18 +26,19 @@ npm install handlebars
 Keep the template in a `.hbs` file so editors can highlight it and the script stays readable.
 
 <!-- demo:handlebars-script -->
+
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
-  import Handlebars from 'handlebars';
+  import { readFile } from "node:fs/promises";
+  import Handlebars from "handlebars";
 
   export default async function () {
-    const src = await readFile('./templates/article-list.hbs', 'utf8');
+    const src = await readFile("./templates/article-list.hbs", "utf8");
     const template = Handlebars.compile(src);
 
     const items = [
-      { title: 'First article', href: '/posts/first' },
-      { title: 'Second article', href: '/posts/second' },
+      { title: "First article", href: "/posts/first" },
+      { title: "Second article", href: "/posts/second" },
     ];
 
     return template({ items, page: 2 });
@@ -45,6 +47,7 @@ Keep the template in a `.hbs` file so editors can highlight it and the script st
 ```
 
 <!-- demo:handlebars-template -->
+
 ```hbs
 {{! templates/article-list.hbs }}
 <section>
@@ -64,35 +67,38 @@ Handlebars HTML-escapes `{{value}}` expressions by default. Use the triple-stach
 Someone adding one interpolated value to one page should not install anything. This helper resolves dotted paths against a plain object, escapes HTML by default, and renders a missing key as an empty string so a data typo degrades quietly instead of throwing.
 
 <!-- demo:helper-module -->
+
 ```js
 // lib/interpolate.mjs
-export const escape = (value) => String(value)
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#39;');
+export const escape = (value) =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 export const interpolate = (template, data) =>
   template.replace(/\$\{([^}]+)\}/g, (_, path) => {
     const value = path
       .trim()
-      .split('.')
+      .split(".")
       .reduce((obj, key) => (obj == null ? undefined : obj[key]), data);
-    return value == null ? '' : escape(value);
+    return value == null ? "" : escape(value);
   });
 ```
 
 Use it from a build or server script:
 
 <!-- demo:helper-usage -->
+
 ```html
 <script data-bascik-build>
-  import { interpolate } from './lib/interpolate.mjs';
+  import { interpolate } from "./lib/interpolate.mjs";
 
   export default function () {
-    const data = { article: { title: 'Hello, Bascik' } };
-    return interpolate('<h2>${article.title}</h2>', data);
+    const data = { article: { title: "Hello, Bascik" } };
+    return interpolate("<h2>${article.title}</h2>", data);
   }
 </script>
 ```
@@ -106,29 +112,32 @@ If the helper grows past about twenty lines, that is the signal to reach for Han
 If your team already knows EJS or Nunjucks, or the project already depends on one, keep using it. Both work in build and server scripts with no integration layer, and both escape variable output by default.
 
 <!-- demo:ejs-install -->
+
 ```sh
 npm install ejs
 ```
 
 <!-- demo:ejs-script -->
+
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
-  import ejs from 'ejs';
+  import { readFile } from "node:fs/promises";
+  import ejs from "ejs";
 
   export default async function () {
     const rows = [
-      { title: 'First post', href: '/posts/first' },
-      { title: 'Second post', href: '/posts/second' },
+      { title: "First post", href: "/posts/first" },
+      { title: "Second post", href: "/posts/second" },
     ];
 
-    const template = await readFile('./templates/post-list.ejs', 'utf8');
+    const template = await readFile("./templates/post-list.ejs", "utf8");
     return ejs.render(template, { rows });
   }
 </script>
 ```
 
 <!-- demo:ejs-template -->
+
 ```ejs
 <!-- templates/post-list.ejs -->
 <ul class="post-list">
@@ -141,25 +150,28 @@ npm install ejs
 EJS escapes values printed with `<%= ... %>`. Use `<%- ... %>` only for markup you have already sanitized.
 
 <!-- demo:njk-install -->
+
 ```sh
 npm install nunjucks
 ```
 
 <!-- demo:njk-script -->
+
 ```html
 <script data-bascik-build>
-  import nunjucks from 'nunjucks';
+  import nunjucks from "nunjucks";
 
   export default function () {
-    return nunjucks.render('./templates/page.njk', {
-      title: 'Projects',
-      items: ['Alpha', 'Bravo', 'Charlie'],
+    return nunjucks.render("./templates/page.njk", {
+      title: "Projects",
+      items: ["Alpha", "Bravo", "Charlie"],
     });
   }
 </script>
 ```
 
 <!-- demo:njk-template -->
+
 ```njk
 {# templates/page.njk #}
 <section>
@@ -179,17 +191,18 @@ Nunjucks is useful when the site has a lot of repetitive HTML and a real templat
 When a data-driven page needs the same data in several places, fetch or read it **once at page level** in a single `data-bascik-build` script, then apply it everywhere on the page. Not once per component instance.
 
 <!-- demo:fetch-once-script -->
+
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
+  import { readFile } from "node:fs/promises";
 
   export default async function () {
     // One read at page level; every block below reuses this data.
-    const data = JSON.parse(await readFile('./content/data.json', 'utf8'));
+    const data = JSON.parse(await readFile("./content/data.json", "utf8"));
 
     const list = data.articles
-      .map(a => `<li><a href="${a.href}">${a.title}</a></li>`)
-      .join('');
+      .map((a) => `<li><a href="${a.href}">${a.title}</a></li>`)
+      .join("");
 
     return `<section>
       <h2>${data.site}</h2>
@@ -211,7 +224,7 @@ The same `data` object can feed a second script on the page, a JSON payload for 
 >   scripts: {
 >     cache: {
 >       enabled: true,
->       exclude: ['src/pages/live-feed/**', 'src/components/api-cards/**'],
+>       exclude: ["src/pages/live-feed/**", "src/components/api-cards/**"],
 >     },
 >   },
 > });
@@ -226,6 +239,7 @@ Sometimes the data needs to drive **interaction**, not initial render. Emit it o
 This is the one approach on this page that **requires client-side JavaScript**, which is a real cost on a zero-runtime site. It is worth it when the data drives interaction, not when it drives initial render. If the rendered HTML is the only consumer, render it server or build side and skip the JSON block entirely.
 
 <!-- demo:json-payload-script -->
+
 ```html
 <script data-bascik-build>
   import { readFile } from 'node:fs/promises';
@@ -241,15 +255,14 @@ This is the one approach on this page that **requires client-side JavaScript**, 
 ```
 
 <!-- demo:json-payload-client -->
+
 ```html
 <script>
   // The id is scoped at build time. Write getElementById with the source
   // name; Bascik rewrites the selector to the scoped name automatically.
-  const payload = JSON.parse(
-    document.getElementById('page-data').textContent
-  );
+  const payload = JSON.parse(document.getElementById("page-data").textContent);
 
-  document.getElementById('sort-btn').addEventListener('click', () => {
+  document.getElementById("sort-btn").addEventListener("click", () => {
     payload.articles.sort((a, b) => a.title.localeCompare(b.title));
     // ...re-render the sorted list from payload
   });

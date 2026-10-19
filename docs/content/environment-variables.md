@@ -6,18 +6,18 @@ You access these variables using standard Node.js `process.env.<VARIABLE_NAME>`.
 
 ## Environment Variable Reference
 
-| Variable | Available In | Description |
-| --- | --- | --- |
-| `BASCIK_PAGE_PATH` | `data-bascik-build`, `data-bascik-routes` | Normalized root-relative URL path for the page being transpiled (e.g. `/getting-started`, `/switch/from-vue`, `/`, `/blog/hello-world`). |
-| `BASCIK_SOURCE_FILE` | `data-bascik-build`, `data-bascik-routes` | Absolute filesystem path to the file currently executing the script (points to the component template in components, or the page file in pages). |
-| `BASCIK_PAGE_FILE` | `data-bascik-build`, `data-bascik-routes` | Absolute filesystem path to the top-level HTML page shell currently being compiled. Always points to the page shell even when inside nested components. |
-| `BASCIK_SITE_URL` | `data-bascik-build`, `data-bascik-routes` | The site URL resolved from `--site-url`, the `BASCIK_SITE_URL` environment variable, or a `.env` file (e.g. `https://bascik.dev`). Absent when unset, never an empty string. |
-| `BASCIK_PAGES_DIR` | `data-bascik-build`, `data-bascik-routes`, exec scripts | Absolute filesystem path to the configured pages directory (`directory.pages`, defaults to `<root>/src/pages`). |
-| `BASCIK_OUT_DIR` | Exec scripts | Absolute filesystem path to the configured output directory (`directory.out`, defaults to `<root>/dist`). |
-| `BASCIK_ROUTE` | `data-bascik-build` (dynamic routes) | JSON string of `{ params, data }` for the current route instance in parameterized page templates like `[slug].html`. |
-| `BASCIK_BUILD` | All build scripts, worker threads, and exec scripts | `"1"` when running static compilation (`bascik --build`), `"0"` during local development (`bascik`). |
-| `BASCIK_SERVER` | Server scripts and worker threads | `"1"` when running the production server (`bascik --server`), `"0"` otherwise.  |
-| `BASCIK_BUILD_LOG` | CLI runtime | Absolute filesystem path to the build log destination when invoked with `--log`. |
+| Variable             | Available In                                            | Description                                                                                                                                                                  |
+| -------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BASCIK_PAGE_PATH`   | `data-bascik-build`, `data-bascik-routes`               | Normalized root-relative URL path for the page being transpiled (e.g. `/getting-started`, `/switch/from-vue`, `/`, `/blog/hello-world`).                                     |
+| `BASCIK_SOURCE_FILE` | `data-bascik-build`, `data-bascik-routes`               | Absolute filesystem path to the file currently executing the script (points to the component template in components, or the page file in pages).                             |
+| `BASCIK_PAGE_FILE`   | `data-bascik-build`, `data-bascik-routes`               | Absolute filesystem path to the top-level HTML page shell currently being compiled. Always points to the page shell even when inside nested components.                      |
+| `BASCIK_SITE_URL`    | `data-bascik-build`, `data-bascik-routes`               | The site URL resolved from `--site-url`, the `BASCIK_SITE_URL` environment variable, or a `.env` file (e.g. `https://bascik.dev`). Absent when unset, never an empty string. |
+| `BASCIK_PAGES_DIR`   | `data-bascik-build`, `data-bascik-routes`, exec scripts | Absolute filesystem path to the configured pages directory (`directory.pages`, defaults to `<root>/src/pages`).                                                              |
+| `BASCIK_OUT_DIR`     | Exec scripts                                            | Absolute filesystem path to the configured output directory (`directory.out`, defaults to `<root>/dist`).                                                                    |
+| `BASCIK_ROUTE`       | `data-bascik-build` (dynamic routes)                    | JSON string of `{ params, data }` for the current route instance in parameterized page templates like `[slug].html`.                                                         |
+| `BASCIK_BUILD`       | All build scripts, worker threads, and exec scripts     | `"1"` when running static compilation (`bascik --build`), `"0"` during local development (`bascik`).                                                                         |
+| `BASCIK_SERVER`      | Server scripts and worker threads                       | `"1"` when running the production server (`bascik --server`), `"0"` otherwise.                                                                                               |
+| `BASCIK_BUILD_LOG`   | CLI runtime                                             | Absolute filesystem path to the build log destination when invoked with `--log`.                                                                                             |
 
 ## Build-Time Scripts (`data-bascik-build`)
 
@@ -35,7 +35,7 @@ The normalized root-relative URL path corresponding to the page being generated.
 ```ts
 // Example: Active navigation link detection
 const currentPath = process.env.BASCIK_PAGE_PATH;
-const isCurrent = currentPath === '/components';
+const isCurrent = currentPath === "/components";
 ```
 
 Component scripts that read this variable through an imported helper must use an explicit page-aware marker. Indirect helper reads are not inferred from the import graph; without the marker, the script runs once during component registration and does not have page-specific context.
@@ -50,10 +50,10 @@ When a component (`src/components/author-bio/author-bio.html`) contains a page-a
 - `BASCIK_PAGE_FILE`: The path to the page shell importing the component `/absolute/path/to/src/pages/about.html`.
 
 ```ts
-import { readFile } from 'node:fs/promises';
+import { readFile } from "node:fs/promises";
 
 // Read metadata directly from the page shell that included this component
-const pageMarkup = await readFile(process.env.BASCIK_PAGE_FILE!, 'utf8');
+const pageMarkup = await readFile(process.env.BASCIK_PAGE_FILE!, "utf8");
 ```
 
 ### `BASCIK_SITE_URL` and `BASCIK_PAGES_DIR`
@@ -63,8 +63,8 @@ const pageMarkup = await readFile(process.env.BASCIK_PAGE_FILE!, 'utf8');
 ```ts
 // src/lib/canonical.ts
 export function getCanonicalUrl(): string {
-  const siteUrl = (process.env.BASCIK_SITE_URL ?? '').replace(/\/$/, '');
-  const path = process.env.BASCIK_PAGE_PATH ?? '/';
+  const siteUrl = (process.env.BASCIK_SITE_URL ?? "").replace(/\/$/, "");
+  const path = process.env.BASCIK_PAGE_PATH ?? "/";
   return siteUrl ? `${siteUrl}${path}` : path;
 }
 ```
@@ -105,6 +105,7 @@ When rendering dynamic pages from parameterized templates (such as `src/pages/po
 ```
 
 Dynamic route scripts receive:
+
 - `BASCIK_SOURCE_FILE` and `BASCIK_PAGE_FILE`: Path to the template file.
 - `BASCIK_PAGE_PATH`: Raw template route path (e.g. `/products/[category]/[id]`).
 - `BASCIK_PAGES_DIR`: Absolute pages directory.
@@ -120,7 +121,7 @@ Set to `"1"` when running static site compilation (`bascik --build`), and `"0"` 
 Use `BASCIK_BUILD` to skip heavy computations or live API queries during fast local development while enforcing full generation during production builds:
 
 ```ts
-const isBuild = process.env.BASCIK_BUILD === '1';
+const isBuild = process.env.BASCIK_BUILD === "1";
 
 if (isBuild) {
   // Fetch fresh dataset from remote API for production distribution
@@ -139,15 +140,15 @@ When running the CLI with `--log [path]`, `process.env.BASCIK_BUILD_LOG` contain
 Because Bascik scripts rely on standard `process.env` properties, writing unit tests for your helper functions is straightforward with Vitest or Node test runner:
 
 ```ts
-import { describe, it, expect } from 'vitest';
-import { getCanonicalUrl } from './canonical.ts';
+import { describe, it, expect } from "vitest";
+import { getCanonicalUrl } from "./canonical.ts";
 
-describe('canonical helper', () => {
-  it('generates canonical link from environment variables', () => {
-    process.env.BASCIK_SITE_URL = 'https://example.com';
-    process.env.BASCIK_PAGE_PATH = '/blog/hello-world';
+describe("canonical helper", () => {
+  it("generates canonical link from environment variables", () => {
+    process.env.BASCIK_SITE_URL = "https://example.com";
+    process.env.BASCIK_PAGE_PATH = "/blog/hello-world";
 
-    expect(getCanonicalUrl()).toBe('https://example.com/blog/hello-world');
+    expect(getCanonicalUrl()).toBe("https://example.com/blog/hello-world");
   });
 });
 ```

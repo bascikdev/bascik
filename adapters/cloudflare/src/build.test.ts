@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  buildInvocationRoutes,
-  detectControlCollisions,
-} from "./build.ts";
+import { buildInvocationRoutes, detectControlCollisions } from "./build.ts";
 import {
   CLOUDFLARE_COMPATIBILITY_DATE,
   classifyNodeBuiltin,
@@ -17,25 +14,46 @@ describe("buildInvocationRoutes", () => {
       dynamicPagePaths: ["/", "/account"],
       hasApiRoutes: true,
     });
-    expect(routes.include).toEqual(["/", "/_routes.json", "/_worker.js", "/account", "/account.html", "/account/", "/api/*", "/index", "/index.html"]);
+    expect(routes.include).toEqual([
+      "/",
+      "/_routes.json",
+      "/_worker.js",
+      "/account",
+      "/account.html",
+      "/account/",
+      "/api/*",
+      "/index",
+      "/index.html",
+    ]);
     expect(routes.exclude).toEqual([]);
     expect(routes.overflowed).toBe(false);
   });
 
   it("omits the API prefix when there are no API routes", () => {
-    const routes = buildInvocationRoutes({ base: "/", dynamicPagePaths: ["/x"], hasApiRoutes: false });
+    const routes = buildInvocationRoutes({
+      base: "/",
+      dynamicPagePaths: ["/x"],
+      hasApiRoutes: false,
+    });
     expect(routes.include).not.toContain("/api/*");
   });
 
   it("always routes the generated control files to the worker so they can never be downloaded", () => {
-    const routes = buildInvocationRoutes({ base: "/docs/", dynamicPagePaths: [], hasApiRoutes: false });
+    const routes = buildInvocationRoutes({
+      base: "/docs/",
+      dynamicPagePaths: [],
+      hasApiRoutes: false,
+    });
     expect(routes.include).toEqual(["/docs/_routes.json", "/docs/_worker.js"]);
   });
 });
 
 describe("detectControlCollisions", () => {
   it("rejects authored files that would shadow generated control files", () => {
-    const problems = detectControlCollisions(["_worker.js", "img/a.png", "_routes.json"], "pages");
+    const problems = detectControlCollisions(
+      ["_worker.js", "img/a.png", "_routes.json"],
+      "pages",
+    );
     expect(problems).toEqual([
       expect.stringContaining("_routes.json"),
       expect.stringContaining("_worker.js"),

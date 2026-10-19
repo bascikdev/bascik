@@ -7,13 +7,9 @@
       "request": "launch",
       "cwd": "${workspaceFolder}/docs",
       "runtimeExecutable": "yarn",
-      "runtimeArgs": [
-        "docs:dev"
-      ],
+      "runtimeArgs": ["docs:dev"],
       "console": "integratedTerminal",
-      "skipFiles": [
-        "<node_internals>/**"
-      ]
+      "skipFiles": ["<node_internals>/**"]
     },
     {
       "name": "Debug Docs Production Server",
@@ -21,13 +17,9 @@
       "request": "launch",
       "cwd": "${workspaceFolder}/docs",
       "runtimeExecutable": "yarn",
-      "runtimeArgs": [
-        "docs:serve"
-      ],
+      "runtimeArgs": ["docs:serve"],
       "console": "integratedTerminal",
-      "skipFiles": [
-        "<node_internals>/**"
-      ]
+      "skipFiles": ["<node_internals>/**"]
     },
     {
       "name": "Debug Docs Build",
@@ -35,13 +27,9 @@
       "request": "launch",
       "cwd": "${workspaceFolder}/docs",
       "runtimeExecutable": "yarn",
-      "runtimeArgs": [
-        "docs:build"
-      ],
+      "runtimeArgs": ["docs:build"],
       "console": "integratedTerminal",
-      "skipFiles": [
-        "<node_internals>/**"
-      ]
+      "skipFiles": ["<node_internals>/**"]
     },
     {
       "name": "Debug Package Unit Tests (Vitest)",
@@ -49,14 +37,9 @@
       "request": "launch",
       "cwd": "${workspaceFolder}",
       "runtimeExecutable": "yarn",
-      "runtimeArgs": [
-        "test",
-        "run"
-      ],
+      "runtimeArgs": ["test", "run"],
       "console": "integratedTerminal",
-      "skipFiles": [
-        "<node_internals>/**"
-      ]
+      "skipFiles": ["<node_internals>/**"]
     },
     {
       "name": "Launch Chrome (Docs Dev Server)",

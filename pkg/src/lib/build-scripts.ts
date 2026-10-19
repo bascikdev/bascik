@@ -44,7 +44,10 @@ import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { getProjectPath, getRelativePath } from "./file-system.ts";
 import { BuildScriptError, type BuildScriptLocation } from "./build-error.ts";
-import { directiveSourcePosition, padToSourcePosition } from "./directive-source.ts";
+import {
+  directiveSourcePosition,
+  padToSourcePosition,
+} from "./directive-source.ts";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
 import { cleanStackTrace, remapRewrittenColumns } from "./stack-trace.ts";
@@ -60,16 +63,30 @@ import {
   scanScript,
   type SpecifierEdit,
 } from "./module-specifiers.ts";
-import { isScriptCacheEnabledForPath, pruneScriptCache } from "./script-cache.ts";
-import { computePackageIdentity, collectPackageSpecifiers, hasDynamicImport } from "./package-identity.ts";
+import {
+  isScriptCacheEnabledForPath,
+  pruneScriptCache,
+} from "./script-cache.ts";
+import {
+  computePackageIdentity,
+  collectPackageSpecifiers,
+  hasDynamicImport,
+  clearPackageIdentityCache,
+} from "./package-identity.ts";
 import { getImportRoot } from "./import-root.ts";
-import { applyOutputScope, decodeOutputScope, OUTPUT_SCOPE_ATTRIBUTE, type OutputScope } from "./output-scope.ts";
+import {
+  applyOutputScope,
+  decodeOutputScope,
+  OUTPUT_SCOPE_ATTRIBUTE,
+  type OutputScope,
+} from "./output-scope.ts";
 import { removeOutputDirectives } from "./output-directives.ts";
 import {
   ATTR,
   BUILD_FLAG,
   SERVER_FLAG,
   ROUTES_FLAG,
+  STREAM_FLAG,
   SCRIPT_END_TAG,
   SCRIPT_TAG_PREFIX,
   getHtmlAttributeValue,
@@ -90,6 +107,11 @@ const BUILD_SERVER_CONFLICT_RE = new RegExp(
 
 const BUILD_ROUTES_CONFLICT_RE = new RegExp(
   `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  "i",
+);
+
+const BUILD_STREAM_CONFLICT_RE = new RegExp(
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
 
@@ -233,12 +255,16 @@ export const clearBuildScriptCaches = (filePath?: string): void => {
   outputKeysByDependency.clear();
   dependenciesByOutputKey.clear();
   dependencyScanCache.clear();
+  clearPackageIdentityCache();
 };
 
 /** Observe the in-memory caches in tests without exposing the maps. */
 export const _buildScriptCacheTestHooks = {
   hasDepContent(filePath: string): boolean {
-    const relKey = relative(process.cwd(), resolve(process.cwd(), filePath)).replace(/\\/g, "/");
+    const relKey = relative(
+      process.cwd(),
+      resolve(process.cwd(), filePath),
+    ).replace(/\\/g, "/");
     return depContentCache.has(relKey);
   },
   get depContentSize(): number {
@@ -252,7 +278,10 @@ export const _buildScriptCacheTestHooks = {
   },
   /** Number of memo keys the reverse index holds for a dependency. */
   reverseIndexKeyCount(filePath: string): number {
-    const relKey = relative(process.cwd(), resolve(process.cwd(), filePath)).replace(/\\/g, "/");
+    const relKey = relative(
+      process.cwd(),
+      resolve(process.cwd(), filePath),
+    ).replace(/\\/g, "/");
     return outputKeysByDependency.get(relKey)?.size ?? 0;
   },
   /** True when any reverse-index key is not a live memo entry. */
@@ -266,7 +295,10 @@ export const _buildScriptCacheTestHooks = {
   },
 };
 
-const readCachedFile = async (absPath: string, relKey: string): Promise<string> => {
+const readCachedFile = async (
+  absPath: string,
+  relKey: string,
+): Promise<string> => {
   const cached = depContentCache.get(relKey);
   if (cached !== undefined) return cached;
   const content = await readFile(absPath, "utf8");
@@ -284,8 +316,13 @@ const ALL_PAGE_SCRIPTS_RE = new RegExp(
  * and `<script data-bascik-routes>` blocks in `html`, recursively scanning
  * referenced local JS/TS/MJS files.
  */
-export const collectAllScriptDeps = async (html: string, sourceFile?: string): Promise<string[]> => {
-  const matches = [...html.matchAll(new RegExp(ALL_PAGE_SCRIPTS_RE.source, "gi"))];
+export const collectAllScriptDeps = async (
+  html: string,
+  sourceFile?: string,
+): Promise<string[]> => {
+  const matches = [
+    ...html.matchAll(new RegExp(ALL_PAGE_SCRIPTS_RE.source, "gi")),
+  ];
   if (matches.length === 0) return [];
 
   const scriptBaseDir = sourceFile
@@ -353,22 +390,31 @@ export const extractScriptDeps = (
   const deps = scanScriptDeps(script, esmBaseDir, importRoot);
   if (!contexts) {
     while (dependencyScanCache.size >= MAX_DEPENDENCY_SCANS) {
-      dependencyScanCache.delete(dependencyScanCache.keys().next().value as string);
+      dependencyScanCache.delete(
+        dependencyScanCache.keys().next().value as string,
+      );
     }
     contexts = new Map();
     dependencyScanCache.set(script, contexts);
   }
-  if (contexts.size >= MAX_DEPENDENCY_SCAN_CONTEXTS) contexts.delete(contexts.keys().next().value as string);
+  if (contexts.size >= MAX_DEPENDENCY_SCAN_CONTEXTS)
+    contexts.delete(contexts.keys().next().value as string);
   contexts.set(context, deps);
   return [...deps];
 };
 
-const scanScriptDeps = (script: string, esmBaseDir: string, importRoot: string): string[] => {
+const scanScriptDeps = (
+  script: string,
+  esmBaseDir: string,
+  importRoot: string,
+): string[] => {
   const seen = new Set<string>();
 
   // One tokenization pass serves both extractions (prompt 82).
   const { moduleSpecifiers, callArgumentLiterals } = scanScript(script);
-  const moduleRanges = new Set(moduleSpecifiers.map(({ start, end }) => `${start}:${end}`));
+  const moduleRanges = new Set(
+    moduleSpecifiers.map(({ start, end }) => `${start}:${end}`),
+  );
   for (const { value: specifier } of moduleSpecifiers) {
     // Leading-slash specifiers are rejected by the executor with a located
     // error; dependency extraction just skips them so cache keys and the dev
@@ -380,7 +426,12 @@ const scanScriptDeps = (script: string, esmBaseDir: string, importRoot: string):
   }
 
   for (const { start, end, value: specifier } of callArgumentLiterals) {
-    if (!/(?:\.{1,2}\/|[a-zA-Z0-9_$-]+\/)[^\n:]+\.(?:md|mjs|js|jsx|ts|tsx|json|yaml|yml|css|html|txt|csv|svg)$/.test(specifier)) continue;
+    if (
+      !/(?:\.{1,2}\/|[a-zA-Z0-9_$-]+\/)[^\n:]+\.(?:md|mjs|js|jsx|ts|tsx|json|yaml|yml|css|html|txt|csv|svg)$/.test(
+        specifier,
+      )
+    )
+      continue;
     if (specifier.includes("://")) continue;
     if (moduleRanges.has(`${start}:${end}`)) continue;
     seen.add(specifier);
@@ -393,7 +444,9 @@ export const resolveBuildScriptImports = (
   baseDir: string,
   options: ImportRootOptions = {},
 ): string =>
-  rewriteModuleSpecifiers(source, baseDir, { importRoot: options.importRoot ?? getImportRoot() });
+  rewriteModuleSpecifiers(source, baseDir, {
+    importRoot: options.importRoot ?? getImportRoot(),
+  });
 
 /**
  * Return the names of statically visible `process.env.NAME` reads in `script`
@@ -429,12 +482,12 @@ const computeScriptCacheKey = async (
   hash.update(script);
   hash.update(relative(process.cwd(), importRoot).replace(/\\/g, "/")); // alias target can change output
   hash.update(isBuild ? "1" : "0");
-  hash.update(filePath);   // BASCIK_SOURCE_FILE
-  hash.update(pageFile);   // BASCIK_PAGE_FILE
-  hash.update(pagePath);   // BASCIK_PAGE_PATH — varies per page for page-aware scripts
-  hash.update(siteUrl);    // BASCIK_SITE_URL  — can affect script output
-  hash.update(base);       // BASCIK_BASE      — can affect script output
-  hash.update(routeStr);   // BASCIK_ROUTE     — varies per dynamic route
+  hash.update(filePath); // BASCIK_SOURCE_FILE
+  hash.update(pageFile); // BASCIK_PAGE_FILE
+  hash.update(pagePath); // BASCIK_PAGE_PATH — varies per page for page-aware scripts
+  hash.update(siteUrl); // BASCIK_SITE_URL  — can affect script output
+  hash.update(base); // BASCIK_BASE      — can affect script output
+  hash.update(routeStr); // BASCIK_ROUTE     — varies per dynamic route
 
   // Declared environment inputs: fold each variable's name and resolved value
   // into the key so a changed value invalidates cached output. Values are
@@ -467,7 +520,8 @@ const computeScriptCacheKey = async (
       const content = await readCachedFile(absPath, relKey);
       hash.update(relKey);
       hash.update(content);
-      if (!readsContextFile && CONTEXT_FILE_ENV_RE.test(content)) readsContextFile = true;
+      if (!readsContextFile && CONTEXT_FILE_ENV_RE.test(content))
+        readsContextFile = true;
 
       // Scan file content for nested dependencies relative to the file's directory
       const fileDir = dirname(absPath);
@@ -529,11 +583,18 @@ const readScriptCache = async (
   try {
     const raw = await readFile(join(cacheDir, `${key}.json`), "utf8");
     const entry = JSON.parse(raw) as { v?: number; output?: string };
-    if (typeof entry === "object" && entry !== null && entry.v === SCRIPT_CACHE_VERSION && typeof entry.output === "string") {
+    if (
+      typeof entry === "object" &&
+      entry !== null &&
+      entry.v === SCRIPT_CACHE_VERSION &&
+      typeof entry.output === "string"
+    ) {
       memoizeOutput(key, entry.output);
       return entry.output;
     }
-  } catch { /* cache miss */ }
+  } catch {
+    /* cache miss */
+  }
   return null;
 };
 
@@ -548,7 +609,7 @@ const writeScriptCache = async (
     join(cacheDir, `${key}.json`),
     JSON.stringify({ v: SCRIPT_CACHE_VERSION, output }),
     "utf8",
-  ).catch(() => { });
+  ).catch(() => {});
 };
 
 export interface ExecuteBuildScriptOptions {
@@ -590,7 +651,15 @@ export const executeBuildScripts = async (
   const resolvedSiteUrl = getSiteUrl();
   const siteUrl = resolvedSiteUrl ?? "";
   const routeStr = route ? JSON.stringify(route) : "";
-  const pagePath = options?.pagePath ?? (pageFile ? computePagePath(pageFile, BascikConfig.directory?.pages ?? "src/pages", route) : "");
+  const pagePath =
+    options?.pagePath ??
+    (pageFile
+      ? computePagePath(
+          pageFile,
+          BascikConfig.directory?.pages ?? "src/pages",
+          route,
+        )
+      : "");
 
   interface ScriptTask {
     fullTag: string;
@@ -624,17 +693,33 @@ export const executeBuildScripts = async (
     const sourceFile = position.sourceFile ?? defaultSourceFile;
     const locatedFile = sourceFile || filePath;
     const location: BuildScriptLocation | undefined = locatedFile
-      // The header names the file as the stack does, so both locations open with Cmd+Click.
-      ? { sourceFile: getProjectPath(locatedFile), line: position.tagLine, column: position.tagColumn }
+      ? // The header names the file as the stack does, so both locations open with Cmd+Click.
+        {
+          sourceFile: getProjectPath(locatedFile),
+          line: position.tagLine,
+          column: position.tagColumn,
+        }
       : undefined;
-    const where = location ? ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})` : "";
+    const where = location
+      ? ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})`
+      : "";
     const useCache = isScriptCacheEnabledForPath(sourceFile || filePath);
     if (BUILD_SERVER_CONFLICT_RE.test(openTag)) {
-      throw new Error(`[bascik] error: <script> tag has both data-bascik-build and data-bascik-server${where}. A script can only run at build time or at request time — not both. Remove one of the attributes.`);
+      throw new Error(
+        `[bascik] error: <script> tag has both data-bascik-build and data-bascik-server${where}. A script can only run at build time or at request time — not both. Remove one of the attributes.`,
+      );
     }
 
     if (BUILD_ROUTES_CONFLICT_RE.test(openTag)) {
-      throw new Error(`[bascik] error: <script> tag has both data-bascik-build and data-bascik-routes${where}. A script cannot be both a build script and a routes script. Remove one of the attributes.`);
+      throw new Error(
+        `[bascik] error: <script> tag has both data-bascik-build and data-bascik-routes${where}. A script cannot be both a build script and a routes script. Remove one of the attributes.`,
+      );
+    }
+
+    if (BUILD_STREAM_CONFLICT_RE.test(openTag)) {
+      throw new Error(
+        `[bascik] error: <script> tag has both data-bascik-build and data-bascik-stream${where}. A script can only run at build time or at request time — not both. Remove one of the attributes.`,
+      );
     }
 
     let scriptBaseDir = sourceFile
@@ -648,7 +733,9 @@ export const executeBuildScripts = async (
     // runtime failure of their script, so it is never downgraded to a warning.
     const annotateLeadingSlash = (err: unknown): never => {
       if (!(err instanceof LeadingSlashSpecifierError)) throw err;
-      const at = location ? ` (in "${location.sourceFile}" at line ${location.line}, column ${location.column})` : "";
+      const at = location
+        ? ` (in "${location.sourceFile}" at line ${location.line}, column ${location.column})`
+        : "";
       throw new Error(`[bascik] error: ${err.message}${at}`, { cause: err });
     };
 
@@ -667,7 +754,11 @@ export const executeBuildScripts = async (
         // root. The script's own imports then re-base to that file.
         let resolvedPath: string;
         try {
-          resolvedPath = resolveScriptSrcPath(srcPath, scriptBaseDir, importRoot);
+          resolvedPath = resolveScriptSrcPath(
+            srcPath,
+            scriptBaseDir,
+            importRoot,
+          );
         } catch (err) {
           return annotateLeadingSlash(err);
         }
@@ -679,7 +770,11 @@ export const executeBuildScripts = async (
           moduleSourcePath = getProjectPath(resolvedPath);
           fromSrcFile = true;
         } catch (err) {
-          console.warn('[bascik] warning: Failed to read build script src "%s":', srcPath, err);
+          console.warn(
+            '[bascik] warning: Failed to read build script src "%s":',
+            srcPath,
+            err,
+          );
         }
       }
     }
@@ -689,10 +784,18 @@ export const executeBuildScripts = async (
     try {
       // Padded first, so the rewrite's edits are in the file's own lines and columns.
       // Without a known file there are no file lines to line up with.
-      const padded = fromSrcFile || !locatedFile
-        ? moduleSource
-        : padToSourcePosition(moduleSource, position.bodyLine, position.bodyColumn);
-      ({ code: preparedScript, edits: specifierEdits } = rewriteModuleSpecifiersWithEdits(padded, scriptBaseDir, { importRoot }));
+      const padded =
+        fromSrcFile || !locatedFile
+          ? moduleSource
+          : padToSourcePosition(
+              moduleSource,
+              position.bodyLine,
+              position.bodyColumn,
+            );
+      ({ code: preparedScript, edits: specifierEdits } =
+        rewriteModuleSpecifiersWithEdits(padded, scriptBaseDir, {
+          importRoot,
+        }));
     } catch (err) {
       return annotateLeadingSlash(err);
     }
@@ -720,7 +823,18 @@ export const executeBuildScripts = async (
     const scriptIsNonCacheable = hasDynamicImport(trimmedScript) && useCache;
     const computeKey =
       useCache && !scriptIsNonCacheable
-        ? await computeScriptCacheKey(trimmedScript, scriptBaseDir, BascikConfig.isBuild ?? false, sourceFile, siteUrl, BascikConfig.base ?? "/", routeStr, pageFile, pagePath, importRoot)
+        ? await computeScriptCacheKey(
+            trimmedScript,
+            scriptBaseDir,
+            BascikConfig.isBuild ?? false,
+            sourceFile,
+            siteUrl,
+            BascikConfig.base ?? "/",
+            routeStr,
+            pageFile,
+            pagePath,
+            importRoot,
+          )
         : null;
     const cacheKey = scriptIsNonCacheable ? null : computeKey;
 
@@ -739,7 +853,9 @@ export const executeBuildScripts = async (
       moduleSourcePath,
       location,
       specifierEdits,
-      outputScope: decodeOutputScope(getHtmlAttributeValue(openTag, OUTPUT_SCOPE_ATTRIBUTE)),
+      outputScope: decodeOutputScope(
+        getHtmlAttributeValue(openTag, OUTPUT_SCOPE_ATTRIBUTE),
+      ),
       sourceFile,
     });
   }
@@ -790,18 +906,30 @@ export const executeBuildScripts = async (
     // duplicate, so there is no blind fallback retry. Siblings keep their own
     // output; a failed script contributes an empty replacement.
     for (const task of uncachedTasks) {
-      const taskSourceUrlComment = task.moduleSourcePath !== "unknown" ? `\n//# sourceURL=${task.moduleSourcePath}` : "";
+      const taskSourceUrlComment =
+        task.moduleSourcePath !== "unknown"
+          ? `\n//# sourceURL=${task.moduleSourcePath}`
+          : "";
       const taskEnv = {
         ...extraEnv,
         BASCIK_SOURCE_FILE: task.sourceFile,
       };
       try {
-        await writeFile(task.tmpPath, task.preparedScript + taskSourceUrlComment, "utf8");
-        const { result, stdout, stderr } = await runDirectiveHandler<string>(task.tmpPath, "build", { extraEnv: taskEnv });
+        await writeFile(
+          task.tmpPath,
+          task.preparedScript + taskSourceUrlComment,
+          "utf8",
+        );
+        const { result, stdout, stderr } = await runDirectiveHandler<string>(
+          task.tmpPath,
+          "build",
+          { extraEnv: taskEnv },
+        );
         if (stdout) process.stdout.write(stdout);
         if (stderr) process.stderr.write(stderr);
         const output = result;
-        if (task.cacheKey !== null) await writeScriptCache(cacheDir, task.cacheKey, output);
+        if (task.cacheKey !== null)
+          await writeScriptCache(cacheDir, task.cacheKey, output);
         task.output = output;
       } catch (err: any) {
         // The script's own output, printed once. Its error report is the message below.
@@ -812,28 +940,43 @@ export const executeBuildScripts = async (
         let errorMsg = `[bascik] build script error`;
         // The module is padded to the file's own lines, so only the temp path needs renaming,
         // and columns after a rewritten import on the same line need putting back.
-        const moduleReferences = [task.tmpPath, pathToFileURL(task.tmpPath).href, task.moduleSourcePath];
-        const remapped = remapRewrittenColumns(msg, moduleReferences, task.specifierEdits);
-        const cleanedMsg = cleanStackTrace(remapped, task.tmpPath, task.moduleSourcePath, 1);
+        const moduleReferences = [
+          task.tmpPath,
+          pathToFileURL(task.tmpPath).href,
+          task.moduleSourcePath,
+        ];
+        const remapped = remapRewrittenColumns(
+          msg,
+          moduleReferences,
+          task.specifierEdits,
+        );
+        const cleanedMsg = cleanStackTrace(
+          remapped,
+          task.tmpPath,
+          task.moduleSourcePath,
+          1,
+        );
         if (location) {
           errorMsg += ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})`;
         }
         // Nothing was memoized for this key; drop its pending dependency list
         // so a failing script cannot accumulate index state across edits.
-        if (task.cacheKey !== null) dependenciesByOutputKey.delete(task.cacheKey);
+        if (task.cacheKey !== null)
+          dependenciesByOutputKey.delete(task.cacheKey);
         const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
         if (behavior === "error") {
           console.error(`${errorMsg}:\n${cleanedMsg}`);
           // The location travels as data so the dev overlay can name the file. Without a source
           // file there is nothing to point at, so the failure stays a plain Error.
-          if (location) throw new BuildScriptError(`${errorMsg}:\n${cleanedMsg}`, location);
+          if (location)
+            throw new BuildScriptError(`${errorMsg}:\n${cleanedMsg}`, location);
           throw new Error(`${errorMsg}:\n${cleanedMsg}`);
         } else {
           console.warn(`${errorMsg}:\n${cleanedMsg}`);
         }
         task.output = "";
       } finally {
-        await unlink(task.tmpPath).catch(() => { });
+        await unlink(task.tmpPath).catch(() => {});
       }
     }
   }
@@ -852,12 +995,17 @@ export const executeBuildScripts = async (
     // A deferred page-aware component script carries its component's scope so
     // its page-time output matches the component's scoped CSS. Applied after
     // caching, so the cache stores the script's own stdout.
-    const emitted = outputScope ? applyOutputScope(safeOutput, outputScope) : safeOutput;
-    result = result.slice(0, index) + emitted + result.slice(index + fullTag.length);
+    const emitted = outputScope
+      ? applyOutputScope(safeOutput, outputScope)
+      : safeOutput;
+    result =
+      result.slice(0, index) + emitted + result.slice(index + fullTag.length);
   }
   if (removedDirectives.size > 0) {
     const where = filePath ? ` in "${getRelativePath(filePath, "pages")}"` : "";
-    const tags = [...removedDirectives].map((name) => `<script ${name}>`).join(", ");
+    const tags = [...removedDirectives]
+      .map((name) => `<script ${name}>`)
+      .join(", ");
     console.warn(
       `[bascik] warning: build script output${where} contained ${tags}. Printed directive scripts never run; they were removed. Write directives in source files, and sanitize HTML from a CMS or an API before printing it.`,
     );

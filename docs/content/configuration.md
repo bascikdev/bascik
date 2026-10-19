@@ -50,7 +50,7 @@ Start without `bascik.config.ts`. Create one only after identifying a concrete r
 
 ```ts
 // bascik.config.ts (minimal example)
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   generate: { sitemapLastmod: true },
@@ -71,11 +71,14 @@ Most specific and most ephemeral wins. The config file is checked into git and s
 
 The flags that override specific config keys:
 
-| Flag | Env var | Config key |
-| --- | --- | --- |
-| `--port <n>` | `BASCIK_SERVER_PORT` | `http.port` |
-| `--host <name>` | `BASCIK_SERVER_HOST` | `http.hostname` |
-| `--log-level <level>` | `BASCIK_LOG_LEVEL` | `logging.level` |
+| Flag                  | Env var                 | Config key      |
+| --------------------- | ----------------------- | --------------- |
+| `--port <n>`          | `BASCIK_SERVER_PORT`    | `http.port`     |
+| `--host <name>`       | `BASCIK_SERVER_HOST`    | `http.hostname` |
+| `--log-level <level>` | `BASCIK_LOG_LEVEL`      | `logging.level` |
+| `--quiet`, `-q`       | `BASCIK_LOG_LEVEL=warn` | `logging.level` |
+
+One setting has a flag and an environment variable but no config key: `--no-pin`, or `BASCIK_PIN_SERVER_URL=0`, turns off [pinning the server address](/developer-experience#what-you-see-in-the-terminal). It describes your own terminal, and the config file is shared by everyone on the project.
 
 See [Command Line Interface](/cli#cli-reference) for the full flag reference.
 
@@ -113,14 +116,14 @@ You do not need to populate default options in `bascik.config.ts`. The reference
 
 ```ts
 // bascik.config.ts (reference showing all default values)
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   directory: {
-    pages: 'src/pages',
-    components: 'src/components',
-    out: 'dist',
-    api: 'src/api',
+    pages: "src/pages",
+    components: "src/components",
+    out: "dist",
+    api: "src/api",
   },
   components: {
     external: [],
@@ -133,19 +136,19 @@ export default defineConfig({
       id: true,
       name: true,
     },
-    preserve: ['code'],
+    preserve: ["code"],
     deduplicateCss: true,
   },
   minify: {
-    html: false,        // false in dev; true in --build and --server
-    css: false,         // false in dev; true in --build and --server
-    js: false,          // false in dev; true in --build and --server
+    html: false, // false in dev; true in --build and --server
+    css: false, // false in dev; true in --build and --server
+    js: false, // false in dev; true in --build and --server
     identifiers: false, // false in dev; true in --build and --server
   },
   assets: {
     inlineStyles: false,
     exclude: [],
-    symlink: false,    // set true to link unchanged static assets in development
+    symlink: false, // set true to link unchanged static assets in development
   },
   generate: {
     sitemap: true,
@@ -161,35 +164,35 @@ export default defineConfig({
   },
   scripts: {
     cache: { enabled: true },
-    onBuildScriptError: 'error',
-    onRoutesScriptError: 'error',
-    onServerScriptError: 'error',
+    onBuildScriptError: "error",
+    onRoutesScriptError: "error",
+    onServerScriptError: "error",
     timeout: 30000,
-    importRoot: 'src',
+    importRoot: "src",
   },
-  onMinifyError: 'warn', // 'warn' in dev; 'error' in --build and --server
+  onMinifyError: "warn", // 'warn' in dev; 'error' in --build and --server
   http: {
-    port: undefined,      // auto-selected port
-    hostname: 'localhost',// use '0.0.0.0' to bind all interfaces
+    port: undefined, // auto-selected port
+    hostname: "localhost", // use '0.0.0.0' to bind all interfaces
     tls: {
-      enabled: false,     // set true for HTTP/2 HTTPS
+      enabled: false, // set true for HTTP/2 HTTPS
     },
     rateLimit: true,
     trustProxy: false,
-    cacheControl: 'public, max-age=3600', // string or per-extension map: { '.woff2': 'public, max-age=31536000, immutable' }
+    cacheControl: "public, max-age=3600", // string or per-extension map: { '.woff2': 'public, max-age=31536000, immutable' }
     compression: true,
-    precompress: false,   // emit verified .br/.gz sidecars at build time
+    precompress: false, // emit verified .br/.gz sidecars at build time
     maxBodySize: 1048576,
     apiTimeout: 10000,
   },
   logging: {
-    level: 'info',        // silent | error | warn | info | debug
+    level: "info", // silent | error | warn | info | debug
     requests: true,
     copies: true,
     deletes: true,
     transpiles: true,
   },
-  base: '/',
+  base: "/",
 });
 ```
 
@@ -276,7 +279,7 @@ An array of hyphenated tag names that belong to a browser custom element or a th
 ```ts
 export default defineConfig({
   components: {
-    external: ['heading-anchors', 'model-viewer', 'vendor-*'],
+    external: ["heading-anchors", "model-viewer", "vendor-*"],
   },
 });
 ```
@@ -332,7 +335,7 @@ Entries can be exact tag names or wildcard patterns. A `*` matches any run of ta
 ```ts
 export default defineConfig({
   scoping: {
-    preserve: ['code', 'vendor-*'],
+    preserve: ["code", "vendor-*"],
   },
 });
 ```
@@ -351,19 +354,21 @@ Bascik supports **BYOMinifier (Bring Your Own Minifier)**: both `css` and `js` a
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
-import autoprefixer from 'autoprefixer';
-import postcss from 'postcss';
-import { transform } from 'esbuild';
+import { defineConfig } from "@bascik/bascik/config";
+import autoprefixer from "autoprefixer";
+import postcss from "postcss";
+import { transform } from "esbuild";
 
 export const build = defineConfig({
   minify: {
     css: async (css) => {
-      const result = await postcss([autoprefixer]).process(css, { from: undefined });
+      const result = await postcss([autoprefixer]).process(css, {
+        from: undefined,
+      });
       return result.css;
     },
     js: async (code) => {
-      const result = await transform(code, { minify: true, loader: 'js' });
+      const result = await transform(code, { minify: true, loader: "js" });
       return result.code;
     },
   },
@@ -465,13 +470,17 @@ Selects the compiler for browser TypeScript on the two supported paths: referenc
 
 ```ts
 // bascik.config.ts (illustrative: esbuild as the browser TypeScript compiler)
-import { defineConfig } from '@bascik/bascik/config';
-import { transform } from 'esbuild';
+import { defineConfig } from "@bascik/bascik/config";
+import { transform } from "esbuild";
 
 export default defineConfig({
   scripts: {
     typescript: async (code, { sourcePath }) => {
-      const result = await transform(code, { loader: 'ts', target: 'es2020', sourcefile: sourcePath });
+      const result = await transform(code, {
+        loader: "ts",
+        target: "es2020",
+        sourcefile: sourcePath,
+      });
       return result.code;
     },
   },
@@ -485,6 +494,7 @@ Regardless of which compiler runs, if the resulting JavaScript still contains a 
 #### `scripts.onServerScriptError`
 
 Controls error handling for both `data-bascik-server` and `data-bascik-stream` scripts (`'error'`, `'warn'`, or `'ignore'`).
+
 - For a `data-bascik-server` script under `'error'`, execution halts and the server responds with an HTTP 500. Under `'warn'`, the error is logged to stderr and the tag is replaced with an empty string. Under `'ignore'`, the tag is replaced with an empty string silently.
 - For a `data-bascik-stream` script, response headers are already committed before stream output begins, so `'error'` cannot produce an HTTP 500. Instead, it logs the error to stderr and shows the dev overlay during development, emits an empty string for the script slot, and completes the document stream. Under `'warn'`, it logs to stderr without the dev overlay. Under `'ignore'`, the slot emits an empty string silently.
 
@@ -497,8 +507,8 @@ Pages, components, and the import root are **three independent directories**. Ba
 ```ts
 // sites/marketing/bascik.config.ts: one repo, several sites, shared code
 export default defineConfig({
-  directory: { components: ['../../shared/components', 'src/components'] },
-  scripts: { importRoot: '../../shared/scripts' },
+  directory: { components: ["../../shared/components", "src/components"] },
+  scripts: { importRoot: "../../shared/scripts" },
 });
 ```
 
@@ -549,19 +559,31 @@ logging: {
 }
 ```
 
+At `info`, the default, Bascik prints a line for each page it transpiles, each asset it copies, links, or deletes, each request the server answers, each exec script that starts and finishes, and each file it generates, such as `sitemap.xml`. At `warn`, which is what `bascik --quiet` selects, those lines are hidden and only warnings and errors remain. Most people who want less output want this, and it is the one setting you can flip for a single run without editing the config.
+
+A few lines print at every level, because they say the work is done and where to find it: `✓ N pages transpiled in 18ms`, `✓ Build complete` or `✓ All tasks completed`, and `Server running at`. The notice printed when you press `Ctrl+C` does too. Output from your own scripts is also never filtered, because it is not Bascik's to hide. A quiet dev server therefore prints those lines at boot, says nothing while you edit, and speaks again only for a warning, an error, or shutdown.
+
+```sh
+bascik --quiet                      # dev server, boot summary only
+bascik --build -q                   # build, summary only
+BASCIK_LOG_LEVEL=warn bascik        # the same, from the environment
+```
+
+Use `requests`, `copies`, `deletes`, and `transpiles` to keep one kind of line while hiding another. For example, `export const server = { logging: { requests: false } }` quiets a deployed server's access log without touching any start script.
+
 ## Mode Overrides (`dev`, `build`, `server`)
 
 Exporting `dev`, `build`, or `server` mode configuration objects lets you specify mode-specific overrides that merge on top of `default`:
 
 ```ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   generate: { sitemapLastmod: true },
 });
 
 export const dev = defineConfig({
-  logging: { level: 'debug' },
+  logging: { level: "debug" },
 });
 
 export const build = defineConfig({

@@ -16,11 +16,11 @@
  * boundary is older than every other visible commit, the newest remaining date is still exact whenever one
  * exists.
  */
-import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve } from 'node:path';
-import { promisify } from 'node:util';
+import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve } from "node:path";
+import { promisify } from "node:util";
 
 const run = promisify(execFile);
 
@@ -49,7 +49,7 @@ export function parseGitLogRange(
   const latest: LatestCommitTimes = new Map();
   const earliest: LatestCommitTimes = new Map();
   let current: { hash: string; time: number } | null = null;
-  for (const line of output.split('\n')) {
+  for (const line of output.split("\n")) {
     if (!line) continue;
     const header = /^commit ([0-9a-f]{40,64}) (\d+)$/.exec(line);
     if (header) {
@@ -58,22 +58,31 @@ export function parseGitLogRange(
     }
     if (!current || boundaryCommits.has(current.hash)) continue;
     const newest = latest.get(line);
-    if (newest === undefined || current.time > newest) latest.set(line, current.time);
+    if (newest === undefined || current.time > newest)
+      latest.set(line, current.time);
     const oldest = earliest.get(line);
-    if (oldest === undefined || current.time < oldest) earliest.set(line, current.time);
+    if (oldest === undefined || current.time < oldest)
+      earliest.set(line, current.time);
   }
   return { latest, earliest };
 }
 
 /** Newest commit time per path. See `parseGitLogRange`. */
-export function parseGitLog(output: string, boundaryCommits: ReadonlySet<string> = new Set()): LatestCommitTimes {
+export function parseGitLog(
+  output: string,
+  boundaryCommits: ReadonlySet<string> = new Set(),
+): LatestCommitTimes {
   return parseGitLogRange(output, boundaryCommits).latest;
 }
 
 /** True when `cwd` is a shallow clone. Returns false outside a git repository. */
 export async function isShallowRepository(cwd: string): Promise<boolean> {
   try {
-    return (await run('git', ['rev-parse', '--is-shallow-repository'], { cwd })).stdout.trim() === 'true';
+    return (
+      (
+        await run("git", ["rev-parse", "--is-shallow-repository"], { cwd })
+      ).stdout.trim() === "true"
+    );
   } catch {
     return false;
   }
@@ -84,9 +93,15 @@ export async function isShallowRepository(cwd: string): Promise<boolean> {
  * complete afterwards. Never throws: a failed or timed-out fetch just leaves the clone shallow, and pages
  * without a provable date stay undated.
  */
-export async function unshallow(cwd: string, timeoutMs = 120_000): Promise<boolean> {
+export async function unshallow(
+  cwd: string,
+  timeoutMs = 120_000,
+): Promise<boolean> {
   try {
-    await run('git', ['fetch', '--unshallow', '--quiet'], { cwd, timeout: timeoutMs });
+    await run("git", ["fetch", "--unshallow", "--quiet"], {
+      cwd,
+      timeout: timeoutMs,
+    });
   } catch {
     // Offline, no remote, or no permission: fall through and report the clone state as it is.
   }
@@ -94,21 +109,35 @@ export async function unshallow(cwd: string, timeoutMs = 120_000): Promise<boole
 }
 
 /** Reads commit history for `paths`, or `null` when `cwd` is not inside a git repository. */
-export async function readGitHistory(cwd: string, paths: readonly string[]): Promise<GitHistory | null> {
-  const git = (args: string[]) => run('git', ['-c', 'core.quotepath=off', ...args], { cwd, maxBuffer: 64 * 1024 * 1024 });
+export async function readGitHistory(
+  cwd: string,
+  paths: readonly string[],
+): Promise<GitHistory | null> {
+  const git = (args: string[]) =>
+    run("git", ["-c", "core.quotepath=off", ...args], {
+      cwd,
+      maxBuffer: 64 * 1024 * 1024,
+    });
 
   let shallow: boolean;
   try {
-    shallow = (await git(['rev-parse', '--is-shallow-repository'])).stdout.trim() === 'true';
+    shallow =
+      (await git(["rev-parse", "--is-shallow-repository"])).stdout.trim() ===
+      "true";
   } catch {
     return null;
   }
 
   const boundary = new Set<string>();
   if (shallow) {
-    const { stdout } = await git(['rev-parse', '--path-format=absolute', '--git-path', 'shallow']);
+    const { stdout } = await git([
+      "rev-parse",
+      "--path-format=absolute",
+      "--git-path",
+      "shallow",
+    ]);
     try {
-      for (const hash of (await readFile(stdout.trim(), 'utf8')).split('\n')) {
+      for (const hash of (await readFile(stdout.trim(), "utf8")).split("\n")) {
         if (hash.trim()) boundary.add(hash.trim());
       }
     } catch {
@@ -116,8 +145,15 @@ export async function readGitHistory(cwd: string, paths: readonly string[]): Pro
     }
   }
 
-  if (paths.length === 0) return { latest: new Map(), earliest: new Map(), shallow };
-  const { stdout } = await git(['log', '--name-only', '--format=commit %H %ct', '--', ...paths]);
+  if (paths.length === 0)
+    return { latest: new Map(), earliest: new Map(), shallow };
+  const { stdout } = await git([
+    "log",
+    "--name-only",
+    "--format=commit %H %ct",
+    "--",
+    ...paths,
+  ]);
   const { latest, earliest } = parseGitLogRange(stdout, boundary);
   return { latest, earliest: shallow ? new Map() : earliest, shallow };
 }
@@ -125,7 +161,8 @@ export async function readGitHistory(cwd: string, paths: readonly string[]): Pro
 /** Markdown files a page shell renders, as written in its source (`./content/x.md`, `../CHANGELOG.md`). */
 export function extractMarkdownRefs(pageHtml: string): string[] {
   const refs = new Set<string>();
-  for (const match of pageHtml.matchAll(/['"`](\.{1,2}\/[^'"`\s]+\.md)['"`]/g)) refs.add(match[1]);
+  for (const match of pageHtml.matchAll(/['"`](\.{1,2}\/[^'"`\s]+\.md)['"`]/g))
+    refs.add(match[1]);
   return [...refs];
 }
 
@@ -133,31 +170,39 @@ export function extractMarkdownRefs(pageHtml: string): string[] {
 export function routeOf(loc: string): string {
   let pathname: string;
   try {
-    pathname = new URL(loc.replace(/&amp;/g, '&')).pathname;
+    pathname = new URL(loc.replace(/&amp;/g, "&")).pathname;
   } catch {
-    return '';
+    return "";
   }
   try {
     pathname = decodeURIComponent(pathname);
   } catch {
     // Keep the raw pathname.
   }
-  return pathname.replace(/^\/+|\/+$/g, '');
+  return pathname.replace(/^\/+|\/+$/g, "");
 }
 
 /**
  * Source files (repo-relative, posix) behind a sitemap URL, or `[]` when no page shell exists for it.
  * `docsDir` is where relative Markdown references resolve, matching the build scripts' working directory.
  */
-export async function sourceFilesForRoute(route: string, docsDir: string, repoRoot: string): Promise<string[]> {
-  const pagesDir = join(docsDir, 'src', 'pages');
-  const candidates = route === '' ? ['index.html'] : [`${route}.html`, `${route}/index.html`];
-  const pageFile = candidates.map((c) => join(pagesDir, c)).find((c) => existsSync(c));
+export async function sourceFilesForRoute(
+  route: string,
+  docsDir: string,
+  repoRoot: string,
+): Promise<string[]> {
+  const pagesDir = join(docsDir, "src", "pages");
+  const candidates =
+    route === "" ? ["index.html"] : [`${route}.html`, `${route}/index.html`];
+  const pageFile = candidates
+    .map((c) => join(pagesDir, c))
+    .find((c) => existsSync(c));
   if (!pageFile) return [];
 
-  const toRepoPath = (absolute: string) => relative(repoRoot, absolute).split('\\').join('/');
+  const toRepoPath = (absolute: string) =>
+    relative(repoRoot, absolute).split("\\").join("/");
   const sources = [toRepoPath(pageFile)];
-  for (const ref of extractMarkdownRefs(await readFile(pageFile, 'utf8'))) {
+  for (const ref of extractMarkdownRefs(await readFile(pageFile, "utf8"))) {
     const absolute = isAbsolute(ref) ? ref : resolve(docsDir, ref);
     if (existsSync(absolute)) sources.push(toRepoPath(absolute));
   }
@@ -170,27 +215,38 @@ export function formatLastmod(unixSeconds: number): string {
 }
 
 /** Newest known commit time across `sources`, or `undefined` when none of them has a trustworthy date. */
-export function newestTimeFor(sources: readonly string[], latest: LatestCommitTimes): number | undefined {
+export function newestTimeFor(
+  sources: readonly string[],
+  latest: LatestCommitTimes,
+): number | undefined {
   let newest: number | undefined;
   for (const source of sources) {
     const time = latest.get(source);
-    if (time !== undefined && (newest === undefined || time > newest)) newest = time;
+    if (time !== undefined && (newest === undefined || time > newest))
+      newest = time;
   }
   return newest;
 }
 
 /** Oldest known commit time across `sources`, or `undefined` when none of them has one. */
-export function oldestTimeFor(sources: readonly string[], earliest: LatestCommitTimes): number | undefined {
+export function oldestTimeFor(
+  sources: readonly string[],
+  earliest: LatestCommitTimes,
+): number | undefined {
   let oldest: number | undefined;
   for (const source of sources) {
     const time = earliest.get(source);
-    if (time !== undefined && (oldest === undefined || time < oldest)) oldest = time;
+    if (time !== undefined && (oldest === undefined || time < oldest))
+      oldest = time;
   }
   return oldest;
 }
 
 /** Newest known commit date across `sources`, or `undefined` when none of them has a trustworthy date. */
-export function lastmodFor(sources: readonly string[], latest: LatestCommitTimes): string | undefined {
+export function lastmodFor(
+  sources: readonly string[],
+  latest: LatestCommitTimes,
+): string | undefined {
   const newest = newestTimeFor(sources, latest);
   return newest === undefined ? undefined : formatLastmod(newest);
 }
@@ -199,19 +255,27 @@ export function lastmodFor(sources: readonly string[], latest: LatestCommitTimes
  * Adds `<lastmod>` to each `<url>` whose `<loc>` has a date. Entries that already carry one, and entries
  * without a date, are left exactly as they were, so running it twice changes nothing.
  */
-export function injectLastmod(sitemapXml: string, datesByLoc: ReadonlyMap<string, string>): string {
+export function injectLastmod(
+  sitemapXml: string,
+  datesByLoc: ReadonlyMap<string, string>,
+): string {
   return sitemapXml.replace(/<url>[\s\S]*?<\/url>/g, (block) => {
-    if (block.includes('<lastmod>')) return block;
+    if (block.includes("<lastmod>")) return block;
     const loc = /<loc>([^<]*)<\/loc>/.exec(block)?.[1];
     const date = loc === undefined ? undefined : datesByLoc.get(loc);
     if (!date) return block;
-    return block.replace('</loc>', () => `</loc>\n    <lastmod>${date}</lastmod>`);
+    return block.replace(
+      "</loc>",
+      () => `</loc>\n    <lastmod>${date}</lastmod>`,
+    );
   });
 }
 
 /** `<loc>` values of every `<url>` entry, in document order. */
 export function sitemapLocs(sitemapXml: string): string[] {
-  return [...sitemapXml.matchAll(/<url>[\s\S]*?<loc>([^<]*)<\/loc>[\s\S]*?<\/url>/g)].map((m) => m[1]);
+  return [
+    ...sitemapXml.matchAll(/<url>[\s\S]*?<loc>([^<]*)<\/loc>[\s\S]*?<\/url>/g),
+  ].map((m) => m[1]);
 }
 
 /** Unix commit times behind one page: newest for `dateModified`, oldest (full history only) for `datePublished`. */
@@ -237,9 +301,15 @@ export async function addGitLastmod(
 ): Promise<LastmodSummary | null> {
   const locs = sitemapLocs(sitemapXml);
   const sourcesByLoc = new Map<string, string[]>();
-  for (const loc of locs) sourcesByLoc.set(loc, await sourceFilesForRoute(routeOf(loc), docsDir, repoRoot));
+  for (const loc of locs)
+    sourcesByLoc.set(
+      loc,
+      await sourceFilesForRoute(routeOf(loc), docsDir, repoRoot),
+    );
 
-  const history = await readGitHistory(repoRoot, [...new Set([...sourcesByLoc.values()].flat())]);
+  const history = await readGitHistory(repoRoot, [
+    ...new Set([...sourcesByLoc.values()].flat()),
+  ]);
   if (!history) return null;
 
   const dates = new Map<string, string>();
@@ -249,7 +319,10 @@ export async function addGitLastmod(
     if (modified === undefined) continue;
     dates.set(loc, formatLastmod(modified));
     const published = oldestTimeFor(sources, history.earliest);
-    timesByLoc.set(loc, published === undefined ? { modified } : { modified, published });
+    timesByLoc.set(
+      loc,
+      published === undefined ? { modified } : { modified, published },
+    );
   }
   return {
     xml: injectLastmod(sitemapXml, dates),
@@ -263,7 +336,9 @@ export async function addGitLastmod(
 /** Repo root containing `cwd`, or `null` outside a git repository. */
 export async function findRepoRoot(cwd: string): Promise<string | null> {
   try {
-    const { stdout } = await run('git', ['rev-parse', '--show-toplevel'], { cwd });
+    const { stdout } = await run("git", ["rev-parse", "--show-toplevel"], {
+      cwd,
+    });
     return stdout.trim() || null;
   } catch {
     return null;

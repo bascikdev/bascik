@@ -7,14 +7,17 @@
  *
  * Run via pipeline.exec in bascik.config.ts (build only), or directly: node scripts/generate-pages-headers.ts
  */
-import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { VERSIONED_IMAGE_FOLDERS } from '../src/lib/md-renderer.ts';
-import { pagesHeaders } from '../src/lib/pages-headers.ts';
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { VERSIONED_IMAGE_FOLDERS } from "../src/lib/md-renderer.ts";
+import { pagesHeaders } from "../src/lib/pages-headers.ts";
 
-const docsDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const output = join(process.env.BASCIK_OUT_DIR ?? join(docsDir, 'dist'), '_headers');
+const docsDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const output = join(
+  process.env.BASCIK_OUT_DIR ?? join(docsDir, "dist"),
+  "_headers",
+);
 
 await mkdir(dirname(output), { recursive: true });
 await writeFile(output, pagesHeaders(VERSIONED_IMAGE_FOLDERS));

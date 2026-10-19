@@ -29,7 +29,9 @@ h3 {
   margin-bottom: 8px;
   font-weight: 600;
   color: #eee;
-  transition: background 0.1s, border-color 0.1s;
+  transition:
+    background 0.1s,
+    border-color 0.1s;
 }
 
 .box.active {

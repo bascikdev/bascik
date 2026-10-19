@@ -5,8 +5,8 @@ export interface ComponentMetadataMember {
 
 export interface ComponentMetadataDiagnostic {
   code:
-    | 'component-metadata-duplicate-annotation'
-    | 'component-metadata-undeclared-annotation';
+    | "component-metadata-duplicate-annotation"
+    | "component-metadata-undeclared-annotation";
   message: string;
   start: number;
   end: number;
@@ -32,7 +32,7 @@ interface InferredMember {
 }
 
 interface Annotation {
-  kind: 'prop' | 'slot';
+  kind: "prop" | "slot";
   name: string;
   description?: string;
   start: number;
@@ -41,11 +41,16 @@ interface Annotation {
 
 function maskNonMarkup(source: string): string {
   return source
-    .replace(/<!--[\s\S]*?(?:-->|$)/g, (match) => ' '.repeat(match.length))
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, (match) => " ".repeat(match.length))
     .replace(
       /(<(script|style|textarea)(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi,
-      (_match, openTag: string, _name: string, body: string, closeTag: string) =>
-        `${openTag}${' '.repeat(body.length)}${closeTag}`,
+      (
+        _match,
+        openTag: string,
+        _name: string,
+        body: string,
+        closeTag: string,
+      ) => `${openTag}${" ".repeat(body.length)}${closeTag}`,
     );
 }
 
@@ -78,45 +83,57 @@ function inferMembers(source: string): {
       const normalized = name.toLowerCase();
       const offset = (match.index ?? 0) + match[0].lastIndexOf(name);
       const previous = propOffsets.get(normalized);
-      if (!previous || offset < previous.offset) propOffsets.set(normalized, { name, offset });
+      if (!previous || offset < previous.offset)
+        propOffsets.set(normalized, { name, offset });
     }
   }
 
   for (const match of masked.matchAll(
-    /data-bascik-(?:attr-[\w:.-]+|text|html)\s*=\s*(?:"([\w-]+)"|'([\w-]+)')/gi,
+    /data-bascik-(?:attr-[\w:.-]+|text|html)\s*=\s*(?:"([\w-]+)"|'([\w-]+)'|([\w-]+))/gi,
   )) {
-    const name = match[1] ?? match[2];
+    const name = match[1] ?? match[2] ?? match[3];
     if (name) {
       const normalized = name.toLowerCase();
       const offset = (match.index ?? 0) + match[0].lastIndexOf(name);
       const previous = propOffsets.get(normalized);
-      if (!previous || offset < previous.offset) propOffsets.set(normalized, { name, offset });
+      if (!previous || offset < previous.offset)
+        propOffsets.set(normalized, { name, offset });
     }
   }
 
-  const slotRegex = /data-bascik-slot(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/gi;
+  const slotRegex =
+    /data-bascik-slot(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`/>]+)))?/gi;
   for (const match of masked.matchAll(slotRegex)) {
     const name = match[1] ?? match[2] ?? match[3];
-    if (name === undefined || name.trim() === '') {
+    if (name === undefined || name.trim() === "") {
       hasDefaultSlot = true;
       continue;
     }
     const trimmed = name.trim();
-    add(slots, seenSlots, trimmed, (match.index ?? 0) + match[0].lastIndexOf(trimmed));
+    add(
+      slots,
+      seenSlots,
+      trimmed,
+      (match.index ?? 0) + match[0].lastIndexOf(trimmed),
+    );
   }
 
-  const props = [...propOffsets.values()].sort((left, right) => left.offset - right.offset);
+  const props = [...propOffsets.values()].sort(
+    (left, right) => left.offset - right.offset,
+  );
   slots.sort((left, right) => left.offset - right.offset);
   return { props, slots, hasDefaultSlot };
 }
 
-function findMetadataComment(source: string): { body: string; bodyStart: number } | undefined {
+function findMetadataComment(
+  source: string,
+): { body: string; bodyStart: number } | undefined {
   let offset = source.charCodeAt(0) === 0xfeff ? 1 : 0;
   while (offset < source.length) {
-    const whitespace = /^\s*/.exec(source.slice(offset))?.[0] ?? '';
+    const whitespace = /^\s*/.exec(source.slice(offset))?.[0] ?? "";
     offset += whitespace.length;
-    if (!source.startsWith('<!--', offset)) return undefined;
-    const close = source.indexOf('-->', offset + 4);
+    if (!source.startsWith("<!--", offset)) return undefined;
+    const close = source.indexOf("-->", offset + 4);
     if (close < 0) return undefined;
     const bodyStart = offset + 4;
     const body = source.slice(bodyStart, close);
@@ -142,28 +159,34 @@ function parseMetadataComment(source: string): {
   const lineRegex = /.*(?:\r?\n|$)/g;
 
   for (const lineMatch of content.matchAll(lineRegex)) {
-    const rawLine = lineMatch[0].replace(/\r?\n$/, '');
+    const rawLine = lineMatch[0].replace(/\r?\n$/, "");
     if (!rawLine && (lineMatch.index ?? 0) === content.length) continue;
-    const cleaned = rawLine.replace(/^\s*\*?\s?/, '').trimEnd();
-    const annotationMatch = /^@(prop|slot)\s+([\w-]+)(?:\s+-\s*(.*))?\s*$/.exec(cleaned);
+    const cleaned = rawLine.replace(/^\s*\*?\s?/, "").trimEnd();
+    const annotationMatch = /^@(prop|slot)\s+([\w-]+)(?:\s+-\s*(.*))?\s*$/.exec(
+      cleaned,
+    );
     if (annotationMatch) {
       const name = annotationMatch[2];
       const rawNameOffset = rawLine.indexOf(name);
-      const start = comment.bodyStart + contentStart + (lineMatch.index ?? 0) + Math.max(rawNameOffset, 0);
+      const start =
+        comment.bodyStart +
+        contentStart +
+        (lineMatch.index ?? 0) +
+        Math.max(rawNameOffset, 0);
       annotations.push({
-        kind: annotationMatch[1] as 'prop' | 'slot',
+        kind: annotationMatch[1] as "prop" | "slot",
         name,
         description: annotationMatch[3]?.trim() || undefined,
         start,
         end: start + name.length,
       });
-    } else if (cleaned && !cleaned.startsWith('@')) {
+    } else if (cleaned && !cleaned.startsWith("@")) {
       descriptionLines.push(cleaned);
     }
   }
 
   return {
-    description: descriptionLines.join(' ').trim() || undefined,
+    description: descriptionLines.join(" ").trim() || undefined,
     annotations,
   };
 }
@@ -174,11 +197,14 @@ export function analyzeComponentSource(
 ): ComponentMetadata {
   const inferred = inferMembers(source);
   const documented = parseMetadataComment(source);
-  const props: ComponentMetadataMember[] = inferred.props.map(({ name }) => ({ name }));
-  const slots: ComponentMetadataMember[] = inferred.slots.map(({ name }) => ({ name }));
-  const defaultSlot: ComponentMetadataMember | undefined = inferred.hasDefaultSlot
-    ? { name: 'default' }
-    : undefined;
+  const props: ComponentMetadataMember[] = inferred.props.map(({ name }) => ({
+    name,
+  }));
+  const slots: ComponentMetadataMember[] = inferred.slots.map(({ name }) => ({
+    name,
+  }));
+  const defaultSlot: ComponentMetadataMember | undefined =
+    inferred.hasDefaultSlot ? { name: "default" } : undefined;
   const diagnostics: ComponentMetadataDiagnostic[] = [];
   const seenAnnotations = new Set<string>();
 
@@ -186,7 +212,7 @@ export function analyzeComponentSource(
     const key = `${annotation.kind}:${annotation.name.toLowerCase()}`;
     if (seenAnnotations.has(key)) {
       diagnostics.push({
-        code: 'component-metadata-duplicate-annotation',
+        code: "component-metadata-duplicate-annotation",
         message: `Duplicate @${annotation.kind} annotation for "${annotation.name}". The first annotation is used.`,
         start: annotation.start,
         end: annotation.end,
@@ -196,15 +222,21 @@ export function analyzeComponentSource(
     seenAnnotations.add(key);
 
     const member =
-      annotation.kind === 'prop'
-        ? props.find((candidate) => candidate.name.toLowerCase() === annotation.name.toLowerCase())
-        : annotation.name.toLowerCase() === 'default'
+      annotation.kind === "prop"
+        ? props.find(
+            (candidate) =>
+              candidate.name.toLowerCase() === annotation.name.toLowerCase(),
+          )
+        : annotation.name.toLowerCase() === "default"
           ? defaultSlot
-          : slots.find((candidate) => candidate.name.toLowerCase() === annotation.name.toLowerCase());
+          : slots.find(
+              (candidate) =>
+                candidate.name.toLowerCase() === annotation.name.toLowerCase(),
+            );
     if (!member) {
       diagnostics.push({
-        code: 'component-metadata-undeclared-annotation',
-        message: `@${annotation.kind} annotation "${annotation.name}" does not match a ${annotation.kind === 'prop' ? 'prop' : 'slot'} declared in this component's markup.`,
+        code: "component-metadata-undeclared-annotation",
+        message: `@${annotation.kind} annotation "${annotation.name}" does not match a ${annotation.kind === "prop" ? "prop" : "slot"} declared in this component's markup.`,
         start: annotation.start,
         end: annotation.end,
       });
@@ -218,7 +250,9 @@ export function analyzeComponentSource(
     props,
     slots,
     defaultSlot,
-    hasStyles: options.hasCompanionStyles === true || /<style(?=[\t\n\f\r />])/i.test(source),
+    hasStyles:
+      options.hasCompanionStyles === true ||
+      /<style(?=[\t\n\f\r />])/i.test(source),
     hasScripts: /<script(?=[\t\n\f\r />])/i.test(source),
     diagnostics,
   };

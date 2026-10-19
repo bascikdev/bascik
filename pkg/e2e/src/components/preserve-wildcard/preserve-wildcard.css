@@ -4,12 +4,15 @@
 .wrapper {
   display: block;
 }
+
 .text {
   margin: 0;
 }
+
 .widget {
   display: block;
 }
+
 .label {
   font-style: normal;
 }

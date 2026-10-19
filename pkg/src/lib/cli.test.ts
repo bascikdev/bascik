@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { resolveCliAction, filterNodeArgs } from "./cli.ts";
+import {
+  resolveCliAction,
+  filterNodeArgs,
+  CLI_FLAGS,
+  CLI_USAGE,
+} from "./cli.ts";
 import { LOG_LEVELS } from "./config.ts";
 
 describe("cli helper tests", () => {
@@ -8,6 +13,21 @@ describe("cli helper tests", () => {
       expect(filterNodeArgs(["--build"])).toEqual(["--build"]);
       expect(filterNodeArgs(["--server"])).toEqual(["--server"]);
       expect(filterNodeArgs(["--check"])).toEqual(["--check"]);
+      expect(filterNodeArgs(["--fix"])).toEqual(["--fix"]);
+    });
+
+    it("resolves --check --fix to the check action with the fix flag", () => {
+      const fixDecision = resolveCliAction(["--check", "--fix"]);
+      expect(fixDecision.action).toBe("check");
+      expect(fixDecision.flags.fix).toBe(true);
+    });
+
+    it("rejects --lint and bare lint without suggesting anything: it is not an alias for --check", () => {
+      for (const args of [["--lint"], ["lint"]]) {
+        const decision = resolveCliAction(args);
+        expect(decision.action).toBe("error");
+        expect(decision.errorMessage).not.toContain("Did you mean");
+      }
     });
 
     it("should filter out node profiling flags", () => {
@@ -86,15 +106,18 @@ describe("cli helper tests", () => {
 
     it("should recognize --site-url and --env-file in both forms", () => {
       expect(
-        resolveCliAction(["--build", "--site-url", "https://example.com"]).action,
+        resolveCliAction(["--build", "--site-url", "https://example.com"])
+          .action,
       ).toBe("build");
       expect(
         resolveCliAction(["--build", "--site-url=https://example.com"]).action,
       ).toBe("build");
-      expect(resolveCliAction(["--build", "--env-file", ".env.staging"]).action)
-        .toBe("build");
-      expect(resolveCliAction(["--build", "--env-file=.env.staging"]).action)
-        .toBe("build");
+      expect(
+        resolveCliAction(["--build", "--env-file", ".env.staging"]).action,
+      ).toBe("build");
+      expect(
+        resolveCliAction(["--build", "--env-file=.env.staging"]).action,
+      ).toBe("build");
     });
 
     it("parses --site-url and --env-file values into flags", () => {
@@ -173,13 +196,29 @@ describe("cli helper tests", () => {
   });
 
   describe("--flag=value forms", () => {
-    const cases: { flag: string; value: string; read: (d: ReturnType<typeof resolveCliAction>) => unknown }[] = [
-      { flag: "--config", value: "./conf/bascik.config.js", read: (d) => d.flags.config },
+    const cases: {
+      flag: string;
+      value: string;
+      read: (d: ReturnType<typeof resolveCliAction>) => unknown;
+    }[] = [
+      {
+        flag: "--config",
+        value: "./conf/bascik.config.js",
+        read: (d) => d.flags.config,
+      },
       { flag: "--port", value: "4321", read: (d) => d.flags.port },
       { flag: "--host", value: "0.0.0.0", read: (d) => d.flags.host },
       { flag: "--log-level", value: "debug", read: (d) => d.flags.logLevel },
-      { flag: "--site-url", value: "https://example.com", read: (d) => d.flags.siteUrl },
-      { flag: "--env-file", value: ".env.staging", read: (d) => d.flags.envFiles[0] },
+      {
+        flag: "--site-url",
+        value: "https://example.com",
+        read: (d) => d.flags.siteUrl,
+      },
+      {
+        flag: "--env-file",
+        value: ".env.staging",
+        read: (d) => d.flags.envFiles[0],
+      },
       { flag: "--log", value: "./out.log", read: (d) => d.flags.log },
     ];
 
@@ -206,7 +245,13 @@ describe("cli helper tests", () => {
     });
 
     it("lets the last occurrence win for value flags", () => {
-      const decision = resolveCliAction(["--build", "--port", "1111", "--port", "2222"]);
+      const decision = resolveCliAction([
+        "--build",
+        "--port",
+        "1111",
+        "--port",
+        "2222",
+      ]);
       expect(decision.action).toBe("build");
       expect(decision.flags.port).toBe(2222);
     });
@@ -293,7 +338,9 @@ describe("cli helper tests", () => {
     it("rejects --strict without --check", () => {
       const decision = resolveCliAction(["--build", "--strict"]);
       expect(decision.action).toBe("error");
-      expect(decision.errorMessage).toContain("--strict only applies to --check");
+      expect(decision.errorMessage).toContain(
+        "--strict only applies to --check",
+      );
     });
 
     it("rejects --json without --check", () => {
@@ -304,11 +351,18 @@ describe("cli helper tests", () => {
     });
 
     it("parses --target flag with any non-empty value during build", () => {
-      const customDecision = resolveCliAction(["--build", "--target", "@acme/adapter-foo"]);
+      const customDecision = resolveCliAction([
+        "--build",
+        "--target",
+        "@acme/adapter-foo",
+      ]);
       expect(customDecision.action).toBe("build");
       expect(customDecision.flags.target).toBe("@acme/adapter-foo");
 
-      const localDecision = resolveCliAction(["--build", "--target=./my-adapter.ts"]);
+      const localDecision = resolveCliAction([
+        "--build",
+        "--target=./my-adapter.ts",
+      ]);
       expect(localDecision.action).toBe("build");
       expect(localDecision.flags.target).toBe("./my-adapter.ts");
     });
@@ -321,10 +375,92 @@ describe("cli helper tests", () => {
     });
 
     it("rejects --target with --only", () => {
-      const decision = resolveCliAction(["--build", "--target", "cloudflare-pages", "--only", "index.html"]);
+      const decision = resolveCliAction([
+        "--build",
+        "--target",
+        "cloudflare-pages",
+        "--only",
+        "index.html",
+      ]);
       expect(decision.action).toBe("error");
       expect(decision.errorMessage).toContain("--target");
       expect(decision.errorMessage).toContain("--only");
+    });
+  });
+
+  describe("--quiet and -q", () => {
+    it.each(["--quiet", "-q"])(
+      "%s selects the warn level on every run mode",
+      (flag) => {
+        expect(resolveCliAction([flag])).toMatchObject({
+          action: "dev",
+          flags: { logLevel: "warn" },
+        });
+        expect(resolveCliAction(["--build", flag])).toMatchObject({
+          action: "build",
+          flags: { logLevel: "warn" },
+        });
+        expect(resolveCliAction(["--server", flag])).toMatchObject({
+          action: "server",
+          flags: { logLevel: "warn" },
+        });
+      },
+    );
+
+    it("can come before or after the mode flag", () => {
+      expect(resolveCliAction(["-q", "--build"]).flags.logLevel).toBe("warn");
+    });
+
+    it("rejects --quiet together with --log-level, naming both, instead of letting one win", () => {
+      for (const args of [
+        ["--quiet", "--log-level", "debug"],
+        ["--log-level=debug", "-q"],
+      ]) {
+        const decision = resolveCliAction(args);
+        expect(decision.action).toBe("error");
+        expect(decision.errorMessage).toContain("--quiet");
+        expect(decision.errorMessage).toContain("--log-level");
+      }
+    });
+
+    it("does not take a value", () => {
+      const decision = resolveCliAction(["--quiet=yes"]);
+      expect(decision.action).toBe("error");
+      expect(decision.errorMessage).toContain("does not take a value");
+    });
+
+    it("leaves the level unset when it is not passed, so the config and BASCIK_LOG_LEVEL decide", () => {
+      expect(resolveCliAction(["--build"]).flags.logLevel).toBeUndefined();
+    });
+  });
+
+  describe("--no-pin", () => {
+    it("is accepted by the dev server", () => {
+      expect(resolveCliAction(["--no-pin"])).toMatchObject({
+        action: "dev",
+        flags: { noPin: true },
+      });
+    });
+
+    it("is off unless passed", () => {
+      expect(resolveCliAction([]).flags.noPin).toBeUndefined();
+    });
+
+    it.each([["--build"], ["--server"], ["--check"]])(
+      "is rejected with %s, where nothing is pinned",
+      (mode) => {
+        const decision = resolveCliAction([mode, "--no-pin"]);
+        expect(decision.action).toBe("error");
+        expect(decision.errorMessage).toContain(
+          "--no-pin only applies to the dev server",
+        );
+      },
+    );
+
+    it("is suggested for a near miss", () => {
+      expect(resolveCliAction(["--build", "--nopin"]).errorMessage).toContain(
+        'Did you mean "--no-pin"?',
+      );
     });
   });
 
@@ -348,7 +484,13 @@ describe("cli helper tests", () => {
 
   describe("add subcommand", () => {
     it("parses bascik add with package target and flags", () => {
-      const decision = resolveCliAction(["add", "@acme/ui", "--force", "--yes", "--dry-run"]);
+      const decision = resolveCliAction([
+        "add",
+        "@acme/ui",
+        "--force",
+        "--yes",
+        "--dry-run",
+      ]);
       expect(decision.action).toBe("add");
       expect(decision.flags.addTargets).toEqual(["@acme/ui"]);
       expect(decision.flags.force).toBe(true);
@@ -357,15 +499,24 @@ describe("cli helper tests", () => {
     });
 
     it("parses bascik add with multiple targets", () => {
-      const decision = resolveCliAction(["add", "@acme/ui/card", "@acme/ui/button"]);
+      const decision = resolveCliAction([
+        "add",
+        "@acme/ui/card",
+        "@acme/ui/button",
+      ]);
       expect(decision.action).toBe("add");
-      expect(decision.flags.addTargets).toEqual(["@acme/ui/card", "@acme/ui/button"]);
+      expect(decision.flags.addTargets).toEqual([
+        "@acme/ui/card",
+        "@acme/ui/button",
+      ]);
     });
 
     it("rejects bascik add without targets", () => {
       const decision = resolveCliAction(["add"]);
       expect(decision.action).toBe("error");
-      expect(decision.errorMessage).toContain("`bascik add` expects at least one package or component target");
+      expect(decision.errorMessage).toContain(
+        "`bascik add` expects at least one package or component target",
+      );
     });
 
     it("rejects --force without add", () => {
@@ -379,5 +530,15 @@ describe("cli helper tests", () => {
       expect(decision.action).toBe("error");
       expect(decision.errorMessage).toContain("--dry-run only applies to add");
     });
+  });
+});
+
+describe("CLI_USAGE", () => {
+  // Every flag the parser accepts must be discoverable from --help.
+  it.each([...CLI_FLAGS])("documents %s", (flag) => {
+    const escapedFlag = flag.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
+    expect(CLI_USAGE).toMatch(
+      new RegExp(`(?:^|[\\s,])${escapedFlag}(?![\\w-])`, "m"),
+    );
   });
 });

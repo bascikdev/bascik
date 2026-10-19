@@ -12,11 +12,11 @@ const { state, routesIoMocks } = vi.hoisted(() => {
   };
   const mocks = {
     execFile: vi.fn(),
-    writeFile: vi.fn(async () => { }),
-    unlink: vi.fn(async () => { }),
-    mkdir: vi.fn(async () => { }),
+    writeFile: vi.fn(async () => {}),
+    unlink: vi.fn(async () => {}),
+    mkdir: vi.fn(async () => {}),
     mkdtemp: vi.fn(async () => "/tmp/bascik-mock-routes-dir"),
-    rm: vi.fn(async () => { }),
+    rm: vi.fn(async () => {}),
     stat: vi.fn(async () => ({ size: 100 })),
     readFile: vi.fn(async (filePath: string, ...args: any[]) => {
       if (String(filePath).endsWith("result.json")) {
@@ -52,7 +52,11 @@ vi.mock("./config.js", () => ({
     scripts: {
       onRoutesScriptError: "error",
     },
-    directory: { pages: "src/pages", components: ["src/components"], out: "dist" },
+    directory: {
+      pages: "src/pages",
+      components: ["src/components"],
+      out: "dist",
+    },
   },
 }));
 
@@ -64,7 +68,11 @@ const mockExecFile = execFile as unknown as ReturnType<typeof vi.fn>;
 const mockWriteFile = writeFile as unknown as ReturnType<typeof vi.fn>;
 const mockReadFile = state.userReadFileMock;
 
-const resolveWith = (result: unknown = [], stdout: string = "", stderr: string = "") => {
+const resolveWith = (
+  result: unknown = [],
+  stdout: string = "",
+  stderr: string = "",
+) => {
   mockExecFile.mockImplementation(
     (
       _cmd: unknown,
@@ -109,14 +117,17 @@ describe("executeRoutesScript", () => {
   });
 
   it("warns and returns empty routes when dynamic template has no routes script", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const html = "<p>Post Template</p>";
-    const result = await executeRoutesScript(html, "src/pages/blog/[slug].html");
+    const result = await executeRoutesScript(
+      html,
+      "src/pages/blog/[slug].html",
+    );
     expect(result.routes).toEqual([]);
     expect(result.cleanedHtml).toBe(html);
     expect(mockExecFile).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('has no <script data-bascik-routes> tag'),
+      expect.stringContaining("has no <script data-bascik-routes> tag"),
     );
     warnSpy.mockRestore();
   });
@@ -143,7 +154,10 @@ describe("executeRoutesScript", () => {
 <body><h1>Posts</h1></body>
 </html>`;
 
-    const result = await executeRoutesScript(html, "src/pages/blog/[slug].html");
+    const result = await executeRoutesScript(
+      html,
+      "src/pages/blog/[slug].html",
+    );
     expect(result.routes).toEqual(routesData);
     expect(result.cleanedHtml).not.toContain("data-bascik-routes");
     expect(result.cleanedHtml).toContain("<body><h1>Posts</h1></body>");
@@ -216,15 +230,25 @@ describe("executeRoutesScript", () => {
     ).rejects.toThrow(/both data-bascik-routes and data-bascik-server/);
   });
 
+  it("throws hard error on routes + stream conflict on same tag", async () => {
+    const html = `<script data-bascik-routes data-bascik-stream>export default () => []</script>`;
+    await expect(
+      executeRoutesScript(html, "src/pages/blog/[slug].html"),
+    ).rejects.toThrow(/both data-bascik-routes and data-bascik-stream/);
+  });
+
   it("does not trigger on quoted-attribute false positives", async () => {
     const html = `<div data-desc="data-bascik-routes">Not a script</div>`;
-    const result = await executeRoutesScript(html, "src/pages/blog/[slug].html");
+    const result = await executeRoutesScript(
+      html,
+      "src/pages/blog/[slug].html",
+    );
     expect(mockExecFile).not.toHaveBeenCalled();
     expect(result.routes).toEqual([]);
   });
 
   it("warns and ignores routes script inside component", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const html = `<script data-bascik-routes>export default () => []</script><div>Component</div>`;
     const result = await executeRoutesScript(html, "src/components/card.html");
     expect(result.routes).toBeNull();
@@ -237,7 +261,7 @@ describe("executeRoutesScript", () => {
   });
 
   it("warns and ignores routes script in file without brackets", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const html = `<script data-bascik-routes>export default () => []</script><div>Static</div>`;
     const result = await executeRoutesScript(html, "src/pages/about.html");
     expect(result.routes).toBeNull();
@@ -260,12 +284,15 @@ describe("executeRoutesScript", () => {
   });
 
   it("honors onRoutesScriptError: 'warn' when script throws, logging warning and returning empty routes", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     rejectWith("Syntax error in script");
     (BascikConfig as any).scripts = { onRoutesScriptError: "warn" };
 
     const html = `<script data-bascik-routes>bad code</script>`;
-    const result = await executeRoutesScript(html, "src/pages/blog/[slug].html");
+    const result = await executeRoutesScript(
+      html,
+      "src/pages/blog/[slug].html",
+    );
     expect(result.routes).toEqual([]);
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("routes script error"),
@@ -274,12 +301,15 @@ describe("executeRoutesScript", () => {
   });
 
   it("honors onRoutesScriptError: 'warn' when returned value is not an array", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     resolveWith("Invalid String Output");
     (BascikConfig as any).scripts = { onRoutesScriptError: "warn" };
 
     const html = `<script data-bascik-routes>export default () => 'not array';</script>`;
-    const result = await executeRoutesScript(html, "src/pages/blog/[slug].html");
+    const result = await executeRoutesScript(
+      html,
+      "src/pages/blog/[slug].html",
+    );
     expect(result.routes).toEqual([]);
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("Routes script must return an array"),
@@ -288,12 +318,15 @@ describe("executeRoutesScript", () => {
   });
 
   it("warns when routes script src cannot be read from disk", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockReadFile.mockRejectedValueOnce(new Error("File not found"));
     (BascikConfig as any).scripts = { onRoutesScriptError: "warn" };
 
     const html = `<script data-bascik-routes src="./missing-routes.ts"></script>`;
-    const result = await executeRoutesScript(html, "src/pages/blog/[slug].html");
+    const result = await executeRoutesScript(
+      html,
+      "src/pages/blog/[slug].html",
+    );
     expect(result.routes).toEqual([]);
     expect(warnSpy).toHaveBeenCalledWith(
       '[bascik] warning: Failed to read routes script src "%s":',
@@ -304,12 +337,15 @@ describe("executeRoutesScript", () => {
   });
 
   it("supports unquoted src attribute in routes script tag", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockReadFile.mockRejectedValueOnce(new Error("File not found"));
     (BascikConfig as any).scripts = { onRoutesScriptError: "warn" };
 
     const html = `<script data-bascik-routes src=./unquoted-routes.ts></script>`;
-    const result = await executeRoutesScript(html, "src/pages/blog/[slug].html");
+    const result = await executeRoutesScript(
+      html,
+      "src/pages/blog/[slug].html",
+    );
     expect(result.routes).toEqual([]);
     expect(warnSpy).toHaveBeenCalledWith(
       '[bascik] warning: Failed to read routes script src "%s":',
@@ -320,12 +356,15 @@ describe("executeRoutesScript", () => {
   });
 
   it("supports single-quoted src attribute in routes script tag", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockReadFile.mockRejectedValueOnce(new Error("File not found"));
     (BascikConfig as any).scripts = { onRoutesScriptError: "warn" };
 
     const html = `<script data-bascik-routes src='./single-quoted-routes.ts'></script>`;
-    const result = await executeRoutesScript(html, "src/pages/blog/[slug].html");
+    const result = await executeRoutesScript(
+      html,
+      "src/pages/blog/[slug].html",
+    );
     expect(result.routes).toEqual([]);
     expect(warnSpy).toHaveBeenCalledWith(
       '[bascik] warning: Failed to read routes script src "%s":',
@@ -336,12 +375,15 @@ describe("executeRoutesScript", () => {
   });
 
   it("supports unquoted src attribute with spaces around equals in routes script tag", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockReadFile.mockRejectedValueOnce(new Error("File not found"));
     (BascikConfig as any).scripts = { onRoutesScriptError: "warn" };
 
     const html = `<script data-bascik-routes src = ./spaced-unquoted-routes.ts></script>`;
-    const result = await executeRoutesScript(html, "src/pages/blog/[slug].html");
+    const result = await executeRoutesScript(
+      html,
+      "src/pages/blog/[slug].html",
+    );
     expect(result.routes).toEqual([]);
     expect(warnSpy).toHaveBeenCalledWith(
       '[bascik] warning: Failed to read routes script src "%s":',

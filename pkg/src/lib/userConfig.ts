@@ -30,10 +30,10 @@ const rejectRemovedKeys = (cfg: UserConfig, exportName: string): void => {
   if (typeof cfg === "object" && cfg !== null && "siteUrl" in cfg) {
     throw new Error(
       `[bascik] error: \`siteUrl\` is not a bascik.config option (found in the ${exportName} export).\n` +
-      `  The site URL is a per-deployment value. Set it one of these ways:\n` +
-      `    BASCIK_SITE_URL=https://example.com bascik --build\n` +
-      `    echo 'BASCIK_SITE_URL=https://example.com' >> .env\n` +
-      `    bascik --build --site-url https://example.com`,
+        `  The site URL is a per-deployment value. Set it one of these ways:\n` +
+        `    BASCIK_SITE_URL=https://example.com bascik --build\n` +
+        `    echo 'BASCIK_SITE_URL=https://example.com' >> .env\n` +
+        `    bascik --build --site-url https://example.com`,
     );
   }
 };
@@ -60,7 +60,7 @@ export const loadUserConfig = async (
       if (options.explicit) {
         throw new Error(
           `[bascik] error: --config "${configPath}" does not exist. ` +
-          `Pass an existing file, or omit the flag to use ./bascik.config.js or ./bascik.config.ts when present.`,
+            `Pass an existing file, or omit the flag to use ./bascik.config.js or ./bascik.config.ts when present.`,
         );
       }
       return { config: {}, dev: {}, build: {}, server: {} };
@@ -93,10 +93,12 @@ export const loadUserConfig = async (
   const rawBuild = mod?.build;
   const rawServer = mod?.server;
   const result = {
-    config: typeof rawConfig === "object" && rawConfig !== null ? rawConfig : {},
+    config:
+      typeof rawConfig === "object" && rawConfig !== null ? rawConfig : {},
     dev: typeof rawDev === "object" && rawDev !== null ? rawDev : {},
     build: typeof rawBuild === "object" && rawBuild !== null ? rawBuild : {},
-    server: typeof rawServer === "object" && rawServer !== null ? rawServer : {},
+    server:
+      typeof rawServer === "object" && rawServer !== null ? rawServer : {},
   };
   rejectRemovedKeys(result.config, "default");
   rejectRemovedKeys(result.dev, "dev");
@@ -126,7 +128,9 @@ export const resolveConfigPath = async (
   const inline = argv.find((a) => a.startsWith("--config="));
   const flagIndex = argv.indexOf("--config");
   const flagValue =
-    flagIndex !== -1 && argv[flagIndex + 1] && !argv[flagIndex + 1].startsWith("-")
+    flagIndex !== -1 &&
+    argv[flagIndex + 1] &&
+    !argv[flagIndex + 1].startsWith("-")
       ? argv[flagIndex + 1]
       : undefined;
   const explicitValue = inline ? inline.slice("--config=".length) : flagValue;
@@ -143,7 +147,9 @@ export const resolveConfigPath = async (
 };
 
 const discovered = await resolveConfigPath();
-const loaded = await loadUserConfig(discovered.path, { explicit: discovered.explicit });
+const loaded = await loadUserConfig(discovered.path, {
+  explicit: discovered.explicit,
+});
 
 export const config: UserConfig = loaded.config;
 export const modeOverrides = {

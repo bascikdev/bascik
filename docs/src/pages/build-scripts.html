@@ -1,115 +1,141 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Build-time scripts let you run Node.js code at transpile time and inject the output directly into your HTML. No runtime overhead."
+    />
+    <title>Run Node.js at Build Time in HTML Pages - Bascik</title>
+  </head>
 
-<head>
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <script data-bascik-build>
-    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    export default async () => await breadcrumbLd();
-  </script>
-  <script data-bascik-build>
-    import { articleSchema } from '@/lib/article-schema.ts';
-    export default async () => await articleSchema();
-  </script>
-  <meta name="description"
-    content="Build-time scripts let you run Node.js code at transpile time and inject the output directly into your HTML. No runtime overhead." />
-  <title>Run Node.js at Build Time in HTML Pages - Bascik</title>
-</head>
+  <body>
+    <docs-nav />
 
-<body>
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
 
-  <docs-nav />
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/build-scripts");
+          </script>
 
-  <div class="container">
-    <div class="docs-layout">
-      <docs-sidebar />
+          <!-- Intro rendered from docs/content/build-scripts.md. -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/build-scripts.md", {
+                to: "data-bascik-build",
+              });
+          </script>
 
-      <main class="docs-content" id="main-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/build-scripts');
-        </script>
-
-        <!-- Intro rendered from docs/content/build-scripts.md. -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/build-scripts.md', { to: 'data-bascik-build' });
-        </script>
-
-        <component-demo data-bascik-prop-file="src/pages/build-scripts.html">
-          <div data-bascik-slot="example">
-            <script data-bascik-build>
-              import { readFile } from 'node:fs/promises';
-              import { marked } from 'marked';
-              export default async function () {
-                const md = await readFile('./content/why-bascik.md', 'utf8');
-                const [heading, paragraph] = md.split('\n\n');
-                const title = heading.replace(/^#\s*/, '');
-                return `
+          <component-demo data-bascik-prop-file="src/pages/build-scripts.html">
+            <div data-bascik-slot="example">
+              <script data-bascik-build>
+                import { readFile } from "node:fs/promises";
+                import { marked } from "marked";
+                export default async function () {
+                  const md = await readFile("./content/why-bascik.md", "utf8");
+                  const [heading, paragraph] = md.split("\n\n");
+                  const title = heading.replace(/^#\s*/, "");
+                  return `
                 <feature-card
                   data-bascik-prop-title="${title}"
-                  data-bascik-prop-desc="${marked.parseInline(paragraph).replace(/"/g, '&quot;')}">
+                  data-bascik-prop-desc="${marked.parseInline(paragraph).replace(/"/g, "&quot;")}">
                 </feature-card>
               `;
-              };
-            </script>
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/build-scripts.md', 'source-usage');
+                }
               </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/build-scripts.md', 'output-html');
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/build-scripts.md",
+                      "source-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/build-scripts.md",
+                      "output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
 
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/build-scripts.md', { from: 'data-bascik-build', to: 'Package resolution parity' });
-        </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/build-scripts.md", {
+                from: "data-bascik-build",
+                to: "Package resolution parity",
+              });
+          </script>
 
-        <diagram-figure data-bascik-prop-title="How a build script is cached">
-          <diagram-steps>
-            <diagram-step data-bascik-prop-title="Hash the inputs"
-              data-bascik-prop-detail="Script body, local files it imports, page, site URL, base, route, and each imported package's entry file and manifest." />
-            <diagram-step data-bascik-prop-title="Look up the hash"
-              data-bascik-prop-detail="node_modules/.cache/bascik/script-cache/ holds one entry per hash." />
-            <diagram-step data-bascik-prop-title="Hit: reuse the HTML"
-              data-bascik-prop-detail="No child process starts. Unchanged scripts cost almost nothing." />
-            <diagram-step data-bascik-prop-title="Miss: run and store"
-              data-bascik-prop-detail="The script runs in a fresh Node.js process and its output is saved." />
-          </diagram-steps>
-        </diagram-figure>
+          <diagram-figure data-bascik-prop-title="How a build script is cached">
+            <diagram-steps>
+              <diagram-step
+                data-bascik-prop-title="Hash the inputs"
+                data-bascik-prop-detail="Script body, local files it imports, page, site URL, base, route, and each imported package's entry file and manifest."
+              />
+              <diagram-step
+                data-bascik-prop-title="Look up the hash"
+                data-bascik-prop-detail="node_modules/.cache/bascik/script-cache/ holds one entry per hash."
+              />
+              <diagram-step
+                data-bascik-prop-title="Hit: reuse the HTML"
+                data-bascik-prop-detail="No child process starts. Unchanged scripts cost almost nothing."
+              />
+              <diagram-step
+                data-bascik-prop-title="Miss: run and store"
+                data-bascik-prop-detail="The script runs in a fresh Node.js process and its output is saved."
+              />
+            </diagram-steps>
+          </diagram-figure>
 
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/build-scripts.md', { from: 'Package resolution parity' }, { stripDemoBlocks: true });
-        </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/build-scripts.md",
+                { from: "Package resolution parity" },
+                { stripDemoBlocks: true },
+              );
+          </script>
 
-        <docs-pagination />
-
-      </main>
+          <docs-pagination />
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-</body>
-
+    <docs-footer />
+  </body>
 </html>

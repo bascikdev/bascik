@@ -1,5 +1,9 @@
-import { nativeClock, type FrameworkClock, type TimeoutHandle } from './clock.ts';
-import { runShutdownHandlers } from './events.ts';
+import {
+  nativeClock,
+  type FrameworkClock,
+  type TimeoutHandle,
+} from "./clock.ts";
+import { runShutdownHandlers } from "./events.ts";
 
 export type ServerHealthState = "booting" | "ready" | "draining";
 
@@ -22,14 +26,17 @@ export interface GracefulShutdownOptions {
   clock?: FrameworkClock;
 }
 
-export const createGracefulShutdownHandler = (options: GracefulShutdownOptions): ((signal: string) => void) => {
+export const createGracefulShutdownHandler = (
+  options: GracefulShutdownOptions,
+): ((signal: string) => void) => {
   let shuttingDown = false;
   let exitSettled = false;
   let forceExitTimer: TimeoutHandle | null = null;
   const clock = options.clock ?? nativeClock;
   const drainTimeout = options.drainTimeout ?? DEFAULT_DRAIN_TIMEOUT_MS;
   const exitFn = options.exit ?? ((code: number) => process.exit(code));
-  const shutdownHandlersRunner = options.runShutdownHandlers ?? runShutdownHandlers;
+  const shutdownHandlersRunner =
+    options.runShutdownHandlers ?? runShutdownHandlers;
 
   const performExit = (code: number) => {
     if (exitSettled) return;
@@ -54,12 +61,12 @@ export const createGracefulShutdownHandler = (options: GracefulShutdownOptions):
         if (typeof options.server.closeAllConnections === "function") {
           options.server.closeAllConnections();
         }
-      } catch { }
+      } catch {}
       try {
         if (typeof options.onForceClose === "function") {
           options.onForceClose();
         }
-      } catch { }
+      } catch {}
       performExit(1);
     }, drainTimeout);
 
@@ -71,7 +78,7 @@ export const createGracefulShutdownHandler = (options: GracefulShutdownOptions):
     if (typeof options.server.closeIdleConnections === "function") {
       try {
         options.server.closeIdleConnections();
-      } catch { }
+      } catch {}
     }
 
     // 3. Graceful protocol notification (e.g. HTTP/2 session.close() / GOAWAY)
@@ -141,10 +148,16 @@ export const getServerHealthState = (): ServerHealthState => {
 };
 
 export const isHealthEndpoint = (pathname: string): boolean => {
-  return pathname === "/_health" || pathname === "/_health/ready" || pathname === "/_health/live";
+  return (
+    pathname === "/_health" ||
+    pathname === "/_health/ready" ||
+    pathname === "/_health/live"
+  );
 };
 
-export const handleHealthCheck = (pathname: string = "/_health"): {
+export const handleHealthCheck = (
+  pathname: string = "/_health",
+): {
   status: number;
   headers: Record<string, string>;
   body: string;

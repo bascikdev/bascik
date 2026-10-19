@@ -18,8 +18,15 @@ import {
   type ApiRouteDefinition,
   type ApiRouteMatch,
 } from "./api-routes.ts";
-import { createWebRequest, executeApiRoute, requestOrigin } from "./api-runtime.ts";
-import { createResponseSink, type DisposableResponseSink } from "./response-sink.ts";
+import {
+  createWebRequest,
+  executeApiRoute,
+  requestOrigin,
+} from "./api-runtime.ts";
+import {
+  createResponseSink,
+  type DisposableResponseSink,
+} from "./response-sink.ts";
 import { isNetworkResetError } from "./server.ts";
 import { scriptRegistry } from "./script-registry.ts";
 import type { BascikRequest, BascikResponse } from "./server.ts";
@@ -106,9 +113,12 @@ export const streamApiResponse = async (
     if (headersCommitted) {
       try {
         res.close();
-      } catch { }
+      } catch {}
       if (!isNetworkResetError(err)) {
-        console.error("[bascik] API route body stream failed after commit:", err);
+        console.error(
+          "[bascik] API route body stream failed after commit:",
+          err,
+        );
       }
     } else {
       // The header set is uncommitted, so the client gets a complete error
@@ -116,10 +126,13 @@ export const streamApiResponse = async (
       // (`writeHead` / `stream.respond`); without `end` a real client hangs.
       try {
         if (!res.destroyed) {
-          res.respond(500, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+          res.respond(500, {
+            "content-type": "text/plain; charset=utf-8",
+            ...secHeaders,
+          });
           res.end("Internal Server Error");
         }
-      } catch { }
+      } catch {}
     }
   } finally {
     if (unlistenAbort) unlistenAbort();
@@ -184,7 +197,10 @@ export class ApiRouteRegistry {
    * (query and fragment removed); catch-all routes split and decode it
    * themselves. Throws `InvalidApiPathError` for an unsafe catch-all capture.
    */
-  match(pathname: string, rawPathname: string = pathname): ApiRouteMatch | null {
+  match(
+    pathname: string,
+    rawPathname: string = pathname,
+  ): ApiRouteMatch | null {
     if (this.routes.length === 0) return null;
     return matchApiRoute(this.routes, pathname, rawPathname);
   }
@@ -200,7 +216,10 @@ export class ApiRouteRegistry {
   /**
    * Invalidate a specific route file in the script registry and rebuild route tree.
    */
-  async invalidateFile(filePath: string, basePath = BascikConfig.base): Promise<void> {
+  async invalidateFile(
+    filePath: string,
+    basePath = BascikConfig.base,
+  ): Promise<void> {
     scriptRegistry.invalidate(filePath);
     await this.reload(basePath);
   }
@@ -218,7 +237,7 @@ export class ApiRouteRegistry {
     req: BascikRequest,
     res: BascikResponse,
     match: ApiRouteMatch,
-    secHeaders: Record<string, string>
+    secHeaders: Record<string, string>,
   ): Promise<number> {
     const webReq = createWebRequest(req, requestOrigin(req));
     const abort = new AbortController();
@@ -260,7 +279,8 @@ export class ApiRouteRegistry {
       if (typeof (webRes.headers as any).getSetCookie === "function") {
         const setCookies = (webRes.headers as any).getSetCookie();
         if (Array.isArray(setCookies) && setCookies.length > 0) {
-          outHeaders["set-cookie"] = setCookies.length === 1 ? setCookies[0] : setCookies;
+          outHeaders["set-cookie"] =
+            setCookies.length === 1 ? setCookies[0] : setCookies;
         }
       }
 
@@ -271,7 +291,15 @@ export class ApiRouteRegistry {
           res.respond(webRes.status, outHeaders);
           if (!res.destroyed) res.end();
         } else {
-          await streamApiResponse(webRes.body, webRes.status, outHeaders, secHeaders, res, abort, sink);
+          await streamApiResponse(
+            webRes.body,
+            webRes.status,
+            outHeaders,
+            secHeaders,
+            res,
+            abort,
+            sink,
+          );
         }
       } else {
         res.respond(webRes.status, outHeaders);

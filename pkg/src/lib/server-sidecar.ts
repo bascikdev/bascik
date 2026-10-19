@@ -1,7 +1,12 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
-import { SCRIPT_END_TAG, SERVER_ATTR_NAME, STREAM_ATTR_NAME, getHtmlAttributeValue } from "./html-patterns.ts";
+import {
+  SCRIPT_END_TAG,
+  SERVER_ATTR_NAME,
+  STREAM_ATTR_NAME,
+  getHtmlAttributeValue,
+} from "./html-patterns.ts";
 import { directiveSourceColumn } from "./directive-source.ts";
 
 /**
@@ -70,7 +75,15 @@ class ServerSidecarRegistry {
     mode: ServerScriptMode = "server",
     sourceColumn?: number,
   ): void {
-    this.scripts.set(id, { id, mode, source, modulePath, sourceFile, sourceLine, sourceColumn });
+    this.scripts.set(id, {
+      id,
+      mode,
+      source,
+      modulePath,
+      sourceFile,
+      sourceLine,
+      sourceColumn,
+    });
   }
 
   recordScripts(scripts: Record<string, ServerScriptEntry>): void {
@@ -102,7 +115,8 @@ class ServerSidecarRegistry {
 
   async loadSidecar(sidecarPath?: string): Promise<SidecarLoadResult> {
     const outDir = resolve(process.cwd(), BascikConfig.directory.out);
-    const targetPath = sidecarPath ?? join(outDir, ".bascik", "server-scripts.json");
+    const targetPath =
+      sidecarPath ?? join(outDir, ".bascik", "server-scripts.json");
     let parsed: ServerScriptsSidecar;
     try {
       const content = await readFile(targetPath, "utf8");
@@ -119,23 +133,30 @@ class ServerSidecarRegistry {
       );
     }
     const scriptsRaw = parsed.scripts ?? {};
-    if (typeof scriptsRaw !== "object" || scriptsRaw === null || Array.isArray(scriptsRaw)) {
+    if (
+      typeof scriptsRaw !== "object" ||
+      scriptsRaw === null ||
+      Array.isArray(scriptsRaw)
+    ) {
       this.loadedSidecar = null;
       this.sidecarPresent = false;
       throw new Error(
         `[bascik] --server: server scripts sidecar at ${targetPath} has a malformed "scripts" member. ` +
-        `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+          `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
       );
     }
     // Schema incompatibility: an unknown version means the runtime and the
     // sidecar disagree about the entry contract.
-    if (parsed.schema !== undefined && parsed.schema !== SIDECAR_SCHEMA_VERSION) {
+    if (
+      parsed.schema !== undefined &&
+      parsed.schema !== SIDECAR_SCHEMA_VERSION
+    ) {
       this.loadedSidecar = null;
       this.sidecarPresent = false;
       throw new Error(
         `[bascik] --server: server scripts sidecar at ${targetPath} uses schema ${parsed.schema}, ` +
-        `but this runtime understands schema ${SIDECAR_SCHEMA_VERSION}. ` +
-        `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+          `but this runtime understands schema ${SIDECAR_SCHEMA_VERSION}. ` +
+          `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
       );
     }
     const scripts = scriptsRaw as Record<string, ServerScriptEntry>;
@@ -147,7 +168,7 @@ class ServerSidecarRegistry {
         this.sidecarPresent = false;
         throw new Error(
           `[bascik] --server: server scripts sidecar at ${targetPath} has a null or malformed entry "${id}". ` +
-          `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+            `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
         );
       }
       if (entry.mode !== "server" && entry.mode !== "stream") {
@@ -155,7 +176,7 @@ class ServerSidecarRegistry {
         this.sidecarPresent = false;
         throw new Error(
           `[bascik] --server: server scripts sidecar at ${targetPath} is stale (entry "${id}" has no mode). ` +
-          `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+            `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
         );
       }
     }
@@ -228,20 +249,39 @@ export const extractServerScriptsToSidecar = (
     (match: string, openAttrs: string, scriptContent: string) => {
       // A stream placeholder legitimately carries `data-bascik-stream` as a
       // mode marker. It is already extracted; leave it alone.
-      if (/type=["']text\/bascik-server["']/i.test(`<script${openAttrs}>`)) return match;
+      if (/type=["']text\/bascik-server["']/i.test(`<script${openAttrs}>`))
+        return match;
       scriptOrdinal++;
       const id = `server_script_${Buffer.from(`${pagePath}::${scriptOrdinal}`).toString("hex")}`;
       const openTag = `<script${openAttrs}>`;
-      const mode: ServerScriptMode = STREAM_ATTR_RE.test(openTag) ? "stream" : "server";
+      const mode: ServerScriptMode = STREAM_ATTR_RE.test(openTag)
+        ? "stream"
+        : "server";
       const srcPath = getHtmlAttributeValue(openTag, "src");
-      const annotatedSourceFile = getHtmlAttributeValue(openTag, "data-bascik-source-file");
+      const annotatedSourceFile = getHtmlAttributeValue(
+        openTag,
+        "data-bascik-source-file",
+      );
       const scriptSourceFile = annotatedSourceFile
         ? decodeURIComponent(annotatedSourceFile)
         : sourceFile;
-      const annotatedSourceLine = getHtmlAttributeValue(openTag, "data-bascik-source-line");
-      const sourceLine = annotatedSourceLine ? Number.parseInt(annotatedSourceLine, 10) : undefined;
+      const annotatedSourceLine = getHtmlAttributeValue(
+        openTag,
+        "data-bascik-source-line",
+      );
+      const sourceLine = annotatedSourceLine
+        ? Number.parseInt(annotatedSourceLine, 10)
+        : undefined;
       const sourceColumn = directiveSourceColumn(openTag);
-      serverSidecarRegistry.recordScript(id, scriptContent, srcPath, scriptSourceFile, sourceLine, mode, sourceColumn);
+      serverSidecarRegistry.recordScript(
+        id,
+        scriptContent,
+        srcPath,
+        scriptSourceFile,
+        sourceLine,
+        mode,
+        sourceColumn,
+      );
       if (outMap) {
         outMap[id] = {
           id,

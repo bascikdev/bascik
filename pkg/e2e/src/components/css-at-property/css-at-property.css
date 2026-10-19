@@ -1,5 +1,5 @@
 @property --brand-color {
-  syntax: '<color>';
+  syntax: "<color>";
   inherits: false;
   initial-value: rgb(100, 200, 100);
 }

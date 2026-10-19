@@ -32,7 +32,7 @@ vi.mock("../src/lib/config.ts", () => ({
 }));
 
 vi.mock(import("../src/lib/names.ts"), async (importOriginal) => ({
-  ...await importOriginal(),
+  ...(await importOriginal()),
   getUniqueId: () => "bench1234",
 }));
 
@@ -48,7 +48,11 @@ const { recursivelyTranspile } = processing;
 const { replaceTag, getTag } = components;
 const { minifyHtml } = htmlMinifier;
 const { minifyJs } = jsMinifier;
-const { convertCssElementSelectorsToClasses, scopeCssCustomProperties, deduplicateCss } = styles;
+const {
+  convertCssElementSelectorsToClasses,
+  scopeCssCustomProperties,
+  deduplicateCss,
+} = styles;
 
 import type { ComponentList } from "../src/lib/types.ts";
 
@@ -112,7 +116,9 @@ const PAGE_BODY_50 = Array.from(
 // times on a flat page, plus a nested case where each instance introduces two
 // more components inside its template (3 substitutions per instance).
 const FLAT_LIST: ComponentList = {
-  "item-card": { fileContent: `<div class="card"><p data-bascik-prop-title></p></div>` },
+  "item-card": {
+    fileContent: `<div class="card"><p data-bascik-prop-title></p></div>`,
+  },
 };
 const NESTED_LIST: ComponentList = {
   "outer-box": {
@@ -121,7 +127,10 @@ const NESTED_LIST: ComponentList = {
   "inner-dot": { fileContent: `<i class="d">.</i>` },
 };
 const flatPage = (n: number): string =>
-  Array.from({ length: n }, (_, i) => `<item-card title="Item ${i}"></item-card>`).join("\n");
+  Array.from(
+    { length: n },
+    (_, i) => `<item-card title="Item ${i}"></item-card>`,
+  ).join("\n");
 const nestedPage = (n: number): string =>
   Array.from({ length: n }, (_, i) => `<outer-box>${i}</outer-box>`).join("\n");
 const FLAT_800 = flatPage(800);
@@ -139,26 +148,41 @@ for (const [html, list, expected] of [
   [NESTED_800, NESTED_LIST, 2400],
 ] as const) {
   const result = recursivelyTranspile(html, list);
-  assert.equal(result.usedComponents.length, expected, "benchmark component expansion must succeed");
+  assert.equal(
+    result.usedComponents.length,
+    expected,
+    "benchmark component expansion must succeed",
+  );
   // Expansion-only fixtures have no stylesheet, so their unreferenced classes stay authored.
   if (list === COMPONENT_LIST_10 || list === COMPONENT_LIST_50) {
-    assert(result.transpiledHtmlBody.includes("bascik__"), "CSS benchmark must exercise scoping");
+    assert(
+      result.transpiledHtmlBody.includes("bascik__"),
+      "CSS benchmark must exercise scoping",
+    );
   }
 }
 
 // JS minifier scaling inputs (prompt 62). Slash-heavy exercises regex/division/
 // comment disambiguation on every `/`; slash-light is the common case. Sizes
 // double so a quadratic scan would show ~4x per step and a linear one ~2x.
-const SLASH_HEAVY_UNIT = "const a = b / c / d; // note\nconst e = f / g; /* block */ x = y / z;\n";
-const SLASH_LIGHT_UNIT = "const alpha = beta + gamma;\nlet delta = epsilon(zeta, eta);\n";
+const SLASH_HEAVY_UNIT =
+  "const a = b / c / d; // note\nconst e = f / g; /* block */ x = y / z;\n";
+const SLASH_LIGHT_UNIT =
+  "const alpha = beta + gamma;\nlet delta = epsilon(zeta, eta);\n";
 const JS_SIZES = [
   { label: "~52KB", reps: 750 },
   { label: "~107KB", reps: 1550 },
   { label: "~217KB", reps: 3150 },
   { label: "~437KB", reps: 6330 },
 ] as const;
-const SLASH_HEAVY = JS_SIZES.map(({ label, reps }) => ({ label, src: SLASH_HEAVY_UNIT.repeat(reps) }));
-const SLASH_LIGHT = JS_SIZES.map(({ label, reps }) => ({ label, src: SLASH_LIGHT_UNIT.repeat(reps) }));
+const SLASH_HEAVY = JS_SIZES.map(({ label, reps }) => ({
+  label,
+  src: SLASH_HEAVY_UNIT.repeat(reps),
+}));
+const SLASH_LIGHT = JS_SIZES.map(({ label, reps }) => ({
+  label,
+  src: SLASH_LIGHT_UNIT.repeat(reps),
+}));
 
 // ── Benchmarks ────────────────────────────────────────────────────────────────────────────
 // Vitest 5: `bench` is a test-context fixture. Each group is one test; groups
@@ -229,22 +253,29 @@ test("CSS scoping — scopeCssCustomProperties", async ({ bench }) => {
 });
 
 // Four interleaved multi-millisecond benches outlast the default 60 s test timeout.
-test("recursivelyTranspile: flat instance scaling", { timeout: 300_000 }, async ({ bench }) => {
-  await bench.compare(
-    bench(`800 flat instances (${FLAT_800.length} bytes)`, () => {
-      recursivelyTranspile(FLAT_800, FLAT_LIST);
-    }),
-    bench(`1600 flat instances (${FLAT_1600.length} bytes)`, () => {
-      recursivelyTranspile(FLAT_1600, FLAT_LIST);
-    }),
-    bench(`3200 flat instances (${FLAT_3200.length} bytes)`, () => {
-      recursivelyTranspile(FLAT_3200, FLAT_LIST);
-    }),
-    bench(`800 nested instances, 2400 substitutions (${NESTED_800.length} bytes)`, () => {
-      recursivelyTranspile(NESTED_800, NESTED_LIST);
-    }),
-  );
-});
+test(
+  "recursivelyTranspile: flat instance scaling",
+  { timeout: 300_000 },
+  async ({ bench }) => {
+    await bench.compare(
+      bench(`800 flat instances (${FLAT_800.length} bytes)`, () => {
+        recursivelyTranspile(FLAT_800, FLAT_LIST);
+      }),
+      bench(`1600 flat instances (${FLAT_1600.length} bytes)`, () => {
+        recursivelyTranspile(FLAT_1600, FLAT_LIST);
+      }),
+      bench(`3200 flat instances (${FLAT_3200.length} bytes)`, () => {
+        recursivelyTranspile(FLAT_3200, FLAT_LIST);
+      }),
+      bench(
+        `800 nested instances, 2400 substitutions (${NESTED_800.length} bytes)`,
+        () => {
+          recursivelyTranspile(NESTED_800, NESTED_LIST);
+        },
+      ),
+    );
+  },
+);
 
 test("recursivelyTranspile (full pipeline)", async ({ bench }) => {
   await bench.compare(

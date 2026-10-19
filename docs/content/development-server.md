@@ -17,13 +17,25 @@ When started, Bascik:
 
 1. Loads your project configuration from `bascik.config.ts`.
 2. Cleans the output directory (`dist/`) to remove stale artifacts.
-3. Transpiles all pages and components into memory and disk.
+3. Transpiles all pages and components into memory and disk. Pages open in your browser compile first, then the home page, then the rest (see [Compile Order](#compile-order)).
 4. Initializes high-speed filesystem watchers across pages, components, the import root, and custom `pipeline.watchPaths`.
 5. Starts an HTTP development server with live reload on port 8080.
 
 This is the real output of a new project, recorded from the starter site on one machine. Startup takes a fraction of a second, and saving a page afterward rebuilds only that page:
 
-![A terminal running bascik. The output lists four pages transpiled in under a quarter of a second and the server running at localhost:8080. After a file is saved, the server reports a rebuild of only pages/index.html in a few milliseconds](/assets/demos/dev-terminal@2x.webp)
+![A terminal running bascik. The line Server running at localhost:8080 stays pinned to the top row while the output below it lists four pages transpiled in under a quarter of a second. After a file is saved, the server reports a rebuild of only pages/index.html in a few milliseconds](/assets/demos/dev-terminal@2x.webp)
+
+## Compile Order
+
+On a large site, the page you are looking at should not wait for the whole site to compile. Whenever the dev server compiles many pages at once, at startup and after a change to a shared component or stylesheet, it works through them in this order:
+
+1. **Pages open in a browser tab.** Each tab's live-reload connection tells the server which page it shows. These pages compile first and reload as soon as they are ready.
+2. **The home page (`/`).** It is the page most often opened next, so it compiles right after the open pages. Other directory indexes such as `blog/index.html` are ordinary pages.
+3. **Every other page,** in file order.
+
+The order is checked again each time a page finishes, not once at the start. A tab that connects after compilation began, such as a tab reconnecting after you restarted the server, moves its page to the front of the pages that have not started yet.
+
+While the first compile is still running, the browser shows a short startup page and reloads into your page as soon as it is ready. `bascik --build` does not reorder pages.
 
 ## Linked Static Assets
 
@@ -31,9 +43,9 @@ For projects with many large static assets, enable development-only asset links 
 
 ```ts
 export default defineConfig({
-	assets: {
-		symlink: true,
-	},
+  assets: {
+    symlink: true,
+  },
 });
 ```
 
@@ -43,14 +55,14 @@ If a Windows environment does not allow symlink creation, Bascik warns once and 
 
 ## CLI Flags
 
-| Flag | Description | Default |
-| :--- | :--- | :--- |
-| `--port <number>` | Port to listen on | `8080` |
-| `--hostname <string>` | Interface to bind | `localhost` |
-| `--base <path>` | Deployment path prefix | `/` |
-| `--config <path>` | Path to explicit config file | `bascik.config.ts` |
-| `--env-file <path>` | Custom environment file path | `./.env` |
-| `--site-url <url>` | Override canonical site URL | `process.env.BASCIK_SITE_URL` |
+| Flag                  | Description                  | Default                       |
+| :-------------------- | :--------------------------- | :---------------------------- |
+| `--port <number>`     | Port to listen on            | `8080`                        |
+| `--hostname <string>` | Interface to bind            | `localhost`                   |
+| `--base <path>`       | Deployment path prefix       | `/`                           |
+| `--config <path>`     | Path to explicit config file | `bascik.config.ts`            |
+| `--env-file <path>`   | Custom environment file path | `./.env`                      |
+| `--site-url <url>`    | Override canonical site URL  | `process.env.BASCIK_SITE_URL` |
 
 ```sh
 # Start dev server on custom port
@@ -89,5 +101,11 @@ The development server watches:
 - **`src/components/` (and all `directory.components` roots):** Editing a component automatically re-transpiles every page that uses that component tag.
 - **`src/` (or `scripts.importRoot`):** Updating shared `@/` script helpers invalidates dependent build script caches and re-renders affected pages. A helper imported at request time by a `src=` server script or API route, at any depth, is reloaded on the next request together with every module that imports it; no restart and no edit to the importing file is needed. A helper imported by an inline `data-bascik-server` script is picked up when its page recompiles (or after a restart), because the inline module is a `data:` URL the module graph cannot record an importer edge for.
 - **`pipeline.watchPaths`:** Custom content directories or JSON data files trigger re-compilation according to your configured globs.
+
+## Build Time of This Website
+
+The numbers below are not typical. They describe this website's own production build (`bascik --build`), measured on one machine, because it is a large real site: many pages, many components, and build scripts that render Markdown, generate images, and write the search index. The Pages phase includes transpiling and scoping each page as well as its build-script work; it is not a component/CSS-only benchmark. The breakdown lists each build phase, and the per-page figures show the spread between a typical page and the slowest one.
+
+The build runs your Node.js build scripts in isolated child processes, a few at a time, and caches each result. The first build pays for every script. After that, only scripts whose inputs changed run again. The page and component counts are counted live on every build. The timings come from a measured build and name the machine and date they were taken on.
 
 > **Next:** See [Watch Paths](/watch-paths) to configure custom watch directories, or explore [Production Server](/production-server) to learn about production runtime hosting.

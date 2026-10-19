@@ -147,7 +147,7 @@ Tests navigate to pages on the active server and assert against the live browser
 
 ```ts
 // pkg/e2e/bascik.config.ts (excerpt)
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   pipeline: { workers: true },
@@ -187,18 +187,18 @@ Each test file is paired with a fixture page. See the full list on [GitHub](http
 A typical test file:
 
 ```ts
-import { test, expect, type Locator } from '@playwright/test';
+import { test, expect, type Locator } from "@playwright/test";
 
 function getInstance(page, n: number): Locator {
-  return page.locator('.bascik__my-feature__wrapper').nth(n);
+  return page.locator(".bascik__my-feature__wrapper").nth(n);
 }
 
-test.describe('my-feature-test page', () => {
+test.describe("my-feature-test page", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/my-feature-test');
+    await page.goto("/my-feature-test");
   });
 
-  test('instances are isolated', async ({ page }) => {
+  test("instances are isolated", async ({ page }) => {
     const a = getInstance(page, 0);
     const b = getInstance(page, 1);
     // assert that state in A does not affect B
@@ -285,7 +285,7 @@ describe("prefixElementAttribute", () => {
 });
 ```
 
-> **Important.** Always import the module under test *after* calling `vi.mock`. Vitest hoists mock calls to the top of the file, but the import order still matters for ensuring the mock is in place when the module initializes its dependencies.
+> **Important.** Always import the module under test _after_ calling `vi.mock`. Vitest hoists mock calls to the top of the file, but the import order still matters for ensuring the mock is in place when the module initializes its dependencies.
 
 ## Boundary Test Patterns
 
@@ -327,13 +327,9 @@ These tests run isolated native processes. A failing run keeps its private repor
 
 ## Benchmarks and Profiling
 
-`yarn pkg:bench` runs Vitest throughput benchmarks from `pkg/bench/` on fixed, repeatable inputs. The same directory contains a bounded profiling harness for deeper investigation:
+`yarn pkg:bench` runs Vitest throughput benchmarks from `pkg/bench/` on fixed, repeatable inputs. The same directory contains a bounded profiling and comparison harness (`profile:compare`, `profile:compiler`, and `profile:workload`) for paired before-and-after compiler builds with byte-identical verification, live dev-edit timelines, and runtime profiling.
 
-- `profile:workload` captures runtime behavior (HTTP/1.1, HTTP/2 with TLS, static serving, live development, serial and worker builds) with Clinic, 0x, or Node CPU sampling on a synthetic fixture.
-- `profile:compiler` times complete dev and build runs of a real project, defaulting to the docs site.
-- `profile:compare` alternates a baseline and a candidate compiler on the same fixture and stops if their emitted HTML differs, so a performance change can be checked for byte-identical output.
-
-Each capture validates the work it measured (response bytes, task counts, decoded artifacts) and is rejected if anything is incomplete, so a run that merely exits successfully is not accepted. Captures write to a private report directory you choose. Commands, options, report directory rules, and known platform limitations are documented in the [benchmarks and profiling README](https://github.com/bascikdev/bascik/blob/main/pkg/bench/README.md).
+See [Benchmarking & Profiling](/internals/benchmarking) for the complete guide, commands, and report directory rules, or the [benchmarks and profiling README](https://github.com/bascikdev/bascik/blob/main/pkg/bench/README.md) in the repository.
 
 ## TypeScript Checking
 

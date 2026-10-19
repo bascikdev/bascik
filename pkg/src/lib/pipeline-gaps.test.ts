@@ -70,7 +70,9 @@ describe("Pipeline Gaps and Logging (Prompt 43)", () => {
     await handleRequest(mockReq, mockRes);
     expect(mockRes.respond).toHaveBeenCalledWith(
       404,
-      expect.objectContaining({ "content-type": expect.stringContaining("text/plain") }),
+      expect.objectContaining({
+        "content-type": expect.stringContaining("text/plain"),
+      }),
     );
   });
 

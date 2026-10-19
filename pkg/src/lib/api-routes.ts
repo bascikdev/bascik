@@ -34,7 +34,13 @@ import {
 
 // The matcher itself is host-neutral and lives in `route-matching.ts` so a
 // serverless function can run it without this module's filesystem imports.
-export { matchApiRoute, normalizeApiRouteDefinition, sortApiRoutes, findApiRoutePatternProblems, InvalidApiPathError };
+export {
+  matchApiRoute,
+  normalizeApiRouteDefinition,
+  sortApiRoutes,
+  findApiRoutePatternProblems,
+  InvalidApiPathError,
+};
 export type { ApiRouteDefinition, ApiRouteMatch, ApiRouteParams };
 
 /**
@@ -71,9 +77,12 @@ export const fileToApiRoutePath = (relPath: string, basePath = "/"): string => {
 export const buildApiRouteTree = (
   filePaths: string[],
   apiDir: string,
-  basePath = "/"
+  basePath = "/",
 ): ApiRouteDefinition[] => {
-  const routesByPath = new Map<string, { route: ApiRouteDefinition; filePaths: string[] }>();
+  const routesByPath = new Map<
+    string,
+    { route: ApiRouteDefinition; filePaths: string[] }
+  >();
   // Normalize apiDir with forward slashes for relative pathing
   const normalizedApiDir = apiDir.replace(/\\/g, "/");
 
@@ -111,7 +120,7 @@ export const buildApiRouteTree = (
     if (entry.filePaths.length > 1) {
       const fileList = entry.filePaths.map((f) => `  - ${f}`).join("\n");
       throw new Error(
-        `Duplicate API route "${routePath}" declared in multiple files:\n${fileList}`
+        `Duplicate API route "${routePath}" declared in multiple files:\n${fileList}`,
       );
     }
   }
@@ -123,7 +132,9 @@ export const buildApiRouteTree = (
   const problems = findApiRoutePatternProblems(routes);
   if (problems.length > 0) {
     const detail = problems
-      .map((p) => `${p.message}\n${p.filePaths.map((f) => `  - ${f}`).join("\n")}`)
+      .map(
+        (p) => `${p.message}\n${p.filePaths.map((f) => `  - ${f}`).join("\n")}`,
+      )
       .join("\n");
     throw new Error(`Invalid API route patterns:\n${detail}`);
   }
@@ -160,7 +171,10 @@ export const scanApiRouteFiles = async (dir: string): Promise<string[]> => {
 /**
  * Format warning for static builds when API routes are present in src/api.
  */
-export const formatApiRouteWarning = (routes: string[], apiDir = "src/api"): string => {
+export const formatApiRouteWarning = (
+  routes: string[],
+  apiDir = "src/api",
+): string => {
   const count = routes.length;
   const routeList = routes.join(", ");
   return (

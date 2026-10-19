@@ -25,33 +25,72 @@ if (directory) {
     const name = `${role}-${process.pid}-${threadId}-${sequence++}`;
     journal("inspector-stop", { taskId, task, name });
     session.post("Profiler.stop", (error, result) => {
-      journal("inspector-stop-callback", { taskId, task, name, error: error ? String(error) : undefined });
+      journal("inspector-stop-callback", {
+        taskId,
+        task,
+        name,
+        error: error ? String(error) : undefined,
+      });
       if (error) throw error;
-      writeFileSync(join(directory!, `${name}.cpuprofile`), JSON.stringify(result.profile), { mode: 0o600 });
+      writeFileSync(
+        join(directory!, `${name}.cpuprofile`),
+        JSON.stringify(result.profile),
+        { mode: 0o600 },
+      );
       journal("artifact-written", { taskId, name: `${name}.cpuprofile` });
-      writeFileSync(join(directory!, `${name}.metadata.json`), JSON.stringify({ role, pid: process.pid, parentPid: process.ppid, threadId, task, taskId, startedAt, endedAt: Date.now(), profileStartTime: result.profile.startTime, profileEndTime: result.profile.endTime, argv: process.argv }), { mode: 0o600 });
+      writeFileSync(
+        join(directory!, `${name}.metadata.json`),
+        JSON.stringify({
+          role,
+          pid: process.pid,
+          parentPid: process.ppid,
+          threadId,
+          task,
+          taskId,
+          startedAt,
+          endedAt: Date.now(),
+          profileStartTime: result.profile.startTime,
+          profileEndTime: result.profile.endTime,
+          argv: process.argv,
+        }),
+        { mode: 0o600 },
+      );
       journal("artifact-written", { taskId, name: `${name}.metadata.json` });
     });
     journal("inspector-stop-returned", { taskId, task, name });
   }
   if (isMainThread) {
     task = process.argv[1];
-    process.once("beforeExit", () => { save(); session.disconnect(); });
+    process.once("beforeExit", () => {
+      save();
+      session.disconnect();
+    });
   } else if (parentPort) {
     parentPort.on = new Proxy(parentPort.on, {
-      apply(target, receiver, [event, listener]: [string, (value: unknown) => void]) {
+      apply(
+        target,
+        receiver,
+        [event, listener]: [string, (value: unknown) => void],
+      ) {
         if (event === "message") journal("listener-registered");
-        return Reflect.apply(target, receiver, [event, event === "message" ? (input: string | { pagePath: string }) => {
-          journal("listener-entry", { taskId: `${typeof input === "string" ? input : input.pagePath}:${taskSequence}` });
-          if (sequence === 0) save();
-          task = typeof input === "string" ? input : input.pagePath;
-          taskId = `${task}:${taskSequence++}`;
-          journal("inspector-start", { taskId });
-          session.post("Profiler.start");
-          journal("inspector-start-returned", { taskId });
-          startedAt = Date.now();
-          listener(input);
-        } : listener]);
+        return Reflect.apply(target, receiver, [
+          event,
+          event === "message"
+            ? (input: string | { pagePath: string }) => {
+                journal("listener-entry", {
+                  taskId: `${typeof input === "string" ? input : input.pagePath}:${taskSequence}`,
+                });
+                if (sequence === 0) save();
+                task = typeof input === "string" ? input : input.pagePath;
+                taskId = `${task}:${taskSequence++}`;
+                journal("inspector-start", { taskId });
+                session.post("Profiler.start");
+                journal("inspector-start-returned", { taskId });
+                startedAt = Date.now();
+                listener(input);
+              }
+            : listener,
+        ]);
       },
     });
     const postMessage = parentPort.postMessage.bind(parentPort);

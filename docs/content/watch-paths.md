@@ -8,14 +8,14 @@ Configure additional watch paths in `bascik.config.ts` using the `pipeline.watch
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   pipeline: {
     watchPaths: [
-      'content/**/*.md',
-      'data/**/*.json',
-      'scripts/helpers/**/*.ts',
+      "content/**/*.md",
+      "data/**/*.json",
+      "scripts/helpers/**/*.ts",
     ],
   },
 });
@@ -31,13 +31,13 @@ In this recording, a page's build script reads `content/notes.md`, and `content/
 
 Bascik automatically monitors standard project locations without requiring configuration:
 
-| Location | Monitored by Default? | Details |
-| :--- | :--- | :--- |
-| `directory.pages` (`src/pages`) | Yes | Detects page additions, removals, and edits. |
-| `directory.components` (`src/components` or array) | Yes | Re-transpiles all pages consuming updated components. |
-| `scripts.importRoot` (`src` or custom) | Runtime only | Invalidates request-time modules. Build-time helpers need an explicit compilation watch. |
-| `pipeline.watchPaths` | User-defined | Extra content directories, JSON fixtures, external assets. |
-| `pipeline.exec[].watch` | Source inputs | Selects matching lifecycle scripts and rebuilds associated pages in one phase-ordered cycle. |
+| Location                                           | Monitored by Default? | Details                                                                                      |
+| :------------------------------------------------- | :-------------------- | :------------------------------------------------------------------------------------------- |
+| `directory.pages` (`src/pages`)                    | Yes                   | Detects page additions, removals, and edits.                                                 |
+| `directory.components` (`src/components` or array) | Yes                   | Re-transpiles all pages consuming updated components.                                        |
+| `scripts.importRoot` (`src` or custom)             | Runtime only          | Invalidates request-time modules. Build-time helpers need an explicit compilation watch.     |
+| `pipeline.watchPaths`                              | User-defined          | Extra content directories, JSON fixtures, external assets.                                   |
+| `pipeline.exec[].watch`                            | Source inputs         | Selects matching lifecycle scripts and rebuilds associated pages in one phase-ordered cycle. |
 
 Add shared build helpers and inlined stylesheets outside the source directories to `pipeline.watchPaths`, unless an exec source watch already covers them. `scripts.importRoot` and `assets.inlineStyles` do not implicitly opt them into compilation watching. A dependency graph entry selects affected pages after an observed source change, but does not create a watcher.
 

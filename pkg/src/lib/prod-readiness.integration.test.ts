@@ -23,7 +23,12 @@ vi.mock("./config.js", () => ({
     scripts: { timeout: 30000, onServerScriptError: "error" },
     logging: { level: "silent", requests: false },
     isProdServer: true,
-    directory: { pages: "src/pages", components: ["src/components"], api: "src/api", out: "" },
+    directory: {
+      pages: "src/pages",
+      components: ["src/components"],
+      api: "src/api",
+      out: "",
+    },
     minify: { identifiers: false },
   },
 }));
@@ -31,7 +36,10 @@ vi.mock("./config.js", () => ({
 import { startProdServer } from "./server-prod.ts";
 import { mem } from "./mem.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
-import { setServerHealthState, getServerHealthState } from "./server-lifecycle.ts";
+import {
+  setServerHealthState,
+  getServerHealthState,
+} from "./server-lifecycle.ts";
 import { BascikConfig } from "./config.ts";
 import { clearCompressedRepresentationCache } from "./caching.ts";
 
@@ -59,7 +67,10 @@ const FETCH_OPTS: http.RequestOptions = {
   headers: { accept: "*/*", "accept-encoding": "identity" },
 };
 
-const httpFetch = (url: string, path: string): Promise<{ status: number; body: string }> => {
+const httpFetch = (
+  url: string,
+  path: string,
+): Promise<{ status: number; body: string }> => {
   return new Promise((resolve, reject) => {
     const target = new URL(url);
     const req = http.request(
@@ -68,7 +79,10 @@ const httpFetch = (url: string, path: string): Promise<{ status: number; body: s
         const chunks: Buffer[] = [];
         res.on("data", (c) => chunks.push(c as Buffer));
         res.on("end", () => {
-          resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") });
+          resolve({
+            status: res.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString("utf8"),
+          });
         });
       },
     );
@@ -84,7 +98,9 @@ describe("production sidecar readiness integration", () => {
 
   beforeEach(async () => {
     originalCwd = process.cwd();
-    workDir = await mkdtemp(join(tmpdir(), `bascik-prod-readiness-${process.pid}-`));
+    workDir = await mkdtemp(
+      join(tmpdir(), `bascik-prod-readiness-${process.pid}-`),
+    );
     distDir = join(workDir, "dist");
     await mkdir(join(distDir, ".bascik"), { recursive: true });
     await writeFile(
@@ -120,7 +136,9 @@ describe("production sidecar readiness integration", () => {
     );
     const getBound = captureBoundServer();
 
-    await expect(startProdServer()).rejects.toThrow(/requires a completed production build/);
+    await expect(startProdServer()).rejects.toThrow(
+      /requires a completed production build/,
+    );
     expect(getServerHealthState()).toBe("booting");
     expect(getBound()).toBeUndefined();
   });
@@ -132,10 +150,16 @@ describe("production sidecar readiness integration", () => {
       '<script type="text/bascik-server" data-bascik-server-id="missing"></script>',
       "utf8",
     );
-    await writeFile(join(distDir, ".bascik", "server-scripts.json"), "{corrupt", "utf8");
+    await writeFile(
+      join(distDir, ".bascik", "server-scripts.json"),
+      "{corrupt",
+      "utf8",
+    );
     const getBound = captureBoundServer();
 
-    await expect(startProdServer()).rejects.toThrow(/Failed to load server scripts sidecar/);
+    await expect(startProdServer()).rejects.toThrow(
+      /Failed to load server scripts sidecar/,
+    );
 
     // A required runtime artifact that cannot be parsed must never reach the
     // ready state; the socket must never bind.
@@ -157,7 +181,9 @@ describe("production sidecar readiness integration", () => {
     );
     const getBound = captureBoundServer();
 
-    await expect(startProdServer()).rejects.toThrow(/production startup validation failed/);
+    await expect(startProdServer()).rejects.toThrow(
+      /production startup validation failed/,
+    );
 
     expect(getServerHealthState()).toBe("booting");
     expect(getBound()).toBeUndefined();
@@ -173,7 +199,9 @@ describe("production sidecar readiness integration", () => {
     // No dist/.bascik/server-scripts.json at all.
     const getBound = captureBoundServer();
 
-    await expect(startProdServer()).rejects.toThrow(/production startup validation failed/);
+    await expect(startProdServer()).rejects.toThrow(
+      /production startup validation failed/,
+    );
     await expect(startProdServer()).rejects.toThrow(/sidecar .*is missing/);
 
     // The page would 500 on every request; it must never be advertised ready.

@@ -12,35 +12,42 @@
  * into any attribute. The default attribute values defined in the component
  * template are preserved as-is.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
-test.describe('head-test page — head component injection', () => {
+test.describe("head-test page — head component injection", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/head-test');
+    await page.goto("/head-test");
   });
 
-  test('meta viewport is injected into <head>', async ({ page }) => {
+  test("meta viewport is injected into <head>", async ({ page }) => {
     const meta = page.locator('head meta[name="viewport"]');
-    await expect(meta).toHaveAttribute('content', 'width=device-width, initial-scale=1');
+    await expect(meta).toHaveAttribute(
+      "content",
+      "width=device-width, initial-scale=1",
+    );
   });
 
-  test('meta author is injected into <head>', async ({ page }) => {
+  test("meta author is injected into <head>", async ({ page }) => {
     const meta = page.locator('head meta[name="author"]');
-    await expect(meta).toHaveAttribute('content', 'Bascik E2E Test');
+    await expect(meta).toHaveAttribute("content", "Bascik E2E Test");
   });
 
-  test('meta description is injected into <head> with default value (props do not apply to void elements)', async ({ page }) => {
+  test("meta description is injected into <head> with default value (props do not apply to void elements)", async ({
+    page,
+  }) => {
     const meta = page.locator('head meta[name="description"]');
     // Props on void elements are not applied — the template default is used.
-    await expect(meta).toHaveAttribute('content', 'Default description');
+    await expect(meta).toHaveAttribute("content", "Default description");
   });
 
-  test('canonical link is injected into <head> with default href (props do not apply to void elements)', async ({ page }) => {
+  test("canonical link is injected into <head> with default href (props do not apply to void elements)", async ({
+    page,
+  }) => {
     const link = page.locator('head link[rel="canonical"]');
-    await expect(link).toHaveAttribute('href', 'https://example.com');
+    await expect(link).toHaveAttribute("href", "https://example.com");
   });
 
-  test('component content is not duplicated in <body>', async ({ page }) => {
+  test("component content is not duplicated in <body>", async ({ page }) => {
     // None of the injected meta/link elements should appear inside <body>
     await expect(page.locator('body meta[name="viewport"]')).toHaveCount(0);
     await expect(page.locator('body meta[name="author"]')).toHaveCount(0);
@@ -48,10 +55,10 @@ test.describe('head-test page — head component injection', () => {
     await expect(page.locator('body link[rel="canonical"]')).toHaveCount(0);
   });
 
-  test('page body content is present', async ({ page }) => {
-    await expect(page.locator('h1')).toHaveText('Head Component Test');
-    await expect(page.locator('p')).toHaveText(
-      'Testing that head components inject into the document head.'
+  test("page body content is present", async ({ page }) => {
+    await expect(page.locator("h1")).toHaveText("Head Component Test");
+    await expect(page.locator("p")).toHaveText(
+      "Testing that head components inject into the document head.",
     );
   });
 });

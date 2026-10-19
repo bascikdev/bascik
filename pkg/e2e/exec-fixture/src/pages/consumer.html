@@ -1,23 +1,43 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Consumes generated output</title>
+  </head>
 
-<head>
-  <meta charset="UTF-8">
-  <title>Consumes generated output</title>
-</head>
-
-<body>
-  <script
-    data-bascik-build>import { readFileSync } from 'node:fs'; export default () => { readFileSync('content/doc.md', 'utf8'); return ''; };</script>
-  <h1>Exec producer/consumer</h1>
-  <p data-testid="generated-value">
-    <script
-      data-bascik-build>import { readFileSync } from 'node:fs'; export default () => { try { return JSON.parse(readFileSync('dist/generated.json', 'utf8')).value; } catch (e) { return 'missing'; } };</script>
-  </p>
-  <p data-testid="parallel-value">
-    <script
-      data-bascik-build>import { readFileSync } from 'node:fs'; export default () => { try { return JSON.parse(readFileSync('dist/parallel.json', 'utf8')).value; } catch (e) { return 'missing'; } };</script>
-  </p>
-</body>
-
+  <body>
+    <script data-bascik-build>
+      import { readFileSync } from "node:fs";
+      export default () => {
+        readFileSync("content/doc.md", "utf8");
+        return "";
+      };
+    </script>
+    <h1>Exec producer/consumer</h1>
+    <p data-testid="generated-value">
+      <script data-bascik-build>
+        import { readFileSync } from "node:fs";
+        export default () => {
+          try {
+            return JSON.parse(readFileSync("dist/generated.json", "utf8"))
+              .value;
+          } catch (e) {
+            return "missing";
+          }
+        };
+      </script>
+    </p>
+    <p data-testid="parallel-value">
+      <script data-bascik-build>
+        import { readFileSync } from "node:fs";
+        export default () => {
+          try {
+            return JSON.parse(readFileSync("dist/parallel.json", "utf8")).value;
+          } catch (e) {
+            return "missing";
+          }
+        };
+      </script>
+    </p>
+  </body>
 </html>

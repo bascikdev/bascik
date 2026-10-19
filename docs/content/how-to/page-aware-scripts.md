@@ -4,13 +4,13 @@ Some pages need content that is specific to the current page, such as a canonica
 
 Bascik makes this possible by injecting environment variables into every `data-bascik-build` subprocess:
 
-| Variable | Value |
-| --- | --- |
-| `BASCIK_PAGE_PATH` | Normalized root-relative route path of the page shell (e.g. `/getting-started`, `/switch/from-vue`, `/`) |
+| Variable             | Value                                                                                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BASCIK_PAGE_PATH`   | Normalized root-relative route path of the page shell (e.g. `/getting-started`, `/switch/from-vue`, `/`)                                                                          |
 | `BASCIK_SOURCE_FILE` | Absolute path to the file currently being transpiled (this is the file containing the executing `<script data-bascik-build>`, whether it's a page or a nested component template) |
-| `BASCIK_PAGE_FILE` | Absolute path to the HTML page currently being compiled (always points to the page shell, even when compiling a nested component) |
-| `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory |
-| `BASCIK_SITE_URL` | The site URL from `--site-url`, the environment, or `.env` |
+| `BASCIK_PAGE_FILE`   | Absolute path to the HTML page currently being compiled (always points to the page shell, even when compiling a nested component)                                                 |
+| `BASCIK_PAGES_DIR`   | Absolute path to the configured pages directory                                                                                                                                   |
+| `BASCIK_SITE_URL`    | The site URL from `--site-url`, the environment, or `.env`                                                                                                                        |
 
 A build script reads these and computes whatever it needs, without the page knowing anything about the logic. See [Environment Variables](/environment-variables) for the complete reference of all variables available in Bascik scripts.
 
@@ -21,22 +21,24 @@ A canonical URL tag tells search engines which URL is the authoritative version 
 ```ts
 // src/lib/canonical.ts
 export async function canonical(): Promise<string> {
-  const siteUrl = (process.env.BASCIK_SITE_URL ?? '').replace(/\/$/, '');
-  const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
-  const pagesDir = process.env.BASCIK_PAGES_DIR ?? '';
+  const siteUrl = (process.env.BASCIK_SITE_URL ?? "").replace(/\/$/, "");
+  const pageFile =
+    process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? "";
+  const pagesDir = process.env.BASCIK_PAGES_DIR ?? "";
 
-  if (!siteUrl || !pageFile || !pagesDir) return '';
+  if (!siteUrl || !pageFile || !pagesDir) return "";
 
   // Convert the absolute file path to a root-relative route
   const relPath = pageFile
     .slice(pagesDir.length)
-    .replace(/^[\\/]/, '')
-    .replace(/\\/g, '/');
+    .replace(/^[\\/]/, "")
+    .replace(/\\/g, "/");
 
-  const withoutExt = relPath.replace(/\.html$/, '');
+  const withoutExt = relPath.replace(/\.html$/, "");
   // index files map to the parent path
-  const route = withoutExt === 'index' ? '' : withoutExt.replace(/\/index$/, '/');
-  const urlPath = route ? `/${route}` : '/';
+  const route =
+    withoutExt === "index" ? "" : withoutExt.replace(/\/index$/, "/");
+  const urlPath = route ? `/${route}` : "/";
 
   return `<link rel="canonical" href="${siteUrl}${urlPath}" />`;
 }
@@ -47,7 +49,7 @@ Use it from any page's `<head>`:
 ```html
 <head>
   <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
+    import { canonical } from "@/lib/canonical.ts";
 
     export default async () => await canonical();
   </script>
@@ -74,19 +76,22 @@ For richer outputs, including Open Graph tags or JSON-LD structured data, a scri
 
 ```ts
 // src/lib/article-schema.ts (simplified)
-import { readFile } from 'node:fs/promises';
+import { readFile } from "node:fs/promises";
 
 export async function articleSchema(): Promise<string> {
-  const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
-  const pagesDir = process.env.BASCIK_PAGES_DIR ?? '';
-  const siteUrl = (process.env.BASCIK_SITE_URL ?? '').replace(/\/$/, '');
-  if (!pageFile || !siteUrl) return '';
+  const pageFile =
+    process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? "";
+  const pagesDir = process.env.BASCIK_PAGES_DIR ?? "";
+  const siteUrl = (process.env.BASCIK_SITE_URL ?? "").replace(/\/$/, "");
+  if (!pageFile || !siteUrl) return "";
 
   // Read the page's own source HTML to extract its title and description
-  const html = await readFile(pageFile, 'utf8');
+  const html = await readFile(pageFile, "utf8");
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/);
-  const descMatch = html.match(/<meta\s+name="description"\s+content="([^"]+)"/);
-  if (!titleMatch || !descMatch) return '';
+  const descMatch = html.match(
+    /<meta\s+name="description"\s+content="([^"]+)"/,
+  );
+  if (!titleMatch || !descMatch) return "";
 
   const headline = titleMatch[1].trim();
   const description = descMatch[1].trim();
@@ -103,14 +108,15 @@ The script runs on the source HTML before any other build scripts have fired, so
 
 By default, static `<script data-bascik-build>` blocks inside component templates execute once during initial component registration. However, reusable navigation, breadcrumb, TOC, and pagination components (like `<docs-pagination />`) need to adapt to whichever page shell they are placed on.
 
-Declaring `data-bascik-build="page"` or `data-bascik-page-aware` tells Bascik to defer script execution to page transpilation time. A literal `process.env.BASCIK_PAGE_PATH` reference inside the script is also detected. Bascik does not follow imported helpers to infer indirect environment reads, so use the explicit `page` value when a helper such as `pagePath()` reads page context:
+Declaring `data-bascik-build="page"` or `data-bascik-page-aware` tells Bascik to defer script execution to page transpilation time. The value must be exactly `page` (any quoting, spacing around `=`, or letter case): a typo such as `data-bascik-build="pages"` runs once as a static script, and `bascik --check` reports it as `unknown-directive-value`. A literal `process.env.BASCIK_PAGE_PATH` reference inside the script is also detected. Bascik does not follow imported helpers to infer indirect environment reads, so use the explicit `page` value when a helper such as `pagePath()` reads page context:
 
 ```html
 <!-- src/components/docs-pagination/docs-pagination.html -->
 <script data-bascik-build="page">
-  import { pagePath, siteOrigin } from '@/lib/site.ts';
+  import { pagePath, siteOrigin } from "@/lib/site.ts";
 
-  export default () => `<link rel="canonical" href="${siteOrigin()}${pagePath()}">`;
+  export default () =>
+    `<link rel="canonical" href="${siteOrigin()}${pagePath()}">`;
 </script>
 ```
 
@@ -122,13 +128,13 @@ Without an explicit page-aware marker, a component build script that reads page 
 
 Any tag or content block that should be consistent across every page but derived from per-page values is a good fit for this pattern:
 
-| Output | What to read from the page |
-| --- | --- |
+| Output                   | What to read from the page                             |
+| ------------------------ | ------------------------------------------------------ |
 | `<link rel="canonical">` | Derived from file path alone, with no file read needed |
-| Open Graph tags | `<title>`, `<meta name="description">` |
-| `TechArticle` JSON-LD | `<title>`, `<meta name="description">` |
-| `BreadcrumbList` JSON-LD | File path, page `<title>` |
-| `FAQPage` JSON-LD | The content Markdown file, not the HTML page |
+| Open Graph tags          | `<title>`, `<meta name="description">`                 |
+| `TechArticle` JSON-LD    | `<title>`, `<meta name="description">`                 |
+| `BreadcrumbList` JSON-LD | File path, page `<title>`                              |
+| `FAQPage` JSON-LD        | The content Markdown file, not the HTML page           |
 
 Write the script once in `src/lib/`, add the same 8-line build script block to each page, and every page gets the right output automatically.
 

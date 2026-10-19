@@ -1,4 +1,28 @@
-.wrapper { border: 1px solid #444; padding: 16px; }
-.result { font-family: monospace; font-size: 0.82rem; color: rgb(74, 222, 128); padding: 8px; background: #111; margin-bottom: 12px; }
-.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
-button { padding: 5px 12px; font-size: 0.8rem; background: #222; border: 1px solid #555; color: #ddd; cursor: pointer; }
+.wrapper {
+  border: 1px solid #444;
+  padding: 16px;
+}
+
+.result {
+  font-family: monospace;
+  font-size: 0.82rem;
+  color: rgb(74, 222, 128);
+  padding: 8px;
+  background: #111;
+  margin-bottom: 12px;
+}
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+button {
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  background: #222;
+  border: 1px solid #555;
+  color: #ddd;
+  cursor: pointer;
+}

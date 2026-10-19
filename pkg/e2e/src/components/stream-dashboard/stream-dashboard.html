@@ -50,12 +50,12 @@
     min-block-size: 6rem;
   }
 
-  .card>* {
+  .card > * {
     grid-area: 1 / 1;
     margin: 0;
   }
 
-  .card:has(> .result)>.pending {
+  .card:has(> .result) > .pending {
     display: none;
   }
 
@@ -74,10 +74,12 @@
   <section class="usage" data-testid="dash-usage">usage</section>
   <footer class="foot" data-testid="dash-footer">footer</footer>
   <section class="subscription card" aria-busy="true" data-testid="dash-sub">
-    <p class="pending" role="status" data-testid="dash-sub-pending">Loading subscription…</p>
+    <p class="pending" role="status" data-testid="dash-sub-pending">
+      Loading subscription…
+    </p>
     <script data-bascik-stream>
       export default async function (request, context, { signal }) {
-        const sub = new URL(request.url).searchParams.get('sub');
+        const sub = new URL(request.url).searchParams.get("sub");
         await wait(Number(sub ?? 0), signal);
         return '<h2 class="result" data-testid="dash-sub-result">Pro plan</h2>';
       }
@@ -86,16 +88,25 @@
         if (delay === 0) return Promise.resolve();
         return new Promise((resolve, reject) => {
           const t = setTimeout(resolve, delay);
-          signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+          signal?.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(t);
+              reject(signal.reason);
+            },
+            { once: true },
+          );
         });
       }
     </script>
   </section>
   <section class="billing card" aria-busy="true" data-testid="dash-bill">
-    <p class="pending" role="status" data-testid="dash-bill-pending">Loading billing…</p>
+    <p class="pending" role="status" data-testid="dash-bill-pending">
+      Loading billing…
+    </p>
     <script data-bascik-stream>
       export default async function (request, context, { signal }) {
-        const bill = new URL(request.url).searchParams.get('bill');
+        const bill = new URL(request.url).searchParams.get("bill");
         await wait(Number(bill ?? 0), signal);
         return '<ul class="result" data-testid="dash-bill-result"><li>Invoice 1</li></ul>';
       }
@@ -104,7 +115,14 @@
         if (delay === 0) return Promise.resolve();
         return new Promise((resolve, reject) => {
           const t = setTimeout(resolve, delay);
-          signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+          signal?.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(t);
+              reject(signal.reason);
+            },
+            { once: true },
+          );
         });
       }
     </script>

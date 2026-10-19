@@ -1,41 +1,42 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CSS Complex Selectors Test</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 32px 24px;
+        background: #111;
+        color: #eee;
+        font-family: sans-serif;
+      }
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CSS Complex Selectors Test</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 32px 24px;
-      background: #111;
-      color: #eee;
-      font-family: sans-serif;
-    }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.2rem;
+      }
 
-    h1 {
-      margin: 0 0 8px;
-      font-size: 1.2rem;
-    }
+      .instances {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+      }
+    </style>
+  </head>
 
-    .instances {
-      display: flex;
-      gap: 24px;
-      flex-wrap: wrap;
-      margin-top: 16px;
-    }
-  </style>
-</head>
+  <body>
+    <h1>CSS Complex Selectors Test</h1>
+    <p>
+      Two instances of &lt;css-complex&gt; for :is(), :where(), and :not()
+      scoping tests.
+    </p>
 
-<body>
-  <h1>CSS Complex Selectors Test</h1>
-  <p>Two instances of &lt;css-complex&gt; for :is(), :where(), and :not() scoping tests.</p>
-
-  <div class="instances">
-    <css-complex></css-complex>
-    <css-complex></css-complex>
-  </div>
-</body>
-
+    <div class="instances">
+      <css-complex></css-complex>
+      <css-complex></css-complex>
+    </div>
+  </body>
 </html>

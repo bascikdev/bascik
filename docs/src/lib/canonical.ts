@@ -12,29 +12,36 @@
  *   export default async () => await canonical();
  */
 
-import { composeSiteUrl } from '@bascik/bascik';
+import { composeSiteUrl } from "@bascik/bascik";
 export async function canonical(routeOverride?: string): Promise<string> {
-  const siteUrl = process.env.BASCIK_SITE_URL ?? '';
-  const base = process.env.BASCIK_BASE ?? '/';
-  const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
-  const pagesDir = process.env.BASCIK_PAGES_DIR ?? '';
+  const siteUrl = process.env.BASCIK_SITE_URL ?? "";
+  const base = process.env.BASCIK_BASE ?? "/";
+  const pageFile =
+    process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? "";
+  const pagesDir = process.env.BASCIK_PAGES_DIR ?? "";
 
-  if (!siteUrl || !pageFile || !pagesDir) return '';
+  if (!siteUrl || !pageFile || !pagesDir) return "";
 
   if (routeOverride) {
-    const normalizedOverride = routeOverride.startsWith('/') ? routeOverride : `/${routeOverride}`;
+    const normalizedOverride = routeOverride.startsWith("/")
+      ? routeOverride
+      : `/${routeOverride}`;
     return `<link rel="canonical" href="${composeSiteUrl(siteUrl, base, normalizedOverride)}" />`;
   }
 
   const relPath = pageFile.startsWith(pagesDir)
-    ? pageFile.slice(pagesDir.length).replace(/^[\\/]/, '').replace(/\\/g, '/')
-    : '';
+    ? pageFile
+        .slice(pagesDir.length)
+        .replace(/^[\\/]/, "")
+        .replace(/\\/g, "/")
+    : "";
 
-  if (!relPath) return '';
+  if (!relPath) return "";
 
-  const withoutExt = relPath.replace(/\.html$/, '');
-  const routePath = withoutExt === 'index' ? '' : withoutExt.replace(/\/index$/, '/');
-  const urlPath = routePath ? `/${routePath}` : '/';
+  const withoutExt = relPath.replace(/\.html$/, "");
+  const routePath =
+    withoutExt === "index" ? "" : withoutExt.replace(/\/index$/, "/");
+  const urlPath = routePath ? `/${routePath}` : "/";
 
   return `<link rel="canonical" href="${composeSiteUrl(siteUrl, base, urlPath)}" />`;
 }

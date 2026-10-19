@@ -5,8 +5,9 @@ Applies the saved light or dark theme before first paint. Place it in <head> of 
 <meta name="color-scheme" content="light dark" />
 <script>
   try {
-    const theme = localStorage.getItem('theme');
-    if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
+    const theme = localStorage.getItem("theme");
+    if (theme === "light" || theme === "dark")
+      document.documentElement.setAttribute("data-theme", theme);
   } catch {
     // Storage can be unavailable (private mode, blocked cookies). The operating system theme then applies.
   }

@@ -4,10 +4,10 @@
  */
 export const GET = async (
   request: Request,
-  context: { params: Record<string, string | string[]> }
+  context: { params: Record<string, string | string[]> },
 ): Promise<Response> => {
   return Response.json({
-    route: 'catch-all',
+    route: "catch-all",
     segments: context.params.path,
     path: new URL(request.url).pathname,
   });
@@ -15,11 +15,14 @@ export const GET = async (
 
 export const POST = async (
   request: Request,
-  context: { params: Record<string, string | string[]> }
+  context: { params: Record<string, string | string[]> },
 ): Promise<Response> => {
-  return Response.json({
-    route: 'catch-all',
-    segments: context.params.path,
-    echoed: await request.text(),
-  }, { status: 201 });
+  return Response.json(
+    {
+      route: "catch-all",
+      segments: context.params.path,
+      echoed: await request.text(),
+    },
+    { status: 201 },
+  );
 };

@@ -1,171 +1,84 @@
 #!/usr/bin/env node
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { TextDocument } from 'vscode-languageserver-textdocument';
-import { DiagnosticSeverity } from 'vscode-languageserver';
-import { buildSnapshot, isInsideComponentRoots, type ProjectSnapshot } from './project.js';
-import { createDiagnostics } from './analyzer.js';
+import { CheckUsageError, checkFiles, formatDiagnostic } from "./check.js";
 
-interface CheckOptions {
-  cwd: string;
+interface CliOptions {
   targetPath?: string;
   projectPath?: string;
+  fix: boolean;
 }
 
-const CONFIG_FILES = ['bascik.config.ts', 'bascik.config.js', 'bascik.config.mjs'];
-
-function parseArgs(args: string[]): CheckOptions {
+function parseArgs(args: string[]): CliOptions {
   let targetPath: string | undefined;
   let projectPath: string | undefined;
+  let fix = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '--stdio') {
+    if (arg === "--stdio" || arg === "--check") {
       // Handled by main bin launcher
       continue;
     }
-    if (arg === '--project') {
+    if (arg === "--fix") {
+      fix = true;
+      continue;
+    }
+    if (arg === "--project") {
       projectPath = args[++i];
       continue;
     }
-    if (arg.startsWith('--project=')) {
-      projectPath = arg.slice('--project='.length);
+    if (arg.startsWith("--project=")) {
+      projectPath = arg.slice("--project=".length);
       continue;
     }
-    if (!arg.startsWith('-')) {
+    if (!arg.startsWith("-")) {
       targetPath = arg;
     }
   }
-  return {
-    cwd: process.cwd(),
-    targetPath,
-    projectPath,
-  };
+  return { targetPath, projectPath, fix };
 }
 
-/** The nearest directory at or above `start` that holds a Bascik config file. */
-function findConfigRoot(start: string): string | undefined {
-  let curr = start;
-  while (true) {
-    if (CONFIG_FILES.some((file) => fs.existsSync(path.join(curr, file)))) return curr;
-    const parent = path.dirname(curr);
-    if (parent === curr) return undefined;
-    curr = parent;
-  }
-}
+/** `bascik-language-server --check`: per-file diagnostics over a folder or file, printed one per line. */
+export async function runCliCheck(
+  args: string[] = process.argv.slice(2),
+): Promise<number> {
+  const { targetPath, projectPath, fix } = parseArgs(args);
+  const cwd = process.cwd();
 
-export async function runCliCheck(args: string[] = process.argv.slice(2)): Promise<number> {
-  const { cwd, targetPath, projectPath } = parseArgs(args);
-  const targetRoot = targetPath ? path.resolve(cwd, targetPath) : cwd;
-
-  const stat = fs.existsSync(targetRoot) ? fs.statSync(targetRoot) : undefined;
-  if (!stat) {
-    console.error(`Error: Path does not exist: ${targetRoot}`);
-    return 1;
-  }
-
-  // Project whose config decides component roots and the import root:
-  //   1. --project <dir>, for checking a folder that lives outside the project (a monorepo's shared components)
-  //   2. the project in the working directory, when the target is one of its component roots
-  //   3. the nearest config at or above the target, else the target itself
-  let projectRoot: string;
-  let snapshot: ProjectSnapshot | undefined;
-  if (projectPath !== undefined) {
-    projectRoot = path.resolve(cwd, projectPath);
-    if (!fs.existsSync(projectRoot) || !fs.statSync(projectRoot).isDirectory()) {
-      console.error(`Error: Project directory does not exist: ${projectRoot}`);
+  let result;
+  try {
+    result = await checkFiles({
+      cwd,
+      targets: targetPath ? [targetPath] : undefined,
+      projectPath,
+      fix,
+    });
+  } catch (error) {
+    if (error instanceof CheckUsageError) {
+      console.error(`Error: ${error.message}`);
       return 1;
     }
-  } else {
-    const cwdProject = findConfigRoot(cwd);
-    if (cwdProject) {
-      const cwdSnapshot = await buildSnapshot(cwdProject);
-      if (isInsideComponentRoots(targetRoot.replace(/\\/g, '/'), cwdSnapshot.componentRoots)) {
-        snapshot = cwdSnapshot;
-      }
-    }
-    projectRoot = snapshot?.projectRoot ?? findConfigRoot(targetRoot) ?? targetRoot;
+    throw error;
   }
 
-  let filesToCheck: string[] = [];
-  if (stat.isFile()) {
-    filesToCheck = [targetRoot];
+  for (const diagnostic of result.diagnostics)
+    console.log(formatDiagnostic(diagnostic));
+
+  const errorCount = result.diagnostics.filter(
+    (d) => d.severity === "error",
+  ).length;
+  const warningCount = result.diagnostics.filter(
+    (d) => d.severity === "warning",
+  ).length;
+  const hintCount = result.diagnostics.length - errorCount - warningCount;
+  if (errorCount > 0 || warningCount > 0 || hintCount > 0) {
+    const hints =
+      hintCount > 0 ? `, ${hintCount} hint${hintCount === 1 ? "" : "s"}` : "";
+    console.log(
+      `\nFound ${errorCount} error${errorCount === 1 ? "" : "s"}, ${warningCount} warning${warningCount === 1 ? "" : "s"}${hints}.`,
+    );
   } else {
-    // Recursively collect .html, .css, .js, .ts
-    const stack = [targetRoot];
-    while (stack.length > 0) {
-      const dir = stack.pop()!;
-      let entries: fs.Dirent[] = [];
-      try {
-        entries = fs.readdirSync(dir, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-      for (const entry of entries) {
-        if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') {
-          continue;
-        }
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          stack.push(full);
-        } else if (
-          entry.isFile() &&
-          /\.(html|css|js|ts)$/i.test(entry.name) &&
-          !/\.(test|spec)\.[a-z0-9]+$/i.test(entry.name)
-        ) {
-          filesToCheck.push(full);
-        }
-      }
-    }
-  }
-
-  snapshot ??= await buildSnapshot(projectRoot);
-  let errorCount = 0;
-  let warningCount = 0;
-
-  for (const filePath of filesToCheck) {
-    let content: string;
-    try {
-      content = fs.readFileSync(filePath, 'utf8');
-    } catch {
-      continue;
-    }
-
-    const ext = path.extname(filePath).slice(1).toLowerCase();
-    const languageId =
-      ext === 'html'
-        ? 'html'
-        : ext === 'css'
-        ? 'css'
-        : ext === 'ts'
-        ? 'typescript'
-        : 'javascript';
-
-    const doc = TextDocument.create(`file://${filePath}`, languageId, 1, content);
-    const diags = createDiagnostics(doc, filePath, snapshot);
-
-    if (diags.length > 0) {
-      const rel = path.relative(cwd, filePath);
-      for (const d of diags) {
-        const line = d.range.start.line + 1;
-        const col = d.range.start.character + 1;
-        const isError = d.severity === DiagnosticSeverity.Error;
-        const prefix = isError ? '\x1b[31merror\x1b[0m' : '\x1b[33mwarning\x1b[0m';
-        if (isError) errorCount++;
-        else warningCount++;
-
-        const codeStr = d.code ? ` \x1b[90m(${d.code})\x1b[0m` : '';
-        // LSP 3.18 allows a MarkupContent message; print its text, not [object Object].
-        const message = typeof d.message === 'string' ? d.message : d.message.value;
-        console.log(`${rel}:${line}:${col} - ${prefix}:${codeStr} ${message}`);
-      }
-    }
-  }
-
-  if (errorCount > 0 || warningCount > 0) {
-    console.log(`\nFound ${errorCount} error${errorCount === 1 ? '' : 's'}, ${warningCount} warning${warningCount === 1 ? '' : 's'}.`);
-  } else {
-    console.log(`\x1b[32m✔ No Bascik diagnostics found in ${filesToCheck.length} file${filesToCheck.length === 1 ? '' : 's'}.\x1b[0m`);
+    console.log(
+      `\x1b[32m✔ No Bascik diagnostics found in ${result.filesChecked} file${result.filesChecked === 1 ? "" : "s"}.\x1b[0m`,
+    );
   }
 
   return errorCount > 0 ? 1 : 0;

@@ -49,7 +49,9 @@ JavaScript minification applies to scripts with no `type` and to `text/javascrip
 
 ```ts
 export const minifyCss = (css: string): string => {
-  const { css: shielded, restore } = shieldCssStrings(removeCommentsFromCss(css));
+  const { css: shielded, restore } = shieldCssStrings(
+    removeCommentsFromCss(css),
+  );
   const minified = shielded
     .replace(/\n/g, " ")
     .replace(/\s\s+/g, " ")
@@ -139,7 +141,10 @@ export const toBase62 = (num: bigint, length = 11): string => {
 
 export const getAttributeNameHash = (attributeName: string): string => {
   const digest = createHash("sha256").update(attributeName).digest();
-  const num = typeof digest === "string" ? Buffer.from(digest).readBigUInt64BE(0) : digest.readBigUInt64BE(0);
+  const num =
+    typeof digest === "string"
+      ? Buffer.from(digest).readBigUInt64BE(0)
+      : digest.readBigUInt64BE(0);
   return `b${toBase62(num, 11)}`;
 };
 ```
@@ -159,12 +164,12 @@ For projects with specialized optimization needs, Bascik allows overriding the d
 #### JavaScript with esbuild
 
 ```ts
-import { transform } from 'esbuild';
+import { transform } from "esbuild";
 
 export default {
   minify: {
     js: async (code: string) => {
-      const result = await transform(code, { loader: 'js', minify: true });
+      const result = await transform(code, { loader: "js", minify: true });
       return result.code.trim();
     },
   },
@@ -174,13 +179,15 @@ export default {
 #### CSS with Lightning CSS or PostCSS
 
 ```ts
-import postcss from 'postcss';
-import autoprefixer from 'autoprefixer';
+import postcss from "postcss";
+import autoprefixer from "autoprefixer";
 
 export default {
   minify: {
     css: async (code: string) => {
-      const result = await postcss([autoprefixer]).process(code, { from: undefined });
+      const result = await postcss([autoprefixer]).process(code, {
+        from: undefined,
+      });
       return result.css;
     },
   },

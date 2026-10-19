@@ -9,8 +9,12 @@ A button that opens a native modal `<dialog>`. The browser handles focus trappin
 `trigger` is the button text and `title` is the dialog heading, which is also its accessible name. The default slot is the dialog body.
 
 <!-- demo:usage -->
+
 ```html
-<modal-dialog data-bascik-prop-trigger="Delete project" data-bascik-prop-title="Delete this project?">
+<modal-dialog
+  data-bascik-prop-trigger="Delete project"
+  data-bascik-prop-title="Delete this project?"
+>
   <p>This removes every page and component. It cannot be undone.</p>
 </modal-dialog>
 ```

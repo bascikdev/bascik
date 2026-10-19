@@ -36,15 +36,38 @@ export const DESIGNATED_FRAMEWORK_MODULES = [
  */
 export interface AllowedAmbientTimerEntry {
   file: string;
-  category: "telemetry" | "uniqueness" | "browser-code" | "native-adapter" | "external-watchdog" | "test-files";
+  category:
+    | "telemetry"
+    | "uniqueness"
+    | "browser-code"
+    | "native-adapter"
+    | "external-watchdog"
+    | "test-files";
   reason: string;
 }
 
 export const ALLOWED_AMBIENT_TIMERS: AllowedAmbientTimerEntry[] = [
-  { file: "clock.ts", category: "native-adapter", reason: "Root native FrameworkClock implementation delegating to Node globals" },
-  { file: "live-reload.ts", category: "browser-code", reason: "Browser-side client script executed in page context" },
-  { file: "build-scripts.ts", category: "uniqueness", reason: "Unique filename generation for temporary build artifacts" },
-  { file: "routes.ts", category: "uniqueness", reason: "Unique filename generation for temporary route artifacts" },
+  {
+    file: "clock.ts",
+    category: "native-adapter",
+    reason:
+      "Root native FrameworkClock implementation delegating to Node globals",
+  },
+  {
+    file: "live-reload.ts",
+    category: "browser-code",
+    reason: "Browser-side client script executed in page context",
+  },
+  {
+    file: "build-scripts.ts",
+    category: "uniqueness",
+    reason: "Unique filename generation for temporary build artifacts",
+  },
+  {
+    file: "routes.ts",
+    category: "uniqueness",
+    reason: "Unique filename generation for temporary route artifacts",
+  },
 ];
 
 /**
@@ -59,7 +82,7 @@ function stripCommentsAndStrings(source: string): string {
       if (comment) return " ";
       if (str) return '""';
       return match;
-    }
+    },
   );
 }
 
@@ -80,7 +103,8 @@ export function findAmbientTimeViolations(sourceCode: string): string[] {
   // 1. Direct setTimeout(...) or setInterval(...) not prefixed with clock. or this.clock. or globalThis. or window.
   // Matching identifier followed by optional spaces and '('
   // We use regex lookbehind / boundary checks.
-  const timerCallRegex = /(?<!\b(?:clock|this\.clock)\s*\.\s*)(?<!\btypeof\s+)\b(setTimeout|setInterval)\s*\(/g;
+  const timerCallRegex =
+    /(?<!\b(?:clock|this\.clock)\s*\.\s*)(?<!\btypeof\s+)\b(setTimeout|setInterval)\s*\(/g;
   let match: RegExpExecArray | null;
   while ((match = timerCallRegex.exec(stripped)) !== null) {
     violations.push(match[1]);
@@ -145,8 +169,8 @@ describe("Time-boundary Architecture & Enforcement", () => {
       const violations = findAmbientTimeViolations(source);
       expect(
         violations,
-        `Found ambient time violations in ${moduleName}: ${violations.join(", ")}`
+        `Found ambient time violations in ${moduleName}: ${violations.join(", ")}`,
       ).toEqual([]);
-    }
+    },
   );
 });

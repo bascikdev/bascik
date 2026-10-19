@@ -26,7 +26,12 @@ const { configState } = vi.hoisted(() => ({
     scripts: { timeout: 30000, onServerScriptError: "error" },
     logging: { level: "silent", requests: false },
     isProdServer: false,
-    directory: { pages: "src/pages", components: ["src/components"], api: "src/api", out: "" },
+    directory: {
+      pages: "src/pages",
+      components: ["src/components"],
+      api: "src/api",
+      out: "",
+    },
     minify: { identifiers: false },
   },
 }));
@@ -50,9 +55,13 @@ interface Reply {
 }
 
 const API = "/app/src/api";
-const routeFiles = ["[...path].ts", "users/[...rest].ts", "users/[id].ts", "users/me.ts", "health.ts"].map(
-  (f) => `${API}/${f}`,
-);
+const routeFiles = [
+  "[...path].ts",
+  "users/[...rest].ts",
+  "users/[id].ts",
+  "users/me.ts",
+  "health.ts",
+].map((f) => `${API}/${f}`);
 
 describe("catch-all API routes over HTTP/1.1 and HTTP/2", () => {
   let h1: http.Server;
@@ -63,18 +72,31 @@ describe("catch-all API routes over HTTP/1.1 and HTTP/2", () => {
 
   beforeAll(async () => {
     // Registered in a deliberately unhelpful order; the table is sorted by the builder.
-    (apiRouteRegistry as any).routes = buildApiRouteTree([...routeFiles].reverse(), API);
+    (apiRouteRegistry as any).routes = buildApiRouteTree(
+      [...routeFiles].reverse(),
+      API,
+    );
 
-    vi.spyOn(scriptRegistry, "load").mockImplementation(async (filePath: string) => ({
-      filePath,
-      version: 0,
-      module: {
-        GET: async (_req: Request, ctx: { params: Record<string, unknown> }) =>
-          Response.json({ file: filePath.replace(`${API}/`, ""), params: ctx.params }),
-        POST: async (_req: Request, ctx: { params: Record<string, unknown> }) =>
-          Response.json({ posted: ctx.params }),
-      },
-    }));
+    vi.spyOn(scriptRegistry, "load").mockImplementation(
+      async (filePath: string) => ({
+        filePath,
+        version: 0,
+        module: {
+          GET: async (
+            _req: Request,
+            ctx: { params: Record<string, unknown> },
+          ) =>
+            Response.json({
+              file: filePath.replace(`${API}/`, ""),
+              params: ctx.params,
+            }),
+          POST: async (
+            _req: Request,
+            ctx: { params: Record<string, unknown> },
+          ) => Response.json({ posted: ctx.params }),
+        },
+      }),
+    );
 
     const handle = createRequestHandler();
 
@@ -113,17 +135,20 @@ describe("catch-all API routes over HTTP/1.1 and HTTP/2", () => {
 
   const viaHttp1 = (path: string, method = "GET"): Promise<Reply> =>
     new Promise((resolve, reject) => {
-      const req = http.request({ host: "127.0.0.1", port: h1Port, path, method, agent: false }, (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () =>
-          resolve({
-            status: res.statusCode ?? 0,
-            body: Buffer.concat(chunks).toString("utf8"),
-            allow: res.headers.allow as string | undefined,
-          }),
-        );
-      });
+      const req = http.request(
+        { host: "127.0.0.1", port: h1Port, path, method, agent: false },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (c: Buffer) => chunks.push(c));
+          res.on("end", () =>
+            resolve({
+              status: res.statusCode ?? 0,
+              body: Buffer.concat(chunks).toString("utf8"),
+              allow: res.headers.allow as string | undefined,
+            }),
+          );
+        },
+      );
       req.on("error", reject);
       req.end();
     });
@@ -143,22 +168,30 @@ describe("catch-all API routes over HTTP/1.1 and HTTP/2", () => {
       req.on("data", (c: Buffer) => chunks.push(c));
       req.on("end", () => {
         client.close();
-        resolve({ status, body: Buffer.concat(chunks).toString("utf8"), allow });
+        resolve({
+          status,
+          body: Buffer.concat(chunks).toString("utf8"),
+          allow,
+        });
       });
       req.on("error", reject);
       req.end();
     });
 
-  const transports: Array<[string, (p: string, m?: string) => Promise<Reply>]> = [
-    ["HTTP/1.1", (p, m) => viaHttp1(p, m)],
-    ["HTTP/2", (p, m) => viaHttp2(p, m)],
-  ];
+  const transports: Array<[string, (p: string, m?: string) => Promise<Reply>]> =
+    [
+      ["HTTP/1.1", (p, m) => viaHttp1(p, m)],
+      ["HTTP/2", (p, m) => viaHttp2(p, m)],
+    ];
 
   describe.each(transports)("%s", (_name, send) => {
     it("captures one and many remaining segments as string[]", async () => {
       const one = await send("/api/anything");
       expect(one.status).toBe(200);
-      expect(JSON.parse(one.body)).toEqual({ file: "[...path].ts", params: { path: ["anything"] } });
+      expect(JSON.parse(one.body)).toEqual({
+        file: "[...path].ts",
+        params: { path: ["anything"] },
+      });
 
       const many = await send("/api/a/b/c?x=1");
       expect(JSON.parse(many.body).params).toEqual({ path: ["a", "b", "c"] });
@@ -171,9 +204,15 @@ describe("catch-all API routes over HTTP/1.1 and HTTP/2", () => {
     });
 
     it("static beats [param] beats catch-all", async () => {
-      expect(JSON.parse((await send("/api/health")).body).file).toBe("health.ts");
-      expect(JSON.parse((await send("/api/users/me")).body).file).toBe("users/me.ts");
-      expect(JSON.parse((await send("/api/users/9")).body).file).toBe("users/[id].ts");
+      expect(JSON.parse((await send("/api/health")).body).file).toBe(
+        "health.ts",
+      );
+      expect(JSON.parse((await send("/api/users/me")).body).file).toBe(
+        "users/me.ts",
+      );
+      expect(JSON.parse((await send("/api/users/9")).body).file).toBe(
+        "users/[id].ts",
+      );
       expect(JSON.parse((await send("/api/users/9/x")).body)).toEqual({
         file: "users/[...rest].ts",
         params: { rest: ["9", "x"] },
@@ -182,7 +221,9 @@ describe("catch-all API routes over HTTP/1.1 and HTTP/2", () => {
 
     it("decodes each segment exactly once", async () => {
       const res = await send("/api/hello%20world/caf%C3%A9/%2541");
-      expect(JSON.parse(res.body).params).toEqual({ path: ["hello world", "café", "%41"] });
+      expect(JSON.parse(res.body).params).toEqual({
+        path: ["hello world", "café", "%41"],
+      });
     });
 
     it.each([
@@ -241,7 +282,11 @@ describe("catch-all API routes over HTTP/1.1 and HTTP/2", () => {
     ];
     for (const probe of probes) {
       const [a, b] = await Promise.all([viaHttp1(probe), viaHttp2(probe)]);
-      expect({ probe, status: b.status, body: b.body }).toEqual({ probe, status: a.status, body: a.body });
+      expect({ probe, status: b.status, body: b.body }).toEqual({
+        probe,
+        status: a.status,
+        body: a.body,
+      });
     }
   });
 });

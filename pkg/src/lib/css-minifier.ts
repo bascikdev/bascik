@@ -17,16 +17,22 @@ import { shieldCssStrings, removeCommentsFromCss } from "./styles.ts";
  * `url(data:...)`) is never altered.
  */
 export const minifyCss = (css: string): string => {
-  const { css: shielded, restore } = shieldCssStrings(removeCommentsFromCss(css));
+  const { css: shielded, restore } = shieldCssStrings(
+    removeCommentsFromCss(css),
+  );
   const minified = shielded
     .replace(/\n/g, " ")
     .replace(/\s\s+/g, " ")
+    // Preserve the single space in an empty CSS custom property declaration
+    // (`--empty: ;` or `--empty: }`) per CSS Custom Properties Level 1.
+    .replace(/(?<!-)--([\w-]+)\s*:\s+(?=[;}])/g, "--$1: ")
     .replace(/\s*([{};,])\s*/g, "$1")
     .replace(/:\s+/g, ":")
     // A space before `:` is a descendant combinator in a selector (`.a :hover`,
     // `.a :is(h2)`), so only strip it in a declaration. Selector context is
     // where a `{` comes before the next `;` or `}`.
     .replace(/\s+:(?![^;{}]*\{)/g, ":")
+    .replace(/(?<!-)--([\w-]+):(?=[;}])/g, "--$1: ")
     .trim();
   return restore(minified);
 };

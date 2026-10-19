@@ -1,21 +1,22 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <title>Watch Content Test</title>
+  </head>
 
-<head>
-  <title>Watch Content Test</title>
-</head>
-
-<body>
-  <main>
-    <script data-bascik-build>
-      import { readFile } from 'node:fs/promises';
-      import { join } from 'node:path';
-      export default async function () {
-        const content = await readFile(join(process.cwd(), 'src/content/watch-doc.md'), 'utf8');
-        return `<h1 data-testid="watch-content-heading">${content.trim()}</h1>`;
-      };
-    </script>
-  </main>
-</body>
-
+  <body>
+    <main>
+      <script data-bascik-build>
+        import { readFile } from "node:fs/promises";
+        import { join } from "node:path";
+        export default async function () {
+          const content = await readFile(
+            join(process.cwd(), "src/content/watch-doc.md"),
+            "utf8",
+          );
+          return `<h1 data-testid="watch-content-heading">${content.trim()}</h1>`;
+        }
+      </script>
+    </main>
+  </body>
 </html>

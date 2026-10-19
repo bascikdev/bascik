@@ -9,7 +9,7 @@
  *   - CSS & nesting: .title inside .card has correct scoped color
  *   - Instance A and B both receive correct styles independently
  */
-import { test, expect, type Page, type Locator } from '@playwright/test';
+import { test, expect, type Page, type Locator } from "@playwright/test";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -17,97 +17,119 @@ import { test, expect, type Page, type Locator } from '@playwright/test';
 
 function getInstances(page: Page) {
   return {
-    a: page.locator('.bascik__css-pseudo__card').nth(0),
-    b: page.locator('.bascik__css-pseudo__card').nth(1),
+    a: page.locator(".bascik__css-pseudo__card").nth(0),
+    b: page.locator(".bascik__css-pseudo__card").nth(1),
   };
 }
 
 function box(inst: Locator) {
-  return inst.locator('.bascik__css-pseudo__box');
+  return inst.locator(".bascik__css-pseudo__box");
 }
 
 function items(inst: Locator) {
-  return inst.locator('.bascik__css-pseudo__item');
+  return inst.locator(".bascik__css-pseudo__item");
 }
 
 function highlight(inst: Locator) {
-  return inst.locator('.bascik__css-pseudo__highlight');
+  return inst.locator(".bascik__css-pseudo__highlight");
 }
 
 function title(inst: Locator) {
-  return inst.locator('.bascik__css-pseudo__title');
+  return inst.locator(".bascik__css-pseudo__title");
 }
 
 // ---------------------------------------------------------------------------
 // Test suite
 // ---------------------------------------------------------------------------
 
-test.describe('css-pseudo-test page', () => {
+test.describe("css-pseudo-test page", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/css-pseudo-test');
+    await page.goto("/css-pseudo-test");
   });
 
-  test('::before pseudo-element color is correct', async ({ page }) => {
+  test("::before pseudo-element color is correct", async ({ page }) => {
     const { a } = getInstances(page);
-    const color = await box(a).evaluate(el =>
-      getComputedStyle(el, '::before').color
+    const color = await box(a).evaluate(
+      (el) => getComputedStyle(el, "::before").color,
     );
-    expect(color).toBe('rgb(74, 222, 128)');
+    expect(color).toBe("rgb(74, 222, 128)");
   });
 
-  test('::before pseudo-element content is set', async ({ page }) => {
+  test("::before pseudo-element content is set", async ({ page }) => {
     const { a } = getInstances(page);
-    const content = await box(a).evaluate(el =>
-      getComputedStyle(el, '::before').content
+    const content = await box(a).evaluate(
+      (el) => getComputedStyle(el, "::before").content,
     );
-    expect(content).toContain('→');
+    expect(content).toContain("→");
   });
 
-  test('first item has yellow color', async ({ page }) => {
+  test("first item has yellow color", async ({ page }) => {
     const { a } = getInstances(page);
-    const color = await items(a).nth(0).evaluate(el => getComputedStyle(el).color);
-    expect(color).toBe('rgb(251, 191, 36)');
+    const color = await items(a)
+      .nth(0)
+      .evaluate((el) => getComputedStyle(el).color);
+    expect(color).toBe("rgb(251, 191, 36)");
   });
 
-  test('last item has red color', async ({ page }) => {
+  test("last item has red color", async ({ page }) => {
     const { a } = getInstances(page);
-    const color = await items(a).nth(2).evaluate(el => getComputedStyle(el).color);
-    expect(color).toBe('rgb(248, 113, 113)');
+    const color = await items(a)
+      .nth(2)
+      .evaluate((el) => getComputedStyle(el).color);
+    expect(color).toBe("rgb(248, 113, 113)");
   });
 
-  test('middle item has default color (not yellow or red)', async ({ page }) => {
+  test("middle item has default color (not yellow or red)", async ({
+    page,
+  }) => {
     const { a } = getInstances(page);
-    const color = await items(a).nth(1).evaluate(el => getComputedStyle(el).color);
-    expect(color).not.toBe('rgb(251, 191, 36)');
-    expect(color).not.toBe('rgb(248, 113, 113)');
-    expect(color).toBe('rgb(150, 150, 150)');
+    const color = await items(a)
+      .nth(1)
+      .evaluate((el) => getComputedStyle(el).color);
+    expect(color).not.toBe("rgb(251, 191, 36)");
+    expect(color).not.toBe("rgb(248, 113, 113)");
+    expect(color).toBe("rgb(150, 150, 150)");
   });
 
-  test('@media rule applies to highlight element', async ({ page }) => {
+  test("@media rule applies to highlight element", async ({ page }) => {
     const { a } = getInstances(page);
-    const outlineColor = await highlight(a).evaluate(el => getComputedStyle(el).outlineColor);
-    expect(outlineColor).toBe('rgb(74, 222, 128)');
+    const outlineColor = await highlight(a).evaluate(
+      (el) => getComputedStyle(el).outlineColor,
+    );
+    expect(outlineColor).toBe("rgb(74, 222, 128)");
   });
 
-  test('CSS nesting: card title has correct scoped color', async ({ page }) => {
+  test("CSS nesting: card title has correct scoped color", async ({ page }) => {
     const { a } = getInstances(page);
-    const color = await title(a).evaluate(el => getComputedStyle(el).color);
-    expect(color).toBe('rgb(200, 200, 200)');
+    const color = await title(a).evaluate((el) => getComputedStyle(el).color);
+    expect(color).toBe("rgb(200, 200, 200)");
   });
 
-  test('instance A and B both have correct ::before color', async ({ page }) => {
+  test("instance A and B both have correct ::before color", async ({
+    page,
+  }) => {
     const { a, b } = getInstances(page);
-    const colorA = await box(a).evaluate(el => getComputedStyle(el, '::before').color);
-    const colorB = await box(b).evaluate(el => getComputedStyle(el, '::before').color);
-    expect(colorA).toBe('rgb(74, 222, 128)');
-    expect(colorB).toBe('rgb(74, 222, 128)');
+    const colorA = await box(a).evaluate(
+      (el) => getComputedStyle(el, "::before").color,
+    );
+    const colorB = await box(b).evaluate(
+      (el) => getComputedStyle(el, "::before").color,
+    );
+    expect(colorA).toBe("rgb(74, 222, 128)");
+    expect(colorB).toBe("rgb(74, 222, 128)");
   });
 
-  test('instance A and B both have correct first-item color', async ({ page }) => {
+  test("instance A and B both have correct first-item color", async ({
+    page,
+  }) => {
     const { a, b } = getInstances(page);
-    const colorA = await items(a).nth(0).evaluate(el => getComputedStyle(el).color);
-    const colorB = await items(b).nth(0).evaluate(el => getComputedStyle(el).color);
-    expect(colorA).toBe('rgb(251, 191, 36)');
-    expect(colorB).toBe('rgb(251, 191, 36)');
+    const colorA = await items(a)
+      .nth(0)
+      .evaluate((el) => getComputedStyle(el).color);
+    const colorB = await items(b)
+      .nth(0)
+      .evaluate((el) => getComputedStyle(el).color);
+    expect(colorA).toBe("rgb(251, 191, 36)");
+    expect(colorB).toBe("rgb(251, 191, 36)");
   });
 });

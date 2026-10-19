@@ -69,4 +69,5 @@ export interface HostingAdapter {
   build(context: AdapterBuildContext): Promise<AdapterBuildResult>;
 }
 
-export const defineAdapter = (adapter: HostingAdapter): HostingAdapter => adapter;
+export const defineAdapter = (adapter: HostingAdapter): HostingAdapter =>
+  adapter;

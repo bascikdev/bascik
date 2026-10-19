@@ -7,6 +7,7 @@ Many npm packages ship no CDN build. This guide explains why Bascik leaves clien
 Bascik eliminates network waterfalls for your authored components by extracting, deduplicating, scoping, and inlining component CSS and companion scripts directly into the compiled HTML page. This delivers zero-runtime, single-roundtrip components without any framework overhead.
 
 However, client-side npm libraries present a distinct set of problems:
+
 - Resolving deep `node_modules` dependency trees.
 - Scope hoisting, dead code elimination, and tree-shaking unused exports.
 - Emitting code-split chunks and managing bundle cache boundaries.
@@ -18,12 +19,13 @@ Rather than embedding a heavy JavaScript bundler into its core compiler, Bascik 
 Bascik does **not** rewrite bare specifiers in client-side scripts. A line like `import x from 'some-package'` in a `<script type="module">` passes through to the browser verbatim, and the browser fails with `Failed to resolve module specifier`. Bare specifiers work in `data-bascik-build` and `data-bascik-server` scripts because those run in Node.js, which resolves them against `node_modules`. Client scripts run in the browser, where no such resolution exists.
 
 <!-- demo:bare-specifier -->
+
 ```html
 <script type="module">
   // DOES NOT WORK: Bascik does not rewrite bare specifiers in client
   // scripts. The browser receives this line verbatim and fails with
   // "Failed to resolve module specifier".
-  import { confetti } from 'canvas-confetti';
+  import { confetti } from "canvas-confetti";
   confetti();
 </script>
 ```
@@ -45,28 +47,30 @@ npm install --save-dev esbuild canvas-confetti
 Write a small bundler script at the project root. It bundles a browser entry point, resolves the bare specifier, and writes the output into `dist/assets/js/`:
 
 <!-- demo:bundle-script -->
+
 ```js
 // build-bundle.mjs: bundles client dependencies into dist/assets/js/.
 // Run as a pipeline.exec step with phase: 'pre' so the bundle exists
 // before pages are transpiled and referenced.
-import { build } from 'esbuild';
+import { build } from "esbuild";
 
 await build({
-  entryPoints: ['src/client/confetti-entry.mjs'],
+  entryPoints: ["src/client/confetti-entry.mjs"],
   bundle: true,
-  format: 'esm',
+  format: "esm",
   minify: true,
-  outfile: 'dist/assets/js/confetti-bundle.mjs',
+  outfile: "dist/assets/js/confetti-bundle.mjs",
 });
 ```
 
 The entry point is where the bare specifier lives. esbuild resolves it against `node_modules` and inlines the package into the bundle:
 
 <!-- demo:bundle-entry -->
+
 ```js
 // src/client/confetti-entry.mjs: the browser entry point.
 // Bare specifiers are fine here because esbuild resolves and bundles them.
-import confetti from 'canvas-confetti';
+import confetti from "canvas-confetti";
 
 export const celebrate = () => confetti();
 ```
@@ -74,17 +78,18 @@ export const celebrate = () => confetti();
 Register the bundler as a `pipeline.exec` step in `bascik.config.ts`:
 
 <!-- demo:bundle-config -->
+
 ```ts
 // bascik.config.ts: run the bundler as a pre-transpile exec step.
-import { defineConfig } from '@bascik/bascik';
+import { defineConfig } from "@bascik/bascik";
 
 export default defineConfig({
   pipeline: {
     exec: [
       {
-        script: 'build-bundle.mjs',
-        phase: 'pre',
-        watch: ['src/client/'],
+        script: "build-bundle.mjs",
+        phase: "pre",
+        watch: ["src/client/"],
       },
     ],
   },
@@ -96,12 +101,13 @@ export default defineConfig({
 Finally, reference the bundle from the page with a root-relative URL:
 
 <!-- demo:bundle-page -->
+
 ```html
 <script type="module">
   // Root-relative URL to the bundle esbuild wrote into dist/assets/js/.
-  import { celebrate } from '/assets/js/confetti-bundle.mjs';
+  import { celebrate } from "/assets/js/confetti-bundle.mjs";
 
-  document.getElementById('celebrate-btn').addEventListener('click', celebrate);
+  document.getElementById("celebrate-btn").addEventListener("click", celebrate);
 </script>
 ```
 
@@ -117,15 +123,15 @@ Write `build-bundle.mjs` using the Rolldown API:
 
 ```js
 // build-bundle.mjs
-import { rolldown } from 'rolldown';
+import { rolldown } from "rolldown";
 
 const bundle = await rolldown({
-  input: 'src/client/confetti-entry.mjs',
+  input: "src/client/confetti-entry.mjs",
 });
 
 await bundle.write({
-  dir: 'dist/assets/js',
-  format: 'esm',
+  dir: "dist/assets/js",
+  format: "esm",
   minify: true,
 });
 ```

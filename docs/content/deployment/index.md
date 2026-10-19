@@ -98,41 +98,30 @@ When `generate.manifest: true` is configured, Bascik outputs `dist/.bascik/manif
 
 ```js
 // Example deploy-layer script reading dist/.bascik/manifest.json
-import { readFileSync } from 'node:fs';
+import { readFileSync } from "node:fs";
 
-const manifest = JSON.parse(readFileSync('dist/.bascik/manifest.json', 'utf8'));
+const manifest = JSON.parse(readFileSync("dist/.bascik/manifest.json", "utf8"));
 for (const [relPath, info] of Object.entries(manifest.files)) {
-  console.log(`Deploying ${relPath} (${info.size} bytes, SHA-256: ${info.hash})`);
+  console.log(
+    `Deploying ${relPath} (${info.size} bytes, SHA-256: ${info.hash})`,
+  );
 }
 ```
 
-### Generating strict Content Security Policy headers
+### Content Security Policy
 
-Bascik inlines component `<style>` blocks and wraps component `<script>` blocks in isolated IIFEs. To support strict CSP configurations without using `'unsafe-inline'`, enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik emits `dist/.bascik/csp-hashes.json` mapping each page to its exact post-minification inline script and style SHA-256 hashes (`sha256-<base64>`).
+Bascik inlines component `<style>` blocks and wraps component `<script>` blocks in isolated IIFEs. To support a strict policy without `'unsafe-inline'`, enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik emits `dist/.bascik/csp-hashes.json` mapping each page to its exact post-minification inline script and style SHA-256 hashes (`sha256-<base64>`).
 
-Bascik emits hashes rather than injecting a CSP header because CSP headers belong to your hosting provider or CDN edge. Setting a generic CSP with `'unsafe-inline'` inside the framework would provide false assurance.
+Bascik emits hashes rather than setting a policy because the policy depends on your site and your host. Setting a generic one inside the framework would provide false assurance. [Content Security Policy](/how-to/content-security-policy) shows how to turn the hashes into a policy.
 
 ### Cross-Origin Isolation Headers
 
 Bascik sets safe default cross-origin headers:
+
 - `Cross-Origin-Opener-Policy: same-origin-allow-popups`
 - `Cross-Origin-Resource-Policy: cross-origin`
 
 These defaults allow cross-origin images, fonts, and authentication popups to function without unexpected breaks. If full cross-origin isolation (e.g. `SharedArrayBuffer`) is required, configure `Cross-Origin-Embedder-Policy: require-corp` at your hosting layer.
-
-```js
-// scripts/generate-csp-headers.ts
-import { readFileSync, writeFileSync } from 'node:fs';
-
-const hashes = JSON.parse(readFileSync('dist/.bascik/csp-hashes.json', 'utf8'));
-let headers = '';
-for (const [path, pageHashes] of Object.entries(hashes)) {
-  const scriptSrc = pageHashes.scripts.map((h) => `'${h}'`).join(' ');
-  const styleSrc = pageHashes.styles.map((h) => `'${h}'`).join(' ');
-  headers += `${path}\n  Content-Security-Policy: script-src 'self' ${scriptSrc}; style-src 'self' ${styleSrc}\n\n`;
-}
-writeFileSync('dist/_headers', headers);
-```
 
 ### Excluded source files
 
@@ -184,10 +173,10 @@ Set `base` when the site is published at a path such as `https://example.com/doc
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
-  base: '/my-site/',
+  base: "/my-site/",
 });
 ```
 
@@ -210,6 +199,7 @@ export const server = defineConfig({
 ```
 
 When `trustProxy: true` is enabled:
+
 - **Rate limiting** derives client IP from the rightmost (immediate proxy) entry of `X-Forwarded-For`, preventing a single active visitor from exhausting the rate-limit budget for all visitors behind the proxy.
 - **Request URL origin reconstruction** (`request.url` in API routes and server scripts) reconstructs the public scheme (`http` or `https`) and authority from the rightmost entries of `X-Forwarded-Proto` and `X-Forwarded-Host`. If headers are omitted or malformed, Bascik safely falls back to local transport parameters.
 - **HSTS security headers** recognize `X-Forwarded-Proto: https` forwarded by the proxy.
@@ -230,6 +220,7 @@ Because `http.trustProxy` is a boolean flag, Bascik trusts the immediate upstrea
 - **Readiness probe:** `GET /_health` (or `GET /_health/ready`) returns `200 OK` when the server is ready to accept traffic, and `503 Service Unavailable` during boot and during the shutdown drain window.
 
 Configure your container orchestrator (e.g. Kubernetes, AWS ECS) or load balancer with:
+
 - **Health check path:** `/_health`
 - **Shutdown signal:** `SIGTERM`
 - **Deregistration delay:** Match or exceed `http.timeouts.drain` (default `5000` ms) so the load balancer stops routing new traffic before the process exits.

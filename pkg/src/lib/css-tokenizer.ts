@@ -167,8 +167,7 @@ export const maskCssSyntax = (
   for (let k = merged.length - 1; k >= 0; k--) {
     const { start, end } = merged[k];
     const content = css.slice(start, end);
-    masked =
-      masked.slice(0, start) + shield.hide(content) + masked.slice(end);
+    masked = masked.slice(0, start) + shield.hide(content) + masked.slice(end);
   }
   return { masked, restore: shield.restore };
 };

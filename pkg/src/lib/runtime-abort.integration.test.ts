@@ -70,7 +70,9 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
       expect(handlerCalled).toBe(false);
       expect(result.ok).toBe(false);
       expect(result.timedOut).toBe(false);
-      expect(result.error?.message).toContain("Pre-aborted upstream with timeout");
+      expect(result.error?.message).toContain(
+        "Pre-aborted upstream with timeout",
+      );
     });
 
     it("executeApiRoute with already-aborted signal never runs handler (timeout disabled)", async () => {
@@ -145,7 +147,7 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
         () =>
           new Promise((resolve) => {
             resolveLoad = resolve;
-          })
+          }),
       );
 
       const invokePromise = registry.invoke("deferred.js", [], {
@@ -193,7 +195,7 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
         () =>
           new Promise((resolve) => {
             resolveLoad = resolve;
-          })
+          }),
       );
 
       const invokePromise = registry.invoke("deferred-timeout.js", [], {
@@ -231,7 +233,7 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
         () =>
           new Promise((resolve) => {
             resolveLoad = resolve;
-          })
+          }),
       );
 
       const req = new Request("http://localhost:8080/api/deferred-abort");
@@ -281,7 +283,7 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
         () =>
           new Promise((resolve) => {
             resolveLoad = resolve;
-          })
+          }),
       );
 
       const req = new Request("http://localhost:8080/api/deferred-timeout");
@@ -481,7 +483,9 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
       });
 
       const registry = new ScriptRegistry();
-      loadSpy = vi.spyOn(registry, "load").mockImplementation(() => loadPromise as any);
+      loadSpy = vi
+        .spyOn(registry, "load")
+        .mockImplementation(() => loadPromise as any);
 
       const invokePromise = registry.invoke("broken-import.js", [], {
         signal: controller.signal,
@@ -491,7 +495,9 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
       const result = await invokePromise;
 
       expect(result.ok).toBe(false);
-      expect(result.error?.message).toContain("Canceled before import completed");
+      expect(result.error?.message).toContain(
+        "Canceled before import completed",
+      );
 
       // Now import fails
       rejectLoad!(new Error("SyntaxError: Unexpected token in module"));
@@ -557,7 +563,9 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
     it("simultaneous completion: the deadline wins when it fires before the handler promise settles", async () => {
       const fx = makeSimultaneousFixture();
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      const invokePromise = fx.registry.invoke("simultaneous.js", [], { timeoutMs: 100 });
+      const invokePromise = fx.registry.invoke("simultaneous.js", [], {
+        timeoutMs: 100,
+      });
       // Let invoke reach the result race before both settle in one turn.
       await Promise.resolve();
       await Promise.resolve();
@@ -575,7 +583,9 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
 
     it("simultaneous completion: the handler result wins when its promise settles before the deadline fires", async () => {
       const fx = makeSimultaneousFixture();
-      const invokePromise = fx.registry.invoke("simultaneous.js", [], { timeoutMs: 100 });
+      const invokePromise = fx.registry.invoke("simultaneous.js", [], {
+        timeoutMs: 100,
+      });
       await Promise.resolve();
       await Promise.resolve();
 

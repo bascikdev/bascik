@@ -1,7 +1,54 @@
-.form { border: 1px solid #444; padding: 16px; border-radius: 6px; max-width: 320px; }
-.field-group { margin-bottom: 12px; }
-.label { display: block; font-size: 0.8rem; color: #aaa; margin-bottom: 4px; }
-.input, .select { width: 100%; padding: 6px 9px; background: #222; border: 1px solid #555; color: #eee; border-radius: 4px; font-size: 0.85rem; box-sizing: border-box; }
-.result { font-family: monospace; font-size: 0.75rem; color: #aaa; margin: 12px 0; padding: 8px; background: #111; word-break: break-all; }
-.btn-row { display: flex; gap: 8px; }
-.btn { padding: 5px 12px; font-size: 0.8rem; background: #2a2a2a; border: 1px solid #555; color: #ddd; cursor: pointer; border-radius: 4px; }
+.form {
+  border: 1px solid #444;
+  padding: 16px;
+  border-radius: 6px;
+  max-width: 320px;
+}
+
+.field-group {
+  margin-bottom: 12px;
+}
+
+.label {
+  display: block;
+  font-size: 0.8rem;
+  color: #aaa;
+  margin-bottom: 4px;
+}
+
+.input,
+.select {
+  width: 100%;
+  padding: 6px 9px;
+  background: #222;
+  border: 1px solid #555;
+  color: #eee;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  box-sizing: border-box;
+}
+
+.result {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: #aaa;
+  margin: 12px 0;
+  padding: 8px;
+  background: #111;
+  word-break: break-all;
+}
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  background: #2a2a2a;
+  border: 1px solid #555;
+  color: #ddd;
+  cursor: pointer;
+  border-radius: 4px;
+}

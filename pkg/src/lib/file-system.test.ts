@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import {
   deepReadDirFlat,
   listPages,
@@ -16,7 +16,17 @@ import {
 } from "./file-system.ts";
 import { isStaticAssetPath } from "./asset-filter.ts";
 import { BascikConfig } from "./config.ts";
-import { readdir, rm, copyFile, readFile, writeFile, lstat, symlink, unlink, rename } from "node:fs/promises";
+import {
+  readdir,
+  rm,
+  copyFile,
+  readFile,
+  writeFile,
+  lstat,
+  symlink,
+  unlink,
+  rename,
+} from "node:fs/promises";
 
 const isDirMock = vi.fn().mockImplementation(() => false);
 
@@ -44,7 +54,10 @@ vi.mock("./config.js", () => ({
   },
   shouldLog: (configuredLevel: string | undefined, eventLevel = "info") => {
     const levels = ["silent", "error", "warn", "info", "debug"] as const;
-    return (levels.indexOf((configuredLevel ?? "info") as any) >= levels.indexOf(eventLevel as any));
+    return (
+      levels.indexOf((configuredLevel ?? "info") as any) >=
+      levels.indexOf(eventLevel as any)
+    );
   },
 }));
 
@@ -53,7 +66,13 @@ vi.mock("./js-minifier.js", () => ({
 }));
 
 vi.mock("./css-minifier.js", () => ({
-  minifyCss: vi.fn((css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ").replace(/\s*([{}:;,])\s*/g, "$1").trim()),
+  minifyCss: vi.fn((css: string) =>
+    css
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\s+/g, " ")
+      .replace(/\s*([{}:;,])\s*/g, "$1")
+      .trim(),
+  ),
 }));
 
 vi.mock("node:fs", () => {
@@ -109,26 +128,29 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.mocked(readdir).mockImplementation(async () => [
-    {
-      name: "./dir",
-      isDirectory: isDirMock,
-    },
-    {
-      name: "./dir/one.html",
-      isDirectory: vi.fn(() => false),
-    },
-    {
-      name: "./dir/one.css",
-      isDirectory: vi.fn(() => false),
-    },
-  ] as any);
+  vi.mocked(readdir).mockImplementation(
+    async () =>
+      [
+        {
+          name: "./dir",
+          isDirectory: isDirMock,
+        },
+        {
+          name: "./dir/one.html",
+          isDirectory: vi.fn(() => false),
+        },
+        {
+          name: "./dir/one.css",
+          isDirectory: vi.fn(() => false),
+        },
+      ] as any,
+  );
 });
 
 describe("deepReadDirFlat", () => {
   it("reads path and flattens array", async () => {
     const paths = await deepReadDirFlat("./");
-    expect(paths ?? []).toEqual([
+    expect((paths ?? []).map((p) => p.replace(/\\/g, "/"))).toEqual([
       "dir/dir",
       "dir/dir/one.css",
       "dir/dir/one.html",
@@ -139,7 +161,8 @@ describe("deepReadDirFlat", () => {
 
   it("returns entries in byte-wise sorted order at every level", async () => {
     vi.mocked(readdir).mockImplementation(async (path) => {
-      if (`${path}` === "test-tree") {
+      const normalized = `${path}`.replace(/\\/g, "/");
+      if (normalized === "test-tree") {
         return [
           { name: "zebra.html", isDirectory: () => false },
           { name: "apple.html", isDirectory: () => false },
@@ -148,22 +171,20 @@ describe("deepReadDirFlat", () => {
           { name: "1_num.html", isDirectory: () => false },
         ] as any;
       }
-      if (`${path}` === "test-tree/a_dir") {
+      if (normalized === "test-tree/a_dir") {
         return [
           { name: "sub_z.html", isDirectory: () => false },
           { name: "sub_a.html", isDirectory: () => false },
         ] as any;
       }
-      if (`${path}` === "test-tree/B_dir") {
-        return [
-          { name: "item.html", isDirectory: () => false },
-        ] as any;
+      if (normalized === "test-tree/B_dir") {
+        return [{ name: "item.html", isDirectory: () => false }] as any;
       }
       return [];
     });
 
     const flat = await deepReadDirFlat("test-tree");
-    expect(flat).toEqual([
+    expect(flat.map((p) => p.replace(/\\/g, "/"))).toEqual([
       "test-tree/1_num.html",
       "test-tree/B_dir/item.html",
       "test-tree/a_dir/sub_a.html",
@@ -174,26 +195,31 @@ describe("deepReadDirFlat", () => {
   });
 
   it("rejects when the configured root directory cannot be read", async () => {
-    const error = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    const error = Object.assign(new Error("EACCES: permission denied"), {
+      code: "EACCES",
+    });
     vi.mocked(readdir).mockRejectedValueOnce(error);
 
     await expect(deepReadDirFlat("pages")).rejects.toBe(error);
   });
 
   it("warns and continues when a subdirectory disappears during recursion", async () => {
-    const missingError = Object.assign(new Error("ENOENT: directory disappeared"), { code: "ENOENT" });
+    const missingError = Object.assign(
+      new Error("ENOENT: directory disappeared"),
+      { code: "ENOENT" },
+    );
     vi.mocked(readdir).mockImplementation(async (path) => {
       if (`${path}` === "pages") {
         return [{ name: "removed", isDirectory: () => true }] as any;
       }
       throw missingError;
     });
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await expect(deepReadDirFlat("pages")).resolves.toEqual([]);
     expect(warnSpy).toHaveBeenCalledWith(
       "Failed to read subdirectory %s",
-      "pages/removed",
+      join("pages", "removed"),
       missingError,
     );
     warnSpy.mockRestore();
@@ -206,7 +232,9 @@ describe("listPages", () => {
     // Paths should be rooted at the configured pages directory ("pages"),
     // not at a hardcoded relative path.
     expect(paths.every((p) => p.startsWith("pages"))).toBe(true);
-    expect(paths).toEqual(["pages/dir/one.html"]);
+    expect(paths.map((p) => p.replace(/\\/g, "/"))).toEqual([
+      "pages/dir/one.html",
+    ]);
   });
 });
 
@@ -242,16 +270,18 @@ describe("getDistPagePath", () => {
   });
 
   it("handles Windows backslash paths", () => {
-    expect(getDistPagePath("pages\\blog\\post.html")).toBe("dist/blog/post.html");
+    expect(getDistPagePath("pages\\blog\\post.html")).toBe(
+      "dist/blog/post.html",
+    );
     expect(getDirectoryPath("pages\\blog\\post.html")).toBe("blog");
   });
 });
 
 describe("toDistPath", () => {
   it("getRelativePath returns the tail when the pages segment appears twice in the path", () => {
-    expect(getRelativePath("/Users/x/my-pages/pages/assets/logo.png", "pages")).toBe(
-      "pages/assets/logo.png",
-    );
+    expect(
+      getRelativePath("/Users/x/my-pages/pages/assets/logo.png", "pages"),
+    ).toBe("pages/assets/logo.png");
   });
 
   it.each([
@@ -265,18 +295,23 @@ describe("toDistPath", () => {
     ["pages/index/deep.html", "pages/index/deep.html"],
     ["pages/résumé #100%.html", "pages/résumé #100%.html"],
     ["pages//blog///post.html", "pages/blog/post.html"],
-  ])("normalizes %s relative to the logical pages directory", (input, expected) => {
-    expect(getRelativePath(input, "pages")).toBe(expected);
-  });
+  ])(
+    "normalizes %s relative to the logical pages directory",
+    (input, expected) => {
+      expect(getRelativePath(input, "pages")).toBe(expected);
+    },
+  );
 
   it("honors a custom configured pages directory", () => {
     const previousPages = BascikConfig.directory.pages;
     (BascikConfig.directory as { pages: string }).pages = "src/html";
     try {
-      expect(getRelativePath("/project/src/html/blog/index.html", "pages")).toBe(
-        "pages/blog/index.html",
+      expect(
+        getRelativePath("/project/src/html/blog/index.html", "pages"),
+      ).toBe("pages/blog/index.html");
+      expect(toDistPath("/project/src/html/blog/index.html")).toBe(
+        "dist/blog/index.html",
       );
-      expect(toDistPath("/project/src/html/blog/index.html")).toBe("dist/blog/index.html");
     } finally {
       (BascikConfig.directory as { pages: string }).pages = previousPages;
     }
@@ -284,7 +319,8 @@ describe("toDistPath", () => {
 
   it("maps a source inside an absolute configured pages directory", () => {
     const previousPages = BascikConfig.directory.pages;
-    (BascikConfig.directory as { pages: string }).pages = "/workspace/project/src/pages";
+    (BascikConfig.directory as { pages: string }).pages =
+      "/workspace/project/src/pages";
     try {
       expect(toDistPath("/workspace/project/src/pages/blog/post.html")).toBe(
         "dist/blog/post.html",
@@ -305,32 +341,47 @@ describe("toDistPath", () => {
     ["pages/blog/", "dist/blog/"],
     ["pages/résumé #100%.html", "dist/résumé #100%.html"],
     ["pages//blog///post.html", "dist/blog/post.html"],
-  ])("maps supported source shape %s into the output directory", (input, expected) => {
-    expect(toDistPath(input)).toBe(expected);
-  });
+  ])(
+    "maps supported source shape %s into the output directory",
+    (input, expected) => {
+      expect(toDistPath(input)).toBe(expected);
+    },
+  );
 
   it("handles paths already starting with pages/ or components/ even when config directory differs", () => {
     expect(getRelativePath("pages/cli.html", "pages")).toBe("pages/cli.html");
-    expect(getRelativePath("components/card/card.html", "components")).toBe("components/card/card.html");
+    expect(getRelativePath("components/card/card.html", "components")).toBe(
+      "components/card/card.html",
+    );
   });
 
   it("resolves absolute pages paths to dist paths", () => {
-    expect(toDistPath("/workspace/project/pages/about.html")).toBe("dist/about.html");
-    expect(toDistPath("/workspace/project/pages/css/styles.css")).toBe("dist/css/styles.css");
+    expect(toDistPath("/workspace/project/pages/about.html")).toBe(
+      "dist/about.html",
+    );
+    expect(toDistPath("/workspace/project/pages/css/styles.css")).toBe(
+      "dist/css/styles.css",
+    );
   });
 
   it("does not treat an ancestor named dist as the configured output directory", () => {
-    expect(toDistPath("/Users/dist/project/src/pages/blog.html")).toBe("dist/blog.html");
+    expect(toDistPath("/Users/dist/project/src/pages/blog.html")).toBe(
+      "dist/blog.html",
+    );
   });
 
   it("resolves Windows backslash paths to dist paths", () => {
     expect(toDistPath("pages\\css\\styles.css")).toBe("dist/css/styles.css");
-    expect(toDistPath("C:\\workspace\\project\\pages\\about.html")).toBe("dist/about.html");
+    expect(toDistPath("C:\\workspace\\project\\pages\\about.html")).toBe(
+      "dist/about.html",
+    );
   });
 
   it("preserves paths that are already inside dist", () => {
     expect(toDistPath("dist/about.html")).toBe("dist/about.html");
-    expect(toDistPath(resolve("dist/css/styles.css"))).toBe("dist/css/styles.css");
+    expect(toDistPath(resolve("dist/css/styles.css"))).toBe(
+      "dist/css/styles.css",
+    );
   });
 
   it.each([
@@ -347,7 +398,9 @@ describe("toDistPath", () => {
 
 describe("deleteDistFile", () => {
   it("refuses a target outside the output directory", async () => {
-    await expect(deleteDistFile("source.html")).rejects.toThrow(/outside.*output directory/i);
+    await expect(deleteDistFile("source.html")).rejects.toThrow(
+      /outside.*output directory/i,
+    );
     expect(rm).not.toHaveBeenCalled();
   });
 
@@ -366,14 +419,19 @@ describe("deleteDistFile", () => {
 
 describe("deleteDistDir", () => {
   it("refuses a target outside the output directory", async () => {
-    await expect(deleteDistDir("pages")).rejects.toThrow(/outside.*output directory/i);
+    await expect(deleteDistDir("pages")).rejects.toThrow(
+      /outside.*output directory/i,
+    );
     expect(rm).not.toHaveBeenCalled();
   });
 
   it("logs relative Bascik paths for directory deletions and calls rm on dist dir", async () => {
     const dirPath = "/workspace/project/pages/assets";
     await deleteDistDir(dirPath);
-    expect(rm).toHaveBeenCalledWith("dist/assets", { recursive: true, force: true });
+    expect(rm).toHaveBeenCalledWith("dist/assets", {
+      recursive: true,
+      force: true,
+    });
     expect(console.log).toHaveBeenCalledWith("deleted dir: pages/assets");
   });
 });
@@ -415,7 +473,9 @@ describe("copyReplicatePath", () => {
     vi.mocked(readFile).mockReset();
     vi.mocked(writeFile).mockReset();
     vi.mocked(readFile)
-      .mockResolvedValueOnce('{"start_url":"/","scope":"/","icons":[{"src":"/icon.png"}]}' as any)
+      .mockResolvedValueOnce(
+        '{"start_url":"/","scope":"/","icons":[{"src":"/icon.png"}]}' as any,
+      )
       .mockRejectedValueOnce(new Error("ENOENT"));
 
     try {
@@ -432,7 +492,11 @@ describe("copyReplicatePath", () => {
   });
 
   it("links eligible development assets when assets.symlink is enabled", async () => {
-    (BascikConfig as any).assets = { inlineStyles: false, exclude: [], symlink: true };
+    (BascikConfig as any).assets = {
+      inlineStyles: false,
+      exclude: [],
+      symlink: true,
+    };
     (BascikConfig as any).isBuild = false;
     vi.mocked(readFile).mockRejectedValue(new Error("ENOENT"));
     vi.mocked(lstat).mockResolvedValue({ isSymbolicLink: () => false } as any);
@@ -441,7 +505,7 @@ describe("copyReplicatePath", () => {
       await copyReplicatePath("pages/images/logo.svg", "dist");
 
       expect(symlink).toHaveBeenCalledWith(
-        expect.stringMatching(/pages\/images\/logo\.svg$/),
+        expect.stringMatching(/pages[\\/]images[\\/]logo\.svg$/),
         expect.stringMatching(/\.logo\.svg\.bascik-link-/),
         "file",
       );
@@ -450,10 +514,19 @@ describe("copyReplicatePath", () => {
         resolve("dist/images/logo.svg"),
       );
       expect(copyFile).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith("linked:", "pages/images/logo.svg");
+      expect(console.log).toHaveBeenCalledWith(
+        "linked:",
+        "pages/images/logo.svg",
+      );
     } finally {
-      (BascikConfig as any).assets = { inlineStyles: false, exclude: [], symlink: false };
-      vi.mocked(lstat).mockResolvedValue({ isSymbolicLink: () => false } as any);
+      (BascikConfig as any).assets = {
+        inlineStyles: false,
+        exclude: [],
+        symlink: false,
+      };
+      vi.mocked(lstat).mockResolvedValue({
+        isSymbolicLink: () => false,
+      } as any);
     }
   });
 
@@ -466,29 +539,51 @@ describe("copyReplicatePath", () => {
       await copyReplicatePath("pages/images/logo.svg", "dist");
 
       expect(unlink).toHaveBeenCalledWith(resolve("dist/images/logo.svg"));
-      expect(copyFile).toHaveBeenCalledWith("pages/images/logo.svg", resolve("dist/images/logo.svg"));
+      expect(copyFile).toHaveBeenCalledWith(
+        "pages/images/logo.svg",
+        resolve("dist/images/logo.svg"),
+      );
     } finally {
       (BascikConfig as any).isBuild = false;
-      vi.mocked(lstat).mockResolvedValue({ isSymbolicLink: () => false } as any);
+      vi.mocked(lstat).mockResolvedValue({
+        isSymbolicLink: () => false,
+      } as any);
     }
   });
 
   it("warns once and falls back to copying when symlink creation fails", async () => {
-    (BascikConfig as any).assets = { inlineStyles: false, exclude: [], symlink: true };
+    (BascikConfig as any).assets = {
+      inlineStyles: false,
+      exclude: [],
+      symlink: true,
+    };
     vi.mocked(readFile).mockRejectedValue(new Error("ENOENT"));
     vi.mocked(lstat).mockResolvedValue({ isSymbolicLink: () => false } as any);
-    vi.mocked(symlink).mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "EPERM" }));
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => { });
+    vi.mocked(symlink).mockRejectedValueOnce(
+      Object.assign(new Error("denied"), { code: "EPERM" }),
+    );
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     try {
       await copyReplicatePath("pages/images/fallback.svg", "dist");
 
-      expect(copyFile).toHaveBeenCalledWith("pages/images/fallback.svg", resolve("dist/images/fallback.svg"));
-      expect(warning).toHaveBeenCalledWith(expect.stringContaining("could not create static-asset symlinks"));
+      expect(copyFile).toHaveBeenCalledWith(
+        "pages/images/fallback.svg",
+        resolve("dist/images/fallback.svg"),
+      );
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining("could not create static-asset symlinks"),
+      );
     } finally {
       warning.mockRestore();
-      (BascikConfig as any).assets = { inlineStyles: false, exclude: [], symlink: false };
-      vi.mocked(lstat).mockResolvedValue({ isSymbolicLink: () => false } as any);
+      (BascikConfig as any).assets = {
+        inlineStyles: false,
+        exclude: [],
+        symlink: false,
+      };
+      vi.mocked(lstat).mockResolvedValue({
+        isSymbolicLink: () => false,
+      } as any);
     }
   });
 });
@@ -504,7 +599,8 @@ describe("copyStaticAssets", () => {
       isDirectory: vi.fn(() => true),
     });
     vi.mocked(readdir).mockImplementation(async (path) => {
-      if (`${path}` === "pages") {
+      const normalized = `${path}`.replace(/\\/g, "/");
+      if (normalized === "pages") {
         return [
           file(".env"),
           file("bundle.js.map"),
@@ -516,10 +612,10 @@ describe("copyStaticAssets", () => {
           directory("node_modules"),
         ] as any;
       }
-      if (`${path}` === "pages/node_modules") {
+      if (normalized === "pages/node_modules") {
         return [directory("pkg")] as any;
       }
-      if (`${path}` === "pages/node_modules/pkg") {
+      if (normalized === "pages/node_modules/pkg") {
         return [file("index.js")] as any;
       }
       return [];
@@ -527,7 +623,9 @@ describe("copyStaticAssets", () => {
 
     await copyStaticAssets();
 
-    const copiedSources = vi.mocked(copyFile).mock.calls.map(([source]) => source);
+    const copiedSources = vi
+      .mocked(copyFile)
+      .mock.calls.map(([source]) => String(source).replace(/\\/g, "/"));
     expect(copiedSources).toEqual(["pages/logo.svg"]);
   });
 
@@ -541,8 +639,12 @@ describe("copyStaticAssets", () => {
       expect(isStaticAssetPath("pages/templates/card.hbs", "pages")).toBe(true);
       expect(isStaticAssetPath("pages/private/card.hbs", "pages")).toBe(false);
       expect(isStaticAssetPath("pages/settings.jsonc", "pages")).toBe(false);
-      expect(isStaticAssetPath("pages/public/settings.jsonc", "pages")).toBe(true);
-      expect(isStaticAssetPath("pages/.hidden/allowed.svg", "pages")).toBe(false);
+      expect(isStaticAssetPath("pages/public/settings.jsonc", "pages")).toBe(
+        true,
+      );
+      expect(isStaticAssetPath("pages/.hidden/allowed.svg", "pages")).toBe(
+        false,
+      );
       expect(
         isStaticAssetPath(
           "/Users/example/.work/project/pages/logo.svg",
@@ -555,19 +657,42 @@ describe("copyStaticAssets", () => {
   });
 
   it("publishes files under a top-level .well-known directory (RFC 8615) and nothing else hidden", () => {
-    expect(isStaticAssetPath("pages/.well-known/security.txt", "pages")).toBe(true);
-    expect(isStaticAssetPath("pages/.well-known/agent-skills/index.json", "pages")).toBe(true);
-    expect(isStaticAssetPath("/abs/site/src/pages/.well-known/assetlinks.json", "/abs/site/src/pages")).toBe(true);
+    expect(isStaticAssetPath("pages/.well-known/security.txt", "pages")).toBe(
+      true,
+    );
+    expect(
+      isStaticAssetPath("pages/.well-known/agent-skills/index.json", "pages"),
+    ).toBe(true);
+    expect(
+      isStaticAssetPath(
+        "/abs/site/src/pages/.well-known/assetlinks.json",
+        "/abs/site/src/pages",
+      ),
+    ).toBe(true);
     // Only directly under the publish root, never nested or with a hidden child.
-    expect(isStaticAssetPath("pages/blog/.well-known/security.txt", "pages")).toBe(false);
+    expect(
+      isStaticAssetPath("pages/blog/.well-known/security.txt", "pages"),
+    ).toBe(false);
     expect(isStaticAssetPath("pages/.well-known/.env", "pages")).toBe(false);
-    expect(isStaticAssetPath("pages/.well-known/.secret/key.json", "pages")).toBe(false);
-    expect(isStaticAssetPath("pages/.Well-Known/security.txt", "pages")).toBe(false);
+    expect(
+      isStaticAssetPath("pages/.well-known/.secret/key.json", "pages"),
+    ).toBe(false);
+    expect(isStaticAssetPath("pages/.Well-Known/security.txt", "pages")).toBe(
+      false,
+    );
     // The normal deny-list still applies inside .well-known.
-    expect(isStaticAssetPath("pages/.well-known/notes.md", "pages")).toBe(false);
-    expect(isStaticAssetPath("pages/.well-known/handler.ts", "pages")).toBe(false);
-    expect(isStaticAssetPath("pages/.well-known/index.html", "pages")).toBe(false);
-    expect(isStaticAssetPath("pages/.well-known/node_modules/x.js", "pages")).toBe(false);
+    expect(isStaticAssetPath("pages/.well-known/notes.md", "pages")).toBe(
+      false,
+    );
+    expect(isStaticAssetPath("pages/.well-known/handler.ts", "pages")).toBe(
+      false,
+    );
+    expect(isStaticAssetPath("pages/.well-known/index.html", "pages")).toBe(
+      false,
+    );
+    expect(
+      isStaticAssetPath("pages/.well-known/node_modules/x.js", "pages"),
+    ).toBe(false);
   });
 
   it("copies non-HTML static assets and ignores HTML, TS, and test files", async () => {
@@ -578,7 +703,10 @@ describe("copyStaticAssets", () => {
     await copyStaticAssets();
 
     expect(console.log).toHaveBeenCalledWith("copied:", "pages/dir/one.css");
-    expect(console.log).not.toHaveBeenCalledWith("copied:", "pages/dir/one.html");
+    expect(console.log).not.toHaveBeenCalledWith(
+      "copied:",
+      "pages/dir/one.html",
+    );
   });
 
   it("ignores inlined stylesheets specified in BascikConfig.assets.inlineStyles", async () => {
@@ -586,7 +714,10 @@ describe("copyStaticAssets", () => {
 
     try {
       await copyStaticAssets();
-      expect(console.log).not.toHaveBeenCalledWith("copied:", "pages/dir/one.css");
+      expect(console.log).not.toHaveBeenCalledWith(
+        "copied:",
+        "pages/dir/one.css",
+      );
     } finally {
       (BascikConfig as any).assets = { inlineStyles: false };
     }
@@ -639,8 +770,8 @@ describe("copyReplicatePath – CSS minification", () => {
   it("writes minified CSS to dest when source and dest hashes differ", async () => {
     const rawCss = "/* comment */\n.foo {\n  color: red;\n}";
     vi.mocked(readFile)
-      .mockResolvedValueOnce(rawCss as any)          // read src
-      .mockRejectedValueOnce(new Error("ENOENT"));   // read dest → does not exist yet
+      .mockResolvedValueOnce(rawCss as any) // read src
+      .mockRejectedValueOnce(new Error("ENOENT")); // read dest → does not exist yet
 
     await copyReplicatePath("pages/css/styles.css", "dist");
 
@@ -657,7 +788,7 @@ describe("copyReplicatePath – CSS minification", () => {
     const rawCss = ".foo { color: red; }";
     const alreadyMinified = ".foo{color:red;}";
     vi.mocked(readFile)
-      .mockResolvedValueOnce(rawCss as any)          // src
+      .mockResolvedValueOnce(rawCss as any) // src
       .mockResolvedValueOnce(alreadyMinified as any); // dest already up to date
 
     await copyReplicatePath("pages/css/styles.css", "dist");
@@ -678,7 +809,11 @@ describe("copyReplicatePath – CSS minification", () => {
   });
 
   it("writes minified CSS using a custom minify function", async () => {
-    (BascikConfig as any).minify = { css: async (code: string) => `/* custom */ ${code.trim()}`, js: false, html: false };
+    (BascikConfig as any).minify = {
+      css: async (code: string) => `/* custom */ ${code.trim()}`,
+      js: false,
+      html: false,
+    };
     vi.mocked(readFile)
       .mockResolvedValueOnce("  body { color: red; }  " as any)
       .mockRejectedValueOnce(new Error("ENOENT"));
@@ -721,10 +856,12 @@ describe("copyReplicatePath – JS minification & fallback", () => {
   });
 
   it("logs a failure message to console and throws an exception when JS minification throws an error", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     (BascikConfig as any).minify = {
       css: false,
-      js: () => { throw new Error("JS Syntax Error"); },
+      js: () => {
+        throw new Error("JS Syntax Error");
+      },
       html: false,
     };
 
@@ -732,11 +869,13 @@ describe("copyReplicatePath – JS minification & fallback", () => {
       .mockResolvedValueOnce("const bad = ;" as any)
       .mockRejectedValueOnce(new Error("ENOENT"));
 
-    await expect(copyReplicatePath("pages/js/bad.js", "dist")).rejects.toThrow("JS Syntax Error");
+    await expect(copyReplicatePath("pages/js/bad.js", "dist")).rejects.toThrow(
+      "JS Syntax Error",
+    );
 
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("JS minification failed"),
-      expect.any(Error)
+      expect.any(Error),
     );
     errorSpy.mockRestore();
   });
@@ -763,14 +902,17 @@ describe("getRelativePath – multiple component roots", () => {
     try {
       fn();
     } finally {
-      (BascikConfig.directory as { components: string[] }).components = previous;
+      (BascikConfig.directory as { components: string[] }).components =
+        previous;
     }
   };
 
   it("keeps the components/<rel> form for a root inside the project", () => {
     const inside = resolve("src/components");
     withRoots(["/outside/shared/components", inside], () => {
-      expect(getRelativePath(`${inside}/card/card.html`, "components")).toBe("components/card/card.html");
+      expect(getRelativePath(`${inside}/card/card.html`, "components")).toBe(
+        "components/card/card.html",
+      );
     });
   });
 
@@ -787,7 +929,9 @@ describe("getRelativePath – multiple component roots", () => {
     const outside = resolve("../shared/components");
     withRoots([outside], () => {
       expect(() => toDistPath(`${outside}/hello-card.html`)).not.toThrow();
-      expect(() => toDistPath("/workspace/project/source.html")).toThrow(/outside.*output directory/i);
+      expect(() => toDistPath("/workspace/project/source.html")).toThrow(
+        /outside.*output directory/i,
+      );
     });
   });
 });
@@ -807,8 +951,10 @@ describe("getRelativePath – additional branches", () => {
 
 describe("deleteDistFile – error handling", () => {
   it("silently swallows ENOENT", async () => {
-    vi.mocked(rm).mockRejectedValueOnce(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
-    vi.spyOn(console, "error").mockImplementation(() => { });
+    vi.mocked(rm).mockRejectedValueOnce(
+      Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
     await deleteDistFile("pages/missing.html");
     expect(console.error).not.toHaveBeenCalled();
   });
@@ -816,7 +962,7 @@ describe("deleteDistFile – error handling", () => {
   it("logs non-ENOENT errors", async () => {
     const err = Object.assign(new Error("EPERM"), { code: "EPERM" });
     vi.mocked(rm).mockRejectedValueOnce(err);
-    vi.spyOn(console, "error").mockImplementation(() => { });
+    vi.spyOn(console, "error").mockImplementation(() => {});
     await deleteDistFile("pages/missing.html");
     expect(console.error).toHaveBeenCalledWith("Error Deleting Dist File", err);
   });
@@ -840,12 +986,16 @@ describe("deleteDistFile – displayRelativePath branches", () => {
 
   it("displays components-relative path when path includes /componentsDir/", async () => {
     await deleteDistFile("/project/components/btn.html");
-    expect(console.log).toHaveBeenCalledWith("deleted file: components/btn.html");
+    expect(console.log).toHaveBeenCalledWith(
+      "deleted file: components/btn.html",
+    );
   });
 
   it("displays components-relative path when path starts with componentsDir/", async () => {
     await deleteDistFile("components/btn.html");
-    expect(console.log).toHaveBeenCalledWith("deleted file: components/btn.html");
+    expect(console.log).toHaveBeenCalledWith(
+      "deleted file: components/btn.html",
+    );
   });
 
   it("strips dist/ prefix for paths that fall through to the final fallback", async () => {
@@ -856,8 +1006,10 @@ describe("deleteDistFile – displayRelativePath branches", () => {
 
 describe("deleteDistDir – error handling", () => {
   it("silently swallows ENOENT", async () => {
-    vi.mocked(rm).mockRejectedValueOnce(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
-    vi.spyOn(console, "error").mockImplementation(() => { });
+    vi.mocked(rm).mockRejectedValueOnce(
+      Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
     await deleteDistDir("pages/assets");
     expect(console.error).not.toHaveBeenCalled();
   });
@@ -865,9 +1017,12 @@ describe("deleteDistDir – error handling", () => {
   it("logs non-ENOENT errors", async () => {
     const err = Object.assign(new Error("EPERM"), { code: "EPERM" });
     vi.mocked(rm).mockRejectedValueOnce(err);
-    vi.spyOn(console, "error").mockImplementation(() => { });
+    vi.spyOn(console, "error").mockImplementation(() => {});
     await deleteDistDir("pages/assets");
-    expect(console.error).toHaveBeenCalledWith("Error Deleting Dist Directory", err);
+    expect(console.error).toHaveBeenCalledWith(
+      "Error Deleting Dist Directory",
+      err,
+    );
   });
 });
 
@@ -882,7 +1037,11 @@ describe("copyReplicatePath – JS minification", () => {
   });
 
   it("writes minified JS using a custom minify function", async () => {
-    (BascikConfig as any).minify = { css: false, js: async (code: string) => code.replace(/\s+/g, ""), html: false };
+    (BascikConfig as any).minify = {
+      css: false,
+      js: async (code: string) => code.replace(/\s+/g, ""),
+      html: false,
+    };
     vi.mocked(readFile)
       .mockResolvedValueOnce("const x = 1 ;" as any)
       .mockRejectedValueOnce(new Error("ENOENT"));
@@ -895,7 +1054,11 @@ describe("copyReplicatePath – JS minification", () => {
   });
 
   it("skips write when minified JS already matches dest", async () => {
-    (BascikConfig as any).minify = { css: false, js: async (code: string) => code.trim(), html: false };
+    (BascikConfig as any).minify = {
+      css: false,
+      js: async (code: string) => code.trim(),
+      html: false,
+    };
     const content = "const x = 1;";
     vi.mocked(readFile)
       .mockResolvedValueOnce(content as any)
@@ -907,11 +1070,19 @@ describe("copyReplicatePath – JS minification", () => {
   });
 
   it("logs a failure message to console and throws an exception when JS minification throws an error (default onMinifyError: 'error')", async () => {
-    (BascikConfig as any).minify = { css: false, js: async () => { throw new Error("JS syntax error"); }, html: false };
+    (BascikConfig as any).minify = {
+      css: false,
+      js: async () => {
+        throw new Error("JS syntax error");
+      },
+      html: false,
+    };
     vi.mocked(readFile).mockResolvedValueOnce("invalid js {{{" as any);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await expect(copyReplicatePath("pages/js/app.js", "dist")).rejects.toThrow("JS syntax error");
+    await expect(copyReplicatePath("pages/js/app.js", "dist")).rejects.toThrow(
+      "JS syntax error",
+    );
 
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("JS minification failed"),
@@ -922,9 +1093,15 @@ describe("copyReplicatePath – JS minification", () => {
 
   it("logs a warning and falls back to unminified copy when onMinifyError is set to 'warn'", async () => {
     (BascikConfig as any).onMinifyError = "warn";
-    (BascikConfig as any).minify = { css: false, js: async () => { throw new Error("JS syntax error"); }, html: false };
+    (BascikConfig as any).minify = {
+      css: false,
+      js: async () => {
+        throw new Error("JS syntax error");
+      },
+      html: false,
+    };
     vi.mocked(readFile).mockResolvedValue("const bad = ;" as any);
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await copyReplicatePath("pages/js/app.js", "dist");
 
@@ -954,9 +1131,11 @@ describe("copyReplicatePath – generic error path", () => {
   it("logs error and throws when copyFile rejects", async () => {
     const err = new Error("Disk full");
     vi.mocked(copyFile).mockRejectedValueOnce(err);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await expect(copyReplicatePath("pages/image.png", "dist")).rejects.toThrow("Disk full");
+    await expect(copyReplicatePath("pages/image.png", "dist")).rejects.toThrow(
+      "Disk full",
+    );
 
     expect(errorSpy).toHaveBeenCalledWith(
       "Failed to copy file:",

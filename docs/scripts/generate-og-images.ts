@@ -20,46 +20,58 @@
  * the image (SVG markup, fonts, renderer options or versions) has changed.
  */
 
-import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
-import { join, resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { availableParallelism } from 'node:os';
-import { Resvg, type ResvgRenderOptions } from '@resvg/resvg-js';
-import sharp from 'sharp';
-import { NAV } from '../src/lib/nav.ts';
+import { createHash } from "node:crypto";
+import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { join, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { availableParallelism } from "node:os";
+import { Resvg, type ResvgRenderOptions } from "@resvg/resvg-js";
+import sharp from "sharp";
+import { NAV } from "../src/lib/nav.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const docsDir = resolve(__dirname, '..');
-const fontsDir = join(docsDir, 'fonts');
-const defaultOutDir = (): string => join(process.env.BASCIK_OUT_DIR ?? join(docsDir, 'dist'), 'assets', 'og');
-const defaultCacheDir = join(docsDir, 'node_modules', '.cache', 'bascik-docs', 'og');
+const docsDir = resolve(__dirname, "..");
+const fontsDir = join(docsDir, "fonts");
+const defaultOutDir = (): string =>
+  join(process.env.BASCIK_OUT_DIR ?? join(docsDir, "dist"), "assets", "og");
+const defaultCacheDir = join(
+  docsDir,
+  "node_modules",
+  ".cache",
+  "bascik-docs",
+  "og",
+);
 
 // Bump to discard every cached card after a change the key does not capture.
 const OG_CACHE_VERSION = 1;
 
 // Custom font paths for resvg
 const fontPaths = [
-  join(fontsDir, 'Inter-400.ttf'),
-  join(fontsDir, 'Inter-700.ttf'),
-  join(fontsDir, 'Inter-800.ttf'),
-  join(fontsDir, 'Inter-900.ttf'),
+  join(fontsDir, "Inter-400.ttf"),
+  join(fontsDir, "Inter-700.ttf"),
+  join(fontsDir, "Inter-800.ttf"),
+  join(fontsDir, "Inter-900.ttf"),
 ];
 
 const RESVG_OPTIONS: ResvgRenderOptions = {
-  fitTo: { mode: 'width', value: 1200 },
+  fitTo: { mode: "width", value: 1200 },
   font: {
     fontFiles: fontPaths,
     loadSystemFonts: false,
-    defaultFontFamily: 'Inter',
-    sansSerifFamily: 'Inter',
-    serifFamily: 'Inter',
-    monospaceFamily: 'Inter',
+    defaultFontFamily: "Inter",
+    sansSerifFamily: "Inter",
+    serifFamily: "Inter",
+    monospaceFamily: "Inter",
   },
 };
 
-const JPEG_OPTIONS = { quality: 85, progressive: true, mozjpeg: true, chromaSubsampling: '4:4:4' } as const;
+const JPEG_OPTIONS = {
+  quality: 85,
+  progressive: true,
+  mozjpeg: true,
+  chromaSubsampling: "4:4:4",
+} as const;
 
 /** Render one card SVG to JPEG bytes. */
 export async function renderOgJpeg(svg: string): Promise<Buffer> {
@@ -72,34 +84,44 @@ export async function renderOgJpeg(svg: string): Promise<Buffer> {
  * contents, renderer options, and renderer versions.
  */
 async function rendererFingerprint(): Promise<string> {
-  const hash = createHash('sha256');
+  const hash = createHash("sha256");
   hash.update(`og-cache-v${OG_CACHE_VERSION}\0`);
   for (const fontPath of fontPaths) {
     hash.update(await readFile(fontPath));
-    hash.update('\0');
+    hash.update("\0");
   }
   hash.update(JSON.stringify(RESVG_OPTIONS.fitTo));
   hash.update(JSON.stringify({ ...RESVG_OPTIONS.font, fontFiles: undefined }));
   hash.update(JSON.stringify(JPEG_OPTIONS));
-  const resvgVersion = createRequire(import.meta.url)('@resvg/resvg-js/package.json').version as string;
+  const resvgVersion = createRequire(import.meta.url)(
+    "@resvg/resvg-js/package.json",
+  ).version as string;
   hash.update(`resvg ${resvgVersion}\0`);
   hash.update(JSON.stringify(sharp.versions));
-  return hash.digest('hex');
+  return hash.digest("hex");
 }
 
 const readCachedCard = async (cacheFile: string): Promise<Buffer | null> => {
   try {
     const bytes = await readFile(cacheFile);
     // A truncated or foreign file is treated as a miss and re-rendered.
-    const isJpeg = bytes.length > 4 && bytes[0] === 0xff && bytes[1] === 0xd8 &&
-      bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9;
+    const isJpeg =
+      bytes.length > 4 &&
+      bytes[0] === 0xff &&
+      bytes[1] === 0xd8 &&
+      bytes[bytes.length - 2] === 0xff &&
+      bytes[bytes.length - 1] === 0xd9;
     return isJpeg ? bytes : null;
   } catch {
     return null;
   }
 };
 
-const writeCachedCard = async (cacheDir: string, cacheFile: string, bytes: Buffer): Promise<void> => {
+const writeCachedCard = async (
+  cacheDir: string,
+  cacheFile: string,
+  bytes: Buffer,
+): Promise<void> => {
   try {
     await mkdir(cacheDir, { recursive: true });
     const temporaryFile = `${cacheFile}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
@@ -121,40 +143,52 @@ export interface GenerateOgImagesOptions {
 
 function escapeXml(str: string): string {
   return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function stripHtmlComments(source: string): string {
+  let cleaned = source;
+  let previous: string;
+  do {
+    previous = cleaned;
+    cleaned = cleaned.replace(/<!--[\s\S]*?-->/g, "");
+  } while (cleaned !== previous);
+  return cleaned;
 }
 
 function stripMd(text: string): string {
-  // codeql[js/incomplete-multi-character-sanitization] Plain text from first-party Markdown; escapeXml runs before it reaches the SVG.
-  return text
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/```[\s\S]*?```/gm, '')
-    .replace(/`([^`\n]+)`/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*\n]+)\*/g, '$1')
-    .replace(/^>\s*/gm, '')
-    .replace(/\s+/g, ' ')
+  return stripHtmlComments(text)
+    .replace(/```[\s\S]*?```/gm, "")
+    .replace(/`([^`\n]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*\n]+)\*/g, "$1")
+    .replace(/^>\s*/gm, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
-function wrapText(text: string, maxCharsPerLine: number, maxLines?: number): string[] {
+function wrapText(
+  text: string,
+  maxCharsPerLine: number,
+  maxLines?: number,
+): string[] {
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length === 0) return [];
 
   const lines: string[] = [];
-  let currentLine = '';
+  let currentLine = "";
 
   for (const word of words) {
     if (!currentLine) {
       currentLine = word;
-    } else if ((currentLine + ' ' + word).length <= maxCharsPerLine) {
-      currentLine += ' ' + word;
+    } else if ((currentLine + " " + word).length <= maxCharsPerLine) {
+      currentLine += " " + word;
     } else {
       lines.push(currentLine);
       currentLine = word;
@@ -170,13 +204,13 @@ function wrapText(text: string, maxCharsPerLine: number, maxLines?: number): str
   if (lines.length >= 2) {
     const lastLine = lines[lines.length - 1];
     const prevLine = lines[lines.length - 2];
-    const lastWords = lastLine.split(' ');
-    const prevWords = prevLine.split(' ');
+    const lastWords = lastLine.split(" ");
+    const prevWords = prevLine.split(" ");
 
     if (lastWords.length === 1 && prevWords.length >= 3) {
       const movedWord = prevWords.pop()!;
-      lines[lines.length - 2] = prevWords.join(' ');
-      lines[lines.length - 1] = movedWord + ' ' + lastLine;
+      lines[lines.length - 2] = prevWords.join(" ");
+      lines[lines.length - 1] = movedWord + " " + lastLine;
     }
   }
 
@@ -184,21 +218,29 @@ function wrapText(text: string, maxCharsPerLine: number, maxLines?: number): str
 }
 
 async function readMd(href: string): Promise<string | null> {
-  const standard = join(docsDir, 'content', href.slice(1) + '.md');
-  try { return await readFile(standard, 'utf8'); } catch { }
-  const base = join(docsDir, 'content', href.split('/').pop()! + '.md');
-  try { return await readFile(base, 'utf8'); } catch { }
+  const standard = join(docsDir, "content", href.slice(1) + ".md");
+  try {
+    return await readFile(standard, "utf8");
+  } catch {}
+  const base = join(docsDir, "content", href.split("/").pop()! + ".md");
+  try {
+    return await readFile(base, "utf8");
+  } catch {}
   return null;
 }
 
 function extractMetaFromMd(
   md: string,
-  fallbackLabel: string
-): { title: string; description: string; codeSnippet?: string; codeLang?: string } {
+  fallbackLabel: string,
+): {
+  title: string;
+  description: string;
+  codeSnippet?: string;
+  codeLang?: string;
+} {
   // Strip multiline HTML comments before line scanning
-  // codeql[js/incomplete-multi-character-sanitization] Plain text from first-party Markdown; escapeXml runs before it reaches the SVG.
-  const cleanMd = md.replace(/<!--[\s\S]*?-->/g, '');
-  const lines = cleanMd.split('\n');
+  const cleanMd = stripHtmlComments(md);
+  const lines = cleanMd.split("\n");
   const h1Line = lines.find((l) => /^# /.test(l));
   const rawTitle = h1Line ? h1Line.slice(2).trim() : fallbackLabel;
   const title = stripMd(rawTitle);
@@ -217,9 +259,9 @@ function extractMetaFromMd(
 
     const trimmed = line.trim();
     if (/^#{2,6}\s+/.test(trimmed)) continue;
-    if (trimmed.startsWith('```')) continue;
+    if (trimmed.startsWith("```")) continue;
     if (/^[-*_]{3,}$/.test(trimmed)) continue;
-    if (trimmed === '**Legend**' || trimmed.startsWith('**Legend**')) continue;
+    if (trimmed === "**Legend**" || trimmed.startsWith("**Legend**")) continue;
     if (/^[-*]\s+/.test(trimmed)) continue;
     if (/^\|.*\|$/.test(trimmed)) continue;
 
@@ -232,15 +274,14 @@ function extractMetaFromMd(
   }
 
   // Preserve raw content with inline backticks, just strip other block MD structures
-  // codeql[js/incomplete-multi-character-sanitization] Plain text from first-party Markdown; escapeXml runs before it reaches the SVG.
-  const description = paragraphLines.join(' ')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*\n]+)\*/g, '$1')
-    .replace(/^>\s*/gm, '')
-    .replace(/\s+/g, ' ')
-    .trim() || 'HTML components. Zero runtime.';
+  const description =
+    stripHtmlComments(paragraphLines.join(" "))
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/\*([^*\n]+)\*/g, "$1")
+      .replace(/^>\s*/gm, "")
+      .replace(/\s+/g, " ")
+      .trim() || "HTML components. Zero runtime.";
 
   // 2. Extract first fenced code block in the entire document
   let codeSnippet: string | undefined;
@@ -248,15 +289,15 @@ function extractMetaFromMd(
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    if (line.startsWith('```')) {
-      codeLang = line.slice(3).trim() || 'code';
+    if (line.startsWith("```")) {
+      codeLang = line.slice(3).trim() || "code";
       const codeLines: string[] = [];
       for (let j = i + 1; j < lines.length; j++) {
-        if (lines[j].trim().startsWith('```')) break;
+        if (lines[j].trim().startsWith("```")) break;
         codeLines.push(lines[j]);
       }
       if (codeLines.length > 0) {
-        codeSnippet = codeLines.slice(0, 11).join('\n');
+        codeSnippet = codeLines.slice(0, 11).join("\n");
       }
       break;
     }
@@ -265,23 +306,29 @@ function extractMetaFromMd(
   return { title, description, codeSnippet, codeLang };
 }
 
-function extractMetaFromHtml(html: string): { title: string; description: string } | null {
+function extractMetaFromHtml(
+  html: string,
+): { title: string; description: string } | null {
   const titleMatch = html.match(/<title>(.*?)<\/title>/i);
-  const descMatch = html.match(/<meta\s+name=["']description["']\s+content=["'](.*?)["']/i);
+  const descMatch = html.match(
+    /<meta\s+name=["']description["']\s+content=["'](.*?)["']/i,
+  );
   if (!titleMatch && !descMatch) return null;
   return {
-    title: titleMatch ? titleMatch[1].replace(/\s*-\s*Bascik( Docs)?$/, '').trim() : '',
-    description: descMatch ? descMatch[1].trim() : '',
+    title: titleMatch
+      ? titleMatch[1].replace(/\s*-\s*Bascik( Docs)?$/, "").trim()
+      : "",
+    description: descMatch ? descMatch[1].trim() : "",
   };
 }
 
-function formatTextWithCodeStyles(line: string, fill = '#a0a6b5'): string {
+function formatTextWithCodeStyles(line: string, fill = "#a0a6b5"): string {
   // Regex to match `code` backtick sections
   const parts = line.split(/(`[^`]+`)/g);
-  let xml = '';
+  let xml = "";
 
   for (const part of parts) {
-    if (part.startsWith('`') && part.endsWith('`')) {
+    if (part.startsWith("`") && part.endsWith("`")) {
       const codeText = part.slice(1, -1);
       // Clean, recognizable inline code styling: Inter font with lime-green color (#d3ff8d)
       xml += `<tspan font-family="Inter" font-weight="700" fill="#d3ff8d">${escapeXml(codeText)}</tspan>`;
@@ -293,20 +340,24 @@ function formatTextWithCodeStyles(line: string, fill = '#a0a6b5'): string {
   return xml;
 }
 
-function wrapDescription(text: string, maxCharsPerLine = 52, maxLines = 3): string[] {
+function wrapDescription(
+  text: string,
+  maxCharsPerLine = 52,
+  maxLines = 3,
+): string[] {
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length === 0) return [];
 
   const lines: string[] = [];
-  let currentLine = '';
+  let currentLine = "";
   let truncated = false;
 
   for (let i = 0; i < words.length; i++) {
     const word = words[i];
     if (!currentLine) {
       currentLine = word;
-    } else if ((currentLine + ' ' + word).length <= maxCharsPerLine) {
-      currentLine += ' ' + word;
+    } else if ((currentLine + " " + word).length <= maxCharsPerLine) {
+      currentLine += " " + word;
     } else {
       lines.push(currentLine);
       if (lines.length === maxLines) {
@@ -325,7 +376,7 @@ function wrapDescription(text: string, maxCharsPerLine = 52, maxLines = 3): stri
     if (last.length + 3 > maxCharsPerLine) {
       last = last.slice(0, maxCharsPerLine - 3).trim();
     }
-    lines[lines.length - 1] = last.replace(/[.,;!?]+$/, '') + '...';
+    lines[lines.length - 1] = last.replace(/[.,;!?]+$/, "") + "...";
   }
 
   return lines;
@@ -343,7 +394,7 @@ export function renderOgSvg(
   section: string,
   description: string,
   isHome = false,
-  logoMarkup = DEFAULT_LOGO_MARKUP
+  logoMarkup = DEFAULT_LOGO_MARKUP,
 ): string {
   if (isHome) {
     // 2. Special full-screen Hero layout for the home page (fallback card style)
@@ -396,7 +447,7 @@ export function renderOgSvg(
   <!-- Verbatim Description / Paragraph -->
   <g transform="translate(80, ${descStartY})">
     <text font-family="Inter" font-size="28" font-weight="400" fill="#a0a6b5" letter-spacing="-0.01em">
-      ${descLines.map((line, i) => `<tspan x="0" y="${i * descLineHeight}">${escapeXml(line)}</tspan>`).join('')}
+      ${descLines.map((line, i) => `<tspan x="0" y="${i * descLineHeight}">${escapeXml(line)}</tspan>`).join("")}
     </text>
   </g>
 
@@ -412,7 +463,10 @@ export function renderOgSvg(
   // 1. Regular documentation page layout
   const sectionUpper = section.toUpperCase();
   const badgeCharWidth = 12;
-  const badgeWidth = Math.max(100, Math.round(sectionUpper.length * badgeCharWidth + 32));
+  const badgeWidth = Math.max(
+    100,
+    Math.round(sectionUpper.length * badgeCharWidth + 32),
+  );
 
   const titleLines = wrapText(title, 24, 2);
   const descLines = wrapDescription(description, 48, 3);
@@ -464,14 +518,14 @@ export function renderOgSvg(
   <!-- Main Title (Big, Bold, Hero-style for Mobile & iMessage Previews) -->
   <g transform="translate(80, ${titleStartY})">
     <text font-family="Inter" font-size="64" font-weight="700" fill="#f8fafc" letter-spacing="-0.03em">
-      ${titleLines.map((line, i) => `<tspan x="0" y="${i * titleLineHeight}">${escapeXml(line)}</tspan>`).join('')}
+      ${titleLines.map((line, i) => `<tspan x="0" y="${i * titleLineHeight}">${escapeXml(line)}</tspan>`).join("")}
     </text>
   </g>
 
   <!-- Verbatim Subtitle / Description -->
   <g transform="translate(80, ${descStartY})">
     <text font-family="Inter" font-size="28" font-weight="400" fill="#a0a6b5" letter-spacing="-0.01em">
-      ${descLines.map((line, i) => `<tspan x="0" y="${i * descLineHeight}">${formatTextWithCodeStyles(line, '#a0a6b5')}</tspan>`).join('')}
+      ${descLines.map((line, i) => `<tspan x="0" y="${i * descLineHeight}">${formatTextWithCodeStyles(line, "#a0a6b5")}</tspan>`).join("")}
     </text>
   </g>
 
@@ -493,23 +547,32 @@ interface PageMeta {
   codeSnippet?: string;
 }
 
-export async function generateOgImages(options: GenerateOgImagesOptions = {}): Promise<void> {
+export async function generateOgImages(
+  options: GenerateOgImagesOptions = {},
+): Promise<void> {
   const distOgDir = options.outDir ?? defaultOutDir();
-  const cacheDir = options.cacheDir === undefined ? defaultCacheDir : options.cacheDir;
+  const cacheDir =
+    options.cacheDir === undefined ? defaultCacheDir : options.cacheDir;
   const render = options.render ?? renderOgJpeg;
   await mkdir(distOgDir, { recursive: true });
-  const fingerprint = cacheDir ? await rendererFingerprint() : '';
+  const fingerprint = cacheDir ? await rendererFingerprint() : "";
 
-  const logoSvgFile = join(docsDir, 'src', 'pages', 'assets', 'bascik-logo.svg');
+  const logoSvgFile = join(
+    docsDir,
+    "src",
+    "pages",
+    "assets",
+    "bascik-logo.svg",
+  );
   let logoMarkup = DEFAULT_LOGO_MARKUP;
   try {
-    const rawSvg = await readFile(logoSvgFile, 'utf8');
+    const rawSvg = await readFile(logoSvgFile, "utf8");
     logoMarkup = rawSvg
-      .replace(/[\s\S]*?<svg[^>]*>/, '')
-      .replace(/<\/svg>[\s\S]*/, '')
-      .replace(/<animate[\s\S]*?\/>/g, '')
+      .replace(/[\s\S]*?<svg[^>]*>/, "")
+      .replace(/<\/svg>[\s\S]*/, "")
+      .replace(/<animate[\s\S]*?\/>/g, "")
       .trim();
-  } catch { }
+  } catch {}
 
   const pagesMap = new Map<string, PageMeta>();
 
@@ -517,52 +580,83 @@ export async function generateOgImages(options: GenerateOgImagesOptions = {}): P
   // entries (e.g. Merch) are off-site with no local page or Markdown, so they
   // are skipped here.
   const allNavPages = [
-    { href: '/', label: 'Bascik', section: 'Overview' },
-    ...NAV.flatMap((sec) => sec.pages.filter((p) => !p.external).map((p) => ({ ...p, section: sec.section }))),
+    { href: "/", label: "Bascik", section: "Overview" },
+    ...NAV.flatMap((sec) =>
+      sec.pages
+        .filter((p) => !p.external)
+        .map((p) => ({ ...p, section: sec.section })),
+    ),
   ];
 
   for (const { href, label, section } of allNavPages) {
-    const slug = href === '/' ? 'home' : href.replace(/^\//, '').replace(/\//g, '-');
+    const slug =
+      href === "/" ? "home" : href.replace(/^\//, "").replace(/\//g, "-");
 
     // Try reading meta from corresponding src/pages/*.html shell
-    const htmlRelPath = href === '/' ? 'index.html' : href.slice(1) + '.html';
-    const htmlFile = join(docsDir, 'src', 'pages', htmlRelPath);
+    const htmlRelPath = href === "/" ? "index.html" : href.slice(1) + ".html";
+    const htmlFile = join(docsDir, "src", "pages", htmlRelPath);
     let htmlMeta: { title: string; description: string } | null = null;
     try {
-      const html = await readFile(htmlFile, 'utf8');
+      const html = await readFile(htmlFile, "utf8");
       htmlMeta = extractMetaFromHtml(html);
-    } catch { }
+    } catch {}
 
     const md = await readMd(href);
-    const mdMeta = md ? extractMetaFromMd(md, label) : { title: label, description: 'HTML components. Zero runtime.' };
+    const mdMeta = md
+      ? extractMetaFromMd(md, label)
+      : { title: label, description: "HTML components. Zero runtime." };
 
-    const title = href === '/' ? 'Bascik' : (mdMeta.title || htmlMeta?.title || label);
-    const description = href === '/'
-      ? "Bascik is a build tool for HTML components with automatically scoped CSS and JS. Zero runtime. The code that ships is the code you wrote."
-      : (mdMeta.description || htmlMeta?.description || 'HTML components. Zero runtime.');
+    const title =
+      href === "/" ? "Bascik" : mdMeta.title || htmlMeta?.title || label;
+    const description =
+      href === "/"
+        ? "Bascik is a build tool for HTML components with automatically scoped CSS and JS. Zero runtime. The code that ships is the code you wrote."
+        : mdMeta.description ||
+          htmlMeta?.description ||
+          "HTML components. Zero runtime.";
     const codeSnippet = mdMeta.codeSnippet;
-    const fileName = `docs/content${href === '/' ? '/overview' : href}.md`;
+    const fileName = `docs/content${href === "/" ? "/overview" : href}.md`;
 
-    pagesMap.set(slug, { slug, section, title, description, fileName, codeSnippet });
+    pagesMap.set(slug, {
+      slug,
+      section,
+      title,
+      description,
+      fileName,
+      codeSnippet,
+    });
   }
 
   // Render SVG and convert to optimized JPEG in chunked batches with event-loop yielding
   const entries = Array.from(pagesMap.entries());
-  const chunkSize = Math.max(2, availableParallelism ? availableParallelism() : 4);
+  const chunkSize = Math.max(
+    2,
+    availableParallelism ? availableParallelism() : 4,
+  );
 
   for (let i = 0; i < entries.length; i += chunkSize) {
     const chunk = entries.slice(i, i + chunkSize);
     await Promise.all(
       chunk.map(async ([slug, { section, title, description }]) => {
-        const isHome = slug === 'home';
-        const svg = renderOgSvg(title, section, description, isHome, logoMarkup);
+        const isHome = slug === "home";
+        const svg = renderOgSvg(
+          title,
+          section,
+          description,
+          isHome,
+          logoMarkup,
+        );
         const outFile = join(distOgDir, `${slug}.jpg`);
 
         if (!cacheDir) {
           await writeFile(outFile, await render(svg));
           return;
         }
-        const key = createHash('sha256').update(fingerprint).update('\0').update(svg).digest('hex');
+        const key = createHash("sha256")
+          .update(fingerprint)
+          .update("\0")
+          .update(svg)
+          .digest("hex");
         const cacheFile = join(cacheDir, `${key}.jpg`);
         if (await readCachedCard(cacheFile)) {
           await copyFile(cacheFile, outFile);
@@ -571,7 +665,7 @@ export async function generateOgImages(options: GenerateOgImagesOptions = {}): P
         const jpgBuffer = await render(svg);
         await writeFile(outFile, jpgBuffer);
         await writeCachedCard(cacheDir, cacheFile, jpgBuffer);
-      })
+      }),
     );
     if (i + chunkSize < entries.length) {
       await new Promise((r) => setTimeout(r, 0));
@@ -580,7 +674,9 @@ export async function generateOgImages(options: GenerateOgImagesOptions = {}): P
 }
 
 // Auto-run when executed directly
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+const isMain =
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === resolve(process.argv[1]);
 if (isMain) {
   await generateOgImages();
 }

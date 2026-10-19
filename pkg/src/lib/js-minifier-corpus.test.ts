@@ -16,7 +16,12 @@ import { fileURLToPath } from "node:url";
 import { minifyJs, __scanStatsForTests } from "./js-minifier.ts";
 
 const corpus = JSON.parse(
-  readFileSync(fileURLToPath(new URL("./__fixtures__/js-minifier-corpus.json", import.meta.url)), "utf8"),
+  readFileSync(
+    fileURLToPath(
+      new URL("./__fixtures__/js-minifier-corpus.json", import.meta.url),
+    ),
+    "utf8",
+  ),
 ) as [string, string][];
 
 describe("minifyJs byte-identity corpus", () => {
@@ -35,8 +40,40 @@ describe("minifyJs termination and determinism", () => {
   const jsish = fc
     .array(
       fc.constantFrom(
-        "/", "*", "\\", "'", '"', "`", "\n", " ", "[", "]", "(", ")", "{", "}", "=", ";", ",", ".", "+", "-", "?", ":",
-        "a", "b", "x", "$", "_", "1", "return", "in", "typeof", "$1", "$&", "$`",
+        "/",
+        "*",
+        "\\",
+        "'",
+        '"',
+        "`",
+        "\n",
+        " ",
+        "[",
+        "]",
+        "(",
+        ")",
+        "{",
+        "}",
+        "=",
+        ";",
+        ",",
+        ".",
+        "+",
+        "-",
+        "?",
+        ":",
+        "a",
+        "b",
+        "x",
+        "$",
+        "_",
+        "1",
+        "return",
+        "in",
+        "typeof",
+        "$1",
+        "$&",
+        "$`",
       ),
       { maxLength: 60 },
     )
@@ -59,14 +96,18 @@ describe("minifyJs termination and determinism", () => {
         __scanStatsForTests.reset();
         minifyJs(s);
         // Bounded work: no hidden prefix rescans on adversarial input.
-        expect(__scanStatsForTests.charsExamined).toBeLessThanOrEqual(s.length * 8 + 8);
+        expect(__scanStatsForTests.charsExamined).toBeLessThanOrEqual(
+          s.length * 8 + 8,
+        );
       }),
       { numRuns: 500 },
     );
   });
 
   it("preserves literal $ replacement tokens", () => {
-    expect(minifyJs("s.replace(/x/, '$1$&$`$$')")).toBe("s.replace(/x/,'$1$&$`$$')");
+    expect(minifyJs("s.replace(/x/, '$1$&$`$$')")).toBe(
+      "s.replace(/x/,'$1$&$`$$')",
+    );
     expect(minifyJs("a = '$1' / b")).toBe("a='$1'/ b");
   });
 });

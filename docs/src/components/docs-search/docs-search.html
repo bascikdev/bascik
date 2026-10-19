@@ -1,6 +1,21 @@
-<button type="button" class="dnav-search-btn" aria-label="Search docs" aria-expanded="false">
-  <svg class="search-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<button
+  type="button"
+  class="dnav-search-btn"
+  aria-label="Search docs"
+  aria-expanded="false"
+>
+  <svg
+    class="search-btn-icon"
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
     <circle cx="11" cy="11" r="8"></circle>
     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
   </svg>
@@ -10,20 +25,56 @@
 
 <div class="search-overlay" data-testid="search-overlay" hidden>
   <div class="search-backdrop"></div>
-  <div class="search-panel" role="dialog" aria-modal="true" aria-label="Search documentation">
+  <div
+    class="search-panel"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Search documentation"
+  >
     <div class="search-input-row">
-      <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <svg
+        class="search-icon"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
         <circle cx="11" cy="11" r="8"></circle>
         <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
       </svg>
-      <input type="search" id="docs-search-input" name="search" class="search-input" placeholder="Search docs…"
-        role="combobox" aria-expanded="false" aria-controls="docs-search-results" aria-autocomplete="list"
-        aria-haspopup="listbox" autocomplete="off" spellcheck="false" />
+      <input
+        type="search"
+        id="docs-search-input"
+        name="search"
+        class="search-input"
+        placeholder="Search docs…"
+        role="combobox"
+        aria-expanded="false"
+        aria-controls="docs-search-results"
+        aria-autocomplete="list"
+        aria-haspopup="listbox"
+        autocomplete="off"
+        spellcheck="false"
+      />
       <kbd class="search-esc">Esc</kbd>
     </div>
-    <div id="docs-search-status" class="sr-only" role="status" aria-live="polite"></div>
-    <ul id="docs-search-results" class="search-results" role="listbox" aria-label="Search results"></ul>
+    <div
+      id="docs-search-status"
+      class="sr-only"
+      role="status"
+      aria-live="polite"
+    ></div>
+    <ul
+      id="docs-search-results"
+      class="search-results"
+      role="listbox"
+      aria-label="Search results"
+    ></ul>
     <p class="search-empty" hidden>No results.</p>
     <p class="search-hint">Start typing to search all docs pages.</p>
   </div>
@@ -31,24 +82,41 @@
 <script data-bascik-build>
   // Combine search-logic.ts (pure functions) and docs-search-dom.js (DOM wiring)
   // into one IIFE so minification can rename consistently across the whole block.
-  import { readFile } from 'node:fs/promises';
-  import { existsSync } from 'node:fs';
-  import { stripTypeScriptTypes } from 'node:module';
-  import { join, resolve } from 'node:path';
+  import { readFile } from "node:fs/promises";
+  import { existsSync } from "node:fs";
+  import { stripTypeScriptTypes } from "node:module";
+  import { join, resolve } from "node:path";
   export default async function () {
     // The paths are string literals passed to a call so the script cache key and
     // the dev watcher see both files as dependencies. Without that, editing
     // either file would keep serving a stale cached bundle.
-    const root = existsSync(resolve(process.cwd(), 'src/components/docs-search')) ? process.cwd() : resolve(process.cwd(), 'docs');
+    const root = existsSync(
+      resolve(process.cwd(), "src/components/docs-search"),
+    )
+      ? process.cwd()
+      : resolve(process.cwd(), "docs");
     const here = (p) => join(root, p);
-    const logic = await readFile(here('src/components/docs-search/search-logic.ts'), 'utf8');
-    const dom = await readFile(here('src/components/docs-search/docs-search-dom.js'), 'utf8');
+    const logic = await readFile(
+      here("src/components/docs-search/search-logic.ts"),
+      "utf8",
+    );
+    const dom = await readFile(
+      here("src/components/docs-search/docs-search-dom.js"),
+      "utf8",
+    );
     // Node's strip-only mode erases the types and the interface; the export
     // keywords go because both files are concatenated into one classic IIFE.
     const fns = stripTypeScriptTypes(logic)
-      .replace(/^\/\*\*[\s\S]*?\r?\n\r?\n/m, '')   // strip file-level JSDoc
-      .replace(/^export function /gm, 'function ')
-      .replace(/^export const /gm, 'var ');
-    return '<script>\n(function () {\n' + fns.trim() + '\n\n' + dom.trim() + '\n})();\n</scr' + 'ipt>';
-  };
+      .replace(/^\/\*\*[\s\S]*?\r?\n\r?\n/m, "") // strip file-level JSDoc
+      .replace(/^export function /gm, "function ")
+      .replace(/^export const /gm, "var ");
+    return (
+      "<script>\n(function () {\n" +
+      fns.trim() +
+      "\n\n" +
+      dom.trim() +
+      "\n})();\n</scr" +
+      "ipt>"
+    );
+  }
 </script>

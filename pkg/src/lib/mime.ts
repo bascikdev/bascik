@@ -66,11 +66,20 @@ export const MIME_MAP = new Map([
   // PDF / Docs
   [".pdf", "application/pdf"],
   [".doc", "application/msword"],
-  [".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  [
+    ".docx",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ],
   [".xls", "application/vnd.ms-excel"],
-  [".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  [
+    ".xlsx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ],
   [".ppt", "application/vnd.ms-powerpoint"],
-  [".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+  [
+    ".pptx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ],
 
   // Web Assembly & Others
   [".wasm", "application/wasm"],
@@ -88,5 +97,5 @@ export const MIME_MAP = new Map([
   [".ipa", "application/octet-stream"],
 
   // Fallback
-  ["octet-stream", "application/octet-stream"]
+  ["octet-stream", "application/octet-stream"],
 ]);

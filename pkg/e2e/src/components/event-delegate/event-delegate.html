@@ -26,7 +26,8 @@
       if (e.target.matches(".btn")) {
         // Walk up to find the parent .item to get data-value
         const item = e.target.closest(".item");
-        result.textContent = "delegated btn: " + (item ? item.dataset.value : "no-item");
+        result.textContent =
+          "delegated btn: " + (item ? item.dataset.value : "no-item");
       }
     });
 

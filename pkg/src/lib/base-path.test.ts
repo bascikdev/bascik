@@ -26,7 +26,12 @@ describe("composeSiteUrl", () => {
   it.each([
     ["https://bascik.dev", "/", "/about", "https://bascik.dev/about"],
     ["https://bascik.dev///", "/", "about", "https://bascik.dev/about"],
-    ["https://bascik.dev/", "/docs/", "/about", "https://bascik.dev/docs/about"],
+    [
+      "https://bascik.dev/",
+      "/docs/",
+      "/about",
+      "https://bascik.dev/docs/about",
+    ],
   ])("composes %j + %j + %j", (siteUrl, base, pathname, expected) => {
     expect(composeSiteUrl(siteUrl, base, pathname)).toBe(expected);
   });
@@ -66,10 +71,19 @@ describe("shouldRewriteBasePath", () => {
 describe("rewriteSrcsetBasePaths", () => {
   it.each([
     ["/image.png", "/sub/image.png"],
-    ["/small.png 320w, /large.png 1280w", "/sub/small.png 320w, /sub/large.png 1280w"],
+    [
+      "/small.png 320w, /large.png 1280w",
+      "/sub/small.png 320w, /sub/large.png 1280w",
+    ],
     ["/one.png 1x, /two.png 2x", "/sub/one.png 1x, /sub/two.png 2x"],
-    ["https://cdn.example.com/x.png 1x, /x.png 2x", "https://cdn.example.com/x.png 1x, /sub/x.png 2x"],
-    ["data:image/svg+xml,%3Csvg%3E,%3C/svg%3E 1x, /x.png 2x", "data:image/svg+xml,%3Csvg%3E,%3C/svg%3E 1x, /sub/x.png 2x"],
+    [
+      "https://cdn.example.com/x.png 1x, /x.png 2x",
+      "https://cdn.example.com/x.png 1x, /sub/x.png 2x",
+    ],
+    [
+      "data:image/svg+xml,%3Csvg%3E,%3C/svg%3E 1x, /x.png 2x",
+      "data:image/svg+xml,%3Csvg%3E,%3C/svg%3E 1x, /sub/x.png 2x",
+    ],
     [" /one.png 1x ,  /two.png 2x,", " /sub/one.png 1x ,  /sub/two.png 2x,"],
   ])("rewrites %j", (input, expected) => {
     expect(rewriteSrcsetBasePaths(input, "/sub/")).toBe(expected);
@@ -103,7 +117,9 @@ describe("rewriteHtmlBasePaths", () => {
     expect(result).toContain(`href="/sub/about"`);
     expect(result).toContain(`src='/sub/logo.png'`);
     expect(result).toContain(`srcset="/sub/small.png 1x, /sub/large.png 2x"`);
-    expect(result).toContain(`imagesrcset="/sub/small.png 320w, /sub/large.png 1280w"`);
+    expect(result).toContain(
+      `imagesrcset="/sub/small.png 320w, /sub/large.png 1280w"`,
+    );
     expect(result).toContain(`poster="/sub/poster.jpg"`);
     expect(result).toContain(`data="/sub/movie.swf"`);
     expect(result).toContain(`formaction="/sub/save"`);
@@ -120,7 +136,9 @@ describe("rewriteHtmlBasePaths", () => {
   it("leaves fragments for ID-reference rewriting and transforms paths once", () => {
     const html = `<a href="#local-id">Local</a><a href="/about">About</a>`;
     const once = rewriteHtmlBasePaths(html, "/sub/");
-    expect(once).toBe(`<a href="#local-id">Local</a><a href="/sub/about">About</a>`);
+    expect(once).toBe(
+      `<a href="#local-id">Local</a><a href="/sub/about">About</a>`,
+    );
     expect(rewriteHtmlBasePaths(once, "/sub/")).toBe(once);
   });
 
@@ -130,6 +148,8 @@ describe("rewriteHtmlBasePaths", () => {
       `<script>const template = '<img src="/script.png">';</script>`,
       `<textarea><img src="/textarea.png"></textarea>`,
       `<img alt="greater > than" src="/active.png">`,
+      `<div data-example="click href='/keep-literal'"><a href="/real">Real</a></div>`,
+      `<img src=/unquoted.png/>`,
     ].join("");
 
     expect(rewriteHtmlBasePaths(html, "/sub/")).toBe(
@@ -138,7 +158,29 @@ describe("rewriteHtmlBasePaths", () => {
         `<script>const template = '<img src="/script.png">';</script>`,
         `<textarea><img src="/textarea.png"></textarea>`,
         `<img alt="greater > than" src="/sub/active.png">`,
+        `<div data-example="click href='/keep-literal'"><a href="/sub/real">Real</a></div>`,
+        `<img src=/sub/unquoted.png/>`,
       ].join(""),
+    );
+  });
+
+  it("Does not corrupt quoted attribute strings containing URL-like attribute text with spaces", () => {
+    const html = [
+      `<div data-example="click href = '/keep-literal'"><a href = /real/>Real</a></div>`,
+      `<meta content=/share.png property=og:image/>`,
+    ].join("");
+    expect(rewriteHtmlBasePaths(html, "/sub/")).toBe(
+      [
+        `<div data-example="click href = '/keep-literal'"><a href=/sub/real/>Real</a></div>`,
+        `<meta content=/sub/share.png property=og:image/>`,
+      ].join(""),
+    );
+  });
+
+  it("rewrites URL attributes after a quoted value ending in a backslash", () => {
+    const html = String.raw`<img alt="C:\" src="/logo.png">`;
+    expect(rewriteHtmlBasePaths(html, "/sub/")).toBe(
+      String.raw`<img alt="C:\" src="/sub/logo.png">`,
     );
   });
 });
@@ -178,13 +220,19 @@ describe("rewriteManifestBasePaths", () => {
       name: "App",
       start_url: "/",
       scope: "/app/",
-      icons: [{ src: "/icon.png" }, { src: "https://cdn.example.com/icon.png" }],
+      icons: [
+        { src: "/icon.png" },
+        { src: "https://cdn.example.com/icon.png" },
+      ],
     });
     expect(JSON.parse(rewriteManifestBasePaths(manifest, "/sub/"))).toEqual({
       name: "App",
       start_url: "/sub/",
       scope: "/sub/app/",
-      icons: [{ src: "/sub/icon.png" }, { src: "https://cdn.example.com/icon.png" }],
+      icons: [
+        { src: "/sub/icon.png" },
+        { src: "https://cdn.example.com/icon.png" },
+      ],
     });
   });
 

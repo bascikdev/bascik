@@ -27,7 +27,8 @@ class ManifestCollector {
       return;
     }
 
-    const buf = typeof content === "string" ? Buffer.from(content, "utf8") : content;
+    const buf =
+      typeof content === "string" ? Buffer.from(content, "utf8") : content;
     const hash = createHash("sha256").update(buf).digest("hex");
     this.files.set(rel, {
       hash,

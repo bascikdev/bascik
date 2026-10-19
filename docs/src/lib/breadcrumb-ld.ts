@@ -10,76 +10,103 @@
  *   import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
  *   export default async () => await breadcrumbLd();
  */
-import { readFile } from 'node:fs/promises';
-import { NAV } from './nav.ts';
+import { readFile } from "node:fs/promises";
+import { NAV } from "./nav.ts";
 
 // Sections that have their own index page (e.g. /internals, /switch, /testing, /deployment, /lighthouse, /example-components)
-export const SECTIONS_WITH_PAGE = new Set(['internals', 'switch', 'testing', 'deployment', 'lighthouse', 'example-components']);
+export const SECTIONS_WITH_PAGE = new Set([
+  "internals",
+  "switch",
+  "testing",
+  "deployment",
+  "lighthouse",
+  "example-components",
+]);
 
 const SECTION_LABELS: Record<string, string> = {
-  deployment: 'Deployment',
-  'example-components': 'Example Components',
-  internals: 'Internals',
-  lighthouse: 'Lighthouse 100s',
-  switch: 'Switch',
-  testing: 'Testing & Debugging',
-  'how-to': 'How-to',
-  resources: 'Resources',
+  deployment: "Deployment",
+  "example-components": "Example Components",
+  internals: "Internals",
+  lighthouse: "Lighthouse 100s",
+  switch: "Switch",
+  testing: "Testing & Debugging",
+  "how-to": "How-to",
+  resources: "Resources",
 };
 
 export async function breadcrumbLd(): Promise<string> {
-  const siteUrl = (process.env.BASCIK_SITE_URL ?? '').replace(/\/$/, '');
-  const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
-  const pagesDir = process.env.BASCIK_PAGES_DIR ?? '';
+  const siteUrl = (process.env.BASCIK_SITE_URL ?? "").replace(/\/$/, "");
+  const pageFile =
+    process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? "";
+  const pagesDir = process.env.BASCIK_PAGES_DIR ?? "";
 
-  if (!siteUrl || !pageFile || !pagesDir) return '';
+  if (!siteUrl || !pageFile || !pagesDir) return "";
 
   const relPath = pageFile.startsWith(pagesDir)
-    ? pageFile.slice(pagesDir.length).replace(/^[\\/]/, '').replace(/\\/g, '/')
-    : '';
+    ? pageFile
+        .slice(pagesDir.length)
+        .replace(/^[\\/]/, "")
+        .replace(/\\/g, "/")
+    : "";
 
-  const parts = relPath.replace(/\.html$/, '').split('/');
-  if (parts.length < 2) return ''; // top-level pages don't need breadcrumbs
+  const parts = relPath.replace(/\.html$/, "").split("/");
+  if (parts.length < 2) return ""; // top-level pages don't need breadcrumbs
 
   const [section] = parts;
   let html: string;
   try {
-    html = await readFile(pageFile, 'utf8');
+    html = await readFile(pageFile, "utf8");
   } catch (err) {
-    console.warn(`[breadcrumb-ld] Warning: Could not read page file "${pageFile}": ${(err as Error).message}`);
-    return '';
+    console.warn(
+      `[breadcrumb-ld] Warning: Could not read page file "${pageFile}": ${(err as Error).message}`,
+    );
+    return "";
   }
   const titleM = html.match(/<title[^>]*>([^<]+)<\/title>/);
   // <title> is written for search results (long, keyword-rich), so the breadcrumb prefers the short
   // sidebar label. Pages outside the nav fall back to the title with its " - Bascik..." suffix stripped.
-  const navLabel = NAV.flatMap((sec) => sec.pages).find((p) => p.href === `/${parts.join('/')}`)?.label;
-  const rawPageLabel = navLabel
-    ?? (titleM ? titleM[1].replace(/ - Bascik.*$/, '').trim() : parts[parts.length - 1]);
-  const pageLabel = rawPageLabel.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const navLabel = NAV.flatMap((sec) => sec.pages).find(
+    (p) => p.href === `/${parts.join("/")}`,
+  )?.label;
+  const rawPageLabel =
+    navLabel ??
+    (titleM
+      ? titleM[1].replace(/ - Bascik.*$/, "").trim()
+      : parts[parts.length - 1]);
+  const pageLabel = rawPageLabel.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-  const rawSectionLabel = SECTION_LABELS[section]
-    ?? (section[0].toUpperCase() + section.slice(1));
-  const sectionLabel = rawSectionLabel.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const rawSectionLabel =
+    SECTION_LABELS[section] ?? section[0].toUpperCase() + section.slice(1);
+  const sectionLabel = rawSectionLabel
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 
-  const items: Array<{ '@type': string; position: number; name: string; item?: string }> = [
-    { '@type': 'ListItem', position: 1, name: 'Bascik', item: `${siteUrl}/` },
+  const items: Array<{
+    "@type": string;
+    position: number;
+    name: string;
+    item?: string;
+  }> = [
+    { "@type": "ListItem", position: 1, name: "Bascik", item: `${siteUrl}/` },
   ];
 
   if (SECTIONS_WITH_PAGE.has(section)) {
     items.push({
-      '@type': 'ListItem', position: 2,
-      name: sectionLabel, item: `${siteUrl}/${section}`,
+      "@type": "ListItem",
+      position: 2,
+      name: sectionLabel,
+      item: `${siteUrl}/${section}`,
     });
-    items.push({ '@type': 'ListItem', position: 3, name: pageLabel });
+    items.push({ "@type": "ListItem", position: 3, name: pageLabel });
   } else {
-    items.push({ '@type': 'ListItem', position: 2, name: pageLabel });
+    items.push({ "@type": "ListItem", position: 2, name: pageLabel });
   }
 
   const schema = {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
     itemListElement: items,
   };
 
-  return `<script type="application/ld+json">\n${JSON.stringify(schema, null, 2).replace(/</g, '\\u003c')}\n</script>`;
+  return `<script type="application/ld+json">\n${JSON.stringify(schema, null, 2).replace(/</g, "\\u003c")}\n</script>`;
 }

@@ -24,7 +24,9 @@ let previousCwd = process.cwd();
 afterEach(async () => {
   process.chdir(previousCwd);
   resetPackageIdentity();
-  await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
+  await Promise.all(
+    tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })),
+  );
 });
 
 /** Create an isolated project root and chdir into it. Returns the root. */
@@ -32,18 +34,35 @@ async function fixtureProject(label: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), `bascik-104-${label}-`));
   tempDirs.push(root);
   await mkdir(join(root, "src/pages"), { recursive: true });
-  await mkdir(join(root, "node_modules", ".cache", "bascik"), { recursive: true });
+  await mkdir(join(root, "node_modules", ".cache", "bascik"), {
+    recursive: true,
+  });
   process.chdir(root);
   resetPackageIdentity();
   return root;
 }
 
-async function writePkg(rel: string, name: string, version: string, entry: string, extraFiles: Record<string, string> = {}, exports?: Record<string, string>): Promise<void> {
+async function writePkg(
+  rel: string,
+  name: string,
+  version: string,
+  entry: string,
+  extraFiles: Record<string, string> = {},
+  exports?: Record<string, string>,
+): Promise<void> {
   const dir = join(process.cwd(), "node_modules", ...rel.split("/"));
   await mkdir(dir, { recursive: true });
-  const pkg: Record<string, unknown> = { name, version, type: "module", main: "index.mjs" };
+  const pkg: Record<string, unknown> = {
+    name,
+    version,
+    type: "module",
+    main: "index.mjs",
+  };
   if (exports) pkg.exports = exports;
-  await writeFile(join(dir, "package.json"), `${JSON.stringify(pkg, null, 2)}\n`);
+  await writeFile(
+    join(dir, "package.json"),
+    `${JSON.stringify(pkg, null, 2)}\n`,
+  );
   await writeFile(join(dir, "index.mjs"), entry);
   for (const [name_, content] of Object.entries(extraFiles)) {
     await writeFile(join(dir, name_), content);
@@ -61,11 +80,13 @@ describe("isExternalPackageSpecifier / collectPackageSpecifiers", () => {
   });
 
   it("collects distinct specifiers in stable sorted order", () => {
-    expect(collectPackageSpecifiers(`import { a } from 'zebra';
+    expect(
+      collectPackageSpecifiers(`import { a } from 'zebra';
 import { b } from 'alpha';
 import { c } from 'alpha';
 import 'node:fs';
-import d from './local.mjs';`)).toEqual(["alpha", "zebra"]);
+import d from './local.mjs';`),
+    ).toEqual(["alpha", "zebra"]);
   });
 });
 
@@ -78,8 +99,12 @@ describe("hasDynamicImport (non-cacheable classification)", () => {
 
   it("is true for dynamic non-literal imports", () => {
     expect(hasDynamicImport(`const m = await import(name);`)).toBe(true);
-    expect(hasDynamicImport("const m = await import(`./${part}.mjs`);")).toBe(true);
-    expect(hasDynamicImport("const m = await import(foo + '.mjs');")).toBe(true);
+    expect(hasDynamicImport("const m = await import(`./${part}.mjs`);")).toBe(
+      true,
+    );
+    expect(hasDynamicImport("const m = await import(foo + '.mjs');")).toBe(
+      true,
+    );
     // Member-expression arguments are genuinely dynamic (computed at runtime)
     // even though a `.` or `[` follows the argument identifier rather than `(`.
     // They must classify non-cacheable so the script re-runs every build.
@@ -102,7 +127,9 @@ describe("resolvePackages + computePackageIdentity (real node_modules)", () => {
     await writePkg("dep", "dep", "1.0.0", `export const v = "one";`);
     const [pkg] = await resolvePackages(["dep"]);
     expect(pkg?.kind).toBe("installed");
-    expect(pkg?.resolvedPath.startsWith(join(realRoot, "node_modules"))).toBe(true);
+    expect(pkg?.resolvedPath.startsWith(join(realRoot, "node_modules"))).toBe(
+      true,
+    );
   });
 
   it("classifies a symlink-escaped package (workspace) as userlinked", async () => {
@@ -110,11 +137,25 @@ describe("resolvePackages + computePackageIdentity (real node_modules)", () => {
     const realRoot = await realpath(root);
     // Real package outside node_modules, linked via directory symlink.
     await mkdir(join(realRoot, "vendor", "linked"), { recursive: true });
-    await writeFile(join(realRoot, "vendor", "linked", "package.json"),
-      JSON.stringify({ name: "linked", version: "1.0.0", main: "index.mjs", type: "module" }));
-    await writeFile(join(realRoot, "vendor", "linked", "index.mjs"), `export const v = "one";`);
+    await writeFile(
+      join(realRoot, "vendor", "linked", "package.json"),
+      JSON.stringify({
+        name: "linked",
+        version: "1.0.0",
+        main: "index.mjs",
+        type: "module",
+      }),
+    );
+    await writeFile(
+      join(realRoot, "vendor", "linked", "index.mjs"),
+      `export const v = "one";`,
+    );
     const { symlinkSync } = await import("node:fs");
-    symlinkSync(join(realRoot, "vendor", "linked"), join(realRoot, "node_modules", "linked"), "dir");
+    symlinkSync(
+      join(realRoot, "vendor", "linked"),
+      join(realRoot, "node_modules", "linked"),
+      "dir",
+    );
     const [pkg] = await resolvePackages(["linked"]);
     expect(pkg?.kind).toBe("userlinked");
     expect(pkg?.resolvedPath.startsWith(join(realRoot, "vendor"))).toBe(true);
@@ -153,31 +194,60 @@ describe("resolvePackages + computePackageIdentity (real node_modules)", () => {
     const root = await fixtureProject("linkedchange");
     const realRoot = await realpath(root);
     await mkdir(join(realRoot, "lib"), { recursive: true });
-    await writeFile(join(realRoot, "lib", "package.json"),
-      JSON.stringify({ name: "local", version: "1.0.0", main: "index.mjs", type: "module" }));
-    await writeFile(join(realRoot, "lib", "index.mjs"), `export const v = "one";`);
+    await writeFile(
+      join(realRoot, "lib", "package.json"),
+      JSON.stringify({
+        name: "local",
+        version: "1.0.0",
+        main: "index.mjs",
+        type: "module",
+      }),
+    );
+    await writeFile(
+      join(realRoot, "lib", "index.mjs"),
+      `export const v = "one";`,
+    );
     const { symlinkSync } = await import("node:fs");
-    symlinkSync(join(realRoot, "lib"), join(realRoot, "node_modules", "local"), "dir");
+    symlinkSync(
+      join(realRoot, "lib"),
+      join(realRoot, "node_modules", "local"),
+      "dir",
+    );
 
     const before = await computePackageIdentity(["local"]);
-    await writeFile(join(realRoot, "lib", "index.mjs"), `export const v = "two";`);
+    await writeFile(
+      join(realRoot, "lib", "index.mjs"),
+      `export const v = "two";`,
+    );
     const after = await computePackageIdentity(["local"]);
     expect(before).not.toBe(after);
   });
 
   it("a transitive package change reached via a subpath export invalidates the graph", async () => {
     await fixtureProject("transitive");
-    await writePkg("dep-base", "dep-base", "1.0.0", `export const value = "A";`);
+    await writePkg(
+      "dep-base",
+      "dep-base",
+      "1.0.0",
+      `export const value = "A";`,
+    );
     await writePkg(
       "audit-lib",
       "audit-lib",
       "1.0.0",
       `export const top = 1;`,
-      { "sub.mjs": `import { value } from 'dep-base'; export const sub = value;` },
+      {
+        "sub.mjs": `import { value } from 'dep-base'; export const sub = value;`,
+      },
       { ".": "./index.mjs", "./sub": "./sub.mjs" },
     );
     const before = await computePackageIdentity(["audit-lib/sub"]);
-    await writePkg("dep-base", "dep-base", "1.0.0", `export const value = "B";`);
+    await writePkg(
+      "dep-base",
+      "dep-base",
+      "1.0.0",
+      `export const value = "B";`,
+    );
     const after = await computePackageIdentity(["audit-lib/sub"]);
     expect(before).not.toBe(after);
   });
@@ -188,8 +258,14 @@ describe("resolvePackages + computePackageIdentity (real node_modules)", () => {
     await writePkg("a", "a", "1.0.0", `export const v = "a";`);
     await writePkg("b", "b", "1.0.0", `export const v = "b";`);
     // a imports b; b imports a (cycle).
-    await writeFile(join(nm, "a", "index.mjs"), `import { v } from 'b'; export const a = v;`);
-    await writeFile(join(nm, "b", "index.mjs"), `import { v } from 'a'; export const b = v;`);
+    await writeFile(
+      join(nm, "a", "index.mjs"),
+      `import { v } from 'b'; export const a = v;`,
+    );
+    await writeFile(
+      join(nm, "b", "index.mjs"),
+      `import { v } from 'a'; export const b = v;`,
+    );
     const first = await computePackageIdentity(["b", "a"]);
     const second = await computePackageIdentity(["a", "b"]);
     expect(first).toBe(second);

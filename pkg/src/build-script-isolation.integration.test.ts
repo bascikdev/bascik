@@ -27,11 +27,19 @@ describe("build-script per-script output isolation (real child processes)", () =
         try {
           await createFixtureDirs(root);
           await writeBuildScriptConfig(root, workers);
-          await writeFixtureFile(root, "src/lib/helper.js", `
+          await writeFixtureFile(
+            root,
+            "src/lib/helper.js",
+            `
             export let counter = 0;
             export const next = () => ++counter;
-          `);
-          await writeFixtureFile(root, "src/pages/index.html", twoScriptPageTemplate());
+          `,
+          );
+          await writeFixtureFile(
+            root,
+            "src/pages/index.html",
+            twoScriptPageTemplate(),
+          );
 
           // COLD: both scripts are cache misses.
           await runRealBuildScriptBuild(root);
@@ -48,11 +56,17 @@ describe("build-script per-script output isolation (real child processes)", () =
           // PARTIAL-HIT: change ONLY the second script body; script A stays
           // cached (cache key only covers A's own deps), while script B runs
           // alone in its own process and must still see its own counter=1.
-          await writeFixtureFile(root, "src/pages/index.html", twoScriptPageTemplate("\n// a comment only on script B"));
+          await writeFixtureFile(
+            root,
+            "src/pages/index.html",
+            twoScriptPageTemplate("\n// a comment only on script B"),
+          );
           await runRealBuildScriptBuild(root);
           const partialHtml = await readDistHtml(root, "index.html");
           expect(partialHtml).toContain('data-testid="count-a">first:1</span>');
-          expect(partialHtml).toContain('data-testid="count-b">second:1</span>');
+          expect(partialHtml).toContain(
+            'data-testid="count-b">second:1</span>',
+          );
           expect(partialHtml).not.toContain("second:2");
         } finally {
           await cleanupFixture(root);
@@ -69,7 +83,10 @@ describe("build-script per-script output isolation (real child processes)", () =
       // Script A schedules setImmediate output that resolves AFTER its own
       // return; script B awaits a setImmediate before returning. A's detached
       // output must never be captured by B's transport envelope.
-      await writeFixtureFile(root, "src/pages/index.html", `<!DOCTYPE html><html><head><title>d</title></head><body>
+      await writeFixtureFile(
+        root,
+        "src/pages/index.html",
+        `<!DOCTYPE html><html><head><title>d</title></head><body>
 <script data-bascik-build>
 setImmediate(() => console.log('A-LATE'));
 export default function () {
@@ -82,7 +99,8 @@ export default async function () {
   return '<span data-testid="b">B</span>';
 }
 </script>
-</body></html>`);
+</body></html>`,
+      );
       const { stdout } = await runRealBuildScriptBuild(root);
       expect(stdout).toContain("A-LATE");
       const html = await readDistHtml(root, "index.html");
@@ -100,14 +118,18 @@ export default async function () {
     try {
       await createFixtureDirs(root);
       await writeBuildScriptConfig(root, false, "warn");
-      await writeFixtureFile(root, "src/pages/index.html", `<!DOCTYPE html><html><head><title>t</title></head><body>
+      await writeFixtureFile(
+        root,
+        "src/pages/index.html",
+        `<!DOCTYPE html><html><head><title>t</title></head><body>
 <script data-bascik-build>export default () => '<span data-testid="ok">healthy</span>';</script>
 <script data-bascik-build>
 export default function () {
   throw new Error('sibling failure');
 }
 </script>
-</body></html>`);
+</body></html>`,
+      );
       const { stderr } = await runRealBuildScriptBuild(root);
       expect(stderr).toContain("sibling failure");
       const html = await readDistHtml(root, "index.html");

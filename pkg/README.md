@@ -146,12 +146,12 @@ The tag must equal the prefix plus the package's `package.json` version. Prerele
 
 ### Tag scheme
 
-| Package | Tag format | Example |
-|---|---|---|
-| `@bascik/bascik` (`pkg/`) | `v<semver>` | `v0.3.0` |
-| `create-bascik` (`create/`) | `create-v<semver>` | `create-v0.2.0` |
+| Package                                               | Tag format                     | Example                     |
+| ----------------------------------------------------- | ------------------------------ | --------------------------- |
+| `@bascik/bascik` (`pkg/`)                             | `v<semver>`                    | `v0.3.0`                    |
+| `create-bascik` (`create/`)                           | `create-v<semver>`             | `create-v0.2.0`             |
 | `@bascik/adapter-cloudflare` (`adapters/cloudflare/`) | `adapter-cloudflare-v<semver>` | `adapter-cloudflare-v1.0.0` |
-| `@bascik/language-server` (`lsp/`) | `lsp-v<semver>` | `lsp-v0.1.0` |
+| `@bascik/language-server` (`lsp/`)                    | `lsp-v<semver>`                | `lsp-v0.1.0`                |
 
 The `if:` condition on each workflow job ensures only the relevant package is published when a tag is pushed.
 
@@ -245,8 +245,8 @@ yarn pkg:bench
 
 **Baseline numbers (Node.js 24, Apple M-series):**
 
-| Scenario                               | ops/sec | mean latency |
-| -------------------------------------- | ------- | ------------ |
+| Scenario                              | ops/sec | mean latency |
+| ------------------------------------- | ------- | ------------ |
 | `minifyHtml`: small HTML              | ~138K   | ~7.2µs       |
 | `minifyHtml`: large HTML (50×)        | ~81     | ~12.4ms      |
 | `getTag`: paired                      | ~778K   | ~1.3µs       |

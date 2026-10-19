@@ -52,7 +52,7 @@ Bascik keeps HTML relationships synchronized with scoped IDs. References such as
 
 ```html
 <label for="email">Email</label>
-<input id="email" aria-describedby="email-help">
+<input id="email" aria-describedby="email-help" />
 <p id="email-help">Use your work address.</p>
 ```
 
@@ -69,7 +69,7 @@ Because class names are shared across all instances of the same component (for C
 **Use `id` + `getElementById` instead:**
 
 ```html
-<!-- ❌ Broken for multiple instances - querySelector returns first instance's button -->
+<!-- Broken for multiple instances - querySelector returns first instance's button -->
 <button class="my-btn">Click</button>
 <script>
   document.querySelector('.my-btn').addEventListener('click', () => { … });
@@ -77,7 +77,7 @@ Because class names are shared across all instances of the same component (for C
 ```
 
 ```html
-<!-- ✅ Correct - id is scoped per instance -->
+<!-- Correct - id is scoped per instance -->
 <button id="my-btn" class="my-btn">Click</button>
 <script>
   document.getElementById('my-btn').addEventListener('click', () => { … });
@@ -128,23 +128,30 @@ If a class is only toggled at runtime (`classList.toggle("is-open")`) but doesn'
 The toggle below registers `is-open` on a hidden element, then safely applies that scoped class at runtime.
 
 <!-- demo:runtime-class-usage -->
+
 ```html
 <state-toggle />
 ```
 
 <!-- demo:runtime-class-html -->
+
 ```html
 <section class="state-toggle">
   <div class="is-open" hidden></div>
   <p id="status">Panel closed</p>
   <button id="toggle" type="button">Toggle panel</button>
-  <div class="state-toggle-panel" id="panel">Only this component instance changes.</div>
+  <div class="state-toggle-panel" id="panel">
+    Only this component instance changes.
+  </div>
 </section>
 ```
 
 <!-- demo:runtime-class-css -->
+
 ```css
-.state-toggle-panel { opacity: 0.55; }
+.state-toggle-panel {
+  opacity: 0.55;
+}
 .state-toggle-panel.is-open {
   border-color: #d3ff8d;
   opacity: 1;
@@ -152,37 +159,46 @@ The toggle below registers `is-open` on a hidden element, then safely applies th
 ```
 
 <!-- demo:runtime-class-js -->
-```js
-const status = document.getElementById('status');
-const toggle = document.getElementById('toggle');
-const panel = document.getElementById('panel');
 
-toggle.addEventListener('click', () => {
-  const isOpen = panel.classList.toggle('is-open');
-  status.textContent = isOpen ? 'Panel open' : 'Panel closed';
+```js
+const status = document.getElementById("status");
+const toggle = document.getElementById("toggle");
+const panel = document.getElementById("panel");
+
+toggle.addEventListener("click", () => {
+  const isOpen = panel.classList.toggle("is-open");
+  status.textContent = isOpen ? "Panel open" : "Panel closed";
 });
 ```
 
 <!-- demo:runtime-class-output-html -->
+
 ```html
 <section class="bascik__state-toggle__state-toggle">
   <div class="bascik__state-toggle__is-open" hidden></div>
   <p id="bascik__state-toggle__a1b2__status">Panel closed</p>
-  <button id="bascik__state-toggle__a1b2__toggle" type="button">Toggle panel</button>
-  <div class="bascik__state-toggle__state-toggle-panel"
-       id="bascik__state-toggle__a1b2__panel">Only this component instance changes.</div>
+  <button id="bascik__state-toggle__a1b2__toggle" type="button">
+    Toggle panel
+  </button>
+  <div
+    class="bascik__state-toggle__state-toggle-panel"
+    id="bascik__state-toggle__a1b2__panel"
+  >
+    Only this component instance changes.
+  </div>
 </section>
 ```
 
 <!-- demo:runtime-class-output-js -->
-```js
-const status = document.getElementById('bascik__state-toggle__a1b2__status');
-const toggle = document.getElementById('bascik__state-toggle__a1b2__toggle');
-const panel = document.getElementById('bascik__state-toggle__a1b2__panel');
 
-toggle.addEventListener('click', () => {
-  const isOpen = panel.classList.toggle('bascik__state-toggle__is-open');
-  status.textContent = isOpen ? 'Panel open' : 'Panel closed';
+```js
+const status = document.getElementById("bascik__state-toggle__a1b2__status");
+const toggle = document.getElementById("bascik__state-toggle__a1b2__toggle");
+const panel = document.getElementById("bascik__state-toggle__a1b2__panel");
+
+toggle.addEventListener("click", () => {
+  const isOpen = panel.classList.toggle("bascik__state-toggle__is-open");
+  status.textContent = isOpen ? "Panel open" : "Panel closed";
 });
 ```
 
@@ -192,17 +208,17 @@ All of the following DOM methods are rewritten when they reference a scoped attr
 
 ```js
 // id attribute
-document.getElementById("my-id")
-document.querySelector("#my-id")
-document.querySelectorAll("#my-id")
+document.getElementById("my-id");
+document.querySelector("#my-id");
+document.querySelectorAll("#my-id");
 
 // class attribute
-document.getElementsByClassName("my-class")
-document.querySelector(".my-class")
-document.querySelectorAll(".my-class")
+document.getElementsByClassName("my-class");
+document.querySelector(".my-class");
+document.querySelectorAll(".my-class");
 
 // name attribute
-document.getElementsByName("my-name")
+document.getElementsByName("my-name");
 ```
 
 Additional rewritten forms include `element.closest()`, `element.matches()`, `element.classList.add/remove/toggle/contains()`, `element.setAttribute("class", …)` and `element.setAttribute("id", …)` with string literal values, and `element.className` setter forms.
@@ -213,11 +229,11 @@ Additional rewritten forms include `element.closest()`, `element.matches()`, `el
 
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
-  import { marked } from 'marked';
+  import { readFile } from "node:fs/promises";
+  import { marked } from "marked";
 
   export default async function () {
-    const md = await readFile('./content/posts/intro.md', 'utf8');
+    const md = await readFile("./content/posts/intro.md", "utf8");
     return marked(md);
   }
 </script>
@@ -250,9 +266,12 @@ Bascik ships vanilla JavaScript to the browser and never emits raw TypeScript on
 
 ```ts
 // src/components/counter/counter.ts
-const count = document.getElementById('count') as HTMLElement;
+const count = document.getElementById("count") as HTMLElement;
 let n: number = 0;
-count.addEventListener('click', () => { n++; count.textContent = String(n); });
+count.addEventListener("click", () => {
+  n++;
+  count.textContent = String(n);
+});
 ```
 
 **Inline blocks marked as TypeScript.** For a short inline script, opt in with the `text/typescript` MIME type. Bascik strips the types and emits an ordinary `<script>`; the `type` attribute is removed in the output:
@@ -295,12 +314,14 @@ The scoping format:
 > **Under the hood.** Read the [Scoping System internals](/internals/scoping-system) for the compiler passes, attribute maps, selector rewriting, and CSS deduplication that produce this output.
 
 <!-- demo:source-usage -->
+
 ```html
 <demo-counter data-bascik-prop-label="Counter A"></demo-counter>
 <demo-counter data-bascik-prop-label="Counter B"></demo-counter>
 ```
 
 <!-- demo:source-html -->
+
 ```html
 <div class="ctr">
   <span class="ctr-label" data-bascik-prop-label>Counter</span>
@@ -313,20 +334,23 @@ The scoping format:
 ```
 
 <!-- demo:source-css -->
+
 ```css
 .ctr {
   background: #242628;
   border: 1px solid #3a3d40;
   border-radius: 10px;
   padding: 24px 20px;
-  transition: border-color .2s;
+  transition: border-color 0.2s;
 }
-.ctr:hover { border-color: rgba(211,255,141,0.35); }
+.ctr:hover {
+  border-color: rgba(211, 255, 141, 0.35);
+}
 .ctr-label {
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .1em;
+  letter-spacing: 0.1em;
   color: #8d929e;
 }
 .ctr-count {
@@ -336,8 +360,10 @@ The scoping format:
   color: #d3ff8d;
   line-height: 1;
 }
-.ctr-dec, .ctr-inc {
-  width: 40px; height: 40px;
+.ctr-dec,
+.ctr-inc {
+  width: 40px;
+  height: 40px;
   border-radius: 6px;
   font-size: 1.1rem;
   cursor: pointer;
@@ -346,46 +372,66 @@ The scoping format:
   color: #f0f1f2;
 }
 .ctr-inc {
-  background: rgba(211,255,141,0.12);
-  border-color: rgba(211,255,141,0.3);
+  background: rgba(211, 255, 141, 0.12);
+  border-color: rgba(211, 255, 141, 0.3);
   color: #d3ff8d;
   font-weight: 700;
 }
 ```
 
 <!-- demo:source-js -->
+
 ```ts
-const count = document.getElementById('count') as HTMLElement;
-const dec   = document.getElementById('dec') as HTMLButtonElement;
-const inc   = document.getElementById('inc') as HTMLButtonElement;
+const count = document.getElementById("count") as HTMLElement;
+const dec = document.getElementById("dec") as HTMLButtonElement;
+const inc = document.getElementById("inc") as HTMLButtonElement;
 let n: number = 0;
-dec.addEventListener('click', () => { n--; count.textContent = String(n); });
-inc.addEventListener('click', () => { n++; count.textContent = String(n); });
+dec.addEventListener("click", () => {
+  n--;
+  count.textContent = String(n);
+});
+inc.addEventListener("click", () => {
+  n++;
+  count.textContent = String(n);
+});
 ```
 
 <!-- demo:output-html -->
+
 ```html
 <div class="bascik__demo-counter__ctr">
   <span class="bascik__demo-counter__ctr-label">Counter A</span>
-  <span class="bascik__demo-counter__ctr-count"
-        id="bascik__demo-counter__a1b2__count">0</span>
+  <span
+    class="bascik__demo-counter__ctr-count"
+    id="bascik__demo-counter__a1b2__count"
+    >0</span
+  >
   <div class="bascik__demo-counter__ctr-btns">
-    <button class="bascik__demo-counter__ctr-dec"
-            id="bascik__demo-counter__a1b2__dec">−</button>
-    <button class="bascik__demo-counter__ctr-inc"
-            id="bascik__demo-counter__a1b2__inc">+</button>
+    <button
+      class="bascik__demo-counter__ctr-dec"
+      id="bascik__demo-counter__a1b2__dec"
+    >
+      −
+    </button>
+    <button
+      class="bascik__demo-counter__ctr-inc"
+      id="bascik__demo-counter__a1b2__inc"
+    >
+      +
+    </button>
   </div>
 </div>
 ```
 
 <!-- demo:output-css -->
+
 ```css
 .bascik__demo-counter__ctr {
   background: #242628;
   border: 1px solid #3a3d40;
   border-radius: 10px;
   padding: 24px 20px;
-  transition: border-color .2s;
+  transition: border-color 0.2s;
 }
 .bascik__demo-counter__ctr-count {
   font-family: monospace;
@@ -397,13 +443,20 @@ inc.addEventListener('click', () => { n++; count.textContent = String(n); });
 ```
 
 <!-- demo:output-js -->
+
 ```js
-(function() {
+(function () {
   const count = document.getElementById("bascik__demo-counter__a1b2__count");
-  const dec   = document.getElementById("bascik__demo-counter__a1b2__dec");
-  const inc   = document.getElementById("bascik__demo-counter__a1b2__inc");
+  const dec = document.getElementById("bascik__demo-counter__a1b2__dec");
+  const inc = document.getElementById("bascik__demo-counter__a1b2__inc");
   let n = 0;
-  dec.addEventListener("click", () => { n--; count.textContent = n; });
-  inc.addEventListener("click", () => { n++; count.textContent = n; });
+  dec.addEventListener("click", () => {
+    n--;
+    count.textContent = n;
+  });
+  inc.addEventListener("click", () => {
+    n++;
+    count.textContent = n;
+  });
 })();
 ```

@@ -1,7 +1,8 @@
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { SpecifierEdit } from "./module-specifiers.ts";
 
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
  * Bascik's own modules: the files directly in this directory, by file URL or by
@@ -21,10 +22,15 @@ const BASCIK_MODULE_FRAME_RE = new RegExp(
  */
 export const KEEP_INTERNAL_FRAMES_ENV = "BASCIK_KEEP_INTERNAL_FRAMES";
 const isBascikFrame = (line: string): boolean =>
-  process.env[KEEP_INTERNAL_FRAMES_ENV] !== "1" && BASCIK_MODULE_FRAME_RE.test(line);
+  process.env[KEEP_INTERNAL_FRAMES_ENV] !== "1" &&
+  BASCIK_MODULE_FRAME_RE.test(line);
 
 /** The column in the source for `column` on `line` of a module whose specifiers were rewritten by `edits`. */
-const sourceColumnFor = (edits: readonly SpecifierEdit[], line: number, column: number): number => {
+const sourceColumnFor = (
+  edits: readonly SpecifierEdit[],
+  line: number,
+  column: number,
+): number => {
   let shift = 0;
   for (const edit of edits) {
     if (edit.line !== line) continue;
@@ -50,14 +56,23 @@ export const remapRewrittenColumns = (
   edits: readonly SpecifierEdit[],
 ): string => {
   if (!rawTrace || edits.length === 0) return rawTrace;
-  const references = moduleReferences.filter(Boolean).map(escapeRegExp).join("|");
+  const references = moduleReferences
+    .filter(Boolean)
+    .map(escapeRegExp)
+    .join("|");
   if (!references) return rawTrace;
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const frameRe = new RegExp(`(?<![\\w./-])((?:${references})(?:\\?bascik-gen=\\d+)?):(\\d+):(\\d+)`, "g");
-  return rawTrace.replace(frameRe, (_match, reference: string, lineText: string, columnText: string) => {
-    const line = Number(lineText);
-    return `${reference}:${line}:${sourceColumnFor(edits, line, Number(columnText))}`;
-  });
+  const frameRe = new RegExp(
+    `(?<![\\w./-])((?:${references})(?:\\?bascik-gen=\\d+)?):(\\d+):(\\d+)`,
+    "g",
+  );
+  return rawTrace.replace(
+    frameRe,
+    (_match, reference: string, lineText: string, columnText: string) => {
+      const line = Number(lineText);
+      return `${reference}:${line}:${sourceColumnFor(edits, line, Number(columnText))}`;
+    },
+  );
 };
 
 /** A stack frame that names a source location (`file:line:column`), as opposed to a builtin such as `Promise.all (index 1)`. */
@@ -78,29 +93,44 @@ export const cleanStackTrace = (
 ): string => {
   if (!rawTrace) return rawTrace;
 
-  // Escaping backslashes for Windows paths
-  const escapedTmpPath = tmpPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-  // Also support file:// URI schemes in stack traces
-  let fileUri = tmpPath;
+  // Match file:// URLs, POSIX paths, Windows backslash paths, and forward-slash Windows paths.
+  const normalizedTmpPath = tmpPath.replace(/\\/g, "/");
+  let fileUri = `file://${normalizedTmpPath}`;
   try {
     fileUri = pathToFileURL(tmpPath).href;
-  } catch { }
-  const escapedFileUri = fileUri.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  } catch {}
+  const tripleSlashFileUri = `file:///${normalizedTmpPath.replace(/^\/+/, "")}`;
+  const posixFileUri = `file://${normalizedTmpPath}`;
+  const candidates = [
+    ...new Set([
+      fileUri,
+      tripleSlashFileUri,
+      posixFileUri,
+      tmpPath,
+      normalizedTmpPath,
+    ]),
+  ].map(escapeRegExp);
 
   // In development the registry imports each generation under
   // `?bascik-gen=N`, and V8 reports that full URL in stack frames. The query
   // is optional here so every generation remaps to the same authored source.
-  const regex = new RegExp(`(?:${escapedFileUri}|${escapedTmpPath})(?:\\?bascik-gen=\\d+)?:(\\d+)(?::(\\d+))?`, "g");
+  const regex = new RegExp(
+    `(?:${candidates.join("|")})(?:\\?bascik-gen=\\d+)?:(\\d+)(?::(\\d+))?`,
+    "g",
+  );
 
   const mappedTrace = rawTrace
-    .replace(regex, (_match, lineStr: string, columnStr: string | undefined) => {
-      const lineNum = parseInt(lineStr, 10);
-      const mappedLine = lineOffset + lineNum - 1;
-      if (columnStr === undefined) return `${realPath}:${mappedLine}`;
-      const columnNum = parseInt(columnStr, 10) + (lineNum === 1 ? firstLineColumnOffset : 0);
-      return `${realPath}:${mappedLine}:${columnNum}`;
-    })
+    .replace(
+      regex,
+      (_match, lineStr: string, columnStr: string | undefined) => {
+        const lineNum = parseInt(lineStr, 10);
+        const mappedLine = lineOffset + lineNum - 1;
+        if (columnStr === undefined) return `${realPath}:${mappedLine}`;
+        const columnNum =
+          parseInt(columnStr, 10) + (lineNum === 1 ? firstLineColumnOffset : 0);
+        return `${realPath}:${mappedLine}:${columnNum}`;
+      },
+    )
     // Helpers imported by the entry are loaded under their own generation URL
     // by the dev module graph hook. Their frames keep the helper's path (it is
     // the authored file) but the framework marker is noise, so it is removed
@@ -128,7 +158,11 @@ export const cleanStackTrace = (
     }
 
     // Skip node:internal or other node: internal module stack frames
-    if (line.includes("node:internal/") || line.includes("node:diagnostics_channel") || /\(node:/.test(line)) {
+    if (
+      line.includes("node:internal/") ||
+      line.includes("node:diagnostics_channel") ||
+      /\(node:/.test(line)
+    ) {
       if (line.endsWith(" {") && filteredLines.length > 0) {
         const lastIdx = filteredLines.length - 1;
         if (!filteredLines[lastIdx].endsWith(" {")) {

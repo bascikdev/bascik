@@ -13,6 +13,7 @@ Set `data-bascik-prop-{name}="value"` on the component tag. The value is injecte
 Prop values are HTML-escaped when injected, so `&`, `<`, `>`, quotes, and apostrophes render as text rather than markup. Use entity-encoded quotes such as `&quot;` or `&#39;` inside the usage attribute. Use a [slot](/slots) when the value should be interpreted as HTML.
 
 <!-- demo:basic-props-html -->
+
 ```html
 <aside class="alert-box">
   <strong class="alert-box-title" data-bascik-prop-title>Notice</strong>
@@ -23,6 +24,7 @@ Prop values are HTML-escaped when injected, so `&`, `<`, `>`, quotes, and apostr
 ```
 
 <!-- demo:basic-props-css -->
+
 ```css
 .alert-box {
   padding: 20px;
@@ -32,18 +34,23 @@ Prop values are HTML-escaped when injected, so `&`, `<`, `>`, quotes, and apostr
 ```
 
 <!-- demo:basic-props-usage -->
+
 ```html
 <alert-box
   data-bascik-prop-title="Success"
-  data-bascik-prop-message="Your changes have been saved.">
+  data-bascik-prop-message="Your changes have been saved."
+>
 </alert-box>
 ```
 
 <!-- demo:basic-props-output-html -->
+
 ```html
 <aside class="bascik__alert-box__alert-box">
   <strong class="bascik__alert-box__alert-box-title">Success</strong>
-  <p class="bascik__alert-box__alert-box-message">Your changes have been saved.</p>
+  <p class="bascik__alert-box__alert-box-message">
+    Your changes have been saved.
+  </p>
 </aside>
 ```
 
@@ -66,7 +73,7 @@ Use `data-bascik-attr-{attribute}="{propName}"` when the same prop values should
 ```html
 <!-- component template -->
 <article class="card">
-  <img data-bascik-attr-src="image" data-bascik-attr-alt="alt">
+  <img data-bascik-attr-src="image" data-bascik-attr-alt="alt" />
   <a data-bascik-attr-href="link">Read more</a>
 </article>
 
@@ -74,7 +81,8 @@ Use `data-bascik-attr-{attribute}="{propName}"` when the same prop values should
 <media-card
   data-bascik-prop-image="/images/launch.jpg"
   data-bascik-prop-alt="Product launch"
-  data-bascik-prop-link="/launch">
+  data-bascik-prop-link="/launch"
+>
 </media-card>
 ```
 
@@ -89,9 +97,7 @@ The [Copy Button](/example-components/copy-button) example binds its `text` prop
 Prop names use the portion of the attribute after `data-bascik-prop-`. You can use lowercase alphanumeric names with hyphens:
 
 ```html
-data-bascik-prop-title
-data-bascik-prop-href
-data-bascik-prop-alt-text
+data-bascik-prop-title data-bascik-prop-href data-bascik-prop-alt-text
 data-bascik-prop-icon-url
 ```
 
@@ -136,7 +142,8 @@ A common pattern is a card component with a configurable label, title, and descr
 <feature-card
   data-bascik-prop-label="New"
   data-bascik-prop-title="Live Reload"
-  data-bascik-prop-desc="Automatic browser reload on every change.">
+  data-bascik-prop-desc="Automatic browser reload on every change."
+>
 </feature-card>
 ```
 
@@ -145,14 +152,17 @@ A common pattern is a card component with a configurable label, title, and descr
 This example passes values directly into the `feature-card` component via `data-bascik-prop-*` attributes.
 
 <!-- demo:source-usage -->
+
 ```html
 <feature-card
   data-bascik-prop-title="Component Props"
-  data-bascik-prop-desc="These values are injected into the component template at build time.">
+  data-bascik-prop-desc="These values are injected into the component template at build time."
+>
 </feature-card>
 ```
 
 <!-- demo:source-html -->
+
 ```html
 <div class="fcard">
   <h3 data-bascik-prop-title></h3>
@@ -161,6 +171,7 @@ This example passes values directly into the `feature-card` component via `data-
 ```
 
 <!-- demo:source-css -->
+
 ```css
 .fcard {
   padding: 24px;
@@ -168,20 +179,28 @@ This example passes values directly into the `feature-card` component via `data-
   border: 1px solid #3a3d40;
   border-radius: 10px;
 
-  h3 { color: #f0f1f2; }
-  p  { font-size: 0.875rem; color: #8d929e; }
+  h3 {
+    color: #f0f1f2;
+  }
+  p {
+    font-size: 0.875rem;
+    color: #8d929e;
+  }
 
   &:hover {
-    border-color: rgba(211,255,141,0.35);
-    box-shadow: 0 0 0 1px rgba(211,255,141,0.12);
+    border-color: rgba(211, 255, 141, 0.35);
+    box-shadow: 0 0 0 1px rgba(211, 255, 141, 0.12);
   }
 }
 ```
 
 <!-- demo:output-html -->
+
 ```html
 <div class="bascik__feature-card__fcard">
   <h3 class="bascik__feature-card__el__h3">Component Props</h3>
-  <p class="bascik__feature-card__el__p">These values are injected into the component template at build time.</p>
+  <p class="bascik__feature-card__el__p">
+    These values are injected into the component template at build time.
+  </p>
 </div>
 ```

@@ -1,11 +1,17 @@
 import { matchesGlob, relative, resolve } from "node:path";
 
-export const matchesPageGlob = (pagePath: string, pattern: string, pagesDir: string): boolean => {
+export const matchesPageGlob = (
+  pagePath: string,
+  pattern: string,
+  pagesDir: string,
+): boolean => {
   const absPage = resolve(process.cwd(), pagePath);
   const absPagesDir = resolve(process.cwd(), pagesDir);
   const rel = relative(absPagesDir, absPage).replace(/\\/g, "/");
 
-  return matchesGlob(rel, pattern) || matchesGlob(rel.replace(/^\.?\//, ""), pattern);
+  return (
+    matchesGlob(rel, pattern) || matchesGlob(rel.replace(/^\.?\//, ""), pattern)
+  );
 };
 
 export const filterPagesByOnlyGlobs = (
@@ -28,7 +34,9 @@ export const filterPagesByOnlyGlobs = (
       }
     }
     if (globMatchedCount === 0) {
-      throw new Error(`[bascik] error: --only "${glob}" matched no pages in "${pagesDir}".`);
+      throw new Error(
+        `[bascik] error: --only "${glob}" matched no pages in "${pagesDir}".`,
+      );
     }
   }
 

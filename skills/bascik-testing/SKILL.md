@@ -15,12 +15,12 @@ Requires the `bascik` skill for project basics and its `scripts/verify.mjs` for 
 
 Run cheapest first and stop at the first failure:
 
-1. `npx bascik --check` (structure, config, references) and `npx @bascik/language-server --check` (scoping patterns, unclosed tags). `node <skills-dir>/bascik/scripts/verify.mjs` runs both.
+1. `npx bascik --check`: project checks (config, routes, references) plus, when `@bascik/language-server` is installed, the per-file checks (scoping patterns, unclosed tags). `node <skills-dir>/bascik/scripts/verify.mjs` runs it and also covers component folders outside the project.
 2. `npx vitest run` for unit tests of pure logic.
 3. `BASCIK_SITE_URL=https://example.com npx bascik --build`, then inspect `dist/` or run `verify.mjs --build`.
 4. `npx playwright test` against the built site or the dev server.
 
-CI gate: `bascik --check && bascik-language-server --check && vitest run && bascik --build && playwright test`.
+CI gate: `bascik --check && vitest run && bascik --build && playwright test`. `bascik --check` already runs the per-file checks, so there is no separate linter step. Add `bascik-language-server --check <dir>` only for a component folder outside the project.
 
 ## Unit tests: extract pure logic
 
@@ -32,8 +32,8 @@ Component scripts are IIFEs and cannot be imported. Test logic, not DOM wiring:
 
 ```ts
 // vite.config.ts
-import { defineConfig } from 'vite';
-export default defineConfig({ test: { include: ['src/**/*.test.ts'] } });
+import { defineConfig } from "vite";
+export default defineConfig({ test: { include: ["src/**/*.test.ts"] } });
 ```
 
 Server, stream, and API logic: put it in `src/lib/*.ts`, unit test the functions, and cover the HTTP layer with requests against the dev server or `bascik --server`.
@@ -48,14 +48,14 @@ Server, stream, and API logic: put it in `src/lib/*.ts`, unit test the functions
 - Test against the production build (`bascik --build` served statically, or `bascik --server`), not only the dev server: script placement and identifiers differ.
 
 ```ts
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
-test('each like button toggles independently', async ({ page }) => {
-  await page.goto('/');
-  const buttons = page.getByTestId('like-button');
+test("each like button toggles independently", async ({ page }) => {
+  await page.goto("/");
+  const buttons = page.getByTestId("like-button");
   await buttons.first().click();
-  await expect(buttons.first()).toHaveAttribute('aria-pressed', 'true');
-  await expect(buttons.last()).toHaveAttribute('aria-pressed', 'false');
+  await expect(buttons.first()).toHaveAttribute("aria-pressed", "true");
+  await expect(buttons.last()).toHaveAttribute("aria-pressed", "false");
 });
 ```
 
@@ -78,11 +78,11 @@ Bascik output starts near 100 because it adds no runtime. The remaining points c
 
 ## Look it up
 
-| How do I... | Read |
-|---|---|
-| Unit test helpers and handlers | `/testing/unit-testing` |
-| Test components in a browser | `/testing/component-testing`, `/testing/e2e-testing` |
+| How do I...                          | Read                                                                         |
+| ------------------------------------ | ---------------------------------------------------------------------------- |
+| Unit test helpers and handlers       | `/testing/unit-testing`                                                      |
+| Test components in a browser         | `/testing/component-testing`, `/testing/e2e-testing`                         |
 | Test build, server, and exec scripts | `/testing/build-scripts`, `/testing/server-scripts`, `/testing/exec-scripts` |
-| Lint in CI | `/testing/linting`, `/tools/linter` |
+| Lint in CI                           | `/testing/linting`, `/tools/linter`                                          |
 
 `node <skills-dir>/bascik/scripts/read-doc.mjs <path>` prints any of these.

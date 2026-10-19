@@ -22,7 +22,11 @@ vi.mock("./config.js", async (importOriginal) => {
     BascikConfig: {
       ...original.BascikConfig,
       minify: { html: false, css: false, js: false, identifiers: false },
-      scoping: { ...original.BascikConfig.scoping, deduplicateCss: true, preserve: ["code"] },
+      scoping: {
+        ...original.BascikConfig.scoping,
+        deduplicateCss: true,
+        preserve: ["code"],
+      },
     },
   };
 });
@@ -33,9 +37,14 @@ const run = (body: string, list: ComponentList, filePath?: string) =>
 describe("cursor scan falsification fixtures", () => {
   it("resolves a component whose template BEGINS with another component", () => {
     const list: ComponentList = {
-      "outer-box": { fileContent: `<inner-dot></inner-dot><span class="after">after</span>` },
+      "outer-box": {
+        fileContent: `<inner-dot></inner-dot><span class="after">after</span>`,
+      },
       // Only classes a component's own stylesheet defines are renamed.
-      "inner-dot": { fileContent: `<i class="dot">.</i>`, cssFileContent: ".dot { color: red; }" },
+      "inner-dot": {
+        fileContent: `<i class="dot">.</i>`,
+        cssFileContent: ".dot { color: red; }",
+      },
     };
     const out = run(`<outer-box></outer-box><outer-box></outer-box>`, list);
     expect(out).not.toContain("<inner-dot");
@@ -45,7 +54,10 @@ describe("cursor scan falsification fixtures", () => {
 
   it("resolves a nested same-name component to the balanced close tag", () => {
     const list: ComponentList = {
-      "my-list": { fileContent: `<ul class="l"><li data-bascik-slot></li></ul>`, cssFileContent: ".l { margin: 0; }" },
+      "my-list": {
+        fileContent: `<ul class="l"><li data-bascik-slot></li></ul>`,
+        cssFileContent: ".l { margin: 0; }",
+      },
     };
     const out = run(`<my-list>a<my-list>b</my-list>c</my-list>`, list);
     expect(out).toBe(
@@ -62,32 +74,43 @@ describe("cursor scan falsification fixtures", () => {
           `<textarea><ghost-a></ghost-a></textarea>` +
           `<!-- <ghost-a></ghost-a> --><ghost-a></ghost-a></div>`,
       },
-      "ghost-a": { fileContent: `<b class="g">REAL</b>`, cssFileContent: ".g { color: red; }" },
+      "ghost-a": {
+        fileContent: `<b class="g">REAL</b>`,
+        cssFileContent: ".g { color: red; }",
+      },
     };
     const out = run(`<raw-host></raw-host>`, list);
     // Exactly one real resolution (the last, outside raw text). The <style>
     // block is hoisted out of the body by the CSS pass, so it is absent here.
     expect(out).toBe(
       `<div class="h"><script>(function() {\nvar s = "<ghost-a></ghost-a>";\n})();</script>` +
-      `<textarea><ghost-a></ghost-a></textarea><!-- <ghost-a></ghost-a> -->` +
-      `<b class="bascik__ghost-a__g">REAL</b></div>`,
+        `<textarea><ghost-a></ghost-a></textarea><!-- <ghost-a></ghost-a> -->` +
+        `<b class="bascik__ghost-a__g">REAL</b></div>`,
     );
   });
 
   it("handles adjacent self-closing and paired instances in source order", () => {
     const list: ComponentList = {
-      "a-tag": { fileContent: `<span class="a"><span data-bascik-slot>D</span></span>`, cssFileContent: ".a { color: red; }" },
+      "a-tag": {
+        fileContent: `<span class="a"><span data-bascik-slot>D</span></span>`,
+        cssFileContent: ".a { color: red; }",
+      },
     };
-    const out = run(`<a-tag />1<a-tag>X</a-tag>2<a-tag/>3<a-tag></a-tag>`, list);
+    const out = run(
+      `<a-tag />1<a-tag>X</a-tag>2<a-tag/>3<a-tag></a-tag>`,
+      list,
+    );
     expect(out).toBe(
       `<span class="bascik__a-tag__a">D</span>1<span class="bascik__a-tag__a">X</span>2` +
-      `<span class="bascik__a-tag__a">D</span>3<span class="bascik__a-tag__a">D</span>`,
+        `<span class="bascik__a-tag__a">D</span>3<span class="bascik__a-tag__a">D</span>`,
     );
   });
 
   it("does not hang or lose content on a missing close tag", () => {
     const list: ComponentList = {
-      "open-only": { fileContent: `<p class="o">o<span data-bascik-slot></span></p>` },
+      "open-only": {
+        fileContent: `<p class="o">o<span data-bascik-slot></span></p>`,
+      },
     };
     const out = run(`<open-only>never closed <b>bold</b>`, list);
     expect(out).not.toContain("<open-only");
@@ -99,7 +122,10 @@ describe("cursor scan falsification fixtures", () => {
       "test-comp": { fileContent: `<i class="short">S</i>` },
       "test-comp-clone": { fileContent: `<i class="long">L</i>` },
     };
-    const out = run(`<test-comp-clone></test-comp-clone><test-comp></test-comp>`, list);
+    const out = run(
+      `<test-comp-clone></test-comp-clone><test-comp></test-comp>`,
+      list,
+    );
     expect(out).toContain("L</i>");
     expect(out).toContain("S</i>");
     expect(out.indexOf("L</i>")).toBeLessThan(out.indexOf("S</i>"));
@@ -107,7 +133,7 @@ describe("cursor scan falsification fixtures", () => {
   });
 
   it("keeps source-file attribution for errors after many substitutions", () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const list: ComponentList = {
         "fine-one": { fileContent: `<i class="f">fine</i>` },
@@ -120,7 +146,8 @@ describe("cursor scan falsification fixtures", () => {
         },
       };
       const body =
-        Array.from({ length: 50 }, () => `<fine-one></fine-one>`).join("") + `<bad-one title="t"></bad-one>`;
+        Array.from({ length: 50 }, () => `<fine-one></fine-one>`).join("") +
+        `<bad-one title="t"></bad-one>`;
       const out = run(body, list, "/proj/src/pages/index.html");
       expect(out.match(/fine<\/i>/g)).toHaveLength(50);
       expect(out).not.toContain("<fine-one");

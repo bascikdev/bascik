@@ -21,28 +21,28 @@
  * Run via pipeline.exec in bascik.config.ts (dev and build), or directly:
  *   node scripts/generate-press-kit.ts
  */
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { crc32, deflateRawSync } from 'node:zlib';
-import { Resvg } from '@resvg/resvg-js';
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { crc32, deflateRawSync } from "node:zlib";
+import { Resvg } from "@resvg/resvg-js";
 
-const docsDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const docsDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-export const KIT_ROOT = 'bascik-press-kit';
-export const ZIP_NAME = 'bascik-press-kit.zip';
+export const KIT_ROOT = "bascik-press-kit";
+export const ZIP_NAME = "bascik-press-kit.zip";
 /** Role alias that forwards to the maintainer. Never publish a personal address. */
-export const PRESS_EMAIL = 'press@bascik.dev';
+export const PRESS_EMAIL = "press@bascik.dev";
 
 export const COLORS = {
-  lime: '#d3ff8d',
-  ink: '#0e0f10',
-  charcoal: '#18191b',
-  paper: '#f2f3f0',
+  lime: "#d3ff8d",
+  ink: "#0e0f10",
+  charcoal: "#18191b",
+  paper: "#f2f3f0",
 } as const;
 
-export type Tone = 'color' | 'black' | 'white';
-export type Background = 'dark' | 'dark-glow' | 'light';
+export type Tone = "color" | "black" | "white";
+export type Background = "dark" | "dark-glow" | "light";
 
 export interface Box {
   x: number;
@@ -72,7 +72,7 @@ export interface CanvasSpec {
   height: number;
   background: Background;
   tone: Tone;
-  logo: 'mark' | 'wordmark';
+  logo: "mark" | "wordmark";
   /** Rendered width of the logo inside the canvas, in canvas pixels. */
   logoWidth: number;
 }
@@ -84,12 +84,60 @@ export const MARK_PNG_SIZES = [256, 512, 1024] as const;
 const MARK_CROP: Box = { x: 2, y: 2, width: 28, height: 28 };
 
 export const CANVASES: CanvasSpec[] = [
-  { file: 'avatar/bascik-avatar-dark-1024.png', width: 1024, height: 1024, background: 'dark', tone: 'color', logo: 'mark', logoWidth: 594 },
-  { file: 'avatar/bascik-avatar-light-1024.png', width: 1024, height: 1024, background: 'light', tone: 'black', logo: 'mark', logoWidth: 594 },
-  { file: 'social/bascik-social-1200x630.png', width: 1200, height: 630, background: 'dark-glow', tone: 'color', logo: 'wordmark', logoWidth: 640 },
-  { file: 'social/bascik-github-social-1280x640.png', width: 1280, height: 640, background: 'dark-glow', tone: 'color', logo: 'wordmark', logoWidth: 680 },
-  { file: 'social/bascik-banner-1500x500.png', width: 1500, height: 500, background: 'dark-glow', tone: 'color', logo: 'wordmark', logoWidth: 640 },
-  { file: 'social/bascik-banner-1584x396.png', width: 1584, height: 396, background: 'dark-glow', tone: 'color', logo: 'wordmark', logoWidth: 560 },
+  {
+    file: "avatar/bascik-avatar-dark-1024.png",
+    width: 1024,
+    height: 1024,
+    background: "dark",
+    tone: "color",
+    logo: "mark",
+    logoWidth: 594,
+  },
+  {
+    file: "avatar/bascik-avatar-light-1024.png",
+    width: 1024,
+    height: 1024,
+    background: "light",
+    tone: "black",
+    logo: "mark",
+    logoWidth: 594,
+  },
+  {
+    file: "social/bascik-social-1200x630.png",
+    width: 1200,
+    height: 630,
+    background: "dark-glow",
+    tone: "color",
+    logo: "wordmark",
+    logoWidth: 640,
+  },
+  {
+    file: "social/bascik-github-social-1280x640.png",
+    width: 1280,
+    height: 640,
+    background: "dark-glow",
+    tone: "color",
+    logo: "wordmark",
+    logoWidth: 680,
+  },
+  {
+    file: "social/bascik-banner-1500x500.png",
+    width: 1500,
+    height: 500,
+    background: "dark-glow",
+    tone: "color",
+    logo: "wordmark",
+    logoWidth: 640,
+  },
+  {
+    file: "social/bascik-banner-1584x396.png",
+    width: 1584,
+    height: 396,
+    background: "dark-glow",
+    tone: "color",
+    logo: "wordmark",
+    logoWidth: 560,
+  },
 ];
 
 function round(n: number): number {
@@ -102,28 +150,39 @@ function round(n: number): number {
  * the ink color. Anything else fails loudly instead of producing a wrong kit.
  */
 export function parseLogo(source: string, crop?: Box): LogoArtwork {
-  const svg = /<svg\b[^>]*\bviewBox="([^"]+)"[^>]*>([\s\S]*)<\/svg>/.exec(source);
-  if (!svg) throw new Error('press-kit: logo source has no <svg viewBox>');
-  const [x, y, width, height] = svg[1].trim().split(/[\s,]+/).map(Number);
+  const svg = /<svg\b[^>]*\bviewBox="([^"]+)"[^>]*>([\s\S]*)<\/svg>/.exec(
+    source,
+  );
+  if (!svg) throw new Error("press-kit: logo source has no <svg viewBox>");
+  const [x, y, width, height] = svg[1]
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number);
   if ([x, y, width, height].some((n) => !Number.isFinite(n))) {
     throw new Error(`press-kit: unreadable viewBox "${svg[1]}"`);
   }
 
-  // codeql[js/incomplete-multi-character-sanitization] Reads the repo's own logo SVG; not a sanitizer.
-  const inner = svg[2]
-    .replace(/<!--[\s\S]*?-->/g, () => '')
-    .replace(/<animate\b[\s\S]*?\/>/g, () => '');
+  let inner = svg[2];
+  let previous: string;
+  do {
+    previous = inner;
+    inner = inner.replace(/<!--[\s\S]*?-->/g, "");
+  } while (inner !== previous);
+  inner = inner.replace(/<animate\b[\s\S]*?\/>/g, "");
   const polygon = /<polygon\b[^>]*\bpoints="([^"]+)"[^>]*\/?>/.exec(inner);
-  if (!polygon) throw new Error('press-kit: logo source has no <polygon> tile');
+  if (!polygon) throw new Error("press-kit: logo source has no <polygon> tile");
   if (!polygon[0].includes(COLORS.lime)) {
     throw new Error(`press-kit: logo tile is not filled with ${COLORS.lime}`);
   }
 
   const ink = inner
-    .replace(polygon[0], () => '')
+    .replace(polygon[0], () => "")
     .trim()
-    .replace(/<rect\b([^>]*[^/])>\s*<\/rect>/g, (_match, attrs: string) => `<rect${attrs} />`)
-    .replace(/>\s+</g, () => '>\n  <');
+    .replace(
+      /<rect\b([^>]*[^/])>\s*<\/rect>/g,
+      (_match, attrs: string) => `<rect${attrs} />`,
+    )
+    .replace(/>\s+</g, () => ">\n  <");
   if (!ink.includes(`fill="${COLORS.ink}"`)) {
     throw new Error(`press-kit: logo ink is not filled with ${COLORS.ink}`);
   }
@@ -133,22 +192,22 @@ export function parseLogo(source: string, crop?: Box): LogoArtwork {
 
 /** Shapes for one logo tone, ready to place inside any SVG that uses the logo's own coordinates. */
 function logoBody(art: LogoArtwork, tone: Tone): string {
-  if (tone === 'color') {
+  if (tone === "color") {
     return `<polygon points="${art.points}" fill="${COLORS.lime}" />\n  ${art.ink}`;
   }
   // Single-color versions: a solid tile with the cursor and letters knocked out, so the page behind shows through.
   const { x, y, width, height } = art.viewBox;
-  const fill = tone === 'black' ? COLORS.ink : '#ffffff';
+  const fill = tone === "black" ? COLORS.ink : "#ffffff";
   const knockout = art.ink.replaceAll(`fill="${COLORS.ink}"`, 'fill="#000000"');
   return [
-    '<defs>',
+    "<defs>",
     `    <mask id="bascik-knockout" maskUnits="userSpaceOnUse" x="${x}" y="${y}" width="${width}" height="${height}">`,
     `      <rect x="${x}" y="${y}" width="${width}" height="${height}" fill="#ffffff" />`,
     `      ${knockout}`,
-    '    </mask>',
-    '  </defs>',
+    "    </mask>",
+    "  </defs>",
     `  <polygon points="${art.points}" fill="${fill}" mask="url(#bascik-knockout)" />`,
-  ].join('\n  ');
+  ].join("\n  ");
 }
 
 /** A standalone, static (non-animated) logo SVG. */
@@ -169,18 +228,28 @@ export function renderLogoSvg(
 export function renderCanvasSvg(
   art: LogoArtwork,
   tone: Tone,
-  { width, height, background, logoWidth }: { width: number; height: number; background: Background; logoWidth: number },
+  {
+    width,
+    height,
+    background,
+    logoWidth,
+  }: {
+    width: number;
+    height: number;
+    background: Background;
+    logoWidth: number;
+  },
 ): string {
   const scale = logoWidth / art.viewBox.width;
   const logoHeight = art.viewBox.height * scale;
   const tx = round((width - logoWidth) / 2 - art.viewBox.x * scale);
   const ty = round((height - logoHeight) / 2 - art.viewBox.y * scale);
 
-  let defs = '';
+  let defs = "";
   let backdrop: string;
-  if (background === 'light') {
+  if (background === "light") {
     backdrop = `<rect width="${width}" height="${height}" fill="${COLORS.paper}" />`;
-  } else if (background === 'dark') {
+  } else if (background === "dark") {
     backdrop = `<rect width="${width}" height="${height}" fill="${COLORS.charcoal}" />`;
   } else {
     defs = `<defs>
@@ -210,7 +279,7 @@ export function renderCanvasSvg(
 /** Rasterizes an SVG at an exact pixel width. Logo artwork is outlined paths, so no fonts are needed. */
 export function renderPng(svg: string, width: number): Buffer {
   const resvg = new Resvg(svg, {
-    fitTo: { mode: 'width', value: width },
+    fitTo: { mode: "width", value: width },
     font: { loadSystemFonts: false },
   });
   return resvg.render().asPng();
@@ -254,33 +323,66 @@ Press:    ${PRESS_EMAIL}
 }
 
 /** Builds every kit file (except the zip) from the two logo SVG sources. */
-export function buildKitFiles(markSource: string, wordmarkSource: string): KitFile[] {
+export function buildKitFiles(
+  markSource: string,
+  wordmarkSource: string,
+): KitFile[] {
   const mark = parseLogo(markSource, MARK_CROP);
   const wordmark = parseLogo(wordmarkSource);
   const files: KitFile[] = [];
   const add = (path: string, data: Buffer | string) => {
-    files.push({ path, data: typeof data === 'string' ? Buffer.from(data, 'utf8') : data });
+    files.push({
+      path,
+      data: typeof data === "string" ? Buffer.from(data, "utf8") : data,
+    });
   };
 
-  add('README.txt', readmeText());
+  add("README.txt", readmeText());
 
   const tones: Array<[Tone, string, string]> = [
-    ['color', '', ''],
-    ['black', '-black', ' (black)'],
-    ['white', '-white', ' (white)'],
+    ["color", "", ""],
+    ["black", "-black", " (black)"],
+    ["white", "-white", " (white)"],
   ];
   for (const [tone, suffix, titleSuffix] of tones) {
-    add(`logo/svg/bascik-wordmark${suffix}.svg`, renderLogoSvg(wordmark, tone, { title: `Bascik${titleSuffix}`, width: 1140, height: 280 }));
-    add(`logo/svg/bascik-mark${suffix}.svg`, renderLogoSvg(mark, tone, { title: `Bascik mark${titleSuffix}`, width: 512, height: 512 }));
+    add(
+      `logo/svg/bascik-wordmark${suffix}.svg`,
+      renderLogoSvg(wordmark, tone, {
+        title: `Bascik${titleSuffix}`,
+        width: 1140,
+        height: 280,
+      }),
+    );
+    add(
+      `logo/svg/bascik-mark${suffix}.svg`,
+      renderLogoSvg(mark, tone, {
+        title: `Bascik mark${titleSuffix}`,
+        width: 512,
+        height: 512,
+      }),
+    );
   }
 
-  const wordmarkColor = renderLogoSvg(wordmark, 'color', { title: 'Bascik', width: 1140, height: 280 });
-  const markColor = renderLogoSvg(mark, 'color', { title: 'Bascik mark', width: 512, height: 512 });
-  for (const width of WORDMARK_PNG_WIDTHS) add(`logo/png/bascik-wordmark-${width}.png`, renderPng(wordmarkColor, width));
-  for (const size of MARK_PNG_SIZES) add(`logo/png/bascik-mark-${size}.png`, renderPng(markColor, size));
+  const wordmarkColor = renderLogoSvg(wordmark, "color", {
+    title: "Bascik",
+    width: 1140,
+    height: 280,
+  });
+  const markColor = renderLogoSvg(mark, "color", {
+    title: "Bascik mark",
+    width: 512,
+    height: 512,
+  });
+  for (const width of WORDMARK_PNG_WIDTHS)
+    add(
+      `logo/png/bascik-wordmark-${width}.png`,
+      renderPng(wordmarkColor, width),
+    );
+  for (const size of MARK_PNG_SIZES)
+    add(`logo/png/bascik-mark-${size}.png`, renderPng(markColor, size));
 
   for (const spec of CANVASES) {
-    const art = spec.logo === 'mark' ? mark : wordmark;
+    const art = spec.logo === "mark" ? mark : wordmark;
     const svg = renderCanvasSvg(art, spec.tone, spec);
     add(spec.file, renderPng(svg, spec.width));
   }
@@ -306,7 +408,7 @@ export function createZip(entries: ZipEntry[]): Buffer {
   let offset = 0;
 
   for (const { name, data } of entries) {
-    const nameBytes = Buffer.from(name, 'utf8');
+    const nameBytes = Buffer.from(name, "utf8");
     const crc = crc32(data);
     const deflated = deflateRawSync(data, { level: 9 });
     const deflate = deflated.length < data.length;
@@ -369,18 +471,24 @@ export function zipKit(files: KitFile[]): Buffer {
 // Entry point ---------------------------------------------------------------
 
 export function defaultPressDir(): string {
-  return join(process.env.BASCIK_OUT_DIR ?? join(docsDir, 'dist'), 'assets', 'press');
+  return join(
+    process.env.BASCIK_OUT_DIR ?? join(docsDir, "dist"),
+    "assets",
+    "press",
+  );
 }
 
 /**
  * Generates the kit into `outDir` and returns the written paths relative to it
  * (kit files plus the zip).
  */
-export async function generatePressKit(outDir: string = defaultPressDir()): Promise<string[]> {
-  const assets = join(docsDir, 'src', 'pages', 'assets');
+export async function generatePressKit(
+  outDir: string = defaultPressDir(),
+): Promise<string[]> {
+  const assets = join(docsDir, "src", "pages", "assets");
   const [markSource, wordmarkSource] = await Promise.all([
-    readFile(join(assets, 'favicon.svg'), 'utf8'),
-    readFile(join(assets, 'bascik-logo.svg'), 'utf8'),
+    readFile(join(assets, "favicon.svg"), "utf8"),
+    readFile(join(assets, "bascik-logo.svg"), "utf8"),
   ]);
 
   const files = buildKitFiles(markSource, wordmarkSource);
@@ -396,7 +504,9 @@ export async function generatePressKit(outDir: string = defaultPressDir()): Prom
   return files.map((file) => file.path).sort();
 }
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+const isMain =
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === resolve(process.argv[1]);
 if (isMain) {
   await generatePressKit();
 }

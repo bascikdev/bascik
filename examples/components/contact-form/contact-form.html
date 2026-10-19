@@ -8,7 +8,10 @@ A contact form that validates in the browser and posts JSON to /api/contact (the
     max-width: 32rem;
     padding: 1.5rem;
     border-radius: var(--radius, 0.5rem);
-    background: var(--color-surface, color-mix(in srgb, currentColor 8%, transparent));
+    background: var(
+      --color-surface,
+      color-mix(in srgb, currentColor 8%, transparent)
+    );
   }
 
   .field {
@@ -18,7 +21,8 @@ A contact form that validates in the browser and posts JSON to /api/contact (the
 
   .input {
     padding: 0.5rem 0.75rem;
-    border: 1px solid var(--color-border, color-mix(in srgb, currentColor 30%, transparent));
+    border: 1px solid
+      var(--color-border, color-mix(in srgb, currentColor 30%, transparent));
     border-radius: var(--radius, 0.5rem);
     background: var(--color-bg, Field);
     color: inherit;
@@ -58,46 +62,70 @@ A contact form that validates in the browser and posts JSON to /api/contact (the
 </style>
 <!-- data-bascik-preserve="name" keeps the field names literal. Without it, Bascik scopes them per instance and the
      server would receive keys like bascik__contact-form__a1b2__email. -->
-<form class="form" id="form" action="/api/contact" method="post" data-bascik-preserve="name">
+<form
+  class="form"
+  id="form"
+  action="/api/contact"
+  method="post"
+  data-bascik-preserve="name"
+>
   <div class="field">
     <label for="name">Name</label>
     <input class="input" id="name" name="name" autocomplete="name" required />
   </div>
   <div class="field">
     <label for="email">Email</label>
-    <input class="input" id="email" name="email" type="email" autocomplete="email" required />
+    <input
+      class="input"
+      id="email"
+      name="email"
+      type="email"
+      autocomplete="email"
+      required
+    />
   </div>
   <div class="field">
     <label for="message">Message</label>
-    <textarea class="input" id="message" name="message" rows="5" required minlength="10"></textarea>
+    <textarea
+      class="input"
+      id="message"
+      name="message"
+      rows="5"
+      required
+      minlength="10"
+    ></textarea>
   </div>
   <button class="submit" id="submit" type="submit">Send</button>
   <p class="status" id="status" role="status"></p>
 </form>
 <script>
-  const form = document.getElementById('form');
-  const submit = document.getElementById('submit');
-  const status = document.getElementById('status');
+  const form = document.getElementById("form");
+  const submit = document.getElementById("submit");
+  const status = document.getElementById("status");
 
-  form.addEventListener('submit', async (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!form.checkValidity()) {
       form.reportValidity();
       return;
     }
     submit.disabled = true;
-    status.textContent = 'Sending...';
+    status.textContent = "Sending...";
     try {
       const response = await fetch(form.action, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+        },
         body: JSON.stringify(Object.fromEntries(new FormData(form))),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       form.reset();
-      status.textContent = 'Thanks. Your message was sent.';
+      status.textContent = "Thanks. Your message was sent.";
     } catch {
-      status.textContent = 'Sorry, the message could not be sent. Please try again.';
+      status.textContent =
+        "Sorry, the message could not be sent. Please try again.";
     } finally {
       submit.disabled = false;
     }

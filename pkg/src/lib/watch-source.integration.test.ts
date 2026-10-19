@@ -1,41 +1,103 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EventEmitter } from 'node:events';
-import { resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import { resolve } from "node:path";
 
 const mocks = vi.hoisted(() => ({
-  watch: vi.fn(), run: vi.fn(), batch: vi.fn(), all: vi.fn(), remove: vi.fn(),
-  deps: vi.fn(), components: vi.fn(), importers: vi.fn(), clear: vi.fn(), copy: vi.fn(),
+  watch: vi.fn(),
+  run: vi.fn(),
+  batch: vi.fn(),
+  all: vi.fn(),
+  remove: vi.fn(),
+  deps: vi.fn(),
+  components: vi.fn(),
+  importers: vi.fn(),
+  clear: vi.fn(),
+  copy: vi.fn(),
+  invalidateComponents: vi.fn(),
   shutdown: [] as (() => Promise<void>)[],
-  config: { directory: { pages: 'src/pages', components: ['src/components'], out: 'dist' }, pipeline: { watchPaths: ['content/*.md'], exec: [{ script: 'scripts/pre.ts', watch: ['content/*.md'] }] } },
+  config: {
+    directory: {
+      pages: "src/pages",
+      components: ["src/components"],
+      out: "dist",
+    },
+    pipeline: {
+      watchPaths: ["content/*.md"],
+      exec: [{ script: "scripts/pre.ts", watch: ["content/*.md"] }],
+    },
+  },
 }));
-vi.mock('chokidar', () => ({ default: { watch: mocks.watch } }));
-vi.mock('./config.ts', () => ({ BascikConfig: mocks.config }));
-vi.mock('./events.ts', async () => {
-  const { EventEmitter } = await import('node:events');
-  return { eventEmitter: new EventEmitter(), registerShutdownHandler: (fn: () => Promise<void>) => mocks.shutdown.push(fn) };
+vi.mock("chokidar", () => ({ default: { watch: mocks.watch } }));
+vi.mock("./config.ts", () => ({ BascikConfig: mocks.config }));
+vi.mock("./events.ts", async () => {
+  const { EventEmitter } = await import("node:events");
+  return {
+    eventEmitter: new EventEmitter(),
+    registerShutdownHandler: (fn: () => Promise<void>) =>
+      mocks.shutdown.push(fn),
+  };
 });
-vi.mock('./exec.ts', async importOriginal => ({ ...await importOriginal<typeof import('./exec.ts')>(), runScript: mocks.run }));
-vi.mock('./processing.ts', () => ({ processAllPages: mocks.all, processPageBatch: mocks.batch, removePage: mocks.remove }));
-vi.mock('./mem.ts', () => ({ mem: { pagesDependentOnFile: mocks.deps, pagesThisComponentIsUsedOn: mocks.components } }));
-vi.mock('./components.ts', () => ({ invalidateComponentListCache: vi.fn(), componentsImportingStylesheet: mocks.importers }));
-vi.mock('./build-scripts.ts', () => ({ clearBuildScriptCaches: mocks.clear }));
-vi.mock('./file-system.ts', () => ({ copyStaticAssets: mocks.copy, copyReplicatePath: mocks.copy, deleteDistFile: mocks.remove, deleteDistDir: mocks.remove }));
-vi.mock('./asset-filter.ts', () => ({ isInlineStylesheet: () => false, isStaticAssetPath: () => false }));
+vi.mock("./exec.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./exec.ts")>()),
+  runScript: mocks.run,
+}));
+vi.mock("./processing.ts", () => ({
+  processAllPages: mocks.all,
+  processPageBatch: mocks.batch,
+  removePage: mocks.remove,
+}));
+vi.mock("./mem.ts", () => ({
+  mem: {
+    pagesDependentOnFile: mocks.deps,
+    pagesThisComponentIsUsedOn: mocks.components,
+  },
+}));
+vi.mock("./components.ts", () => ({
+  invalidateComponentListCache: mocks.invalidateComponents,
+  componentsImportingStylesheet: mocks.importers,
+}));
+vi.mock("./build-scripts.ts", () => ({ clearBuildScriptCaches: mocks.clear }));
+vi.mock("./file-system.ts", () => ({
+  copyStaticAssets: mocks.copy,
+  copyReplicatePath: mocks.copy,
+  deleteDistFile: mocks.remove,
+  deleteDistDir: mocks.remove,
+}));
+vi.mock("./asset-filter.ts", () => ({
+  isInlineStylesheet: () => false,
+  isStaticAssetPath: () => false,
+}));
 
-import { watchSourceCycles } from './watch-source.ts';
-import { eventEmitter } from './events.ts';
+import { watchSourceCycles } from "./watch-source.ts";
+import { eventEmitter } from "./events.ts";
 
 let watcher: EventEmitter & { close: ReturnType<typeof vi.fn> };
 beforeEach(() => {
   vi.useFakeTimers();
-  for (const mock of [mocks.run, mocks.batch, mocks.all, mocks.remove, mocks.copy]) mock.mockReset().mockResolvedValue(undefined);
+  for (const mock of [
+    mocks.run,
+    mocks.batch,
+    mocks.all,
+    mocks.remove,
+    mocks.copy,
+  ])
+    mock.mockReset().mockResolvedValue(undefined);
   mocks.clear.mockReset();
-  mocks.deps.mockReset().mockReturnValue(['src/pages/consumer.html']);
+  mocks.invalidateComponents.mockReset();
+  mocks.deps.mockReset().mockReturnValue(["src/pages/consumer.html"]);
   mocks.components.mockReset().mockReturnValue([]);
   mocks.importers.mockReset().mockReturnValue([]);
-  mocks.config.pipeline.watchPaths = ['content/*.md'];
-  watcher = Object.assign(new EventEmitter(), { close: vi.fn().mockResolvedValue(undefined) });
-  mocks.watch.mockReset().mockImplementation(() => { queueMicrotask(() => watcher.emit('ready')); return watcher; });
+  mocks.config.pipeline.watchPaths = ["content/*.md"];
+  mocks.config.pipeline.exec = [
+    { script: "scripts/pre.ts", watch: ["content/*.md"] },
+  ];
+  watcher = Object.assign(new EventEmitter(), {
+    close: vi.fn().mockResolvedValue(undefined),
+  });
+  mocks.watch.mockReset().mockImplementation(() => {
+    queueMicrotask(() => watcher.emit("ready"));
+    return watcher;
+  });
 });
 afterEach(async () => {
   for (const close of mocks.shutdown.splice(0)) await close();
@@ -43,108 +105,125 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-describe('source observer and phase queue integration', () => {
-  it('deduplicates a directly edited page also found under a relative dependency alias', async () => {
-    mocks.deps.mockReturnValue(['src/pages/index.html']);
+describe("source observer and phase queue integration", () => {
+  it("deduplicates a directly edited page also found under a relative dependency alias", async () => {
+    mocks.deps.mockReturnValue(["src/pages/index.html"]);
     await watchSourceCycles(vi.fn());
-    eventEmitter.emit('boot-done');
-    watcher.emit('all', 'change', 'src/pages/index.html');
+    eventEmitter.emit("boot-done");
+    watcher.emit("all", "change", "src/pages/index.html");
     await vi.advanceTimersByTimeAsync(50);
-    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([resolve('src/pages/index.html')]);
+    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
+      resolve("src/pages/index.html"),
+    ]);
   });
-  it('watches glob roots once, filters nonmatches and output writes, and compiles one associated batch', async () => {
+  it("watches glob roots once, filters nonmatches and output writes, and compiles one associated batch", async () => {
     const pre = Promise.withResolvers<void>();
     mocks.run.mockReturnValueOnce(pre.promise);
     await watchSourceCycles(vi.fn());
-    eventEmitter.emit('boot-done');
+    eventEmitter.emit("boot-done");
     expect(mocks.watch).toHaveBeenCalledTimes(1);
     const [roots, options] = mocks.watch.mock.calls[0];
-    expect(roots.filter((root: string) => root === 'content')).toHaveLength(1);
-    expect(options.ignored(resolve('dist/generated.json'))).toBe(true);
-    watcher.emit('all', 'change', 'content/ignored.txt');
+    expect(roots.filter((root: string) => root === "content")).toHaveLength(1);
+    expect(options.ignored(resolve("dist/generated.json"))).toBe(true);
+    watcher.emit("all", "change", "content/ignored.txt");
     await vi.advanceTimersByTimeAsync(50);
     expect(mocks.run).not.toHaveBeenCalled();
-    watcher.emit('all', 'change', 'content/doc.md');
+    watcher.emit("all", "change", "content/doc.md");
     await vi.advanceTimersByTimeAsync(50);
     expect(mocks.batch).not.toHaveBeenCalled();
     pre.resolve();
     await vi.advanceTimersByTimeAsync(0);
-    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([resolve('src/pages/consumer.html')]);
+    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
+      resolve("src/pages/consumer.html"),
+    ]);
     expect(mocks.run).toHaveBeenCalledTimes(1);
   });
 
-  it('exec-only source changes rebuild dependents and edits during boot are retained', async () => {
+  it("exec-only source changes rebuild dependents and edits during boot are retained", async () => {
     mocks.config.pipeline.watchPaths = [];
     await watchSourceCycles(vi.fn());
-    watcher.emit('all', 'change', 'content/doc.md');
+    watcher.emit("all", "change", "content/doc.md");
     await vi.advanceTimersByTimeAsync(100);
     expect(mocks.run).not.toHaveBeenCalled();
-    eventEmitter.emit('boot-done');
+    eventEmitter.emit("boot-done");
     await vi.advanceTimersByTimeAsync(50);
     expect(mocks.run).toHaveBeenCalledTimes(1);
-    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([resolve('src/pages/consumer.html')]);
+    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
+      resolve("src/pages/consumer.html"),
+    ]);
   });
 
-  it('page edits do not rerun unmatched scripts and unknown source dependencies fall back to pages', async () => {
+  it("page edits do not rerun unmatched scripts and unknown source dependencies fall back to pages", async () => {
     mocks.deps.mockReturnValue([]);
     await watchSourceCycles(vi.fn());
-    eventEmitter.emit('boot-done');
+    eventEmitter.emit("boot-done");
     mocks.all.mockClear();
-    watcher.emit('all', 'change', 'src/pages/index.html');
+    watcher.emit("all", "change", "src/pages/index.html");
     await vi.advanceTimersByTimeAsync(50);
     expect(mocks.run).not.toHaveBeenCalled();
-    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([resolve('src/pages/index.html')]);
-    watcher.emit('all', 'change', 'content/doc.md');
+    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
+      resolve("src/pages/index.html"),
+    ]);
+    watcher.emit("all", "change", "content/doc.md");
     await vi.advanceTimersByTimeAsync(50);
     expect(mocks.all).toHaveBeenCalledTimes(1);
     expect(mocks.run).toHaveBeenCalledTimes(1);
   });
 
-  it('rebuilds the pages of components whose stylesheets import an edited partial', async () => {
+  it("rebuilds the pages of components whose stylesheets import an edited partial", async () => {
     mocks.deps.mockReturnValue([]);
-    const partial = resolve('src/components/shared/tokens.css');
-    mocks.importers.mockImplementation((path: string) => (path === partial ? ['my-card'] : []));
-    mocks.components.mockImplementation((name: string) => (name === 'my-card' ? ['src/pages/a.html', 'src/pages/b.html'] : []));
+    const partial = resolve("src/components/shared/tokens.css");
+    mocks.importers.mockImplementation((path: string) =>
+      path === partial ? ["my-card"] : [],
+    );
+    mocks.components.mockImplementation((name: string) =>
+      name === "my-card" ? ["src/pages/a.html", "src/pages/b.html"] : [],
+    );
     await watchSourceCycles(vi.fn());
-    eventEmitter.emit('boot-done');
+    eventEmitter.emit("boot-done");
     mocks.all.mockClear();
-    watcher.emit('all', 'change', 'src/components/shared/tokens.css');
+    watcher.emit("all", "change", "src/components/shared/tokens.css");
     await vi.advanceTimersByTimeAsync(50);
     expect(mocks.importers).toHaveBeenCalledWith(partial);
     expect(mocks.all).not.toHaveBeenCalled();
-    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([resolve('src/pages/a.html'), resolve('src/pages/b.html')]);
+    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
+      resolve("src/pages/a.html"),
+      resolve("src/pages/b.html"),
+    ]);
   });
 
-  it('rescans static assets after a removed page directory is recreated', async () => {
+  it("rescans static assets after a removed page directory is recreated", async () => {
     await watchSourceCycles(vi.fn());
-    eventEmitter.emit('boot-done');
+    eventEmitter.emit("boot-done");
     mocks.copy.mockClear();
     mocks.all.mockClear();
 
-    watcher.emit('all', 'unlinkDir', 'src/pages/images');
+    watcher.emit("all", "unlinkDir", "src/pages/images");
     await vi.advanceTimersByTimeAsync(50);
 
-    expect(mocks.remove).toHaveBeenCalledWith(resolve('src/pages/images'));
+    expect(mocks.remove).toHaveBeenCalledWith(resolve("src/pages/images"));
     expect(mocks.copy).not.toHaveBeenCalled();
 
-    watcher.emit('all', 'addDir', 'src/pages/images');
+    watcher.emit("all", "addDir", "src/pages/images");
     await vi.advanceTimersByTimeAsync(50);
 
     expect(mocks.copy).toHaveBeenCalledOnce();
     expect(mocks.all).toHaveBeenCalledTimes(2);
   });
 
-  it('runs the boot compile hook only after the source watcher is ready', async () => {
+  it("runs the boot compile hook only after the source watcher is ready", async () => {
     const ready = Promise.withResolvers<void>();
     mocks.watch.mockReset().mockImplementation(() => {
-      queueMicrotask(() => ready.promise.then(() => watcher.emit('ready')));
+      queueMicrotask(() => ready.promise.then(() => watcher.emit("ready")));
       return watcher;
     });
-    const bootCompile = vi.fn(async (compileInitialSources: () => Promise<void>) => {
-      expect(mocks.copy).not.toHaveBeenCalled();
-      expect(mocks.all).not.toHaveBeenCalled();
-      await compileInitialSources();
-    });
+    const bootCompile = vi.fn(
+      async (compileInitialSources: () => Promise<void>) => {
+        expect(mocks.copy).not.toHaveBeenCalled();
+        expect(mocks.all).not.toHaveBeenCalled();
+        await compileInitialSources();
+      },
+    );
 
     const watchPromise = watchSourceCycles(vi.fn(), bootCompile);
 
@@ -155,5 +234,58 @@ describe('source observer and phase queue integration', () => {
     expect(bootCompile).toHaveBeenCalledOnce();
     expect(mocks.copy).toHaveBeenCalledTimes(1);
     expect(mocks.all).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps component list cache and unrelated build script memos warm on a direct page HTML edit", async () => {
+    mocks.deps.mockReturnValue([]);
+    await watchSourceCycles(vi.fn());
+    eventEmitter.emit("boot-done");
+    mocks.clear.mockClear();
+    mocks.invalidateComponents.mockClear();
+
+    const editedPage = resolve("src/pages/index.html");
+    watcher.emit("all", "change", editedPage);
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(mocks.invalidateComponents).not.toHaveBeenCalled();
+    expect(mocks.clear).toHaveBeenCalledExactlyOnceWith(editedPage);
+    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([editedPage]);
+  });
+
+  it("clears all build script caches when a matching pre producer runs before a page edit", async () => {
+    mocks.deps.mockReturnValue([]);
+    mocks.config.pipeline.exec = [
+      { script: "scripts/pre.ts", watch: ["src/pages/*.html"] },
+    ];
+    await watchSourceCycles(vi.fn());
+    eventEmitter.emit("boot-done");
+    mocks.clear.mockClear();
+
+    const editedPage = resolve("src/pages/index.html");
+    watcher.emit("all", "change", editedPage);
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(mocks.run).toHaveBeenCalledOnce();
+    expect(mocks.clear).toHaveBeenCalledExactlyOnceWith();
+    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([editedPage]);
+  });
+
+  it("invalidates component list cache and clears per-path build script memo when a component file changes", async () => {
+    mocks.deps.mockReturnValue([]);
+    mocks.components.mockReturnValue(["src/pages/index.html"]);
+    await watchSourceCycles(vi.fn());
+    eventEmitter.emit("boot-done");
+    mocks.clear.mockClear();
+    mocks.invalidateComponents.mockClear();
+
+    const editedComponent = resolve("src/components/my-card/my-card.html");
+    watcher.emit("all", "change", editedComponent);
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(mocks.invalidateComponents).toHaveBeenCalledOnce();
+    expect(mocks.clear).toHaveBeenCalledExactlyOnceWith(editedComponent);
+    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
+      resolve("src/pages/index.html"),
+    ]);
   });
 });

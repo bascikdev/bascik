@@ -8,19 +8,20 @@
     "node": ">=22.18.0"
   },
   "scripts": {
-    "dev": "BASCIK_SITE_URL=https://bascik.dev bascik",
-    "build": "BASCIK_SITE_URL=https://bascik.dev bascik --build",
+    "dev": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik",
+    "build": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik --build",
     "serve": "bascik --server",
     "preview": "bascik --server",
     "e2e": "playwright test --config e2e/playwright.config.ts --reporter=line",
     "pkg-dev": "node --inspect --watch-path=./bascik.config.ts --watch-path=../../pkg/src ../../pkg/src/transpile.ts",
+    "measure-build": "node scripts/measure-build.ts",
     "generate:llms": "node scripts/generate-llms-txt.ts",
     "generate:og": "node scripts/generate-og-images.ts",
     "generate:search": "node scripts/generate-search-index.ts",
     "lhci": "lhci",
-    "lighthouse": "BASCIK_SITE_URL=https://bascik.dev bascik --build && lhci autorun --config=./lighthouse/lighthouserc.json && lhci autorun --config=./lighthouse/lighthouserc.light.json",
-    "lighthouse:all": "BASCIK_SITE_URL=https://bascik.dev bascik --build && node lighthouse/generate-config.ts && lhci autorun --config=./lighthouse/lighthouserc.all.json && lhci autorun --config=./lighthouse/lighthouserc.all-light.json",
-    "lighthouse:ci": "BASCIK_SITE_URL=https://bascik.dev bascik --build && lhci autorun --config=./lighthouse/lighthouserc.json && lhci autorun --config=./lighthouse/lighthouserc.light.json",
+    "lighthouse": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik --build && lhci autorun --config=./lighthouse/lighthouserc.json && lhci autorun --config=./lighthouse/lighthouserc.light.json",
+    "lighthouse:all": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik --build && node lighthouse/generate-config.ts && lhci autorun --config=./lighthouse/lighthouserc.all.json && lhci autorun --config=./lighthouse/lighthouserc.all-light.json",
+    "lighthouse:ci": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik --build && lhci autorun --config=./lighthouse/lighthouserc.json && lhci autorun --config=./lighthouse/lighthouserc.light.json",
     "typecheck": "yarn workspace @bascik/bascik build && tsc --noEmit",
     "unit": "yarn workspace @bascik/bascik build && vitest run --project unit",
     "integration": "yarn workspace @bascik/bascik build && yarn workspace @bascik/language-server build && vitest run --project integration",
@@ -38,16 +39,23 @@
     "@types/node": "^24.19.1",
     "@types/nunjucks": "^3.2.6",
     "@vitest/coverage-v8": "^5.0.3",
+    "@xterm/headless": "^6.0.0",
     "@zachleat/heading-anchors": "^1.0.5",
     "canvas-confetti": "^1.9.4",
     "esbuild": "^0.28.2",
     "lighthouse": "^13.5.0",
+    "node-pty": "^1.1.0",
     "opentype.js": "^2.0.0",
     "parse5": "^8.0.1",
     "sharp": "^0.35.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",
     "vitest": "^5.0.3"
+  },
+  "dependenciesMeta": {
+    "node-pty": {
+      "built": false
+    }
   },
   "dependencies": {
     "@bascik/bascik": "workspace:*",

@@ -1,66 +1,64 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Slots Test</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 32px 24px;
+        background: #111;
+        color: #eee;
+        font-family: sans-serif;
+      }
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Slots Test</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 32px 24px;
-      background: #111;
-      color: #eee;
-      font-family: sans-serif;
-    }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.2rem;
+      }
 
-    h1 {
-      margin: 0 0 8px;
-      font-size: 1.2rem;
-    }
+      .instance-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #888;
+        margin: 0 0 10px;
+      }
 
-    .instance-label {
-      font-size: 0.72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #888;
-      margin: 0 0 10px;
-    }
+      .instances {
+        display: flex;
+        flex-direction: column;
+        gap: 28px;
+      }
+    </style>
+  </head>
 
-    .instances {
-      display: flex;
-      flex-direction: column;
-      gap: 28px;
-    }
-  </style>
-</head>
+  <body>
+    <h1>Slots Test</h1>
 
-<body>
-  <h1>Slots Test</h1>
+    <div class="instances">
+      <div>
+        <p class="instance-label">Usage 1 — all slots filled</p>
+        <slot-host>
+          <div data-bascik-slot="header"><span>Custom Header</span></div>
+          <p>Custom default slot content</p>
+          <div data-bascik-slot="footer"><span>Custom Footer</span></div>
+        </slot-host>
+      </div>
 
-  <div class="instances">
-    <div>
-      <p class="instance-label">Usage 1 — all slots filled</p>
-      <slot-host>
-        <div data-bascik-slot="header"><span>Custom Header</span></div>
-        <p>Custom default slot content</p>
-        <div data-bascik-slot="footer"><span>Custom Footer</span></div>
-      </slot-host>
+      <div>
+        <p class="instance-label">Usage 2 — only default slot filled</p>
+        <slot-host>
+          <p>Only default content</p>
+        </slot-host>
+      </div>
+
+      <div>
+        <p class="instance-label">Usage 3 — no slot content (all fallbacks)</p>
+        <slot-host></slot-host>
+      </div>
     </div>
-
-    <div>
-      <p class="instance-label">Usage 2 — only default slot filled</p>
-      <slot-host>
-        <p>Only default content</p>
-      </slot-host>
-    </div>
-
-    <div>
-      <p class="instance-label">Usage 3 — no slot content (all fallbacks)</p>
-      <slot-host></slot-host>
-    </div>
-  </div>
-</body>
-
+  </body>
 </html>

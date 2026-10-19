@@ -1,60 +1,66 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <docs-head />
+    <meta
+      name="description"
+      content="The page you are looking for might have been removed, had its name changed, or is temporarily unavailable."
+    />
+    <meta name="robots" content="noindex" />
+    <title>Page Not Found - Bascik Docs</title>
+    <style>
+      .not-found-hero {
+        padding: 120px 0 80px;
+        text-align: center;
+        background: radial-gradient(
+          ellipse 70% 50% at 50% -5%,
+          rgba(211, 255, 141, 0.07),
+          transparent
+        );
+      }
 
-<head>
-  <docs-head />
-  <meta name="description"
-    content="The page you are looking for might have been removed, had its name changed, or is temporarily unavailable." />
-  <meta name="robots" content="noindex" />
-  <title>Page Not Found - Bascik Docs</title>
-  <style>
-    .not-found-hero {
-      padding: 120px 0 80px;
-      text-align: center;
-      background: radial-gradient(ellipse 70% 50% at 50% -5%, rgba(211, 255, 141, 0.07), transparent);
-    }
+      .not-found-title {
+        font-size: clamp(3rem, 8vw, 6rem);
+        margin: 16px 0;
+        font-weight: 800;
+      }
 
-    .not-found-title {
-      font-size: clamp(3rem, 8vw, 6rem);
-      margin: 16px 0;
-      font-weight: 800;
-    }
+      .not-found-desc {
+        font-size: 1.25rem;
+        max-width: 520px;
+        margin: 0 auto 36px;
+        color: var(--fg-muted, #8b949e);
+      }
 
-    .not-found-desc {
-      font-size: 1.25rem;
-      max-width: 520px;
-      margin: 0 auto 36px;
-      color: var(--fg-muted, #8b949e);
-    }
+      .not-found-actions {
+        display: flex;
+        gap: 16px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+    </style>
+  </head>
 
-    .not-found-actions {
-      display: flex;
-      gap: 16px;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
-  </style>
-</head>
+  <body>
+    <docs-nav />
 
-<body>
-
-  <docs-nav />
-
-  <section class="not-found-hero">
-    <div class="container">
-      <span class="badge">404 Error</span>
-      <h1 class="not-found-title"><span class="text-accent">Page Not Found</span></h1>
-      <p class="not-found-desc">The page you are looking for might have been removed, had its name changed, or is
-        temporarily unavailable.</p>
-      <div class="not-found-actions">
-        <a href="/" class="btn btn-primary">Go Home</a>
-        <a href="/getting-started" class="btn btn-ghost">Getting Started</a>
+    <section class="not-found-hero">
+      <div class="container">
+        <span class="badge">404 Error</span>
+        <h1 class="not-found-title">
+          <span class="text-accent">Page Not Found</span>
+        </h1>
+        <p class="not-found-desc">
+          The page you are looking for might have been removed, had its name
+          changed, or is temporarily unavailable.
+        </p>
+        <div class="not-found-actions">
+          <a href="/" class="btn btn-primary">Go Home</a>
+          <a href="/getting-started" class="btn btn-ghost">Getting Started</a>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <docs-footer />
-
-</body>
-
+    <docs-footer />
+  </body>
 </html>

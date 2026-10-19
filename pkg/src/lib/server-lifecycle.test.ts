@@ -46,7 +46,9 @@ describe("Health state management", () => {
   it("returns no-cache headers on health response", () => {
     setServerHealthState("ready");
     const result = handleHealthCheck();
-    expect(result.headers["cache-control"]).toBe("no-store, no-cache, must-revalidate");
+    expect(result.headers["cache-control"]).toBe(
+      "no-store, no-cache, must-revalidate",
+    );
   });
 });
 
@@ -141,7 +143,9 @@ describe("executeGracefulShutdown", () => {
     const shutdown = createGracefulShutdownHandler({
       server: mockServer as any,
       drainTimeout: 5000,
-      runShutdownHandlers: vi.fn().mockRejectedValue(new Error("cleanup failed")),
+      runShutdownHandlers: vi
+        .fn()
+        .mockRejectedValue(new Error("cleanup failed")),
       exit: mockExit,
     });
 
@@ -249,7 +253,9 @@ describe("executeGracefulShutdown", () => {
 
   it("shutdown-handler rejection does not prevent server.close or force-exit fail-safe", () => {
     const mockExit = vi.fn();
-    const mockRunShutdownHandlers = vi.fn().mockRejectedValue(new Error("shutdown error"));
+    const mockRunShutdownHandlers = vi
+      .fn()
+      .mockRejectedValue(new Error("shutdown error"));
     const mockServer = {
       close: vi.fn(),
     };
@@ -309,7 +315,9 @@ describe("executeGracefulShutdown", () => {
       });
     });
 
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
     const port = (server.address() as any).port;
 
     let exitCode: number | null = null;
@@ -322,18 +330,24 @@ describe("executeGracefulShutdown", () => {
     });
 
     // Start request with connection: close so client drops socket upon completion
-    const responsePromise = new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
-      const clientReq = http.get(
-        `http://127.0.0.1:${port}/test`,
-        { headers: { connection: "close" }, agent: false },
-        (res) => {
-          let body = "";
-          res.on("data", (chunk) => { body += chunk; });
-          res.on("end", () => resolve({ statusCode: res.statusCode ?? 0, body }));
-        }
-      );
-      clientReq.on("error", reject);
-    });
+    const responsePromise = new Promise<{ statusCode: number; body: string }>(
+      (resolve, reject) => {
+        const clientReq = http.get(
+          `http://127.0.0.1:${port}/test`,
+          { headers: { connection: "close" }, agent: false },
+          (res) => {
+            let body = "";
+            res.on("data", (chunk) => {
+              body += chunk;
+            });
+            res.on("end", () =>
+              resolve({ statusCode: res.statusCode ?? 0, body }),
+            );
+          },
+        );
+        clientReq.on("error", reject);
+      },
+    );
 
     // Give time for request to reach server
     await new Promise((r) => setTimeout(r, 50));

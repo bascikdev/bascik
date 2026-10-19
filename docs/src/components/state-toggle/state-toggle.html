@@ -4,15 +4,17 @@
     <p id="status">Panel closed</p>
     <button id="toggle" type="button">Toggle panel</button>
   </div>
-  <div class="state-toggle-panel" id="panel">Only this component instance changes.</div>
+  <div class="state-toggle-panel" id="panel">
+    Only this component instance changes.
+  </div>
 </section>
 <script>
-  const status = document.getElementById('status');
-  const toggle = document.getElementById('toggle');
-  const panel = document.getElementById('panel');
+  const status = document.getElementById("status");
+  const toggle = document.getElementById("toggle");
+  const panel = document.getElementById("panel");
 
-  toggle.addEventListener('click', () => {
-    const isOpen = panel.classList.toggle('is-open');
-    status.textContent = isOpen ? 'Panel open' : 'Panel closed';
+  toggle.addEventListener("click", () => {
+    const isOpen = panel.classList.toggle("is-open");
+    status.textContent = isOpen ? "Panel open" : "Panel closed";
   });
 </script>

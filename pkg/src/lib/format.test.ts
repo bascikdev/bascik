@@ -9,7 +9,7 @@ describe("formatDuration", () => {
 
   it("formats sub-millisecond durations with up to 2 decimals without trailing zeros", () => {
     expect(formatDuration(0.4)).toBe("0.4ms");
-    expect(formatDuration(0.40)).toBe("0.4ms");
+    expect(formatDuration(0.4)).toBe("0.4ms");
     expect(formatDuration(0.09)).toBe("0.09ms");
     expect(formatDuration(0.42)).toBe("0.42ms");
     expect(formatDuration(0.456)).toBe("0.46ms");

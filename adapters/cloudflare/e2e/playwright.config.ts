@@ -10,20 +10,20 @@
  * Run with:
  *   npx playwright test --config e2e/playwright.cloudflare.config.ts
  */
-import { defineConfig } from '@playwright/test';
-import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
+import { defineConfig } from "@playwright/test";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
-const e2eDir = fileURLToPath(new URL('.', import.meta.url));
-const adapterDir = join(e2eDir, '..');
-const rootDir = join(adapterDir, '../..');
-const pkgDir = join(rootDir, 'pkg');
-const fixtureDir = join(e2eDir, 'fixture');
+const e2eDir = fileURLToPath(new URL(".", import.meta.url));
+const adapterDir = join(e2eDir, "..");
+const rootDir = join(adapterDir, "../..");
+const pkgDir = join(rootDir, "pkg");
+const fixtureDir = join(e2eDir, "fixture");
 const PORT = 9876;
 
 export default defineConfig({
-  testDir: './tests',
-  testMatch: '**/adapter.test.ts',
+  testDir: "./tests",
+  testMatch: "**/adapter.test.ts",
   workers: 1,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
@@ -35,12 +35,12 @@ export default defineConfig({
     command: [
       `node ${pkgDir}/dist/index.js --build --target cloudflare-pages`,
       `node ${fixtureDir}/serve.ts ${PORT}`,
-    ].join(' && '),
+    ].join(" && "),
     cwd: fixtureDir,
     url: `http://127.0.0.1:${PORT}/`,
     reuseExistingServer: false,
-    stdout: 'pipe',
-    stderr: 'pipe',
+    stdout: "pipe",
+    stderr: "pipe",
     timeout: 120_000,
   },
 });

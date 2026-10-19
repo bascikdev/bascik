@@ -49,7 +49,11 @@ import {
   type ModuleGraph,
 } from "./module-graph.ts";
 import { isNetworkResetError } from "./server.ts";
-import { nativeClock, type FrameworkClock, type TimeoutHandle } from "./clock.ts";
+import {
+  nativeClock,
+  type FrameworkClock,
+  type TimeoutHandle,
+} from "./clock.ts";
 import { BascikConfig } from "./config.ts";
 
 export interface LoadedScriptModule {
@@ -177,12 +181,16 @@ export interface ScriptRegistryOptions {
  */
 export const resolveRegistryMode = (
   config: { isBuild?: boolean; isProdServer?: boolean } = BascikConfig,
-): ScriptRegistryMode => (config.isBuild || config.isProdServer ? "production" : "development");
+): ScriptRegistryMode =>
+  config.isBuild || config.isProdServer ? "production" : "development";
 
 export class ScriptRegistry {
   /** Published current-generation entries by identity key. */
   private cache = new Map<string, LoadedScriptModule>();
-  private ownedLoads = new WeakMap<object, { specifier: string; load: Promise<LoadedScriptModule> }>();
+  private ownedLoads = new WeakMap<
+    object,
+    { specifier: string; load: Promise<LoadedScriptModule> }
+  >();
   /**
    * The single generation owner, shared with the dev resolve hook. Only
    * identities that were loaded, attempted, resolved by the hook, or
@@ -200,7 +208,8 @@ export class ScriptRegistry {
     this.clock = options.clock ?? nativeClock;
     // A production registry gets a private, always-empty graph so it can never
     // observe or grow the dev graph even when both exist in one process (tests).
-    this.graph = options.graph ?? (this.isDev ? moduleGraph : createModuleGraph());
+    this.graph =
+      options.graph ?? (this.isDev ? moduleGraph : createModuleGraph());
   }
 
   get mode(): ScriptRegistryMode {
@@ -238,8 +247,12 @@ export class ScriptRegistry {
     if (owner && identity.kind === "data") {
       const cached = this.ownedLoads.get(owner);
       if (cached?.specifier === specifier) return cached.load;
-      const load = import(specifier).then(module => ({
-        filePath: identity.displayPath, key, url: specifier, module, version: 0,
+      const load = import(specifier).then((module) => ({
+        filePath: identity.displayPath,
+        key,
+        url: specifier,
+        module,
+        version: 0,
       }));
       const state = { specifier, load };
       this.ownedLoads.set(owner, state);
@@ -364,7 +377,8 @@ export class ScriptRegistry {
       } else {
         const onAbort = () => controller.abort(options.signal!.reason);
         options.signal.addEventListener("abort", onAbort, { once: true });
-        upstreamSignalUnsubscribe = () => options.signal!.removeEventListener("abort", onAbort);
+        upstreamSignalUnsubscribe = () =>
+          options.signal!.removeEventListener("abort", onAbort);
       }
     }
 
@@ -374,7 +388,9 @@ export class ScriptRegistry {
     if (timeoutMs && timeoutMs > 0) {
       timer = this.clock.setTimeout(() => {
         didTimeout = true;
-        controller.abort(new Error(`Script execution timed out after ${timeoutMs}ms`));
+        controller.abort(
+          new Error(`Script execution timed out after ${timeoutMs}ms`),
+        );
       }, timeoutMs);
     }
 
@@ -390,8 +406,10 @@ export class ScriptRegistry {
       }
 
       // Race load with abort signal
-      const loadPromise = Promise.resolve(this.load(specifier, options.moduleOwner));
-      loadPromise.catch(() => { });
+      const loadPromise = Promise.resolve(
+        this.load(specifier, options.moduleOwner),
+      );
+      loadPromise.catch(() => {});
 
       const abortDuringLoadPromise = new Promise<never>((_, reject) => {
         if (controller.signal.aborted) {
@@ -401,17 +419,24 @@ export class ScriptRegistry {
         onAbortListener = () => {
           if (!settled) {
             if (didTimeout) {
-              reject(new Error(`Script execution timed out after ${timeoutMs}ms`));
+              reject(
+                new Error(`Script execution timed out after ${timeoutMs}ms`),
+              );
             } else {
               reject(controller.signal.reason);
             }
           }
         };
-        controller.signal.addEventListener("abort", onAbortListener, { once: true });
+        controller.signal.addEventListener("abort", onAbortListener, {
+          once: true,
+        });
       });
-      abortDuringLoadPromise.catch(() => { });
+      abortDuringLoadPromise.catch(() => {});
 
-      const loaded = (await Promise.race([loadPromise, abortDuringLoadPromise])) as LoadedScriptModule;
+      const loaded = (await Promise.race([
+        loadPromise,
+        abortDuringLoadPromise,
+      ])) as LoadedScriptModule;
 
       if (onAbortListener) {
         controller.signal.removeEventListener("abort", onAbortListener);
@@ -442,7 +467,7 @@ export class ScriptRegistry {
       }
 
       // Observe rejection so late rejection after settlement never triggers unhandled-rejection
-      resultPromise.catch(() => { });
+      resultPromise.catch(() => {});
 
       let value: T;
       if (controller.signal.aborted) {
@@ -457,15 +482,19 @@ export class ScriptRegistry {
         onAbortListener = () => {
           if (!settled) {
             if (didTimeout) {
-              reject(new Error(`Script execution timed out after ${timeoutMs}ms`));
+              reject(
+                new Error(`Script execution timed out after ${timeoutMs}ms`),
+              );
             } else {
               reject(controller.signal.reason);
             }
           }
         };
-        controller.signal.addEventListener("abort", onAbortListener, { once: true });
+        controller.signal.addEventListener("abort", onAbortListener, {
+          once: true,
+        });
       });
-      abortPromise.catch(() => { });
+      abortPromise.catch(() => {});
 
       value = (await Promise.race([resultPromise, abortPromise])) as T;
       settled = true;
@@ -503,7 +532,6 @@ export class ScriptRegistry {
       }
     }
   }
-
 }
 
 /**

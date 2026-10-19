@@ -79,17 +79,26 @@ Bascik does not maintain a hardcoded allowlist of third-party custom element nam
 
 ## What does `bascik --check` actually check?
 
-`bascik --check` validates pages, components, config, and API route files in one pass. It reports:
+`bascik --check` validates pages, components, config, and API route files in one pass. It does this in two halves, and each rule lives in exactly one of them.
+
+**Project checks**, which `bascik` runs itself because they need the whole project:
 
 - Config and path validation issues (including missing script paths and unreadable TLS files)
 - Missing site URL when sitemap/robots generation is enabled
 - Duplicate component tag names and circular component references
+- Two pages, or two API route files, that resolve to the same URL
+- Unmatched or unused components
+- WHATWG HTML5 parse errors in every compiled `dist/` HTML file (requires [parse5](https://parse5.js.org/) as a dev dependency; if not installed, `--check` prints a one-line install hint instead)
+
+**Per-file checks**, which need only one file and come from the [linter](/tools/linter) (`@bascik/language-server`, which projects created with `npm create bascik` already have):
+
 - Unknown `data-bascik-*` attribute names (likely typos)
 - Script mode conflicts such as one tag containing both `data-bascik-build` and `data-bascik-server`
-- API route method/export problems and route collisions
-- Unmatched or unused components
+- API route files with no method handler, or with a method export that is not uppercase
+- CSS and JavaScript in components that cannot be scoped
 - Advisory conventions such as component `<style>` placement and `<script>` placement ordering
-- WHATWG HTML5 parse errors in every compiled `dist/` HTML file (requires [parse5](https://parse5.js.org/) as a dev dependency; if not installed, `--check` prints a one-line install hint instead)
+
+If the linter is not installed, the project checks still run and the report says the per-file checks were skipped.
 
 Run `bascik --check --json` for machine-readable results, and `bascik --check --strict` if you want warnings to fail CI.
 
@@ -111,13 +120,22 @@ For a site with many large images, PDFs, fonts, media files, or downloads, enabl
 
 ```ts
 export default defineConfig({
-  assets: { symlink: true }
+  assets: { symlink: true },
 });
 ```
 
 Bascik then links unchanged assets from `src/pages/` into `dist/` instead of copying their bytes on each development startup. It still copies files that Bascik transforms, such as minified CSS or JavaScript and rewritten web manifests. Production builds always create regular files, never symlinks.
 
 Restart the dev server after changing configuration. Each dev startup clears `dist/`, so previously copied assets are recreated as links. On Windows, if symlink permissions are unavailable, Bascik warns once and falls back to copying. Enable Developer Mode or grant symlink permission to use the faster path.
+
+## Does Bascik run on Windows?
+
+Windows is a supported platform, and Bascik's own tests run on it in CI. Two things differ from macOS and Linux:
+
+- **Symlinked assets.** `assets.symlink` needs permission to create symlinks. Without it, Bascik warns once and copies the files instead. See [How can I speed up development when my site has many static assets?](#how-can-i-speed-up-development-when-my-site-has-many-static-assets).
+- **Line endings.** Source files saved with Windows (CRLF) line endings build to the same output as LF files, so you do not need to convert them. If you keep your project in Git, add `* text=auto eol=lf` to `.gitattributes` so every contributor gets the same bytes.
+
+If something behaves differently on Windows than this page says, please [open an issue](https://github.com/bascikdev/bascik/issues).
 
 ## How do I share components between projects?
 
@@ -183,7 +201,7 @@ If `bascik --server` exited unexpectedly, check the process log for `[bascik] Fa
 
 ## How do I use a strict Content Security Policy with Bascik?
 
-Enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik computes SHA-256 hashes for all inlined component scripts and stylesheets and outputs them in `dist/.bascik/csp-hashes.json`. You can then consume this file in a post-build script to emit strict `script-src` and `style-src` hash directives for your hosting platform.
+List the hash of each inline script in the policy. Enable `generate.cspHashes: true` in `bascik.config.ts` and Bascik writes the SHA-256 hashes of all inlined component scripts and stylesheets to `dist/.bascik/csp-hashes.json`, or hash the built pages yourself in a `post` exec script. See [Content Security Policy](/how-to/content-security-policy) for a worked recipe.
 
 ## Does Bascik set a Content Security Policy header?
 
@@ -246,6 +264,7 @@ Unreferenced local files are ignored so Node build/server helpers are never acci
 Nothing gets copied to `dist/`.
 
 The `src/components/` directory is treated strictly as source-only files:
+
 - Component `.html` templates are resolved and inlined into pages at build time.
 - Companion `.css` files are scoped and deduplicated into page `<style>` blocks.
 - Client `.ts`, `.js`, or `.mjs` scripts referenced via `<script src="...">` are inlined and scoped into page `<script>` blocks.
@@ -259,6 +278,7 @@ Static assets intended to be served directly as public URLs should be placed in 
 Eligible static assets placed in `src/pages/` are copied to `dist/` with their directory structure preserved. This makes `src/pages/` the publish tree for both routes and their browser assets.
 
 The following files are **excluded** from static asset copying:
+
 - **`.html` page templates**: compiled into output HTML pages in `dist/`.
 - **Source and documentation files**: `.ts`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.map`, and `.md`.
 - **Test files**: any file matching `*.test.*` or `*.spec.*` (such as `styles.test.ts` or `api.spec.js`).

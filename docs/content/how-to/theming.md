@@ -4,10 +4,10 @@ Bascik styles a site in two layers: one global stylesheet that declares design t
 
 ## Two Layers
 
-| Layer | Where | Holds |
-|---|---|---|
-| Global | One stylesheet under `src/pages/`, such as `src/pages/css/styles.css`, linked from a shared head component | Design tokens (`--color-*`, `--space-*`, `--font-*`), the reset, base element styles, `@font-face`, and a few helper classes |
-| Component | Each component's `<style>` block or companion `.css` file | The layout and look of that component, written with the tokens |
+| Layer     | Where                                                                                                      | Holds                                                                                                                        |
+| --------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Global    | One stylesheet under `src/pages/`, such as `src/pages/css/styles.css`, linked from a shared head component | Design tokens (`--color-*`, `--space-*`, `--font-*`), the reset, base element styles, `@font-face`, and a few helper classes |
+| Component | Each component's `<style>` block or companion `.css` file                                                  | The layout and look of that component, written with the tokens                                                               |
 
 **Declare tokens once, globally, and only read them in components.** A custom property a component declares is renamed to that component (`--brand` becomes `--bascik__card__brand`), so declaring a token inside a component makes a private copy the rest of the site cannot see. A token a component only reads with `var()` is left alone and resolves to the global value. See [Scoped Styles](/scoped-styles#using-global-design-tokens-in-a-component).
 
@@ -45,8 +45,12 @@ Keep the list short. A component that needs a one-off value can write the value 
 `light-dark()` returns its first value when the element's `color-scheme` is light and its second when it is dark. With `color-scheme: light dark` the operating system decides. Two rules let a visitor's choice override it:
 
 ```css
-:root[data-theme="light"] { color-scheme: light; }
-:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
 ```
 
 Setting `data-theme` on `<html>` is then the whole theme switch: every token follows, and `color-scheme` also themes form controls, scrollbars, and the page background. `light-dark()` reached Baseline in 2024. To support older browsers, repeat the tokens inside `@media (prefers-color-scheme: dark)` and `:root[data-theme="dark"]` blocks instead.
@@ -54,9 +58,13 @@ Setting `data-theme` on `<html>` is then the whole theme switch: every token fol
 When a component needs a theme-specific rule that a token cannot express, target `html`, which Bascik never renames:
 
 ```css
-html[data-theme="dark"] .card { box-shadow: none; }
+html[data-theme="dark"] .card {
+  box-shadow: none;
+}
 @media (prefers-color-scheme: dark) {
-  html:not([data-theme="light"]) .card { box-shadow: none; }
+  html:not([data-theme="light"]) .card {
+    box-shadow: none;
+  }
 }
 ```
 
@@ -82,15 +90,16 @@ To offer system, light, and dark, use a `<select>` and remove the saved value fo
   <option value="dark">Dark</option>
 </select>
 <script>
-  const select = document.getElementById('theme');
-  select.value = document.documentElement.getAttribute('data-theme') ?? 'system';
-  select.addEventListener('change', () => {
-    if (select.value === 'system') {
-      document.documentElement.removeAttribute('data-theme');
-      localStorage.removeItem('theme');
+  const select = document.getElementById("theme");
+  select.value =
+    document.documentElement.getAttribute("data-theme") ?? "system";
+  select.addEventListener("change", () => {
+    if (select.value === "system") {
+      document.documentElement.removeAttribute("data-theme");
+      localStorage.removeItem("theme");
     } else {
-      document.documentElement.setAttribute('data-theme', select.value);
-      localStorage.setItem('theme', select.value);
+      document.documentElement.setAttribute("data-theme", select.value);
+      localStorage.setItem("theme", select.value);
     }
   });
 </script>
@@ -101,7 +110,12 @@ To offer system, light, and dark, use a `<select>` and remove the saved value fo
 ```html
 <picture>
   <source srcset="/img/diagram-dark.png" media="(prefers-color-scheme: dark)" />
-  <img src="/img/diagram-light.png" alt="How a request reaches the server" width="800" height="400" />
+  <img
+    src="/img/diagram-light.png"
+    alt="How a request reaches the server"
+    width="800"
+    height="400"
+  />
 </picture>
 ```
 

@@ -1,0 +1,18 @@
+# Text files are checked out with LF on every platform. Windows git defaults to CRLF (core.autocrlf), which changes
+# the bytes of source files, golden fixtures, and generated files, and breaks tests that compare them exactly.
+* text=auto eol=lf
+
+# Windows shell scripts need CRLF to run.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files are never converted.
+*.png binary
+*.webp binary
+*.ico binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.gz binary
+*.br binary
+*.tar binary

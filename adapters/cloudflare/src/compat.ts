@@ -83,7 +83,9 @@ export const formatUnsupportedImport = (input: {
   owners: string[];
 }): string => {
   const rel = relative(input.projectRoot, input.importer).replace(/\\/g, "/");
-  const owners = input.owners.length ? `\n  Reached from: ${input.owners.join(", ")}` : "";
+  const owners = input.owners.length
+    ? `\n  Reached from: ${input.owners.join(", ")}`
+    : "";
   return (
     `[bascik] --target: "${input.specifier}" (imported by ${rel}) is not available in the Cloudflare Workers runtime ` +
     `for compatibility date ${CLOUDFLARE_COMPATIBILITY_DATE}.${owners}\n` +

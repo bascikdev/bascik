@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
-import { createMinifyJsMemo, minifyJs, memoizedMinifyJs } from "./js-minifier.ts";
+import {
+  createMinifyJsMemo,
+  minifyJs,
+  memoizedMinifyJs,
+} from "./js-minifier.ts";
 
 describe("createMinifyJsMemo", () => {
   it("minifies each distinct input once and returns the same result on repeats", () => {
@@ -10,7 +14,10 @@ describe("createMinifyJsMemo", () => {
     expect(memo.minify("  a  ")).toBe("a");
     expect(memo.minify(" b ")).toBe("b");
     expect(minify).toHaveBeenCalledTimes(2);
-    expect(memo.stats()).toEqual({ entries: 2, bytes: 2 * ("  a  a".length + " b b".length) });
+    expect(memo.stats()).toEqual({
+      entries: 2,
+      bytes: 2 * ("  a  a".length + " b b".length),
+    });
   });
 
   it("evicts the least recently used entry when the entry cap is reached", () => {

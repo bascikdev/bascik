@@ -1,39 +1,60 @@
-import { describe, expect, it } from 'vitest';
-import { analyzeComponentSource } from './component-metadata.js';
+import { describe, expect, it } from "vitest";
+import { analyzeComponentSource } from "./component-metadata.js";
 
-describe('analyzeComponentSource', () => {
-  it('ignores prop-like text in raw text bodies, whatever their end tag spelling', () => {
-    for (const endTag of ['</script>', '</script foo>', '</script/>', '</SCRIPT\n>']) {
+describe("analyzeComponentSource", () => {
+  it("ignores prop-like text in raw text bodies, whatever their end tag spelling", () => {
+    for (const endTag of [
+      "</script>",
+      "</script foo>",
+      "</script/>",
+      "</SCRIPT\n>",
+    ]) {
       const metadata = analyzeComponentSource(
         `<script>const s = "data-bascik-prop-fake";${endTag}<p data-bascik-text="real"></p>`,
       );
-      expect(metadata.props.map((prop) => prop.name), endTag).toEqual(['real']);
+      expect(
+        metadata.props.map((prop) => prop.name),
+        endTag,
+      ).toEqual(["real"]);
     }
   });
 
-  it('does not count custom elements named like style or script as styles or scripts', () => {
-    const metadata = analyzeComponentSource('<style-guide></style-guide><script-loader></script-loader>');
+  it("does not count custom elements named like style or script as styles or scripts", () => {
+    const metadata = analyzeComponentSource(
+      "<style-guide></style-guide><script-loader></script-loader>",
+    );
     expect(metadata.hasStyles).toBe(false);
     expect(metadata.hasScripts).toBe(false);
-    expect(analyzeComponentSource('<style>.a{}</style>').hasStyles).toBe(true);
-    expect(analyzeComponentSource('<script\n>x()</script>').hasScripts).toBe(true);
+    expect(analyzeComponentSource("<style>.a{}</style>").hasStyles).toBe(true);
+    expect(analyzeComponentSource("<script\n>x()</script>").hasScripts).toBe(
+      true,
+    );
   });
 
-  it('infers every prop form in source order and deduplicates names', () => {
+  it("infers every prop form in source order and deduplicates names", () => {
     const metadata = analyzeComponentSource(`
       <p data-bascik-text="label"></p>
       <a data-bascik-attr-href="link" data-bascik-prop-label></a>
       <div data-bascik-html='content' data-bascik-prop-link></div>
+      <img data-bascik-attr-src = unquotedSrc />
     `);
 
     expect(metadata.props).toEqual([
-      { name: 'label' },
-      { name: 'link' },
-      { name: 'content' },
+      { name: "label" },
+      { name: "link" },
+      { name: "content" },
+      { name: "unquotedSrc" },
     ]);
   });
 
-  it('infers named and default slots and component features', () => {
+  it("infers unquoted slot names on self-closing tags without trailing slash", () => {
+    const metadata = analyzeComponentSource(
+      "<div data-bascik-slot=heroHeader/>",
+    );
+    expect(metadata.slots).toEqual([{ name: "heroHeader" }]);
+  });
+
+  it("infers named and default slots and component features", () => {
     const metadata = analyzeComponentSource(
       `<style>.card {}</style>
        <div data-bascik-slot="actions"></div>
@@ -41,20 +62,20 @@ describe('analyzeComponentSource', () => {
        <script>console.log('ready')</script>`,
     );
 
-    expect(metadata.slots).toEqual([{ name: 'actions' }]);
-    expect(metadata.defaultSlot).toEqual({ name: 'default' });
+    expect(metadata.slots).toEqual([{ name: "actions" }]);
+    expect(metadata.defaultSlot).toEqual({ name: "default" });
     expect(metadata.hasStyles).toBe(true);
     expect(metadata.hasScripts).toBe(true);
   });
 
-  it('recognizes companion styles', () => {
+  it("recognizes companion styles", () => {
     expect(
-      analyzeComponentSource('<p>Card</p>', { hasCompanionStyles: true })
+      analyzeComponentSource("<p>Card</p>", { hasCompanionStyles: true })
         .hasStyles,
     ).toBe(true);
   });
 
-  it('enriches inferred members from an eligible leading header', () => {
+  it("enriches inferred members from an eligible leading header", () => {
     const source = `\ufeff<!-- ordinary -->
 <!-- @bascik
 A documented widget.
@@ -67,29 +88,29 @@ A documented widget.
 <div data-bascik-slot></div>`;
     const metadata = analyzeComponentSource(source);
 
-    expect(metadata.description).toBe('A documented widget.');
+    expect(metadata.description).toBe("A documented widget.");
     expect(metadata.props).toEqual([
-      { name: 'label', description: 'Visible label.' },
+      { name: "label", description: "Visible label." },
     ]);
     expect(metadata.slots).toEqual([
-      { name: 'actions', description: 'Action controls.' },
+      { name: "actions", description: "Action controls." },
     ]);
     expect(metadata.defaultSlot).toEqual({
-      name: 'default',
-      description: 'Main widget content.',
+      name: "default",
+      description: "Main widget content.",
     });
     expect(metadata.diagnostics).toEqual([]);
   });
 
-  it('ignores a metadata comment after markup', () => {
+  it("ignores a metadata comment after markup", () => {
     const metadata = analyzeComponentSource(
-      '<p data-bascik-prop-label></p>\n<!-- @bascik\nLate docs.\n@prop label - Ignored.\n-->',
+      "<p data-bascik-prop-label></p>\n<!-- @bascik\nLate docs.\n@prop label - Ignored.\n-->",
     );
     expect(metadata.description).toBeUndefined();
-    expect(metadata.props).toEqual([{ name: 'label' }]);
+    expect(metadata.props).toEqual([{ name: "label" }]);
   });
 
-  it('warns on undeclared and duplicate annotations with exact name offsets', () => {
+  it("warns on undeclared and duplicate annotations with exact name offsets", () => {
     const source = `<!-- @bascik
 @prop label - First.
 @prop label - Second.
@@ -99,27 +120,31 @@ A documented widget.
 <p data-bascik-prop-label></p>`;
     const metadata = analyzeComponentSource(source);
 
-    expect(metadata.props).toEqual([
-      { name: 'label', description: 'First.' },
+    expect(metadata.props).toEqual([{ name: "label", description: "First." }]);
+    expect(
+      metadata.diagnostics.map(
+        ({ code, message }: { code: string; message: string }) => ({
+          code,
+          message,
+        }),
+      ),
+    ).toEqual([
+      {
+        code: "component-metadata-duplicate-annotation",
+        message:
+          'Duplicate @prop annotation for "label". The first annotation is used.',
+      },
+      {
+        code: "component-metadata-undeclared-annotation",
+        message:
+          '@prop annotation "missing" does not match a prop declared in this component\'s markup.',
+      },
+      {
+        code: "component-metadata-undeclared-annotation",
+        message:
+          '@slot annotation "default" does not match a slot declared in this component\'s markup.',
+      },
     ]);
-    expect(metadata.diagnostics.map(({ code, message }: { code: string; message: string }) => ({ code, message })))
-      .toEqual([
-        {
-          code: 'component-metadata-duplicate-annotation',
-          message:
-            'Duplicate @prop annotation for "label". The first annotation is used.',
-        },
-        {
-          code: 'component-metadata-undeclared-annotation',
-          message:
-            '@prop annotation "missing" does not match a prop declared in this component\'s markup.',
-        },
-        {
-          code: 'component-metadata-undeclared-annotation',
-          message:
-            '@slot annotation "default" does not match a slot declared in this component\'s markup.',
-        },
-      ]);
     for (const diagnostic of metadata.diagnostics) {
       expect(source.slice(diagnostic.start, diagnostic.end)).toMatch(
         /^(?:label|missing|default)$/,
@@ -127,7 +152,7 @@ A documented widget.
     }
   });
 
-  it('ignores prop and slot text inside comments and raw-text contents', () => {
+  it("ignores prop and slot text inside comments and raw-text contents", () => {
     const metadata = analyzeComponentSource(`
       <!-- <p data-bascik-prop-commented></p> -->
       <script>const fake = '<div data-bascik-slot="fake"></div>';</script>
@@ -135,7 +160,7 @@ A documented widget.
       <p data-bascik-prop-real></p>
     `);
 
-    expect(metadata.props).toEqual([{ name: 'real' }]);
+    expect(metadata.props).toEqual([{ name: "real" }]);
     expect(metadata.slots).toEqual([]);
   });
 });

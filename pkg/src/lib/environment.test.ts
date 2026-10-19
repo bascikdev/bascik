@@ -49,27 +49,34 @@ afterEach(async () => {
 
 describe("parseEnvFlags", () => {
   it("returns no values when the flags are absent", () => {
-    expect(parseEnvFlags(["--build"])).toEqual({ siteUrl: undefined, envFiles: [] });
+    expect(parseEnvFlags(["--build"])).toEqual({
+      siteUrl: undefined,
+      envFiles: [],
+    });
   });
 
   it("parses --site-url with a separate value", () => {
-    expect(parseEnvFlags(["--build", "--site-url", "https://example.com"]).siteUrl)
-      .toBe("https://example.com");
+    expect(
+      parseEnvFlags(["--build", "--site-url", "https://example.com"]).siteUrl,
+    ).toBe("https://example.com");
   });
 
   it("parses --site-url=<value>", () => {
-    expect(parseEnvFlags(["--site-url=https://example.com"]).siteUrl)
-      .toBe("https://example.com");
+    expect(parseEnvFlags(["--site-url=https://example.com"]).siteUrl).toBe(
+      "https://example.com",
+    );
   });
 
   it("parses --env-file with a separate value", () => {
-    expect(parseEnvFlags(["--env-file", ".env.staging"]).envFiles)
-      .toEqual([".env.staging"]);
+    expect(parseEnvFlags(["--env-file", ".env.staging"]).envFiles).toEqual([
+      ".env.staging",
+    ]);
   });
 
   it("parses --env-file=<path>", () => {
-    expect(parseEnvFlags(["--env-file=.env.staging"]).envFiles)
-      .toEqual([".env.staging"]);
+    expect(parseEnvFlags(["--env-file=.env.staging"]).envFiles).toEqual([
+      ".env.staging",
+    ]);
   });
 
   it("collects repeated --env-file flags in order", () => {
@@ -79,9 +86,10 @@ describe("parseEnvFlags", () => {
   });
 
   it("ignores unrelated flags and positional args", () => {
-    expect(
-      parseEnvFlags(["--build", "--log", "out.log", "--server"]),
-    ).toEqual({ siteUrl: undefined, envFiles: [] });
+    expect(parseEnvFlags(["--build", "--log", "out.log", "--server"])).toEqual({
+      siteUrl: undefined,
+      envFiles: [],
+    });
   });
 });
 
@@ -94,7 +102,11 @@ describe("loadEnvFiles", () => {
 
   it("loads the default ./.env when present", async () => {
     const dir = await makeDir();
-    await writeFile(join(dir, ".env"), "BASCIK_TEST_ENV_KEY_A=from-file\n", "utf8");
+    await writeFile(
+      join(dir, ".env"),
+      "BASCIK_TEST_ENV_KEY_A=from-file\n",
+      "utf8",
+    );
     const loaded = loadEnvFiles([], dir);
     expect(loaded).toEqual([join(dir, ".env")]);
     expect(process.env.BASCIK_TEST_ENV_KEY_A).toBe("from-file");
@@ -103,7 +115,11 @@ describe("loadEnvFiles", () => {
   it("does not overwrite a real environment variable with a .env file value", async () => {
     const dir = await makeDir();
     process.env.BASCIK_TEST_ENV_KEY_A = "real-env";
-    await writeFile(join(dir, ".env"), "BASCIK_TEST_ENV_KEY_A=from-file\n", "utf8");
+    await writeFile(
+      join(dir, ".env"),
+      "BASCIK_TEST_ENV_KEY_A=from-file\n",
+      "utf8",
+    );
     loadEnvFiles([], dir);
     expect(process.env.BASCIK_TEST_ENV_KEY_A).toBe("real-env");
   });
@@ -125,8 +141,16 @@ describe("loadEnvFiles", () => {
 
   it("explicit files override the default ./.env", async () => {
     const dir = await makeDir();
-    await writeFile(join(dir, ".env"), "BASCIK_TEST_ENV_KEY_A=default\n", "utf8");
-    await writeFile(join(dir, ".env.staging"), "BASCIK_TEST_ENV_KEY_A=staging\n", "utf8");
+    await writeFile(
+      join(dir, ".env"),
+      "BASCIK_TEST_ENV_KEY_A=default\n",
+      "utf8",
+    );
+    await writeFile(
+      join(dir, ".env.staging"),
+      "BASCIK_TEST_ENV_KEY_A=staging\n",
+      "utf8",
+    );
     loadEnvFiles([".env.staging"], dir);
     expect(process.env.BASCIK_TEST_ENV_KEY_A).toBe("staging");
   });
@@ -134,7 +158,11 @@ describe("loadEnvFiles", () => {
   it("a real env var survives even when multiple files set the key", async () => {
     const dir = await makeDir();
     process.env.BASCIK_TEST_ENV_KEY_A = "real-env";
-    await writeFile(join(dir, ".env"), "BASCIK_TEST_ENV_KEY_A=default\n", "utf8");
+    await writeFile(
+      join(dir, ".env"),
+      "BASCIK_TEST_ENV_KEY_A=default\n",
+      "utf8",
+    );
     await writeFile(join(dir, ".env.a"), "BASCIK_TEST_ENV_KEY_A=a\n", "utf8");
     loadEnvFiles([".env.a"], dir);
     expect(process.env.BASCIK_TEST_ENV_KEY_A).toBe("real-env");
@@ -144,12 +172,16 @@ describe("loadEnvFiles", () => {
 describe("validateSiteUrl", () => {
   it("accepts absolute http and https URLs", () => {
     expect(validateSiteUrl("https://example.com")).toBe("https://example.com");
-    expect(validateSiteUrl("http://localhost:4200")).toBe("http://localhost:4200");
+    expect(validateSiteUrl("http://localhost:4200")).toBe(
+      "http://localhost:4200",
+    );
   });
 
   it("rejects a URL with no scheme, naming the value", () => {
     expect(() => validateSiteUrl("example.com")).toThrow(/"example\.com"/);
-    expect(() => validateSiteUrl("example.com")).toThrow(/absolute http or https URL/);
+    expect(() => validateSiteUrl("example.com")).toThrow(
+      /absolute http or https URL/,
+    );
   });
 
   it("rejects non-http schemes", () => {
@@ -169,16 +201,16 @@ describe("resolveSiteUrl", () => {
   });
 
   it("uses BASCIK_SITE_URL from the environment", () => {
-    expect(resolveSiteUrl([], { BASCIK_SITE_URL: "https://example.com" }))
-      .toBe("https://example.com");
+    expect(resolveSiteUrl([], { BASCIK_SITE_URL: "https://example.com" })).toBe(
+      "https://example.com",
+    );
   });
 
   it("--site-url beats the environment variable", () => {
     expect(
-      resolveSiteUrl(
-        ["--site-url", "https://flag.example.com"],
-        { BASCIK_SITE_URL: "https://env.example.com" },
-      ),
+      resolveSiteUrl(["--site-url", "https://flag.example.com"], {
+        BASCIK_SITE_URL: "https://env.example.com",
+      }),
     ).toBe("https://flag.example.com");
   });
 
@@ -189,9 +221,9 @@ describe("resolveSiteUrl", () => {
   });
 
   it("rejects an invalid value from the environment", () => {
-    expect(() => resolveSiteUrl([], { BASCIK_SITE_URL: "example.com" })).toThrow(
-      /"example\.com"/,
-    );
+    expect(() =>
+      resolveSiteUrl([], { BASCIK_SITE_URL: "example.com" }),
+    ).toThrow(/"example\.com"/);
   });
 });
 
@@ -199,7 +231,11 @@ describe("bootEnvironment", () => {
   it("a .env file supplies BASCIK_SITE_URL when nothing else does", async () => {
     const dir = await makeDir();
     delete process.env[SITE_URL_ENV_VAR];
-    await writeFile(join(dir, ".env"), "BASCIK_SITE_URL=https://file.example.com\n", "utf8");
+    await writeFile(
+      join(dir, ".env"),
+      "BASCIK_SITE_URL=https://file.example.com\n",
+      "utf8",
+    );
     bootEnvironment([], dir);
     expect(process.env[SITE_URL_ENV_VAR]).toBe("https://file.example.com");
   });
@@ -207,7 +243,11 @@ describe("bootEnvironment", () => {
   it("a real env var beats the .env file", async () => {
     const dir = await makeDir();
     process.env[SITE_URL_ENV_VAR] = "https://real.example.com";
-    await writeFile(join(dir, ".env"), "BASCIK_SITE_URL=https://file.example.com\n", "utf8");
+    await writeFile(
+      join(dir, ".env"),
+      "BASCIK_SITE_URL=https://file.example.com\n",
+      "utf8",
+    );
     bootEnvironment([], dir);
     expect(process.env[SITE_URL_ENV_VAR]).toBe("https://real.example.com");
   });
@@ -215,7 +255,11 @@ describe("bootEnvironment", () => {
   it("--site-url beats both the real env var and the .env file", async () => {
     const dir = await makeDir();
     process.env[SITE_URL_ENV_VAR] = "https://real.example.com";
-    await writeFile(join(dir, ".env"), "BASCIK_SITE_URL=https://file.example.com\n", "utf8");
+    await writeFile(
+      join(dir, ".env"),
+      "BASCIK_SITE_URL=https://file.example.com\n",
+      "utf8",
+    );
     bootEnvironment(["--site-url", "https://flag.example.com"], dir);
     expect(process.env[SITE_URL_ENV_VAR]).toBe("https://flag.example.com");
   });
@@ -255,6 +299,45 @@ describe("bootEnvironment", () => {
         else process.env[key] = value;
       }
     }
+  });
+});
+
+describe("bootEnvironment: --quiet and --no-pin", () => {
+  const keys = ["BASCIK_LOG_LEVEL", "BASCIK_PIN_SERVER_URL"] as const;
+  const saved: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    for (const key of keys) {
+      saved[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+  afterEach(() => {
+    for (const key of keys) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  });
+
+  it("--quiet reaches workers as BASCIK_LOG_LEVEL=warn", async () => {
+    bootEnvironment(["--quiet"], await makeDir());
+    expect(process.env.BASCIK_LOG_LEVEL).toBe("warn");
+  });
+
+  it("-q is the same as --quiet", async () => {
+    bootEnvironment(["-q"], await makeDir());
+    expect(process.env.BASCIK_LOG_LEVEL).toBe("warn");
+  });
+
+  it("--no-pin reaches workers as BASCIK_PIN_SERVER_URL=0", async () => {
+    bootEnvironment(["--no-pin"], await makeDir());
+    expect(process.env.BASCIK_PIN_SERVER_URL).toBe("0");
+  });
+
+  it("does not touch either variable when neither flag is given, so a shell's own setting survives", async () => {
+    process.env.BASCIK_PIN_SERVER_URL = "0";
+    bootEnvironment([], await makeDir());
+    expect(process.env.BASCIK_PIN_SERVER_URL).toBe("0");
+    expect(process.env.BASCIK_LOG_LEVEL).toBeUndefined();
   });
 });
 

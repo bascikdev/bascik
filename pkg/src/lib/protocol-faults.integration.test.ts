@@ -38,7 +38,12 @@ const { configState } = vi.hoisted(() => ({
     scripts: { timeout: 30000, onServerScriptError: "error" },
     logging: { level: "silent", requests: false },
     isProdServer: false,
-    directory: { pages: "src/pages", components: ["src/components"], api: "src/api", out: "" },
+    directory: {
+      pages: "src/pages",
+      components: ["src/components"],
+      api: "src/api",
+      out: "",
+    },
     minify: { identifiers: false },
   },
 }));
@@ -64,12 +69,22 @@ interface RawResponse {
 }
 
 /** Parses raw HTTP/1.1 response bytes into headers, status, and body. */
-function parseRawHttpResponse(buf: Buffer): { head: string; body: string; status: number; headers: Record<string, string> } {
+function parseRawHttpResponse(buf: Buffer): {
+  head: string;
+  body: string;
+  status: number;
+  headers: Record<string, string>;
+} {
   const str = buf.toString("latin1");
   const headEnd = str.indexOf("\r\n\r\n");
   if (headEnd < 0) {
     const statusMatch = /^HTTP\/1\.[01] (\d{3})/.exec(str);
-    return { head: str, body: "", status: statusMatch ? Number(statusMatch[1]) : 0, headers: {} };
+    return {
+      head: str,
+      body: "",
+      status: statusMatch ? Number(statusMatch[1]) : 0,
+      headers: {},
+    };
   }
   const head = str.substring(0, headEnd);
   const body = buf.subarray(headEnd + 4).toString("utf8");
@@ -80,18 +95,26 @@ function parseRawHttpResponse(buf: Buffer): { head: string; body: string; status
   for (let i = 1; i < lines.length; i++) {
     const colon = lines[i].indexOf(":");
     if (colon > 0) {
-      headers[lines[i].substring(0, colon).trim().toLowerCase()] = lines[i].substring(colon + 1).trim();
+      headers[lines[i].substring(0, colon).trim().toLowerCase()] = lines[i]
+        .substring(colon + 1)
+        .trim();
     }
   }
   return { head, body, status, headers };
 }
 
 /** Helper to send raw bytes over a TCP socket and capture response and socket closure. */
-function sendRawBytes(port: number, payload: Buffer | string, options: { delayMs?: number; closeAfterWrite?: boolean } = {}): Promise<RawResponse> {
+function sendRawBytes(
+  port: number,
+  payload: Buffer | string,
+  options: { delayMs?: number; closeAfterWrite?: boolean } = {},
+): Promise<RawResponse> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     const socket = net.connect(port, "127.0.0.1", () => {
-      const data = Buffer.isBuffer(payload) ? payload : Buffer.from(payload, "utf8");
+      const data = Buffer.isBuffer(payload)
+        ? payload
+        : Buffer.from(payload, "utf8");
       socket.write(data, () => {
         if (options.closeAfterWrite) {
           socket.destroy();
@@ -120,15 +143,22 @@ function sendRawBytes(port: number, payload: Buffer | string, options: { delayMs
 }
 
 /** Oracle asserting that the response indicates either a protocol rejection status or socket termination without success. */
-function assertProtocolRejection(res: RawResponse, permittedStatuses: number[], context: string): void {
+function assertProtocolRejection(
+  res: RawResponse,
+  permittedStatuses: number[],
+  context: string,
+): void {
   if (res.status !== 0) {
     expect(
       permittedStatuses,
-      `${context}: expected status in [${permittedStatuses.join(",")}], got ${res.status}`
+      `${context}: expected status in [${permittedStatuses.join(",")}], got ${res.status}`,
     ).toContain(res.status);
   } else {
     // If status is 0, Node rejected at the socket/framing layer before generating HTTP response
-    expect(res.socketClosed, `${context}: socket must be closed on framing rejection`).toBe(true);
+    expect(
+      res.socketClosed,
+      `${context}: socket must be closed on framing rejection`,
+    ).toBe(true);
   }
 }
 
@@ -144,7 +174,10 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
     testDir = await mkdtemp(join(tmpdir(), "bascik-p1-protocol-"));
     const distDir = join(testDir, "dist");
     await mkdir(distDir, { recursive: true });
-    await writeFile(join(distDir, "index.html"), "<html><body>Home</body></html>");
+    await writeFile(
+      join(distDir, "index.html"),
+      "<html><body>Home</body></html>",
+    );
     await writeFile(join(distDir, "style.css"), "body { color: black; }");
 
     configState.directory.out = distDir;
@@ -184,10 +217,11 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
           filePath,
           version: 0,
           module: {
-            GET: async () => new Response(JSON.stringify({ healthy: true }), {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            }),
+            GET: async () =>
+              new Response(JSON.stringify({ healthy: true }), {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              }),
           },
         };
       }
@@ -219,7 +253,11 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
           filePath,
           version: 0,
           module: {
-            GET: async (_req: Request, _ctx: unknown, { signal }: { signal?: AbortSignal } = {}) => {
+            GET: async (
+              _req: Request,
+              _ctx: unknown,
+              { signal }: { signal?: AbortSignal } = {},
+            ) => {
               const stream = new ReadableStream<Uint8Array>({
                 async pull(controller) {
                   controller.enqueue(Buffer.from("chunk-1\n"));
@@ -268,8 +306,20 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
     const keyPath = join(testDir, "key.pem");
     const certPath = join(testDir, "cert.pem");
     await execFile("openssl", [
-      "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "1",
-      "-subj", "/CN=localhost", "-keyout", keyPath, "-out", certPath,
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-nodes",
+      "-sha256",
+      "-days",
+      "1",
+      "-subj",
+      "/CN=localhost",
+      "-keyout",
+      keyPath,
+      "-out",
+      certPath,
     ]);
 
     http2Server = http2.createSecureServer({
@@ -303,9 +353,17 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
 
   /** Helper to verify server readiness and clean state over a fresh connection. */
   async function assertHealthyReadiness(context: string): Promise<void> {
-    const res = await sendRawBytes(serverPort, "GET /api/healthy HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
-    expect(res.status, `${context}: post-fault healthy check must return 200`).toBe(200);
-    expect(res.body, `${context}: healthy check response body`).toContain("healthy");
+    const res = await sendRawBytes(
+      serverPort,
+      "GET /api/healthy HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+    );
+    expect(
+      res.status,
+      `${context}: post-fault healthy check must return 200`,
+    ).toBe(200);
+    expect(res.body, `${context}: healthy check response body`).toContain(
+      "healthy",
+    );
   }
 
   // ── Upload Disconnects & Body Limit Crossing ─────────────────────────────────
@@ -313,7 +371,9 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
     it("rejects request body exceeding maxBodySize with 413 Payload Too Large", async () => {
       const oversize = Buffer.alloc(2048, 0x61); // 2 KB > 1 KB limit
       const payload = Buffer.concat([
-        Buffer.from(`POST /api/upload HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: ${oversize.length}\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n`),
+        Buffer.from(
+          `POST /api/upload HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: ${oversize.length}\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n`,
+        ),
         oversize,
       ]);
       const res = await sendRawBytes(serverPort, payload);
@@ -321,27 +381,35 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
       expect(res.headers["connection"]).toBe("close");
       await assertHealthyReadiness("after 413 payload too large");
     });
-
   });
 
   // ── Method Guards, auto-OPTIONS, and Ignored/Rejected Bodies ─────────────────
   describe("method guards, auto-OPTIONS, and body handling", () => {
     it("responds 405 Method Not Allowed with Allow header for POST to static route", async () => {
-      const res = await sendRawBytes(serverPort, "POST /style.css HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+      const res = await sendRawBytes(
+        serverPort,
+        "POST /style.css HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+      );
       expect(res.status).toBe(405);
       expect(res.headers["allow"]).toBe("GET, HEAD");
       await assertHealthyReadiness("after 405 on static route");
     });
 
     it("responds 405 Method Not Allowed with Allow header for POST to health endpoint", async () => {
-      const res = await sendRawBytes(serverPort, "POST /_health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+      const res = await sendRawBytes(
+        serverPort,
+        "POST /_health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+      );
       expect(res.status).toBe(405);
       expect(res.headers["allow"]).toBe("GET, HEAD");
       await assertHealthyReadiness("after 405 on health check");
     });
 
     it("responds 405 with exported methods Allow header for unexported method on API route", async () => {
-      const res = await sendRawBytes(serverPort, "DELETE /api/echo-method HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+      const res = await sendRawBytes(
+        serverPort,
+        "DELETE /api/echo-method HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+      );
       expect(res.status).toBe(405);
       expect(res.headers["allow"]).toContain("GET");
       expect(res.headers["allow"]).toContain("POST");
@@ -350,7 +418,10 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
     });
 
     it("auto-responds 204 No Content with Allow header on OPTIONS when not explicitly exported", async () => {
-      const res = await sendRawBytes(serverPort, "OPTIONS /api/healthy HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+      const res = await sendRawBytes(
+        serverPort,
+        "OPTIONS /api/healthy HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+      );
       expect(res.status).toBe(204);
       expect(res.headers["allow"]).toBeDefined();
       expect(res.headers["allow"]).toContain("GET");
@@ -359,7 +430,8 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
     });
 
     it("ignores or drains request body sent on GET without error", async () => {
-      const payload = "GET /api/healthy HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 12\r\nConnection: close\r\n\r\nignored-body";
+      const payload =
+        "GET /api/healthy HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 12\r\nConnection: close\r\n\r\nignored-body";
       const res = await sendRawBytes(serverPort, payload);
       expect(res.status).toBe(200);
       expect(res.body).toContain("healthy");
@@ -367,7 +439,8 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
     });
 
     it("ignores or drains request body sent on HEAD without error", async () => {
-      const payload = "HEAD /api/healthy HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 12\r\nConnection: close\r\n\r\nignored-body";
+      const payload =
+        "HEAD /api/healthy HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 12\r\nConnection: close\r\n\r\nignored-body";
       const res = await sendRawBytes(serverPort, payload);
       expect(res.status).toBe(200);
       expect(res.body).toBe(""); // HEAD must not send body
@@ -377,28 +450,46 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
 
   // ── Packet P2: True HTTP/2 Faults ──────────────────────────────────────────
   describe("packet P2: true HTTP/2 stream faults and isolation", () => {
-    async function assertHealthyH2Session(client: http2.ClientHttp2Session, context: string): Promise<void> {
-      const healthyRes = await new Promise<{ status: number; body: string }>((resolve, reject) => {
-        const req = client.request({ ":path": "/api/healthy", ":method": "GET" });
-        let body = "";
-        let status = 0;
-        req.on("response", (headers) => {
-          status = Number(headers[":status"]);
-        });
-        req.on("data", (chunk: Buffer) => {
-          body += chunk.toString("utf8");
-        });
-        req.on("end", () => resolve({ status, body }));
-        req.on("error", reject);
-      });
-      expect(healthyRes.status, `${context}: expected 200 on healthy check`).toBe(200);
-      expect(healthyRes.body, `${context}: expected healthy payload`).toContain("healthy");
+    async function assertHealthyH2Session(
+      client: http2.ClientHttp2Session,
+      context: string,
+    ): Promise<void> {
+      const healthyRes = await new Promise<{ status: number; body: string }>(
+        (resolve, reject) => {
+          const req = client.request({
+            ":path": "/api/healthy",
+            ":method": "GET",
+          });
+          let body = "";
+          let status = 0;
+          req.on("response", (headers) => {
+            status = Number(headers[":status"]);
+          });
+          req.on("data", (chunk: Buffer) => {
+            body += chunk.toString("utf8");
+          });
+          req.on("end", () => resolve({ status, body }));
+          req.on("error", reject);
+        },
+      );
+      expect(
+        healthyRes.status,
+        `${context}: expected 200 on healthy check`,
+      ).toBe(200);
+      expect(healthyRes.body, `${context}: expected healthy payload`).toContain(
+        "healthy",
+      );
     }
 
     it("handles stream reset before commit cleanly without server crash or hang", async () => {
-      const client = http2.connect("https://127.0.0.1:" + http2Port, { rejectUnauthorized: false });
+      const client = http2.connect("https://127.0.0.1:" + http2Port, {
+        rejectUnauthorized: false,
+      });
       try {
-        const stream = client.request({ ":path": "/api/healthy", ":method": "GET" });
+        const stream = client.request({
+          ":path": "/api/healthy",
+          ":method": "GET",
+        });
         // Reset immediately before commit
         stream.close(http2.constants.NGHTTP2_CANCEL);
 
@@ -415,13 +506,18 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
     });
 
     it("handles stream reset after commit with healthy sibling isolation on the same session", async () => {
-      const client = http2.connect("https://127.0.0.1:" + http2Port, { rejectUnauthorized: false });
+      const client = http2.connect("https://127.0.0.1:" + http2Port, {
+        rejectUnauthorized: false,
+      });
       try {
         let streamReceivedChunk = false;
         let streamClosed = false;
 
         // 1. Long streaming request that will be canceled after the first chunk arrives
-        const faultyStream = client.request({ ":path": "/api/stream", ":method": "GET" });
+        const faultyStream = client.request({
+          ":path": "/api/stream",
+          ":method": "GET",
+        });
         faultyStream.on("data", () => {
           streamReceivedChunk = true;
           faultyStream.close(http2.constants.NGHTTP2_CANCEL);
@@ -435,15 +531,24 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
         });
 
         // 2. Concurrent healthy sibling request on the same HTTP/2 session
-        const siblingPromise = new Promise<{ status: number; body: string }>((resolve, reject) => {
-          const req = client.request({ ":path": "/api/healthy", ":method": "GET" });
-          let body = "";
-          let status = 0;
-          req.on("response", (headers) => { status = Number(headers[":status"]); });
-          req.on("data", (chunk: Buffer) => { body += chunk.toString("utf8"); });
-          req.on("end", () => resolve({ status, body }));
-          req.on("error", reject);
-        });
+        const siblingPromise = new Promise<{ status: number; body: string }>(
+          (resolve, reject) => {
+            const req = client.request({
+              ":path": "/api/healthy",
+              ":method": "GET",
+            });
+            let body = "";
+            let status = 0;
+            req.on("response", (headers) => {
+              status = Number(headers[":status"]);
+            });
+            req.on("data", (chunk: Buffer) => {
+              body += chunk.toString("utf8");
+            });
+            req.on("end", () => resolve({ status, body }));
+            req.on("error", reject);
+          },
+        );
 
         const [_, sibling] = await Promise.all([faultySettled, siblingPromise]);
 
@@ -460,20 +565,27 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
     });
 
     it("handles bounded simultaneous streams without framing errors or stream starvation", async () => {
-      const client = http2.connect("https://127.0.0.1:" + http2Port, { rejectUnauthorized: false });
+      const client = http2.connect("https://127.0.0.1:" + http2Port, {
+        rejectUnauthorized: false,
+      });
       try {
         const streamCount = 20;
         const requests = Array.from({ length: streamCount }, (_, index) => {
-          return new Promise<{ index: number; status: number }>((resolve, reject) => {
-            const req = client.request({ ":path": "/api/healthy", ":method": "GET" });
-            let status = 0;
-            req.on("response", (headers) => {
-              status = Number(headers[":status"]);
-            });
-            req.on("data", () => {});
-            req.on("end", () => resolve({ index, status }));
-            req.on("error", reject);
-          });
+          return new Promise<{ index: number; status: number }>(
+            (resolve, reject) => {
+              const req = client.request({
+                ":path": "/api/healthy",
+                ":method": "GET",
+              });
+              let status = 0;
+              req.on("response", (headers) => {
+                status = Number(headers[":status"]);
+              });
+              req.on("data", () => {});
+              req.on("end", () => resolve({ index, status }));
+              req.on("error", reject);
+            },
+          );
         });
 
         const results = await Promise.all(requests);
@@ -494,18 +606,23 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
       // Prompt 155 specifies: "A client-library rejection is only a client control, not server
       // admission evidence. Use a protocol-capable local fixture for cases Node's ordinary client
       // cannot transmit, or explicitly report that coverage as absent."
-      const client = http2.connect("https://127.0.0.1:" + http2Port, { rejectUnauthorized: false });
+      const client = http2.connect("https://127.0.0.1:" + http2Port, {
+        rejectUnauthorized: false,
+      });
       try {
         expect(() => {
           client.request({
             ":path": "/api/healthy",
             ":method": "GET",
-            "connection": "keep-alive",
+            connection: "keep-alive",
           });
         }).toThrow(/HTTP\/1 Connection specific headers are forbidden/);
 
         // Verify session remains healthy after client-side prohibited header trap
-        await assertHealthyH2Session(client, "after prohibited header client rejection");
+        await assertHealthyH2Session(
+          client,
+          "after prohibited header client rejection",
+        );
       } finally {
         client.close();
       }

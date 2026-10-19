@@ -1,6 +1,45 @@
-.wrapper { border: 1px solid #444; padding: 16px; }
-.box { padding: 12px; background: rgb(30, 30, 30); border: 2px solid #555; border-radius: 6px; margin-bottom: 12px; color: #eee; }
-.status { font-family: monospace; font-size: 0.8rem; color: rgb(96, 165, 250); padding: 4px; margin-bottom: 8px; }
-.result { font-family: monospace; font-size: 0.8rem; color: rgb(74, 222, 128); padding: 8px; background: #111; margin-bottom: 12px; }
-.btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
-button { padding: 4px 10px; font-size: 0.8rem; background: #222; border: 1px solid #555; color: #ddd; cursor: pointer; }
+.wrapper {
+  border: 1px solid #444;
+  padding: 16px;
+}
+
+.box {
+  padding: 12px;
+  background: rgb(30, 30, 30);
+  border: 2px solid #555;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  color: #eee;
+}
+
+.status {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: rgb(96, 165, 250);
+  padding: 4px;
+  margin-bottom: 8px;
+}
+
+.result {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: rgb(74, 222, 128);
+  padding: 8px;
+  background: #111;
+  margin-bottom: 12px;
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+button {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  background: #222;
+  border: 1px solid #555;
+  color: #ddd;
+  cursor: pointer;
+}

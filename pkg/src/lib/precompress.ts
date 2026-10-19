@@ -30,7 +30,11 @@ import { dirname, extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import zlib from "node:zlib";
 import { BascikConfig } from "./config.ts";
-import { COMPRESSION_MIN_BYTES, getContentHashEtag, isCompressibleMime } from "./caching.ts";
+import {
+  COMPRESSION_MIN_BYTES,
+  getContentHashEtag,
+  isCompressibleMime,
+} from "./caching.ts";
 import { MIME_MAP } from "./mime.ts";
 import { manifestCollector } from "./manifest.ts";
 
@@ -46,7 +50,10 @@ export interface PrecompressResult {
 }
 
 /** Whether a dist-relative output should receive sidecars. */
-export const isPrecompressCandidate = (distRelPath: string, size: number): boolean => {
+export const isPrecompressCandidate = (
+  distRelPath: string,
+  size: number,
+): boolean => {
   if (SIDECAR_SUFFIX.test(distRelPath)) return false;
   // Pages are served from memory with their own precomputed Brotli/gzip;
   // sidecars are for the on-disk static asset path only.
@@ -60,8 +67,14 @@ export const isPrecompressCandidate = (distRelPath: string, size: number): boole
   return isCompressibleMime(mime, ext);
 };
 
-const atomicWriteBytes = async (target: string, bytes: Buffer | string): Promise<void> => {
-  const tmp = join(dirname(target), `.${target.split(/[\\/]/).pop()}.${process.pid}.tmp`);
+const atomicWriteBytes = async (
+  target: string,
+  bytes: Buffer | string,
+): Promise<void> => {
+  const tmp = join(
+    dirname(target),
+    `.${target.split(/[\\/]/).pop()}.${process.pid}.tmp`,
+  );
   try {
     // Both steps inside one try: a failed write (ENOSPC, EACCES) must remove
     // the partial temp sibling just as a failed rename does.
@@ -77,7 +90,10 @@ const atomicWriteBytes = async (target: string, bytes: Buffer | string): Promise
  * Emit verified sidecars for one asset. Reads the raw bytes once; the hash,
  * both encodings, and both provenance stamps derive from that single read.
  */
-const emitSidecarsFor = async (outDir: string, distRelPath: string): Promise<string[]> => {
+const emitSidecarsFor = async (
+  outDir: string,
+  distRelPath: string,
+): Promise<string[]> => {
   const abs = resolve(outDir, distRelPath);
   const raw = await readFile(abs);
   const rawHash = getContentHashEtag(raw);
@@ -86,7 +102,8 @@ const emitSidecarsFor = async (outDir: string, distRelPath: string): Promise<str
   const [br, gz] = await Promise.all([
     brotliCompressAsync(raw, {
       params: {
-        [zlib.constants.BROTLI_PARAM_QUALITY]: zlib.constants.BROTLI_MAX_QUALITY,
+        [zlib.constants.BROTLI_PARAM_QUALITY]:
+          zlib.constants.BROTLI_MAX_QUALITY,
         [zlib.constants.BROTLI_PARAM_SIZE_HINT]: raw.byteLength,
       },
     }),
@@ -117,18 +134,19 @@ const emitSidecarsFor = async (outDir: string, distRelPath: string): Promise<str
  * sidecar whose recorded `rawHash` does not match the current asset bytes.
  * No-op unless `http.precompress` is on.
  */
-export const emitPrecompressedSidecars = async (): Promise<PrecompressResult> => {
-  const emitted: string[] = [];
-  if (BascikConfig.http?.precompress !== true) return { emitted };
+export const emitPrecompressedSidecars =
+  async (): Promise<PrecompressResult> => {
+    const emitted: string[] = [];
+    if (BascikConfig.http?.precompress !== true) return { emitted };
 
-  const outDir = resolve(process.cwd(), BascikConfig.directory.out);
-  const files = manifestCollector.getFiles();
-  const candidates = Object.entries(files)
-    .filter(([rel, entry]) => isPrecompressCandidate(rel, entry.size))
-    .map(([rel]) => rel);
+    const outDir = resolve(process.cwd(), BascikConfig.directory.out);
+    const files = manifestCollector.getFiles();
+    const candidates = Object.entries(files)
+      .filter(([rel, entry]) => isPrecompressCandidate(rel, entry.size))
+      .map(([rel]) => rel);
 
-  for (const rel of candidates) {
-    emitted.push(...(await emitSidecarsFor(outDir, rel)));
-  }
-  return { emitted };
-};
+    for (const rel of candidates) {
+      emitted.push(...(await emitSidecarsFor(outDir, rel)));
+    }
+    return { emitted };
+  };

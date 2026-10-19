@@ -44,7 +44,11 @@
  *   unrelated file does not grow the graph.
  */
 
-import { registerHooks, type ModuleHooks, type ResolveHookSync } from "node:module";
+import {
+  registerHooks,
+  type ModuleHooks,
+  type ResolveHookSync,
+} from "node:module";
 import { realpathSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -232,13 +236,17 @@ export type ResolveHookNext = Parameters<ResolveHookSync>[2];
 
 const NODE_MODULES_SEGMENT = `${sep}node_modules${sep}`;
 
-const isUnder = (path: string, root: string): boolean => path === root || path.startsWith(root + sep);
+const isUnder = (path: string, root: string): boolean =>
+  path === root || path.startsWith(root + sep);
 
 /**
  * Build the resolve hook for a graph. Exported separately from installation so
  * the URL rules can be unit tested without touching Node's loader.
  */
-export const createResolveHook = (graph: ModuleGraph, options: ResolveHookOptions): ResolveHook => {
+export const createResolveHook = (
+  graph: ModuleGraph,
+  options: ResolveHookOptions,
+): ResolveHook => {
   const roots = options.roots.map((root) => safeRealpath(resolve(root)));
 
   /** Generation-stripped key for a tracked `file:` URL, or undefined when out of scope. */
@@ -264,7 +272,9 @@ export const createResolveHook = (graph: ModuleGraph, options: ResolveHookOption
     const childKey = trackedKey(resolved.url);
     if (childKey === undefined) return resolved;
 
-    const parentKey = context.parentURL ? trackedKey(context.parentURL) : undefined;
+    const parentKey = context.parentURL
+      ? trackedKey(context.parentURL)
+      : undefined;
     if (parentKey !== undefined) {
       graph.recordEdge(childKey, parentKey);
     } else {
@@ -302,16 +312,22 @@ export interface ModuleGraphHookHandle {
 
 let activeHandle: ModuleGraphHookHandle | undefined;
 
-const INERT_HANDLE: ModuleGraphHookHandle = Object.freeze({ installed: false, deregister: () => {} });
+const INERT_HANDLE: ModuleGraphHookHandle = Object.freeze({
+  installed: false,
+  deregister: () => {},
+});
 
 /** Whether the dev resolve hook is currently registered in this process. */
-export const isModuleGraphHookInstalled = (): boolean => activeHandle !== undefined;
+export const isModuleGraphHookInstalled = (): boolean =>
+  activeHandle !== undefined;
 
 /**
  * Install the dev-only resolve hook exactly once per process. Returns an inert
  * handle outside development and the existing handle when already installed.
  */
-export const installModuleGraphHook = (options: InstallModuleGraphHookOptions): ModuleGraphHookHandle => {
+export const installModuleGraphHook = (
+  options: InstallModuleGraphHookOptions,
+): ModuleGraphHookHandle => {
   if (!options.isDev) return INERT_HANDLE;
   if (activeHandle) return activeHandle;
 

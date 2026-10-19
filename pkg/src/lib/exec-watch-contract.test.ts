@@ -10,10 +10,20 @@ describe("independent exec and compilation contract", () => {
     expect(emitter.listenerCount("exec-completed")).toBe(0);
   });
 
-  it.each(["dist/file.json", ["dist/file.json"], [], 42])("rejects the removed outputs option: %j", (outputs) => {
-    const errors = validateConfigShape({ pipeline: { exec: [{ script: "script.ts", outputs }] } });
-    expect(errors).toEqual([expect.objectContaining({ key: "pipeline.exec[0].outputs", unknownKey: true })]);
-  });
+  it.each(["dist/file.json", ["dist/file.json"], [], 42])(
+    "rejects the removed outputs option: %j",
+    (outputs) => {
+      const errors = validateConfigShape({
+        pipeline: { exec: [{ script: "script.ts", outputs }] },
+      });
+      expect(errors).toEqual([
+        expect.objectContaining({
+          key: "pipeline.exec[0].outputs",
+          unknownKey: true,
+        }),
+      ]);
+    },
+  );
 
   it("still broadcasts every failed script as a located build-error without reload", () => {
     const emitter = new EventEmitter();
@@ -23,11 +33,21 @@ describe("independent exec and compilation contract", () => {
     emitter.on("transpiled", () => reloads++);
     installExecPublication(emitter);
     for (const script of ["first.ts", "second.ts"]) {
-      emitter.emit("exec-failed", { entry: { script }, paths: [], error: new Error(script) });
+      emitter.emit("exec-failed", {
+        entry: { script },
+        paths: [],
+        error: new Error(script),
+      });
     }
     expect(errors).toEqual([
-      expect.objectContaining({ file: "first.ts", message: expect.stringContaining("first.ts") }),
-      expect.objectContaining({ file: "second.ts", message: expect.stringContaining("second.ts") }),
+      expect.objectContaining({
+        file: "first.ts",
+        message: expect.stringContaining("first.ts"),
+      }),
+      expect.objectContaining({
+        file: "second.ts",
+        message: expect.stringContaining("second.ts"),
+      }),
     ]);
     expect(reloads).toBe(0);
   });

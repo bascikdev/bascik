@@ -26,11 +26,18 @@ describe("large dynamic route payloads", () => {
     const root = fixtureRoot("route-payload");
     fixtureRoots.push(root);
     await createFixtureDirs(root);
-    await writeFixtureFile(root, "bascik.config.js", `module.exports = {
+    await writeFixtureFile(
+      root,
+      "bascik.config.js",
+      `module.exports = {
   generate: { sitemap: false, robots: false },
-};`);
+};`,
+    );
     // 2 MiB of content, beyond both the Linux per-string and macOS total limits.
-    await writeFixtureFile(root, "src/pages/[slug].html", `<!doctype html><html lang="en"><head><title>Post</title></head><body>
+    await writeFixtureFile(
+      root,
+      "src/pages/[slug].html",
+      `<!doctype html><html lang="en"><head><title>Post</title></head><body>
 <script data-bascik-routes>
   export default async function () {
     const body = 'é'.repeat(1024 * 1024);
@@ -44,7 +51,8 @@ describe("large dynamic route payloads", () => {
     return params.slug + ':' + data.body.length + ':' + ok;
   }
 </script></p>
-</body></html>`);
+</body></html>`,
+    );
 
     await runRealBuild({ projectRoot: root });
     const html = await readFile(join(root, "dist/long.html"), "utf8");
@@ -57,25 +65,41 @@ describe("directive scripts inside printed build output", () => {
     const root = fixtureRoot("printed-directives");
     fixtureRoots.push(root);
     await createFixtureDirs(root);
-    await writeFixtureFile(root, "bascik.config.js", `module.exports = {
+    await writeFixtureFile(
+      root,
+      "bascik.config.js",
+      `module.exports = {
   generate: { sitemap: false, robots: false },
-};`);
-    await writeFixtureFile(root, "src/components/post-note/post-note.html", "<aside>NOTE</aside>");
+};`,
+    );
+    await writeFixtureFile(
+      root,
+      "src/components/post-note/post-note.html",
+      "<aside>NOTE</aside>",
+    );
     // Stand-in for CMS HTML: a post body that carries directive scripts.
-    await writeFixtureFile(root, "content/post.html", [
-      "<p>From the CMS</p>",
-      "<script data-bascik-build>import { writeFileSync } from 'node:fs'; writeFileSync('CANARY', 'ran'); export default () => '<p>BUILD RAN</p>';</script>",
-      "<script data-bascik-server>export default () => 'SERVER RAN';</script>",
-      "<post-note></post-note>",
-    ].join("\n"));
-    await writeFixtureFile(root, "src/pages/index.html", `<!doctype html><html lang="en"><head><title>P</title></head><body>
+    await writeFixtureFile(
+      root,
+      "content/post.html",
+      [
+        "<p>From the CMS</p>",
+        "<script data-bascik-build>import { writeFileSync } from 'node:fs'; writeFileSync('CANARY', 'ran'); export default () => '<p>BUILD RAN</p>';</script>",
+        "<script data-bascik-server>export default () => 'SERVER RAN';</script>",
+        "<post-note></post-note>",
+      ].join("\n"),
+    );
+    await writeFixtureFile(
+      root,
+      "src/pages/index.html",
+      `<!doctype html><html lang="en"><head><title>P</title></head><body>
 <article><script data-bascik-build>
   import { readFile } from 'node:fs/promises';
   export default async function () {
     return await readFile('content/post.html', 'utf8');
   }
 </script></article>
-</body></html>`);
+</body></html>`,
+    );
 
     const { stdout, stderr } = await runRealBuild({ projectRoot: root });
     const html = await readFile(join(root, "dist/index.html"), "utf8");
@@ -84,9 +108,16 @@ describe("directive scripts inside printed build output", () => {
     expect(html).not.toContain("BUILD RAN");
     expect(html).not.toMatch(/data-bascik-(build|server)/);
     expect(html).not.toContain("text/bascik-server");
-    await expect(readFile(join(root, "CANARY"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-    const sidecar = await readFile(join(root, "dist/.bascik/server-scripts.json"), "utf8").catch(() => "{}");
+    await expect(readFile(join(root, "CANARY"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    const sidecar = await readFile(
+      join(root, "dist/.bascik/server-scripts.json"),
+      "utf8",
+    ).catch(() => "{}");
     expect(sidecar).not.toContain("SERVER RAN");
-    expect(`${stdout}${stderr}`).toMatch(/contained <script data-bascik-build>, <script data-bascik-server>/);
+    expect(`${stdout}${stderr}`).toMatch(
+      /contained <script data-bascik-build>, <script data-bascik-server>/,
+    );
   }, 120_000);
 });

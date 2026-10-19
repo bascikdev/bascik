@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: '0 6 * * 1'
+    - cron: "0 6 * * 1"
 
 jobs:
   analyze:
@@ -23,7 +23,7 @@ jobs:
       matrix:
         include:
           - language: actions
-            packs: ''
+            packs: ""
           - language: javascript-typescript
             # Marks results that have a `// codeql[rule-id]` comment on the line
             # before them as suppressed in the SARIF.
@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           build-mode: none
@@ -42,7 +42,7 @@ jobs:
 
       - name: Perform CodeQL Analysis
         id: analyze
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
           output: sarif-results

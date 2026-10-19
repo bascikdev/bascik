@@ -1,236 +1,347 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Bascik automatically namespaces your component CSS at build time. Class names, element selectors, and pseudo-classes are all scoped."
+    />
+    <title>Scoped CSS for HTML Components, No Shadow DOM - Bascik</title>
+  </head>
 
-<head>
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <script data-bascik-build>
-    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    export default async () => await breadcrumbLd();
-  </script>
-  <script data-bascik-build>
-    import { articleSchema } from '@/lib/article-schema.ts';
-    export default async () => await articleSchema();
-  </script>
-  <meta name="description"
-    content="Bascik automatically namespaces your component CSS at build time. Class names, element selectors, and pseudo-classes are all scoped." />
-  <title>Scoped CSS for HTML Components, No Shadow DOM - Bascik</title>
-</head>
+  <body>
+    <docs-nav />
 
-<body>
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
 
-  <docs-nav />
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/scoped-styles");
+          </script>
+          <!-- Intro and concise demo context rendered from docs/content/scoped-styles.md. -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              (await renderMdRange("./content/scoped-styles.md", {
+                to: "Where Scoped CSS Can Live",
+              })) +
+              (await renderMdRange("./content/scoped-styles.md", {
+                from: "See it in action",
+                to: "Source and output",
+              }));
+          </script>
 
-  <div class="container">
-    <div class="docs-layout">
-      <docs-sidebar />
-
-      <main class="docs-content" id="main-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/scoped-styles');
-        </script>
-        <!-- Intro and concise demo context rendered from docs/content/scoped-styles.md. -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => (await renderMdRange('./content/scoped-styles.md', { to: 'Where Scoped CSS Can Live' })) + (await renderMdRange('./content/scoped-styles.md', { from: 'See it in action', to: 'Source and output' }));
-        </script>
-
-        <component-demo data-bascik-prop-file="plan-card + alert-card">
-          <div data-bascik-slot="example">
-            <div class="grid-2" style="width: 100%">
-              <plan-card />
-              <alert-card />
+          <component-demo data-bascik-prop-file="plan-card + alert-card">
+            <div data-bascik-slot="example">
+              <div class="grid-2" style="width: 100%">
+                <plan-card />
+                <alert-card />
+              </div>
             </div>
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-styles.md', 'source-usage');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-styles.md', 'source-html');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-css">
-            <code-block data-bascik-prop-lang="css">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-styles.md', 'source-css');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-styles.md', 'output-html');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-css">
-            <code-block data-bascik-prop-lang="css">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-styles.md', 'output-css');
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
-
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/scoped-styles.md', { from: 'Where Scoped CSS Can Live', to: 'Selector and animation lab' });
-        </script>
-
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/scoped-styles.md', { from: 'Selector and animation lab', to: 'Class Scoping' }, { stripDemoBlocks: true });
-        </script>
-
-        <component-demo data-bascik-prop-file="src/components/scope-lab/">
-          <div data-bascik-slot="example">
-            <scope-lab />
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-styles.md', 'scope-lab-usage');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-styles.md', 'scope-lab-html');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-css">
-            <code-block data-bascik-prop-lang="css">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-styles.md', 'scope-lab-css');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-styles.md', 'scope-lab-output-html');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-css">
-            <code-block data-bascik-prop-lang="css">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-styles.md', 'scope-lab-output-css');
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
-
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/scoped-styles.md', { from: 'Class Scoping', to: 'Element Selector Scoping' });
-        </script>
-
-        <diagram-figure data-bascik-prop-title="Declared in the component, scoped. Declared elsewhere, left alone.">
-          <diagram-row data-bascik-prop-label="site-nav.css declares .dnav-logo, but not .skip-link"
-            data-bascik-prop-direction="stack">
-            <diagram-panel data-bascik-prop-label="You write">
+            <div data-bascik-slot="source-usage">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/scoped-styles.md', 'scoped-styles-global-classes-in');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-styles.md",
+                      "source-usage",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+            </div>
+            <div data-bascik-slot="source-html">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/scoped-styles.md', 'scoped-styles-global-classes-out');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-styles.md",
+                      "source-html",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-          </diagram-row>
-        </diagram-figure>
-
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/scoped-styles.md', { from: 'Element Selector Scoping', to: 'Using global design tokens in a component' });
-        </script>
-
-        <diagram-figure data-bascik-prop-title="Custom properties follow the same rule">
-          <diagram-row data-bascik-prop-label="Declared in the component CSS" data-bascik-prop-direction="stack">
-            <diagram-panel data-bascik-prop-label="You write">
+            </div>
+            <div data-bascik-slot="source-css">
               <code-block data-bascik-prop-lang="css">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/scoped-styles.md', 'scoped-styles-custom-properties-local-in');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-styles.md",
+                      "source-css",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-styles.md",
+                      "output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-css">
               <code-block data-bascik-prop-lang="css">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/scoped-styles.md', 'scoped-styles-custom-properties-local-out');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-styles.md",
+                      "output-css",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-          </diagram-row>
-          <diagram-row data-bascik-prop-label="Declared in a global stylesheet" data-bascik-prop-direction="stack">
-            <diagram-panel data-bascik-prop-label="You write">
+            </div>
+          </component-demo>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/scoped-styles.md", {
+                from: "Where Scoped CSS Can Live",
+                to: "Selector and animation lab",
+              });
+          </script>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/scoped-styles.md",
+                { from: "Selector and animation lab", to: "Class Scoping" },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo data-bascik-prop-file="src/components/scope-lab/">
+            <div data-bascik-slot="example">
+              <scope-lab />
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-styles.md",
+                      "scope-lab-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-styles.md",
+                      "scope-lab-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-css">
               <code-block data-bascik-prop-lang="css">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/scoped-styles.md', 'scoped-styles-custom-properties-global-in');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-styles.md",
+                      "scope-lab-css",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-styles.md",
+                      "scope-lab-output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-css">
               <code-block data-bascik-prop-lang="css">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/scoped-styles.md', 'scoped-styles-custom-properties-global-out');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-styles.md",
+                      "scope-lab-output-css",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-          </diagram-row>
-        </diagram-figure>
+            </div>
+          </component-demo>
 
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/scoped-styles.md', { from: 'Using global design tokens in a component', to: 'See it in action' });
-        </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/scoped-styles.md", {
+                from: "Class Scoping",
+                to: "Element Selector Scoping",
+              });
+          </script>
 
-        <docs-pagination />
+          <diagram-figure
+            data-bascik-prop-title="Declared in the component, scoped. Declared elsewhere, left alone."
+          >
+            <diagram-row
+              data-bascik-prop-label="site-nav.css declares .dnav-logo, but not .skip-link"
+              data-bascik-prop-direction="stack"
+            >
+              <diagram-panel data-bascik-prop-label="You write">
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/scoped-styles.md",
+                        "scoped-styles-global-classes-in",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+              <diagram-panel
+                data-bascik-prop-label="Bascik emits"
+                data-bascik-prop-arrow="↓"
+              >
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/scoped-styles.md",
+                        "scoped-styles-global-classes-out",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+            </diagram-row>
+          </diagram-figure>
 
-      </main>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/scoped-styles.md", {
+                from: "Element Selector Scoping",
+                to: "Using global design tokens in a component",
+              });
+          </script>
+
+          <diagram-figure
+            data-bascik-prop-title="Custom properties follow the same rule"
+          >
+            <diagram-row
+              data-bascik-prop-label="Declared in the component CSS"
+              data-bascik-prop-direction="stack"
+            >
+              <diagram-panel data-bascik-prop-label="You write">
+                <code-block data-bascik-prop-lang="css">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/scoped-styles.md",
+                        "scoped-styles-custom-properties-local-in",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+              <diagram-panel
+                data-bascik-prop-label="Bascik emits"
+                data-bascik-prop-arrow="↓"
+              >
+                <code-block data-bascik-prop-lang="css">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/scoped-styles.md",
+                        "scoped-styles-custom-properties-local-out",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+            </diagram-row>
+            <diagram-row
+              data-bascik-prop-label="Declared in a global stylesheet"
+              data-bascik-prop-direction="stack"
+            >
+              <diagram-panel data-bascik-prop-label="You write">
+                <code-block data-bascik-prop-lang="css">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/scoped-styles.md",
+                        "scoped-styles-custom-properties-global-in",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+              <diagram-panel
+                data-bascik-prop-label="Bascik emits"
+                data-bascik-prop-arrow="↓"
+              >
+                <code-block data-bascik-prop-lang="css">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/scoped-styles.md",
+                        "scoped-styles-custom-properties-global-out",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+            </diagram-row>
+          </diagram-figure>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/scoped-styles.md", {
+                from: "Using global design tokens in a component",
+                to: "See it in action",
+              });
+          </script>
+
+          <docs-pagination />
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-</body>
-
+    <docs-footer />
+  </body>
 </html>

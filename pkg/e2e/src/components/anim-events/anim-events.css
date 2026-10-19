@@ -36,9 +36,20 @@ button {
 }
 
 @keyframes flashGreen {
-  0%   { background: rgb(30, 30, 30); border-color: #555; }
-  50%  { background: rgb(22, 101, 52); border-color: rgb(74, 222, 128); }
-  100% { background: rgb(30, 30, 30); border-color: #555; }
+  0% {
+    background: rgb(30, 30, 30);
+    border-color: #555;
+  }
+
+  50% {
+    background: rgb(22, 101, 52);
+    border-color: rgb(74, 222, 128);
+  }
+
+  100% {
+    background: rgb(30, 30, 30);
+    border-color: #555;
+  }
 }
 
 .anim-box.playing {

@@ -76,15 +76,26 @@ import {
 } from "./file-system.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import { getHttpPath } from "./paths.ts";
-import { BUILD_ATTR_NAME, OPEN_TAG_ATTRS, SERVER_ATTR_NAME, STREAM_ATTR_NAME } from "./html-patterns.ts";
+import {
+  BUILD_ATTR_NAME,
+  OPEN_TAG_ATTRS,
+  SERVER_ATTR_NAME,
+  STREAM_ATTR_NAME,
+} from "./html-patterns.ts";
 
 // Request-time script directives as whole attribute names (prompt 65 step 0).
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const SERVER_OR_STREAM_SCRIPT_RE = new RegExp(String.raw`\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})`, "i");
+const SERVER_OR_STREAM_SCRIPT_RE = new RegExp(
+  String.raw`\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})`,
+  "i",
+);
 // A build script still pending after a transpile pass: `data-bascik-build` as a
 // whole attribute name of the open tag, never text inside a quoted value.
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const PENDING_BUILD_SCRIPT_RE = new RegExp(String.raw`<script\b${OPEN_TAG_ATTRS}\s${BUILD_ATTR_NAME}`, "i");
+const PENDING_BUILD_SCRIPT_RE = new RegExp(
+  String.raw`<script\b${OPEN_TAG_ATTRS}\s${BUILD_ATTR_NAME}`,
+  "i",
+);
 import { getLiveReloadScript } from "./live-reload.ts";
 import {
   listComponents,
@@ -126,13 +137,27 @@ import { locateBuildError } from "./build-error.ts";
 import { generateSitemapFiles } from "./sitemap.ts";
 import { WorkerPool } from "./worker-pool.ts";
 import type { PageWorkerResult } from "./page-worker.ts";
-import { isDynamicRoute, resolveRoutePath, executeRoutesScript } from "./routes.ts";
+import {
+  isDynamicRoute,
+  resolveRoutePath,
+  executeRoutesScript,
+} from "./routes.ts";
 import { formatDuration } from "./format.ts";
-import { rewriteCssBasePaths, rewriteHtmlBasePaths, withBasePath } from "./base-path.ts";
+import { logInfo } from "./log.ts";
+import { stdout as colorOut, workerEnvironment } from "./colors.ts";
+import {
+  rewriteCssBasePaths,
+  rewriteHtmlBasePaths,
+  withBasePath,
+} from "./base-path.ts";
 import { filterPagesByOnlyGlobs } from "./targeted-build.ts";
 import { manifestCollector } from "./manifest.ts";
 import { ownershipTracker, toOutputFileKey } from "./ownership.ts";
-import { extractServerScriptsToSidecar, serverSidecarRegistry, type ServerScriptEntry } from "./server-sidecar.ts";
+import {
+  extractServerScriptsToSidecar,
+  serverSidecarRegistry,
+  type ServerScriptEntry,
+} from "./server-sidecar.ts";
 import { cspHashCollector, computePageCspHashes } from "./csp-hashes.ts";
 import type {
   BascikComponent,
@@ -178,7 +203,9 @@ export const getFilePosition = (
 const resolveInlineStyles = async (): Promise<string[]> => {
   const inlineStyles = BascikConfig.assets?.inlineStyles;
   if (inlineStyles === true) {
-    return (await deepReadDirFlat(BascikConfig.directory.pages, /\.css$/i)).sort();
+    return (
+      await deepReadDirFlat(BascikConfig.directory.pages, /\.css$/i)
+    ).sort();
   }
   if (Array.isArray(inlineStyles)) {
     return inlineStyles;
@@ -203,7 +230,10 @@ const resolveCssMinifier = (): ((code: string) => Promise<string>) | null => {
         console.error("[bascik] CSS minification failed:", err);
         throw err;
       }
-      console.warn("[bascik] CSS minification failed, falling back to unminified CSS:", err);
+      console.warn(
+        "[bascik] CSS minification failed, falling back to unminified CSS:",
+        err,
+      );
       return code;
     }
   };
@@ -219,7 +249,11 @@ export const resolveInlineStylesHtml = async (): Promise<string> => {
       try {
         css = (await readFile(filePath)).toString();
       } catch (error) {
-        console.warn("[bascik] inlineStyles: could not read %s:", filePath, (error as Error).message);
+        console.warn(
+          "[bascik] inlineStyles: could not read %s:",
+          filePath,
+          (error as Error).message,
+        );
         return "";
       }
       return cssMinifier ? await cssMinifier(css) : css;
@@ -237,7 +271,8 @@ export const resolveInlineStylesHtml = async (): Promise<string> => {
  * Resolve the `minify.js` config value to a concrete async minifier
  * function, or `null` when minification is disabled.
  */
-const resolveScriptMinifier = (): ((code: string) => Promise<string>) | null => {
+const resolveScriptMinifier = ():
+  ((code: string) => Promise<string>) | null => {
   const cfg = BascikConfig.minify?.js ?? false;
   if (!cfg) return null;
   // Only the built-in minifier is memoized: it is pure. A custom minifier may not be.
@@ -251,7 +286,10 @@ const resolveScriptMinifier = (): ((code: string) => Promise<string>) | null => 
         console.error("[bascik] JS minification failed:", err);
         throw err;
       }
-      console.warn("[bascik] JS minification failed, falling back to unminified JS:", err);
+      console.warn(
+        "[bascik] JS minification failed, falling back to unminified JS:",
+        err,
+      );
       return code;
     }
   };
@@ -259,7 +297,10 @@ const resolveScriptMinifier = (): ((code: string) => Promise<string>) | null => 
 
 /** Project-relative, forward-slash path for user-facing diagnostics. */
 const relativePagePathForDiagnostics = (pagePath: string): string =>
-  (resolve(pagePath).startsWith(process.cwd()) ? relative(process.cwd(), pagePath) : pagePath).replace(/\\/g, "/");
+  (resolve(pagePath).startsWith(process.cwd())
+    ? relative(process.cwd(), pagePath)
+    : pagePath
+  ).replace(/\\/g, "/");
 
 /**
  * Trailing `//# sourceURL=...` directive appended by `namespaceScriptTags`.
@@ -276,14 +317,19 @@ const TRAILING_SOURCE_URL_RE = /(?:^|\n)[ \t]*(\/\/# sourceURL=[^\n]*?)[ \t]*$/;
  * re-attached on its own line afterwards. A directive glued onto the same line
  * as `})();` turns the rest of the line into a comment and breaks the script.
  */
-export const splitTrailingSourceUrl = (code: string): { code: string; sourceUrl: string | null } => {
+export const splitTrailingSourceUrl = (
+  code: string,
+): { code: string; sourceUrl: string | null } => {
   const m = TRAILING_SOURCE_URL_RE.exec(code);
   if (!m) return { code, sourceUrl: null };
   return { code: code.slice(0, m.index), sourceUrl: m[1] };
 };
 
 /** Re-attach a directive so it always starts on a fresh line. */
-export const appendSourceUrl = (code: string, sourceUrl: string | null): string => {
+export const appendSourceUrl = (
+  code: string,
+  sourceUrl: string | null,
+): string => {
   if (!sourceUrl) return code;
   const trimmed = code.replace(/[ \t]+$/, "");
   const separator = trimmed.endsWith("\n") ? "" : "\n";
@@ -298,19 +344,46 @@ const minifyScriptTagsInHtml = async (
   html: string,
   minifyFn: (code: string) => string | Promise<string>,
 ): Promise<string> => {
-  const regex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi;
-  const ops: Array<{ index: number; len: number; open: string; code: string; sourceUrl: string | null; close: string }> = [];
+  const scannable = html
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => " ".repeat(comment.length))
+    .replace(
+      /<(textarea|title|noscript|xmp)\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)(<\/\1(?:[\t\n\f\r /][^>]*)?>)/gi,
+      (_match, tag: string, attrs: string, inner: string, close: string) =>
+        `<${tag}${attrs}>${" ".repeat(inner.length)}${close}`,
+    );
+  const regex =
+    /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi;
+  const ops: Array<{
+    index: number;
+    len: number;
+    open: string;
+    code: string;
+    sourceUrl: string | null;
+    close: string;
+  }> = [];
   let m: RegExpExecArray | null;
-  while ((m = regex.exec(html)) !== null) {
-    const [full, open, body, close] = m as unknown as [string, string, string, string];
+  while ((m = regex.exec(scannable)) !== null) {
+    const [full, open, body, close] = m as unknown as [
+      string,
+      string,
+      string,
+      string,
+    ];
     // Skip non-JS types (e.g. application/ld+json, text/template)
     if (!isJavaScriptScript(open)) continue;
     // Server and stream scripts run at request time in Node.js, skip them here
     if (SERVER_OR_STREAM_SCRIPT_RE.test(open)) continue;
     // Skip external scripts — no inline content to minify
-    if (/\bsrc\s*=/i.test(open)) continue;
+    if (/\s+src\s*=/i.test(open)) continue;
     const { code, sourceUrl } = splitTrailingSourceUrl(body);
-    ops.push({ index: m.index, len: full.length, open, code, sourceUrl, close });
+    ops.push({
+      index: m.index,
+      len: full.length,
+      open,
+      code,
+      sourceUrl,
+      close,
+    });
   }
   if (!ops.length) return html;
   const minified = await Promise.all(ops.map(({ code }) => minifyFn(code)));
@@ -318,7 +391,10 @@ const minifyScriptTagsInHtml = async (
   for (let i = ops.length - 1; i >= 0; i--) {
     const { index, len, open, sourceUrl, close } = ops[i];
     const body = appendSourceUrl(minified[i], sourceUrl);
-    result = result.slice(0, index) + `${open}${body}${close}` + result.slice(index + len);
+    result =
+      result.slice(0, index) +
+      `${open}${body}${close}` +
+      result.slice(index + len);
   }
   return result;
 };
@@ -331,7 +407,10 @@ export const getDisplayPath = (path: string): string => {
   if (findComponentRoot(path) !== undefined) {
     return getRelativePath(path, "components");
   }
-  if (BascikConfig.directory?.pages && path.includes(BascikConfig.directory.pages)) {
+  if (
+    BascikConfig.directory?.pages &&
+    path.includes(BascikConfig.directory.pages)
+  ) {
     return getRelativePath(path, "pages");
   }
   return path;
@@ -343,7 +422,8 @@ export const findActiveSourceFile = (
   fallback: string,
 ): string => {
   const substring = html.slice(0, index);
-  const regex = /<!--bascik-source-file:(.*?)-->|<!--bascik-source-file-end:(.*?)-->/g;
+  const regex =
+    /<!--bascik-source-file:(.*?)-->|<!--bascik-source-file-end:(.*?)-->/g;
   const stack: string[] = [];
   let match;
   while ((match = regex.exec(substring)) !== null) {
@@ -375,11 +455,7 @@ export class PageProcessingError extends Error {
   readonly pagePath: string;
   readonly stage: string;
 
-  constructor(
-    pagePath: string,
-    stage: string,
-    cause: unknown,
-  ) {
+  constructor(pagePath: string, stage: string, cause: unknown) {
     const causeMessage = cause instanceof Error ? cause.message : String(cause);
     super(`${stage}: ${causeMessage}`, { cause });
     this.name = "PageProcessingError";
@@ -393,10 +469,15 @@ export class PageProcessingAggregateError extends AggregateError {
 
   constructor(pageErrors: PageProcessingError[]) {
     const details = pageErrors
-      .map(({ pagePath, stage, message }) =>
-        `  ${pagePath}\n    ${stage}: ${message.replace(`${stage}: `, "")}`)
+      .map(
+        ({ pagePath, stage, message }) =>
+          `  ${pagePath}\n    ${stage}: ${message.replace(`${stage}: `, "")}`,
+      )
       .join("\n");
-    super(pageErrors, `Build failed with ${pageErrors.length} page errors:\n${details}`);
+    super(
+      pageErrors,
+      `Build failed with ${pageErrors.length} page errors:\n${details}`,
+    );
     this.name = "PageProcessingAggregateError";
     this.pageErrors = pageErrors;
   }
@@ -406,7 +487,8 @@ const normalizePageError = (
   pagePath: string,
   error: unknown,
   stage = "transpile page",
-): PageProcessingError => error instanceof PageProcessingError
+): PageProcessingError =>
+  error instanceof PageProcessingError
     ? error
     : new PageProcessingError(pagePath, stage, error);
 
@@ -432,7 +514,10 @@ const publishBuildError = (err: PageProcessingError): void => {
 // can rebuild the page the moment a previously-missing helper is created,
 // changed, or removed, without a restart or a full rebuild. Replacing the page's
 // entries wholesale on each attempt drops deps the page no longer references.
-const recordMissingScriptDeps = async (rawHtml: string, pagePath: string): Promise<void> => {
+const recordMissingScriptDeps = async (
+  rawHtml: string,
+  pagePath: string,
+): Promise<void> => {
   if (BascikConfig.isBuild) return;
   try {
     const attempted = await collectAllScriptDeps(rawHtml, pagePath);
@@ -454,7 +539,8 @@ const recordMissingScriptDeps = async (rawHtml: string, pagePath: string): Promi
  * Everything else (the plain dev watcher, a newly added component) has no other owner, so it publishes.
  */
 const reportComponentLoadFailure = (error: unknown): void => {
-  if (BascikConfig.isBuild || getCompilationPageErrorPolicy() === "throw") return;
+  if (BascikConfig.isBuild || getCompilationPageErrorPolicy() === "throw")
+    return;
   const location = locateBuildError(error);
   eventEmitter.emit("build-error", {
     message: error instanceof Error ? error.message : String(error),
@@ -546,20 +632,30 @@ export const recursivelyTranspile = (
       substitutions >= MAX_SUBSTITUTIONS ||
       transpiledHtmlBody.length > MAX_OUTPUT_BYTES
     ) {
-      const partial = getFirstComponent(transpiledHtmlBody, componentList, masked, searchFrom);
+      const partial = getFirstComponent(
+        transpiledHtmlBody,
+        componentList,
+        masked,
+        searchFrom,
+      );
       const tag = partial.name ? `<${partial.name}>` : "(unknown)";
       throw new PageProcessingError(
         filePath ?? "unknown file",
         "component expansion",
         new Error(
           `component expansion exceeded safety limits (${substitutions} substitutions). ` +
-          `This usually means a component recursively includes itself (e.g. ${tag} ` +
-          `contains its own tag, directly or through another component). ` +
-          "Recursive components are not supported; restructure to terminate the recursion.",
+            `This usually means a component recursively includes itself (e.g. ${tag} ` +
+            `contains its own tag, directly or through another component). ` +
+            "Recursive components are not supported; restructure to terminate the recursion.",
         ),
       );
     }
-    const partial = getFirstComponent(transpiledHtmlBody, componentList, masked, searchFrom);
+    const partial = getFirstComponent(
+      transpiledHtmlBody,
+      componentList,
+      masked,
+      searchFrom,
+    );
     if (!partial.name) {
       const cleanedHtml = flattenString(
         transpiledHtmlBody
@@ -580,7 +676,7 @@ export const recursivelyTranspile = (
       );
       return {
         transpiledHtmlBody: cleanedHtml,
-        usedComponents
+        usedComponents,
       };
     }
 
@@ -588,11 +684,17 @@ export const recursivelyTranspile = (
     try {
       // One stable ID shared across all attribute-scoping passes for this instance.
       const props = extractProps(component.content);
-      component.fileContent = injectPropAttributes(component.fileContent, props);
+      component.fileContent = injectPropAttributes(
+        component.fileContent,
+        props,
+      );
       if (component.fileName) {
         // Components read by listComponents were stamped from the raw file; this
         // only fills in components supplied some other way.
-        component.fileContent = stampDirectiveSources(component.fileContent, component.fileName);
+        component.fileContent = stampDirectiveSources(
+          component.fileContent,
+          component.fileName,
+        );
       }
 
       // Run the scoping pipeline — each step is `BascikComponent → BascikComponent`.
@@ -608,7 +710,10 @@ export const recursivelyTranspile = (
       component = scopeComponentInstance(component, instanceId);
       // After scoping, not inside it: scoping results are reused across instances by renaming
       // instance IDs, and the ordinal is not an instance ID.
-      component.fileContent = numberInstanceSourceUrls(component.fileContent, currentOrdinal);
+      component.fileContent = numberInstanceSourceUrls(
+        component.fileContent,
+        currentOrdinal,
+      );
       component.fileContent = stripPreserveDirectives(component.fileContent);
 
       currentStage = "prop injection";
@@ -616,64 +721,113 @@ export const recursivelyTranspile = (
       component.fileContent = injectProps(component.fileContent, props);
 
       currentStage = "slot resolution";
-      const componentNames = new Set(Object.keys(componentList));
-      const protectedChildren: Array<{ placeholder: string; content: string }> = [];
-      let slotTemplate = component.fileContent;
-      let childSearchFrom = 0;
-      // The usage site's default slot content, computed once. It is also what a default slot
-      // marker written inside a nested child's usage tag receives (see below).
-      const defaultSlotContent = extractDefaultSlotContent(component.innerContent, componentNames);
-      while (childSearchFrom < slotTemplate.length) {
-        const child = getFirstComponent(slotTemplate, componentList, undefined, childSearchFrom) as Partial<BascikComponent> & {
-          startIndex?: number;
-          endIndex?: number;
-          contentStart?: number;
-          closeIndex?: number;
-        };
-        if (typeof child.startIndex !== "number" || typeof child.endIndex !== "number") break;
-        const placeholder = `<!--__BASCIK_NESTED_COMPONENT_${protectedChildren.length}__-->`;
-        let childContent = slotTemplate.slice(child.startIndex, child.endIndex);
-        // Forward the default slot: a valueless `data-bascik-slot` marker written between a
-        // child's usage tags is this template's own marker (named wrappers stay with the
-        // child). Only the child's inner content is touched, never its opening tag.
-        if (
-          typeof child.contentStart === "number" &&
-          typeof child.closeIndex === "number" &&
-          child.closeIndex > child.contentStart
-        ) {
-          const innerStart = child.contentStart - child.startIndex;
-          const innerEnd = child.closeIndex - child.startIndex;
-          childContent =
-            childContent.slice(0, innerStart) +
-            replaceDefaultSlots(childContent.slice(innerStart, innerEnd), defaultSlotContent) +
-            childContent.slice(innerEnd);
-        }
-        protectedChildren.push({ placeholder, content: childContent });
-        slotTemplate =
-          slotTemplate.slice(0, child.startIndex) +
-          placeholder +
-          slotTemplate.slice(child.endIndex);
-        childSearchFrom = child.startIndex + placeholder.length;
-      }
-      // Resolve named slots from the usage inner HTML.
-      const namedSlots = extractNamedSlotContent(component.innerContent, componentNames);
-      slotTemplate = replaceNamedSlots(slotTemplate, namedSlots, componentNames);
-
-      // Replace <element data-bascik-slot> default slot markers.
-      // Named slots were already handled above by replaceNamedSlots.
-      let transpiledTag = replaceDefaultSlots(
-        slotTemplate,
-        defaultSlotContent,
+      let transpiledTag: string;
+      const hasTemplateSlot =
+        component.fileContent.includes("data-bascik-slot");
+      const hasUsageSlot = Boolean(
+        component.innerContent &&
+        component.innerContent.includes("data-bascik-slot"),
       );
-      for (const { placeholder, content } of protectedChildren) {
-        transpiledTag = transpiledTag.replace(placeholder, () => content);
+      if (!hasTemplateSlot && !hasUsageSlot) {
+        const defaultSlotContent = extractDefaultSlotContent(
+          component.innerContent,
+        );
+        const namedSlots = extractNamedSlotContent(component.innerContent);
+        const slotTemplate = replaceNamedSlots(
+          component.fileContent,
+          namedSlots,
+        );
+        transpiledTag = replaceDefaultSlots(slotTemplate, defaultSlotContent);
+      } else {
+        const componentNames = new Set(Object.keys(componentList));
+        const protectedChildren: Array<{
+          placeholder: string;
+          content: string;
+        }> = [];
+        let slotTemplate = component.fileContent;
+        let childSearchFrom = 0;
+        // The usage site's default slot content, computed once. It is also what a default slot
+        // marker written inside a nested child's usage tag receives (see below).
+        const defaultSlotContent = extractDefaultSlotContent(
+          component.innerContent,
+          componentNames,
+        );
+        while (childSearchFrom < slotTemplate.length) {
+          const child = getFirstComponent(
+            slotTemplate,
+            componentList,
+            undefined,
+            childSearchFrom,
+          ) as Partial<BascikComponent> & {
+            startIndex?: number;
+            endIndex?: number;
+            contentStart?: number;
+            closeIndex?: number;
+          };
+          if (
+            typeof child.startIndex !== "number" ||
+            typeof child.endIndex !== "number"
+          )
+            break;
+          const placeholder = `<!--__BASCIK_NESTED_COMPONENT_${protectedChildren.length}__-->`;
+          let childContent = slotTemplate.slice(
+            child.startIndex,
+            child.endIndex,
+          );
+          // Forward the default slot: a valueless `data-bascik-slot` marker written between a
+          // child's usage tags is this template's own marker (named wrappers stay with the
+          // child). Only the child's inner content is touched, never its opening tag.
+          if (
+            typeof child.contentStart === "number" &&
+            typeof child.closeIndex === "number" &&
+            child.closeIndex > child.contentStart
+          ) {
+            const innerStart = child.contentStart - child.startIndex;
+            const innerEnd = child.closeIndex - child.startIndex;
+            childContent =
+              childContent.slice(0, innerStart) +
+              replaceDefaultSlots(
+                childContent.slice(innerStart, innerEnd),
+                defaultSlotContent,
+              ) +
+              childContent.slice(innerEnd);
+          }
+          protectedChildren.push({ placeholder, content: childContent });
+          slotTemplate =
+            slotTemplate.slice(0, child.startIndex) +
+            placeholder +
+            slotTemplate.slice(child.endIndex);
+          childSearchFrom = child.startIndex + placeholder.length;
+        }
+        // Resolve named slots from the usage inner HTML.
+        const namedSlots = extractNamedSlotContent(
+          component.innerContent,
+          componentNames,
+        );
+        slotTemplate = replaceNamedSlots(
+          slotTemplate,
+          namedSlots,
+          componentNames,
+        );
+
+        // Replace <element data-bascik-slot> default slot markers.
+        // Named slots were already handled above by replaceNamedSlots.
+        transpiledTag = replaceDefaultSlots(slotTemplate, defaultSlotContent);
+        for (const { placeholder, content } of protectedChildren) {
+          transpiledTag = transpiledTag.replace(placeholder, () => content);
+        }
       }
 
       currentStage = "attribute inheritance";
       // Merge non-bascik attributes from the usage tag onto the component root element.
       if (BascikConfig.scoping?.inheritAttributes) {
-        const inheritableAttrs = extractInheritableAttributes(component.content);
-        transpiledTag = mergeAttributesOntoRoot(transpiledTag, inheritableAttrs);
+        const inheritableAttrs = extractInheritableAttributes(
+          component.content,
+        );
+        transpiledTag = mergeAttributesOntoRoot(
+          transpiledTag,
+          inheritableAttrs,
+        );
       }
 
       currentStage = "substitution";
@@ -684,7 +838,14 @@ export const recursivelyTranspile = (
       const eIdx = (component as any).endIndex;
       const hasOffsets = typeof sIdx === "number" && typeof eIdx === "number";
       const splicedMask = hasOffsets
-        ? spliceRawTextMask(transpiledHtmlBody, masked, sIdx, eIdx, transpiledTag, maskClosedThrough)
+        ? spliceRawTextMask(
+            transpiledHtmlBody,
+            masked,
+            sIdx,
+            eIdx,
+            transpiledTag,
+            maskClosedThrough,
+          )
         : null;
       transpiledHtmlBody = replaceTag(
         transpiledHtmlBody,
@@ -726,7 +887,11 @@ export const recursivelyTranspile = (
       );
       let errorMsg = `[bascik] Transpilation failed for component <${component.name}> during ${currentStage}`;
       if (activeSourceFile) {
-        const pos = getFilePosition(activeSourceFile, component.content || "", component.name);
+        const pos = getFilePosition(
+          activeSourceFile,
+          component.content || "",
+          component.name,
+        );
         if (pos) {
           errorMsg += ` in "${getDisplayPath(activeSourceFile)}" at (line ${pos.line}, column ${pos.character})`;
         } else {
@@ -736,9 +901,16 @@ export const recursivelyTranspile = (
       if (component.fileName) {
         errorMsg += `\n  Defined in component template: "${getDisplayPath(component.fileName)}"`;
       }
-      console.error(`${errorMsg}\n  Error: ${error instanceof Error ? error.stack || error.message : String(error)}`);
+      console.error(
+        `${errorMsg}\n  Error: ${error instanceof Error ? error.stack || error.message : String(error)}`,
+      );
       if (component.content) {
-        transpiledHtmlBody = replaceTag(transpiledHtmlBody, component.name, "", masked);
+        transpiledHtmlBody = replaceTag(
+          transpiledHtmlBody,
+          component.name,
+          "",
+          masked,
+        );
         masked = maskRawTextContent(transpiledHtmlBody);
         // replaceTag without offsets re-searches from the document start and
         // may have edited text before the cursor; reset conservatively.
@@ -757,7 +929,6 @@ export const recursivelyTranspile = (
   }
 };
 
-
 export interface PageJob {
   pagePath: string;
   route: RouteEntry | null;
@@ -771,7 +942,9 @@ export const clearTemplateRoutesCache = (): void => {
   templateToGeneratedRelativePaths.clear();
 };
 
-export const expandPageToJobs = async (pagePath: string): Promise<PageJob[]> => {
+export const expandPageToJobs = async (
+  pagePath: string,
+): Promise<PageJob[]> => {
   if (!isDynamicRoute(pagePath)) {
     return [
       {
@@ -784,7 +957,10 @@ export const expandPageToJobs = async (pagePath: string): Promise<PageJob[]> => 
 
   let rawHtml: string;
   try {
-    rawHtml = stampDirectiveSources((await readFile(pagePath)).toString(), pagePath);
+    rawHtml = stampDirectiveSources(
+      (await readFile(pagePath)).toString(),
+      pagePath,
+    );
   } catch (err) {
     console.warn(
       `[bascik] warning: Could not read page file "${pagePath}": ${(err as Error).message}`,
@@ -798,7 +974,7 @@ export const expandPageToJobs = async (pagePath: string): Promise<PageJob[]> => 
     if (prevGenerated) {
       for (const staleRel of prevGenerated) {
         if (!BascikConfig.isBuild) mem.removeByRelativePath(staleRel);
-        await deleteDistFile(staleRel).catch(() => { });
+        await deleteDistFile(staleRel).catch(() => {});
       }
       templateToGeneratedRelativePaths.delete(pagePath);
     }
@@ -806,7 +982,10 @@ export const expandPageToJobs = async (pagePath: string): Promise<PageJob[]> => 
     // rebuild of that owner with an empty output set, so a fresh targeted build
     // prunes its prior outputs. Only in build mode where ownership applies.
     if (BascikConfig.isBuild) {
-      ownershipTracker.recordOwner(pagePath, getRelativePath(pagePath, "pages"));
+      ownershipTracker.recordOwner(
+        pagePath,
+        getRelativePath(pagePath, "pages"),
+      );
     }
     return [];
   }
@@ -831,7 +1010,7 @@ export const expandPageToJobs = async (pagePath: string): Promise<PageJob[]> => 
     for (const oldRel of prevGenerated) {
       if (!currentGenerated.has(oldRel)) {
         if (!BascikConfig.isBuild) mem.removeByRelativePath(oldRel);
-        await deleteDistFile(oldRel).catch(() => { });
+        await deleteDistFile(oldRel).catch(() => {});
       }
     }
   }
@@ -840,20 +1019,83 @@ export const expandPageToJobs = async (pagePath: string): Promise<PageJob[]> => 
   return jobs;
 };
 
+/** The route of a page with any trailing slash removed, so `/blog/` and `/blog` compare equal. */
+const stripTrailingRouteSlash = (route: string): string =>
+  route.replace(/\/$/, "") || "/";
+
+const pageRoute = (item: string | PageJob): string =>
+  stripTrailingRouteSlash(
+    getHttpPath(
+      typeof item === "string"
+        ? getRelativePath(item, "pages")
+        : item.relativePagePath,
+    ),
+  );
+
 /** Partitions page paths or PageJobs into [openPages, otherPages] by active SSE connections. */
-export const partitionByOpenPages = (pageList: (string | PageJob)[]): [(string | PageJob)[], (string | PageJob)[]] => {
+export const partitionByOpenPages = (
+  pageList: (string | PageJob)[],
+): [(string | PageJob)[], (string | PageJob)[]] => {
   const openSet = new Set(mem.openPages);
   if (openSet.size === 0) return [[], pageList];
-  const strip = (p: string) => p.replace(/\/$/, "") || "/";
-  const openNormalizedSet = new Set([...openSet].map(strip));
+  const openNormalizedSet = new Set([...openSet].map(stripTrailingRouteSlash));
   const open: (string | PageJob)[] = [];
   const rest: (string | PageJob)[] = [];
   for (const item of pageList) {
-    const relPath = typeof item === "string" ? getRelativePath(item, "pages") : item.relativePagePath;
-    const httpPath = getHttpPath(relPath);
-    (openNormalizedSet.has(strip(httpPath)) ? open : rest).push(item);
+    (openNormalizedSet.has(pageRoute(item)) ? open : rest).push(item);
   }
   return [open, rest];
+};
+
+/**
+ * Splits pages into [open, home, rest] for a dev batch. The pages open in a
+ * browser come first, then the home page (`/`), which is the page most often
+ * opened next. A build keeps its input order, so build output never depends on
+ * this.
+ */
+const partitionByCompilePriority = <T extends string | PageJob>(
+  pageList: T[],
+): [T[], T[], T[]] => {
+  const [open, rest] = partitionByOpenPages(pageList) as [T[], T[]];
+  if (BascikConfig.isBuild) return [open, [], rest];
+  const homeIndex = rest.findIndex((item) => pageRoute(item) === "/");
+  if (homeIndex < 0) return [open, [], rest];
+  return [
+    open,
+    [rest[homeIndex]],
+    [...rest.slice(0, homeIndex), ...rest.slice(homeIndex + 1)],
+  ];
+};
+
+/**
+ * A queue that picks each next page when a worker asks for it, not once up
+ * front. A browser that connects while a long batch is already running (a tab
+ * reconnecting after a restart) therefore still jumps ahead of the pages that
+ * have not started. Order: pages open in a browser, then the home page, then
+ * the remaining pages in their original order. A build keeps its input order.
+ */
+const createCompileQueue = <T extends string | PageJob>(items: T[]) => {
+  const entries = items.map((item) => ({ item, route: pageRoute(item) }));
+  let homeRemains =
+    !BascikConfig.isBuild && entries.some((entry) => entry.route === "/");
+  return {
+    next(): T | undefined {
+      if (entries.length === 0) return undefined;
+      let index = -1;
+      const open = mem.openPages;
+      if (open.length > 0) {
+        const openRoutes = new Set(open.map(stripTrailingRouteSlash));
+        index = entries.findIndex((entry) => openRoutes.has(entry.route));
+      }
+      if (index < 0 && homeRemains) {
+        index = entries.findIndex((entry) => entry.route === "/");
+        if (index < 0) homeRemains = false;
+      }
+      const [picked] = entries.splice(index < 0 ? 0 : index, 1);
+      if (picked.route === "/") homeRemains = false;
+      return picked.item;
+    },
+  };
 };
 
 const pageProcessingQueues = new Map<string, Promise<unknown>>();
@@ -880,7 +1122,10 @@ const nextPageGeneration = (absolutePagePath: string): number => {
   return next;
 };
 
-const isCurrentGeneration = (absolutePagePath: string, generation: number): boolean =>
+const isCurrentGeneration = (
+  absolutePagePath: string,
+  generation: number,
+): boolean =>
   (pageGenerations.get(pageGenKey(absolutePagePath)) ?? 0) === generation;
 
 // Marks a page deleted so any late in-flight work cannot resurrect it. The next
@@ -895,7 +1140,10 @@ const bumpPageGeneration = (absolutePagePath: string): void => {
  * UTF-8 bytes (a buffer transferred from a worker, prompt 86); `writeFile` and
  * the manifest hash both accept bytes directly, so no decode happens here.
  */
-type PageWriteInput = Pick<TranspilePageResult, "relativePagePath" | "absolutePagePath"> & {
+type PageWriteInput = Pick<
+  TranspilePageResult,
+  "relativePagePath" | "absolutePagePath"
+> & {
   distHtml: string | Buffer;
   /** Inline CSP hashes computed from the emitted representation (prompt 100). */
   cspHashes?: PageCspHashes;
@@ -917,21 +1165,34 @@ type PageWriteInput = Pick<TranspilePageResult, "relativePagePath" | "absolutePa
 const writeTranspiledPage = async (result: PageWriteInput): Promise<void> => {
   const directoryPath = getDirectoryPath(result.relativePagePath);
   try {
-    await mkdir(join(BascikConfig.directory.out, directoryPath), { recursive: true });
+    await mkdir(join(BascikConfig.directory.out, directoryPath), {
+      recursive: true,
+    });
   } catch (error) {
-    throw new PageProcessingError(result.absolutePagePath, "create output directory", error);
+    throw new PageProcessingError(
+      result.absolutePagePath,
+      "create output directory",
+      error,
+    );
   }
   const distPagePath = getDistPagePath(result.relativePagePath);
   try {
     await writeFile(distPagePath, result.distHtml);
   } catch (error) {
-    throw new PageProcessingError(result.absolutePagePath, "write output", error);
+    throw new PageProcessingError(
+      result.absolutePagePath,
+      "write output",
+      error,
+    );
   }
   manifestCollector.recordFile(distPagePath, result.distHtml);
-  cspHashCollector.recordComputed(getHttpPath(result.relativePagePath), result.cspHashes ?? {
-    scripts: [],
-    styles: [],
-  });
+  cspHashCollector.recordComputed(
+    getHttpPath(result.relativePagePath),
+    result.cspHashes ?? {
+      scripts: [],
+      styles: [],
+    },
+  );
   // Prompt 101: record this page's output into the durable ownership tracker.
   // The dist-relative output key and its HTTP route let the ownership
   // transaction reconcile manifest, CSP, and obsolete-output pruning.
@@ -947,12 +1208,15 @@ const queueTranspiledPageWrite = (result: PageWriteInput): Promise<void> => {
   const pagePath = result.absolutePagePath;
   const current = pageProcessingQueues.get(pagePath) ?? Promise.resolve();
   const queued = current
-    .catch(() => { })
+    .catch(() => {})
     .then(async () => {
       // Never publish a stale generation to disk: a newer edit may already be
       // in flight, and its content must win regardless of completion order.
       // (The queue is dev-only, so a generation is always present here.)
-      if (result.generation === undefined || !isCurrentGeneration(pagePath, result.generation)) {
+      if (
+        result.generation === undefined ||
+        !isCurrentGeneration(pagePath, result.generation)
+      ) {
         return;
       }
       await writeTranspiledPage(result);
@@ -983,13 +1247,19 @@ const queueTranspiledPageWrite = (result: PageWriteInput): Promise<void> => {
  * A queued write can chain a successor while we await, so drain until the queue
  * for this page is empty instead of awaiting a single snapshot.
  */
-export const pageWriteIdle = async (absolutePagePath: string): Promise<void> => {
+export const pageWriteIdle = async (
+  absolutePagePath: string,
+): Promise<void> => {
   const key = pageGenKey(absolutePagePath);
   const pendingForPage = (): Promise<unknown>[] =>
     [...pageProcessingQueues.entries()]
       .filter(([queuedPath]) => pageGenKey(queuedPath) === key)
       .map(([, write]) => write);
-  for (let writes = pendingForPage(); writes.length; writes = pendingForPage()) {
+  for (
+    let writes = pendingForPage();
+    writes.length;
+    writes = pendingForPage()
+  ) {
     await Promise.all(writes);
   }
 };
@@ -1030,7 +1300,8 @@ export const processPageBatch = async (
   }
 
   if (!componentList) componentList = await loadComponentList();
-  if (globalStylesHtml === undefined) globalStylesHtml = await resolveInlineStylesHtml();
+  if (globalStylesHtml === undefined)
+    globalStylesHtml = await resolveInlineStylesHtml();
 
   const jobs: PageJob[] = [];
   const pathToSource = new Map<string, string>();
@@ -1060,7 +1331,9 @@ export const processPageBatch = async (
         pageErrors.push(
           normalizePageError(
             input.pagePath,
-            new Error(`Route conflict: "${existing}" and "${input.pagePath}" both produce output path "${input.relativePagePath}".`),
+            new Error(
+              `Route conflict: "${existing}" and "${input.pagePath}" both produce output path "${input.relativePagePath}".`,
+            ),
             "expand routes",
           ),
         );
@@ -1075,7 +1348,7 @@ export const processPageBatch = async (
     return [];
   }
 
-  const [openJobs, restJobs] = partitionByOpenPages(jobs) as [PageJob[], PageJob[]];
+  const [openJobs, homeJobs, restJobs] = partitionByCompilePriority(jobs);
 
   const results: (TranspilePageResult | null)[] = [];
 
@@ -1118,14 +1391,16 @@ export const processPageBatch = async (
   };
 
   const runJobs = async (batch: PageJob[]): Promise<void> => {
-    const batchResults = await Promise.all(batch.map(async (job) => {
-      try {
-        return await runJob(job);
-      } catch (error) {
-        pageErrors.push(normalizePageError(job.pagePath, error));
-        return null;
-      }
-    }));
+    const batchResults = await Promise.all(
+      batch.map(async (job) => {
+        try {
+          return await runJob(job);
+        } catch (error) {
+          pageErrors.push(normalizePageError(job.pagePath, error));
+          return null;
+        }
+      }),
+    );
     for (const result of batchResults) {
       if (result) results.push(result);
     }
@@ -1136,6 +1411,11 @@ export const processPageBatch = async (
     await runJobs(openJobs);
   }
 
+  // The home page is the page most likely to be opened next.
+  if (homeJobs.length > 0) {
+    await runJobs(homeJobs);
+  }
+
   // Transpile remaining (closed) pages afterwards
   if (restJobs.length > 0) {
     await runJobs(restJobs);
@@ -1143,10 +1423,14 @@ export const processPageBatch = async (
 
   reportPageErrors(pageErrors);
 
-  return results.map((r) => r?.relativePagePath ?? null).filter((p): p is string => p !== null);
+  return results
+    .map((r) => r?.relativePagePath ?? null)
+    .filter((p): p is string => p !== null);
 };
 
-export const selectivelyProcessPagesForWatchPath = async (changedPath?: string): Promise<void> => {
+export const selectivelyProcessPagesForWatchPath = async (
+  changedPath?: string,
+): Promise<void> => {
   invalidateComponentListCache();
   const [pages, componentList, globalStylesHtml] = await Promise.all([
     listPages(),
@@ -1168,7 +1452,11 @@ export const selectivelyProcessPagesForWatchPath = async (changedPath?: string):
 
 /** Pages that use a component whose stylesheet imports `path`, as of the last component listing. */
 export const pagesImportingStylesheet = (path: string): string[] => [
-  ...new Set(componentsImportingStylesheet(path).flatMap((name) => mem.pagesThisComponentIsUsedOn(name))),
+  ...new Set(
+    componentsImportingStylesheet(path).flatMap((name) =>
+      mem.pagesThisComponentIsUsedOn(name),
+    ),
+  ),
 ];
 
 /**
@@ -1176,7 +1464,9 @@ export const pagesImportingStylesheet = (path: string): string[] => [
  * file that is not otherwise a page or component input (a stylesheet under the
  * pages directory). Does nothing when no component imports it.
  */
-export const processPagesImportingStylesheet = async (path: string): Promise<void> => {
+export const processPagesImportingStylesheet = async (
+  path: string,
+): Promise<void> => {
   const pagesToTranspile = pagesImportingStylesheet(path);
   if (pagesToTranspile.length === 0) return;
   invalidateComponentListCache();
@@ -1192,7 +1482,10 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
   // A stylesheet that is not itself a component's companion still reaches the
   // pages of every component that imports it.
   const pagesToTranspile = [
-    ...new Set([...mem.pagesThisComponentIsUsedOn(componentName), ...pagesImportingStylesheet(path)]),
+    ...new Set([
+      ...mem.pagesThisComponentIsUsedOn(componentName),
+      ...pagesImportingStylesheet(path),
+    ]),
   ];
   // Enter the batch immediately so it claims each affected page generation at
   // the component event boundary. Loading components and global styles inside
@@ -1203,9 +1496,10 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
 };
 
 export const processAllPages = async (options?: { useWorkers?: boolean }) => {
-  console.log("Starting transpiling...");
+  logInfo(colorOut.dim("Starting transpiling..."));
   invalidateComponentListCache();
-  const useWorkers = options?.useWorkers ?? BascikConfig.pipeline?.workers ?? false;
+  const useWorkers =
+    options?.useWorkers ?? BascikConfig.pipeline?.workers ?? false;
   const start = performance.now();
   // Parallel processing of pages
   const [pages, componentList, globalStylesHtml] = await Promise.all([
@@ -1215,21 +1509,33 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   ]);
   let pageList = pages ?? [];
 
-  if (BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0) {
-    pageList = filterPagesByOnlyGlobs(pageList, BascikConfig.only, BascikConfig.directory.pages);
+  if (
+    BascikConfig.isBuild &&
+    BascikConfig.only &&
+    BascikConfig.only.length > 0
+  ) {
+    pageList = filterPagesByOnlyGlobs(
+      pageList,
+      BascikConfig.only,
+      BascikConfig.directory.pages,
+    );
   }
 
   let relativePaths: string[] = [];
 
   const expansionErrors: PageProcessingError[] = [];
-  const jobBatches = await Promise.all(pageList.map(async (pagePath) => {
-    try {
-      return await expandPageToJobs(pagePath);
-    } catch (error) {
-      expansionErrors.push(normalizePageError(pagePath, error, "expand routes"));
-      return [];
-    }
-  }));
+  const jobBatches = await Promise.all(
+    pageList.map(async (pagePath) => {
+      try {
+        return await expandPageToJobs(pagePath);
+      } catch (error) {
+        expansionErrors.push(
+          normalizePageError(pagePath, error, "expand routes"),
+        );
+        return [];
+      }
+    }),
+  );
   const allJobs = jobBatches.flat();
 
   if (useWorkers && allJobs.length > 0) {
@@ -1240,8 +1546,13 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
       fileURLToPath(workerUrl),
       poolSize,
       { componentList, globalStylesHtml },
+      // The `transpiled:` line is printed inside the worker, which cannot tell on its own that it has a terminal.
+      { env: workerEnvironment() },
     );
-    const [openJobs, restJobs] = partitionByOpenPages(allJobs) as [PageJob[], PageJob[]];
+    const [openJobs, restJobs] = partitionByOpenPages(allJobs) as [
+      PageJob[],
+      PageJob[],
+    ];
     const results: PageWorkerResult[] = [];
     const pageErrors: PageProcessingError[] = [...expansionErrors];
     // A broad worker rebuild captures each page's current generation WITHOUT
@@ -1252,7 +1563,10 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     const pagesClaimed = new Map<string, number>();
     for (const job of allJobs) {
       if (!pagesClaimed.has(job.pagePath)) {
-        pagesClaimed.set(job.pagePath, pageGenerations.get(pageGenKey(job.pagePath)) ?? 0);
+        pagesClaimed.set(
+          job.pagePath,
+          pageGenerations.get(pageGenKey(job.pagePath)) ?? 0,
+        );
       }
     }
 
@@ -1260,7 +1574,9 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     // arrived as a transferred ArrayBuffer (prompt 86); wrap them in a Buffer
     // view (no copy) and hand that view to the store and the disk writer.
     // Nothing on this path needs the HTML as a string.
-    const runWorkerJob = async (job: PageJob): Promise<PageWorkerResult | null> => {
+    const runWorkerJob = async (
+      job: PageJob,
+    ): Promise<PageWorkerResult | null> => {
       try {
         const generation = pagesClaimed.get(job.pagePath)!;
         const result = await pool.run(job);
@@ -1276,7 +1592,11 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
             }
           }
           const { distHtmlBytes } = result;
-          const pageBytes = Buffer.from(distHtmlBytes.buffer, distHtmlBytes.byteOffset, distHtmlBytes.byteLength);
+          const pageBytes = Buffer.from(
+            distHtmlBytes.buffer,
+            distHtmlBytes.byteOffset,
+            distHtmlBytes.byteLength,
+          );
           if (BascikConfig.isBuild) {
             // The worker deferred the disk write; the main thread is the single
             // owner of artifact publication (prompt 100). Writing here records
@@ -1307,23 +1627,37 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
         }
         return result;
       } catch (error) {
-        pageErrors.push(normalizePageError(job.pagePath, error, "worker transpile"));
+        pageErrors.push(
+          normalizePageError(job.pagePath, error, "worker transpile"),
+        );
         return null;
       }
     };
 
     try {
+      // Pages already open in a browser finish first, so their reload is not
+      // delayed by anything else.
       if (openJobs.length > 0) {
         for (const result of await Promise.all(openJobs.map(runWorkerJob))) {
           if (result) results.push(result);
         }
       }
 
-      if (restJobs.length > 0) {
-        for (const result of await Promise.all(restJobs.map(runWorkerJob))) {
-          if (result) results.push(result);
-        }
-      }
+      // Each lane takes its next page from the queue only when it is free, so
+      // the home page is picked before the rest, and a page opened after this
+      // batch started still jumps ahead of every page that has not begun. Two
+      // jobs per worker keep each worker busy while the main thread stores the
+      // previous result.
+      const compileQueue = createCompileQueue(restJobs);
+      const lanes = Math.min(restJobs.length, poolSize * 2);
+      await Promise.all(
+        Array.from({ length: lanes }, async () => {
+          for (let job = compileQueue.next(); job; job = compileQueue.next()) {
+            const result = await runWorkerJob(job);
+            if (result) results.push(result);
+          }
+        }),
+      );
 
       reportPageErrors(pageErrors);
     } finally {
@@ -1332,7 +1666,9 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
       await pool.terminate();
     }
 
-    relativePaths = results.map((r) => r?.relativePagePath ?? null).filter((p): p is string => p !== null);
+    relativePaths = results
+      .map((r) => r?.relativePagePath ?? null)
+      .filter((p): p is string => p !== null);
   } else {
     relativePaths = await processPageBatch(
       allJobs,
@@ -1350,7 +1686,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   }
 
   console.log(
-    `\n✓ ${count} page${count !== 1 ? "s" : ""} transpiled in ${formatDuration(elapsed)}`,
+    `\n${colorOut.green(`✓ ${count} page${count !== 1 ? "s" : ""} transpiled`)} in ${colorOut.bold(formatDuration(elapsed))}`,
   );
 
   if (
@@ -1360,8 +1696,10 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     allJobs.length >= 20 &&
     cpus().length >= 4
   ) {
-    console.log(
-      `💡 Boot transpilation took ${formatDuration(elapsed)} on a single thread. Consider setting pipeline.workers: true in bascik.config.ts to parallelize across CPU cores.`,
+    logInfo(
+      colorOut.yellow(
+        `💡 Boot transpilation took ${formatDuration(elapsed)} on a single thread. Consider setting pipeline.workers: true in bascik.config.ts to parallelize across CPU cores.`,
+      ),
     );
   }
 
@@ -1381,67 +1719,87 @@ export const pageProcessing = (
   const current = pageProcessingQueues.get(pagePath) ?? Promise.resolve();
   let resolveAvailable!: (relativePagePath: string | undefined) => void;
   let rejectAvailable!: (error: unknown) => void;
-  const available = new Promise<string | undefined>((resolvePromise, rejectPromise) => {
-    resolveAvailable = resolvePromise;
-    rejectAvailable = rejectPromise;
-  });
-  const next = current.catch(() => { }).then(async () => {
-    try {
-      if (!isDynamicRoute(pagePath)) {
-        const result = await transpilePage(pagePath, componentList, globalStylesHtml);
-        if (!result) {
-          resolveAvailable(undefined);
-          return undefined;
-        }
-        if (isCurrentGeneration(pagePath, generation)) {
-          const { relativePagePath, absolutePagePath, distHtml, usedComponentsNames, fileDependencies, cspHashes } = result;
-          if (!BascikConfig.isBuild) {
-            await mem.storePage({
-              relativePagePath,
-              absolutePagePath,
-              pageContent: distHtml,
-              usedComponentsNames,
-              fileDependencies,
-            });
-            void queueTranspiledPageWrite({
+  const available = new Promise<string | undefined>(
+    (resolvePromise, rejectPromise) => {
+      resolveAvailable = resolvePromise;
+      rejectAvailable = rejectPromise;
+    },
+  );
+  const next = current
+    .catch(() => {})
+    .then(async () => {
+      try {
+        if (!isDynamicRoute(pagePath)) {
+          const result = await transpilePage(
+            pagePath,
+            componentList,
+            globalStylesHtml,
+          );
+          if (!result) {
+            resolveAvailable(undefined);
+            return undefined;
+          }
+          if (isCurrentGeneration(pagePath, generation)) {
+            const {
               relativePagePath,
               absolutePagePath,
               distHtml,
+              usedComponentsNames,
+              fileDependencies,
               cspHashes,
-              generation,
-            });
+            } = result;
+            if (!BascikConfig.isBuild) {
+              await mem.storePage({
+                relativePagePath,
+                absolutePagePath,
+                pageContent: distHtml,
+                usedComponentsNames,
+                fileDependencies,
+              });
+              void queueTranspiledPageWrite({
+                relativePagePath,
+                absolutePagePath,
+                distHtml,
+                cspHashes,
+                generation,
+              });
+            }
+            publishTranspiled({ relativePagePath });
+            resolveAvailable(relativePagePath);
+            return relativePagePath;
           }
-          publishTranspiled({ relativePagePath });
-          resolveAvailable(relativePagePath);
-          return relativePagePath;
+          // Superseded by a newer generation: do not publish stale state.
+          resolveAvailable(undefined);
+          return undefined;
         }
-        // Superseded by a newer generation: do not publish stale state.
-        resolveAvailable(undefined);
-        return undefined;
-      }
 
-      const jobs = await expandPageToJobs(pagePath);
-      if (jobs.length === 0) {
-        resolveAvailable(undefined);
-        return undefined;
+        const jobs = await expandPageToJobs(pagePath);
+        if (jobs.length === 0) {
+          resolveAvailable(undefined);
+          return undefined;
+        }
+        const relativePaths = await processPageBatch(
+          jobs,
+          componentList,
+          globalStylesHtml,
+        );
+        resolveAvailable(relativePaths[0]);
+        return relativePaths[0];
+      } catch (error) {
+        if (!BascikConfig.isBuild) {
+          publishBuildError(normalizePageError(pagePath, error));
+        }
+        rejectAvailable(error);
+        throw error;
       }
-      const relativePaths = await processPageBatch(jobs, componentList, globalStylesHtml);
-      resolveAvailable(relativePaths[0]);
-      return relativePaths[0];
-    } catch (error) {
-      if (!BascikConfig.isBuild) {
-        publishBuildError(normalizePageError(pagePath, error));
+    })
+    .finally(() => {
+      if (pageProcessingQueues.get(pagePath) === next) {
+        pageProcessingQueues.delete(pagePath);
       }
-      rejectAvailable(error);
-      throw error;
-    }
-  }).finally(() => {
-    if (pageProcessingQueues.get(pagePath) === next) {
-      pageProcessingQueues.delete(pagePath);
-    }
-  });
+    });
   pageProcessingQueues.set(pagePath, next);
-  void next.catch(() => { });
+  void next.catch(() => {});
   return available;
 };
 
@@ -1494,7 +1852,9 @@ export const transpilePage = async (
         rawHtml = routesResult.cleanedHtml;
       }
     } catch (err) {
-      console.warn(`[bascik] warning: Could not read page file "${pagePath}": ${(err as Error).message}`);
+      console.warn(
+        `[bascik] warning: Could not read page file "${pagePath}": ${(err as Error).message}`,
+      );
       return null;
     }
   }
@@ -1522,7 +1882,10 @@ export const transpilePage = async (
   // transformed and diagnosed in `listComponents`, are not re-inspected here.
   // This is the same pass in dev and build: TypeScript strip first, then
   // scoping, then optional `minify.js`.
-  const pendingTs = transformTypeScriptScriptTags(htmlWithBuildOutput, relativePagePathForDiagnostics(pagePath));
+  const pendingTs = transformTypeScriptScriptTags(
+    htmlWithBuildOutput,
+    relativePagePathForDiagnostics(pagePath),
+  );
   pause();
   htmlWithBuildOutput = await pendingTs;
   resume();
@@ -1559,9 +1922,14 @@ export const transpilePage = async (
   let bodyPasses = 0;
   while (PENDING_BUILD_SCRIPT_RE.test(transpiledHtmlBody) && bodyPasses < 10) {
     bodyPasses++;
-    const pendingBodyBuild = executeBuildScripts(transpiledHtmlBody, pagePath, route, {
-      pageFile: pagePath,
-    });
+    const pendingBodyBuild = executeBuildScripts(
+      transpiledHtmlBody,
+      pagePath,
+      route,
+      {
+        pageFile: pagePath,
+      },
+    );
     pause();
     transpiledHtmlBody = await pendingBodyBuild;
     resume();
@@ -1582,14 +1950,28 @@ export const transpilePage = async (
   let {
     transpiledHtmlBody: transpiledHeadContent,
     usedComponents: headUsedComponents,
-  } = recursivelyTranspile(headRaw ?? "", componentList, [], pagePath, instanceState);
+  } = recursivelyTranspile(
+    headRaw ?? "",
+    componentList,
+    [],
+    pagePath,
+    instanceState,
+  );
 
   let headPasses = 0;
-  while (PENDING_BUILD_SCRIPT_RE.test(transpiledHeadContent) && headPasses < 10) {
+  while (
+    PENDING_BUILD_SCRIPT_RE.test(transpiledHeadContent) &&
+    headPasses < 10
+  ) {
     headPasses++;
-    const pendingHeadBuild = executeBuildScripts(transpiledHeadContent, pagePath, route, {
-      pageFile: pagePath,
-    });
+    const pendingHeadBuild = executeBuildScripts(
+      transpiledHeadContent,
+      pagePath,
+      route,
+      {
+        pageFile: pagePath,
+      },
+    );
     pause();
     transpiledHeadContent = await pendingHeadBuild;
     resume();
@@ -1608,19 +1990,14 @@ export const transpilePage = async (
   // matching component file and will appear unresolved in the output HTML.
   {
     const unresolved = new Set<string>();
-    const isExternalTag = createExternalTagMatcher(BascikConfig.components?.external);
+    const isExternalTag = createExternalTagMatcher(
+      BascikConfig.components?.external,
+    );
     for (const chunk of [transpiledHtmlBody, transpiledHeadContent]) {
       // Strip HTML comments as well as <script>, <style>, and <textarea> content
       // so literal text like `<my-tag>` inside comments, JSON-LD, or demo strings
       // doesn't produce false unresolved component warnings.
-      // Use replacement functions `() => ""` to prevent regex replacement token expansion ($1, $&, etc.)
-      // codeql[js/incomplete-multi-character-sanitization] Only feeds the unresolved-component warning scan; never emitted.
-      const scannable = chunk
-        .replace(/<!--[\s\S]*?-->/g, () => "")
-        .replace(
-          /<(script|style|textarea)(\s[^>]*)?>([\s\S]*?)<\/\1>/gi,
-          (_match, tag, attrs) => `<${tag}${attrs ?? ""}></${tag}>`,
-        );
+      const scannable = maskRawTextContent(chunk);
       const re = /<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)[\s\/>]/gi;
       let m: RegExpExecArray | null;
       while ((m = re.exec(scannable)) !== null) {
@@ -1632,14 +2009,17 @@ export const transpilePage = async (
     if (unresolved.size > 0) {
       console.warn(
         `[bascik] Unresolved component tag${unresolved.size > 1 ? "s" : ""} in "${relativePagePath}": ` +
-        `${[...unresolved].map((t) => `<${t}>`).join(", ")} — no matching component file found. ` +
-        `Run \`bascik --check\` for a full report.`,
+          `${[...unresolved].map((t) => `<${t}>`).join(", ")} — no matching component file found. ` +
+          `Run \`bascik --check\` for a full report.`,
       );
     }
   }
 
   // Deduplicate CSS — each component's styles included only once even if used many times
-  let componentCss = deduplicateCss([...usedComponents, ...headUsedComponents], BascikConfig.scoping?.deduplicateCss ?? true);
+  let componentCss = deduplicateCss(
+    [...usedComponents, ...headUsedComponents],
+    BascikConfig.scoping?.deduplicateCss ?? true,
+  );
 
   // Read and inline any global stylesheets configured via `inlineStyles`.
   // Global styles are injected before component styles so component rules win.
@@ -1652,8 +2032,14 @@ export const transpilePage = async (
 
   // Component scoping finalizes ID references first. Base paths then leave
   // fragment-only references untouched and run before minification.
-  transpiledHtmlBody = rewriteHtmlBasePaths(transpiledHtmlBody, BascikConfig.base);
-  transpiledHeadContent = rewriteHtmlBasePaths(transpiledHeadContent, BascikConfig.base);
+  transpiledHtmlBody = rewriteHtmlBasePaths(
+    transpiledHtmlBody,
+    BascikConfig.base,
+  );
+  transpiledHeadContent = rewriteHtmlBasePaths(
+    transpiledHeadContent,
+    BascikConfig.base,
+  );
   globalStylesHtml = rewriteHtmlBasePaths(globalStylesHtml, BascikConfig.base);
   componentCss = rewriteCssBasePaths(componentCss, BascikConfig.base);
 
@@ -1677,12 +2063,26 @@ export const transpilePage = async (
   // Compress the entire head (removes newlines, collapses whitespace in inline <style> tags too)
 
   if (cssMinifier) {
-    // Also minify any inline <style> blocks that came from the page source
-    const styleBlockRegex = /<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
-    const matches: Array<{ full: string; css: string; index: number }> = [];
+    // Also minify any inline <style> blocks that came from the page source,
+    // preserving their opening and closing tags (such as media="..." attributes).
+    const styleBlockRegex =
+      /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi;
+    const matches: Array<{
+      full: string;
+      open: string;
+      css: string;
+      close: string;
+      index: number;
+    }> = [];
     let match: RegExpExecArray | null;
     while ((match = styleBlockRegex.exec(transpiledHead)) !== null) {
-      matches.push({ full: match[0], css: match[1], index: match.index });
+      matches.push({
+        full: match[0],
+        open: match[1],
+        css: match[2],
+        close: match[3],
+        index: match.index,
+      });
     }
     if (matches.length > 0) {
       let newHead = "";
@@ -1693,7 +2093,7 @@ export const transpilePage = async (
         pause();
         const minifiedCss = await pendingInlineCss;
         resume();
-        newHead += `<style>${minifiedCss}</style>`;
+        newHead += `${m.open}${minifiedCss}${m.close}`;
         lastIndex = m.index + m.full.length;
       }
       newHead += transpiledHead.slice(lastIndex);
@@ -1707,10 +2107,16 @@ export const transpilePage = async (
     } catch (err) {
       const behavior = BascikConfig.onMinifyError ?? "error";
       if (behavior === "error") {
-        console.error(`[bascik] HTML minification failed for head in "${relativePagePath}":`, err);
+        console.error(
+          `[bascik] HTML minification failed for head in "${relativePagePath}":`,
+          err,
+        );
         throw err;
       }
-      console.warn(`[bascik] HTML minification failed for head in "${relativePagePath}", proceeding unminified:`, err);
+      console.warn(
+        `[bascik] HTML minification failed for head in "${relativePagePath}", proceeding unminified:`,
+        err,
+      );
     }
   }
 
@@ -1726,17 +2132,26 @@ export const transpilePage = async (
     } catch (err) {
       const behavior = BascikConfig.onMinifyError ?? "error";
       if (behavior === "error") {
-        console.error(`[bascik] HTML minification failed for "${relativePagePath}":`, err);
+        console.error(
+          `[bascik] HTML minification failed for "${relativePagePath}":`,
+          err,
+        );
         throw err;
       }
-      console.warn(`[bascik] HTML minification failed for "${relativePagePath}", proceeding unminified:`, err);
+      console.warn(
+        `[bascik] HTML minification failed for "${relativePagePath}", proceeding unminified:`,
+        err,
+      );
     }
   }
 
   // Minify inline <script> content when configured.
   const jsMinifier = resolveScriptMinifier();
   if (jsMinifier) {
-    const pendingBodyJs = minifyScriptTagsInHtml(transpiledHtmlBody, jsMinifier);
+    const pendingBodyJs = minifyScriptTagsInHtml(
+      transpiledHtmlBody,
+      jsMinifier,
+    );
     pause();
     transpiledHtmlBody = await pendingBodyJs;
     resume();
@@ -1750,12 +2165,18 @@ export const transpilePage = async (
   const replacements = [
     { tag: bodyTag, content: transpiledHtmlBody },
     { tag: headTag, content: transpiledHead },
-  ].filter(
-    (replacement): replacement is {
-      tag: typeof bodyTag & { contentStart: number; closeIndex: number };
-      content: string;
-    } => replacement.tag.contentStart !== undefined && replacement.tag.closeIndex !== undefined,
-  ).sort((a, b) => b.tag.contentStart - a.tag.contentStart);
+  ]
+    .filter(
+      (
+        replacement,
+      ): replacement is {
+        tag: typeof bodyTag & { contentStart: number; closeIndex: number };
+        content: string;
+      } =>
+        replacement.tag.contentStart !== undefined &&
+        replacement.tag.closeIndex !== undefined,
+    )
+    .sort((a, b) => b.tag.contentStart - a.tag.contentStart);
 
   let distHtml = htmlWithBuildOutput;
   for (const { tag, content } of replacements) {
@@ -1766,7 +2187,12 @@ export const transpilePage = async (
   }
   distHtml = rewriteHtmlBasePaths(distHtml, BascikConfig.base);
   const serverScripts: Record<string, ServerScriptEntry> = {};
-  distHtml = extractServerScriptsToSidecar(distHtml, relativePagePath, serverScripts, pagePath);
+  distHtml = extractServerScriptsToSidecar(
+    distHtml,
+    relativePagePath,
+    serverScripts,
+    pagePath,
+  );
   // Compute the page's inline CSP hashes here, at the single defined point
   // where `distHtml` holds the page's final emitted representation. Both the
   // serial and worker paths carry these hashes onward; the main thread records
@@ -1789,13 +2215,19 @@ export const transpilePage = async (
   await pendingMissingDeps;
   resume();
 
+  const seenDepComponents = new Set<string>();
   for (const comp of allUsedComponents) {
+    if (seenDepComponents.has(comp.name)) continue;
+    seenDepComponents.add(comp.name);
     const compContent = comp.scriptDependenciesContent ?? comp.fileContent;
     if (compContent) {
       const componentSourcePath = comp.fileName
         ? resolve(process.cwd(), comp.fileName)
         : undefined;
-      const pendingCompDeps = collectAllScriptDeps(compContent, componentSourcePath);
+      const pendingCompDeps = collectAllScriptDeps(
+        compContent,
+        componentSourcePath,
+      );
       pause();
       const compDeps = await pendingCompDeps;
       resume();
@@ -1824,7 +2256,9 @@ export const transpilePage = async (
   if (BascikConfig.logging?.transpiles !== false) {
     const configLevel = BascikConfig.logging?.level ?? "info";
     if (shouldLog(configLevel, "info")) {
-      console.log(`transpiled: ${relativePagePath} in ${formatDuration(workMs)}`);
+      console.log(
+        `${colorOut.green("transpiled:")} ${relativePagePath} ${colorOut.dim(`in ${formatDuration(workMs)}`)}`,
+      );
     }
   }
 

@@ -6,14 +6,18 @@ import { BascikConfig } from "./config.ts";
 import { makeEtag } from "./names.ts";
 import type { StoredPage } from "./types.ts";
 
-export const getBrotliQuality = (config: { isBuild?: boolean; isProdServer?: boolean } = BascikConfig): number => {
+export const getBrotliQuality = (
+  config: { isBuild?: boolean; isProdServer?: boolean } = BascikConfig,
+): number => {
   return config.isBuild || config.isProdServer
     ? zlib.constants.BROTLI_MAX_QUALITY
     : zlib.constants.BROTLI_MIN_QUALITY;
 };
 
 /** Gzip level mirrors the brotli policy: best compression in prod and build, fastest in dev. */
-export const getGzipLevel = (config: { isBuild?: boolean; isProdServer?: boolean } = BascikConfig): number => {
+export const getGzipLevel = (
+  config: { isBuild?: boolean; isProdServer?: boolean } = BascikConfig,
+): number => {
   return config.isBuild || config.isProdServer
     ? zlib.constants.Z_BEST_COMPRESSION
     : zlib.constants.Z_BEST_SPEED;
@@ -63,9 +67,14 @@ class MemoryStore {
     return this.#dirtyPages.has(key) || this.#dirtyPages.has(httpPath);
   }
 
-  async waitForFreshPage(pagePathOrHttpPath: string): Promise<StoredPage | undefined> {
+  async waitForFreshPage(
+    pagePathOrHttpPath: string,
+  ): Promise<StoredPage | undefined> {
     if (!this.isDirty(pagePathOrHttpPath)) {
-      return this.getPageExact(getHttpPath(pagePathOrHttpPath)) ?? this.getPage(pagePathOrHttpPath);
+      return (
+        this.getPageExact(getHttpPath(pagePathOrHttpPath)) ??
+        this.getPage(pagePathOrHttpPath)
+      );
     }
     const key = pagePathOrHttpPath;
     const httpPath = getHttpPath(pagePathOrHttpPath);
@@ -97,12 +106,17 @@ class MemoryStore {
   }: StorePageArgs): Promise<void> {
     const httpPath = getHttpPath(relativePagePath);
 
-    const buffer = Buffer.isBuffer(pageContent) ? pageContent : Buffer.from(pageContent, "utf8");
+    const buffer = Buffer.isBuffer(pageContent)
+      ? pageContent
+      : Buffer.from(pageContent, "utf8");
 
     const usedComponentsSet = new Set(usedComponentsNames);
     const fileDependenciesSet = new Set(
       fileDependencies.map((dep) =>
-        relative(process.cwd(), resolve(process.cwd(), dep)).replace(/\\/g, "/"),
+        relative(process.cwd(), resolve(process.cwd(), dep)).replace(
+          /\\/g,
+          "/",
+        ),
       ),
     );
 
@@ -122,17 +136,23 @@ class MemoryStore {
     let serverScriptPlan: StoredPage["serverScriptPlan"];
     if (htmlHasServerScripts(buffer)) {
       try {
-        const plan = planServerScripts(buffer.toString("utf8"), absolutePagePath);
+        const plan = planServerScripts(
+          buffer.toString("utf8"),
+          absolutePagePath,
+        );
         // The byte pre-filter above is loose on purpose: it matches any page that merely contains the
         // directive's name, such as documentation or a blog post about server scripts. The exact scan
         // then finds no script, and a plan with no script in it is not a plan. Keeping it would make
         // the server treat the page as personalized (`private, no-store`, no ETag, no compression) when
         // nothing on it runs per request. Pages with a real script, including a sidecar placeholder,
         // always have a script segment, so they keep their plan.
-        if (plan.segments.some((segment) => segment.kind === "script")) serverScriptPlan = plan;
+        if (plan.segments.some((segment) => segment.kind === "script"))
+          serverScriptPlan = plan;
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
-        console.error(`[bascik] server-script plan failed for "${relativePagePath}": ${error.message}`);
+        console.error(
+          `[bascik] server-script plan failed for "${relativePagePath}": ${error.message}`,
+        );
         serverScriptPlan = { error };
       }
     }
@@ -295,7 +315,10 @@ class MemoryStore {
 
   pagesDependentOnFile(changedPath: string): string[] {
     if (!changedPath) return [];
-    const normalized = relative(process.cwd(), resolve(process.cwd(), changedPath)).replace(/\\/g, "/");
+    const normalized = relative(
+      process.cwd(),
+      resolve(process.cwd(), changedPath),
+    ).replace(/\\/g, "/");
     const pagesSet = this.#fileDependencies.get(normalized);
     const failedSet = this.#failedDependencies.get(normalized);
     if (!pagesSet && !failedSet) return [];
@@ -307,14 +330,20 @@ class MemoryStore {
   /**
    * Records the dependencies a page *attempted* to read even though its build
    * failed. These are kept separate from successful dependencies: they let the
-  * configured compilation watcher rebuild the page when a missing helper is
+   * configured compilation watcher rebuild the page when a missing helper is
    * created, changed, or removed. They are reclaimed when the page later
    * succeeds, changes imports, or is deleted.
    */
-  recordFailedDependencies(absolutePagePath: string, attemptedDeps: string[]): void {
+  recordFailedDependencies(
+    absolutePagePath: string,
+    attemptedDeps: string[],
+  ): void {
     const deps = new Set(
       attemptedDeps.map((dep) =>
-        relative(process.cwd(), resolve(process.cwd(), dep)).replace(/\\/g, "/"),
+        relative(process.cwd(), resolve(process.cwd(), dep)).replace(
+          /\\/g,
+          "/",
+        ),
       ),
     );
     // Replace this page's previous failed entries wholesale: a changed page has
@@ -367,8 +396,12 @@ class MemoryStore {
 
   #isBooting = true;
   /** True until the initial full-page scan completes on dev server startup. */
-  get isBooting(): boolean { return this.#isBooting; }
-  setBootingDone(): void { this.#isBooting = false; }
+  get isBooting(): boolean {
+    return this.#isBooting;
+  }
+  setBootingDone(): void {
+    this.#isBooting = false;
+  }
 }
 
 export const mem = new MemoryStore();

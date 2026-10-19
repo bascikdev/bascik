@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { mkdtempSync, mkdirSync, symlinkSync, realpathSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  symlinkSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 
@@ -10,7 +16,13 @@ vi.mock("./userConfig.js", () => ({
   buildConfig: {},
 }));
 
-import { defaultConfig, BascikConfig, initBascikConfig, normalizeScopableOption, deepMerge } from "./config.ts";
+import {
+  defaultConfig,
+  BascikConfig,
+  initBascikConfig,
+  normalizeScopableOption,
+  deepMerge,
+} from "./config.ts";
 
 // Filesystem stub for initBascikConfig calls whose configs reference script
 // paths that do not exist on disk. Validation injects the filesystem; there
@@ -98,7 +110,12 @@ describe("defaultConfig", () => {
 
   it("defaults scripts.importRoot to 'src' and keeps it unresolved", () => {
     expect(defaultConfig.scripts.importRoot).toBe("src");
-    const { BascikConfig: cfg } = initBascikConfig({}, {}, {}, { fs: allowAllFs });
+    const { BascikConfig: cfg } = initBascikConfig(
+      {},
+      {},
+      {},
+      { fs: allowAllFs },
+    );
     expect(cfg.scripts.importRoot).toBe("src");
   });
 
@@ -137,17 +154,21 @@ describe("directory.components normalization (string | string[] -> string[])", (
   });
 
   const init = (components: string | string[]) =>
-    initBascikConfig({ directory: { components } }, {}, {}, { fs: allowAllFs }).BascikConfig;
+    initBascikConfig({ directory: { components } }, {}, {}, { fs: allowAllFs })
+      .BascikConfig;
 
   it("wraps a single string in an array and resolves it to an absolute realpath", () => {
     mkdirSync(join(workDir, "x"));
-    expect(init("x").directory.components).toEqual([realpathSync(resolve(workDir, "x"))]);
+    expect(init("x").directory.components).toEqual([
+      realpathSync(resolve(workDir, "x")),
+    ]);
   });
 
   it("keeps two roots in author order as absolute paths, including one outside the project", () => {
     mkdirSync(join(baseDir, "shared", "components"), { recursive: true });
     mkdirSync(join(workDir, "src", "components"), { recursive: true });
-    const roots = init(["../shared/components", "src/components"]).directory.components;
+    const roots = init(["../shared/components", "src/components"]).directory
+      .components;
     expect(roots).toEqual([
       join(baseDir, "shared", "components"),
       join(workDir, "src", "components"),
@@ -155,7 +176,12 @@ describe("directory.components normalization (string | string[] -> string[])", (
   });
 
   it("defaults to one entry ending in src/components", () => {
-    const { BascikConfig: cfg } = initBascikConfig({}, {}, {}, { fs: allowAllFs });
+    const { BascikConfig: cfg } = initBascikConfig(
+      {},
+      {},
+      {},
+      { fs: allowAllFs },
+    );
     expect(cfg.directory.components).toHaveLength(1);
     expect(cfg.directory.components[0]).toMatch(/[/\\]src[/\\]components$/);
   });
@@ -168,7 +194,9 @@ describe("directory.components normalization (string | string[] -> string[])", (
 
   it("rejects the same directory spelled two ways, naming both spellings", () => {
     mkdirSync(join(workDir, "a"));
-    expect(() => init(["a", "./a/"])).toThrow(/directory\.components[\s\S]*"a"[\s\S]*"\.\/a\/"[\s\S]*same directory/);
+    expect(() => init(["a", "./a/"])).toThrow(
+      /directory\.components[\s\S]*"a"[\s\S]*"\.\/a\/"[\s\S]*same directory/,
+    );
   });
 
   it("rejects a symlink to an already-listed root as a duplicate", () => {
@@ -178,16 +206,23 @@ describe("directory.components normalization (string | string[] -> string[])", (
   });
 
   it("rejects a root nested inside another root, naming parent and child", () => {
-    mkdirSync(join(workDir, "src", "components", "shared"), { recursive: true });
+    mkdirSync(join(workDir, "src", "components", "shared"), {
+      recursive: true,
+    });
     const expected = /"src\/components\/shared" is inside "src\/components"/;
-    expect(() => init(["src/components", "src/components/shared"])).toThrow(expected);
-    expect(() => init(["src/components/shared", "src/components"])).toThrow(expected);
+    expect(() => init(["src/components", "src/components/shared"])).toThrow(
+      expected,
+    );
+    expect(() => init(["src/components/shared", "src/components"])).toThrow(
+      expected,
+    );
   });
 
   it("does not mistake a sibling with a shared prefix for a nested root", () => {
     mkdirSync(join(workDir, "src", "components"), { recursive: true });
     mkdirSync(join(workDir, "src", "components-shared"), { recursive: true });
-    const roots = init(["src/components", "src/components-shared"]).directory.components;
+    const roots = init(["src/components", "src/components-shared"]).directory
+      .components;
     expect(roots).toHaveLength(2);
     expect(roots[1].endsWith(`${sep}components-shared`)).toBe(true);
   });
@@ -200,10 +235,28 @@ describe("scopable option normalizer", () => {
   });
 
   it("normalizes object values", () => {
-    expect(normalizeScopableOption({ enabled: false })).toEqual({ enabled: false, include: undefined, exclude: undefined });
-    expect(normalizeScopableOption({ include: ["src/"] })).toEqual({ enabled: true, include: ["src/"], exclude: undefined });
-    expect(normalizeScopableOption({ exclude: ["node_modules/"] })).toEqual({ enabled: true, include: undefined, exclude: ["node_modules/"] });
-    expect(normalizeScopableOption({ enabled: true, include: ["src/"], exclude: ["tmp/"] })).toEqual({ enabled: true, include: ["src/"], exclude: ["tmp/"] });
+    expect(normalizeScopableOption({ enabled: false })).toEqual({
+      enabled: false,
+      include: undefined,
+      exclude: undefined,
+    });
+    expect(normalizeScopableOption({ include: ["src/"] })).toEqual({
+      enabled: true,
+      include: ["src/"],
+      exclude: undefined,
+    });
+    expect(normalizeScopableOption({ exclude: ["node_modules/"] })).toEqual({
+      enabled: true,
+      include: undefined,
+      exclude: ["node_modules/"],
+    });
+    expect(
+      normalizeScopableOption({
+        enabled: true,
+        include: ["src/"],
+        exclude: ["tmp/"],
+      }),
+    ).toEqual({ enabled: true, include: ["src/"], exclude: ["tmp/"] });
   });
 
   it("falls back to default for undefined or invalid input", () => {
@@ -213,7 +266,9 @@ describe("scopable option normalizer", () => {
 
 describe("deepMerge", () => {
   it("deeply merges nested objects", () => {
-    const target = { http: { port: 3000, tls: { enabled: false, keyFile: "a" } } };
+    const target = {
+      http: { port: 3000, tls: { enabled: false, keyFile: "a" } },
+    };
     const source = { http: { tls: { enabled: true } } };
     const merged = deepMerge<any>({}, target, source);
     expect(merged.http.port).toBe(3000);
@@ -242,7 +297,9 @@ describe("BascikConfig freeze and structure", () => {
 
   it("resolves directory paths to absolute paths", () => {
     expect(BascikConfig.directory.pages).toMatch(/[/\\]src[/\\]pages$/);
-    expect(BascikConfig.directory.components[0]).toMatch(/[/\\]src[/\\]components$/);
+    expect(BascikConfig.directory.components[0]).toMatch(
+      /[/\\]src[/\\]components$/,
+    );
     expect(BascikConfig.directory.out).toMatch(/[/\\]dist$/);
   });
 });
@@ -284,9 +341,19 @@ describe("dev vs build vs server mode overrides and defaults", () => {
   });
 
   it("leaves pipeline.onExecError unset so the mode decides, and keeps a configured value", () => {
-    expect(initBascikConfig({}, {}, { isBuild: false }).BascikConfig.pipeline.onExecError).toBeUndefined();
-    expect(initBascikConfig({}, {}, { isBuild: true }).BascikConfig.pipeline.onExecError).toBeUndefined();
-    const flipped = initBascikConfig({ pipeline: { onExecError: "error" } }, {}, { isBuild: false }).BascikConfig;
+    expect(
+      initBascikConfig({}, {}, { isBuild: false }).BascikConfig.pipeline
+        .onExecError,
+    ).toBeUndefined();
+    expect(
+      initBascikConfig({}, {}, { isBuild: true }).BascikConfig.pipeline
+        .onExecError,
+    ).toBeUndefined();
+    const flipped = initBascikConfig(
+      { pipeline: { onExecError: "error" } },
+      {},
+      { isBuild: false },
+    ).BascikConfig;
     expect(flipped.pipeline.onExecError).toBe("error");
   });
 
@@ -295,13 +362,28 @@ describe("dev vs build vs server mode overrides and defaults", () => {
       dev: { pipeline: { onExecError: "error" as const } },
       build: { pipeline: { onExecError: "warn" as const } },
     };
-    expect(initBascikConfig({}, overrides, { isBuild: false }).BascikConfig.pipeline.onExecError).toBe("error");
-    expect(initBascikConfig({}, overrides, { isBuild: true }).BascikConfig.pipeline.onExecError).toBe("warn");
+    expect(
+      initBascikConfig({}, overrides, { isBuild: false }).BascikConfig.pipeline
+        .onExecError,
+    ).toBe("error");
+    expect(
+      initBascikConfig({}, overrides, { isBuild: true }).BascikConfig.pipeline
+        .onExecError,
+    ).toBe("warn");
   });
 
   it("keeps minify options off and defaults error actions to 'error' for scripts in dev mode", () => {
-    const { BascikConfig: cfg } = initBascikConfig({}, {}, { isBuild: false, isProdServer: false });
-    expect(cfg.minify).toEqual({ html: false, css: false, js: false, identifiers: false });
+    const { BascikConfig: cfg } = initBascikConfig(
+      {},
+      {},
+      { isBuild: false, isProdServer: false },
+    );
+    expect(cfg.minify).toEqual({
+      html: false,
+      css: false,
+      js: false,
+      identifiers: false,
+    });
     expect(cfg.scripts.onBuildScriptError).toBe("error");
     expect(cfg.scripts.onRoutesScriptError).toBe("error");
     expect(cfg.scripts.onServerScriptError).toBe("error");
@@ -311,7 +393,12 @@ describe("dev vs build vs server mode overrides and defaults", () => {
 
   it("turns minify options on and defaults error actions to 'error' for --build", () => {
     const { BascikConfig: cfg } = initBascikConfig({}, {}, { isBuild: true });
-    expect(cfg.minify).toEqual({ html: true, css: true, js: true, identifiers: true });
+    expect(cfg.minify).toEqual({
+      html: true,
+      css: true,
+      js: true,
+      identifiers: true,
+    });
     expect(cfg.scripts.onBuildScriptError).toBe("error");
     expect(cfg.scripts.onRoutesScriptError).toBe("error");
     expect(cfg.scripts.onServerScriptError).toBe("error");
@@ -319,8 +406,17 @@ describe("dev vs build vs server mode overrides and defaults", () => {
   });
 
   it("turns minify options on, defaults error actions to 'error', and enables httpCache for --server", () => {
-    const { BascikConfig: cfg } = initBascikConfig({}, {}, { isProdServer: true });
-    expect(cfg.minify).toEqual({ html: true, css: true, js: true, identifiers: true });
+    const { BascikConfig: cfg } = initBascikConfig(
+      {},
+      {},
+      { isProdServer: true },
+    );
+    expect(cfg.minify).toEqual({
+      html: true,
+      css: true,
+      js: true,
+      identifiers: true,
+    });
     expect(cfg.scripts.onBuildScriptError).toBe("error");
     expect(cfg.onMinifyError).toBe("error");
     expect(cfg.http.httpCache).toBe(true);
@@ -336,13 +432,17 @@ describe("dev vs build vs server mode overrides and defaults", () => {
       server: { http: { port: 8080, tls: { enabled: true } } },
     };
 
-    const buildCfg = initBascikConfig(userConfig, modeOverrides, { isBuild: true }).BascikConfig;
+    const buildCfg = initBascikConfig(userConfig, modeOverrides, {
+      isBuild: true,
+    }).BascikConfig;
     expect(buildCfg.logging.level).toBe("info");
     expect(buildCfg.logging.copies).toBe(false);
     expect(buildCfg.http.port).toBe(3000);
     expect(buildCfg.minify.css).toBe(false);
 
-    const serverCfg = initBascikConfig(userConfig, modeOverrides, { isProdServer: true }).BascikConfig;
+    const serverCfg = initBascikConfig(userConfig, modeOverrides, {
+      isProdServer: true,
+    }).BascikConfig;
     expect(serverCfg.http.port).toBe(8080);
     expect(serverCfg.http.hostname).toBe("localhost");
     expect(serverCfg.http.tls.enabled).toBe(true);
@@ -351,9 +451,17 @@ describe("dev vs build vs server mode overrides and defaults", () => {
   it("uses the dev asset symlink override only in development mode", () => {
     const overrides = { dev: { assets: { symlink: true } } };
 
-    const devCfg = initBascikConfig({}, overrides, { isBuild: false }).BascikConfig;
-    const buildCfg = initBascikConfig({}, overrides, { isBuild: true }).BascikConfig;
-    const defaultCfg = initBascikConfig({}, {}, { isBuild: false }).BascikConfig;
+    const devCfg = initBascikConfig({}, overrides, {
+      isBuild: false,
+    }).BascikConfig;
+    const buildCfg = initBascikConfig({}, overrides, {
+      isBuild: true,
+    }).BascikConfig;
+    const defaultCfg = initBascikConfig(
+      {},
+      {},
+      { isBuild: false },
+    ).BascikConfig;
 
     expect(devCfg.assets.symlink).toBe(true);
     expect(buildCfg.assets.symlink).toBe(false);
@@ -361,10 +469,11 @@ describe("dev vs build vs server mode overrides and defaults", () => {
   });
 
   it("allows directory.out to be customized and reach all resolution logic", () => {
-    const { BascikConfig: cfg } = initBascikConfig({ directory: { out: "custom-build" } });
+    const { BascikConfig: cfg } = initBascikConfig({
+      directory: { out: "custom-build" },
+    });
     expect(cfg.directory.out).toMatch(/[/\\]custom-build$/);
   });
-
 });
 
 describe("CLI flag overrides (flag > env var > config file)", () => {
@@ -373,11 +482,15 @@ describe("CLI flag overrides (flag > env var > config file)", () => {
       http: { port: 3000, hostname: "config-host" },
       logging: { level: "info" as const },
     };
-    const { BascikConfig: cfg } = initBascikConfig(userConfig, {}, {
-      port: 4321,
-      host: "flag-host",
-      logLevel: "debug",
-    });
+    const { BascikConfig: cfg } = initBascikConfig(
+      userConfig,
+      {},
+      {
+        port: 4321,
+        host: "flag-host",
+        logLevel: "debug",
+      },
+    );
     expect(cfg.http.port).toBe(4321);
     expect(cfg.http.hostname).toBe("flag-host");
     expect(cfg.logging.level).toBe("debug");
@@ -385,7 +498,10 @@ describe("CLI flag overrides (flag > env var > config file)", () => {
 
   it("leaves config-file values in place when no overrides are passed", () => {
     const { BascikConfig: cfg } = initBascikConfig(
-      { http: { port: 3000, hostname: "config-host" }, logging: { level: "warn" as const } },
+      {
+        http: { port: 3000, hostname: "config-host" },
+        logging: { level: "warn" as const },
+      },
       {},
       {},
     );
@@ -403,7 +519,9 @@ describe("exec config normalization and merging", () => {
       {},
       { fs: allowAllFs },
     );
-    expect(cfg.pipeline.exec).toEqual([{ script: "scripts/gen.js", phase: "pre" }]);
+    expect(cfg.pipeline.exec).toEqual([
+      { script: "scripts/gen.js", phase: "pre" },
+    ]);
   });
 
   it("preserves explicit valid phase ('post' and 'parallel')", () => {
@@ -432,7 +550,13 @@ describe("exec config normalization and merging", () => {
     let thrown: Error | undefined;
     try {
       initBascikConfig(
-        { pipeline: { exec: [{ script: "scripts/invalid.js", phase: "invalid-phase" as any }] } },
+        {
+          pipeline: {
+            exec: [
+              { script: "scripts/invalid.js", phase: "invalid-phase" as any },
+            ],
+          },
+        },
         {},
         {},
         { fs: allowAllFs },
@@ -449,7 +573,11 @@ describe("exec config normalization and merging", () => {
   it("lets buildOverrideConfig replace exec array during build", () => {
     const { BascikConfig: cfg } = initBascikConfig(
       { pipeline: { exec: [{ script: "scripts/dev-only.js" }] } },
-      { pipeline: { exec: [{ script: "scripts/build-only.js", phase: "post" }] } },
+      {
+        pipeline: {
+          exec: [{ script: "scripts/build-only.js", phase: "post" }],
+        },
+      },
       { isBuild: true },
       { fs: allowAllFs },
     );
@@ -458,4 +586,3 @@ describe("exec config normalization and merging", () => {
     ]);
   });
 });
-

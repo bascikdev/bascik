@@ -37,22 +37,32 @@ describe("startProdServer", () => {
     // `?bascik-gen` must never appear in production URLs or logs. The dev hook
     // is installed only by the dev server startup path (server-dev.ts), and
     // the graph module itself refuses to install outside development.
-    const { installModuleGraphHook, isModuleGraphHookInstalled } = await import("./module-graph.ts");
+    const { installModuleGraphHook, isModuleGraphHookInstalled } =
+      await import("./module-graph.ts");
     expect(isModuleGraphHookInstalled()).toBe(false);
-    const handle = installModuleGraphHook({ projectRoot: process.cwd(), isDev: false });
+    const handle = installModuleGraphHook({
+      projectRoot: process.cwd(),
+      isDev: false,
+    });
     expect(handle.installed).toBe(false);
     expect(isModuleGraphHookInstalled()).toBe(false);
     // The production startup module does not even reference the graph.
     const { readFile } = await import("node:fs/promises");
     const { fileURLToPath } = await import("node:url");
-    const prodSource = await readFile(fileURLToPath(new URL("./server-prod.ts", import.meta.url)), "utf8");
+    const prodSource = await readFile(
+      fileURLToPath(new URL("./server-prod.ts", import.meta.url)),
+      "utf8",
+    );
     expect(prodSource).not.toContain("module-graph");
   });
 
   beforeEach(async () => {
     startServerMock.mockClear();
     originalCwd = process.cwd();
-    workDir = join(originalCwd, `.server-prod-test-${process.pid}-${Date.now()}`);
+    workDir = join(
+      originalCwd,
+      `.server-prod-test-${process.pid}-${Date.now()}`,
+    );
     await mkdir(join(workDir, "dist"), { recursive: true });
     await mkdir(join(workDir, "dist", ".bascik"), { recursive: true });
     await writeFile(
@@ -69,7 +79,9 @@ describe("startProdServer", () => {
 
   it("throws a helpful error when dist/ does not exist", async () => {
     await rm(join(workDir, "dist"), { recursive: true, force: true });
-    await expect(startProdServer()).rejects.toThrow(/requires a completed production build/);
+    await expect(startProdServer()).rejects.toThrow(
+      /requires a completed production build/,
+    );
     expect(startServerMock).not.toHaveBeenCalled();
   });
 
@@ -79,13 +91,15 @@ describe("startProdServer", () => {
       JSON.stringify({ format: 1, mode: "development", version: "test" }),
     );
 
-    await expect(startProdServer()).rejects.toThrow(/requires a completed production build/);
+    await expect(startProdServer()).rejects.toThrow(
+      /requires a completed production build/,
+    );
     expect(startServerMock).not.toHaveBeenCalled();
   });
 
   it("warns but still serves when dist/ contains no HTML pages", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => { });
-    const log = vi.spyOn(console, "log").mockImplementation(() => { });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
     await startProdServer();
 
@@ -107,7 +121,7 @@ describe("startProdServer", () => {
     );
     // Non-HTML files must be ignored
     await writeFile(join(workDir, "dist", "styles.css"), "body{}");
-    const log = vi.spyOn(console, "log").mockImplementation(() => { });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
     await startProdServer();
 
@@ -134,18 +148,21 @@ describe("startProdServer", () => {
     const sentinelPath = join(workDir, "dist", "keep-me.txt");
     await writeFile(join(workDir, "dist", "index.html"), "<h1>home</h1>");
     await writeFile(sentinelPath, "preserved");
-    const log = vi.spyOn(console, "log").mockImplementation(() => { });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
     await startProdServer();
 
-    await expect(import("node:fs/promises").then(({ readFile }) => readFile(sentinelPath, "utf8")))
-      .resolves.toBe("preserved");
+    await expect(
+      import("node:fs/promises").then(({ readFile }) =>
+        readFile(sentinelPath, "utf8"),
+      ),
+    ).resolves.toBe("preserved");
     log.mockRestore();
   });
 
   it("uses singular 'page' in the log message when exactly one page is loaded", async () => {
     await writeFile(join(workDir, "dist", "index.html"), "<h1>only</h1>");
-    const log = vi.spyOn(console, "log").mockImplementation(() => { });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
     await startProdServer();
 
@@ -161,9 +178,11 @@ describe("startProdServer", () => {
       "{corrupt",
       "utf8",
     );
-    const error = vi.spyOn(console, "error").mockImplementation(() => { });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await expect(startProdServer()).rejects.toThrow(/Failed to load server scripts sidecar/);
+    await expect(startProdServer()).rejects.toThrow(
+      /Failed to load server scripts sidecar/,
+    );
     // A required runtime artifact that cannot be parsed must never bind.
     expect(startServerMock).not.toHaveBeenCalled();
     error.mockRestore();
@@ -182,10 +201,14 @@ describe("startProdServer", () => {
       JSON.stringify({ version: "1", schema: 2, scripts: {} }),
       "utf8",
     );
-    const error = vi.spyOn(console, "error").mockImplementation(() => { });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await expect(startProdServer()).rejects.toThrow(/production startup validation failed/);
-    await expect(startProdServer()).rejects.toThrow(/unresolvable or stale server-script placeholder/);
+    await expect(startProdServer()).rejects.toThrow(
+      /production startup validation failed/,
+    );
+    await expect(startProdServer()).rejects.toThrow(
+      /unresolvable or stale server-script placeholder/,
+    );
     await expect(startProdServer()).rejects.toThrow(/bascik --build/);
     expect(startServerMock).not.toHaveBeenCalled();
     error.mockRestore();
@@ -197,9 +220,11 @@ describe("startProdServer", () => {
       join(workDir, "dist", "index.html"),
       '<script type="text/bascik-server" data-bascik-server-id="missing"></script>',
     );
-    const error = vi.spyOn(console, "error").mockImplementation(() => { });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await expect(startProdServer()).rejects.toThrow(/production startup validation failed/);
+    await expect(startProdServer()).rejects.toThrow(
+      /production startup validation failed/,
+    );
     await expect(startProdServer()).rejects.toThrow(/sidecar .*is missing/);
     await expect(startProdServer()).rejects.toThrow(/bascik --build/);
     expect(startServerMock).not.toHaveBeenCalled();
@@ -214,7 +239,7 @@ describe("startProdServer", () => {
       JSON.stringify({ version: "1", schema: 99, scripts: {} }),
       "utf8",
     );
-    const error = vi.spyOn(console, "error").mockImplementation(() => { });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await expect(startProdServer()).rejects.toThrow(/schema 99/);
     expect(startServerMock).not.toHaveBeenCalled();
@@ -235,7 +260,7 @@ describe("startProdServer", () => {
       `<script type="application/ld+json">{"@type":"WebPage","name":"bascik-live-reload docs"}</script>` +
       `</body></html>`;
     await writeFile(join(workDir, "dist", "index.html"), html);
-    const log = vi.spyOn(console, "log").mockImplementation(() => { });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
     await startProdServer();
 
@@ -252,7 +277,7 @@ describe("startProdServer", () => {
       `<script>fetch("/bascik-live-reload").catch(() => {})</script>` +
       `<script>console.log("after")</script>`;
     await writeFile(join(workDir, "dist", "index.html"), html);
-    const log = vi.spyOn(console, "log").mockImplementation(() => { });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
     await startProdServer();
 
@@ -266,7 +291,7 @@ describe("startProdServer", () => {
     const after = `<script>window.after = 2</script>`;
     const html = `<body>${before}${getLiveReloadScript("/sub/bascik-live-reload").trim()}${after}</body>`;
     await writeFile(join(workDir, "dist", "index.html"), html);
-    const log = vi.spyOn(console, "log").mockImplementation(() => { });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
     await startProdServer();
 
@@ -279,14 +304,16 @@ describe("startProdServer", () => {
 
   it("still serves a genuinely static release with no sidecar", async () => {
     await writeFile(join(workDir, "dist", "index.html"), "<h1>static</h1>");
-    const log = vi.spyOn(console, "log").mockImplementation(() => { });
-    const error = vi.spyOn(console, "error").mockImplementation(() => { });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await startProdServer();
 
     expect(startServerMock).toHaveBeenCalledOnce();
     // No sidecar exists, but the release is static and stays valid.
-    expect(mem.getPageExact("/")?.content.toString("utf8")).toBe("<h1>static</h1>");
+    expect(mem.getPageExact("/")?.content.toString("utf8")).toBe(
+      "<h1>static</h1>",
+    );
     log.mockRestore();
     error.mockRestore();
   });

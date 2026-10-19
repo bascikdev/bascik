@@ -7,14 +7,14 @@
  * Run with:
  *   npx playwright test --config e2e/playwright.exec-policy.config.ts
  */
-import { defineConfig } from '@playwright/test';
+import { defineConfig } from "@playwright/test";
 
 // Recompute every reused scoping result and fail on any difference (scoping-template.ts).
-process.env.BASCIK_VERIFY_SCOPING_TEMPLATES ??= '1';
+process.env.BASCIK_VERIFY_SCOPING_TEMPLATES ??= "1";
 
 export default defineConfig({
-  testDir: './tests',
-  testMatch: '**/exec-error-policy.test.ts',
+  testDir: "./tests",
+  testMatch: "**/exec-error-policy.test.ts",
   workers: 1,
   fullyParallel: false,
   timeout: 90_000,

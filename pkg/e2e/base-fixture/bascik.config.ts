@@ -1,5 +1,5 @@
 export default {
-  base: '/sub/',
+  base: "/sub/",
   pipeline: { workers: false },
   minify: { identifiers: false },
 };
@@ -7,6 +7,6 @@ export default {
 export const server = {
   http: {
     port: Number(process.env.BASCIK_SERVER_PORT) || 9552,
-    tls: { enabled: process.env.BASCIK_ENABLE_TLS === 'true' },
+    tls: { enabled: process.env.BASCIK_ENABLE_TLS === "true" },
   },
 };

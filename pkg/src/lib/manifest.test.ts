@@ -10,7 +10,13 @@ vi.mock("./config.js", () => ({
       sitemapLastmod: false,
       cspHashes: false,
     },
-    logging: { copies: true, deletes: true, level: "info", requests: true, transpiles: true },
+    logging: {
+      copies: true,
+      deletes: true,
+      level: "info",
+      requests: true,
+      transpiles: true,
+    },
     minify: { css: false, html: false, js: false },
     base: "/",
   },
@@ -41,7 +47,9 @@ describe("manifestCollector", () => {
     BascikConfig.directory.out = outDir;
 
     await manifestCollector.writeManifest("1.0.0");
-    await expect(readFile(join(outDir, ".bascik", "manifest.json"))).rejects.toThrow();
+    await expect(
+      readFile(join(outDir, ".bascik", "manifest.json")),
+    ).rejects.toThrow();
     await rm(outDir, { recursive: true, force: true });
   });
 
@@ -50,16 +58,24 @@ describe("manifestCollector", () => {
     BascikConfig.directory.out = outDir;
 
     manifestCollector.recordFile(join(outDir, "index.html"), "<h1>Home</h1>");
-    manifestCollector.recordFile(join(outDir, "styles.css"), "body{color:red;}");
+    manifestCollector.recordFile(
+      join(outDir, "styles.css"),
+      "body{color:red;}",
+    );
 
     await manifestCollector.writeManifest("1.0.0");
 
-    const manifestContent = await readFile(join(outDir, ".bascik", "manifest.json"), "utf8");
+    const manifestContent = await readFile(
+      join(outDir, ".bascik", "manifest.json"),
+      "utf8",
+    );
     const parsed = JSON.parse(manifestContent);
 
     expect(parsed.version).toBe("1.0.0");
     expect(parsed.files["index.html"]).toBeDefined();
-    expect(parsed.files["index.html"].size).toBe(Buffer.byteLength("<h1>Home</h1>"));
+    expect(parsed.files["index.html"].size).toBe(
+      Buffer.byteLength("<h1>Home</h1>"),
+    );
     expect(parsed.files["index.html"].hash).toMatch(/^[0-9a-f]{64}$/);
     expect(parsed.files["styles.css"]).toBeDefined();
 
@@ -70,8 +86,14 @@ describe("manifestCollector", () => {
     const outDir = join(tmpdir(), `bascik-manifest-test-${Date.now()}`);
     BascikConfig.directory.out = outDir;
 
-    manifestCollector.recordFile(join(outDir, ".bascik", "manifest.json"), "{}");
-    manifestCollector.recordFile(join(outDir, "page.html"), "<div>content</div>");
+    manifestCollector.recordFile(
+      join(outDir, ".bascik", "manifest.json"),
+      "{}",
+    );
+    manifestCollector.recordFile(
+      join(outDir, "page.html"),
+      "<div>content</div>",
+    );
 
     const files = manifestCollector.getFiles();
     expect(files[".bascik/manifest.json"]).toBeUndefined();
@@ -112,12 +134,18 @@ describe("manifestCollector", () => {
 
     manifestCollector.recordFile(join(outDir, "index.html"), "<h1>Home</h1>");
     await manifestCollector.writeManifest("1.0.0");
-    const run1 = await readFile(join(outDir, ".bascik", "manifest.json"), "utf8");
+    const run1 = await readFile(
+      join(outDir, ".bascik", "manifest.json"),
+      "utf8",
+    );
 
     // Wait briefly and write again
     await new Promise((r) => setTimeout(r, 10));
     await manifestCollector.writeManifest("1.0.0");
-    const run2 = await readFile(join(outDir, ".bascik", "manifest.json"), "utf8");
+    const run2 = await readFile(
+      join(outDir, ".bascik", "manifest.json"),
+      "utf8",
+    );
 
     expect(run1).toBe(run2);
     expect(run1).not.toContain("timestamp");

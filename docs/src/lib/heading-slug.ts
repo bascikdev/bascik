@@ -7,12 +7,12 @@
  */
 
 const ENTITIES: Record<string, string> = {
-  '&#39;': "'",
-  '&apos;': "'",
-  '&quot;': '"',
-  '&amp;': '&',
-  '&lt;': '<',
-  '&gt;': '>',
+  "&#39;": "'",
+  "&apos;": "'",
+  "&quot;": '"',
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
 };
 
 /**
@@ -20,21 +20,29 @@ const ENTITIES: Record<string, string> = {
  * decoded `&` never starts another entity (`&amp;lt;` reads as `&lt;`).
  */
 function decodeEntities(text: string): string {
-  return text.replace(/&(?:#39|apos|quot|amp|lt|gt);/g, (entity) => ENTITIES[entity]);
+  return text.replace(
+    /&(?:#39|apos|quot|amp|lt|gt);/g,
+    (entity) => ENTITIES[entity],
+  );
 }
 
 /** Plain text of a heading's rendered inline HTML (tags removed, entities decoded). */
 export function headingPlainText(headingHtml: string): string {
-  // codeql[js/incomplete-multi-character-sanitization] Plain text, not markup: render-nav.ts escapes it at the sink.
-  return decodeEntities(headingHtml.replace(/<[^>]+>/g, ''));
+  let stripped = headingHtml;
+  let previous: string;
+  do {
+    previous = stripped;
+    stripped = stripped.replace(/<[^>]+>/g, "");
+  } while (stripped !== previous);
+  return decodeEntities(stripped);
 }
 
 /** The id for a heading, from its rendered inline HTML. */
 export function slugFromHeadingHtml(headingHtml: string): string {
   return headingPlainText(headingHtml)
     .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
+    .replace(/[^\w\s-]/g, "")
     .trim()
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
 }

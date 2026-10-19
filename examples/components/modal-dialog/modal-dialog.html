@@ -7,9 +7,13 @@ A button that opens a native modal <dialog>. Escape, the close button, and a cli
 <style>
   .trigger {
     padding: 0.5rem 1rem;
-    border: 1px solid var(--color-border, color-mix(in srgb, currentColor 30%, transparent));
+    border: 1px solid
+      var(--color-border, color-mix(in srgb, currentColor 30%, transparent));
     border-radius: var(--radius, 0.5rem);
-    background: var(--color-surface, color-mix(in srgb, currentColor 8%, transparent));
+    background: var(
+      --color-surface,
+      color-mix(in srgb, currentColor 8%, transparent)
+    );
     color: inherit;
     font: inherit;
     cursor: pointer;
@@ -22,7 +26,8 @@ A button that opens a native modal <dialog>. Escape, the close button, and a cli
   .dialog {
     width: min(32rem, calc(100vw - 2rem));
     padding: 0;
-    border: 1px solid var(--color-border, color-mix(in srgb, currentColor 30%, transparent));
+    border: 1px solid
+      var(--color-border, color-mix(in srgb, currentColor 30%, transparent));
     border-radius: var(--radius, 0.5rem);
     background: var(--color-bg, Canvas);
     color: var(--color-text, CanvasText);
@@ -63,22 +68,36 @@ A button that opens a native modal <dialog>. Escape, the close button, and a cli
     cursor: pointer;
   }
 </style>
-<button class="trigger" id="trigger" type="button" aria-haspopup="dialog" data-bascik-prop-trigger>Open</button>
+<button
+  class="trigger"
+  id="trigger"
+  type="button"
+  aria-haspopup="dialog"
+  data-bascik-prop-trigger
+>
+  Open
+</button>
 <dialog class="dialog" id="dialog" aria-labelledby="title">
   <div class="content">
     <div class="header">
       <h2 class="title" id="title" data-bascik-prop-title>Dialog</h2>
-      <button class="close" id="close" type="button" aria-label="Close">&times;</button>
+      <button class="close" id="close" type="button" aria-label="Close">
+        &times;
+      </button>
     </div>
     <div data-bascik-slot></div>
   </div>
 </dialog>
 <script>
-  const dialog = document.getElementById('dialog');
-  document.getElementById('trigger').addEventListener('click', () => dialog.showModal());
-  document.getElementById('close').addEventListener('click', () => dialog.close());
+  const dialog = document.getElementById("dialog");
+  document
+    .getElementById("trigger")
+    .addEventListener("click", () => dialog.showModal());
+  document
+    .getElementById("close")
+    .addEventListener("click", () => dialog.close());
   // The dialog has no padding, so a click whose target is the dialog itself landed on the backdrop.
-  dialog.addEventListener('click', (event) => {
+  dialog.addEventListener("click", (event) => {
     if (event.target === dialog) dialog.close();
   });
 </script>

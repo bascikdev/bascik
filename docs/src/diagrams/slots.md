@@ -1,4 +1,5 @@
 <!-- demo:slots-zones-template -->
+
 ```html
 <section class="panel">
   <header data-bascik-slot="title"></header>
@@ -8,6 +9,7 @@
 ```
 
 <!-- demo:slots-zones-usage -->
+
 ```html
 <panel-box>
   <div data-bascik-slot="title"><h3>Hello</h3></div>
@@ -16,6 +18,7 @@
 ```
 
 <!-- demo:slots-zones-out -->
+
 ```html
 <section class="bascik__panel-box__panel">
   <h3>Hello</h3>

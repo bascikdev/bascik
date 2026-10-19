@@ -10,7 +10,9 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** The agent skills bundled from the repo-root skills/ directory (copied in by prepare/prepack). */
-export const SKILLS_DIR = fileURLToPath(new URL("../assets/skills", import.meta.url));
+export const SKILLS_DIR = fileURLToPath(
+  new URL("../assets/skills", import.meta.url),
+);
 
 /**
  * Project directories that receive the agent skills. `.agents/skills` is the shared location read by GitHub
@@ -39,17 +41,17 @@ export const PACKAGE_JSON = (name: string): string =>
       scripts: {
         dev: "bascik",
         build: "bascik --build",
-        lint: "bascik-language-server --check",
+        lint: "bascik --check",
         test: "vitest run",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",
         e2e: "playwright test --config e2e/playwright.config.ts",
       },
       dependencies: {
-        "@bascik/bascik": "^1.0.0-rc.6",
+        "@bascik/bascik": "^1.0.0-rc.7",
       },
       devDependencies: {
-        "@bascik/language-server": "^0.1.0-rc.2",
+        "@bascik/language-server": "^0.1.0-rc.4",
         "@playwright/test": "^1.62.0",
         "@types/node": "^24.0.0",
         "@vitest/coverage-v8": "^4.1.10",
@@ -60,51 +62,51 @@ export const PACKAGE_JSON = (name: string): string =>
     2,
   ) + "\n";
 
-export const VSCODE_EXTENSIONS_JSON = JSON.stringify(
-  {
-    recommendations: [
-      "bascik.bascik-vscode",
-    ],
-  },
-  null,
-  2,
-) + "\n";
+export const VSCODE_EXTENSIONS_JSON =
+  JSON.stringify(
+    {
+      recommendations: ["bascik.bascik-vscode"],
+    },
+    null,
+    2,
+  ) + "\n";
 
-export const VSCODE_LAUNCH_JSON = JSON.stringify(
-  {
-    version: "0.2.0",
-    configurations: [
-      {
-        name: "Debug Dev Server",
-        type: "node",
-        request: "launch",
-        runtimeExecutable: "npx",
-        runtimeArgs: ["bascik"],
-        console: "integratedTerminal",
-        restart: true,
-        skipFiles: ["<node_internals>/**"],
-      },
-      {
-        name: "Debug Unit Tests",
-        type: "node",
-        request: "launch",
-        runtimeExecutable: "npx",
-        runtimeArgs: ["vitest", "run"],
-        console: "integratedTerminal",
-        skipFiles: ["<node_internals>/**"],
-      },
-      {
-        name: "Launch Chrome",
-        type: "chrome",
-        request: "launch",
-        url: "http://localhost:8080",
-        webRoot: "${workspaceFolder}",
-      },
-    ],
-  },
-  null,
-  2,
-) + "\n";
+export const VSCODE_LAUNCH_JSON =
+  JSON.stringify(
+    {
+      version: "0.2.0",
+      configurations: [
+        {
+          name: "Debug Dev Server",
+          type: "node",
+          request: "launch",
+          runtimeExecutable: "npx",
+          runtimeArgs: ["bascik"],
+          console: "integratedTerminal",
+          restart: true,
+          skipFiles: ["<node_internals>/**"],
+        },
+        {
+          name: "Debug Unit Tests",
+          type: "node",
+          request: "launch",
+          runtimeExecutable: "npx",
+          runtimeArgs: ["vitest", "run"],
+          console: "integratedTerminal",
+          skipFiles: ["<node_internals>/**"],
+        },
+        {
+          name: "Launch Chrome",
+          type: "chrome",
+          request: "launch",
+          url: "http://localhost:8080",
+          webRoot: "${workspaceFolder}",
+        },
+      ],
+    },
+    null,
+    2,
+  ) + "\n";
 
 export const VITE_CONFIG = `import { defineConfig } from 'vite';
 
@@ -732,7 +734,10 @@ ${body}
 `;
 
 export const indexPage = (brand: string): string =>
-  pageShell(`Home - ${brand}`, brand, `    <section class="hero">
+  pageShell(
+    `Home - ${brand}`,
+    brand,
+    `    <section class="hero">
       <div class="container">
         <p class="section-label">Welcome</p>
         <h1>Build fast with <span>${brand}</span></h1>
@@ -782,10 +787,14 @@ export const indexPage = (brand: string): string =>
           <my-counter />
         </div>
       </div>
-    </section>`);
+    </section>`,
+  );
 
 export const aboutPage = (brand: string): string =>
-  pageShell(`About - ${brand}`, brand, `    <div class="container">
+  pageShell(
+    `About - ${brand}`,
+    brand,
+    `    <div class="container">
       <section class="section">
         <p class="section-label">About</p>
         <h1>About us</h1>
@@ -806,10 +815,14 @@ export const aboutPage = (brand: string): string =>
           <p>Want to work together? <a href="/contact">Get in touch →</a></p>
         </div>
       </section>
-    </div>`);
+    </div>`,
+  );
 
 export const contactPage = (brand: string): string =>
-  pageShell(`Contact - ${brand}`, brand, `    <div class="container">
+  pageShell(
+    `Contact - ${brand}`,
+    brand,
+    `    <div class="container">
       <section class="section">
         <p class="section-label">Contact</p>
         <h1>Get in touch</h1>
@@ -831,10 +844,14 @@ export const contactPage = (brand: string): string =>
           <button type="submit" class="btn btn-primary">Send message</button>
         </form>
       </section>
-    </div>`);
+    </div>`,
+  );
 
 export const notFoundPage = (brand: string): string =>
-  pageShell(`404 - ${brand}`, brand, `    <div class="container">
+  pageShell(
+    `404 - ${brand}`,
+    brand,
+    `    <div class="container">
       <section class="section" style="text-align:center;">
         <p class="section-label">Error</p>
         <h1 style="font-size:clamp(4rem,12vw,8rem);color:var(--accent);margin-bottom:8px;">404</h1>
@@ -842,7 +859,8 @@ export const notFoundPage = (brand: string): string =>
         <p style="margin-bottom:32px;">The page you're looking for doesn't exist.</p>
         <a href="/" class="btn btn-primary">Go home</a>
       </section>
-    </div>`);
+    </div>`,
+  );
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
@@ -872,7 +890,9 @@ export async function scaffold(
   // Create all directories up front
   await Promise.all([
     mkdir(join(root, ".vscode"), { recursive: true }),
-    ...SKILL_DESTINATIONS.map((dir) => mkdir(join(root, ...dir.split("/")), { recursive: true })),
+    ...SKILL_DESTINATIONS.map((dir) =>
+      mkdir(join(root, ...dir.split("/")), { recursive: true }),
+    ),
     mkdir(join(root, "e2e"), { recursive: true }),
     mkdir(join(root, "src", "pages", "assets"), { recursive: true }),
     mkdir(join(root, "src", "pages", "css"), { recursive: true }),
@@ -885,44 +905,127 @@ export async function scaffold(
 
   await Promise.all([
     // Agent skills (SKILL.md files with their references/ and scripts/)
-    ...SKILL_DESTINATIONS.map((dir) => copySkills(join(root, ...dir.split("/")))),
+    ...SKILL_DESTINATIONS.map((dir) =>
+      copySkills(join(root, ...dir.split("/"))),
+    ),
 
     // Root
     writeFile(join(root, "package.json"), PACKAGE_JSON(projectName), "utf8"),
     writeFile(join(root, "vite.config.js"), VITE_CONFIG, "utf8"),
     writeFile(join(root, ".gitignore"), GITIGNORE, "utf8"),
     writeFile(join(root, ".vscode", "launch.json"), VSCODE_LAUNCH_JSON, "utf8"),
-    writeFile(join(root, ".vscode", "extensions.json"), VSCODE_EXTENSIONS_JSON, "utf8"),
+    writeFile(
+      join(root, ".vscode", "extensions.json"),
+      VSCODE_EXTENSIONS_JSON,
+      "utf8",
+    ),
 
     // E2E
-    writeFile(join(root, "e2e", "playwright.config.ts"), PLAYWRIGHT_CONFIG, "utf8"),
+    writeFile(
+      join(root, "e2e", "playwright.config.ts"),
+      PLAYWRIGHT_CONFIG,
+      "utf8",
+    ),
     writeFile(join(root, "e2e", "app.spec.ts"), E2E_APP_SPEC, "utf8"),
 
     // Assets
-    writeFile(join(root, "src", "pages", "favicon.ico"), Buffer.from(FAVICON_ICO_B64, "base64")),
-    writeFile(join(root, "src", "pages", "assets", "favicon-32x32.png"), Buffer.from(FAVICON_32_PNG_B64, "base64")),
-    writeFile(join(root, "src", "pages", "assets", "apple-touch-icon.png"), Buffer.from(APPLE_TOUCH_ICON_PNG_B64, "base64")),
-    writeFile(join(root, "src", "pages", "assets", "favicon.svg"), FAVICON_SVG, "utf8"),
+    writeFile(
+      join(root, "src", "pages", "favicon.ico"),
+      Buffer.from(FAVICON_ICO_B64, "base64"),
+    ),
+    writeFile(
+      join(root, "src", "pages", "assets", "favicon-32x32.png"),
+      Buffer.from(FAVICON_32_PNG_B64, "base64"),
+    ),
+    writeFile(
+      join(root, "src", "pages", "assets", "apple-touch-icon.png"),
+      Buffer.from(APPLE_TOUCH_ICON_PNG_B64, "base64"),
+    ),
+    writeFile(
+      join(root, "src", "pages", "assets", "favicon.svg"),
+      FAVICON_SVG,
+      "utf8",
+    ),
 
     // Global CSS
-    writeFile(join(root, "src", "pages", "css", "styles.css"), STYLES_CSS, "utf8"),
+    writeFile(
+      join(root, "src", "pages", "css", "styles.css"),
+      STYLES_CSS,
+      "utf8",
+    ),
 
     // Pages
-    writeFile(join(root, "src", "pages", "index.html"), indexPage(projectName), "utf8"),
-    writeFile(join(root, "src", "pages", "about.html"), aboutPage(projectName), "utf8"),
-    writeFile(join(root, "src", "pages", "contact.html"), contactPage(projectName), "utf8"),
-    writeFile(join(root, "src", "pages", "404.html"), notFoundPage(projectName), "utf8"),
+    writeFile(
+      join(root, "src", "pages", "index.html"),
+      indexPage(projectName),
+      "utf8",
+    ),
+    writeFile(
+      join(root, "src", "pages", "about.html"),
+      aboutPage(projectName),
+      "utf8",
+    ),
+    writeFile(
+      join(root, "src", "pages", "contact.html"),
+      contactPage(projectName),
+      "utf8",
+    ),
+    writeFile(
+      join(root, "src", "pages", "404.html"),
+      notFoundPage(projectName),
+      "utf8",
+    ),
 
     // Components
-    writeFile(join(root, "src", "components", "site-meta", "site-meta.html"), SITE_META_HTML, "utf8"),
-    writeFile(join(root, "src", "components", "site-meta", "site-meta.test.ts"), SITE_META_TEST, "utf8"),
-    writeFile(join(root, "src", "components", "site-header", "site-header.html"), SITE_HEADER_HTML, "utf8"),
-    writeFile(join(root, "src", "components", "site-header", "site-header.test.ts"), SITE_HEADER_TEST, "utf8"),
-    writeFile(join(root, "src", "components", "site-footer", "site-footer.html"), SITE_FOOTER_HTML, "utf8"),
-    writeFile(join(root, "src", "components", "site-footer", "site-footer.test.ts"), SITE_FOOTER_TEST, "utf8"),
-    writeFile(join(root, "src", "components", "feat-card", "feat-card.html"), FEAT_CARD_HTML, "utf8"),
-    writeFile(join(root, "src", "components", "feat-card", "feat-card.test.ts"), FEAT_CARD_TEST, "utf8"),
-    writeFile(join(root, "src", "components", "my-counter", "my-counter.html"), MY_COUNTER_HTML, "utf8"),
-    writeFile(join(root, "src", "components", "my-counter", "my-counter.test.ts"), MY_COUNTER_TEST, "utf8"),
+    writeFile(
+      join(root, "src", "components", "site-meta", "site-meta.html"),
+      SITE_META_HTML,
+      "utf8",
+    ),
+    writeFile(
+      join(root, "src", "components", "site-meta", "site-meta.test.ts"),
+      SITE_META_TEST,
+      "utf8",
+    ),
+    writeFile(
+      join(root, "src", "components", "site-header", "site-header.html"),
+      SITE_HEADER_HTML,
+      "utf8",
+    ),
+    writeFile(
+      join(root, "src", "components", "site-header", "site-header.test.ts"),
+      SITE_HEADER_TEST,
+      "utf8",
+    ),
+    writeFile(
+      join(root, "src", "components", "site-footer", "site-footer.html"),
+      SITE_FOOTER_HTML,
+      "utf8",
+    ),
+    writeFile(
+      join(root, "src", "components", "site-footer", "site-footer.test.ts"),
+      SITE_FOOTER_TEST,
+      "utf8",
+    ),
+    writeFile(
+      join(root, "src", "components", "feat-card", "feat-card.html"),
+      FEAT_CARD_HTML,
+      "utf8",
+    ),
+    writeFile(
+      join(root, "src", "components", "feat-card", "feat-card.test.ts"),
+      FEAT_CARD_TEST,
+      "utf8",
+    ),
+    writeFile(
+      join(root, "src", "components", "my-counter", "my-counter.html"),
+      MY_COUNTER_HTML,
+      "utf8",
+    ),
+    writeFile(
+      join(root, "src", "components", "my-counter", "my-counter.test.ts"),
+      MY_COUNTER_TEST,
+      "utf8",
+    ),
   ]);
 }

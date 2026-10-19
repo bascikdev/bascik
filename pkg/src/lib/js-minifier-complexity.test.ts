@@ -12,8 +12,10 @@
 import { describe, expect, it } from "vitest";
 import { minifyJs, __scanStatsForTests } from "./js-minifier.ts";
 
-const SLASH_HEAVY_UNIT = "const a = b / c / d; // note\nconst e = f / g; /* block */ x = y / z;\n";
-const SLASH_LIGHT_UNIT = "const alpha = beta + gamma;\nlet delta = epsilon(zeta, eta);\n";
+const SLASH_HEAVY_UNIT =
+  "const a = b / c / d; // note\nconst e = f / g; /* block */ x = y / z;\n";
+const SLASH_LIGHT_UNIT =
+  "const alpha = beta + gamma;\nlet delta = epsilon(zeta, eta);\n";
 // Many short lines with no literals: exercises the ASI line-join assembly
 // phase rather than slash disambiguation.
 const NEWLINE_HEAVY_UNIT = "a = b\nc()\nif (x) y()\nreturn z\n";

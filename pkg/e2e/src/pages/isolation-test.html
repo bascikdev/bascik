@@ -1,36 +1,36 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cross-Component Isolation Test</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 32px 24px;
+        background: #111;
+        color: #eee;
+        font-family: sans-serif;
+      }
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cross-Component Isolation Test</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 32px 24px;
-      background: #111;
-      color: #eee;
-      font-family: sans-serif;
-    }
+      .cards {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+      }
+    </style>
+  </head>
 
-    .cards {
-      display: flex;
-      gap: 24px;
-      flex-wrap: wrap;
-    }
-  </style>
-</head>
+  <body>
+    <h1>Cross-Component Isolation Test</h1>
 
-<body>
-  <h1>Cross-Component Isolation Test</h1>
-
-  <div class="cards">
-    <red-card data-bascik-prop-content="Red card custom content"></red-card>
-    <blue-card data-bascik-prop-content="Blue card custom content"></blue-card>
-    <red-card></red-card>
-    <blue-card></blue-card>
-  </div>
-</body>
-
+    <div class="cards">
+      <red-card data-bascik-prop-content="Red card custom content"></red-card>
+      <blue-card
+        data-bascik-prop-content="Blue card custom content"
+      ></blue-card>
+      <red-card></red-card>
+      <blue-card></blue-card>
+    </div>
+  </body>
 </html>

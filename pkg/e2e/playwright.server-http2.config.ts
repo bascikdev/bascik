@@ -8,66 +8,76 @@
  * Run with:
  *   npx playwright test --config e2e/playwright.server-http2.config.ts
  */
-import { defineConfig } from '@playwright/test';
-import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
+import { defineConfig } from "@playwright/test";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 // Recompute every reused scoping result and fail on any difference (scoping-template.ts).
-process.env.BASCIK_VERIFY_SCOPING_TEMPLATES ??= '1';
+process.env.BASCIK_VERIFY_SCOPING_TEMPLATES ??= "1";
 
-const e2eDir = fileURLToPath(new URL('.', import.meta.url));
-const pkgDir = join(e2eDir, '..');
-const baseFixtureDir = join(e2eDir, 'base-fixture');
+const e2eDir = fileURLToPath(new URL(".", import.meta.url));
+const pkgDir = join(e2eDir, "..");
+const baseFixtureDir = join(e2eDir, "base-fixture");
 const prodServerTestIgnore = [
   // Dedicated to the symlink-enabled live-dev fixture.
-  '**/static-asset-symlinks.test.ts',
-  '**/dev-server-reload.test.ts',
-  '**/dist-lifecycle.test.ts',
+  "**/static-asset-symlinks.test.ts",
+  "**/dev-server-reload.test.ts",
+  "**/dist-lifecycle.test.ts",
   // bascik add is a build-time authoring command with no runtime behavior;
   // serving a copied component is identical to serving any other component.
-  '**/bascik-add.test.ts',
-  '**/bascik-add-dev.test.ts',
+  "**/bascik-add.test.ts",
+  "**/bascik-add-dev.test.ts",
   // Dev-exec lifecycle runs against its own exec-fixture config.
-  '**/dev-exec-lifecycle.test.ts',
+  "**/dev-exec-lifecycle.test.ts",
   // Spawns the CLI in temporary projects; runs in its own lane.
-  '**/exec-error-policy.test.ts',
+  "**/exec-error-policy.test.ts",
 ];
 
 export default defineConfig({
-  testDir: './tests',
+  testDir: "./tests",
   workers: 1,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
   use: {
-    baseURL: 'https://localhost:9444',
+    baseURL: "https://localhost:9444",
     ignoreHTTPSErrors: true,
     headless: true,
   },
   projects: [
-    { name: 'default', testIgnore: [...prodServerTestIgnore, '**/base-serving.test.ts'] },
-    { name: 'base-server-http2', testMatch: '**/base-serving.test.ts', use: { baseURL: 'https://localhost:9553' } },
+    {
+      name: "default",
+      testIgnore: [...prodServerTestIgnore, "**/base-serving.test.ts"],
+    },
+    {
+      name: "base-server-http2",
+      testMatch: "**/base-serving.test.ts",
+      use: { baseURL: "https://localhost:9553" },
+    },
   ],
-  webServer: [{
-    command: [
-      `BASCIK_SITE_URL=http://localhost:4200 node ${pkgDir}/dist/index.js --build`,
-      `BASCIK_ENABLE_TLS=true BASCIK_SERVER_PORT=9444 node ${pkgDir}/dist/index.js --server`,
-    ].join(' && '),
-    cwd: e2eDir,
-    url: 'https://localhost:9444/server-scripts-test',
-    reuseExistingServer: false,
-    ignoreHTTPSErrors: true,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  }, {
-    command: [
-      `BASCIK_SITE_URL=https://localhost:9553 node ${pkgDir}/dist/index.js --build`,
-      `BASCIK_ENABLE_TLS=true BASCIK_SERVER_PORT=9553 node ${pkgDir}/dist/index.js --server`,
-    ].join(' && '),
-    cwd: baseFixtureDir,
-    url: 'https://localhost:9553/sub/',
-    reuseExistingServer: false,
-    ignoreHTTPSErrors: true,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  }],
+  webServer: [
+    {
+      command: [
+        `BASCIK_SITE_URL=http://localhost:4200 node ${pkgDir}/dist/index.js --build`,
+        `BASCIK_ENABLE_TLS=true BASCIK_SERVER_PORT=9444 node ${pkgDir}/dist/index.js --server`,
+      ].join(" && "),
+      cwd: e2eDir,
+      url: "https://localhost:9444/server-scripts-test",
+      reuseExistingServer: false,
+      ignoreHTTPSErrors: true,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+    {
+      command: [
+        `BASCIK_SITE_URL=https://localhost:9553 node ${pkgDir}/dist/index.js --build`,
+        `BASCIK_ENABLE_TLS=true BASCIK_SERVER_PORT=9553 node ${pkgDir}/dist/index.js --server`,
+      ].join(" && "),
+      cwd: baseFixtureDir,
+      url: "https://localhost:9553/sub/",
+      reuseExistingServer: false,
+      ignoreHTTPSErrors: true,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  ],
 });

@@ -4,14 +4,17 @@
   padding: 16px;
   border-radius: 6px;
 }
+
 .title {
   color: rgb(239, 68, 68);
   margin: 0 0 8px;
 }
+
 .body {
   color: rgb(200, 150, 150);
   margin-bottom: 12px;
 }
+
 .badge {
   display: inline-block;
   background: rgb(239, 68, 68);

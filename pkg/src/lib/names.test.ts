@@ -63,10 +63,12 @@ describe("minifyAttributeName", () => {
   });
 
   it("returns the hash when minify.identifiers is true", () => {
-    (BascikConfig as { minify: { identifiers: boolean } }).minify.identifiers = true;
+    (BascikConfig as { minify: { identifiers: boolean } }).minify.identifiers =
+      true;
     const minified = minifyAttributeName("my-class");
     expect(minified).toMatch(/^b[0-9a-zA-Z]{11}$/);
-    (BascikConfig as { minify: { identifiers: boolean } }).minify.identifiers = false;
+    (BascikConfig as { minify: { identifiers: boolean } }).minify.identifiers =
+      false;
   });
 });
 
@@ -107,8 +109,18 @@ describe("deriveInstanceId", () => {
 
   it("assigns different IDs to two instances of one component on the same page", () => {
     const issued = new Set<string>();
-    const id1 = deriveInstanceId("src/pages/index.html", "card-item", 1, issued);
-    const id2 = deriveInstanceId("src/pages/index.html", "card-item", 2, issued);
+    const id1 = deriveInstanceId(
+      "src/pages/index.html",
+      "card-item",
+      1,
+      issued,
+    );
+    const id2 = deriveInstanceId(
+      "src/pages/index.html",
+      "card-item",
+      2,
+      issued,
+    );
     expect(id1).not.toBe(id2);
   });
 
@@ -124,13 +136,23 @@ describe("deriveInstanceId", () => {
     const naturalId = deriveInstanceId("src/pages/index.html", "card-item", 1);
     issued.add(naturalId);
 
-    const resolvedId = deriveInstanceId("src/pages/index.html", "card-item", 1, issued);
+    const resolvedId = deriveInstanceId(
+      "src/pages/index.html",
+      "card-item",
+      1,
+      issued,
+    );
     expect(resolvedId).toMatch(/^[0-9a-f]{8}$/);
     expect(resolvedId).not.toBe(naturalId);
 
     // Repeat to ensure deterministic resolution
     const issued2 = new Set<string>([naturalId]);
-    const resolvedId2 = deriveInstanceId("src/pages/index.html", "card-item", 1, issued2);
+    const resolvedId2 = deriveInstanceId(
+      "src/pages/index.html",
+      "card-item",
+      1,
+      issued2,
+    );
     expect(resolvedId2).toBe(resolvedId);
   });
 });

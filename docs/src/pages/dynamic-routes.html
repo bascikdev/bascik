@@ -1,100 +1,126 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Generate multiple HTML pages from a single template at build time using bracket filenames and data-bascik-routes scripts."
+    />
+    <title>Dynamic Routes in a Static HTML Site - Bascik</title>
+  </head>
 
-<head>
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <script data-bascik-build>
-    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    export default async () => await breadcrumbLd();
-  </script>
-  <script data-bascik-build>
-    import { articleSchema } from '@/lib/article-schema.ts';
-    export default async () => await articleSchema();
-  </script>
-  <meta name="description"
-    content="Generate multiple HTML pages from a single template at build time using bracket filenames and data-bascik-routes scripts." />
-  <title>Dynamic Routes in a Static HTML Site - Bascik</title>
-</head>
+  <body>
+    <docs-nav />
 
-<body>
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
 
-  <docs-nav />
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/dynamic-routes");
+          </script>
 
-  <div class="container">
-    <div class="docs-layout">
-      <docs-sidebar />
-
-      <main class="docs-content" id="main-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/dynamic-routes');
-        </script>
-
-        <!-- Content rendered from docs/content/dynamic-routes.md at build time.
+          <!-- Content rendered from docs/content/dynamic-routes.md at build time.
              To update page content, edit the MD file - not this file. -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/dynamic-routes.md', { to: 'data-bascik-routes' });
-        </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/dynamic-routes.md", {
+                to: "data-bascik-routes",
+              });
+          </script>
 
-        <diagram-figure data-bascik-prop-title="One template, one page per route"
-          data-bascik-prop-footer="The template with literal brackets is never written to dist/ or listed in sitemap.xml.">
-          <diagram-row data-bascik-prop-direction="stack">
-            <diagram-panel data-bascik-prop-label="You write">
-              <code-block data-bascik-prop-lang="text">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/dynamic-routes.md', 'dynamic-routes-expansion-source');
-                </script>
-              </code-block>
-            </diagram-panel>
-            <diagram-panel data-bascik-prop-label="The routes script returns these slugs" data-bascik-prop-arrow="↓">
-              <code-block data-bascik-prop-lang="text">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/dynamic-routes.md', 'dynamic-routes-expansion-slugs');
-                </script>
-              </code-block>
-            </diagram-panel>
-            <diagram-panel data-bascik-prop-label="Bascik builds" data-bascik-prop-arrow="↓">
-              <code-block data-bascik-prop-lang="text">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/dynamic-routes.md', 'dynamic-routes-expansion-built');
-                </script>
-              </code-block>
-            </diagram-panel>
-          </diagram-row>
-        </diagram-figure>
+          <diagram-figure
+            data-bascik-prop-title="One template, one page per route"
+            data-bascik-prop-footer="The template with literal brackets is never written to dist/ or listed in sitemap.xml."
+          >
+            <diagram-row data-bascik-prop-direction="stack">
+              <diagram-panel data-bascik-prop-label="You write">
+                <code-block data-bascik-prop-lang="text">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/dynamic-routes.md",
+                        "dynamic-routes-expansion-source",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+              <diagram-panel
+                data-bascik-prop-label="The routes script returns these slugs"
+                data-bascik-prop-arrow="↓"
+              >
+                <code-block data-bascik-prop-lang="text">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/dynamic-routes.md",
+                        "dynamic-routes-expansion-slugs",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+              <diagram-panel
+                data-bascik-prop-label="Bascik builds"
+                data-bascik-prop-arrow="↓"
+              >
+                <code-block data-bascik-prop-lang="text">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/dynamic-routes.md",
+                        "dynamic-routes-expansion-built",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+            </diagram-row>
+          </diagram-figure>
 
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/dynamic-routes.md', { from: 'data-bascik-routes' });
-        </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/dynamic-routes.md", {
+                from: "data-bascik-routes",
+              });
+          </script>
 
-        <div class="callout">
-          <p><strong>Next:</strong> See <a href="/build-scripts">Build Scripts</a> to learn more about
-            running Node.js code at transpile time, or explore <a href="/production-server">Production Server</a> for
-            dynamic
-            runtime handling.
-          </p>
-        </div>
+          <div class="callout">
+            <p>
+              <strong>Next:</strong> See
+              <a href="/build-scripts">Build Scripts</a> to learn more about
+              running Node.js code at transpile time, or explore
+              <a href="/production-server">Production Server</a> for dynamic
+              runtime handling.
+            </p>
+          </div>
 
-        <docs-pagination />
-      </main>
+          <docs-pagination />
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-
-</body>
-
+    <docs-footer />
+  </body>
 </html>

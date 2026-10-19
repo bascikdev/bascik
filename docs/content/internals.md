@@ -68,4 +68,5 @@ After any `pkg/src/` change, rebuild the package and the docs server will pick i
 - [Time Boundaries](/internals/time-boundaries), why time is a framework architecture boundary, where FrameworkClock is owned, and how timeout behavior is enforced and tested.
 - [Diagnostics](/internals/diagnostics), static project validation (`bascik --check`), tag scanning, and stack trace remapping.
 - [Minification](/internals/minification), zero-dependency HTML, CSS, and JS minification, Base62 identifier hashing, and BYO minifiers.
-- [Testing Internals](/internals/testing), running tests, coverage, writing new tests, and the benchmarking suite.
+- [Testing Internals](/internals/testing), running tests, coverage, and writing new unit, integration, and E2E tests.
+- [Benchmarking & Profiling](/internals/benchmarking), throughput microbenchmarks, paired before-and-after compiler comparisons, timeline captures, and runtime profiling.

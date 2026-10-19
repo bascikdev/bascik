@@ -74,8 +74,13 @@ To style a child's root from the parent, put a class on the child's usage tag an
 
 ```css
 /* site-nav.css: .item is scoped to site-nav and lands on each nav-link root */
-.item { padding: 1em 0.5em; border-bottom: 4px solid transparent; }
-nav a { color: inherit; }
+.item {
+  padding: 1em 0.5em;
+  border-bottom: 4px solid transparent;
+}
+nav a {
+  color: inherit;
+}
 ```
 
 ```html
@@ -107,7 +112,7 @@ When a class is not defined in the parent's CSS, it passes through unscoped, so 
 Attribute inheritance is enabled by default. Set `scoping.inheritAttributes` to `false` in `bascik.config.ts` when you want every component root to be controlled only by its own template:
 
 ```ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   scoping: {
@@ -121,25 +126,31 @@ export default defineConfig({
 This example forwards a class, an ID, an accessibility label, and a testing hook onto the component root.
 
 <!-- demo:source-usage -->
+
 ```html
 <inherit-demo-card
   class="featured-card"
   id="featured-inheritance"
   aria-label="Featured inheritance demo"
-  data-testid="inherit-demo">
+  data-testid="inherit-demo"
+>
 </inherit-demo-card>
 ```
 
 <!-- demo:source-html -->
+
 ```html
 <article class="inherit-card">
   <p class="inherit-card-kicker">Template root</p>
   <h3 class="inherit-card-title">Attribute inheritance</h3>
-  <p class="inherit-card-body">Usage attributes merge onto this root element at build time.</p>
+  <p class="inherit-card-body">
+    Usage attributes merge onto this root element at build time.
+  </p>
 </article>
 ```
 
 <!-- demo:source-css -->
+
 ```css
 .inherit-card {
   width: min(100%, 34rem);
@@ -170,14 +181,20 @@ This example forwards a class, an ID, an accessibility label, and a testing hook
 ```
 
 <!-- demo:output-html -->
+
 ```html
 <article
   class="bascik__inherit-demo-card__inherit-card featured-card"
   id="featured-inheritance"
   aria-label="Featured inheritance demo"
-  data-testid="inherit-demo">
+  data-testid="inherit-demo"
+>
   <p class="bascik__inherit-demo-card__inherit-card-kicker">Template root</p>
-  <h3 class="bascik__inherit-demo-card__inherit-card-title">Attribute inheritance</h3>
-  <p class="bascik__inherit-demo-card__inherit-card-body">Usage attributes merge onto this root element at build time.</p>
+  <h3 class="bascik__inherit-demo-card__inherit-card-title">
+    Attribute inheritance
+  </h3>
+  <p class="bascik__inherit-demo-card__inherit-card-body">
+    Usage attributes merge onto this root element at build time.
+  </p>
 </article>
 ```

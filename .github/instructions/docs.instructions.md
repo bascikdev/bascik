@@ -11,11 +11,13 @@ These rules apply to all work inside `/docs/`. They must be read before creating
 **All docs page content must be written in `docs/content/*.md` files, not directly in the HTML page.**
 
 The Markdown files serve three purposes simultaneously:
+
 1. They are the canonical source for the rendered docs page (via `data-bascik-build`)
 2. They feed `llms.txt` (generated automatically via `exec` in `docs/bascik.config.ts`)
 3. They are the reference the public agent skills in the repo-root `skills/` folder are written from. The docs build publishes those skills as `/assets/skills.tar.gz` and the core skill as `/assets/SKILL.md` (see "Updating the Agent Skills" below)
 
 **When adding or updating docs content:**
+
 - Write the prose and code examples in the appropriate `docs/content/topic.md` file
 - The HTML page is a shell: edit it only for page-specific chrome (custom styles, decorative UI, score grids, etc.)
 - Never duplicate prose between the MD file and the HTML file
@@ -28,14 +30,15 @@ Each docs page that has a corresponding MD file uses a `<script data-bascik-buil
 <!-- Content rendered from docs/content/topic.md at build time.
      To update page content, edit the MD file, not this file. -->
 <script data-bascik-build>
-  import { renderMd } from '@/lib/md-renderer.ts';
-  export default async () => await renderMd('./content/topic.md');
+  import { renderMd } from "@/lib/md-renderer.ts";
+  export default async () => await renderMd("./content/topic.md");
 </script>
 ```
 
 `@/` is Bascik's import-root alias (`scripts.importRoot`, default `src`), so the same import line works from a page at any depth (`docs/src/pages/topic.html` and `docs/src/pages/how-to/topic.html` alike). Do not write depth-dependent `../lib/` or `../../lib/` paths, and do not use the older `pathToFileURL(join(process.cwd(), ...))` boilerplate.
 
 The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformations:
+
 - Fenced code blocks (` ``` `) → `<code-block data-bascik-prop-lang="…">` component
 - Blockquotes (`>`) → `<div class="callout">`
 
@@ -44,32 +47,34 @@ The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformati
 ```html
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <!-- title, styles.css, any page-specific <style> -->
-</head>
-<body>
-  <docs-nav></docs-nav>
-  <div class="container">
-    <div class="docs-layout">
-      <docs-sidebar></docs-sidebar>
-      <main class="docs-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/topic');
-        </script>
-        <!-- h1, page-intro p, and all content come from MD -->
-        <script data-bascik-build>…</script>
+  <head>
+    <!-- title, styles.css, any page-specific <style> -->
+  </head>
+  <body>
+    <docs-nav></docs-nav>
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar></docs-sidebar>
+        <main class="docs-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/topic");
+          </script>
+          <!-- h1, page-intro p, and all content come from MD -->
+          <script data-bascik-build>
+            …
+          </script>
 
-        <!-- Any page-specific summary UI (technique grids, etc.) -->
+          <!-- Any page-specific summary UI (technique grids, etc.) -->
 
-        <div class="callout">
-          <p><strong>Next:</strong> …</p>
-        </div>
-      </main>
+          <div class="callout">
+            <p><strong>Next:</strong> …</p>
+          </div>
+        </main>
+      </div>
     </div>
-  </div>
-  <docs-footer></docs-footer>
-</body>
+    <docs-footer></docs-footer>
+  </body>
 </html>
 ```
 
@@ -91,6 +96,7 @@ Markdown cannot hold a component, so a diagram goes in the page shell, at the en
 
 Code shown in a panel is written once, as a demo block in `docs/src/diagrams/<page>.md` (the file named after the page), and read back with `extractDemoBlock('./src/diagrams/<page>.md', '<diagram-id>-<panel>')`. It lives there and not in `docs/content/` on purpose: a diagram restates prose and code the page already has, so its blocks must not feed the page's search entries or its Markdown. This is the one exception to "code in slots comes from `docs/content/`": that rule exists so `llms.txt` and the search index see the code, and a diagram adds nothing they do not already have. Name each block `<diagram-id>-<panel>`:
 
+<!-- prettier-ignore -->
 ````markdown
 <!-- demo:scoped-styles-global-classes-in -->
 ```html
@@ -103,8 +109,10 @@ Flow diagrams need no code blocks. Their text lives in props:
 ```html
 <diagram-figure data-bascik-prop-title="One build, three phases">
   <diagram-steps>
-    <diagram-step data-bascik-prop-title="'pre' scripts"
-      data-bascik-prop-detail="Awaited before any page or component is transpiled." />
+    <diagram-step
+      data-bascik-prop-title="'pre' scripts"
+      data-bascik-prop-detail="Awaited before any page or component is transpiled."
+    />
   </diagram-steps>
 </diagram-figure>
 ```
@@ -182,6 +190,7 @@ MD files feed `llms.txt`, the search index, and the agent skills' docs lookup sc
 
 Place an HTML comment marker immediately before the fenced code block:
 
+<!-- prettier-ignore -->
 ```markdown
 <!-- demo:source-html -->
 ` ` `html
@@ -201,8 +210,9 @@ Use `extractDemoBlock` from `src/lib/md-renderer.ts` inside a `data-bascik-build
 <div data-bascik-slot="source-html">
   <code-block data-bascik-prop-lang="html">
     <script data-bascik-build>
-      import { extractDemoBlock } from '@/lib/md-renderer.ts';
-      export default async () => await extractDemoBlock('./content/03-scoped-css.md', 'source-html');
+      import { extractDemoBlock } from "@/lib/md-renderer.ts";
+      export default async () =>
+        await extractDemoBlock("./content/03-scoped-css.md", "source-html");
     </script>
   </code-block>
 </div>

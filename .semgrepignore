@@ -23,9 +23,7 @@ create/src/scaffold.ts
 docs/src/lib/md-renderer.ts
 docs/src/pages/libraries.html
 
-# VS Code extension and language server rules intentionally compile regex patterns from controlled rule tables.
-extensions/vscode-bascik/src/extension.ts
-extensions/vscode-bascik/src/rules.ts
+# Language server rules intentionally compile regex patterns from controlled rule tables.
 lsp/src/analyzer.ts
 lsp/src/project.ts
 lsp/src/rules.ts

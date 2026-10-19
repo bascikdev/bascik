@@ -72,9 +72,7 @@ Instead of manually maintaining a full `sitemap.xml`, you can use an `exec` scri
 // bascik.config.ts
 export default defineConfig({
   pipeline: {
-    exec: [
-      { script: 'scripts/augment-sitemap.ts', phase: 'post' },
-    ],
+    exec: [{ script: "scripts/augment-sitemap.ts", phase: "post" }],
   },
 });
 ```
@@ -86,7 +84,7 @@ Because post-phase scripts run on the newly emitted build output, this pattern r
 To exclude a specific page (such as a legacy URL redirect) from `sitemap.xml`, place a meta tag in the page's HTML:
 
 ```html
-<meta name="bascik-sitemap" content="exclude">
+<meta name="bascik-sitemap" content="exclude" />
 ```
 
 The `404` and `500` error pages are automatically excluded from `sitemap.xml`, since neither is real content.
@@ -123,12 +121,12 @@ The script reads `dist/sitemap.xml`, adds a `<lastmod>` to each `<url>`, and wri
 
 Each page is converted from its file path to a URL path following these rules:
 
-| Source file | URL |
-| --- | --- |
-| `src/pages/index.html` | `/` |
-| `src/pages/about.html` | `/about` |
-| `src/pages/blog/index.html` | `/blog/` |
-| `src/pages/blog/post.html` | `/blog/post` |
+| Source file                            | URL                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------- |
+| `src/pages/index.html`                 | `/`                                                                 |
+| `src/pages/about.html`                 | `/about`                                                            |
+| `src/pages/blog/index.html`            | `/blog/`                                                            |
+| `src/pages/blog/post.html`             | `/blog/post`                                                        |
 | `src/pages/blog/[slug].html` (dynamic) | `/blog/hello-world`, `/blog/second-post` (concrete generated paths) |
 
 Directory index URLs include a trailing slash. The sitemap uses the same canonical path as the development and production servers, so crawlers reach the page directly instead of following a redirect from `/blog` to `/blog/`.
@@ -148,8 +146,8 @@ Control sitemap and robots.txt generation independently via the `generate` optio
 ```js
 export default {
   generate: {
-    sitemap: true,  // default
-    robots: true,   // default
+    sitemap: true, // default
+    robots: true, // default
   },
 };
 ```

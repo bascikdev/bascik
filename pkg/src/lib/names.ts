@@ -29,7 +29,10 @@ export const getAttributeNameHash = (attributeName: string): string => {
   const cached = hashCache.get(attributeName);
   if (cached !== undefined) return cached;
   const digest = createHash("sha256").update(attributeName).digest();
-  const num = typeof digest === "string" ? Buffer.from(digest).readBigUInt64BE(0) : digest.readBigUInt64BE(0);
+  const num =
+    typeof digest === "string"
+      ? Buffer.from(digest).readBigUInt64BE(0)
+      : digest.readBigUInt64BE(0);
   // Must start with a letter, so `b` for Bascik + 11 Base62 chars = 12 chars
   const hash = `b${toBase62(num, 11)}`;
   hashCache.set(attributeName, hash);
@@ -38,7 +41,8 @@ export const getAttributeNameHash = (attributeName: string): string => {
 
 // Observer for every generated scoped name, set only while scoping-template.ts
 // records one synchronous scoping run. Never set on any other path.
-let attributeNameObserver: ((input: string, output: string) => void) | null = null;
+let attributeNameObserver: ((input: string, output: string) => void) | null =
+  null;
 
 export const minifyAttributeName = (attributeName: string): string => {
   const output = BascikConfig.minify.identifiers
@@ -66,7 +70,9 @@ export const observeAttributeNames = <T>(
 };
 
 export const getUniqueId = (length: number): string => {
-  return randomBytes(Math.ceil(length / 2)).toString("hex").slice(0, length);
+  return randomBytes(Math.ceil(length / 2))
+    .toString("hex")
+    .slice(0, length);
 };
 
 /**
@@ -83,9 +89,10 @@ export const deriveInstanceId = (
 ): string => {
   let attempt = 0;
   while (true) {
-    const input = attempt === 0
-      ? `${pagePath}::${componentName}::${ordinal}`
-      : `${pagePath}::${componentName}::${ordinal}::salt:${attempt}`;
+    const input =
+      attempt === 0
+        ? `${pagePath}::${componentName}::${ordinal}`
+        : `${pagePath}::${componentName}::${ordinal}::salt:${attempt}`;
     const id = createHash("sha256").update(input).digest("hex").slice(0, 8);
     if (!issuedIds.has(id)) {
       issuedIds.add(id);

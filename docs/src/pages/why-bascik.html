@@ -1,100 +1,121 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="The guiding principle behind Bascik is simple: use what already exists. Do not invent new abstractions where vanilla HTML already works."
+    />
+    <title>Why Bascik? A Zero-Runtime Alternative to Frameworks</title>
+  </head>
 
-<head>
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <script data-bascik-build>
-    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    export default async () => await breadcrumbLd();
-  </script>
-  <script data-bascik-build>
-    import { articleSchema } from '@/lib/article-schema.ts';
-    export default async () => await articleSchema();
-  </script>
-  <meta name="description"
-    content="The guiding principle behind Bascik is simple: use what already exists. Do not invent new abstractions where vanilla HTML already works." />
-  <title>Why Bascik? A Zero-Runtime Alternative to Frameworks</title>
-</head>
+  <body>
+    <docs-nav />
 
-<body>
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
 
-  <docs-nav />
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/why-bascik");
+          </script>
+          <!-- Intro and demo context rendered from docs/content/why-bascik.md. -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/why-bascik.md",
+                { to: "The Problem Bascik Solves" },
+                { stripDemoBlocks: true },
+              );
+          </script>
 
-  <div class="container">
-    <div class="docs-layout">
+          <component-demo data-bascik-prop-file="src/components/hello-card/">
+            <div data-bascik-slot="example">
+              <hello-card />
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/why-bascik.md",
+                      "source-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/why-bascik.md",
+                      "source-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/why-bascik.md",
+                      "output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
 
-      <docs-sidebar />
+          <!-- The existing argument follows the concrete example. -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/why-bascik.md", {
+                from: "The Problem Bascik Solves",
+                to: "Why Not Web Components?",
+              });
+          </script>
 
-      <main class="docs-content" id="main-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/why-bascik');
-        </script>
-        <!-- Intro and demo context rendered from docs/content/why-bascik.md. -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/why-bascik.md', { to: 'The Problem Bascik Solves' }, { stripDemoBlocks: true });
-        </script>
+          <!-- Summarizes "The Platform Caught Up" above. -->
+          <platform-shift />
 
-        <component-demo data-bascik-prop-file="src/components/hello-card/">
-          <div data-bascik-slot="example">
-            <hello-card />
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/why-bascik.md', 'source-usage');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/why-bascik.md', 'source-html');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/why-bascik.md', 'output-html');
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/why-bascik.md", {
+                from: "Why Not Web Components?",
+              });
+          </script>
 
-        <!-- The existing argument follows the concrete example. -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/why-bascik.md', { from: 'The Problem Bascik Solves', to: 'Why Not Web Components?' });
-        </script>
-
-        <!-- Summarizes "The Platform Caught Up" above. -->
-        <platform-shift />
-
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/why-bascik.md', { from: 'Why Not Web Components?' });
-        </script>
-
-        <docs-pagination />
-
-      </main>
+          <docs-pagination />
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-</body>
-
+    <docs-footer />
+  </body>
 </html>

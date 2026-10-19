@@ -1,22 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockServer, mockCreateSecureServer, mockStartHttpServer } = vi.hoisted(() => {
-  const mockServer = {
-    on: vi.fn().mockReturnThis(),
-    once: vi.fn().mockReturnThis(),
-    removeListener: vi.fn().mockReturnThis(),
-    listen: vi.fn().mockImplementation(
-      (_port: number, hostnameOrCb: any, cb?: () => void) => {
-        const callback = typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
-        callback?.();
-      },
-    ),
-    close: vi.fn().mockImplementation((cb?: (err?: Error) => void) => { cb?.(); }),
-  };
-  const mockCreateSecureServer = vi.fn(() => mockServer);
-  const mockStartHttpServer = vi.fn().mockResolvedValue("http://localhost:8443");
-  return { mockServer, mockCreateSecureServer, mockStartHttpServer };
-});
+const { mockServer, mockCreateSecureServer, mockStartHttpServer } = vi.hoisted(
+  () => {
+    const mockServer = {
+      on: vi.fn().mockReturnThis(),
+      once: vi.fn().mockReturnThis(),
+      removeListener: vi.fn().mockReturnThis(),
+      listen: vi
+        .fn()
+        .mockImplementation(
+          (_port: number, hostnameOrCb: any, cb?: () => void) => {
+            const callback =
+              typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
+            callback?.();
+          },
+        ),
+      close: vi.fn().mockImplementation((cb?: (err?: Error) => void) => {
+        cb?.();
+      }),
+    };
+    const mockCreateSecureServer = vi.fn(() => mockServer);
+    const mockStartHttpServer = vi
+      .fn()
+      .mockResolvedValue("http://localhost:8443");
+    return { mockServer, mockCreateSecureServer, mockStartHttpServer };
+  },
+);
 
 vi.mock("node:http2", () => ({
   default: {
@@ -38,7 +47,12 @@ vi.mock("node:fs/promises", () => ({
 vi.mock("node:child_process", () => ({
   exec: vi.fn((_cmd: string, cb: any) => cb(null, "", "")),
   execFile: vi.fn((_cmd: string, _args: any, _opts: any, cb: any) => {
-    const callback = typeof cb === "function" ? cb : (typeof _opts === "function" ? _opts : _args);
+    const callback =
+      typeof cb === "function"
+        ? cb
+        : typeof _opts === "function"
+          ? _opts
+          : _args;
     callback(null, { stdout: "", stderr: "" });
   }),
 }));
@@ -73,7 +87,7 @@ describe("startHttp2Server", () => {
     expect(mockCreateSecureServer).toHaveBeenCalledWith(
       expect.objectContaining({
         allowHTTP1: true,
-      })
+      }),
     );
   });
 
@@ -81,7 +95,9 @@ describe("startHttp2Server", () => {
     await startHttp2Server();
 
     // Find the 'request' listener registered on the server
-    const requestCall = mockServer.on.mock.calls.find(c => c[0] === "request");
+    const requestCall = mockServer.on.mock.calls.find(
+      (c) => c[0] === "request",
+    );
     expect(requestCall).toBeDefined();
     if (!requestCall) throw new Error("request listener not registered");
     const requestListener = requestCall[1];
@@ -116,13 +132,19 @@ describe("adaptHttp2", () => {
       on: vi.fn(),
     };
 
-    const { req, res } = adaptHttp2(mockStream, { ":method": "GET", ":path": "/api" });
+    const { req, res } = adaptHttp2(mockStream, {
+      ":method": "GET",
+      ":path": "/api",
+    });
     expect(req.method).toBe("GET");
     expect(req.path).toBe("/api");
     expect(req.remoteIp).toBe("127.0.0.1");
 
     res.respond(200, { "content-type": "application/json" });
-    expect(mockStream.respond).toHaveBeenCalledWith({ ":status": 200, "content-type": "application/json" });
+    expect(mockStream.respond).toHaveBeenCalledWith({
+      ":status": 200,
+      "content-type": "application/json",
+    });
 
     res.end(undefined);
     expect(mockStream.end).toHaveBeenCalledWith();
@@ -159,8 +181,12 @@ describe("adaptHttp2", () => {
     const { res } = adaptHttp2(mockStream, { ":method": "GET", ":path": "/" });
     let drains = 0;
     let closes = 0;
-    const onDrain = () => { drains++; };
-    const onClose = () => { closes++; };
+    const onDrain = () => {
+      drains++;
+    };
+    const onClose = () => {
+      closes++;
+    };
     res.on("drain", onDrain);
     res.on("close", onClose);
     emitter.emit("drain");

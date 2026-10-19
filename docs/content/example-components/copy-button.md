@@ -9,8 +9,12 @@ Copies a text value to the clipboard and announces the result to screen readers.
 `text` is the exact text to copy. `label` is the button text and defaults to "Copy".
 
 <!-- demo:usage -->
+
 ```html
-<copy-button data-bascik-prop-text="npm create bascik@latest" data-bascik-prop-label="Copy command" />
+<copy-button
+  data-bascik-prop-text="npm create bascik@latest"
+  data-bascik-prop-label="Copy command"
+/>
 ```
 
 <!-- example:demo -->

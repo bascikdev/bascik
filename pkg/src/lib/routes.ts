@@ -4,8 +4,12 @@ import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
 import { pathToFileURL } from "node:url";
 import { cleanStackTrace, remapRewrittenColumns } from "./stack-trace.ts";
-import { directiveSourcePosition, padToSourcePosition } from "./directive-source.ts";
+import {
+  directiveSourcePosition,
+  padToSourcePosition,
+} from "./directive-source.ts";
 import { getProjectPath, getRelativePath } from "./file-system.ts";
+import { findComponentRoot } from "./component-roots.ts";
 import { getHttpPath } from "./paths.ts";
 import { runDirectiveHandler } from "./script-runner.ts";
 import {
@@ -20,8 +24,10 @@ import {
   ROUTES_FLAG,
   BUILD_FLAG,
   SERVER_FLAG,
+  STREAM_FLAG,
   SCRIPT_END_TAG,
   SCRIPT_TAG_PREFIX,
+  getHtmlAttributeValue,
   scriptOpenTag,
 } from "./html-patterns.ts";
 import type { RouteEntry } from "./types.ts";
@@ -36,9 +42,28 @@ const DYNAMIC_ROUTE_RE = /\[([^\]/\\\s]+)\]/g;
 /** Match invalid filename / path traversal characters in route param values. */
 const INVALID_PARAM_CHARS_RE = /[<>:"/\\|?*\x00-\x1F#%&'+ ]/;
 const WINDOWS_RESERVED_NAMES = new Set([
-  "con", "prn", "aux", "nul",
-  "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
-  "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+  "con",
+  "prn",
+  "aux",
+  "nul",
+  "com1",
+  "com2",
+  "com3",
+  "com4",
+  "com5",
+  "com6",
+  "com7",
+  "com8",
+  "com9",
+  "lpt1",
+  "lpt2",
+  "lpt3",
+  "lpt4",
+  "lpt5",
+  "lpt6",
+  "lpt7",
+  "lpt8",
+  "lpt9",
 ]);
 
 const ROUTES_SCRIPT_RE = new RegExp(
@@ -56,6 +81,10 @@ const ROUTES_SERVER_CONFLICT_RE = new RegExp(
   "i",
 );
 
+const ROUTES_STREAM_CONFLICT_RE = new RegExp(
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  "i",
+);
 
 /** Substitute params into the template path to get the source-relative output path. */
 export const resolveRoutePath = (
@@ -80,7 +109,8 @@ export const resolveRoutePath = (
 export const computePagePath = (
   pageFilePath: string,
   pagesDir: string = BascikConfig.directory?.pages ?? "src/pages",
-  dynamicRoute?: { params?: Record<string, string | number> } | RouteEntry | null,
+  dynamicRoute?:
+    { params?: Record<string, string | number> } | RouteEntry | null,
 ): string => {
   let resolvedPagePath = pageFilePath;
   if (dynamicRoute && dynamicRoute.params) {
@@ -121,7 +151,8 @@ export const validateRouteList = (
       continue;
     }
 
-    const params = (item as { params: Record<string, unknown>; data?: unknown }).params;
+    const params = (item as { params: Record<string, unknown>; data?: unknown })
+      .params;
     let valid = true;
 
     for (const paramName of paramNames) {
@@ -151,7 +182,12 @@ export const validateRouteList = (
         break;
       }
 
-      if (strVal === ".." || strVal.includes("..") || strVal.includes("/") || strVal.includes("\\")) {
+      if (
+        strVal === ".." ||
+        strVal.includes("..") ||
+        strVal.includes("/") ||
+        strVal.includes("\\")
+      ) {
         warnings.push(
           `Route item at index ${i} contains illegal path traversal characters in param "${paramName}": "${strVal}"`,
         );
@@ -214,7 +250,9 @@ export const dedupeRoutes = (
   for (const route of routes) {
     const resolvedPath = resolveRoutePath(pagePath, route.params);
     if (seenExact.has(resolvedPath)) {
-      warnings.push(`Duplicate route output path "${resolvedPath}", skipping duplicate`);
+      warnings.push(
+        `Duplicate route output path "${resolvedPath}", skipping duplicate`,
+      );
       continue;
     }
 
@@ -264,7 +302,10 @@ export const executeRoutesScript = async (
   };
 
   if (matches.length > 1) {
-    const loc = tagLocation(matches[1].index ?? 0, scriptOpenTag(matches[1][0], matches[1][1]));
+    const loc = tagLocation(
+      matches[1].index ?? 0,
+      scriptOpenTag(matches[1][0], matches[1][1]),
+    );
     throw new Error(
       `[bascik] error: More than one <script data-bascik-routes> tag found${loc}. A page has exactly one route list.`,
     );
@@ -297,11 +338,18 @@ export const executeRoutesScript = async (
     );
   }
 
+  if (ROUTES_STREAM_CONFLICT_RE.test(openTag)) {
+    throw new Error(
+      `[bascik] error: <script> tag has both data-bascik-routes and data-bascik-stream${tagLocation(index, openTag)}. Remove one of the attributes.`,
+    );
+  }
+
   const cleanedHtml = html.slice(0, index) + html.slice(index + fullTag.length);
 
   const isComponent =
     filePath &&
-    (filePath.includes("/components/") ||
+    (findComponentRoot(filePath) !== undefined ||
+      filePath.includes("/components/") ||
       filePath.includes("\\components\\") ||
       filePath.startsWith("components/") ||
       filePath.startsWith("components\\"));
@@ -332,7 +380,9 @@ export const executeRoutesScript = async (
   };
   const rethrowLeadingSlash = (err: unknown): never => {
     if (err instanceof LeadingSlashSpecifierError) {
-      throw new Error(`[bascik] error: ${err.message}${locate()}`, { cause: err });
+      throw new Error(`[bascik] error: ${err.message}${locate()}`, {
+        cause: err,
+      });
     }
     throw err;
   };
@@ -342,9 +392,8 @@ export const executeRoutesScript = async (
   let moduleSource = scriptContent;
   let moduleFilePath: string | undefined;
   if (!trimmedScript) {
-    const srcMatch = openTag.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
-    if (srcMatch) {
-      const srcPath = srcMatch[1] ?? srcMatch[2] ?? srcMatch[3];
+    const srcPath = getHtmlAttributeValue(openTag, "src");
+    if (srcPath) {
       const containingDir = filePath
         ? dirname(resolve(process.cwd(), filePath))
         : process.cwd();
@@ -376,8 +425,11 @@ export const executeRoutesScript = async (
   );
 
   // A `src=` script is its own file, so its errors name that file and its lines.
-  const moduleSourcePath = moduleFilePath ? relative(process.cwd(), moduleFilePath).replace(/\\/g, "/") : relPath;
-  const sourceUrlComment = filePath || moduleFilePath ? `\n//# sourceURL=${moduleSourcePath}` : "";
+  const moduleSourcePath = moduleFilePath
+    ? relative(process.cwd(), moduleFilePath).replace(/\\/g, "/")
+    : relPath;
+  const sourceUrlComment =
+    filePath || moduleFilePath ? `\n//# sourceURL=${moduleSourcePath}` : "";
 
   const siteUrl = getSiteUrl();
   const extraEnv: Record<string, string> = {
@@ -405,10 +457,16 @@ export const executeRoutesScript = async (
   try {
     // Padded first, so the rewrite's edits are in the file's own lines and columns.
     // Without a known file there are no file lines to line up with.
-    const padded = moduleFilePath || !filePath
-      ? moduleSource
-      : padToSourcePosition(moduleSource, position.bodyLine, position.bodyColumn);
-    ({ code: preparedScript, edits: specifierEdits } = rewriteModuleSpecifiersWithEdits(padded, scriptBaseDir, { importRoot }));
+    const padded =
+      moduleFilePath || !filePath
+        ? moduleSource
+        : padToSourcePosition(
+            moduleSource,
+            position.bodyLine,
+            position.bodyColumn,
+          );
+    ({ code: preparedScript, edits: specifierEdits } =
+      rewriteModuleSpecifiersWithEdits(padded, scriptBaseDir, { importRoot }));
   } catch (err) {
     return rethrowLeadingSlash(err);
   }
@@ -416,7 +474,11 @@ export const executeRoutesScript = async (
   let handlerResult: unknown = [];
   try {
     await writeFile(tmpPath, preparedScript + sourceUrlComment, "utf8");
-    const { result, stdout, stderr } = await runDirectiveHandler<unknown[]>(tmpPath, "routes", { extraEnv });
+    const { result, stdout, stderr } = await runDirectiveHandler<unknown[]>(
+      tmpPath,
+      "routes",
+      { extraEnv },
+    );
     if (stdout) process.stdout.write(stdout);
     if (stderr) process.stderr.write(stderr);
     handlerResult = result;
@@ -427,7 +489,11 @@ export const executeRoutesScript = async (
     const msg = err instanceof Error ? err.message : String(err);
     // The module is padded to the file's own lines, so only the temp path needs renaming,
     // and columns after a rewritten import on the same line need putting back.
-    const remapped = remapRewrittenColumns(msg, [tmpPath, pathToFileURL(tmpPath).href, moduleSourcePath], specifierEdits);
+    const remapped = remapRewrittenColumns(
+      msg,
+      [tmpPath, pathToFileURL(tmpPath).href, moduleSourcePath],
+      specifierEdits,
+    );
     const cleanedMsg = cleanStackTrace(remapped, tmpPath, moduleSourcePath, 1);
     const errorMsg = `[bascik] routes script error${tagLocation(index, openTag)}`;
     const behavior = BascikConfig.scripts?.onRoutesScriptError ?? "error";
@@ -439,7 +505,7 @@ export const executeRoutesScript = async (
     }
     return { routes: [], cleanedHtml };
   } finally {
-    await unlink(tmpPath).catch(() => { });
+    await unlink(tmpPath).catch(() => {});
   }
 
   const paramNames = filePath ? extractRouteParamNames(filePath) : [];
@@ -474,9 +540,10 @@ export const executeRoutesScript = async (
   }
 
   if (dedupedRoutes.length === 0) {
-    console.warn(`[bascik] warning: routes template "${relPath}" produced 0 routes.`);
+    console.warn(
+      `[bascik] warning: routes template "${relPath}" produced 0 routes.`,
+    );
   }
 
   return { routes: dedupedRoutes, cleanedHtml };
 };
-

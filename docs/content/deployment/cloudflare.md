@@ -68,6 +68,8 @@ dist/.bascik/cloudflare/
 
 Pages with request-time scripts are **not** in `public/`. Their templates live inside `worker.js`, so a routing mistake that lets such a request reach the static layer yields a 404, never a page with inert placeholders.
 
+With a non-root [`base`](/configuration#base) such as `/docs/`, static files are staged below it (`public/docs/index.html`, `public/docs/assets/...`), so the asset layer serves them at the same `/docs/...` URLs that `bascik --server` uses. Nothing is served outside the prefix. The generated control files (`_worker.js`, `_routes.json`) stay at the root of `public/`, where the platform reads them.
+
 `--target` needs a complete build and is rejected together with `--only`: a deployment bundle is one consistent release inventory.
 
 ## Preview locally
@@ -96,6 +98,7 @@ Or connect the repository with Cloudflare Workers Builds in the dashboard:
 ### Worker Name Resolution
 
 The generated `name` in `wrangler.jsonc` is automatically resolved in priority order:
+
 1. **Environment variables:** `CLOUDFLARE_WORKER_NAME` or `WORKER_NAME` (e.g. `CLOUDFLARE_WORKER_NAME=bascik-streaming-test` in Cloudflare dashboard build settings).
 2. **Authored Wrangler config:** An existing `wrangler.jsonc`, `wrangler.json`, or `wrangler.toml` in your project root (matching Wrangler discovery precedence, supporting JSONC comments, trailing commas, and TOML syntax).
 3. **Project `package.json`:** The `name` property from your root `package.json` (with npm `@scope/` prefixes stripped).
@@ -121,11 +124,8 @@ Bascik never overwrites or modifies your authored configuration. In your root `w
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "404-page",
-    "run_worker_first": [
-      "/api/*",
-      "/stream"
-    ]
-  }
+    "run_worker_first": ["/api/*", "/stream"],
+  },
 }
 ```
 
@@ -171,6 +171,7 @@ For most projects, selective `run_worker_first` patterns (only `/api/*` and dyna
 Bascik generates an inventory of invocation routes during build (`buildInvocationRoutes` in `build.ts`). This inventory includes:
 
 - Every dynamic page alias (e.g. `/`, `/account`, `/account.html`, `/account/`)
+- The aliases of a static `404.html` (`/404`, `/404/`, `/404.html`), so the Worker answers the custom 404 page with status `404` at its own URL, as `bascik --server` does, instead of the asset layer's `200`
 - `/api/*` if the project has API routes
 - `/_routes.json` and `/_worker.js` (generated control files)
 - `/*` if the overflow limit is exceeded
@@ -181,14 +182,15 @@ Your application-owned `wrangler.jsonc` `run_worker_first` should reference path
 
 The following scenarios were validated against local workerd (via `npx wrangler dev`):
 
-| Scenario | Expected Behavior |
-|---|---|
-| **Static page** (`/`) | CDN serves from `./public`; Worker never invoked |
-| **API route** (`/api/run`) | Worker invoked first (listed in `run_worker_first`), dispatches to API handler |
-| **Dynamic page** (`/about` with server script) | Worker invoked first, renders template with server data |
-| **Dynamic page alias** (`/about.html`) | Worker invoked first, renders corresponding dynamic page |
-| **HTML-navigation request** | If path is in `run_worker_first`, Worker handles it; otherwise CDN serves static |
-| **Private dynamic templates** | Remain in the Worker's private graph; inaccessible as static files under `./public` |
+| Scenario                                                            | Expected Behavior                                                                                                                                                                        |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Static page** (`/`)                                               | CDN serves from `./public`; Worker never invoked                                                                                                                                         |
+| **API route** (`/api/run`)                                          | Worker invoked first (listed in `run_worker_first`), dispatches to API handler                                                                                                           |
+| **Dynamic page** (`/about` with server script)                      | Worker invoked first, renders template with server data                                                                                                                                  |
+| **Dynamic page alias** (`/about.html`)                              | Worker invoked first, renders corresponding dynamic page                                                                                                                                 |
+| **HTML-navigation request**                                         | If path is in `run_worker_first`, Worker handles it; otherwise CDN serves static                                                                                                         |
+| **Private dynamic templates**                                       | Remain in the Worker's private graph; inaccessible as static files under `./public`                                                                                                      |
+| **Static page alias** (`/about.html`, `/blog/`, `/docs/index.html`) | The asset layer answers with a `307` redirect to its canonical URL (`/about`, `/blog`, `/docs/`). `bascik --server` serves the same page directly with `200`. Both reach the same bytes. |
 
 These behaviors are confirmed by the existing integration tests in `adapters/cloudflare/src/serverless-build.integration.test.ts` and `adapters/cloudflare/src/cloudflare.test.ts`.
 
@@ -209,11 +211,8 @@ By default, running `bascik --build --target cloudflare` generates a complete, s
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "404-page",
-    "run_worker_first": [
-      "/api/*",
-      "/stream"
-    ]
-  }
+    "run_worker_first": ["/api/*", "/stream"],
+  },
 }
 ```
 
@@ -243,17 +242,17 @@ Bascik never overwrites or modifies your authored configuration. In your root `w
   "assets": {
     "directory": "dist/.bascik/cloudflare/public",
     "binding": "ASSETS",
-    "not_found_handling": "404-page"
+    "not_found_handling": "404-page",
   },
   "vars": {
-    "ENVIRONMENT": "production"
+    "ENVIRONMENT": "production",
   },
   "kv_namespaces": [
     {
       "binding": "GREETINGS",
-      "id": "xxxxxx"
-    }
-  ]
+      "id": "xxxxxx",
+    },
+  ],
 }
 ```
 
@@ -310,11 +309,16 @@ Handlers reach Cloudflare bindings through `context.platform`, which is `undefin
 // src/api/greeting.ts
 export const GET = async (
   request: Request,
-  context: { params: Record<string, string>; remoteIp: string; platform?: { name: string; env?: Record<string, unknown> } },
+  context: {
+    params: Record<string, string>;
+    remoteIp: string;
+    platform?: { name: string; env?: Record<string, unknown> };
+  },
 ) => {
-  const kv = context.platform?.env?.GREETINGS as { get(key: string): Promise<string | null> } | undefined;
-  const text = (await kv?.get('hello')) ?? 'Hello';
-  return Response.json({ text, host: context.platform?.name ?? 'unknown' });
+  const kv = context.platform?.env?.GREETINGS as
+    { get(key: string): Promise<string | null> } | undefined;
+  const text = (await kv?.get("hello")) ?? "Hello";
+  return Response.json({ text, host: context.platform?.name ?? "unknown" });
 };
 ```
 
@@ -324,12 +328,12 @@ export const GET = async (
 
 ## What runs where
 
-| Site shape | Any static host | `bascik --server` | Cloudflare (this guide) | Other serverless hosts |
-| :--- | :--- | :--- | :--- | :--- |
-| Static pages only | Supported | Supported | Supported | Supported (static upload) |
-| `data-bascik-server` pages | No | Supported | Supported | Manual porting |
-| `data-bascik-stream` pages | No | Supported | Supported | Manual porting |
-| API routes | No | Supported | Supported | Manual porting |
+| Site shape                 | Any static host | `bascik --server` | Cloudflare (this guide) | Other serverless hosts    |
+| :------------------------- | :-------------- | :---------------- | :---------------------- | :------------------------ |
+| Static pages only          | Supported       | Supported         | Supported               | Supported (static upload) |
+| `data-bascik-server` pages | No              | Supported         | Supported               | Manual porting            |
+| `data-bascik-stream` pages | No              | Supported         | Supported               | Manual porting            |
+| API routes                 | No              | Supported         | Supported               | Manual porting            |
 
 "Manual porting" means the handler function is reusable because it takes a standard `Request`, but you write the platform wrapper, the route table, and the method dispatch yourself. Bascik generates those only for the targets in this table.
 
@@ -364,13 +368,13 @@ Fetching your static HTML from a second public origin and having a Worker rewrit
 
 Modern full-stack web frameworks such as Next.js, Astro, SvelteKit, and Nuxt also offer Cloudflare deployment targets that divide traffic between static CDN assets and edge workers. Bascik adopts the same unified CDN-plus-worker deployment topology, but with a different client runtime footprint:
 
-| Capability | Bascik (`@bascik/adapter-cloudflare`) | Astro (`@astrojs/cloudflare`) | Next.js (`@opennextjs/cloudflare` / Vercel Edge) | SvelteKit / Nuxt / Remix |
-| :--- | :--- | :--- | :--- | :--- |
-| **Unified CDN + Worker output** | Yes (`wrangler.jsonc` / `_routes.json`) | Yes (`_routes.json`) | Yes (via OpenNext or Vercel) | Yes (`_routes.json`) |
-| **Client-side framework runtime** | **Zero JS** (vanilla HTML/CSS/JS only) | Opt-in per island (`client:*`) | Required (React runtime + hydration) | Required (Svelte/Vue/React) |
-| **Client hydration overhead** | **0 KB** | 0 KB (unless using interactive islands) | 70–120+ KB base | 20–50+ KB base |
-| **Streaming mechanism** | Native HTTP streaming in document order | Native HTTP streaming | React Server Components (RSC) streaming | Framework SSR streaming |
-| **Edge Worker bundle content** | Compiled HTML templates + server/stream jobs | Component SSR render functions | React SSR runtime + compiled routes | Framework SSR runtime + virtual DOM |
+| Capability                        | Bascik (`@bascik/adapter-cloudflare`)        | Astro (`@astrojs/cloudflare`)           | Next.js (`@opennextjs/cloudflare` / Vercel Edge) | SvelteKit / Nuxt / Remix            |
+| :-------------------------------- | :------------------------------------------- | :-------------------------------------- | :----------------------------------------------- | :---------------------------------- |
+| **Unified CDN + Worker output**   | Yes (`wrangler.jsonc` / `_routes.json`)      | Yes (`_routes.json`)                    | Yes (via OpenNext or Vercel)                     | Yes (`_routes.json`)                |
+| **Client-side framework runtime** | **Zero JS** (vanilla HTML/CSS/JS only)       | Opt-in per island (`client:*`)          | Required (React runtime + hydration)             | Required (Svelte/Vue/React)         |
+| **Client hydration overhead**     | **0 KB**                                     | 0 KB (unless using interactive islands) | 70–120+ KB base                                  | 20–50+ KB base                      |
+| **Streaming mechanism**           | Native HTTP streaming in document order      | Native HTTP streaming                   | React Server Components (RSC) streaming          | Framework SSR streaming             |
+| **Edge Worker bundle content**    | Compiled HTML templates + server/stream jobs | Component SSR render functions          | React SSR runtime + compiled routes              | Framework SSR runtime + virtual DOM |
 
 With Bascik, dynamic edge execution does not force a client-side JavaScript framework or hydration layer onto the visitor. The Worker executes data-fetching scripts at the edge, populates server slots, streams the document progressively, and finishes with zero client hydration overhead.
 

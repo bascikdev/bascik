@@ -154,32 +154,171 @@ const isAsciiAlpha = (code: number): boolean => {
 
 /** Elements whose start tag switches the tokenizer to raw text or RCDATA in HTML content. */
 const RAW_TEXT_ELEMENTS = new Set([
-  "script", "style", "xmp", "iframe", "noembed", "noframes", "noscript", "textarea", "title",
+  "script",
+  "style",
+  "xmp",
+  "iframe",
+  "noembed",
+  "noframes",
+  "noscript",
+  "textarea",
+  "title",
 ]);
 
 const VOID_ELEMENTS = new Set([
-  "area", "base", "basefont", "bgsound", "br", "col", "embed", "frame", "hr", "img", "input",
-  "keygen", "link", "meta", "param", "source", "track", "wbr",
+  "area",
+  "base",
+  "basefont",
+  "bgsound",
+  "br",
+  "col",
+  "embed",
+  "frame",
+  "hr",
+  "img",
+  "input",
+  "keygen",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
 ]);
 
 /** HTML start tags that end foreign content (WHATWG "parsing tokens in foreign content"). */
 const BREAKOUT_ELEMENTS = new Set([
-  "b", "big", "blockquote", "body", "br", "center", "code", "dd", "div", "dl", "dt", "em",
-  "embed", "h1", "h2", "h3", "h4", "h5", "h6", "head", "hr", "i", "img", "li", "listing", "menu",
-  "meta", "nobr", "ol", "p", "pre", "ruby", "s", "small", "span", "strong", "strike", "sub", "sup",
-  "table", "tt", "u", "ul", "var",
+  "b",
+  "big",
+  "blockquote",
+  "body",
+  "br",
+  "center",
+  "code",
+  "dd",
+  "div",
+  "dl",
+  "dt",
+  "em",
+  "embed",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "head",
+  "hr",
+  "i",
+  "img",
+  "li",
+  "listing",
+  "menu",
+  "meta",
+  "nobr",
+  "ol",
+  "p",
+  "pre",
+  "ruby",
+  "s",
+  "small",
+  "span",
+  "strong",
+  "strike",
+  "sub",
+  "sup",
+  "table",
+  "tt",
+  "u",
+  "ul",
+  "var",
 ]);
 
 /** HTML "special" elements: an unmatched end tag stops at one of these. */
 const SPECIAL_ELEMENTS = new Set([
-  "address", "applet", "area", "article", "aside", "base", "basefont", "bgsound", "blockquote",
-  "body", "br", "button", "caption", "center", "col", "colgroup", "dd", "details", "dir", "div",
-  "dl", "dt", "embed", "fieldset", "figcaption", "figure", "footer", "form", "frame", "frameset",
-  "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr", "html", "iframe", "img",
-  "input", "keygen", "li", "link", "listing", "main", "marquee", "menu", "meta", "nav", "noembed",
-  "noframes", "noscript", "object", "ol", "p", "param", "plaintext", "pre", "script", "search",
-  "section", "select", "source", "style", "summary", "table", "tbody", "td", "template",
-  "textarea", "tfoot", "th", "thead", "title", "tr", "track", "ul", "wbr", "xmp",
+  "address",
+  "applet",
+  "area",
+  "article",
+  "aside",
+  "base",
+  "basefont",
+  "bgsound",
+  "blockquote",
+  "body",
+  "br",
+  "button",
+  "caption",
+  "center",
+  "col",
+  "colgroup",
+  "dd",
+  "details",
+  "dir",
+  "div",
+  "dl",
+  "dt",
+  "embed",
+  "fieldset",
+  "figcaption",
+  "figure",
+  "footer",
+  "form",
+  "frame",
+  "frameset",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "head",
+  "header",
+  "hgroup",
+  "hr",
+  "html",
+  "iframe",
+  "img",
+  "input",
+  "keygen",
+  "li",
+  "link",
+  "listing",
+  "main",
+  "marquee",
+  "menu",
+  "meta",
+  "nav",
+  "noembed",
+  "noframes",
+  "noscript",
+  "object",
+  "ol",
+  "p",
+  "param",
+  "plaintext",
+  "pre",
+  "script",
+  "search",
+  "section",
+  "select",
+  "source",
+  "style",
+  "summary",
+  "table",
+  "tbody",
+  "td",
+  "template",
+  "textarea",
+  "tfoot",
+  "th",
+  "thead",
+  "title",
+  "tr",
+  "track",
+  "ul",
+  "wbr",
+  "xmp",
 ]);
 
 /**
@@ -187,18 +326,69 @@ const SPECIAL_ELEMENTS = new Set([
  * tags for anything opened inside it (`<div><p>x</div>` closes both).
  */
 const SCOPED_END_TAGS = new Set([
-  "address", "article", "aside", "blockquote", "button", "center", "details", "dialog", "dir",
-  "div", "dl", "fieldset", "figcaption", "figure", "footer", "header", "hgroup", "listing",
-  "main", "menu", "nav", "ol", "pre", "search", "section", "summary", "ul", "form", "li", "dd",
-  "dt", "h1", "h2", "h3", "h4", "h5", "h6", "applet", "marquee", "object", "p",
+  "address",
+  "article",
+  "aside",
+  "blockquote",
+  "button",
+  "center",
+  "details",
+  "dialog",
+  "dir",
+  "div",
+  "dl",
+  "fieldset",
+  "figcaption",
+  "figure",
+  "footer",
+  "header",
+  "hgroup",
+  "listing",
+  "main",
+  "menu",
+  "nav",
+  "ol",
+  "pre",
+  "search",
+  "section",
+  "summary",
+  "ul",
+  "form",
+  "li",
+  "dd",
+  "dt",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "applet",
+  "marquee",
+  "object",
+  "p",
 ]);
 
 /** Elements that bound the HTML "has an element in scope" search. */
 const SCOPE_BOUNDARY_ELEMENTS = new Set([
-  "applet", "caption", "html", "table", "td", "th", "marquee", "object", "template",
+  "applet",
+  "caption",
+  "html",
+  "table",
+  "td",
+  "th",
+  "marquee",
+  "object",
+  "template",
 ]);
 
-const MATHML_TEXT_INTEGRATION_POINTS = new Set(["mi", "mo", "mn", "ms", "mtext"]);
+const MATHML_TEXT_INTEGRATION_POINTS = new Set([
+  "mi",
+  "mo",
+  "mn",
+  "ms",
+  "mtext",
+]);
 
 /**
  * Start tags that "in select" parsing ignores but body parsing gives meaning:
@@ -206,7 +396,16 @@ const MATHML_TEXT_INTEGRATION_POINTS = new Set(["mi", "mo", "mn", "ms", "mtext"]
  * customizable `<select>` parses more content), so the scan stops instead.
  */
 const UNCERTAIN_IN_SELECT = new Set([
-  "style", "title", "noscript", "iframe", "xmp", "noembed", "noframes", "plaintext", "svg", "math",
+  "style",
+  "title",
+  "noscript",
+  "iframe",
+  "xmp",
+  "noembed",
+  "noframes",
+  "plaintext",
+  "svg",
+  "math",
 ]);
 
 /**
@@ -359,7 +558,10 @@ const scanTag = (
         break;
       case ATTRIBUTE_VALUE_DOUBLE_QUOTED:
       case ATTRIBUTE_VALUE_SINGLE_QUOTED: {
-        const close = html.indexOf(state === ATTRIBUTE_VALUE_DOUBLE_QUOTED ? '"' : "'", i);
+        const close = html.indexOf(
+          state === ATTRIBUTE_VALUE_DOUBLE_QUOTED ? '"' : "'",
+          i,
+        );
         if (close === -1) return unterminated;
         quotedValues?.push(valueStart, close);
         finishAttribute(close);
@@ -401,9 +603,13 @@ const scanTag = (
 };
 
 /** Attributes of the start tag whose `<` is at `tagStart`, as the tokenizer reads them. */
-export const readStartTagAttributes = (html: string, tagStart: number): TagAttribute[] => {
+export const readStartTagAttributes = (
+  html: string,
+  tagStart: number,
+): TagAttribute[] => {
   const attributes: TagAttribute[] = [];
-  if (isAsciiAlpha(html.charCodeAt(tagStart + 1))) scanTag(html, tagStart + 1, attributes);
+  if (isAsciiAlpha(html.charCodeAt(tagStart + 1)))
+    scanTag(html, tagStart + 1, attributes);
   return attributes;
 };
 
@@ -413,10 +619,15 @@ export const readStartTagAttributes = (html: string, tagStart: number): TagAttri
  * values end at whitespace, so outside these ranges whitespace in a tag only
  * separates its parts.
  */
-export const readQuotedValueRanges = (html: string, tagStart: number): number[] => {
+export const readQuotedValueRanges = (
+  html: string,
+  tagStart: number,
+): number[] => {
   const ranges: number[] = [];
-  const nameStart = html.charCodeAt(tagStart + 1) === SLASH ? tagStart + 2 : tagStart + 1;
-  if (isAsciiAlpha(html.charCodeAt(nameStart))) scanTag(html, nameStart, undefined, ranges);
+  const nameStart =
+    html.charCodeAt(tagStart + 1) === SLASH ? tagStart + 2 : tagStart + 1;
+  if (isAsciiAlpha(html.charCodeAt(nameStart)))
+    scanTag(html, nameStart, undefined, ranges);
   return ranges;
 };
 
@@ -428,7 +639,11 @@ export const readQuotedValueRanges = (html: string, tagStart: number): number[] 
 export const findCommentEnd = (html: string, start: number): number => {
   const bodyStart = start + 4;
   if (html.charCodeAt(bodyStart) === GT) return bodyStart + 1;
-  if (html.charCodeAt(bodyStart) === DASH && html.charCodeAt(bodyStart + 1) === GT) return bodyStart + 2;
+  if (
+    html.charCodeAt(bodyStart) === DASH &&
+    html.charCodeAt(bodyStart + 1) === GT
+  )
+    return bodyStart + 2;
   let dashes = html.indexOf("--", bodyStart);
   while (dashes !== -1) {
     const next = html.charCodeAt(dashes + 2);
@@ -448,7 +663,10 @@ const findRawTextEnd = (html: string, from: number, name: string): number => {
   let close = html.indexOf("</", from);
   while (close !== -1) {
     let matched = 0;
-    while (matched < name.length && (html.charCodeAt(close + 2 + matched) | 32) === name.charCodeAt(matched)) {
+    while (
+      matched < name.length &&
+      (html.charCodeAt(close + 2 + matched) | 32) === name.charCodeAt(matched)
+    ) {
       matched++;
     }
     if (matched === name.length) {
@@ -488,7 +706,8 @@ const findScriptEnd = (html: string, from: number): number => {
     if (state === SCRIPT_DATA) {
       const lt = html.indexOf("<", i);
       if (lt === -1) return -1;
-      if (html.charCodeAt(lt + 1) === SLASH && isScriptNameAt(html, lt + 2)) return lt;
+      if (html.charCodeAt(lt + 1) === SLASH && isScriptNameAt(html, lt + 2))
+        return lt;
       if (html.startsWith("<!--", lt)) {
         // The opener's dashes count toward `-->`, so `<!-->` ends at once.
         state = SCRIPT_DATA_ESCAPED;
@@ -535,7 +754,10 @@ const findScriptEnd = (html: string, from: number): number => {
  * element (start tag through end tag) in the order the browser closes them.
  * Script data escapes aside, ranges match the browser's parse exactly.
  */
-export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlScanResult => {
+export const scanHtml = (
+  html: string,
+  handlers: HtmlScanHandlers = {},
+): HtmlScanResult => {
   const n = html.length;
   /** Open elements since entering foreign content; empty in ordinary HTML content. */
   const stack: OpenElement[] = [];
@@ -548,7 +770,8 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
   const preformattedFrames = [{ pre: 0, listing: 0, sticky: false, tables: 0 }];
   let openTables = 0;
   let openPreformatted = 0;
-  const isPreformatted = (name: string): name is "pre" | "listing" => name === "pre" || name === "listing";
+  const isPreformatted = (name: string): name is "pre" | "listing" =>
+    name === "pre" || name === "listing";
   const preformatted = () => preformattedFrames[preformattedFrames.length - 1];
   const openPreformattedElement = (name: "pre" | "listing"): void => {
     preformatted()[name]++;
@@ -603,8 +826,23 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
     preformatted().tables--;
     openTables--;
   };
-  const emit = (kind: HtmlToken["kind"], start: number, end: number, name = "", isEndTag = false): void => {
-    if (end > start) handlers.token?.({ kind, start, end, name, isEndTag, inForeignCode: foreignCodeDepth > 0, ...context() });
+  const emit = (
+    kind: HtmlToken["kind"],
+    start: number,
+    end: number,
+    name = "",
+    isEndTag = false,
+  ): void => {
+    if (end > start)
+      handlers.token?.({
+        kind,
+        start,
+        end,
+        name,
+        isEndTag,
+        inForeignCode: foreignCodeDepth > 0,
+        ...context(),
+      });
   };
   /** Report text up to `start`, where markup begins. */
   const flushText = (start: number): void => {
@@ -612,21 +850,40 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
     textFrom = start;
   };
   /** Report markup spanning `start` to `end`, after any text before it. */
-  const emitMarkup = (kind: HtmlToken["kind"], start: number, end: number, name = "", isEndTag = false): void => {
+  const emitMarkup = (
+    kind: HtmlToken["kind"],
+    start: number,
+    end: number,
+    name = "",
+    isEndTag = false,
+  ): void => {
     flushText(start);
     emit(kind, start, end, name, isEndTag);
     textFrom = end;
   };
   const isInsertable = (): boolean => stack.length === 0 && templateDepth === 0;
   /** Report a foreign script, with the context captured before its elements were popped. */
-  const reportForeignScript = (entry: OpenElement, end: number, terminated: boolean, where: ScanContext): void => {
+  const reportForeignScript = (
+    entry: OpenElement,
+    end: number,
+    terminated: boolean,
+    where: ScanContext,
+  ): void => {
     if (entry.name !== "script" || entry.namespace === "html") return;
-    handlers.script?.({ start: entry.start, openTagEnd: entry.openTagEnd, end, terminated, ...where, inForeign: true });
+    handlers.script?.({
+      start: entry.start,
+      openTagEnd: entry.openTagEnd,
+      end,
+      terminated,
+      ...where,
+      inForeign: true,
+    });
   };
   /** The input ends at `start`, inside the markup that begins there when start < n. */
   const endAt = (start: number): HtmlScanResult => {
     const where = context();
-    for (let k = stack.length - 1; k >= 0; k--) reportForeignScript(stack[k], n, false, where);
+    for (let k = stack.length - 1; k >= 0; k--)
+      reportForeignScript(stack[k], n, false, where);
     emitMarkup("unparsed", start, n);
     return {
       insertionPoint: notInsertableSince === -1 ? start : notInsertableSince,
@@ -642,7 +899,8 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
     };
   };
   const isForeignCode = (element: OpenElement): boolean =>
-    element.namespace !== "html" && (element.name === "script" || element.name === "style");
+    element.namespace !== "html" &&
+    (element.name === "script" || element.name === "style");
   const push = (element: OpenElement): void => {
     if (stack.length >= MAX_TRACKED_DEPTH) {
       lost = true;
@@ -658,18 +916,29 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
    * token when `closesTarget`; everything above it is closed implicitly, so
    * it ends where the token starts.
    */
-  const popTo = (index: number, tokenStart: number, end: number, closesTarget: boolean): void => {
+  const popTo = (
+    index: number,
+    tokenStart: number,
+    end: number,
+    closesTarget: boolean,
+  ): void => {
     const where = context();
     const popped = stack.splice(index);
     for (let k = popped.length - 1; k >= 0; k--) {
       const entry = popped[k];
       if (entry.namespace === "html") {
         if (entry.name === "template") closeTemplate();
-        else if (isPreformatted(entry.name)) closePreformattedElement(entry.name);
+        else if (isPreformatted(entry.name))
+          closePreformattedElement(entry.name);
         else if (entry.name === "table") closeTable();
       } else {
         if (isForeignCode(entry)) foreignCodeDepth--;
-        reportForeignScript(entry, k === 0 && closesTarget ? end : tokenStart, true, where);
+        reportForeignScript(
+          entry,
+          k === 0 && closesTarget ? end : tokenStart,
+          true,
+          where,
+        );
       }
     }
   };
@@ -679,7 +948,11 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
     const where = context();
     while (stack.length > 0) {
       const current = stack[stack.length - 1];
-      if (current.namespace === "html" || current.integrationPoint !== NOT_AN_INTEGRATION_POINT) return;
+      if (
+        current.namespace === "html" ||
+        current.integrationPoint !== NOT_AN_INTEGRATION_POINT
+      )
+        return;
       stack.pop();
       if (isForeignCode(current)) foreignCodeDepth--;
       reportForeignScript(current, tokenStart, true, where);
@@ -691,22 +964,35 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
     if (stack.length === 0) return true;
     const current = stack[stack.length - 1];
     if (current.namespace === "html") return true;
-    if (current.integrationPoint === MATHML_TEXT_INTEGRATION_POINT) return name !== "mglyph" && name !== "malignmark";
-    if (current.namespace === "math" && current.name === "annotation-xml" && name === "svg") return true;
+    if (current.integrationPoint === MATHML_TEXT_INTEGRATION_POINT)
+      return name !== "mglyph" && name !== "malignmark";
+    if (
+      current.namespace === "math" &&
+      current.name === "annotation-xml" &&
+      name === "svg"
+    )
+      return true;
     return current.integrationPoint === HTML_INTEGRATION_POINT;
   };
 
-  const integrationPointOf = (namespace: Namespace, name: string, start: number): number => {
+  const integrationPointOf = (
+    namespace: Namespace,
+    name: string,
+    start: number,
+  ): number => {
     if (namespace === "svg") {
       return name === "foreignobject" || name === "desc" || name === "title"
         ? HTML_INTEGRATION_POINT
         : NOT_AN_INTEGRATION_POINT;
     }
-    if (MATHML_TEXT_INTEGRATION_POINTS.has(name)) return MATHML_TEXT_INTEGRATION_POINT;
+    if (MATHML_TEXT_INTEGRATION_POINTS.has(name))
+      return MATHML_TEXT_INTEGRATION_POINT;
     if (name === "annotation-xml") {
       const encoding = readStartTagAttributes(html, start)
-        .find((attribute) => attribute.name === "encoding")?.value.toLowerCase();
-      if (encoding === "text/html" || encoding === "application/xhtml+xml") return HTML_INTEGRATION_POINT;
+        .find((attribute) => attribute.name === "encoding")
+        ?.value.toLowerCase();
+      if (encoding === "text/html" || encoding === "application/xhtml+xml")
+        return HTML_INTEGRATION_POINT;
     }
     return NOT_AN_INTEGRATION_POINT;
   };
@@ -723,7 +1009,11 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
       selectOpen = !selectOpen;
     } else if (name === "input" || name === "keygen" || name === "textarea") {
       selectOpen = false;
-    } else if (name === "frameset" && templateDepth === 0 && stack.length === 0) {
+    } else if (
+      name === "frameset" &&
+      templateDepth === 0 &&
+      stack.length === 0
+    ) {
       // A frameset replaces the body: browsers drop what follows except
       // frames, so nothing after it can be judged or moved.
       lost = true;
@@ -731,20 +1021,43 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
     }
     if (name === "svg" || name === "math") {
       if (!tag.selfClosing) {
-        push({ name, namespace: name, integrationPoint: NOT_AN_INTEGRATION_POINT, start, openTagEnd: tag.end });
+        push({
+          name,
+          namespace: name,
+          integrationPoint: NOT_AN_INTEGRATION_POINT,
+          start,
+          openTagEnd: tag.end,
+        });
       }
       return tag.end;
     }
     if (name === "plaintext") return -1;
     if (RAW_TEXT_ELEMENTS.has(name)) {
       // The self-closing flag is ignored here: `<script/>` still opens a script.
-      const close = name === "script" ? findScriptEnd(html, tag.end) : findRawTextEnd(html, tag.end, name);
+      const close =
+        name === "script"
+          ? findScriptEnd(html, tag.end)
+          : findRawTextEnd(html, tag.end, name);
       const endTag = close === -1 ? undefined : scanTag(html, close + 2);
       if (!endTag || endTag.end === -1) {
-        if (name === "script") handlers.script?.({ start, openTagEnd: tag.end, end: n, terminated: false, ...context() });
+        if (name === "script")
+          handlers.script?.({
+            start,
+            openTagEnd: tag.end,
+            end: n,
+            terminated: false,
+            ...context(),
+          });
         return -1;
       }
-      if (name === "script") handlers.script?.({ start, openTagEnd: tag.end, end: endTag.end, terminated: true, ...context() });
+      if (name === "script")
+        handlers.script?.({
+          start,
+          openTagEnd: tag.end,
+          end: endTag.end,
+          terminated: true,
+          ...context(),
+        });
       rawElement = { name, close, end: endTag.end };
       return endTag.end;
     }
@@ -752,28 +1065,57 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
     else if (isPreformatted(name)) openPreformattedElement(name);
     else if (name === "table") openTable();
     // In a select, end tags other than its own are ignored, so `</pre>` may not close the `<pre>` either.
-    if ((SCOPE_BOUNDARY_ELEMENTS.has(name) || name === "select") && openPreformatted > 0) preformatted().sticky = true;
+    if (
+      (SCOPE_BOUNDARY_ELEMENTS.has(name) || name === "select") &&
+      openPreformatted > 0
+    )
+      preformatted().sticky = true;
     if (stack.length > 0 && !VOID_ELEMENTS.has(name)) {
-      push({ name, namespace: "html", integrationPoint: NOT_AN_INTEGRATION_POINT, start, openTagEnd: tag.end });
+      push({
+        name,
+        namespace: "html",
+        integrationPoint: NOT_AN_INTEGRATION_POINT,
+        start,
+        openTagEnd: tag.end,
+      });
     }
     return tag.end;
   };
 
   const startForeignElement = (start: number, tag: ScannedTag): number => {
     const { name } = tag;
-    const breaksOut = BREAKOUT_ELEMENTS.has(name) ||
-      (name === "font" && readStartTagAttributes(html, start)
-        .some((attribute) => attribute.name === "color" || attribute.name === "face" || attribute.name === "size"));
+    const breaksOut =
+      BREAKOUT_ELEMENTS.has(name) ||
+      (name === "font" &&
+        readStartTagAttributes(html, start).some(
+          (attribute) =>
+            attribute.name === "color" ||
+            attribute.name === "face" ||
+            attribute.name === "size",
+        ));
     if (breaksOut) {
       breakOutOfForeignContent(start);
       return startHtmlElement(start, tag);
     }
     if (tag.selfClosing) {
-      if (name === "script") handlers.script?.({ start, openTagEnd: tag.end, end: tag.end, terminated: true, ...context() });
+      if (name === "script")
+        handlers.script?.({
+          start,
+          openTagEnd: tag.end,
+          end: tag.end,
+          terminated: true,
+          ...context(),
+        });
       return tag.end;
     }
     const namespace = stack[stack.length - 1].namespace;
-    push({ name, namespace, integrationPoint: integrationPointOf(namespace, name, start), start, openTagEnd: tag.end });
+    push({
+      name,
+      namespace,
+      integrationPoint: integrationPointOf(namespace, name, start),
+      start,
+      openTagEnd: tag.end,
+    });
     return tag.end;
   };
 
@@ -783,7 +1125,11 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
    * `annotation-xml`) are special and scope boundaries, so the walk stops at
    * them; other foreign elements are passed over.
    */
-  const endElementWithHtmlRules = (name: string, tokenStart: number, end: number): void => {
+  const endElementWithHtmlRules = (
+    name: string,
+    tokenStart: number,
+    end: number,
+  ): void => {
     if (name === "template") {
       // `</template>` closes the nearest open template, whatever is inside it.
       for (let k = stack.length - 1; k >= 0; k--) {
@@ -806,8 +1152,16 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
           popTo(k, tokenStart, end, true);
           return;
         }
-        if (closesInScope ? SCOPE_BOUNDARY_ELEMENTS.has(entry.name) : SPECIAL_ELEMENTS.has(entry.name)) return;
-      } else if (entry.integrationPoint !== NOT_AN_INTEGRATION_POINT || entry.name === "annotation-xml") {
+        if (
+          closesInScope
+            ? SCOPE_BOUNDARY_ELEMENTS.has(entry.name)
+            : SPECIAL_ELEMENTS.has(entry.name)
+        )
+          return;
+      } else if (
+        entry.integrationPoint !== NOT_AN_INTEGRATION_POINT ||
+        entry.name === "annotation-xml"
+      ) {
         return;
       }
     }
@@ -818,7 +1172,12 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
     // end tag may close an outer element, and the foreign content with it.
     // `</body>`, `</html>`, and `</head>` only change the insertion mode, and
     // `</pre>` with no `<pre>` open matches nothing either.
-    if (RAW_TEXT_ELEMENTS.has(name) || VOID_ELEMENTS.has(name) || name === "plaintext") return;
+    if (
+      RAW_TEXT_ELEMENTS.has(name) ||
+      VOID_ELEMENTS.has(name) ||
+      name === "plaintext"
+    )
+      return;
     if (name === "body" || name === "html" || name === "head") return;
     if (isPreformatted(name) && preformatted()[name] === 0) return;
     lost = true;
@@ -836,10 +1195,15 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
       // Rules for parsing tokens in foreign content.
       if (name === "br" || name === "p") {
         breakOutOfForeignContent(tokenStart);
-        if (name === "p" && stack.length > 0) endElementWithHtmlRules(name, tokenStart, end);
+        if (name === "p" && stack.length > 0)
+          endElementWithHtmlRules(name, tokenStart, end);
         return;
       }
-      for (let k = stack.length - 1; k >= 0 && stack[k].namespace !== "html"; k--) {
+      for (
+        let k = stack.length - 1;
+        k >= 0 && stack[k].namespace !== "html";
+        k--
+      ) {
         if (stack[k].name === name) {
           popTo(k, tokenStart, end, true);
           return;
@@ -862,7 +1226,9 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
       // Text before the tag carries the context it was parsed in.
       flushText(start);
       rawElement = null;
-      const resume = startTagUsesHtmlRules(tag.name) ? startHtmlElement(start, tag) : startForeignElement(start, tag);
+      const resume = startTagUsesHtmlRules(tag.name)
+        ? startHtmlElement(start, tag)
+        : startForeignElement(start, tag);
       if (lost) return giveUpAt(start);
       if (resume === -1) return endAt(start);
       emitMarkup("tag", start, tag.end, tag.name);
@@ -912,17 +1278,27 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
     if (next === BANG) {
       if (html.startsWith("--", start + 2)) {
         const end = findCommentEnd(html, start);
-        handlers.comment?.({ start, end: end === -1 ? n : end, terminated: end !== -1, ...context() });
+        handlers.comment?.({
+          start,
+          end: end === -1 ? n : end,
+          terminated: end !== -1,
+          ...context(),
+        });
         if (end === -1) return endAt(start);
         emitMarkup("markup", start, end);
         i = html.indexOf("<", end);
         continue;
       }
       const current = stack[stack.length - 1];
-      if (current && current.namespace !== "html" && html.startsWith("[CDATA[", start + 2)) {
+      if (
+        current &&
+        current.namespace !== "html" &&
+        html.startsWith("[CDATA[", start + 2)
+      ) {
         // Parsers disagree on CDATA directly inside an integration point
         // (`<svg><title><![CDATA[`), so the scan stops there.
-        if (current.integrationPoint !== NOT_AN_INTEGRATION_POINT) return giveUpAt(start);
+        if (current.integrationPoint !== NOT_AN_INTEGRATION_POINT)
+          return giveUpAt(start);
         // A CDATA section is text in foreign content.
         const close = html.indexOf("]]>", start + 9);
         if (close === -1) return endAt(start);
@@ -993,9 +1369,11 @@ export const removeHtmlRanges = (
   };
   for (const range of sorted) {
     if (range.start < cursor) continue;
-    if (mappedIndex === -1 && index <= range.start) mappedIndex = length + Math.max(0, index - cursor);
+    if (mappedIndex === -1 && index <= range.start)
+      mappedIndex = length + Math.max(0, index - cursor);
     write(html.slice(cursor, range.start));
-    if (range.separate || PENDING_LOOKAHEAD_RE.test(tail)) write(SEAM_SEPARATOR);
+    if (range.separate || PENDING_LOOKAHEAD_RE.test(tail))
+      write(SEAM_SEPARATOR);
     cursor = range.end;
   }
   if (mappedIndex === -1) mappedIndex = length + Math.max(0, index - cursor);

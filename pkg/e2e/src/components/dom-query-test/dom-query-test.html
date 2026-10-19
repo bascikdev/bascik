@@ -1,5 +1,4 @@
 <div class="wrapper">
-
   <!--
     Sentinels: declare every class name the JS may add at runtime so bascik
     includes them in the scoped class map. Also declares the "found" state
@@ -10,12 +9,22 @@
   <div id="result-box" class="result-box">No query yet</div>
   <div class="card">Card 1</div>
   <div class="card">Card 2</div>
-  <input name="username" type="hidden" value="alice" title="Hidden username field" aria-label="Hidden username field">
+  <input
+    name="username"
+    type="hidden"
+    value="alice"
+    title="Hidden username field"
+    aria-label="Hidden username field"
+  />
 
   <div class="btn-row">
     <button id="query-by-id-btn" type="button">getElementById</button>
-    <button id="query-by-class-btn" type="button">querySelectorAll .card</button>
-    <button id="query-by-name-btn" type="button">querySelector [name=username]</button>
+    <button id="query-by-class-btn" type="button">
+      querySelectorAll .card
+    </button>
+    <button id="query-by-name-btn" type="button">
+      querySelector [name=username]
+    </button>
     <button id="get-by-class-btn" type="button">getElementsByClassName</button>
   </div>
 
@@ -28,22 +37,28 @@
       el.classList.add("found");
     });
 
-    document.getElementById("query-by-class-btn").addEventListener("click", () => {
-      const cards = document.querySelectorAll(".card");
-      resultBox.textContent = "cards found: " + cards.length;
-      resultBox.classList.add("found");
-    });
+    document
+      .getElementById("query-by-class-btn")
+      .addEventListener("click", () => {
+        const cards = document.querySelectorAll(".card");
+        resultBox.textContent = "cards found: " + cards.length;
+        resultBox.classList.add("found");
+      });
 
-    document.getElementById("query-by-name-btn").addEventListener("click", () => {
-      const inp = document.querySelector("[name='username']");
-      resultBox.textContent = "name found: " + (inp ? inp.value : "null");
-      resultBox.classList.add("found");
-    });
+    document
+      .getElementById("query-by-name-btn")
+      .addEventListener("click", () => {
+        const inp = document.querySelector("[name='username']");
+        resultBox.textContent = "name found: " + (inp ? inp.value : "null");
+        resultBox.classList.add("found");
+      });
 
-    document.getElementById("get-by-class-btn").addEventListener("click", () => {
-      const cards = document.getElementsByClassName("card");
-      resultBox.textContent = "byClassName: " + cards.length;
-      resultBox.classList.add("found");
-    });
+    document
+      .getElementById("get-by-class-btn")
+      .addEventListener("click", () => {
+        const cards = document.getElementsByClassName("card");
+        resultBox.textContent = "byClassName: " + cards.length;
+        resultBox.classList.add("found");
+      });
   </script>
 </div>

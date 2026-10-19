@@ -18,16 +18,31 @@ const { invokeMock, configState } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   configState: {
     base: "/",
-    http: { httpCache: false, tls: { enabled: false }, rateLimit: false, hostname: "localhost" },
-    scripts: { timeout: 30000, onServerScriptError: "error" as "error" | "warn" | "ignore" },
+    http: {
+      httpCache: false,
+      tls: { enabled: false },
+      rateLimit: false,
+      hostname: "localhost",
+    },
+    scripts: {
+      timeout: 30000,
+      onServerScriptError: "error" as "error" | "warn" | "ignore",
+    },
     logging: { level: "silent", requests: false },
     isProdServer: true,
     isBuild: false,
-    directory: { pages: "src/pages", components: ["src/components"], out: "dist" },
+    directory: {
+      pages: "src/pages",
+      components: ["src/components"],
+      out: "dist",
+    },
   },
 }));
 
-vi.mock("./config.js", () => ({ BascikConfig: configState, shouldLog: () => false }));
+vi.mock("./config.js", () => ({
+  BascikConfig: configState,
+  shouldLog: () => false,
+}));
 vi.mock("./script-registry.js", () => ({
   scriptRegistry: { invoke: invokeMock, clear: vi.fn() },
 }));
@@ -52,7 +67,11 @@ import { mem } from "./mem.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import { htmlHasServerScripts, planServerScripts } from "./server-scripts.ts";
 
-type Deferred = { promise: Promise<{ ok: true; value: string }>; resolve: (v: string) => void; reject: (e: Error) => void };
+type Deferred = {
+  promise: Promise<{ ok: true; value: string }>;
+  resolve: (v: string) => void;
+  reject: (e: Error) => void;
+};
 const deferred = (): Deferred => {
   let resolve!: (v: string) => void;
   let reject!: (e: Error) => void;
@@ -69,7 +88,8 @@ const routeInvokes = (routes: Record<string, Deferred | { fail: Error }>) => {
     const src = decodeURIComponent(String(specifier));
     for (const [marker, target] of Object.entries(routes)) {
       if (src.includes(marker)) {
-        if ("fail" in target) return { ok: false, error: target.fail, isNetworkReset: false };
+        if ("fail" in target)
+          return { ok: false, error: target.fail, isNetworkReset: false };
         return target.promise;
       }
     }
@@ -77,7 +97,10 @@ const routeInvokes = (routes: Record<string, Deferred | { fail: Error }>) => {
   });
 };
 
-type Call = ["respond", number, Record<string, string | number>] | ["write", Buffer] | ["end", Buffer | undefined];
+type Call =
+  | ["respond", number, Record<string, string | number>]
+  | ["write", Buffer]
+  | ["end", Buffer | undefined];
 /**
  * Fake BascikResponse with a real listener table so tests can fire `drain`
  * and `close`. `writeReturns` is consulted per write (default true).
@@ -85,28 +108,44 @@ type Call = ["respond", number, Record<string, string | number>] | ["write", Buf
 const makeRes = (writeReturns: boolean[] = []) => {
   const calls: Call[] = [];
   const listeners = new Map<string, Set<() => void>>();
-  const emit = (event: string) => { for (const cb of [...(listeners.get(event) ?? [])]) cb(); };
+  const emit = (event: string) => {
+    for (const cb of [...(listeners.get(event) ?? [])]) cb();
+  };
   const res = {
     headersSent: false,
     destroyed: false,
     writable: {} as NodeJS.WritableStream,
-    respond: vi.fn((status: number, headers: Record<string, string | number>) => {
-      res.headersSent = true;
-      calls.push(["respond", status, headers]);
-    }),
+    respond: vi.fn(
+      (status: number, headers: Record<string, string | number>) => {
+        res.headersSent = true;
+        calls.push(["respond", status, headers]);
+      },
+    ),
     write: vi.fn((chunk: string | Buffer) => {
-      calls.push(["write", Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
+      calls.push([
+        "write",
+        Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
+      ]);
       return writeReturns.length > 0 ? writeReturns.shift()! : true;
     }),
     end: vi.fn((chunk?: string | Buffer) => {
-      calls.push(["end", chunk === undefined ? undefined : Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
+      calls.push([
+        "end",
+        chunk === undefined
+          ? undefined
+          : Buffer.isBuffer(chunk)
+            ? chunk
+            : Buffer.from(chunk),
+      ]);
     }),
     close: vi.fn(),
     on: vi.fn((event: string, cb: () => void) => {
       if (!listeners.has(event)) listeners.set(event, new Set());
       listeners.get(event)!.add(cb);
     }),
-    off: vi.fn((event: string, cb: () => void) => { listeners.get(event)?.delete(cb); }),
+    off: vi.fn((event: string, cb: () => void) => {
+      listeners.get(event)?.delete(cb);
+    }),
     emit,
     listenerCount: (event: string) => listeners.get(event)?.size ?? 0,
   };
@@ -119,11 +158,17 @@ const makePage = (content: string) => ({
   content: Buffer.from(content),
   compressedContent: undefined,
   // Store-time plan (prompt 67): the handler never re-plans.
-  serverScriptPlan: htmlHasServerScripts(content) ? planServerScripts(content, "/abs/src/pages/x.html") : undefined,
+  serverScriptPlan: htmlHasServerScripts(content)
+    ? planServerScripts(content, "/abs/src/pages/x.html")
+    : undefined,
   usedComponentsSet: new Set<string>(),
 });
 
-const serve = async (content: string, method = "GET", writeReturns: boolean[] = []) => {
+const serve = async (
+  content: string,
+  method = "GET",
+  writeReturns: boolean[] = [],
+) => {
   (mem.getPage as ReturnType<typeof vi.fn>).mockReturnValue(makePage(content));
   const handler = createRequestHandler();
   const { res, calls } = makeRes(writeReturns);
@@ -135,8 +180,14 @@ const serve = async (content: string, method = "GET", writeReturns: boolean[] = 
 };
 
 const body = (calls: Call[]): string =>
-  Buffer.concat(calls.flatMap((c) => (c[0] === "write" ? [c[1]] : c[0] === "end" && c[1] ? [c[1]] : []))).toString();
-const respondCall = (calls: Call[]) => calls.find((c) => c[0] === "respond") as ["respond", number, Record<string, string | number>] | undefined;
+  Buffer.concat(
+    calls.flatMap((c) =>
+      c[0] === "write" ? [c[1]] : c[0] === "end" && c[1] ? [c[1]] : [],
+    ),
+  ).toString();
+const respondCall = (calls: Call[]) =>
+  calls.find((c) => c[0] === "respond") as
+    ["respond", number, Record<string, string | number>] | undefined;
 const tick = () => new Promise<void>((r) => setImmediate(r));
 
 beforeEach(() => {
@@ -165,7 +216,8 @@ describe("step 1: a data-bascik-stream script flushes the prefix before it resol
     expect(r![2]).not.toHaveProperty("content-encoding");
     expect(r![2]["cache-control"]).toBe("private, no-store");
 
-    const firstWrite = calls.find((c) => c[0] === "write") as ["write", Buffer] | undefined;
+    const firstWrite = calls.find((c) => c[0] === "write") as
+      ["write", Buffer] | undefined;
     expect(firstWrite).toBeDefined();
     expect(firstWrite![1].toString()).toContain("<p>before</p>");
     expect(firstWrite![1].toString()).not.toContain("<p>slow</p>");
@@ -181,7 +233,10 @@ describe("step 1: a data-bascik-stream script flushes the prefix before it resol
 });
 
 describe("step 2: data-bascik-server pages are byte-identical to today", () => {
-  const SERVER_PAGE = STREAM_PAGE.replace("data-bascik-stream", "data-bascik-server");
+  const SERVER_PAGE = STREAM_PAGE.replace(
+    "data-bascik-stream",
+    "data-bascik-server",
+  );
   for (const policy of ["error", "warn", "ignore"] as const) {
     it(`buffers with content-length and never calls write (onServerScriptError=${policy})`, async () => {
       configState.scripts.onServerScriptError = policy;
@@ -239,7 +294,7 @@ describe("step 2a: mixed page ordering and failure semantics", () => {
   });
 
   it("a stream failure under 'error' stays 200, empties the slot, logs, and completes the document", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const s = deferred();
       routeInvokes({ "/*S*/": s, "/*T*/": { fail: new Error("stream boom") } });
@@ -250,7 +305,9 @@ describe("step 2a: mixed page ordering and failure semantics", () => {
       expect(body(calls)).toBe("<p>a</p><i>S</i><p>b</p><p>c</p>");
       expect(res.end).toHaveBeenCalledTimes(1);
       expect(errorSpy).toHaveBeenCalled();
-      expect(errorSpy.mock.calls.some((c) => String(c[0]).includes("stream boom"))).toBe(true);
+      expect(
+        errorSpy.mock.calls.some((c) => String(c[0]).includes("stream boom")),
+      ).toBe(true);
     } finally {
       errorSpy.mockRestore();
     }
@@ -297,10 +354,16 @@ describe("prompt 66: backpressure and disconnect abort", () => {
   it("client close aborts unfinished jobs through the signal and stops all writes", async () => {
     let observedSignal: AbortSignal | undefined;
     const t1 = deferred();
-    invokeMock.mockImplementation(async (_spec: string, _ctx: unknown, options: { signal?: AbortSignal }) => {
-      observedSignal = options.signal;
-      return t1.promise;
-    });
+    invokeMock.mockImplementation(
+      async (
+        _spec: string,
+        _ctx: unknown,
+        options: { signal?: AbortSignal },
+      ) => {
+        observedSignal = options.signal;
+        return t1.promise;
+      },
+    );
     const { res, calls, done } = await serve(TWO, "GET");
     await tick();
     expect(observedSignal).toBeDefined();
@@ -324,7 +387,13 @@ describe("prompt 66: backpressure and disconnect abort", () => {
     const t2 = deferred();
     routeInvokes({ "/*T1*/": t1, "/*T2*/": t2 });
     // Hold the FINAL static write open by returning false for it.
-    const { res, done } = await serve(TWO, "GET", [true, true, true, true, false]);
+    const { res, done } = await serve(TWO, "GET", [
+      true,
+      true,
+      true,
+      true,
+      false,
+    ]);
     t1.resolve("<i>1</i>");
     t2.resolve("<i>2</i>");
     await tick();
@@ -360,7 +429,11 @@ describe("prompt 84: stream jobs are dispatched through a bounded lookahead wind
   const startedMarkers = (): string[] =>
     invokeMock.mock.calls
       .map((c) => decodeURIComponent(String(c[0])))
-      .flatMap((src) => (["/*T1*/", "/*T2*/", "/*T3*/"] as const).filter((m) => src.includes(m)));
+      .flatMap((src) =>
+        (["/*T1*/", "/*T2*/", "/*T3*/"] as const).filter((m) =>
+          src.includes(m),
+        ),
+      );
 
   it("under a stalled sink, a stream job beyond the lookahead window does not start until earlier bytes are written", async () => {
     const t1 = deferred();
@@ -390,7 +463,9 @@ describe("prompt 84: stream jobs are dispatched through a bounded lookahead wind
 
     t3.resolve("<i>3</i>");
     await done;
-    expect(body(calls)).toBe("<p>a</p><i>1</i><p>b</p><i>2</i><p>c</p><i>3</i><p>d</p>");
+    expect(body(calls)).toBe(
+      "<p>a</p><i>1</i><p>b</p><i>2</i><p>c</p><i>3</i><p>d</p>",
+    );
     expect(res.end).toHaveBeenCalledTimes(1);
   });
 
@@ -411,7 +486,9 @@ describe("prompt 84: stream jobs are dispatched through a bounded lookahead wind
     t2.resolve("<i>2</i>");
     t3.resolve("<i>3</i>");
     await done;
-    expect(body(calls)).toBe("<p>a</p><i>1</i><p>b</p><i>2</i><p>c</p><i>3</i><p>d</p>");
+    expect(body(calls)).toBe(
+      "<p>a</p><i>1</i><p>b</p><i>2</i><p>c</p><i>3</i><p>d</p>",
+    );
   });
 
   it("client close while stalled never dispatches the not-yet-started jobs", async () => {
@@ -447,7 +524,10 @@ describe("prompt 67: the plan is precomputed, never rebuilt on the request path"
     const handler = createRequestHandler();
     for (let i = 0; i < 2; i++) {
       const { res } = makeRes();
-      const done = handler({ method: "GET", path: "/x", headers: {}, remoteIp: "127.0.0.1" }, res as any);
+      const done = handler(
+        { method: "GET", path: "/x", headers: {}, remoteIp: "127.0.0.1" },
+        res as any,
+      );
       t.resolve("<p>slow</p>");
       await done;
       expect(res.end).toHaveBeenCalledTimes(1);
@@ -458,11 +538,17 @@ describe("prompt 67: the plan is precomputed, never rebuilt on the request path"
   });
 
   it("a page whose stored plan carries an error yields a 500 for that page only", async () => {
-    const page = { ...makePage("<p>fine</p>"), serverScriptPlan: { error: new Error("conflicting directives") } };
+    const page = {
+      ...makePage("<p>fine</p>"),
+      serverScriptPlan: { error: new Error("conflicting directives") },
+    };
     (mem.getPage as ReturnType<typeof vi.fn>).mockReturnValue(page);
     const handler = createRequestHandler();
     const { res, calls } = makeRes();
-    await handler({ method: "GET", path: "/x", headers: {}, remoteIp: "127.0.0.1" }, res as any);
+    await handler(
+      { method: "GET", path: "/x", headers: {}, remoteIp: "127.0.0.1" },
+      res as any,
+    );
     expect(respondCall(calls)![1]).toBe(500);
   });
 });

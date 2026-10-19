@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { readdir, readFile } from 'node:fs/promises';
-import path from 'node:path';
+import { describe, it, expect } from "vitest";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
 
 /**
  * Link-integrity test.
@@ -13,9 +13,9 @@ import path from 'node:path';
  * pages (prompts 56, 57, 58) cannot leave stale links behind.
  */
 
-const DOCS_ROOT = path.resolve(import.meta.dirname, '../..');
-const CONTENT_DIR = path.join(DOCS_ROOT, 'content');
-const PAGES_DIR = path.join(DOCS_ROOT, 'src', 'pages');
+const DOCS_ROOT = path.resolve(import.meta.dirname, "../..");
+const CONTENT_DIR = path.join(DOCS_ROOT, "content");
+const PAGES_DIR = path.join(DOCS_ROOT, "src", "pages");
 
 async function walk(dir: string, ext: string): Promise<string[]> {
   const out: string[] = [];
@@ -38,23 +38,25 @@ async function walk(dir: string, ext: string): Promise<string[]> {
 
 /** Collect the set of valid internal routes from the pages directory. */
 async function collectRoutes(): Promise<Set<string>> {
-  const routes = new Set<string>(['/']);
-  const pages = await walk(PAGES_DIR, '.html');
+  const routes = new Set<string>(["/"]);
+  const pages = await walk(PAGES_DIR, ".html");
   for (const page of pages) {
-    const rel = path.relative(PAGES_DIR, page).replace(/\\/g, '/');
-    const withoutExt = rel.replace(/\.html$/, '');
-    const route = withoutExt === 'index' ? '/' : `/${withoutExt.replace(/\/index$/, '')}`;
+    const rel = path.relative(PAGES_DIR, page).replace(/\\/g, "/");
+    const withoutExt = rel.replace(/\.html$/, "");
+    const route =
+      withoutExt === "index" ? "/" : `/${withoutExt.replace(/\/index$/, "")}`;
     routes.add(route);
     // Directory-style trailing-slash variant, e.g. /testing/ for /testing/index.html
-    if (withoutExt.endsWith('/index')) {
-      routes.add(`/${withoutExt.replace(/\/index$/, '')}/`);
+    if (withoutExt.endsWith("/index")) {
+      routes.add(`/${withoutExt.replace(/\/index$/, "")}/`);
     }
   }
   return routes;
 }
 
 /** Asset extensions that are not docs pages. */
-const ASSET_EXT = /\.(css|ico|svg|woff2?|jpe?g|png|gif|webp|webmanifest|xml|txt|js|mjs|json|zip)$/i;
+const ASSET_EXT =
+  /\.(css|ico|svg|woff2?|jpe?g|png|gif|webp|webmanifest|xml|txt|js|mjs|json|zip)$/i;
 
 /**
  * Strip regions that contain illustrative code, not real site links:
@@ -63,16 +65,28 @@ const ASSET_EXT = /\.(css|ico|svg|woff2?|jpe?g|png|gif|webp|webmanifest|xml|txt|
 function stripCode(text: string, isHtml: boolean): string {
   if (!isHtml) {
     return text
-      .replace(/```[\s\S]*?```/g, '')
-      .replace(/~~~[\s\S]*?~~~/g, '')
-      .replace(/`[^`\n]*`/g, '');
+      .replace(/```[\s\S]*?```/g, "")
+      .replace(/~~~[\s\S]*?~~~/g, "")
+      .replace(/`[^`\n]*`/g, "");
   }
-  // Not a sanitizer: this only hides first-party example code from the link
-  // scan, so a leftover fragment can at worst add a link to check.
-  // codeql[js/incomplete-multi-character-sanitization]
-  return text
-    .replace(/<script[\s\S]*?<\/script[^>]*>/gi, '')
-    .replace(/<code-block[\s\S]*?<\/code-block>/g, '');
+  const visible: string[] = [];
+  const lower = text.toLowerCase();
+  const opening = /<(script|code-block)\b[^>]*>/gi;
+  let from = 0;
+  let match: RegExpExecArray | null;
+  while ((match = opening.exec(text))) {
+    if (match.index < from) continue;
+    visible.push(text.slice(from, match.index));
+    const name = match[1].toLowerCase();
+    let close = lower.indexOf(`</${name}`, opening.lastIndex);
+    while (close >= 0 && !/[\s/>]/.test(lower[close + name.length + 2] ?? ""))
+      close = lower.indexOf(`</${name}`, close + name.length + 2);
+    const end = close < 0 ? -1 : text.indexOf(">", close + name.length + 2);
+    from = end < 0 ? text.length : end + 1;
+    opening.lastIndex = from;
+  }
+  visible.push(text.slice(from));
+  return visible.join(" ");
 }
 
 /** Extract internal links from a source file's text. */
@@ -85,24 +99,30 @@ function extractLinks(text: string, isHtml: boolean): string[] {
   let m: RegExpExecArray | null;
   while ((m = mdRe.exec(prose))) links.push(m[1]);
   while ((m = hrefRe.exec(prose))) links.push(m[1]);
-  return links.filter((link) => !ASSET_EXT.test(link) && !link.includes('${'));
+  return links.filter((link) => !ASSET_EXT.test(link) && !link.includes("${"));
 }
 
-describe('link integrity', () => {
-  it('every internal link in content and pages resolves to a real page', async () => {
+describe("link integrity", () => {
+  it("does not join source around script and code-block boundaries", () => {
+    const source =
+      '<a hr<script>ignored</script>ef="/fake"><script>"<a href=\'/hidden\'>"</script\t\n data-test><code-block><a href="/example"></code-block><a href="/real">real</a>';
+    expect(extractLinks(source, true)).toEqual(["/real"]);
+  });
+
+  it("every internal link in content and pages resolves to a real page", async () => {
     const routes = await collectRoutes();
     const files = [
-      ...(await walk(CONTENT_DIR, '.md')),
-      ...(await walk(PAGES_DIR, '.html')),
+      ...(await walk(CONTENT_DIR, ".md")),
+      ...(await walk(PAGES_DIR, ".html")),
     ];
     expect(files.length).toBeGreaterThan(0);
 
     const broken: { file: string; link: string }[] = [];
     for (const file of files) {
-      const text = await readFile(file, 'utf8');
-      const isHtml = file.endsWith('.html');
+      const text = await readFile(file, "utf8");
+      const isHtml = file.endsWith(".html");
       for (const link of extractLinks(text, isHtml)) {
-        const clean = link.split('#')[0].replace(/\/$/, '') || '/';
+        const clean = link.split("#")[0].replace(/\/$/, "") || "/";
         if (!routes.has(clean) && !routes.has(link)) {
           broken.push({ file: path.relative(DOCS_ROOT, file), link });
         }

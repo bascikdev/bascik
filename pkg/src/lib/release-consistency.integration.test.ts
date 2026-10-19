@@ -36,7 +36,10 @@ import {
 } from "./build-fixtures.ts";
 import { computePageCspHashes } from "./csp-hashes.ts";
 
-const PKG_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "../index.ts");
+const PKG_ENTRY = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../index.ts",
+);
 
 // ─── Verifier (test-owned, static) ───────────────────────────────────────────
 
@@ -87,7 +90,10 @@ const normalizeAssetRef = (dir: string, ref: string): string => {
 };
 
 /** Every manifest.files[rel] must exist on disk with matching hash and size. */
-const verifyManifestCorrespondence = (candidate: ReleaseCandidate, failures: string[]): void => {
+const verifyManifestCorrespondence = (
+  candidate: ReleaseCandidate,
+  failures: string[],
+): void => {
   const manifest = JSON.parse(
     candidate.emittedFiles[".bascik/manifest.json"]?.toString("utf8") ?? "{}",
   ) as { files?: Record<string, { hash: string; size: number }> };
@@ -108,7 +114,10 @@ const verifyManifestCorrespondence = (candidate: ReleaseCandidate, failures: str
 };
 
 /** Every csp-hashes.json route must match the hashes recomputed from emitted HTML. */
-const verifyCspCorrespondence = (candidate: ReleaseCandidate, failures: string[]): void => {
+const verifyCspCorrespondence = (
+  candidate: ReleaseCandidate,
+  failures: string[],
+): void => {
   const csp = JSON.parse(
     candidate.emittedFiles[".bascik/csp-hashes.json"]?.toString("utf8") ?? "{}",
   ) as Record<string, { scripts: string[]; styles: string[] }>;
@@ -130,9 +139,13 @@ const verifyCspCorrespondence = (candidate: ReleaseCandidate, failures: string[]
 };
 
 /** Every sidecar placeholder must resolve; every sidecar entry must be referenced. */
-const verifySidecarCorrespondence = (candidate: ReleaseCandidate, failures: string[]): void => {
+const verifySidecarCorrespondence = (
+  candidate: ReleaseCandidate,
+  failures: string[],
+): void => {
   const sidecar = JSON.parse(
-    candidate.emittedFiles[".bascik/server-scripts.json"]?.toString("utf8") ?? '{"scripts":{}}',
+    candidate.emittedFiles[".bascik/server-scripts.json"]?.toString("utf8") ??
+      '{"scripts":{}}',
   ) as { scripts?: Record<string, { mode?: string }> };
   const scripts = sidecar.scripts ?? {};
 
@@ -163,7 +176,10 @@ const verifySidecarCorrespondence = (candidate: ReleaseCandidate, failures: stri
 };
 
 /** Every HTML src/href reference must resolve within the release. */
-const verifyAssetReferences = (candidate: ReleaseCandidate, failures: string[]): void => {
+const verifyAssetReferences = (
+  candidate: ReleaseCandidate,
+  failures: string[],
+): void => {
   for (const [rel, buf] of Object.entries(candidate.emittedFiles)) {
     if (!rel.endsWith(".html")) continue;
     const html = buf.toString("utf8");
@@ -182,7 +198,10 @@ const verifyAssetReferences = (candidate: ReleaseCandidate, failures: string[]):
 };
 
 /** Declared provenance (roots, sources, API modules, deps, symlink targets) must resolve. */
-const verifyPinnedProvenance = (candidate: ReleaseCandidate, failures: string[]): void => {
+const verifyPinnedProvenance = (
+  candidate: ReleaseCandidate,
+  failures: string[],
+): void => {
   const { projectRoot, provenance } = candidate;
   for (const src of provenance.sources) {
     if (!existsSync(resolve(projectRoot, src))) {
@@ -207,7 +226,9 @@ const verifyPinnedProvenance = (candidate: ReleaseCandidate, failures: string[])
 };
 
 /** Orchestrator: collects all failures, never throws mid-way. */
-export const verifyReleaseCandidate = (candidate: ReleaseCandidate): VerificationResult => {
+export const verifyReleaseCandidate = (
+  candidate: ReleaseCandidate,
+): VerificationResult => {
   const failures: string[] = [];
   verifyManifestCorrespondence(candidate, failures);
   verifyCspCorrespondence(candidate, failures);
@@ -261,13 +282,25 @@ const writeReleaseFixture = async (root: string): Promise<void> => {
   </body></html>`,
   );
 
-  await writeFixtureFile(root, "src/pages/assets/logo.txt", "raw asset bytes\n");
+  await writeFixtureFile(
+    root,
+    "src/pages/assets/logo.txt",
+    "raw asset bytes\n",
+  );
 
   // API module (served at runtime; pinned as source provenance, not emitted).
-  await writeFixtureFile(root, "src/api/hello.ts", "export const GET = () => new Response('hi');");
+  await writeFixtureFile(
+    root,
+    "src/api/hello.ts",
+    "export const GET = () => new Response('hi');",
+  );
 
   // Local dependency.
-  await writeFixtureFile(root, "node_modules/local-dep/index.js", "module.exports = 1;");
+  await writeFixtureFile(
+    root,
+    "node_modules/local-dep/index.js",
+    "module.exports = 1;",
+  );
   await writeFixtureFile(
     root,
     "node_modules/local-dep/package.json",
@@ -275,10 +308,16 @@ const writeReleaseFixture = async (root: string): Promise<void> => {
   );
 
   // Reachable symlink target.
-  await symlink(join(root, "src/components/card.html"), join(root, "linked-card.html"));
+  await symlink(
+    join(root, "src/components/card.html"),
+    join(root, "linked-card.html"),
+  );
 };
 
-const makeCandidate = (projectRoot: string, emitted: Record<string, Buffer>): ReleaseCandidate => ({
+const makeCandidate = (
+  projectRoot: string,
+  emitted: Record<string, Buffer>,
+): ReleaseCandidate => ({
   projectRoot,
   distDir: join(projectRoot, "dist"),
   emittedFiles: emitted,
@@ -290,8 +329,12 @@ const makeCandidate = (projectRoot: string, emitted: Record<string, Buffer>): Re
   },
 });
 
-const cloneEmitted = (emitted: Record<string, Buffer>): Record<string, Buffer> =>
-  Object.fromEntries(Object.entries(emitted).map(([k, v]) => [k, Buffer.from(v)]));
+const cloneEmitted = (
+  emitted: Record<string, Buffer>,
+): Record<string, Buffer> =>
+  Object.fromEntries(
+    Object.entries(emitted).map(([k, v]) => [k, Buffer.from(v)]),
+  );
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -313,7 +356,9 @@ describe("packet L1: cross-artifact release candidate verifier", () => {
 
   describe("step 1: verifier oracle and negative controls", () => {
     it("accepts the unmodified baseline release (positive oracle)", () => {
-      const result = verifyReleaseCandidate(makeCandidate(baselineRoot, cloneEmitted(baselineEmitted)));
+      const result = verifyReleaseCandidate(
+        makeCandidate(baselineRoot, cloneEmitted(baselineEmitted)),
+      );
       expect(result.ok).toBe(true);
       expect(result.failures).toEqual([]);
     });
@@ -321,55 +366,85 @@ describe("packet L1: cross-artifact release candidate verifier", () => {
     it("rejects a missing referenced asset (negative control)", () => {
       const emitted = cloneEmitted(baselineEmitted);
       delete emitted["assets/logo.txt"];
-      const result = verifyReleaseCandidate(makeCandidate(baselineRoot, emitted));
+      const result = verifyReleaseCandidate(
+        makeCandidate(baselineRoot, emitted),
+      );
       expect(result.ok).toBe(false);
       expect(result.failures.join("\n")).toMatch(/references missing asset/);
     });
 
     it("rejects a missing script sidecar entry (negative control)", () => {
       const emitted = cloneEmitted(baselineEmitted);
-      const sidecar = JSON.parse(emitted[".bascik/server-scripts.json"].toString("utf8"));
+      const sidecar = JSON.parse(
+        emitted[".bascik/server-scripts.json"].toString("utf8"),
+      );
       const firstId = Object.keys(sidecar.scripts)[0];
       delete sidecar.scripts[firstId];
-      emitted[".bascik/server-scripts.json"] = Buffer.from(JSON.stringify(sidecar), "utf8");
-      const result = verifyReleaseCandidate(makeCandidate(baselineRoot, emitted));
+      emitted[".bascik/server-scripts.json"] = Buffer.from(
+        JSON.stringify(sidecar),
+        "utf8",
+      );
+      const result = verifyReleaseCandidate(
+        makeCandidate(baselineRoot, emitted),
+      );
       expect(result.ok).toBe(false);
       expect(result.failures.join("\n")).toMatch(/has no sidecar entry/);
     });
 
     it("rejects a stale sidecar mode (negative control)", () => {
       const emitted = cloneEmitted(baselineEmitted);
-      const sidecar = JSON.parse(emitted[".bascik/server-scripts.json"].toString("utf8"));
+      const sidecar = JSON.parse(
+        emitted[".bascik/server-scripts.json"].toString("utf8"),
+      );
       const firstId = Object.keys(sidecar.scripts)[0];
       sidecar.scripts[firstId].mode = "invalid";
-      emitted[".bascik/server-scripts.json"] = Buffer.from(JSON.stringify(sidecar), "utf8");
-      const result = verifyReleaseCandidate(makeCandidate(baselineRoot, emitted));
+      emitted[".bascik/server-scripts.json"] = Buffer.from(
+        JSON.stringify(sidecar),
+        "utf8",
+      );
+      const result = verifyReleaseCandidate(
+        makeCandidate(baselineRoot, emitted),
+      );
       expect(result.ok).toBe(false);
       expect(result.failures.join("\n")).toMatch(/invalid mode/);
     });
 
     it("rejects an incorrect manifest hash (negative control)", () => {
       const emitted = cloneEmitted(baselineEmitted);
-      const manifest = JSON.parse(emitted[".bascik/manifest.json"].toString("utf8"));
+      const manifest = JSON.parse(
+        emitted[".bascik/manifest.json"].toString("utf8"),
+      );
       const firstRel = Object.keys(manifest.files)[0];
       manifest.files[firstRel].hash = "deadbeef";
-      emitted[".bascik/manifest.json"] = Buffer.from(JSON.stringify(manifest), "utf8");
-      const result = verifyReleaseCandidate(makeCandidate(baselineRoot, emitted));
+      emitted[".bascik/manifest.json"] = Buffer.from(
+        JSON.stringify(manifest),
+        "utf8",
+      );
+      const result = verifyReleaseCandidate(
+        makeCandidate(baselineRoot, emitted),
+      );
       expect(result.ok).toBe(false);
       expect(result.failures.join("\n")).toMatch(/manifest hash mismatch/);
     });
 
     it("rejects an incorrect CSP hash (negative control)", () => {
       const emitted = cloneEmitted(baselineEmitted);
-      const csp = JSON.parse(emitted[".bascik/csp-hashes.json"].toString("utf8"));
+      const csp = JSON.parse(
+        emitted[".bascik/csp-hashes.json"].toString("utf8"),
+      );
       const firstRoute = Object.keys(csp)[0];
       if (csp[firstRoute].scripts.length > 0) {
         csp[firstRoute].scripts[0] = "sha256-deadbeef";
       } else {
         csp[firstRoute].styles[0] = "sha256-deadbeef";
       }
-      emitted[".bascik/csp-hashes.json"] = Buffer.from(JSON.stringify(csp), "utf8");
-      const result = verifyReleaseCandidate(makeCandidate(baselineRoot, emitted));
+      emitted[".bascik/csp-hashes.json"] = Buffer.from(
+        JSON.stringify(csp),
+        "utf8",
+      );
+      const result = verifyReleaseCandidate(
+        makeCandidate(baselineRoot, emitted),
+      );
       expect(result.ok).toBe(false);
       expect(result.failures.join("\n")).toMatch(/csp .* hashes mismatch/);
     });
@@ -378,7 +453,9 @@ describe("packet L1: cross-artifact release candidate verifier", () => {
       const emitted = cloneEmitted(baselineEmitted);
       const html = emitted["index.html"].toString("utf8");
       emitted["index.html"] = Buffer.from(`${html}<!-- tampered -->`, "utf8");
-      const result = verifyReleaseCandidate(makeCandidate(baselineRoot, emitted));
+      const result = verifyReleaseCandidate(
+        makeCandidate(baselineRoot, emitted),
+      );
       expect(result.ok).toBe(false);
       expect(result.failures.join("\n")).toMatch(/manifest hash mismatch/);
     });
@@ -392,7 +469,9 @@ describe("packet L1: cross-artifact release candidate verifier", () => {
       };
       const result = verifyReleaseCandidate(candidate);
       expect(result.ok).toBe(false);
-      expect(result.failures.join("\n")).toMatch(/api module .* does not resolve/);
+      expect(result.failures.join("\n")).toMatch(
+        /api module .* does not resolve/,
+      );
     });
   });
 
@@ -421,7 +500,9 @@ describe("packet L1: cross-artifact release candidate verifier", () => {
 
         // Both sidecars must carry a buffered ("server") and a streamed ("stream") entry.
         for (const emitted of [emittedA, emittedB]) {
-          const sidecar = JSON.parse(emitted[".bascik/server-scripts.json"].toString("utf8")) as {
+          const sidecar = JSON.parse(
+            emitted[".bascik/server-scripts.json"].toString("utf8"),
+          ) as {
             scripts: Record<string, { mode: string }>;
           };
           const modes = Object.values(sidecar.scripts).map((e) => e.mode);
@@ -478,15 +559,18 @@ const spawnProdChild = async (
   child.stdout?.on("data", onData);
   child.stderr?.on("data", onData);
 
-  const exitPromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
-    (resolveExit) => {
-      child.once("exit", (code, signal) => resolveExit({ code, signal }));
-    },
-  );
+  const exitPromise = new Promise<{
+    code: number | null;
+    signal: NodeJS.Signals | null;
+  }>((resolveExit) => {
+    child.once("exit", (code, signal) => resolveExit({ code, signal }));
+  });
 
   await new Promise<void>((res, rej) => {
     const timer = setTimeout(() => {
-      rej(new Error(`Prod server failed to boot within 15s. Output:\n${output}`));
+      rej(
+        new Error(`Prod server failed to boot within 15s. Output:\n${output}`),
+      );
     }, 15000);
     const check = () => {
       if (output.includes("Server running at")) {
@@ -494,7 +578,11 @@ const spawnProdChild = async (
         res();
       } else if (child.exitCode !== null) {
         clearTimeout(timer);
-        rej(new Error(`Prod server exited early with code ${child.exitCode}. Output:\n${output}`));
+        rej(
+          new Error(
+            `Prod server exited early with code ${child.exitCode}. Output:\n${output}`,
+          ),
+        );
       } else {
         setTimeout(check, 50);
       }
@@ -503,7 +591,13 @@ const spawnProdChild = async (
   });
 
   const scheme = options.tls ? "https" : "http";
-  return { child, port, url: `${scheme}://localhost:${port}`, output: () => output, exitPromise };
+  return {
+    child,
+    port,
+    url: `${scheme}://localhost:${port}`,
+    output: () => output,
+    exitPromise,
+  };
 };
 
 /** Poll `/_health/ready` until it returns the expected status (200 ready, 503 otherwise). */
@@ -539,11 +633,16 @@ const waitForHealth = async (
     if (status === expectedStatus) return;
     await new Promise((r) => setTimeout(r, 100));
   }
-  throw new Error(`Health check on ${url} never reached status ${expectedStatus}`);
+  throw new Error(
+    `Health check on ${url} never reached status ${expectedStatus}`,
+  );
 };
 
 /** HTTP/1.1 GET helper returning status + body. */
-const httpGet = (url: string, path: string): Promise<{ status: number; body: string }> =>
+const httpGet = (
+  url: string,
+  path: string,
+): Promise<{ status: number; body: string }> =>
   new Promise((resolveReq, reject) => {
     const target = new URL(url);
     const req = http.request(
@@ -552,7 +651,10 @@ const httpGet = (url: string, path: string): Promise<{ status: number; body: str
         const chunks: Buffer[] = [];
         res.on("data", (c) => chunks.push(c as Buffer));
         res.on("end", () =>
-          resolveReq({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }),
+          resolveReq({
+            status: res.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString("utf8"),
+          }),
         );
       },
     );
@@ -561,7 +663,10 @@ const httpGet = (url: string, path: string): Promise<{ status: number; body: str
   });
 
 /** True HTTP/2 GET helper returning status + body. */
-const http2Get = (url: string, path: string): Promise<{ status: number; body: string }> =>
+const http2Get = (
+  url: string,
+  path: string,
+): Promise<{ status: number; body: string }> =>
   new Promise((resolveReq, reject) => {
     const target = new URL(url);
     const client = http2.connect(`https://${target.hostname}:${target.port}`, {
@@ -574,7 +679,10 @@ const http2Get = (url: string, path: string): Promise<{ status: number; body: st
       req.on("data", (c) => chunks.push(c as Buffer));
       req.on("end", () => {
         client.close();
-        resolveReq({ status: Number(headers[":status"] ?? 0), body: Buffer.concat(chunks).toString("utf8") });
+        resolveReq({
+          status: Number(headers[":status"] ?? 0),
+          body: Buffer.concat(chunks).toString("utf8"),
+        });
       });
     });
     req.on("error", (err) => {
@@ -599,14 +707,25 @@ const writeGatedReleaseFixture = async (root: string): Promise<void> => {
     "src/components/card.html",
     `<article class="card"><slot></slot></article>`,
   );
-  await writeFixtureFile(root, "src/api/hello.ts", "export const GET = () => new Response('hi');");
-  await writeFixtureFile(root, "node_modules/local-dep/index.js", "module.exports = 1;");
+  await writeFixtureFile(
+    root,
+    "src/api/hello.ts",
+    "export const GET = () => new Response('hi');",
+  );
+  await writeFixtureFile(
+    root,
+    "node_modules/local-dep/index.js",
+    "module.exports = 1;",
+  );
   await writeFixtureFile(
     root,
     "node_modules/local-dep/package.json",
     JSON.stringify({ name: "local-dep", version: "1.0.0" }),
   );
-  await symlink(join(root, "src/components/card.html"), join(root, "linked-card.html"));
+  await symlink(
+    join(root, "src/components/card.html"),
+    join(root, "linked-card.html"),
+  );
   await writeFixtureFile(
     root,
     "src/pages/index.html",
@@ -668,10 +787,15 @@ describe("packet L2: rejected candidate, activation, drain, rollback", () => {
         const emittedB = await buildRelease(rootB);
 
         // B is a bad candidate: corrupt a manifest hash so the verifier rejects it.
-        const manifest = JSON.parse(emittedB[".bascik/manifest.json"].toString("utf8"));
+        const manifest = JSON.parse(
+          emittedB[".bascik/manifest.json"].toString("utf8"),
+        );
         const firstRel = Object.keys(manifest.files)[0];
         manifest.files[firstRel].hash = "deadbeef";
-        emittedB[".bascik/manifest.json"] = Buffer.from(JSON.stringify(manifest), "utf8");
+        emittedB[".bascik/manifest.json"] = Buffer.from(
+          JSON.stringify(manifest),
+          "utf8",
+        );
         const verdict = verifyReleaseCandidate(makeCandidate(rootB, emittedB));
         expect(verdict.ok).toBe(false);
         expect(verdict.failures.join("\n")).toMatch(/manifest hash mismatch/);
@@ -705,7 +829,12 @@ describe("packet L2: rejected candidate, activation, drain, rollback", () => {
         await buildRelease(rootB);
 
         // Corrupt B's sidecar so production admission rejects it before binding.
-        const sidecarPath = join(rootB, "dist", ".bascik", "server-scripts.json");
+        const sidecarPath = join(
+          rootB,
+          "dist",
+          ".bascik",
+          "server-scripts.json",
+        );
         await writeFile(sidecarPath, "{corrupt", "utf8");
 
         const a = track(await spawnProdChild(rootA));
@@ -732,7 +861,9 @@ describe("packet L2: rejected candidate, activation, drain, rollback", () => {
         ]);
         if (bExit === null) {
           b.kill("SIGKILL");
-          throw new Error(`B child did not exit on corrupt sidecar. Output:\n${bOutput}`);
+          throw new Error(
+            `B child did not exit on corrupt sidecar. Output:\n${bOutput}`,
+          );
         }
         expect(bExit).not.toBe(0);
         expect(bOutput).toMatch(/Failed to load server scripts sidecar/);
@@ -835,10 +966,15 @@ describe("packet L2: rejected candidate, activation, drain, rollback", () => {
 
         // B fails verification; the router keeps A.
         const emittedB = await readEmittedFiles(join(rootB, "dist"));
-        const manifest = JSON.parse(emittedB[".bascik/manifest.json"].toString("utf8"));
+        const manifest = JSON.parse(
+          emittedB[".bascik/manifest.json"].toString("utf8"),
+        );
         const firstRel = Object.keys(manifest.files)[0];
         manifest.files[firstRel].hash = "deadbeef";
-        emittedB[".bascik/manifest.json"] = Buffer.from(JSON.stringify(manifest), "utf8");
+        emittedB[".bascik/manifest.json"] = Buffer.from(
+          JSON.stringify(manifest),
+          "utf8",
+        );
         const verdict = verifyReleaseCandidate(makeCandidate(rootB, emittedB));
         expect(verdict.ok).toBe(false);
 
@@ -959,7 +1095,9 @@ describe("packet L2: rejected candidate, activation, drain, rollback", () => {
         // Force a staging failure: make the .bascik dir read-only so the temp
         // sibling write fails before any rename.
         if (process.platform !== "win32") {
-          await (await import("node:fs/promises")).chmod(join(root, "dist", ".bascik"), 0o500);
+          await (
+            await import("node:fs/promises")
+          ).chmod(join(root, "dist", ".bascik"), 0o500);
         }
         let threw = false;
         try {
@@ -968,7 +1106,9 @@ describe("packet L2: rejected candidate, activation, drain, rollback", () => {
           threw = true;
         } finally {
           if (process.platform !== "win32") {
-            await (await import("node:fs/promises")).chmod(join(root, "dist", ".bascik"), 0o700);
+            await (
+              await import("node:fs/promises")
+            ).chmod(join(root, "dist", ".bascik"), 0o700);
           }
         }
         expect(threw).toBe(true);

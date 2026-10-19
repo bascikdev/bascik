@@ -18,7 +18,10 @@
  * lands on the line and column it has in the file. V8 then reports file lines
  * and columns directly, with nothing to remap.
  */
-import { ANY_DIRECTIVE_ATTR_NAME, getHtmlAttributeValue } from "./html-patterns.ts";
+import {
+  ANY_DIRECTIVE_ATTR_NAME,
+  getHtmlAttributeValue,
+} from "./html-patterns.ts";
 
 const SOURCE_FILE_ATTRIBUTE = "data-bascik-source-file";
 /** The line the script's body starts on: the line of the `>` that ends its opening tag. */
@@ -28,7 +31,10 @@ const SOURCE_COLUMN_ATTRIBUTE = "data-bascik-source-column";
 /** `line:column` of the opening tag's `<`, for error headers and the dev overlay. */
 const SOURCE_TAG_ATTRIBUTE = "data-bascik-source-tag";
 
-const DIRECTIVE_SCRIPT_RE = new RegExp(String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`, "i");
+const DIRECTIVE_SCRIPT_RE = new RegExp(
+  String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`,
+  "i",
+);
 /**
  * A comment, a `<style>` or `<textarea>` element, or a whole script element.
  * Each match consumes its contents, so a tag-like string inside one (a
@@ -50,10 +56,17 @@ export interface DirectiveSourcePosition {
 }
 
 /** 1-based line and column of `offset` in `text`. */
-const lineAndColumn = (text: string, offset: number): { line: number; column: number } => {
+const lineAndColumn = (
+  text: string,
+  offset: number,
+): { line: number; column: number } => {
   let line = 1;
   let lineStart = 0;
-  for (let index = text.indexOf("\n"); index !== -1 && index < offset; index = text.indexOf("\n", index + 1)) {
+  for (
+    let index = text.indexOf("\n");
+    index !== -1 && index < offset;
+    index = text.indexOf("\n", index + 1)
+  ) {
     line++;
     lineStart = index + 1;
   }
@@ -61,10 +74,19 @@ const lineAndColumn = (text: string, offset: number): { line: number; column: nu
 };
 
 /** The position of a script whose opening tag starts at `index` in `html`, measured in `html` itself. */
-const measure = (html: string, index: number, openTag: string): Omit<DirectiveSourcePosition, "sourceFile"> => {
+const measure = (
+  html: string,
+  index: number,
+  openTag: string,
+): Omit<DirectiveSourcePosition, "sourceFile"> => {
   const tag = lineAndColumn(html, index);
   const body = lineAndColumn(html, index + openTag.length);
-  return { tagLine: tag.line, tagColumn: tag.column, bodyLine: body.line, bodyColumn: body.column };
+  return {
+    tagLine: tag.line,
+    tagColumn: tag.column,
+    bodyLine: body.line,
+    bodyColumn: body.column,
+  };
 };
 
 /**
@@ -74,20 +96,35 @@ const measure = (html: string, index: number, openTag: string): Omit<DirectiveSo
  * text inside other scripts, `<style>`, or `<textarea>`, and scripts that
  * already carry a position are left alone.
  */
-export const stampDirectiveSources = (html: string, sourceFile: string): string => {
+export const stampDirectiveSources = (
+  html: string,
+  sourceFile: string,
+): string => {
   if (!html.includes("data-bascik-")) return html;
   const encodedFile = encodeURIComponent(sourceFile);
   return html.replace(
     SKIPPED_OR_SCRIPT_RE,
-    (match: string, _rawTextTag: string | undefined, openTag: string | undefined, rest: string, index: number) => {
-      if (openTag === undefined || !DIRECTIVE_SCRIPT_RE.test(openTag)) return match;
+    (
+      match: string,
+      _rawTextTag: string | undefined,
+      openTag: string | undefined,
+      rest: string,
+      index: number,
+    ) => {
+      if (openTag === undefined || !DIRECTIVE_SCRIPT_RE.test(openTag))
+        return match;
       return stampOpenTag(html, index, openTag, encodedFile) + rest;
     },
   );
 };
 
 /** One directive opening tag with its position added, or unchanged when it already has one. */
-const stampOpenTag = (html: string, index: number, openTag: string, encodedFile: string): string => {
+const stampOpenTag = (
+  html: string,
+  index: number,
+  openTag: string,
+  encodedFile: string,
+): string => {
   if (
     getHtmlAttributeValue(openTag, SOURCE_LINE_ATTRIBUTE) !== undefined ||
     getHtmlAttributeValue(openTag, SOURCE_COLUMN_ATTRIBUTE) !== undefined
@@ -113,24 +150,44 @@ const stampOpenTag = (html: string, index: number, openTag: string, encodedFile:
  * script is taken to be in `html` as written, which holds for HTML that was
  * never transformed.
  */
-export const directiveSourcePosition = (html: string, index: number, openTag: string): DirectiveSourcePosition => {
+export const directiveSourcePosition = (
+  html: string,
+  index: number,
+  openTag: string,
+): DirectiveSourcePosition => {
   const encodedFile = getHtmlAttributeValue(openTag, SOURCE_FILE_ATTRIBUTE);
   const sourceFile = encodedFile ? decodeURIComponent(encodedFile) : undefined;
-  const bodyLine = Number(getHtmlAttributeValue(openTag, SOURCE_LINE_ATTRIBUTE));
-  const bodyColumn = Number(getHtmlAttributeValue(openTag, SOURCE_COLUMN_ATTRIBUTE));
-  const [tagLine, tagColumn] = (getHtmlAttributeValue(openTag, SOURCE_TAG_ATTRIBUTE) ?? "").split(":").map(Number);
+  const bodyLine = Number(
+    getHtmlAttributeValue(openTag, SOURCE_LINE_ATTRIBUTE),
+  );
+  const bodyColumn = Number(
+    getHtmlAttributeValue(openTag, SOURCE_COLUMN_ATTRIBUTE),
+  );
+  const [tagLine, tagColumn] = (
+    getHtmlAttributeValue(openTag, SOURCE_TAG_ATTRIBUTE) ?? ""
+  )
+    .split(":")
+    .map(Number);
   if (bodyLine > 0 && bodyColumn > 0 && tagLine > 0 && tagColumn > 0) {
     return { sourceFile, tagLine, tagColumn, bodyLine, bodyColumn };
   }
   const measured = measure(html, index, openTag);
   // A line recorded without a column (an older stamp, or a hand-written one in a test) still wins.
-  if (bodyLine > 0) return { ...measured, sourceFile, bodyLine, bodyColumn: bodyColumn > 0 ? bodyColumn : 1 };
+  if (bodyLine > 0)
+    return {
+      ...measured,
+      sourceFile,
+      bodyLine,
+      bodyColumn: bodyColumn > 0 ? bodyColumn : 1,
+    };
   return { ...measured, sourceFile };
 };
 
 /** Reads the recorded body column from an opening tag, for the server-script sidecar. */
 export const directiveSourceColumn = (openTag: string): number | undefined => {
-  const column = Number(getHtmlAttributeValue(openTag, SOURCE_COLUMN_ATTRIBUTE));
+  const column = Number(
+    getHtmlAttributeValue(openTag, SOURCE_COLUMN_ATTRIBUTE),
+  );
   return column > 0 ? column : undefined;
 };
 
@@ -147,8 +204,12 @@ export const trimmedStartPosition = (
 ): { line: number; columnOffset: number } => {
   const leading = body.slice(0, body.length - body.trimStart().length);
   const newlines = leading.split("\n").length - 1;
-  if (newlines === 0) return { line, columnOffset: column - 1 + leading.length };
-  return { line: line + newlines, columnOffset: leading.length - (leading.lastIndexOf("\n") + 1) };
+  if (newlines === 0)
+    return { line, columnOffset: column - 1 + leading.length };
+  return {
+    line: line + newlines,
+    columnOffset: leading.length - (leading.lastIndexOf("\n") + 1),
+  };
 };
 
 /**
@@ -156,5 +217,11 @@ export const trimmedStartPosition = (
  * lines and columns. `code` must be the script body exactly as written,
  * untrimmed, for the columns of its first line to hold.
  */
-export const padToSourcePosition = (code: string, line: number, column = 1): string =>
-  "\n".repeat(Math.max(0, line - 1)) + " ".repeat(Math.max(0, column - 1)) + code;
+export const padToSourcePosition = (
+  code: string,
+  line: number,
+  column = 1,
+): string =>
+  "\n".repeat(Math.max(0, line - 1)) +
+  " ".repeat(Math.max(0, column - 1)) +
+  code;

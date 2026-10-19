@@ -17,14 +17,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -46,14 +46,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -72,20 +72,26 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
 
       - name: Build package
         run: yarn pkg:build
+
+      - name: Build language server
+        run: yarn lsp:build
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
 
       - name: Run framework integration tests
         run: yarn pkg:integration
@@ -98,14 +104,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -116,6 +122,58 @@ jobs:
       - name: Run create-bascik unit tests
         run: yarn create:test:ci
 
+  # Windows is a supported platform, so the code that touches paths, processes, and files runs there too. Checkout
+  # uses Git for Windows' default line-ending conversion on purpose: `.gitattributes` must keep every file LF, and a
+  # failure here that mentions line endings means it no longer does. Each step runs even if an earlier one failed,
+  # so one run reports every failing package.
+  unit-windows:
+    name: Windows Unit Tests
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      # Windows runners ship a global Yarn 1 shim in C:\npm\prefix that precedes
+      # Node's directory on PATH; overwrite it before setup-node's cache step runs
+      # `yarn --version` and `yarn cache dir`.
+      - name: Enable Corepack
+        run: |
+          $yarnCmd = (Get-Command yarn -ErrorAction SilentlyContinue).Source
+          if ($yarnCmd) {
+            corepack enable --install-directory (Split-Path $yarnCmd)
+          }
+          corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      # On Windows, Corepack's shims are written next to the active `node`, so the
+      # ones from the runner's preinstalled Node are gone once Node 24 is on PATH.
+      - name: Enable Corepack for Node 24
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build package
+        run: yarn pkg:build
+
+      - name: Framework unit tests
+        if: ${{ !cancelled() }}
+        run: yarn pkg:unit
+
+      - name: Language server unit tests
+        if: ${{ !cancelled() }}
+        run: yarn lsp:unit
+
+      - name: Create-Bascik unit tests
+        if: ${{ !cancelled() }}
+        run: yarn create:unit
+
   unit-adapter-cloudflare:
     name: Cloudflare Adapter Unit Tests
     runs-on: ubuntu-latest
@@ -124,14 +182,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -150,14 +208,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -173,14 +231,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -196,14 +254,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -222,17 +280,20 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
+
+      - name: Check formatting
+        run: yarn check:format
 
       - name: Install codespell
         run: pipx install codespell
@@ -250,18 +311,29 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs:
+      [
+        jelly,
+        unit-pkg,
+        integration-pkg,
+        unit-create,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-extension,
+        typecheck,
+        standards,
+      ]
     steps:
       - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -280,18 +352,29 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs:
+      [
+        jelly,
+        unit-pkg,
+        integration-pkg,
+        unit-create,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-extension,
+        typecheck,
+        standards,
+      ]
     steps:
       - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -316,18 +399,29 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs:
+      [
+        jelly,
+        unit-pkg,
+        integration-pkg,
+        unit-create,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-extension,
+        typecheck,
+        standards,
+      ]
     steps:
       - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -346,18 +440,29 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs:
+      [
+        jelly,
+        unit-pkg,
+        integration-pkg,
+        unit-create,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-extension,
+        typecheck,
+        standards,
+      ]
     steps:
       - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -376,18 +481,29 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs:
+      [
+        jelly,
+        unit-pkg,
+        integration-pkg,
+        unit-create,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-extension,
+        typecheck,
+        standards,
+      ]
     steps:
       - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -406,18 +522,29 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs:
+      [
+        jelly,
+        unit-pkg,
+        integration-pkg,
+        unit-create,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-extension,
+        typecheck,
+        standards,
+      ]
     steps:
       - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -436,18 +563,29 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs:
+      [
+        jelly,
+        unit-pkg,
+        integration-pkg,
+        unit-create,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-extension,
+        typecheck,
+        standards,
+      ]
     steps:
       - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -465,7 +603,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [e2e-pkg-static, e2e-pkg-dev, e2e-pkg-prod-http1, e2e-pkg-prod-http2, e2e-adapter-cloudflare, e2e-docs, e2e-create]
+    needs:
+      [
+        e2e-pkg-static,
+        e2e-pkg-dev,
+        e2e-pkg-prod-http1,
+        e2e-pkg-prod-http2,
+        e2e-adapter-cloudflare,
+        e2e-docs,
+        e2e-create,
+      ]
     steps:
       - uses: actions/checkout@v5
 

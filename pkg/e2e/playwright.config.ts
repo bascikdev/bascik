@@ -1,69 +1,79 @@
-import { defineConfig } from '@playwright/test';
-import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
+import { defineConfig } from "@playwright/test";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 // Recompute every reused scoping result and fail on any difference (scoping-template.ts).
-process.env.BASCIK_VERIFY_SCOPING_TEMPLATES ??= '1';
+process.env.BASCIK_VERIFY_SCOPING_TEMPLATES ??= "1";
 
-const e2eDir = fileURLToPath(new URL('.', import.meta.url));
-const pkgDir = join(e2eDir, '..');
-const baseFixtureDir = join(e2eDir, 'base-fixture');
+const e2eDir = fileURLToPath(new URL(".", import.meta.url));
+const pkgDir = join(e2eDir, "..");
+const baseFixtureDir = join(e2eDir, "base-fixture");
 const staticTestIgnore = [
   // Dedicated to the symlink-enabled live-dev fixture.
-  '**/static-asset-symlinks.test.ts',
-  '**/server-scripts.test.ts',
+  "**/static-asset-symlinks.test.ts",
+  "**/server-scripts.test.ts",
   // The static harness (e2e/server.ts) serves files and cannot execute server
   // scripts; the `<script type="text/bascik-server" data-bascik-server-id>`
   // placeholder is inert. Static output therefore cannot stream, and this
   // suite would only fail for the wrong reason here.
-  '**/server-scripts-stream.test.ts',
-  '**/api-routes.test.ts',
-  '**/dev-server-reload.test.ts',
-  '**/prod-server.test.ts',
-  '**/preserve-server-form.test.ts',
+  "**/server-scripts-stream.test.ts",
+  "**/api-routes.test.ts",
+  "**/dev-server-reload.test.ts",
+  "**/prod-server.test.ts",
+  "**/preserve-server-form.test.ts",
   // Content-hash ETags, cache-control mapping, and 304 revalidation are
   // Bascik server features (mem.ts / server.ts). The static build config
   // serves dist/ with a minimal harness server that has none of this, so
   // this suite only runs against playwright.server*.config.ts.
-  '**/caching-layer.test.ts',
+  "**/caching-layer.test.ts",
   // bascik-add-dev exercises dynamic component addition during live dev watching
-  '**/bascik-add-dev.test.ts',
+  "**/bascik-add-dev.test.ts",
   // Dev-exec lifecycle runs against its own exec-fixture config
-  '**/dev-exec-lifecycle.test.ts',
+  "**/dev-exec-lifecycle.test.ts",
   // Spawns the CLI in temporary projects; runs in its own lane.
-  '**/exec-error-policy.test.ts',
+  "**/exec-error-policy.test.ts",
 ];
 
 export default defineConfig({
-  testDir: './tests',
+  testDir: "./tests",
   workers: 4,
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
   use: {
-    baseURL: 'http://localhost:4200',
+    baseURL: "http://localhost:4200",
     headless: true,
   },
   projects: [
-    { name: 'default', testIgnore: [...staticTestIgnore, '**/base-serving.test.ts'] },
-    { name: 'base-static', testMatch: '**/base-serving.test.ts', use: { baseURL: 'http://localhost:9550' } },
+    {
+      name: "default",
+      testIgnore: [...staticTestIgnore, "**/base-serving.test.ts"],
+    },
+    {
+      name: "base-static",
+      testMatch: "**/base-serving.test.ts",
+      use: { baseURL: "http://localhost:9550" },
+    },
   ],
-  webServer: [{
-    // 1. Build the fixture site using the current pkg dist.
-    //    BASCIK_SITE_URL is set through the harness (not a checked-in .env or
-    //    config key) so the tests prove the environment-variable path works.
-    // 2. Serve dist/ with the minimal static file server.
-    command: `BASCIK_SITE_URL=http://localhost:4200 node ${pkgDir}/dist/index.js --build && node server.ts 4200`,
-    cwd: e2eDir,
-    url: 'http://localhost:4200/scope-test',
-    reuseExistingServer: false,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  }, {
-    command: `BASCIK_SITE_URL=http://localhost:9550 node ${pkgDir}/dist/index.js --build && node ../server.ts 9550 dist /sub/`,
-    cwd: baseFixtureDir,
-    url: 'http://localhost:9550/sub/',
-    reuseExistingServer: false,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  }],
+  webServer: [
+    {
+      // 1. Build the fixture site using the current pkg dist.
+      //    BASCIK_SITE_URL is set through the harness (not a checked-in .env or
+      //    config key) so the tests prove the environment-variable path works.
+      // 2. Serve dist/ with the minimal static file server.
+      command: `BASCIK_SITE_URL=http://localhost:4200 node ${pkgDir}/dist/index.js --build && node server.ts 4200`,
+      cwd: e2eDir,
+      url: "http://localhost:4200/scope-test",
+      reuseExistingServer: false,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+    {
+      command: `BASCIK_SITE_URL=http://localhost:9550 node ${pkgDir}/dist/index.js --build && node ../server.ts 9550 dist /sub/`,
+      cwd: baseFixtureDir,
+      url: "http://localhost:9550/sub/",
+      reuseExistingServer: false,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  ],
 });

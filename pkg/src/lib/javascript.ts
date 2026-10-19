@@ -78,8 +78,15 @@ import { basename, dirname, relative } from "node:path";
 import { getUniqueId, minifyAttributeName } from "./names.ts";
 import { BascikConfig } from "./config.ts";
 import { findComponentRoot } from "./component-roots.ts";
-import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
-import { encodeOutputScope, OUTPUT_SCOPE_ATTRIBUTE, type OutputScope } from "./output-scope.ts";
+import {
+  ANY_DIRECTIVE_ATTR_NAME,
+  isPageAwareBuildOpenTag,
+} from "./html-patterns.ts";
+import {
+  encodeOutputScope,
+  OUTPUT_SCOPE_ATTRIBUTE,
+  type OutputScope,
+} from "./output-scope.ts";
 
 /**
  * Add the output-scope annotation to every page-aware build script open tag
@@ -90,11 +97,11 @@ import { encodeOutputScope, OUTPUT_SCOPE_ATTRIBUTE, type OutputScope } from "./o
 const annotatePageAwareScripts = (html: string, encodedScope: string): string =>
   html.replace(/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, (openTag) => {
     if (openTag.includes(OUTPUT_SCOPE_ATTRIBUTE)) return openTag;
-    const isPageAware =
-      /\sdata-bascik-page-aware\b/i.test(openTag) ||
-      /\sdata-bascik-build\s*=\s*["']?page["']?/i.test(openTag);
-    if (!isPageAware) return openTag;
-    return openTag.replace(/>$/, ` ${OUTPUT_SCOPE_ATTRIBUTE}="${encodedScope}">`);
+    if (!isPageAwareBuildOpenTag(openTag)) return openTag;
+    return openTag.replace(
+      />$/,
+      ` ${OUTPUT_SCOPE_ATTRIBUTE}="${encodedScope}">`,
+    );
   });
 
 /**
@@ -105,7 +112,10 @@ const annotatePageAwareScripts = (html: string, encodedScope: string): string =>
  * client script.
  */
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const DIRECTIVE_SCRIPT_RE = new RegExp(String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`, "i");
+const DIRECTIVE_SCRIPT_RE = new RegExp(
+  String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`,
+  "i",
+);
 import { getScriptType, isJavaScriptScript } from "./script-types.ts";
 import { sourceLinePadding, takeScriptLine } from "./script-source-lines.ts";
 import { isTypeScriptFile, transformBrowserTypeScript } from "./typescript.ts";
@@ -148,9 +158,20 @@ interface ScopedCssCacheEntry {
 }
 
 const scopedCssCache = new Map<string, ScopedCssCacheEntry>();
+const cssDeclaredClassesCache = new Map<string, Set<string>>();
 
 export const clearScopedCssCache = (): void => {
   scopedCssCache.clear();
+  cssDeclaredClassesCache.clear();
+};
+
+export const __scopedCssCacheStatsForTests = {
+  hits: 0,
+  misses: 0,
+  reset(): void {
+    this.hits = 0;
+    this.misses = 0;
+  },
 };
 
 // A memo hit skips the name generation and CSS import planning that
@@ -172,7 +193,12 @@ const rewriteIdReferencesInStyleTags = (
   html: string,
   resolve: (originalId: string) => string | null,
 ): { html: string; changed: boolean } => {
-  const shielded = shieldElementContents(html, ["code", "pre", "script", "textarea"]);
+  const shielded = shieldElementContents(html, [
+    "code",
+    "pre",
+    "script",
+    "textarea",
+  ]);
   let changed = false;
   const rewrittenHtml = shielded.html.replace(
     /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
@@ -200,7 +226,9 @@ const replaceBalancedCall = (
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const regex = new RegExp(
     methodRegex.source,
-    methodRegex.flags.includes("g") ? methodRegex.flags : methodRegex.flags + "g",
+    methodRegex.flags.includes("g")
+      ? methodRegex.flags
+      : methodRegex.flags + "g",
   );
 
   let match;
@@ -245,8 +273,7 @@ const replaceBalancedCall = (
             inRegex = true;
             inRegexCharacterClass = false;
           }
-        }
-        else if (char === "(") depth++;
+        } else if (char === "(") depth++;
         else if (char === ")") depth--;
       }
       i++;
@@ -274,13 +301,21 @@ const replaceSafeAttr = (
   replacer: (fullMatch: string, prefix: string, quotedVal: string) => string,
 ): string => {
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const attrRegex = new RegExp(`(\\s${attrName}=)("[^"]*"|'[^']*')`, "gm");
+  const attrRegex = new RegExp(
+    `(\\s${attrName}\\s*=\\s*)("[^"]*"|'[^']*'|[^\\s"'=<>` +
+      "`" +
+      `]+?)(?=\\s|\\/>|>|$)`,
+    "gm",
+  );
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+  const attrQuickCheck = new RegExp(`\\s${attrName}\\s*=`, "i");
 
   // This simple regex identifies tags loosely. It handles nested attributes
   // because we only process the attributes inside the matched tag brackets.
   return html.replace(
     /<[a-zA-Z0-9-]+(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?>/g,
     (tagMatch) => {
+      if (!attrQuickCheck.test(tagMatch)) return tagMatch;
       // First, find all proper string boundaries in this tag to ignore false matches.
       const stringRanges: Array<{ start: number; end: number }> = [];
       let j = 0;
@@ -319,7 +354,8 @@ const replaceSafeAttr = (
       }
       finalStr += tagMatch.substring(lastIdx);
       return finalStr;
-    });
+    },
+  );
 };
 export const prefixElementAttribute = (
   component: BascikComponent,
@@ -329,6 +365,20 @@ export const prefixElementAttribute = (
   preservedTags: string[] = [],
 ): BascikComponent => {
   if (!component.fileContent) return component;
+  if (
+    attribute === "id" &&
+    !/\sid\s*=/i.test(component.fileContent) &&
+    !component.fileContent.includes("data-bascik-preserve")
+  ) {
+    return component;
+  }
+  if (
+    attribute === "name" &&
+    !/\sname\s*=/i.test(component.fileContent) &&
+    !component.fileContent.includes("data-bascik-preserve")
+  ) {
+    return component;
+  }
 
   const { html: shieldedContent, restore } = shieldPreservedAttribute(
     component.fileContent,
@@ -336,9 +386,10 @@ export const prefixElementAttribute = (
     preservedTags,
   );
   component.fileContent = shieldedContent;
-  const declaredIds = attribute === "id"
-    ? collectDeclaredIds(component.fileContent)
-    : new Set<string>();
+  const declaredIds =
+    attribute === "id"
+      ? collectDeclaredIds(component.fileContent)
+      : new Set<string>();
   // All class/name/id attrs will get this ID.
   // Accept an externally provided ID so that a single component instance can
   // share one ID across all attribute types (id, name, class).
@@ -371,64 +422,113 @@ export const prefixElementAttribute = (
   // and "a stylesheet that defines nothing" must behave the same.)
   let scopedClassesSet: Set<string> | null = null;
   if (attribute === "class") {
-    scopedClassesSet = new Set<string>();
     const cssSources: string[] = [];
     if (component.cssFileContent) {
       // Resolved once here, so the memo key below holds the imported contents.
-      component.cssFileContent = resolveCssImportsSync(component.cssFileContent, component.fileName);
+      component.cssFileContent = resolveCssImportsSync(
+        component.cssFileContent,
+        component.fileName,
+      );
       cssSources.push(component.cssFileContent);
     }
     if (component.fileContent && component.fileContent.includes("<style")) {
       const { css: inlineCss } = extractInlineStyles(component.fileContent);
-      if (inlineCss) cssSources.push(resolveCssImportsSync(inlineCss, component.fileName));
+      if (inlineCss)
+        cssSources.push(resolveCssImportsSync(inlineCss, component.fileName));
     }
     const combinedCss = cssSources.join("\n");
     if (combinedCss) {
-      const { css: shieldedCss } = shieldCssStrings(combinedCss);
-      for (const m of shieldedCss.matchAll(/(?<=\.)[a-zA-Z_][a-zA-Z0-9_-]*/g)) {
-        scopedClassesSet.add(m[0]);
+      const cachedSet = cssDeclaredClassesCache.get(combinedCss);
+      if (cachedSet) {
+        scopedClassesSet = cachedSet;
+      } else {
+        scopedClassesSet = new Set<string>();
+        const { css: shieldedCss } = shieldCssStrings(combinedCss);
+        for (const m of shieldedCss.matchAll(
+          /(?<=\.)[a-zA-Z_][a-zA-Z0-9_-]*/g,
+        )) {
+          scopedClassesSet.add(m[0]);
+        }
+        cssDeclaredClassesCache.set(combinedCss, scopedClassesSet);
       }
+    } else {
+      scopedClassesSet = new Set<string>();
     }
   }
 
   // Shield <meta> elements from name-attribute scoping. The `name` attribute
   // on <meta> refers to a standardized metadata vocabulary (e.g. "viewport",
   // "description", "robots") and must never be mangled by the scoping pipeline.
-  const shieldedMetaTags: string[] = [];
-  if (attribute === "name") {
+  const metaShield =
+    attribute === "name" ? createContentShield(component.fileContent) : null;
+  if (metaShield) {
     component.fileContent = component.fileContent.replace(
-      /<meta\b[^>]*(?:\/>|>)/gi,
-      (tag) => {
-        const idx = shieldedMetaTags.push(tag) - 1;
-        return `\x00BMETATAG${idx}\x00`;
-      },
+      /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*(?:\/>|>)/gi,
+      (tag) => metaShield.hide(tag),
     );
   }
 
-  // Use replaceSafeAttr instead of a global regex to ignore `class="x"` inside `data-foo='class="x"'`
-  let scopedAttrsHtml = replaceSafeAttr(
-    component.fileContent,
-    attribute,
-    (fullMatch, prefix, quotedVal) => {
-      const quote = quotedVal[0];
-      const match = quotedVal.slice(1, -1);
-      if (!match) return fullMatch;
-      const newInner = match
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((attributeName: string) => {
-          if (attribute === "class" && scopedClassesSet !== null && !scopedClassesSet.has(attributeName)) {
-            return attributeName;
-          }
-          const name = `bascik__${scopeKey}__${attributeName}`;
-          const obfuscatedAttributeName = minifyAttributeName(name);
-          attributesToReplace.push({ attributeName, obfuscatedAttributeName });
-          return obfuscatedAttributeName;
-        })
-        .join(" ");
-      return `${prefix}${quote}${newInner}${quote}`;
-    },
+  // Use replaceSafeAttr instead of a global regex to ignore `class="x"` inside `data-foo='class="x"'`.
+  // Shield HTML comments and <textarea> content so commented-out markup and
+  // form values are never rewritten, while keeping <script> bodies live so
+  // static HTML string literals inside client, server, and stream scripts have
+  // their class/id/name attributes scoped.
+  const nonScriptRawShield = (() => {
+    const commentShield = createContentShield(component.fileContent);
+    const withoutComments = component.fileContent.includes("<!--")
+      ? component.fileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
+          commentShield.hide(comment),
+        )
+      : component.fileContent;
+    const rawElements = shieldElementContents(withoutComments, [
+      "style",
+      "textarea",
+    ]);
+    return {
+      html: rawElements.html,
+      restore: (value: string) =>
+        commentShield.restore(rawElements.restore(value)),
+    };
+  })();
+  let scopedAttrsHtml = nonScriptRawShield.restore(
+    replaceSafeAttr(
+      nonScriptRawShield.html,
+      attribute,
+      (fullMatch, prefix, quotedVal) => {
+        const firstChar = quotedVal[0];
+        const isQuoted = firstChar === '"' || firstChar === "'";
+        const quote = isQuoted ? firstChar : '"';
+        const match = isQuoted
+          ? quotedVal.slice(1, -1)
+          : quotedVal.endsWith("/")
+            ? quotedVal.slice(0, -1)
+            : quotedVal;
+        const trailingSlash = !isQuoted && quotedVal.endsWith("/") ? "/" : "";
+        if (!match) return fullMatch;
+        const newInner = match
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((attributeName: string) => {
+            if (
+              attribute === "class" &&
+              scopedClassesSet !== null &&
+              !scopedClassesSet.has(attributeName)
+            ) {
+              return attributeName;
+            }
+            const name = `bascik__${scopeKey}__${attributeName}`;
+            const obfuscatedAttributeName = minifyAttributeName(name);
+            attributesToReplace.push({
+              attributeName,
+              obfuscatedAttributeName,
+            });
+            return obfuscatedAttributeName;
+          })
+          .join(" ");
+        return `${prefix}${quote}${newInner}${quote}${trailingSlash}`;
+      },
+    ),
   );
 
   if (attribute === "id" && declaredIds.size > 0) {
@@ -440,23 +540,27 @@ export const prefixElementAttribute = (
     );
     scopedAttrsHtml = rewriteIdReferencesInHtml(
       scopedAttrsHtml,
-      (originalId) => declaredIds.has(originalId)
-        ? scopedIds.get(originalId) ?? null
-        : null,
+      (originalId) =>
+        declaredIds.has(originalId)
+          ? (scopedIds.get(originalId) ?? null)
+          : null,
     );
     component.scopedIdNames = Object.fromEntries(scopedIds);
-    const inlineStyles = rewriteIdReferencesInStyleTags(
-      scopedAttrsHtml,
-      (originalId) => scopedIds.get(originalId) ?? null,
-    );
+    const inlineStyles = scopedAttrsHtml.includes("<style")
+      ? rewriteIdReferencesInStyleTags(
+          scopedAttrsHtml,
+          (originalId) => scopedIds.get(originalId) ?? null,
+        )
+      : { html: scopedAttrsHtml, changed: false };
     scopedAttrsHtml = inlineStyles.html;
     component.requiresPerInstanceCss = inlineStyles.changed;
-    if (component.cssFileContent) {
+    if (component.cssFileContent && /url\(/i.test(component.cssFileContent)) {
       const rewrittenCss = rewriteIdReferencesInCss(
         component.cssFileContent,
         (originalId) => scopedIds.get(originalId) ?? null,
       );
-      component.requiresPerInstanceCss ||= rewrittenCss !== component.cssFileContent;
+      component.requiresPerInstanceCss ||=
+        rewrittenCss !== component.cssFileContent;
       component.cssFileContent = rewrittenCss;
     }
   }
@@ -479,7 +583,9 @@ export const prefixElementAttribute = (
   // otherwise be scoped in CSS but left unscoped in JS, making the two out of sync.
   // Covers: classList.*, querySelector-family (".cls"), className =, setAttribute("class",…)
   if (attribute === "class") {
-    const knownClasses = new Set(attributesToReplace.map((a) => a.attributeName));
+    const knownClasses = new Set(
+      attributesToReplace.map((a) => a.attributeName),
+    );
     const addIfNew = (className: string): void => {
       if (scopedClassesSet !== null && !scopedClassesSet.has(className)) {
         return;
@@ -487,7 +593,9 @@ export const prefixElementAttribute = (
       if (!knownClasses.has(className)) {
         attributesToReplace.push({
           attributeName: className,
-          obfuscatedAttributeName: minifyAttributeName(`bascik__${scopeKey}__${className}`),
+          obfuscatedAttributeName: minifyAttributeName(
+            `bascik__${scopeKey}__${className}`,
+          ),
         });
         knownClasses.add(className);
       }
@@ -513,7 +621,7 @@ export const prefixElementAttribute = (
       );
       // querySelector / querySelectorAll / closest / matches — extract ".token" class tokens
       for (const callMatch of src.matchAll(
-        /(?:querySelector(?:All)?|closest|matches)\(\s*["']([^"']*)["']\s*\)/gm,
+        /(?:querySelector(?:All)?|closest|matches)\s*\(\s*["']([^"']*)["']\s*\)/gm,
       )) {
         for (const tokenMatch of callMatch[1].matchAll(
           /(?<![a-zA-Z0-9_-])\.([a-zA-Z_][a-zA-Z0-9_-]*)/g,
@@ -533,9 +641,18 @@ export const prefixElementAttribute = (
 
       // setAttribute("class", "x y")
       for (const attrMatch of src.matchAll(
-        /setAttribute\(\s*["']class["']\s*,\s*["']([^"']*)["']\s*\)/gm,
+        /setAttribute\s*\(\s*["']class["']\s*,\s*["']([^"']*)["']\s*\)/gm,
       )) {
         for (const token of attrMatch[1].trim().split(/\s+/)) {
+          if (token) addIfNew(token);
+        }
+      }
+
+      // getElementsByClassName("x y")
+      for (const byClassMatch of src.matchAll(
+        /getElementsByClassName\s*\(\s*["']([^"']*)["']\s*\)/gm,
+      )) {
+        for (const token of byClassMatch[1].trim().split(/\s+/)) {
           if (token) addIfNew(token);
         }
       }
@@ -544,219 +661,140 @@ export const prefixElementAttribute = (
 
   // Deduplicate attributesToReplace tokens before running the script rewrite loop
   const seenAttrMap = new Map<string, string>();
-  for (const { attributeName, obfuscatedAttributeName } of attributesToReplace) {
+  for (const {
+    attributeName,
+    obfuscatedAttributeName,
+  } of attributesToReplace) {
     if (!seenAttrMap.has(attributeName)) {
       seenAttrMap.set(attributeName, obfuscatedAttributeName);
     }
   }
-  const uniqueAttributesToReplace = Array.from(seenAttrMap.entries()).map(
-    ([attributeName, obfuscatedAttributeName]) => ({
-      attributeName,
-      obfuscatedAttributeName,
-    }),
-  );
 
   // Rewrite DOM selector references in script blocks to use the scoped attribute values.
-  const scopedHtml = scopedAttrsHtml.replace(
-    /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
-    (match, open) => {
-      if (DIRECTIVE_SCRIPT_RE.test(open)) return match;
-      let updatedMatch = match;
-      uniqueAttributesToReplace.forEach(
-        ({ attributeName, obfuscatedAttributeName }) => {
-          if (!updatedMatch.includes(attributeName)) return;
-          const rewriteSelectorRef = (regexp: RegExp, dot = ""): string => {
-            // https://www.codemzy.com/blog/regex-groups-with-replace
-            return updatedMatch.replace(regexp, (_match, start, _middle, end) => {
-              return `${start}${dot}${obfuscatedAttributeName}${end}`;
-            });
-          };
+  // One pass per pattern over whole tokens so a later attribute name never
+  // matches inside an earlier generated name or a longer attribute name.
+  const scopedHtml =
+    seenAttrMap.size === 0
+      ? scopedAttrsHtml
+      : scopedAttrsHtml.replace(
+          /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
+          (match, open: string, body: string, close: string) => {
+            if (DIRECTIVE_SCRIPT_RE.test(open)) return match;
+            let updatedBody = body;
 
-          // Escape the attribute name once for use in RegExp patterns.
-          const escapedAttr = attributeName.replace(
-            /[.*+?^${}()|[\]\\]/g,
-            "\\$&",
-          );
+            const rewriteQuotedArg = (
+              full: string,
+              prefix: string,
+              value: string,
+              suffix: string,
+            ): string => {
+              const scoped = seenAttrMap.get(value);
+              return scoped === undefined
+                ? full
+                : `${prefix}${scoped}${suffix}`;
+            };
 
-          // Rewrite the full selector string of a querySelector-family call,
-          // replacing every occurrence of the scoped token.  Handles both
-          // single-token selectors ("#id", ".cls") and compound selectors
-          // (".foo .bar", "#id .child", etc.).
-          // Limitation: adjacent-class compound selectors without a space
-          // (.foo.bar) are not rewritten for the non-leading token because
-          // `.bar` is preceded by a word character.  Use a space or combinator
-          // to separate selectors instead.
-          const rewriteInSelectorString = (
-            method: string,
-            prefix: string,
-          ): void => {
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const methodCallRegex = new RegExp(`(${method}\\(\\s*['"][^'"]*['"]\\s*\\))`, "gm");
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const tokenRegex = new RegExp(
-              `(?<![a-zA-Z0-9_-])\\${prefix}${escapedAttr}(?![a-zA-Z0-9_-])`,
-              "g",
-            );
-            updatedMatch = updatedMatch.replace(
-              methodCallRegex,
-              (call) =>
-                call.replace(
-                  // Token must NOT be immediately preceded or followed by
-                  // alphanumeric, underscore, or hyphen (avoids partial
-                  // matches inside already-scoped names like __myClass).
-                  tokenRegex,
-                  () => `${prefix}${obfuscatedAttributeName}`,
-                ),
-            );
-          };
+            const rewriteSelectorCalls = (prefix: string): void => {
+              const escapedPrefix = prefix.replace(
+                /[.*+?^${}()|[\]\\]/g,
+                "\\$&",
+              );
+              // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+              const tokenRegex = new RegExp(
+                `(?<![a-zA-Z0-9_-])${escapedPrefix}([^\\s"'#.,>+~:[\\]()]+)(?![a-zA-Z0-9_-])`,
+                "g",
+              );
+              updatedBody = updatedBody.replace(
+                /((?:querySelector(?:All)?|closest|matches)\s*\(\s*['"][^'"]*['"]\s*\))/gm,
+                (call) =>
+                  call.replace(tokenRegex, (tokenMatch, name: string) => {
+                    const scoped = seenAttrMap.get(name);
+                    return scoped === undefined
+                      ? tokenMatch
+                      : `${prefix}${scoped}`;
+                  }),
+              );
+            };
 
-          if (attribute === "id") {
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const getByIdRegex = new RegExp(
-              `(?<start>getElementById\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-              "gm",
-            );
-            updatedMatch = rewriteSelectorRef(getByIdRegex);
-            // querySelector-family — compound-aware
-            for (const method of [
-              "querySelector",
-              "querySelectorAll",
-              "closest",
-              "matches",
-            ]) {
-              rewriteInSelectorString(method, "#");
-            }
-            // element.setAttribute("id", "value")
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const setIdRegex = new RegExp(
-              `(?<start>setAttribute\\(\\s*["']id["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-              "gm",
-            );
-            updatedMatch = rewriteSelectorRef(setIdRegex);
-          } else if (attribute === "name") {
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const getByNameRegex = new RegExp(
-              `(?<start>getElementsByName\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-              "gm",
-            );
-            updatedMatch = rewriteSelectorRef(getByNameRegex);
-            // element.setAttribute("name", "value")
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const setNameRegex = new RegExp(
-              `(?<start>setAttribute\\(\\s*["']name["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-              "gm",
-            );
-            updatedMatch = rewriteSelectorRef(setNameRegex);
-          } else if (attribute === "class") {
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const getByClassRegex = new RegExp(
-              `(?<start>getElementsByClassName\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-              "gm",
-            );
-            updatedMatch = rewriteSelectorRef(getByClassRegex);
-            // querySelector-family — compound-aware
-            for (const method of [
-              "querySelector",
-              "querySelectorAll",
-              "closest",
-              "matches",
-            ]) {
-              rewriteInSelectorString(method, ".");
-            }
-            // classList.add / classList.remove — multi-arg aware.
-            // Match the entire call then replace every quoted token matching
-            // the class name. Handles both `classList.add("x")` and
-            // `classList.add("x", "y", …)` forms.
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const classTokenAllRegex = new RegExp(`(["'])${escapedAttr}\\1`, "g");
-            updatedMatch = replaceBalancedCall(
-              updatedMatch,
-              /classList\.(?:add|remove)\s*\(/gm,
-              (call) =>
+            const rewriteSpaceSeparatedTokens = (value: string): string =>
+              value.replace(/\S+/g, (token) => seenAttrMap.get(token) ?? token);
+
+            if (attribute === "id") {
+              updatedBody = updatedBody.replace(
+                /(getElementById\s*\(\s*["'])([^"']+)(["']\s*\))/gm,
+                rewriteQuotedArg,
+              );
+              rewriteSelectorCalls("#");
+              updatedBody = updatedBody.replace(
+                /(setAttribute\s*\(\s*["']id["']\s*,\s*["'])([^"']+)(["']\s*\))/gm,
+                rewriteQuotedArg,
+              );
+            } else if (attribute === "name") {
+              updatedBody = updatedBody.replace(
+                /(getElementsByName\s*\(\s*["'])([^"']+)(["']\s*\))/gm,
+                rewriteQuotedArg,
+              );
+              updatedBody = updatedBody.replace(
+                /(setAttribute\s*\(\s*["']name["']\s*,\s*["'])([^"']+)(["']\s*\))/gm,
+                rewriteQuotedArg,
+              );
+            } else if (attribute === "class") {
+              updatedBody = updatedBody.replace(
+                /(getElementsByClassName\s*\(\s*["'])([^"']*)(["']\s*\))/gm,
+                (_full, prefix: string, classes: string, suffix: string) =>
+                  `${prefix}${rewriteSpaceSeparatedTokens(classes)}${suffix}`,
+              );
+              rewriteSelectorCalls(".");
+              const rewriteAllClassTokens = (call: string): string =>
                 call.replace(
-                  classTokenAllRegex,
-                  (_match, quote: string) =>
-                    `${quote}${obfuscatedAttributeName}${quote}`,
-                ),
-            );
-            // classList.toggle — rewrites the class-name (first) arg only.
-            // Deliberately does NOT require `)` after the closing quote so
-            // `classList.toggle("open", condition)` is handled correctly.
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const classTokenSingleRegex = new RegExp(`(["'])${escapedAttr}\\1`);
-            updatedMatch = replaceBalancedCall(
-              updatedMatch,
-              /classList\.toggle\s*\(/gm,
-              (call) =>
-                call.replace(
-                  classTokenSingleRegex,
-                  (_match, quote: string) =>
-                    `${quote}${obfuscatedAttributeName}${quote}`,
-                ),
-            );
-            // classList.contains — always single arg
-            updatedMatch = replaceBalancedCall(
-              updatedMatch,
-              /classList\.contains\s*\(/gm,
-              (call) =>
-                call.replace(
-                  classTokenSingleRegex,
-                  (_match, quote: string) =>
-                    `${quote}${obfuscatedAttributeName}${quote}`,
-                ),
-            );
-            // classList.replace(oldToken, newToken) — rewrites both args if
-            // either matches a scoped class name.
-            updatedMatch = replaceBalancedCall(
-              updatedMatch,
-              /classList\.replace\s*\(/gm,
-              (call) =>
-                call.replace(
-                  classTokenAllRegex,
-                  (_match, quote: string) =>
-                    `${quote}${obfuscatedAttributeName}${quote}`,
-                ),
-            );
-            // element.setAttribute("class", "value")
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const setClassRegex = new RegExp(
-              `(?<start>setAttribute\\(\\s*["']class["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-              "gm",
-            );
-            updatedMatch = rewriteSelectorRef(setClassRegex);
-            // element.className setter — handles both single-class and
-            // space-separated multi-class assignments (className = "…" or
-            // className += "…").  Replaces each known class token in the
-            // string value using the same word-boundary guards as above.
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const classNameTokenRegex = new RegExp(
-              `(?<![a-zA-Z0-9_-])${escapedAttr}(?![a-zA-Z0-9_-])`,
-              "g",
-            );
-            updatedMatch = updatedMatch.replace(
-              /(\bclassName\s*\+?=\s*["'])([^"']*)(['"])/gm,
-              (_, prefix, classes, suffix) => {
-                const replaced = classes.replace(
-                  classNameTokenRegex,
-                  () => obfuscatedAttributeName,
+                  /(["'])([^"']+)\1/g,
+                  (quoted, quote: string, name: string) => {
+                    const scoped = seenAttrMap.get(name);
+                    return scoped === undefined
+                      ? quoted
+                      : `${quote}${scoped}${quote}`;
+                  },
                 );
-                return `${prefix}${replaced}${suffix}`;
-              },
-            );
-          }
-        },
-      );
-      return updatedMatch;
-    },
-  );
+              const rewriteFirstClassToken = (call: string): string =>
+                call.replace(
+                  /(["'])([^"']+)\1/,
+                  (quoted, quote: string, name: string) => {
+                    const scoped = seenAttrMap.get(name);
+                    return scoped === undefined
+                      ? quoted
+                      : `${quote}${scoped}${quote}`;
+                  },
+                );
+              updatedBody = replaceBalancedCall(
+                updatedBody,
+                /classList\.(?:add|remove|replace)\s*\(/gm,
+                rewriteAllClassTokens,
+              );
+              updatedBody = replaceBalancedCall(
+                updatedBody,
+                /classList\.(?:toggle|contains)\s*\(/gm,
+                rewriteFirstClassToken,
+              );
+              updatedBody = updatedBody.replace(
+                /(setAttribute\s*\(\s*["']class["']\s*,\s*["'])([^"']*)(["']\s*\))/gm,
+                (_full, prefix: string, classes: string, suffix: string) =>
+                  `${prefix}${rewriteSpaceSeparatedTokens(classes)}${suffix}`,
+              );
+              updatedBody = updatedBody.replace(
+                /(\bclassName\s*\+?=\s*["'])([^"']*)(['"])/gm,
+                (_full, prefix: string, classes: string, suffix: string) =>
+                  `${prefix}${rewriteSpaceSeparatedTokens(classes)}${suffix}`,
+              );
+            }
+
+            return `${open}${updatedBody}${close}`;
+          },
+        );
   component.fileContent = scopedHtml;
 
   // Restore shielded <meta> elements.
-  if (shieldedMetaTags.length > 0) {
-    component.fileContent = component.fileContent.replace(
-      /\x00BMETATAG(\d+)\x00/g,
-      (_, idx) => shieldedMetaTags[parseInt(idx, 10)],
-    );
+  if (metaShield) {
+    component.fileContent = metaShield.restore(component.fileContent);
   }
 
   // CSS
@@ -785,38 +823,55 @@ export const prefixElementAttribute = (
     let allIdsConverted: { idName: string; className: string }[] = [];
 
     if (component.cssFileContent) {
-      // Memoization cache key: component name, scope key, CSS source, minify identifiers, and scopedIdNames.
-      // Every source in `cssFileContent` has had its imports resolved, so the key holds what was read from disk.
-      const scopedIdKey = component.scopedIdNames ? JSON.stringify(component.scopedIdNames) : "";
-      const cacheKey = `${component.name}::${scopeKey}::${Boolean(BascikConfig.minify?.identifiers)}::${scopedIdKey}::${component.cssFileContent}`;
-      const cached = bypassScopedCssCache ? undefined : scopedCssCache.get(cacheKey);
+      if (component.scopedIdNames && /url\(/i.test(component.cssFileContent)) {
+        const rewrittenCss = rewriteIdReferencesInCss(
+          component.cssFileContent,
+          (originalId) => component.scopedIdNames?.[originalId] ?? null,
+        );
+        component.requiresPerInstanceCss ||=
+          rewrittenCss !== component.cssFileContent;
+        component.cssFileContent = rewrittenCss;
+      }
+      // Memoization cache key: component name, scope key, minify identifiers, and CSS source.
+      // Every source in `cssFileContent` has had its imports and any url(#id) fragments resolved,
+      // so components whose CSS has no per-instance url(#id) references share one cache entry across instances.
+      const cacheKey = `${component.name}::${scopeKey}::${Boolean(BascikConfig.minify?.identifiers)}::${component.cssFileContent}`;
+      const cached = bypassScopedCssCache
+        ? undefined
+        : scopedCssCache.get(cacheKey);
 
       if (cached) {
+        __scopedCssCacheStatsForTests.hits++;
         component.cssFileContent = cached.css;
         allElementClasses.push(...cached.allElementClasses);
         allIdsConverted.push(...cached.allIdsConverted);
       } else {
-        if (component.scopedIdNames) {
-          component.cssFileContent = rewriteIdReferencesInCss(
-            component.cssFileContent,
-            (originalId) => component.scopedIdNames?.[originalId] ?? null,
-          );
-        }
+        __scopedCssCacheStatsForTests.misses++;
         // Handle basic replacement of classnames in css file.
         // Shield string literals and url(...) contents first so dots inside
         // them (file extensions, domains) are never mistaken for class selectors:
         //   url(./img.png)  must NOT become  url(./img.bascik__…__png)
-        const { css: shieldedCss, restore: restoreCssStrings } = shieldCssStrings(
-          component.cssFileContent,
-        );
+        const { css: shieldedCss, restore: restoreCssStrings } =
+          shieldCssStrings(component.cssFileContent);
         component.cssFileContent = restoreCssStrings(
           shieldedCss.replace(/(?<=\.)[a-z_][a-z0-9-_]*/gim, (className) => {
             return minifyAttributeName(`bascik__${scopeKey}__${className}`);
           }),
         );
 
+        // Convert CSS hash-ID selectors (#id) to component-scoped class selectors
+        // before element-selector conversion so descendant elements after #id
+        // (e.g. `#panel p`, `#panel > h3`) are converted in Pass 4.
+        const { css: idSelectorCss, idsConverted } =
+          convertCssIdSelectorsToClasses(component.cssFileContent, scopeKey);
+        component.cssFileContent = idSelectorCss;
+        allIdsConverted.push(...idsConverted);
+
         const { css: elSelectorToClassCss, elementsConvertedClasses } =
-          convertCssElementSelectorsToClasses(component.cssFileContent, scopeKey);
+          convertCssElementSelectorsToClasses(
+            component.cssFileContent,
+            scopeKey,
+          );
         component.cssFileContent = elSelectorToClassCss;
         allElementClasses.push(...elementsConvertedClasses);
 
@@ -824,13 +879,6 @@ export const prefixElementAttribute = (
           component.cssFileContent,
           scopeKey,
         );
-
-        // Convert CSS hash-ID selectors (#id) to component-scoped class selectors.
-        // Uses a context-aware lookahead to avoid matching hex color values.
-        const { css: idSelectorCss, idsConverted } =
-          convertCssIdSelectorsToClasses(component.cssFileContent, scopeKey);
-        component.cssFileContent = idSelectorCss;
-        allIdsConverted.push(...idsConverted);
 
         // Strip the [id] attribute-selector form (cannot be scoped without wrapping).
         component.cssFileContent = removeIdSelectors(component.cssFileContent);
@@ -903,15 +951,25 @@ export const prefixElementAttribute = (
     // Deferred page-aware build scripts print their markup at page time, after
     // this pass. Record the mapping on each one so executeBuildScripts scopes
     // that output the same way (see output-scope.ts).
-    if (scopedClassesSet && (scopedClassesSet.size > 0 || allElementClasses.length > 0)) {
+    if (
+      scopedClassesSet &&
+      (scopedClassesSet.size > 0 || allElementClasses.length > 0)
+    ) {
       const scope: OutputScope = { classes: {}, elements: {} };
       for (const className of scopedClassesSet) {
-        scope.classes[className] = minifyAttributeName(`bascik__${scopeKey}__${className}`);
+        scope.classes[className] = minifyAttributeName(
+          `bascik__${scopeKey}__${className}`,
+        );
       }
       for (const element of new Set(allElementClasses)) {
-        scope.elements[element] = minifyAttributeName(`bascik__${scopeKey}__el__${element}`);
+        scope.elements[element] = minifyAttributeName(
+          `bascik__${scopeKey}__el__${element}`,
+        );
       }
-      component.fileContent = annotatePageAwareScripts(component.fileContent, encodeOutputScope(scope));
+      component.fileContent = annotatePageAwareScripts(
+        component.fileContent,
+        encodeOutputScope(scope),
+      );
     }
   }
 
@@ -937,7 +995,11 @@ export const getComponentScripts = async (
   scriptFileNames: string[],
 ): Promise<ComponentScriptsResult> => {
   const scriptMap = new Map<string, ComponentScriptInfo>();
-  if (!htmlFileName || !Array.isArray(scriptFileNames) || scriptFileNames.length === 0) {
+  if (
+    !htmlFileName ||
+    !Array.isArray(scriptFileNames) ||
+    scriptFileNames.length === 0
+  ) {
     return { scriptMap };
   }
 
@@ -946,7 +1008,10 @@ export const getComponentScripts = async (
   // layout. With several roots, a global "first root" would silently fall back
   // to basename matching for every component in the other roots.
   const compDir = findComponentRoot(htmlFileName);
-  const isSubfolder = compDir !== undefined && htmlDir !== compDir && htmlDir.startsWith(`${compDir}/`);
+  const isSubfolder =
+    compDir !== undefined &&
+    htmlDir !== compDir &&
+    htmlDir.startsWith(`${compDir}/`);
   const componentBaseName = basename(htmlFileName, ".html").toLowerCase();
 
   const matchingScriptFiles = scriptFileNames.filter((scriptPath) => {
@@ -955,7 +1020,9 @@ export const getComponentScripts = async (
       return scriptDir === htmlDir || scriptDir.startsWith(htmlDir + "/");
     } else {
       const scriptBaseName = basename(scriptPath);
-      const nameWithoutExt = scriptBaseName.replace(/\.(js|ts|mjs)$/, "").toLowerCase();
+      const nameWithoutExt = scriptBaseName
+        .replace(/\.(js|ts|mjs)$/, "")
+        .toLowerCase();
       return (
         nameWithoutExt === componentBaseName ||
         nameWithoutExt.startsWith(`${componentBaseName}.`) ||
@@ -992,7 +1059,10 @@ export const getComponentScripts = async (
     // are authoring errors and must fail the component loudly, not degrade
     // to a missing script.
     if (isTypeScriptFile(scriptPath)) {
-      code = await transformBrowserTypeScript(code, { sourcePath: relPath, kind: "companion" });
+      code = await transformBrowserTypeScript(code, {
+        sourcePath: relPath,
+        kind: "companion",
+      });
     }
     const baseName = basename(scriptPath);
     const info: ComponentScriptInfo = { relPath, code };
@@ -1010,77 +1080,90 @@ export const getComponentScripts = async (
 export const namespaceScriptTags = (
   component: BascikComponent,
 ): BascikComponent => {
+  if (!component.fileContent || !/<script\b/i.test(component.fileContent)) {
+    return component;
+  }
   // Script-looking examples in HTML comments are documentation, not browser
   // code. Shield comments before scanning for script tags so a fake opener in
   // a comment cannot be paired with a later real </script> and wrapped into an
   // invalid runtime script.
   const commentShield = createContentShield(component.fileContent);
-  const commentMaskedContent = component.fileContent.replace(
-    /<!--[\s\S]*?-->/g,
-    (comment) => commentShield.hide(comment),
-  );
+  const commentMaskedContent = component.fileContent.includes("<!--")
+    ? component.fileContent.replace(/<!--[\s\S]*?-->/g, (comment) =>
+        commentShield.hide(comment),
+      )
+    : component.fileContent;
 
   // Only wrap <script> tags with no type or type="text/javascript"
-  component.fileContent = commentShield.restore(commentMaskedContent.replace(
-    /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
-    (match, stampedOpen, code, close, _offset) => {
-      // Server, stream, build, and routes scripts run in Node.js, never wrap in browser IIFE
-      if (DIRECTIVE_SCRIPT_RE.test(stampedOpen)) return match;
+  component.fileContent = commentShield.restore(
+    commentMaskedContent.replace(
+      /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
+      (match, stampedOpen, code, close, _offset) => {
+        // Server, stream, build, and routes scripts run in Node.js, never wrap in browser IIFE
+        if (DIRECTIVE_SCRIPT_RE.test(stampedOpen)) return match;
 
-      // The line the body starts on in the source file, recorded when the file was read.
-      const { openTag: open, line: sourceLine } = takeScriptLine(stampedOpen);
+        // The line the body starts on in the source file, recorded when the file was read.
+        const { openTag: open, line: sourceLine } = takeScriptLine(stampedOpen);
 
-      // Extract data-bascik-source attribute if present
-      const sourceAttrMatch = open.match(/\bdata-bascik-source=["']([^"']+)["']/i);
-      const customSourcePath = sourceAttrMatch ? sourceAttrMatch[1] : null;
+        // Extract data-bascik-source attribute if present
+        const sourceAttrMatch = open.match(
+          /\bdata-bascik-source=["']([^"']+)["']/i,
+        );
+        const customSourcePath = sourceAttrMatch ? sourceAttrMatch[1] : null;
 
-      // Clean data-bascik-source attribute from open tag
-      const cleanOpen = open.replace(/\s*data-bascik-source=["']([^"']+)["']/i, "");
+        // Clean data-bascik-source attribute from open tag
+        const cleanOpen = open.replace(
+          /\s*data-bascik-source=["']([^"']+)["']/i,
+          "",
+        );
 
-      // Check for type attribute
-      const type = getScriptType(cleanOpen);
-      const isJsType = isJavaScriptScript(cleanOpen);
+        // Check for type attribute
+        const type = getScriptType(cleanOpen);
+        const isJsType = isJavaScriptScript(cleanOpen);
 
-      const isExternal = /\bsrc\s*=/i.test(cleanOpen);
-      const shouldWrap = !isExternal &&
-        (type === undefined || type === "text/javascript");
+        const isExternal = /\s+src\s*=/i.test(cleanOpen);
+        const shouldWrap =
+          !isExternal && (type === undefined || type === "text/javascript");
 
-      const targetPath = customSourcePath || (component.fileName ? relative(process.cwd(), component.fileName).replace(/\\/g, "/") : null);
+        const targetPath =
+          customSourcePath ||
+          (component.fileName
+            ? relative(process.cwd(), component.fileName).replace(/\\/g, "/")
+            : null);
 
-      if (isExternal) return `${open}${code}${close}`;
+        if (isExternal) return `${open}${code}${close}`;
 
-      // DevTools numbers a sourceURL script from the text right after `<script>`. Padding it by
-      // the lines above it in the source file makes DevTools line N the file's line N.
-      const startsOnNewLine = /^\r?\n/.test(code);
-      const { padding, leading } = sourceLinePadding(
-        targetPath ? sourceLine : undefined,
-        startsOnNewLine ? "" : "\n",
-      );
+        // DevTools numbers a sourceURL script from the text right after `<script>`. Padding it by
+        // the lines above it in the source file makes DevTools line N the file's line N.
+        const startsOnNewLine = /^\r?\n/.test(code);
+        const { padding, leading } = sourceLinePadding(
+          targetPath ? sourceLine : undefined,
+          startsOnNewLine ? "" : "\n",
+        );
 
-      if (!shouldWrap) {
-        // If type is present and not text/javascript, leave unchanged.
-        // If it is a JS type (like module), still add sourceURL if possible.
-        if (isJsType && targetPath) {
-          const sourceUrlComment = `\n//# sourceURL=${targetPath}`;
-          const modulePadding = sourceLinePadding(sourceLine, "").padding;
-          return `${cleanOpen}${modulePadding}${code}${sourceUrlComment}${close}`;
+        if (!shouldWrap) {
+          // If type is present and not text/javascript, leave unchanged.
+          // If it is a JS type (like module), still add sourceURL if possible.
+          if (isJsType && targetPath) {
+            const sourceUrlComment = `\n//# sourceURL=${targetPath}`;
+            const modulePadding = sourceLinePadding(sourceLine, "").padding;
+            return `${cleanOpen}${modulePadding}${code}${sourceUrlComment}${close}`;
+          }
+          return `${open}${code}${close}`;
         }
-        return `${open}${code}${close}`;
-      }
 
-      const trailing = code.endsWith("\n") ? "" : "\n";
+        const trailing = code.endsWith("\n") ? "" : "\n";
 
-      if (targetPath) {
-        const sourceUrlComment = `\n//# sourceURL=${targetPath}`;
-        return `${cleanOpen}${padding}(function() {${leading}${code}${trailing}})();${sourceUrlComment}${close}`;
-      } else {
-        return `${cleanOpen}(function() {${leading}${code}${trailing}})();${close}`;
-      }
-    },
-  ));
+        if (targetPath) {
+          const sourceUrlComment = `\n//# sourceURL=${targetPath}`;
+          return `${cleanOpen}${padding}(function() {${leading}${code}${trailing}})();${sourceUrlComment}${close}`;
+        } else {
+          return `${cleanOpen}(function() {${leading}${code}${trailing}})();${close}`;
+        }
+      },
+    ),
+  );
   return component;
 };
 
 // JavaScript minification is exported from js-minifier.ts.
-
-

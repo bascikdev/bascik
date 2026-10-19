@@ -7,7 +7,10 @@ import { fileURLToPath } from "node:url";
 import http from "node:http";
 import https from "node:https";
 
-const PKG_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "../index.ts");
+const PKG_ENTRY = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../index.ts",
+);
 
 let portCounter = 9800 + (process.pid % 100);
 const nextPort = (): number => portCounter++;
@@ -55,7 +58,11 @@ const spawnDevServer = async (
         res();
       } else if (child.exitCode !== null) {
         clearTimeout(timer);
-        rej(new Error(`Server exited early with code ${child.exitCode}. Output:\n${output}`));
+        rej(
+          new Error(
+            `Server exited early with code ${child.exitCode}. Output:\n${output}`,
+          ),
+        );
       } else {
         setTimeout(check, 50);
       }
@@ -112,13 +119,14 @@ describe("Dev server SSE shutdown hang (Prompt 146)", () => {
 
       // Now send SIGINT to child process and record duration
       const startTime = Date.now();
-      const exitPromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
-        (resolve) => {
-          server!.child.once("exit", (code, signal) => {
-            resolve({ code, signal });
-          });
-        },
-      );
+      const exitPromise = new Promise<{
+        code: number | null;
+        signal: NodeJS.Signals | null;
+      }>((resolve) => {
+        server!.child.once("exit", (code, signal) => {
+          resolve({ code, signal });
+        });
+      });
 
       server.child.kill("SIGINT");
       const { code } = await exitPromise;
@@ -127,7 +135,9 @@ describe("Dev server SSE shutdown hang (Prompt 146)", () => {
       expect(code).toBe(0);
       expect(durationMs).toBeLessThan(1500);
     } finally {
-      try { sseReq?.destroy(); } catch {}
+      try {
+        sseReq?.destroy();
+      } catch {}
       if (server && server.child.exitCode === null) {
         server.child.kill("SIGKILL");
       }
@@ -180,13 +190,14 @@ describe("Dev server SSE shutdown hang (Prompt 146)", () => {
 
       // Send SIGINT to child process and record duration
       const startTime = Date.now();
-      const exitPromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
-        (resolve) => {
-          server!.child.once("exit", (code, signal) => {
-            resolve({ code, signal });
-          });
-        },
-      );
+      const exitPromise = new Promise<{
+        code: number | null;
+        signal: NodeJS.Signals | null;
+      }>((resolve) => {
+        server!.child.once("exit", (code, signal) => {
+          resolve({ code, signal });
+        });
+      });
 
       server.child.kill("SIGINT");
       const { code } = await exitPromise;
@@ -195,7 +206,9 @@ describe("Dev server SSE shutdown hang (Prompt 146)", () => {
       expect(code).toBe(0);
       expect(durationMs).toBeLessThan(1500);
     } finally {
-      try { sseReq?.destroy(); } catch {}
+      try {
+        sseReq?.destroy();
+      } catch {}
       if (server && server.child.exitCode === null) {
         server.child.kill("SIGKILL");
       }

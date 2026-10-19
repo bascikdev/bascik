@@ -24,6 +24,7 @@ import {
   listComponents,
   invalidateComponentListCache,
   readComponentRoot,
+  isPageAwareBuildScript,
 } from "./components.ts";
 import { minifyHtml } from "./html-minifier.ts";
 
@@ -51,7 +52,9 @@ describe("replaceTag", () => {
     // `<cards>` and `<card2>` share the `card` prefix; only `<card>` is the target.
     for (const longer of ["cards", "card2", "card_x"]) {
       const input = `<${longer}>keep</${longer}><card>replace me</card>`;
-      expect(replaceTag(input, "card", "<p>new</p>")).toEqual(`<${longer}>keep</${longer}><p>new</p>`);
+      expect(replaceTag(input, "card", "<p>new</p>")).toEqual(
+        `<${longer}>keep</${longer}><p>new</p>`,
+      );
     }
   });
 
@@ -202,19 +205,25 @@ describe("getFirstComponent", () => {
       card: { fileContent: "<article>card</article>" },
     };
 
-    expect(getFirstComponent("<card-header>Heading</card-header>", cardOnly)).toEqual({});
+    expect(
+      getFirstComponent("<card-header>Heading</card-header>", cardOnly),
+    ).toEqual({});
   });
 
   it("refreshes its regex when component names change without changing key count", () => {
     const mutableList: ComponentList = {
       "old-card": { fileContent: "<article>old</article>" },
     };
-    expect(getFirstComponent("<old-card></old-card>", mutableList).name).toBe("old-card");
+    expect(getFirstComponent("<old-card></old-card>", mutableList).name).toBe(
+      "old-card",
+    );
 
     delete mutableList["old-card"];
     mutableList["new-card"] = { fileContent: "<article>new</article>" };
 
-    expect(getFirstComponent("<new-card></new-card>", mutableList).name).toBe("new-card");
+    expect(getFirstComponent("<new-card></new-card>", mutableList).name).toBe(
+      "new-card",
+    );
   });
 
   it("matches equal-length component names consistently regardless of insertion order", () => {
@@ -299,8 +308,7 @@ describe("getTag – self-closing", () => {
       "<my-list><my-list><my-list /><my-list/></my-list><my-list /></my-list>";
     expect(getTag(html, "my-list")).toMatchObject({
       content: html,
-      innerContent:
-        "<my-list><my-list /><my-list/></my-list><my-list />",
+      innerContent: "<my-list><my-list /><my-list/></my-list><my-list />",
     });
   });
 });
@@ -370,6 +378,19 @@ describe("extractProps", () => {
     ).toEqual({ title: "Hello", href: "/about" });
   });
 
+  it("extracts whitespace-spaced and unquoted prop values and matches case-insensitively", () => {
+    const props = extractProps(
+      '<my-comp data-bascik-prop-ctaUrl = "/start" data-bascik-prop-variant=primary></my-comp>',
+    );
+    expect(props).toEqual({ ctaUrl: "/start", variant: "primary" });
+    expect(injectProps("<span data-bascik-prop-variant></span>", props)).toBe(
+      "<span>primary</span>",
+    );
+    expect(
+      injectPropAttributes('<a data-bascik-attr-href="ctaurl">Go</a>', props),
+    ).toBe('<a href="/start">Go</a>');
+  });
+
   it("returns empty object when no props", () => {
     expect(extractProps("<my-comp></my-comp>")).toEqual({});
   });
@@ -379,11 +400,9 @@ describe("extractProps", () => {
   });
 
   it("warns when a prop value contains its delimiting quote", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    extractProps(
-      '<my-comp data-bascik-prop-title="say "hello""></my-comp>',
-    );
+    extractProps('<my-comp data-bascik-prop-title="say "hello""></my-comp>');
 
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("data-bascik-prop-title"),
@@ -478,21 +497,25 @@ describe("injectPropAttributes", () => {
   });
 
   it("removes a missing-prop directive without adding the target attribute", () => {
-    expect(
-      injectPropAttributes('<img data-bascik-attr-src="image">', {}),
-    ).toBe("<img>");
+    expect(injectPropAttributes('<img data-bascik-attr-src="image">', {})).toBe(
+      "<img>",
+    );
   });
 
   it("lets the prop override an existing target and warns with both names", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(
       injectPropAttributes(
         '<a href="/old" data-bascik-attr-href="link">Read</a>',
         { link: "/new" },
       ),
     ).toBe('<a href="/new">Read</a>');
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('attribute "href"'));
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('prop "link"'));
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('attribute "href"'),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('prop "link"'),
+    );
     warnSpy.mockRestore();
   });
 
@@ -501,7 +524,9 @@ describe("injectPropAttributes", () => {
     ["<unsafe>", "&lt;unsafe&gt;"],
   ])("attribute-escapes %s", (value, escaped) => {
     expect(
-      injectPropAttributes('<img data-bascik-attr-alt="text">', { text: value }),
+      injectPropAttributes('<img data-bascik-attr-alt="text">', {
+        text: value,
+      }),
     ).toBe(`<img alt="${escaped}">`);
   });
 
@@ -514,13 +539,15 @@ describe("injectPropAttributes", () => {
   });
 
   it("warns and strips a directive with no target attribute name", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(
       injectPropAttributes('<div data-bascik-attr-="value"></div>', {
         value: "ignored",
       }),
     ).toBe("<div></div>");
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("malformed data-bascik-attr-"));
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("malformed data-bascik-attr-"),
+    );
     warnSpy.mockRestore();
   });
 
@@ -571,10 +598,11 @@ describe("extractNamedSlotContent", () => {
     // The regex must close at the OUTER </div>, not the first inner one.
     const inner =
       '<div data-bascik-slot="example">' +
-      "<p>Before</p><div style=\"nested\"><span>Inner</span></div><p>After</p>" +
+      '<p>Before</p><div style="nested"><span>Inner</span></div><p>After</p>' +
       "</div>";
     expect(extractNamedSlotContent(inner)).toEqual({
-      example: "<p>Before</p><div style=\"nested\"><span>Inner</span></div><p>After</p>",
+      example:
+        '<p>Before</p><div style="nested"><span>Inner</span></div><p>After</p>',
     });
   });
 
@@ -599,8 +627,7 @@ describe("extractNamedSlotContent", () => {
   });
 
   it("ignores the marker text inside a quoted attribute value", () => {
-    const inner =
-      "<p title='see data-bascik-slot=\"fake\" usage'>text</p>";
+    const inner = "<p title='see data-bascik-slot=\"fake\" usage'>text</p>";
     expect(extractNamedSlotContent(inner)).toEqual({});
   });
 
@@ -641,9 +668,9 @@ describe("replaceNamedSlots", () => {
   it("matches a marker preceded by other attributes", () => {
     const template =
       '<footer><div id="nav-slot" data-bascik-slot="navigation"><p>Default nav</p></div></footer>';
-    expect(
-      replaceNamedSlots(template, { navigation: "<nav>Menu</nav>" }),
-    ).toBe("<footer><nav>Menu</nav></footer>");
+    expect(replaceNamedSlots(template, { navigation: "<nav>Menu</nav>" })).toBe(
+      "<footer><nav>Menu</nav></footer>",
+    );
   });
 
   it("keeps fallback content containing nested same-tag elements intact", () => {
@@ -666,7 +693,9 @@ describe("replaceNamedSlots", () => {
     const template =
       '<section><inner-demo><div data-bascik-slot="source-html">child fallback</div></inner-demo></section>';
 
-    expect(replaceNamedSlots(template, {}, new Set(["inner-demo"]))).toBe(template);
+    expect(replaceNamedSlots(template, {}, new Set(["inner-demo"]))).toBe(
+      template,
+    );
   });
 });
 
@@ -680,7 +709,9 @@ describe("replaceDefaultSlots", () => {
 
   it("keeps fallback content when no content is provided", () => {
     const template = "<div><div data-bascik-slot><p>fallback</p></div></div>";
-    expect(replaceDefaultSlots(template, "")).toBe("<div><p>fallback</p></div>");
+    expect(replaceDefaultSlots(template, "")).toBe(
+      "<div><p>fallback</p></div>",
+    );
   });
 
   it("matches a marker preceded by other attributes", () => {
@@ -756,7 +787,9 @@ describe("extractDefaultSlotContent", () => {
     const inner =
       '<p>parent content</p><inner-demo><div data-bascik-slot="source-html">child content</div></inner-demo>';
 
-    expect(extractDefaultSlotContent(inner, new Set(["inner-demo"]))).toBe(inner);
+    expect(extractDefaultSlotContent(inner, new Set(["inner-demo"]))).toBe(
+      inner,
+    );
   });
 });
 
@@ -766,25 +799,70 @@ describe("listComponents", () => {
     invalidateComponentListCache();
     await expect(listComponents()).resolves.toEqual({});
   });
+
+  it("emits compatibility warnings with file and line numbers when loading components with unsupported patterns", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "bascik-compat-warn-"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await mkdir(join(cwd, "src/components/bad-card"), { recursive: true });
+      await writeFile(
+        join(cwd, "src/components/bad-card/bad-card.html"),
+        '<div id="box"></div>\n<script>\n  const el = document.getElementById("box");\n  el.id = "mutated";\n</script>\n',
+      );
+      await writeFile(
+        join(cwd, "src/components/bad-card/bad-card.css"),
+        "[data-state] {\n  color: red;\n}\n",
+      );
+      await listComponents([join(cwd, "src/components")]);
+      const calls = warnSpy.mock.calls.map((c) => c.join(" "));
+      expect(
+        calls.some(
+          (msg) =>
+            msg.includes("js-id-setter") && msg.includes("bad-card.html:4"),
+        ),
+      ).toBe(true);
+      expect(
+        calls.some(
+          (msg) =>
+            msg.includes("css-attribute-selector") &&
+            msg.includes("bad-card.css:1"),
+        ),
+      ).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("readComponentRoot", () => {
   const withProject = async (run: (cwd: string) => Promise<void>) => {
     const cwd = await mkdtemp(join(tmpdir(), "bascik-component-root-"));
-    try { await run(cwd); } finally { await rm(cwd, { recursive: true, force: true }); }
+    try {
+      await run(cwd);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
   };
 
   it("returns no files for a missing default root", async () => {
     await withProject(async (cwd) => {
-      await expect(readComponentRoot(join(cwd, "src/components"), cwd)).resolves.toEqual([]);
+      await expect(
+        readComponentRoot(join(cwd, "src/components"), cwd),
+      ).resolves.toEqual([]);
     });
   });
 
   it("names a missing configured root and the config key", async () => {
     await withProject(async (cwd) => {
-      const error = await readComponentRoot(join(cwd, "src/widgets"), cwd).catch((caught) => caught);
+      const error = await readComponentRoot(
+        join(cwd, "src/widgets"),
+        cwd,
+      ).catch((caught) => caught);
       expect(error).toBeInstanceOf(Error);
-      expect(error.message).toContain('components directory "src/widgets" does not exist');
+      expect(error.message).toContain(
+        'components directory "src/widgets" does not exist',
+      );
       expect(error.message).toContain("directory.components");
       expect(error.cause).toMatchObject({ code: "ENOENT" });
     });
@@ -792,9 +870,13 @@ describe("readComponentRoot", () => {
 
   it("names a missing root outside the project by its relative path", async () => {
     await withProject(async (cwd) => {
-      const error = await readComponentRoot(join(cwd, "../shared-components-missing"), join(cwd, "site"))
-        .catch((caught) => caught);
-      expect(error.message).toContain('"../../shared-components-missing" does not exist');
+      const error = await readComponentRoot(
+        join(cwd, "../shared-components-missing"),
+        join(cwd, "site"),
+      ).catch((caught) => caught);
+      expect(error.message).toContain(
+        '"../../shared-components-missing" does not exist',
+      );
     });
   });
 
@@ -802,18 +884,25 @@ describe("readComponentRoot", () => {
     await withProject(async (cwd) => {
       await mkdir(join(cwd, "src"), { recursive: true });
       await writeFile(join(cwd, "src/components"), "not a directory");
-      await expect(readComponentRoot(join(cwd, "src/components"), cwd))
-        .rejects.toThrow('components directory "src/components" is not a directory');
+      await expect(
+        readComponentRoot(join(cwd, "src/components"), cwd),
+      ).rejects.toThrow(
+        'components directory "src/components" is not a directory',
+      );
     });
   });
 
   it("lists component files in an existing root", async () => {
     await withProject(async (cwd) => {
       await mkdir(join(cwd, "src/components/cards"), { recursive: true });
-      await writeFile(join(cwd, "src/components/cards/promo-card.html"), "<div></div>");
+      await writeFile(
+        join(cwd, "src/components/cards/promo-card.html"),
+        "<div></div>",
+      );
       await writeFile(join(cwd, "src/components/notes.md"), "ignored");
-      await expect(readComponentRoot(join(cwd, "src/components"), cwd))
-        .resolves.toEqual([join(cwd, "src/components/cards/promo-card.html")]);
+      await expect(
+        readComponentRoot(join(cwd, "src/components"), cwd),
+      ).resolves.toEqual([join(cwd, "src/components/cards/promo-card.html")]);
     });
   });
 
@@ -825,7 +914,9 @@ describe("readComponentRoot", () => {
         await mkdir(root, { recursive: true });
         await chmod(root, 0o000);
         try {
-          await expect(readComponentRoot(root, cwd)).rejects.toMatchObject({ code: "EACCES" });
+          await expect(readComponentRoot(root, cwd)).rejects.toMatchObject({
+            code: "EACCES",
+          });
         } finally {
           await chmod(root, 0o755);
         }
@@ -920,6 +1011,27 @@ describe("extractInheritableAttributes", () => {
     ).toEqual({ class: "sticky" });
   });
 
+  it("extracts whitespace-spaced and unquoted inheritable attributes and named slots", () => {
+    expect(
+      extractInheritableAttributes(
+        '<my-nav class = "sticky" data-testid=main-nav />',
+      ),
+    ).toEqual({ class: "sticky", "data-testid": "main-nav" });
+
+    expect(
+      extractNamedSlotContent(
+        '<div data-bascik-slot = "header"><h1>H</h1></div><div data-bascik-slot=footer><p>F</p></div>',
+      ),
+    ).toEqual({ header: "<h1>H</h1>", footer: "<p>F</p>" });
+
+    expect(
+      replaceNamedSlots(
+        '<header data-bascik-slot = "header"></header><footer data-bascik-slot=footer></footer>',
+        { header: "<h1>H</h1>", footer: "<p>F</p>" },
+      ),
+    ).toBe("<h1>H</h1><p>F</p>");
+  });
+
   it("extracts multiple inheritable attributes", () => {
     expect(
       extractInheritableAttributes(
@@ -966,6 +1078,43 @@ describe("mergeAttributesOntoRoot", () => {
     expect(result.match(/class=/g)).toHaveLength(1);
   });
 
+  it("merges class and style onto root elements that use spaces around '=' or unquoted values without duplicating attributes", () => {
+    expect(
+      mergeAttributesOntoRoot(
+        '<nav class = "scoped-nav" style = "color: red" id = "main"><a>link</a></nav>',
+        {
+          class: "sticky",
+          style: "font-weight: bold;",
+          id: "ignored-override",
+        },
+      ),
+    ).toBe(
+      '<nav class="scoped-nav sticky" style="color: red; font-weight: bold;" id = "main"><a>link</a></nav>',
+    );
+
+    expect(
+      mergeAttributesOntoRoot(
+        "<nav class=scoped-nav id = existing-id><a>link</a></nav>",
+        {
+          class: "sticky",
+          id: "override",
+        },
+      ),
+    ).toBe('<nav class="scoped-nav sticky" id = existing-id><a>link</a></nav>');
+  });
+
+  it("matches named slots case-insensitively when camelCase is used", () => {
+    const extracted = extractNamedSlotContent(
+      '<div data-bascik-slot="heroHeader"><h1>Hero</h1></div>',
+    );
+    expect(
+      replaceNamedSlots(
+        '<header data-bascik-slot="heroheader">Fallback</header>',
+        extracted,
+      ),
+    ).toBe("<h1>Hero</h1>");
+  });
+
   it("adds class attribute to root element that has none", () => {
     const html = "<nav><a>link</a></nav>";
     const result = mergeAttributesOntoRoot(html, { class: "sticky" });
@@ -1005,20 +1154,31 @@ describe("mergeAttributesOntoRoot", () => {
 
   it("merges attributes onto the first element when multiple root elements exist", () => {
     const html = '<header class="hdr">Header</header><main>Content</main>';
-    const result = mergeAttributesOntoRoot(html, { class: "custom", "data-test": "root" });
-    expect(result).toBe('<header class="hdr custom" data-test="root">Header</header><main>Content</main>');
+    const result = mergeAttributesOntoRoot(html, {
+      class: "custom",
+      "data-test": "root",
+    });
+    expect(result).toBe(
+      '<header class="hdr custom" data-test="root">Header</header><main>Content</main>',
+    );
   });
 
   it("skips leading HTML comments and whitespace to target the first root element", () => {
-    const html = '<!-- comment -->\n  <div class="card">Card</div>\n<aside>Sidebar</aside>';
+    const html =
+      '<!-- comment -->\n  <div class="card">Card</div>\n<aside>Sidebar</aside>';
     const result = mergeAttributesOntoRoot(html, { class: "active" });
-    expect(result).toBe('<!-- comment -->\n  <div class="card active">Card</div>\n<aside>Sidebar</aside>');
+    expect(result).toBe(
+      '<!-- comment -->\n  <div class="card active">Card</div>\n<aside>Sidebar</aside>',
+    );
   });
 
   it("skips leading <script> and <style> blocks to target the first root HTML element", () => {
-    const html = '<script>console.log(1);</script>\n  <div class="card">Card</div>\n<aside>Sidebar</aside>';
+    const html =
+      '<script>console.log(1);</script>\n  <div class="card">Card</div>\n<aside>Sidebar</aside>';
     const result = mergeAttributesOntoRoot(html, { class: "active" });
-    expect(result).toBe('<script>console.log(1);</script>\n  <div class="card active">Card</div>\n<aside>Sidebar</aside>');
+    expect(result).toBe(
+      '<script>console.log(1);</script>\n  <div class="card active">Card</div>\n<aside>Sidebar</aside>',
+    );
   });
 
   it("merges after a quoted greater-than sign in a root attribute", () => {
@@ -1030,18 +1190,23 @@ describe("mergeAttributesOntoRoot", () => {
   });
 
   it("merges onto the first element after a leading text node", () => {
-    expect(mergeAttributesOntoRoot("Intro text<div>Card</div>", { class: "active" })).toBe(
-      'Intro text<div class="active">Card</div>',
-    );
+    expect(
+      mergeAttributesOntoRoot("Intro text<div>Card</div>", { class: "active" }),
+    ).toBe('Intro text<div class="active">Card</div>');
   });
 
   it.each(["link", "meta"])(
     "merges onto the first content element after a leading <%s>",
     (tagName) => {
-      const leading = tagName === "link" ? '<link rel="stylesheet" href="/a.css">' : '<meta charset="utf-8">';
-      expect(mergeAttributesOntoRoot(`${leading}<div>Card</div>`, { class: "active" })).toBe(
-        `${leading}<div class="active">Card</div>`,
-      );
+      const leading =
+        tagName === "link"
+          ? '<link rel="stylesheet" href="/a.css">'
+          : '<meta charset="utf-8">';
+      expect(
+        mergeAttributesOntoRoot(`${leading}<div>Card</div>`, {
+          class: "active",
+        }),
+      ).toBe(`${leading}<div class="active">Card</div>`);
     },
   );
 
@@ -1051,6 +1216,53 @@ describe("mergeAttributesOntoRoot", () => {
         style: "font-weight: bold;",
       }),
     ).toBe('<div style="color: red; font-weight: bold;">Card</div>');
+  });
+
+  it("does not corrupt data-class or data-style attributes on the root element when merging class or style", () => {
+    expect(
+      mergeAttributesOntoRoot(
+        '<div data-class="foo" data-style="bar" class="base">Card</div>',
+        {
+          class: "extra",
+          style: "color: red;",
+        },
+      ),
+    ).toBe(
+      '<div data-class="foo" data-style="bar" class="base extra" style="color: red;">Card</div>',
+    );
+  });
+
+  it("ignores slot and prop markers inside HTML comments, <script>, and <textarea>", () => {
+    const template =
+      '<!-- <p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div> -->' +
+      "<script>const s = '<p data-bascik-prop-title></p><div data-bascik-slot=\"header\"></div><div data-bascik-slot></div>';</script>" +
+      '<textarea><p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div></textarea>' +
+      '<p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div>';
+    const withProps = injectProps(template, { title: "Title" });
+    const withNamed = replaceNamedSlots(withProps, {
+      header: "<h1>Header</h1>",
+    });
+    const withDefault = replaceDefaultSlots(withNamed, "<span>Body</span>");
+
+    expect(withDefault).toBe(
+      '<!-- <p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div> -->' +
+        "<script>const s = '<p data-bascik-prop-title></p><div data-bascik-slot=\"header\"></div><div data-bascik-slot></div>';</script>" +
+        '<textarea><p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div></textarea>' +
+        "<p>Title</p><h1>Header</h1><span>Body</span>",
+    );
+  });
+
+  it("accepts single-quoted named slot wrappers and close tags with trailing whitespace", () => {
+    const usage = "<div data-bascik-slot='header'><h1>H</h1></div ><p>Body</p>";
+    expect(extractNamedSlotContent(usage)).toEqual({ header: "<h1>H</h1>" });
+    expect(extractDefaultSlotContent(usage)).toBe("<p>Body</p>");
+
+    const template =
+      "<footer><div data-bascik-slot='header'>fallback</div ><div data-bascik-slot>def</div ></footer>";
+    const namedReplaced = replaceNamedSlots(template, { header: "<h1>H</h1>" });
+    expect(replaceDefaultSlots(namedReplaced, "<p>Body</p>")).toBe(
+      "<footer><h1>H</h1><p>Body</p></footer>",
+    );
   });
 });
 
@@ -1175,7 +1387,8 @@ describe("getTag – nested same-name tags", () => {
   });
 
   it("handles deeply nested same-name tags", () => {
-    const html = "<my-list>a<my-list>b<my-list>c</my-list>d</my-list>e</my-list>";
+    const html =
+      "<my-list>a<my-list>b<my-list>c</my-list>d</my-list>e</my-list>";
     const result = getTag(html, "my-list");
     expect(result.content).toBe(html);
     expect(result.innerContent).toBe(
@@ -1192,8 +1405,7 @@ describe("getTag – nested same-name tags", () => {
   });
 
   it("still pairs correctly when attributes contain >", () => {
-    const html =
-      '<my-comp title="a > b"><span>body</span></my-comp>';
+    const html = '<my-comp title="a > b"><span>body</span></my-comp>';
     const result = getTag(html, "my-comp");
     expect(result.content).toBe(html);
     expect(result.innerContent).toBe("<span>body</span>");
@@ -1212,9 +1424,7 @@ describe("replaceTag – nested same-name tags", () => {
     const html =
       "<div>before</div><my-list><li>one</li><my-list><li>nested</li></my-list><li>two</li></my-list><div>after</div>";
     const result = replaceTag(html, "my-list", "<ul>transpiled</ul>");
-    expect(result).toBe(
-      "<div>before</div><ul>transpiled</ul><div>after</div>",
-    );
+    expect(result).toBe("<div>before</div><ul>transpiled</ul><div>after</div>");
   });
 
   it("does not treat $ in the replacement as a back-reference", () => {
@@ -1237,7 +1447,7 @@ describe("replaceTag – nested same-name tags", () => {
         "my-nav",
         "<nav>inner</nav>",
       ),
-    ).toBe('<div><nav>inner</nav></div>');
+    ).toBe("<div><nav>inner</nav></div>");
   });
 });
 
@@ -1262,9 +1472,7 @@ describe("extractProps – single-quoted values", () => {
 
   it("extracts a single-quoted value containing double quotes", () => {
     expect(
-      extractProps(
-        `<my-comp data-bascik-prop-title='say "hi"'></my-comp>`,
-      ),
+      extractProps(`<my-comp data-bascik-prop-title='say "hi"'></my-comp>`),
     ).toEqual({ title: 'say "hi"' });
   });
 });
@@ -1344,7 +1552,9 @@ describe("injectProps – does not hang on unbalanced markup", () => {
     // The balanced <span> is injected; the trailing unclosed <div class="…">
     // (no `>`) must not send the regex into exponential backtracking.
     const template =
-      '<span data-bascik-prop-lang>x</span><div class="' + "a".repeat(4000) + '">';
+      '<span data-bascik-prop-lang>x</span><div class="' +
+      "a".repeat(4000) +
+      '">';
     expect(injectProps(template, { lang: "js" })).toBe(
       '<span>js</span><div class="' + "a".repeat(4000) + '">',
     );
@@ -1356,12 +1566,13 @@ describe("injectProps – does not hang on unbalanced markup", () => {
     // value is intentionally NOT injected; the leftover valueless marker is
     // stripped by the trailing cleanup pass, leaving the inner content intact.
     const rest = '<div class="y">"quoted"</div>'.repeat(500);
-    const template = '<span data-bascik-prop-lang>' + rest;
+    const template = "<span data-bascik-prop-lang>" + rest;
     expect(injectProps(template, { lang: "js" })).toBe("<span>" + rest);
   });
 
   it("returns quickly when no element carries the marker", () => {
-    const template = "<p>static</p>" + '<div class="x">"quoted"</div>'.repeat(500);
+    const template =
+      "<p>static</p>" + '<div class="x">"quoted"</div>'.repeat(500);
     expect(injectProps(template, { title: "Hi" })).toBe(template);
   });
 });
@@ -1409,16 +1620,14 @@ describe("raw-text elements – literal tags are not resolved", () => {
   });
 
   it("getFirstComponent finds a real tag after a script mentioning it", () => {
-    const html =
-      '<script>console.log("<my-card>")</script><my-card></my-card>';
+    const html = '<script>console.log("<my-card>")</script><my-card></my-card>';
     const result = getFirstComponent(html, componentList);
     expect(result.name).toBe("my-card");
     expect(result.content).toBe("<my-card></my-card>");
   });
 
   it("replaceTag leaves the literal tag in script content untouched", () => {
-    const html =
-      '<script>{"a": "<my-card>"}</script><my-card></my-card>';
+    const html = '<script>{"a": "<my-card>"}</script><my-card></my-card>';
     expect(replaceTag(html, "my-card", "<div>card</div>")).toBe(
       '<script>{"a": "<my-card>"}</script><div>card</div>',
     );
@@ -1459,10 +1668,10 @@ describe("getTag / getFirstComponent / replaceTag – property-based fuzzing", (
   const innerContentArb = fc.constantFrom(
     "",
     "<p>hello</p>",
-    "<span id=\"x\">hi</span>",
-    "<div class=\"wrap\"><p>nested</p></div>",
+    '<span id="x">hi</span>',
+    '<div class="wrap"><p>nested</p></div>',
     "<!-- comment -->",
-    "<br /><img src=\"x.png\" />",
+    '<br /><img src="x.png" />',
     "<p>line 1</p>\n<p>line 2</p>",
     "<p data-bascik-slot>fallback</p>",
   );
@@ -1477,42 +1686,60 @@ describe("getTag / getFirstComponent / replaceTag – property-based fuzzing", (
 
   it("getTag does not throw on generated HTML and does not return sentinels", () => {
     fc.assert(
-      fc.property(compNameArb, innerContentArb, attrArb, (name, inner, attrs) => {
-        const html = `<${name}${attrs}>${inner}</${name}>`;
-        expect(() => getTag(html, name)).not.toThrow();
-        const result = getTag(html, name);
-        expect(typeof (result.content ?? "")).toBe("string");
-        expect(result.content ?? "").not.toContain("\x00");
-      }),
+      fc.property(
+        compNameArb,
+        innerContentArb,
+        attrArb,
+        (name, inner, attrs) => {
+          const html = `<${name}${attrs}>${inner}</${name}>`;
+          expect(() => getTag(html, name)).not.toThrow();
+          const result = getTag(html, name);
+          expect(typeof (result.content ?? "")).toBe("string");
+          expect(result.content ?? "").not.toContain("\x00");
+        },
+      ),
       { numRuns: 150 },
     );
   });
 
   it("replaceTag does not throw and output contains replacement", () => {
     fc.assert(
-      fc.property(compNameArb, innerContentArb, attrArb, (name, inner, attrs) => {
-        const original = `<${name}${attrs}>${inner}</${name}>`;
-        const replacement = `<div>replaced</div>`;
-        expect(() => replaceTag(original, name, replacement)).not.toThrow();
-        const result = replaceTag(original, name, replacement);
-        expect(result).toContain("replaced");
-        expect(result).not.toContain(`<${name}`);
-      }),
+      fc.property(
+        compNameArb,
+        innerContentArb,
+        attrArb,
+        (name, inner, attrs) => {
+          const original = `<${name}${attrs}>${inner}</${name}>`;
+          const replacement = `<div>replaced</div>`;
+          expect(() => replaceTag(original, name, replacement)).not.toThrow();
+          const result = replaceTag(original, name, replacement);
+          expect(result).toContain("replaced");
+          expect(result).not.toContain(`<${name}`);
+        },
+      ),
       { numRuns: 150 },
     );
   });
 
   it("getFirstComponent returns the known component name or an empty object", () => {
     fc.assert(
-      fc.property(compNameArb, innerContentArb, attrArb, (name, inner, attrs) => {
-        const html = `<section><${name}${attrs}>${inner}</${name}></section>`;
-        const componentList: ComponentList = {
-          [name]: { fileName: `components/${name}.html`, fileContent: `<div>${inner}</div>` },
-        };
-        expect(() => getFirstComponent(html, componentList)).not.toThrow();
-        const result = getFirstComponent(html, componentList);
-        if (result.name) expect(result.name).toBe(name);
-      }),
+      fc.property(
+        compNameArb,
+        innerContentArb,
+        attrArb,
+        (name, inner, attrs) => {
+          const html = `<section><${name}${attrs}>${inner}</${name}></section>`;
+          const componentList: ComponentList = {
+            [name]: {
+              fileName: `components/${name}.html`,
+              fileContent: `<div>${inner}</div>`,
+            },
+          };
+          expect(() => getFirstComponent(html, componentList)).not.toThrow();
+          const result = getFirstComponent(html, componentList);
+          if (result.name) expect(result.name).toBe(name);
+        },
+      ),
       { numRuns: 150 },
     );
   });
@@ -1520,13 +1747,17 @@ describe("getTag / getFirstComponent / replaceTag – property-based fuzzing", (
   it("replaceTag with $-containing replacement does not throw or lose content", () => {
     // Regression target: String.replace treats $1, $& etc as capture-group refs.
     fc.assert(
-      fc.property(compNameArb, fc.constantFrom("$1", "$&", "$'", "$$", "$`"), (name, dollarStr) => {
-        const original = `<${name}>inner</${name}>`;
-        const replacement = `<p>${dollarStr}</p>`;
-        expect(() => replaceTag(original, name, replacement)).not.toThrow();
-        const result = replaceTag(original, name, replacement);
-        expect(result).toContain(dollarStr);
-      }),
+      fc.property(
+        compNameArb,
+        fc.constantFrom("$1", "$&", "$'", "$$", "$`"),
+        (name, dollarStr) => {
+          const original = `<${name}>inner</${name}>`;
+          const replacement = `<p>${dollarStr}</p>`;
+          expect(() => replaceTag(original, name, replacement)).not.toThrow();
+          const result = replaceTag(original, name, replacement);
+          expect(result).toContain(dollarStr);
+        },
+      ),
       { numRuns: 50 },
     );
   });
@@ -1566,8 +1797,8 @@ describe("injectProps – adversarial prop values", () => {
     );
 
     const templateArb = fc.constantFrom(
-      '<strong data-bascik-prop-label></strong>',
-      '<p data-bascik-prop-label>fallback</p>',
+      "<strong data-bascik-prop-label></strong>",
+      "<p data-bascik-prop-label>fallback</p>",
       '<span data-bascik-prop-label="default"></span>',
       '<div class="wrap"><em data-bascik-prop-label></em></div>',
     );
@@ -1625,9 +1856,9 @@ describe("tagName Validation Guards", () => {
   });
 
   it("ignores non-alphanumeric/regex-like propNames in injectProps", () => {
-    const html = '<p data-bascik-prop-x>content</p>';
+    const html = "<p data-bascik-prop-x>content</p>";
     // Prop name with malicious regexp characters
-    const result = injectProps(html, { "x>": "injected", "x": "good" });
+    const result = injectProps(html, { "x>": "injected", x: "good" });
     expect(result).toContain("good");
     expect(result).not.toContain("injected");
   });
@@ -1639,24 +1870,26 @@ describe("masked string caching performance helpers", () => {
   };
 
   it("getFirstComponent utilizes pre-masked cached string when provided", () => {
-    const html = '<script><my-card></my-card></script><my-card></my-card>';
+    const html = "<script><my-card></my-card></script><my-card></my-card>";
     // If we mask it fully, it will find no components. Let's pass a custom masked string where everything is space-filled (meaning no tags).
     const customMasked = " ".repeat(html.length);
     expect(getFirstComponent(html, componentList, customMasked)).toEqual({});
   });
 
   it("getTag utilizes pre-masked cached string when provided", () => {
-    const html = '<my-card></my-card>';
+    const html = "<my-card></my-card>";
     // If we mask it fully, getTag won't see any open tag inside the masked string
     const customMasked = " ".repeat(html.length);
     expect(getTag(html, "my-card", componentList, customMasked)).toEqual({});
   });
 
   it("replaceTag utilizes pre-masked cached string when provided", () => {
-    const html = '<my-card></my-card>';
+    const html = "<my-card></my-card>";
     // If we mask it fully, replaceTag won't see any open tag inside the masked string
     const customMasked = " ".repeat(html.length);
-    expect(replaceTag(html, "my-card", "<div>injected</div>", customMasked)).toBe(html);
+    expect(
+      replaceTag(html, "my-card", "<div>injected</div>", customMasked),
+    ).toBe(html);
   });
 
   it("getFirstComponent caches regex compilation for repeated calls on the same ComponentList", () => {
@@ -1664,8 +1897,8 @@ describe("masked string caching performance helpers", () => {
       "my-card": { fileContent: "<div>card</div>" },
       "my-button": { fileContent: "<button>btn</button>" },
     };
-    const html1 = '<my-card></my-card>';
-    const html2 = '<my-button></my-button>';
+    const html1 = "<my-card></my-card>";
+    const html2 = "<my-button></my-button>";
     expect(getFirstComponent(html1, list).name).toBe("my-card");
     expect(getFirstComponent(html2, list).name).toBe("my-button");
     // Repeating on the same ComponentList object should return consistent results
@@ -1673,4 +1906,27 @@ describe("masked string caching performance helpers", () => {
   });
 });
 
+describe("isPageAwareBuildScript – directive value is matched exactly", () => {
+  it.each([
+    ['<script data-bascik-build = "page">', true],
+    ["<script data-bascik-build=PAGE>", true],
+    ['<script data-bascik-build data-bascik-page-aware="">', true],
+    ['<script data-bascik-build="pages">', false],
+    ['<script data-bascik-build="page-x">', false],
+    ['<script data-bascik-build data-note="data-bascik-build=page">', false],
+    ["<script data-bascik-build data-bascik-page-aware-x>", false],
+  ])("%s -> %s", (openTag, expected) => {
+    expect(isPageAwareBuildScript(openTag, "export default () => ''")).toBe(
+      expected,
+    );
+  });
 
+  it("still defers a script that reads page context literally", () => {
+    expect(
+      isPageAwareBuildScript(
+        "<script data-bascik-build>",
+        "process.env.BASCIK_PAGE_PATH",
+      ),
+    ).toBe(true);
+  });
+});

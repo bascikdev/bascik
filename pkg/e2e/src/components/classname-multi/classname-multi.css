@@ -1,9 +1,56 @@
-.wrapper { border: 1px solid #444; padding: 16px; }
-.box { padding: 12px; background: rgb(30, 30, 30); border: 2px solid #555; border-radius: 6px; color: #aaa; margin-bottom: 12px; }
-.box.active { background: rgb(22, 101, 52); border-color: rgb(74, 222, 128); color: rgb(74, 222, 128); }
-.box.highlighted { border-width: 3px; border-color: rgb(251, 191, 36); }
-.box.featured { border-color: rgb(167, 139, 250); }
-.box.inactive { opacity: 0.4; }
-.status { font-family: monospace; font-size: 0.8rem; color: #888; padding: 6px; background: #111; margin-bottom: 12px; }
-.btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
-button { padding: 4px 10px; font-size: 0.8rem; background: #222; border: 1px solid #555; color: #ddd; cursor: pointer; }
+.wrapper {
+  border: 1px solid #444;
+  padding: 16px;
+}
+
+.box {
+  padding: 12px;
+  background: rgb(30, 30, 30);
+  border: 2px solid #555;
+  border-radius: 6px;
+  color: #aaa;
+  margin-bottom: 12px;
+}
+
+.box.active {
+  background: rgb(22, 101, 52);
+  border-color: rgb(74, 222, 128);
+  color: rgb(74, 222, 128);
+}
+
+.box.highlighted {
+  border-width: 3px;
+  border-color: rgb(251, 191, 36);
+}
+
+.box.featured {
+  border-color: rgb(167, 139, 250);
+}
+
+.box.inactive {
+  opacity: 0.4;
+}
+
+.status {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #888;
+  padding: 6px;
+  background: #111;
+  margin-bottom: 12px;
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+button {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  background: #222;
+  border: 1px solid #555;
+  color: #ddd;
+  cursor: pointer;
+}

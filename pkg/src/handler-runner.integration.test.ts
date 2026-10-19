@@ -28,7 +28,9 @@ describe("runDirectiveHandler real child processes (handler and result transport
       );
 
       const result = await runDirectiveHandler<string>(modulePath, "build");
-      expect(result.result).toBe("<article><h1>Hello from handler</h1></article>");
+      expect(result.result).toBe(
+        "<article><h1>Hello from handler</h1></article>",
+      );
       expect(result.stdout).toContain("module-init-stdout");
       expect(result.stdout).toContain("handler-stdout");
       expect(result.stderr).toContain("module-init-stderr");
@@ -91,14 +93,21 @@ describe("runDirectiveHandler real child processes (handler and result transport
 
       // 3. Re-exported default
       const helperModule = join(dir, "helper.mjs");
-      await writeFile(helperModule, `export const fn = () => "from-helper";`, "utf8");
+      await writeFile(
+        helperModule,
+        `export const fn = () => "from-helper";`,
+        "utf8",
+      );
       const reexportModule = join(dir, "reexport.mjs");
       await writeFile(
         reexportModule,
         `import { fn } from "./helper.mjs"; export default fn;`,
         "utf8",
       );
-      const resReexport = await runDirectiveHandler<string>(reexportModule, "build");
+      const resReexport = await runDirectiveHandler<string>(
+        reexportModule,
+        "build",
+      );
       expect(resReexport.result).toBe("from-helper");
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -130,7 +139,10 @@ describe("runDirectiveHandler real child processes (handler and result transport
 
       const emptyModule = join(dir, "empty.mjs");
       await writeFile(emptyModule, `export default () => [];`, "utf8");
-      const emptyResult = await runDirectiveHandler<any[]>(emptyModule, "routes");
+      const emptyResult = await runDirectiveHandler<any[]>(
+        emptyModule,
+        "routes",
+      );
       expect(emptyResult.result).toEqual([]);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -193,7 +205,11 @@ describe("runDirectiveHandler real child processes (handler and result transport
     const dir = await mkdtemp(join(tmpdir(), "bascik-test-handler-"));
     try {
       const strModule = join(dir, "str.mjs");
-      await writeFile(strModule, `export default () => JSON.stringify([]);`, "utf8");
+      await writeFile(
+        strModule,
+        `export default () => JSON.stringify([]);`,
+        "utf8",
+      );
       await expect(runDirectiveHandler(strModule, "routes")).rejects.toThrow(
         /must return an array.*Received string/,
       );
@@ -206,7 +222,8 @@ describe("runDirectiveHandler real child processes (handler and result transport
     const dir = await mkdtemp(join(tmpdir(), "bascik-test-handler-"));
     try {
       const modulePath = join(dir, "unicode.mjs");
-      const specialString = "<div title=\"hello 'world'\">日本語 \u001b[31mRed\u001b[0m $1 $& \\n \\\\</div>\n";
+      const specialString =
+        "<div title=\"hello 'world'\">日本語 \u001b[31mRed\u001b[0m $1 $& \\n \\\\</div>\n";
       await writeFile(
         modulePath,
         `
@@ -310,10 +327,18 @@ describe("runDirectiveHandler real child processes (handler and result transport
     try {
       const hangModule = join(dir, "hang-logged.mjs");
       // The interval keeps the event loop alive; a bare never-settling promise would let the child exit.
-      await writeFile(hangModule, `export default async () => { console.error("still loading"); await new Promise(() => setInterval(() => {}, 1000)); };`, "utf8");
+      await writeFile(
+        hangModule,
+        `export default async () => { console.error("still loading"); await new Promise(() => setInterval(() => {}, 1000)); };`,
+        "utf8",
+      );
 
-      const failure = await runDirectiveHandler(hangModule, "build", { timeoutMs: 300 }).catch((err: Error) => err);
-      expect((failure as Error).message).toBe("Directive script (data-bascik-build) timed out after 300ms\nstill loading");
+      const failure = await runDirectiveHandler(hangModule, "build", {
+        timeoutMs: 300,
+      }).catch((err: Error) => err);
+      expect((failure as Error).message).toBe(
+        "Directive script (data-bascik-build) timed out after 300ms\nstill loading",
+      );
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -323,11 +348,19 @@ describe("runDirectiveHandler real child processes (handler and result transport
     const dir = await mkdtemp(join(tmpdir(), "bascik-test-handler-"));
     try {
       const noisyModule = join(dir, "noisy.mjs");
-      await writeFile(noisyModule, `console.error("warning: deprecated option"); console.log("x".repeat(5000)); export default () => "";`, "utf8");
+      await writeFile(
+        noisyModule,
+        `console.error("warning: deprecated option"); console.log("x".repeat(5000)); export default () => "";`,
+        "utf8",
+      );
 
-      const failure = await runDirectiveHandler(noisyModule, "build", { maxBuffer: 1000 }).catch((err: Error) => err);
+      const failure = await runDirectiveHandler(noisyModule, "build", {
+        maxBuffer: 1000,
+      }).catch((err: Error) => err);
       const message = (failure as Error).message;
-      expect(message).toMatch(/^Directive script \(data-bascik-build\) failed: stdout maxBuffer length exceeded/);
+      expect(message).toMatch(
+        /^Directive script \(data-bascik-build\) failed: stdout maxBuffer length exceeded/,
+      );
       expect(message).toContain("warning: deprecated option");
       expect(message).not.toContain("timed out");
     } finally {

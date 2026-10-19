@@ -11,17 +11,17 @@ Preserve removes a region from both halves of that process:
 - **Declarations inside the preserved region are not scoped.** An element with `id="target"` keeps `id="target"`.
 - **References inside the preserved region are not rewritten.** A `href="#other"` there stays `#other`, even when `#other` is a scoped id elsewhere in the component.
 
-Because a preserved id is never declared as scoped, a reference *outside* the region that points at it is left alone too, and it keeps working.
+Because a preserved id is never declared as scoped, a reference _outside_ the region that points at it is left alone too, and it keeps working.
 
 ## Reference Rules
 
 Links and their targets must agree. Both ends are literal, or both ends are scoped together.
 
-| Link | Target | Result |
-| --- | --- | --- |
-| Normal | Preserved | Works. The target keeps its literal `id` and the link stays literal. |
-| Preserved | Preserved | Works. Both stay literal. |
-| Normal | Normal | Works. Bascik rewrites both to the same scoped id. |
+| Link          | Target     | Result                                                                     |
+| ------------- | ---------- | -------------------------------------------------------------------------- |
+| Normal        | Preserved  | Works. The target keeps its literal `id` and the link stays literal.       |
+| Preserved     | Preserved  | Works. Both stay literal.                                                  |
+| Normal        | Normal     | Works. Bascik rewrites both to the same scoped id.                         |
 | **Preserved** | **Normal** | **Broken.** The link stays `#target` while the target becomes a scoped id. |
 
 The broken case happens when a link sits inside a preserved subtree and points at an id that is scoped:
@@ -51,20 +51,24 @@ Add a bare `data-bascik-preserve` directive when a third-party script looks up a
 ```html
 <div id="turnstile-container" data-bascik-preserve></div>
 <script>
-  turnstile.render('turnstile-container');
+  turnstile.render("turnstile-container");
 </script>
 ```
 
-The bare directive preserves `id`, `name`, and `class` on the element and every descendant. Bascik removes the directive from compiled output.
+The bare directive preserves `id`, `name`, and `class` on the element and every descendant. Bascik removes the directive from compiled output. An empty value, `data-bascik-preserve=""`, is the bare directive as DOM serializers and some formatters write it, and behaves the same.
 
 ## External Form Endpoints
 
 External services usually require exact field names. Preserve only `name` so IDs and classes keep their normal component isolation:
 
 ```html
-<form action="https://forms.example/submit" method="post" data-bascik-preserve="name">
+<form
+  action="https://forms.example/submit"
+  method="post"
+  data-bascik-preserve="name"
+>
   <label for="email">Email</label>
-  <input id="email" name="email" type="email">
+  <input id="email" name="email" type="email" />
 </form>
 ```
 
@@ -100,7 +104,7 @@ Use `scoping.preserve` for a tag that should always be preserved across all comp
 ```ts
 export default defineConfig({
   scoping: {
-    preserve: ['code'],
+    preserve: ["code"],
   },
 });
 ```
@@ -112,7 +116,7 @@ Entries can also be wildcard patterns, which is useful for preserving an entire 
 ```ts
 export default defineConfig({
   scoping: {
-    preserve: ['vendor-*', '*-widget'],
+    preserve: ["vendor-*", "*-widget"],
   },
 });
 ```
@@ -130,11 +134,11 @@ A hyphenated tag with no component file prints `Unresolved component tag` during
 ```ts
 export default defineConfig({
   components: {
-    external: ['heading-anchors', 'vendor-*'],
+    external: ["heading-anchors", "vendor-*"],
   },
   scoping: {
     // Only needed if the element's contents must keep literal ids and classes.
-    preserve: ['vendor-*'],
+    preserve: ["vendor-*"],
   },
 });
 ```

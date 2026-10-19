@@ -4,14 +4,39 @@ Bascik includes a static analysis engine for project diagnostics (`bascik --chec
 
 ## Overview
 
-Diagnostics in Bascik operate across two distinct phases:
+Diagnostics in Bascik come from three places, each with one job:
 
-1. **Build-time static analysis (`check.ts`)**: Scans source pages and components before compilation to detect missing component definitions, unused component files, and invalid tag syntax without executing arbitrary code.
-2. **Runtime error remapping (`stack-trace.ts`)**: Intercepts unhandled exceptions in `<script data-bascik-build>` and `<script data-bascik-server>` blocks, remapping Node.js stack traces from ephemeral temp files back to the original source HTML file and line offset.
+1. **Project analysis (`check.ts`, in `@bascik/bascik`)**: answers questions about the whole project. Does the config make sense, do two pages claim one route, is a component never used. It needs the config, every page, and every component at once, so it cannot be done one file at a time.
+2. **Per-file analysis (`@bascik/language-server`)**: answers questions about one file. Is this attribute a typo, can this CSS be scoped, does this API route export a handler. It needs only the text of the file, so it runs as you type in the editor, and `bascik --check` runs the same engine over the project. The VS Code extension is a thin client that starts this server, so it holds no rules of its own.
+3. **Runtime error remapping (`stack-trace.ts`)**: intercepts unhandled exceptions in `<script data-bascik-build>` and `<script data-bascik-server>` blocks, remapping Node.js stack traces from ephemeral temp files back to the original source HTML file and line offset.
+
+### Where each rule lives
+
+A rule has exactly one home, so a finding is never reported twice and an editor squiggle always matches what CI says. The test for where a rule belongs is simple: **if it needs only one file, it belongs to the language server; if it needs the project, it belongs to `bascik --check`.**
+
+| Home                                 | Rules                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bascik --check` (project)           | `config-validation`, `missing-site-url`, `pages-directory`, `duplicate-component-name`, `component-list`, `circular-component-reference`, `duplicate-route-resolution`, `unmatched-tag`, `unused-component`, `route-collision`, `invalid-catch-all`, `dist-html-spec`                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `@bascik/language-server` (per file) | `unknown-bascik-attribute`, `unknown-directive-value`, `script-mode-conflict`, `directive-on-non-script`, `missing-prop-prefix`, `undeclared-prop`, `undeclared-slot`, `slot-outside-component`, `component-structure-order`, `component-name-not-hyphenated`, `unclosed-component-tag`, `prefer-self-closing-component`, `id-reference-undeclared`, `unknown-preserve-token`, `external-form-missing-preserve-name`, `inline-and-companion-styles`, `middleware-unsupported`, `missing-method-handler`, `invalid-method-case`, `api-handler-return-type`, the `css-*` and `js-*` scoping-compatibility rules, the `server-script-*` rules, and the component metadata rules |
+
+Two things are deliberately not duplicated:
+
+- **The compiler's own warnings.** When it builds a component, Bascik prints the same scoping-compatibility warnings, because a build must not depend on an optional package. The matcher exists in both packages, and `docs/scripts/compat-matcher-parity.test.ts` fails if they ever disagree.
+- **Build failures.** A script that combines two directives is a per-file rule (`script-mode-conflict`) and also a hard error when you build. The rule exists to tell you earlier.
+
+### How `bascik --check` uses the language server
+
+`@bascik/language-server` is an **optional peer dependency** of `@bascik/bascik`. Nothing installs it for you, and the compiler has no production dependencies. Projects scaffolded with `npm create bascik` already list it as a dev dependency.
+
+When `bascik --check` runs, it loads the language server from the project (so the version you installed is the version that runs), hands it the pages folder (markup only), every component root, and the API folder (scripts only), and merges what comes back. Per-file findings are listed by file under their own heading, because that is how an editor shows them. Hints, which are advice for the editor and may be wrong for a project the file cannot see, are left out, so they can never fail a `--strict` run.
+
+When the language server is **not installed**, the project checks still run and the report says what was skipped. `bascik --check --fix` exits 1 instead, because the fixes are the language server's and reporting "nothing fixed" would be a lie. When the installed language server is **too old** for this version of Bascik, the report says to update it.
+
+The language server is also usable on its own, with no `bascik` involved: `npx bascik-language-server --check`. That is the right tool for a shared component library that has no site of its own.
 
 ## Static Project Analysis (`check.ts`)
 
-Running `bascik --check` validates project markup without starting a full build or web server. If errors are detected, the process exits with code 1, making it suitable for CI/CD status checks.
+Running `bascik --check` validates the project without starting a full build or web server. If errors are detected, the process exits with code 1, making it suitable for CI/CD status checks.
 
 ### Tag Extraction (`extractCustomTags`)
 
@@ -79,14 +104,16 @@ export type FindingSeverity = "error" | "warning";
 export interface FindingLocation {
   filePath: string;
   line?: number;
+  column?: number;
 }
 
 export interface CheckFinding {
-  category: string;
+  category: string; // the rule id
   severity: FindingSeverity;
   message: string;
   locations: FindingLocation[];
   suggestion?: string;
+  source?: "language-server"; // set on per-file findings
 }
 
 export interface CheckFindings {
@@ -95,47 +122,70 @@ export interface CheckFindings {
   pagesChecked: number;
   componentsChecked: number;
   items: CheckFinding[];
+  distHtmlChecked: number | null;
+  distHtmlSpecHintNeeded: boolean;
+  perFileChecked: number | null; // null when the language server did not run
+  perFileHint?: string; // why it did not run
+  fixedFiles: string[];
 }
 ```
 
 This model decouples diagnostic analysis from presentation:
-- **`formatFindingsHuman(findings)`**: Groups findings by category, renders file and line locations, suggests near-miss matches, and provides category descriptions.
+
+- **`formatFindingsHuman(findings)`**: Groups project findings by category with descriptions and near-miss suggestions, then lists per-file findings by file, the way an editor shows them.
 - **`formatFindingsJson(findings)`**: Serializes the findings model to a stable JSON schema for CI automation.
 
 #### Adding a New Check
 
-To add a new validation check:
-1. Perform static analysis during the scanning pass in `checkProject`.
-2. Push a new `CheckFinding` object to `items` with an appropriate category identifier, severity (`"error"` or `"warning"`), message, and location array.
+First decide where it belongs, using the test above: one file, or the whole project.
+
+**A project check** (needs the config, the page list, or the route table):
+
+1. Perform the analysis during the scanning pass in `checkProject`.
+2. Push a new `CheckFinding` object to `items` with a category identifier, severity (`"error"` or `"warning"`), message, and location array.
 3. Add a category entry to `CATEGORY_META` in `check.ts` with a human-readable title and explanation for the terminal formatter.
+
+**A per-file check** (needs only the text of one file): add it to the language server's analyzer with a stable rule id in `code`. It then appears in the editor and in `bascik --check` with no change to `check.ts`, and `bascik-ignore <id>` and `disabledRules` work for it. Give an informational hint `DiagnosticSeverity.Information`, so it stays out of `--check`.
 
 ### Diagnostics Output Summary
 
+`bascik --check` reports the project rules below itself. Per-file rules come from the language server and are listed after the table.
+
 `bascik --check` produces categorized diagnostic reporting:
 
-| Diagnostic Type | Category | Severity | Exit Code | Description |
-| --- | --- | --- | --- | --- |
-| Unknown Component Tag | `unmatched-tag` | Warning | 0 | A hyphenated tag was used in HTML, but no matching file exists in `src/components/`. Ships unchanged. |
-| Unused Component File | `unused-component` | Warning | 0 | A component file exists in `src/components/`, but is never referenced in any page, component, or build script literal. |
-| Config Validation | `config-validation` | Error/Warning | Depends | Configuration validation results projected into findings with key-based severity mapping. |
-| Missing Site URL | `missing-site-url` | Error | 1 | `generate.sitemap` and/or `generate.robots` is enabled but no site URL is available. |
-| Pages Directory Issue | `pages-directory` | Error | 1 | Configured pages directory cannot be read or contains no page HTML files. |
-| Duplicate Component Name | `duplicate-component-name` | Error | 1 | Multiple component files define the same custom tag name. |
-| Circular Component Reference | `circular-component-reference` | Error | 1 | Direct or indirect component graph cycle detected (full cycle path included). |
-| Unknown Bascik Directive | `unknown-bascik-attribute` | Warning | 0 | A `data-bascik-*` attribute is unrecognized and likely a typo. |
-| Script Mode Conflict | `script-mode-conflict` | Error | 1 | A script tag has both `data-bascik-build` and `data-bascik-server`. |
-| Duplicate Route Resolution | `duplicate-route-resolution` | Error | 1 | Multiple pages resolve to the same route path. |
-| API Route Missing Handler | `missing-method-handler` | Error | 1 | An API route file exports no recognized HTTP method handler (`GET`, `POST`, etc.). |
-| API Route Collision | `route-collision` | Error | 1 | Multiple API route files resolve to the same endpoint URL path, or two catch-all routes match the same requests. |
-| API Invalid Catch-All | `invalid-catch-all` | Error | 1 | A `[...name]` segment is unnamed, partial, repeated, or not the final segment. |
-| API Route Invalid Case | `invalid-method-case` | Warning | 0 | Method export name is not uppercase (e.g. `get` instead of `GET`). |
-| Component Order Convention | `component-structure-order` | Warning | 0 | Advises `<style>` above markup and `<script>` below markup in component templates. |
+| Diagnostic Type              | Category                       | Severity      | Exit Code | Description                                                                                                            |
+| ---------------------------- | ------------------------------ | ------------- | --------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Unknown Component Tag        | `unmatched-tag`                | Warning       | 0         | A hyphenated tag was used in HTML, but no matching file exists in `src/components/`. Ships unchanged.                  |
+| Unused Component File        | `unused-component`             | Warning       | 0         | A component file exists in `src/components/`, but is never referenced in any page, component, or build script literal. |
+| Config Validation            | `config-validation`            | Error/Warning | Depends   | Configuration validation results projected into findings with key-based severity mapping.                              |
+| Missing Site URL             | `missing-site-url`             | Error         | 1         | `generate.sitemap` and/or `generate.robots` is enabled but no site URL is available.                                   |
+| Pages Directory Issue        | `pages-directory`              | Error         | 1         | Configured pages directory cannot be read or contains no page HTML files.                                              |
+| Duplicate Component Name     | `duplicate-component-name`     | Error         | 1         | Multiple component files define the same custom tag name.                                                              |
+| Circular Component Reference | `circular-component-reference` | Error         | 1         | Direct or indirect component graph cycle detected (full cycle path included).                                          |
+| Duplicate Route Resolution   | `duplicate-route-resolution`   | Error         | 1         | Multiple pages resolve to the same route path.                                                                         |
+| API Route Collision          | `route-collision`              | Error         | 1         | Multiple API route files resolve to the same endpoint URL path, or two catch-all routes match the same requests.       |
+| API Invalid Catch-All        | `invalid-catch-all`            | Error         | 1         | A `[...name]` segment is unnamed, partial, repeated, or not the final segment.                                         |
+| dist/ HTML Spec Violation    | `dist-html-spec`               | Error         | 1         | A compiled `dist/` page does not parse cleanly (needs the optional parse5).                                            |
+
+The per-file rules that `bascik --check` reports through the language server, with the same severities:
+
+| Diagnostic Type            | Rule id                     | Severity      | Exit Code | Description                                                                                                                           |
+| -------------------------- | --------------------------- | ------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Unknown Bascik Directive   | `unknown-bascik-attribute`  | Warning       | 0         | A `data-bascik-*` attribute is unrecognized and likely a typo.                                                                        |
+| Script Mode Conflict       | `script-mode-conflict`      | Error         | 1         | A script tag combines two script directives.                                                                                          |
+| Unknown Directive Value    | `unknown-directive-value`   | Warning       | 0         | `data-bascik-build` has a value other than `page`, so the script runs once as a static build script instead of once per page.         |
+| Missing Prop Prefix        | `missing-prop-prefix`       | Warning       | 0         | A component usage passes a declared prop as a plain attribute (`title="x"`) instead of `data-bascik-prop-title`. `--fix` rewrites it. |
+| API Route Missing Handler  | `missing-method-handler`    | Error         | 1         | An API route file exports no recognized HTTP method handler (`GET`, `POST`, etc.).                                                    |
+| API Route Invalid Case     | `invalid-method-case`       | Warning       | 0         | Method export name is not uppercase (e.g. `get` instead of `GET`).                                                                    |
+| API Middleware             | `middleware-unsupported`    | Error         | 1         | A `_middleware.ts` file exists. Middleware chains are not supported by design.                                                        |
+| Component Order Convention | `component-structure-order` | Warning       | 0         | Advises `<style>` above markup and `<script>` below markup in component templates.                                                    |
+| Scoping Compatibility      | `css-*`, `js-*`             | Error/Warning | 1/0       | CSS or JavaScript that cannot be reliably scoped. Applies to component files only.                                                    |
 
 `missing-required-prop` is intentionally omitted from the diagnostics model. The low-cost project-wide signal is noisy for real sites (conditional render paths and dynamic content supply), and `--check` favors actionable findings over speculative warnings.
 
 ### Worked Extension Examples
 
-- **Unknown directive checks**: scan stripped HTML for `data-bascik-*`, compare against known directive sets, and emit `unknown-bascik-attribute` warnings with line locations.
+- **Unknown directive checks** (per file, language server): scan open tags for `data-bascik-*`, compare against the known attribute set, and emit `unknown-bascik-attribute` warnings positioned on the attribute name.
 - **Cycle checks**: build a component dependency graph from custom-tag occurrences, then DFS for back-edges and report each full cycle path.
 - **Config reuse checks**: call `validateUserConfig(...)`, map each returned key to check-level severity, and emit `config-validation` findings instead of writing directly to stderr.
 

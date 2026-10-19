@@ -1,34 +1,39 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
-<head>
-  <site-head />
-  <script data-bascik-routes>
-    import { getPosts, groupByTag } from '@/lib/posts.ts';
-    export default async () => groupByTag(await getPosts()).map(({ tag, posts }) => ({ params: { tag }, data: { tag, posts } }));
-  </script>
-  <script data-bascik-build>
-    import { seo } from '@/lib/seo.ts';
-    export default () => {
-      const { data } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
-      return seo({ title: `Posts tagged "${data.tag}" - Example Site`, description: `Every post on the Example Site blog tagged ${data.tag}, newest first.` });
-    };
-  </script>
-</head>
-
-<body>
-  <site-header><theme-toggle /></site-header>
-  <main id="main" class="container">
+  <head>
+    <site-head />
+    <script data-bascik-routes>
+      import { getPosts, groupByTag } from "@/lib/posts.ts";
+      export default async () =>
+        groupByTag(await getPosts()).map(({ tag, posts }) => ({
+          params: { tag },
+          data: { tag, posts },
+        }));
+    </script>
     <script data-bascik-build>
-      import { escapeHtml, postList } from '@/lib/posts.ts';
+      import { seo } from "@/lib/seo.ts";
       export default () => {
-        const { data } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
-        return `<h1>Posts tagged “${escapeHtml(data.tag)}”</h1>\n${postList(data.posts)}`;
+        const { data } = JSON.parse(process.env.BASCIK_ROUTE || "{}");
+        return seo({
+          title: `Posts tagged "${data.tag}" - Example Site`,
+          description: `Every post on the Example Site blog tagged ${data.tag}, newest first.`,
+        });
       };
     </script>
-    <p><a href="/blog/tags/">All tags</a></p>
-  </main>
-  <site-footer />
-</body>
+  </head>
 
+  <body>
+    <site-header><theme-toggle /></site-header>
+    <main id="main" class="container">
+      <script data-bascik-build>
+        import { escapeHtml, postList } from "@/lib/posts.ts";
+        export default () => {
+          const { data } = JSON.parse(process.env.BASCIK_ROUTE || "{}");
+          return `<h1>Posts tagged “${escapeHtml(data.tag)}”</h1>\n${postList(data.posts)}`;
+        };
+      </script>
+      <p><a href="/blog/tags/">All tags</a></p>
+    </main>
+    <site-footer />
+  </body>
 </html>
