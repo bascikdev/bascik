@@ -23,9 +23,8 @@ describe("code-block component", () => {
     expect(html).toContain("function highlight(");
   });
 
-  // The client script assigns the highlighter's output to `innerHTML`. That is
-  // safe only if every character of the source is escaped and the only markup
-  // is the highlighter's own token spans. This test pins that property.
+  // The client script reconstructs the highlighter's token spans with DOM APIs.
+  // This test also pins the escaping contract of the highlighter itself.
   it("highlighter output is the escaped source plus token spans, for any input", async () => {
     const html = await readFile(componentPath, "utf8");
     const script = html.slice(

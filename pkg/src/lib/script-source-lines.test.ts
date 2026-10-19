@@ -77,7 +77,7 @@ describe("stampScriptLines", () => {
     const html =
       '<p>\r\n</p>\r\n<script\r\n  defer\r\n  data-x="1">\r\nrun();\r\n</script>';
     expect(
-      takeScriptLine(/<script[^>]*>/.exec(stampScriptLines(html))![0]).line,
+      takeScriptLine(/<script[^>]*>/i.exec(stampScriptLines(html))![0]).line,
     ).toBe(5);
   });
 
@@ -184,14 +184,15 @@ describe("component scripts in DevTools coordinates", () => {
     );
     const thrown: Array<{ url: string; line: number }> = [];
     for (const [, open, body] of transpiledHtmlBody.matchAll(
-      /(<script\b[^>]*>)([\s\S]*?)<\/script>/g,
+      /(<script\b[^>]*>)([\s\S]*?)<\/script[^>]*>/gi,
     )) {
       expect(open).not.toContain("data-bascik-script-line");
       if (!body.includes("//# sourceURL=")) continue;
       try {
         // Through eval, V8 itself names the script from its `//# sourceURL`, as browsers do.
-        runInNewContext(`eval(${JSON.stringify(body)})`, {
+        runInNewContext("eval(scriptSource)", {
           document: { getElementById: () => ({}) },
+          scriptSource: body,
         });
       } catch (error) {
         const frame = /at (?:.*\()?(\S+?):(\d+):\d+\)?/.exec(

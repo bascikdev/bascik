@@ -24,11 +24,16 @@ function slugify(text: string): string {
 }
 
 function stripMd(text: string): string {
-  // codeql[js/incomplete-multi-character-sanitization] Plain-text excerpt of first-party Markdown; the search UI escapes it.
-  return text
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<!--/g, "")
-    .replace(/--!?>/g, "")
+  let cleaned = text;
+  let previous: string;
+  do {
+    previous = cleaned;
+    cleaned = cleaned
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/<!--/g, "")
+      .replace(/--!?>/g, "");
+  } while (cleaned !== previous);
+  return cleaned
     .replace(/```[a-z0-9_-]*\n?([\s\S]*?)```/gi, "$1")
     .replace(/`([^`\n]+)`/g, "$1")
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")

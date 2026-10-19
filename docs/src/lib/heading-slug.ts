@@ -28,8 +28,13 @@ function decodeEntities(text: string): string {
 
 /** Plain text of a heading's rendered inline HTML (tags removed, entities decoded). */
 export function headingPlainText(headingHtml: string): string {
-  // codeql[js/incomplete-multi-character-sanitization] Plain text, not markup: render-nav.ts escapes it at the sink.
-  return decodeEntities(headingHtml.replace(/<[^>]+>/g, ""));
+  let stripped = headingHtml;
+  let previous: string;
+  do {
+    previous = stripped;
+    stripped = stripped.replace(/<[^>]+>/g, "");
+  } while (stripped !== previous);
+  return decodeEntities(stripped);
 }
 
 /** The id for a heading, from its rendered inline HTML. */

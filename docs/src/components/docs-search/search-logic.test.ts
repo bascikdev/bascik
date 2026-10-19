@@ -296,7 +296,7 @@ describe("snippet", () => {
     expect(snippet(null, "foo", [])).toBe("");
   });
 
-  it("centres on the phrase match when found", () => {
+  it("centers on the phrase match when found", () => {
     const text = "word ".repeat(20) + "TARGET" + " word".repeat(20);
     const result = snippet(text, "target", tokens("target"));
     expect(result.toLowerCase()).toContain("target");

@@ -53,10 +53,15 @@ const decode = (text) =>
       );
     return ENTITIES[name.toLowerCase()] ?? whole;
   });
-const textOf = (html) =>
-  decode(html.replace(/<[^>]+>/g, ""))
-    .replace(/\s+/g, " ")
-    .trim();
+const textOf = (html) => {
+  let stripped = html;
+  let previous;
+  do {
+    previous = stripped;
+    stripped = stripped.replace(/<[^>]+>/g, "");
+  } while (stripped !== previous);
+  return decode(stripped).replace(/\s+/g, " ").trim();
+};
 
 /** The status symbol of a table cell, from its icon label or a literal symbol. */
 function statusOf(cellHtml) {

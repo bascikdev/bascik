@@ -34,7 +34,7 @@ function filesUnder(dir: string, extensions: string[]): string[] {
 }
 
 const folders = VERSIONED_IMAGE_FOLDERS.map((folder) =>
-  folder.replace(/[/.]/g, "\\$&"),
+  folder.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&"),
 ).join("|");
 /** `src="/assets/demos/..."`, `srcset=...`, `href=...`, `poster=...`, or `url(/assets/vscode/...)`. */
 const unversionedReference = new RegExp(

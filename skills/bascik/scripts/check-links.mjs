@@ -23,19 +23,25 @@ Options:
 
 const ATTRS = ["href", "src", "srcset", "poster", "data"];
 const decode = (text) =>
-  text
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
+  text.replace(
+    /&(?:quot|#39|lt|gt|amp);/g,
+    (entity) =>
+      ({ "&quot;": '"', "&#39;": "'", "&lt;": "<", "&gt;": ">", "&amp;": "&" })[
+        entity
+      ],
+  );
 
 /** Every link-like reference in a page, with the attribute it came from. Exported for tests. */
 export function extractLinks(html) {
-  const cleaned = html
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<script\b(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<(template|textarea|code|pre)\b[\s\S]*?<\/\1>/gi, "");
+  let cleaned = html;
+  let previous;
+  do {
+    previous = cleaned;
+    cleaned = cleaned
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/<script\b(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<(template|textarea|code|pre)\b[\s\S]*?<\/\1>/gi, "");
+  } while (cleaned !== previous);
   const links = [];
   for (const tag of cleaned.matchAll(/<([a-z][a-z0-9-]*)\b([^>]*)>/gi)) {
     for (const attr of tag[2].matchAll(

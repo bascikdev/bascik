@@ -26,11 +26,17 @@ Options:
 
 const decode = (text) =>
   text
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
+    .replace(
+      /&(?:quot|#39|lt|gt|amp);/g,
+      (entity) =>
+        ({
+          "&quot;": '"',
+          "&#39;": "'",
+          "&lt;": "<",
+          "&gt;": ">",
+          "&amp;": "&",
+        })[entity],
+    )
     .replace(/\s+/g, " ")
     .trim();
 
@@ -56,9 +62,14 @@ export function inspectPage(html) {
   const metas = tags(html, "meta");
   const metaBy = (key, value) =>
     metas.find((m) => (m[key] ?? "").toLowerCase() === value)?.content;
-  const body = html
-    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
-    .replace(/<style\b[\s\S]*?<\/style>/gi, "");
+  let body = html;
+  let previous;
+  do {
+    previous = body;
+    body = body
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, "");
+  } while (body !== previous);
   const titleMatch = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html);
   const jsonLd = [
     ...html.matchAll(

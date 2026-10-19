@@ -69,12 +69,15 @@ function stripCode(text: string, isHtml: boolean): string {
       .replace(/~~~[\s\S]*?~~~/g, "")
       .replace(/`[^`\n]*`/g, "");
   }
-  // Not a sanitizer: this only hides first-party example code from the link
-  // scan, so a leftover fragment can at worst add a link to check.
-  // codeql[js/incomplete-multi-character-sanitization]
-  return text
-    .replace(/<script[\s\S]*?<\/script[^>]*>/gi, "")
-    .replace(/<code-block[\s\S]*?<\/code-block>/g, "");
+  let stripped = text;
+  let previous: string;
+  do {
+    previous = stripped;
+    stripped = stripped
+      .replace(/<script[\s\S]*?<\/script[^>]*>/gi, "")
+      .replace(/<code-block[\s\S]*?<\/code-block>/g, "");
+  } while (stripped !== previous);
+  return stripped;
 }
 
 /** Extract internal links from a source file's text. */

@@ -41,9 +41,8 @@ test.describe("source-map-test page", () => {
 
       expect(errors).toHaveLength(1);
       // Chromium reports the sourceURL as written: `(src/components/...html?instance=2:1:122)`.
-      const frame = new RegExp(
-        `\\(${url.replace(/[.?]/g, "\\$&")}:\\d+:\\d+\\)`,
-      );
+      const escapedUrl = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const frame = new RegExp(`\\(${escapedUrl}:\\d+:\\d+\\)`);
       expect(errors[0].stack).toMatch(frame);
     });
   }

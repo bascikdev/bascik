@@ -69,8 +69,11 @@ function findMathOccurrences(
     }
 
     // Strip any full comments within the line
-    // codeql[js/incomplete-multi-character-sanitization] Test scan of first-party Markdown; not a sanitizer.
-    line = line.replace(/<!--[\s\S]*?-->/g, "");
+    let previousLine: string;
+    do {
+      previousLine = line;
+      line = line.replace(/<!--[\s\S]*?-->/g, "");
+    } while (line !== previousLine);
 
     // Check if an unclosed HTML comment starts on this line
     const openIdx = line.indexOf("<!--");

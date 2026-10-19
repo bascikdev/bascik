@@ -213,13 +213,13 @@ describe("maskComments", () => {
   const reference = (text: string, kind: "css" | "js") =>
     kind === "css"
       ? text.replace(
-        /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\))|\/\*[\s\S]*?\*\//g,
-        (m, kept?: string) => kept ?? m.replace(/[^\n]/g, " "),
-      )
+          /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\))|\/\*[\s\S]*?\*\//g,
+          (m, kept?: string) => kept ?? m.replace(/[^\n]/g, " "),
+        )
       : text.replace(
-        /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|`(?:[^`\\]|\\[\s\S])*`)|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
-        (m, kept?: string) => kept ?? m.replace(/[^\n]/g, " "),
-      );
+          /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|`(?:[^`\\]|\\[\s\S])*`)|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
+          (m, kept?: string) => kept ?? m.replace(/[^\n]/g, " "),
+        );
 
   const tricky = fc
     .array(

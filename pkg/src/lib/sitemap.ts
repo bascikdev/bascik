@@ -32,6 +32,7 @@ import { getSiteUrl } from "./environment.ts";
 import { listPages } from "./file-system.ts";
 import { getRelativePath } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
+import { readStartTagAttributes, scanHtml } from "./html-scanner.ts";
 import { composeSiteUrl } from "./base-path.ts";
 import { manifestCollector } from "./manifest.ts";
 import { logInfo } from "./log.ts";
@@ -76,9 +77,6 @@ export const is404Page = (relativePath: string): boolean =>
 export const is500Page = (relativePath: string): boolean =>
   getHttpPath(relativePath) === "/500";
 
-const SITEMAP_EXCLUDE_META_RE =
-  /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*\bname\s*=\s*(?:["']bascik-sitemap["']|bascik-sitemap(?=[>\s/]))(?:[^>"']|"[^"]*"|'[^']*')*\bcontent\s*=\s*(?:["']exclude["']|exclude(?=[>\s/]))|<meta\b(?:[^>"']|"[^"]*"|'[^']*')*\bcontent\s*=\s*(?:["']exclude["']|exclude(?=[>\s/]))(?:[^>"']|"[^"]*"|'[^']*')*\bname\s*=\s*(?:["']bascik-sitemap["']|bascik-sitemap(?=[>\s/]))/i;
-
 /**
  * Check whether a page HTML contains `<meta name="bascik-sitemap" content="exclude">`.
  */
@@ -87,13 +85,24 @@ export const isPageExcludedFromSitemap = async (
 ): Promise<boolean> => {
   try {
     const content = await readFile(pageFilePath, "utf8");
-    const scannable = content
-      .replace(/<!--[\s\S]*?(?:-->|$)/g, () => "")
-      .replace(
-        /<(script|style|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>/gi,
-        () => "",
-      );
-    return SITEMAP_EXCLUDE_META_RE.test(scannable);
+    let excluded = false;
+    scanHtml(content, {
+      token(token) {
+        if (token.kind === "tag" && !token.isEndTag && token.name === "meta") {
+          const attrs = readStartTagAttributes(content, token.start);
+          let isBascikSitemap = false;
+          let isExclude = false;
+          for (const attr of attrs) {
+            const n = attr.name.toLowerCase();
+            const v = attr.value.toLowerCase();
+            if (n === "name" && v === "bascik-sitemap") isBascikSitemap = true;
+            if (n === "content" && v === "exclude") isExclude = true;
+          }
+          if (isBascikSitemap && isExclude) excluded = true;
+        }
+      },
+    });
+    return excluded;
   } catch {
     return false;
   }

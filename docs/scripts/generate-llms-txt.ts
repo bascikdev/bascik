@@ -27,9 +27,13 @@ const outputFile = join(
 const siteUrl = "https://bascik.dev";
 
 function stripMd(text: string): string {
-  // codeql[js/incomplete-multi-character-sanitization] Writes plain text to llms.txt from first-party Markdown.
-  return text
-    .replace(/<!--[\s\S]*?-->/g, "")
+  let cleaned = text;
+  let previous: string;
+  do {
+    previous = cleaned;
+    cleaned = cleaned.replace(/<!--[\s\S]*?-->/g, "");
+  } while (cleaned !== previous);
+  return cleaned
     .replace(/```[\s\S]*?```/gm, "")
     .replace(/`([^`\n]+)`/g, "$1")
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")

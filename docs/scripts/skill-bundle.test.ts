@@ -229,7 +229,7 @@ describe("skill-bundle", () => {
       expect(
         await frontmatterOf(path.join(contributorDir, name, "SKILL.md")),
         name,
-      ).toMatch(/^metadata:\n(?:\s+.*\n)*?\s+internal: true$/m);
+      ).toMatch(/^metadata:\n(?:[ \t]+[^\n]+\n)*?[ \t]+internal: true$/m);
     }
     for (const name of await listSkillNames(repoSkillsDir)) {
       expect(

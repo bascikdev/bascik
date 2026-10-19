@@ -162,10 +162,13 @@ export function parseLogo(source: string, crop?: Box): LogoArtwork {
     throw new Error(`press-kit: unreadable viewBox "${svg[1]}"`);
   }
 
-  // codeql[js/incomplete-multi-character-sanitization] Reads the repo's own logo SVG; not a sanitizer.
-  const inner = svg[2]
-    .replace(/<!--[\s\S]*?-->/g, () => "")
-    .replace(/<animate\b[\s\S]*?\/>/g, () => "");
+  let inner = svg[2];
+  let previous: string;
+  do {
+    previous = inner;
+    inner = inner.replace(/<!--[\s\S]*?-->/g, "");
+  } while (inner !== previous);
+  inner = inner.replace(/<animate\b[\s\S]*?\/>/g, "");
   const polygon = /<polygon\b[^>]*\bpoints="([^"]+)"[^>]*\/?>/.exec(inner);
   if (!polygon) throw new Error("press-kit: logo source has no <polygon> tile");
   if (!polygon[0].includes(COLORS.lime)) {

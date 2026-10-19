@@ -150,10 +150,18 @@ function escapeXml(str: string): string {
     .replace(/'/g, "&apos;");
 }
 
+function stripHtmlComments(source: string): string {
+  let cleaned = source;
+  let previous: string;
+  do {
+    previous = cleaned;
+    cleaned = cleaned.replace(/<!--[\s\S]*?-->/g, "");
+  } while (cleaned !== previous);
+  return cleaned;
+}
+
 function stripMd(text: string): string {
-  // codeql[js/incomplete-multi-character-sanitization] Plain text from first-party Markdown; escapeXml runs before it reaches the SVG.
-  return text
-    .replace(/<!--[\s\S]*?-->/g, "")
+  return stripHtmlComments(text)
     .replace(/```[\s\S]*?```/gm, "")
     .replace(/`([^`\n]+)`/g, "$1")
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
@@ -231,8 +239,7 @@ function extractMetaFromMd(
   codeLang?: string;
 } {
   // Strip multiline HTML comments before line scanning
-  // codeql[js/incomplete-multi-character-sanitization] Plain text from first-party Markdown; escapeXml runs before it reaches the SVG.
-  const cleanMd = md.replace(/<!--[\s\S]*?-->/g, "");
+  const cleanMd = stripHtmlComments(md);
   const lines = cleanMd.split("\n");
   const h1Line = lines.find((l) => /^# /.test(l));
   const rawTitle = h1Line ? h1Line.slice(2).trim() : fallbackLabel;
@@ -267,11 +274,8 @@ function extractMetaFromMd(
   }
 
   // Preserve raw content with inline backticks, just strip other block MD structures
-  // codeql[js/incomplete-multi-character-sanitization] Plain text from first-party Markdown; escapeXml runs before it reaches the SVG.
   const description =
-    paragraphLines
-      .join(" ")
-      .replace(/<!--[\s\S]*?-->/g, "")
+    stripHtmlComments(paragraphLines.join(" "))
       .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
       .replace(/\*\*([^*]+)\*\*/g, "$1")
       .replace(/\*([^*\n]+)\*/g, "$1")

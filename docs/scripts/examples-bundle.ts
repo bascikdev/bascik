@@ -108,7 +108,12 @@ export function componentTagsIn(
 ): string[] {
   const found = new Set<string>();
   // Comments and code examples mention tags without using them.
-  const markup = source.replace(/<!--[\s\S]*?-->/g, "");
+  let markup = source;
+  let previous: string;
+  do {
+    previous = markup;
+    markup = markup.replace(/<!--[\s\S]*?-->/g, "");
+  } while (markup !== previous);
   for (const match of markup.matchAll(/<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)\b/g)) {
     if (componentNames.has(match[1]) && match[1] !== self) found.add(match[1]);
   }

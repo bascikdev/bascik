@@ -235,9 +235,9 @@ describe("trimmedStartPosition", () => {
     const { line, columnOffset } = trimmedStartPosition(body, 4, 25);
     let stack = "";
     try {
-      runInNewContext(
-        `eval(${JSON.stringify(`${body.trim()}\n//# sourceURL=mod.js`)})`,
-      );
+      runInNewContext("eval(scriptSource)", {
+        scriptSource: `${body.trim()}\n//# sourceURL=mod.js`,
+      });
     } catch (error) {
       stack = String((error as Error).stack);
     }
@@ -252,9 +252,9 @@ describe("padToSourcePosition", () => {
   /** Runs `code` as a script named `file` and returns the `line:column` V8 reports for the throw. */
   const thrownAt = (code: string): string => {
     try {
-      runInNewContext(
-        `eval(${JSON.stringify(`${code}\n//# sourceURL=file.html`)})`,
-      );
+      runInNewContext("eval(scriptSource)", {
+        scriptSource: `${code}\n//# sourceURL=file.html`,
+      });
     } catch (error) {
       return /file\.html:(\d+:\d+)/.exec(String((error as Error).stack))![1];
     }

@@ -190,6 +190,14 @@ describe("audit-seo", () => {
     expect(facts.canonical).toBe("https://e.com/a");
   });
 
+  it("ignores headings and images inside case-insensitive script and style elements", () => {
+    const facts = inspectPage(
+      '<html><body><SCRIPT>"<h1>fake</h1><img src=x>"</SCRIPT><style>/* <h1>fake</h1> */</style><h1>real</h1></body></html>',
+    );
+    expect(facts.h1Count).toBe(1);
+    expect(facts.imagesWithoutAlt).toBe(0);
+  });
+
   it("maps dist files to the same paths the sitemap and BASCIK_PAGE_PATH use", () => {
     expect(pagePathOf("index.html")).toBe("/");
     expect(pagePathOf("about.html")).toBe("/about");
@@ -345,6 +353,15 @@ describe("check-links", () => {
         (l: { url: string }) => l.url,
       ),
     ).toEqual(["/a.png", "/a.png", "/a@2x.png"]);
+  });
+
+  it("decodes entities once and ignores links in masked elements", () => {
+    const links = extractLinks(
+      '<!-- <a href="/comment"> --><SCRIPT>"<a href=\'/script\'>"</SCRIPT><pre><a href="/pre">x</a></pre><a href="/a&amp;lt;b&amp;gt;">real</a>',
+    );
+    expect(links.map((link: { url: string }) => link.url)).toEqual([
+      "/a&lt;b&gt;",
+    ]);
   });
 });
 

@@ -478,6 +478,38 @@
     return out;
   }
 
+  function decodeEntities(str) {
+    return str.replace(/&(?:lt|gt|amp);/g, function (m) {
+      return m === "&lt;" ? "<" : m === "&gt;" ? ">" : "&";
+    });
+  }
+
+  function renderHighlighted(target, result) {
+    const frag = document.createDocumentFragment();
+    const parts = result.split(
+      /(<span data-code-token="[a-z]+">[\s\S]*?<\/span>)/g,
+    );
+    for (let idx = 0; idx < parts.length; idx++) {
+      const part = parts[idx];
+      if (!part) continue;
+      const m = /^<span data-code-token="([a-z]+)">([\s\S]*?)<\/span>$/.exec(
+        part,
+      );
+      if (m) {
+        const span = document.createElement("span");
+        span.setAttribute("data-code-token", m[1]);
+        span.textContent = decodeEntities(m[2]);
+        frag.appendChild(span);
+      } else {
+        frag.appendChild(document.createTextNode(decodeEntities(part)));
+      }
+    }
+    while (target.firstChild) {
+      target.removeChild(target.firstChild);
+    }
+    target.appendChild(frag);
+  }
+
   const root = document.getElementById("cblock-root");
   const langEl = root && root.querySelector(".cblock-lang");
   const codeEl = root && root.querySelector(".cblock-body");
@@ -488,8 +520,7 @@
     const raw = codeEl.textContent;
     if (lang && lang !== "text" && raw.trim()) {
       const result = highlight(raw, lang);
-      // codeql[js/xss-through-dom] highlight() escapes every source character; code-block.test.ts pins that.
-      if (result !== null) codeEl.innerHTML = result;
+      if (result !== null) renderHighlighted(codeEl, result);
     }
   }
   if (copyBtn && codeEl) {
