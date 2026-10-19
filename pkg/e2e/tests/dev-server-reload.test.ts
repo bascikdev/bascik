@@ -954,17 +954,15 @@ test.describe('Dev Server Startup Output', () => {
           child.kill();
         }, 15000);
 
-        child.stdout?.on('data', (data) => {
+        const captureOutput = (data: Buffer): void => {
           output += data.toString('utf8');
           if (output.includes('All tasks completed in')) {
             bootCompleted = true;
             child.kill();
           }
-        });
-
-        child.stderr?.on('data', (data) => {
-          output += data.toString('utf8');
-        });
+        };
+        child.stdout?.on('data', captureOutput);
+        child.stderr?.on('data', captureOutput);
 
         child.on('error', (err) => {
           clearTimeout(timeout);
@@ -1012,7 +1010,7 @@ test.describe('Dev Server Cold Start & Boot Loading Screen', () => {
 
     const child = spawn(process.execPath, [entryPath], {
       cwd: e2eDir,
-      env: { ...process.env, PORT: port },
+      env: { ...process.env, BASCIK_SERVER_PORT: port },
     });
     let output = '';
     let exited = false;
@@ -1063,15 +1061,17 @@ test.describe('Dev Server Cold Start & Boot Loading Screen', () => {
     const baseUrl = `http://localhost:${port}`;
     const child = spawn(process.execPath, [entryPath], {
       cwd: e2eDir,
-      env: { ...process.env, PORT: port },
+      env: { ...process.env, BASCIK_SERVER_PORT: port },
     });
 
     let bootFinished = false;
-    child.stdout?.on('data', (data) => {
-      if (data.toString('utf8').includes('All tasks completed in')) {
-        bootFinished = true;
-      }
-    });
+    let output = '';
+    const captureOutput = (data: Buffer): void => {
+      output += data.toString('utf8');
+      bootFinished = output.includes('All tasks completed in');
+    };
+    child.stdout?.on('data', captureOutput);
+    child.stderr?.on('data', captureOutput);
 
     try {
       // 1. Poll until server binds port and responds to requests
@@ -1170,4 +1170,3 @@ test.describe('Dev Server Cold Start & Boot Loading Screen', () => {
     }
   });
 });
-
