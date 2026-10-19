@@ -514,7 +514,6 @@ export const deleteDistDir = async (dirPath: string): Promise<void> => {
     if (canLogDevEvent(BascikConfig.logging?.deletes, "info")) {
       console.log(`deleted dir: ${displayRelativePath(dirPath)}`);
     }
-    await rm(distDirPath, { recursive: true, force: true });
   } catch (error) {
     if (error instanceof OutputPathError) throw error;
     // File doesn't exist, that's ok.

@@ -475,6 +475,29 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
     expect(eventEmitter.emit).toHaveBeenCalledWith("asset-changed");
   });
 
+  it("rescans static assets on addDir even when Chokidar coalesced the preceding unlinkDir", async () => {
+    const addDir = getHandler(0, "addDir");
+
+    addDir?.("/project/src/pages/images/nested");
+    await Promise.resolve();
+
+    expect(copyStaticAssets).toHaveBeenCalledTimes(2);
+    expect(eventEmitter.emit).toHaveBeenCalledWith("asset-changed");
+  });
+
+  it("rescans static assets after unlinkDir if the source directory already exists on disk", async () => {
+    mockExistsSync.mockReturnValue(true);
+    const unlinkDir = getHandler(0, "unlinkDir");
+
+    unlinkDir?.("/project/src/pages/images");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(deleteDistDir).toHaveBeenCalledWith("/project/src/pages/images");
+    expect(copyStaticAssets).toHaveBeenCalledTimes(2);
+    expect(eventEmitter.emit).toHaveBeenCalledWith("asset-changed");
+  });
+
   it("emits asset-changed when a file changes and not in build mode", async () => {
     const handler = getHandler(0, "change");
     await handler?.("/path/to/style.css");

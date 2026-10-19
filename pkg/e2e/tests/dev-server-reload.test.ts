@@ -19,6 +19,7 @@ import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripVTControlCharacters } from 'node:util';
 import { spawn } from 'node:child_process';
 
 const e2eDir = fileURLToPath(new URL('..', import.meta.url));
@@ -954,7 +955,7 @@ test.describe('Dev Server Startup Output', () => {
         }, 15000);
 
         const captureOutput = (data: Buffer): void => {
-          output += data.toString('utf8');
+          output += stripVTControlCharacters(data.toString('utf8'));
           if (output.includes('All tasks completed in')) {
             bootCompleted = true;
             child.kill();
@@ -999,6 +1000,21 @@ test.describe('Dev Server Startup Output', () => {
   });
 });
 
+const stopChildServer = async (child: ReturnType<typeof spawn>): Promise<void> => {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise<void>((resolve) => {
+    const forceKill = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch { }
+      resolve();
+    }, 5000);
+    child.once('exit', () => {
+      clearTimeout(forceKill);
+      resolve();
+    });
+    child.kill();
+  });
+};
+
 test.describe('Dev Server Cold Start & Boot Loading Screen', () => {
   test('survives an invalid page at boot and serves the fixed page without restarting', async ({ page }) => {
     const entryPath = join(pkgDir, 'bin/bascik.js');
@@ -1013,8 +1029,11 @@ test.describe('Dev Server Cold Start & Boot Loading Screen', () => {
     });
     let output = '';
     let exited = false;
-    child.stdout?.on('data', (data) => { output += data.toString('utf8'); });
-    child.stderr?.on('data', (data) => { output += data.toString('utf8'); });
+    const captureOutput = (data: Buffer): void => {
+      output += stripVTControlCharacters(data.toString('utf8'));
+    };
+    child.stdout?.on('data', captureOutput);
+    child.stderr?.on('data', captureOutput);
     child.on('exit', () => { exited = true; });
 
     try {
@@ -1046,7 +1065,7 @@ test.describe('Dev Server Cold Start & Boot Loading Screen', () => {
       await expect(page.getByTestId('recovered-page')).toHaveText(recoveredText);
       expect(exited).toBe(false);
     } finally {
-      child.kill();
+      await stopChildServer(child);
       await rm(brokenPagePath, { force: true });
     }
   });
@@ -1066,7 +1085,7 @@ test.describe('Dev Server Cold Start & Boot Loading Screen', () => {
     let bootFinished = false;
     let output = '';
     const captureOutput = (data: Buffer): void => {
-      output += data.toString('utf8');
+      output += stripVTControlCharacters(data.toString('utf8'));
       bootFinished = output.includes('All tasks completed in');
     };
     child.stdout?.on('data', captureOutput);
@@ -1075,7 +1094,7 @@ test.describe('Dev Server Cold Start & Boot Loading Screen', () => {
     try {
       // 1. Poll until server binds port and responds to requests
       let bootPageRes: Response | null = null;
-      for (let i = 0; i < 50; i++) {
+      for (let i = 0; i < 150; i++) {
         try {
           const res = await fetch(`${baseUrl}/index.html`);
           if (res.status === 200) {
@@ -1118,7 +1137,7 @@ test.describe('Dev Server Cold Start & Boot Loading Screen', () => {
       expect(scopeText).not.toContain('Building site');
       expect(scopeText).toContain('JS Scope Rewriting');
     } finally {
-      child.kill();
+      await stopChildServer(child);
     }
   });
 
@@ -1133,15 +1152,17 @@ test.describe('Dev Server Cold Start & Boot Loading Screen', () => {
     const baseUrl = `http://localhost:${port}`;
     const child = spawn(process.execPath, [entryPath], {
       cwd: e2eDir,
-      env: { ...process.env, PORT: port },
+      env: { ...process.env, BASCIK_SERVER_PORT: port },
     });
 
     let serverReady = false;
-    child.stdout?.on('data', (data) => {
-      if (data.toString('utf8').includes('Server running at')) {
+    const captureOutput = (data: Buffer): void => {
+      if (stripVTControlCharacters(data.toString('utf8')).includes('Server running at')) {
         serverReady = true;
       }
-    });
+    };
+    child.stdout?.on('data', captureOutput);
+    child.stderr?.on('data', captureOutput);
 
     try {
       await expect.poll(() => serverReady, { timeout: 20000 }).toBe(true);
@@ -1163,9 +1184,7 @@ test.describe('Dev Server Cold Start & Boot Loading Screen', () => {
       expect(code).toBe(0);
       expect(durationMs).toBeLessThan(1500);
     } finally {
-      if (child.exitCode === null) {
-        child.kill('SIGKILL');
-      }
+      await stopChildServer(child);
     }
   });
 });

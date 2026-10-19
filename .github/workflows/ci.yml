@@ -17,14 +17,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -46,14 +46,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -72,14 +72,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -104,14 +104,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -134,8 +134,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Windows runners ship a global Yarn 1 shim in C:\npm\prefix that precedes
+      # Node's directory on PATH; overwrite it before setup-node's cache step runs
+      # `yarn --version` and `yarn cache dir`.
       - name: Enable Corepack
-        run: corepack enable
+        run: |
+          $yarnCmd = (Get-Command yarn -ErrorAction SilentlyContinue).Source
+          if ($yarnCmd) {
+            corepack enable --install-directory (Split-Path $yarnCmd)
+          }
+          corepack enable
 
       - name: Use Node.js 24
         uses: actions/setup-node@v5
@@ -174,14 +182,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -200,14 +208,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -223,14 +231,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -246,14 +254,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -272,14 +280,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -304,14 +312,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -334,14 +342,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -370,14 +378,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -400,14 +408,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -430,14 +438,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -460,14 +468,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -490,14 +498,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable

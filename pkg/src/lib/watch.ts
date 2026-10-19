@@ -94,8 +94,23 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
   if (BascikConfig.pipeline?.exec?.some(entry => !!entry.watch)) {
     await watchSourceCycles(invalidateRuntimeModule, options.bootCompile);
   } else {
+    let initialScanDone = false;
+    const handleUnlinkDir = (path: string): void => {
+      deleteDistDir(path)
+        .then(async () => {
+          // When a directory is removed and immediately recreated, a delayed
+          // unlinkDir can land after the new directory and its files already
+          // exist on disk. Rescan static assets so the recreated files are not
+          // left missing in dist/.
+          if (initialScanDone && existsSync(path)) {
+            await copyStaticAssets();
+            eventEmitter.emit("asset-changed");
+          }
+        })
+        .catch(onWatchError);
+    };
+
     // Copy non-page files
-    const removedAssetDirectories = new Set<string>();
     w(chokidar
       .watch([BascikConfig.directory.pages], {
         ...watchOptions,
@@ -142,19 +157,18 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
           : deleteDistFile(path).then(() => processPagesImportingStylesheet(path));
         operation.catch(onWatchError);
       })
-      .on("unlinkDir", (path) => {
-        removedAssetDirectories.add(path);
-        deleteDistDir(path).catch(onWatchError);
-      })
-      .on("addDir", (path) => {
-        if (!removedAssetDirectories.delete(path)) return;
+      .on("unlinkDir", handleUnlinkDir)
+      .on("addDir", () => {
+        if (!initialScanDone) return;
+        // An editor or test can replace a directory faster than Chokidar emits
+        // unlinkDir, or create nested subdirectories before their file watches
+        // attach. Always rescan static assets when a directory appears after boot.
         copyStaticAssets()
           .then(() => eventEmitter.emit("asset-changed"))
           .catch(onWatchError);
       }));
 
     // Transpile pages as they change
-    let initialScanDone = false;
     compileInitialSources = async (): Promise<void> => {
       await Promise.all([copyStaticAssets(), processAllPages()]);
       initialScanDone = true;
@@ -175,7 +189,7 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
         .on("unlink", (path: string, _stats?: Stats) => {
           removePage(path).then(() => processAllPages()).catch(onWatchError);
         })
-        .on("unlinkDir", (path: string, _stats?: Stats) => deleteDistDir(path).catch(onWatchError))
+        .on("unlinkDir", (path: string, _stats?: Stats) => handleUnlinkDir(path))
         .on("ready", () => resolve())
         .on("error", reject));
     });
