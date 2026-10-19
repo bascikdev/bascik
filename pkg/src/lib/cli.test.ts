@@ -451,6 +451,7 @@ describe("cli helper tests", () => {
 describe("CLI_USAGE", () => {
   // Every flag the parser accepts must be discoverable from --help.
   it.each([...CLI_FLAGS])("documents %s", (flag) => {
-    expect(CLI_USAGE).toMatch(new RegExp(`(?:^|[\\s,])${flag.replace(/[-]/g, "\\-")}(?![\\w-])`, "m"));
+    const escapedFlag = flag.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
+    expect(CLI_USAGE).toMatch(new RegExp(`(?:^|[\\s,])${escapedFlag}(?![\\w-])`, "m"));
   });
 });

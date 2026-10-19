@@ -117,6 +117,7 @@ export function recordCommand({ command, args, cwd, env = {}, pty, stopAfterMs, 
       terminal.onExit(({ exitCode }) => resolve({ chunks, exitCode, pty }));
       return;
     }
+    // codeql[js/shell-command-injection-from-environment] No shell: runs a recording scene's own command, with arguments as an array.
     const child = spawn(command, args, { cwd, env: environment });
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');

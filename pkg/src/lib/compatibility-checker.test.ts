@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
+import fc from "fast-check";
 import {
   compatibilityRules,
   findCompatibilityMatches,
+  maskComments,
 } from "./compatibility-checker.ts";
 
 describe("compatibility-rules contract & positive/negative probes", () => {
@@ -193,5 +195,49 @@ describe("bascik-disable and bascik-ignore rule lists", () => {
       (m) => m.rule.id,
     );
     expect(ids).toEqual(["js-document-class-query"]);
+  });
+});
+
+describe("maskComments", () => {
+  // The single regex the scanner replaced. It is the reference for what the output should be, and quadratic on
+  // unclosed quotes and comments, which is why it is no longer used.
+  const reference = (text: string, kind: "css" | "js") =>
+    kind === "css"
+      ? text.replace(
+          /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\))|\/\*[\s\S]*?\*\//g,
+          (m, kept?: string) => kept ?? m.replace(/[^\n]/g, " "),
+        )
+      : text.replace(
+          /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|`(?:[^`\\]|\\[\s\S])*`)|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
+          (m, kept?: string) => kept ?? m.replace(/[^\n]/g, " "),
+        );
+
+  const tricky = fc
+    .array(fc.constantFrom('"', "'", "`", "\\", "/", "*", "(", ")", "url(", "u", " ", "\n", "a", "[id]"), { maxLength: 60 })
+    .map((parts) => parts.join(""));
+
+  it.each(["css", "js"] as const)("gives the same %s output as the regex it replaced", (kind) => {
+    fc.assert(
+      fc.property(tricky, (text) => {
+        expect(maskComments(text, kind)).toBe(reference(text, kind));
+      }),
+      { numRuns: 2000 },
+    );
+  });
+
+  it.each([
+    ["css", '"' + '\\"'.repeat(100_000)],
+    ["css", "'" + "\\'".repeat(100_000)],
+    ["css", "url( ".repeat(60_000)],
+    ["css", "url(\"".repeat(60_000)],
+    ["css", "/*a".repeat(60_000)],
+    ["js", "`" + "\\`".repeat(100_000)],
+    ["js", "/*a".repeat(60_000)],
+  ] as const)("stays linear on unclosed %s input (%#)", (kind, text) => {
+    // The replaced regex took tens of seconds on each of these. A linear scan takes milliseconds, so the bound
+    // only has to tell the two apart.
+    const start = performance.now();
+    expect(maskComments(text, kind)).toBe(text);
+    expect(performance.now() - start).toBeLessThan(1000);
   });
 });

@@ -60,6 +60,16 @@ describe('compatibility matcher parity', () => {
     }
   });
 
+  it.each([
+    ['css', '[id] { a: "x }\n[data-y] { b: url( "z) }\n/* [hidden] unclosed\n'],
+    ['css', ".a { background: url('x[id]') } [data-q] { c: 'open\n"],
+    ['js', 'el.id = "a;\nconst t = `x\\` [data-x]\n/* el.id = 1;\ndocument.querySelector("[open]");\n'],
+  ] as const)('agrees on unclosed quotes, comments, and url( in %s', (kind, source) => {
+    expect(summarize(languageServer.findCompatibilityMatches(source, kind))).toEqual(
+      summarize(compiler.findCompatibilityMatches(source, kind)),
+    );
+  });
+
   it('agrees on text inside a string, whatever the answer is', () => {
     // Strings are kept on purpose: a rule may need to read one. So a pattern can match inside a string, and what
     // matters here is only that the two engines make the same call.
