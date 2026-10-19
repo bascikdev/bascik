@@ -24,7 +24,7 @@ vi.spyOn(console, "log").mockImplementation(() => { });
 /** Return the content written to writeFile for the given path suffix. */
 const writtenTo = (suffix: string): string | undefined => {
   for (const call of mockWriteFile.mock.calls) {
-    if (String(call[0]).endsWith(suffix)) {
+    if (String(call[0]).replace(/\\/g, "/").endsWith(suffix)) {
       return call[1] as string;
     }
   }
@@ -44,7 +44,7 @@ describe("initProject", () => {
 
   it("creates pages and components directories", async () => {
     await initProject();
-    const dirs = mockMkdir.mock.calls.map((c) => String(c[0]));
+    const dirs = mockMkdir.mock.calls.map((c) => String(c[0]).replace(/\\/g, "/"));
     expect(dirs.some((d) => d.endsWith("src/pages"))).toBe(true);
     expect(dirs.some((d) => d.endsWith("src/components"))).toBe(true);
     expect(mockMkdir.mock.calls[0][1]).toEqual({ recursive: true });

@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import {
   deepReadDirFlat,
   listPages,
@@ -128,7 +128,7 @@ afterEach(() => {
 describe("deepReadDirFlat", () => {
   it("reads path and flattens array", async () => {
     const paths = await deepReadDirFlat("./");
-    expect(paths ?? []).toEqual([
+    expect((paths ?? []).map((p) => p.replace(/\\/g, "/"))).toEqual([
       "dir/dir",
       "dir/dir/one.css",
       "dir/dir/one.html",
@@ -139,7 +139,8 @@ describe("deepReadDirFlat", () => {
 
   it("returns entries in byte-wise sorted order at every level", async () => {
     vi.mocked(readdir).mockImplementation(async (path) => {
-      if (`${path}` === "test-tree") {
+      const normalized = `${path}`.replace(/\\/g, "/");
+      if (normalized === "test-tree") {
         return [
           { name: "zebra.html", isDirectory: () => false },
           { name: "apple.html", isDirectory: () => false },
@@ -148,13 +149,13 @@ describe("deepReadDirFlat", () => {
           { name: "1_num.html", isDirectory: () => false },
         ] as any;
       }
-      if (`${path}` === "test-tree/a_dir") {
+      if (normalized === "test-tree/a_dir") {
         return [
           { name: "sub_z.html", isDirectory: () => false },
           { name: "sub_a.html", isDirectory: () => false },
         ] as any;
       }
-      if (`${path}` === "test-tree/B_dir") {
+      if (normalized === "test-tree/B_dir") {
         return [
           { name: "item.html", isDirectory: () => false },
         ] as any;
@@ -163,7 +164,7 @@ describe("deepReadDirFlat", () => {
     });
 
     const flat = await deepReadDirFlat("test-tree");
-    expect(flat).toEqual([
+    expect(flat.map((p) => p.replace(/\\/g, "/"))).toEqual([
       "test-tree/1_num.html",
       "test-tree/B_dir/item.html",
       "test-tree/a_dir/sub_a.html",
@@ -193,7 +194,7 @@ describe("deepReadDirFlat", () => {
     await expect(deepReadDirFlat("pages")).resolves.toEqual([]);
     expect(warnSpy).toHaveBeenCalledWith(
       "Failed to read subdirectory %s",
-      "pages/removed",
+      join("pages", "removed"),
       missingError,
     );
     warnSpy.mockRestore();
@@ -206,7 +207,7 @@ describe("listPages", () => {
     // Paths should be rooted at the configured pages directory ("pages"),
     // not at a hardcoded relative path.
     expect(paths.every((p) => p.startsWith("pages"))).toBe(true);
-    expect(paths).toEqual(["pages/dir/one.html"]);
+    expect(paths.map((p) => p.replace(/\\/g, "/"))).toEqual(["pages/dir/one.html"]);
   });
 });
 
@@ -441,7 +442,7 @@ describe("copyReplicatePath", () => {
       await copyReplicatePath("pages/images/logo.svg", "dist");
 
       expect(symlink).toHaveBeenCalledWith(
-        expect.stringMatching(/pages\/images\/logo\.svg$/),
+        expect.stringMatching(/pages[\\/]images[\\/]logo\.svg$/),
         expect.stringMatching(/\.logo\.svg\.bascik-link-/),
         "file",
       );
@@ -504,7 +505,8 @@ describe("copyStaticAssets", () => {
       isDirectory: vi.fn(() => true),
     });
     vi.mocked(readdir).mockImplementation(async (path) => {
-      if (`${path}` === "pages") {
+      const normalized = `${path}`.replace(/\\/g, "/");
+      if (normalized === "pages") {
         return [
           file(".env"),
           file("bundle.js.map"),
@@ -516,10 +518,10 @@ describe("copyStaticAssets", () => {
           directory("node_modules"),
         ] as any;
       }
-      if (`${path}` === "pages/node_modules") {
+      if (normalized === "pages/node_modules") {
         return [directory("pkg")] as any;
       }
-      if (`${path}` === "pages/node_modules/pkg") {
+      if (normalized === "pages/node_modules/pkg") {
         return [file("index.js")] as any;
       }
       return [];
@@ -527,7 +529,7 @@ describe("copyStaticAssets", () => {
 
     await copyStaticAssets();
 
-    const copiedSources = vi.mocked(copyFile).mock.calls.map(([source]) => source);
+    const copiedSources = vi.mocked(copyFile).mock.calls.map(([source]) => String(source).replace(/\\/g, "/"));
     expect(copiedSources).toEqual(["pages/logo.svg"]);
   });
 

@@ -13,6 +13,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripVTControlCharacters } from 'node:util';
 import { spawn, type ChildProcess } from 'node:child_process';
 
 const entry = fileURLToPath(new URL('../../dist/index.js', import.meta.url));
@@ -75,8 +76,8 @@ function run(root: string, args: string[]): Running {
     env: { ...process.env, BASCIK_SITE_URL: 'https://example.com' },
   });
   let output = '';
-  child.stdout?.on('data', chunk => { output += chunk; });
-  child.stderr?.on('data', chunk => { output += chunk; });
+  child.stdout?.on('data', chunk => { output += stripVTControlCharacters(chunk.toString('utf8')); });
+  child.stderr?.on('data', chunk => { output += stripVTControlCharacters(chunk.toString('utf8')); });
   const exited = new Promise<number | null>(resolve => {
     child.on('exit', code => resolve(code));
     child.on('error', () => resolve(null));

@@ -608,7 +608,7 @@ describe("checkProject", () => {
         ),
       );
       deepReadDirFlatMock.mockImplementation(async (dir: string) =>
-        dir.endsWith("shared/components")
+        dir.replace(/\\/g, "/").endsWith("shared/components")
           ? [join(workDir, "shared/components/hello-card.html"), join(workDir, "shared/components/dupe-card.html")]
           : [join(workDir, "src/components/local-card.html"), join(workDir, "src/components/dupe-card.html")],
       );

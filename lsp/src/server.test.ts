@@ -333,7 +333,7 @@ describe('BascikLanguageServer', () => {
       open(component, COMPONENT);
       await settle();
       const before = await server.getSnapshotForFile(component);
-      expect(before?.componentRoots).toEqual([path.join(root, 'src/components')]);
+      expect(before?.componentRoots).toEqual([path.join(root, 'src/components').replace(/\\/g, '/')]);
 
       await write('bascik.config.ts', "export default { directory: { components: ['src/ui'] } };\n");
       const calls = fake.connection.sendDiagnostics.mock.calls.length;
@@ -343,7 +343,7 @@ describe('BascikLanguageServer', () => {
       await settle();
       const after = await server.getSnapshotForFile(component);
       expect(after).not.toBe(before);
-      expect(after?.componentRoots).toEqual([path.join(root, 'src/ui')]);
+      expect(after?.componentRoots).toEqual([path.join(root, 'src/ui').replace(/\\/g, '/')]);
       expect(fake.connection.sendDiagnostics.mock.calls.length).toBeGreaterThan(calls);
     });
 

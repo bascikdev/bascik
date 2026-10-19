@@ -51,13 +51,13 @@ vi.spyOn(console, "log").mockImplementation(() => { });
 
 const writtenTo = (suffix: string): string | undefined => {
   for (const call of mockWriteFile.mock.calls) {
-    if (String(call[0]).endsWith(suffix)) return call[1] as string;
+    if (String(call[0]).replace(/\\/g, "/").endsWith(suffix)) return call[1] as string;
   }
   return undefined;
 };
 
 const allWrittenPaths = (): string[] =>
-  mockWriteFile.mock.calls.map((c) => String(c[0]));
+  mockWriteFile.mock.calls.map((c) => String(c[0]).replace(/\\/g, "/"));
 
 describe("parseCliOptions", () => {
   it("starts development by default for the non-interactive yes mode", () => {
@@ -428,7 +428,7 @@ describe("scaffold", () => {
 
   it("creates all component, page, and e2e directories", async () => {
     await scaffold("my-app", "/tmp");
-    const dirs = mockMkdir.mock.calls.map((c) => String(c[0]));
+    const dirs = mockMkdir.mock.calls.map((c) => String(c[0]).replace(/\\/g, "/"));
     expect(dirs.some((d) => d.endsWith(".agents/skills"))).toBe(true);
     expect(dirs.some((d) => d.endsWith(".claude/skills"))).toBe(true);
     expect(dirs.some((d) => d.endsWith("e2e"))).toBe(true);

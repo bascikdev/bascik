@@ -449,12 +449,15 @@ export const toDistPath = (srcPath: string): string => {
       const root = trimSlashes(configuredDir);
       return normalizedSrc.replace(/^\/+/, "").startsWith(`${root}/`) || normalizedSrc.includes(`/${root}/`);
     };
+    const owningComponentRoot = findComponentRoot(normalizedSrc);
+    const isComponentSource =
+      normalizedSrc.startsWith("components/") ||
+      owningComponentRoot !== undefined ||
+      getComponentRoots().some((root) => hasConfiguredRoot(root));
     const hasSourceRoot =
       normalizedSrc.startsWith("pages/") ||
-      normalizedSrc.startsWith("components/") ||
       hasConfiguredRoot(configuredPagesDir) ||
-      findComponentRoot(normalizedSrc) !== undefined ||
-      getComponentRoots().some((root) => hasConfiguredRoot(root));
+      isComponentSource;
     const isAbsoluteSource = normalizedSrc.startsWith("/") || /^[A-Za-z]:\//.test(normalizedSrc);
     if (
       sourceSegments.includes("..") ||
@@ -463,8 +466,16 @@ export const toDistPath = (srcPath: string): string => {
     ) {
       throw new OutputPathError(srcPath);
     }
-    const rel = getRelativePath(srcPath, "pages");
-    targetPath = rel.replace(/^pages[\/]/, `${outDirRel}/`);
+    if (owningComponentRoot !== undefined) {
+      const rel = normalizedSrc.slice(owningComponentRoot.length).replace(/^\/+/, "");
+      targetPath = `${outDirRel}/${rel}`;
+    } else if (isComponentSource && !normalizedSrc.startsWith("pages/") && !hasConfiguredRoot(configuredPagesDir)) {
+      const rel = getRelativePath(srcPath, "components");
+      targetPath = rel.replace(/^components[\/]/, `${outDirRel}/`);
+    } else {
+      const rel = getRelativePath(srcPath, "pages");
+      targetPath = rel.replace(/^pages[\/]/, `${outDirRel}/`);
+    }
   }
 
   const resolvedTarget = resolve(targetPath);

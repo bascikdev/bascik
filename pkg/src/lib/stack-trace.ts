@@ -78,20 +78,20 @@ export const cleanStackTrace = (
 ): string => {
   if (!rawTrace) return rawTrace;
 
-  // Escaping backslashes for Windows paths
-  const escapedTmpPath = tmpPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-  // Also support file:// URI schemes in stack traces
-  let fileUri = tmpPath;
+  // Match file:// URLs, POSIX paths, Windows backslash paths, and forward-slash Windows paths.
+  const normalizedTmpPath = tmpPath.replace(/\\/g, "/");
+  let fileUri = `file://${normalizedTmpPath}`;
   try {
     fileUri = pathToFileURL(tmpPath).href;
   } catch { }
-  const escapedFileUri = fileUri.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const tripleSlashFileUri = `file:///${normalizedTmpPath.replace(/^\/+/, "")}`;
+  const posixFileUri = `file://${normalizedTmpPath}`;
+  const candidates = [...new Set([fileUri, tripleSlashFileUri, posixFileUri, tmpPath, normalizedTmpPath])].map(escapeRegExp);
 
   // In development the registry imports each generation under
   // `?bascik-gen=N`, and V8 reports that full URL in stack frames. The query
   // is optional here so every generation remaps to the same authored source.
-  const regex = new RegExp(`(?:${escapedFileUri}|${escapedTmpPath})(?:\\?bascik-gen=\\d+)?:(\\d+)(?::(\\d+))?`, "g");
+  const regex = new RegExp(`(?:${candidates.join("|")})(?:\\?bascik-gen=\\d+)?:(\\d+)(?::(\\d+))?`, "g");
 
   const mappedTrace = rawTrace
     .replace(regex, (_match, lineStr: string, columnStr: string | undefined) => {

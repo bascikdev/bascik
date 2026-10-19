@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripVTControlCharacters } from 'node:util';
 import { spawn } from 'node:child_process';
 
 const entry = fileURLToPath(new URL('../../dist/index.js', import.meta.url));
@@ -42,8 +43,8 @@ for (const workers of [false, true]) {
         const result = await new Promise<{ code: number | null; output: string }>((resolve, reject) => {
           const child = spawn(process.execPath, [entry, '--build'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
           let output = '';
-          child.stdout.on('data', chunk => { output += chunk; });
-          child.stderr.on('data', chunk => { output += chunk; });
+          child.stdout.on('data', chunk => { output += stripVTControlCharacters(chunk.toString('utf8')); });
+          child.stderr.on('data', chunk => { output += stripVTControlCharacters(chunk.toString('utf8')); });
           child.on('error', reject);
           child.on('exit', code => resolve({ code, output }));
         });

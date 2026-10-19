@@ -20,6 +20,7 @@ import { createWriteStream } from "node:fs";
 import { rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 
 const fixtureDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const logPath = join(fixtureDir, ".dev-server.log");
@@ -48,7 +49,7 @@ for (const [stream, sink] of [
   [child.stderr, process.stderr],
 ]) {
   stream.on("data", (chunk) => {
-    log.write(chunk);
+    log.write(stripVTControlCharacters(chunk.toString("utf8")));
     sink.write(chunk);
   });
 }

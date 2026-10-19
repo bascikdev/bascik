@@ -14,7 +14,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import {
@@ -172,15 +172,16 @@ describe("module graph: key helpers", () => {
 });
 
 describe("module graph: resolve hook rules", () => {
-  const projectRoot = "/p/site";
-  const parentEntry = `file:///p/site/src/lib/entry.ts`;
+  const fileUrl = (p: string): string => pathToFileURL(resolve(p)).href;
+  const projectRoot = resolve("/p/site");
+  const parentEntry = fileUrl("/p/site/src/lib/entry.ts");
   const context = (parentURL: string | undefined): ResolveHookContext => ({ conditions: [], importAttributes: {}, parentURL });
   const nextTo = (url: string): ResolveHookNext => () => ({ url, format: "module" });
 
   it("passes through bare, node:, and data: resolutions untouched and records nothing", () => {
     const graph = createModuleGraph();
     const hook = createResolveHook(graph, { roots: [projectRoot] });
-    for (const url of ["node:fs", "data:text/javascript,1", "file:///p/site/node_modules/pkg/index.js", "file:///elsewhere/lib.ts"]) {
+    for (const url of ["node:fs", "data:text/javascript,1", fileUrl("/p/site/node_modules/pkg/index.js"), fileUrl("/elsewhere/lib.ts")]) {
       const out = hook("x", context(parentEntry), nextTo(url));
       expect(out.url).toBe(url);
     }
@@ -190,7 +191,7 @@ describe("module graph: resolve hook rules", () => {
   it("records child -> parent edges (generation-stripped) for project files and leaves a generation-0 URL clean", () => {
     const graph = createModuleGraph();
     const hook = createResolveHook(graph, { roots: [projectRoot] });
-    const helper = "file:///p/site/src/lib/helper.ts";
+    const helper = fileUrl("/p/site/src/lib/helper.ts");
     const out = hook("./helper.ts", context(`${parentEntry}?bascik-gen=4`), nextTo(helper));
     expect(out.url).toBe(helper);
     expect(graph.parentsOf(helper).has(parentEntry)).toBe(true);
@@ -200,9 +201,9 @@ describe("module graph: resolve hook rules", () => {
   it("does not record a parent that is outside the tracked roots or under node_modules", () => {
     const graph = createModuleGraph();
     const hook = createResolveHook(graph, { roots: [projectRoot] });
-    const entry = "file:///p/site/src/lib/entry.ts";
-    hook(entry, context("file:///p/site/node_modules/@bascik/bascik/dist/lib/script-registry.js"), nextTo(entry));
-    hook(entry, context("file:///outside/registry.ts"), nextTo(entry));
+    const entry = fileUrl("/p/site/src/lib/entry.ts");
+    hook(entry, context(fileUrl("/p/site/node_modules/@bascik/bascik/dist/lib/script-registry.js")), nextTo(entry));
+    hook(entry, context(fileUrl("/outside/registry.ts")), nextTo(entry));
     hook(entry, context(undefined), nextTo(entry));
     expect(graph.has(entry)).toBe(true);
     expect(graph.parentsOf(entry).size).toBe(0);
@@ -211,7 +212,7 @@ describe("module graph: resolve hook rules", () => {
   it("appends ?bascik-gen=N to a tracked child whose generation is above 0, preserving authored params", () => {
     const graph = createModuleGraph();
     const hook = createResolveHook(graph, { roots: [projectRoot] });
-    const helper = "file:///p/site/src/lib/helper.ts?flavor=x";
+    const helper = `${fileUrl("/p/site/src/lib/helper.ts")}?flavor=x`;
     hook("./helper.ts?flavor=x", context(parentEntry), nextTo(helper));
     graph.invalidateModule(helper);
     graph.invalidateModule(helper);
@@ -225,7 +226,7 @@ describe("module graph: resolve hook rules", () => {
   it("re-entering a URL that already carries the marker maps back to the same key and current generation", () => {
     const graph = createModuleGraph();
     const hook = createResolveHook(graph, { roots: [projectRoot] });
-    const entry = "file:///p/site/src/lib/entry.ts";
+    const entry = fileUrl("/p/site/src/lib/entry.ts");
     hook(entry, context(undefined), nextTo(entry));
     graph.invalidateModule(entry);
     const out = hook(`${entry}?bascik-gen=1`, context(undefined), nextTo(`${entry}?bascik-gen=1`));
@@ -235,9 +236,9 @@ describe("module graph: resolve hook rules", () => {
 
   it("tracks files under an additional root (import root outside the project) but never node_modules", () => {
     const graph = createModuleGraph();
-    const hook = createResolveHook(graph, { roots: [projectRoot, "/p/shared"] });
-    const shared = "file:///p/shared/lib/x.ts";
-    const sharedDep = "file:///p/shared/node_modules/dep/index.js";
+    const hook = createResolveHook(graph, { roots: [projectRoot, resolve("/p/shared")] });
+    const shared = fileUrl("/p/shared/lib/x.ts");
+    const sharedDep = fileUrl("/p/shared/node_modules/dep/index.js");
     hook("@/lib/x.ts", context(parentEntry), nextTo(shared));
     hook("dep", context(shared), nextTo(sharedDep));
     expect(graph.has(shared)).toBe(true);

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
+import { resolve } from 'node:path';
 import { createSourceCycle } from './source-cycle.ts';
 import { BuildScriptError } from './build-error.ts';
 
@@ -124,7 +125,7 @@ describe('source-owned phase cycles', () => {
     expect(errors).toHaveLength(1);
     expect(compile).toHaveBeenCalledTimes(1);
     expect(compile.mock.calls[0][0]).toEqual(expect.arrayContaining([
-      `${process.cwd()}/content/a.md`, `${process.cwd()}/content/b.md`,
+      resolve('content/a.md'), resolve('content/b.md'),
     ]));
     cycle.enqueue('content/c.md');
     compileGate.resolve();
@@ -216,7 +217,7 @@ describe('source-owned phase cycles', () => {
     await cycle.idle();
     expect(run).toHaveBeenCalledTimes(2);
     expect(compile.mock.calls[1][0]).toEqual(expect.arrayContaining([
-      `${process.cwd()}/content/a.md`, `${process.cwd()}/content/b.md`,
+      resolve('content/a.md'), resolve('content/b.md'),
     ]));
     cycle.close();
     consoleSpy.mockRestore();
@@ -239,8 +240,8 @@ describe('source-owned phase cycles', () => {
     };
     emitter.on('transpiled', transpiledListener);
 
-    const pathA = `${process.cwd()}/src/pages/a.html`;
-    const pathB = `${process.cwd()}/src/pages/b.html`;
+    const pathA = resolve('src/pages/a.html');
+    const pathB = resolve('src/pages/b.html');
     const expectedPaths = [pathA, pathB].sort();
 
     const makeAttempt = (index: number) => ({

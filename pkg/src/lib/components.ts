@@ -368,7 +368,7 @@ export const listComponents = async (
   const collisions: string[] = [];
   for (const [tag, paths] of nameToFilePaths.entries()) {
     if (paths.length > 1) {
-      const formattedPaths = paths.map((p) => `  ${p}`).join("\n");
+      const formattedPaths = paths.map((p) => `  ${p.replace(/\\/g, "/")}`).join("\n");
       collisions.push(
         `error: two component files both define the tag <${tag}>\n` +
         `${formattedPaths}\n` +

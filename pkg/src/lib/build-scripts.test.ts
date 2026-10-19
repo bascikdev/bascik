@@ -486,7 +486,7 @@ describe("executeBuildScripts", () => {
     const opts = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
     expect(opts.env?.BASCIK_SOURCE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
     expect(opts.env?.BASCIK_PAGE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
-    expect(opts.env?.BASCIK_PAGES_DIR).toBe(`${process.cwd()}/src/pages`);
+    expect(opts.env?.BASCIK_PAGES_DIR).toBe(resolve(process.cwd(), "src/pages"));
   });
 
   describe("Node compile cache for build script children", () => {
@@ -1099,11 +1099,12 @@ describe("collectAllScriptDeps", () => {
   ])("collects external %s scripts and nested imports for watch fileDependencies", async (directive, srcAttribute) => {
     const mockReadFile = readFile as unknown as ReturnType<typeof vi.fn>;
     mockReadFile.mockImplementation(async (filePath: string) => {
-      if (String(filePath).endsWith("src/pages/scripts/build-entry.ts") ||
-        String(filePath).endsWith("src/pages/scripts/routes-entry.ts")) {
+      const normalized = String(filePath).replace(/\\/g, "/");
+      if (normalized.endsWith("src/pages/scripts/build-entry.ts") ||
+        normalized.endsWith("src/pages/scripts/routes-entry.ts")) {
         return "import './nested/helper.ts';";
       }
-      if (String(filePath).endsWith("src/pages/scripts/nested/helper.ts")) {
+      if (normalized.endsWith("src/pages/scripts/nested/helper.ts")) {
         return "export const value = true;";
       }
       throw new Error("ENOENT");
@@ -1216,7 +1217,7 @@ describe("build-script output cache", () => {
     };
     mockReadFile.mockReset();
     mockReadFile.mockImplementation((path: string) => {
-      const p = String(path);
+      const p = String(path).replace(/\\/g, "/");
       for (const [rel, body] of Object.entries(contents)) {
         if (p.endsWith(rel)) return Promise.resolve(body);
       }
@@ -1444,7 +1445,7 @@ describe("build-script output cache", () => {
   describe("scripts that read their page through BASCIK_SOURCE_FILE or BASCIK_PAGE_FILE", () => {
     const keyForPageVersion = async (script: string, pageVersion: string, helper: string) => {
       mockReadFile.mockImplementation((path: string) => {
-        const p = String(path);
+        const p = String(path).replace(/\\/g, "/");
         if (p.includes(".cache")) return Promise.reject(new Error("ENOENT"));
         if (p.endsWith("og-helper.ts")) return Promise.resolve(helper);
         if (p.endsWith("src/pages/test.html")) return Promise.resolve(`<title>${pageVersion}</title>`);
@@ -1474,7 +1475,7 @@ describe("build-script output cache", () => {
       const helper = "export const og = () => readFile(process.env.BASCIK_SOURCE_FILE, 'utf8');";
       await keyForPageVersion(script, "Old title", helper);
       mockReadFile.mockImplementation((path: string) => {
-        const p = String(path);
+        const p = String(path).replace(/\\/g, "/");
         if (p.includes(".cache")) return Promise.reject(new Error("ENOENT"));
         if (p.endsWith("og-helper.ts")) return Promise.resolve(helper);
         if (p.endsWith("src/pages/test.html")) return Promise.resolve("<title>New title</title>");
@@ -1510,7 +1511,7 @@ describe("build-script output cache", () => {
     let helperVersion = "v1";
     let dependencyReads = 0;
     mockReadFile.mockImplementation((path: string) => {
-      const file = String(path);
+      const file = String(path).replace(/\\/g, "/");
       if (file.includes("script-cache")) return Promise.reject(new Error("ENOENT"));
       if (file.endsWith("docs/src/lib/render-nav.ts")) {
         dependencyReads++;
@@ -2150,7 +2151,8 @@ describe("dependency scan memo", () => {
   const files = new Map<string, string>();
   const serveFiles = () => {
     (readFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
-      for (const [relPath, content] of files) if (String(path).endsWith(relPath)) return content;
+      const normalized = String(path).replace(/\\/g, "/");
+      for (const [relPath, content] of files) if (normalized.endsWith(relPath)) return content;
       throw new Error("ENOENT");
     });
   };

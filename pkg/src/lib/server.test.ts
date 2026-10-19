@@ -587,7 +587,7 @@ describe("startHttp2Server – stream handler", () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("//assets/app.js", "GET"));
-    expect(mockStat).toHaveBeenCalledWith(expect.stringContaining("assets/app.js"));
+    expect(mockStat).toHaveBeenCalledWith(expect.stringMatching(/assets[\\/]app\.js/));
   });
 
   it("responds 400 Bad Request for malformed percent-encoded URIs", async () => {
@@ -1016,7 +1016,7 @@ describe("startHttp2Server – base path routing", () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/sub/logo.png"));
-    expect(mockStat).toHaveBeenCalledWith(expect.stringMatching(/dist\/logo\.png$/));
+    expect(mockStat).toHaveBeenCalledWith(expect.stringMatching(/dist[\\/]logo\.png$/));
   });
 
   it("rejects traversal before stripping the configured base", async () => {

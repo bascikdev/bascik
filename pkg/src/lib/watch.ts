@@ -294,10 +294,14 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
     const componentRoots = BascikConfig.directory.components.map((root) => resolve(process.cwd(), root));
     // Source watchers own these trees. Stylesheets need no runtime module
     // invalidation; their compilation watches are configured independently.
-    const isOwnedByOtherWatcher = (path: string): boolean =>
-      path === pagesDir || path.startsWith(pagesDir + sep) ||
-      componentRoots.some((root) => path === root || path.startsWith(root + sep)) ||
-      isInlineStylesheet(path);
+    const isOwnedByOtherWatcher = (path: string): boolean => {
+      const resolvedPath = resolve(process.cwd(), path);
+      return (
+        resolvedPath === pagesDir || resolvedPath.startsWith(pagesDir + sep) ||
+        componentRoots.some((root) => resolvedPath === root || resolvedPath.startsWith(root + sep)) ||
+        isInlineStylesheet(path)
+      );
+    };
     w(chokidar
       .watch([importRoot], {
         ...watchOptions,

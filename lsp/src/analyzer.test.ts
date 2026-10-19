@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { pathToFileURL } from 'node:url';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import type { CompletionItem, TextEdit } from 'vscode-languageserver';
 import {
@@ -186,7 +187,7 @@ describe('Bascik Language Server Analyzer', () => {
     const contents = hover?.contents as { value: string };
     expect(contents.value).toContain('Top&nbsp;navigation&nbsp;bar');
     expect(contents.value).toContain('`title`: Page&nbsp;title');
-    expect(contents.value).toContain('(file:///test-project/src/components/site-nav.html)');
+    expect(contents.value).toContain(`(${pathToFileURL('/test-project/src/components/site-nav.html').toString()})`);
   });
 
   describe('escapeMarkdownText', () => {

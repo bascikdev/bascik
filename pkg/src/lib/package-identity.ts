@@ -45,7 +45,7 @@ import { createHash } from "node:crypto";
 import { isBuiltin } from "node:module";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join, sep } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { classifySpecifier, scanScript, hasDynamicImportExpression } from "./module-specifiers.ts";
 
 /** Bump together with SCRIPT_CACHE_VERSION whenever identity composition changes. */
@@ -165,7 +165,7 @@ const resolverModuleRef = async (): Promise<{ resolveFor: (spec: string) => stri
 };
 
 /** Convert a `file://` URL into its absolute filesystem path (no realpath). */
-const fileURLToPathname = (url: string): string => decodeURIComponent(new URL(url).pathname);
+const fileURLToPathname = (url: string): string => fileURLToPath(url);
 
 /**
  * Classify a realpath'd resolved entry file.

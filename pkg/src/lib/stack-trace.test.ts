@@ -142,6 +142,19 @@ describe("cleanStackTrace", () => {
     expect(cleaned).toBe(`Error: gen failure\n    at default (${realPath}:41:9)\n    at default (${realPath}:43:1)`);
   });
 
+  it("remaps Windows backslash tmpPath when stack frames use forward slashes", () => {
+    const modulePath = "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\bascik-script\\gen-trace.mjs";
+    const forwardPath = "C:/Users/RUNNER~1/AppData/Local/Temp/bascik-script/gen-trace.mjs";
+    const realPath = "src/pages/index.html";
+    const rawTrace =
+      `Error: gen failure\n` +
+      `    at default (${forwardPath}?bascik-gen=1:2:9)\n` +
+      `    at default (file:///${forwardPath}?bascik-gen=1:4:1)`;
+
+    const cleaned = cleanStackTrace(rawTrace, modulePath, realPath, 40);
+    expect(cleaned).toBe(`Error: gen failure\n    at default (${realPath}:41:9)\n    at default (${realPath}:43:1)`);
+  });
+
   it("strips the dev generation marker from helper frames loaded under a generation URL (prompt 138)", () => {
     // The entry remaps to the authored source; helpers are their own files, so
     // their frames keep the helper path but must not carry `?bascik-gen=N`.
