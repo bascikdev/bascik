@@ -19,13 +19,13 @@ const makeSyntheticResponse = (writeReturns: boolean): { response: BascikRespons
     headersSent: false,
     destroyed: false,
     writable: emitter as unknown as NodeJS.WritableStream,
-    respond: () => {},
+    respond: () => { },
     write: (chunk: string | Buffer): boolean => {
       written.push(Buffer.isBuffer(chunk) ? Buffer.from(chunk) : Buffer.from(chunk, "utf8"));
       return writeReturns;
     },
-    end: () => {},
-    close: () => {},
+    end: () => { },
+    close: () => { },
     on: (event, cb) => {
       emitter.on(event, cb);
     },

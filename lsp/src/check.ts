@@ -59,7 +59,7 @@ export interface CheckResult {
 }
 
 /** Thrown for a mistake in how the check was asked for (a path that does not exist), not a finding. */
-export class CheckUsageError extends Error {}
+export class CheckUsageError extends Error { }
 
 const CONFIG_FILES = ['bascik.config.ts', 'bascik.config.js', 'bascik.config.mjs'];
 const DEFAULT_EXTENSIONS = ['html', 'css', 'js', 'mjs', 'ts'];

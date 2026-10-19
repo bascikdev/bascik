@@ -1,4 +1,8 @@
-.grid-wrapper { border: 1px solid #444; padding: 4px; margin-bottom: 16px; }
+.grid-wrapper {
+  border: 1px solid #444;
+  padding: 4px;
+  margin-bottom: 16px;
+}
 
 .layout {
   display: grid;

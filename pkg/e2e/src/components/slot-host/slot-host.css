@@ -1,7 +1,35 @@
-.host-wrapper { border: 2px solid #555; padding: 16px; }
-.header-area { border-bottom: 1px solid #333; padding-bottom: 8px; margin-bottom: 12px; }
-.content-area { padding: 8px 0; }
-.footer-area { border-top: 1px solid #333; padding-top: 8px; margin-top: 12px; }
-.fallback-header { color: #888; font-style: italic; }
-.fallback-content { color: #888; font-style: italic; }
-.fallback-footer { color: #888; font-style: italic; }
+.host-wrapper {
+  border: 2px solid #555;
+  padding: 16px;
+}
+
+.header-area {
+  border-bottom: 1px solid #333;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.content-area {
+  padding: 8px 0;
+}
+
+.footer-area {
+  border-top: 1px solid #333;
+  padding-top: 8px;
+  margin-top: 12px;
+}
+
+.fallback-header {
+  color: #888;
+  font-style: italic;
+}
+
+.fallback-content {
+  color: #888;
+  font-style: italic;
+}
+
+.fallback-footer {
+  color: #888;
+  font-style: italic;
+}

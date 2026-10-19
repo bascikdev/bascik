@@ -249,7 +249,7 @@ const getStreamHandler = () => {
             mockStream.respond({ ":status": status, ...headers });
           }),
           write: vi.fn((chunk) => mockStream.write(chunk)),
-          end: vi.fn(function (chunk) {
+          end: vi.fn(function(chunk) {
             if (arguments.length === 0 || chunk === undefined) {
               mockStream.end(undefined);
             } else {
@@ -577,7 +577,7 @@ describe("startHttp2Server – streamed large-asset delivery (prompt 140)", () =
   };
 
   const makeHandle = (body: Buffer | (() => Readable)) => {
-    const close = vi.fn(async () => {});
+    const close = vi.fn(async () => { });
     const createReadStream = vi.fn(() =>
       typeof body === "function" ? body() : countingStream([body]),
     );
@@ -585,7 +585,7 @@ describe("startHttp2Server – streamed large-asset delivery (prompt 140)", () =
     return { handle, close, createReadStream };
   };
 
-  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
   let logSpy: ReturnType<typeof vi.fn>;
 
   /** The access-log line for `path`, or undefined when none was written. */
@@ -595,7 +595,7 @@ describe("startHttp2Server – streamed large-asset delivery (prompt 140)", () =
   beforeEach(async () => {
     mockStat.mockResolvedValue({ mtimeMs: handleStat.mtimeMs, size: LARGE });
     errorSpy.mockClear();
-    logSpy = vi.spyOn(console, "log").mockImplementation(() => {}) as unknown as ReturnType<typeof vi.fn>;
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => { }) as unknown as ReturnType<typeof vi.fn>;
     (BascikConfig as any).logging = { level: "info", requests: true };
     await startHttp2Server();
   });

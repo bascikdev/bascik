@@ -97,7 +97,7 @@ describe("executeGracefulShutdown", () => {
 
   it("waits for both server close and async shutdown handlers before exiting", async () => {
     const mockExit = vi.fn();
-    let resolveHandlers: () => void = () => {};
+    let resolveHandlers: () => void = () => { };
     const handlersPromise = new Promise<void>((res) => {
       resolveHandlers = res;
     });
@@ -297,7 +297,7 @@ describe("executeGracefulShutdown", () => {
   it("allows real in-flight HTTP request to complete before shutdown exit", async () => {
     vi.useRealTimers();
     const http = await import("node:http");
-    let releaseRequest: () => void = () => {};
+    let releaseRequest: () => void = () => { };
     const requestHoldPromise = new Promise<void>((resolve) => {
       releaseRequest = resolve;
     });

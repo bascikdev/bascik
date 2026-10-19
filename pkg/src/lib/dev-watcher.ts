@@ -19,8 +19,8 @@ export async function loadChokidar(
     if (isNotFound) {
       throw new Error(
         "[bascik] `bascik dev` requires chokidar for file watching, but it is not installed.\n" +
-          "This usually happens if your package installation used `--omit=optional`.\n" +
-          "Run `npm install chokidar` (or drop `--omit=optional`) and try again."
+        "This usually happens if your package installation used `--omit=optional`.\n" +
+        "Run `npm install chokidar` (or drop `--omit=optional`) and try again."
       );
     }
     throw err;

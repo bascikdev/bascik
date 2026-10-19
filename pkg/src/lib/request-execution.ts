@@ -336,7 +336,7 @@ export const invokeWithDeadline = async <T>(
     } catch (syncErr) {
       result = Promise.reject(syncErr);
     }
-    result.catch(() => {});
+    result.catch(() => { });
     const abortPromise = new Promise<never>((_, reject) => {
       if (controller.signal.aborted) {
         reject(controller.signal.reason);
@@ -345,7 +345,7 @@ export const invokeWithDeadline = async <T>(
       onAbort = () => { if (!settled) reject(controller.signal.reason); };
       controller.signal.addEventListener("abort", onAbort, { once: true });
     });
-    abortPromise.catch(() => {});
+    abortPromise.catch(() => { });
     const value = await Promise.race([result, abortPromise]);
     settled = true;
     return { ok: true, value, timedOut: false, aborted: false };

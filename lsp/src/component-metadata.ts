@@ -5,8 +5,8 @@ export interface ComponentMetadataMember {
 
 export interface ComponentMetadataDiagnostic {
   code:
-    | 'component-metadata-duplicate-annotation'
-    | 'component-metadata-undeclared-annotation';
+  | 'component-metadata-duplicate-annotation'
+  | 'component-metadata-undeclared-annotation';
   message: string;
   start: number;
   end: number;

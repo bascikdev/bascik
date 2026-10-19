@@ -7,5 +7,7 @@
 }
 
 @media print {
-  .docs-pagination { display: none !important; }
+  .docs-pagination {
+    display: none !important;
+  }
 }

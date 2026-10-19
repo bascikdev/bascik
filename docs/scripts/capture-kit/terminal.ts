@@ -90,7 +90,7 @@ export function recordCommand({ command, args, cwd, env = {}, pty, stopAfterMs, 
     let stopping = false;
     // Whatever the program prints after this script tells it to stop (a shutdown message) is the script's doing,
     // not part of what a user would see, so it is not recorded.
-    let interrupt = () => {};
+    let interrupt = () => { };
     const stop = () => {
       stopping = true;
       interrupt();

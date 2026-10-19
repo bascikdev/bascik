@@ -204,7 +204,7 @@ export const pinServerUrl = async (
   const resumeRow = full ? total : cursorRow + 1;
   stream.write(
     `${RESET_SCROLL_REGION}${RESET_ORIGIN_MODE}${full ? `${ESC}[${total};1H\n` : ""}${emptyScrollback ? ERASE_SCROLLBACK : ""}` +
-      `${ESC}[1;1H${INSERT_LINE}${drawBanner()}${ESC}[${resumeRow};${cursorColumn}H`,
+    `${ESC}[1;1H${INSERT_LINE}${drawBanner()}${ESC}[${resumeRow};${cursorColumn}H`,
   );
 
   // A resize can reset the region and reflow the text, and shrinking the window pushes the top rows, banner

@@ -214,7 +214,7 @@ const makeHttp1Server = (): http.Server => {
   const handleRequest = createRequestHandler();
   server.on("request", (reqMsg, resMsg) => {
     const { req, res } = adaptHttp1(reqMsg, resMsg);
-    handleRequest(req, res).catch(() => {});
+    handleRequest(req, res).catch(() => { });
   });
   return server;
 };
@@ -244,7 +244,7 @@ const makeHttp2Server = async (certDir: string): Promise<http2.Http2SecureServer
   const handleRequest = createRequestHandler();
   server.on("stream", (stream, headers) => {
     const { req, res } = adaptHttp2(stream, headers);
-    handleRequest(req, res).catch(() => {});
+    handleRequest(req, res).catch(() => { });
   });
   return server;
 };
@@ -259,7 +259,7 @@ const makeLargeBody = (size: number): Buffer => {
 const waitFor = async (predicate: () => boolean): Promise<void> => {
   // Event-driven settle: yield to the event loop until the predicate holds.
   // Bounded by the vitest test timeout, no fixed sleep.
-  for (;;) {
+  for (; ;) {
     if (predicate()) return;
     await new Promise<void>((r) => setImmediate(r));
   }
@@ -288,7 +288,7 @@ describe("Prompt 140 - large static assets are streamed with a weak validator", 
     clearStaticRepresentationCache();
     await new Promise<void>((r) => http1Server.close(() => r()));
     await new Promise<void>((r) => http2Server.close(() => r()));
-    await rm(dist, { recursive: true, force: true }).catch(() => {});
+    await rm(dist, { recursive: true, force: true }).catch(() => { });
   });
 
   it("the streaming bound is a real constant no larger than the cache bound", () => {
@@ -462,8 +462,8 @@ describe("Prompt 140 - large static assets are streamed with a weak validator", 
     // Turn the access log on for this test so the logged status is observable.
     (BascikConfig.logging as { requests: boolean }).requests = true;
     vi.mocked(shouldLog).mockReturnValue(true);
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
     try {
       const chunks: Buffer[] = [];
       const socket = net.connect(addr.port, "127.0.0.1");
@@ -552,7 +552,7 @@ describe("Prompt 140 - precompressed sidecars round trip from build to server", 
     manifestCollector.clear();
     clearStaticRepresentationCache();
     await new Promise<void>((r) => http1Server.close(() => r()));
-    await rm(dist, { recursive: true, force: true }).catch(() => {});
+    await rm(dist, { recursive: true, force: true }).catch(() => { });
   });
 
   it("serves the emitted .br sidecar verbatim with the encoded ETag and no on-the-fly compression", async () => {

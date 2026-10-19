@@ -277,7 +277,7 @@ describe("module graph under the real Node loader (child process)", () => {
   });
 
   afterEach(async () => {
-    await rm(dir, { recursive: true, force: true }).catch(() => {});
+    await rm(dir, { recursive: true, force: true }).catch(() => { });
   });
 
   it("reloads a two-level helper chain through generation URLs while the untouched levels keep identity", async () => {

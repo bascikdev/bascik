@@ -54,7 +54,7 @@ export const streamApiResponse = async (
 ): Promise<void> => {
   const reader = body.getReader();
   // `closed` rejects when the producer errors; it is observed via read().
-  reader.closed.catch(() => {});
+  reader.closed.catch(() => { });
 
   let unlistenAbort: (() => void) | undefined;
   // Settled (never rejecting) once reader cancellation has completed. Cancel on
@@ -64,7 +64,7 @@ export const streamApiResponse = async (
 
   const aborted = new Promise<void>((resolve) => {
     const listener = (): void => {
-      cancelSettled = reader.cancel().catch(() => {});
+      cancelSettled = reader.cancel().catch(() => { });
       resolve();
     };
     if (abort.signal.aborted) {
@@ -83,7 +83,7 @@ export const streamApiResponse = async (
       // The race may be won by `aborted`, leaving `currentRead` to settle
       // later (it rejects once the reader is canceled). Observe that
       // rejection here so it can never surface as an unhandled rejection.
-      currentRead.catch(() => {});
+      currentRead.catch(() => { });
       const readResult = await Promise.race([currentRead, aborted]);
       if (abort.signal.aborted || !readResult) return;
       const { done, value } = readResult;

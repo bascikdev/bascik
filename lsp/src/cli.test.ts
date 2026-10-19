@@ -11,8 +11,8 @@ describe('runCliCheck', () => {
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bascik-cli-test-'));
-    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => { });
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
   });
 
   afterEach(() => {

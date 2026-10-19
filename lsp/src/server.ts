@@ -228,10 +228,10 @@ export class BascikLanguageServer {
     this.watcherRegistration = undefined;
     const watchers: FileSystemWatcher[] = this.clientWatchesFolders
       ? this.workspaceFolders.flatMap((folder) =>
-          WATCHED_FILE_PATTERNS.map((pattern) => ({
-            globPattern: { baseUri: pathToFileURL(folder).toString(), pattern },
-          })),
-        )
+        WATCHED_FILE_PATTERNS.map((pattern) => ({
+          globPattern: { baseUri: pathToFileURL(folder).toString(), pattern },
+        })),
+      )
       : WATCHED_FILE_PATTERNS.map((globPattern) => ({ globPattern }));
     if (watchers.length === 0) return;
     this.watcherRegistration = await this.connection.client.register(

@@ -141,7 +141,7 @@ describe("browser TypeScript pipeline", () => {
         console.log(n);
       </script>
     </body></html>`);
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => { });
 
     const result = await transpilePage("src/pages/index.html", {});
     const html = result!.distHtml;

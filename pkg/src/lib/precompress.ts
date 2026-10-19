@@ -68,7 +68,7 @@ const atomicWriteBytes = async (target: string, bytes: Buffer | string): Promise
     await writeFile(tmp, bytes);
     await rename(tmp, target);
   } catch (err) {
-    await rm(tmp, { force: true }).catch(() => {});
+    await rm(tmp, { force: true }).catch(() => { });
     throw err;
   }
 };

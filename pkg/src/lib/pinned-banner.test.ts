@@ -249,12 +249,12 @@ describe("pinned-banner", () => {
       const setup = writes[1];
       expect(setup).toBe(
         `${ESC}[r${ESC}[?6l` +
-          // A blank line at the top moves everything down. The command's line stays on screen, which is what keeps
-          // VS Code's sticky scroll overlay from covering the banner.
-          `${ESC}[1;1H${ESC}[L` +
-          `${ESC}[1;1H${ESC}[2KServer running at http://localhost:8080${ESC}[2;40r` +
-          // The cursor was on row 7, column 5. That line is now on row 8, and the cursor goes back to it.
-          `${ESC}[8;5H`,
+        // A blank line at the top moves everything down. The command's line stays on screen, which is what keeps
+        // VS Code's sticky scroll overlay from covering the banner.
+        `${ESC}[1;1H${ESC}[L` +
+        `${ESC}[1;1H${ESC}[2KServer running at http://localhost:8080${ESC}[2;40r` +
+        // The cursor was on row 7, column 5. That line is now on row 8, and the cursor goes back to it.
+        `${ESC}[8;5H`,
       );
       // Nothing scrolls: no newline is written.
       expect(setup).not.toContain("\n");
@@ -280,9 +280,9 @@ describe("pinned-banner", () => {
         banner?.release();
         expect(writes[1]).toBe(
           `${ESC}[r${ESC}[?6l${ESC}[3J` +
-            `${ESC}[1;1H${ESC}[L` +
-            `${ESC}[1;1H${ESC}[2KServer running at http://localhost:8080${ESC}[2;40r` +
-            `${ESC}[8;5H`,
+          `${ESC}[1;1H${ESC}[L` +
+          `${ESC}[1;1H${ESC}[2KServer running at http://localhost:8080${ESC}[2;40r` +
+          `${ESC}[8;5H`,
         );
       });
 

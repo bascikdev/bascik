@@ -258,7 +258,7 @@ describe("minifyHtml", () => {
     ).join("\n") + "</main>";
     const original = String.prototype.toLowerCase;
     let fullInputNormalizations = 0;
-    const spy = vi.spyOn(String.prototype, "toLowerCase").mockImplementation(function (this: string) {
+    const spy = vi.spyOn(String.prototype, "toLowerCase").mockImplementation(function(this: string) {
       const value = String(this);
       if (value === html) fullInputNormalizations++;
       return original.call(value);

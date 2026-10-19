@@ -1,11 +1,85 @@
-.wrapper { border: 1px solid #444; padding: 16px; }
-.section { margin-bottom: 16px; padding: 12px; border: 1px solid #333; border-radius: 4px; }
-.section-title { margin: 0 0 8px; font-size: 0.85rem; color: #aaa; text-transform: uppercase; letter-spacing: 0.04em; }
-.container { min-height: 40px; background: rgb(20, 20, 20); padding: 6px; border-radius: 4px; margin-bottom: 8px; }
-.placeholder { color: #555; font-size: 0.8rem; font-style: italic; }
-.child-item { padding: 4px 8px; background: rgb(14, 30, 14); color: rgb(74, 222, 128); margin: 2px 0; border-radius: 3px; font-size: 0.8rem; }
-.status { font-family: monospace; font-size: 0.78rem; color: #aaa; padding: 4px; background: #111; margin-bottom: 8px; }
-.observe-box { padding: 12px; background: rgb(20, 20, 40); border: 1px solid #444; border-radius: 4px; color: rgb(96, 165, 250); margin-bottom: 6px; }
-.resize-box { padding: 12px; background: rgb(30, 20, 40); border: 1px solid #444; border-radius: 4px; color: rgb(167, 139, 250); width: 100%; box-sizing: border-box; margin-bottom: 6px; }
-.btn-row { display: flex; gap: 6px; }
-button { padding: 4px 10px; font-size: 0.8rem; background: #222; border: 1px solid #555; color: #ddd; cursor: pointer; }
+.wrapper {
+  border: 1px solid #444;
+  padding: 16px;
+}
+
+.section {
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid #333;
+  border-radius: 4px;
+}
+
+.section-title {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.container {
+  min-height: 40px;
+  background: rgb(20, 20, 20);
+  padding: 6px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.placeholder {
+  color: #555;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.child-item {
+  padding: 4px 8px;
+  background: rgb(14, 30, 14);
+  color: rgb(74, 222, 128);
+  margin: 2px 0;
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+
+.status {
+  font-family: monospace;
+  font-size: 0.78rem;
+  color: #aaa;
+  padding: 4px;
+  background: #111;
+  margin-bottom: 8px;
+}
+
+.observe-box {
+  padding: 12px;
+  background: rgb(20, 20, 40);
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: rgb(96, 165, 250);
+  margin-bottom: 6px;
+}
+
+.resize-box {
+  padding: 12px;
+  background: rgb(30, 20, 40);
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: rgb(167, 139, 250);
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 6px;
+}
+
+.btn-row {
+  display: flex;
+  gap: 6px;
+}
+
+button {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  background: #222;
+  border: 1px solid #555;
+  color: #ddd;
+  cursor: pointer;
+}

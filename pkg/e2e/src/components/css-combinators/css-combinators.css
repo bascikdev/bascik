@@ -1,24 +1,77 @@
-.wrapper { border: 1px solid #444; padding: 16px; }
+.wrapper {
+  border: 1px solid #444;
+  padding: 16px;
+}
 
 /* Child combinator */
-.list { list-style: none; padding: 0; margin: 0 0 12px; }
-.list > .item { color: rgb(74, 222, 128); padding: 4px 8px; }
-.nested-wrapper .item { color: rgb(150, 150, 150); }
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+}
+
+.list>.item {
+  color: rgb(74, 222, 128);
+  padding: 4px 8px;
+}
+
+.nested-wrapper .item {
+  color: rgb(150, 150, 150);
+}
 
 /* Adjacent sibling */
-.title { margin: 0; color: #eee; font-size: 0.95rem; }
-.title + .subtitle { color: rgb(96, 165, 250); margin-top: 2px; }
-.subtitle { color: #888; margin: 6px 0; }
+.title {
+  margin: 0;
+  color: #eee;
+  font-size: 0.95rem;
+}
+
+.title+.subtitle {
+  color: rgb(96, 165, 250);
+  margin-top: 2px;
+}
+
+.subtitle {
+  color: #888;
+  margin: 6px 0;
+}
 
 /* General sibling */
-.header-label { color: #aaa; font-weight: 600; margin-bottom: 4px; }
-.header-label ~ .content-item { padding-left: 12px; color: rgb(167, 139, 250); }
+.header-label {
+  color: #aaa;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.header-label~.content-item {
+  padding-left: 12px;
+  color: rgb(167, 139, 250);
+}
 
 /* Descendant */
-.card { border: 1px solid #333; padding: 10px; margin: 10px 0; }
-.card .label { font-weight: 700; color: rgb(251, 191, 36); }
-.label { color: #666; }
+.card {
+  border: 1px solid #333;
+  padding: 10px;
+  margin: 10px 0;
+}
+
+.card .label {
+  font-weight: 700;
+  color: rgb(251, 191, 36);
+}
+
+.label {
+  color: #666;
+}
 
 /* Compound selector */
-.box { padding: 10px; background: rgb(30, 30, 30); margin-top: 8px; }
-.box.active { background: rgb(22, 101, 52); color: rgb(74, 222, 128); }
+.box {
+  padding: 10px;
+  background: rgb(30, 30, 30);
+  margin-top: 8px;
+}
+
+.box.active {
+  background: rgb(22, 101, 52);
+  color: rgb(74, 222, 128);
+}

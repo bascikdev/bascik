@@ -1,5 +1,28 @@
-.wrapper { padding: 16px; border: 1px solid #444; }
-.result-box { padding: 8px; background: #222; color: #aaa; margin-bottom: 12px; font-family: monospace; }
-.result-box.found { background: #1a3a1a; color: #4ade80; }
-.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
-button { padding: 5px 12px; cursor: pointer; }
+.wrapper {
+  padding: 16px;
+  border: 1px solid #444;
+}
+
+.result-box {
+  padding: 8px;
+  background: #222;
+  color: #aaa;
+  margin-bottom: 12px;
+  font-family: monospace;
+}
+
+.result-box.found {
+  background: #1a3a1a;
+  color: #4ade80;
+}
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+button {
+  padding: 5px 12px;
+  cursor: pointer;
+}

@@ -32,10 +32,10 @@ export function isNavigationalQuery(q: string): boolean {
     .replace(/^https?:\/\//, '')
     .replace(/^www\./, '')
     .replace(/\.(d|de)$/, '');
-  var words = s.split(/[\s./]+/).filter(function (w) { return w.length > 0; });
-  var rest = words.filter(function (w) { return !GENERIC_SITE_WORDS[w]; });
+  var words = s.split(/[\s./]+/).filter(function(w) { return w.length > 0; });
+  var rest = words.filter(function(w) { return !GENERIC_SITE_WORDS[w]; });
   if (rest.length === 0) {
-    return words.some(function (w) { return w === 'home' || w === 'homepage'; });
+    return words.some(function(w) { return w === 'home' || w === 'homepage'; });
   }
   if (rest.length > 1) return false;
   var w = rest[0];
@@ -43,7 +43,7 @@ export function isNavigationalQuery(q: string): boolean {
 }
 
 export function tokens(q: string): string[] {
-  return q.split(/\s+/).filter(function (w) { return w.length >= 2; });
+  return q.split(/\s+/).filter(function(w) { return w.length >= 2; });
 }
 
 export function basePath(path: string): string {
@@ -52,17 +52,17 @@ export function basePath(path: string): string {
 
 export function score(e: SearchEntry, q: string, toks: string[]): number {
   q = (q || '').toLowerCase();
-  toks = (toks || []).map(function (tok) { return tok.toLowerCase(); });
+  toks = (toks || []).map(function(tok) { return tok.toLowerCase(); });
   var sec = (e.section || '').toLowerCase();
   var nl = (e.navLabel || e.title || '').toLowerCase();
   var title = (e.title || '').toLowerCase();
   var h = (e.heading || '').toLowerCase();
   var t = (e.text || '').toLowerCase();
 
-  var secHits = sec ? toks.reduce(function (n, tok) { return n + (sec.includes(tok) ? 1 : 0); }, 0) : 0;
-  var nlHits = toks.reduce(function (n, tok) { return n + (nl.includes(tok) || (title && title.includes(tok)) ? 1 : 0); }, 0);
-  var hHits = h ? toks.reduce(function (n, tok) { return n + (h.includes(tok) ? 1 : 0); }, 0) : 0;
-  var tHits = toks.reduce(function (n, tok) { return n + (t.includes(tok) ? 1 : 0); }, 0);
+  var secHits = sec ? toks.reduce(function(n, tok) { return n + (sec.includes(tok) ? 1 : 0); }, 0) : 0;
+  var nlHits = toks.reduce(function(n, tok) { return n + (nl.includes(tok) || (title && title.includes(tok)) ? 1 : 0); }, 0);
+  var hHits = h ? toks.reduce(function(n, tok) { return n + (h.includes(tok) ? 1 : 0); }, 0) : 0;
+  var tHits = toks.reduce(function(n, tok) { return n + (t.includes(tok) ? 1 : 0); }, 0);
 
   // Tier 1 (>=2000): Category (section) match, outranks page title, heading, and text
   if (sec) {
@@ -142,16 +142,16 @@ export function buildResults(fullIndex: SearchEntry[], q: string, toks: string[]
   if (home && isNavigationalQuery(q)) {
     seen[home.path] = true;
     top.push(home);
-    (home.sitelinks || []).forEach(function (p) { sitelinkBases[basePath(p)] = true; });
-    index = index.filter(function (e) { return !sitelinkBases[basePath(e.path)]; });
+    (home.sitelinks || []).forEach(function(p) { sitelinkBases[basePath(p)] = true; });
+    index = index.filter(function(e) { return !sitelinkBases[basePath(e.path)]; });
   }
 
   var scored = index
-    .map(function (e) { return { e: e, s: score(e, q, toks) }; })
-    .filter(function (x) { return x.s > 0; })
-    .sort(function (a, b) { return b.s - a.s; });
+    .map(function(e) { return { e: e, s: score(e, q, toks) }; })
+    .filter(function(x) { return x.s > 0; })
+    .sort(function(a, b) { return b.s - a.s; });
 
-  var pageMatches = scored.filter(function (x) { return x.e.heading === null && x.s >= 1100; });
+  var pageMatches = scored.filter(function(x) { return x.e.heading === null && x.s >= 1100; });
   var bestPage = pageMatches.length === 1 ? pageMatches[0]
     : (pageMatches.length > 1 && pageMatches[0].s > pageMatches[1].s) ? pageMatches[0]
       : null;
@@ -159,8 +159,8 @@ export function buildResults(fullIndex: SearchEntry[], q: string, toks: string[]
   if (bestPage) {
     var dominantBase = bestPage.e.path;
     index
-      .filter(function (e) { return basePath(e.path) === dominantBase; })
-      .forEach(function (e) {
+      .filter(function(e) { return basePath(e.path) === dominantBase; })
+      .forEach(function(e) {
         if (!seen[e.path]) { seen[e.path] = true; top.push(e); }
       });
   }
@@ -179,7 +179,7 @@ export function buildResults(fullIndex: SearchEntry[], q: string, toks: string[]
  */
 export function buildSitelinks(index: SearchEntry[], homeEntry: SearchEntry): SearchEntry[] {
   var out: SearchEntry[] = [];
-  (homeEntry.sitelinks || []).forEach(function (p) {
+  (homeEntry.sitelinks || []).forEach(function(p) {
     for (var i = 0; i < index.length; i++) {
       if (index[i].path === p && index[i].heading === null) { out.push(index[i]); return; }
     }

@@ -16,7 +16,7 @@ function createFakeConnection() {
   const register = (name: string) =>
     vi.fn((handler: Handler) => {
       handlers.set(name, handler);
-      return { dispose() {} };
+      return { dispose() { } };
     });
   const connection = {
     onInitialize: register('initialize'),
@@ -34,14 +34,14 @@ function createFakeConnection() {
     onDidSaveTextDocument: register('didSave'),
     sendDiagnostics: vi.fn(),
     listen: vi.fn(),
-    client: { register: vi.fn(async () => ({ dispose() {} })) },
+    client: { register: vi.fn(async () => ({ dispose() { } })) },
     workspace: {
       onDidChangeWorkspaceFolders: vi.fn((handler: Handler) => {
         if (!state.clientSendsFolderChanges) {
           throw new Error("Client doesn't support sending workspace folder change events.");
         }
         handlers.set('workspaceFolders', handler);
-        return { dispose() {} };
+        return { dispose() { } };
       }),
     },
   };

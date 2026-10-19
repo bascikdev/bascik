@@ -1,8 +1,10 @@
 .wrapper {
-  --theme-color: rgb(96, 165, 250);  /* default value, will be scoped */
+  --theme-color: rgb(96, 165, 250);
+  /* default value, will be scoped */
   border: 1px solid #444;
   padding: 16px;
 }
+
 .themed-box {
   padding: 12px;
   /* Uses scoped custom property name after build */
@@ -13,6 +15,27 @@
   margin-bottom: 12px;
   transition: color 0.15s, border-color 0.15s;
 }
-.result { font-family: monospace; font-size: 0.8rem; color: #aaa; padding: 6px; background: #111; margin-bottom: 12px; }
-.btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
-button { padding: 4px 10px; font-size: 0.8rem; background: #222; border: 1px solid #555; color: #ddd; cursor: pointer; }
+
+.result {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #aaa;
+  padding: 6px;
+  background: #111;
+  margin-bottom: 12px;
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+button {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  background: #222;
+  border: 1px solid #555;
+  color: #ddd;
+  cursor: pointer;
+}

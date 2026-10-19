@@ -128,8 +128,10 @@ export default function () {
 
         // Middle package: top-level + ./sub subpath, and its subpath file imports dep-base.
         await writeFixtureFile(root, "node_modules/audit-lib/package.json",
-          JSON.stringify({ name: "audit-lib", version: "1.0.0", type: "module",
-            exports: { ".": "./index.mjs", "./sub": "./sub.mjs" } }, null, 2));
+          JSON.stringify({
+            name: "audit-lib", version: "1.0.0", type: "module",
+            exports: { ".": "./index.mjs", "./sub": "./sub.mjs" }
+          }, null, 2));
         await writeFixtureFile(root, "node_modules/audit-lib/index.mjs", `export const top = "lib-top-A";`);
         await writeFixtureFile(root, "node_modules/audit-lib/sub.mjs",
           `import { value } from 'dep-base';\nexport const sub = "lib-sub:" + value;`);

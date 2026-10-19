@@ -80,7 +80,7 @@ describe("streamComposedResponse", () => {
         if (gate) await new Promise<void>((r) => { gate = r; });
       }),
     };
-    return { writes, writer, stall: () => { gate = () => {}; }, release: () => { const g = gate; gate = undefined; g?.(); } };
+    return { writes, writer, stall: () => { gate = () => { }; }, release: () => { const g = gate; gate = undefined; g?.(); } };
   };
 
   it("ready resolves only after every server job settles; commit gates writes; done finishes in order", async () => {
@@ -233,7 +233,7 @@ describe("invokeWithDeadline", () => {
     };
     let seenSignal: AbortSignal | undefined;
     const pending = invokeWithDeadline(
-      ({ signal }) => { seenSignal = signal; return new Promise<string>(() => {}); },
+      ({ signal }) => { seenSignal = signal; return new Promise<string>(() => { }); },
       { timeoutMs: 5, clock },
     );
     fire();
@@ -316,7 +316,7 @@ describe("dispatchApiHandler", () => {
   });
 
   it("a thrown error is a generic 500; a timeout is 504; an upstream abort is 499", async () => {
-    const thrown = await dispatchApiHandler({ GET: async () => { throw new Error("secret detail"); } }, new Request("http://x/api"), ctx, { onError: () => {} });
+    const thrown = await dispatchApiHandler({ GET: async () => { throw new Error("secret detail"); } }, new Request("http://x/api"), ctx, { onError: () => { } });
     expect(thrown.status).toBe(500);
     expect(await thrown.text()).not.toContain("secret detail");
 
@@ -325,12 +325,12 @@ describe("dispatchApiHandler", () => {
       setTimeout: vi.fn((cb: () => void) => { fire = cb; return 1 as unknown as ReturnType<typeof setTimeout>; }),
       clearTimeout: vi.fn(),
     };
-    const pending = dispatchApiHandler({ GET: () => new Promise<Response>(() => {}) }, new Request("http://x/api"), ctx, { timeoutMs: 5, clock, onError: () => {} });
+    const pending = dispatchApiHandler({ GET: () => new Promise<Response>(() => { }) }, new Request("http://x/api"), ctx, { timeoutMs: 5, clock, onError: () => { } });
     fire();
     expect((await pending).status).toBe(504);
 
     const abort = new AbortController();
-    const aborted = dispatchApiHandler({ GET: () => new Promise<Response>(() => {}) }, new Request("http://x/api"), ctx, { signal: abort.signal });
+    const aborted = dispatchApiHandler({ GET: () => new Promise<Response>(() => { }) }, new Request("http://x/api"), ctx, { signal: abort.signal });
     abort.abort();
     expect((await aborted).status).toBe(499);
   });

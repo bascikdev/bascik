@@ -5,8 +5,35 @@
   font-style: normal;
 }
 
-.wrapper { border: 1px solid #444; padding: 16px; }
-.custom-font-text { font-family: "CompFont", monospace; color: #eee; }
-.regular-text { font-family: sans-serif; color: #aaa; }
-.info { font-family: monospace; font-size: 0.8rem; color: rgb(74, 222, 128); padding: 6px; background: #111; margin-bottom: 12px; }
-button { padding: 4px 10px; font-size: 0.8rem; background: #222; border: 1px solid #555; color: #ddd; cursor: pointer; }
+.wrapper {
+  border: 1px solid #444;
+  padding: 16px;
+}
+
+.custom-font-text {
+  font-family: "CompFont", monospace;
+  color: #eee;
+}
+
+.regular-text {
+  font-family: sans-serif;
+  color: #aaa;
+}
+
+.info {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: rgb(74, 222, 128);
+  padding: 6px;
+  background: #111;
+  margin-bottom: 12px;
+}
+
+button {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  background: #222;
+  border: 1px solid #555;
+  color: #ddd;
+  cursor: pointer;
+}

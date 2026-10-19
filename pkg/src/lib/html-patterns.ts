@@ -63,21 +63,21 @@ const TRAILING_SCRIPT_END_TAG_RE = new RegExp(`${SCRIPT_END_TAG}$`, "i");
  * `element` is the one the element match ended on, whatever its spelling.
  */
 export const scriptOpenTag = (element: string, body: string): string => {
-	const endTagLength = TRAILING_SCRIPT_END_TAG_RE.exec(element)?.[0].length ?? 0;
-	return element.slice(0, element.length - body.length - endTagLength);
+  const endTagLength = TRAILING_SCRIPT_END_TAG_RE.exec(element)?.[0].length ?? 0;
+  return element.slice(0, element.length - body.length - endTagLength);
 };
 
 const ATTR_PAIR_REGEX =
-	/(?:^|\s)([^\s"'=<>\`\/]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>\`]+?))(?=\s|\/>|>|$)/gi;
+  /(?:^|\s)([^\s"'=<>\`\/]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>\`]+?))(?=\s|\/>|>|$)/gi;
 
 export const getHtmlAttributeValue = (openTag: string, attribute: string): string | undefined => {
-	const target = attribute.toLowerCase();
-	for (const match of openTag.matchAll(ATTR_PAIR_REGEX)) {
-		if (match[1]?.toLowerCase() === target) {
-			return match[2] ?? match[3] ?? match[4];
-		}
-	}
-	return undefined;
+  const target = attribute.toLowerCase();
+  for (const match of openTag.matchAll(ATTR_PAIR_REGEX)) {
+    if (match[1]?.toLowerCase() === target) {
+      return match[2] ?? match[3] ?? match[4];
+    }
+  }
+  return undefined;
 };
 
 const ATTRIBUTE_VALUE_RE = /\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/g;
@@ -89,13 +89,13 @@ const ATTRIBUTE_NAME_RE = /(?:^|[\s/])([^\s"'=<>`/]+)(?=[\s/>]|$)/g;
  * inside another attribute's quoted value is never an attribute.
  */
 export const hasHtmlAttribute = (openTag: string, attribute: string): boolean => {
-	const target = attribute.toLowerCase();
-	// Drop every `= value` first, so only attribute names remain.
-	const namesOnly = openTag.replace(ATTRIBUTE_VALUE_RE, "");
-	for (const match of namesOnly.matchAll(ATTRIBUTE_NAME_RE)) {
-		if (match[1].toLowerCase() === target) return true;
-	}
-	return false;
+  const target = attribute.toLowerCase();
+  // Drop every `= value` first, so only attribute names remain.
+  const namesOnly = openTag.replace(ATTRIBUTE_VALUE_RE, "");
+  for (const match of namesOnly.matchAll(ATTRIBUTE_NAME_RE)) {
+    if (match[1].toLowerCase() === target) return true;
+  }
+  return false;
 };
 
 /**
@@ -104,6 +104,6 @@ export const hasHtmlAttribute = (openTag: string, attribute: string): boolean =>
  * surrounding whitespace ignored) or a `data-bascik-page-aware` attribute.
  */
 export const isPageAwareBuildOpenTag = (openTag: string): boolean =>
-	hasHtmlAttribute(openTag, "data-bascik-page-aware") ||
-	getHtmlAttributeValue(openTag, "data-bascik-build")?.trim().toLowerCase() === "page";
+  hasHtmlAttribute(openTag, "data-bascik-page-aware") ||
+  getHtmlAttributeValue(openTag, "data-bascik-build")?.trim().toLowerCase() === "page";
 

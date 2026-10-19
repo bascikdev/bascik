@@ -94,12 +94,12 @@ export interface CheckFindings {
  */
 async function loadParse5(): Promise<
   | ((
-      html: string,
-      opts: {
-        sourceCodeLocationInfo: boolean;
-        onParseError: (e: { code: string; startLine?: number; startCol?: number }) => void;
-      },
-    ) => void)
+    html: string,
+    opts: {
+      sourceCodeLocationInfo: boolean;
+      onParseError: (e: { code: string; startLine?: number; startCol?: number }) => void;
+    },
+  ) => void)
   | null
 > {
   try {

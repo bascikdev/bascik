@@ -1,6 +1,18 @@
-.wrapper { border: 1px solid #444; padding: 16px; }
-.list { list-style: none; padding: 0; margin: 0 0 12px; }
-.item { padding: 6px 10px; color: #aaa; }
+.wrapper {
+  border: 1px solid #444;
+  padding: 16px;
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+}
+
+.item {
+  padding: 6px 10px;
+  color: #aaa;
+}
 
 /* :has() — list changes background when it contains a .selected item */
 .list:has(.selected) {
@@ -9,7 +21,10 @@
 }
 
 /* :has() — .selected item itself */
-.item.selected { color: rgb(74, 222, 128); font-weight: 600; }
+.item.selected {
+  color: rgb(74, 222, 128);
+  font-weight: 600;
+}
 
 .card {
   border: 2px solid #444;
@@ -18,13 +33,34 @@
   margin-bottom: 8px;
   background: rgb(20, 20, 20);
 }
-.card-text { color: #aaa; margin: 0; }
+
+.card-text {
+  color: #aaa;
+  margin: 0;
+}
 
 /* :has() — card changes border when it contains .error-msg */
 .card:has(.error-msg) {
   border-color: rgb(239, 68, 68);
 }
-.error-msg { color: rgb(239, 68, 68); font-size: 0.8rem; margin: 6px 0 0; }
 
-.btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
-button { padding: 4px 10px; font-size: 0.8rem; background: #222; border: 1px solid #555; color: #ddd; cursor: pointer; }
+.error-msg {
+  color: rgb(239, 68, 68);
+  font-size: 0.8rem;
+  margin: 6px 0 0;
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+button {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  background: #222;
+  border: 1px solid #555;
+  color: #ddd;
+  cursor: pointer;
+}

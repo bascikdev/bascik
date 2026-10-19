@@ -198,15 +198,17 @@ export const writeParityFixture = async (root: string): Promise<BuildFixture> =>
   // unchanged-copy asset: content identical to its eventual dist copy (hash-equal no-op).
   await writeFixtureFile(root, "src/pages/assets/unchanged.txt", "same bytes both sides");
 
-  return { root, emittedAssetPaths: [
-    "a.html",
-    "b.html",
-    "index.html",
-    "assets/logo.txt",
-    "assets/unchanged.txt",
-    ".bascik/csp-hashes.json",
-    ".bascik/server-scripts.json",
-  ] };
+  return {
+    root, emittedAssetPaths: [
+      "a.html",
+      "b.html",
+      "index.html",
+      "assets/logo.txt",
+      "assets/unchanged.txt",
+      ".bascik/csp-hashes.json",
+      ".bascik/server-scripts.json",
+    ]
+  };
 };
 
 /** Remove the fixture root. */

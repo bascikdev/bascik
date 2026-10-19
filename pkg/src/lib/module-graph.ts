@@ -302,7 +302,7 @@ export interface ModuleGraphHookHandle {
 
 let activeHandle: ModuleGraphHookHandle | undefined;
 
-const INERT_HANDLE: ModuleGraphHookHandle = Object.freeze({ installed: false, deregister: () => {} });
+const INERT_HANDLE: ModuleGraphHookHandle = Object.freeze({ installed: false, deregister: () => { } });
 
 /** Whether the dev resolve hook is currently registered in this process. */
 export const isModuleGraphHookInstalled = (): boolean => activeHandle !== undefined;

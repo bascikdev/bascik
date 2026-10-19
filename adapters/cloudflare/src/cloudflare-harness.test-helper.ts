@@ -110,11 +110,11 @@ export const startHarness = async (options: HarnessOptions): Promise<Harness> =>
     bindings: options.bindings ?? {},
     serviceBindings: gate
       ? {
-          GATE: async () => {
-            await gate.released;
-            return new Response("released");
-          },
-        }
+        GATE: async () => {
+          await gate.released;
+          return new Response("released");
+        },
+      }
       : {},
     assets: {
       directory: join(targetDir, "public"),
@@ -133,7 +133,7 @@ export const startHarness = async (options: HarnessOptions): Promise<Harness> =>
   try {
     url = await mf.ready;
   } catch (err) {
-    await mf.dispose().catch(() => {});
+    await mf.dispose().catch(() => { });
     throw err;
   }
 

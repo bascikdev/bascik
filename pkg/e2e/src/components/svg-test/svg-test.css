@@ -12,15 +12,18 @@
   display: block;
   transition: transform 0.15s;
 }
+
 .icon.active {
   transform: scale(1.1);
   filter: drop-shadow(0 0 6px rgb(74, 222, 128));
 }
+
 .bg-circle {
   fill: rgb(14, 30, 14);
   stroke: rgb(74, 222, 128);
   stroke-width: 1.5;
 }
+
 .check-path {
   fill: none;
   stroke: rgb(74, 222, 128);
@@ -28,10 +31,35 @@
 }
 
 /* Indicator SVG styles */
-.indicator { display: block; }
-.indicator-bar { fill: rgb(96, 165, 250); }
-.indicator-label { fill: #aaa; }
+.indicator {
+  display: block;
+}
 
-.status { font-family: monospace; font-size: 0.8rem; color: #aaa; }
-.btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
-button { padding: 4px 10px; font-size: 0.8rem; background: #222; border: 1px solid #555; color: #ddd; cursor: pointer; }
+.indicator-bar {
+  fill: rgb(96, 165, 250);
+}
+
+.indicator-label {
+  fill: #aaa;
+}
+
+.status {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #aaa;
+}
+
+.btn-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+button {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  background: #222;
+  border: 1px solid #555;
+  color: #ddd;
+  cursor: pointer;
+}

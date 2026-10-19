@@ -25,7 +25,9 @@
   margin-top: 20px;
 }
 
-.sidebar-heading:first-child { margin-top: 0; }
+.sidebar-heading:first-child {
+  margin-top: 0;
+}
 
 .sidebar-nav {
   list-style: none;
@@ -109,7 +111,10 @@
   padding: 0;
 }
 
-.docs-toc li { margin: 0; padding: 0; }
+.docs-toc li {
+  margin: 0;
+  padding: 0;
+}
 
 .docs-toc a {
   display: block;
@@ -149,7 +154,9 @@
 }
 
 @media (max-width: 1200px) {
-  .docs-toc { display: none !important; }
+  .docs-toc {
+    display: none !important;
+  }
 }
 
 @media (max-width: 768px) {

@@ -249,7 +249,7 @@ const getStreamHandler = () => {
             mockStream.respond({ ":status": status, ...headers });
           }),
           write: vi.fn((chunk) => mockStream.write(chunk)),
-          end: vi.fn(function (chunk) {
+          end: vi.fn(function(chunk) {
             if (arguments.length === 0 || chunk === undefined) {
               mockStream.end(undefined);
             } else {

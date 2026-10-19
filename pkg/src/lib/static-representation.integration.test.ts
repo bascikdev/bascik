@@ -159,7 +159,7 @@ const makeHttp1Server = (): http.Server => {
   const handleRequest = createRequestHandler();
   server.on("request", (reqMsg, resMsg) => {
     const { req, res } = adaptHttp1(reqMsg, resMsg);
-    handleRequest(req, res).catch(() => {});
+    handleRequest(req, res).catch(() => { });
   });
   return server;
 };
@@ -186,12 +186,12 @@ const makeHttp2Server = async (certDir: string): Promise<http2.Http2SecureServer
   const handleRequest = createRequestHandler();
   server.on("stream", (stream, headers) => {
     const { req, res } = adaptHttp2(stream, headers);
-    handleRequest(req, res).catch(() => {});
+    handleRequest(req, res).catch(() => { });
   });
   server.on("request", (reqMsg, resMsg) => {
     if (reqMsg.httpVersion === "2.0") return;
     const { req, res } = adaptHttp1(reqMsg as any, resMsg as any);
-    handleRequest(req, res).catch(() => {});
+    handleRequest(req, res).catch(() => { });
   });
   return server;
 };
@@ -227,7 +227,7 @@ describe("Prompt 107 - static representation snapshot integrity (integration)", 
     clearCompressedRepresentationCache();
     if (http1Server) await new Promise<void>((r) => { http1Server.close(() => r()); });
     if (http2Server) await new Promise<void>((r) => { http2Server.close(() => r()); });
-    if (dist) await rm(dist, { recursive: true, force: true }).catch(() => {});
+    if (dist) await rm(dist, { recursive: true, force: true }).catch(() => { });
   };
 
   beforeEach(async () => {

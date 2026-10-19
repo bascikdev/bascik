@@ -96,7 +96,7 @@ describe("scaffold-to-compiler integration", () => {
     if (!existsSync(PKG_DIST_INDEX)) {
       throw new Error(
         `[scaffold.integration.test] Required artifact missing: ${PKG_DIST_INDEX}. ` +
-          "Run `yarn pkg:build` before running create-bascik integration tests.",
+        "Run `yarn pkg:build` before running create-bascik integration tests.",
       );
     }
   });

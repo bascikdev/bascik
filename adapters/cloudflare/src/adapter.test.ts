@@ -36,7 +36,7 @@ describe("cloudflare adapter definition and execution", () => {
         distDir,
         outDir,
         projectRoot: testDir,
-        log: () => {},
+        log: () => { },
         runtimeEntry: "",
       });
 
@@ -83,7 +83,7 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "pages",
-        log: () => {},
+        log: () => { },
         runtimeEntry: "",
       });
 
@@ -125,7 +125,7 @@ describe("cloudflare adapter definition and execution", () => {
       };
 
       try {
-        await adapter.build({ graph, distDir, outDir, projectRoot: testDir, variant, log: () => {}, runtimeEntry: "" });
+        await adapter.build({ graph, distDir, outDir, projectRoot: testDir, variant, log: () => { }, runtimeEntry: "" });
         expect(await readFile(join(outDir, "public/docs/index.html"), "utf8")).toBe("<p>home</p>");
         expect(await readFile(join(outDir, "public/docs/404.html"), "utf8")).toBe("<p>missing</p>");
         expect(await readFile(join(outDir, "public/docs/assets/logo.txt"), "utf8")).toBe("logo");
@@ -170,7 +170,7 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "workers",
-        log: () => {},
+        log: () => { },
         runtimeEntry: "",
       });
 
@@ -214,7 +214,7 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "workers",
-        log: () => {},
+        log: () => { },
         runtimeEntry: "",
       });
 
@@ -233,7 +233,7 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "workers",
-        log: () => {},
+        log: () => { },
         runtimeEntry: "",
       });
       const authoredWrangler = JSON.parse(await readFile(join(outDir, "wrangler.jsonc"), "utf8"));
@@ -248,7 +248,7 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "workers",
-        log: () => {},
+        log: () => { },
         runtimeEntry: "",
       });
       const overridden = JSON.parse(await readFile(join(outDir, "wrangler.jsonc"), "utf8"));
@@ -299,7 +299,7 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "workers",
-        log: () => {},
+        log: () => { },
         runtimeEntry: "",
       });
 
@@ -320,7 +320,7 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "workers",
-        log: () => {},
+        log: () => { },
         runtimeEntry: "",
       });
 
@@ -370,7 +370,7 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "workers",
-        log: () => {},
+        log: () => { },
         runtimeEntry: "",
       });
 
@@ -414,7 +414,7 @@ describe("cloudflare adapter definition and execution", () => {
           outDir,
           projectRoot: testDir,
           variant: "invalid",
-          log: () => {},
+          log: () => { },
           runtimeEntry: "",
         }),
       ).rejects.toThrow(/unknown variant "invalid". Valid variants are "pages" and "workers"/);

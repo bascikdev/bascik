@@ -1,5 +1,31 @@
-.wrapper { border: 1px solid #444; padding: 16px; }
-.display { font-family: monospace; padding: 8px; background: #111; color: #aaa; margin-bottom: 12px; }
-.display.updated { color: rgb(74, 222, 128); }
-.btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
-button { padding: 4px 10px; font-size: 0.8rem; background: #222; border: 1px solid #555; color: #ddd; cursor: pointer; }
+.wrapper {
+  border: 1px solid #444;
+  padding: 16px;
+}
+
+.display {
+  font-family: monospace;
+  padding: 8px;
+  background: #111;
+  color: #aaa;
+  margin-bottom: 12px;
+}
+
+.display.updated {
+  color: rgb(74, 222, 128);
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+button {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  background: #222;
+  border: 1px solid #555;
+  color: #ddd;
+  cursor: pointer;
+}

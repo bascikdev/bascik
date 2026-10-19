@@ -145,7 +145,7 @@ const x = 1;
       const html = await renderMd(mdFile);
       expect(html).toContain(
         '<picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/demo-still@2x.webp">' +
-          '<img loading="lazy" decoding="async" width="20" height="10" src="/assets/demo@2x.webp" alt="Demo"></picture>',
+        '<img loading="lazy" decoding="async" width="20" height="10" src="/assets/demo@2x.webp" alt="Demo"></picture>',
       );
       // An image with no still copy stays a plain <img>.
       expect(html.match(/<picture>/g)).toHaveLength(1);
@@ -172,8 +172,8 @@ const x = 1;
       const version = hashOf(webp);
       expect(demoImage('/assets/demos/tour@2x.webp', 'A "quoted" tour')).toBe(
         `<picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/demos/tour-still@2x.webp?v=${version}">` +
-          '<img loading="lazy" decoding="async" class="demo-shot" width="20" height="10" ' +
-          `src="/assets/demos/tour@2x.webp?v=${version}" alt="A &quot;quoted&quot; tour"></picture>`,
+        '<img loading="lazy" decoding="async" class="demo-shot" width="20" height="10" ' +
+        `src="/assets/demos/tour@2x.webp?v=${version}" alt="A &quot;quoted&quot; tour"></picture>`,
       );
       // Only the recorded demos opt out of the default image frame.
       expect(demoImage('/assets/photo@2x.webp', 'Photo')).not.toContain('demo-shot');

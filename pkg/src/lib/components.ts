@@ -202,8 +202,8 @@ const warnComponentCompatibility = async (
   }
   const companionFingerprint = companionScripts && companionScripts.scriptMap.size > 0
     ? [...new Map([...companionScripts.scriptMap.values()].map((s) => [s.relPath, s.code])).entries()]
-        .map(([rel, code]) => `${rel}::${code}`)
-        .join("\0")
+      .map(([rel, code]) => `${rel}::${code}`)
+      .join("\0")
     : "";
   const fingerprint = `${rawHtml}\0${rawCss}\0${companionFingerprint}`;
   if (componentCompatFingerprints.get(fileName) === fingerprint) {

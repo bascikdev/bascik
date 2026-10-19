@@ -284,7 +284,7 @@ export const getStaticDelivery = async (
     const representation = encoding === "identity"
       ? await getStaticRepresentation(fullPath, "identity", stat.mtimeMs, stat.size)
       : (await getStaticRepresentation(fullPath, encoding, stat.mtimeMs, stat.size))
-        ?? await getStaticRepresentation(fullPath, "identity", stat.mtimeMs, stat.size);
+      ?? await getStaticRepresentation(fullPath, "identity", stat.mtimeMs, stat.size);
     return representation ? { kind: "buffered", representation } : null;
   }
 

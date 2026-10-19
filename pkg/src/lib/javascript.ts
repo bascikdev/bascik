@@ -502,9 +502,9 @@ export const prefixElementAttribute = (
     component.scopedIdNames = Object.fromEntries(scopedIds);
     const inlineStyles = scopedAttrsHtml.includes("<style")
       ? rewriteIdReferencesInStyleTags(
-          scopedAttrsHtml,
-          (originalId) => scopedIds.get(originalId) ?? null,
-        )
+        scopedAttrsHtml,
+        (originalId) => scopedIds.get(originalId) ?? null,
+      )
       : { html: scopedAttrsHtml, changed: false };
     scopedAttrsHtml = inlineStyles.html;
     component.requiresPerInstanceCss = inlineStyles.changed;
@@ -623,108 +623,108 @@ export const prefixElementAttribute = (
     seenAttrMap.size === 0
       ? scopedAttrsHtml
       : scopedAttrsHtml.replace(
-          /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
-          (match, open: string, body: string, close: string) => {
-            if (DIRECTIVE_SCRIPT_RE.test(open)) return match;
-            let updatedBody = body;
+        /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
+        (match, open: string, body: string, close: string) => {
+          if (DIRECTIVE_SCRIPT_RE.test(open)) return match;
+          let updatedBody = body;
 
-            const rewriteQuotedArg = (
-              full: string,
-              prefix: string,
-              value: string,
-              suffix: string,
-            ): string => {
-              const scoped = seenAttrMap.get(value);
-              return scoped === undefined ? full : `${prefix}${scoped}${suffix}`;
-            };
+          const rewriteQuotedArg = (
+            full: string,
+            prefix: string,
+            value: string,
+            suffix: string,
+          ): string => {
+            const scoped = seenAttrMap.get(value);
+            return scoped === undefined ? full : `${prefix}${scoped}${suffix}`;
+          };
 
-            const rewriteSelectorCalls = (prefix: string): void => {
-              const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-              // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-              const tokenRegex = new RegExp(
-                `(?<![a-zA-Z0-9_-])${escapedPrefix}([^\\s"'#.,>+~:[\\]()]+)(?![a-zA-Z0-9_-])`,
-                "g",
-              );
-              updatedBody = updatedBody.replace(
-                /((?:querySelector(?:All)?|closest|matches)\s*\(\s*['"][^'"]*['"]\s*\))/gm,
-                (call) =>
-                  call.replace(tokenRegex, (tokenMatch, name: string) => {
-                    const scoped = seenAttrMap.get(name);
-                    return scoped === undefined ? tokenMatch : `${prefix}${scoped}`;
-                  }),
-              );
-            };
+          const rewriteSelectorCalls = (prefix: string): void => {
+            const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+            const tokenRegex = new RegExp(
+              `(?<![a-zA-Z0-9_-])${escapedPrefix}([^\\s"'#.,>+~:[\\]()]+)(?![a-zA-Z0-9_-])`,
+              "g",
+            );
+            updatedBody = updatedBody.replace(
+              /((?:querySelector(?:All)?|closest|matches)\s*\(\s*['"][^'"]*['"]\s*\))/gm,
+              (call) =>
+                call.replace(tokenRegex, (tokenMatch, name: string) => {
+                  const scoped = seenAttrMap.get(name);
+                  return scoped === undefined ? tokenMatch : `${prefix}${scoped}`;
+                }),
+            );
+          };
 
-            const rewriteSpaceSeparatedTokens = (value: string): string =>
-              value.replace(/\S+/g, (token) => seenAttrMap.get(token) ?? token);
+          const rewriteSpaceSeparatedTokens = (value: string): string =>
+            value.replace(/\S+/g, (token) => seenAttrMap.get(token) ?? token);
 
-            if (attribute === "id") {
-              updatedBody = updatedBody.replace(
-                /(getElementById\s*\(\s*["'])([^"']+)(["']\s*\))/gm,
-                rewriteQuotedArg,
+          if (attribute === "id") {
+            updatedBody = updatedBody.replace(
+              /(getElementById\s*\(\s*["'])([^"']+)(["']\s*\))/gm,
+              rewriteQuotedArg,
+            );
+            rewriteSelectorCalls("#");
+            updatedBody = updatedBody.replace(
+              /(setAttribute\s*\(\s*["']id["']\s*,\s*["'])([^"']+)(["']\s*\))/gm,
+              rewriteQuotedArg,
+            );
+          } else if (attribute === "name") {
+            updatedBody = updatedBody.replace(
+              /(getElementsByName\s*\(\s*["'])([^"']+)(["']\s*\))/gm,
+              rewriteQuotedArg,
+            );
+            updatedBody = updatedBody.replace(
+              /(setAttribute\s*\(\s*["']name["']\s*,\s*["'])([^"']+)(["']\s*\))/gm,
+              rewriteQuotedArg,
+            );
+          } else if (attribute === "class") {
+            updatedBody = updatedBody.replace(
+              /(getElementsByClassName\s*\(\s*["'])([^"']*)(["']\s*\))/gm,
+              (_full, prefix: string, classes: string, suffix: string) =>
+                `${prefix}${rewriteSpaceSeparatedTokens(classes)}${suffix}`,
+            );
+            rewriteSelectorCalls(".");
+            const rewriteAllClassTokens = (call: string): string =>
+              call.replace(
+                /(["'])([^"']+)\1/g,
+                (quoted, quote: string, name: string) => {
+                  const scoped = seenAttrMap.get(name);
+                  return scoped === undefined ? quoted : `${quote}${scoped}${quote}`;
+                },
               );
-              rewriteSelectorCalls("#");
-              updatedBody = updatedBody.replace(
-                /(setAttribute\s*\(\s*["']id["']\s*,\s*["'])([^"']+)(["']\s*\))/gm,
-                rewriteQuotedArg,
+            const rewriteFirstClassToken = (call: string): string =>
+              call.replace(
+                /(["'])([^"']+)\1/,
+                (quoted, quote: string, name: string) => {
+                  const scoped = seenAttrMap.get(name);
+                  return scoped === undefined ? quoted : `${quote}${scoped}${quote}`;
+                },
               );
-            } else if (attribute === "name") {
-              updatedBody = updatedBody.replace(
-                /(getElementsByName\s*\(\s*["'])([^"']+)(["']\s*\))/gm,
-                rewriteQuotedArg,
-              );
-              updatedBody = updatedBody.replace(
-                /(setAttribute\s*\(\s*["']name["']\s*,\s*["'])([^"']+)(["']\s*\))/gm,
-                rewriteQuotedArg,
-              );
-            } else if (attribute === "class") {
-              updatedBody = updatedBody.replace(
-                /(getElementsByClassName\s*\(\s*["'])([^"']*)(["']\s*\))/gm,
-                (_full, prefix: string, classes: string, suffix: string) =>
-                  `${prefix}${rewriteSpaceSeparatedTokens(classes)}${suffix}`,
-              );
-              rewriteSelectorCalls(".");
-              const rewriteAllClassTokens = (call: string): string =>
-                call.replace(
-                  /(["'])([^"']+)\1/g,
-                  (quoted, quote: string, name: string) => {
-                    const scoped = seenAttrMap.get(name);
-                    return scoped === undefined ? quoted : `${quote}${scoped}${quote}`;
-                  },
-                );
-              const rewriteFirstClassToken = (call: string): string =>
-                call.replace(
-                  /(["'])([^"']+)\1/,
-                  (quoted, quote: string, name: string) => {
-                    const scoped = seenAttrMap.get(name);
-                    return scoped === undefined ? quoted : `${quote}${scoped}${quote}`;
-                  },
-                );
-              updatedBody = replaceBalancedCall(
-                updatedBody,
-                /classList\.(?:add|remove|replace)\s*\(/gm,
-                rewriteAllClassTokens,
-              );
-              updatedBody = replaceBalancedCall(
-                updatedBody,
-                /classList\.(?:toggle|contains)\s*\(/gm,
-                rewriteFirstClassToken,
-              );
-              updatedBody = updatedBody.replace(
-                /(setAttribute\s*\(\s*["']class["']\s*,\s*["'])([^"']*)(["']\s*\))/gm,
-                (_full, prefix: string, classes: string, suffix: string) =>
-                  `${prefix}${rewriteSpaceSeparatedTokens(classes)}${suffix}`,
-              );
-              updatedBody = updatedBody.replace(
-                /(\bclassName\s*\+?=\s*["'])([^"']*)(['"])/gm,
-                (_full, prefix: string, classes: string, suffix: string) =>
-                  `${prefix}${rewriteSpaceSeparatedTokens(classes)}${suffix}`,
-              );
-            }
+            updatedBody = replaceBalancedCall(
+              updatedBody,
+              /classList\.(?:add|remove|replace)\s*\(/gm,
+              rewriteAllClassTokens,
+            );
+            updatedBody = replaceBalancedCall(
+              updatedBody,
+              /classList\.(?:toggle|contains)\s*\(/gm,
+              rewriteFirstClassToken,
+            );
+            updatedBody = updatedBody.replace(
+              /(setAttribute\s*\(\s*["']class["']\s*,\s*["'])([^"']*)(["']\s*\))/gm,
+              (_full, prefix: string, classes: string, suffix: string) =>
+                `${prefix}${rewriteSpaceSeparatedTokens(classes)}${suffix}`,
+            );
+            updatedBody = updatedBody.replace(
+              /(\bclassName\s*\+?=\s*["'])([^"']*)(['"])/gm,
+              (_full, prefix: string, classes: string, suffix: string) =>
+                `${prefix}${rewriteSpaceSeparatedTokens(classes)}${suffix}`,
+            );
+          }
 
-            return `${open}${updatedBody}${close}`;
-          },
-        );
+          return `${open}${updatedBody}${close}`;
+        },
+      );
   component.fileContent = scopedHtml;
 
   // Restore shielded <meta> elements.
@@ -998,9 +998,9 @@ export const namespaceScriptTags = (
   const commentShield = createContentShield(component.fileContent);
   const commentMaskedContent = component.fileContent.includes("<!--")
     ? component.fileContent.replace(
-        /<!--[\s\S]*?-->/g,
-        (comment) => commentShield.hide(comment),
-      )
+      /<!--[\s\S]*?-->/g,
+      (comment) => commentShield.hide(comment),
+    )
     : component.fileContent;
 
   // Only wrap <script> tags with no type or type="text/javascript"

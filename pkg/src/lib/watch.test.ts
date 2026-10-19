@@ -55,7 +55,7 @@ const {
   const mockExistsSync = vi.fn().mockReturnValue(true);
   const makeWatcher = () => {
     const w = {
-      on: vi.fn(function (
+      on: vi.fn(function(
         this: { on: ReturnType<typeof vi.fn> },
         event: string,
         handler: (...args: any[]) => any,
@@ -799,13 +799,13 @@ describe("watchFiles – add before ready (initialScanDone = false)", () => {
   it("does NOT call pageProcessing when initialScanDone is false", async () => {
     const captured: Record<string, (...args: any[]) => any> = {};
     const deferredWatcher = {
-      on: vi.fn(function (this: any, event: string, handler: any) {
+      on: vi.fn(function(this: any, event: string, handler: any) {
         captured[event] = handler;
         return this;
       }),
     };
     const simpleWatcher = {
-      on: vi.fn(function (this: any) {
+      on: vi.fn(function(this: any) {
         return this;
       }),
     };
@@ -830,13 +830,13 @@ describe("watchFiles – add before ready (initialScanDone = false)", () => {
   it("accepts a bootCompile hook so watcher installation stays outside publisher scope", async () => {
     const captured: Record<string, (...args: any[]) => any> = {};
     const deferredWatcher = {
-      on: vi.fn(function (this: any, event: string, handler: any) {
+      on: vi.fn(function(this: any, event: string, handler: any) {
         captured[event] = handler;
         return this;
       }),
     };
     const simpleWatcher = {
-      on: vi.fn(function (this: any) {
+      on: vi.fn(function(this: any) {
         return this;
       }),
     };
@@ -875,7 +875,7 @@ describe("watchFiles – add before ready (initialScanDone = false)", () => {
     mockWatch.mockImplementation((path: string | string[]) => {
       const watched = Array.isArray(path) ? path : [path];
       const watcher = {
-        on: vi.fn(function (this: any, event: string, handler: (...args: any[]) => any) {
+        on: vi.fn(function(this: any, event: string, handler: (...args: any[]) => any) {
           if (watched.includes("/project/src/components") && event === "change") {
             componentChangeHandler = handler as (path: string) => Promise<void>;
           }

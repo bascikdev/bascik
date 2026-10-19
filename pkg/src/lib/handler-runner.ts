@@ -170,7 +170,7 @@ main().catch((err) => {
       .join("\n");
 
   await semaphore.acquire();
-  let cleanupSpill: () => Promise<void> = async () => {};
+  let cleanupSpill: () => Promise<void> = async () => { };
 
   try {
     const spill = await spillLargeEnv(childEnv);
@@ -278,8 +278,8 @@ main().catch((err) => {
       stderr,
     };
   } finally {
-    await cleanupSpill().catch(() => {});
-    await rm(runDir, { recursive: true, force: true }).catch(() => {});
+    await cleanupSpill().catch(() => { });
+    await rm(runDir, { recursive: true, force: true }).catch(() => { });
     semaphore.release();
   }
 };

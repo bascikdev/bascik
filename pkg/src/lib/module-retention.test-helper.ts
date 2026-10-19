@@ -902,8 +902,8 @@ export default function retentionShared129(request, context) { ${requestObservat
     watcher: ReturnType<typeof Promise.withResolvers<void>>;
     invalidation: ReturnType<typeof Promise.withResolvers<void>>;
   } | undefined;
-  void ready.promise.catch(() => {});
-  void cancellation.promise.catch(() => {});
+  void ready.promise.catch(() => { });
+  void cancellation.promise.catch(() => { });
   const fail = (error: Error) => {
     failure ??= error;
     if (externalHelper && !externalWorkSettled) requests.abort(failure);
@@ -979,7 +979,7 @@ export default function retentionShared129(request, context) { ${requestObservat
   let cleanup: Promise<void> | undefined;
   const cleanupGroup = () => cleanup ??= (async () => {
     if (await killGroup("SIGTERM")) {
-      await bounded(closed.promise, 500, "termination grace").catch(() => {});
+      await bounded(closed.promise, 500, "termination grace").catch(() => { });
       await killGroup("SIGKILL");
     }
     await bounded(closed.promise, 1000, "final reap");
@@ -1557,12 +1557,12 @@ export default function retentionShared129(request, context) { ${requestObservat
         const token = String(cancelCount);
         await command("cancel-arm", { token });
         const entered = command<{ headersSent: boolean }>("cancel-entered", { token });
-        void entered.catch(() => {});
+        void entered.catch(() => { });
         const clientClosed = Promise.withResolvers<void>();
         const sessionClosed = Promise.withResolvers<void>();
         // Observe unexpected headers as a fatal error.
         const transportFailed = Promise.withResolvers<never>();
-        void transportFailed.promise.catch(() => {});
+        void transportFailed.promise.catch(() => { });
         let closing = false;
         const path = `/api/fault?cancel=${token}`;
         const session = mode === "http2" ? http2.connect(origin, { ca: fixtureCa }) : undefined;
@@ -1650,11 +1650,11 @@ export default function retentionShared129(request, context) { ${requestObservat
         const token = String(cancelCount);
         await command("cancel-arm", { token });
         const entered = command<{ headersSent: boolean }>("cancel-entered", { token });
-        void entered.catch(() => {});
+        void entered.catch(() => { });
         const clientClosed = Promise.withResolvers<void>();
         const sessionClosed = Promise.withResolvers<void>();
         const transportFailed = Promise.withResolvers<never>();
-        void transportFailed.promise.catch(() => {});
+        void transportFailed.promise.catch(() => { });
         const prefixReceived = Promise.withResolvers<void>();
         const chunks: Buffer[] = [];
         let closing = false;
@@ -1778,11 +1778,11 @@ export default function retentionShared129(request, context) { ${requestObservat
         const token = String(cancelCount);
         await command("cancel-arm", { token });
         const entered = command<{ headersSent: boolean }>("cancel-entered", { token });
-        void entered.catch(() => {});
+        void entered.catch(() => { });
         const clientClosed = Promise.withResolvers<void>();
         const sessionClosed = Promise.withResolvers<void>();
         const transportFailed = Promise.withResolvers<never>();
-        void transportFailed.promise.catch(() => {});
+        void transportFailed.promise.catch(() => { });
         let closing = false;
         const path = `/api/fault-reject?cancel=${token}`;
         const session = mode === "http2" ? http2.connect(origin, { ca: fixtureCa }) : undefined;

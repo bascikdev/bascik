@@ -783,7 +783,7 @@ describe("listComponents", () => {
 
   it("emits compatibility warnings with file and line numbers when loading components with unsupported patterns", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "bascik-compat-warn-"));
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
     try {
       await mkdir(join(cwd, "src/components/bad-card"), { recursive: true });
       await writeFile(

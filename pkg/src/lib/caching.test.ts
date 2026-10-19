@@ -188,7 +188,7 @@ describe("Prompt 96 - Bounded Asynchronous Static Compression", () => {
   afterEach(async () => {
     clearCompressedRepresentationCache();
     if (tempDir) {
-      await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      await rm(tempDir, { recursive: true, force: true }).catch(() => { });
     }
   });
 
@@ -272,7 +272,7 @@ describe("Prompt 107 - Static representation snapshot owner", () => {
 
   afterEach(async () => {
     clearStaticRepresentationCache();
-    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => { });
   });
 
   it("derives a strong etag and length from the exact immutable bytes delivered", async () => {

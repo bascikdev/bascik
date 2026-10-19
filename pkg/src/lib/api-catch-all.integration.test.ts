@@ -84,7 +84,7 @@ describe("catch-all API routes over HTTP/1.1 and HTTP/2", () => {
         try {
           res.respond(500, { "content-type": "text/plain" });
           res.end("Internal Server Error");
-        } catch {}
+        } catch { }
       });
     });
     await new Promise<void>((r) => h1.listen(0, "127.0.0.1", r));
@@ -97,7 +97,7 @@ describe("catch-all API routes over HTTP/1.1 and HTTP/2", () => {
         try {
           res.respond(500, { "content-type": "text/plain" });
           res.end("Internal Server Error");
-        } catch {}
+        } catch { }
       });
     });
     await new Promise<void>((r) => h2.listen(0, "127.0.0.1", r));

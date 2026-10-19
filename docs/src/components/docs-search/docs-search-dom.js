@@ -105,7 +105,7 @@ function runSearch(query) {
 
   // Home result with its popular pages nested under it, in the same result.
   function homeGroup(e) {
-    var items = sitelinks.map(function (s) {
+    var items = sitelinks.map(function(s) {
       return '<li role="option"><a href="' + esc(s.path) + '" class="sr-sitelink" data-testid="search-sitelink">'
         + esc(s.navLabel) + '</a></li>';
     }).join('');
@@ -115,38 +115,38 @@ function runSearch(query) {
       + '</li>';
   }
 
-  list.innerHTML = top.map(function (e, i) {
+  list.innerHTML = top.map(function(e, i) {
     if (i === 0 && e.sitelinks) return homeGroup(e);
     return '<li role="option">' + resultLink(e) + '</li>';
   }).join('');
 
   var links = Array.from(list.querySelectorAll('a[href]'));
-  links.forEach(function (a) {
+  links.forEach(function(a) {
     var href = a.getAttribute('href');
     if (!href) return;
 
-    a.addEventListener('mouseenter', function () {
+    a.addEventListener('mouseenter', function() {
       preload(href);
     });
 
-    a.addEventListener('focus', function () {
+    a.addEventListener('focus', function() {
       preload(href);
     });
 
-    a.addEventListener('touchstart', function () {
+    a.addEventListener('touchstart', function() {
       preload(href);
     }, { passive: true });
   });
 }
 
-list.addEventListener('focusin', function (e) {
+list.addEventListener('focusin', function(e) {
   var a = e.target && e.target.closest && e.target.closest('a[href]');
   if (!a) return;
   var href = a.getAttribute('href');
   if (href) preload(href);
 });
 
-list.addEventListener('touchstart', function (e) {
+list.addEventListener('touchstart', function(e) {
   var a = e.target && e.target.closest && e.target.closest('a[href]');
   if (!a) return;
   var href = a.getAttribute('href');
@@ -155,16 +155,16 @@ list.addEventListener('touchstart', function (e) {
 
 btn.addEventListener('click', open);
 backdrop.addEventListener('click', close);
-input.addEventListener('input', function () { runSearch(input.value); });
+input.addEventListener('input', function() { runSearch(input.value); });
 
-document.addEventListener('keydown', function (e) {
+document.addEventListener('keydown', function(e) {
   var isMod = e.metaKey || e.ctrlKey;
   if (isMod && e.key === 'k') { e.preventDefault(); overlay.hidden ? open() : close(); return; }
   if (e.key === 'Escape' && !overlay.hidden) { close(); return; }
   if (!overlay.hidden && e.key === 'Tab') {
     var focusables = Array.from(overlay.querySelectorAll(
       'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-    )).filter(function (el) { return !el.hidden; });
+    )).filter(function(el) { return !el.hidden; });
     if (!focusables.length) { e.preventDefault(); input.focus(); return; }
     var first = focusables[0];
     var last = focusables[focusables.length - 1];

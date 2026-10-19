@@ -5,13 +5,16 @@
     padding: 16px;
     border-radius: 6px;
   }
+
   .inner {
     padding: 4px;
   }
+
   .title {
     margin: 0 0 8px;
     color: rgb(150, 150, 150);
   }
+
   .body {
     color: rgb(120, 120, 120);
     font-size: 0.875rem;
@@ -22,6 +25,7 @@
   .card {
     border-color: rgb(96, 165, 250);
   }
+
   .title {
     color: rgb(96, 165, 250);
   }

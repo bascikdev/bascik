@@ -294,7 +294,7 @@ describe("transformTypeScriptScriptTags", () => {
       '<script data-bascik-build type="text/typescript">console.log(1)</script>',
       '<script data-bascik-server>const c: number = 3;</script>',
     ].join("\n");
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => { });
     const out = await transformTypeScriptScriptTags(html, "src/pages/index.html");
     expect(out).toBe(html);
     warn.mockRestore();
@@ -302,7 +302,7 @@ describe("transformTypeScriptScriptTags", () => {
 
   it("warns once per unmarked inline script that contains TypeScript syntax and does not change it", async () => {
     const html = "<script>\nlet a: number = 1;\n</script>\n<script>\nconst ok = 1;\n</script>";
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => { });
     const out = await transformTypeScriptScriptTags(html, "src/components/demo/demo.html");
     expect(out).toBe(html);
     expect(warn).toHaveBeenCalledTimes(1);
@@ -314,7 +314,7 @@ describe("transformTypeScriptScriptTags", () => {
 
   it("does not warn for ordinary inline JavaScript", async () => {
     const html = "<script>\nconst a = b ? c : d;\nconst o = { k: 1 };\n</script>";
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => { });
     await transformTypeScriptScriptTags(html, "src/pages/index.html");
     expect(warn).not.toHaveBeenCalled();
   });
@@ -349,7 +349,7 @@ describe("transformTypeScriptScriptTags", () => {
   it("leaves marked TypeScript blocks untouched, including the type attribute, when scripts.typescript is false", async () => {
     (BascikConfig.scripts as { typescript: unknown }).typescript = false;
     const html = '<script type="text/typescript">let n: number = 1;</script>\n<script>let m: number = 2;</script>';
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => { });
     const out = await transformTypeScriptScriptTags(html, "src/pages/index.html");
     expect(out).toBe(html);
     // The unmarked-script diagnostic is independent of compiler selection.

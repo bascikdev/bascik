@@ -1,10 +1,49 @@
-.wrapper { border: 1px solid #444; padding: 16px; }
-.grid-layout { margin-bottom: 12px; gap: 8px; }
-.cell { padding: 8px; background: rgb(30, 58, 95); color: rgb(96, 165, 250); border-radius: 4px; }
-.fallback { color: rgb(74, 222, 128); padding: 8px; margin-bottom: 12px; }
-.btn-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
-button { padding: 4px 10px; font-size: 0.8rem; background: #222; border: 1px solid #555; color: #ddd; cursor: pointer; }
-.result { font-family: monospace; font-size: 0.8rem; color: #aaa; padding: 6px; background: #111; }
+.wrapper {
+  border: 1px solid #444;
+  padding: 16px;
+}
+
+.grid-layout {
+  margin-bottom: 12px;
+  gap: 8px;
+}
+
+.cell {
+  padding: 8px;
+  background: rgb(30, 58, 95);
+  color: rgb(96, 165, 250);
+  border-radius: 4px;
+}
+
+.fallback {
+  color: rgb(74, 222, 128);
+  padding: 8px;
+  margin-bottom: 12px;
+}
+
+.btn-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+button {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  background: #222;
+  border: 1px solid #555;
+  color: #ddd;
+  cursor: pointer;
+}
+
+.result {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #aaa;
+  padding: 6px;
+  background: #111;
+}
 
 @supports (display: grid) {
   .grid-layout {

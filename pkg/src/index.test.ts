@@ -378,8 +378,8 @@ describe("index.ts CLI runner functions", () => {
           pagesChecked: 1,
           componentsChecked: 0,
           distHtmlChecked: null,
-          distHtmlSpecHintNeeded: false,          perFileChecked: null,
-          fixedFiles: [],          items: [
+          distHtmlSpecHintNeeded: false, perFileChecked: null,
+          fixedFiles: [], items: [
             {
               category: "unmatched-tag",
               severity: "warning",

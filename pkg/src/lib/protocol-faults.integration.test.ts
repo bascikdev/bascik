@@ -256,7 +256,7 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
           try {
             res.respond(500, { "content-type": "text/plain" });
             res.end("Internal Server Error");
-          } catch {}
+          } catch { }
         }
       });
     });
@@ -285,7 +285,7 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
           try {
             res.respond(500, { "content-type": "text/plain" });
             res.end("Internal Server Error");
-          } catch {}
+          } catch { }
         }
       });
     });
@@ -470,7 +470,7 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
             req.on("response", (headers) => {
               status = Number(headers[":status"]);
             });
-            req.on("data", () => {});
+            req.on("data", () => { });
             req.on("end", () => resolve({ index, status }));
             req.on("error", reject);
           });

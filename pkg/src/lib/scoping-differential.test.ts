@@ -253,10 +253,10 @@ describe("Semantic differential CSS scoping vs. isolated component DOM", () => {
     prefix: string,
   ): string =>
     `<${t1} data-node-id="${prefix}-1" id="${id1}" class="${c1}">` +
-      `<${t2} data-node-id="${prefix}-2" class="${c2}">` +
-        `<${t3} data-node-id="${prefix}-3">inner</${t3}>` +
-        `<${t4} data-node-id="${prefix}-4" class="${c1}">sibling</${t4}>` +
-      `</${t2}>` +
+    `<${t2} data-node-id="${prefix}-2" class="${c2}">` +
+    `<${t3} data-node-id="${prefix}-3">inner</${t3}>` +
+    `<${t4} data-node-id="${prefix}-4" class="${c1}">sibling</${t4}>` +
+    `</${t2}>` +
     `</${t1}>`;
 
   const selectorArb = fc.tuple(tagArb, tagArb, tagArb, clsArb, clsArb, idArb).chain(
@@ -328,7 +328,7 @@ describe("Semantic differential CSS scoping vs. isolated component DOM", () => {
               // Surrounding page markup + each component instance inside its own container
               const pageHtml =
                 `<section><div data-node-id="page-1" id="${id1}" class="${c1}">` +
-                  `<${t1} data-node-id="page-2" class="${c2}"><${t3} data-node-id="page-3">page</${t3}></${t1}>` +
+                `<${t1} data-node-id="page-2" class="${c2}"><${t3} data-node-id="page-3">page</${t3}></${t1}>` +
                 `</div></section>` +
                 `<section>${comp1.fileContent}</section>` +
                 `<section>${comp2.fileContent}</section>`;

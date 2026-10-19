@@ -116,7 +116,7 @@ describe("listComponents – build script execution order", () => {
     // Recorded before anything moves the script: the tag starts at column 24, its body at 50.
     expect(mockExecuteBuildScripts).toHaveBeenCalledWith(
       '<aside class="sidebar"><script data-bascik-build data-bascik-source-file="src%2Fcomponents%2Fmy-sidebar.html" ' +
-        'data-bascik-source-line="1" data-bascik-source-column="50" data-bascik-source-tag="1:24">gen()</script></aside>',
+      'data-bascik-source-line="1" data-bascik-source-column="50" data-bascik-source-tag="1:24">gen()</script></aside>',
       "src/components/my-sidebar.html",
     );
   });

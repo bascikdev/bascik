@@ -290,7 +290,7 @@ const scanTag = (
     valueStart = -1;
   };
 
-  for (;;) {
+  for (; ;) {
     if (i >= n) return unterminated;
     code = html.charCodeAt(i);
     switch (state) {

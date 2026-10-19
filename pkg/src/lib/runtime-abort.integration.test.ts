@@ -448,7 +448,7 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
     it("reentrant upstream abort from inside the handler: the abort wins because it is observed before the handler promise settles", async () => {
       const controller = new AbortController();
       const registry = new ScriptRegistry();
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
       loadSpy = vi.spyOn(registry, "load").mockResolvedValue({
         filePath: "reentrant-abort.js",
         module: {
@@ -505,7 +505,7 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
       const registry = new ScriptRegistry();
       loadSpy = vi.spyOn(registry, "load").mockResolvedValue({
         filePath: "non-error.js",
-        module: { default: () => {} },
+        module: { default: () => { } },
         version: 0,
       });
 
@@ -526,7 +526,7 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
      */
     const makeSimultaneousFixture = () => {
       let timeoutCallback: (() => void) | undefined;
-      let resolveHandler: (val: unknown) => void = () => {};
+      let resolveHandler: (val: unknown) => void = () => { };
       const handlerPromise = new Promise((resolve) => {
         resolveHandler = resolve;
       });
@@ -556,7 +556,7 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
 
     it("simultaneous completion: the deadline wins when it fires before the handler promise settles", async () => {
       const fx = makeSimultaneousFixture();
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
       const invokePromise = fx.registry.invoke("simultaneous.js", [], { timeoutMs: 100 });
       // Let invoke reach the result race before both settle in one turn.
       await Promise.resolve();

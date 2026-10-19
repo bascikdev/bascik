@@ -8,8 +8,8 @@ export interface SiteGraphJob {
   id: string;
   mode: "server" | "stream";
   source:
-    | { kind: "module"; path: string }
-    | { kind: "inline"; code: string; stagedPath: string };
+  | { kind: "module"; path: string }
+  | { kind: "inline"; code: string; stagedPath: string };
   owner: string; // authored location for diagnostics
 }
 

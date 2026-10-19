@@ -104,7 +104,7 @@ describe('audit-seo', () => {
     page(
       path,
       `<title>${title}</title><meta name=description content="${description}"><link rel=canonical href=https://example.com${path}>` +
-        `<meta property=og:title content=x><meta property=og:description content=x><meta property=og:url content=x>`,
+      `<meta property=og:title content=x><meta property=og:description content=x><meta property=og:url content=x>`,
     );
 
   it('reads unquoted attributes from minified output', () => {
@@ -304,7 +304,7 @@ describe('contact.ts', () => {
   });
 
   it('answers JSON with 201 or 422, and rejects bodies that are not objects', async () => {
-    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => { });
     const json = (body: unknown) => new Request('http://site.test/api/contact', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     expect((await POST(json(valid))).status).toBe(201);
     const invalid = await POST(json({ ...valid, email: 'x' }));
@@ -315,7 +315,7 @@ describe('contact.ts', () => {
   });
 
   it('redirects a no-JavaScript form post back to the page with ?sent=1', async () => {
-    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => { });
     const response = await POST(
       new Request('http://site.test/api/contact', { method: 'POST', headers: { referer: 'http://site.test/contact' }, body: new URLSearchParams(valid) }),
     );

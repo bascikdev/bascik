@@ -97,7 +97,7 @@ vi.mock("./events.js", () => ({
 
 vi.mock("./worker-pool.js", () => {
   return {
-    WorkerPool: vi.fn().mockImplementation(function (this: any) {
+    WorkerPool: vi.fn().mockImplementation(function(this: any) {
       this.run = vi.fn(async (job: any) => {
         const pagePath = typeof job === "string" ? job : job.pagePath;
         const relativePagePath = typeof job === "string"
@@ -2255,7 +2255,7 @@ describe("processAllPages – side effects", () => {
       (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(names.map((name) => `src/pages/${name}.html`));
 
       const { WorkerPool } = await import("./worker-pool.ts");
-      (WorkerPool as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(function (this: any) {
+      (WorkerPool as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(function(this: any) {
         let calls = 0;
         this.run = vi.fn(async (job: any) => {
           // A browser connects its live-reload stream while the first page compiles.

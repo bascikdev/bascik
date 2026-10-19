@@ -97,7 +97,7 @@ describe("Prompt 140 - precompressed sidecar producer (http.precompress)", () =>
   });
 
   afterEach(async () => {
-    await rm(dist, { recursive: true, force: true }).catch(() => {});
+    await rm(dist, { recursive: true, force: true }).catch(() => { });
   });
 
   it("emits .br/.gz sidecars with .bmeta provenance for compressible assets above COMPRESSION_MIN_BYTES only", async () => {

@@ -29,7 +29,7 @@ const { workers, WorkerMock } = vi.hoisted(() => {
     }
   }
   const workers: FakeWorkerImpl[] = [];
-  const WorkerMock = vi.fn(function (this: FakeWorkerImpl) {
+  const WorkerMock = vi.fn(function(this: FakeWorkerImpl) {
     const w = new FakeWorkerImpl();
     workers.push(w);
     return w;

@@ -96,7 +96,7 @@ vi.mock("./events.js", () => ({
 
 vi.mock("./worker-pool.js", () => {
   return {
-    WorkerPool: vi.fn().mockImplementation(function (this: any) {
+    WorkerPool: vi.fn().mockImplementation(function(this: any) {
       this.run = vi.fn(async (job: any) => {
         const pagePath = typeof job === "string" ? job : job.pagePath;
         const relativePagePath = typeof job === "string"
@@ -274,7 +274,7 @@ describe("processAllPages – build mode sitemap", () => {
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
     const { WorkerPool } = await import("./worker-pool.ts");
     const terminate = vi.fn(async () => { });
-    (WorkerPool as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(function (this: any) {
+    (WorkerPool as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(function(this: any) {
       this.run = vi.fn(async (job: { pagePath: string }) => {
         throw new Error(`worker failed for ${job.pagePath}`);
       });
@@ -1753,7 +1753,7 @@ describe("monotonic dev publication & concurrency overlap", () => {
       markWorkerEntered = res;
     });
 
-    (WorkerPool as ReturnType<typeof vi.fn>).mockImplementationOnce(function (this: any) {
+    (WorkerPool as ReturnType<typeof vi.fn>).mockImplementationOnce(function(this: any) {
       this.run = vi.fn(async () => {
         markWorkerEntered();
         await workerRunGate;

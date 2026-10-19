@@ -43,7 +43,7 @@ const makeBody = (): BodyHooks => {
     nextChunk: null,
     failNext: false,
     releasePull: null,
-    close: () => {},
+    close: () => { },
     stream: undefined as unknown as ReadableStream<Uint8Array>,
   };
 
@@ -317,7 +317,7 @@ describe("prompt 110: API response stream ownership", () => {
     const handler = installRoute(async (_req, _ctx, opts) => {
       signal = opts.signal;
       // Never settles (noncooperative), but we observe the abort.
-      return new Promise<Response>(() => {});
+      return new Promise<Response>(() => { });
     });
     const res = makeRes();
     const done = dispatch(handler, res);
@@ -407,11 +407,11 @@ describe("prompt 110: API response stream ownership", () => {
           controller.error(new Error("producer failure"));
         }
       },
-      cancel() {},
+      cancel() { },
     }, { highWaterMark: 0 });
 
     const origError = console.error;
-    console.error = () => {};
+    console.error = () => { };
     try {
       const handler = installRoute(async () => new Response(stream, { status: 200 }));
       const res = makeRes();
@@ -501,7 +501,7 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
   afterEach(async () => {
     if (http1Server) await new Promise<void>((r) => http1Server.close(() => r()));
     if (http2Server) await new Promise<void>((r) => http2Server.close(() => r()));
-    if (distDir) await (await import("node:fs/promises")).rm(distDir, { recursive: true, force: true }).catch(() => {});
+    if (distDir) await (await import("node:fs/promises")).rm(distDir, { recursive: true, force: true }).catch(() => { });
   });
 
   it("HTTP/1.1 slow-reader and client abort releases server resources with healthy concurrent requests", async () => {
@@ -552,7 +552,7 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
     const handle = createRequestHandler();
     http1Server = nodeHttp.createServer((reqMsg, resMsg) => {
       const { req, res } = adaptHttp1(reqMsg, resMsg);
-      handle(req, res).catch(() => {});
+      handle(req, res).catch(() => { });
     });
 
     await new Promise<void>((r) => http1Server.listen(0, "127.0.0.1", r));
@@ -602,7 +602,7 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
         "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
         "-keyout", keyFile, "-out", certFile,
       ], { stdio: "ignore" } as never);
-    } catch {}
+    } catch { }
 
     let h2Aborted = false;
     let healthyH2Completed = false;
@@ -654,7 +654,7 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
 
     http2Server.on("stream", (stream: any, headers: any) => {
       const { req, res } = adaptHttp2(stream, headers);
-      handle(req, res).catch(() => {});
+      handle(req, res).catch(() => { });
     });
 
     await new Promise<void>((r) => http2Server.listen(0, "127.0.0.1", r));
@@ -719,7 +719,7 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
 
     http1Server = nodeHttp.createServer((reqMsg, resMsg) => {
       const { req, res } = adaptHttp1(reqMsg, resMsg);
-      handle(req, res).catch(() => {});
+      handle(req, res).catch(() => { });
     });
     await new Promise<void>((r) => http1Server.listen(0, "127.0.0.1", r));
     const port = (http1Server.address() as any).port;
@@ -763,7 +763,7 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
     });
     http2Server.on("stream", (stream: any, headers: any) => {
       const { req, res } = adaptHttp2(stream, headers);
-      handle(req, res).catch(() => {});
+      handle(req, res).catch(() => { });
     });
     await new Promise<void>((r) => http2Server.listen(0, "127.0.0.1", r));
     const port = (http2Server.address() as any).port;
@@ -820,7 +820,7 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
       const emitter = new EventEmitter();
       const aborted = new AbortController();
 
-      const testListener = () => {};
+      const testListener = () => { };
       emitter.on("drain", testListener);
       try {
         expect(() => assertBoundarySettled(body, emitter, aborted)).toThrow(/retained "drain" listener/);
@@ -852,7 +852,7 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
               return destroyed;
             },
             writable: emitter as unknown as NodeJS.WritableStream,
-            respond() {},
+            respond() { },
             write(chunk) {
               bytes.push(Buffer.isBuffer(chunk) ? Buffer.from(chunk) : Buffer.from(chunk, "utf8"));
               written.resolve();

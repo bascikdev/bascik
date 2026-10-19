@@ -126,8 +126,8 @@ chokidar.watch = (...args: Parameters<typeof originalWatch>) => {
           } finally {
             // Completion settles only after the real compilation callback settles.
             if (operation && armed?.kind === "build-dependency-lifecycle"
-                && armed.expectedWatchEvent === operation.event
-                && armed.asset?.generation === operation.generation) {
+              && armed.expectedWatchEvent === operation.event
+              && armed.asset?.generation === operation.generation) {
               resolveArmedCompletion();
             }
           }

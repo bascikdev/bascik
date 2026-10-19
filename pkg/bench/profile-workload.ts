@@ -236,7 +236,7 @@ export async function joinNodeTraceLogs(directory: string, output: string, pid: 
     assert.equal(foreign.length, 0, `${basename(file)}: trace events from foreign PIDs ${foreign.slice(0, 5).join(", ")}`);
   }
   const populated = ranges.filter((range) => range.end > range.start);
-  await pipeline(async function* () {
+  await pipeline(async function*() {
     yield TRACE_LOG_PREFIX;
     for (const [index, range] of populated.entries()) {
       if (index) yield ",";

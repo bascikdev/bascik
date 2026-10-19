@@ -127,7 +127,7 @@ describe("Dev server SSE shutdown hang (Prompt 146)", () => {
       expect(code).toBe(0);
       expect(durationMs).toBeLessThan(1500);
     } finally {
-      try { sseReq?.destroy(); } catch {}
+      try { sseReq?.destroy(); } catch { }
       if (server && server.child.exitCode === null) {
         server.child.kill("SIGKILL");
       }
@@ -175,7 +175,7 @@ describe("Dev server SSE shutdown hang (Prompt 146)", () => {
             });
           },
         );
-        sseReq.on("error", () => {});
+        sseReq.on("error", () => { });
       });
 
       // Send SIGINT to child process and record duration
@@ -195,7 +195,7 @@ describe("Dev server SSE shutdown hang (Prompt 146)", () => {
       expect(code).toBe(0);
       expect(durationMs).toBeLessThan(1500);
     } finally {
-      try { sseReq?.destroy(); } catch {}
+      try { sseReq?.destroy(); } catch { }
       if (server && server.child.exitCode === null) {
         server.child.kill("SIGKILL");
       }

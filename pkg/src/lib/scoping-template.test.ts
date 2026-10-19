@@ -110,7 +110,7 @@ describe("scopeComponentInstance", () => {
   });
 
   it("never reuses a run that wrote to the console", () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => { });
     const component = { ...card(), fileContent: `<p data-bascik-preserve="bogus" class="card">x</p>` };
     for (const id of ids) expect(scopedFor(component, id)).toEqual(realFor(component, id));
     expect(stats.rejected).toBe(1);
@@ -120,7 +120,7 @@ describe("scopeComponentInstance", () => {
   });
 
   it("never reuses a run that planned a CSS @import", () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => { });
     const component = { ...card(), cssFileContent: `@import "./missing.css";\n.card { color: red }` };
     for (const id of ids) scopedFor(component, id);
     expect(stats.reused).toBe(0);
@@ -212,7 +212,7 @@ describe("scoping pipeline inputs and outputs", () => {
     let enumerated = false;
     const inputs = [...corpusInputs(), card()];
     expect(inputs.length).toBeGreaterThan(50);
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => { });
     for (const identifiers of [true, false]) {
       (BascikConfig.minify as { identifiers: boolean }).identifiers = identifiers;
       for (const input of inputs) {
@@ -267,7 +267,7 @@ describe("scoping pipeline inputs and outputs", () => {
       });
     }
     try {
-      vi.spyOn(console, "warn").mockImplementation(() => {});
+      vi.spyOn(console, "warn").mockImplementation(() => { });
       for (const input of [...corpusInputs(), card()]) runScopingPipeline({ ...input }, "1a2b3c4d");
     } finally {
       for (const [key, value] of originals) {

@@ -93,7 +93,7 @@ describe('dist sanity: HTML parse errors (parse5 WHATWG)', () => {
     if (files.length === 0) {
       console.warn(
         '[dist-sanity] No HTML files found under dist/. ' +
-          'Run `yarn docs:build` before `yarn docs:unit`.',
+        'Run `yarn docs:build` before `yarn docs:unit`.',
       );
     }
     // The test itself doesn't fail: the per-file tests below will simply not
@@ -124,8 +124,8 @@ describe('dist sanity: HTML parse errors (parse5 WHATWG)', () => {
       const extra = failures.length > 20 ? `\n  … and ${failures.length - 20} more` : '';
       expect.fail(
         `${failures.length} parse error(s) found in dist HTML files:\n\n` +
-          shown.join('\n\n') +
-          extra,
+        shown.join('\n\n') +
+        extra,
       );
     }
 

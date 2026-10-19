@@ -47,7 +47,7 @@ try {
         .sort((first, second) => first.source.localeCompare(second.source))
         .map((module) => [`pkg/${module.source}`, { imports: [], importedBy: [] }]),
     );
-      if (!Object.keys(modules).length) throw new Error("No source modules found; check parser support");
+    if (!Object.keys(modules).length) throw new Error("No source modules found; check parser support");
     const unresolved = [];
     for (const module of graph.modules) {
       const source = `pkg/${module.source}`;
