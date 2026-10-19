@@ -69,15 +69,24 @@ function stripCode(text: string, isHtml: boolean): string {
       .replace(/~~~[\s\S]*?~~~/g, "")
       .replace(/`[^`\n]*`/g, "");
   }
-  let stripped = text;
-  let previous: string;
-  do {
-    previous = stripped;
-    stripped = stripped
-      .replace(/<script[\s\S]*?<\/script[^>]*>/gi, "")
-      .replace(/<code-block[\s\S]*?<\/code-block>/g, "");
-  } while (stripped !== previous);
-  return stripped;
+  const visible: string[] = [];
+  const lower = text.toLowerCase();
+  const opening = /<(script|code-block)\b[^>]*>/gi;
+  let from = 0;
+  let match: RegExpExecArray | null;
+  while ((match = opening.exec(text))) {
+    if (match.index < from) continue;
+    visible.push(text.slice(from, match.index));
+    const name = match[1].toLowerCase();
+    let close = lower.indexOf(`</${name}`, opening.lastIndex);
+    while (close >= 0 && !/[\s/>]/.test(lower[close + name.length + 2] ?? ""))
+      close = lower.indexOf(`</${name}`, close + name.length + 2);
+    const end = close < 0 ? -1 : text.indexOf(">", close + name.length + 2);
+    from = end < 0 ? text.length : end + 1;
+    opening.lastIndex = from;
+  }
+  visible.push(text.slice(from));
+  return visible.join(" ");
 }
 
 /** Extract internal links from a source file's text. */
@@ -94,6 +103,12 @@ function extractLinks(text: string, isHtml: boolean): string[] {
 }
 
 describe("link integrity", () => {
+  it("does not join source around script and code-block boundaries", () => {
+    const source =
+      '<a hr<script>ignored</script>ef="/fake"><script>"<a href=\'/hidden\'>"</script\t\n data-test><code-block><a href="/example"></code-block><a href="/real">real</a>';
+    expect(extractLinks(source, true)).toEqual(["/real"]);
+  });
+
   it("every internal link in content and pages resolves to a real page", async () => {
     const routes = await collectRoutes();
     const files = [

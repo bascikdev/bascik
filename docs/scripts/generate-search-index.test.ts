@@ -3,8 +3,16 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import config from "../bascik.config.ts";
 import { HOME_SITELINKS } from "../src/lib/nav.ts";
+import { stripMd } from "./generate-search-index.ts";
 
 describe("generate-search-index", () => {
+  it("drops comments without joining words into comment delimiters", () => {
+    expect(
+      stripMd("intro <!<!-- hidden -->-- paragraph<!-- ignored --> outro"),
+    ).toContain("intro <! -- paragraph");
+    expect(stripMd("before <!-- unfinished comment")).toBe("before");
+  });
+
   it("keeps browser-only generation independent of compilation watches", () => {
     const producer = config.pipeline?.exec?.find(
       (entry) => entry.script === "scripts/generate-search-index.ts",

@@ -33,34 +33,52 @@ const decode = (text) =>
 
 /** Every link-like reference in a page, with the attribute it came from. Exported for tests. */
 export function extractLinks(html) {
-  let cleaned = html;
-  let previous;
-  do {
-    previous = cleaned;
-    cleaned = cleaned
-      .replace(/<!--[\s\S]*?-->/g, "")
-      .replace(/<script\b(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/gi, "")
-      .replace(/<(template|textarea|code|pre)\b[\s\S]*?<\/\1>/gi, "");
-  } while (cleaned !== previous);
   const links = [];
-  for (const tag of cleaned.matchAll(/<([a-z][a-z0-9-]*)\b([^>]*)>/gi)) {
-    for (const attr of tag[2].matchAll(
-      /([^\s=/"'>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g,
-    )) {
-      const name = attr[1].toLowerCase();
-      if (!ATTRS.includes(name)) continue;
-      const value = decode(attr[2] ?? attr[3] ?? attr[4] ?? "").trim();
-      if (!value) continue;
-      if (name === "srcset") {
-        for (const candidate of value.split(",")) {
-          const url = candidate.trim().split(/\s+/)[0];
-          if (url) links.push({ tag: tag[1].toLowerCase(), attr: name, url });
+  const scan = (fragment) => {
+    for (const tag of fragment.matchAll(/<([a-z][a-z0-9-]*)\b([^>]*)>/gi)) {
+      for (const attr of tag[2].matchAll(
+        /([^\s=/"'>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g,
+      )) {
+        const name = attr[1].toLowerCase();
+        if (!ATTRS.includes(name)) continue;
+        const value = decode(attr[2] ?? attr[3] ?? attr[4] ?? "").trim();
+        if (!value) continue;
+        if (name === "srcset") {
+          for (const candidate of value.split(",")) {
+            const url = candidate.trim().split(/\s+/)[0];
+            if (url) links.push({ tag: tag[1].toLowerCase(), attr: name, url });
+          }
+        } else {
+          links.push({ tag: tag[1].toLowerCase(), attr: name, url: value });
         }
-      } else {
-        links.push({ tag: tag[1].toLowerCase(), attr: name, url: value });
       }
     }
+  };
+  // Scan disjoint visible regions. Removing markup and joining the leftovers can
+  // turn <scr<script>ipt> into a new <script> on the next pass.
+  const lower = html.toLowerCase();
+  let from = 0;
+  const ignored = /<!--|<(script|template|textarea|code|pre)\b[^>]*>/gi;
+  let match;
+  while ((match = ignored.exec(html))) {
+    if (match.index < from) continue;
+    scan(html.slice(from, match.index));
+    if (!match[1]) {
+      const end = html.indexOf("-->", ignored.lastIndex);
+      from = end < 0 ? html.length : end + 3;
+    } else {
+      const name = match[1].toLowerCase();
+      // External scripts have a real src link; their contents are still inert.
+      if (name === "script" && /\bsrc\s*=/i.test(match[0])) scan(match[0]);
+      let close = lower.indexOf(`</${name}`, ignored.lastIndex);
+      while (close >= 0 && !/[\s/>]/.test(lower[close + name.length + 2] ?? ""))
+        close = lower.indexOf(`</${name}`, close + name.length + 2);
+      const end = close < 0 ? -1 : html.indexOf(">", close + name.length + 2);
+      from = end < 0 ? html.length : end + 1;
+    }
+    ignored.lastIndex = from;
   }
+  scan(html.slice(from));
   return links;
 }
 

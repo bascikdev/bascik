@@ -198,6 +198,13 @@ describe("audit-seo", () => {
     expect(facts.imagesWithoutAlt).toBe(0);
   });
 
+  it("does not form new HTML from either side of a script or style", () => {
+    const facts = inspectPage(
+      '<body><h<script>inert</script>1>fake</h1><SCRIPT>"<h1>ignored</h1>"</script\t\n data-test><h1>real</h1></body>',
+    );
+    expect(facts.h1Count).toBe(1);
+  });
+
   it("maps dist files to the same paths the sitemap and BASCIK_PAGE_PATH use", () => {
     expect(pagePathOf("index.html")).toBe("/");
     expect(pagePathOf("about.html")).toBe("/about");
@@ -361,6 +368,16 @@ describe("check-links", () => {
     );
     expect(links.map((link: { url: string }) => link.url)).toEqual([
       "/a&lt;b&gt;",
+    ]);
+  });
+
+  it("never joins visible segments into a new link or scans hidden elements", () => {
+    const links = extractLinks(
+      '<a hr<!-- ignored -->ef="/fake"><script src="/app.js">"<a href=\'/in-script\'>"</script\t\n data-test><pre><a href="/in-pre"></pre><a href="/real">here</a>',
+    );
+    expect(links.map((link: { url: string }) => link.url)).toEqual([
+      "/app.js",
+      "/real",
     ]);
   });
 });

@@ -23,16 +23,21 @@ function slugify(text: string): string {
     .replace(/-+/g, "-");
 }
 
-function stripMd(text: string): string {
-  let cleaned = text;
-  let previous: string;
-  do {
-    previous = cleaned;
-    cleaned = cleaned
-      .replace(/<!--[\s\S]*?-->/g, "")
-      .replace(/<!--/g, "")
-      .replace(/--!?>/g, "");
-  } while (cleaned !== previous);
+export function stripMd(text: string): string {
+  const visible: string[] = [];
+  let from = 0;
+  while (from < text.length) {
+    const start = text.indexOf("<!--", from);
+    if (start < 0) {
+      visible.push(text.slice(from));
+      break;
+    }
+    visible.push(text.slice(from, start));
+    const end = text.indexOf("-->", start + 4);
+    if (end < 0) break;
+    from = end + 3;
+  }
+  const cleaned = visible.join(" ");
   return cleaned
     .replace(/```[a-z0-9_-]*\n?([\s\S]*?)```/gi, "$1")
     .replace(/`([^`\n]+)`/g, "$1")

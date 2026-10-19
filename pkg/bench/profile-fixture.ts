@@ -80,10 +80,9 @@ export async function createFixture(
         '<script data-bascik-stream>export default async () => "<p>stream-128</p>";</script>',
     ),
   );
-  // codeql[js/bad-code-sanitization] Writes a benchmark fixture module from a constant.
   await writeFile(
     join(root, "src/api/probe.ts"),
-    `export const GET = () => new Response(${JSON.stringify(apiBody)}, { headers: { "content-type": "application/json" } });`,
+    'export const GET = () => new Response(\'{"seed":128,"ok":true}\', { headers: { "content-type": "application/json" } });',
   );
   await writeFile(join(root, "src/pages/asset.txt"), assetBytes());
   for (let index = 0; index < 8; index++)

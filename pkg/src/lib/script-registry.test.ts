@@ -619,12 +619,22 @@ describe("ScriptRegistry module identity (prompt 112)", () => {
     await rm(tempDir, { recursive: true, force: true }).catch(() => {});
   });
 
-  const writeModule = (filePath: string, value: string) =>
-    // codeql[js/bad-code-sanitization] Writes a test fixture module from test literals.
-    writeFile(
-      filePath,
-      `export default function() { return ${JSON.stringify(value)}; }\n`,
-    );
+  const moduleSources: Record<string, string> = {
+    OLD: 'export default function() { return "OLD"; }\n',
+    NEW: 'export default function() { return "NEW"; }\n',
+    "via-url": 'export default function() { return "via-url"; }\n',
+    x: 'export default function() { return "x"; }\n',
+    fixed: 'export default function() { return "fixed"; }\n',
+    v1: 'export default function() { return "v1"; }\n',
+    v2: 'export default function() { return "v2"; }\n',
+    P: 'export default function() { return "P"; }\n',
+  };
+  const writeModule = (filePath: string, value: string) => {
+    const source = moduleSources[value];
+    if (source === undefined)
+      throw new Error(`Unexpected fixture value: ${value}`);
+    return writeFile(filePath, source);
+  };
 
   describe("configured singleton mode", () => {
     it("runs in development mode when the process is neither --build nor --server", () => {

@@ -62,14 +62,26 @@ export function inspectPage(html) {
   const metas = tags(html, "meta");
   const metaBy = (key, value) =>
     metas.find((m) => (m[key] ?? "").toLowerCase() === value)?.content;
-  let body = html;
-  let previous;
-  do {
-    previous = body;
-    body = body
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "")
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, "");
-  } while (body !== previous);
+  // Preserve boundaries between visible regions, rather than joining text on
+  // either side of a removed element into a new tag on another pass.
+  const lower = html.toLowerCase();
+  const visible = [];
+  const opening = /<(script|style)\b[^>]*>/gi;
+  let from = 0;
+  let match;
+  while ((match = opening.exec(html))) {
+    if (match.index < from) continue;
+    visible.push(html.slice(from, match.index));
+    const name = match[1].toLowerCase();
+    let close = lower.indexOf(`</${name}`, opening.lastIndex);
+    while (close >= 0 && !/[\s/>]/.test(lower[close + name.length + 2] ?? ""))
+      close = lower.indexOf(`</${name}`, close + name.length + 2);
+    const end = close < 0 ? -1 : html.indexOf(">", close + name.length + 2);
+    from = end < 0 ? html.length : end + 1;
+    opening.lastIndex = from;
+  }
+  visible.push(html.slice(from));
+  const body = visible.join(" ");
   const titleMatch = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html);
   const jsonLd = [
     ...html.matchAll(

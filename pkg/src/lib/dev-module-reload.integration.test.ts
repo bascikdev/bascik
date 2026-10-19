@@ -295,9 +295,10 @@ describe("live development module invalidation (real dev server)", () => {
 
   it("reloads a helper two levels deep (entry -> helper -> util) when only the util changes", async () => {
     // Entry -> helper -> util: only the leaf is edited.
-    // codeql[js/bad-code-sanitization] Writes a test fixture module from test literals.
-    const utilModule = (value: string): string =>
-      `export const utilValue = () => ${JSON.stringify(value)};\n`;
+    const utilModule = (value: "UTIL-OLD" | "UTIL-NEW"): string =>
+      value === "UTIL-OLD"
+        ? 'export const utilValue = () => "UTIL-OLD";\n'
+        : 'export const utilValue = () => "UTIL-NEW";\n';
     const helperViaUtil = `import { utilValue } from "./util.ts";\nexport const helperValue = () => utilValue();\n`;
 
     await writeAt(root, "src/lib/util.ts", utilModule("UTIL-OLD"));
