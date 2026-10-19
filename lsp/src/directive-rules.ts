@@ -8,27 +8,38 @@
 
 /** `data-bascik-*` attributes that are a single fixed name. */
 export const KNOWN_BASCIK_DATA_EXACT = [
-  'data-bascik-slot',
-  'data-bascik-build',
-  'data-bascik-server',
-  'data-bascik-routes',
-  'data-bascik-stream',
-  'data-bascik-preserve',
-  'data-bascik-server-id',
+  "data-bascik-slot",
+  "data-bascik-build",
+  "data-bascik-server",
+  "data-bascik-routes",
+  "data-bascik-stream",
+  "data-bascik-preserve",
+  "data-bascik-server-id",
 ] as const;
 
 /** `data-bascik-*` attributes whose name carries a suffix chosen by the author. */
-export const KNOWN_BASCIK_DATA_PREFIXES = ['data-bascik-prop-', 'data-bascik-attr-'] as const;
+export const KNOWN_BASCIK_DATA_PREFIXES = [
+  "data-bascik-prop-",
+  "data-bascik-attr-",
+] as const;
 
 const EXACT = new Set<string>(KNOWN_BASCIK_DATA_EXACT);
 
 /** Whether a lower-cased attribute name starting with `data-bascik-` is one Bascik reads. */
 export function isKnownBascikAttribute(name: string): boolean {
-  return EXACT.has(name) || KNOWN_BASCIK_DATA_PREFIXES.some((prefix) => name.startsWith(prefix));
+  return (
+    EXACT.has(name) ||
+    KNOWN_BASCIK_DATA_PREFIXES.some((prefix) => name.startsWith(prefix))
+  );
 }
 
 export function unknownBascikAttributeMessage(name: string): string {
-  const known = [...KNOWN_BASCIK_DATA_EXACT, ...KNOWN_BASCIK_DATA_PREFIXES.map((prefix) => `${prefix}...`)].sort().join(', ');
+  const known = [
+    ...KNOWN_BASCIK_DATA_EXACT,
+    ...KNOWN_BASCIK_DATA_PREFIXES.map((prefix) => `${prefix}...`),
+  ]
+    .sort()
+    .join(", ");
   return `Unknown attribute "${name}". Bascik ignores it, so it is probably a typo. Known attributes: ${known}`;
 }
 
@@ -39,11 +50,11 @@ export function unknownDirectiveValueMessage(value: string): string {
 /** Whether a `data-bascik-build` value is one Bascik understands. An empty value is a bare directive. */
 export function isKnownBuildValue(value: string): boolean {
   const trimmed = value.trim();
-  return trimmed === '' || trimmed.toLowerCase() === 'page';
+  return trimmed === "" || trimmed.toLowerCase() === "page";
 }
 
 export interface StructureProblem {
-  kind: 'script-before-markup' | 'style-after-markup';
+  kind: "script-before-markup" | "style-after-markup";
   /** Offset of the offending `<script` or `<style` in the text that was scanned. */
   index: number;
   message: string;
@@ -55,7 +66,9 @@ export interface StructureProblem {
  * `masked` is the file with comments and the bodies of `<script>`, `<style>` and `<textarea>` blanked out, so
  * the only `<` left are real tags and offsets still match the original file.
  */
-export function findComponentStructureProblems(masked: string): StructureProblem[] {
+export function findComponentStructureProblems(
+  masked: string,
+): StructureProblem[] {
   const problems: StructureProblem[] = [];
   // Closing tags start with `</`, so only opening tags of real markup count.
   const firstMarkup = masked.search(/<(?!\/?(?:style|script)\b)[a-z]/i);
@@ -64,16 +77,18 @@ export function findComponentStructureProblems(masked: string): StructureProblem
 
   if (firstScript >= 0 && (firstMarkup < 0 || firstScript < firstMarkup)) {
     problems.push({
-      kind: 'script-before-markup',
+      kind: "script-before-markup",
       index: firstScript,
-      message: 'Component template convention: place <script> blocks after HTML markup.',
+      message:
+        "Component template convention: place <script> blocks after HTML markup.",
     });
   }
   if (firstStyle >= 0 && firstMarkup >= 0 && firstStyle > firstMarkup) {
     problems.push({
-      kind: 'style-after-markup',
+      kind: "style-after-markup",
       index: firstStyle,
-      message: 'Component template convention: place <style> blocks above HTML markup.',
+      message:
+        "Component template convention: place <style> blocks above HTML markup.",
     });
   }
   return problems;

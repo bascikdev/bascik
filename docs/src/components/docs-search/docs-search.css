@@ -10,7 +10,9 @@
   color: var(--text-muted);
   font-size: 0.8rem;
   white-space: nowrap;
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .dnav-search-btn:hover {
@@ -38,7 +40,6 @@
 }
 
 @media (max-width: 768px) {
-
   .search-btn-text,
   .search-btn-kbd {
     display: none;

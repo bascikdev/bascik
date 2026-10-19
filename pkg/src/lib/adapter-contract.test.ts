@@ -30,7 +30,11 @@ describe("adapter contract and execution", () => {
         },
       },
     };
-    await writeFile(join(bascikHiddenDir, "server-scripts.json"), JSON.stringify(sidecar), "utf8");
+    await writeFile(
+      join(bascikHiddenDir, "server-scripts.json"),
+      JSON.stringify(sidecar),
+      "utf8",
+    );
 
     try {
       const result = await emitServerlessArtifacts(
@@ -42,21 +46,30 @@ describe("adapter contract and execution", () => {
         },
       );
 
-      expect(result.target).toBe(resolve(import.meta.dirname, "__fixtures__/reference-adapter.ts"));
+      expect(result.target).toBe(
+        resolve(import.meta.dirname, "__fixtures__/reference-adapter.ts"),
+      );
       expect(result.publicDir).toBe(join(result.outDir, "public"));
 
       // build-info.json written by core
-      const buildInfoRaw = await readFile(join(result.outDir, "build-info.json"), "utf8");
+      const buildInfoRaw = await readFile(
+        join(result.outDir, "build-info.json"),
+        "utf8",
+      );
       const buildInfo = JSON.parse(buildInfoRaw);
       expect(buildInfo.adapter).toBe("reference");
       expect(buildInfo.bascikVersion).toBe("1.0.0");
-      expect(buildInfo.notes).toContain("reference adapter execution completed");
+      expect(buildInfo.notes).toContain(
+        "reference adapter execution completed",
+      );
       expect(buildInfo).not.toHaveProperty("compatibilityDate");
       expect(buildInfo).not.toHaveProperty("compatibilityFlags");
       expect(buildInfo).not.toHaveProperty("invocationRoutes");
 
       // Verify .staging is cleaned up
-      await expect(readFile(join(result.outDir, ".staging"), "utf8")).rejects.toThrow();
+      await expect(
+        readFile(join(result.outDir, ".staging"), "utf8"),
+      ).rejects.toThrow();
     } finally {
       await rm(testDir, { recursive: true, force: true });
     }
@@ -83,7 +96,11 @@ describe("adapter contract and execution", () => {
         },
       },
     };
-    await writeFile(join(bascikHiddenDir, "server-scripts.json"), JSON.stringify(sidecar), "utf8");
+    await writeFile(
+      join(bascikHiddenDir, "server-scripts.json"),
+      JSON.stringify(sidecar),
+      "utf8",
+    );
 
     const inspectAdapterPath = join(testDir, "inspect-adapter.mjs");
     await writeFile(
@@ -112,8 +129,13 @@ describe("adapter contract and execution", () => {
         distDir,
       });
 
-      const stagedInfo = (globalThis as unknown as { __bascik_staged_test?: { stagedPath: string; content: string } }).__bascik_staged_test;
-      delete (globalThis as unknown as { __bascik_staged_test?: unknown }).__bascik_staged_test;
+      const stagedInfo = (
+        globalThis as unknown as {
+          __bascik_staged_test?: { stagedPath: string; content: string };
+        }
+      ).__bascik_staged_test;
+      delete (globalThis as unknown as { __bascik_staged_test?: unknown })
+        .__bascik_staged_test;
 
       expect(stagedInfo).toBeDefined();
       expect(stagedInfo?.stagedPath).toContain(".staging");
@@ -129,7 +151,10 @@ describe("adapter contract and execution", () => {
   it("fails when an installed adapter package cannot be resolved from projectRoot", async () => {
     const testDir = join(tmpdir(), `bascik-contract-absent-${Date.now()}`);
     await mkdir(testDir, { recursive: true });
-    await writeFile(join(testDir, "package.json"), JSON.stringify({ name: "absent-test" }));
+    await writeFile(
+      join(testDir, "package.json"),
+      JSON.stringify({ name: "absent-test" }),
+    );
     const distDir = join(testDir, "dist");
     const bascikHiddenDir = join(distDir, ".bascik");
     await mkdir(bascikHiddenDir, { recursive: true });
@@ -142,7 +167,9 @@ describe("adapter contract and execution", () => {
           projectRoot: testDir,
           distDir,
         }),
-      ).rejects.toThrow(/could not resolve adapter package "@nonexistent\/adapter-custom"/);
+      ).rejects.toThrow(
+        /could not resolve adapter package "@nonexistent\/adapter-custom"/,
+      );
     } finally {
       await rm(testDir, { recursive: true, force: true });
     }
@@ -156,7 +183,11 @@ describe("adapter contract and execution", () => {
 
     await writeFile(join(distDir, "index.html"), "<h1>Home</h1>", "utf8");
     const sidecar = { schema: SIDECAR_SCHEMA_VERSION, scripts: {} };
-    await writeFile(join(bascikHiddenDir, "server-scripts.json"), JSON.stringify(sidecar), "utf8");
+    await writeFile(
+      join(bascikHiddenDir, "server-scripts.json"),
+      JSON.stringify(sidecar),
+      "utf8",
+    );
 
     const escapingAdapterPath = join(testDir, "escaping-adapter.mjs");
     await writeFile(
@@ -200,7 +231,11 @@ describe("adapter contract and execution", () => {
 
     await writeFile(join(distDir, "index.html"), "<h1>Home</h1>", "utf8");
     const sidecar = { schema: SIDECAR_SCHEMA_VERSION, scripts: {} };
-    await writeFile(join(bascikHiddenDir, "server-scripts.json"), JSON.stringify(sidecar), "utf8");
+    await writeFile(
+      join(bascikHiddenDir, "server-scripts.json"),
+      JSON.stringify(sidecar),
+      "utf8",
+    );
 
     const outsideFile = join(testDir, "sensitive.txt");
     await writeFile(outsideFile, "secret", "utf8");
@@ -248,7 +283,11 @@ describe("adapter contract and execution", () => {
     const distFile = join(distDir, "index.html");
     await writeFile(distFile, "<h1>Original</h1>", "utf8");
     const sidecar = { schema: SIDECAR_SCHEMA_VERSION, scripts: {} };
-    await writeFile(join(bascikHiddenDir, "server-scripts.json"), JSON.stringify(sidecar), "utf8");
+    await writeFile(
+      join(bascikHiddenDir, "server-scripts.json"),
+      JSON.stringify(sidecar),
+      "utf8",
+    );
 
     const mutatingAdapterPath = join(testDir, "mutating-adapter.mjs");
     await writeFile(
@@ -295,10 +334,18 @@ describe("adapter contract and execution", () => {
     await writeFile(join(distDir, "index.html"), "<h1>Home</h1>", "utf8");
     await mkdir(join(distDir, "api"), { recursive: true });
     await writeFile(join(distDir, "api/hello"), "colliding file", "utf8");
-    await writeFile(join(srcApiDir, "hello.ts"), "export const GET = () => new Response('hi');", "utf8");
+    await writeFile(
+      join(srcApiDir, "hello.ts"),
+      "export const GET = () => new Response('hi');",
+      "utf8",
+    );
 
     const sidecar = { schema: SIDECAR_SCHEMA_VERSION, scripts: {} };
-    await writeFile(join(bascikHiddenDir, "server-scripts.json"), JSON.stringify(sidecar), "utf8");
+    await writeFile(
+      join(bascikHiddenDir, "server-scripts.json"),
+      JSON.stringify(sidecar),
+      "utf8",
+    );
 
     try {
       await expect(
@@ -310,7 +357,9 @@ describe("adapter contract and execution", () => {
             distDir,
           },
         ),
-      ).rejects.toThrow(/public file "api\/hello" shadows API route "\/api\/hello"/);
+      ).rejects.toThrow(
+        /public file "api\/hello" shadows API route "\/api\/hello"/,
+      );
     } finally {
       await rm(testDir, { recursive: true, force: true });
     }

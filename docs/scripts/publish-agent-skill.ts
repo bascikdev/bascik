@@ -14,34 +14,46 @@
  *
  * Run via pipeline.exec in bascik.config.ts (dev and build), or directly: node scripts/publish-agent-skill.ts
  */
-import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { createSkillsArchive, createWellKnownSkills, listSkillNames } from './skill-bundle.ts';
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  createSkillsArchive,
+  createWellKnownSkills,
+  listSkillNames,
+} from "./skill-bundle.ts";
 
-const docsDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const skillsDir = resolve(docsDir, '../skills');
-const outDir = process.env.BASCIK_OUT_DIR ?? join(docsDir, 'dist');
-const coreSource = join(skillsDir, 'bascik/SKILL.md');
-const coreOutput = join(outDir, 'assets/SKILL.md');
-const archiveOutput = join(outDir, 'assets/skills.tar.gz');
+const docsDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const skillsDir = resolve(docsDir, "../skills");
+const outDir = process.env.BASCIK_OUT_DIR ?? join(docsDir, "dist");
+const coreSource = join(skillsDir, "bascik/SKILL.md");
+const coreOutput = join(outDir, "assets/SKILL.md");
+const archiveOutput = join(outDir, "assets/skills.tar.gz");
 
-if (!(await listSkillNames(skillsDir)).includes('bascik')) {
+if (!(await listSkillNames(skillsDir)).includes("bascik")) {
   throw new Error(`publish-agent-skill: ${coreSource} is missing`);
 }
 
 const authored = await readFile(coreSource);
-if (authored.length === 0) throw new Error(`publish-agent-skill: ${coreSource} is empty`);
+if (authored.length === 0)
+  throw new Error(`publish-agent-skill: ${coreSource} is empty`);
 await mkdir(dirname(coreOutput), { recursive: true });
 await copyFile(coreSource, coreOutput);
 const published = await readFile(coreOutput);
-if (!published.equals(authored)) throw new Error(`publish-agent-skill: ${coreOutput} does not match ${coreSource}`);
+if (!published.equals(authored))
+  throw new Error(
+    `publish-agent-skill: ${coreOutput} does not match ${coreSource}`,
+  );
 
 await writeFile(archiveOutput, await createSkillsArchive(skillsDir));
 
-const wellKnownDir = join(outDir, '.well-known/agent-skills');
+const wellKnownDir = join(outDir, ".well-known/agent-skills");
 const { index, artifacts } = await createWellKnownSkills(skillsDir);
 await rm(wellKnownDir, { recursive: true, force: true });
 await mkdir(wellKnownDir, { recursive: true });
-for (const [file, bytes] of artifacts) await writeFile(join(wellKnownDir, file), bytes);
-await writeFile(join(wellKnownDir, 'index.json'), `${JSON.stringify(index, null, 2)}\n`);
+for (const [file, bytes] of artifacts)
+  await writeFile(join(wellKnownDir, file), bytes);
+await writeFile(
+  join(wellKnownDir, "index.json"),
+  `${JSON.stringify(index, null, 2)}\n`,
+);

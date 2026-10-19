@@ -1,41 +1,46 @@
-import { describe, it, expect } from 'vitest';
-import { parseIgnoreDirectives, isDiagnosticIgnored } from './ignore-comments.js';
+import { describe, it, expect } from "vitest";
+import {
+  parseIgnoreDirectives,
+  isDiagnosticIgnored,
+} from "./ignore-comments.js";
 
-describe('ignore-comments', () => {
-  it('parses HTML <!-- bascik-ignore --> for next line', () => {
+describe("ignore-comments", () => {
+  it("parses HTML <!-- bascik-ignore --> for next line", () => {
     const html = `<div>\n<!-- bascik-ignore -->\n<button id="x"></button>\n</div>`;
-    const ranges = parseIgnoreDirectives(html, 'html');
+    const ranges = parseIgnoreDirectives(html, "html");
     expect(ranges.length).toBe(1);
     expect(isDiagnosticIgnored(2, undefined, ranges)).toBe(true);
     expect(isDiagnosticIgnored(0, undefined, ranges)).toBe(false);
   });
 
-  it('parses HTML <!-- bascik-disable --> block', () => {
+  it("parses HTML <!-- bascik-disable --> block", () => {
     const html = `<!-- bascik-disable -->\n<p></p>\n<div></div>\n<!-- bascik-enable -->\n<span></span>`;
-    const ranges = parseIgnoreDirectives(html, 'html');
+    const ranges = parseIgnoreDirectives(html, "html");
     expect(isDiagnosticIgnored(1, undefined, ranges)).toBe(true);
     expect(isDiagnosticIgnored(2, undefined, ranges)).toBe(true);
     expect(isDiagnosticIgnored(4, undefined, ranges)).toBe(false);
   });
 
-  it('parses JS/TS // bascik-ignore', () => {
+  it("parses JS/TS // bascik-ignore", () => {
     const js = `// bascik-ignore\nbtn.id = "custom";\nconst y = 1;`;
-    const ranges = parseIgnoreDirectives(js, 'javascript');
+    const ranges = parseIgnoreDirectives(js, "javascript");
     expect(isDiagnosticIgnored(1, undefined, ranges)).toBe(true);
     expect(isDiagnosticIgnored(2, undefined, ranges)).toBe(false);
   });
 
-  it('parses a block disable that lists several rules separated by comma and space', () => {
+  it("parses a block disable that lists several rules separated by comma and space", () => {
     const js = `/* bascik-disable js-attribute-selector, js-document-class-query */\nconst a = 1;`;
-    const ranges = parseIgnoreDirectives(js, 'javascript');
-    expect(isDiagnosticIgnored(1, 'js-attribute-selector', ranges)).toBe(true);
-    expect(isDiagnosticIgnored(1, 'js-document-class-query', ranges)).toBe(true);
-    expect(isDiagnosticIgnored(1, 'css-other', ranges)).toBe(false);
+    const ranges = parseIgnoreDirectives(js, "javascript");
+    expect(isDiagnosticIgnored(1, "js-attribute-selector", ranges)).toBe(true);
+    expect(isDiagnosticIgnored(1, "js-document-class-query", ranges)).toBe(
+      true,
+    );
+    expect(isDiagnosticIgnored(1, "css-other", ranges)).toBe(false);
   });
 
-  it('parses CSS /* bascik-ignore */', () => {
+  it("parses CSS /* bascik-ignore */", () => {
     const css = `/* bascik-ignore */\n[data-state] { color: red; }\np { color: blue; }`;
-    const ranges = parseIgnoreDirectives(css, 'css');
+    const ranges = parseIgnoreDirectives(css, "css");
     expect(isDiagnosticIgnored(1, undefined, ranges)).toBe(true);
     expect(isDiagnosticIgnored(2, undefined, ranges)).toBe(false);
   });

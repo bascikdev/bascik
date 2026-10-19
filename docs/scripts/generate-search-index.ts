@@ -6,43 +6,52 @@
  *
  * Run via: node scripts/generate-search-index.ts
  */
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join, resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { NAV, HOME_SITELINKS } from '../src/lib/nav.ts';
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { NAV, HOME_SITELINKS } from "../src/lib/nav.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const docsDir = resolve(__dirname, '..');
+const docsDir = resolve(__dirname, "..");
 
 function slugify(text: string): string {
-  return text.toLowerCase().replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-');
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
 }
 
 function stripMd(text: string): string {
   // codeql[js/incomplete-multi-character-sanitization] Plain-text excerpt of first-party Markdown; the search UI escapes it.
   return text
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<!--/g, '')
-    .replace(/--!?>/g, '')
-    .replace(/```[a-z0-9_-]*\n?([\s\S]*?)```/gi, '$1')
-    .replace(/`([^`\n]+)`/g, '$1')
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*\n]+)\*/g, '$1')
-    .replace(/^>\s*/gm, '')
-    .replace(/^[\s|:\-]+$/gm, '')   // table separator rows
-    .replace(/\|/g, ' ')            // table cell pipes → spaces
-    .replace(/\n{3,}/g, '\n\n')
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<!--/g, "")
+    .replace(/--!?>/g, "")
+    .replace(/```[a-z0-9_-]*\n?([\s\S]*?)```/gi, "$1")
+    .replace(/`([^`\n]+)`/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*\n]+)\*/g, "$1")
+    .replace(/^>\s*/gm, "")
+    .replace(/^[\s|:\-]+$/gm, "") // table separator rows
+    .replace(/\|/g, " ") // table cell pipes → spaces
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
 async function readMd(href: string): Promise<string | null> {
-  const standard = join(docsDir, 'content', href.slice(1) + '.md');
-  try { return await readFile(standard, 'utf8'); } catch { }
-  const base = join(docsDir, 'content', href.split('/').pop()! + '.md');
-  try { return await readFile(base, 'utf8'); } catch { }
+  const standard = join(docsDir, "content", href.slice(1) + ".md");
+  try {
+    return await readFile(standard, "utf8");
+  } catch {}
+  const base = join(docsDir, "content", href.split("/").pop()! + ".md");
+  try {
+    return await readFile(base, "utf8");
+  } catch {}
   return null;
 }
 
@@ -58,7 +67,12 @@ interface SearchEntry {
 }
 
 function decodeAttr(value: string): string {
-  return value.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 }
 
 /**
@@ -68,57 +82,84 @@ function decodeAttr(value: string): string {
  */
 /** The value of `name` in one tag's attributes, in either quote style and in any attribute order. */
 function attributeValue(tag: string, name: string): string | undefined {
-  const match = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i').exec(tag);
-  return match ? match[1] ?? match[2] : undefined;
+  const match = new RegExp(
+    `\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`,
+    "i",
+  ).exec(tag);
+  return match ? (match[1] ?? match[2]) : undefined;
 }
 
 /** The content of `<meta name="description">`, wherever `name` and `content` sit in the tag. */
 export function metaDescription(html: string): string | undefined {
   for (const [tag] of html.matchAll(/<meta\b[^>]*>/gi)) {
-    if (attributeValue(tag, 'name')?.toLowerCase() === 'description') return attributeValue(tag, 'content');
+    if (attributeValue(tag, "name")?.toLowerCase() === "description")
+      return attributeValue(tag, "content");
   }
   return undefined;
 }
 
 async function homeEntry(): Promise<SearchEntry> {
-  const homePage = join(docsDir, 'src/pages/index.html');
-  let title = 'Bascik';
-  let text = '';
+  const homePage = join(docsDir, "src/pages/index.html");
+  let title = "Bascik";
+  let text = "";
   try {
-    const html = await readFile(homePage, 'utf8');
+    const html = await readFile(homePage, "utf8");
     const t = /<title>([^<]*)<\/title>/i.exec(html);
     if (t) title = decodeAttr(t[1]).trim();
     const description = metaDescription(html);
     if (description !== undefined) text = decodeAttr(description).trim();
   } catch (error) {
     // The Home result still works without them, but a search snippet that silently disappears is a bug to see.
-    console.warn(`[search-index] warning: could not read the Home page title and description from ${homePage}: ${(error as Error).message}`);
+    console.warn(
+      `[search-index] warning: could not read the Home page title and description from ${homePage}: ${(error as Error).message}`,
+    );
   }
-  return { title, navLabel: 'Bascik', section: 'Home', path: '/', heading: null, text, sitelinks: [...HOME_SITELINKS] };
+  return {
+    title,
+    navLabel: "Bascik",
+    section: "Home",
+    path: "/",
+    heading: null,
+    text,
+    sitelinks: [...HOME_SITELINKS],
+  };
 }
 
-function parseMd(md: string, navLabel: string, section: string, href: string): SearchEntry[] {
-  const lines = md.split('\n');
+function parseMd(
+  md: string,
+  navLabel: string,
+  section: string,
+  href: string,
+): SearchEntry[] {
+  const lines = md.split("\n");
   const entries: SearchEntry[] = [];
 
-  const h1Line = lines.find(l => /^# /.test(l));
+  const h1Line = lines.find((l) => /^# /.test(l));
   const rawTitle = h1Line ? h1Line.slice(2).trim() : navLabel;
-  const title = rawTitle.replace(/`([^`\n]+)`/g, '$1').replace(/\*\*([^*]+)\*\*/g, '$1');
+  const title = rawTitle
+    .replace(/`([^`\n]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1");
 
   const sections: { heading: string | null; lines: string[] }[] = [];
-  let cur: { heading: string | null; lines: string[] } = { heading: null, lines: [] };
+  let cur: { heading: string | null; lines: string[] } = {
+    heading: null,
+    lines: [],
+  };
   let pastH1 = false;
   for (const line of lines) {
-    if (/^# /.test(line)) { pastH1 = true; continue; }
+    if (/^# /.test(line)) {
+      pastH1 = true;
+      continue;
+    }
     if (!pastH1) continue;
     if (/^#{2,3}\s+/.test(line)) {
       sections.push(cur);
-      const rawHeading = line.replace(/^#{2,3}\s+/, '').trim();
+      const rawHeading = line.replace(/^#{2,3}\s+/, "").trim();
       const heading = rawHeading
-        .replace(/`([^`\n]+)`/g, '$1')
-        .replace(/\*\*([^*]+)\*\*/g, '$1')
-        .replace(/\*([^*\n]+)\*/g, '$1')
-        .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+        .replace(/`([^`\n]+)`/g, "$1")
+        .replace(/\*\*([^*]+)\*\*/g, "$1")
+        .replace(/\*([^*\n]+)\*/g, "$1")
+        .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
       cur = { heading, lines: [] };
     } else {
       cur.lines.push(line);
@@ -126,14 +167,28 @@ function parseMd(md: string, navLabel: string, section: string, href: string): S
   }
   sections.push(cur);
 
-  const introText = stripMd(sections[0].lines.join('\n')).slice(0, 2000);
-  entries.push({ title, navLabel, section, path: href, heading: null, text: introText });
+  const introText = stripMd(sections[0].lines.join("\n")).slice(0, 2000);
+  entries.push({
+    title,
+    navLabel,
+    section,
+    path: href,
+    heading: null,
+    text: introText,
+  });
 
   for (const sec of sections.slice(1)) {
     if (!sec.heading) continue;
-    const text = stripMd(sec.lines.join('\n')).slice(0, 2000);
+    const text = stripMd(sec.lines.join("\n")).slice(0, 2000);
     const anchor = slugify(sec.heading);
-    entries.push({ title, navLabel, section, path: `${href}#${anchor}`, heading: sec.heading, text });
+    entries.push({
+      title,
+      navLabel,
+      section,
+      path: `${href}#${anchor}`,
+      heading: sec.heading,
+      text,
+    });
   }
 
   return entries;
@@ -148,13 +203,23 @@ for (const { section, pages } of NAV) {
     if (/^https?:\/\//i.test(href)) continue;
     const md = await readMd(href);
     if (!md) {
-      entries.push({ title: label, navLabel: label, section, path: href, heading: null, text: '' });
+      entries.push({
+        title: label,
+        navLabel: label,
+        section,
+        path: href,
+        heading: null,
+        text: "",
+      });
       continue;
     }
     entries.push(...parseMd(md, label, section, href));
   }
 }
 
-const outPath = join(process.env.BASCIK_OUT_DIR ?? join(docsDir, 'dist'), 'assets/search-index.json');
+const outPath = join(
+  process.env.BASCIK_OUT_DIR ?? join(docsDir, "dist"),
+  "assets/search-index.json",
+);
 await mkdir(dirname(outPath), { recursive: true });
 await writeFile(outPath, JSON.stringify(entries));

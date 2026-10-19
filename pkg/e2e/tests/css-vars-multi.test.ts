@@ -11,14 +11,14 @@
  *   - The scoped animating class is toggled on anim-box after button click
  *   - CSS is injected once on the page (dedup)
  */
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from "@playwright/test";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function getInstance(page: Page, n: number) {
-  return page.locator('.bascik__css-vars-multi__wrapper').nth(n);
+  return page.locator(".bascik__css-vars-multi__wrapper").nth(n);
 }
 
 const definedBox = (inst: Locator) => inst.locator('[id$="__defined-box"]');
@@ -30,9 +30,9 @@ const toggleBtn = (inst: Locator) => inst.locator('[id$="__toggle-anim-btn"]');
 // Test suite
 // ---------------------------------------------------------------------------
 
-test.describe('css-vars-multi-test page', () => {
+test.describe("css-vars-multi-test page", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/css-vars-multi-test');
+    await page.goto("/css-vars-multi-test");
   });
 
   // ── 1. Defined custom property resolves to the declared color ────────────
@@ -40,10 +40,14 @@ test.describe('css-vars-multi-test page', () => {
   // --accent is set on .wrapper; the var(--accent, …) reference on .box must
   // be scoped so it resolves to the scoped declaration, yielding the green.
 
-  test('defined custom property: box has correct green color', async ({ page }) => {
+  test("defined custom property: box has correct green color", async ({
+    page,
+  }) => {
     const a = getInstance(page, 0);
-    const color = await definedBox(a).evaluate(el => getComputedStyle(el).color);
-    expect(color).toBe('rgb(74, 222, 128)');
+    const color = await definedBox(a).evaluate(
+      (el) => getComputedStyle(el).color,
+    );
+    expect(color).toBe("rgb(74, 222, 128)");
   });
 
   // ── 2. Fallback value applies when custom property is undefined ──────────
@@ -52,10 +56,14 @@ test.describe('css-vars-multi-test page', () => {
   // reference, the scoped name is also never declared, so the fallback
   // rgb(96, 165, 250) must apply.
 
-  test('fallback value applies when custom prop is undefined', async ({ page }) => {
+  test("fallback value applies when custom prop is undefined", async ({
+    page,
+  }) => {
     const a = getInstance(page, 0);
-    const color = await fallbackBox(a).evaluate(el => getComputedStyle(el).color);
-    expect(color).toBe('rgb(96, 165, 250)');
+    const color = await fallbackBox(a).evaluate(
+      (el) => getComputedStyle(el).color,
+    );
+    expect(color).toBe("rgb(96, 165, 250)");
   });
 
   // ── 3. Two animations applied simultaneously after toggle ─────────────────
@@ -63,7 +71,9 @@ test.describe('css-vars-multi-test page', () => {
   // Clicking the toggle button adds the scoped .animating class to anim-box.
   // The CSS rule .animated.animating applies both pulse and glow animations.
 
-  test('toggle button adds scoped animating class to anim-box', async ({ page }) => {
+  test("toggle button adds scoped animating class to anim-box", async ({
+    page,
+  }) => {
     const a = getInstance(page, 0);
 
     await toggleBtn(a).click();
@@ -73,14 +83,18 @@ test.describe('css-vars-multi-test page', () => {
 
   // ── 4. Toggling again removes the animating class ────────────────────────
 
-  test('second toggle removes the animating class from anim-box', async ({ page }) => {
+  test("second toggle removes the animating class from anim-box", async ({
+    page,
+  }) => {
     const a = getInstance(page, 0);
 
     await toggleBtn(a).click();
     await expect(animBox(a)).toHaveClass(/bascik__css-vars-multi__animating/);
 
     await toggleBtn(a).click();
-    await expect(animBox(a)).not.toHaveClass(/bascik__css-vars-multi__animating/);
+    await expect(animBox(a)).not.toHaveClass(
+      /bascik__css-vars-multi__animating/,
+    );
   });
 
   // ── 5. Instance A and B have same custom property colors ─────────────────
@@ -88,28 +102,38 @@ test.describe('css-vars-multi-test page', () => {
   // CSS custom properties are scoped per-component (not per-instance), so
   // both instances resolve --accent to the same green.
 
-  test('instance A and B resolve --accent to the same color', async ({ page }) => {
+  test("instance A and B resolve --accent to the same color", async ({
+    page,
+  }) => {
     const a = getInstance(page, 0);
     const b = getInstance(page, 1);
 
-    const colorA = await definedBox(a).evaluate(el => getComputedStyle(el).color);
-    const colorB = await definedBox(b).evaluate(el => getComputedStyle(el).color);
+    const colorA = await definedBox(a).evaluate(
+      (el) => getComputedStyle(el).color,
+    );
+    const colorB = await definedBox(b).evaluate(
+      (el) => getComputedStyle(el).color,
+    );
 
-    expect(colorA).toBe('rgb(74, 222, 128)');
-    expect(colorB).toBe('rgb(74, 222, 128)');
+    expect(colorA).toBe("rgb(74, 222, 128)");
+    expect(colorB).toBe("rgb(74, 222, 128)");
     expect(colorA).toBe(colorB);
   });
 
   // ── 6. Instance A toggle does not affect instance B ──────────────────────
 
-  test('toggling animation on instance A does not affect instance B', async ({ page }) => {
+  test("toggling animation on instance A does not affect instance B", async ({
+    page,
+  }) => {
     const a = getInstance(page, 0);
     const b = getInstance(page, 1);
 
     await toggleBtn(a).click();
 
     await expect(animBox(a)).toHaveClass(/bascik__css-vars-multi__animating/);
-    await expect(animBox(b)).not.toHaveClass(/bascik__css-vars-multi__animating/);
+    await expect(animBox(b)).not.toHaveClass(
+      /bascik__css-vars-multi__animating/,
+    );
   });
 
   // ── 7. Component CSS injected once on page ───────────────────────────────
@@ -118,10 +142,13 @@ test.describe('css-vars-multi-test page', () => {
   // scoped class `.bascik__css-vars-multi__wrapper` should appear in exactly
   // one <style> block (the page's own <style> block does not contain it).
 
-  test('component CSS injected exactly once (one style block contains scoped class)', async ({ page }) => {
+  test("component CSS injected exactly once (one style block contains scoped class)", async ({
+    page,
+  }) => {
     const styleCount = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll('style'))
-        .filter(s => s.textContent?.includes('bascik__css-vars-multi__')).length;
+      return Array.from(document.querySelectorAll("style")).filter((s) =>
+        s.textContent?.includes("bascik__css-vars-multi__"),
+      ).length;
     });
     expect(styleCount).toBe(1);
   });

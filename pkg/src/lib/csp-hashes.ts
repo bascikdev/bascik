@@ -28,22 +28,30 @@ export const computePageCspHashes = (emittedHtml: string): PageCspHashes => {
       if (!script.terminated) return;
       const attributes = readStartTagAttributes(emittedHtml, script.start);
       if (attributes.some((attribute) => attribute.name === "src")) return;
-      const type = attributes.find((attribute) => attribute.name === "type")?.value.trim().toLowerCase();
+      const type = attributes
+        .find((attribute) => attribute.name === "type")
+        ?.value.trim()
+        .toLowerCase();
       if (type === "text/bascik-server") return;
       const endTagStart = emittedHtml.lastIndexOf("</", script.end - 1);
       if (endTagStart < script.openTagEnd) return;
-      scripts.add(sha256Source(emittedHtml.slice(script.openTagEnd, endTagStart)));
+      scripts.add(
+        sha256Source(emittedHtml.slice(script.openTagEnd, endTagStart)),
+      );
     },
     token: (token) => {
       if (token.kind !== "tag" || token.name !== "style") return;
       if (!token.isEndTag) {
         // `<style/>` closes itself only in SVG and MathML; it has no body there.
-        const selfClosing = token.inForeign && emittedHtml.charCodeAt(token.end - 2) === 0x2f;
+        const selfClosing =
+          token.inForeign && emittedHtml.charCodeAt(token.end - 2) === 0x2f;
         pendingStyleBodyStart = selfClosing ? -1 : token.end;
         return;
       }
       if (pendingStyleBodyStart === -1) return;
-      styles.add(sha256Source(emittedHtml.slice(pendingStyleBodyStart, token.start)));
+      styles.add(
+        sha256Source(emittedHtml.slice(pendingStyleBodyStart, token.start)),
+      );
       pendingStyleBodyStart = -1;
     },
   });
@@ -66,7 +74,9 @@ const sha256Source = (body: string): string =>
  * toward hashing more: an extra hash permits nothing the page does not
  * contain, while a missing one blocks a script.
  */
-const scanWithRegexFallback = (emittedHtml: string): { scripts: Set<string>; styles: Set<string> } => {
+const scanWithRegexFallback = (
+  emittedHtml: string,
+): { scripts: Set<string>; styles: Set<string> } => {
   const scripts = new Set<string>();
   const styles = new Set<string>();
   const scannable = emittedHtml
@@ -82,7 +92,8 @@ const scanWithRegexFallback = (emittedHtml: string): { scripts: Set<string>; sty
   // close the element), so the hashed body is exactly what the browser hashes.
   // A quoted attribute value may contain `>`, so the open tag is matched
   // quote-aware and the body starts where the browser's does.
-  const scriptRegex = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
+  const scriptRegex =
+    /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
   let match: RegExpExecArray | null;
   while ((match = scriptRegex.exec(scannable)) !== null) {
     const openTag = match[1];
@@ -93,7 +104,9 @@ const scanWithRegexFallback = (emittedHtml: string): { scripts: Set<string>; sty
     if (/(?:^|\s)src\s*=/i.test(openTag)) continue;
 
     // Exclude non-executable / placeholder types (such as text/bascik-server)
-    const typeMatch = openTag.match(/(?:^|\s)type\s*=\s*["']?([^"'\s>]+)["']?/i);
+    const typeMatch = openTag.match(
+      /(?:^|\s)type\s*=\s*["']?([^"'\s>]+)["']?/i,
+    );
     if (typeMatch) {
       const typeVal = typeMatch[1].toLowerCase();
       if (typeVal === "text/bascik-server") {
@@ -109,11 +122,13 @@ const scanWithRegexFallback = (emittedHtml: string): { scripts: Set<string>; sty
   // a JavaScript string literal is never hashed as a stylesheet.
   const styleScannable = scannable.replace(
     scriptRegex,
-    (_match, openTag: string, body: string) => `<script${openTag}>${" ".repeat(body.length)}</script>`,
+    (_match, openTag: string, body: string) =>
+      `<script${openTag}>${" ".repeat(body.length)}</script>`,
   );
 
   // Collect inline style hashes
-  const styleRegex = /<style\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
+  const styleRegex =
+    /<style\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
   while ((match = styleRegex.exec(styleScannable)) !== null) {
     const body = match[2];
     const hash = `sha256-${createHash("sha256").update(Buffer.from(body, "utf8")).digest("base64")}`;
@@ -124,11 +139,17 @@ const scanWithRegexFallback = (emittedHtml: string): { scripts: Set<string>; sty
 };
 
 class CspHashCollector {
-  private pageHashes = new Map<string, { scripts: Set<string>; styles: Set<string> }>();
+  private pageHashes = new Map<
+    string,
+    { scripts: Set<string>; styles: Set<string> }
+  >();
 
   recordPage(pageUrlPath: string, emittedHtml: string): void {
     const { scripts, styles } = computePageCspHashes(emittedHtml);
-    this.pageHashes.set(pageUrlPath, { scripts: new Set(scripts), styles: new Set(styles) });
+    this.pageHashes.set(pageUrlPath, {
+      scripts: new Set(scripts),
+      styles: new Set(styles),
+    });
   }
 
   /**
@@ -151,7 +172,9 @@ class CspHashCollector {
     for (const key of sortedPageKeys) {
       const { scripts, styles } = this.pageHashes.get(key)!;
       result[key] = {
-        scripts: Array.from(scripts).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+        scripts: Array.from(scripts).sort((a, b) =>
+          a < b ? -1 : a > b ? 1 : 0,
+        ),
         styles: Array.from(styles).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
       };
     }

@@ -27,11 +27,11 @@
   font-size: 1.1rem;
 }
 
-.slot-panel-body>*:first-child {
+.slot-panel-body > *:first-child {
   margin-top: 0;
 }
 
-.slot-panel-body>*:last-child {
+.slot-panel-body > *:last-child {
   margin-bottom: 0;
 }
 

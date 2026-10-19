@@ -18,7 +18,11 @@ import { EventEmitter, getEventListeners } from "node:events";
 import { apiRouteRegistry, streamApiResponse } from "./server-api.ts";
 import { createResponseSink } from "./response-sink.ts";
 import { scriptRegistry } from "./script-registry.ts";
-import { createRequestHandler, type BascikRequest, type BascikResponse } from "./server.ts";
+import {
+  createRequestHandler,
+  type BascikRequest,
+  type BascikResponse,
+} from "./server.ts";
 
 /** A controllable WHATWG ReadableStream whose pull/cancel calls are recorded. */
 interface BodyHooks {
@@ -43,46 +47,49 @@ const makeBody = (): BodyHooks => {
     nextChunk: null,
     failNext: false,
     releasePull: null,
-    close: () => { },
+    close: () => {},
     stream: undefined as unknown as ReadableStream<Uint8Array>,
   };
 
   let controller: ReadableStreamDefaultController<Uint8Array>;
 
-  const stream = new ReadableStream<Uint8Array>({
-    start(c) {
-      controller = c;
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      start(c) {
+        controller = c;
+      },
+      pull() {
+        hooks.pulls++;
+        if (hooks.failNext) {
+          hooks.failNext = false;
+          controller.error(new Error("producer failure"));
+          return;
+        }
+        if (hooks.nextChunk !== null) {
+          const chunk = new TextEncoder().encode(hooks.nextChunk);
+          hooks.nextChunk = null;
+          controller.enqueue(chunk);
+        } else {
+          return new Promise<void>((resolve) => {
+            hooks.releasePull = () => {
+              hooks.releasePull = null;
+              if (hooks.nextChunk !== null) {
+                const chunk = new TextEncoder().encode(hooks.nextChunk);
+                hooks.nextChunk = null;
+                controller.enqueue(chunk);
+              }
+              resolve();
+            };
+          });
+        }
+      },
+      cancel(reason) {
+        hooks.cancels++;
+        void reason;
+      },
     },
-    pull() {
-      hooks.pulls++;
-      if (hooks.failNext) {
-        hooks.failNext = false;
-        controller.error(new Error("producer failure"));
-        return;
-      }
-      if (hooks.nextChunk !== null) {
-        const chunk = new TextEncoder().encode(hooks.nextChunk);
-        hooks.nextChunk = null;
-        controller.enqueue(chunk);
-      } else {
-        return new Promise<void>((resolve) => {
-          hooks.releasePull = () => {
-            hooks.releasePull = null;
-            if (hooks.nextChunk !== null) {
-              const chunk = new TextEncoder().encode(hooks.nextChunk);
-              hooks.nextChunk = null;
-              controller.enqueue(chunk);
-            }
-            resolve();
-          };
-        });
-      }
-    },
-    cancel(reason) {
-      hooks.cancels++;
-      void reason;
-    },
-  }, { highWaterMark: 0 });
+    { highWaterMark: 0 },
+  );
 
   hooks.close = () => {
     try {
@@ -123,13 +130,22 @@ const makeRes = () => {
     }),
     emit,
     listenerCount: (event: string) => listeners.get(event)?.size ?? 0,
-    emitClose: () => { res.destroyed = true; emit("close"); },
+    emitClose: () => {
+      res.destroyed = true;
+      emit("close");
+    },
   };
   return res;
 };
 
 /** Install a route handler and dispatch through the real handler pipeline. */
-const installRoute = (handler: (req: Request, ctx: unknown, opts: { signal?: AbortSignal }) => Response | Promise<Response>) => {
+const installRoute = (
+  handler: (
+    req: Request,
+    ctx: unknown,
+    opts: { signal?: AbortSignal },
+  ) => Response | Promise<Response>,
+) => {
   vi.spyOn(scriptRegistry, "load").mockResolvedValue({
     filePath: "/app/src/api/x.ts",
     module: { GET: handler },
@@ -146,9 +162,17 @@ const installRoute = (handler: (req: Request, ctx: unknown, opts: { signal?: Abo
   return createRequestHandler();
 };
 
-const dispatch = (handler: ReturnType<typeof installRoute>, res: ReturnType<typeof makeRes>): Promise<unknown> =>
+const dispatch = (
+  handler: ReturnType<typeof installRoute>,
+  res: ReturnType<typeof makeRes>,
+): Promise<unknown> =>
   handler(
-    { method: "GET", path: "/api/x", headers: {}, remoteIp: "127.0.0.1" } as BascikRequest,
+    {
+      method: "GET",
+      path: "/api/x",
+      headers: {},
+      remoteIp: "127.0.0.1",
+    } as BascikRequest,
     res as unknown as BascikResponse,
   );
 
@@ -214,7 +238,9 @@ describe("prompt 110: API response stream ownership", () => {
       // A deferred handler that does not settle until after the disconnect.
       await new Promise<void>((resolve) => {
         if (observedSignal!.aborted) return resolve();
-        observedSignal!.addEventListener("abort", () => resolve(), { once: true });
+        observedSignal!.addEventListener("abort", () => resolve(), {
+          once: true,
+        });
       });
       return new Response("too-late", { status: 200 });
     });
@@ -275,10 +301,15 @@ describe("prompt 110: API response stream ownership", () => {
   it("a producer failure before headers commit responds with a 500 error status and no streamed body", async () => {
     const body = makeBody();
     body.failNext = true; // first pull throws
-    const handler = installRoute(async () => new Response(body.stream, { status: 200 }));
+    const handler = installRoute(
+      async () => new Response(body.stream, { status: 200 }),
+    );
     const res = makeRes();
     let respondedStatus = 0;
-    res.respond = vi.fn((status: number) => { respondedStatus = status; res.headersSent = true; });
+    res.respond = vi.fn((status: number) => {
+      respondedStatus = status;
+      res.headersSent = true;
+    });
     await dispatch(handler, res);
 
     expect(respondedStatus).toBe(500);
@@ -317,7 +348,7 @@ describe("prompt 110: API response stream ownership", () => {
     const handler = installRoute(async (_req, _ctx, opts) => {
       signal = opts.signal;
       // Never settles (noncooperative), but we observe the abort.
-      return new Promise<Response>(() => { });
+      return new Promise<Response>(() => {});
     });
     const res = makeRes();
     const done = dispatch(handler, res);
@@ -332,8 +363,12 @@ describe("prompt 110: API response stream ownership", () => {
   });
 
   it("HEAD-derived response: no body write, headers + content-length preserved, status preserved", async () => {
-    installRoute(async () =>
-      new Response("very-important-body", { status: 201, headers: { "x-custom": "yes" } }),
+    installRoute(
+      async () =>
+        new Response("very-important-body", {
+          status: 201,
+          headers: { "x-custom": "yes" },
+        }),
     );
     (apiRouteRegistry as any).routes = [
       {
@@ -354,7 +389,12 @@ describe("prompt 110: API response stream ownership", () => {
       res.headersSent = true;
     });
     await h(
-      { method: "HEAD", path: "/api/x", headers: {}, remoteIp: "127.0.0.1" } as BascikRequest,
+      {
+        method: "HEAD",
+        path: "/api/x",
+        headers: {},
+        remoteIp: "127.0.0.1",
+      } as BascikRequest,
       res as unknown as BascikResponse,
     );
     // The GET handler ran (derived HEAD) and returned headers; no body writes.
@@ -364,7 +404,9 @@ describe("prompt 110: API response stream ownership", () => {
   });
 
   it("null body: respond with headers and end, no write, close listener removed", async () => {
-    const handler = installRoute(async () => new Response(null, { status: 204 }));
+    const handler = installRoute(
+      async () => new Response(null, { status: 204 }),
+    );
     const res = makeRes();
     await dispatch(handler, res);
     expect(res.respond).toHaveBeenCalled();
@@ -376,7 +418,9 @@ describe("prompt 110: API response stream ownership", () => {
   it("successful streamed completion: ordered writes, single end, reader released and close listener removed", async () => {
     const body = makeBody();
     body.nextChunk = "one";
-    const handler = installRoute(async () => new Response(body.stream, { status: 200 }));
+    const handler = installRoute(
+      async () => new Response(body.stream, { status: 200 }),
+    );
     const res = makeRes();
     const done = dispatch(handler, res);
     await tick();
@@ -398,22 +442,27 @@ describe("prompt 110: API response stream ownership", () => {
 
   it("a failed body read after headers committed destroys the transport, sends no second header, and never ends successfully", async () => {
     let first = true;
-    const stream = new ReadableStream<Uint8Array>({
-      pull(controller) {
-        if (first) {
-          first = false;
-          controller.enqueue(new TextEncoder().encode("first"));
-        } else {
-          controller.error(new Error("producer failure"));
-        }
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          if (first) {
+            first = false;
+            controller.enqueue(new TextEncoder().encode("first"));
+          } else {
+            controller.error(new Error("producer failure"));
+          }
+        },
+        cancel() {},
       },
-      cancel() { },
-    }, { highWaterMark: 0 });
+      { highWaterMark: 0 },
+    );
 
     const origError = console.error;
-    console.error = () => { };
+    console.error = () => {};
     try {
-      const handler = installRoute(async () => new Response(stream, { status: 200 }));
+      const handler = installRoute(
+        async () => new Response(stream, { status: 200 }),
+      );
       const res = makeRes();
       await dispatch(handler, res);
 
@@ -480,7 +529,10 @@ describe("prompt 110: API response stream ownership", () => {
     expect(respondedStatus).toBe(202);
     expect(respondedHeaders["x-content-type-options"]).toBe("nosniff");
     expect(respondedHeaders["x-custom-foo"]).toBe("bar");
-    expect(respondedHeaders["set-cookie"]).toEqual(["id=1; Path=/", "theme=dark; Path=/"]);
+    expect(respondedHeaders["set-cookie"]).toEqual([
+      "id=1; Path=/",
+      "theme=dark; Path=/",
+    ]);
     expect(capturedReq).toBeDefined();
     expect(capturedReq!.headers.get("user-agent")).toBe("test-client");
     expect(res.listenerCount("close")).toBe(0);
@@ -492,16 +544,28 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
   let distDir: string;
 
   beforeEach(async () => {
-    distDir = await (await import("node:fs/promises")).mkdtemp(
-      (await import("node:path")).join((await import("node:os")).tmpdir(), "bascik-stream-loopback-")
+    distDir = await (
+      await import("node:fs/promises")
+    ).mkdtemp(
+      (await import("node:path")).join(
+        (await import("node:os")).tmpdir(),
+        "bascik-stream-loopback-",
+      ),
     );
     (apiRouteRegistry as any).routes = [];
   });
 
   afterEach(async () => {
-    if (http1Server) await new Promise<void>((r) => http1Server.close(() => r()));
-    if (http2Server) await new Promise<void>((r) => http2Server.close(() => r()));
-    if (distDir) await (await import("node:fs/promises")).rm(distDir, { recursive: true, force: true }).catch(() => { });
+    if (http1Server)
+      await new Promise<void>((r) => http1Server.close(() => r()));
+    if (http2Server)
+      await new Promise<void>((r) => http2Server.close(() => r()));
+    if (distDir)
+      await (
+        await import("node:fs/promises")
+      )
+        .rm(distDir, { recursive: true, force: true })
+        .catch(() => {});
   });
 
   it("HTTP/1.1 slow-reader and client abort releases server resources with healthy concurrent requests", async () => {
@@ -518,15 +582,18 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
           version: 0,
           module: {
             GET: async () => {
-              const stream = new ReadableStream<Uint8Array>({
-                async pull(controller) {
-                  controller.enqueue(Buffer.from("part"));
-                  await new Promise((r) => setTimeout(r, 20));
+              const stream = new ReadableStream<Uint8Array>(
+                {
+                  async pull(controller) {
+                    controller.enqueue(Buffer.from("part"));
+                    await new Promise((r) => setTimeout(r, 20));
+                  },
+                  cancel() {
+                    clientAborted = true;
+                  },
                 },
-                cancel() {
-                  clientAborted = true;
-                },
-              }, { highWaterMark: 0 });
+                { highWaterMark: 0 },
+              );
               return new Response(stream, { status: 200 });
             },
           },
@@ -545,39 +612,58 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
     });
 
     (apiRouteRegistry as any).routes = [
-      { path: "/api/stream", filePath: "/app/src/api/stream.ts", paramNames: [], isDynamic: false },
-      { path: "/api/healthy", filePath: "/app/src/api/healthy.ts", paramNames: [], isDynamic: false },
+      {
+        path: "/api/stream",
+        filePath: "/app/src/api/stream.ts",
+        paramNames: [],
+        isDynamic: false,
+      },
+      {
+        path: "/api/healthy",
+        filePath: "/app/src/api/healthy.ts",
+        paramNames: [],
+        isDynamic: false,
+      },
     ];
 
     const handle = createRequestHandler();
     http1Server = nodeHttp.createServer((reqMsg, resMsg) => {
       const { req, res } = adaptHttp1(reqMsg, resMsg);
-      handle(req, res).catch(() => { });
+      handle(req, res).catch(() => {});
     });
 
     await new Promise<void>((r) => http1Server.listen(0, "127.0.0.1", r));
     const port = (http1Server.address() as any).port;
 
     await new Promise<void>((resolve) => {
-      const req = nodeHttp.request("http://127.0.0.1:" + port + "/api/stream", (res) => {
-        res.on("data", () => {
-          req.destroy();
-          resolve();
-        });
-      });
+      const req = nodeHttp.request(
+        "http://127.0.0.1:" + port + "/api/stream",
+        (res) => {
+          res.on("data", () => {
+            req.destroy();
+            resolve();
+          });
+        },
+      );
       req.end();
     });
 
     await tick();
     await tick();
 
-    const healthyRes = await new Promise<{ status: number; body: string }>((resolve) => {
-      nodeHttp.get("http://127.0.0.1:" + port + "/api/healthy", (res) => {
-        let b = "";
-        res.on("data", (c) => { b += c.toString(); });
-        res.on("end", () => resolve({ status: res.statusCode ?? 0, body: b }));
-      });
-    });
+    const healthyRes = await new Promise<{ status: number; body: string }>(
+      (resolve) => {
+        nodeHttp.get("http://127.0.0.1:" + port + "/api/healthy", (res) => {
+          let b = "";
+          res.on("data", (c) => {
+            b += c.toString();
+          });
+          res.on("end", () =>
+            resolve({ status: res.statusCode ?? 0, body: b }),
+          );
+        });
+      },
+    );
 
     expect(clientAborted).toBe(true);
     expect(healthyCompleted).toBe(true);
@@ -596,13 +682,29 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
     const keyFile = (await import("node:path")).join(distDir, "key.pem");
     const certFile = (await import("node:path")).join(distDir, "cert.pem");
     try {
-      await execFile("openssl", [
-        "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "1",
-        "-subj", "/CN=localhost",
-        "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
-        "-keyout", keyFile, "-out", certFile,
-      ], { stdio: "ignore" } as never);
-    } catch { }
+      await execFile(
+        "openssl",
+        [
+          "req",
+          "-x509",
+          "-newkey",
+          "rsa:2048",
+          "-nodes",
+          "-sha256",
+          "-days",
+          "1",
+          "-subj",
+          "/CN=localhost",
+          "-addext",
+          "subjectAltName=DNS:localhost,IP:127.0.0.1",
+          "-keyout",
+          keyFile,
+          "-out",
+          certFile,
+        ],
+        { stdio: "ignore" } as never,
+      );
+    } catch {}
 
     let h2Aborted = false;
     let healthyH2Completed = false;
@@ -614,15 +716,18 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
           version: 0,
           module: {
             GET: async () => {
-              const stream = new ReadableStream<Uint8Array>({
-                async pull(controller) {
-                  controller.enqueue(Buffer.from("part"));
-                  await new Promise((r) => setTimeout(r, 20));
+              const stream = new ReadableStream<Uint8Array>(
+                {
+                  async pull(controller) {
+                    controller.enqueue(Buffer.from("part"));
+                    await new Promise((r) => setTimeout(r, 20));
+                  },
+                  cancel() {
+                    h2Aborted = true;
+                  },
                 },
-                cancel() {
-                  h2Aborted = true;
-                },
-              }, { highWaterMark: 0 });
+                { highWaterMark: 0 },
+              );
               return new Response(stream, { status: 200 });
             },
           },
@@ -641,8 +746,18 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
     });
 
     (apiRouteRegistry as any).routes = [
-      { path: "/api/stream", filePath: "/app/src/api/stream.ts", paramNames: [], isDynamic: false },
-      { path: "/api/healthy", filePath: "/app/src/api/healthy.ts", paramNames: [], isDynamic: false },
+      {
+        path: "/api/stream",
+        filePath: "/app/src/api/stream.ts",
+        paramNames: [],
+        isDynamic: false,
+      },
+      {
+        path: "/api/healthy",
+        filePath: "/app/src/api/healthy.ts",
+        paramNames: [],
+        isDynamic: false,
+      },
     ];
 
     const handle = createRequestHandler();
@@ -654,13 +769,15 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
 
     http2Server.on("stream", (stream: any, headers: any) => {
       const { req, res } = adaptHttp2(stream, headers);
-      handle(req, res).catch(() => { });
+      handle(req, res).catch(() => {});
     });
 
     await new Promise<void>((r) => http2Server.listen(0, "127.0.0.1", r));
     const port = (http2Server.address() as any).port;
 
-    const client = nodeHttp2.connect("https://127.0.0.1:" + port, { rejectUnauthorized: false });
+    const client = nodeHttp2.connect("https://127.0.0.1:" + port, {
+      rejectUnauthorized: false,
+    });
 
     await new Promise<void>((resolve) => {
       const req = client.request({ ":path": "/api/stream", ":method": "GET" });
@@ -673,14 +790,23 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
     await tick();
     await tick();
 
-    const healthyRes = await new Promise<{ status: number; body: string }>((resolve) => {
-      const req = client.request({ ":path": "/api/healthy", ":method": "GET" });
-      let b = "";
-      let status = 0;
-      req.on("response", (h: any) => { status = Number(h[":status"]); });
-      req.on("data", (c: Buffer) => { b += c.toString(); });
-      req.on("end", () => resolve({ status, body: b }));
-    });
+    const healthyRes = await new Promise<{ status: number; body: string }>(
+      (resolve) => {
+        const req = client.request({
+          ":path": "/api/healthy",
+          ":method": "GET",
+        });
+        let b = "";
+        let status = 0;
+        req.on("response", (h: any) => {
+          status = Number(h[":status"]);
+        });
+        req.on("data", (c: Buffer) => {
+          b += c.toString();
+        });
+        req.on("end", () => resolve({ status, body: b }));
+      },
+    );
 
     client.close();
 
@@ -697,17 +823,25 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
       version: 0,
       module: {
         GET: async () => {
-          const stream = new ReadableStream<Uint8Array>({
-            pull(controller) {
-              controller.error(new Error("producer failure before commit"));
+          const stream = new ReadableStream<Uint8Array>(
+            {
+              pull(controller) {
+                controller.error(new Error("producer failure before commit"));
+              },
             },
-          }, { highWaterMark: 0 });
+            { highWaterMark: 0 },
+          );
           return new Response(stream, { status: 200 });
         },
       },
     });
     (apiRouteRegistry as any).routes = [
-      { path: "/api/fail", filePath: "/app/src/api/fail.ts", paramNames: [], isDynamic: false },
+      {
+        path: "/api/fail",
+        filePath: "/app/src/api/fail.ts",
+        paramNames: [],
+        isDynamic: false,
+      },
     ];
     return createRequestHandler();
   };
@@ -719,22 +853,31 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
 
     http1Server = nodeHttp.createServer((reqMsg, resMsg) => {
       const { req, res } = adaptHttp1(reqMsg, resMsg);
-      handle(req, res).catch(() => { });
+      handle(req, res).catch(() => {});
     });
     await new Promise<void>((r) => http1Server.listen(0, "127.0.0.1", r));
     const port = (http1Server.address() as any).port;
 
     // The client must observe `end`: a 500 whose response is never ended
     // leaves a real client hanging on the socket.
-    const result = await new Promise<{ status: number; body: string }>((resolve, reject) => {
-      const req = nodeHttp.get("http://127.0.0.1:" + port + "/api/fail", (res) => {
-        let b = "";
-        res.on("data", (c) => { b += c.toString(); });
-        res.on("end", () => resolve({ status: res.statusCode ?? 0, body: b }));
-        res.on("error", reject);
-      });
-      req.on("error", reject);
-    });
+    const result = await new Promise<{ status: number; body: string }>(
+      (resolve, reject) => {
+        const req = nodeHttp.get(
+          "http://127.0.0.1:" + port + "/api/fail",
+          (res) => {
+            let b = "";
+            res.on("data", (c) => {
+              b += c.toString();
+            });
+            res.on("end", () =>
+              resolve({ status: res.statusCode ?? 0, body: b }),
+            );
+            res.on("error", reject);
+          },
+        );
+        req.on("error", reject);
+      },
+    );
 
     expect(result.status).toBe(500);
     expect(result.body.length).toBeGreaterThan(0);
@@ -750,10 +893,22 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
     const keyFile = (await import("node:path")).join(distDir, "key.pem");
     const certFile = (await import("node:path")).join(distDir, "cert.pem");
     await execFile("openssl", [
-      "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "1",
-      "-subj", "/CN=localhost",
-      "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
-      "-keyout", keyFile, "-out", certFile,
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-nodes",
+      "-sha256",
+      "-days",
+      "1",
+      "-subj",
+      "/CN=localhost",
+      "-addext",
+      "subjectAltName=DNS:localhost,IP:127.0.0.1",
+      "-keyout",
+      keyFile,
+      "-out",
+      certFile,
     ]);
 
     const handle = installFailingProducer();
@@ -763,22 +918,33 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
     });
     http2Server.on("stream", (stream: any, headers: any) => {
       const { req, res } = adaptHttp2(stream, headers);
-      handle(req, res).catch(() => { });
+      handle(req, res).catch(() => {});
     });
     await new Promise<void>((r) => http2Server.listen(0, "127.0.0.1", r));
     const port = (http2Server.address() as any).port;
 
-    const client = nodeHttp2.connect("https://127.0.0.1:" + port, { rejectUnauthorized: false });
+    const client = nodeHttp2.connect("https://127.0.0.1:" + port, {
+      rejectUnauthorized: false,
+    });
     try {
-      const result = await new Promise<{ status: number; body: string }>((resolve, reject) => {
-        const req = client.request({ ":path": "/api/fail", ":method": "GET" });
-        let status = 0;
-        let b = "";
-        req.on("response", (h: any) => { status = Number(h[":status"]); });
-        req.on("data", (c: Buffer) => { b += c.toString(); });
-        req.on("end", () => resolve({ status, body: b }));
-        req.on("error", reject);
-      });
+      const result = await new Promise<{ status: number; body: string }>(
+        (resolve, reject) => {
+          const req = client.request({
+            ":path": "/api/fail",
+            ":method": "GET",
+          });
+          let status = 0;
+          let b = "";
+          req.on("response", (h: any) => {
+            status = Number(h[":status"]);
+          });
+          req.on("data", (c: Buffer) => {
+            b += c.toString();
+          });
+          req.on("end", () => resolve({ status, body: b }));
+          req.on("error", reject);
+        },
+      );
       expect(result.status).toBe(500);
       expect(result.body.length).toBeGreaterThan(0);
     } finally {
@@ -795,10 +961,21 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
       context?: string,
     ): void => {
       const prefix = context ? `${context}: ` : "";
-      expect(body.locked, `${prefix}expected reader to be unlocked`).toBe(false);
-      expect(emitter.listenerCount("drain"), `${prefix}retained "drain" listener`).toBe(0);
-      expect(emitter.listenerCount("close"), `${prefix}retained "close" listener`).toBe(0);
-      expect(getEventListeners(aborted.signal, "abort").length, `${prefix}retained abort listener`).toBe(0);
+      expect(body.locked, `${prefix}expected reader to be unlocked`).toBe(
+        false,
+      );
+      expect(
+        emitter.listenerCount("drain"),
+        `${prefix}retained "drain" listener`,
+      ).toBe(0);
+      expect(
+        emitter.listenerCount("close"),
+        `${prefix}retained "close" listener`,
+      ).toBe(0);
+      expect(
+        getEventListeners(aborted.signal, "abort").length,
+        `${prefix}retained abort listener`,
+      ).toBe(0);
     };
 
     it("ownership oracle: rejects retained reader lock (negative control)", () => {
@@ -808,7 +985,9 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
       const testReader = body.getReader();
 
       try {
-        expect(() => assertBoundarySettled(body, emitter, aborted)).toThrow(/expected reader to be unlocked/);
+        expect(() => assertBoundarySettled(body, emitter, aborted)).toThrow(
+          /expected reader to be unlocked/,
+        );
       } finally {
         testReader.releaseLock();
         assertBoundarySettled(body, emitter, aborted);
@@ -820,10 +999,12 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
       const emitter = new EventEmitter();
       const aborted = new AbortController();
 
-      const testListener = () => { };
+      const testListener = () => {};
       emitter.on("drain", testListener);
       try {
-        expect(() => assertBoundarySettled(body, emitter, aborted)).toThrow(/retained "drain" listener/);
+        expect(() => assertBoundarySettled(body, emitter, aborted)).toThrow(
+          /retained "drain" listener/,
+        );
       } finally {
         emitter.off("drain", testListener);
         assertBoundarySettled(body, emitter, aborted);
@@ -852,9 +1033,13 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
               return destroyed;
             },
             writable: emitter as unknown as NodeJS.WritableStream,
-            respond() { },
+            respond() {},
             write(chunk) {
-              bytes.push(Buffer.isBuffer(chunk) ? Buffer.from(chunk) : Buffer.from(chunk, "utf8"));
+              bytes.push(
+                Buffer.isBuffer(chunk)
+                  ? Buffer.from(chunk)
+                  : Buffer.from(chunk, "utf8"),
+              );
               written.resolve();
               return false; // Force backpressure so drain is exercised
             },
@@ -891,7 +1076,15 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
           let streamPromise: Promise<void> | undefined;
 
           try {
-            streamPromise = streamApiResponse(body, 200, {}, {}, response, aborted, sink);
+            streamPromise = streamApiResponse(
+              body,
+              200,
+              {},
+              {},
+              response,
+              aborted,
+              sink,
+            );
 
             // written.resolve() fires during write(); write() returning false immediately
             // registers the "drain" listener inside sink.write() synchronously before
@@ -899,7 +1092,10 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
             await written.promise;
 
             expect(pulls, `${label}: pulls`).toBe(1);
-            expect(emitter.listenerCount("drain"), `${label}: expected drain listener before resolution`).toBe(1);
+            expect(
+              emitter.listenerCount("drain"),
+              `${label}: expected drain listener before resolution`,
+            ).toBe(1);
 
             if (disconnect) {
               response.close();
@@ -911,7 +1107,10 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
 
             expect(ended, `${label}: ended`).toBe(!disconnect);
             expect(cancels, `${label}: cancels`).toBe(Number(disconnect));
-            expect(Buffer.concat(bytes).toString("utf8"), `${label}: exact bytes`).toBe("exact");
+            expect(
+              Buffer.concat(bytes).toString("utf8"),
+              `${label}: exact bytes`,
+            ).toBe("exact");
             assertBoundarySettled(body, emitter, aborted, label);
           } finally {
             if (emitter.listenerCount("drain") > 0) {

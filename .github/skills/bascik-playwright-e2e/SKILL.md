@@ -13,12 +13,12 @@ Bascik validates runtime behavior against four distinct server and compilation e
 
 ## 1. Server Environment Modes
 
-| Config File | Target Environment | Key Mechanics |
-| :--- | :--- | :--- |
-| `pkg/e2e/playwright.config.ts` | **Static Production** | Tests static HTML file serving from `dist/` |
-| `pkg/e2e/playwright.dev.config.ts` | **Dev Server (Watch/SSE)** | Tests live reload, file watcher triggers, dev SSE stream |
-| `pkg/e2e/playwright.server.config.ts` | **Production HTTP/1.1** | Tests `bascik --server` over HTTP/1.1 |
-| `pkg/e2e/playwright.server-http2.config.ts` | **Production HTTP/2** | Tests `bascik --server` over secure HTTP/2 with TLS |
+| Config File                                 | Target Environment         | Key Mechanics                                            |
+| :------------------------------------------ | :------------------------- | :------------------------------------------------------- |
+| `pkg/e2e/playwright.config.ts`              | **Static Production**      | Tests static HTML file serving from `dist/`              |
+| `pkg/e2e/playwright.dev.config.ts`          | **Dev Server (Watch/SSE)** | Tests live reload, file watcher triggers, dev SSE stream |
+| `pkg/e2e/playwright.server.config.ts`       | **Production HTTP/1.1**    | Tests `bascik --server` over HTTP/1.1                    |
+| `pkg/e2e/playwright.server-http2.config.ts` | **Production HTTP/2**      | Tests `bascik --server` over secure HTTP/2 with TLS      |
 
 ---
 
@@ -27,15 +27,16 @@ Bascik validates runtime behavior against four distinct server and compilation e
 In production builds (`bascik --build` with `minify.identifiers: true`), class names and scoped element IDs are hashed and compressed (e.g., `.my-card` $\rightarrow$ `.a`).
 
 ### Invariant: Never Target Minified Classes or IDs
-* 🚫 **Do NOT use raw classes:** `page.locator('.search-overlay')`
-* 🚫 **Do NOT use scoped IDs:** `page.locator('#btn-123')`
-* 🚫 **Do NOT use fragile relative DOM walks:** `page.locator('div > div:nth-child(2)')`
-* ✅ **Always use explicit test IDs:**
+
+- 🚫 **Do NOT use raw classes:** `page.locator('.search-overlay')`
+- 🚫 **Do NOT use scoped IDs:** `page.locator('#btn-123')`
+- 🚫 **Do NOT use fragile relative DOM walks:** `page.locator('div > div:nth-child(2)')`
+- ✅ **Always use explicit test IDs:**
   ```html
   <button data-testid="submit-button">Submit</button>
   ```
   ```ts
-  await page.getByTestId('submit-button').click();
+  await page.getByTestId("submit-button").click();
   ```
 
 ---
@@ -43,11 +44,12 @@ In production builds (`bascik --build` with `minify.identifiers: true`), class n
 ## 3. Testing Live Reloading
 
 When testing dev server live-reload behavior:
+
 1. Load page and assert initial state using `page.getByTestId(...)`.
 2. Mutate a fixture file on disk in a temporary test directory.
 3. Wait for the SSE reload event or poll for updated DOM content:
    ```ts
-   await expect(page.getByTestId('dynamic-text')).toHaveText('Updated Content');
+   await expect(page.getByTestId("dynamic-text")).toHaveText("Updated Content");
    ```
 4. Restore fixture files in `finally` / `afterEach` hooks.
 

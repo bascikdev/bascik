@@ -13,42 +13,49 @@
  *   yarn workspace bascik-docs generate:llms
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join, resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { NAV } from '../src/lib/nav.ts';
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { NAV } from "../src/lib/nav.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const docsDir = resolve(__dirname, '..');
-const outputFile = join(process.env.BASCIK_OUT_DIR ?? join(docsDir, 'dist'), 'llms.txt');
-const siteUrl = 'https://bascik.dev';
+const docsDir = resolve(__dirname, "..");
+const outputFile = join(
+  process.env.BASCIK_OUT_DIR ?? join(docsDir, "dist"),
+  "llms.txt",
+);
+const siteUrl = "https://bascik.dev";
 
 function stripMd(text: string): string {
   // codeql[js/incomplete-multi-character-sanitization] Writes plain text to llms.txt from first-party Markdown.
   return text
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/```[\s\S]*?```/gm, '')
-    .replace(/`([^`\n]+)`/g, '$1')
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*\n]+)\*/g, '$1')
-    .replace(/^>\s*/gm, '')
-    .replace(/\s+/g, ' ')
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/```[\s\S]*?```/gm, "")
+    .replace(/`([^`\n]+)`/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*\n]+)\*/g, "$1")
+    .replace(/^>\s*/gm, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
 async function readMd(href: string): Promise<string | null> {
-  const standard = join(docsDir, 'content', href.slice(1) + '.md');
-  try { return await readFile(standard, 'utf8'); } catch { }
-  const base = join(docsDir, 'content', href.split('/').pop()! + '.md');
-  try { return await readFile(base, 'utf8'); } catch { }
+  const standard = join(docsDir, "content", href.slice(1) + ".md");
+  try {
+    return await readFile(standard, "utf8");
+  } catch {}
+  const base = join(docsDir, "content", href.split("/").pop()! + ".md");
+  try {
+    return await readFile(base, "utf8");
+  } catch {}
   return null;
 }
 
 function extractDescription(md: string): string {
-  const lines = md.split('\n');
+  const lines = md.split("\n");
   let pastH1 = false;
   const paragraphLines: string[] = [];
 
@@ -65,58 +72,70 @@ function extractDescription(md: string): string {
     const trimmed = line.trim();
     if (trimmed.length > 0) {
       paragraphLines.push(trimmed);
-      if (paragraphLines.join(' ').length > 200) break;
+      if (paragraphLines.join(" ").length > 200) break;
     } else if (paragraphLines.length > 0) {
       break;
     }
   }
 
-  const raw = paragraphLines.join(' ');
+  const raw = paragraphLines.join(" ");
   const cleaned = stripMd(raw);
-  if (!cleaned) return '';
+  if (!cleaned) return "";
 
   const sentenceMatch = cleaned.match(/.*?[.!?](?:\s|$)/);
   let summary = sentenceMatch ? sentenceMatch[0].trim() : cleaned;
   if (summary.length > 180) {
-    summary = summary.slice(0, 177) + '...';
+    summary = summary.slice(0, 177) + "...";
   }
   return summary;
 }
 
 const lines: string[] = [];
 
-lines.push('# Bascik');
-lines.push('');
-lines.push('> Bascik is a build tool for HTML components. It scopes and assembles reusable HTML component files into vanilla HTML pages at build time. It adds zero JavaScript to the output. You write HTML, CSS, and JavaScript; Bascik scopes and assembles them.');
-lines.push('');
-lines.push('Bascik resolves custom HTML tags to component source HTML, scopes CSS and JavaScript, rewrites DOM selectors, and outputs plain static HTML pages with zero framework runtime.');
-lines.push('');
-lines.push('AI assistants: install the Bascik agent skills with `npx skills add bascikdev/bascik` (or `curl -fsSL https://bascik.dev/assets/skills.tar.gz | tar -xz -C .agents/skills`). The core skill is also at [SKILL.md](https://bascik.dev/assets/SKILL.md).');
-lines.push('');
+lines.push("# Bascik");
+lines.push("");
+lines.push(
+  "> Bascik is a build tool for HTML components. It scopes and assembles reusable HTML component files into vanilla HTML pages at build time. It adds zero JavaScript to the output. You write HTML, CSS, and JavaScript; Bascik scopes and assembles them.",
+);
+lines.push("");
+lines.push(
+  "Bascik resolves custom HTML tags to component source HTML, scopes CSS and JavaScript, rewrites DOM selectors, and outputs plain static HTML pages with zero framework runtime.",
+);
+lines.push("");
+lines.push(
+  "AI assistants: install the Bascik agent skills with `npx skills add bascikdev/bascik` (or `curl -fsSL https://bascik.dev/assets/skills.tar.gz | tar -xz -C .agents/skills`). The core skill is also at [SKILL.md](https://bascik.dev/assets/SKILL.md).",
+);
+lines.push("");
 
 for (const { section, pages } of NAV) {
   lines.push(`## ${section}`);
-  lines.push('');
+  lines.push("");
   for (const { href, label } of pages) {
     // External nav entries (e.g. Merch) are off-site and have no local content
     // Markdown, so they are left out of the llms.txt page index.
     if (/^https?:\/\//i.test(href)) continue;
     const md = await readMd(href);
-    const desc = md ? extractDescription(md) : '';
+    const desc = md ? extractDescription(md) : "";
     const url = `${siteUrl}${href}`;
-    const descSuffix = desc ? `: ${desc}` : '';
+    const descSuffix = desc ? `: ${desc}` : "";
     lines.push(`- [${label}](${url})${descSuffix}`);
   }
-  lines.push('');
+  lines.push("");
 }
 
-lines.push('## Optional');
-lines.push('');
-lines.push('- [Agent Skills](https://bascik.dev/agent-skills): Install the Bascik agent skills (core, scoping, scripts, config, testing, migration) with their helper scripts');
-lines.push('- [Core Skill File](https://bascik.dev/assets/SKILL.md): The core Bascik agent skill as a single SKILL.md');
-lines.push('- [All Skills Archive](https://bascik.dev/assets/skills.tar.gz): Every Bascik agent skill with references and scripts, as a tar.gz');
-lines.push('');
+lines.push("## Optional");
+lines.push("");
+lines.push(
+  "- [Agent Skills](https://bascik.dev/agent-skills): Install the Bascik agent skills (core, scoping, scripts, config, testing, migration) with their helper scripts",
+);
+lines.push(
+  "- [Core Skill File](https://bascik.dev/assets/SKILL.md): The core Bascik agent skill as a single SKILL.md",
+);
+lines.push(
+  "- [All Skills Archive](https://bascik.dev/assets/skills.tar.gz): Every Bascik agent skill with references and scripts, as a tar.gz",
+);
+lines.push("");
 
-const output = lines.join('\n');
+const output = lines.join("\n");
 await mkdir(dirname(outputFile), { recursive: true });
-await writeFile(outputFile, output, 'utf8');
+await writeFile(outputFile, output, "utf8");

@@ -5,7 +5,11 @@ import { extname, resolve, sep } from "node:path";
 import type { Server as NetServer } from "node:net";
 import { mem } from "./mem.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
-import { eventEmitter, registerShutdownHandler, runShutdownHandlers } from "./events.ts";
+import {
+  eventEmitter,
+  registerShutdownHandler,
+  runShutdownHandlers,
+} from "./events.ts";
 import { getHttpPath } from "./paths.ts";
 import { MIME_MAP } from "./mime.ts";
 import {
@@ -48,10 +52,19 @@ import {
 import { SseManager } from "./sse.ts";
 import { apiRouteRegistry } from "./server-api.ts";
 import { InvalidApiPathError, hasHiddenSegment } from "./route-matching.ts";
-import { createWebRequest, getRightmostHeaderValue, requestOrigin } from "./api-runtime.ts";
+import {
+  createWebRequest,
+  getRightmostHeaderValue,
+  requestOrigin,
+} from "./api-runtime.ts";
 import { NODE_PLATFORM } from "./request-execution.ts";
 
-export { setServerHealthState, getServerHealthState, isHealthEndpoint, handleHealthCheck };
+export {
+  setServerHealthState,
+  getServerHealthState,
+  isHealthEndpoint,
+  handleHealthCheck,
+};
 
 // ─── SSE live-reload manager ──────────────────────────────────────────────────
 // Constructed lazily so its heartbeat timer is never created as an import-time
@@ -88,12 +101,17 @@ const SECURITY_HEADERS: Record<string, string> = {
   "cross-origin-resource-policy": "cross-origin",
 };
 
-export const getSecurityHeaders = (req?: BascikRequest): Record<string, string> => {
-  const isHttps = req && req.headers
-    ? req.headers[":scheme"] === "https" ||
-    (BascikConfig.http.trustProxy === true &&
-      getRightmostHeaderValue(req.headers["x-forwarded-proto"])?.toLowerCase() === "https")
-    : false;
+export const getSecurityHeaders = (
+  req?: BascikRequest,
+): Record<string, string> => {
+  const isHttps =
+    req && req.headers
+      ? req.headers[":scheme"] === "https" ||
+        (BascikConfig.http.trustProxy === true &&
+          getRightmostHeaderValue(
+            req.headers["x-forwarded-proto"],
+          )?.toLowerCase() === "https")
+      : false;
   if (isHttps || (BascikConfig.isProdServer && BascikConfig.http.tls.enabled)) {
     return {
       ...SECURITY_HEADERS,
@@ -116,12 +134,14 @@ let activeRateLimiter: RateLimiter | null = null;
 export const getActiveRateLimiter = (): RateLimiter => {
   if (!activeRateLimiter) {
     const rateLimitConfig = BascikConfig.http.rateLimit;
-    const windowMs = typeof rateLimitConfig === "object" && rateLimitConfig?.window
-      ? rateLimitConfig.window
-      : DEFAULT_RATE_LIMIT_WINDOW_MS;
-    const max = typeof rateLimitConfig === "object" && rateLimitConfig?.max
-      ? rateLimitConfig.max
-      : DEFAULT_RATE_LIMIT_MAX;
+    const windowMs =
+      typeof rateLimitConfig === "object" && rateLimitConfig?.window
+        ? rateLimitConfig.window
+        : DEFAULT_RATE_LIMIT_WINDOW_MS;
+    const max =
+      typeof rateLimitConfig === "object" && rateLimitConfig?.max
+        ? rateLimitConfig.max
+        : DEFAULT_RATE_LIMIT_MAX;
     activeRateLimiter = new RateLimiter({ windowMs, max });
     activeRateLimiter.startSweep();
     registerShutdownHandler(() => {
@@ -181,11 +201,15 @@ export const isNetworkResetError = (err: unknown): boolean => {
 };
 
 const DEFAULT_500_BODY = Buffer.from(
-  "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>500 Internal Server Error</title></head><body><h1>Internal Server Error</h1></body></html>",
-  "utf8"
+  '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>500 Internal Server Error</title></head><body><h1>Internal Server Error</h1></body></html>',
+  "utf8",
 );
 
-export const onError = (error: unknown, res: BascikResponse, req?: BascikRequest): void => {
+export const onError = (
+  error: unknown,
+  res: BascikResponse,
+  req?: BascikRequest,
+): void => {
   // Client disconnected mid-request: not a server bug, nothing to respond to.
   if (isNetworkResetError(error)) return;
   const secHeaders = getSecurityHeaders(req);
@@ -204,7 +228,9 @@ export const onError = (error: unknown, res: BascikResponse, req?: BascikRequest
           // Guard against recursion if lookup throws
         }
 
-        const bodyBuf = custom500Page?.content ? custom500Page.content : DEFAULT_500_BODY;
+        const bodyBuf = custom500Page?.content
+          ? custom500Page.content
+          : DEFAULT_500_BODY;
         res.respond(500, {
           "content-type": "text/html; charset=utf-8",
           "content-length": bodyBuf.byteLength,
@@ -217,7 +243,10 @@ export const onError = (error: unknown, res: BascikResponse, req?: BascikRequest
     console.error("Error responding to stream/request:", respondErr);
     try {
       if (!res.headersSent) {
-        res.respond(500, { "content-type": "text/html; charset=utf-8", ...secHeaders });
+        res.respond(500, {
+          "content-type": "text/html; charset=utf-8",
+          ...secHeaders,
+        });
       }
       res.end(DEFAULT_500_BODY);
     } catch (endErr) {
@@ -301,7 +330,10 @@ const serveStreamedAsset = async (
       return STATUS_CLIENT_CLOSED;
     }
 
-    if (httpCache && matchesIfNoneMatch(req.headers["if-none-match"], delivery.etag)) {
+    if (
+      httpCache &&
+      matchesIfNoneMatch(req.headers["if-none-match"], delivery.etag)
+    ) {
       res.respond(304, {
         etag: delivery.etag,
         "cache-control": cacheControlVal,
@@ -369,7 +401,10 @@ const serveStreamedAsset = async (
     return 200;
   } catch (err) {
     if (!res.headersSent && !res.destroyed) {
-      res.respond(500, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+      res.respond(500, {
+        "content-type": "text/plain; charset=utf-8",
+        ...secHeaders,
+      });
       res.end("Internal Server Error");
       return 500;
     }
@@ -402,9 +437,12 @@ export const createRequestHandler = () => {
       const path = req.path;
       // Skip noisy SSE keep-alive pings and health checks
       const cleanPath = path?.split(/[?#]/)[0];
-      if (cleanPath === withBasePath("/bascik-live-reload", BascikConfig.base)) return;
+      if (cleanPath === withBasePath("/bascik-live-reload", BascikConfig.base))
+        return;
       if (isHealthEndpoint(cleanPath ?? "")) return;
-      console.log(`${colorOut.bold(String(method))} ${path} ${colorStatus(responseStatus)} ${colorOut.dim(formatDuration(elapsed))}`);
+      console.log(
+        `${colorOut.bold(String(method))} ${path} ${colorStatus(responseStatus)} ${colorOut.dim(formatDuration(elapsed))}`,
+      );
     };
 
     try {
@@ -422,7 +460,10 @@ export const createRequestHandler = () => {
         pathname = decodeURIComponent(rawPathname);
       } catch {
         responseStatus = 400;
-        res.respond(400, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.respond(400, {
+          "content-type": "text/plain; charset=utf-8",
+          ...secHeaders,
+        });
         res.end("Bad Request");
         return;
       }
@@ -430,7 +471,10 @@ export const createRequestHandler = () => {
       // Gap 1: Null byte and control characters check
       if (pathname.includes("\0") || /[\r\n\t]/.test(pathname)) {
         responseStatus = 400;
-        res.respond(400, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.respond(400, {
+          "content-type": "text/plain; charset=utf-8",
+          ...secHeaders,
+        });
         res.end("Bad Request");
         return;
       }
@@ -441,10 +485,19 @@ export const createRequestHandler = () => {
         const isHead = req.method === "HEAD";
         if (req.method !== "GET" && !isHead) {
           responseStatus = 405;
-          if (res.writable && typeof (res.writable as any).resume === "function") {
-            try { (res.writable as any).resume(); } catch { }
+          if (
+            res.writable &&
+            typeof (res.writable as any).resume === "function"
+          ) {
+            try {
+              (res.writable as any).resume();
+            } catch {}
           }
-          res.respond(405, { "allow": "GET, HEAD", "content-type": "text/plain; charset=utf-8", ...secHeaders });
+          res.respond(405, {
+            allow: "GET, HEAD",
+            "content-type": "text/plain; charset=utf-8",
+            ...secHeaders,
+          });
           res.end("Method Not Allowed");
           return;
         }
@@ -458,9 +511,17 @@ export const createRequestHandler = () => {
       }
 
       // ── Rate limiting ────────────────────────────────────────────────────
-      if (BascikConfig.isProdServer && BascikConfig.http.rateLimit !== false && isRateLimited(req.remoteIp)) {
+      if (
+        BascikConfig.isProdServer &&
+        BascikConfig.http.rateLimit !== false &&
+        isRateLimited(req.remoteIp)
+      ) {
         responseStatus = 429;
-        res.respond(429, { "retry-after": String(RATE_WINDOW_MS / 1000), "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.respond(429, {
+          "retry-after": String(RATE_WINDOW_MS / 1000),
+          "content-type": "text/plain; charset=utf-8",
+          ...secHeaders,
+        });
         res.end("Too Many Requests");
         return;
       }
@@ -473,7 +534,10 @@ export const createRequestHandler = () => {
         pathname === ".."
       ) {
         responseStatus = 400;
-        res.respond(400, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.respond(400, {
+          "content-type": "text/plain; charset=utf-8",
+          ...secHeaders,
+        });
         res.end("Bad Request");
         return;
       }
@@ -482,7 +546,10 @@ export const createRequestHandler = () => {
       // exception is a leading RFC 8615 /.well-known/ below the site root.
       if (hasHiddenSegment(pathname, BascikConfig.base)) {
         responseStatus = 404;
-        res.respond(404, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.respond(404, {
+          "content-type": "text/plain; charset=utf-8",
+          ...secHeaders,
+        });
         res.end("Not Found");
         return;
       }
@@ -490,7 +557,10 @@ export const createRequestHandler = () => {
       const baseRelativePathname = stripBasePath(pathname, BascikConfig.base);
       if (baseRelativePathname === null) {
         responseStatus = 404;
-        res.respond(404, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.respond(404, {
+          "content-type": "text/plain; charset=utf-8",
+          ...secHeaders,
+        });
         res.end("Not Found");
         return;
       }
@@ -503,12 +573,20 @@ export const createRequestHandler = () => {
       } catch (err) {
         if (!(err instanceof InvalidApiPathError)) throw err;
         responseStatus = 400;
-        res.respond(400, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.respond(400, {
+          "content-type": "text/plain; charset=utf-8",
+          ...secHeaders,
+        });
         res.end("Bad Request");
         return;
       }
       if (apiMatch) {
-        responseStatus = await apiRouteRegistry.dispatch(req, res, apiMatch, secHeaders);
+        responseStatus = await apiRouteRegistry.dispatch(
+          req,
+          res,
+          apiMatch,
+          secHeaders,
+        );
         return;
       }
 
@@ -518,10 +596,19 @@ export const createRequestHandler = () => {
       const isHead = req.method === "HEAD";
       if (req.method !== "GET" && !isHead) {
         responseStatus = 405;
-        if (res.writable && typeof (res.writable as any).resume === "function") {
-          try { (res.writable as any).resume(); } catch { }
+        if (
+          res.writable &&
+          typeof (res.writable as any).resume === "function"
+        ) {
+          try {
+            (res.writable as any).resume();
+          } catch {}
         }
-        res.respond(405, { "allow": "GET, HEAD", "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.respond(405, {
+          allow: "GET, HEAD",
+          "content-type": "text/plain; charset=utf-8",
+          ...secHeaders,
+        });
         res.end("Method Not Allowed");
         return;
       }
@@ -546,21 +633,34 @@ export const createRequestHandler = () => {
         try {
           fileStat = await stat(fullPath);
         } catch (err) {
-          responseStatus = (err as NodeJS.ErrnoException).code === "ENOENT" ? 404 : 500;
+          responseStatus =
+            (err as NodeJS.ErrnoException).code === "ENOENT" ? 404 : 500;
           res.respond(responseStatus, { ...secHeaders });
-          res.end(responseStatus === 404 ? "Not Found" : "Internal Server Error");
+          res.end(
+            responseStatus === 404 ? "Not Found" : "Internal Server Error",
+          );
           return;
         }
 
-        const mimeType = MIME_MAP.get(ext.toLowerCase()) ?? "application/octet-stream";
-        const cacheControlVal = BascikConfig.http.httpCache !== false
-          ? resolveCacheControl(ext.toLowerCase(), BascikConfig.http.cacheControl)
-          : "no-store";
+        const mimeType =
+          MIME_MAP.get(ext.toLowerCase()) ?? "application/octet-stream";
+        const cacheControlVal =
+          BascikConfig.http.httpCache !== false
+            ? resolveCacheControl(
+                ext.toLowerCase(),
+                BascikConfig.http.cacheControl,
+              )
+            : "no-store";
 
         // Negotiate the representation before validators, headers, or body so
         // every field describes the one selected representation (prompt 95).
-        const enableCompression = BascikConfig.http.compression !== false && isCompressibleMime(mimeType, ext.toLowerCase()) && fileStat.size >= COMPRESSION_MIN_BYTES;
-        const negotiatedEncoding = enableCompression ? negotiateCompression(req.headers["accept-encoding"]) : "identity";
+        const enableCompression =
+          BascikConfig.http.compression !== false &&
+          isCompressibleMime(mimeType, ext.toLowerCase()) &&
+          fileStat.size >= COMPRESSION_MIN_BYTES;
+        const negotiatedEncoding = enableCompression
+          ? negotiateCompression(req.headers["accept-encoding"])
+          : "identity";
 
         // Acquire the selected delivery as one owner (prompt 140). At or under
         // MAX_BUFFERED_ASSET_BYTES this is the prompt 107 immutable
@@ -568,7 +668,11 @@ export const createRequestHandler = () => {
         // `size`, and `buffer` all derive from the same bytes delivered). Above
         // it the file is opened once and streamed with a weak validator taken
         // from that handle's own stat.
-        const delivery = await getStaticDelivery(fullPath, negotiatedEncoding, fileStat);
+        const delivery = await getStaticDelivery(
+          fullPath,
+          negotiatedEncoding,
+          fileStat,
+        );
 
         if (!delivery) {
           if (res.destroyed) return;
@@ -595,12 +699,19 @@ export const createRequestHandler = () => {
         const effectiveEtag = representation.etag;
 
         // Conditional GET (304)
-        if (BascikConfig.http.httpCache !== false && matchesIfNoneMatch(req.headers["if-none-match"], effectiveEtag, rawEtag)) {
+        if (
+          BascikConfig.http.httpCache !== false &&
+          matchesIfNoneMatch(
+            req.headers["if-none-match"],
+            effectiveEtag,
+            rawEtag,
+          )
+        ) {
           responseStatus = 304;
           const headers304: Record<string, string | number> = {
             etag: effectiveEtag,
             "cache-control": cacheControlVal,
-            "vary": "Accept-Encoding",
+            vary: "Accept-Encoding",
             ...secHeaders,
           };
           res.respond(304, headers304);
@@ -611,7 +722,7 @@ export const createRequestHandler = () => {
         const staticHeaders: Record<string, string | number> = {
           "content-type": mimeType,
           "cache-control": cacheControlVal,
-          "vary": "Accept-Encoding",
+          vary: "Accept-Encoding",
           "content-length": representation.size,
           ...secHeaders,
         };
@@ -620,7 +731,10 @@ export const createRequestHandler = () => {
           staticHeaders["etag"] = effectiveEtag;
         }
 
-        if (representation.encoding !== "identity" && effectiveEtag !== rawEtag) {
+        if (
+          representation.encoding !== "identity" &&
+          effectiveEtag !== rawEtag
+        ) {
           staticHeaders["content-encoding"] = representation.encoding;
         }
 
@@ -637,7 +751,10 @@ export const createRequestHandler = () => {
 
       // Normalize pathname for page lookup (e.g. /about.html -> /about, /index.html -> /)
       const cleanPathname = pathname.replace(/\.html$/i, "");
-      const normalizedPath = cleanPathname === "/index" ? "/" : cleanPathname.replace(/\/index$/, "/");
+      const normalizedPath =
+        cleanPathname === "/index"
+          ? "/"
+          : cleanPathname.replace(/\/index$/, "/");
 
       // ── Live-reload SSE ──────────────────────────────────────────────────
       if (pathname === "/bascik-live-reload") {
@@ -659,7 +776,9 @@ export const createRequestHandler = () => {
           return res.end();
         }
 
-        const isBootReloadConnection = new URL(req.path, "http://localhost").searchParams.get("boot") === "1";
+        const isBootReloadConnection =
+          new URL(req.path, "http://localhost").searchParams.get("boot") ===
+          "1";
 
         responseStatus = 200;
         res.respond(200, {
@@ -673,10 +792,14 @@ export const createRequestHandler = () => {
         try {
           if (req.headers.referer) {
             const rawPath = new URL(req.headers.referer as string).pathname;
-            const relativeRefererPath = stripBasePath(rawPath, BascikConfig.base);
-            if (relativeRefererPath !== null) openPagePath = getHttpPath(relativeRefererPath);
+            const relativeRefererPath = stripBasePath(
+              rawPath,
+              BascikConfig.base,
+            );
+            if (relativeRefererPath !== null)
+              openPagePath = getHttpPath(relativeRefererPath);
           }
-        } catch { }
+        } catch {}
         if (openPagePath) mem.trackOpenPage(openPagePath);
 
         const sseManager = getSseManager();
@@ -743,12 +866,25 @@ export const createRequestHandler = () => {
       const exactPage =
         mem.getPageExact(pathname) ??
         mem.getPageExact(normalizedPath) ??
-        (cleanPathname !== pathname ? mem.getPageExact(cleanPathname) : undefined) ??
-        mem.getPageExact(cleanPathname.endsWith("/") ? cleanPathname.slice(0, -1) : `${cleanPathname}/`);
+        (cleanPathname !== pathname
+          ? mem.getPageExact(cleanPathname)
+          : undefined) ??
+        mem.getPageExact(
+          cleanPathname.endsWith("/")
+            ? cleanPathname.slice(0, -1)
+            : `${cleanPathname}/`,
+        );
 
-      if (!exactPage && pathname.split(".").length > 1 && !/\.html?$/i.test(pathname)) {
+      if (
+        !exactPage &&
+        pathname.split(".").length > 1 &&
+        !/\.html?$/i.test(pathname)
+      ) {
         responseStatus = 404;
-        res.respond(404, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.respond(404, {
+          "content-type": "text/plain; charset=utf-8",
+          ...secHeaders,
+        });
         return res.end("Not Found");
       }
 
@@ -756,7 +892,11 @@ export const createRequestHandler = () => {
       // that has not yet finished transpiling into memory.
       if (!exactPage && mem.isBooting && !BascikConfig.isProdServer) {
         responseStatus = 200;
-        res.respond(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...secHeaders });
+        res.respond(200, {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+          ...secHeaders,
+        });
         const bootPage = getBootPageHtml(
           withBasePath("/bascik-live-reload?boot=1", BascikConfig.base),
         );
@@ -767,7 +907,10 @@ export const createRequestHandler = () => {
 
       if (!page) {
         responseStatus = 404;
-        res.respond(404, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.respond(404, {
+          "content-type": "text/plain; charset=utf-8",
+          ...secHeaders,
+        });
         return res.end("Not Found");
       }
 
@@ -779,7 +922,7 @@ export const createRequestHandler = () => {
 
       const responseHeaders: Record<string, string | number> = {
         "content-type": "text/html; charset=utf-8",
-        "vary": "Accept-Encoding",
+        vary: "Accept-Encoding",
         ...secHeaders,
       };
 
@@ -799,7 +942,8 @@ export const createRequestHandler = () => {
         const plan = page.serverScriptPlan;
         const request = createWebRequest(req, requestOrigin(req));
         const context = { remoteIp: req.remoteIp, platform: NODE_PLATFORM };
-        const timeout = BascikConfig.scripts.timeout ?? DEFAULT_SCRIPT_TIMEOUT_MS;
+        const timeout =
+          BascikConfig.scripts.timeout ?? DEFAULT_SCRIPT_TIMEOUT_MS;
         responseHeaders["cache-control"] = "private, no-store";
         // The plan was built at store time (prompt 67): no regex scan and no
         // page.content.toString() on the request path.
@@ -808,7 +952,13 @@ export const createRequestHandler = () => {
           // No `stream` scripts (or HEAD): today's buffered path, byte for byte.
           // HEAD keeps this path so it can report content-length with no body,
           // matching the static-file HEAD branch.
-          const htmlBuf = await executeServerScriptPlan(plan, request, context, timeout, page.absolutePagePath);
+          const htmlBuf = await executeServerScriptPlan(
+            plan,
+            request,
+            context,
+            timeout,
+            page.absolutePagePath,
+          );
           responseHeaders["content-length"] = htmlBuf.byteLength;
           res.respond(responseStatus, responseHeaders);
           return res.end(isHead ? undefined : htmlBuf);
@@ -824,7 +974,15 @@ export const createRequestHandler = () => {
         const abort = new AbortController();
         const sink = createResponseSink(res, abort);
         try {
-          const streamer = streamServerScripts(plan, request, context, timeout, page.absolutePagePath, sink, abort.signal);
+          const streamer = streamServerScripts(
+            plan,
+            request,
+            context,
+            timeout,
+            page.absolutePagePath,
+            sink,
+            abort.signal,
+          );
           await streamer.ready;
           res.respond(responseStatus, responseHeaders);
           streamer.commit();
@@ -834,7 +992,10 @@ export const createRequestHandler = () => {
             // Script failures are absorbed inside phase two; only transport
             // errors reach here. Headers are sent, so never respond again.
             if (!isNetworkResetError(streamErr)) {
-              console.error("[bascik] streamed response failed after commit:", streamErr);
+              console.error(
+                "[bascik] streamed response failed after commit:",
+                streamErr,
+              );
             }
             abort.abort();
           }
@@ -853,19 +1014,35 @@ export const createRequestHandler = () => {
       if (page.compressedContent) availablePageEncodings.push("br");
       if (page.gzipContent) availablePageEncodings.push("gzip");
 
-      const pageEncoding = BascikConfig.http.compression !== false
-        ? negotiateCompression(req.headers["accept-encoding"], availablePageEncodings)
-        : "identity";
+      const pageEncoding =
+        BascikConfig.http.compression !== false
+          ? negotiateCompression(
+              req.headers["accept-encoding"],
+              availablePageEncodings,
+            )
+          : "identity";
 
       const rawEtag = page.etag ?? makeEtag(page.content);
-      const effectivePageEtag = pageEncoding === "identity" ? rawEtag : getEncodedEtag(rawEtag, pageEncoding);
+      const effectivePageEtag =
+        pageEncoding === "identity"
+          ? rawEtag
+          : getEncodedEtag(rawEtag, pageEncoding);
 
-      if (BascikConfig.http.httpCache !== false && matchesIfNoneMatch(req.headers["if-none-match"], effectivePageEtag, rawEtag)) {
+      if (
+        BascikConfig.http.httpCache !== false &&
+        matchesIfNoneMatch(
+          req.headers["if-none-match"],
+          effectivePageEtag,
+          rawEtag,
+        )
+      ) {
         responseStatus = 304;
         res.respond(304, {
           etag: effectivePageEtag,
-          "cache-control": responseHeaders["cache-control"] ?? "public, max-age=0, must-revalidate",
-          "vary": "Accept-Encoding",
+          "cache-control":
+            responseHeaders["cache-control"] ??
+            "public, max-age=0, must-revalidate",
+          vary: "Accept-Encoding",
           ...secHeaders,
         });
         return res.end();
@@ -904,14 +1081,18 @@ export const startServerInstance = async (
   server: NetServer,
   protocol: "http" | "https",
   onShutdown?: () => void,
-  onForceClose?: () => void
+  onForceClose?: () => void,
 ): Promise<string> => {
   const hostname = BascikConfig.http.hostname ?? "localhost";
   const defaultPort = protocol === "https" ? 8443 : 8080;
   const envPortStr = process.env.BASCIK_SERVER_PORT || process.env.PORT;
   const envPort = envPortStr ? parseInt(envPortStr, 10) : undefined;
-  const rawStartPort = (envPort && !isNaN(envPort)) ? envPort : (BascikConfig.http.port ?? defaultPort);
-  const startPort = (!isNaN(rawStartPort) && rawStartPort > 0) ? rawStartPort : defaultPort;
+  const rawStartPort =
+    envPort && !isNaN(envPort)
+      ? envPort
+      : (BascikConfig.http.port ?? defaultPort);
+  const startPort =
+    !isNaN(rawStartPort) && rawStartPort > 0 ? rawStartPort : defaultPort;
   let origin = "";
 
   // Find the first available port, incrementing if the preferred one is in use.
@@ -919,14 +1100,22 @@ export const startServerInstance = async (
     let attempts = 0;
     const tryPort = (p: number) => {
       if (p > 65535 || attempts >= MAX_PORT_INCREMENTS) {
-        reject(new RangeError(`No available ports found between ${startPort} and ${Math.min(65535, startPort + MAX_PORT_INCREMENTS)}.`));
+        reject(
+          new RangeError(
+            `No available ports found between ${startPort} and ${Math.min(65535, startPort + MAX_PORT_INCREMENTS)}.`,
+          ),
+        );
         return;
       }
       const errorHandler = (err: NodeJS.ErrnoException) => {
         server.removeListener("error", errorHandler);
         if (err.code === "EADDRINUSE") {
           if (BascikConfig.isProdServer) {
-            reject(new Error(`Port ${p} is already in use. Under --server, specify a free port with --port or http.port.`));
+            reject(
+              new Error(
+                `Port ${p} is already in use. Under --server, specify a free port with --port or http.port.`,
+              ),
+            );
             return;
           }
           attempts++;
@@ -951,7 +1140,8 @@ export const startServerInstance = async (
   server.on("error", (error) => console.error(error));
 
   // ── Graceful shutdown on SIGTERM / SIGINT ────────────────────────────────
-  const drainTimeout = BascikConfig.http.timeouts?.drain ?? DEFAULT_DRAIN_TIMEOUT_MS;
+  const drainTimeout =
+    BascikConfig.http.timeouts?.drain ?? DEFAULT_DRAIN_TIMEOUT_MS;
 
   const gracefulShutdown = createGracefulShutdownHandler({
     server,
@@ -962,8 +1152,12 @@ export const startServerInstance = async (
   });
 
   process.setMaxListeners(process.getMaxListeners() + 2);
-  const sigtermHandler = () => { void gracefulShutdown("SIGTERM"); };
-  const sigintHandler = () => { void gracefulShutdown("SIGINT"); };
+  const sigtermHandler = () => {
+    void gracefulShutdown("SIGTERM");
+  };
+  const sigintHandler = () => {
+    void gracefulShutdown("SIGINT");
+  };
   process.once("SIGTERM", sigtermHandler);
   process.once("SIGINT", sigintHandler);
 

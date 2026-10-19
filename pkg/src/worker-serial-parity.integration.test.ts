@@ -66,8 +66,14 @@ describe("worker vs serial build artifact parity", () => {
       // Every emitted asset must be present in BOTH inventories, including
       // the raw-copied assets.
       for (const rel of fixture.emittedAssetPaths) {
-        expect(workerInventory.files[rel], `worker missing ${rel}`).toBeDefined();
-        expect(serialInventory.files[rel], `serial missing ${rel}`).toBeDefined();
+        expect(
+          workerInventory.files[rel],
+          `worker missing ${rel}`,
+        ).toBeDefined();
+        expect(
+          serialInventory.files[rel],
+          `serial missing ${rel}`,
+        ).toBeDefined();
       }
 
       // Raw-copied assets must be accounted at the destination with real
@@ -78,9 +84,10 @@ describe("worker vs serial build artifact parity", () => {
 
       // Byte hashes and sizes must be identical across worker modes.
       for (const rel of Object.keys(serialInventory.files)) {
-        expect(workerInventory.files[rel], `hash/size mismatch for ${rel}`).toEqual(
-          serialInventory.files[rel],
-        );
+        expect(
+          workerInventory.files[rel],
+          `hash/size mismatch for ${rel}`,
+        ).toEqual(serialInventory.files[rel]);
       }
 
       // CSP entries must be produced in both modes and match.
@@ -92,7 +99,9 @@ describe("worker vs serial build artifact parity", () => {
       expect(workerInventory.csp["/"].styles.length).toBeGreaterThan(0);
 
       // Sidecar references must match across modes (A carries a server script).
-      expect(Object.keys(workerInventory.sidecar)).toEqual(Object.keys(serialInventory.sidecar));
+      expect(Object.keys(workerInventory.sidecar)).toEqual(
+        Object.keys(serialInventory.sidecar),
+      );
       expect(workerInventory.sidecar).toEqual(serialInventory.sidecar);
 
       // The on-disk page files must be byte-identical too, not just hashed.
@@ -112,7 +121,9 @@ describe("worker vs serial build artifact parity", () => {
       // A raw asset and a changed asset must physically exist in dist/.
       const logoStat = await stat(join(root, "dist", "assets", "logo.txt"));
       expect(logoStat.size).toBeGreaterThan(0);
-      const changedStat = await stat(join(root, "dist", "assets", "unchanged.txt"));
+      const changedStat = await stat(
+        join(root, "dist", "assets", "unchanged.txt"),
+      );
       expect(changedStat.size).toBeGreaterThan(0);
     } finally {
       await cleanupFixture(root);
@@ -160,15 +171,21 @@ describe("manifest integrity", () => {
       const secondInv = toInventory(second);
 
       // Same emitted set and identical bytes across repeat builds.
-      expect(Object.keys(secondInv.files).sort()).toEqual(Object.keys(firstInv.files).sort());
+      expect(Object.keys(secondInv.files).sort()).toEqual(
+        Object.keys(firstInv.files).sort(),
+      );
       for (const rel of Object.keys(firstInv.files)) {
-        expect(second[rel], `nondeterministic bytes for ${rel}`).toEqual(first[rel]);
+        expect(second[rel], `nondeterministic bytes for ${rel}`).toEqual(
+          first[rel],
+        );
       }
       expect(secondInv.csp).toEqual(firstInv.csp);
       expect(secondInv.sidecar).toEqual(firstInv.sidecar);
       // No stale entry from build one survives into build two (manifest,
       // csp-hashes, and server-scripts are all freshly regenerated).
-      expect(Object.keys(secondInv.files)).not.toContain(".bascik/manifest.json");
+      expect(Object.keys(secondInv.files)).not.toContain(
+        ".bascik/manifest.json",
+      );
     } finally {
       await cleanupFixture(root);
     }
@@ -183,20 +200,27 @@ describe("manifest integrity", () => {
     const fixture = await writeParityFixture(root);
     // Add enough pages to force a multi-worker pool under real hardware.
     for (let i = 0; i < 6; i++) {
-      await writeFixtureFile(root, `src/pages/many-${i}.html`,
-        `<!DOCTYPE html><html><head><title>Many ${i}</title></head><body><p data-testid="m${i}">${i}</p></body></html>`);
+      await writeFixtureFile(
+        root,
+        `src/pages/many-${i}.html`,
+        `<!DOCTYPE html><html><head><title>Many ${i}</title></head><body><p data-testid="m${i}">${i}</p></body></html>`,
+      );
     }
     try {
       await writeWorkersConfig(root, true);
       await runBuild(root);
-      const manyWorkers = toInventory(await readEmittedFiles(join(root, "dist")));
+      const manyWorkers = toInventory(
+        await readEmittedFiles(join(root, "dist")),
+      );
 
       // Serial control with the same authored input.
       await writeWorkersConfig(root, false);
       await runBuild(root);
       const serial = toInventory(await readEmittedFiles(join(root, "dist")));
 
-      expect(Object.keys(manyWorkers.files).sort()).toEqual(Object.keys(serial.files).sort());
+      expect(Object.keys(manyWorkers.files).sort()).toEqual(
+        Object.keys(serial.files).sort(),
+      );
       for (const rel of Object.keys(serial.files)) {
         expect(manyWorkers.files[rel]).toEqual(serial.files[rel]);
       }
@@ -228,7 +252,10 @@ describe("manifest integrity", () => {
       } catch (err: unknown) {
         buildFailed = true;
         const execErr = err as { stdout?: string; stderr?: string };
-        runResult = { stdout: execErr.stdout ?? "", stderr: execErr.stderr ?? "" };
+        runResult = {
+          stdout: execErr.stdout ?? "",
+          stderr: execErr.stderr ?? "",
+        };
       }
 
       expect(buildFailed).toBe(true);

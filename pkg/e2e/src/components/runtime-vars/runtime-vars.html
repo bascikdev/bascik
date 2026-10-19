@@ -19,15 +19,19 @@
       result.textContent = "set --theme-color directly";
     });
 
-    document.getElementById("set-unscoped-btn").addEventListener("click", () => {
-      // Setting the original name — won't affect the scoped CSS since the CSS
-      // uses the scoped --bascik__runtime-vars__theme-color name
-      root.style.setProperty("--unscoped-color", "rgb(239, 68, 68)");
-      result.textContent = "set --unscoped-color (unused by CSS)";
-    });
+    document
+      .getElementById("set-unscoped-btn")
+      .addEventListener("click", () => {
+        // Setting the original name — won't affect the scoped CSS since the CSS
+        // uses the scoped --bascik__runtime-vars__theme-color name
+        root.style.setProperty("--unscoped-color", "rgb(239, 68, 68)");
+        result.textContent = "set --unscoped-color (unused by CSS)";
+      });
 
     document.getElementById("read-var-btn").addEventListener("click", () => {
-      const val = getComputedStyle(root).getPropertyValue("--theme-color").trim();
+      const val = getComputedStyle(root)
+        .getPropertyValue("--theme-color")
+        .trim();
       result.textContent = "--theme-color = '" + val + "'";
     });
 

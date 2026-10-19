@@ -10,19 +10,19 @@ WordPress is a PHP content management system that renders pages from a database 
 
 ## Mental Model Comparison
 
-| Concept | WordPress | Bascik |
-| --- | --- | --- |
-| Theme template parts | `header.php`, `footer.php`, `get_template_part()` | `src/components/site-header/site-header.html` (`<site-header>`) |
-| Page templates | `page.php`, `single.php`, `archive.php` | Files in `src/pages/` plus slot-based layout components |
-| The Loop | `while ( have_posts() ) : the_post();` | `<script data-bascik-build>` with Node.js |
-| Template tags | `the_title()`, `the_permalink()` | `data-bascik-prop-*` and `data-bascik-attr-*` |
-| Posts and pages in the database | Markdown files or the REST API at build time | [Dynamic Routes](/dynamic-routes) |
-| Shortcodes and blocks | `[callout]...[/callout]` | Component tags with `data-bascik-slot` |
-| `style.css` and enqueued assets | `wp_enqueue_style()` | Paired `.css` files (auto-scoped and deduplicated) |
-| `functions.php` hooks | `add_action()` and `add_filter()` | Build scripts, [Exec Scripts](/exec-scripts), and [API Routes](/api-routes) |
-| Plugins | PHP plugins | npm packages, build scripts, or hosted services |
-| Media Library | `wp-content/uploads/` | Image files copied into `dist/` by an [Exec Script](/exec-scripts) |
-| Permalinks (`/%year%/%monthnum%/%day%/%postname%/`) | Rewrite rules | One dynamic route template per URL shape, such as `src/pages/[year]/[month]/[day]/[slug]/index.html` |
+| Concept                                             | WordPress                                         | Bascik                                                                                               |
+| --------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Theme template parts                                | `header.php`, `footer.php`, `get_template_part()` | `src/components/site-header/site-header.html` (`<site-header>`)                                      |
+| Page templates                                      | `page.php`, `single.php`, `archive.php`           | Files in `src/pages/` plus slot-based layout components                                              |
+| The Loop                                            | `while ( have_posts() ) : the_post();`            | `<script data-bascik-build>` with Node.js                                                            |
+| Template tags                                       | `the_title()`, `the_permalink()`                  | `data-bascik-prop-*` and `data-bascik-attr-*`                                                        |
+| Posts and pages in the database                     | Markdown files or the REST API at build time      | [Dynamic Routes](/dynamic-routes)                                                                    |
+| Shortcodes and blocks                               | `[callout]...[/callout]`                          | Component tags with `data-bascik-slot`                                                               |
+| `style.css` and enqueued assets                     | `wp_enqueue_style()`                              | Paired `.css` files (auto-scoped and deduplicated)                                                   |
+| `functions.php` hooks                               | `add_action()` and `add_filter()`                 | Build scripts, [Exec Scripts](/exec-scripts), and [API Routes](/api-routes)                          |
+| Plugins                                             | PHP plugins                                       | npm packages, build scripts, or hosted services                                                      |
+| Media Library                                       | `wp-content/uploads/`                             | Image files copied into `dist/` by an [Exec Script](/exec-scripts)                                   |
+| Permalinks (`/%year%/%monthnum%/%day%/%postname%/`) | Rewrite rules                                     | One dynamic route template per URL shape, such as `src/pages/[year]/[month]/[day]/[slug]/index.html` |
 
 ## A Low-Risk First Step
 
@@ -82,16 +82,16 @@ A WordPress template calls `get_header()` and `get_footer()` around the page con
 <!-- src/pages/about.html (Bascik - after) -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <title>About - Acme</title>
-  <meta name="description" content="Learn about Acme Corp." />
-</head>
-<body>
-  <site-layout>
-    <h1>About</h1>
-    <p>We build things.</p>
-  </site-layout>
-</body>
+  <head>
+    <title>About - Acme</title>
+    <meta name="description" content="Learn about Acme Corp." />
+  </head>
+  <body>
+    <site-layout>
+      <h1>About</h1>
+      <p>We build things.</p>
+    </site-layout>
+  </body>
 </html>
 ```
 
@@ -148,22 +148,36 @@ The Loop iterates over posts from the database. The Bascik equivalent is a `<scr
 <!-- src/pages/blog/index.html (Bascik - after) -->
 <ul class="post-list">
   <script data-bascik-build>
-    import { readdir, readFile } from 'node:fs/promises';
-    import matter from 'gray-matter';
+    import { readdir, readFile } from "node:fs/promises";
+    import matter from "gray-matter";
 
-    const escape = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+    const escape = (s) =>
+      String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
     export default async function () {
-      const files = (await readdir('./content/posts')).filter(f => f.endsWith('.md'));
-      const posts = await Promise.all(files.map(async f => {
-        const { data } = matter(await readFile(`./content/posts/${f}`, 'utf8'));
-        return { slug: f.replace('.md', ''), title: data.title, date: new Date(data.date) };
-      }));
+      const files = (await readdir("./content/posts")).filter((f) =>
+        f.endsWith(".md"),
+      );
+      const posts = await Promise.all(
+        files.map(async (f) => {
+          const { data } = matter(
+            await readFile(`./content/posts/${f}`, "utf8"),
+          );
+          return {
+            slug: f.replace(".md", ""),
+            title: data.title,
+            date: new Date(data.date),
+          };
+        }),
+      );
       posts.sort((a, b) => b.date - a.date);
 
-      return posts.map(p =>
-        `<li><a href="/blog/${p.slug}/">${escape(p.title)}</a> <time datetime="${p.date.toISOString()}">${p.date.toISOString().slice(0, 10)}</time></li>`
-      ).join('\n');
+      return posts
+        .map(
+          (p) =>
+            `<li><a href="/blog/${p.slug}/">${escape(p.title)}</a> <time datetime="${p.date.toISOString()}">${p.date.toISOString().slice(0, 10)}</time></li>`,
+        )
+        .join("\n");
     }
   </script>
 </ul>
@@ -178,14 +192,14 @@ Install `gray-matter` (`npm install gray-matter`): the scaffold does not include
 ```html
 <!-- src/pages/blog/[slug].html (Bascik - after) -->
 <script data-bascik-routes>
-  import { readdir } from 'node:fs/promises';
+  import { readdir } from "node:fs/promises";
 
   export default async function () {
-    const files = await readdir('./content/posts');
+    const files = await readdir("./content/posts");
     return files
-      .filter(f => f.endsWith('.md'))
-      .map(f => ({
-        params: { slug: f.replace('.md', '') }
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => ({
+        params: { slug: f.replace(".md", "") },
       }));
   }
 </script>
@@ -233,21 +247,24 @@ WordPress themes usually ship one global stylesheet loaded with `wp_enqueue_styl
 
 Plugins have no direct equivalent because Bascik pages are static HTML. Map each plugin to the closest piece:
 
-| Plugin purpose | Bascik approach |
-| --- | --- |
-| SEO (title, meta, sitemap) | Hardcode tags in pages, and use the built-in [Sitemap and Robots](/sitemap) generation |
-| Contact forms | A handler in `src/api/` (see [API Routes](/api-routes)) or a hosted form service |
-| Search | Build a search index at build time with an [Exec Script](/exec-scripts) |
-| Caching and performance | Not needed for static output; see [Performance](/lighthouse/performance) |
-| Image galleries and sliders | Vanilla JavaScript in a component `<script>`, see [Scoped JavaScript](/scoped-javascript) |
-| Comments, memberships, e-commerce | Hosted services, or keep WordPress for those features |
+| Plugin purpose                    | Bascik approach                                                                           |
+| --------------------------------- | ----------------------------------------------------------------------------------------- |
+| SEO (title, meta, sitemap)        | Hardcode tags in pages, and use the built-in [Sitemap and Robots](/sitemap) generation    |
+| Contact forms                     | A handler in `src/api/` (see [API Routes](/api-routes)) or a hosted form service          |
+| Search                            | Build a search index at build time with an [Exec Script](/exec-scripts)                   |
+| Caching and performance           | Not needed for static output; see [Performance](/lighthouse/performance)                  |
+| Image galleries and sliders       | Vanilla JavaScript in a component `<script>`, see [Scoped JavaScript](/scoped-javascript) |
+| Comments, memberships, e-commerce | Hosted services, or keep WordPress for those features                                     |
 
 ```ts
 // src/api/contact.ts (Bascik - replaces a contact form plugin)
 export const POST = async (request: Request): Promise<Response> => {
   const { name, email, message } = await request.json();
   if (!email || !message) {
-    return Response.json({ error: 'email and message are required' }, { status: 400 });
+    return Response.json(
+      { error: "email and message are required" },
+      { status: 400 },
+    );
   }
   // Send the message with your email provider here.
   return Response.json({ ok: true }, { status: 201 });
@@ -273,16 +290,18 @@ Fetch everything once, in a `pre` [Exec Script](/exec-scripts), rather than in e
 
 ```ts
 // scripts/sync-wordpress.ts (Bascik - a pre exec step; illustrative)
-import { mkdir, writeFile } from 'node:fs/promises';
-import sanitizeHtml from 'sanitize-html';
+import { mkdir, writeFile } from "node:fs/promises";
+import sanitizeHtml from "sanitize-html";
 
 const origin = process.env.WORDPRESS_URL;
 const posts = [];
 for (let page = 1, total = 1; page <= total; page++) {
-  const res = await fetch(`${origin}/wp-json/wp/v2/posts?per_page=100&page=${page}&_embed=wp:term`);
+  const res = await fetch(
+    `${origin}/wp-json/wp/v2/posts?per_page=100&page=${page}&_embed=wp:term`,
+  );
   if (!res.ok) throw new Error(`WordPress returned ${res.status}`);
-  total = Number(res.headers.get('x-wp-totalpages') ?? 1);
-  posts.push(...await res.json());
+  total = Number(res.headers.get("x-wp-totalpages") ?? 1);
+  posts.push(...(await res.json()));
 }
 const snapshot = posts.map((post) => ({
   slug: post.slug,
@@ -290,19 +309,24 @@ const snapshot = posts.map((post) => ({
   title: sanitizeHtml(post.title.rendered, { allowedTags: [] }),
   html: sanitizeHtml(post.content.rendered),
 }));
-await mkdir('node_modules/.cache/site', { recursive: true });
-await writeFile('node_modules/.cache/site/posts.json', JSON.stringify(snapshot));
+await mkdir("node_modules/.cache/site", { recursive: true });
+await writeFile(
+  "node_modules/.cache/site/posts.json",
+  JSON.stringify(snapshot),
+);
 ```
 
 ```html
 <!-- src/pages/[year]/[month]/[day]/[slug]/index.html (Bascik - after) -->
 <script data-bascik-routes>
-  import { readFile } from 'node:fs/promises';
+  import { readFile } from "node:fs/promises";
 
   export default async function () {
-    const posts = JSON.parse(await readFile('node_modules/.cache/site/posts.json', 'utf8'));
+    const posts = JSON.parse(
+      await readFile("node_modules/.cache/site/posts.json", "utf8"),
+    );
     return posts.map((post) => {
-      const [year, month, day] = post.date.slice(0, 10).split('-');
+      const [year, month, day] = post.date.slice(0, 10).split("-");
       return { params: { year, month, day, slug: post.slug } };
     });
   }

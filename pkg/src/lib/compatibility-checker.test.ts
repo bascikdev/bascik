@@ -21,7 +21,7 @@ describe("compatibility-rules contract & positive/negative probes", () => {
       negative: [
         "#hero { color: red; }",
         ".card[data-id='hero'] { color: blue; }",
-        '/* [id] { color: red; } */',
+        "/* [id] { color: red; } */",
         '.card::before { content: "[id]"; }',
       ],
     },
@@ -31,6 +31,8 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         "[data-state] { color: red; }",
         "[data-state]:hover { color: red; }",
         "[data-state][hidden] { color: red; }",
+        "[data-state]:not(.disabled) { color: red; }",
+        "[data-state]:is(.disabled, button) { color: red; }",
         '[data-open="true"] { display: block; }',
         ".ok, [aria-expanded='true'] { opacity: 1; }",
       ],
@@ -39,6 +41,7 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         '[data-stocked="false"] .name { color: red; }',
         "[data-state] .scoped-class { color: red; }",
         "[data-state] > .scoped-class { color: red; }",
+        "[data-state]:not(.disabled) .card { color: red; }",
         "html[data-theme='dark'] .box { color: white; }",
         "/* [data-state] { color: red; } */",
         "/* bascik-ignore css-attribute-selector */\n[data-state] { color: red; }",
@@ -91,10 +94,7 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         "el.className = `card ${state}`;",
         "el.classList.replace('old', `btn-${variant}`);",
       ],
-      negative: [
-        'el.className = "card active";',
-        'el.classList.add("card");',
-      ],
+      negative: ['el.className = "card active";', 'el.classList.add("card");'],
     },
     "js-style-setproperty": {
       kind: "js",
@@ -153,23 +153,29 @@ describe("compatibility-rules contract & positive/negative probes", () => {
     expect(testedIds).toEqual(definedIds);
   });
 
-  for (const [ruleId, { kind, positive, negative }] of Object.entries(ruleVectors)) {
+  for (const [ruleId, { kind, positive, negative }] of Object.entries(
+    ruleVectors,
+  )) {
     describe(`rule: ${ruleId}`, () => {
       it.each(positive)("matches positive case: %s", (sample) => {
         const matches = findCompatibilityMatches(sample, kind);
         expect(matches.map((m) => m.rule.id)).toContain(ruleId);
       });
 
-      it.each(negative)("does not match negative/ignored case: %s", (sample) => {
-        const matches = findCompatibilityMatches(sample, kind);
-        expect(matches.map((m) => m.rule.id)).not.toContain(ruleId);
-      });
+      it.each(negative)(
+        "does not match negative/ignored case: %s",
+        (sample) => {
+          const matches = findCompatibilityMatches(sample, kind);
+          expect(matches.map((m) => m.rule.id)).not.toContain(ruleId);
+        },
+      );
     });
   }
 });
 
 describe("bascik-disable and bascik-ignore rule lists", () => {
-  const source = "document.querySelector('.a');\nel.querySelector('[data-x]');\n";
+  const source =
+    "document.querySelector('.a');\nel.querySelector('[data-x]');\n";
 
   it("scans both rules when nothing is disabled", () => {
     const ids = findCompatibilityMatches(source, "js").map((m) => m.rule.id);
@@ -182,7 +188,9 @@ describe("bascik-disable and bascik-ignore rule lists", () => {
     "/* bascik-disable js-attribute-selector, js-document-class-query */",
     "/* bascik-disable js-attribute-selector , js-document-class-query */",
   ])("honors a block comment that lists several rules: %s", (directive) => {
-    expect(findCompatibilityMatches(`${directive}\n${source}`, "js")).toEqual([]);
+    expect(findCompatibilityMatches(`${directive}\n${source}`, "js")).toEqual(
+      [],
+    );
   });
 
   it("honors a line comment that lists several rules separated by comma and space", () => {
@@ -191,9 +199,10 @@ describe("bascik-disable and bascik-ignore rule lists", () => {
   });
 
   it("only disables the listed rules", () => {
-    const ids = findCompatibilityMatches(`/* bascik-disable js-attribute-selector, js-other */\n${source}`, "js").map(
-      (m) => m.rule.id,
-    );
+    const ids = findCompatibilityMatches(
+      `/* bascik-disable js-attribute-selector, js-other */\n${source}`,
+      "js",
+    ).map((m) => m.rule.id);
     expect(ids).toEqual(["js-document-class-query"]);
   });
 });
@@ -213,23 +222,44 @@ describe("maskComments", () => {
       );
 
   const tricky = fc
-    .array(fc.constantFrom('"', "'", "`", "\\", "/", "*", "(", ")", "url(", "u", " ", "\n", "a", "[id]"), { maxLength: 60 })
+    .array(
+      fc.constantFrom(
+        '"',
+        "'",
+        "`",
+        "\\",
+        "/",
+        "*",
+        "(",
+        ")",
+        "url(",
+        "u",
+        " ",
+        "\n",
+        "a",
+        "[id]",
+      ),
+      { maxLength: 60 },
+    )
     .map((parts) => parts.join(""));
 
-  it.each(["css", "js"] as const)("gives the same %s output as the regex it replaced", (kind) => {
-    fc.assert(
-      fc.property(tricky, (text) => {
-        expect(maskComments(text, kind)).toBe(reference(text, kind));
-      }),
-      { numRuns: 2000 },
-    );
-  });
+  it.each(["css", "js"] as const)(
+    "gives the same %s output as the regex it replaced",
+    (kind) => {
+      fc.assert(
+        fc.property(tricky, (text) => {
+          expect(maskComments(text, kind)).toBe(reference(text, kind));
+        }),
+        { numRuns: 2000 },
+      );
+    },
+  );
 
   it.each([
     ["css", '"' + '\\"'.repeat(100_000)],
     ["css", "'" + "\\'".repeat(100_000)],
     ["css", "url( ".repeat(60_000)],
-    ["css", "url(\"".repeat(60_000)],
+    ["css", 'url("'.repeat(60_000)],
     ["css", "/*a".repeat(60_000)],
     ["js", "`" + "\\`".repeat(100_000)],
     ["js", "/*a".repeat(60_000)],

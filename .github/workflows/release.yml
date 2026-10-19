@@ -11,12 +11,12 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
-      - 'create-v*.*.*'
-      - 'adapter-cloudflare-v*.*.*'
-      - 'lsp-v*.*.*'
-      - 'ext-v*.*.*'
-      - 'ext-pre-v*.*.*'
+      - "v*.*.*"
+      - "create-v*.*.*"
+      - "adapter-cloudflare-v*.*.*"
+      - "lsp-v*.*.*"
+      - "ext-v*.*.*"
+      - "ext-pre-v*.*.*"
 
 jobs:
   release:
@@ -37,8 +37,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          registry-url: 'https://registry.npmjs.org'
-          cache: 'yarn'
+          registry-url: "https://registry.npmjs.org"
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -73,8 +73,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          registry-url: 'https://registry.npmjs.org'
-          cache: 'yarn'
+          registry-url: "https://registry.npmjs.org"
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -114,8 +114,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          registry-url: 'https://registry.npmjs.org'
-          cache: 'yarn'
+          registry-url: "https://registry.npmjs.org"
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -150,8 +150,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          registry-url: 'https://registry.npmjs.org'
-          cache: 'yarn'
+          registry-url: "https://registry.npmjs.org"
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -188,7 +188,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable

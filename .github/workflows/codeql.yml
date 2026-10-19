@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: '0 6 * * 1'
+    - cron: "0 6 * * 1"
 
 jobs:
   analyze:
@@ -23,7 +23,7 @@ jobs:
       matrix:
         include:
           - language: actions
-            packs: ''
+            packs: ""
           - language: javascript-typescript
             # Marks results that have a `// codeql[rule-id]` comment on the line
             # before them as suppressed in the SARIF.

@@ -1,4 +1,8 @@
-import { spawnSync, type SpawnSyncOptions, type SpawnSyncReturns } from "node:child_process";
+import {
+  spawnSync,
+  type SpawnSyncOptions,
+  type SpawnSyncReturns,
+} from "node:child_process";
 
 type SpawnSyncFunction = (
   command: string,
@@ -24,7 +28,10 @@ export const npmInvocation = (
   env: NodeJS.ProcessEnv = process.env,
 ): NpmInvocation =>
   platform === "win32"
-    ? { command: env.ComSpec || "cmd.exe", args: ["/d", "/s", "/c", "npm", ...args] }
+    ? {
+        command: env.ComSpec || "cmd.exe",
+        args: ["/d", "/s", "/c", "npm", ...args],
+      }
     : { command: "npm", args };
 
 export interface RunNpmResult {
@@ -43,8 +50,15 @@ export const runNpm = (
     spawn?: SpawnSyncFunction;
   } = {},
 ): RunNpmResult => {
-  const { command, args: commandArgs } = npmInvocation(args, options.platform, options.env);
-  const result = (options.spawn ?? spawnSync)(command, commandArgs, { cwd, stdio: "inherit" });
+  const { command, args: commandArgs } = npmInvocation(
+    args,
+    options.platform,
+    options.env,
+  );
+  const result = (options.spawn ?? spawnSync)(command, commandArgs, {
+    cwd,
+    stdio: "inherit",
+  });
   if (result.error) return { ok: false, error: result.error.message };
   return { ok: result.status === 0 };
 };

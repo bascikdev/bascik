@@ -27,7 +27,11 @@ describe("createExternalTagMatcher", () => {
   });
 
   it("treats regex metacharacters in entries literally and ignores non-strings", () => {
-    const matches = createExternalTagMatcher(["a.b-c", 42 as unknown as string, ""]);
+    const matches = createExternalTagMatcher([
+      "a.b-c",
+      42 as unknown as string,
+      "",
+    ]);
     expect(matches("a.b-c")).toBe(true);
     expect(matches("axb-c")).toBe(false);
   });

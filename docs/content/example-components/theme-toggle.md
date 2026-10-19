@@ -9,6 +9,7 @@ A button that switches between light and dark themes and remembers the choice, p
 Put `<theme-init />` in the `<head>` of every page, usually through a shared head component, and `<theme-toggle />` wherever the button belongs. Both need the `color-scheme` rules from a token stylesheet; see [Theming](/how-to/theming).
 
 <!-- demo:usage -->
+
 ```html
 <theme-toggle />
 ```

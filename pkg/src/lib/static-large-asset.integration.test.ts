@@ -25,7 +25,16 @@
  * margin and far below the buffered floor.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, writeFile, mkdir, readFile, stat as fsStat, appendFile, truncate } from "node:fs/promises";
+import {
+  mkdtemp,
+  rm,
+  writeFile,
+  mkdir,
+  readFile,
+  stat as fsStat,
+  appendFile,
+  truncate,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFile as execFileCb } from "node:child_process";
@@ -113,11 +122,23 @@ const http1Fetch = (
   new Promise((resolve, reject) => {
     const addr = server.address() as net.AddressInfo;
     const req = http.request(
-      { host: "127.0.0.1", port: addr.port, path, method: options.method ?? "GET", headers: options.headers },
+      {
+        host: "127.0.0.1",
+        port: addr.port,
+        path,
+        method: options.method ?? "GET",
+        headers: options.headers,
+      },
       (res) => {
         const chunks: Buffer[] = [];
         res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, raw: Buffer.concat(chunks) }));
+        res.on("end", () =>
+          resolve({
+            status: res.statusCode ?? 0,
+            headers: res.headers,
+            raw: Buffer.concat(chunks),
+          }),
+        );
       },
     );
     req.on("error", reject);
@@ -131,16 +152,28 @@ const http2Fetch = (
 ): Promise<FetchResult> =>
   new Promise((resolve, reject) => {
     const addr = server.address() as net.AddressInfo;
-    const client = http2.connect(`https://127.0.0.1:${addr.port}`, { rejectUnauthorized: false });
+    const client = http2.connect(`https://127.0.0.1:${addr.port}`, {
+      rejectUnauthorized: false,
+    });
     client.on("error", reject);
-    const req = client.request({ ":method": options.method ?? "GET", ":path": path, ...options.headers });
+    const req = client.request({
+      ":method": options.method ?? "GET",
+      ":path": path,
+      ...options.headers,
+    });
     req.on("error", reject);
     const chunks: Buffer[] = [];
     let rHeaders: http.IncomingHttpHeaders = {};
-    req.on("response", (h) => { rHeaders = h; });
+    req.on("response", (h) => {
+      rHeaders = h;
+    });
     req.on("data", (c: Buffer) => chunks.push(c));
     req.on("end", () => {
-      resolve({ status: Number(rHeaders[":status"]) || 0, headers: rHeaders, raw: Buffer.concat(chunks) });
+      resolve({
+        status: Number(rHeaders[":status"]) || 0,
+        headers: rHeaders,
+        raw: Buffer.concat(chunks),
+      });
       client.close();
     });
   });
@@ -200,7 +233,14 @@ const childBurst = async (
   try {
     const { stdout } = await execFile(
       process.execPath,
-      ["--input-type=module", "-e", CHILD_BURST_CLIENT, String(addr.port), acceptEncoding, ...paths],
+      [
+        "--input-type=module",
+        "-e",
+        CHILD_BURST_CLIENT,
+        String(addr.port),
+        acceptEncoding,
+        ...paths,
+      ],
       { maxBuffer: 1024 * 1024 },
     );
     return { results: JSON.parse(stdout) as DigestResult[], peakRss };
@@ -214,12 +254,14 @@ const makeHttp1Server = (): http.Server => {
   const handleRequest = createRequestHandler();
   server.on("request", (reqMsg, resMsg) => {
     const { req, res } = adaptHttp1(reqMsg, resMsg);
-    handleRequest(req, res).catch(() => { });
+    handleRequest(req, res).catch(() => {});
   });
   return server;
 };
 
-const makeHttp2Server = async (certDir: string): Promise<http2.Http2SecureServer> => {
+const makeHttp2Server = async (
+  certDir: string,
+): Promise<http2.Http2SecureServer> => {
   await mkdir(certDir, { recursive: true });
   // The package's own certificate helper (mkcert, then openssl fallback), so
   // the test does not carry a second copy of the openssl invocation. It only
@@ -244,7 +286,7 @@ const makeHttp2Server = async (certDir: string): Promise<http2.Http2SecureServer
   const handleRequest = createRequestHandler();
   server.on("stream", (stream, headers) => {
     const { req, res } = adaptHttp2(stream, headers);
-    handleRequest(req, res).catch(() => { });
+    handleRequest(req, res).catch(() => {});
   });
   return server;
 };
@@ -259,7 +301,7 @@ const makeLargeBody = (size: number): Buffer => {
 const waitFor = async (predicate: () => boolean): Promise<void> => {
   // Event-driven settle: yield to the event loop until the predicate holds.
   // Bounded by the vitest test timeout, no fixed sleep.
-  for (; ;) {
+  for (;;) {
     if (predicate()) return;
     await new Promise<void>((r) => setImmediate(r));
   }
@@ -288,12 +330,14 @@ describe("Prompt 140 - large static assets are streamed with a weak validator", 
     clearStaticRepresentationCache();
     await new Promise<void>((r) => http1Server.close(() => r()));
     await new Promise<void>((r) => http2Server.close(() => r()));
-    await rm(dist, { recursive: true, force: true }).catch(() => { });
+    await rm(dist, { recursive: true, force: true }).catch(() => {});
   });
 
   it("the streaming bound is a real constant no larger than the cache bound", () => {
     expect(MAX_BUFFERED_ASSET_BYTES).toBeGreaterThan(0);
-    expect(MAX_BUFFERED_ASSET_BYTES).toBeLessThanOrEqual(MAX_CACHED_REPRESENTATION_BYTES);
+    expect(MAX_BUFFERED_ASSET_BYTES).toBeLessThanOrEqual(
+      MAX_CACHED_REPRESENTATION_BYTES,
+    );
   });
 
   it("8 concurrent GETs (HTTP/1.1) return byte-exact bodies, a weak ETag, and bounded peak RSS growth", async () => {
@@ -305,7 +349,9 @@ describe("Prompt 140 - large static assets are streamed with a weak validator", 
 
     // Warm the path once so lazy module allocation is not attributed to the
     // burst, then take the baseline.
-    const warm = await http1Fetch(http1Server, "/big.bin", { headers: { "accept-encoding": "identity" } });
+    const warm = await http1Fetch(http1Server, "/big.bin", {
+      headers: { "accept-encoding": "identity" },
+    });
     expect(warm.status).toBe(200);
     forceGc();
     const before = process.memoryUsage().rss;
@@ -313,10 +359,16 @@ describe("Prompt 140 - large static assets are streamed with a weak validator", 
     const expectedDigest = createHash("sha256").update(largeBody).digest("hex");
     // A compressible Accept-Encoding proves large assets never take the
     // buffer-compress path: they stay on streamed identity.
-    const { results, peakRss } = await childBurst(http1Server, names.map((n) => `/${n}`), "br, gzip");
+    const { results, peakRss } = await childBurst(
+      http1Server,
+      names.map((n) => `/${n}`),
+      "br, gzip",
+    );
     const growth = peakRss - before;
     // Recorded for the report; the bound is 4x the file size (see header).
-    console.log(`[140] peak RSS growth during 8-way burst: ${(growth / 1024 / 1024).toFixed(1)} MiB (${(growth / LARGE).toFixed(2)}x file)`);
+    console.log(
+      `[140] peak RSS growth during 8-way burst: ${(growth / 1024 / 1024).toFixed(1)} MiB (${(growth / LARGE).toFixed(2)}x file)`,
+    );
 
     for (const r of results) {
       expect(r.status).toBe(200);
@@ -324,7 +376,9 @@ describe("Prompt 140 - large static assets are streamed with a weak validator", 
       expect(r.headers["content-encoding"]).toBeUndefined();
       expect(r.bytes).toBe(LARGE);
       expect(r.sha256).toBe(expectedDigest);
-      expect(String(r.headers.etag)).toMatch(/^W\/"[0-9a-z]+-[0-9a-z]+-[0-9a-z]+"$/);
+      expect(String(r.headers.etag)).toMatch(
+        /^W\/"[0-9a-z]+-[0-9a-z]+-[0-9a-z]+"$/,
+      );
     }
     // Never retained in the representation cache.
     expect(getCompressedCacheEntriesCount()).toBe(0);
@@ -332,7 +386,9 @@ describe("Prompt 140 - large static assets are streamed with a weak validator", 
   });
 
   it("HTTP/2 streams the same bytes with the same weak validator", async () => {
-    const res = await http2Fetch(http2Server, "/big.bin", { headers: { "accept-encoding": "br" } });
+    const res = await http2Fetch(http2Server, "/big.bin", {
+      headers: { "accept-encoding": "br" },
+    });
     expect(res.status).toBe(200);
     expect(Number(res.headers["content-length"])).toBe(LARGE);
     expect(res.raw.equals(largeBody)).toBe(true);
@@ -350,7 +406,9 @@ describe("Prompt 140 - large static assets are streamed with a weak validator", 
   it("conditional GET with the weak ETag returns 304 and HEAD carries length without a body", async () => {
     const first = await http1Fetch(http1Server, "/big.bin");
     const etag = String(first.headers.etag);
-    const cond = await http1Fetch(http1Server, "/big.bin", { headers: { "if-none-match": etag } });
+    const cond = await http1Fetch(http1Server, "/big.bin", {
+      headers: { "if-none-match": etag },
+    });
     expect(cond.status).toBe(304);
     expect(cond.raw.byteLength).toBe(0);
     expect(cond.headers.etag).toBe(etag);
@@ -370,7 +428,9 @@ describe("Prompt 140 - large static assets are streamed with a weak validator", 
     // Raw socket so we can stop reading and destroy after the first bytes.
     const gotFirstBytes = new Promise<void>((resolve, reject) => {
       const socket = net.connect(addr.port, "127.0.0.1", () => {
-        socket.write(`GET /big.bin HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`);
+        socket.write(
+          `GET /big.bin HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`,
+        );
       });
       socket.once("data", () => {
         // Headers plus the first chunk have arrived; the server has a stream
@@ -394,13 +454,19 @@ describe("Prompt 140 - large static assets are streamed with a weak validator", 
    */
   const MUTATE_SIZE = 16 * 1024 * 1024;
 
-  const parseHttp1Head = (buf: Buffer): { headEnd: number; status: number; contentLength: number } | null => {
+  const parseHttp1Head = (
+    buf: Buffer,
+  ): { headEnd: number; status: number; contentLength: number } | null => {
     const idx = buf.indexOf("\r\n\r\n");
     if (idx < 0) return null;
     const head = buf.subarray(0, idx).toString("latin1");
     const status = Number(/^HTTP\/1\.1 (\d{3})/.exec(head)?.[1] ?? 0);
     const cl = /content-length:\s*(\d+)/i.exec(head);
-    return { headEnd: idx + 4, status, contentLength: cl ? Number(cl[1]) : NaN };
+    return {
+      headEnd: idx + 4,
+      status,
+      contentLength: cl ? Number(cl[1]) : NaN,
+    };
   };
 
   it("clamps the streamed body to the advertised content-length when the file grows mid-stream, and the keep-alive socket stays usable", async () => {
@@ -433,7 +499,9 @@ describe("Prompt 140 - large static assets are streamed with a weak validator", 
     socket.resume();
     // Second request on the same keep-alive connection; `Connection: close`
     // makes the server end the socket after it, which bounds the test.
-    socket.write(`GET /small.txt HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`);
+    socket.write(
+      `GET /small.txt HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`,
+    );
     await closed;
 
     const wire = Buffer.concat(chunks);
@@ -462,8 +530,8 @@ describe("Prompt 140 - large static assets are streamed with a weak validator", 
     // Turn the access log on for this test so the logged status is observable.
     (BascikConfig.logging as { requests: boolean }).requests = true;
     vi.mocked(shouldLog).mockReturnValue(true);
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const chunks: Buffer[] = [];
       const socket = net.connect(addr.port, "127.0.0.1");
@@ -499,13 +567,23 @@ describe("Prompt 140 - large static assets are streamed with a weak validator", 
       expect(wire.byteLength - head!.headEnd).toBeLessThan(MUTATE_SIZE);
       expect(socket.destroyed).toBe(true);
 
-      await waitFor(() => logSpy.mock.calls.some((c) => String(c[0]).includes("/shrink.bin")));
-      const accessLine = logSpy.mock.calls.map((c) => String(c[0])).find((l) => l.includes("/shrink.bin"))!;
+      await waitFor(() =>
+        logSpy.mock.calls.some((c) => String(c[0]).includes("/shrink.bin")),
+      );
+      const accessLine = logSpy.mock.calls
+        .map((c) => String(c[0]))
+        .find((l) => l.includes("/shrink.bin"))!;
       expect(accessLine).toMatch(/^GET \/shrink\.bin 500 /);
       // Logged once, by the delivery, not again by the outer handler.
-      const truncationLogs = errorSpy.mock.calls.filter((c) => /streamed asset/.test(String(c[0])));
+      const truncationLogs = errorSpy.mock.calls.filter((c) =>
+        /streamed asset/.test(String(c[0])),
+      );
       expect(truncationLogs).toHaveLength(1);
-      expect(errorSpy.mock.calls.filter((c) => /Request\/Stream error/.test(String(c[0])))).toHaveLength(0);
+      expect(
+        errorSpy.mock.calls.filter((c) =>
+          /Request\/Stream error/.test(String(c[0])),
+        ),
+      ).toHaveLength(0);
       await waitFor(() => getOpenStreamedAssetHandles() === 0);
     } finally {
       logSpy.mockRestore();
@@ -538,21 +616,28 @@ describe("Prompt 140 - precompressed sidecars round trip from build to server", 
     // Produce the sidecars exactly as `bascik --build` does with
     // `http.precompress: true`: the finalize transaction walks what the build
     // recorded and emits `.br`/`.gz` plus `.bmeta` provenance.
-    (BascikConfig as { http: { precompress?: boolean } }).http.precompress = true;
+    (BascikConfig as { http: { precompress?: boolean } }).http.precompress =
+      true;
     manifestCollector.clear();
     await manifestCollector.recordFileFromDisk(join(dist, "styles.css"));
     const { emitted } = await emitPrecompressedSidecars();
-    expect(emitted.sort()).toEqual(["styles.css.br", "styles.css.br.bmeta", "styles.css.gz", "styles.css.gz.bmeta"]);
+    expect(emitted.sort()).toEqual([
+      "styles.css.br",
+      "styles.css.br.bmeta",
+      "styles.css.gz",
+      "styles.css.gz.bmeta",
+    ]);
     http1Server = makeHttp1Server();
     await new Promise<void>((r) => http1Server.listen(0, "127.0.0.1", r));
   });
 
   afterEach(async () => {
-    (BascikConfig as { http: { precompress?: boolean } }).http.precompress = false;
+    (BascikConfig as { http: { precompress?: boolean } }).http.precompress =
+      false;
     manifestCollector.clear();
     clearStaticRepresentationCache();
     await new Promise<void>((r) => http1Server.close(() => r()));
-    await rm(dist, { recursive: true, force: true }).catch(() => { });
+    await rm(dist, { recursive: true, force: true }).catch(() => {});
   });
 
   it("serves the emitted .br sidecar verbatim with the encoded ETag and no on-the-fly compression", async () => {
@@ -561,11 +646,15 @@ describe("Prompt 140 - precompressed sidecars round trip from build to server", 
     // cannot observe it; the owner exposes a timing-independent counter.
     const codecRunsBefore = getOnTheFlyCompressionCount();
 
-    const res = await http1Fetch(http1Server, "/styles.css", { headers: { "accept-encoding": "br" } });
+    const res = await http1Fetch(http1Server, "/styles.css", {
+      headers: { "accept-encoding": "br" },
+    });
     expect(res.status).toBe(200);
     expect(res.headers["content-encoding"]).toBe("br");
     expect(res.raw.equals(sidecar)).toBe(true);
-    expect(res.headers.etag).toBe(getEncodedEtag(getContentHashEtag(cssBody), "br"));
+    expect(res.headers.etag).toBe(
+      getEncodedEtag(getContentHashEtag(cssBody), "br"),
+    );
     expect(Number(res.headers["content-length"])).toBe(sidecar.byteLength);
     expect(zlib.brotliDecompressSync(res.raw).equals(cssBody)).toBe(true);
     expect(getOnTheFlyCompressionCount()).toBe(codecRunsBefore);
@@ -574,18 +663,25 @@ describe("Prompt 140 - precompressed sidecars round trip from build to server", 
   it("falls back to on-the-fly compression when the .bmeta rawHash does not match the current asset", async () => {
     // Corrupt the provenance: the sidecar bytes are still valid Brotli of the
     // current file, but the stamp no longer proves it, so it must be ignored.
-    await writeFile(join(dist, "styles.css.br.bmeta"), JSON.stringify({ rawHash: '"deadbeef"' }));
+    await writeFile(
+      join(dist, "styles.css.br.bmeta"),
+      JSON.stringify({ rawHash: '"deadbeef"' }),
+    );
     const sidecar = await readFile(join(dist, "styles.css.br"));
     const codecRunsBefore = getOnTheFlyCompressionCount();
 
-    const res = await http1Fetch(http1Server, "/styles.css", { headers: { "accept-encoding": "br" } });
+    const res = await http1Fetch(http1Server, "/styles.css", {
+      headers: { "accept-encoding": "br" },
+    });
     expect(res.status).toBe(200);
     expect(res.headers["content-encoding"]).toBe("br");
     expect(getOnTheFlyCompressionCount()).toBe(codecRunsBefore + 1);
     // Body is a fresh compression of the current bytes, not the sidecar
     // (compared by decoded content since two Brotli encoders may differ).
     expect(zlib.brotliDecompressSync(res.raw).equals(cssBody)).toBe(true);
-    expect(res.headers.etag).toBe(getEncodedEtag(getContentHashEtag(cssBody), "br"));
+    expect(res.headers.etag).toBe(
+      getEncodedEtag(getContentHashEtag(cssBody), "br"),
+    );
     // The on-the-fly path is chosen even though the sidecar bytes would have decoded fine.
     expect(zlib.brotliDecompressSync(sidecar).equals(cssBody)).toBe(true);
   });

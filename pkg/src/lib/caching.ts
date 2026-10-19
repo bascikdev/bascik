@@ -19,7 +19,8 @@ export const MAX_BUFFERED_ASSET_BYTES = MAX_CACHED_REPRESENTATION_BYTES;
 
 let openStreamedAssetHandles = 0;
 /** Number of streamed-asset file handles currently open (test observability). */
-export const getOpenStreamedAssetHandles = (): number => openStreamedAssetHandles;
+export const getOpenStreamedAssetHandles = (): number =>
+  openStreamedAssetHandles;
 
 let onTheFlyCompressions = 0;
 /**
@@ -56,7 +57,10 @@ interface ReprCacheItem {
 }
 
 // Single-flight in-progress representation reads/compressions.
-const inFlightRepresentations = new Map<string, Promise<StaticRepresentation | null>>();
+const inFlightRepresentations = new Map<
+  string,
+  Promise<StaticRepresentation | null>
+>();
 
 // Bounded in-memory representation cache (raw and encoded shares one store).
 const representationCache = new Map<string, ReprCacheItem>();
@@ -68,7 +72,8 @@ export const clearStaticRepresentationCache = (): void => {
 };
 
 // Back-compat alias used by the shutdown lifecycle and prompt 96 tests.
-export const clearCompressedRepresentationCache = clearStaticRepresentationCache;
+export const clearCompressedRepresentationCache =
+  clearStaticRepresentationCache;
 
 /** Number of in-progress single-flight representation ops. */
 export const getInFlightCompressionsCount = (): number => {
@@ -180,17 +185,26 @@ export const getStaticRepresentation = async (
 
     if (encoding === "br" || encoding === "gzip") {
       // Prefer a verified precompressed sidecar bound to these exact raw bytes.
-      const verified = await getVerifiedPrecompressedBytes(fullPath, encoding, rawEtag);
+      const verified = await getVerifiedPrecompressedBytes(
+        fullPath,
+        encoding,
+        rawEtag,
+      );
       if (verified && verified.length > 0) {
         buffer = verified;
         reprEncoding = encoding;
         etag = getEncodedEtag(rawEtag, encoding);
       } else {
         onTheFlyCompressions++;
-        const compressed = encoding === "br"
-          ? await brotliCompressAsync(raw)
-          : await gzipAsync(raw);
-        if (!compressed || !Buffer.isBuffer(compressed) || compressed.length === 0) {
+        const compressed =
+          encoding === "br"
+            ? await brotliCompressAsync(raw)
+            : await gzipAsync(raw);
+        if (
+          !compressed ||
+          !Buffer.isBuffer(compressed) ||
+          compressed.length === 0
+        ) {
           // Compression unavailable: this asset cannot be served encoded.
           return null;
         }
@@ -258,7 +272,11 @@ export interface BufferedStaticDelivery {
 export type StaticDelivery = BufferedStaticDelivery | StreamedStaticDelivery;
 
 /** Weak validator for a streamed asset, derived from the opened handle's stat. */
-export const makeStreamedAssetEtag = (st: { size: number; mtimeMs: number; ino: number | bigint }): string =>
+export const makeStreamedAssetEtag = (st: {
+  size: number;
+  mtimeMs: number;
+  ino: number | bigint;
+}): string =>
   `W/"${st.size.toString(36)}-${Math.trunc(st.mtimeMs).toString(36)}-${st.ino.toString(36)}"`;
 
 /**
@@ -281,10 +299,26 @@ export const getStaticDelivery = async (
   stat: { size: number; mtimeMs: number },
 ): Promise<StaticDelivery | null> => {
   if (stat.size <= MAX_BUFFERED_ASSET_BYTES) {
-    const representation = encoding === "identity"
-      ? await getStaticRepresentation(fullPath, "identity", stat.mtimeMs, stat.size)
-      : (await getStaticRepresentation(fullPath, encoding, stat.mtimeMs, stat.size))
-      ?? await getStaticRepresentation(fullPath, "identity", stat.mtimeMs, stat.size);
+    const representation =
+      encoding === "identity"
+        ? await getStaticRepresentation(
+            fullPath,
+            "identity",
+            stat.mtimeMs,
+            stat.size,
+          )
+        : ((await getStaticRepresentation(
+            fullPath,
+            encoding,
+            stat.mtimeMs,
+            stat.size,
+          )) ??
+          (await getStaticRepresentation(
+            fullPath,
+            "identity",
+            stat.mtimeMs,
+            stat.size,
+          )));
     return representation ? { kind: "buffered", representation } : null;
   }
 
@@ -334,7 +368,7 @@ export const getCompressedStaticAsset = async (
   fullPath: string,
   mtimeMs: number,
   size: number,
-  encoding: "br" | "gzip"
+  encoding: "br" | "gzip",
 ): Promise<Buffer | null> => {
   const repr = await getStaticRepresentation(fullPath, encoding, mtimeMs, size);
   return repr ? repr.buffer : null;
@@ -355,14 +389,17 @@ export const getContentHashEtag = (content: Buffer | string): string => {
   return `"${hash}"`;
 };
 
-export const getEncodedEtag = (etag: string, encoding: "br" | "gzip"): string => {
+export const getEncodedEtag = (
+  etag: string,
+  encoding: "br" | "gzip",
+): string => {
   const inner = etag.replace(/^W\//, "").replace(/^"/, "").replace(/"$/, "");
   return `"${inner}-${encoding}"`;
 };
 
 export const resolveCacheControl = (
   ext: string,
-  configCacheControl?: string | Record<string, string>
+  configCacheControl?: string | Record<string, string>,
 ): string => {
   if (typeof configCacheControl === "string") {
     return configCacheControl;
@@ -380,7 +417,7 @@ export const resolveCacheControl = (
 };
 
 export const parseAcceptEncoding = (
-  acceptEncodingHeader?: string | string[]
+  acceptEncodingHeader?: string | string[],
 ): Map<string, number> => {
   const map = new Map<string, number>();
   if (!acceptEncodingHeader) return map;
@@ -413,7 +450,7 @@ export const parseAcceptEncoding = (
 
 export const negotiateCompression = (
   acceptEncodingHeader?: string | string[],
-  availableEncodings: Array<"br" | "gzip"> = ["br", "gzip"]
+  availableEncodings: Array<"br" | "gzip"> = ["br", "gzip"],
 ): "br" | "gzip" | "identity" => {
   if (!acceptEncodingHeader) return "identity";
   const raw = Array.isArray(acceptEncodingHeader)
@@ -485,7 +522,10 @@ export const matchesIfNoneMatch = (
 
   const normalizedResourceTags = validResourceTags.map(normalizeEtag);
 
-  const clientTags = header.split(",").map((t) => t.trim()).filter(Boolean);
+  const clientTags = header
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
   for (const clientTag of clientTags) {
     if (clientTag === "*") return true;
     const norm = normalizeEtag(clientTag);
@@ -498,10 +538,26 @@ export const matchesIfNoneMatch = (
 };
 
 const INCOMPRESSIBLE_EXTS = new Set([
-  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".ico",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".avif",
+  ".ico",
   ".woff2",
-  ".mp4", ".webm", ".ogg", ".mp3", ".wav",
-  ".zip", ".gz", ".tgz", ".br", ".7z", ".rar", ".tar",
+  ".mp4",
+  ".webm",
+  ".ogg",
+  ".mp3",
+  ".wav",
+  ".zip",
+  ".gz",
+  ".tgz",
+  ".br",
+  ".7z",
+  ".rar",
+  ".tar",
 ]);
 
 export const isCompressibleMime = (mimeType: string, ext: string): boolean => {
@@ -509,7 +565,11 @@ export const isCompressibleMime = (mimeType: string, ext: string): boolean => {
   if (INCOMPRESSIBLE_EXTS.has(cleanExt)) return false;
 
   const lowMime = mimeType.toLowerCase();
-  if (lowMime.startsWith("image/") && !lowMime.includes("svg") && !lowMime.includes("xml")) {
+  if (
+    lowMime.startsWith("image/") &&
+    !lowMime.includes("svg") &&
+    !lowMime.includes("xml")
+  ) {
     return false;
   }
   if (lowMime.startsWith("video/") || lowMime.startsWith("audio/")) {

@@ -1,33 +1,37 @@
 <div class="docs-sidebar">
   <aside class="docs-sidebar-nav" aria-label="Documentation navigation">
     <script data-bascik-build>
-      import { NAV } from '@/lib/nav.ts';
-      import { renderNavListItem } from '@/lib/nav-helpers.ts';
+      import { NAV } from "@/lib/nav.ts";
+      import { renderNavListItem } from "@/lib/nav-helpers.ts";
       export default async function () {
-        let html = '';
+        let html = "";
         for (const section of NAV) {
           html += `<p class="sidebar-heading">${section.section}</p><ul class="sidebar-nav">`;
           for (const page of section.pages) {
             html += renderNavListItem(page);
           }
-          html += '</ul>';
+          html += "</ul>";
         }
         return html;
-      };
+      }
     </script>
   </aside>
   <nav class="docs-toc" aria-label="On this page" hidden>
     <p class="docs-toc-title">On this page</p>
     <ol class="docs-toc-list">
       <script data-bascik-build="page">
-        import { renderPageTableOfContents } from '@/lib/render-nav.ts';
+        import { renderPageTableOfContents } from "@/lib/render-nav.ts";
         export default async function () {
-          const pageContentPath = process.env.BASCIK_PAGE_FILE
-            ?.replace(/\\/g, '/')
-            .replace(/^.*\/pages\//, '')
-            .replace(/\.html$/, '.md');
-          return pageContentPath ? await renderPageTableOfContents(`content/${pageContentPath}`) : '';
-        };
+          const pageContentPath = process.env.BASCIK_PAGE_FILE?.replace(
+            /\\/g,
+            "/",
+          )
+            .replace(/^.*\/pages\//, "")
+            .replace(/\.html$/, ".md");
+          return pageContentPath
+            ? await renderPageTableOfContents(`content/${pageContentPath}`)
+            : "";
+        }
       </script>
     </ol>
   </nav>
@@ -36,28 +40,40 @@
   /* bascik-disable js-document-class-query */
   (function () {
     var path = window.location.pathname;
-    var sidebar = document.querySelector('.docs-sidebar-nav');
+    var sidebar = document.querySelector(".docs-sidebar-nav");
     if (!sidebar) return;
 
-    var links = Array.from(sidebar.querySelectorAll('a'));
+    var links = Array.from(sidebar.querySelectorAll("a"));
     var preloaded = new Set();
 
     function preload(href) {
-      if (!href || preloaded.has(href) || href.startsWith('#') || href.startsWith('http')) return;
+      if (
+        !href ||
+        preloaded.has(href) ||
+        href.startsWith("#") ||
+        href.startsWith("http")
+      )
+        return;
       preloaded.add(href);
-      var link = document.createElement('link');
-      link.rel = 'prefetch';
+      var link = document.createElement("link");
+      link.rel = "prefetch";
       link.href = href;
       document.head.appendChild(link);
     }
 
-    var idx = links.findIndex(function (a) { return a.getAttribute('href') === path; });
+    var idx = links.findIndex(function (a) {
+      return a.getAttribute("href") === path;
+    });
     if (idx !== -1) {
-      links[idx].setAttribute('aria-current', 'page');
+      links[idx].setAttribute("aria-current", "page");
       function scrollActiveIntoView() {
         if (sidebar.clientHeight === 0) return false;
-        var linkTop = links[idx].getBoundingClientRect().top - sidebar.getBoundingClientRect().top + sidebar.scrollTop;
-        sidebar.scrollTop = linkTop - sidebar.clientHeight / 2 + links[idx].offsetHeight / 2;
+        var linkTop =
+          links[idx].getBoundingClientRect().top -
+          sidebar.getBoundingClientRect().top +
+          sidebar.scrollTop;
+        sidebar.scrollTop =
+          linkTop - sidebar.clientHeight / 2 + links[idx].offsetHeight / 2;
         return true;
       }
 
@@ -66,7 +82,7 @@
       });
 
       // Re-scroll when sidebar becomes visible (e.g. resizing from mobile to desktop)
-      if (typeof ResizeObserver === 'function') {
+      if (typeof ResizeObserver === "function") {
         var ro = new ResizeObserver(function () {
           if (sidebar.clientHeight > 0) {
             scrollActiveIntoView();
@@ -74,7 +90,7 @@
         });
         ro.observe(sidebar);
       } else {
-        window.addEventListener('resize', function () {
+        window.addEventListener("resize", function () {
           if (sidebar.clientHeight > 0) {
             scrollActiveIntoView();
           }
@@ -82,37 +98,41 @@
       }
 
       var next = links[idx + 1];
-      if (next && next.getAttribute('href')) {
-        preload(next.getAttribute('href'));
+      if (next && next.getAttribute("href")) {
+        preload(next.getAttribute("href"));
       }
     }
 
     links.forEach(function (a) {
-      var href = a.getAttribute('href');
+      var href = a.getAttribute("href");
       if (!href) return;
 
       var timer;
-      a.addEventListener('pointerenter', function () {
+      a.addEventListener("pointerenter", function () {
         if (preloaded.has(href)) return;
         timer = setTimeout(function () {
           preload(href);
         }, 65);
       });
 
-      a.addEventListener('pointerleave', function () {
+      a.addEventListener("pointerleave", function () {
         if (timer) {
           clearTimeout(timer);
           timer = null;
         }
       });
 
-      a.addEventListener('focus', function () {
+      a.addEventListener("focus", function () {
         preload(href);
       });
 
-      a.addEventListener('touchstart', function () {
-        preload(href);
-      }, { passive: true });
+      a.addEventListener(
+        "touchstart",
+        function () {
+          preload(href);
+        },
+        { passive: true },
+      );
     });
   })();
 </script>
@@ -120,16 +140,20 @@
   /* bascik-disable js-document-class-query */
   (function () {
     function initializeTableOfContents() {
-      var toc = document.querySelector('.docs-toc');
-      var list = toc && toc.querySelector('.docs-toc-list');
+      var toc = document.querySelector(".docs-toc");
+      var list = toc && toc.querySelector(".docs-toc-list");
       if (!toc || !list) return;
 
       var links = new Map();
-      Array.from(list.querySelectorAll('a')).forEach(function (link) {
-        var id = (link.getAttribute('href') || '').slice(1);
+      Array.from(list.querySelectorAll("a")).forEach(function (link) {
+        var id = (link.getAttribute("href") || "").slice(1);
         if (id) links.set(id, link);
       });
-      var headings = Array.from(links.keys()).map(function (id) { return document.getElementById(id); }).filter(Boolean);
+      var headings = Array.from(links.keys())
+        .map(function (id) {
+          return document.getElementById(id);
+        })
+        .filter(Boolean);
       if (!headings.length) return;
 
       toc.hidden = false;
@@ -151,26 +175,32 @@
       function setCurrent(id) {
         links.forEach(function (link, linkId) {
           if (linkId === id) {
-            link.setAttribute('aria-current', 'location');
+            link.setAttribute("aria-current", "location");
             revealCurrentLink(link);
-          } else link.removeAttribute('aria-current');
+          } else link.removeAttribute("aria-current");
         });
       }
 
       function updateCurrentHeading() {
         if (activeNavigationTarget) return;
-        var offset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--anchor-scroll-offset')) || 0;
+        var offset =
+          parseFloat(
+            getComputedStyle(document.documentElement).getPropertyValue(
+              "--anchor-scroll-offset",
+            ),
+          ) || 0;
         var current = headings[0];
         // Anchor navigation can land a heading a fraction of a pixel
         // below the offset; tolerate that so the clicked item wins.
         var tolerance = 4;
         headings.forEach(function (heading) {
-          if (heading.getBoundingClientRect().top <= offset + tolerance) current = heading;
+          if (heading.getBoundingClientRect().top <= offset + tolerance)
+            current = heading;
         });
         setCurrent(current.id);
       }
 
-      var activeNavigationTarget = '';
+      var activeNavigationTarget = "";
       var navigationDestination = 0;
       var navigationMaxTimer = 0;
 
@@ -181,45 +211,86 @@
       function releaseNavigationTarget() {
         window.clearTimeout(navigationMaxTimer);
         if (!activeNavigationTarget) return;
-        activeNavigationTarget = '';
+        activeNavigationTarget = "";
         updateCurrentHeading();
       }
 
       function checkNavigationArrived() {
         if (!activeNavigationTarget) return;
-        if (Math.abs(window.scrollY - navigationDestination) <= 2) releaseNavigationTarget();
+        if (Math.abs(window.scrollY - navigationDestination) <= 2)
+          releaseNavigationTarget();
       }
 
-      window.addEventListener('scroll', checkNavigationArrived, { passive: true });
+      window.addEventListener("scroll", checkNavigationArrived, {
+        passive: true,
+      });
       // The user taking over the scroll cancels the programmatic hold.
-      ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (type) {
-        window.addEventListener(type, function (event) {
-          if (event.target && event.target.closest && event.target.closest('.docs-toc')) return;
-          releaseNavigationTarget();
-        }, { passive: true });
+      ["wheel", "touchstart", "keydown", "mousedown"].forEach(function (type) {
+        window.addEventListener(
+          type,
+          function (event) {
+            if (
+              event.target &&
+              event.target.closest &&
+              event.target.closest(".docs-toc")
+            )
+              return;
+            releaseNavigationTarget();
+          },
+          { passive: true },
+        );
       });
 
-      list.addEventListener('click', function (event) {
-        var link = event.target.closest('a');
-        if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        var id = (link.getAttribute('href') || '').slice(1);
+      list.addEventListener("click", function (event) {
+        var link = event.target.closest("a");
+        if (
+          !link ||
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey
+        )
+          return;
+        var id = (link.getAttribute("href") || "").slice(1);
         var target = document.getElementById(id);
         if (!target) return;
 
         event.preventDefault();
-        history.pushState(null, '', '#' + id);
-        var offset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--anchor-scroll-offset')) || 0;
-        var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-        var top = Math.min(Math.max(0, target.getBoundingClientRect().top + window.scrollY - offset), Math.max(0, maxScroll));
-        var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        history.pushState(null, "", "#" + id);
+        var offset =
+          parseFloat(
+            getComputedStyle(document.documentElement).getPropertyValue(
+              "--anchor-scroll-offset",
+            ),
+          ) || 0;
+        var maxScroll =
+          document.documentElement.scrollHeight - window.innerHeight;
+        var top = Math.min(
+          Math.max(
+            0,
+            target.getBoundingClientRect().top + window.scrollY - offset,
+          ),
+          Math.max(0, maxScroll),
+        );
+        var reducedMotion = window.matchMedia(
+          "(prefers-reduced-motion: reduce)",
+        ).matches;
         activeNavigationTarget = id;
         navigationDestination = top;
-        window.scrollTo({ top: top, behavior: reducedMotion ? 'auto' : 'smooth' });
+        window.scrollTo({
+          top: top,
+          behavior: reducedMotion ? "auto" : "smooth",
+        });
         setCurrent(id);
         // Safety net for when the scroll never reaches the destination
         // or no scroll event fires (already at target, interrupted).
         window.clearTimeout(navigationMaxTimer);
-        navigationMaxTimer = window.setTimeout(releaseNavigationTarget, reducedMotion ? 0 : 4000);
+        navigationMaxTimer = window.setTimeout(
+          releaseNavigationTarget,
+          reducedMotion ? 0 : 4000,
+        );
       });
 
       var headingUpdatePending = false;
@@ -232,21 +303,26 @@
         });
       }
 
-      window.addEventListener('scroll', scheduleHeadingUpdate, { passive: true });
-      window.addEventListener('resize', scheduleHeadingUpdate);
+      window.addEventListener("scroll", scheduleHeadingUpdate, {
+        passive: true,
+      });
+      window.addEventListener("resize", scheduleHeadingUpdate);
       updateCurrentHeading();
-      if ('IntersectionObserver' in window) {
+      if ("IntersectionObserver" in window) {
         var observer = new IntersectionObserver(updateCurrentHeading, {
-          rootMargin: '-20% 0px -60% 0px',
+          rootMargin: "-20% 0px -60% 0px",
           threshold: 0,
         });
-        headings.forEach(function (heading) { observer.observe(heading); });
+        headings.forEach(function (heading) {
+          observer.observe(heading);
+        });
       }
-      window.addEventListener('hashchange', updateCurrentHeading);
-      window.addEventListener('scrollend', checkNavigationArrived);
+      window.addEventListener("hashchange", updateCurrentHeading);
+      window.addEventListener("scrollend", checkNavigationArrived);
     }
 
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeTableOfContents);
+    if (document.readyState === "loading")
+      document.addEventListener("DOMContentLoaded", initializeTableOfContents);
     else initializeTableOfContents();
   })();
 </script>

@@ -179,8 +179,14 @@ describe("convertCssElementSelectorsToClasses", () => {
     // Cross-boundary selectors like `html[data-theme="light"] .my-class` must
     // preserve `html` verbatim so the compiled selector actually matches.
     const cases = [
-      { css: `html[data-theme="light"] .foo { color: red; }`, label: "html with attribute selector" },
-      { css: `html[data-theme="light"] .foo { color: red; }\nhtml[data-theme="dark"] .foo { color: blue; }`, label: "multiple html rules" },
+      {
+        css: `html[data-theme="light"] .foo { color: red; }`,
+        label: "html with attribute selector",
+      },
+      {
+        css: `html[data-theme="light"] .foo { color: red; }\nhtml[data-theme="dark"] .foo { color: blue; }`,
+        label: "multiple html rules",
+      },
       { css: `body { margin: 0; }`, label: "body standalone" },
       { css: `head { display: none; }`, label: "head standalone" },
     ];
@@ -216,7 +222,8 @@ describe("convertCssElementSelectorsToClasses", () => {
   });
 
   it("still scopes heading elements that contain digits next to keyframes", () => {
-    const css = "h1, h2 { margin: 0; } @keyframes n { 0%, 100% { opacity: 1; } }";
+    const css =
+      "h1, h2 { margin: 0; } @keyframes n { 0%, 100% { opacity: 1; } }";
     const { css: result, elementsConvertedClasses } =
       convertCssElementSelectorsToClasses(css, "my-comp");
     expect(result).toBe(
@@ -226,7 +233,8 @@ describe("convertCssElementSelectorsToClasses", () => {
   });
 
   it("scopes element selectors following :is(.a, .b) or :where(.a, .b)", () => {
-    const preScopedCss = ":is(.bascik__my-comp__a, .bascik__my-comp__b) p > span { color: red; }";
+    const preScopedCss =
+      ":is(.bascik__my-comp__a, .bascik__my-comp__b) p > span { color: red; }";
     const { css: result, elementsConvertedClasses } =
       convertCssElementSelectorsToClasses(preScopedCss, "my-comp");
     expect(result).toBe(
@@ -245,11 +253,14 @@ describe("addElementClassesInHtml", () => {
     const html = `<aside class="docs-sidebar"><ul class="sidebar-nav"><li><a href="/why-bascik">Why Bascik</a></li></ul></aside>`;
     const result = addElementClassesInHtml(html, "docs-sidebar", ["li", "a"]);
     expect(result).not.toContain("docs-sidebar bascik__docs-sidebar__el__a");
-    expect(result).toContain('<a class="bascik__docs-sidebar__el__a" href="/why-bascik">Why Bascik</a>');
+    expect(result).toContain(
+      '<a class="bascik__docs-sidebar__el__a" href="/why-bascik">Why Bascik</a>',
+    );
   });
 
   it("does not match hyphenated tag-name prefixes", () => {
-    const html = '<header><header class="x"></header><header\n  data-x></header><header /><header-link data-x="1">link</header-link></header>';
+    const html =
+      '<header><header class="x"></header><header\n  data-x></header><header /><header-link data-x="1">link</header-link></header>';
     const result = addElementClassesInHtml(html, "site-header", ["header"]);
     expect(result).toBe(
       '<header class="bascik__site-header__el__header"><header class="x bascik__site-header__el__header"></header><header class="bascik__site-header__el__header"\n  data-x></header><header class="bascik__site-header__el__header" /><header-link data-x="1">link</header-link></header>',
@@ -258,15 +269,15 @@ describe("addElementClassesInHtml", () => {
 
   it("does not inject element classes into HTML comments or raw-text elements", () => {
     const html =
-      '<!-- <p>commented</p> -->' +
+      "<!-- <p>commented</p> -->" +
       '<script>const s = "<p>scripted</p>";</script>' +
-      '<textarea><p>typed</p></textarea>' +
-      '<p>real</p>';
+      "<textarea><p>typed</p></textarea>" +
+      "<p>real</p>";
     expect(addElementClassesInHtml(html, "my-comp", ["p"])).toBe(
-      '<!-- <p>commented</p> -->' +
-      '<script>const s = "<p>scripted</p>";</script>' +
-      '<textarea><p>typed</p></textarea>' +
-      '<p class="bascik__my-comp__el__p">real</p>',
+      "<!-- <p>commented</p> -->" +
+        '<script>const s = "<p>scripted</p>";</script>' +
+        "<textarea><p>typed</p></textarea>" +
+        '<p class="bascik__my-comp__el__p">real</p>',
     );
   });
 });
@@ -274,21 +285,27 @@ describe("addElementClassesInHtml", () => {
 describe("addIdClassesInHtml", () => {
   it("adds id class to element with single-quoted class attribute", () => {
     const html = "<div id=\"btn\" class='btn-base'></div>";
-    const result = addIdClassesInHtml(html, [{ idName: "btn", className: "bascik__my-comp__id__btn" }]);
+    const result = addIdClassesInHtml(html, [
+      { idName: "btn", className: "bascik__my-comp__id__btn" },
+    ]);
     expect(result).toContain("class='btn-base bascik__my-comp__id__btn'");
   });
 
   it("does not inject id classes into HTML comments or raw-text elements", () => {
     const html =
       '<!-- <div id="btn"></div> -->' +
-      '<script>const s = \'<div id="btn"></div>\';</script>' +
+      "<script>const s = '<div id=\"btn\"></div>';</script>" +
       '<textarea><div id="btn"></div></textarea>' +
       '<div id="btn"></div>';
-    expect(addIdClassesInHtml(html, [{ idName: "btn", className: "bascik__my-comp__id__btn" }])).toBe(
+    expect(
+      addIdClassesInHtml(html, [
+        { idName: "btn", className: "bascik__my-comp__id__btn" },
+      ]),
+    ).toBe(
       '<!-- <div id="btn"></div> -->' +
-      '<script>const s = \'<div id="btn"></div>\';</script>' +
-      '<textarea><div id="btn"></div></textarea>' +
-      '<div class="bascik__my-comp__id__btn" id="btn"></div>',
+        "<script>const s = '<div id=\"btn\"></div>';</script>" +
+        '<textarea><div id="btn"></div></textarea>' +
+        '<div class="bascik__my-comp__id__btn" id="btn"></div>',
     );
   });
 });
@@ -296,7 +313,9 @@ describe("addIdClassesInHtml", () => {
 describe("getComponentCss", () => {
   it("returns undefined for invalid inputs or when css file is not found", async () => {
     expect(await getComponentCss("", [])).toBeUndefined();
-    expect(await getComponentCss("components/nav.html", ["components/other.css"])).toBeUndefined();
+    expect(
+      await getComponentCss("components/nav.html", ["components/other.css"]),
+    ).toBeUndefined();
   });
 });
 
@@ -351,11 +370,13 @@ describe("removeIdSelectors", () => {
     expect(result).toContain(".keep-before { color: green; }");
     expect(result).toContain(".keep-after { color: blue; }");
     // Must keep balanced braces
-    expect((result.match(/\{/g) ?? []).length).toBe((result.match(/\}/g) ?? []).length);
+    expect((result.match(/\{/g) ?? []).length).toBe(
+      (result.match(/\}/g) ?? []).length,
+    );
   });
 
   it("removes only the [id] selector item from a comma-separated selector list while preserving sibling selectors", () => {
-    const result1 = removeIdSelectors(".keep, [id=\"foo\"] { color: red; }");
+    const result1 = removeIdSelectors('.keep, [id="foo"] { color: red; }');
     expect(result1).not.toContain("[id");
     expect(result1).toContain(".keep");
     expect(result1).toContain("color: red");
@@ -405,7 +426,7 @@ describe("fuzz-like malformed CSS / HTML inputs", () => {
       return () => {
         state = (state + 0x6d2b79f5) >>> 0;
         let t = Math.imul(state ^ (state >>> 15), 1 | state);
-        t = (t + Math.imul(t ^ (t >>> 7), 61 | t) ^ t) >>> 0;
+        t = ((t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t) >>> 0;
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
       };
     })();
@@ -504,7 +525,9 @@ describe("property-based CSS scoping fuzzing", () => {
       .tuple(tagArb, tagArb, fc.boolean(), fc.boolean(), fc.boolean())
       .map(([tagA, tagB, includeClass, includeDesc, includeMedia]) => {
         const left = includeClass ? ".wrap" : "";
-        const middle = includeDesc ? `${left} ${tagA} > ${tagB}` : `${left} ${tagA}`;
+        const middle = includeDesc
+          ? `${left} ${tagA} > ${tagB}`
+          : `${left} ${tagA}`;
         const selector = middle.trim();
         return includeMedia
           ? `@media (min-width: 1px) { ${selector} { color: red; } }`
@@ -514,7 +537,9 @@ describe("property-based CSS scoping fuzzing", () => {
     const cssArb = fc.array(selectorArb, { minLength: 1, maxLength: 5 });
     const htmlArb = fc
       .array(tagArb, { minLength: 1, maxLength: 4 })
-      .map((tags) => tags.map((tag) => `<${tag} class="x">${tag}</${tag}>`).join("\n"));
+      .map((tags) =>
+        tags.map((tag) => `<${tag} class="x">${tag}</${tag}>`).join("\n"),
+      );
 
     fc.assert(
       fc.property(cssArb, htmlArb, (selectors, html) => {
@@ -581,21 +606,24 @@ describe("scopeCssCustomProperties", () => {
 
 describe("scopeCssCustomProperties – @property declarations", () => {
   it("scopes an @property declaration name", () => {
-    const css = "@property --brand { syntax: '<color>'; inherits: false; initial-value: #d3ff8d; }";
+    const css =
+      "@property --brand { syntax: '<color>'; inherits: false; initial-value: #d3ff8d; }";
     const result = scopeCssCustomProperties(css, "my-comp__x1");
     expect(result).toContain("@property --bascik__my-comp__x1__brand");
     expect(result).not.toContain("@property --brand");
   });
 
   it("scopes @property and matching var() usage together", () => {
-    const css = "@property --accent { syntax: '<color>'; inherits: false; initial-value: red; } .el { color: var(--accent); }";
+    const css =
+      "@property --accent { syntax: '<color>'; inherits: false; initial-value: red; } .el { color: var(--accent); }";
     const result = scopeCssCustomProperties(css, "my-comp__x1");
     expect(result).toContain("@property --bascik__my-comp__x1__accent");
     expect(result).toContain("var(--bascik__my-comp__x1__accent)");
   });
 
   it("scopes @property when both declaration and element-level usage exist", () => {
-    const css = "@property --size { syntax: '<length>'; inherits: false; initial-value: 0px; } :root { --size: 16px; } .el { padding: var(--size); }";
+    const css =
+      "@property --size { syntax: '<length>'; inherits: false; initial-value: 0px; } :root { --size: 16px; } .el { padding: var(--size); }";
     const result = scopeCssCustomProperties(css, "comp__x1");
     expect(result).toContain("@property --bascik__comp__x1__size");
     expect(result).toContain("--bascik__comp__x1__size: 16px");
@@ -614,12 +642,14 @@ describe("deduplicateCss", () => {
     const usedComponents = [
       {
         name: "svg-icon",
-        cssFileContent: ".bascik__svg-icon__first__icon{fill:url(#first-gradient)}",
+        cssFileContent:
+          ".bascik__svg-icon__first__icon{fill:url(#first-gradient)}",
         requiresPerInstanceCss: true,
       },
       {
         name: "svg-icon",
-        cssFileContent: ".bascik__svg-icon__second__icon{fill:url(#second-gradient)}",
+        cssFileContent:
+          ".bascik__svg-icon__second__icon{fill:url(#second-gradient)}",
         requiresPerInstanceCss: true,
       },
     ];
@@ -632,8 +662,16 @@ describe("deduplicateCss", () => {
     const usedComponents = [
       { name: "card", cssFileContent: ".card{}" },
       { name: "card", cssFileContent: ".card{}" },
-      { name: "svg-icon", cssFileContent: ".first{}", requiresPerInstanceCss: true },
-      { name: "svg-icon", cssFileContent: ".second{}", requiresPerInstanceCss: true },
+      {
+        name: "svg-icon",
+        cssFileContent: ".first{}",
+        requiresPerInstanceCss: true,
+      },
+      {
+        name: "svg-icon",
+        cssFileContent: ".second{}",
+        requiresPerInstanceCss: true,
+      },
     ];
     expect(deduplicateCss(usedComponents)).toBe(".card{} .first{} .second{}");
   });
@@ -708,7 +746,8 @@ describe("CSS ID fragment integration", () => {
   it("rewrites url(#grad) to match a scoped svg gradient id", () => {
     let component: BascikComponent = {
       name: "svg-icon",
-      fileContent: '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
+      fileContent:
+        '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
       cssFileContent: ".icon { fill: url(#grad); }",
     };
     component = prefixElementAttribute(component, "id", "first123");
@@ -716,14 +755,17 @@ describe("CSS ID fragment integration", () => {
     expect(component.cssFileContent).toContain(
       "url(#bascik__svg-icon__first123__grad)",
     );
-    expect(component.cssFileContent).toContain(".bascik__svg-icon__first123__icon");
+    expect(component.cssFileContent).toContain(
+      ".bascik__svg-icon__first123__icon",
+    );
     expect(component.requiresPerInstanceCss).toBe(true);
   });
 
   it("uses normal per-instance CSS when global deduplication is false", () => {
     let component: BascikComponent = {
       name: "svg-icon",
-      fileContent: '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
+      fileContent:
+        '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
       cssFileContent: ".icon { fill: url(#grad); }",
     };
     component = prefixElementAttribute(component, "id", "first123");
@@ -731,13 +773,16 @@ describe("CSS ID fragment integration", () => {
     expect(component.cssFileContent).toContain(
       "url(#bascik__svg-icon__first123__grad)",
     );
-    expect(component.cssFileContent).toContain(".bascik__svg-icon__first123__icon");
+    expect(component.cssFileContent).toContain(
+      ".bascik__svg-icon__first123__icon",
+    );
   });
 
   it("leaves a fragment for a preserved ID untouched", () => {
     let component: BascikComponent = {
       name: "svg-icon",
-      fileContent: '<svg data-bascik-preserve="id"><linearGradient id="grad"></linearGradient></svg>',
+      fileContent:
+        '<svg data-bascik-preserve="id"><linearGradient id="grad"></linearGradient></svg>',
       cssFileContent: ".icon { fill: url(#grad); }",
     };
     component = prefixElementAttribute(component, "id", "first123");
@@ -751,7 +796,8 @@ describe("CSS ID fragment integration", () => {
     try {
       let component: BascikComponent = {
         name: "svg-icon",
-        fileContent: '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
+        fileContent:
+          '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
         cssFileContent: ".icon { fill: url(#grad); }",
       };
       component = prefixElementAttribute(component, "id", "first123");
@@ -766,8 +812,10 @@ describe("CSS ID fragment integration", () => {
   it("keeps real URLs byte-identical while rewriting local fragments", () => {
     let component: BascikComponent = {
       name: "svg-icon",
-      fileContent: '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
-      cssFileContent: ".icon { background: url(/img/x.png); mask: url(sprite.svg#icon); fill: url(#grad); }",
+      fileContent:
+        '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
+      cssFileContent:
+        ".icon { background: url(/img/x.png); mask: url(sprite.svg#icon); fill: url(#grad); }",
     };
     component = prefixElementAttribute(component, "id", "first123");
     component = prefixElementAttribute(component, "class", "first123", true);
@@ -782,8 +830,14 @@ describe("CSS ID fragment integration", () => {
 describe("deduplicateCss – dedup: false (per-instance mode)", () => {
   it("emits CSS for every instance including duplicates", () => {
     const usedComponents = [
-      { name: "my-btn", cssFileContent: ".bascik__my-btn__abc__btn{color:red}" },
-      { name: "my-btn", cssFileContent: ".bascik__my-btn__def__btn{color:red}" },
+      {
+        name: "my-btn",
+        cssFileContent: ".bascik__my-btn__abc__btn{color:red}",
+      },
+      {
+        name: "my-btn",
+        cssFileContent: ".bascik__my-btn__def__btn{color:red}",
+      },
     ];
     const css = deduplicateCss(usedComponents, false);
     expect(css).toContain(".bascik__my-btn__abc__btn");
@@ -917,21 +971,25 @@ describe("convertCssElementSelectorsToClasses – CSS nesting (& selector)", () 
   });
 
   it("converts relaxed direct nesting with combinators without leading '&'", () => {
-    const { css, elementsConvertedClasses } = convertCssElementSelectorsToClasses(
-      ".parent { > h2 { color: red; } + li { color: blue; } ~ span { color: green; } }",
-      "my-comp",
-    );
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(
+        ".parent { > h2 { color: red; } + li { color: blue; } ~ span { color: green; } }",
+        "my-comp",
+      );
     expect(css).toContain("> .bascik__my-comp__el__h2");
     expect(css).toContain("+ .bascik__my-comp__el__li");
     expect(css).toContain("~ .bascik__my-comp__el__span");
-    expect(elementsConvertedClasses).toEqual(expect.arrayContaining(["h2", "li", "span"]));
+    expect(elementsConvertedClasses).toEqual(
+      expect.arrayContaining(["h2", "li", "span"]),
+    );
   });
 
   it("converts relaxed direct element nesting without '&'", () => {
-    const { css, elementsConvertedClasses } = convertCssElementSelectorsToClasses(
-      ".parent { p { color: red; } }",
-      "my-comp",
-    );
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(
+        ".parent { p { color: red; } }",
+        "my-comp",
+      );
     expect(css).toContain(".bascik__my-comp__el__p");
     expect(elementsConvertedClasses).toContain("p");
   });
@@ -989,7 +1047,10 @@ describe("convertCssElementSelectorsToClasses – descendant after scoped class"
     BascikConfig.minify.identifiers = true;
     try {
       const { css, elementsConvertedClasses } =
-        convertCssElementSelectorsToClasses("nav a { color: red; }", "site-header");
+        convertCssElementSelectorsToClasses(
+          "nav a { color: red; }",
+          "site-header",
+        );
       expect(elementsConvertedClasses).toEqual(["nav", "a"]);
       expect(css).not.toMatch(/ a\s*\{/);
     } finally {
@@ -1017,7 +1078,8 @@ describe("convertCssElementSelectorsToClasses – descendant after scoped class"
 
   it("does NOT convert another scoped class name after a scoped class", () => {
     // The negative lookahead (?!__) must prevent bascik__ being treated as element
-    const pre = ".bascik__my-comp__card .bascik__my-comp__title { color: blue; }";
+    const pre =
+      ".bascik__my-comp__card .bascik__my-comp__title { color: blue; }";
     const { elementsConvertedClasses } = convertCssElementSelectorsToClasses(
       pre,
       "my-comp",
@@ -1038,25 +1100,31 @@ describe("convertCssElementSelectorsToClasses – descendant after scoped class"
   });
 
   it("converts multi-level: .scoped .scoped p (element after second scoped class)", () => {
-    const pre = ".bascik__my-comp__card .bascik__my-comp__body p { margin: 0; }";
-    const { css, elementsConvertedClasses } = convertCssElementSelectorsToClasses(pre, "my-comp");
+    const pre =
+      ".bascik__my-comp__card .bascik__my-comp__body p { margin: 0; }";
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(pre, "my-comp");
     expect(css).toContain(".bascik__my-comp__el__p");
     expect(elementsConvertedClasses).toContain("p");
   });
 
   it("converts 3-level descendant element selectors: div ul li { color: red; }", () => {
     const pre = "div ul li { color: red; }";
-    const { css, elementsConvertedClasses } = convertCssElementSelectorsToClasses(pre, "my-comp");
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(pre, "my-comp");
     expect(css).toContain(".bascik__my-comp__el__div");
     expect(css).toContain(".bascik__my-comp__el__ul");
     expect(css).toContain(".bascik__my-comp__el__li");
-    expect(elementsConvertedClasses).toEqual(expect.arrayContaining(["div", "ul", "li"]));
+    expect(elementsConvertedClasses).toEqual(
+      expect.arrayContaining(["div", "ul", "li"]),
+    );
   });
 
   it("converts descendant and combinator element selectors after an #id selector in prefixElementAttribute and scopeInlineStyleTags", () => {
     let component: BascikComponent = {
       name: "my-card",
-      fileContent: '<div id="panel"><header><h3>Title</h3><p>Body</p></header></div>',
+      fileContent:
+        '<div id="panel"><header><h3>Title</h3><p>Body</p></header></div>',
       cssFileContent: "#panel header > h3 + p { color: red; }",
     };
     component = prefixElementAttribute(component, "id", "inst1");
@@ -1119,25 +1187,46 @@ describe("convertCssElementSelectorsToClasses – descendant after scoped class"
   });
 
   it.each([
-    [".bascik__my-comp__list>li { color: red; }", ".bascik__my-comp__list>.bascik__my-comp__el__li"],
-    [".bascik__my-comp__list >li { color: red; }", ".bascik__my-comp__list >.bascik__my-comp__el__li"],
-    [".bascik__my-comp__list> li { color: red; }", ".bascik__my-comp__list> .bascik__my-comp__el__li"],
-    [".bascik__my-comp__title+p { color: red; }", ".bascik__my-comp__title+.bascik__my-comp__el__p"],
-    [".bascik__my-comp__title~span { color: red; }", ".bascik__my-comp__title~.bascik__my-comp__el__span"],
-  ])("converts element after a combinator without surrounding spaces: %s", (pre, expected) => {
-    const { css } = convertCssElementSelectorsToClasses(pre, "my-comp");
-    expect(css).toContain(expected);
-  });
+    [
+      ".bascik__my-comp__list>li { color: red; }",
+      ".bascik__my-comp__list>.bascik__my-comp__el__li",
+    ],
+    [
+      ".bascik__my-comp__list >li { color: red; }",
+      ".bascik__my-comp__list >.bascik__my-comp__el__li",
+    ],
+    [
+      ".bascik__my-comp__list> li { color: red; }",
+      ".bascik__my-comp__list> .bascik__my-comp__el__li",
+    ],
+    [
+      ".bascik__my-comp__title+p { color: red; }",
+      ".bascik__my-comp__title+.bascik__my-comp__el__p",
+    ],
+    [
+      ".bascik__my-comp__title~span { color: red; }",
+      ".bascik__my-comp__title~.bascik__my-comp__el__span",
+    ],
+  ])(
+    "converts element after a combinator without surrounding spaces: %s",
+    (pre, expected) => {
+      const { css } = convertCssElementSelectorsToClasses(pre, "my-comp");
+      expect(css).toContain(expected);
+    },
+  );
 
   it.each([
     [".bascik__my-comp__pane code-block { margin: 0; }"],
-    [".bascik__my-comp__pane:not(:has(.bascik__my-comp__lang[data-x=\"a\"] code-block)) .bascik__my-comp__tab { display: none; }"],
+    [
+      '.bascik__my-comp__pane:not(:has(.bascik__my-comp__lang[data-x="a"] code-block)) .bascik__my-comp__tab { display: none; }',
+    ],
     ["code-block .bascik__my-comp__x { color: red; }"],
     [".bascik__my-comp__a, code-block { color: red; }"],
     ["& > code-block { color: red; }"],
     ["> code-block { color: red; }"],
   ])("leaves hyphenated custom element selectors untouched: %s", (pre) => {
-    const { css, elementsConvertedClasses } = convertCssElementSelectorsToClasses(pre, "my-comp");
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(pre, "my-comp");
     expect(elementsConvertedClasses).not.toContain("code");
     expect(css).toContain("code-block");
     expect(css).not.toContain("__el__code");
@@ -1145,7 +1234,6 @@ describe("convertCssElementSelectorsToClasses – descendant after scoped class"
 });
 
 // ─── addElementClassesInHtml — multiline content ─────────────────────────────
-
 
 describe("addElementClassesInHtml – multiline content", () => {
   it("injects the class into a multi-line element", () => {
@@ -1159,7 +1247,9 @@ describe("addElementClassesInHtml – element with classless child", () => {
   it("adds class to element itself when only a child has a class", () => {
     const html = '<pre><code class="cblock-body">content</code></pre>';
     const result = addElementClassesInHtml(html, "code-block", ["pre"]);
-    expect(result).toBe('<pre class="bascik__code-block__el__pre"><code class="cblock-body">content</code></pre>');
+    expect(result).toBe(
+      '<pre class="bascik__code-block__el__pre"><code class="cblock-body">content</code></pre>',
+    );
   });
 
   it("does not add class to nested child when parent lacks class", () => {
@@ -1173,23 +1263,30 @@ describe("single-quoted HTML attributes in styles", () => {
   it("appends element class to existing single-quoted class attribute", () => {
     const html = "<pre class='code'>content</pre>";
     const result = addElementClassesInHtml(html, "my-comp", ["pre"]);
-    expect(result).toBe("<pre class='code bascik__my-comp__el__pre'>content</pre>");
+    expect(result).toBe(
+      "<pre class='code bascik__my-comp__el__pre'>content</pre>",
+    );
   });
 
   it("appends element class to whitespace-spaced and unquoted class attributes", () => {
-    expect(addElementClassesInHtml('<pre class = "code">content</pre>', "my-comp", ["pre"])).toBe(
-      '<pre class="code bascik__my-comp__el__pre">content</pre>',
-    );
-    expect(addElementClassesInHtml("<pre class=code>content</pre>", "my-comp", ["pre"])).toBe(
-      '<pre class="code bascik__my-comp__el__pre">content</pre>',
-    );
-    expect(addElementClassesInHtml("<img class=hero/>", "my-comp", ["img"])).toBe(
-      '<img class="hero bascik__my-comp__el__img"/>',
-    );
+    expect(
+      addElementClassesInHtml('<pre class = "code">content</pre>', "my-comp", [
+        "pre",
+      ]),
+    ).toBe('<pre class="code bascik__my-comp__el__pre">content</pre>');
+    expect(
+      addElementClassesInHtml("<pre class=code>content</pre>", "my-comp", [
+        "pre",
+      ]),
+    ).toBe('<pre class="code bascik__my-comp__el__pre">content</pre>');
+    expect(
+      addElementClassesInHtml("<img class=hero/>", "my-comp", ["img"]),
+    ).toBe('<img class="hero bascik__my-comp__el__img"/>');
   });
 
   it("adds id class to single-quoted, whitespace-spaced, and unquoted id attributes", () => {
-    const html = "<div id='main-box'>content</div><div id = \"spaced-box\"></div><div id=bare-box></div>";
+    const html =
+      "<div id='main-box'>content</div><div id = \"spaced-box\"></div><div id=bare-box></div>";
     const result = addIdClassesInHtml(html, [
       { idName: "main-box", className: "bascik__my-comp__id__main-box" },
       { idName: "spaced-box", className: "bascik__my-comp__id__spaced-box" },
@@ -1203,18 +1300,20 @@ describe("single-quoted HTML attributes in styles", () => {
 
 describe("addElementClassesInHtml – nested same-tag elements", () => {
   it("injects class to nested same-tag elements without skipping inner ones", () => {
-    const html = '<div class="outer">\n  <div class="inner">nested</div>\n</div>';
+    const html =
+      '<div class="outer">\n  <div class="inner">nested</div>\n</div>';
     const result = addElementClassesInHtml(html, "my-comp", ["div"]);
     expect(result).toBe(
-      '<div class="outer bascik__my-comp__el__div">\n  <div class="inner bascik__my-comp__el__div">nested</div>\n</div>'
+      '<div class="outer bascik__my-comp__el__div">\n  <div class="inner bascik__my-comp__el__div">nested</div>\n</div>',
     );
   });
 
   it("handles void elements and nested tags together correctly", () => {
-    const html = '<div class="outer"><img src="foo.png" /><div class="inner"></div></div>';
+    const html =
+      '<div class="outer"><img src="foo.png" /><div class="inner"></div></div>';
     const result = addElementClassesInHtml(html, "my-comp", ["div", "img"]);
     expect(result).toBe(
-      '<div class="outer bascik__my-comp__el__div"><img class="bascik__my-comp__el__img" src="foo.png" /><div class="inner bascik__my-comp__el__div"></div></div>'
+      '<div class="outer bascik__my-comp__el__div"><img class="bascik__my-comp__el__img" src="foo.png" /><div class="inner bascik__my-comp__el__div"></div></div>',
     );
   });
 
@@ -1224,13 +1323,17 @@ describe("addElementClassesInHtml – nested same-tag elements", () => {
     // Should NOT mangle the inner string.
     expect(result).not.toContain("data-foo=' class=\"fake bascik__");
     // Should inject the new class.
-    expect(result).toContain("<div class=\"bascik__MyComp__el__div\" data-foo=' class=\"fake\" '></div>");
+    expect(result).toContain(
+      '<div class="bascik__MyComp__el__div" data-foo=\' class="fake" \'></div>',
+    );
   });
 
   it("handles '>' inside attributes before or after class when scoping elements", () => {
     const html = `<div data-condition="x > y" class="box"></div>`;
     const result = addElementClassesInHtml(html, "MyComp", ["div"]);
-    expect(result).toBe(`<div data-condition="x > y" class="box bascik__MyComp__el__div"></div>`);
+    expect(result).toBe(
+      `<div data-condition="x > y" class="box bascik__MyComp__el__div"></div>`,
+    );
   });
 });
 
@@ -1238,9 +1341,9 @@ describe("addElementClassesInHtml – nested same-tag elements", () => {
 
 describe("scopeLayerNames", () => {
   it("scopes a leading-hyphen layer name", () => {
-    expect(scopeLayerNames("@layer --utils { .box { color: red; } }", "my-comp")).toContain(
-      "@layer bascik__my-comp__layer__--utils",
-    );
+    expect(
+      scopeLayerNames("@layer --utils { .box { color: red; } }", "my-comp"),
+    ).toContain("@layer bascik__my-comp__layer__--utils");
   });
 
   it("scopes a single @layer declaration block", () => {
@@ -1301,14 +1404,23 @@ describe("scopeContainerNames", () => {
 // ─── scopeInlineStyleTags ────────────────────────────────────────────────────
 
 describe("scopeInlineStyleTags", () => {
-  it.each([["</style >"], ["</style\n>"], ["</style/>"]])("scopes a <style> tag ending in %j", (endTag) => {
-    const { html: result } = scopeInlineStyleTags(`<style>.foo { color: red; }${endTag}<div class="foo"></div>`, "my-comp");
-    expect(result).toContain(".bascik__my-comp__foo");
-    expect(result).toContain('<div class="foo"></div>');
-  });
+  it.each([["</style >"], ["</style\n>"], ["</style/>"]])(
+    "scopes a <style> tag ending in %j",
+    (endTag) => {
+      const { html: result } = scopeInlineStyleTags(
+        `<style>.foo { color: red; }${endTag}<div class="foo"></div>`,
+        "my-comp",
+      );
+      expect(result).toContain(".bascik__my-comp__foo");
+      expect(result).toContain('<div class="foo"></div>');
+    },
+  );
 
   it("scopes a <style> tag whose start tag has a quoted >", () => {
-    const { html: result } = scopeInlineStyleTags('<style media="(width > 1px)">.foo { color: red; }</style>', "my-comp");
+    const { html: result } = scopeInlineStyleTags(
+      '<style media="(width > 1px)">.foo { color: red; }</style>',
+      "my-comp",
+    );
     expect(result).toContain('<style media="(width > 1px)">');
     expect(result).toContain(".bascik__my-comp__foo");
   });
@@ -1614,8 +1726,8 @@ describe("convertCssIdSelectorsToClasses – literal vs real-target property tes
       "#tab",
       "#hero",
       "url(#x)",
-      "url(\"#y\")",
-      "[href=\"#tab\"]",
+      'url("#y")',
+      '[href="#tab"]',
       "--brand: #abc",
       "é",
       "ま",
@@ -1631,8 +1743,10 @@ describe("convertCssIdSelectorsToClasses – literal vs real-target property tes
         const escaped = inner.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
         const css = `.x::before { content: "${escaped}"; }
           #anchor { color: blue; }`;
-        const { css: result, idsConverted } =
-          convertCssIdSelectorsToClasses(css, "fuzz");
+        const { css: result, idsConverted } = convertCssIdSelectorsToClasses(
+          css,
+          "fuzz",
+        );
         // The quoted string content must survive untouched.
         expect(result).toContain(`content: "${escaped}"`);
         // The genuine #anchor selector must convert.
@@ -1657,8 +1771,10 @@ describe("convertCssIdSelectorsToClasses – literal vs real-target property tes
       fc.property(attrTokenArb, (tokens) => {
         const inner = tokens.join(" ");
         const css = `a[href="${inner}"] { color: red; } #target { color: green; }`;
-        const { css: result, idsConverted } =
-          convertCssIdSelectorsToClasses(css, "fuzz");
+        const { css: result, idsConverted } = convertCssIdSelectorsToClasses(
+          css,
+          "fuzz",
+        );
         expect(result).toContain(`a[href="${inner}"]`);
         expect(result).toContain(".bascik__fuzz__id__target");
         expect(idsConverted.some((e) => e.idName === "target")).toBe(true);
@@ -1744,7 +1860,9 @@ describe("addIdClassesInHtml", () => {
     const result = addIdClassesInHtml(html, [
       { idName: "btn", className: "bascik__my-comp__id__btn" },
     ]);
-    expect(result).toBe(`<button data-condition="x > y" data-foo=' class="fake" ' id="btn" class="primary bascik__my-comp__id__btn">Click</button>`);
+    expect(result).toBe(
+      `<button data-condition="x > y" data-foo=' class="fake" ' id="btn" class="primary bascik__my-comp__id__btn">Click</button>`,
+    );
   });
 
   it("returns html unchanged when idsConverted is empty", () => {
@@ -1777,7 +1895,10 @@ describe("scopeInlineStyleTags – #id in inline styles", () => {
   it("preserves literal attribute-selector values and content strings in inline <style>", () => {
     const html =
       '<style>a[href="#tab"] { color: red; } .icon::before { content: "url(#local)"; } #real { color: blue; }</style>';
-    const { html: result, idsConverted } = scopeInlineStyleTags(html, "my-comp");
+    const { html: result, idsConverted } = scopeInlineStyleTags(
+      html,
+      "my-comp",
+    );
     expect(result).toContain('a[href="#tab"] { color: red; }');
     expect(result).toContain('content: "url(#local)"');
     expect(result).toContain(".bascik__my-comp__id__real");
@@ -1829,20 +1950,25 @@ describe("scopeInlineStyleTags – @starting-style", () => {
 
 describe("scopeInlineStyleTags – :nth-child(of .selector)", () => {
   it("scopes class name in :nth-child(An+B of .class) argument", () => {
-    const html = '<style>li:nth-child(2n+1 of .highlighted) { color: red; }</style><li class="highlighted">x</li>';
+    const html =
+      '<style>li:nth-child(2n+1 of .highlighted) { color: red; }</style><li class="highlighted">x</li>';
     const { html: result } = scopeInlineStyleTags(html, "my-comp");
-    expect(result).toContain(":nth-child(2n+1 of .bascik__my-comp__highlighted)");
+    expect(result).toContain(
+      ":nth-child(2n+1 of .bascik__my-comp__highlighted)",
+    );
     expect(result).not.toContain(":nth-child(2n+1 of .highlighted)");
   });
 
   it("scopes class name in :nth-last-child(An+B of .class) argument", () => {
-    const html = '<style>li:nth-last-child(3 of .item) { font-weight: bold; }</style><li class="item">x</li>';
+    const html =
+      '<style>li:nth-last-child(3 of .item) { font-weight: bold; }</style><li class="item">x</li>';
     const { html: result } = scopeInlineStyleTags(html, "my-comp");
     expect(result).toContain(":nth-last-child(3 of .bascik__my-comp__item)");
   });
 
   it("scopes multiple classes in :nth-child(odd of .a.b) compound selector", () => {
-    const html = '<style>li:nth-child(odd of .a.b) { border: 1px solid; }</style>';
+    const html =
+      "<style>li:nth-child(odd of .a.b) { border: 1px solid; }</style>";
     const { html: result } = scopeInlineStyleTags(html, "my-comp");
     expect(result).toContain(".bascik__my-comp__a");
     expect(result).toContain(".bascik__my-comp__b");
@@ -1919,36 +2045,47 @@ describe("scopeViewTransitionNames", () => {
 
 describe("scopeCounterStyleNames", () => {
   it("scopes an @counter-style declaration name", () => {
-    const css = "@counter-style thumbs { system: cyclic; symbols: '\\1F44D'; suffix: ' '; }";
+    const css =
+      "@counter-style thumbs { system: cyclic; symbols: '\\1F44D'; suffix: ' '; }";
     const result = scopeCounterStyleNames(css, "my-comp");
     expect(result).toContain("@counter-style bascik__my-comp__counter__thumbs");
     expect(result).not.toContain("@counter-style thumbs");
   });
 
   it("scopes a list-style reference to the counter name", () => {
-    const css = "@counter-style steps { system: fixed; }\nul { list-style: steps; }";
+    const css =
+      "@counter-style steps { system: fixed; }\nul { list-style: steps; }";
     const result = scopeCounterStyleNames(css, "my-comp");
     expect(result).toContain("list-style: bascik__my-comp__counter__steps");
     expect(result).not.toContain("list-style: steps");
   });
 
   it("scopes a list-style-type reference", () => {
-    const css = "@counter-style stars { system: cyclic; }\nol { list-style-type: stars; }";
+    const css =
+      "@counter-style stars { system: cyclic; }\nol { list-style-type: stars; }";
     const result = scopeCounterStyleNames(css, "my-comp");
-    expect(result).toContain("list-style-type: bascik__my-comp__counter__stars");
+    expect(result).toContain(
+      "list-style-type: bascik__my-comp__counter__stars",
+    );
   });
 
   it("scopes the counter() function second argument", () => {
-    const css = "@counter-style roman { system: additive; }\n.el::before { content: counter(section, roman); }";
+    const css =
+      "@counter-style roman { system: additive; }\n.el::before { content: counter(section, roman); }";
     const result = scopeCounterStyleNames(css, "my-comp");
-    expect(result).toContain(`counter(section, bascik__my-comp__counter__roman)`);
+    expect(result).toContain(
+      `counter(section, bascik__my-comp__counter__roman)`,
+    );
     expect(result).not.toContain("counter(section, roman)");
   });
 
   it("scopes the counters() function third argument", () => {
-    const css = "@counter-style fancy { system: cyclic; }\n.el::before { content: counters(section, '.', fancy); }";
+    const css =
+      "@counter-style fancy { system: cyclic; }\n.el::before { content: counters(section, '.', fancy); }";
     const result = scopeCounterStyleNames(css, "my-comp");
-    expect(result).toContain(`counters(section, '.', bascik__my-comp__counter__fancy)`);
+    expect(result).toContain(
+      `counters(section, '.', bascik__my-comp__counter__fancy)`,
+    );
   });
 
   it("does not scope built-in counter styles not declared with @counter-style", () => {
@@ -1957,7 +2094,8 @@ describe("scopeCounterStyleNames", () => {
   });
 
   it("scopes multiple @counter-style names independently", () => {
-    const css = "@counter-style alpha { }\n@counter-style beta { }\nul { list-style: alpha; }\nol { list-style: beta; }";
+    const css =
+      "@counter-style alpha { }\n@counter-style beta { }\nul { list-style: alpha; }\nol { list-style: beta; }";
     const result = scopeCounterStyleNames(css, "comp");
     expect(result).toContain("bascik__comp__counter__alpha");
     expect(result).toContain("bascik__comp__counter__beta");
@@ -1975,26 +2113,33 @@ describe("scopeAnchorNames", () => {
   it("scopes an anchor-name declaration", () => {
     const css = ".anchor { anchor-name: --my-anchor; }";
     const result = scopeAnchorNames(css, "my-comp");
-    expect(result).toContain("anchor-name: --bascik__my-comp__anchor__my-anchor");
+    expect(result).toContain(
+      "anchor-name: --bascik__my-comp__anchor__my-anchor",
+    );
     expect(result).not.toContain("anchor-name: --my-anchor");
   });
 
   it("scopes position-anchor reference to match the declared anchor-name", () => {
-    const css = ".anchor { anchor-name: --btn-anchor; }\n.tooltip { position-anchor: --btn-anchor; }";
+    const css =
+      ".anchor { anchor-name: --btn-anchor; }\n.tooltip { position-anchor: --btn-anchor; }";
     const result = scopeAnchorNames(css, "my-comp");
-    expect(result).toContain("position-anchor: --bascik__my-comp__anchor__btn-anchor");
+    expect(result).toContain(
+      "position-anchor: --bascik__my-comp__anchor__btn-anchor",
+    );
     expect(result).not.toContain("position-anchor: --btn-anchor");
   });
 
   it("scopes @position-try at-rule name to match the declared anchor-name", () => {
-    const css = ".anchor { anchor-name: --pop; }\n@position-try --pop { top: anchor(bottom); }";
+    const css =
+      ".anchor { anchor-name: --pop; }\n@position-try --pop { top: anchor(bottom); }";
     const result = scopeAnchorNames(css, "my-comp");
     expect(result).toContain("@position-try --bascik__my-comp__anchor__pop");
     expect(result).not.toContain("@position-try --pop");
   });
 
   it("scopes all three: anchor-name, position-anchor, @position-try", () => {
-    const css = ".anchor { anchor-name: --foo; }\n.pos { position-anchor: --foo; }\n@position-try --foo { top: anchor(bottom); }";
+    const css =
+      ".anchor { anchor-name: --foo; }\n.pos { position-anchor: --foo; }\n@position-try --foo { top: anchor(bottom); }";
     const result = scopeAnchorNames(css, "comp");
     const scoped = "bascik__comp__anchor__foo";
     expect(result).toContain(`anchor-name: --${scoped}`);
@@ -2008,7 +2153,8 @@ describe("scopeAnchorNames", () => {
   });
 
   it("does not affect CSS custom properties with the same name", () => {
-    const css = ".el { --my-prop: 16px; padding: var(--my-prop); anchor-name: --my-anchor; }";
+    const css =
+      ".el { --my-prop: 16px; padding: var(--my-prop); anchor-name: --my-anchor; }";
     const result = scopeAnchorNames(css, "comp");
     expect(result).toContain("--my-prop: 16px");
     expect(result).toContain("var(--my-prop)");
@@ -2016,7 +2162,8 @@ describe("scopeAnchorNames", () => {
   });
 
   it("scopes multiple anchor names independently", () => {
-    const css = ".a { anchor-name: --alpha; }\n.b { anchor-name: --beta; }\n.c { position-anchor: --alpha; }\n.d { position-anchor: --beta; }";
+    const css =
+      ".a { anchor-name: --alpha; }\n.b { anchor-name: --beta; }\n.c { position-anchor: --alpha; }\n.d { position-anchor: --beta; }";
     const result = scopeAnchorNames(css, "comp");
     expect(result).toContain("bascik__comp__anchor__alpha");
     expect(result).toContain("bascik__comp__anchor__beta");
@@ -2078,7 +2225,8 @@ describe("CSS scoping idempotence – property-based", () => {
 
 describe("shieldCssStrings – perfect round-trip", () => {
   it("protects selector-like string literals in CSS content properties from class scoping", () => {
-    const originalCss = '.box::before { content: ".box #heading"; color: red; }';
+    const originalCss =
+      '.box::before { content: ".box #heading"; color: red; }';
     const { css: shielded, restore } = shieldCssStrings(originalCss);
     // Shielded form replaces the string content with a sentinel so class/id scoping does not match .box inside quotes
     expect(shielded).not.toContain('".box #heading"');
@@ -2117,22 +2265,31 @@ describe("shieldCssStrings – perfect round-trip", () => {
 
 describe("extractInlineStyles", () => {
   it("reads a media attribute whole when it contains >, such as a range query", () => {
-    const { html, css } = extractInlineStyles('<div class="a">x</div><style media="(width > 600px)">.a { color: red; }</style>');
+    const { html, css } = extractInlineStyles(
+      '<div class="a">x</div><style media="(width > 600px)">.a { color: red; }</style>',
+    );
     expect(html).toBe('<div class="a">x</div>');
     expect(css).toBe("@media (width > 600px) {\n.a { color: red; }\n}");
   });
 
-  it.each([["</style >"], ["</style\n>"], ["</style foo>"], ["</style/>"], ["</STYLE>"]])(
-    "ends a style at %j without taking the markup after it",
-    (endTag) => {
-      const { html, css } = extractInlineStyles(`<div class="a">x</div><style>.a { color: red; }${endTag}<p>after</p><style>.b{}</style>`);
-      expect(html).toBe('<div class="a">x</div><p>after</p>');
-      expect(css).toBe(".a { color: red; }\n.b{}");
-    },
-  );
+  it.each([
+    ["</style >"],
+    ["</style\n>"],
+    ["</style foo>"],
+    ["</style/>"],
+    ["</STYLE>"],
+  ])("ends a style at %j without taking the markup after it", (endTag) => {
+    const { html, css } = extractInlineStyles(
+      `<div class="a">x</div><style>.a { color: red; }${endTag}<p>after</p><style>.b{}</style>`,
+    );
+    expect(html).toBe('<div class="a">x</div><p>after</p>');
+    expect(css).toBe(".a { color: red; }\n.b{}");
+  });
 
   it("leaves no <style> block behind when removing one joins the text around it into another", () => {
-    const { html, css } = extractInlineStyles("<p>x</p><sty<style>.a{}</style>le>.b{}</style>");
+    const { html, css } = extractInlineStyles(
+      "<p>x</p><sty<style>.a{}</style>le>.b{}</style>",
+    );
     expect(html).toBe("<p>x</p>");
     expect(html).not.toContain("<style");
     expect(css).toBe(".a{}\n.b{}");
@@ -2141,58 +2298,91 @@ describe("extractInlineStyles", () => {
   it("keeps extracting until no block is left when joins are nested several levels deep", () => {
     // Each pass removes the innermost block and joins the next one, so this
     // input needs three passes before the HTML stops changing.
-    const { html, css } = extractInlineStyles("<p>x</p><sty<sty<style>.a{}</style>le>.b{}</style>le>.c{}</style>");
+    const { html, css } = extractInlineStyles(
+      "<p>x</p><sty<sty<style>.a{}</style>le>.b{}</style>le>.c{}</style>",
+    );
     expect(html).toBe("<p>x</p>");
     expect(css).toBe(".a{}\n.b{}\n.c{}");
   });
 
   it("ends the loop on deeply nested joins and collects every block in order", () => {
     const depth = 50;
-    const input = "<sty".repeat(depth) + "<style>.n0{}</style>" +
-      Array.from({ length: depth }, (_, i) => `le>.n${i + 1}{}</style>`).join("");
+    const input =
+      "<sty".repeat(depth) +
+      "<style>.n0{}</style>" +
+      Array.from({ length: depth }, (_, i) => `le>.n${i + 1}{}</style>`).join(
+        "",
+      );
     const { html, css } = extractInlineStyles(input);
     expect(html).toBe("");
-    expect(css).toBe(Array.from({ length: depth + 1 }, (_, i) => `.n${i}{}`).join("\n"));
+    expect(css).toBe(
+      Array.from({ length: depth + 1 }, (_, i) => `.n${i}{}`).join("\n"),
+    );
   });
 
   it("reads the media attribute of a block formed by a join", () => {
-    const { html, css } = extractInlineStyles('<sty<style>.a{}</style>le media="print">.b{}</style>');
+    const { html, css } = extractInlineStyles(
+      '<sty<style>.a{}</style>le media="print">.b{}</style>',
+    );
     expect(html).toBe("");
     expect(css).toBe(".a{}\n@media print {\n.b{}\n}");
   });
 
   it("removes a block formed by joining around an empty <style> block", () => {
-    const { html, css } = extractInlineStyles("<sty<style></style>le>.b{}</style><p>x</p>");
+    const { html, css } = extractInlineStyles(
+      "<sty<style></style>le>.b{}</style><p>x</p>",
+    );
     expect(html).toBe("<p>x</p>");
     expect(css).toBe(".b{}");
   });
 
   it("stops when a join forms a <style-guide> custom element instead of a style tag", () => {
-    const { html, css } = extractInlineStyles("<sty<style>.a{}</style>le-guide>x</style-guide>");
+    const { html, css } = extractInlineStyles(
+      "<sty<style>.a{}</style>le-guide>x</style-guide>",
+    );
     expect(html).toBe("<style-guide>x</style-guide>");
     expect(css).toBe(".a{}");
   });
 
   it("keeps shielded <pre> content intact while extracting joined blocks", () => {
-    const { html, css } = extractInlineStyles("<pre><style>.keep{}</style></pre><sty<style>.a{}</style>le>.b{}</style>");
+    const { html, css } = extractInlineStyles(
+      "<pre><style>.keep{}</style></pre><sty<style>.a{}</style>le>.b{}</style>",
+    );
     expect(html).toBe("<pre><style>.keep{}</style></pre>");
     expect(css).toBe(".a{}\n.b{}");
   });
 
   it("returns HTML that has no extractable <style> block left (property)", () => {
     const body = fc.constantFrom("", ".a{}", " ", "x");
-    const noise = fc.constantFrom("", "<p>", "</p>", "x", "<sty", "le>", "</sty", "<style>", "</style>");
+    const noise = fc.constantFrom(
+      "",
+      "<p>",
+      "</p>",
+      "x",
+      "<sty",
+      "le>",
+      "</sty",
+      "<style>",
+      "</style>",
+    );
     // A block whose `<style` opener only forms once the block nested inside
     // it is removed, mixed with stray fragments that may or may not join.
     const { block } = fc.letrec<{ block: string }>((tie) => ({
       block: fc.oneof(
         { depthSize: "small", withCrossShrink: true },
         fc.tuple(body).map(([css]) => `<style>${css}</style>`),
-        fc.tuple(tie("block"), fc.constantFrom("le>", 'le media="print">'), body)
+        fc
+          .tuple(
+            tie("block"),
+            fc.constantFrom("le>", 'le media="print">'),
+            body,
+          )
           .map(([inner, tail, css]) => `<sty${inner}${tail}${css}</style>`),
       ),
     }));
-    const input = fc.array(fc.oneof(block, noise), { maxLength: 12 }).map((parts) => parts.join(""));
+    const input = fc
+      .array(fc.oneof(block, noise), { maxLength: 12 })
+      .map((parts) => parts.join(""));
     fc.assert(
       fc.property(input, (source) => {
         const first = extractInlineStyles(source);
@@ -2205,21 +2395,24 @@ describe("extractInlineStyles", () => {
   });
 
   it("leaves a <style-guide> custom element alone", () => {
-    const input = "<style-guide>.a { color: red; }</style-guide><style>.b{}</style>";
+    const input =
+      "<style-guide>.a { color: red; }</style-guide><style>.b{}</style>";
     const { html, css } = extractInlineStyles(input);
     expect(html).toBe("<style-guide>.a { color: red; }</style-guide>");
     expect(css).toBe(".b{}");
   });
 
   it("extracts inline <style> tags and strips them from HTML", () => {
-    const input = '<style>.badge { color: red; }</style><span class="badge">Badge</span>';
+    const input =
+      '<style>.badge { color: red; }</style><span class="badge">Badge</span>';
     const { html, css } = extractInlineStyles(input);
     expect(html).toBe('<span class="badge">Badge</span>');
     expect(css).toBe(".badge { color: red; }");
   });
 
   it("does not treat a custom element with a style prefix as a style tag", () => {
-    const input = '<style-card><style>.box { color: red; }</style></style-card>';
+    const input =
+      "<style-card><style>.box { color: red; }</style></style-card>";
     const { html, css } = extractInlineStyles(input);
     expect(html).toBe("<style-card></style-card>");
     expect(css).toBe(".box { color: red; }");
@@ -2235,19 +2428,24 @@ describe("extractInlineStyles", () => {
 
   it("does not extract literal <style> tags inside <code> or <pre> elements", () => {
     const input =
-      '<pre><code>&lt;style&gt;.foo { color: blue; }&lt;/style&gt;</code></pre>' +
+      "<pre><code>&lt;style&gt;.foo { color: blue; }&lt;/style&gt;</code></pre>" +
       '<style>.bar { color: green; }</style><div class="bar">Text</div>';
     const { html, css } = extractInlineStyles(input);
-    expect(html).toContain('<pre><code>&lt;style&gt;.foo { color: blue; }&lt;/style&gt;</code></pre>');
-    expect(html).not.toContain('<style>.bar');
+    expect(html).toContain(
+      "<pre><code>&lt;style&gt;.foo { color: blue; }&lt;/style&gt;</code></pre>",
+    );
+    expect(html).not.toContain("<style>.bar");
     expect(css).toBe(".bar { color: green; }");
   });
 
   it("wraps CSS in @media when <style media='...'> is present", () => {
-    const input = '<style media="(max-width: 600px)">.box { display: block; }</style><div class="box"></div>';
+    const input =
+      '<style media="(max-width: 600px)">.box { display: block; }</style><div class="box"></div>';
     const { html, css } = extractInlineStyles(input);
     expect(html).toBe('<div class="box"></div>');
-    expect(css).toBe("@media (max-width: 600px) {\n.box { display: block; }\n}");
+    expect(css).toBe(
+      "@media (max-width: 600px) {\n.box { display: block; }\n}",
+    );
   });
 
   it("returns unchanged HTML and empty CSS when no <style> tags are present", () => {
@@ -2258,14 +2456,16 @@ describe("extractInlineStyles", () => {
   });
 
   it("handles empty or whitespace-only <style> tags cleanly", () => {
-    const input = '<style></style><style>   \n   </style><div class="box">Text</div>';
+    const input =
+      '<style></style><style>   \n   </style><div class="box">Text</div>';
     const { html, css } = extractInlineStyles(input);
     expect(html).toBe('<div class="box">Text</div>');
     expect(css).toBe("");
   });
 
   it("handles <style> tags with arbitrary attributes (e.g. data-bascik, type)", () => {
-    const input = '<style type="text/css" data-custom="123">.item { color: red; }</style><span class="item">X</span>';
+    const input =
+      '<style type="text/css" data-custom="123">.item { color: red; }</style><span class="item">X</span>';
     const { html, css } = extractInlineStyles(input);
     expect(html).toBe('<span class="item">X</span>');
     expect(css).toBe(".item { color: red; }");
@@ -2274,24 +2474,28 @@ describe("extractInlineStyles", () => {
   it("does not extract literal <style> tags inside <script> or <textarea> elements", () => {
     const input =
       '<script>const str = "<style>.fake { color: red; }</style>";</script>' +
-      '<textarea><style>.fake2 {}</style></textarea>' +
+      "<textarea><style>.fake2 {}</style></textarea>" +
       '<style>.real { color: green; }</style><div class="real">Hi</div>';
     const { html, css } = extractInlineStyles(input);
-    expect(html).toContain('const str = "<style>.fake { color: red; }</style>";');
-    expect(html).toContain('<textarea><style>.fake2 {}</style></textarea>');
-    expect(html).not.toContain('<style>.real');
+    expect(html).toContain(
+      'const str = "<style>.fake { color: red; }</style>";',
+    );
+    expect(html).toContain("<textarea><style>.fake2 {}</style></textarea>");
+    expect(html).not.toContain("<style>.real");
     expect(css).toBe(".real { color: green; }");
   });
 
   it("extracts and combines multiple <style> tags from HTML", () => {
     const input =
-      '<style>.primary { color: red; }</style>' +
+      "<style>.primary { color: red; }</style>" +
       '<div class="primary">Content</div>' +
       '<style media="(min-width: 768px)">.primary { color: blue; }</style>';
     const { html, css } = extractInlineStyles(input);
     expect(html).toBe('<div class="primary">Content</div>');
     expect(css).toContain(".primary { color: red; }");
-    expect(css).toContain("@media (min-width: 768px) {\n.primary { color: blue; }\n}");
+    expect(css).toContain(
+      "@media (min-width: 768px) {\n.primary { color: blue; }\n}",
+    );
   });
 
   it("does not treat a literal <style> mention inside an HTML comment as a real style tag", () => {
@@ -2299,9 +2503,9 @@ describe("extractInlineStyles", () => {
     // opening tag, causing everything up to the real </style> to be consumed as
     // CSS and stripped from the HTML output.
     const input =
-      '<!-- Keep CSS in this file\'s <style> block. -->\n' +
+      "<!-- Keep CSS in this file's <style> block. -->\n" +
       '<div class="demo-box"><span>Content</span></div>\n' +
-      '<style>.demo-box { border: 1px solid; }</style>';
+      "<style>.demo-box { border: 1px solid; }</style>";
     const { html, css } = extractInlineStyles(input);
     expect(html).toContain('<div class="demo-box"><span>Content</span></div>');
     expect(html).toContain("<!-- Keep CSS in this file's <style> block. -->");
@@ -2312,7 +2516,8 @@ describe("extractInlineStyles", () => {
 
 describe("Resilience to regex replacement patterns (TDD)", () => {
   it("prevents $1 injection in scopeCssCustomProperties", () => {
-    const css = "@property --brand { syntax: '<color>'; inherits: false; } .el { color: var(--brand); }";
+    const css =
+      "@property --brand { syntax: '<color>'; inherits: false; } .el { color: var(--brand); }";
     const result = scopeCssCustomProperties(css, "my$1comp");
     expect(result).toContain("my$1comp");
     expect(result).not.toContain("my@property");
@@ -2336,7 +2541,8 @@ describe("Resilience to regex replacement patterns (TDD)", () => {
   });
 
   it("prevents $1 injection in scopeContainerNames", () => {
-    const css = ".el { container-name: sidebar; } @container sidebar (min-width: 200px) { }";
+    const css =
+      ".el { container-name: sidebar; } @container sidebar (min-width: 200px) { }";
     const result = scopeContainerNames(css, "my$1comp");
     expect(result).toContain("my$1comp");
     expect(result).not.toContain("mysidebar");
@@ -2344,7 +2550,8 @@ describe("Resilience to regex replacement patterns (TDD)", () => {
   });
 
   it("prevents $1 injection in scopeViewTransitionNames", () => {
-    const css = ".el { view-transition-name: slide; } ::view-transition-old(slide) { }";
+    const css =
+      ".el { view-transition-name: slide; } ::view-transition-old(slide) { }";
     const result = scopeViewTransitionNames(css, "my$1comp");
     expect(result).toContain("my$1comp");
     expect(result).not.toContain("myslide");
@@ -2392,12 +2599,15 @@ describe("CSS @import resolution and hoisting", () => {
     });
 
     it("parses url(...) import", () => {
-      const parsed = parseCssImport('http://fonts.googleapis.com/css');
+      const parsed = parseCssImport("http://fonts.googleapis.com/css");
       expect(parsed).toBeNull();
 
-      const parsed2 = parseCssImport('@import url("https://fonts.googleapis.com/css2?family=Inter");');
+      const parsed2 = parseCssImport(
+        '@import url("https://fonts.googleapis.com/css2?family=Inter");',
+      );
       expect(parsed2).toEqual({
-        fullMatch: '@import url("https://fonts.googleapis.com/css2?family=Inter");',
+        fullMatch:
+          '@import url("https://fonts.googleapis.com/css2?family=Inter");',
         url: "https://fonts.googleapis.com/css2?family=Inter",
         isRemote: true,
         layer: undefined,
@@ -2407,7 +2617,8 @@ describe("CSS @import resolution and hoisting", () => {
     });
 
     it("parses @import with layer, supports, and media conditions", () => {
-      const statement = '@import url("./base.css") layer(framework) supports(display: grid) screen and (min-width: 600px);';
+      const statement =
+        '@import url("./base.css") layer(framework) supports(display: grid) screen and (min-width: 600px);';
       const parsed = parseCssImport(statement);
       expect(parsed).toEqual({
         fullMatch: statement,
@@ -2433,13 +2644,19 @@ describe("CSS @import resolution and hoisting", () => {
       expect(parseCssImport("@import 'custom.css';")?.url).toBe("custom.css");
 
       // @import url(fineprint.css);
-      expect(parseCssImport("@import url(fineprint.css);")?.url).toBe("fineprint.css");
+      expect(parseCssImport("@import url(fineprint.css);")?.url).toBe(
+        "fineprint.css",
+      );
 
       // @import url("fineprint.css");
-      expect(parseCssImport('@import url("fineprint.css");')?.url).toBe("fineprint.css");
+      expect(parseCssImport('@import url("fineprint.css");')?.url).toBe(
+        "fineprint.css",
+      );
 
       // @import url('fineprint.css');
-      expect(parseCssImport("@import url('fineprint.css');")?.url).toBe("fineprint.css");
+      expect(parseCssImport("@import url('fineprint.css');")?.url).toBe(
+        "fineprint.css",
+      );
 
       // @import "common.css" screen, projection;
       const media1 = parseCssImport('@import "common.css" screen, projection;');
@@ -2447,23 +2664,35 @@ describe("CSS @import resolution and hoisting", () => {
       expect(media1?.media).toBe("screen, projection");
 
       // @import url("landscape.css") screen and (orientation: landscape);
-      const media2 = parseCssImport('@import url("landscape.css") screen and (orientation: landscape);');
+      const media2 = parseCssImport(
+        '@import url("landscape.css") screen and (orientation: landscape);',
+      );
       expect(media2?.media).toBe("screen and (orientation: landscape)");
 
       // @import "common.css" layer;
       expect(parseCssImport('@import "common.css" layer;')?.layer).toBe(true);
 
       // @import "common.css" layer(layer-name);
-      expect(parseCssImport('@import "common.css" layer(layer-name);')?.layer).toBe("layer-name");
+      expect(
+        parseCssImport('@import "common.css" layer(layer-name);')?.layer,
+      ).toBe("layer-name");
 
       // @import "theme.css" supports(display: grid);
-      expect(parseCssImport('@import "theme.css" supports(display: grid);')?.supports).toBe("display: grid");
+      expect(
+        parseCssImport('@import "theme.css" supports(display: grid);')
+          ?.supports,
+      ).toBe("display: grid");
 
       // @import "theme.css" supports(not (display: grid));
-      expect(parseCssImport('@import "theme.css" supports(not (display: grid));')?.supports).toBe("not (display: grid)");
+      expect(
+        parseCssImport('@import "theme.css" supports(not (display: grid));')
+          ?.supports,
+      ).toBe("not (display: grid)");
 
       // @import "theme.css" layer(utilities) supports(display: grid) screen;
-      const comb = parseCssImport('@import "theme.css" layer(utilities) supports(display: grid) screen;');
+      const comb = parseCssImport(
+        '@import "theme.css" layer(utilities) supports(display: grid) screen;',
+      );
       expect(comb?.layer).toBe("utilities");
       expect(comb?.supports).toBe("display: grid");
       expect(comb?.media).toBe("screen");
@@ -2473,7 +2702,12 @@ describe("CSS @import resolution and hoisting", () => {
   describe("wrapInlinedCss", () => {
     it("wraps CSS in layer, supports, and media queries", () => {
       const css = ".btn { color: red; }";
-      const wrapped = wrapInlinedCss(css, "utilities", "display: flex", "screen");
+      const wrapped = wrapInlinedCss(
+        css,
+        "utilities",
+        "display: flex",
+        "screen",
+      );
       expect(wrapped).toContain("@media screen {");
       expect(wrapped).toContain("@layer utilities {");
       expect(wrapped).toContain("@supports (display: flex) {");
@@ -2491,7 +2725,11 @@ describe("CSS @import resolution and hoisting", () => {
       `.trim();
 
       const hoisted = hoistCssImports(css);
-      expect(hoisted.startsWith('@import url("https://fonts.googleapis.com/css?family=Roboto");')).toBe(true);
+      expect(
+        hoisted.startsWith(
+          '@import url("https://fonts.googleapis.com/css?family=Roboto");',
+        ),
+      ).toBe(true);
       expect(hoisted).toContain('@import "https://cdn.example.com/icons.css";');
       expect(hoisted).toContain(".card { padding: 1rem; }");
     });
@@ -2519,11 +2757,17 @@ describe("CSS @import resolution and hoisting", () => {
         writeFileSync(fileA, '@import "./b.css";\n.class-a { color: red; }');
         writeFileSync(fileB, '@import "./a.css";\n.class-b { color: blue; }');
 
-        const resolved = await resolveCssImports('@import "./a.css";', join(tmpDir, "index.css"));
+        const resolved = await resolveCssImports(
+          '@import "./a.css";',
+          join(tmpDir, "index.css"),
+        );
         expect(resolved).toContain(".class-a { color: red; }");
         expect(resolved).toContain(".class-b { color: blue; }");
 
-        const resolvedSync = resolveCssImportsSync('@import "./a.css";', join(tmpDir, "index.css"));
+        const resolvedSync = resolveCssImportsSync(
+          '@import "./a.css";',
+          join(tmpDir, "index.css"),
+        );
         expect(resolvedSync).toContain(".class-a { color: red; }");
         expect(resolvedSync).toContain(".class-b { color: blue; }");
       } finally {
@@ -2532,10 +2776,10 @@ describe("CSS @import resolution and hoisting", () => {
     });
 
     it("preserves remote imports untouched", async () => {
-      const css = '@import url("https://fonts.googleapis.com/css2?family=Inter");\n.main { font-family: Inter; }';
+      const css =
+        '@import url("https://fonts.googleapis.com/css2?family=Inter");\n.main { font-family: Inter; }';
       const resolved = await resolveCssImports(css);
       expect(resolved).toBe(css);
     });
   });
 });
-

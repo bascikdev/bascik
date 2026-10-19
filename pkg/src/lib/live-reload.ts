@@ -11,7 +11,12 @@
  * scanning page content for the SSE path, which ordinary pages may mention.
  */
 
-import { readStartTagAttributes, removeHtmlRanges, scanHtml, type HtmlRange } from "./html-scanner.ts";
+import {
+  readStartTagAttributes,
+  removeHtmlRanges,
+  scanHtml,
+  type HtmlRange,
+} from "./html-scanner.ts";
 
 /** Attribute that marks the injected dev live-reload `<script>` tag. */
 export const LIVE_RELOAD_SCRIPT_ATTR = "data-bascik-live-reload";
@@ -37,7 +42,12 @@ export const stripLiveReloadScript = (html: string): string => {
   scanHtml(html, {
     script(script) {
       const attributes = readStartTagAttributes(html, script.start);
-      if (attributes.some((attribute) => attribute.name === LIVE_RELOAD_SCRIPT_ATTR)) removals.push(script);
+      if (
+        attributes.some(
+          (attribute) => attribute.name === LIVE_RELOAD_SCRIPT_ATTR,
+        )
+      )
+        removals.push(script);
     },
   });
   return removeHtmlRanges(html, removals).html;

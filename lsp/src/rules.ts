@@ -1,9 +1,9 @@
-import compatibilityRulesData from './compatibility-rules.json' with { type: 'json' };
+import compatibilityRulesData from "./compatibility-rules.json" with { type: "json" };
 
 export type CompatibilityPattern = {
   id: string;
-  kind: 'css' | 'js';
-  severity?: 'error' | 'warning';
+  kind: "css" | "js";
+  severity?: "error" | "warning";
   regex: RegExp;
   message: string;
   suggestion: string;
@@ -11,15 +11,17 @@ export type CompatibilityPattern = {
 
 type CompatibilityRuleDefinition = {
   id: string;
-  kind: 'css' | 'js';
-  severity?: 'error' | 'warning';
+  kind: "css" | "js";
+  severity?: "error" | "warning";
   pattern: string;
   flags?: string;
   message: string;
   suggestion: string;
 };
 
-const compatibilityRules: CompatibilityPattern[] = (compatibilityRulesData as CompatibilityRuleDefinition[]).map((rule) => ({
+const compatibilityRules: CompatibilityPattern[] = (
+  compatibilityRulesData as CompatibilityRuleDefinition[]
+).map((rule) => ({
   ...rule,
   regex: new RegExp(rule.pattern, rule.flags),
 }));
@@ -35,7 +37,7 @@ export interface CompatibilityMatch {
 function closeQuoted(text: string, start: number, quote: string): number {
   for (let j = start + 1; j < text.length; j++) {
     const c = text[j];
-    if (c === '\\') j++;
+    if (c === "\\") j++;
     else if (c === quote) return j + 1;
   }
   return -1;
@@ -58,7 +60,7 @@ function closeUrl(text: string, from: number, deadEnds: Uint8Array): number {
     visited.push(cell);
     const c = text[j];
     if (quote === 0) {
-      if (c === ')') return j + 1;
+      if (c === ")") return j + 1;
       if (c === '"') quote = 1;
       else if (c === "'") quote = 2;
     } else if (c === (quote === 1 ? '"' : "'")) {
@@ -77,12 +79,12 @@ function closeUrl(text: string, from: number, deadEnds: Uint8Array): number {
  * quote of one kind never closes, no later quote of that kind does either (the failed scan stepped over each one
  * as an escaped character and was in step from there), and the same holds for `/*`.
  */
-export function maskComments(text: string, kind: 'css' | 'js'): string {
-  const quotes = kind === 'css' ? `"'` : `"'\``;
+export function maskComments(text: string, kind: "css" | "js"): string {
+  const quotes = kind === "css" ? `"'` : `"'\``;
   const unclosedQuotes = new Set<string>();
   let unclosedBlockComment = false;
   let urlDeadEnds: Uint8Array | undefined;
-  let masked = '';
+  let masked = "";
   let copiedTo = 0;
   let i = 0;
   while (i < text.length) {
@@ -94,20 +96,20 @@ export function maskComments(text: string, kind: 'css' | 'js'): string {
         end = closeQuoted(text, i, c);
         if (end < 0) unclosedQuotes.add(c);
       }
-    } else if (c === '/' && text[i + 1] === '/' && kind === 'js') {
-      end = text.indexOf('\n', i + 2);
+    } else if (c === "/" && text[i + 1] === "/" && kind === "js") {
+      end = text.indexOf("\n", i + 2);
       if (end < 0) end = text.length;
       isComment = true;
-    } else if (c === '/' && text[i + 1] === '*') {
+    } else if (c === "/" && text[i + 1] === "*") {
       if (!unclosedBlockComment) {
-        const close = text.indexOf('*/', i + 2);
+        const close = text.indexOf("*/", i + 2);
         if (close < 0) unclosedBlockComment = true;
         else {
           end = close + 2;
           isComment = true;
         }
       }
-    } else if (kind === 'css' && c === 'u' && text.startsWith('url(', i)) {
+    } else if (kind === "css" && c === "u" && text.startsWith("url(", i)) {
       urlDeadEnds ??= new Uint8Array((text.length + 1) * 3);
       end = closeUrl(text, i + 4, urlDeadEnds);
     }
@@ -116,7 +118,8 @@ export function maskComments(text: string, kind: 'css' | 'js'): string {
       continue;
     }
     if (isComment) {
-      masked += text.slice(copiedTo, i) + text.slice(i, end).replace(/[^\n]/g, ' ');
+      masked +=
+        text.slice(copiedTo, i) + text.slice(i, end).replace(/[^\n]/g, " ");
       copiedTo = end;
     }
     i = end;
@@ -132,18 +135,30 @@ export function maskComments(text: string, kind: 'css' | 'js'): string {
  * This is the same matching `@bascik/bascik` does when it compiles a component (`compatibility-checker.ts`).
  * The two packages cannot import each other, so both carry the matcher and a monorepo test keeps them agreeing.
  */
-export function findCompatibilityMatches(text: string, kind: 'css' | 'js'): CompatibilityMatch[] {
+export function findCompatibilityMatches(
+  text: string,
+  kind: "css" | "js",
+): CompatibilityMatch[] {
   const scannable = maskComments(text, kind);
   const matches: CompatibilityMatch[] = [];
   for (const rule of compatibilityRules) {
     if (rule.kind !== kind) continue;
-    const regex = new RegExp(rule.regex.source, rule.regex.flags.includes('g') ? rule.regex.flags : `${rule.regex.flags}g`);
+    const regex = new RegExp(
+      rule.regex.source,
+      rule.regex.flags.includes("g")
+        ? rule.regex.flags
+        : `${rule.regex.flags}g`,
+    );
     let match: RegExpExecArray | null;
     while ((match = regex.exec(scannable)) !== null) {
       // Some patterns allow leading whitespace (`(^|,)\s*\[`), which can reach back over blank lines. Start the
       // match at the first visible character, so a squiggle lands where the problem is.
       const leading = Math.max(match[0].search(/\S/), 0);
-      matches.push({ rule, index: match.index + leading, length: Math.max(match[0].length - leading, 1) });
+      matches.push({
+        rule,
+        index: match.index + leading,
+        length: Math.max(match[0].length - leading, 1),
+      });
       // A pattern that can match nothing would otherwise never advance.
       if (match[0].length === 0) regex.lastIndex++;
     }
@@ -151,7 +166,10 @@ export function findCompatibilityMatches(text: string, kind: 'css' | 'js'): Comp
   return matches;
 }
 
-export function matchCompatibilityRules(text: string, kind: 'css' | 'js'): CompatibilityPattern[] {
+export function matchCompatibilityRules(
+  text: string,
+  kind: "css" | "js",
+): CompatibilityPattern[] {
   return compatibilityRules.filter((rule) => {
     if (rule.kind !== kind) {
       return false;

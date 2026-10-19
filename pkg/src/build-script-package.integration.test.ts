@@ -42,27 +42,47 @@ describe("build-script package dependency identity (real fresh-process CLI build
       try {
         await createPackageFixtureDirs(root);
         await writePackageBuildConfig(root, workers);
-        await writeInstalledPackage(root, "audit-dependency", "audit-dependency", "1.0.0", "dependency-version-one");
-        await writeFixtureFile(root, "src/pages/index.html", `<!DOCTYPE html><html lang="en"><head><title>t</title></head><body>
+        await writeInstalledPackage(
+          root,
+          "audit-dependency",
+          "audit-dependency",
+          "1.0.0",
+          "dependency-version-one",
+        );
+        await writeFixtureFile(
+          root,
+          "src/pages/index.html",
+          `<!DOCTYPE html><html lang="en"><head><title>t</title></head><body>
 <script data-bascik-build>
 import { value } from 'audit-dependency';
 export default function () {
   return '<span data-testid="pkg">' + value + '</span>';
 }
 </script>
-</body></html>`);
+</body></html>`,
+        );
 
         // COLD, actual source CLI full build emits value one.
         await runRealPackageBuild(root);
-        expect(await readDistHtml(root, "index.html")).toContain('data-testid="pkg">dependency-version-one</span>');
+        expect(await readDistHtml(root, "index.html")).toContain(
+          'data-testid="pkg">dependency-version-one</span>',
+        );
 
         // Upgrade the package in place; script text and cache are preserved.
-        await writeInstalledPackage(root, "audit-dependency", "audit-dependency", "2.0.0", "dependency-version-two");
+        await writeInstalledPackage(
+          root,
+          "audit-dependency",
+          "audit-dependency",
+          "2.0.0",
+          "dependency-version-two",
+        );
 
         // Fresh --build --only must NOT replay the cached value one.
         await runRealPackageBuild(root, ["--only", "index.html"]);
         const html = await readDistHtml(root, "index.html");
-        expect(html).toContain('data-testid="pkg">dependency-version-two</span>');
+        expect(html).toContain(
+          'data-testid="pkg">dependency-version-two</span>',
+        );
         expect(html).not.toContain("dependency-version-one");
       } finally {
         await cleanupFixture(root);
@@ -79,30 +99,60 @@ export default function () {
 
         // The "package" lives OUTSIDE node_modules (like a workspace / file: dep)
         // and is user-linked into node_modules via a directory symlink.
-        await writeFixtureFile(root, "vendor/renderer/package.json",
-          JSON.stringify({ name: "renderer", version: "1.0.0", type: "module", main: "index.mjs" }, null, 2));
-        await writeFixtureFile(root, "vendor/renderer/index.mjs",
-          `export const value = "linked-version-one";`);
-        await writeFixtureFile(root, "vendor/renderer/another.mjs",
-          `export const other = "renderer::linked-version-one";`);
+        await writeFixtureFile(
+          root,
+          "vendor/renderer/package.json",
+          JSON.stringify(
+            {
+              name: "renderer",
+              version: "1.0.0",
+              type: "module",
+              main: "index.mjs",
+            },
+            null,
+            2,
+          ),
+        );
+        await writeFixtureFile(
+          root,
+          "vendor/renderer/index.mjs",
+          `export const value = "linked-version-one";`,
+        );
+        await writeFixtureFile(
+          root,
+          "vendor/renderer/another.mjs",
+          `export const other = "renderer::linked-version-one";`,
+        );
         // Directory symlink node_modules/renderer -> ../vendor/renderer
-        await runInFixtureShell(root, "ln -s ../vendor/renderer node_modules/renderer");
+        await runInFixtureShell(
+          root,
+          "ln -s ../vendor/renderer node_modules/renderer",
+        );
 
-        await writeFixtureFile(root, "src/pages/index.html", `<!DOCTYPE html><html lang="en"><head><title>l</title></head><body>
+        await writeFixtureFile(
+          root,
+          "src/pages/index.html",
+          `<!DOCTYPE html><html lang="en"><head><title>l</title></head><body>
 <script data-bascik-build>
 import { value } from 'renderer';
 export default function () {
   return '<span data-testid="pkg">' + value + '</span>';
 }
 </script>
-</body></html>`);
+</body></html>`,
+        );
 
         await runRealPackageBuild(root);
-        expect(await readDistHtml(root, "index.html")).toContain('data-testid="pkg">linked-version-one</span>');
+        expect(await readDistHtml(root, "index.html")).toContain(
+          'data-testid="pkg">linked-version-one</span>',
+        );
 
         // Same version, content change only (in-place linked workspace edit).
-        await writeFixtureFile(root, "vendor/renderer/index.mjs",
-          `export const value = "linked-version-two";`);
+        await writeFixtureFile(
+          root,
+          "vendor/renderer/index.mjs",
+          `export const value = "linked-version-two";`,
+        );
 
         await runRealPackageBuild(root, ["--only", "index.html"]);
         const html = await readDistHtml(root, "index.html");
@@ -122,21 +172,56 @@ export default function () {
         await writePackageBuildConfig(root, workers);
 
         // Base dependency (imported by the middle package's own subpath file).
-        await writeFixtureFile(root, "node_modules/dep-base/package.json",
-          JSON.stringify({ name: "dep-base", version: "1.0.0", type: "module", exports: { ".": "./index.mjs" } }, null, 2));
-        await writeFixtureFile(root, "node_modules/dep-base/index.mjs", `export const value = "base-A";`);
+        await writeFixtureFile(
+          root,
+          "node_modules/dep-base/package.json",
+          JSON.stringify(
+            {
+              name: "dep-base",
+              version: "1.0.0",
+              type: "module",
+              exports: { ".": "./index.mjs" },
+            },
+            null,
+            2,
+          ),
+        );
+        await writeFixtureFile(
+          root,
+          "node_modules/dep-base/index.mjs",
+          `export const value = "base-A";`,
+        );
 
         // Middle package: top-level + ./sub subpath, and its subpath file imports dep-base.
-        await writeFixtureFile(root, "node_modules/audit-lib/package.json",
-          JSON.stringify({
-            name: "audit-lib", version: "1.0.0", type: "module",
-            exports: { ".": "./index.mjs", "./sub": "./sub.mjs" }
-          }, null, 2));
-        await writeFixtureFile(root, "node_modules/audit-lib/index.mjs", `export const top = "lib-top-A";`);
-        await writeFixtureFile(root, "node_modules/audit-lib/sub.mjs",
-          `import { value } from 'dep-base';\nexport const sub = "lib-sub:" + value;`);
+        await writeFixtureFile(
+          root,
+          "node_modules/audit-lib/package.json",
+          JSON.stringify(
+            {
+              name: "audit-lib",
+              version: "1.0.0",
+              type: "module",
+              exports: { ".": "./index.mjs", "./sub": "./sub.mjs" },
+            },
+            null,
+            2,
+          ),
+        );
+        await writeFixtureFile(
+          root,
+          "node_modules/audit-lib/index.mjs",
+          `export const top = "lib-top-A";`,
+        );
+        await writeFixtureFile(
+          root,
+          "node_modules/audit-lib/sub.mjs",
+          `import { value } from 'dep-base';\nexport const sub = "lib-sub:" + value;`,
+        );
 
-        await writeFixtureFile(root, "src/pages/index.html", `<!DOCTYPE html><html lang="en"><head><title>s</title></head><body>
+        await writeFixtureFile(
+          root,
+          "src/pages/index.html",
+          `<!DOCTYPE html><html lang="en"><head><title>s</title></head><body>
 <script data-bascik-build>
 import { top } from 'audit-lib';
 import { sub } from 'audit-lib/sub';
@@ -144,17 +229,26 @@ export default function () {
   return '<span data-testid="pkg">' + top + '|' + sub + '</span>';
 }
 </script>
-</body></html>`);
+</body></html>`,
+        );
 
         await runRealPackageBuild(root);
-        expect(await readDistHtml(root, "index.html")).toContain('data-testid="pkg">lib-top-A|lib-sub:base-A</span>');
+        expect(await readDistHtml(root, "index.html")).toContain(
+          'data-testid="pkg">lib-top-A|lib-sub:base-A</span>',
+        );
 
         // Change dep-base (a transitive package input) in place.
-        await writeFixtureFile(root, "node_modules/dep-base/index.mjs", `export const value = "base-B";`);
+        await writeFixtureFile(
+          root,
+          "node_modules/dep-base/index.mjs",
+          `export const value = "base-B";`,
+        );
 
         await runRealPackageBuild(root, ["--only", "index.html"]);
         const html = await readDistHtml(root, "index.html");
-        expect(html).toContain('data-testid="pkg">lib-top-A|lib-sub:base-B</span>');
+        expect(html).toContain(
+          'data-testid="pkg">lib-top-A|lib-sub:base-B</span>',
+        );
         expect(html).not.toContain("base-A");
       } finally {
         await cleanupFixture(root);
@@ -170,15 +264,25 @@ export default function () {
         try {
           await createPackageFixtureDirs(root);
           await writePackageBuildConfig(root, workers);
-          await writeInstalledPackage(root, "stable-pkg", "stable-pkg", "1.0.0", "stable-value");
-          await writeFixtureFile(root, "src/pages/index.html", `<!DOCTYPE html><html lang="en"><head><title>u</title></head><body>
+          await writeInstalledPackage(
+            root,
+            "stable-pkg",
+            "stable-pkg",
+            "1.0.0",
+            "stable-value",
+          );
+          await writeFixtureFile(
+            root,
+            "src/pages/index.html",
+            `<!DOCTYPE html><html lang="en"><head><title>u</title></head><body>
 <script data-bascik-build>
 import { value } from 'stable-pkg';
 export default function () {
   return '<span data-testid="pkg">' + value + '</span>';
 }
 </script>
-</body></html>`);
+</body></html>`,
+          );
 
           await runRealPackageBuild(root);
           const first = await readDistHtml(root, "index.html");
@@ -200,14 +304,18 @@ export default function () {
       try {
         await createPackageFixtureDirs(root);
         await writePackageBuildConfig(root, false);
-        await writeFixtureFile(root, "src/pages/index.html", `<!DOCTYPE html><html lang="en"><head><title>m</title></head><body>
+        await writeFixtureFile(
+          root,
+          "src/pages/index.html",
+          `<!DOCTYPE html><html lang="en"><head><title>m</title></head><body>
 <script data-bascik-build>
 import { value } from 'not-installed-pkg';
 export default function () {
   return '<span data-testid="pkg">' + value + '</span>';
 }
 </script>
-</body></html>`);
+</body></html>`,
+        );
 
         // Fresh process: resolution fails at execute time; build error surfaced
         // and the CLI exits non-zero. Capture stderr rather than letting the
@@ -218,10 +326,18 @@ export default function () {
         } catch (err) {
           failureStderr = String((err as { stderr?: string })?.stderr ?? err);
         }
-        expect(failureStderr).toMatch(/ERR_MODULE_NOT_FOUND|Cannot find|not-installed-pkg/);
+        expect(failureStderr).toMatch(
+          /ERR_MODULE_NOT_FOUND|Cannot find|not-installed-pkg/,
+        );
 
         // Install it, then a fresh build resolves and emits content (no stale replay).
-        await writeInstalledPackage(root, "not-installed-pkg", "not-installed-pkg", "1.0.0", "now-installed");
+        await writeInstalledPackage(
+          root,
+          "not-installed-pkg",
+          "not-installed-pkg",
+          "1.0.0",
+          "now-installed",
+        );
         await runRealPackageBuild(root);
         const html = await readDistHtml(root, "index.html");
         expect(html).toContain('data-testid="pkg">now-installed</span>');

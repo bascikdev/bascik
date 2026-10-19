@@ -33,14 +33,18 @@
       status.textContent = "class attr removed";
     });
 
-    document.getElementById("toggle-hidden-btn").addEventListener("click", () => {
-      target.toggleAttribute("hidden");
-      status.textContent = "hidden toggled: " + target.hidden;
-    });
+    document
+      .getElementById("toggle-hidden-btn")
+      .addEventListener("click", () => {
+        target.toggleAttribute("hidden");
+        status.textContent = "hidden toggled: " + target.hidden;
+      });
 
-    document.getElementById("check-hidden-btn").addEventListener("click", () => {
-      status.textContent = "target.hidden = " + target.hidden;
-    });
+    document
+      .getElementById("check-hidden-btn")
+      .addEventListener("click", () => {
+        status.textContent = "target.hidden = " + target.hidden;
+      });
 
     document.getElementById("dataset-btn").addEventListener("click", () => {
       status.textContent = "data-theme = " + target.dataset.theme;

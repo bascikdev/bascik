@@ -55,18 +55,22 @@ const {
 
   const mockWatch = vi.fn(makeWatcher);
   const mockEventEmit = vi.fn();
-  const mockRegisterShutdownHandler = vi.fn((fn: () => void | Promise<void>) => {
-    registeredShutdownHandlers.push(fn);
-  });
+  const mockRegisterShutdownHandler = vi.fn(
+    (fn: () => void | Promise<void>) => {
+      registeredShutdownHandlers.push(fn);
+    },
+  );
 
   const resetMocks = () => {
     nextExitCode = 0;
     mockSpawn.mockReset().mockImplementation(makeProcess);
     mockWatch.mockReset().mockImplementation(makeWatcher);
     mockEventEmit.mockReset();
-    mockRegisterShutdownHandler.mockReset().mockImplementation((fn: () => void | Promise<void>) => {
-      registeredShutdownHandlers.push(fn);
-    });
+    mockRegisterShutdownHandler
+      .mockReset()
+      .mockImplementation((fn: () => void | Promise<void>) => {
+        registeredShutdownHandlers.push(fn);
+      });
     registeredShutdownHandlers.length = 0;
     watchers.length = 0;
   };
@@ -93,14 +97,28 @@ vi.mock("./events.js", () => ({
   runShutdownHandlers: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("./config.js", () => ({
-  BascikConfig: { pipeline: { exec: undefined }, directory: { out: undefined, pages: undefined, components: undefined } },
+  BascikConfig: {
+    pipeline: { exec: undefined },
+    directory: { out: undefined, pages: undefined, components: undefined },
+  },
 }));
 
 import { BascikConfig } from "./config.ts";
-import { runScript, runExecPhase, startExecParallel, startExecDev, execShutdownHandler, getActiveExecChildrenCount, resetActiveExecChildrenForTests } from "./exec.ts";
+import {
+  runScript,
+  runExecPhase,
+  startExecParallel,
+  startExecDev,
+  execShutdownHandler,
+  getActiveExecChildrenCount,
+  resetActiveExecChildrenForTests,
+} from "./exec.ts";
 import { type FrameworkClock } from "./clock.ts";
 
-const cfg = BascikConfig as { pipeline: { exec: typeof BascikConfig.pipeline.exec }; directory: { out?: string; pages?: string; components?: string[] } };
+const cfg = BascikConfig as {
+  pipeline: { exec: typeof BascikConfig.pipeline.exec };
+  directory: { out?: string; pages?: string; components?: string[] };
+};
 
 beforeEach(() => {
   resetMocks();
@@ -126,8 +144,18 @@ describe("runExecPhase", () => {
     const result = await runExecPhase("pre");
     expect(result.count).toBe(2);
     expect(mockSpawn).toHaveBeenCalledTimes(2);
-    expect(mockSpawn).toHaveBeenNthCalledWith(1, process.execPath, ["scripts/pre.ts"], expect.anything());
-    expect(mockSpawn).toHaveBeenNthCalledWith(2, process.execPath, ["scripts/pre2.ts"], expect.anything());
+    expect(mockSpawn).toHaveBeenNthCalledWith(
+      1,
+      process.execPath,
+      ["scripts/pre.ts"],
+      expect.anything(),
+    );
+    expect(mockSpawn).toHaveBeenNthCalledWith(
+      2,
+      process.execPath,
+      ["scripts/pre2.ts"],
+      expect.anything(),
+    );
   });
 
   it("defaults undefined phase to pre", async () => {
@@ -137,35 +165,50 @@ describe("runExecPhase", () => {
   });
 
   describe("(started) and (completed) lines", () => {
-    const printed = (spy: { mock: { calls: unknown[][] } }): string[] => spy.mock.calls.map((call) => String(call[0]));
+    const printed = (spy: { mock: { calls: unknown[][] } }): string[] =>
+      spy.mock.calls.map((call) => String(call[0]));
     const withLevel = (level: string | undefined) => {
-      (cfg as unknown as { logging?: { level?: string } }).logging = level === undefined ? undefined : { level };
+      (cfg as unknown as { logging?: { level?: string } }).logging =
+        level === undefined ? undefined : { level };
     };
     afterEach(() => withLevel(undefined));
 
     it("prints both at the default level", async () => {
-      const log = vi.spyOn(console, "log").mockImplementation(() => { });
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
       cfg.pipeline.exec = [{ script: "scripts/a.ts", phase: "pre" }];
       await runExecPhase("pre");
       const lines = printed(log);
-      expect(lines.some((l) => l.includes("(started)") && l.includes("scripts/a.ts"))).toBe(true);
-      expect(lines.some((l) => l.includes("(completed)") && l.includes("scripts/a.ts"))).toBe(true);
+      expect(
+        lines.some(
+          (l) => l.includes("(started)") && l.includes("scripts/a.ts"),
+        ),
+      ).toBe(true);
+      expect(
+        lines.some(
+          (l) => l.includes("(completed)") && l.includes("scripts/a.ts"),
+        ),
+      ).toBe(true);
     });
 
-    it.each(["warn", "error", "silent"])("prints neither at %s, which is what --quiet selects", async (level) => {
-      withLevel(level);
-      const log = vi.spyOn(console, "log").mockImplementation(() => { });
-      cfg.pipeline.exec = [{ script: "scripts/a.ts", phase: "pre" }];
-      await runExecPhase("pre");
-      expect(printed(log).filter((l) => l.includes("exec:"))).toEqual([]);
-    });
+    it.each(["warn", "error", "silent"])(
+      "prints neither at %s, which is what --quiet selects",
+      async (level) => {
+        withLevel(level);
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        cfg.pipeline.exec = [{ script: "scripts/a.ts", phase: "pre" }];
+        await runExecPhase("pre");
+        expect(printed(log).filter((l) => l.includes("exec:"))).toEqual([]);
+      },
+    );
 
     it("still runs the script and still reports a failure when the lines are hidden", async () => {
       withLevel("warn");
-      vi.spyOn(console, "log").mockImplementation(() => { });
+      vi.spyOn(console, "log").mockImplementation(() => {});
       setNextExitCode(1);
       cfg.pipeline.exec = [{ script: "scripts/fail.ts", phase: "pre" }];
-      await expect(runExecPhase("pre")).rejects.toThrow('exec "scripts/fail.ts" exited with code 1');
+      await expect(runExecPhase("pre")).rejects.toThrow(
+        'exec "scripts/fail.ts" exited with code 1',
+      );
       expect(mockSpawn).toHaveBeenCalledTimes(1);
     });
   });
@@ -173,22 +216,29 @@ describe("runExecPhase", () => {
   it("rejects when a script exits non-zero", async () => {
     setNextExitCode(1);
     cfg.pipeline.exec = [{ script: "scripts/fail.ts", phase: "pre" }];
-    await expect(runExecPhase("pre")).rejects.toThrow('exec "scripts/fail.ts" exited with code 1');
+    await expect(runExecPhase("pre")).rejects.toThrow(
+      'exec "scripts/fail.ts" exited with code 1',
+    );
   });
 });
 
 describe("startExecParallel", () => {
   it("observes an early joined rejection before lazy dev startup registers task reporting", async () => {
-    cfg.pipeline.exec = [{ script: "scripts/early-failure.ts", phase: "parallel" }];
+    cfg.pipeline.exec = [
+      { script: "scripts/early-failure.ts", phase: "parallel" },
+    ];
     setNextExitCode(1);
-    const errors = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     const handle = startExecParallel();
     // Model a lazy module import yielding an event-loop turn before startExecDev.
-    await new Promise<void>(resolve => setImmediate(resolve));
+    await new Promise<void>((resolve) => setImmediate(resolve));
     await startExecDev({ parallel: handle });
     await expect(handle).rejects.toThrow("early-failure.ts");
     await Promise.resolve();
-    expect(mockEventEmit).toHaveBeenCalledWith("exec-failed", expect.objectContaining({ entry: cfg.pipeline.exec[0] }));
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "exec-failed",
+      expect.objectContaining({ entry: cfg.pipeline.exec[0] }),
+    );
     expect(errors).toHaveBeenCalledOnce();
   });
 
@@ -211,10 +261,15 @@ describe("startExecParallel", () => {
     ];
 
     const handle = startExecParallel();
-    expect(handle.tasks.map((task) => task.entry.script)).toEqual(["scripts/par1.ts", "scripts/par2.ts"]);
+    expect(handle.tasks.map((task) => task.entry.script)).toEqual([
+      "scripts/par1.ts",
+      "scripts/par2.ts",
+    ]);
     // The joined promise still resolves for the build branch's awaited join.
     await expect(handle).resolves.toBeUndefined();
-    await expect(Promise.all(handle.tasks.map((task) => task.promise))).resolves.toHaveLength(2);
+    await expect(
+      Promise.all(handle.tasks.map((task) => task.promise)),
+    ).resolves.toHaveLength(2);
   });
 
   it("returns an empty task list and a resolved join when no parallel entries exist", async () => {
@@ -228,21 +283,38 @@ describe("startExecParallel", () => {
 
 describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
   it("observes every parallel rejection, including tasks that fail after the join rejects", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     let failFirst!: (error: Error) => void;
     let failSecond!: (error: Error) => void;
     const tasks = [
-      { entry: { script: "first.ts", phase: "parallel" as const }, promise: new Promise<number>((_resolve, reject) => { failFirst = reject; }) },
-      { entry: { script: "second.ts", phase: "parallel" as const }, promise: new Promise<number>((_resolve, reject) => { failSecond = reject; }) },
+      {
+        entry: { script: "first.ts", phase: "parallel" as const },
+        promise: new Promise<number>((_resolve, reject) => {
+          failFirst = reject;
+        }),
+      },
+      {
+        entry: { script: "second.ts", phase: "parallel" as const },
+        promise: new Promise<number>((_resolve, reject) => {
+          failSecond = reject;
+        }),
+      },
     ];
-    const parallel = Object.assign(Promise.all(tasks.map(task => task.promise)).then(() => undefined), { tasks });
+    const parallel = Object.assign(
+      Promise.all(tasks.map((task) => task.promise)).then(() => undefined),
+      { tasks },
+    );
     await startExecDev({ parallel });
     failFirst(new Error("first failure"));
-    await parallel.catch(() => { });
+    await parallel.catch(() => {});
     failSecond(new Error("second failure"));
-    await Promise.allSettled(tasks.map(task => task.promise));
+    await Promise.allSettled(tasks.map((task) => task.promise));
     await Promise.resolve();
-    expect(mockEventEmit.mock.calls.filter(([name]) => name === "exec-failed").map(([, payload]) => payload.entry.script)).toEqual(["first.ts", "second.ts"]);
+    expect(
+      mockEventEmit.mock.calls
+        .filter(([name]) => name === "exec-failed")
+        .map(([, payload]) => payload.entry.script),
+    ).toEqual(["first.ts", "second.ts"]);
     expect(errorSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -274,7 +346,9 @@ describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
         paths: [],
       }),
     );
-    const completed = mockEventEmit.mock.calls.filter(([name]) => name === "exec-completed");
+    const completed = mockEventEmit.mock.calls.filter(
+      ([name]) => name === "exec-completed",
+    );
     expect(completed).toHaveLength(2);
     // Registration does not rerun the already-started parallel work.
     expect(mockSpawn).toHaveBeenCalledTimes(2);
@@ -283,11 +357,11 @@ describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
   it("emits exec-failed (and never exec-completed) when a parallel task rejects, without throwing", async () => {
     cfg.pipeline.exec = [{ script: "scripts/fail.ts", phase: "parallel" }];
     setNextExitCode(1);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const handle = startExecParallel();
     await expect(startExecDev({ parallel: handle })).resolves.toBeUndefined();
-    await handle.catch(() => { });
+    await handle.catch(() => {});
     await Promise.resolve();
 
     expect(mockEventEmit).toHaveBeenCalledWith(
@@ -298,11 +372,17 @@ describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
         error: expect.any(Error),
       }),
     );
-    expect(mockEventEmit).not.toHaveBeenCalledWith("exec-completed", expect.anything());
+    expect(mockEventEmit).not.toHaveBeenCalledWith(
+      "exec-completed",
+      expect.anything(),
+    );
     // One failure prints exactly one stderr line; exec-failed only feeds the
     // SSE build-error overlay, which does not log.
     expect(errorSpy).toHaveBeenCalledTimes(1);
-    expect(errorSpy).toHaveBeenCalledWith("[bascik] exec error:", expect.any(Error));
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[bascik] exec error:",
+      expect.any(Error),
+    );
     errorSpy.mockRestore();
   });
 
@@ -310,12 +390,14 @@ describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
     cfg.pipeline.exec = [{ script: "scripts/fail.ts", phase: "parallel" }];
     (cfg.pipeline as any).onExecError = "error";
     setNextExitCode(1);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
     try {
       const handle = startExecParallel();
       await startExecDev({ parallel: handle });
-      await handle.catch(() => { });
+      await handle.catch(() => {});
       await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(1));
     } finally {
       delete (cfg.pipeline as any).onExecError;
@@ -327,11 +409,13 @@ describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
   it("keeps the dev session running on a parallel failure by default", async () => {
     cfg.pipeline.exec = [{ script: "scripts/fail.ts", phase: "parallel" }];
     setNextExitCode(1);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
     const handle = startExecParallel();
     await startExecDev({ parallel: handle });
-    await handle.catch(() => { });
+    await handle.catch(() => {});
     await Promise.resolve();
     expect(exitSpy).not.toHaveBeenCalled();
     exitSpy.mockRestore();
@@ -354,20 +438,24 @@ describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
 });
 
 describe("startExecDev", () => {
-  it('serializes a watched rerun behind the same entry still running at startup', async () => {
+  it("serializes a watched rerun behind the same entry still running at startup", async () => {
     const closes: ((code: number) => void)[] = [];
     mockSpawn.mockImplementation(() => {
       const child = {
         kill: vi.fn(),
         on: vi.fn((event: string, callback: (...args: unknown[]) => void) => {
-          if (event === 'close') closes.push(code => callback(code));
+          if (event === "close") closes.push((code) => callback(code));
           return child;
         }),
-        emitEvent: (_event: string, ..._args: unknown[]) => { },
+        emitEvent: (_event: string, ..._args: unknown[]) => {},
       };
       return child;
     });
-    const entry = { script: 'scripts/parallel.ts', phase: 'parallel' as const, watch: ['content/'] };
+    const entry = {
+      script: "scripts/parallel.ts",
+      phase: "parallel" as const,
+      watch: ["content/"],
+    };
     cfg.pipeline.exec = [entry];
     const startup = startExecParallel();
     const rerun = runScript(entry);
@@ -423,24 +511,39 @@ describe("startExecDev", () => {
   });
 
   it.each([
-    { label: "default dist", configuredOut: undefined, expectedOut: resolve(process.cwd(), "dist") },
-    { label: "relative path", configuredOut: "custom-output", expectedOut: resolve(process.cwd(), "custom-output") },
-    { label: "absolute path", configuredOut: resolve(process.cwd(), "abs-output"), expectedOut: resolve(process.cwd(), "abs-output") },
-  ])("resolves BASCIK_OUT_DIR with $label ($configuredOut)", async ({ configuredOut, expectedOut }) => {
-    cfg.directory.out = configuredOut;
-    cfg.pipeline.exec = [{ script: "scripts/test-out.ts" }];
-    await runExecPhase("pre");
+    {
+      label: "default dist",
+      configuredOut: undefined,
+      expectedOut: resolve(process.cwd(), "dist"),
+    },
+    {
+      label: "relative path",
+      configuredOut: "custom-output",
+      expectedOut: resolve(process.cwd(), "custom-output"),
+    },
+    {
+      label: "absolute path",
+      configuredOut: resolve(process.cwd(), "abs-output"),
+      expectedOut: resolve(process.cwd(), "abs-output"),
+    },
+  ])(
+    "resolves BASCIK_OUT_DIR with $label ($configuredOut)",
+    async ({ configuredOut, expectedOut }) => {
+      cfg.directory.out = configuredOut;
+      cfg.pipeline.exec = [{ script: "scripts/test-out.ts" }];
+      await runExecPhase("pre");
 
-    expect(mockSpawn).toHaveBeenCalledWith(
-      process.execPath,
-      ["scripts/test-out.ts"],
-      expect.objectContaining({
-        env: expect.objectContaining({
-          BASCIK_OUT_DIR: expectedOut,
+      expect(mockSpawn).toHaveBeenCalledWith(
+        process.execPath,
+        ["scripts/test-out.ts"],
+        expect.objectContaining({
+          env: expect.objectContaining({
+            BASCIK_OUT_DIR: expectedOut,
+          }),
         }),
-      }),
-    );
-  });
+      );
+    },
+  );
 
   it("resolves BASCIK_OUT_DIR to project root output even when exec entry specifies a custom cwd", async () => {
     cfg.directory.out = "custom-output";
@@ -465,7 +568,6 @@ describe("startExecDev", () => {
 
     await expect(startExecParallel()).rejects.toThrow(/exited with code 1/);
   });
-
 });
 
 describe("exec timeout escalation and lifecycle", () => {
@@ -653,7 +755,7 @@ describe("exec timeout escalation and lifecycle", () => {
         timeouts.delete(handle as any);
       },
       setInterval: () => 0 as any,
-      clearInterval: () => { },
+      clearInterval: () => {},
     };
 
     const proc = {

@@ -19,4 +19,7 @@ import { BascikConfig } from "./config.ts";
 export const DEFAULT_IMPORT_ROOT = "src";
 
 export const getImportRoot = (): string =>
-  resolve(process.cwd(), BascikConfig.scripts?.importRoot ?? DEFAULT_IMPORT_ROOT);
+  resolve(
+    process.cwd(),
+    BascikConfig.scripts?.importRoot ?? DEFAULT_IMPORT_ROOT,
+  );

@@ -18,11 +18,11 @@ Read a Markdown file and output the HTML:
 
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
-  import { marked } from 'marked';
+  import { readFile } from "node:fs/promises";
+  import { marked } from "marked";
 
   export default async function () {
-    const md = await readFile('./content/intro.md', 'utf8');
+    const md = await readFile("./content/intro.md", "utf8");
     return marked(md);
   }
 </script>
@@ -31,6 +31,7 @@ Read a Markdown file and output the HTML:
 The output replaces the script tag in the compiled HTML with no client-side JavaScript runs.
 
 <!-- demo:source-md -->
+
 ```md
 ## A practical heading
 
@@ -40,11 +41,15 @@ Markdown stays comfortable for authors, while the published page stays **vanilla
 ```
 
 <!-- demo:output-html -->
+
 ```html
 <h2>A practical heading</h2>
-<p>Markdown stays comfortable for authors, while the published page stays <strong>vanilla HTML</strong>.</p>
+<p>
+  Markdown stays comfortable for authors, while the published page stays
+  <strong>vanilla HTML</strong>.
+</p>
 <blockquote>
-<p>Add an editorial treatment with ordinary CSS.</p>
+  <p>Add an editorial treatment with ordinary CSS.</p>
 </blockquote>
 ```
 
@@ -63,11 +68,11 @@ Wrap the generated content with a stable class and link a regular stylesheet fro
 <body>
   <main class="markdown-body">
     <script data-bascik-build>
-      import { readFile } from 'node:fs/promises';
-      import { marked } from 'marked';
+      import { readFile } from "node:fs/promises";
+      import { marked } from "marked";
 
       export default async function () {
-        const md = await readFile('./content/article.md', 'utf8');
+        const md = await readFile("./content/article.md", "utf8");
         return marked(md);
       }
     </script>
@@ -83,12 +88,16 @@ Then style the HTML elements the parser emits:
   max-width: 68ch;
   margin-inline: auto;
   color: #25282d;
-  font: 1.05rem/1.75 Georgia, serif;
+  font:
+    1.05rem/1.75 Georgia,
+    serif;
 }
 
 .markdown-body h2 {
   margin-block: 2.5rem 0.75rem;
-  font: 700 1.75rem/1.2 system-ui, sans-serif;
+  font:
+    700 1.75rem/1.2 system-ui,
+    sans-serif;
 }
 
 .markdown-body a {
@@ -133,13 +142,17 @@ Pair it with component CSS. Start selectors with the wrapper class, and put the 
   max-width: 68ch;
   margin-inline: auto;
   color: #25282d;
-  font: 1.05rem/1.75 Georgia, serif;
+  font:
+    1.05rem/1.75 Georgia,
+    serif;
 }
 
 .markdown-content :is(h2) {
   margin-block: 2.5rem 0.75rem;
   color: #142c35;
-  font: 700 1.75rem/1.2 system-ui, sans-serif;
+  font:
+    700 1.75rem/1.2 system-ui,
+    sans-serif;
 }
 
 .markdown-content :is(blockquote) {
@@ -160,11 +173,11 @@ Have the build script emit the component tag around the parsed Markdown:
 
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
-  import { marked } from 'marked';
+  import { readFile } from "node:fs/promises";
+  import { marked } from "marked";
 
   export default async function () {
-    const md = await readFile('./content/article.md', 'utf8');
+    const md = await readFile("./content/article.md", "utf8");
     return `<markdown-content>${marked(md)}</markdown-content>`;
   }
 </script>
@@ -191,9 +204,15 @@ The parser produces normal elements inside the resolved component:
 ```html
 <article class="bascik__markdown-content__markdown-content">
   <h2>A practical heading</h2>
-  <p>Markdown stays comfortable for authors, while the published page stays <strong>vanilla HTML</strong>.</p>
+  <p>
+    Markdown stays comfortable for authors, while the published page stays
+    <strong>vanilla HTML</strong>.
+  </p>
   <blockquote>
-    <p>Content can have a distinct editorial treatment without adding a client runtime.</p>
+    <p>
+      Content can have a distinct editorial treatment without adding a client
+      runtime.
+    </p>
   </blockquote>
 </article>
 ```
@@ -220,18 +239,18 @@ This is the post body.
 
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
-  import { marked } from 'marked';
-  import matter from 'gray-matter';
+  import { readFile } from "node:fs/promises";
+  import { marked } from "marked";
+  import matter from "gray-matter";
 
   export default async function () {
-    const raw = await readFile('./content/post.md', 'utf8');
+    const raw = await readFile("./content/post.md", "utf8");
     const { data, content } = matter(raw);
 
     return `
       <article>
         <h1>${data.title}</h1>
-        <time datetime="${data.date}">${new Date(data.date).toLocaleDateString('en-US', { dateStyle: 'long' })}</time>
+        <time datetime="${data.date}">${new Date(data.date).toLocaleDateString("en-US", { dateStyle: "long" })}</time>
         ${marked(content)}
       </article>
     `;
@@ -245,28 +264,34 @@ Read an entire folder of Markdown files and generate a list or index page:
 
 ```html
 <script data-bascik-build>
-  import { readdir, readFile } from 'node:fs/promises';
-  import matter from 'gray-matter';
+  import { readdir, readFile } from "node:fs/promises";
+  import matter from "gray-matter";
 
   export default async function () {
-    const files = (await readdir('./content/posts'))
-      .filter(f => f.endsWith('.md'))
+    const files = (await readdir("./content/posts"))
+      .filter((f) => f.endsWith(".md"))
       .sort()
       .reverse(); // newest first if files are date-prefixed
 
-    const posts = await Promise.all(files.map(async file => {
-      const raw = await readFile(`./content/posts/${file}`, 'utf8');
-      const { data } = matter(raw);
-      const slug = file.replace(/\.md$/, '');
-      return { slug, ...data };
-    }));
+    const posts = await Promise.all(
+      files.map(async (file) => {
+        const raw = await readFile(`./content/posts/${file}`, "utf8");
+        const { data } = matter(raw);
+        const slug = file.replace(/\.md$/, "");
+        return { slug, ...data };
+      }),
+    );
 
-    const items = posts.map(p => `
+    const items = posts
+      .map(
+        (p) => `
       <li>
         <a href="/posts/${p.slug}">${p.title}</a>
         <time>${p.date}</time>
       </li>
-    `).join('\n');
+    `,
+      )
+      .join("\n");
 
     return `<ul class="post-list">\n${items}\n</ul>`;
   }
@@ -289,12 +314,12 @@ npm install markdown-it
 
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
-  import MarkdownIt from 'markdown-it';
+  import { readFile } from "node:fs/promises";
+  import MarkdownIt from "markdown-it";
 
   export default async function () {
     const md = new MarkdownIt({ html: true, typographer: true });
-    const source = await readFile('./content/article.md', 'utf8');
+    const source = await readFile("./content/article.md", "utf8");
     return md.render(source);
   }
 </script>
@@ -308,9 +333,9 @@ npm install markdown-it highlight.js
 
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
-  import MarkdownIt from 'markdown-it';
-  import hljs from 'highlight.js';
+  import { readFile } from "node:fs/promises";
+  import MarkdownIt from "markdown-it";
+  import hljs from "highlight.js";
 
   export default async function () {
     const md = new MarkdownIt({
@@ -318,11 +343,11 @@ npm install markdown-it highlight.js
         if (lang && hljs.getLanguage(lang)) {
           return hljs.highlight(code, { language: lang }).value;
         }
-        return '';
-      }
+        return "";
+      },
     });
 
-    const source = await readFile('./content/article.md', 'utf8');
+    const source = await readFile("./content/article.md", "utf8");
     return md.render(source);
   }
 </script>
@@ -331,8 +356,10 @@ npm install markdown-it highlight.js
 Then include the highlight.js stylesheet in your page `<head>`:
 
 ```html
-<link rel="stylesheet"
-  href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css" />
+<link
+  rel="stylesheet"
+  href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css"
+/>
 ```
 
 ## remark / unified
@@ -345,17 +372,14 @@ npm install unified remark-parse remark-html
 
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
-  import { unified } from 'unified';
-  import remarkParse from 'remark-parse';
-  import remarkHtml from 'remark-html';
+  import { readFile } from "node:fs/promises";
+  import { unified } from "unified";
+  import remarkParse from "remark-parse";
+  import remarkHtml from "remark-html";
 
   export default async function () {
-    const md = await readFile('./content/article.md', 'utf8');
-    const file = await unified()
-      .use(remarkParse)
-      .use(remarkHtml)
-      .process(md);
+    const md = await readFile("./content/article.md", "utf8");
+    const file = await unified().use(remarkParse).use(remarkHtml).process(md);
 
     return String(file);
   }
@@ -370,11 +394,11 @@ If your content comes from a headless CMS that returns Markdown via an API, fetc
 
 ```html
 <script data-bascik-build>
-  import { marked } from 'marked';
+  import { marked } from "marked";
 
   export default async function () {
-    const res = await fetch('https://your-cms.example.com/api/page/home', {
-      headers: { Authorization: `Bearer ${process.env.CMS_TOKEN}` }
+    const res = await fetch("https://your-cms.example.com/api/page/home", {
+      headers: { Authorization: `Bearer ${process.env.CMS_TOKEN}` },
     });
     const { body } = await res.json();
     return marked(body);

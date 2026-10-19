@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { fileURLToPath } from "node:url";
-import { cleanStackTrace, KEEP_INTERNAL_FRAMES_ENV, remapRewrittenColumns } from "./stack-trace.ts";
+import {
+  cleanStackTrace,
+  KEEP_INTERNAL_FRAMES_ENV,
+  remapRewrittenColumns,
+} from "./stack-trace.ts";
 import { rewriteModuleSpecifiersWithEdits } from "./module-specifiers.ts";
 
 /** This directory, which is where Bascik's own modules live in a real install too (dist/lib/). */
@@ -37,7 +41,9 @@ describe("cleanStackTrace – frames that are not the user's", () => {
       "    at async default (src/pages/x.html:8:5)",
     ].join("\n");
 
-    expect(cleanStackTrace(rawTrace, "/tmp/x.mjs", "src/pages/x.html", 1)).toBe(rawTrace);
+    expect(cleanStackTrace(rawTrace, "/tmp/x.mjs", "src/pages/x.html", 1)).toBe(
+      rawTrace,
+    );
   });
 
   it("keeps frames of files in subdirectories, such as test fixtures, which are not Bascik's modules", () => {
@@ -45,43 +51,78 @@ describe("cleanStackTrace – frames that are not the user's", () => {
       `    at helper (file://${bascikLib}test-fixtures/helper.ts:2:3)`,
       `    at helper (${bascikLib}__fixtures__/helper.ts:2:3)`,
     ]) {
-      expect(cleanStackTrace(`Error: x\n${frame}`, "/tmp/x.mjs", "src/pages/x.html", 1)).toContain(frame);
+      expect(
+        cleanStackTrace(
+          `Error: x\n${frame}`,
+          "/tmp/x.mjs",
+          "src/pages/x.html",
+          1,
+        ),
+      ).toContain(frame);
     }
   });
 
   it("drops a Bascik frame written as a plain path, without the file URL", () => {
     const rawTrace = `Error: x\n    at default (src/pages/x.html:3:1)\n    at run (${bascikLib}server-scripts.ts:300:9)`;
-    expect(cleanStackTrace(rawTrace, "/tmp/x.mjs", "src/pages/x.html", 1)).toBe("Error: x\n    at default (src/pages/x.html:3:1)");
+    expect(cleanStackTrace(rawTrace, "/tmp/x.mjs", "src/pages/x.html", 1)).toBe(
+      "Error: x\n    at default (src/pages/x.html:3:1)",
+    );
   });
 
   it(`keeps Bascik's frames when ${KEEP_INTERNAL_FRAMES_ENV}=1`, () => {
     const frame = `    at ScriptRegistry.invoke (file://${bascikLib}script-registry.ts:326:49)`;
     vi.stubEnv(KEEP_INTERNAL_FRAMES_ENV, "1");
     try {
-      expect(cleanStackTrace(`Error: x\n${frame}`, "/tmp/x.mjs", "src/pages/x.html", 1)).toContain(frame);
+      expect(
+        cleanStackTrace(
+          `Error: x\n${frame}`,
+          "/tmp/x.mjs",
+          "src/pages/x.html",
+          1,
+        ),
+      ).toContain(frame);
     } finally {
       vi.unstubAllEnvs();
     }
   });
 
   it("maps every column after rewritten imports back to the column as written", () => {
-    const source = 'import a from "./a.ts"; import b from "./b.ts"; a(); b(); boom();\nnext();';
-    const { code, edits } = rewriteModuleSpecifiersWithEdits(source, "/project/src/pages", { importRoot: "/project/src" });
+    const source =
+      'import a from "./a.ts"; import b from "./b.ts"; a(); b(); boom();\nnext();';
+    const { code, edits } = rewriteModuleSpecifiersWithEdits(
+      source,
+      "/project/src/pages",
+      { importRoot: "/project/src" },
+    );
     expect(edits).toHaveLength(2);
     const [rewrittenLine] = code.split("\n");
     for (const token of ["a()", "b()", "boom()"]) {
       const raw = `Error: x\n    at f (data:mod:1:${rewrittenLine.lastIndexOf(token) + 1})`;
-      expect(remapRewrittenColumns(raw, ["data:mod"], edits)).toBe(`Error: x\n    at f (data:mod:1:${source.lastIndexOf(token) + 1})`);
+      expect(remapRewrittenColumns(raw, ["data:mod"], edits)).toBe(
+        `Error: x\n    at f (data:mod:1:${source.lastIndexOf(token) + 1})`,
+      );
     }
     // Lines without a rewrite, and other files, are left alone.
-    expect(remapRewrittenColumns("    at g (data:mod:2:1)", ["data:mod"], edits)).toBe("    at g (data:mod:2:1)");
-    expect(remapRewrittenColumns("    at h (src/lib/x.ts:1:90)", ["data:mod"], edits)).toBe("    at h (src/lib/x.ts:1:90)");
+    expect(
+      remapRewrittenColumns("    at g (data:mod:2:1)", ["data:mod"], edits),
+    ).toBe("    at g (data:mod:2:1)");
+    expect(
+      remapRewrittenColumns(
+        "    at h (src/lib/x.ts:1:90)",
+        ["data:mod"],
+        edits,
+      ),
+    ).toBe("    at h (src/lib/x.ts:1:90)");
   });
 
   it("maps a column inside a rewritten specifier to the start of the specifier as written", () => {
     const source = 'import a from "./a.ts";';
-    const { edits } = rewriteModuleSpecifiersWithEdits(source, "/project/src", { importRoot: "/project/src" });
-    expect(remapRewrittenColumns("at (m.mjs:1:30)", ["m.mjs"], edits)).toBe(`at (m.mjs:1:${edits[0].column})`);
+    const { edits } = rewriteModuleSpecifiersWithEdits(source, "/project/src", {
+      importRoot: "/project/src",
+    });
+    expect(remapRewrittenColumns("at (m.mjs:1:30)", ["m.mjs"], edits)).toBe(
+      `at (m.mjs:1:${edits[0].column})`,
+    );
   });
 
   it("keeps Node's located syntax-error report and drops its version trailer", () => {
@@ -100,14 +141,16 @@ describe("cleanStackTrace – frames that are not the user's", () => {
 
     // The module is padded to the file's lines, so the offset is 1 and the line is unchanged.
     expect(cleanStackTrace(rawTrace, tmpPath, "src/pages/s.html", 1)).toBe(
-      'src/pages/s.html:11\n        return "x" +;\n                    ^\n\nSyntaxError: Unexpected token \';\'',
+      "src/pages/s.html:11\n        return \"x\" +;\n                    ^\n\nSyntaxError: Unexpected token ';'",
     );
   });
 });
 
 describe("cleanStackTrace", () => {
   it("returns raw trace if trace is empty or falsy", () => {
-    expect(cleanStackTrace("", "/tmp/file.mjs", "src/pages/index.html", 10)).toBe("");
+    expect(
+      cleanStackTrace("", "/tmp/file.mjs", "src/pages/index.html", 10),
+    ).toBe("");
   });
 
   it("replaces tmp file path and maps line numbers using lineOffset", () => {
@@ -139,12 +182,16 @@ describe("cleanStackTrace", () => {
       `    at default (${modulePath}?bascik-gen=3:4:1)`;
 
     const cleaned = cleanStackTrace(rawTrace, modulePath, realPath, 40);
-    expect(cleaned).toBe(`Error: gen failure\n    at default (${realPath}:41:9)\n    at default (${realPath}:43:1)`);
+    expect(cleaned).toBe(
+      `Error: gen failure\n    at default (${realPath}:41:9)\n    at default (${realPath}:43:1)`,
+    );
   });
 
   it("remaps Windows backslash tmpPath when stack frames use forward slashes", () => {
-    const modulePath = "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\bascik-script\\gen-trace.mjs";
-    const forwardPath = "C:/Users/RUNNER~1/AppData/Local/Temp/bascik-script/gen-trace.mjs";
+    const modulePath =
+      "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\bascik-script\\gen-trace.mjs";
+    const forwardPath =
+      "C:/Users/RUNNER~1/AppData/Local/Temp/bascik-script/gen-trace.mjs";
     const realPath = "src/pages/index.html";
     const rawTrace =
       `Error: gen failure\n` +
@@ -152,7 +199,9 @@ describe("cleanStackTrace", () => {
       `    at default (file:///${forwardPath}?bascik-gen=1:4:1)`;
 
     const cleaned = cleanStackTrace(rawTrace, modulePath, realPath, 40);
-    expect(cleaned).toBe(`Error: gen failure\n    at default (${realPath}:41:9)\n    at default (${realPath}:43:1)`);
+    expect(cleaned).toBe(
+      `Error: gen failure\n    at default (${realPath}:41:9)\n    at default (${realPath}:43:1)`,
+    );
   });
 
   it("strips the dev generation marker from helper frames loaded under a generation URL (prompt 138)", () => {
@@ -169,9 +218,9 @@ describe("cleanStackTrace", () => {
     const cleaned = cleanStackTrace(rawTrace, entryPath, realPath, 10);
     expect(cleaned).toBe(
       `Error: from helper\n` +
-      `    at utilValue (file:///project/src/lib/util.ts:1:29)\n` +
-      `    at helperValue (file:///project/src/lib/helper.ts:2:35)\n` +
-      `    at default (${realPath}:11:60)`,
+        `    at utilValue (file:///project/src/lib/util.ts:1:29)\n` +
+        `    at helperValue (file:///project/src/lib/helper.ts:2:35)\n` +
+        `    at default (${realPath}:11:60)`,
     );
     expect(cleaned).not.toContain("bascik-gen");
   });
@@ -193,6 +242,8 @@ Error [ERR_MODULE_NOT_FOUND]: Cannot find module './does-not-exist' imported fro
 }`;
 
     const cleaned = cleanStackTrace(rawTrace, tmpPath, realPath, lineOffset);
-    expect(cleaned).toBe(`Error [ERR_MODULE_NOT_FOUND]: Cannot find module './does-not-exist' imported from ${realPath}:6:4 {\n  code: 'ERR_MODULE_NOT_FOUND',\n  url: 'file:///project/docs/scripts/does-not-exist.ts'\n}`);
+    expect(cleaned).toBe(
+      `Error [ERR_MODULE_NOT_FOUND]: Cannot find module './does-not-exist' imported from ${realPath}:6:4 {\n  code: 'ERR_MODULE_NOT_FOUND',\n  url: 'file:///project/docs/scripts/does-not-exist.ts'\n}`,
+    );
   });
 });

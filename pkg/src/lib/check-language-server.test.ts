@@ -19,7 +19,13 @@ vi.mock("./config.ts", async (importOriginal) => {
 describe("languageServerHint", () => {
   it("says nothing when the per-file checks ran", () => {
     expect(
-      languageServerHint({ status: "ran", filesChecked: 1, fixedFiles: [], diagnostics: [], formatDiagnostic: () => "" }),
+      languageServerHint({
+        status: "ran",
+        filesChecked: 1,
+        fixedFiles: [],
+        diagnostics: [],
+        formatDiagnostic: () => "",
+      }),
     ).toBeUndefined();
   });
 
@@ -59,18 +65,35 @@ describe("loadLanguageServerCheck", () => {
     await mkdir(dir, { recursive: true });
     await writeFile(
       join(dir, "package.json"),
-      JSON.stringify({ name: "@bascik/language-server", version: "9.9.9", type: "module", exports: { "./check": "./check.js" } }),
+      JSON.stringify({
+        name: "@bascik/language-server",
+        version: "9.9.9",
+        type: "module",
+        exports: { "./check": "./check.js" },
+      }),
     );
     await writeFile(join(dir, "check.js"), source);
   };
 
   it("prefers the copy installed in the project, so the user's version is the one that runs", async () => {
-    await installFake("export const checkFiles = async () => ({}); export const formatDiagnostic = () => 'from the project';");
+    await installFake(
+      "export const checkFiles = async () => ({}); export const formatDiagnostic = () => 'from the project';",
+    );
     const loaded = await loadLanguageServerCheck(root);
     expect(loaded).not.toBeNull();
     expect(loaded).not.toBe("outdated");
-    const diagnostic = { filePath: "a.html", line: 1, column: 1, severity: "warning" as const, message: "x" };
-    expect((loaded as Exclude<typeof loaded, string | null>).formatDiagnostic(diagnostic)).toBe("from the project");
+    const diagnostic = {
+      filePath: "a.html",
+      line: 1,
+      column: 1,
+      severity: "warning" as const,
+      message: "x",
+    };
+    expect(
+      (loaded as Exclude<typeof loaded, string | null>).formatDiagnostic(
+        diagnostic,
+      ),
+    ).toBe("from the project");
   });
 
   it("reports a copy that lacks the functions it needs as outdated, not as a crash", async () => {
@@ -83,7 +106,12 @@ describe("loadLanguageServerCheck", () => {
     await mkdir(dir, { recursive: true });
     await writeFile(
       join(dir, "package.json"),
-      JSON.stringify({ name: "@bascik/language-server", version: "0.1.0-rc.3", type: "module", exports: { ".": "./index.js" } }),
+      JSON.stringify({
+        name: "@bascik/language-server",
+        version: "0.1.0-rc.3",
+        type: "module",
+        exports: { ".": "./index.js" },
+      }),
     );
     await writeFile(join(dir, "index.js"), "export {};");
     expect(await loadLanguageServerCheck(root, null)).toBe("outdated");
@@ -104,7 +132,12 @@ describe("languageServerTargets", () => {
 
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), "bascik-ls-targets-"));
-    for (const dir of ["src/pages", "src/components", "shared/ui", "server/routes"]) {
+    for (const dir of [
+      "src/pages",
+      "src/components",
+      "shared/ui",
+      "server/routes",
+    ]) {
       await mkdir(join(root, dir), { recursive: true });
     }
   });
@@ -136,7 +169,9 @@ describe("languageServerTargets", () => {
 
   it("leaves out folders that do not exist, such as a project with no API routes", async () => {
     await rm(join(root, "server"), { recursive: true });
-    const paths = languageServerTargets(root).map((target) => (typeof target === "string" ? target : target.path));
+    const paths = languageServerTargets(root).map((target) =>
+      typeof target === "string" ? target : target.path,
+    );
     expect(paths.every((path) => !path.includes("server"))).toBe(true);
   });
 });

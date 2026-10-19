@@ -9,29 +9,52 @@ vi.mock("./processing.js", () => ({
   transpilePage: _mockTranspilePage,
 }));
 
-import { handlePageWorkerMessage, type PageWorkerMessage } from "./page-worker.ts";
+import {
+  handlePageWorkerMessage,
+  type PageWorkerMessage,
+} from "./page-worker.ts";
 
-const firstMessage = (port: { postMessage: ReturnType<typeof vi.fn> }): PageWorkerMessage =>
-  port.postMessage.mock.calls[0][0] as PageWorkerMessage;
+const firstMessage = (port: {
+  postMessage: ReturnType<typeof vi.fn>;
+}): PageWorkerMessage => port.postMessage.mock.calls[0][0] as PageWorkerMessage;
 
 describe("handlePageWorkerMessage", () => {
   it("posts success result when transpilePage resolves with string path", async () => {
-    const mockResult = { relativePagePath: "index.html", distHtml: "<p>ok</p>" };
+    const mockResult = {
+      relativePagePath: "index.html",
+      distHtml: "<p>ok</p>",
+    };
     _mockTranspilePage.mockResolvedValueOnce(mockResult);
 
     const port = { postMessage: vi.fn() };
-    await handlePageWorkerMessage(port, { componentList: {}, globalStylesHtml: "" }, "src/index.html");
+    await handlePageWorkerMessage(
+      port,
+      { componentList: {}, globalStylesHtml: "" },
+      "src/index.html",
+    );
 
-    expect(_mockTranspilePage).toHaveBeenCalledWith("src/index.html", {}, "", null, undefined, { deferDiskWrite: true });
+    expect(_mockTranspilePage).toHaveBeenCalledWith(
+      "src/index.html",
+      {},
+      "",
+      null,
+      undefined,
+      { deferDiskWrite: true },
+    );
     const msg = firstMessage(port);
     expect(msg.ok).toBe(true);
     if (!msg.ok) throw new Error("unreachable");
     expect(msg.result!.relativePagePath).toBe("index.html");
-    expect(Buffer.from(msg.result!.distHtmlBytes).toString("utf8")).toBe("<p>ok</p>");
+    expect(Buffer.from(msg.result!.distHtmlBytes).toString("utf8")).toBe(
+      "<p>ok</p>",
+    );
   });
 
   it("posts success result when transpilePage resolves with PageJob", async () => {
-    const mockResult = { relativePagePath: "blog/post-1.html", distHtml: "<h1>Post 1</h1>" };
+    const mockResult = {
+      relativePagePath: "blog/post-1.html",
+      distHtml: "<h1>Post 1</h1>",
+    };
     _mockTranspilePage.mockResolvedValueOnce(mockResult);
 
     const port = { postMessage: vi.fn() };
@@ -41,7 +64,11 @@ describe("handlePageWorkerMessage", () => {
       relativePagePath: "blog/post-1.html",
       preCleanedHtml: "<h1>Post 1</h1>",
     };
-    await handlePageWorkerMessage(port, { componentList: {}, globalStylesHtml: "" }, job);
+    await handlePageWorkerMessage(
+      port,
+      { componentList: {}, globalStylesHtml: "" },
+      job,
+    );
 
     expect(_mockTranspilePage).toHaveBeenCalledWith(
       "src/pages/blog/[slug].html",
@@ -70,7 +97,10 @@ describe("handlePageWorkerMessage", () => {
     const port = { postMessage: vi.fn() };
     await handlePageWorkerMessage(port, null, "src/bad.html");
 
-    expect(port.postMessage).toHaveBeenCalledWith({ ok: false, error: "Transpile failed" });
+    expect(port.postMessage).toHaveBeenCalledWith({
+      ok: false,
+      error: "Transpile failed",
+    });
   });
 
   it("handles non-Error objects thrown during transpile", async () => {
@@ -79,7 +109,10 @@ describe("handlePageWorkerMessage", () => {
     const port = { postMessage: vi.fn() };
     await handlePageWorkerMessage(port, null, "src/bad.html");
 
-    expect(port.postMessage).toHaveBeenCalledWith({ ok: false, error: "String error exception" });
+    expect(port.postMessage).toHaveBeenCalledWith({
+      ok: false,
+      error: "String error exception",
+    });
   });
 });
 
@@ -95,7 +128,10 @@ describe("prompt 86: page output crosses the thread boundary as a transferred bu
     const port = { postMessage: vi.fn() };
     await handlePageWorkerMessage(port, null, "src/pages/index.html");
 
-    const [msg, transferList] = port.postMessage.mock.calls[0] as [PageWorkerMessage, unknown[]];
+    const [msg, transferList] = port.postMessage.mock.calls[0] as [
+      PageWorkerMessage,
+      unknown[],
+    ];
     expect(msg.ok).toBe(true);
     if (!msg.ok) throw new Error("unreachable");
     const bytes = msg.result!.distHtmlBytes;
@@ -122,12 +158,17 @@ describe("prompt 86: page output crosses the thread boundary as a transferred bu
     const { port1, port2 } = new MessageChannel();
     let sentBytes: Uint8Array | undefined;
     const spyPort = {
-      postMessage: (msg: PageWorkerMessage, transfer?: readonly ArrayBuffer[]) => {
+      postMessage: (
+        msg: PageWorkerMessage,
+        transfer?: readonly ArrayBuffer[],
+      ) => {
         if (msg.ok && msg.result) sentBytes = msg.result.distHtmlBytes;
         port1.postMessage(msg, transfer as ArrayBuffer[]);
       },
     };
-    const received = new Promise<PageWorkerMessage>((resolve) => port2.once("message", resolve));
+    const received = new Promise<PageWorkerMessage>((resolve) =>
+      port2.once("message", resolve),
+    );
     await handlePageWorkerMessage(spyPort, null, "src/pages/t.html");
     const msg = await received;
     port1.close();
@@ -148,7 +189,10 @@ describe("prompt 86: page output crosses the thread boundary as a transferred bu
 
   it("across a real worker_threads boundary the bytes arrive intact and the worker-side buffer is detached", async () => {
     const { Worker } = await import("node:worker_threads");
-    const html = "<!DOCTYPE html><html><body>" + "\u00e9\u4e2d".repeat(500) + "</body></html>";
+    const html =
+      "<!DOCTYPE html><html><body>" +
+      "\u00e9\u4e2d".repeat(500) +
+      "</body></html>";
     // A tiny stand-in worker that does exactly what page-worker.ts does on the
     // send side, then reports whether its own view was detached by the transfer.
     const script = `
@@ -171,7 +215,10 @@ describe("prompt 86: page output crosses the thread boundary as a transferred bu
     await twoMessages;
     await worker.terminate();
 
-    const first = messages[0] as { ok: boolean; result: { distHtmlBytes: Uint8Array } };
+    const first = messages[0] as {
+      ok: boolean;
+      result: { distHtmlBytes: Uint8Array };
+    };
     expect(first.ok).toBe(true);
     expect(first.result.distHtmlBytes).toBeInstanceOf(Uint8Array);
     expect(Buffer.from(first.result.distHtmlBytes).toString("utf8")).toBe(html);

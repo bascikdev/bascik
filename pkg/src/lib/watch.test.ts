@@ -39,8 +39,12 @@ const {
   const mockProcessAllPages = vi.fn().mockResolvedValue(undefined);
   const mockRemovePage = vi.fn().mockResolvedValue(undefined);
   const mockSelectivelyProcessPages = vi.fn().mockResolvedValue(undefined);
-  const mockSelectivelyProcessPagesForWatchPath = vi.fn().mockResolvedValue(undefined);
-  const mockProcessPagesImportingStylesheet = vi.fn().mockResolvedValue(undefined);
+  const mockSelectivelyProcessPagesForWatchPath = vi
+    .fn()
+    .mockResolvedValue(undefined);
+  const mockProcessPagesImportingStylesheet = vi
+    .fn()
+    .mockResolvedValue(undefined);
   const mockCopyReplicatePath = vi.fn().mockResolvedValue(undefined);
   const mockCopyStaticAssets = vi.fn().mockResolvedValue(undefined);
   const mockIsStaticAssetPath = vi.fn().mockReturnValue(true);
@@ -55,7 +59,7 @@ const {
   const mockExistsSync = vi.fn().mockReturnValue(true);
   const makeWatcher = () => {
     const w = {
-      on: vi.fn(function(
+      on: vi.fn(function (
         this: { on: ReturnType<typeof vi.fn> },
         event: string,
         handler: (...args: any[]) => any,
@@ -69,17 +73,25 @@ const {
     watchers.push(w);
     return w;
   };
-  const mockWatch = vi.fn((_path: string, _opts: Record<string, unknown>) => makeWatcher());
+  const mockWatch = vi.fn((_path: string, _opts: Record<string, unknown>) =>
+    makeWatcher(),
+  );
   const resetMocks = () => {
-    mockWatch.mockReset().mockImplementation((_path: string, _opts: Record<string, unknown>) => makeWatcher());
+    mockWatch
+      .mockReset()
+      .mockImplementation((_path: string, _opts: Record<string, unknown>) =>
+        makeWatcher(),
+      );
     mockPageProcessing.mockReset().mockResolvedValue(undefined);
     mockProcessAllPages.mockReset().mockResolvedValue(undefined);
     mockRemovePage.mockReset().mockResolvedValue(undefined);
     mockSelectivelyProcessPages.mockReset().mockResolvedValue(undefined);
-    mockSelectivelyProcessPagesForWatchPath.mockReset().mockResolvedValue(
-      undefined,
-    );
-    mockProcessPagesImportingStylesheet.mockReset().mockResolvedValue(undefined);
+    mockSelectivelyProcessPagesForWatchPath
+      .mockReset()
+      .mockResolvedValue(undefined);
+    mockProcessPagesImportingStylesheet
+      .mockReset()
+      .mockResolvedValue(undefined);
     mockCopyReplicatePath.mockReset().mockResolvedValue(undefined);
     mockCopyStaticAssets.mockReset().mockResolvedValue(undefined);
     mockIsStaticAssetPath.mockReset().mockReturnValue(true);
@@ -92,9 +104,13 @@ const {
     mockGetImportRoot.mockReset().mockReturnValue("/project/src");
     // Only the import root exists by default so the api watcher (which also
     // probes existsSync) is not created in these tests.
-    mockExistsSync.mockReset().mockImplementation((p: string) => p === mockGetImportRoot());
+    mockExistsSync
+      .mockReset()
+      .mockImplementation((p: string) => p === mockGetImportRoot());
     mockScriptRegistryInvalidate.mockReset();
-    mockScriptRegistryLastInvalidated.mockReset().mockImplementation(() => new Set<string>());
+    mockScriptRegistryLastInvalidated
+      .mockReset()
+      .mockImplementation(() => new Set<string>());
     mockShouldLog.mockReset().mockImplementation(() => false);
     mockApiInvalidateFile.mockReset().mockResolvedValue(undefined);
   };
@@ -136,7 +152,9 @@ vi.mock("chokidar", () => ({
   default: { watch: mockWatch },
 }));
 
-vi.mock("./watch-source.ts", () => ({ watchSourceCycles: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("./watch-source.ts", () => ({
+  watchSourceCycles: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock("./processing.js", () => ({
   pageProcessing: mockPageProcessing,
@@ -289,14 +307,26 @@ describe("watchFiles – watcher setup", () => {
 
   it("watches every configured component root and follows symlinks there only", async () => {
     const previous = (BascikConfig as any).directory.components;
-    (BascikConfig as any).directory.components = ["/shared/components", "/project/src/components"];
+    (BascikConfig as any).directory.components = [
+      "/shared/components",
+      "/project/src/components",
+    ];
     try {
       await watchFiles();
-      expect(mockWatch.mock.calls[2][0]).toEqual(["/shared/components", "/project/src/components"]);
-      expect(mockWatch.mock.calls[2][1]).toMatchObject({ followSymlinks: true });
+      expect(mockWatch.mock.calls[2][0]).toEqual([
+        "/shared/components",
+        "/project/src/components",
+      ]);
+      expect(mockWatch.mock.calls[2][1]).toMatchObject({
+        followSymlinks: true,
+      });
       // Pages watchers are unchanged by this prompt.
-      expect(mockWatch.mock.calls[0][1]).toMatchObject({ followSymlinks: false });
-      expect(mockWatch.mock.calls[1][1]).toMatchObject({ followSymlinks: false });
+      expect(mockWatch.mock.calls[0][1]).toMatchObject({
+        followSymlinks: false,
+      });
+      expect(mockWatch.mock.calls[1][1]).toMatchObject({
+        followSymlinks: false,
+      });
     } finally {
       (BascikConfig as any).directory.components = previous;
     }
@@ -325,7 +355,8 @@ describe("watchFiles – import root watcher (watcher 3)", () => {
   });
 
   const getIgnoreFn = (): ((path: string) => boolean) =>
-    (mockWatch.mock.calls[3][1] as { ignored: (path: string) => boolean }).ignored;
+    (mockWatch.mock.calls[3][1] as { ignored: (path: string) => boolean })
+      .ignored;
 
   it("excludes directory.pages and every directory.components root when nested inside the import root", () => {
     const ignored = getIgnoreFn();
@@ -382,13 +413,20 @@ describe("watchFiles – import root watcher (watcher 3)", () => {
   });
 
   it("catches and logs errors when runtime invalidation throws", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mockPagesDependentOnFile.mockReturnValue(["src/pages/a.html"]);
-    mockScriptRegistryInvalidate.mockImplementationOnce(() => { throw new Error("Runtime error"); });
+    mockScriptRegistryInvalidate.mockImplementationOnce(() => {
+      throw new Error("Runtime error");
+    });
 
     const handler = getHandler(3, "change");
-    await expect(handler?.("/project/src/lib/helper.ts")).resolves.not.toThrow();
-    expect(errorSpy).toHaveBeenCalledWith("[bascik] watch error:", expect.any(Error));
+    await expect(
+      handler?.("/project/src/lib/helper.ts"),
+    ).resolves.not.toThrow();
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[bascik] watch error:",
+      expect.any(Error),
+    );
 
     errorSpy.mockRestore();
   });
@@ -524,7 +562,9 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
       stats: { isFile: () => boolean },
     ) => boolean;
 
-    expect(ignored("/project/src/pages/styles.css", { isFile: () => true })).toBe(false);
+    expect(
+      ignored("/project/src/pages/styles.css", { isFile: () => true }),
+    ).toBe(false);
   });
 
   it("calls processAllPages when an inline stylesheet is added and inlineStyles is true", async () => {
@@ -553,7 +593,9 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
 
   it("calls processAllPages when matching inlineStyles array on change", async () => {
     (BascikConfig as any).assets = { inlineStyles: ["src/css/styles.css"] };
-    mockIsInlineStylesheet.mockImplementation((p: string) => p.endsWith("styles.css"));
+    mockIsInlineStylesheet.mockImplementation((p: string) =>
+      p.endsWith("styles.css"),
+    );
     mockProcessAllPages.mockClear();
     mockEventEmit.mockClear();
     const handler = getHandler(0, "change");
@@ -564,7 +606,9 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
 
   it("emits asset-changed when a non-matching stylesheet changes", async () => {
     (BascikConfig as any).assets = { inlineStyles: ["src/css/styles.css"] };
-    mockIsInlineStylesheet.mockImplementation((p: string) => p.endsWith("styles.css"));
+    mockIsInlineStylesheet.mockImplementation((p: string) =>
+      p.endsWith("styles.css"),
+    );
     mockProcessAllPages.mockClear();
     mockEventEmit.mockClear();
     const handler = getHandler(0, "change");
@@ -577,13 +621,20 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
     "rebuilds pages of components importing a static stylesheet on '%s' before reloading",
     async (event) => {
       const order: string[] = [];
-      mockProcessPagesImportingStylesheet.mockImplementation(async () => { order.push("rebuild"); });
-      mockEventEmit.mockImplementation((name: string) => { order.push(name); });
+      mockProcessPagesImportingStylesheet.mockImplementation(async () => {
+        order.push("rebuild");
+      });
+      mockEventEmit.mockImplementation((name: string) => {
+        order.push(name);
+      });
       await getHandler(0, event)?.("/project/src/pages/styles/tokens.css");
       await Promise.resolve();
       await Promise.resolve();
-      expect(mockProcessPagesImportingStylesheet).toHaveBeenCalledExactlyOnceWith("/project/src/pages/styles/tokens.css");
-      if (event !== "unlink") expect(order).toEqual(["rebuild", "asset-changed"]);
+      expect(
+        mockProcessPagesImportingStylesheet,
+      ).toHaveBeenCalledExactlyOnceWith("/project/src/pages/styles/tokens.css");
+      if (event !== "unlink")
+        expect(order).toEqual(["rebuild", "asset-changed"]);
     },
   );
 
@@ -708,10 +759,18 @@ describe("watchFiles – ignored predicates", () => {
     ) => boolean;
     mockIsStaticAssetPath.mockReturnValueOnce(true).mockReturnValueOnce(false);
 
-    expect(ignored("/path/to/template.hbs", { isFile: () => true })).toBe(false);
+    expect(ignored("/path/to/template.hbs", { isFile: () => true })).toBe(
+      false,
+    );
     expect(ignored("/path/to/private.hbs", { isFile: () => true })).toBe(true);
-    expect(mockIsStaticAssetPath).toHaveBeenNthCalledWith(1, "/path/to/template.hbs");
-    expect(mockIsStaticAssetPath).toHaveBeenNthCalledWith(2, "/path/to/private.hbs");
+    expect(mockIsStaticAssetPath).toHaveBeenNthCalledWith(
+      1,
+      "/path/to/template.hbs",
+    );
+    expect(mockIsStaticAssetPath).toHaveBeenNthCalledWith(
+      2,
+      "/path/to/private.hbs",
+    );
   });
 
   it("watcher 0: returns true for denied source and test files", () => {
@@ -799,13 +858,13 @@ describe("watchFiles – add before ready (initialScanDone = false)", () => {
   it("does NOT call pageProcessing when initialScanDone is false", async () => {
     const captured: Record<string, (...args: any[]) => any> = {};
     const deferredWatcher = {
-      on: vi.fn(function(this: any, event: string, handler: any) {
+      on: vi.fn(function (this: any, event: string, handler: any) {
         captured[event] = handler;
         return this;
       }),
     };
     const simpleWatcher = {
-      on: vi.fn(function(this: any) {
+      on: vi.fn(function (this: any) {
         return this;
       }),
     };
@@ -830,21 +889,23 @@ describe("watchFiles – add before ready (initialScanDone = false)", () => {
   it("accepts a bootCompile hook so watcher installation stays outside publisher scope", async () => {
     const captured: Record<string, (...args: any[]) => any> = {};
     const deferredWatcher = {
-      on: vi.fn(function(this: any, event: string, handler: any) {
+      on: vi.fn(function (this: any, event: string, handler: any) {
         captured[event] = handler;
         return this;
       }),
     };
     const simpleWatcher = {
-      on: vi.fn(function(this: any) {
+      on: vi.fn(function (this: any) {
         return this;
       }),
     };
-    const bootCompile = vi.fn(async (compileInitialSources: () => Promise<void>) => {
-      expect(copyStaticAssets).not.toHaveBeenCalled();
-      expect(processAllPages).not.toHaveBeenCalled();
-      await compileInitialSources();
-    });
+    const bootCompile = vi.fn(
+      async (compileInitialSources: () => Promise<void>) => {
+        expect(copyStaticAssets).not.toHaveBeenCalled();
+        expect(processAllPages).not.toHaveBeenCalled();
+        await compileInitialSources();
+      },
+    );
 
     mockWatch
       .mockImplementationOnce(() => simpleWatcher)
@@ -875,8 +936,15 @@ describe("watchFiles – add before ready (initialScanDone = false)", () => {
     mockWatch.mockImplementation((path: string | string[]) => {
       const watched = Array.isArray(path) ? path : [path];
       const watcher = {
-        on: vi.fn(function(this: any, event: string, handler: (...args: any[]) => any) {
-          if (watched.includes("/project/src/components") && event === "change") {
+        on: vi.fn(function (
+          this: any,
+          event: string,
+          handler: (...args: any[]) => any,
+        ) {
+          if (
+            watched.includes("/project/src/components") &&
+            event === "change"
+          ) {
             componentChangeHandler = handler as (path: string) => Promise<void>;
           }
           if (watched.includes("/extra/watch/path") && event === "change") {
@@ -892,29 +960,35 @@ describe("watchFiles – add before ready (initialScanDone = false)", () => {
         watched.includes("/project/src/components") ||
         watched.includes("/extra/watch/path")
       ) {
-        registrationPublisherStates.push(compilationEvents.hasCompilationPublisher());
+        registrationPublisherStates.push(
+          compilationEvents.hasCompilationPublisher(),
+        );
       }
       return watcher;
     });
 
-    const bootCompile = vi.fn(async (compileInitialSources: () => Promise<void>) => {
-      await compilationEvents.withCompilationPublisher(
-        vi.fn(),
-        async () => {
-          await compileInitialSources();
-          bootCompilePaused.resolve();
-          await releaseBootCompile.promise;
-          expect(compilationEvents.hasCompilationPublisher()).toBe(true);
-        },
-        { onPageErrors: "publish" },
-      );
-    });
+    const bootCompile = vi.fn(
+      async (compileInitialSources: () => Promise<void>) => {
+        await compilationEvents.withCompilationPublisher(
+          vi.fn(),
+          async () => {
+            await compileInitialSources();
+            bootCompilePaused.resolve();
+            await releaseBootCompile.promise;
+            expect(compilationEvents.hasCompilationPublisher()).toBe(true);
+          },
+          { onPageErrors: "publish" },
+        );
+      },
+    );
 
     const watchPromise = watchFiles({ bootCompile });
 
     await bootCompilePaused.promise;
     const watchedBeforeBootReturns = mockWatch.mock.calls.map(([path]) => path);
-    expect(watchedBeforeBootReturns).not.toContainEqual(["/project/src/components"]);
+    expect(watchedBeforeBootReturns).not.toContainEqual([
+      "/project/src/components",
+    ]);
     expect(watchedBeforeBootReturns).not.toContainEqual(["/extra/watch/path"]);
 
     releaseBootCompile.resolve();
@@ -935,10 +1009,18 @@ describe("watchFiles – add before ready (initialScanDone = false)", () => {
     await componentChangeHandler?.("/project/src/components/button.html");
     await watchPathChangeHandler?.("/extra/watch/path/content.md");
 
-    expect(clearBuildScriptCaches).toHaveBeenCalledWith("/project/src/components/button.html");
-    expect(clearBuildScriptCaches).toHaveBeenCalledWith("/extra/watch/path/content.md");
-    expect(selectivelyProcessPages).toHaveBeenCalledWith("/project/src/components/button.html");
-    expect(selectivelyProcessPagesForWatchPath).toHaveBeenCalledWith("/extra/watch/path/content.md");
+    expect(clearBuildScriptCaches).toHaveBeenCalledWith(
+      "/project/src/components/button.html",
+    );
+    expect(clearBuildScriptCaches).toHaveBeenCalledWith(
+      "/extra/watch/path/content.md",
+    );
+    expect(selectivelyProcessPages).toHaveBeenCalledWith(
+      "/project/src/components/button.html",
+    );
+    expect(selectivelyProcessPagesForWatchPath).toHaveBeenCalledWith(
+      "/extra/watch/path/content.md",
+    );
     expect(eventEmitter.emit).toHaveBeenCalledWith("watch-path-processed", {
       path: "/extra/watch/path/content.md",
     });
@@ -1009,8 +1091,12 @@ describe("watchFiles – extra watch paths (watcher 3)", () => {
     const handler = getHandler(3, "unlink");
     mockProcessAllPages.mockClear();
     await handler?.("/extra/watch/path/deleted.ts");
-    expect(selectivelyProcessPagesForWatchPath).toHaveBeenCalledWith("/extra/watch/path/deleted.ts");
-    expect(mockClearBuildScriptCaches.mock.calls).toEqual([["/extra/watch/path/deleted.ts"]]);
+    expect(selectivelyProcessPagesForWatchPath).toHaveBeenCalledWith(
+      "/extra/watch/path/deleted.ts",
+    );
+    expect(mockClearBuildScriptCaches.mock.calls).toEqual([
+      ["/extra/watch/path/deleted.ts"],
+    ]);
     expect(processAllPages).not.toHaveBeenCalled();
   });
 });
@@ -1033,14 +1119,19 @@ describe("watchFiles – inlineStyles paths", () => {
     expect(mockWatch).toHaveBeenCalledTimes(DEV_WATCHER_COUNT);
   });
 
-  it.each(["add", "change", "unlink"])("uses explicit watchPaths for inline stylesheet %s", async (event) => {
-    clearWatchers();
-    mockWatch.mockClear();
-    BascikConfig.pipeline.watchPaths = ["src/css/"];
-    await watchFiles();
-    await getHandler(3, event)?.("src/css/inlined.css");
-    expect(selectivelyProcessPagesForWatchPath).toHaveBeenCalledExactlyOnceWith("src/css/inlined.css");
-  });
+  it.each(["add", "change", "unlink"])(
+    "uses explicit watchPaths for inline stylesheet %s",
+    async (event) => {
+      clearWatchers();
+      mockWatch.mockClear();
+      BascikConfig.pipeline.watchPaths = ["src/css/"];
+      await watchFiles();
+      await getHandler(3, event)?.("src/css/inlined.css");
+      expect(
+        selectivelyProcessPagesForWatchPath,
+      ).toHaveBeenCalledExactlyOnceWith("src/css/inlined.css");
+    },
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1053,37 +1144,50 @@ describe("watchFiles – error resiliency", () => {
   });
 
   it("catches and logs errors when asset watcher handlers reject", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mockCopyReplicatePath.mockRejectedValueOnce(new Error("Disk error"));
 
     const addHandler = getHandler(0, "add");
     await expect(addHandler?.("/path/to/broken.css")).resolves.not.toThrow();
-    expect(errorSpy).toHaveBeenCalledWith("[bascik] watch error:", expect.any(Error));
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[bascik] watch error:",
+      expect.any(Error),
+    );
 
     errorSpy.mockRestore();
   });
 
   it("catches and logs errors when pageProcessing rejects during page change", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mockPageProcessing.mockRejectedValueOnce(new Error("Transpile error"));
 
     const changeHandler = getHandler(1, "change");
     expect(() => changeHandler?.("/path/to/bad.html")).not.toThrow();
 
     await new Promise((r) => setTimeout(r, 10));
-    expect(errorSpy).toHaveBeenCalledWith("[bascik] watch error:", expect.any(Error));
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[bascik] watch error:",
+      expect.any(Error),
+    );
 
     errorSpy.mockRestore();
   });
 
   it("catches and logs errors when selectivelyProcessPages rejects during component change", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
-    mockSelectivelyProcessPages.mockRejectedValueOnce(new Error("Component error"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockSelectivelyProcessPages.mockRejectedValueOnce(
+      new Error("Component error"),
+    );
 
     const changeHandler = getHandler(2, "change");
-    await expect(changeHandler?.("/path/to/bad-comp.html")).resolves.not.toThrow();
+    await expect(
+      changeHandler?.("/path/to/bad-comp.html"),
+    ).resolves.not.toThrow();
 
-    expect(errorSpy).toHaveBeenCalledWith("[bascik] watch error:", expect.any(Error));
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[bascik] watch error:",
+      expect.any(Error),
+    );
 
     errorSpy.mockRestore();
   });
@@ -1100,33 +1204,47 @@ describe("watchFiles – overlap between pipeline.watchPaths and exec.watch", ()
       exec: [{ script: "scripts/gen-docs.ts", watch: ["src/content/docs"] }],
     };
     await watchFiles();
-    const { watchSourceCycles } = await import('./watch-source.ts');
-    expect(watchSourceCycles).toHaveBeenCalledWith(expect.any(Function), undefined);
-    expect(mockWatch).not.toHaveBeenCalledWith(expect.arrayContaining(['src/content/docs']), expect.anything());
+    const { watchSourceCycles } = await import("./watch-source.ts");
+    expect(watchSourceCycles).toHaveBeenCalledWith(
+      expect.any(Function),
+      undefined,
+    );
+    expect(mockWatch).not.toHaveBeenCalledWith(
+      expect.arrayContaining(["src/content/docs"]),
+      expect.anything(),
+    );
     expect(processAllPages).not.toHaveBeenCalled();
     expect(mockEventEmit).not.toHaveBeenCalledWith("asset-changed");
   });
 
-  it.each([{ watchPaths: [] }, { watchPaths: ["content/"] }])("exec completion never compiles with watchPaths $watchPaths", async ({ watchPaths }) => {
-    const { installExecPublication } = await import("./exec-publication.ts");
-    const { EventEmitter } = await import("node:events");
-    const emitter = new EventEmitter();
-    installExecPublication(emitter);
-    BascikConfig.pipeline.watchPaths = watchPaths;
-    BascikConfig.pipeline.exec = [{ script: "scripts/generator.ts", watch: ["content/"] }];
-    await watchFiles();
-    mockProcessAllPages.mockClear();
-    mockEventEmit.mockClear();
-    for (const paths of [[], ["content/doc.md"]]) {
-      emitter.emit("exec-completed", { entry: BascikConfig.pipeline.exec![0], paths });
-    }
-    await Promise.resolve();
-    expect(processAllPages).not.toHaveBeenCalled();
-    expect(selectivelyProcessPagesForWatchPath).not.toHaveBeenCalled();
-    expect(processPageBatch).not.toHaveBeenCalled();
-    expect(clearBuildScriptCaches).not.toHaveBeenCalled();
-    expect(mockEventEmit).not.toHaveBeenCalled();
-  });
+  it.each([{ watchPaths: [] }, { watchPaths: ["content/"] }])(
+    "exec completion never compiles with watchPaths $watchPaths",
+    async ({ watchPaths }) => {
+      const { installExecPublication } = await import("./exec-publication.ts");
+      const { EventEmitter } = await import("node:events");
+      const emitter = new EventEmitter();
+      installExecPublication(emitter);
+      BascikConfig.pipeline.watchPaths = watchPaths;
+      BascikConfig.pipeline.exec = [
+        { script: "scripts/generator.ts", watch: ["content/"] },
+      ];
+      await watchFiles();
+      mockProcessAllPages.mockClear();
+      mockEventEmit.mockClear();
+      for (const paths of [[], ["content/doc.md"]]) {
+        emitter.emit("exec-completed", {
+          entry: BascikConfig.pipeline.exec![0],
+          paths,
+        });
+      }
+      await Promise.resolve();
+      expect(processAllPages).not.toHaveBeenCalled();
+      expect(selectivelyProcessPagesForWatchPath).not.toHaveBeenCalled();
+      expect(processPageBatch).not.toHaveBeenCalled();
+      expect(clearBuildScriptCaches).not.toHaveBeenCalled();
+      expect(mockEventEmit).not.toHaveBeenCalled();
+    },
+  );
 
   it("uses the same source observer for paths not covered by an exec entry", async () => {
     (BascikConfig as any).pipeline = {
@@ -1135,8 +1253,11 @@ describe("watchFiles – overlap between pipeline.watchPaths and exec.watch", ()
     };
     await watchFiles();
 
-    const { watchSourceCycles } = await import('./watch-source.ts');
-    expect(watchSourceCycles).toHaveBeenCalledWith(expect.any(Function), undefined);
+    const { watchSourceCycles } = await import("./watch-source.ts");
+    expect(watchSourceCycles).toHaveBeenCalledWith(
+      expect.any(Function),
+      undefined,
+    );
     expect(selectivelyProcessPagesForWatchPath).not.toHaveBeenCalled();
   });
 });
@@ -1161,7 +1282,9 @@ describe("watchFiles – runtime module invalidation (prompt 112)", () => {
       mockPagesDependentOnFile.mockReturnValue([]);
       const handler = getHandler(3, event);
       await handler?.("/project/src/lib/src-script.ts");
-      expect(mockScriptRegistryInvalidate).toHaveBeenCalledWith("/project/src/lib/src-script.ts");
+      expect(mockScriptRegistryInvalidate).toHaveBeenCalledWith(
+        "/project/src/lib/src-script.ts",
+      );
       expect(processPageBatch).not.toHaveBeenCalled();
     },
   );
@@ -1169,7 +1292,9 @@ describe("watchFiles – runtime module invalidation (prompt 112)", () => {
   it("import-root 'change' invalidates runtime modules without rebuilding dependents", async () => {
     mockPagesDependentOnFile.mockReturnValue(["src/pages/a.html"]);
     const order: string[] = [];
-    mockScriptRegistryInvalidate.mockImplementation(() => order.push("invalidate"));
+    mockScriptRegistryInvalidate.mockImplementation(() =>
+      order.push("invalidate"),
+    );
     mockProcessPageBatch.mockImplementation(async () => {
       order.push("rebuild");
       return [];
@@ -1182,7 +1307,9 @@ describe("watchFiles – runtime module invalidation (prompt 112)", () => {
   it("component watcher 'change' invalidates a companion script module identity", async () => {
     const handler = getHandler(2, "change");
     await handler?.("/project/src/components/card/card.server.ts");
-    expect(mockScriptRegistryInvalidate).toHaveBeenCalledWith("/project/src/components/card/card.server.ts");
+    expect(mockScriptRegistryInvalidate).toHaveBeenCalledWith(
+      "/project/src/components/card/card.server.ts",
+    );
   });
 });
 
@@ -1198,7 +1325,7 @@ describe("watchFiles – transitive helper invalidation (prompt 138)", () => {
     const helper = resolvePath(process.cwd(), "src/lib/helper.ts");
     const entry = resolvePath(process.cwd(), "src/lib/src-script.ts");
     mockShouldLog.mockReturnValue(true);
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     // The registry reports that the helper key and, transitively, the entry key advanced.
     mockScriptRegistryInvalidate.mockReturnValue(true);
     mockScriptRegistryLastInvalidated.mockReturnValue(
@@ -1210,7 +1337,9 @@ describe("watchFiles – transitive helper invalidation (prompt 138)", () => {
     await handler?.(helper);
 
     expect(mockScriptRegistryInvalidate).toHaveBeenCalledWith(helper);
-    const line = logSpy.mock.calls.map((c) => c.join(" ")).find((l) => l.includes("module invalidated"));
+    const line = logSpy.mock.calls
+      .map((c) => c.join(" "))
+      .find((l) => l.includes("module invalidated"));
     logSpy.mockRestore();
     expect(line).toContain("module invalidated: src/lib/helper.ts");
     // The entry that imports the helper is named so the author sees what reloads.
@@ -1223,28 +1352,34 @@ describe("watchFiles – transitive helper invalidation (prompt 138)", () => {
     const { resolve: resolvePath } = await import("node:path");
     const entry = resolvePath(process.cwd(), "src/lib/src-script.ts");
     mockShouldLog.mockReturnValue(true);
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     mockScriptRegistryInvalidate.mockReturnValue(true);
-    mockScriptRegistryLastInvalidated.mockReturnValue(new Set([pathToFileURL(entry).href]));
+    mockScriptRegistryLastInvalidated.mockReturnValue(
+      new Set([pathToFileURL(entry).href]),
+    );
 
     const handler = getHandler(3, "change");
     await handler?.(entry);
 
-    const line = logSpy.mock.calls.map((c) => c.join(" ")).find((l) => l.includes("module invalidated"));
+    const line = logSpy.mock.calls
+      .map((c) => c.join(" "))
+      .find((l) => l.includes("module invalidated"));
     logSpy.mockRestore();
     expect(line).toBe("[bascik] module invalidated: src/lib/src-script.ts");
   });
 
   it("does not log or consult the graph when the registry never imported the file", async () => {
     mockShouldLog.mockReturnValue(true);
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     mockScriptRegistryInvalidate.mockReturnValue(false);
 
     const handler = getHandler(3, "change");
     await handler?.("/project/src/lib/unrelated.ts");
 
     expect(mockScriptRegistryLastInvalidated).not.toHaveBeenCalled();
-    expect(logSpy.mock.calls.some((c) => c.join(" ").includes("module invalidated"))).toBe(false);
+    expect(
+      logSpy.mock.calls.some((c) => c.join(" ").includes("module invalidated")),
+    ).toBe(false);
     logSpy.mockRestore();
   });
 });
@@ -1260,27 +1395,47 @@ describe("watchFiles – api route watcher (prompt 112)", () => {
     mockEventEmit.mockClear();
   });
 
-  const apiWatcherIndex = (): number => mockWatch.mock.calls.findIndex((c) => Array.isArray(c[0]) && c[0].includes("src/api"));
+  const apiWatcherIndex = (): number =>
+    mockWatch.mock.calls.findIndex(
+      (c) => Array.isArray(c[0]) && c[0].includes("src/api"),
+    );
 
-  it.each(["add", "change", "unlink"])("'%s' invalidates the route file then emits api-route-changed", async (event) => {
-    const order: string[] = [];
-    mockApiInvalidateFile.mockImplementation(async () => { order.push("invalidate"); });
-    mockEventEmit.mockImplementation((name: string) => { if (name === "api-route-changed") order.push("emit"); });
-    const handler = getHandler(apiWatcherIndex(), event);
-    await handler?.("/project/src/api/value.ts");
-    expect(mockApiInvalidateFile).toHaveBeenCalledWith("/project/src/api/value.ts");
-    expect(mockEventEmit).toHaveBeenCalledWith("api-route-changed", { path: "/project/src/api/value.ts", type: event });
-    expect(order).toEqual(["invalidate", "emit"]);
-  });
+  it.each(["add", "change", "unlink"])(
+    "'%s' invalidates the route file then emits api-route-changed",
+    async (event) => {
+      const order: string[] = [];
+      mockApiInvalidateFile.mockImplementation(async () => {
+        order.push("invalidate");
+      });
+      mockEventEmit.mockImplementation((name: string) => {
+        if (name === "api-route-changed") order.push("emit");
+      });
+      const handler = getHandler(apiWatcherIndex(), event);
+      await handler?.("/project/src/api/value.ts");
+      expect(mockApiInvalidateFile).toHaveBeenCalledWith(
+        "/project/src/api/value.ts",
+      );
+      expect(mockEventEmit).toHaveBeenCalledWith("api-route-changed", {
+        path: "/project/src/api/value.ts",
+        type: event,
+      });
+      expect(order).toEqual(["invalidate", "emit"]);
+    },
+  );
 
   it("does not emit api-route-changed when invalidation throws, and stays alive", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mockApiInvalidateFile.mockRejectedValueOnce(new Error("scan failed"));
     const handler = getHandler(apiWatcherIndex(), "change");
     await expect(handler?.("/project/src/api/value.ts")).resolves.not.toThrow();
-    expect(mockEventEmit).not.toHaveBeenCalledWith("api-route-changed", expect.anything());
-    expect(errorSpy).toHaveBeenCalledWith("[bascik] watch error:", expect.any(Error));
+    expect(mockEventEmit).not.toHaveBeenCalledWith(
+      "api-route-changed",
+      expect.anything(),
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[bascik] watch error:",
+      expect.any(Error),
+    );
     errorSpy.mockRestore();
   });
 });
-

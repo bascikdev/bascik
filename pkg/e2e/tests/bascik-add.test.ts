@@ -11,19 +11,21 @@
  *   builds and renders correctly through the static pipeline.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
-test.describe('bascik add static build', () => {
-  test('renders copy-in added component through static build pipeline', async ({ page }) => {
-    await page.goto('/bascik-add-test');
+test.describe("bascik add static build", () => {
+  test("renders copy-in added component through static build pipeline", async ({
+    page,
+  }) => {
+    await page.goto("/bascik-add-test");
 
-    const root = page.getByTestId('added-component-root');
+    const root = page.getByTestId("added-component-root");
     await expect(root).toBeVisible();
 
-    const title = page.getByTestId('added-component-title');
-    await expect(title).toHaveText('Added Copy-In Component');
+    const title = page.getByTestId("added-component-title");
+    await expect(title).toHaveText("Added Copy-In Component");
 
-    const slot = page.getByTestId('added-component-slot');
-    await expect(slot).toHaveText('Rendered through static build pipeline');
+    const slot = page.getByTestId("added-component-slot");
+    await expect(slot).toHaveText("Rendered through static build pipeline");
   });
 });

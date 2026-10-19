@@ -4,12 +4,12 @@ The official Bascik documentation site, built with Bascik itself.
 
 ## Pages
 
-| Route                | Content                                                                  |
-| -------------------- | ------------------------------------------------------------------------ |
-| `/`                  | Overview and feature index                                               |
-| `/getting-started`   | Installation, folder structure, first component, dev + build scripts     |
-| `/slots`             | Default slot, `data-bascik-slot`, slot fallback content, named slots     |
-| `/props`             | `data-bascik-prop-*`: injecting text values into component templates    |
+| Route              | Content                                                              |
+| ------------------ | -------------------------------------------------------------------- |
+| `/`                | Overview and feature index                                           |
+| `/getting-started` | Installation, folder structure, first component, dev + build scripts |
+| `/slots`           | Default slot, `data-bascik-slot`, slot fallback content, named slots |
+| `/props`           | `data-bascik-prop-*`: injecting text values into component templates |
 
 ## Components
 

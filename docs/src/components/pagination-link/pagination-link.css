@@ -9,7 +9,9 @@ a {
   color: var(--text);
   /* Half of the nav minus half the 12px gap, so a lone link matches the width of one in a pair. */
   width: calc(50% - 6px);
-  transition: border-color .15s, background .15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 a:hover {
@@ -29,7 +31,7 @@ a[data-pg="next"] {
   font-size: 0.72rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: .07em;
+  letter-spacing: 0.07em;
   color: var(--text-muted);
 }
 

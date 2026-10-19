@@ -9,7 +9,10 @@ A button that switches between light and dark themes and remembers the choice. N
     padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
     border: 1px solid var(--color-border, currentColor);
     border-radius: var(--radius, 0.5rem);
-    background: var(--color-surface, color-mix(in srgb, currentColor 8%, transparent));
+    background: var(
+      --color-surface,
+      color-mix(in srgb, currentColor 8%, transparent)
+    );
     color: inherit;
     font: inherit;
     cursor: pointer;
@@ -18,30 +21,33 @@ A button that switches between light and dark themes and remembers the choice. N
 <button class="toggle" id="toggle" type="button" hidden>Dark theme</button>
 <script>
   // aria-pressed tells assistive technology whether dark theme is on; the label stays the same.
-  const toggle = document.getElementById('toggle');
-  const media = matchMedia('(prefers-color-scheme: dark)');
-  const preview = toggle.closest('[data-demo-theme]');
+  const toggle = document.getElementById("toggle");
+  const media = matchMedia("(prefers-color-scheme: dark)");
+  const preview = toggle.closest("[data-demo-theme]");
   const themeTarget = preview ?? document.documentElement;
-  const themeAttribute = preview ? 'data-demo-theme' : 'data-theme';
-  const storageKey = preview ? 'theme-demo' : 'theme';
+  const themeAttribute = preview ? "data-demo-theme" : "data-theme";
+  const storageKey = preview ? "theme-demo" : "theme";
 
   if (preview) {
     try {
       const savedTheme = localStorage.getItem(storageKey);
-      if (savedTheme === 'light' || savedTheme === 'dark') preview.setAttribute(themeAttribute, savedTheme);
+      if (savedTheme === "light" || savedTheme === "dark")
+        preview.setAttribute(themeAttribute, savedTheme);
     } catch {
       // The preview keeps its default theme when storage is unavailable.
     }
   }
 
-  const current = () => themeTarget.getAttribute(themeAttribute) ?? (media.matches ? 'dark' : 'light');
+  const current = () =>
+    themeTarget.getAttribute(themeAttribute) ??
+    (media.matches ? "dark" : "light");
 
   const render = () => {
-    toggle.setAttribute('aria-pressed', String(current() === 'dark'));
+    toggle.setAttribute("aria-pressed", String(current() === "dark"));
   };
 
-  toggle.addEventListener('click', () => {
-    const next = current() === 'dark' ? 'light' : 'dark';
+  toggle.addEventListener("click", () => {
+    const next = current() === "dark" ? "light" : "dark";
     themeTarget.setAttribute(themeAttribute, next);
     try {
       localStorage.setItem(storageKey, next);
@@ -50,12 +56,20 @@ A button that switches between light and dark themes and remembers the choice. N
     }
     render();
     // Other components can react without reaching into this one.
-    toggle.dispatchEvent(new CustomEvent('theme-change', { bubbles: true, detail: { theme: next } }));
+    toggle.dispatchEvent(
+      new CustomEvent("theme-change", {
+        bubbles: true,
+        detail: { theme: next },
+      }),
+    );
   });
 
-  media.addEventListener('change', render);
+  media.addEventListener("change", render);
   // Stay in sync when another toggle, or any other script, changes the theme.
-  new MutationObserver(render).observe(themeTarget, { attributes: true, attributeFilter: [themeAttribute] });
+  new MutationObserver(render).observe(themeTarget, {
+    attributes: true,
+    attributeFilter: [themeAttribute],
+  });
   render();
   toggle.hidden = false;
 </script>

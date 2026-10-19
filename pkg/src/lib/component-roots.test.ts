@@ -14,8 +14,12 @@ import { findComponentRoot } from "./component-roots.ts";
 
 describe("findComponentRoot", () => {
   it("returns the configured root that contains the path", () => {
-    expect(findComponentRoot("/project/src/components/card/card.html")).toBe("/project/src/components");
-    expect(findComponentRoot("/shared/components/site-nav.html")).toBe("/shared/components");
+    expect(findComponentRoot("/project/src/components/card/card.html")).toBe(
+      "/project/src/components",
+    );
+    expect(findComponentRoot("/shared/components/site-nav.html")).toBe(
+      "/shared/components",
+    );
   });
 
   it("returns the root itself for the root path", () => {
@@ -23,7 +27,9 @@ describe("findComponentRoot", () => {
   });
 
   it("does not match a sibling that merely shares a prefix", () => {
-    expect(findComponentRoot("/project/src/components-shared/x.html")).toBeUndefined();
+    expect(
+      findComponentRoot("/project/src/components-shared/x.html"),
+    ).toBeUndefined();
     expect(findComponentRoot("/shared/components2/x.html")).toBeUndefined();
   });
 
@@ -33,6 +39,8 @@ describe("findComponentRoot", () => {
   });
 
   it("normalizes Windows separators before matching", () => {
-    expect(findComponentRoot("\\project\\src\\components\\x.html")).toBe("/project/src/components");
+    expect(findComponentRoot("\\project\\src\\components\\x.html")).toBe(
+      "/project/src/components",
+    );
   });
 });

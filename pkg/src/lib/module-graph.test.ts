@@ -57,7 +57,9 @@ describe("module graph: generations and edges", () => {
     graph.track(unrelated);
 
     const advanced = graph.invalidateModule(util);
-    expect([...advanced].sort()).toEqual([util, helper, entry, otherEntry].sort());
+    expect([...advanced].sort()).toEqual(
+      [util, helper, entry, otherEntry].sort(),
+    );
     expect(graph.generationOf(util)).toBe(1);
     expect(graph.generationOf(helper)).toBe(1);
     expect(graph.generationOf(entry)).toBe(1);
@@ -115,10 +117,18 @@ describe("module graph: generations and edges", () => {
 
 describe("module graph: key helpers", () => {
   it("stripGeneration removes only the framework marker and keeps authored params", () => {
-    expect(stripGeneration("file:///p/m.ts?bascik-gen=3")).toBe("file:///p/m.ts");
-    expect(stripGeneration("file:///p/m.ts?flavor=x&bascik-gen=3")).toBe("file:///p/m.ts?flavor=x");
-    expect(stripGeneration("file:///p/m.ts?flavor=x#frag")).toBe("file:///p/m.ts?flavor=x#frag");
-    expect(stripGeneration("data:text/javascript,export%20default%201")).toBe("data:text/javascript,export%20default%201");
+    expect(stripGeneration("file:///p/m.ts?bascik-gen=3")).toBe(
+      "file:///p/m.ts",
+    );
+    expect(stripGeneration("file:///p/m.ts?flavor=x&bascik-gen=3")).toBe(
+      "file:///p/m.ts?flavor=x",
+    );
+    expect(stripGeneration("file:///p/m.ts?flavor=x#frag")).toBe(
+      "file:///p/m.ts?flavor=x#frag",
+    );
+    expect(stripGeneration("data:text/javascript,export%20default%201")).toBe(
+      "data:text/javascript,export%20default%201",
+    );
   });
 
   it("moduleKeyForPath resolves symlinks so the key matches what Node's resolver reports", async () => {
@@ -131,7 +141,9 @@ describe("module graph: key helpers", () => {
       const viaLink = moduleKeyForPath(join(dir, "link", "m.mjs"));
       const viaReal = moduleKeyForPath(join(realDir, "m.mjs"));
       expect(viaLink).toBe(viaReal);
-      expect(viaLink).toBe(pathToFileURL(realpathSync(join(realDir, "m.mjs"))).href);
+      expect(viaLink).toBe(
+        pathToFileURL(realpathSync(join(realDir, "m.mjs"))).href,
+      );
       // A missing file falls back to the unresolved path instead of throwing.
       const missing = join(dir, "link", "missing.mjs");
       expect(moduleKeyForPath(missing)).toBe(pathToFileURL(missing).href);
@@ -152,10 +164,12 @@ describe("module graph: key helpers", () => {
 
       _moduleKeyTestHooks.clearRealpathMemo();
       const { resolveModuleIdentity } = await import("./script-registry.ts");
-      expect(resolveModuleIdentity(linkFile).key).toBe(moduleKeyForPath(linkFile));
-      expect(resolveModuleIdentity(`${pathToFileURL(linkFile).href}?flavor=x#f`).key).toBe(
-        `${moduleKeyForPath(linkFile)}?flavor=x#f`,
+      expect(resolveModuleIdentity(linkFile).key).toBe(
+        moduleKeyForPath(linkFile),
       );
+      expect(
+        resolveModuleIdentity(`${pathToFileURL(linkFile).href}?flavor=x#f`).key,
+      ).toBe(`${moduleKeyForPath(linkFile)}?flavor=x#f`);
       expect(_moduleKeyTestHooks.hasRealpathMemo(linkFile)).toBe(true);
 
       // Forgetting by the spelled path or by the realpath drops the entry.
@@ -175,13 +189,24 @@ describe("module graph: resolve hook rules", () => {
   const fileUrl = (p: string): string => pathToFileURL(resolve(p)).href;
   const projectRoot = resolve("/p/site");
   const parentEntry = fileUrl("/p/site/src/lib/entry.ts");
-  const context = (parentURL: string | undefined): ResolveHookContext => ({ conditions: [], importAttributes: {}, parentURL });
-  const nextTo = (url: string): ResolveHookNext => () => ({ url, format: "module" });
+  const context = (parentURL: string | undefined): ResolveHookContext => ({
+    conditions: [],
+    importAttributes: {},
+    parentURL,
+  });
+  const nextTo =
+    (url: string): ResolveHookNext =>
+    () => ({ url, format: "module" });
 
   it("passes through bare, node:, and data: resolutions untouched and records nothing", () => {
     const graph = createModuleGraph();
     const hook = createResolveHook(graph, { roots: [projectRoot] });
-    for (const url of ["node:fs", "data:text/javascript,1", fileUrl("/p/site/node_modules/pkg/index.js"), fileUrl("/elsewhere/lib.ts")]) {
+    for (const url of [
+      "node:fs",
+      "data:text/javascript,1",
+      fileUrl("/p/site/node_modules/pkg/index.js"),
+      fileUrl("/elsewhere/lib.ts"),
+    ]) {
       const out = hook("x", context(parentEntry), nextTo(url));
       expect(out.url).toBe(url);
     }
@@ -192,17 +217,31 @@ describe("module graph: resolve hook rules", () => {
     const graph = createModuleGraph();
     const hook = createResolveHook(graph, { roots: [projectRoot] });
     const helper = fileUrl("/p/site/src/lib/helper.ts");
-    const out = hook("./helper.ts", context(`${parentEntry}?bascik-gen=4`), nextTo(helper));
+    const out = hook(
+      "./helper.ts",
+      context(`${parentEntry}?bascik-gen=4`),
+      nextTo(helper),
+    );
     expect(out.url).toBe(helper);
     expect(graph.parentsOf(helper).has(parentEntry)).toBe(true);
-    expect(graph.parentsOf(helper).has(`${parentEntry}?bascik-gen=4`)).toBe(false);
+    expect(graph.parentsOf(helper).has(`${parentEntry}?bascik-gen=4`)).toBe(
+      false,
+    );
   });
 
   it("does not record a parent that is outside the tracked roots or under node_modules", () => {
     const graph = createModuleGraph();
     const hook = createResolveHook(graph, { roots: [projectRoot] });
     const entry = fileUrl("/p/site/src/lib/entry.ts");
-    hook(entry, context(fileUrl("/p/site/node_modules/@bascik/bascik/dist/lib/script-registry.js")), nextTo(entry));
+    hook(
+      entry,
+      context(
+        fileUrl(
+          "/p/site/node_modules/@bascik/bascik/dist/lib/script-registry.js",
+        ),
+      ),
+      nextTo(entry),
+    );
     hook(entry, context(fileUrl("/outside/registry.ts")), nextTo(entry));
     hook(entry, context(undefined), nextTo(entry));
     expect(graph.has(entry)).toBe(true);
@@ -216,7 +255,11 @@ describe("module graph: resolve hook rules", () => {
     hook("./helper.ts?flavor=x", context(parentEntry), nextTo(helper));
     graph.invalidateModule(helper);
     graph.invalidateModule(helper);
-    const out = hook("./helper.ts?flavor=x", context(parentEntry), nextTo(helper));
+    const out = hook(
+      "./helper.ts?flavor=x",
+      context(parentEntry),
+      nextTo(helper),
+    );
     const url = new URL(out.url);
     expect(url.searchParams.get("flavor")).toBe("x");
     expect(url.searchParams.get(DEV_GENERATION_PARAM)).toBe("2");
@@ -229,14 +272,20 @@ describe("module graph: resolve hook rules", () => {
     const entry = fileUrl("/p/site/src/lib/entry.ts");
     hook(entry, context(undefined), nextTo(entry));
     graph.invalidateModule(entry);
-    const out = hook(`${entry}?bascik-gen=1`, context(undefined), nextTo(`${entry}?bascik-gen=1`));
+    const out = hook(
+      `${entry}?bascik-gen=1`,
+      context(undefined),
+      nextTo(`${entry}?bascik-gen=1`),
+    );
     expect(out.url).toBe(`${entry}?bascik-gen=1`);
     expect(graph.size).toBe(1);
   });
 
   it("tracks files under an additional root (import root outside the project) but never node_modules", () => {
     const graph = createModuleGraph();
-    const hook = createResolveHook(graph, { roots: [projectRoot, resolve("/p/shared")] });
+    const hook = createResolveHook(graph, {
+      roots: [projectRoot, resolve("/p/shared")],
+    });
     const shared = fileUrl("/p/shared/lib/x.ts");
     const sharedDep = fileUrl("/p/shared/node_modules/dep/index.js");
     hook("@/lib/x.ts", context(parentEntry), nextTo(shared));
@@ -248,22 +297,37 @@ describe("module graph: resolve hook rules", () => {
 
 describe("installModuleGraphHook", () => {
   afterEach(() => {
-    installModuleGraphHook({ projectRoot: process.cwd(), isDev: true }).deregister();
+    installModuleGraphHook({
+      projectRoot: process.cwd(),
+      isDev: true,
+    }).deregister();
   });
 
   it("installs nothing outside development and returns an inert handle", () => {
-    const handle = installModuleGraphHook({ projectRoot: process.cwd(), isDev: false });
+    const handle = installModuleGraphHook({
+      projectRoot: process.cwd(),
+      isDev: false,
+    });
     expect(handle.installed).toBe(false);
     expect(() => handle.deregister()).not.toThrow();
   });
 
   it("is idempotent in development: a second call returns the already installed handle", () => {
-    const first = installModuleGraphHook({ projectRoot: process.cwd(), isDev: true });
-    const second = installModuleGraphHook({ projectRoot: process.cwd(), isDev: true });
+    const first = installModuleGraphHook({
+      projectRoot: process.cwd(),
+      isDev: true,
+    });
+    const second = installModuleGraphHook({
+      projectRoot: process.cwd(),
+      isDev: true,
+    });
     expect(first.installed).toBe(true);
     expect(second).toBe(first);
     first.deregister();
-    const third = installModuleGraphHook({ projectRoot: process.cwd(), isDev: true });
+    const third = installModuleGraphHook({
+      projectRoot: process.cwd(),
+      isDev: true,
+    });
     expect(third).not.toBe(first);
     expect(third.installed).toBe(true);
   });
@@ -277,16 +341,27 @@ describe("module graph under the real Node loader (child process)", () => {
   });
 
   afterEach(async () => {
-    await rm(dir, { recursive: true, force: true }).catch(() => { });
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
   });
 
   it("reloads a two-level helper chain through generation URLs while the untouched levels keep identity", async () => {
     const proj = join(dir, "proj");
     await mkdir(join(proj, "src/lib"), { recursive: true });
-    await writeFile(join(proj, "src/lib/util.mjs"), 'export const u = "U-OLD";\n');
-    await writeFile(join(proj, "src/lib/helper.mjs"), 'import { u } from "./util.mjs";\nexport const instance = {};\nexport const h = () => u;\n');
-    await writeFile(join(proj, "src/lib/entry.mjs"), 'import { h } from "./helper.mjs";\nimport "node:fs";\nexport default () => h();\n');
-    const graphModule = pathToFileURL(join(process.cwd(), "src/lib/module-graph.ts")).href;
+    await writeFile(
+      join(proj, "src/lib/util.mjs"),
+      'export const u = "U-OLD";\n',
+    );
+    await writeFile(
+      join(proj, "src/lib/helper.mjs"),
+      'import { u } from "./util.mjs";\nexport const instance = {};\nexport const h = () => u;\n',
+    );
+    await writeFile(
+      join(proj, "src/lib/entry.mjs"),
+      'import { h } from "./helper.mjs";\nimport "node:fs";\nexport default () => h();\n',
+    );
+    const graphModule = pathToFileURL(
+      join(process.cwd(), "src/lib/module-graph.ts"),
+    ).href;
     const script = `
       import { installModuleGraphHook, moduleGraph, moduleKeyForPath } from ${JSON.stringify(graphModule)};
       import { writeFileSync, realpathSync } from "node:fs";
@@ -321,10 +396,14 @@ describe("module graph under the real Node loader (child process)", () => {
         graphSize: moduleGraph.size,
       }));
     `;
-    const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "-e", script], {
-      cwd: process.cwd(),
-      env: { ...process.env, BASCIK_BUILD: "0", BASCIK_SERVER: "0" },
-    });
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      ["--input-type=module", "-e", script],
+      {
+        cwd: process.cwd(),
+        env: { ...process.env, BASCIK_BUILD: "0", BASCIK_SERVER: "0" },
+      },
+    );
     const result = JSON.parse(stdout.trim().split("\n").pop()!);
     expect(result).toMatchObject({
       before: "U-OLD",
@@ -345,11 +424,19 @@ describe("module graph under the real Node loader (child process)", () => {
   it("keys the graph by realpath when the project directory is reached through a symlink", async () => {
     const real = join(dir, "real-proj");
     await mkdir(join(real, "src"), { recursive: true });
-    await writeFile(join(real, "src/entry.mjs"), 'import { h } from "./helper.mjs";\nexport default () => h();\n');
-    await writeFile(join(real, "src/helper.mjs"), 'export const h = () => "H-OLD";\n');
+    await writeFile(
+      join(real, "src/entry.mjs"),
+      'import { h } from "./helper.mjs";\nexport default () => h();\n',
+    );
+    await writeFile(
+      join(real, "src/helper.mjs"),
+      'export const h = () => "H-OLD";\n',
+    );
     const link = join(dir, "link-proj");
     await symlink(real, link);
-    const graphModule = pathToFileURL(join(process.cwd(), "src/lib/module-graph.ts")).href;
+    const graphModule = pathToFileURL(
+      join(process.cwd(), "src/lib/module-graph.ts"),
+    ).href;
     const script = `
       import { installModuleGraphHook, moduleGraph, moduleKeyForPath } from ${JSON.stringify(graphModule)};
       import { writeFileSync } from "node:fs";
@@ -365,11 +452,20 @@ describe("module graph under the real Node loader (child process)", () => {
       const after = (await import(entryKey + "?bascik-gen=" + moduleGraph.generationOf(entryKey))).default();
       console.log(JSON.stringify({ before, after, advancedCount: advanced.length, entryKeyIsReal: !entryKey.includes("link-proj") }));
     `;
-    const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "-e", script], {
-      cwd: process.cwd(),
-      env: { ...process.env, BASCIK_BUILD: "0", BASCIK_SERVER: "0" },
-    });
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      ["--input-type=module", "-e", script],
+      {
+        cwd: process.cwd(),
+        env: { ...process.env, BASCIK_BUILD: "0", BASCIK_SERVER: "0" },
+      },
+    );
     const result = JSON.parse(stdout.trim().split("\n").pop()!);
-    expect(result).toEqual({ before: "H-OLD", after: "H-NEW", advancedCount: 2, entryKeyIsReal: true });
+    expect(result).toEqual({
+      before: "H-OLD",
+      after: "H-NEW",
+      advancedCount: 2,
+      entryKeyIsReal: true,
+    });
   });
 });

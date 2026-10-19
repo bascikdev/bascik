@@ -116,17 +116,15 @@ describe("listComponents – build script execution order", () => {
     // Recorded before anything moves the script: the tag starts at column 24, its body at 50.
     expect(mockExecuteBuildScripts).toHaveBeenCalledWith(
       '<aside class="sidebar"><script data-bascik-build data-bascik-source-file="src%2Fcomponents%2Fmy-sidebar.html" ' +
-      'data-bascik-source-line="1" data-bascik-source-column="50" data-bascik-source-tag="1:24">gen()</script></aside>',
+        'data-bascik-source-line="1" data-bascik-source-column="50" data-bascik-source-tag="1:24">gen()</script></aside>',
       "src/components/my-sidebar.html",
     );
   });
 
   it("places build script output inside the container, not after it", async () => {
-    const rawHtml =
-      "<aside><script data-bascik-build>gen()</script></aside>";
+    const rawHtml = "<aside><script data-bascik-build>gen()</script></aside>";
     // Simulate executeBuildScripts replacing the script with real content
-    const resolvedHtml =
-      "<aside><p>Section</p><ul><li>Link</li></ul></aside>";
+    const resolvedHtml = "<aside><p>Section</p><ul><li>Link</li></ul></aside>";
 
     mockDeepReadDirFlat.mockResolvedValue(["src/components/my-sidebar.html"]);
     mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
@@ -148,8 +146,7 @@ describe("listComponents – build script execution order", () => {
     BascikConfig.minify.html = true;
     // executeBuildScripts returns HTML with whitespace; minifyHtml collapses it
     const rawHtml = "<nav><script data-bascik-build>gen()</script></nav>";
-    const resolvedHtml =
-      "<nav>\n  <ul>\n    <li>Home</li>\n  </ul>\n</nav>";
+    const resolvedHtml = "<nav>\n  <ul>\n    <li>Home</li>\n  </ul>\n</nav>";
 
     mockDeepReadDirFlat.mockResolvedValue(["src/components/my-nav.html"]);
     mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
@@ -180,8 +177,12 @@ describe("listComponents – build script execution order", () => {
       "src/components/my-footer.html",
     ]);
     mockReadFile
-      .mockResolvedValueOnce(Buffer.from("<header><script data-bascik-build>h()</script></header>"))
-      .mockResolvedValueOnce(Buffer.from("<footer><script data-bascik-build>f()</script></footer>"));
+      .mockResolvedValueOnce(
+        Buffer.from("<header><script data-bascik-build>h()</script></header>"),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from("<footer><script data-bascik-build>f()</script></footer>"),
+      );
     mockExecuteBuildScripts
       .mockResolvedValueOnce("<header><h1>Title</h1></header>")
       .mockResolvedValueOnce("<footer><p>Copyright</p></footer>");
@@ -239,15 +240,13 @@ describe("listComponents – component name case normalization", () => {
 
 describe("listComponents – native HTML element name warning", () => {
   it("logs a warning when a component name matches a native HTML element", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockDeepReadDirFlat.mockResolvedValue(["src/components/nav.html"]);
     mockReadFile.mockResolvedValue(Buffer.from("<nav>hello</nav>"));
 
     await listComponents();
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('"nav"'),
-    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"nav"'));
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("native HTML element"),
     );
@@ -255,7 +254,7 @@ describe("listComponents – native HTML element name warning", () => {
   });
 
   it("does not warn for hyphenated component names", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockDeepReadDirFlat.mockResolvedValue(["src/components/my-nav.html"]);
     mockReadFile.mockResolvedValue(Buffer.from("<nav>hello</nav>"));
 
@@ -271,20 +270,26 @@ describe("listComponents – native HTML element name warning", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("listComponents – companion scripts", () => {
-  it("inlines <script src=\"...\"> tags matching companion script files", async () => {
+  it('inlines <script src="..."> tags matching companion script files', async () => {
     mockDeepReadDirFlat.mockResolvedValue([
       "src/components/demo-counter/demo-counter.html",
       "src/components/demo-counter/demo-counter.ts",
     ]);
     mockReadFile
-      .mockResolvedValueOnce(Buffer.from('<div class="ctr"></div><script src="demo-counter.ts"></script>'))
-      .mockResolvedValueOnce(Buffer.from('const x = 1;'));
+      .mockResolvedValueOnce(
+        Buffer.from(
+          '<div class="ctr"></div><script src="demo-counter.ts"></script>',
+        ),
+      )
+      .mockResolvedValueOnce(Buffer.from("const x = 1;"));
 
     const result = await listComponents();
 
     expect(result["demo-counter"]).toBeDefined();
     expect(result["demo-counter"].fileContent).toContain("const x = 1;");
-    expect(result["demo-counter"].fileContent).not.toContain('src="demo-counter.ts"');
+    expect(result["demo-counter"].fileContent).not.toContain(
+      'src="demo-counter.ts"',
+    );
   });
 
   it("inlines a companion whose <script> tag has a quoted attribute value containing >", async () => {
@@ -293,27 +298,42 @@ describe("listComponents – companion scripts", () => {
       "src/components/demo-counter/demo-counter.ts",
     ]);
     mockReadFile
-      .mockResolvedValueOnce(Buffer.from('<div></div><script data-note="a > b" src="demo-counter.ts" defer></script>'))
+      .mockResolvedValueOnce(
+        Buffer.from(
+          '<div></div><script data-note="a > b" src="demo-counter.ts" defer></script>',
+        ),
+      )
       .mockResolvedValueOnce(Buffer.from("const x = 1;"));
 
     const content = (await listComponents())["demo-counter"].fileContent;
 
     expect(content).toContain("const x = 1;");
     // The companion's first line is line 1 of its sourceURL file, so it starts right after the tag.
-    expect(content).toMatch(/<script data-note="a > b" defer data-bascik-source="[^"]*demo-counter\.ts" data-bascik-script-line="1">const x = 1;/);
+    expect(content).toMatch(
+      /<script data-note="a > b" defer data-bascik-source="[^"]*demo-counter\.ts" data-bascik-script-line="1">const x = 1;/,
+    );
     expect(content).not.toContain('src="demo-counter.ts"');
   });
 
-  it.each([["</script>"], ["</script >"], ['</script foo="bar">'], ["</script\t\n bar>"]])(
+  it.each([
+    ["</script>"],
+    ["</script >"],
+    ['</script foo="bar">'],
+    ["</script\t\n bar>"],
+  ])(
     "inlines a companion whose <script src> has an ignored body and end tag %j, and warns about the body",
     async (endTag) => {
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       mockDeepReadDirFlat.mockResolvedValue([
         "src/components/demo-counter/demo-counter.html",
         "src/components/demo-counter/demo-counter.ts",
       ]);
       mockReadFile
-        .mockResolvedValueOnce(Buffer.from(`<div></div><script src="demo-counter.ts">legacyFallback()${endTag}<p>after</p>`))
+        .mockResolvedValueOnce(
+          Buffer.from(
+            `<div></div><script src="demo-counter.ts">legacyFallback()${endTag}<p>after</p>`,
+          ),
+        )
         .mockResolvedValueOnce(Buffer.from("const x = 1;"));
 
       const content = (await listComponents())["demo-counter"].fileContent;
@@ -322,23 +342,31 @@ describe("listComponents – companion scripts", () => {
       expect(content).not.toContain("legacyFallback");
       expect(content).not.toContain('src="demo-counter.ts"');
       expect(content).toContain("<p>after</p>");
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("browsers ignore when src is set"));
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("browsers ignore when src is set"),
+      );
       warnSpy.mockRestore();
     },
   );
 
   it("does not warn when a companion <script src> body is only whitespace", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockDeepReadDirFlat.mockResolvedValue([
       "src/components/demo-counter/demo-counter.html",
       "src/components/demo-counter/demo-counter.ts",
     ]);
     mockReadFile
-      .mockResolvedValueOnce(Buffer.from('<div></div><script src="demo-counter.ts">\n  </script>'))
+      .mockResolvedValueOnce(
+        Buffer.from('<div></div><script src="demo-counter.ts">\n  </script>'),
+      )
       .mockResolvedValueOnce(Buffer.from("const x = 1;"));
 
-    expect((await listComponents())["demo-counter"].fileContent).toContain("const x = 1;");
-    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("browsers ignore when src is set"));
+    expect((await listComponents())["demo-counter"].fileContent).toContain(
+      "const x = 1;",
+    );
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("browsers ignore when src is set"),
+    );
     warnSpy.mockRestore();
   });
 
@@ -348,7 +376,9 @@ describe("listComponents – companion scripts", () => {
       "src/components/demo-counter/demo-counter.ts",
     ]);
     mockReadFile
-      .mockResolvedValueOnce(Buffer.from('<div></div><script data-src="demo-counter.ts"></script>'))
+      .mockResolvedValueOnce(
+        Buffer.from('<div></div><script data-src="demo-counter.ts"></script>'),
+      )
       .mockResolvedValueOnce(Buffer.from("const x = 1;"));
 
     const content = (await listComponents())["demo-counter"].fileContent;
@@ -357,14 +387,14 @@ describe("listComponents – companion scripts", () => {
     expect(content).toContain('data-src="demo-counter.ts"');
   });
 
-  it("does not auto-inline companion scripts unless explicitly referenced with <script src=\"...\">", async () => {
+  it('does not auto-inline companion scripts unless explicitly referenced with <script src="...">', async () => {
     mockDeepReadDirFlat.mockResolvedValue([
       "src/components/my-counter/my-counter.html",
       "src/components/my-counter/helper.ts",
     ]);
     mockReadFile
       .mockResolvedValueOnce(Buffer.from('<div class="ctr"></div>'))
-      .mockResolvedValueOnce(Buffer.from('export function help() {}'));
+      .mockResolvedValueOnce(Buffer.from("export function help() {}"));
 
     const result = await listComponents();
 
@@ -393,10 +423,16 @@ describe("listComponents – companion scripts", () => {
       "src/components/demo-counter/demo-counter.ts",
     ]);
     mockReadFile
-      .mockResolvedValueOnce(Buffer.from('<span id="count">0</span><script src="demo-counter.ts"></script>'))
-      .mockResolvedValueOnce(Buffer.from(
-        "const count = document.getElementById('count') as HTMLElement;\nlet n: number = 0;\ninterface Tick { at: number }\ncount.textContent = String(n);\n",
-      ));
+      .mockResolvedValueOnce(
+        Buffer.from(
+          '<span id="count">0</span><script src="demo-counter.ts"></script>',
+        ),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from(
+          "const count = document.getElementById('count') as HTMLElement;\nlet n: number = 0;\ninterface Tick { at: number }\ncount.textContent = String(n);\n",
+        ),
+      );
 
     const result = await listComponents();
     const html = result["demo-counter"].fileContent as string;
@@ -405,7 +441,9 @@ describe("listComponents – companion scripts", () => {
     expect(html).not.toContain(": number");
     expect(html).not.toContain("interface Tick");
     expect(html).toContain("document.getElementById('count')");
-    expect(html).toContain('data-bascik-source="src/components/demo-counter/demo-counter.ts"');
+    expect(html).toContain(
+      'data-bascik-source="src/components/demo-counter/demo-counter.ts"',
+    );
     // The stripped script is plain JavaScript, so no type attribute is added.
     expect(html).not.toContain("text/typescript");
   });
@@ -417,20 +455,26 @@ describe("listComponents – companion scripts", () => {
       "src/components/plain-comp/plain-comp.js",
     ]);
     mockReadFile
-      .mockResolvedValueOnce(Buffer.from('<div></div><script src="plain-comp.js"></script>'))
+      .mockResolvedValueOnce(
+        Buffer.from('<div></div><script src="plain-comp.js"></script>'),
+      )
       .mockResolvedValueOnce(Buffer.from(js));
 
     const result = await listComponents();
     expect(result["plain-comp"].fileContent).toContain(js);
   });
 
-  it("strips types from an inline <script type=\"text/typescript\"> in a component and leaves an ordinary inline script alone", async () => {
-    mockDeepReadDirFlat.mockResolvedValue(["src/components/mixed-comp/mixed-comp.html"]);
-    mockReadFile.mockResolvedValueOnce(Buffer.from(
-      '<div id="box"></div>\n' +
-      '<script type="text/typescript">\n  const box = document.getElementById("box") as HTMLElement;\n  let hits: number = 0;\n  box.textContent = String(hits);\n</script>\n' +
-      "<script>\n  const plain = 1;\n  console.log(plain);\n</script>\n",
-    ));
+  it('strips types from an inline <script type="text/typescript"> in a component and leaves an ordinary inline script alone', async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/mixed-comp/mixed-comp.html",
+    ]);
+    mockReadFile.mockResolvedValueOnce(
+      Buffer.from(
+        '<div id="box"></div>\n' +
+          '<script type="text/typescript">\n  const box = document.getElementById("box") as HTMLElement;\n  let hits: number = 0;\n  box.textContent = String(hits);\n</script>\n' +
+          "<script>\n  const plain = 1;\n  console.log(plain);\n</script>\n",
+      ),
+    );
 
     const result = await listComponents();
     const html = result["mixed-comp"].fileContent as string;
@@ -443,14 +487,19 @@ describe("listComponents – companion scripts", () => {
   });
 
   it("passes a .ts companion through a custom scripts.typescript compiler with its source path", async () => {
-    const compiler = vi.fn(async (code: string) => code.replace(/: number/g, "") + "\n// via-custom-compiler");
+    const compiler = vi.fn(
+      async (code: string) =>
+        code.replace(/: number/g, "") + "\n// via-custom-compiler",
+    );
     (BascikConfig as any).scripts.typescript = compiler;
     mockDeepReadDirFlat.mockResolvedValue([
       "src/components/custom-comp/custom-comp.html",
       "src/components/custom-comp/custom-comp.ts",
     ]);
     mockReadFile
-      .mockResolvedValueOnce(Buffer.from('<div></div><script src="custom-comp.ts"></script>'))
+      .mockResolvedValueOnce(
+        Buffer.from('<div></div><script src="custom-comp.ts"></script>'),
+      )
       .mockResolvedValueOnce(Buffer.from("let n: number = 1;\n"));
 
     const result = await listComponents();
@@ -460,7 +509,9 @@ describe("listComponents – companion scripts", () => {
       sourcePath: "src/components/custom-comp/custom-comp.ts",
       kind: "companion",
     });
-    expect(result["custom-comp"].fileContent).toContain("// via-custom-compiler");
+    expect(result["custom-comp"].fileContent).toContain(
+      "// via-custom-compiler",
+    );
     expect(result["custom-comp"].fileContent).not.toContain(": number");
   });
 
@@ -471,7 +522,9 @@ describe("listComponents – companion scripts", () => {
       "src/components/raw-comp/raw-comp.ts",
     ]);
     mockReadFile
-      .mockResolvedValueOnce(Buffer.from('<div></div><script src="raw-comp.ts"></script>'))
+      .mockResolvedValueOnce(
+        Buffer.from('<div></div><script src="raw-comp.ts"></script>'),
+      )
       .mockResolvedValueOnce(Buffer.from("let n: number = 1;\n"));
 
     const result = await listComponents();
@@ -486,13 +539,17 @@ describe("listComponents – companion scripts", () => {
       "src/components/enum-comp/enum-comp.ts",
     ]);
     mockReadFile
-      .mockResolvedValueOnce(Buffer.from('<div></div><script src="enum-comp.ts"></script>'))
-      .mockResolvedValueOnce(Buffer.from("enum Mode { A, B }\nconsole.log(Mode.A);\n"));
+      .mockResolvedValueOnce(
+        Buffer.from('<div></div><script src="enum-comp.ts"></script>'),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from("enum Mode { A, B }\nconsole.log(Mode.A);\n"),
+      );
 
     await expect(listComponents()).rejects.toThrow(/enum-comp\.ts[\s\S]*enum/i);
   });
 
-  it("fails a .ts companion with an actionable diagnostic when it uses import/export but the <script> tag isn't type=\"module\"", async () => {
+  it('fails a .ts companion with an actionable diagnostic when it uses import/export but the <script> tag isn\'t type="module"', async () => {
     // The stripped output is still module-shaped, and this <script src> has no
     // type="module", so it would be silently wrapped in a classic IIFE and
     // throw a SyntaxError in the browser. Fail the build instead, at the same
@@ -502,12 +559,18 @@ describe("listComponents – companion scripts", () => {
       "src/components/module-widget/module-widget.ts",
     ]);
     mockReadFile
-      .mockResolvedValueOnce(Buffer.from('<div></div><script src="module-widget.ts"></script>'))
-      .mockResolvedValueOnce(Buffer.from(
-        "import { message } from './helper.ts';\nconsole.log(message);\n",
-      ));
+      .mockResolvedValueOnce(
+        Buffer.from('<div></div><script src="module-widget.ts"></script>'),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from(
+          "import { message } from './helper.ts';\nconsole.log(message);\n",
+        ),
+      );
 
-    await expect(listComponents()).rejects.toThrow(/module-widget\.ts[\s\S]*import\/export/i);
+    await expect(listComponents()).rejects.toThrow(
+      /module-widget\.ts[\s\S]*import\/export/i,
+    );
   });
 
   it("fails a .ts companion with an actionable diagnostic when it uses a bare export declaration", async () => {
@@ -516,13 +579,17 @@ describe("listComponents – companion scripts", () => {
       "src/components/exporting-widget/exporting-widget.ts",
     ]);
     mockReadFile
-      .mockResolvedValueOnce(Buffer.from('<div></div><script src="exporting-widget.ts"></script>'))
-      .mockResolvedValueOnce(Buffer.from("export const n: number = 1;\nconsole.log(n);\n"));
+      .mockResolvedValueOnce(
+        Buffer.from('<div></div><script src="exporting-widget.ts"></script>'),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from("export const n: number = 1;\nconsole.log(n);\n"),
+      );
 
     await expect(listComponents()).rejects.toThrow(TypeScriptTransformError);
   });
 
-  it("allows a .ts companion with import/export when the referencing <script> tag is type=\"module\"", async () => {
+  it('allows a .ts companion with import/export when the referencing <script> tag is type="module"', async () => {
     // A native ES module script is never wrapped in an IIFE, so module syntax
     // in its companion is safe and must be left alone.
     mockDeepReadDirFlat.mockResolvedValue([
@@ -530,11 +597,19 @@ describe("listComponents – companion scripts", () => {
       "src/components/module-widget/module-widget.ts",
     ]);
     mockReadFile
-      .mockResolvedValueOnce(Buffer.from('<div></div><script type="module" src="module-widget.ts"></script>'))
-      .mockResolvedValueOnce(Buffer.from("export const n = 1;\nconsole.log(n);\n"));
+      .mockResolvedValueOnce(
+        Buffer.from(
+          '<div></div><script type="module" src="module-widget.ts"></script>',
+        ),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from("export const n = 1;\nconsole.log(n);\n"),
+      );
 
     const result = await listComponents();
-    expect(result["module-widget"].fileContent).toContain("export const n = 1;");
+    expect(result["module-widget"].fileContent).toContain(
+      "export const n = 1;",
+    );
   });
 });
 
@@ -553,11 +628,15 @@ describe("listComponents – page-aware component build script deferral", () => 
     const result = await listComponents();
 
     expect(mockExecuteBuildScripts).toHaveBeenCalledWith(
-      expect.stringContaining("<div><script data-bascik-build data-bascik-source-file="),
+      expect.stringContaining(
+        "<div><script data-bascik-build data-bascik-source-file=",
+      ),
       "src/components/static-comp.html",
     );
     expect(result["static-comp"].fileContent).toContain("<span>static</span>");
-    expect(result["static-comp"].fileContent).not.toContain("<script data-bascik-build");
+    expect(result["static-comp"].fileContent).not.toContain(
+      "<script data-bascik-build",
+    );
   });
 
   it("defers execution of build script referencing process.env.BASCIK_PAGE_PATH", async () => {
@@ -570,8 +649,12 @@ describe("listComponents – page-aware component build script deferral", () => 
 
     // Should NOT execute executeBuildScripts for the page-aware script
     expect(mockExecuteBuildScripts).not.toHaveBeenCalled();
-    expect(result["page-badge"].fileContent).toContain("<script data-bascik-build");
-    expect(result["page-badge"].fileContent).toContain("process.env.BASCIK_PAGE_PATH");
+    expect(result["page-badge"].fileContent).toContain(
+      "<script data-bascik-build",
+    );
+    expect(result["page-badge"].fileContent).toContain(
+      "process.env.BASCIK_PAGE_PATH",
+    );
   });
 
   it("defers execution of build script with data-bascik-page-aware attribute", async () => {
@@ -583,35 +666,46 @@ describe("listComponents – page-aware component build script deferral", () => 
     const result = await listComponents();
 
     expect(mockExecuteBuildScripts).not.toHaveBeenCalled();
-    expect(result["aware-comp"].fileContent).toContain("data-bascik-page-aware");
+    expect(result["aware-comp"].fileContent).toContain(
+      "data-bascik-page-aware",
+    );
   });
 
   it("defers execution of build script with data-bascik-build='page' attribute", async () => {
     const rawHtml =
       "<div><script data-bascik-build=\"page\">console.log('page-aware')</script></div>";
-    mockDeepReadDirFlat.mockResolvedValue(["src/components/docs-pagination.html"]);
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/docs-pagination.html",
+    ]);
     mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
 
     const result = await listComponents();
 
     expect(mockExecuteBuildScripts).not.toHaveBeenCalled();
-    expect(result["docs-pagination"].fileContent).toContain('data-bascik-build="page"');
+    expect(result["docs-pagination"].fileContent).toContain(
+      'data-bascik-build="page"',
+    );
   });
 
   it("executes static build scripts while deferring page-aware build scripts in the same component", async () => {
     const rawHtml =
-      "<div><script data-bascik-build>staticPart()</script><script data-bascik-build=\"page\">dynamicPart()</script></div>";
+      '<div><script data-bascik-build>staticPart()</script><script data-bascik-build="page">dynamicPart()</script></div>';
     mockDeepReadDirFlat.mockResolvedValue(["src/components/mixed-comp.html"]);
     mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
     mockExecuteBuildScripts.mockImplementation(async (html: string) =>
-      html.replace(/<script data-bascik-build [^>]*>staticPart\(\)<\/script>/, () => "<p>Static</p>"),
+      html.replace(
+        /<script data-bascik-build [^>]*>staticPart\(\)<\/script>/,
+        () => "<p>Static</p>",
+      ),
     );
 
     const result = await listComponents();
 
     expect(mockExecuteBuildScripts).toHaveBeenCalled();
     expect(result["mixed-comp"].fileContent).toContain("<p>Static</p>");
-    expect(result["mixed-comp"].fileContent).toContain('data-bascik-build="page"');
+    expect(result["mixed-comp"].fileContent).toContain(
+      'data-bascik-build="page"',
+    );
   });
 
   it("throws an error when two component files in subfolders define the same tag name", async () => {

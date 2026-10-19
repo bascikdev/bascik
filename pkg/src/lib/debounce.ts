@@ -1,4 +1,8 @@
-import { nativeClock, type FrameworkClock, type TimeoutHandle } from './clock.ts';
+import {
+  nativeClock,
+  type FrameworkClock,
+  type TimeoutHandle,
+} from "./clock.ts";
 
 export interface DebounceOptions {
   clock?: FrameworkClock;

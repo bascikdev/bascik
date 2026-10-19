@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { nativeClock, type FrameworkClock, type TimeoutHandle, type IntervalHandle } from "./clock.ts";
+import {
+  nativeClock,
+  type FrameworkClock,
+  type TimeoutHandle,
+  type IntervalHandle,
+} from "./clock.ts";
 
 describe("FrameworkClock & nativeClock adapter", () => {
   beforeEach(() => {
@@ -22,10 +27,14 @@ describe("FrameworkClock & nativeClock adapter", () => {
 
   it("returns current timestamp via now() using current globals", () => {
     vi.setSystemTime(new Date("2026-09-03T12:00:00.000Z"));
-    expect(nativeClock.now()).toBe(new Date("2026-09-03T12:00:00.000Z").getTime());
+    expect(nativeClock.now()).toBe(
+      new Date("2026-09-03T12:00:00.000Z").getTime(),
+    );
 
     vi.advanceTimersByTime(5000);
-    expect(nativeClock.now()).toBe(new Date("2026-09-03T12:00:05.000Z").getTime());
+    expect(nativeClock.now()).toBe(
+      new Date("2026-09-03T12:00:05.000Z").getTime(),
+    );
   });
 
   it("schedules and executes setTimeout callbacks via current globals", () => {

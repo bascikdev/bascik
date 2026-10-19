@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
-import { VERSIONED_IMAGE_FOLDERS } from './md-renderer.ts';
+import { describe, it, expect } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
+import { VERSIONED_IMAGE_FOLDERS } from "./md-renderer.ts";
 
 /**
  * Everything under VERSIONED_IMAGE_FOLDERS is served with `Cache-Control: immutable` for a year
@@ -16,47 +16,76 @@ import { VERSIONED_IMAGE_FOLDERS } from './md-renderer.ts';
  *
  * Prose and code samples that merely mention a folder are fine. Only attribute and `url()` references count.
  */
-const docsDir = join(import.meta.dirname, '../..');
+const docsDir = join(import.meta.dirname, "../..");
 const SCANNED = [
-  { dir: join(docsDir, 'content'), extensions: ['.md'] },
-  { dir: join(docsDir, 'src/pages'), extensions: ['.html'] },
-  { dir: join(docsDir, 'src/components'), extensions: ['.html'] },
-  { dir: join(docsDir, 'src/css'), extensions: ['.css'] },
+  { dir: join(docsDir, "content"), extensions: [".md"] },
+  { dir: join(docsDir, "src/pages"), extensions: [".html"] },
+  { dir: join(docsDir, "src/components"), extensions: [".html"] },
+  { dir: join(docsDir, "src/css"), extensions: [".css"] },
 ];
 
 function filesUnder(dir: string, extensions: string[]): string[] {
   return readdirSync(dir, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile() && extensions.some((ext) => entry.name.endsWith(ext)))
+    .filter(
+      (entry) =>
+        entry.isFile() && extensions.some((ext) => entry.name.endsWith(ext)),
+    )
     .map((entry) => join(entry.parentPath, entry.name));
 }
 
-const folders = VERSIONED_IMAGE_FOLDERS.map((folder) => folder.replace(/[/.]/g, '\\$&')).join('|');
+const folders = VERSIONED_IMAGE_FOLDERS.map((folder) =>
+  folder.replace(/[/.]/g, "\\$&"),
+).join("|");
 /** `src="/assets/demos/..."`, `srcset=...`, `href=...`, `poster=...`, or `url(/assets/vscode/...)`. */
 const unversionedReference = new RegExp(
   `(?:\\b(?:src|srcset|href|poster)\\s*=\\s*["'][^"']*(?:${folders}))|(?:url\\(\\s*["']?(?:${folders}))`,
 );
 
-describe('versioned image folders', () => {
-  it('the detector recognizes the references it exists to catch', () => {
-    expect(unversionedReference.test('<img src="/assets/demos/a@2x.webp">')).toBe(true);
-    expect(unversionedReference.test('<source srcset="/assets/vscode/a.webp 2x">')).toBe(true);
-    expect(unversionedReference.test('<link rel="preload" href="/assets/demos/a.webp">')).toBe(true);
-    expect(unversionedReference.test('.hero { background: url("/assets/demos/a.webp"); }')).toBe(true);
-    expect(unversionedReference.test('Images live in /assets/demos/ and /assets/vscode/.')).toBe(false);
-    expect(unversionedReference.test('<img src="/assets/favicon.svg">')).toBe(false);
+describe("versioned image folders", () => {
+  it("the detector recognizes the references it exists to catch", () => {
+    expect(
+      unversionedReference.test('<img src="/assets/demos/a@2x.webp">'),
+    ).toBe(true);
+    expect(
+      unversionedReference.test('<source srcset="/assets/vscode/a.webp 2x">'),
+    ).toBe(true);
+    expect(
+      unversionedReference.test(
+        '<link rel="preload" href="/assets/demos/a.webp">',
+      ),
+    ).toBe(true);
+    expect(
+      unversionedReference.test(
+        '.hero { background: url("/assets/demos/a.webp"); }',
+      ),
+    ).toBe(true);
+    expect(
+      unversionedReference.test(
+        "Images live in /assets/demos/ and /assets/vscode/.",
+      ),
+    ).toBe(false);
+    expect(unversionedReference.test('<img src="/assets/favicon.svg">')).toBe(
+      false,
+    );
   });
 
-  it('are only referenced through the image helper', () => {
+  it("are only referenced through the image helper", () => {
     const offenders: string[] = [];
     for (const { dir, extensions } of SCANNED) {
       for (const file of filesUnder(dir, extensions)) {
-        readFileSync(file, 'utf8')
-          .split('\n')
+        readFileSync(file, "utf8")
+          .split("\n")
           .forEach((line, index) => {
-            if (unversionedReference.test(line)) offenders.push(`${relative(docsDir, file)}:${index + 1}: ${line.trim().slice(0, 120)}`);
+            if (unversionedReference.test(line))
+              offenders.push(
+                `${relative(docsDir, file)}:${index + 1}: ${line.trim().slice(0, 120)}`,
+              );
           });
       }
     }
-    expect(offenders, 'These bypass the image helper, so they have no ?v= hash and would be cached for a year').toEqual([]);
+    expect(
+      offenders,
+      "These bypass the image helper, so they have no ?v= hash and would be cached for a year",
+    ).toEqual([]);
   });
 });

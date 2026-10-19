@@ -5,20 +5,27 @@ import {
   shieldElementContents,
 } from "./shielding.ts";
 
-const OPENING_TAG_PATTERN = /<[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g;
+const OPENING_TAG_PATTERN =
+  /<[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g;
 
-const shieldComments = (html: string): {
+const shieldComments = (
+  html: string,
+): {
   html: string;
   restore: (value: string) => string;
 } => {
   const shield = createContentShield(html);
   return {
-    html: html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => shield.hide(comment)),
+    html: html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
+      shield.hide(comment),
+    ),
     restore: shield.restore,
   };
 };
 
-const shieldHtmlScanningContexts = (html: string): {
+const shieldHtmlScanningContexts = (
+  html: string,
+): {
   html: string;
   restore: (value: string) => string;
 } => {
@@ -41,7 +48,9 @@ export const collectDeclaredIds = (html: string): Set<string> => {
       /\sid\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+?))(?=\s|\/>|>|$)/i,
     );
     const rawUnquoted = idMatch?.[3];
-    const unquoted = rawUnquoted?.endsWith("/") ? rawUnquoted.slice(0, -1) : rawUnquoted;
+    const unquoted = rawUnquoted?.endsWith("/")
+      ? rawUnquoted.slice(0, -1)
+      : rawUnquoted;
     const id = idMatch?.[1] ?? idMatch?.[2] ?? unquoted;
     if (id) declaredIds.add(id);
   }
@@ -56,21 +65,33 @@ const replaceAttributeValue = (
   const escapedAttribute = attribute.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const attributePattern = new RegExp(
-    `(\\s${escapedAttribute}\\s*=\\s*)(?:(["'])([\\s\\S]*?)\\2|([^\\s"'=<>` + "`" + `]+?))(?=\\s|\\/>|>|$)`,
+    `(\\s${escapedAttribute}\\s*=\\s*)(?:(["'])([\\s\\S]*?)\\2|([^\\s"'=<>` +
+      "`" +
+      `]+?))(?=\\s|\\/>|>|$)`,
     "i",
   );
   return tag.replace(
     attributePattern,
-    (full, prefix: string, quote: string | undefined, quotedVal: string | undefined, unquotedVal: string | undefined) => {
+    (
+      full,
+      prefix: string,
+      quote: string | undefined,
+      quotedVal: string | undefined,
+      unquotedVal: string | undefined,
+    ) => {
       if (quote !== undefined && quotedVal !== undefined) {
         const replaced = replaceValue(quotedVal);
-        return replaced === quotedVal ? full : `${prefix}${quote}${replaced}${quote}`;
+        return replaced === quotedVal
+          ? full
+          : `${prefix}${quote}${replaced}${quote}`;
       }
       if (unquotedVal !== undefined) {
         const trailingSlash = unquotedVal.endsWith("/") ? "/" : "";
         const raw = trailingSlash ? unquotedVal.slice(0, -1) : unquotedVal;
         const replaced = replaceValue(raw);
-        return replaced === raw ? full : `${prefix}"${replaced}"${trailingSlash}`;
+        return replaced === raw
+          ? full
+          : `${prefix}"${replaced}"${trailingSlash}`;
       }
       return full;
     },
@@ -99,15 +120,16 @@ const rewriteFragment = (
 const rewriteUrlFragments = (
   value: string,
   resolve: (originalId: string) => string | null,
-): string => value.replace(
-  /url\(\s*(["']?)#([^\s)"']+)\1\s*\)/gi,
-  (url, _quote: string, id: string) => {
-    const resolved = resolve(id);
-    return resolved === null
-      ? url
-      : url.replace(`#${id}`, () => `#${resolved}`);
-  },
-);
+): string =>
+  value.replace(
+    /url\(\s*(["']?)#([^\s)"']+)\1\s*\)/gi,
+    (url, _quote: string, id: string) => {
+      const resolved = resolve(id);
+      return resolved === null
+        ? url
+        : url.replace(`#${id}`, () => `#${resolved}`);
+    },
+  );
 
 const SINGLE_ID_ATTRIBUTES = [
   "form",
@@ -140,7 +162,8 @@ const SVG_PRESENTATION_ATTRIBUTES = [
 ];
 
 /** Rewrite ID-holding attributes in HTML, using a resolver for declared IDs. */
-const QUICK_ID_REF_RE = /\s(?:for|form|list|popovertarget|commandfor|aria-[\w-]+|itemref|headers|href|xlink:href|fill|stroke|mask|clip-path|filter|marker-[\w-]+|style)\s*=/i;
+const QUICK_ID_REF_RE =
+  /\s(?:for|form|list|popovertarget|commandfor|aria-[\w-]+|itemref|headers|href|xlink:href|fill|stroke|mask|clip-path|filter|marker-[\w-]+|style)\s*=/i;
 
 export const rewriteIdReferencesInHtml = (
   html: string,
@@ -150,7 +173,9 @@ export const rewriteIdReferencesInHtml = (
   const { html: shieldedHtml, restore } = shieldHtmlScanningContexts(html);
   const rewritten = shieldedHtml.replace(OPENING_TAG_PATTERN, (openingTag) => {
     if (!QUICK_ID_REF_RE.test(openingTag)) return openingTag;
-    const tagName = openingTag.match(/^<\s*([a-zA-Z][a-zA-Z0-9:-]*)/)?.[1].toLowerCase();
+    const tagName = openingTag
+      .match(/^<\s*([a-zA-Z][a-zA-Z0-9:-]*)/)?.[1]
+      .toLowerCase();
     if (!tagName) return openingTag;
     let tag = openingTag;
 

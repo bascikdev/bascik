@@ -9,17 +9,24 @@ import {
   isNetworkResetError,
   startServerInstance,
   type BascikRequest,
-  type BascikResponse
+  type BascikResponse,
 } from "./server.ts";
 import { adaptHttp1 } from "./http.ts";
 
-export const adaptHttp2 = (stream: ServerHttp2Stream, headers: IncomingHttpHeaders): { req: BascikRequest; res: BascikResponse } => {
+export const adaptHttp2 = (
+  stream: ServerHttp2Stream,
+  headers: IncomingHttpHeaders,
+): { req: BascikRequest; res: BascikResponse } => {
   let rawIp = "unknown";
   try {
     rawIp = (stream as any).session?.socket?.remoteAddress ?? "unknown";
-  } catch { }
+  } catch {}
 
-  const remoteIp = getClientIp(rawIp, headers as Record<string, string | string[] | undefined>, BascikConfig.http.trustProxy === true);
+  const remoteIp = getClientIp(
+    rawIp,
+    headers as Record<string, string | string[] | undefined>,
+    BascikConfig.http.trustProxy === true,
+  );
 
   stream.on("error", (err) => {
     if (isNetworkResetError(err)) return;
@@ -27,7 +34,7 @@ export const adaptHttp2 = (stream: ServerHttp2Stream, headers: IncomingHttpHeade
   });
 
   const req: BascikRequest = {
-    method: headers[":method"] as string ?? "GET",
+    method: (headers[":method"] as string) ?? "GET",
     path: headers[":path"] as string,
     headers: headers as Record<string, string | string[] | undefined>,
     remoteIp,
@@ -35,13 +42,19 @@ export const adaptHttp2 = (stream: ServerHttp2Stream, headers: IncomingHttpHeade
   };
 
   const res: BascikResponse = {
-    get headersSent() { return stream.headersSent; },
-    get destroyed() { return stream.destroyed; },
+    get headersSent() {
+      return stream.headersSent;
+    },
+    get destroyed() {
+      return stream.destroyed;
+    },
     writable: stream,
     respond(status, headers) {
       stream.respond({ ":status": status, ...headers });
     },
-    write(chunk) { return stream.write(chunk); },
+    write(chunk) {
+      return stream.write(chunk);
+    },
     end(chunk) {
       if (arguments.length === 0 || chunk === undefined) {
         stream.end();
@@ -49,11 +62,17 @@ export const adaptHttp2 = (stream: ServerHttp2Stream, headers: IncomingHttpHeade
         stream.end(chunk);
       }
     },
-    close(code) { stream.close(code); },
+    close(code) {
+      stream.close(code);
+    },
     // Http2Stream emits 'aborted' before 'close' on peer RST_STREAM; 'close'
     // always follows, so it is the one lifecycle event the sink needs.
-    on(event, cb) { stream.on(event, cb); },
-    off(event, cb) { stream.off(event, cb); },
+    on(event, cb) {
+      stream.on(event, cb);
+    },
+    off(event, cb) {
+      stream.off(event, cb);
+    },
   };
 
   return { req, res };
@@ -101,12 +120,15 @@ export const startHttp2Server = async (): Promise<string> => {
     (stream: ServerHttp2Stream, headers: IncomingHttpHeaders) => {
       const { req, res } = adaptHttp2(stream, headers);
       return handleRequest(req, res).catch((err) => {
-        console.error("[bascik] Unhandled error during HTTP/2 stream processing:", err);
+        console.error(
+          "[bascik] Unhandled error during HTTP/2 stream processing:",
+          err,
+        );
         if (!res.headersSent) {
           try {
             res.respond(500, { "content-type": "text/plain" });
             res.end("Internal Server Error");
-          } catch { }
+          } catch {}
         }
       });
     },
@@ -120,12 +142,15 @@ export const startHttp2Server = async (): Promise<string> => {
     if (reqMsg.httpVersion === "2.0") return;
     const { req, res } = adaptHttp1(reqMsg as any, resMsg as any);
     return handleRequest(req, res).catch((err) => {
-      console.error("[bascik] Unhandled error during HTTP/1.1 over TLS request processing:", err);
+      console.error(
+        "[bascik] Unhandled error during HTTP/1.1 over TLS request processing:",
+        err,
+      );
       if (!res.headersSent) {
         try {
           res.respond(500, { "content-type": "text/plain" });
           res.end("Internal Server Error");
-        } catch { }
+        } catch {}
       }
     });
   });
@@ -137,29 +162,29 @@ export const startHttp2Server = async (): Promise<string> => {
       if (typeof (server as any).closeIdleConnections === "function") {
         try {
           (server as any).closeIdleConnections();
-        } catch { }
+        } catch {}
       }
       for (const session of openSessions) {
         try {
           if (!session.closed && !session.destroyed) {
             session.close();
           }
-        } catch { }
+        } catch {}
       }
     },
     () => {
       for (const session of openSessions) {
         try {
           session.destroy();
-        } catch { }
+        } catch {}
       }
       openSessions.clear();
       for (const socket of openSockets) {
         try {
           socket.destroy();
-        } catch { }
+        } catch {}
       }
       openSockets.clear();
-    }
+    },
   );
 };

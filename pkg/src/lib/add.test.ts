@@ -62,7 +62,7 @@ describe("bascik add", () => {
       {
         "components/button.html": "<button><slot></slot></button>",
         "components/button.css": "button { color: red; }",
-        "components/card.html": "<div class=\"card\"><slot></slot></div>",
+        "components/card.html": '<div class="card"><slot></slot></div>',
       },
     );
 
@@ -74,13 +74,10 @@ describe("bascik add", () => {
       "utf8",
     );
     expect(buttonHtml).toBe("<button><slot></slot></button>");
-    const buttonCss = await readFile(
-      join(componentsDir, "button.css"),
-      "utf8",
-    );
+    const buttonCss = await readFile(join(componentsDir, "button.css"), "utf8");
     expect(buttonCss).toBe("button { color: red; }");
     const cardHtml = await readFile(join(componentsDir, "card.html"), "utf8");
-    expect(cardHtml).toBe("<div class=\"card\"><slot></slot></div>");
+    expect(cardHtml).toBe('<div class="card"><slot></slot></div>');
   });
 
   // 2. bascik add @acme/ui/card copies one.
@@ -94,7 +91,7 @@ describe("bascik add", () => {
       },
       {
         "components/button.html": "<button><slot></slot></button>",
-        "components/card.html": "<div class=\"card\"><slot></slot></div>",
+        "components/card.html": '<div class="card"><slot></slot></div>',
         "components/card.css": ".card { border: 1px solid black; }",
       },
     );
@@ -103,7 +100,7 @@ describe("bascik add", () => {
     expect(result.copiedFiles.length).toBe(2);
 
     const cardHtml = await readFile(join(componentsDir, "card.html"), "utf8");
-    expect(cardHtml).toBe("<div class=\"card\"><slot></slot></div>");
+    expect(cardHtml).toBe('<div class="card"><slot></slot></div>');
     const cardCss = await readFile(join(componentsDir, "card.css"), "utf8");
     expect(cardCss).toBe(".card { border: 1px solid black; }");
 
@@ -182,9 +179,9 @@ describe("bascik add", () => {
       },
     );
 
-    await expect(
-      addComponents(["@acme/ui"], { cwd: testDir }),
-    ).rejects.toThrow(/error: component name collision for <card>/);
+    await expect(addComponents(["@acme/ui"], { cwd: testDir })).rejects.toThrow(
+      /error: component name collision for <card>/,
+    );
 
     // Assert button was not copied (atomic refusal, nothing written)
     await expect(
@@ -192,7 +189,10 @@ describe("bascik add", () => {
     ).rejects.toThrow();
 
     // Assert local card was not modified
-    const cardContent = await readFile(join(componentsDir, "card.html"), "utf8");
+    const cardContent = await readFile(
+      join(componentsDir, "card.html"),
+      "utf8",
+    );
     expect(cardContent).toBe("<div>local card</div>");
   });
 
@@ -221,9 +221,9 @@ describe("bascik add", () => {
 
     // Naive relative path collision would check "admin/card.html" vs "marketing/card.html" (no file path collision)
     // But listComponents derives <card> for both, which must collide!
-    await expect(
-      addComponents(["@acme/ui"], { cwd: testDir }),
-    ).rejects.toThrow(/collision for <card>/);
+    await expect(addComponents(["@acme/ui"], { cwd: testDir })).rejects.toThrow(
+      /collision for <card>/,
+    );
   });
 
   // 8. The lockfile records package, version, files, and per-file hashes.
@@ -328,9 +328,9 @@ describe("bascik add", () => {
       },
     );
 
-    await expect(
-      addComponents(["@acme/ui"], { cwd: testDir }),
-    ).rejects.toThrow(/button\.html.*modified locally/);
+    await expect(addComponents(["@acme/ui"], { cwd: testDir })).rejects.toThrow(
+      /button\.html.*modified locally/,
+    );
 
     const buttonHtml = await readFile(
       join(componentsDir, "button.html"),
@@ -427,7 +427,9 @@ describe("bascik add", () => {
       addComponents(["@acme/evil"], { cwd: testDir }),
     ).rejects.toThrow(/Path traversal detected/);
 
-    await expect(readFile(join(testDir, "evil.html"), "utf8")).rejects.toThrow();
+    await expect(
+      readFile(join(testDir, "evil.html"), "utf8"),
+    ).rejects.toThrow();
   });
 
   // 14. A mid-copy failure leaves no partial state.
@@ -495,17 +497,25 @@ describe("bascik add", () => {
         bascik: { components: "./components" },
       },
       {
-        "components/fancy-button.html": "<button class=\"btn\"><div data-bascik-slot></div></button>",
+        "components/fancy-button.html":
+          '<button class="btn"><div data-bascik-slot></div></button>',
         "components/fancy-button.css": ".btn { background: blue; }",
       },
     );
 
     await addComponents(["@acme/ui"], { cwd: testDir });
 
-    const fancyButtonHtml = await readFile(join(componentsDir, "fancy-button.html"), "utf8");
-    const fancyButtonCss = await readFile(join(componentsDir, "fancy-button.css"), "utf8");
+    const fancyButtonHtml = await readFile(
+      join(componentsDir, "fancy-button.html"),
+      "utf8",
+    );
+    const fancyButtonCss = await readFile(
+      join(componentsDir, "fancy-button.css"),
+      "utf8",
+    );
 
-    const pageSource = "<!DOCTYPE html><html><body><fancy-button>Click Me</fancy-button></body></html>";
+    const pageSource =
+      "<!DOCTYPE html><html><body><fancy-button>Click Me</fancy-button></body></html>";
     const componentList = {
       "fancy-button": {
         fileContent: fancyButtonHtml,
@@ -575,12 +585,15 @@ describe("bascik add", () => {
       },
       {
         "components/UserProfile/UserProfile.html": "<div>User Profile</div>",
-        "components/UserProfile/UserProfile.css": ".profile { font-size: 14px; }",
+        "components/UserProfile/UserProfile.css":
+          ".profile { font-size: 14px; }",
         "components/Button.html": "<button>Btn</button>",
       },
     );
 
-    const result = await addComponents(["@acme/ui/userprofile"], { cwd: testDir });
+    const result = await addComponents(["@acme/ui/userprofile"], {
+      cwd: testDir,
+    });
     expect(result.copiedFiles.length).toBe(2);
 
     const profileHtml = await readFile(

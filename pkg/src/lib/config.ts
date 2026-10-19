@@ -32,7 +32,8 @@ ensureEnvironmentReady();
 // never drift: a flag the parser rejects can never reach the config.
 const cliDecision = resolveCliAction(process.argv.slice(2));
 const isBuild =
-  cliDecision.action === "build" || parseInt(process.env.BASCIK_BUILD ?? "0") === 1;
+  cliDecision.action === "build" ||
+  parseInt(process.env.BASCIK_BUILD ?? "0") === 1;
 const isProdServer =
   cliDecision.action === "server" ||
   parseInt(process.env.BASCIK_SERVER ?? "0") === 1;
@@ -124,7 +125,10 @@ export const buildDefaultConfig: Partial<UserConfig> = {
   onMinifyError: "error",
 };
 
-export const defaultConfig: Omit<BascikConfigOptions, "isBuild" | "isProdServer"> = {
+export const defaultConfig: Omit<
+  BascikConfigOptions,
+  "isBuild" | "isProdServer"
+> = {
   directory: {
     pages: "src/pages",
     components: ["src/components"],
@@ -280,7 +284,12 @@ export const normalizeComponentRoots = (
   input: string | string[] | undefined,
   cwd: string,
 ): string[] => {
-  const entries = input === undefined ? ["src/components"] : Array.isArray(input) ? input : [input];
+  const entries =
+    input === undefined
+      ? ["src/components"]
+      : Array.isArray(input)
+        ? input
+        : [input];
   const canonical = entries.map((entry) => {
     const resolved = resolve(cwd, entry);
     if (!existsSync(resolved)) return resolved;
@@ -350,7 +359,9 @@ const normalizeExec = (
  */
 export const initBascikConfig = (
   userConfig: UserConfig = {},
-  modeOverrides: { dev?: UserConfig; build?: UserConfig; server?: UserConfig } | UserConfig = {},
+  modeOverrides:
+    | { dev?: UserConfig; build?: UserConfig; server?: UserConfig }
+    | UserConfig = {},
   flags: {
     isBuild?: boolean;
     isProdServer?: boolean;
@@ -363,16 +374,27 @@ export const initBascikConfig = (
   } = {},
   deps: ConfigValidationDeps = {},
 ) => {
-  const safeUserConfig = typeof userConfig === "object" && userConfig !== null ? userConfig : {};
+  const safeUserConfig =
+    typeof userConfig === "object" && userConfig !== null ? userConfig : {};
   let effectiveUserConfig: UserConfig = safeUserConfig;
-  let effectiveModeOverrides: { dev?: UserConfig; build?: UserConfig; server?: UserConfig } | UserConfig = modeOverrides;
+  let effectiveModeOverrides:
+    { dev?: UserConfig; build?: UserConfig; server?: UserConfig } | UserConfig =
+    modeOverrides;
   const isBuild = flags.isBuild ?? false;
   const isProdServer = flags.isProdServer ?? false;
-  const activeMode: "dev" | "build" | "server" = isBuild ? "build" : isProdServer ? "server" : "dev";
+  const activeMode: "dev" | "build" | "server" = isBuild
+    ? "build"
+    : isProdServer
+      ? "server"
+      : "dev";
 
   // Validate every config layer before anything consumes it. All problems
   // report together in one aggregated error rather than one fix-at-a-time.
-  const validationErrors = validateUserConfig(safeUserConfig, modeOverrides, deps);
+  const validationErrors = validateUserConfig(
+    safeUserConfig,
+    modeOverrides,
+    deps,
+  );
   if (validationErrors.length > 0) {
     if (flags.allowInvalidConfig === true) {
       effectiveUserConfig = {};
@@ -384,14 +406,30 @@ export const initBascikConfig = (
 
   // Non-fatal findings (e.g. a missing scripts.importRoot directory) are
   // reported once and never abort startup.
-  for (const warning of collectConfigWarnings(safeUserConfig, { fs: deps.fs, cwd: deps.cwd })) {
-    console.warn(`${colorErr.tag("warn", "[bascik] warning:")} ${warning.key} ${JSON.stringify(warning.value)}: ${warning.message}`);
+  for (const warning of collectConfigWarnings(safeUserConfig, {
+    fs: deps.fs,
+    cwd: deps.cwd,
+  })) {
+    console.warn(
+      `${colorErr.tag("warn", "[bascik] warning:")} ${warning.key} ${JSON.stringify(warning.value)}: ${warning.message}`,
+    );
   }
 
   let activeOverride: UserConfig = {};
-  if (typeof effectiveModeOverrides === "object" && effectiveModeOverrides !== null) {
-    if ("dev" in effectiveModeOverrides || "build" in effectiveModeOverrides || "server" in effectiveModeOverrides) {
-      const typedOverrides = effectiveModeOverrides as { dev?: UserConfig; build?: UserConfig; server?: UserConfig };
+  if (
+    typeof effectiveModeOverrides === "object" &&
+    effectiveModeOverrides !== null
+  ) {
+    if (
+      "dev" in effectiveModeOverrides ||
+      "build" in effectiveModeOverrides ||
+      "server" in effectiveModeOverrides
+    ) {
+      const typedOverrides = effectiveModeOverrides as {
+        dev?: UserConfig;
+        build?: UserConfig;
+        server?: UserConfig;
+      };
       activeOverride = typedOverrides[activeMode] ?? {};
     } else {
       if (activeMode !== "dev") {
@@ -447,16 +485,15 @@ export const initBascikConfig = (
 
   const rawCache = merged.scripts?.cache;
   const normalizedCache = normalizeScopableOption(
-    typeof rawCache === "boolean" || typeof rawCache === "object" ? rawCache : true,
+    typeof rawCache === "boolean" || typeof rawCache === "object"
+      ? rawCache
+      : true,
   );
 
   const resolvedDirectory = { ...merged.directory };
   (["pages", "out"] as const).forEach((key) => {
     if (resolvedDirectory[key]) {
-      resolvedDirectory[key] = resolve(
-        process.cwd(),
-        resolvedDirectory[key]!,
-      );
+      resolvedDirectory[key] = resolve(process.cwd(), resolvedDirectory[key]!);
     }
   });
   // The user layer may still hold a bare string; deepMerge does not touch
@@ -493,10 +530,13 @@ export const initBascikConfig = (
 // above (worker threads do not inherit process.argv), so this one env read
 // covers both the flag and the plain env var, with the flag winning.
 const envLogLevel = process.env.BASCIK_LOG_LEVEL;
-if (envLogLevel !== undefined && !(LOG_LEVELS as readonly string[]).includes(envLogLevel)) {
+if (
+  envLogLevel !== undefined &&
+  !(LOG_LEVELS as readonly string[]).includes(envLogLevel)
+) {
   throw new Error(
     `[bascik] error: invalid BASCIK_LOG_LEVEL "${envLogLevel}".\n` +
-    `  Expected one of: ${LOG_LEVELS.join(", ")}.`,
+      `  Expected one of: ${LOG_LEVELS.join(", ")}.`,
   );
 }
 // Lenient like server.ts: a malformed port env var is ignored, not fatal.
@@ -504,9 +544,9 @@ const envPortRaw = process.env.BASCIK_SERVER_PORT;
 const envPortParsed = envPortRaw ? Number.parseInt(envPortRaw, 10) : undefined;
 const envPort =
   envPortParsed !== undefined &&
-    Number.isInteger(envPortParsed) &&
-    envPortParsed >= 1 &&
-    envPortParsed <= 65535
+  Number.isInteger(envPortParsed) &&
+  envPortParsed >= 1 &&
+  envPortParsed <= 65535
     ? envPortParsed
     : undefined;
 const envHost = process.env.BASCIK_SERVER_HOST?.trim() || undefined;

@@ -48,8 +48,12 @@ export function parseIgnoreDirectives(text: string): DiagnosticIgnoreRange[] {
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex];
     const ignoreMatch =
-      /<!--\s*bascik-ignore(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*-->/.exec(line) ||
-      /\/\*\s*bascik-ignore(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*\*\//.exec(line) ||
+      /<!--\s*bascik-ignore(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*-->/.exec(
+        line,
+      ) ||
+      /\/\*\s*bascik-ignore(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*\*\//.exec(
+        line,
+      ) ||
       /\/\/\s*bascik-ignore(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?/.exec(line);
 
     if (ignoreMatch) {
@@ -64,8 +68,12 @@ export function parseIgnoreDirectives(text: string): DiagnosticIgnoreRange[] {
     }
 
     const disableMatch =
-      /<!--\s*bascik-disable(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*-->/.exec(line) ||
-      /\/\*\s*bascik-disable(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*\*\//.exec(line) ||
+      /<!--\s*bascik-disable(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*-->/.exec(
+        line,
+      ) ||
+      /\/\*\s*bascik-disable(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*\*\//.exec(
+        line,
+      ) ||
       /\/\/\s*bascik-disable(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?/.exec(line);
 
     if (disableMatch && disableStart === null) {
@@ -209,7 +217,8 @@ export function maskComments(text: string, kind: "css" | "js"): string {
       continue;
     }
     if (isComment) {
-      masked += text.slice(copiedTo, i) + text.slice(i, end).replace(/[^\n]/g, " ");
+      masked +=
+        text.slice(copiedTo, i) + text.slice(i, end).replace(/[^\n]/g, " ");
       copiedTo = end;
     }
     i = end;
@@ -234,7 +243,11 @@ export function findCompatibilityMatches(
     while ((m = regex.exec(scannable)) !== null) {
       if (
         ignoreRanges.length > 0 &&
-        isDiagnosticIgnored(getZeroBasedLineAt(text, m.index), rule.id, ignoreRanges)
+        isDiagnosticIgnored(
+          getZeroBasedLineAt(text, m.index),
+          rule.id,
+          ignoreRanges,
+        )
       ) {
         if (!regex.global) break;
         continue;

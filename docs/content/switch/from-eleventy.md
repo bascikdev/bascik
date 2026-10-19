@@ -4,13 +4,13 @@ Eleventy is a static site generator centered on template languages and Markdown 
 
 ## Mental Model Comparison
 
-| Concept | Eleventy | Bascik |
-| --- | --- | --- |
-| Component partial | `_includes/nav.njk` (`{% include %}`) | `src/components/site-nav/site-nav.html` (`<site-nav>`) |
-| Layout inheritance | `{% extends "base.njk" %}` | `<site-layout>` with `data-bascik-slot` |
-| Front matter / Global data | Front matter + `_data/` directory | `<script data-bascik-build>` with Node.js `fs` |
-| Scoped styles | Global CSS or build tools | Paired `.css` files (auto-scoped and deduplicated) |
-| Client interactivity | Static JS files in output | `<script>` tags in components (auto-scoped instances) |
+| Concept                    | Eleventy                              | Bascik                                                 |
+| -------------------------- | ------------------------------------- | ------------------------------------------------------ |
+| Component partial          | `_includes/nav.njk` (`{% include %}`) | `src/components/site-nav/site-nav.html` (`<site-nav>`) |
+| Layout inheritance         | `{% extends "base.njk" %}`            | `<site-layout>` with `data-bascik-slot`                |
+| Front matter / Global data | Front matter + `_data/` directory     | `<script data-bascik-build>` with Node.js `fs`         |
+| Scoped styles              | Global CSS or build tools             | Paired `.css` files (auto-scoped and deduplicated)     |
+| Client interactivity       | Static JS files in output             | `<script>` tags in components (auto-scoped instances)  |
 
 ## A Low-Risk First Step
 
@@ -49,6 +49,7 @@ Markdown posts stay in a `content/` folder outside `src/pages/`. One dynamic rou
 ## `{% include %}` → Bascik Component Tags
 
 An Eleventy `{% include 'nav.njk' %}` that renders fixed markup becomes a self-contained Bascik component tag. The file name (hyphenated, without extension) is the tag name. An include that reads variables set by the calling template, such as the base blog's `postslist.njk` with `postslist` and `postslistCounter`, becomes a helper function instead: `renderPostList(posts, counter)` returns the list as HTML
+
 ## `{% include %}` → Bascik Component Tags
 
 An Eleventy `{% include 'nav.njk' %}` becomes a self-contained Bascik component tag. The file name (hyphenated, without extension) is the tag name.
@@ -124,16 +125,16 @@ In Bascik, the layout component wraps only the repeated inner structure. The `<h
 <!-- src/pages/about.html (Bascik - after) -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <title>About - Acme</title>
-  <link rel="stylesheet" href="/css/styles.css" />
-</head>
-<body>
-  <site-layout>
-    <h1>About</h1>
-    <p>We build things.</p>
-  </site-layout>
-</body>
+  <head>
+    <title>About - Acme</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <site-layout>
+      <h1>About</h1>
+      <p>We build things.</p>
+    </site-layout>
+  </body>
 </html>
 ```
 
@@ -155,16 +156,16 @@ description: Learn about Acme Corp.
 <!-- src/pages/about.html (Bascik - after) -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <title>About - Acme</title>
-  <meta name="description" content="Learn about Acme Corp." />
-  <link rel="stylesheet" href="/css/styles.css" />
-</head>
-<body>
-  <site-layout>
-    <h1>About</h1>
-  </site-layout>
-</body>
+  <head>
+    <title>About - Acme</title>
+    <meta name="description" content="Learn about Acme Corp." />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <site-layout>
+      <h1>About</h1>
+    </site-layout>
+  </body>
 </html>
 ```
 
@@ -178,8 +179,10 @@ Eleventy's base blog drops `draft: true` posts from builds and keeps them in `--
 
 ```ts
 // src/lib/posts.ts (excerpt)
-const includeDrafts = process.env.BASCIK_BUILD !== '1';
-const visible = posts.filter((post) => includeDrafts || post.data.draft !== true);
+const includeDrafts = process.env.BASCIK_BUILD !== "1";
+const visible = posts.filter(
+  (post) => includeDrafts || post.data.draft !== true,
+);
 ```
 
 ## Collections → `<script data-bascik-build>`
@@ -202,24 +205,42 @@ Eleventy's Collections API reads a directory of Markdown files and makes them av
 <!-- src/pages/blog/index.html (Bascik - after) -->
 <ul>
   <script data-bascik-build>
-    import { readdir, readFile } from 'node:fs/promises';
-    import matter from 'gray-matter';
+    import { readdir, readFile } from "node:fs/promises";
+    import matter from "gray-matter";
 
-    const escape = (s) => String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
+    const escape = (s) =>
+      String(s)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll('"', "&quot;");
 
     export default async function () {
-      const files = (await readdir('./content/blog')).filter(f => f.endsWith('.md'));
+      const files = (await readdir("./content/blog")).filter((f) =>
+        f.endsWith(".md"),
+      );
 
-      const posts = await Promise.all(files.map(async file => {
-        const { data } = matter(await readFile(`./content/blog/${file}`, 'utf8'));
-        return { slug: file.replace(/\.md$/, ''), title: data.title, date: new Date(data.date) };
-      }));
+      const posts = await Promise.all(
+        files.map(async (file) => {
+          const { data } = matter(
+            await readFile(`./content/blog/${file}`, "utf8"),
+          );
+          return {
+            slug: file.replace(/\.md$/, ""),
+            title: data.title,
+            date: new Date(data.date),
+          };
+        }),
+      );
       posts.sort((a, b) => b.date - a.date); // newest first, like `| reverse`
 
-      return posts.map(post => `<li>
+      return posts
+        .map(
+          (post) => `<li>
         <a href="/blog/${post.slug}/">${escape(post.title)}</a>
-        <time datetime="${post.date.toISOString().slice(0, 10)}">${post.date.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</time>
-      </li>`).join('\n');
+        <time datetime="${post.date.toISOString().slice(0, 10)}">${post.date.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })}</time>
+      </li>`,
+        )
+        .join("\n");
     }
   </script>
 </ul>
@@ -253,15 +274,15 @@ src/pages/
 
 Bascik replaces only one plugin category natively: CSS and JS scoping. Each of the base blog's other plugins becomes a small build step you write with a general-purpose library:
 
-| Eleventy plugin or template | Bascik replacement |
-| --- | --- |
-| `sitemap.xml.njk` | Built in. `bascik --build` writes `sitemap.xml` and `robots.txt` when a site URL is set. See [Sitemap & robots.txt](/sitemap) |
-| `@11ty/eleventy-plugin-rss` | A `pipeline.exec` script with `phase: 'post'` that writes the feed to the output directory, using a library such as `feed` |
-| `@11ty/eleventy-plugin-syntaxhighlight` | Highlight code in your Markdown render step with `prismjs` |
+| Eleventy plugin or template              | Bascik replacement                                                                                                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sitemap.xml.njk`                        | Built in. `bascik --build` writes `sitemap.xml` and `robots.txt` when a site URL is set. See [Sitemap & robots.txt](/sitemap)                                      |
+| `@11ty/eleventy-plugin-rss`              | A `pipeline.exec` script with `phase: 'post'` that writes the feed to the output directory, using a library such as `feed`                                         |
+| `@11ty/eleventy-plugin-syntaxhighlight`  | Highlight code in your Markdown render step with `prismjs`                                                                                                         |
 | `IdAttributePlugin`, `<heading-anchors>` | Add heading ids and anchor links in your Markdown renderer, or keep the web component and declare it in [`components.external`](/configuration#componentsexternal) |
-| `@11ty/eleventy-img` | No built-in equivalent. Copy images with their `width` and `height`, or generate variants in your own exec script |
-| `@11ty/eleventy-navigation` | A navigation array in `src/lib/` and a page-aware header that sets `aria-current` from `BASCIK_PAGE_PATH` |
-| `HtmlBasePlugin` and `pathPrefix` | The [`base`](/configuration#base) option. Not exercised by the tutorial |
+| `@11ty/eleventy-img`                     | No built-in equivalent. Copy images with their `width` and `height`, or generate variants in your own exec script                                                  |
+| `@11ty/eleventy-navigation`              | A navigation array in `src/lib/` and a page-aware header that sets `aria-current` from `BASCIK_PAGE_PATH`                                                          |
+| `HtmlBasePlugin` and `pathPrefix`        | The [`base`](/configuration#base) option. Not exercised by the tutorial                                                                                            |
 
 ## Before and After: Home Page
 
@@ -290,14 +311,21 @@ The template logic becomes one helper. `loadPosts` returns posts oldest first, s
 
 ```ts
 // src/lib/render.ts (excerpt)
-const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
+const plural = (count: number, word: string) =>
+  `${count} ${word}${count === 1 ? "" : "s"}`;
 
 export function renderHome(posts: Post[], latest = 3): string {
   const shown = posts.slice(-latest);
   const more = posts.length - latest;
-  const parts = [`<h1>Latest ${plural(shown.length, 'Post')}</h1>`, renderPostList(shown, posts.length)];
-  if (more > 0) parts.push(`<p>${plural(more, 'more post')} can be found in <a href="/blog/">the archive</a>.</p>`);
-  return parts.join('\n');
+  const parts = [
+    `<h1>Latest ${plural(shown.length, "Post")}</h1>`,
+    renderPostList(shown, posts.length),
+  ];
+  if (more > 0)
+    parts.push(
+      `<p>${plural(more, "more post")} can be found in <a href="/blog/">the archive</a>.</p>`,
+    );
+  return parts.join("\n");
 }
 ```
 
@@ -305,23 +333,23 @@ export function renderHome(posts: Post[], latest = 3): string {
 <!-- src/pages/index.html (Bascik - after) -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <site-head data-bascik-prop-title="Home - Acme Blog"></site-head>
-</head>
-<body>
-  <site-header />
-  <main id="main">
-    <script data-bascik-build>
-      import { loadPosts } from '@/lib/posts.ts';
-      import { renderHome } from '@/lib/render.ts';
+  <head>
+    <site-head data-bascik-prop-title="Home - Acme Blog"></site-head>
+  </head>
+  <body>
+    <site-header />
+    <main id="main">
+      <script data-bascik-build>
+        import { loadPosts } from "@/lib/posts.ts";
+        import { renderHome } from "@/lib/render.ts";
 
-      export default async function () {
-        return renderHome(await loadPosts());
-      }
-    </script>
-  </main>
-  <site-footer />
-</body>
+        export default async function () {
+          return renderHome(await loadPosts());
+        }
+      </script>
+    </main>
+    <site-footer />
+  </body>
 </html>
 ```
 

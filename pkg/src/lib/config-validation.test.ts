@@ -40,7 +40,9 @@ describe("unknown keys", () => {
   });
 
   it("rejects an unknown nested key with a full-path suggestion", () => {
-    const errors = validateConfigShape({ scripts: { onBuildScriptErr: "error" } });
+    const errors = validateConfigShape({
+      scripts: { onBuildScriptErr: "error" },
+    });
     expect(errors).toHaveLength(1);
     expect(errors[0].key).toBe("scripts.onBuildScriptErr");
     expect(errors[0].message).toContain(
@@ -107,26 +109,38 @@ describe("http.port", () => {
 
 describe("http.hostname", () => {
   it("rejects a URL as hostname", () => {
-    const errors = validateConfigShape({ http: { hostname: "https://example.com" } });
+    const errors = validateConfigShape({
+      http: { hostname: "https://example.com" },
+    });
     expect(errors).toHaveLength(1);
     expect(errors[0].key).toBe("http.hostname");
     expect(errors[0].value).toBe("https://example.com");
   });
 
   it("rejects a path as hostname", () => {
-    expect(validateConfigShape({ http: { hostname: "/tmp/host" } })).toHaveLength(1);
+    expect(
+      validateConfigShape({ http: { hostname: "/tmp/host" } }),
+    ).toHaveLength(1);
   });
 
   it("accepts plain hostnames", () => {
-    expect(validateConfigShape({ http: { hostname: "localhost" } })).toHaveLength(0);
-    expect(validateConfigShape({ http: { hostname: "example.com" } })).toHaveLength(0);
-    expect(validateConfigShape({ http: { hostname: "0.0.0.0" } })).toHaveLength(0);
+    expect(
+      validateConfigShape({ http: { hostname: "localhost" } }),
+    ).toHaveLength(0);
+    expect(
+      validateConfigShape({ http: { hostname: "example.com" } }),
+    ).toHaveLength(0);
+    expect(validateConfigShape({ http: { hostname: "0.0.0.0" } })).toHaveLength(
+      0,
+    );
   });
 });
 
 describe("scripts.timeout", () => {
   it("rejects zero and negative timeouts", () => {
-    expect(validateConfigShape({ scripts: { timeout: 0 } })[0].key).toBe("scripts.timeout");
+    expect(validateConfigShape({ scripts: { timeout: 0 } })[0].key).toBe(
+      "scripts.timeout",
+    );
     expect(validateConfigShape({ scripts: { timeout: -5 } })).toHaveLength(1);
   });
 
@@ -137,23 +151,37 @@ describe("scripts.timeout", () => {
   });
 
   it("accepts a positive timeout", () => {
-    expect(validateConfigShape({ scripts: { timeout: 30000 } })).toHaveLength(0);
+    expect(validateConfigShape({ scripts: { timeout: 30000 } })).toHaveLength(
+      0,
+    );
   });
 });
 
 describe("scripts.typescript", () => {
   it("is a known key that accepts true, false, or a function", () => {
-    expect(validateConfigShape({ scripts: { typescript: true } })).toHaveLength(0);
-    expect(validateConfigShape({ scripts: { typescript: false } })).toHaveLength(0);
-    expect(validateConfigShape({ scripts: { typescript: async (code: string) => code } })).toHaveLength(0);
+    expect(validateConfigShape({ scripts: { typescript: true } })).toHaveLength(
+      0,
+    );
+    expect(
+      validateConfigShape({ scripts: { typescript: false } }),
+    ).toHaveLength(0);
+    expect(
+      validateConfigShape({
+        scripts: { typescript: async (code: string) => code },
+      }),
+    ).toHaveLength(0);
   });
 
   it("rejects a string or object value", () => {
-    const errors = validateConfigShape({ scripts: { typescript: "esbuild" as any } });
+    const errors = validateConfigShape({
+      scripts: { typescript: "esbuild" as any },
+    });
     expect(errors).toHaveLength(1);
     expect(errors[0].key).toBe("scripts.typescript");
     expect(errors[0].message).toMatch(/true, false, or a function/);
-    expect(validateConfigShape({ scripts: { typescript: {} as any } })).toHaveLength(1);
+    expect(
+      validateConfigShape({ scripts: { typescript: {} as any } }),
+    ).toHaveLength(1);
   });
 });
 
@@ -165,7 +193,9 @@ describe("scripts.importRoot", () => {
   };
 
   it("is a known key", () => {
-    expect(validateConfigShape({ scripts: { importRoot: "src" } })).toHaveLength(0);
+    expect(
+      validateConfigShape({ scripts: { importRoot: "src" } }),
+    ).toHaveLength(0);
   });
 
   it("rejects a non-string value", () => {
@@ -185,24 +215,40 @@ describe("scripts.importRoot", () => {
     // Pinned on purpose: unlike directory.out, the import root is read-only and
     // legitimately points at a sibling folder in a monorepo. Never add an escape check.
     expect(
-      validateConfigShape({ scripts: { importRoot: "../shared/scripts" } }, { cwd: "/project" }),
+      validateConfigShape(
+        { scripts: { importRoot: "../shared/scripts" } },
+        { cwd: "/project" },
+      ),
     ).toHaveLength(0);
     expect(
-      validateConfigPaths({ scripts: { importRoot: "../shared/scripts" } }, { fs: allowAllFs, cwd: "/project" }),
+      validateConfigPaths(
+        { scripts: { importRoot: "../shared/scripts" } },
+        { fs: allowAllFs, cwd: "/project" },
+      ),
     ).toHaveLength(0);
   });
 
   it("does not error when the import root directory is missing", () => {
     expect(
-      validateConfigPaths({ scripts: { importRoot: "helpers" } }, { fs: missingFs, cwd: "/project" }),
+      validateConfigPaths(
+        { scripts: { importRoot: "helpers" } },
+        { fs: missingFs, cwd: "/project" },
+      ),
     ).toHaveLength(0);
     expect(
-      validateUserConfig({ scripts: { importRoot: "helpers" } }, {}, { fs: missingFs, cwd: "/project", env: {} }),
+      validateUserConfig(
+        { scripts: { importRoot: "helpers" } },
+        {},
+        { fs: missingFs, cwd: "/project", env: {} },
+      ),
     ).toHaveLength(0);
   });
 
   it("warns (not errors) when the import root directory is missing", () => {
-    const warnings = collectConfigWarnings({ scripts: { importRoot: "helpers" } }, { fs: missingFs, cwd: "/project" });
+    const warnings = collectConfigWarnings(
+      { scripts: { importRoot: "helpers" } },
+      { fs: missingFs, cwd: "/project" },
+    );
     expect(warnings).toHaveLength(1);
     expect(warnings[0].key).toBe("scripts.importRoot");
     expect(warnings[0].value).toBe("helpers");
@@ -210,8 +256,15 @@ describe("scripts.importRoot", () => {
   });
 
   it("does not warn when the import root exists or was not set", () => {
-    expect(collectConfigWarnings({ scripts: { importRoot: "src" } }, { fs: allowAllFs, cwd: "/project" })).toHaveLength(0);
-    expect(collectConfigWarnings({}, { fs: missingFs, cwd: "/project" })).toHaveLength(0);
+    expect(
+      collectConfigWarnings(
+        { scripts: { importRoot: "src" } },
+        { fs: allowAllFs, cwd: "/project" },
+      ),
+    ).toHaveLength(0);
+    expect(
+      collectConfigWarnings({}, { fs: missingFs, cwd: "/project" }),
+    ).toHaveLength(0);
   });
 });
 
@@ -225,11 +278,15 @@ describe("minify.css and minify.js", () => {
   });
 
   it("rejects a string minify.css", () => {
-    expect(validateConfigShape({ minify: { css: "lightningcss" as any } })).toHaveLength(1);
+    expect(
+      validateConfigShape({ minify: { css: "lightningcss" as any } }),
+    ).toHaveLength(1);
   });
 
   it("accepts booleans and functions", () => {
-    expect(validateConfigShape({ minify: { css: true, js: (c: string) => c } })).toHaveLength(0);
+    expect(
+      validateConfigShape({ minify: { css: true, js: (c: string) => c } }),
+    ).toHaveLength(0);
     expect(validateConfigShape({ minify: true })).toHaveLength(0);
   });
 
@@ -240,7 +297,9 @@ describe("minify.css and minify.js", () => {
 
 describe("error action enums", () => {
   it("rejects a typo in scripts.onBuildScriptError", () => {
-    const errors = validateConfigShape({ scripts: { onBuildScriptError: "erorr" as any } });
+    const errors = validateConfigShape({
+      scripts: { onBuildScriptError: "erorr" as any },
+    });
     expect(errors).toHaveLength(1);
     expect(errors[0].key).toBe("scripts.onBuildScriptError");
     expect(errors[0].value).toBe("erorr");
@@ -248,8 +307,12 @@ describe("error action enums", () => {
   });
 
   it("rejects invalid onRoutesScriptError and onServerScriptError", () => {
-    expect(validateConfigShape({ scripts: { onRoutesScriptError: "halt" as any } })).toHaveLength(1);
-    expect(validateConfigShape({ scripts: { onServerScriptError: "halt" as any } })).toHaveLength(1);
+    expect(
+      validateConfigShape({ scripts: { onRoutesScriptError: "halt" as any } }),
+    ).toHaveLength(1);
+    expect(
+      validateConfigShape({ scripts: { onServerScriptError: "halt" as any } }),
+    ).toHaveLength(1);
   });
 
   it("rejects ignore for onMinifyError (only warn or error)", () => {
@@ -287,20 +350,28 @@ describe("pipeline.workers", () => {
   });
 
   it("accepts booleans and positive integers", () => {
-    expect(validateConfigShape({ pipeline: { workers: true } })).toHaveLength(0);
+    expect(validateConfigShape({ pipeline: { workers: true } })).toHaveLength(
+      0,
+    );
     expect(validateConfigShape({ pipeline: { workers: 4 } })).toHaveLength(0);
   });
 });
 
 describe("pipeline.onExecError", () => {
   it("accepts warn and error", () => {
-    expect(validateConfigShape({ pipeline: { onExecError: "warn" } })).toHaveLength(0);
-    expect(validateConfigShape({ pipeline: { onExecError: "error" } })).toHaveLength(0);
+    expect(
+      validateConfigShape({ pipeline: { onExecError: "warn" } }),
+    ).toHaveLength(0);
+    expect(
+      validateConfigShape({ pipeline: { onExecError: "error" } }),
+    ).toHaveLength(0);
   });
 
   it("rejects ignore and typos, naming the allowed values", () => {
     for (const value of ["ignore", "erorr", true]) {
-      const errors = validateConfigShape({ pipeline: { onExecError: value as any } });
+      const errors = validateConfigShape({
+        pipeline: { onExecError: value as any },
+      });
       expect(errors).toHaveLength(1);
       expect(errors[0].key).toBe("pipeline.onExecError");
       expect(errors[0].message).toContain('"warn" or "error"');
@@ -311,7 +382,9 @@ describe("pipeline.onExecError", () => {
 describe("pipeline.exec phase", () => {
   it("rejects an unknown exec phase, folded into the validation pass", () => {
     const errors = validateConfigShape({
-      pipeline: { exec: [{ script: "scripts/a.js", phase: "invalid-phase" as any }] },
+      pipeline: {
+        exec: [{ script: "scripts/a.js", phase: "invalid-phase" as any }],
+      },
     });
     expect(errors).toHaveLength(1);
     expect(errors[0].key).toBe("pipeline.exec[0].phase");
@@ -364,16 +437,18 @@ describe("directory paths (fs half)", () => {
   });
 
   it("rejects directory.public as an unknown configuration key", () => {
-    const errors = validateConfigShape(
-      { directory: { public: "static" } } as any,
-    );
+    const errors = validateConfigShape({
+      directory: { public: "static" },
+    } as any);
     expect(errors).toHaveLength(1);
     expect(errors[0].key).toBe("directory.public");
     expect(errors[0].unknownKey).toBe(true);
   });
 
   it("does not check directory paths the user did not set", () => {
-    expect(validateConfigPaths({}, { fs: missingFs, cwd: "/project" })).toHaveLength(0);
+    expect(
+      validateConfigPaths({}, { fs: missingFs, cwd: "/project" }),
+    ).toHaveLength(0);
   });
 
   it("accepts existing directories", () => {
@@ -389,21 +464,31 @@ describe("directory paths (fs half)", () => {
 describe("directory.components shape (string | string[])", () => {
   it("accepts a single string", () => {
     expect(
-      validateConfigShape({ directory: { components: "src/components" } }, { cwd: "/project" }),
+      validateConfigShape(
+        { directory: { components: "src/components" } },
+        { cwd: "/project" },
+      ),
     ).toHaveLength(0);
   });
 
   it("accepts an array of strings, including paths outside the project", () => {
     expect(
       validateConfigShape(
-        { directory: { components: ["../../shared/components", "src/components"] } },
+        {
+          directory: {
+            components: ["../../shared/components", "src/components"],
+          },
+        },
         { cwd: "/project" },
       ),
     ).toHaveLength(0);
   });
 
   it("rejects an empty array", () => {
-    const errors = validateConfigShape({ directory: { components: [] } }, { cwd: "/project" });
+    const errors = validateConfigShape(
+      { directory: { components: [] } },
+      { cwd: "/project" },
+    );
     expect(errors).toHaveLength(1);
     expect(errors[0].key).toBe("directory.components");
     expect(errors[0].message).toMatch(/non-empty/);
@@ -429,7 +514,10 @@ describe("directory.components shape (string | string[])", () => {
   });
 
   it("still rejects a non-string, non-array value", () => {
-    const errors = validateConfigShape({ directory: { components: 7 } } as any, { cwd: "/project" });
+    const errors = validateConfigShape(
+      { directory: { components: 7 } } as any,
+      { cwd: "/project" },
+    );
     expect(errors).toHaveLength(1);
     expect(errors[0].key).toBe("directory.components");
   });
@@ -452,10 +540,16 @@ describe("directory.out escape check", () => {
       validateConfigShape({ directory: { out: "dist" } }, { cwd: "/project" }),
     ).toHaveLength(0);
     expect(
-      validateConfigShape({ directory: { out: "/project/dist" } }, { cwd: "/project" }),
+      validateConfigShape(
+        { directory: { out: "/project/dist" } },
+        { cwd: "/project" },
+      ),
     ).toHaveLength(0);
     expect(
-      validateConfigShape({ directory: { out: "../shared/dist" } }, { cwd: "/project" }),
+      validateConfigShape(
+        { directory: { out: "../shared/dist" } },
+        { cwd: "/project" },
+      ),
     ).toHaveLength(1);
   });
 });
@@ -499,8 +593,15 @@ describe("referenced files (fs half)", () => {
   });
 
   it("checks TLS key and cert files only when TLS is enabled", () => {
-    const tls = { enabled: true, keyFile: "certs/key.pem", certFile: "certs/cert.pem" };
-    const errors = validateConfigPaths({ http: { tls } }, { fs: missingFs, cwd: "/project" });
+    const tls = {
+      enabled: true,
+      keyFile: "certs/key.pem",
+      certFile: "certs/cert.pem",
+    };
+    const errors = validateConfigPaths(
+      { http: { tls } },
+      { fs: missingFs, cwd: "/project" },
+    );
     expect(errors).toHaveLength(2);
     expect(errors[0].key).toBe("http.tls.keyFile");
     expect(errors[1].key).toBe("http.tls.certFile");
@@ -508,7 +609,10 @@ describe("referenced files (fs half)", () => {
 
     const disabled = { enabled: false, keyFile: "certs/key.pem" };
     expect(
-      validateConfigPaths({ http: { tls: disabled } }, { fs: missingFs, cwd: "/project" }),
+      validateConfigPaths(
+        { http: { tls: disabled } },
+        { fs: missingFs, cwd: "/project" },
+      ),
     ).toHaveLength(0);
   });
 
@@ -520,8 +624,12 @@ describe("referenced files (fs half)", () => {
       },
     });
     expect(invalidErrors.some((e) => e.key === "http.trustProxy")).toBe(true);
-    expect(invalidErrors.some((e) => e.key === "http.rateLimit.window")).toBe(true);
-    expect(invalidErrors.some((e) => e.key === "http.rateLimit.max")).toBe(true);
+    expect(invalidErrors.some((e) => e.key === "http.rateLimit.window")).toBe(
+      true,
+    );
+    expect(invalidErrors.some((e) => e.key === "http.rateLimit.max")).toBe(
+      true,
+    );
 
     const validErrors = validateConfigShape({
       http: {
@@ -536,7 +644,10 @@ describe("referenced files (fs half)", () => {
     expect(
       validateConfigPaths(
         {
-          pipeline: { watchPaths: ["content/"], exec: [{ script: "scripts/gen.ts" }] },
+          pipeline: {
+            watchPaths: ["content/"],
+            exec: [{ script: "scripts/gen.ts" }],
+          },
           assets: { inlineStyles: ["src/css/styles.css"] },
           http: { tls: { enabled: true, keyFile: "k.pem", certFile: "c.pem" } },
         },
@@ -549,8 +660,13 @@ describe("referenced files (fs half)", () => {
 describe("asset configuration", () => {
   it("accepts a boolean assets.symlink setting and rejects other values", () => {
     expect(validateConfigShape({ assets: { symlink: true } })).toEqual([]);
-    expect(validateConfigShape({ assets: { symlink: "true" } as any })).toContainEqual(
-      expect.objectContaining({ key: "assets.symlink", message: expect.stringContaining("boolean") }),
+    expect(
+      validateConfigShape({ assets: { symlink: "true" } as any }),
+    ).toContainEqual(
+      expect.objectContaining({
+        key: "assets.symlink",
+        message: expect.stringContaining("boolean"),
+      }),
     );
   });
 });
@@ -599,13 +715,19 @@ describe("base normalization", () => {
 describe("components.external", () => {
   it("accepts exact tag names and wildcard patterns", () => {
     expect(
-      validateConfigShape({ components: { external: ["heading-anchors", "vendor-*", "*-widget"] } }),
+      validateConfigShape({
+        components: { external: ["heading-anchors", "vendor-*", "*-widget"] },
+      }),
     ).toHaveLength(0);
-    expect(validateConfigShape({ components: { external: [] } })).toHaveLength(0);
+    expect(validateConfigShape({ components: { external: [] } })).toHaveLength(
+      0,
+    );
   });
 
   it("rejects a non-array value, naming the key", () => {
-    const errors = validateConfigShape({ components: { external: "heading-anchors" as any } });
+    const errors = validateConfigShape({
+      components: { external: "heading-anchors" as any },
+    });
     expect(errors).toHaveLength(1);
     expect(errors[0].key).toBe("components.external");
     expect(errors[0].message).toContain("array");
@@ -624,7 +746,9 @@ describe("components.external", () => {
   });
 
   it("suggests the right key for a near miss", () => {
-    const errors = validateConfigShape({ components: { extrnal: ["heading-anchors"] } });
+    const errors = validateConfigShape({
+      components: { extrnal: ["heading-anchors"] },
+    });
     expect(errors).toHaveLength(1);
     expect(errors[0].key).toBe("components.extrnal");
     expect(errors[0].message).toContain('did you mean "components.external"');
@@ -633,7 +757,9 @@ describe("components.external", () => {
 
 describe("scoping.preserve and assets.exclude", () => {
   it("rejects a malformed preserve entry", () => {
-    const errors = validateConfigShape({ scoping: { preserve: ["code", "div span"] } });
+    const errors = validateConfigShape({
+      scoping: { preserve: ["code", "div span"] },
+    });
     expect(errors).toHaveLength(1);
     expect(errors[0].key).toBe("scoping.preserve[1]");
     expect(errors[0].value).toBe("div span");
@@ -642,48 +768,86 @@ describe("scoping.preserve and assets.exclude", () => {
 
   it("accepts plausible tag names including custom elements", () => {
     expect(
-      validateConfigShape({ scoping: { preserve: ["code", "pre", "my-element"] } }),
+      validateConfigShape({
+        scoping: { preserve: ["code", "pre", "my-element"] },
+      }),
     ).toHaveLength(0);
   });
 
   it("accepts wildcard patterns in preserve entries", () => {
-    expect(validateConfigShape({ scoping: { preserve: ["vendor-*"] } })).toHaveLength(0);
-    expect(validateConfigShape({ scoping: { preserve: ["*-widget"] } })).toHaveLength(0);
-    expect(validateConfigShape({ scoping: { preserve: ["*"] } })).toHaveLength(0);
-    expect(validateConfigShape({ scoping: { preserve: ["code", "vendor-*"] } })).toHaveLength(0);
+    expect(
+      validateConfigShape({ scoping: { preserve: ["vendor-*"] } }),
+    ).toHaveLength(0);
+    expect(
+      validateConfigShape({ scoping: { preserve: ["*-widget"] } }),
+    ).toHaveLength(0);
+    expect(validateConfigShape({ scoping: { preserve: ["*"] } })).toHaveLength(
+      0,
+    );
+    expect(
+      validateConfigShape({ scoping: { preserve: ["code", "vendor-*"] } }),
+    ).toHaveLength(0);
   });
 
   it("still rejects malformed preserve entries alongside wildcards", () => {
-    expect(validateConfigShape({ scoping: { preserve: ["div span"] } })).toHaveLength(1);
-    expect(validateConfigShape({ scoping: { preserve: [""] } })).toHaveLength(1);
-    expect(validateConfigShape({ scoping: { preserve: ["ven dor"] } })).toHaveLength(1);
-    expect(validateConfigShape({ scoping: { preserve: ["a".repeat(51)] } })).toHaveLength(1);
-    expect(validateConfigShape({ scoping: { preserve: [42 as any] } })).toHaveLength(1);
+    expect(
+      validateConfigShape({ scoping: { preserve: ["div span"] } }),
+    ).toHaveLength(1);
+    expect(validateConfigShape({ scoping: { preserve: [""] } })).toHaveLength(
+      1,
+    );
+    expect(
+      validateConfigShape({ scoping: { preserve: ["ven dor"] } }),
+    ).toHaveLength(1);
+    expect(
+      validateConfigShape({ scoping: { preserve: ["a".repeat(51)] } }),
+    ).toHaveLength(1);
+    expect(
+      validateConfigShape({ scoping: { preserve: [42 as any] } }),
+    ).toHaveLength(1);
   });
 
   it("holds an entry without * to the plausible tag name rule", () => {
-    const errors = validateConfigShape({ scoping: { preserve: ["vendor-*", "1bad"] } });
+    const errors = validateConfigShape({
+      scoping: { preserve: ["vendor-*", "1bad"] },
+    });
     expect(errors).toHaveLength(1);
     expect(errors[0].key).toBe("scoping.preserve[1]");
     expect(errors[0].value).toBe("1bad");
   });
 
   it("rejects wildcard entries with characters outside [a-zA-Z0-9-*]", () => {
-    expect(validateConfigShape({ scoping: { preserve: ["vendor_*"] } })).toHaveLength(1);
-    expect(validateConfigShape({ scoping: { preserve: ["vendor-?"] } })).toHaveLength(1);
-    expect(validateConfigShape({ scoping: { preserve: ["vendor-[ab]"] } })).toHaveLength(1);
-    expect(validateConfigShape({ scoping: { preserve: [`vendor-${"*".repeat(60)}`] } })).toHaveLength(1);
+    expect(
+      validateConfigShape({ scoping: { preserve: ["vendor_*"] } }),
+    ).toHaveLength(1);
+    expect(
+      validateConfigShape({ scoping: { preserve: ["vendor-?"] } }),
+    ).toHaveLength(1);
+    expect(
+      validateConfigShape({ scoping: { preserve: ["vendor-[ab]"] } }),
+    ).toHaveLength(1);
+    expect(
+      validateConfigShape({
+        scoping: { preserve: [`vendor-${"*".repeat(60)}`] },
+      }),
+    ).toHaveLength(1);
   });
 
   it("rejects invalid exclude glob entries", () => {
     expect(validateConfigShape({ assets: { exclude: [""] } })).toHaveLength(1);
-    expect(validateConfigShape({ assets: { exclude: [42 as any] } })).toHaveLength(1);
-    expect(validateConfigShape({ assets: { exclude: ["dist/**", "unbalanced["] } })).toHaveLength(1);
+    expect(
+      validateConfigShape({ assets: { exclude: [42 as any] } }),
+    ).toHaveLength(1);
+    expect(
+      validateConfigShape({ assets: { exclude: ["dist/**", "unbalanced["] } }),
+    ).toHaveLength(1);
   });
 
   it("accepts valid exclude globs", () => {
     expect(
-      validateConfigShape({ assets: { exclude: ["dist/**", "**/*.map", "assets/[0-9].png"] } }),
+      validateConfigShape({
+        assets: { exclude: ["dist/**", "**/*.map", "assets/[0-9].png"] },
+      }),
     ).toHaveLength(0);
   });
 });
@@ -704,12 +868,18 @@ describe("site URL in the same pass", () => {
 
   it("accepts an absolute site URL", () => {
     expect(
-      validateUserConfig({}, {}, { fs: allowAllFs, env: { BASCIK_SITE_URL: "https://example.com" } }),
+      validateUserConfig(
+        {},
+        {},
+        { fs: allowAllFs, env: { BASCIK_SITE_URL: "https://example.com" } },
+      ),
     ).toHaveLength(0);
   });
 
   it("ignores an unset site URL", () => {
-    expect(validateUserConfig({}, {}, { fs: allowAllFs, env: {} })).toHaveLength(0);
+    expect(
+      validateUserConfig({}, {}, { fs: allowAllFs, env: {} }),
+    ).toHaveLength(0);
   });
 });
 
@@ -746,7 +916,11 @@ describe("aggregation", () => {
       },
       {},
       {
-        fs: { existsSync: () => false, isDirectory: () => false, isReadableFile: () => false },
+        fs: {
+          existsSync: () => false,
+          isDirectory: () => false,
+          isReadableFile: () => false,
+        },
         env: {},
       },
     );
@@ -777,23 +951,39 @@ describe("pure half performs no filesystem access", () => {
       },
       { cwd: "/project" },
     );
-    expect(errors.filter((e) => e.message.includes("does not exist"))).toHaveLength(0);
-    expect(errors.filter((e) => e.message.includes("not readable"))).toHaveLength(0);
+    expect(
+      errors.filter((e) => e.message.includes("does not exist")),
+    ).toHaveLength(0);
+    expect(
+      errors.filter((e) => e.message.includes("not readable")),
+    ).toHaveLength(0);
   });
 });
 
 describe("error report formatting", () => {
   it("groups errors by key with value and expectation, matching the report shape", () => {
     const report = formatConfigErrors([
-      { key: "http.port", value: 70000, message: "expected an integer between 1 and 65535" },
-      { key: "minify.js", value: "esbuild", message: "expected true, false, or a function" },
+      {
+        key: "http.port",
+        value: 70000,
+        message: "expected an integer between 1 and 65535",
+      },
+      {
+        key: "minify.js",
+        value: "esbuild",
+        message: "expected true, false, or a function",
+      },
       {
         key: "scripts.onBuildScriptErr",
         value: undefined,
         message: 'did you mean "scripts.onBuildScriptError"?',
         unknownKey: true,
       },
-      { key: "pipeline.exec[0].script", value: "scripts/gen-data.ts", message: "file does not exist" },
+      {
+        key: "pipeline.exec[0].script",
+        value: "scripts/gen-data.ts",
+        message: "file does not exist",
+      },
     ]);
 
     expect(report).toContain("Configuration errors in bascik.config.ts");
@@ -810,7 +1000,11 @@ describe("error report formatting", () => {
 
   it("uses the singular form for one error", () => {
     const report = formatConfigErrors([
-      { key: "http.port", value: 70000, message: "expected an integer between 1 and 65535" },
+      {
+        key: "http.port",
+        value: 70000,
+        message: "expected an integer between 1 and 65535",
+      },
     ]);
     expect(report).toContain("1 configuration error");
     expect(report).not.toContain("1 configuration errors");
@@ -832,7 +1026,11 @@ describe("valid config", () => {
         },
         scripts: { timeout: 30000, onBuildScriptError: "error" },
         onMinifyError: "warn",
-        http: { port: 8080, hostname: "localhost", tls: { enabled: true, keyFile: "k.pem", certFile: "c.pem" } },
+        http: {
+          port: 8080,
+          hostname: "localhost",
+          tls: { enabled: true, keyFile: "k.pem", certFile: "c.pem" },
+        },
         logging: { level: "debug" },
         base: "/docs",
       },
@@ -857,7 +1055,9 @@ describe("initBascikConfig integration", () => {
       thrown = err as Error;
     }
     expect(thrown).toBeDefined();
-    expect(thrown!.message).toContain("Configuration errors in bascik.config.ts");
+    expect(thrown!.message).toContain(
+      "Configuration errors in bascik.config.ts",
+    );
     expect(thrown!.message).toContain("http.port");
     expect(thrown!.message).toContain("70000");
     expect(thrown!.message).toContain("minify.js");
@@ -876,7 +1076,12 @@ describe("initBascikConfig integration", () => {
   });
 
   it("keeps a root base as-is", () => {
-    const { BascikConfig: cfg } = initBascikConfig({ base: "/" }, {}, {}, { fs: allowAllFs, env: {} });
+    const { BascikConfig: cfg } = initBascikConfig(
+      { base: "/" },
+      {},
+      {},
+      { fs: allowAllFs, env: {} },
+    );
     expect(cfg.base).toBe("/");
   });
 

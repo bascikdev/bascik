@@ -28,7 +28,7 @@ The **instanceId** is an 8-hex-character value derived deterministically from th
 
 ### Class attributes intentionally omit the instanceId
 
-IDs and names must be unique per DOM element, so they include the `instanceId`. Class names, however, are deliberately scoped to the *component name* only:
+IDs and names must be unique per DOM element, so they include the `instanceId`. Class names, however, are deliberately scoped to the _component name_ only:
 
 ```text
 bascik__site-nav__toggle-btn   ← same on every instance
@@ -45,7 +45,12 @@ This means every instance of `<site-nav>` on a page shares identical scoped clas
 <button class="toggle-btn" id="menu-trigger">Menu</button>
 
 <!-- After scoping (dev mode) -->
-<button class="bascik__site-nav__toggle-btn" id="bascik__site-nav__a1b2c3d4__menu-trigger">Menu</button>
+<button
+  class="bascik__site-nav__toggle-btn"
+  id="bascik__site-nav__a1b2c3d4__menu-trigger"
+>
+  Menu
+</button>
 ```
 
 ## CSS Pass
@@ -56,10 +61,14 @@ The CSS pass runs as part of the class scoping step and rewrites the component's
 
 ```css
 /* Source */
-.toggle-btn { color: red; }
+.toggle-btn {
+  color: red;
+}
 
 /* Scoped */
-.bascik__site-nav__toggle-btn { color: red; }
+.bascik__site-nav__toggle-btn {
+  color: red;
+}
 ```
 
 ### Element selectors → class selectors
@@ -68,10 +77,14 @@ Bare element selectors in a component's CSS are converted to class selectors and
 
 ```css
 /* Source CSS */
-p { margin: 0; }
+p {
+  margin: 0;
+}
 
 /* Scoped CSS */
-.bascik__site-nav__el__p { margin: 0; }
+.bascik__site-nav__el__p {
+  margin: 0;
+}
 ```
 
 ```html
@@ -89,46 +102,94 @@ Furthermore, cross-boundary selectors such as `html[data-theme="light"] .foo {}`
 
 ```css
 /* Source */
-@keyframes slide-in { from { opacity: 0; } to { opacity: 1; } }
-.item { animation: slide-in 0.3s; }
+@keyframes slide-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.item {
+  animation: slide-in 0.3s;
+}
 
 /* Scoped */
-@keyframes bascik__site-nav__keyframe__slide-in { from { opacity: 0; } to { opacity: 1; } }
-.bascik__site-nav__item { animation: bascik__site-nav__keyframe__slide-in 0.3s; }
+@keyframes bascik__site-nav__keyframe__slide-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.bascik__site-nav__item {
+  animation: bascik__site-nav__keyframe__slide-in 0.3s;
+}
 ```
 
 ### @layer
 
 ```css
 /* Source */
-@layer utilities { .btn { padding: 4px 8px; } }
+@layer utilities {
+  .btn {
+    padding: 4px 8px;
+  }
+}
 
 /* Scoped */
-@layer bascik__site-nav__layer__utilities { .bascik__site-nav__btn { padding: 4px 8px; } }
+@layer bascik__site-nav__layer__utilities {
+  .bascik__site-nav__btn {
+    padding: 4px 8px;
+  }
+}
 ```
 
 ### container-name
 
 ```css
 /* Source */
-.wrapper { container-name: sidebar; container-type: inline-size; }
-@container sidebar (min-width: 300px) { .item { font-size: 1rem; } }
+.wrapper {
+  container-name: sidebar;
+  container-type: inline-size;
+}
+@container sidebar (min-width: 300px) {
+  .item {
+    font-size: 1rem;
+  }
+}
 
 /* Scoped */
-.bascik__site-nav__wrapper { container-name: bascik__site-nav__container__sidebar; container-type: inline-size; }
-@container bascik__site-nav__container__sidebar (min-width: 300px) { .bascik__site-nav__item { font-size: 1rem; } }
+.bascik__site-nav__wrapper {
+  container-name: bascik__site-nav__container__sidebar;
+  container-type: inline-size;
+}
+@container bascik__site-nav__container__sidebar (min-width: 300px) {
+  .bascik__site-nav__item {
+    font-size: 1rem;
+  }
+}
 ```
 
 ### CSS custom properties
 
 ```css
 /* Source */
-:root { --brand-color: #0070f3; }
-.btn { color: var(--brand-color); }
+:root {
+  --brand-color: #0070f3;
+}
+.btn {
+  color: var(--brand-color);
+}
 
 /* Scoped */
-:root { --bascik__site-nav__brand-color: #0070f3; }
-.bascik__site-nav__btn { color: var(--bascik__site-nav__brand-color); }
+:root {
+  --bascik__site-nav__brand-color: #0070f3;
+}
+.bascik__site-nav__btn {
+  color: var(--bascik__site-nav__brand-color);
+}
 ```
 
 <div class="callout">
@@ -195,7 +256,10 @@ el.classList.add("bascik__site-nav__is-open");
 el.classList.remove("bascik__site-nav__is-open");
 el.classList.toggle("bascik__site-nav__is-open");
 el.classList.contains("bascik__site-nav__is-open");
-el.classList.replace("bascik__site-nav__is-open", "bascik__site-nav__is-closed");
+el.classList.replace(
+  "bascik__site-nav__is-open",
+  "bascik__site-nav__is-closed",
+);
 el.className = "bascik__site-nav__toggle-btn bascik__site-nav__is-open";
 el.className += " bascik__site-nav__is-open";
 el.setAttribute("class", "bascik__site-nav__toggle-btn");
@@ -265,7 +329,10 @@ When `minify.identifiers: true` is set (the default for builds), every scoped na
 // names.ts
 export const getAttributeNameHash = (attributeName: string): string => {
   const digest = createHash("sha256").update(attributeName).digest();
-  const num = typeof digest === "string" ? Buffer.from(digest).readBigUInt64BE(0) : digest.readBigUInt64BE(0);
+  const num =
+    typeof digest === "string"
+      ? Buffer.from(digest).readBigUInt64BE(0)
+      : digest.readBigUInt64BE(0);
   return `b${toBase62(num, 11)}`;
 };
 ```
@@ -274,7 +341,11 @@ The hash is deterministic, the same full scoped name always produces the same sh
 
 ```html
 <button class="ba1c2d3e4f5b">Menu</button>
-<style>.ba1c2d3e4f5b { color: red; }</style>
+<style>
+  .ba1c2d3e4f5b {
+    color: red;
+  }
+</style>
 ```
 
 ## Repeated Instances
@@ -335,10 +406,18 @@ Implemented in `convertCssIdSelectorsToClasses` in `styles.ts`. The `#id {}` sel
 `rewriteIdReferencesInCss` (`id-references.ts`) uses the same `maskCssSyntax` helper but keeps genuine `url("...")` arguments live so real fragment references still scope. This gives precise ownership:
 
 ```css
-.icon::before { content: "url(#local)"; }   /* literal: never rewritten */
-.icon { fill: url(#local); }                /* real fragment: rewritten */
-.icon { fill: url("#local"); }              /* quoted fragment: rewritten */
-.icon { background: url("sprite.svg#icon"); } /* cross-document: untouched */
+.icon::before {
+  content: "url(#local)";
+} /* literal: never rewritten */
+.icon {
+  fill: url(#local);
+} /* real fragment: rewritten */
+.icon {
+  fill: url("#local");
+} /* quoted fragment: rewritten */
+.icon {
+  background: url("sprite.svg#icon");
+} /* cross-document: untouched */
 ```
 
 ### CSS comma-separated element selectors
@@ -359,12 +438,20 @@ Pass 2 regex: `/(?<=,[ \t]*)[a-z1-6]+(?=[^{};)]*\{)/g`
 
 ```css
 /* Source */
-.card p { color: blue; }
-.list > li { padding: 0; }
+.card p {
+  color: blue;
+}
+.list > li {
+  padding: 0;
+}
 
 /* After scoping */
-.bascik__card .bascik__card__el__p { color: blue; }
-.bascik__list > .bascik__list__el__li { padding: 0; }
+.bascik__card .bascik__card__el__p {
+  color: blue;
+}
+.bascik__list > .bascik__list__el__li {
+  padding: 0;
+}
 ```
 
 This works because `bascik__` never appears in CSS property value position. Bare element-to-element combinators with no class anchor (`div p {}`, `p + p {}`, `ul li * {}`) are converted too: each element name becomes its own scoped class, so `div p {}` compiles to `.bascik__card__el__div .bascik__card__el__p {}` and matches only elements in the component's template.

@@ -24,29 +24,29 @@ Requires the `bascik` skill for component rules and the `bascik-scripts` skill f
 
 ## Cross-framework mapping
 
-| Concept | Bascik |
-|---|---|
-| Component file (`.jsx`, `.vue`, `.svelte`, `.astro`) | `src/components/<name>/<name>.html` with a hyphenated name (`Card.vue` becomes `info-card`) |
-| Scoped styles (`<style scoped>`, CSS Modules, Svelte styles) | Companion `<name>.css`, scoped automatically |
-| `children`, `<slot />`, `{@render children()}` | `data-bascik-slot` (no value), fallback inside |
-| Named slots, render props, snippets | `<div data-bascik-slot="x">` in the template and as the wrapper at the usage site |
-| Props (`defineProps`, `$props()`, `props.x`) | `data-bascik-prop-x`, text only |
-| Prop bound to an attribute | `data-bascik-attr-<attribute>="propName"` |
-| Object, array, or function props | Not possible: print one component per item from a build script, or embed JSON in `<script type="application/json">` (escape `<` as `\u003c`) |
-| `useState`, `ref`, `$state` | Variables in the component `<script>`, applied to the DOM by a function |
-| Callback props, `$emit`, `v-model` | `dispatchEvent(new CustomEvent('x', { bubbles: true, detail }))`, parent listens on its root |
-| `v-if`, `{#if}`, conditional JSX | Build time: a build script prints one branch. Runtime: toggle `hidden` |
-| `.map()`, `v-for`, `{#each}` | Build-time loop in a build script, or clone a `<template>` at runtime |
-| File-system routing | One `.html` per URL in `src/pages/` |
-| `[slug]`, `getStaticPaths`, `generateStaticParams`, pagination | `src/pages/blog/[slug].html` (or `[slug]/index.html` for trailing slashes) with `<script data-bascik-routes>` |
-| `getStaticProps`, `onMounted` fetch, front matter | `<script data-bascik-build>` for shared data; `fetch()` in a component script for per-visitor data |
-| Layouts | Pages keep `<html>`/`<head>`/`<body>`; layout pieces become components |
-| Template includes with variables, filters, loops (Nunjucks, Liquid, Go templates) | TypeScript helpers in `src/lib/` returning escaped HTML. Only static includes become components |
-| Content collections (`getCollection`, Eleventy collections) | A `src/lib/posts.ts` helper: `fs` read, `gray-matter`, `zod`, sort by parsed date |
-| API routes (`app/api/x/route.ts`) | `src/api/x.ts` exporting `GET`/`POST`; `context.params` is a plain object; needs `bascik --server` |
-| `next/link`, `next/image`, `next/font` | `<a>`, `<img>` with `width`/`height`, self-hosted `@font-face` plus `<link rel="preload">` |
-| RSS/Atom feeds | A `pipeline.exec` script with `phase: 'post'` writing to `BASCIK_OUT_DIR` |
-| Image optimization, syntax highlighting | Not built in; add your own build step |
+| Concept                                                                           | Bascik                                                                                                                                       |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Component file (`.jsx`, `.vue`, `.svelte`, `.astro`)                              | `src/components/<name>/<name>.html` with a hyphenated name (`Card.vue` becomes `info-card`)                                                  |
+| Scoped styles (`<style scoped>`, CSS Modules, Svelte styles)                      | Companion `<name>.css`, scoped automatically                                                                                                 |
+| `children`, `<slot />`, `{@render children()}`                                    | `data-bascik-slot` (no value), fallback inside                                                                                               |
+| Named slots, render props, snippets                                               | `<div data-bascik-slot="x">` in the template and as the wrapper at the usage site                                                            |
+| Props (`defineProps`, `$props()`, `props.x`)                                      | `data-bascik-prop-x`, text only                                                                                                              |
+| Prop bound to an attribute                                                        | `data-bascik-attr-<attribute>="propName"`                                                                                                    |
+| Object, array, or function props                                                  | Not possible: print one component per item from a build script, or embed JSON in `<script type="application/json">` (escape `<` as `\u003c`) |
+| `useState`, `ref`, `$state`                                                       | Variables in the component `<script>`, applied to the DOM by a function                                                                      |
+| Callback props, `$emit`, `v-model`                                                | `dispatchEvent(new CustomEvent('x', { bubbles: true, detail }))`, parent listens on its root                                                 |
+| `v-if`, `{#if}`, conditional JSX                                                  | Build time: a build script prints one branch. Runtime: toggle `hidden`                                                                       |
+| `.map()`, `v-for`, `{#each}`                                                      | Build-time loop in a build script, or clone a `<template>` at runtime                                                                        |
+| File-system routing                                                               | One `.html` per URL in `src/pages/`                                                                                                          |
+| `[slug]`, `getStaticPaths`, `generateStaticParams`, pagination                    | `src/pages/blog/[slug].html` (or `[slug]/index.html` for trailing slashes) with `<script data-bascik-routes>`                                |
+| `getStaticProps`, `onMounted` fetch, front matter                                 | `<script data-bascik-build>` for shared data; `fetch()` in a component script for per-visitor data                                           |
+| Layouts                                                                           | Pages keep `<html>`/`<head>`/`<body>`; layout pieces become components                                                                       |
+| Template includes with variables, filters, loops (Nunjucks, Liquid, Go templates) | TypeScript helpers in `src/lib/` returning escaped HTML. Only static includes become components                                              |
+| Content collections (`getCollection`, Eleventy collections)                       | A `src/lib/posts.ts` helper: `fs` read, `gray-matter`, `zod`, sort by parsed date                                                            |
+| API routes (`app/api/x/route.ts`)                                                 | `src/api/x.ts` exporting `GET`/`POST`; `context.params` is a plain object; needs `bascik --server`                                           |
+| `next/link`, `next/image`, `next/font`                                            | `<a>`, `<img>` with `width`/`height`, self-hosted `@font-face` plus `<link rel="preload">`                                                   |
+| RSS/Atom feeds                                                                    | A `pipeline.exec` script with `phase: 'post'` writing to `BASCIK_OUT_DIR`                                                                    |
+| Image optimization, syntax highlighting                                           | Not built in; add your own build step                                                                                                        |
 
 ## Gotchas that apply everywhere
 
@@ -70,6 +70,5 @@ Requires the `bascik` skill for component rules and the `bascik-scripts` skill f
 4. Exclude redirect-only pages from the generated sitemap with `<meta name="bascik-sitemap" content="exclude">`.
 
 Copying old files while disabling generation looks correct but freezes the sitemap at the old URL list forever.
-
 
 For Astro, Eleventy, and Hugo, read the live guide with `read-doc.mjs /switch/from-astro` (or `from-eleventy`, `from-hugo`).

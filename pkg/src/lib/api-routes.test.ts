@@ -125,13 +125,10 @@ describe("API route matching (pure)", () => {
   });
 
   it("errors on duplicate route definitions naming both files", () => {
-    const filePaths = [
-      "/app/src/api/users.ts",
-      "/app/src/api/users/index.ts",
-    ];
+    const filePaths = ["/app/src/api/users.ts", "/app/src/api/users/index.ts"];
 
     expect(() => buildApiRouteTree(filePaths, "/app/src/api")).toThrowError(
-      /Duplicate API route "\/api\/users" declared in multiple files:\n  - \/app\/src\/api\/users\.ts\n  - \/app\/src\/api\/users\/index\.ts/
+      /Duplicate API route "\/api\/users" declared in multiple files:\n  - \/app\/src\/api\/users\.ts\n  - \/app\/src\/api\/users\/index\.ts/,
     );
   });
 
@@ -149,7 +146,9 @@ describe("API route matching (pure)", () => {
     expect(match1?.params).toEqual({ item: "hello world" });
 
     const match2 = matchApiRoute(routes, "/api/categories/deep/nested");
-    expect(match2?.route.filePath).toBe("C:\\app\\src\\api\\categories\\deep\\nested.ts");
+    expect(match2?.route.filePath).toBe(
+      "C:\\app\\src\\api\\categories\\deep\\nested.ts",
+    );
   });
 
   it("composes with base path", () => {
@@ -162,14 +161,25 @@ describe("API route matching (pure)", () => {
       },
     ];
 
-    expect(matchApiRoute(routes, "/sub/api/health")?.route.filePath).toBe("/app/src/api/health.ts");
+    expect(matchApiRoute(routes, "/sub/api/health")?.route.filePath).toBe(
+      "/app/src/api/health.ts",
+    );
     expect(matchApiRoute(routes, "/api/health")).toBeNull();
   });
 
   it("formats build warning message accurately", () => {
-    const warning = formatApiRouteWarning(["/api/health", "/api/contact", "/api/users/[id]"], "src/api");
-    expect(warning).toContain("warning: 3 API routes found in src/api/ but static builds cannot serve them.");
-    expect(warning).toContain("Deploy with `bascik --server`, build a serverless bundle with `bascik --build --target <name>`, or port them to your host's function runtime.");
-    expect(warning).toContain("Routes: /api/health, /api/contact, /api/users/[id]");
+    const warning = formatApiRouteWarning(
+      ["/api/health", "/api/contact", "/api/users/[id]"],
+      "src/api",
+    );
+    expect(warning).toContain(
+      "warning: 3 API routes found in src/api/ but static builds cannot serve them.",
+    );
+    expect(warning).toContain(
+      "Deploy with `bascik --server`, build a serverless bundle with `bascik --build --target <name>`, or port them to your host's function runtime.",
+    );
+    expect(warning).toContain(
+      "Routes: /api/health, /api/contact, /api/users/[id]",
+    );
   });
 });

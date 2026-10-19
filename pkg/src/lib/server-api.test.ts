@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Readable } from "node:stream";
 import { apiRouteRegistry } from "./server-api.ts";
 import { scriptRegistry } from "./script-registry.ts";
-import { createRequestHandler, type BascikRequest, type BascikResponse } from "./server.ts";
+import {
+  createRequestHandler,
+  type BascikRequest,
+  type BascikResponse,
+} from "./server.ts";
 import { BascikConfig } from "./config.ts";
 import { mem } from "./mem.ts";
 
@@ -34,12 +38,14 @@ describe("server-api integration", () => {
       headersSent: false,
       destroyed: false,
       writable: {} as any,
-      respond: (status) => { status404 = status; },
+      respond: (status) => {
+        status404 = status;
+      },
       write: () => true,
-      end: () => { },
-      close: () => { },
-      on: () => { },
-      off: () => { },
+      end: () => {},
+      close: () => {},
+      on: () => {},
+      off: () => {},
     };
     await handleRequest(reqGet, resGet);
     expect(status404).toBe(404);
@@ -62,10 +68,10 @@ describe("server-api integration", () => {
         allowHeader = String(headers.allow ?? headers.Allow);
       },
       write: () => true,
-      end: () => { },
-      close: () => { },
-      on: () => { },
-      off: () => { },
+      end: () => {},
+      close: () => {},
+      on: () => {},
+      off: () => {},
     };
     await handleRequest(reqPost, resPost);
     expect(status405).toBe(405);
@@ -108,7 +114,9 @@ describe("server-api integration", () => {
         "content-type": "application/json",
       },
       remoteIp: "127.0.0.1",
-      rawStream: Readable.from([Buffer.from(JSON.stringify({ name: "Alice" }))]),
+      rawStream: Readable.from([
+        Buffer.from(JSON.stringify({ name: "Alice" })),
+      ]),
     };
 
     const res: BascikResponse = {
@@ -126,9 +134,9 @@ describe("server-api integration", () => {
       end: (chunk) => {
         if (chunk) respondedBody += chunk.toString();
       },
-      close: () => { },
-      on: () => { },
-      off: () => { },
+      close: () => {},
+      on: () => {},
+      off: () => {},
     };
 
     await handleRequest(req, res);
@@ -183,10 +191,10 @@ describe("server-api integration", () => {
         respondedHeaders = headers;
       },
       write: () => true,
-      end: () => { },
-      close: () => { },
-      on: () => { },
-      off: () => { },
+      end: () => {},
+      close: () => {},
+      on: () => {},
+      off: () => {},
     };
 
     await handleRequest(req, res);
@@ -199,10 +207,17 @@ describe("server-api integration", () => {
   describe("route invalidation ownership (prompt 112)", () => {
     it("invalidateFile invalidates the runtime module identity and rescans routes from disk", async () => {
       const invalidateSpy = vi.spyOn(scriptRegistry, "invalidate");
-      const reloadSpy = vi.spyOn(apiRouteRegistry, "reload").mockResolvedValue(undefined);
+      const reloadSpy = vi
+        .spyOn(apiRouteRegistry, "reload")
+        .mockResolvedValue(undefined);
       const order: string[] = [];
-      invalidateSpy.mockImplementation(() => { order.push("invalidate"); return true; });
-      reloadSpy.mockImplementation(async () => { order.push("reload"); });
+      invalidateSpy.mockImplementation(() => {
+        order.push("invalidate");
+        return true;
+      });
+      reloadSpy.mockImplementation(async () => {
+        order.push("reload");
+      });
 
       await apiRouteRegistry.invalidateFile("/app/src/api/value.ts");
 
@@ -219,24 +234,42 @@ describe("server-api integration", () => {
       const dir = await mkdtemp(join(tmpdir(), "bascik-112-api-"));
       try {
         const routeFile = join(dir, "value.mjs");
-        await writeFile(routeFile, `export const GET = async () => Response.json({ value: "OLD" });`);
+        await writeFile(
+          routeFile,
+          `export const GET = async () => Response.json({ value: "OLD" });`,
+        );
         (apiRouteRegistry as any).routes = [
-          { path: "/api/value", filePath: routeFile, paramNames: [], isDynamic: false },
+          {
+            path: "/api/value",
+            filePath: routeFile,
+            paramNames: [],
+            isDynamic: false,
+          },
         ];
         const handleRequest = createRequestHandler();
         const run = async (): Promise<string> => {
           let body = "";
-          const req: BascikRequest = { method: "GET", path: "/api/value", headers: {}, remoteIp: "127.0.0.1" };
+          const req: BascikRequest = {
+            method: "GET",
+            path: "/api/value",
+            headers: {},
+            remoteIp: "127.0.0.1",
+          };
           const res: BascikResponse = {
             headersSent: false,
             destroyed: false,
             writable: {} as any,
-            respond: () => { },
-            write: (chunk) => { body += chunk.toString(); return true; },
-            end: (chunk) => { if (chunk) body += chunk.toString(); },
-            close: () => { },
-            on: () => { },
-            off: () => { },
+            respond: () => {},
+            write: (chunk) => {
+              body += chunk.toString();
+              return true;
+            },
+            end: (chunk) => {
+              if (chunk) body += chunk.toString();
+            },
+            close: () => {},
+            on: () => {},
+            off: () => {},
           };
           await handleRequest(req, res);
           return body;
@@ -244,7 +277,10 @@ describe("server-api integration", () => {
 
         expect(JSON.parse(await run()).value).toBe("OLD");
 
-        await writeFile(routeFile, `export const GET = async () => Response.json({ value: "NEW" });`);
+        await writeFile(
+          routeFile,
+          `export const GET = async () => Response.json({ value: "NEW" });`,
+        );
         // reload() would rescan BascikConfig.directory.api (not our temp dir);
         // keep the route table and only exercise the identity handoff.
         vi.spyOn(apiRouteRegistry, "reload").mockResolvedValue(undefined);
@@ -274,12 +310,14 @@ describe("server-api integration", () => {
         headersSent: false,
         destroyed: false,
         writable: {} as any,
-        respond: (s) => { status = s; },
+        respond: (s) => {
+          status = s;
+        },
         write: () => true,
-        end: () => { },
-        close: () => { },
-        on: () => { },
-        off: () => { },
+        end: () => {},
+        close: () => {},
+        on: () => {},
+        off: () => {},
       };
 
       await handleRequest(req, res);
@@ -299,12 +337,14 @@ describe("server-api integration", () => {
         headersSent: false,
         destroyed: false,
         writable: {} as any,
-        respond: (s) => { status = s; },
+        respond: (s) => {
+          status = s;
+        },
         write: () => true,
-        end: () => { },
-        close: () => { },
-        on: () => { },
-        off: () => { },
+        end: () => {},
+        close: () => {},
+        on: () => {},
+        off: () => {},
       };
 
       await handleRequest(req, res);
@@ -324,12 +364,14 @@ describe("server-api integration", () => {
         headersSent: false,
         destroyed: false,
         writable: {} as any,
-        respond: (s) => { status = s; },
+        respond: (s) => {
+          status = s;
+        },
         write: () => true,
-        end: () => { },
-        close: () => { },
-        on: () => { },
-        off: () => { },
+        end: () => {},
+        close: () => {},
+        on: () => {},
+        off: () => {},
       };
 
       await handleRequest(req, res);

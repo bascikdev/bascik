@@ -55,19 +55,19 @@ Write standard vanilla JavaScript in `<script>` tags inside components for clien
 
 ## What Maps to What
 
-| Framework Concept | Bascik Equivalent | Documentation |
-| --- | --- | --- |
-| Component file (`.jsx`, `.vue`, `.svelte`, `.astro`) | `.html` component file in `src/components/` | [Components](/components) |
-| `children` prop / default `<slot>` | `data-bascik-slot` | [Slots](/slots) |
-| Named slots | `data-bascik-slot="name"` | [Slots](/slots#named-slots) |
-| Text props | `data-bascik-prop-name="value"` | [Props](/props) |
-| Attribute props | `data-bascik-attr-href="link"` | [Props](/props#put-a-prop-in-an-attribute) |
-| CSS Modules / scoped CSS | Paired `.css` file or `<style>` block (auto-scoped) | [Scoped Styles](/scoped-styles) |
-| File-based routing | Files in `src/pages/` | [Dynamic Routes](/dynamic-routes) |
-| Dynamic routes (`[slug].js`) | `src/pages/[slug].html` build-time route generation | [Dynamic Routes](/dynamic-routes) |
-| Build-time data fetching (`getStaticProps`) | `<script data-bascik-build>` | [Build Scripts](/build-scripts) |
-| Request-time SSR / Streaming | `<script data-bascik-server>` / `<script data-bascik-stream>` | [Server Scripts](/server-scripts) · [Stream Scripts](/stream-scripts) |
-| API endpoints | Handlers in `src/api/` using standard `Request` and `Response` | [API Routes](/api-routes) |
-| Client interactivity / hooks | Vanilla JS in `<script>` tags | [Scoped JavaScript](/scoped-javascript) |
+| Framework Concept                                    | Bascik Equivalent                                              | Documentation                                                         |
+| ---------------------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Component file (`.jsx`, `.vue`, `.svelte`, `.astro`) | `.html` component file in `src/components/`                    | [Components](/components)                                             |
+| `children` prop / default `<slot>`                   | `data-bascik-slot`                                             | [Slots](/slots)                                                       |
+| Named slots                                          | `data-bascik-slot="name"`                                      | [Slots](/slots#named-slots)                                           |
+| Text props                                           | `data-bascik-prop-name="value"`                                | [Props](/props)                                                       |
+| Attribute props                                      | `data-bascik-attr-href="link"`                                 | [Props](/props#put-a-prop-in-an-attribute)                            |
+| CSS Modules / scoped CSS                             | Paired `.css` file or `<style>` block (auto-scoped)            | [Scoped Styles](/scoped-styles)                                       |
+| File-based routing                                   | Files in `src/pages/`                                          | [Dynamic Routes](/dynamic-routes)                                     |
+| Dynamic routes (`[slug].js`)                         | `src/pages/[slug].html` build-time route generation            | [Dynamic Routes](/dynamic-routes)                                     |
+| Build-time data fetching (`getStaticProps`)          | `<script data-bascik-build>`                                   | [Build Scripts](/build-scripts)                                       |
+| Request-time SSR / Streaming                         | `<script data-bascik-server>` / `<script data-bascik-stream>`  | [Server Scripts](/server-scripts) · [Stream Scripts](/stream-scripts) |
+| API endpoints                                        | Handlers in `src/api/` using standard `Request` and `Response` | [API Routes](/api-routes)                                             |
+| Client interactivity / hooks                         | Vanilla JS in `<script>` tags                                  | [Scoped JavaScript](/scoped-javascript)                               |
 
 > Choose where you are coming from: [Astro](/switch/from-astro) · [Eleventy](/switch/from-eleventy) · [Hugo](/switch/from-hugo) · [Next.js](/switch/from-next) · [React](/switch/from-react) · [Svelte](/switch/from-svelte) · [Vue](/switch/from-vue) · [WordPress](/switch/from-wordpress)

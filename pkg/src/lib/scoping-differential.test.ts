@@ -12,7 +12,11 @@ vi.mock("./config.js", () => ({
       preserve: ["code"],
       deduplicateCss: true,
     },
-    directory: { pages: "src/pages", components: ["src/components"], out: "dist" },
+    directory: {
+      pages: "src/pages",
+      components: ["src/components"],
+      out: "dist",
+    },
     isBuild: true,
   },
   shouldLog: vi.fn(() => true),
@@ -117,7 +121,8 @@ function matchesCompound(el: SimElement, compound: string): boolean {
       const attrName = m[1];
       const attrVal = m[2];
       if (!el.attrs.has(attrName)) return false;
-      if (attrVal !== undefined && el.attrs.get(attrName) !== attrVal) return false;
+      if (attrVal !== undefined && el.attrs.get(attrName) !== attrVal)
+        return false;
       rest = rest.slice(m[0].length);
     } else if (rest.startsWith(":first-child")) {
       if (!el.parent || el.parent.children[0] !== el) return false;
@@ -163,13 +168,19 @@ function parseComplexSelector(selector: string): SelectorStep[] {
       i++;
       continue;
     }
-    if (depth === 0 && (ch === ">" || ch === "+" || ch === "~" || /\s/.test(ch))) {
+    if (
+      depth === 0 &&
+      (ch === ">" || ch === "+" || ch === "~" || /\s/.test(ch))
+    ) {
       if (current) {
         steps.push({ combinator: pendingCombinator, compound: current });
         current = "";
         pendingCombinator = " ";
       }
-      while (i < s.length && (s[i] === ">" || s[i] === "+" || s[i] === "~" || /\s/.test(s[i]))) {
+      while (
+        i < s.length &&
+        (s[i] === ">" || s[i] === "+" || s[i] === "~" || /\s/.test(s[i]))
+      ) {
         if (s[i] === ">" || s[i] === "+" || s[i] === "~") {
           pendingCombinator = s[i] as ">" | "+" | "~";
         }
@@ -186,14 +197,22 @@ function parseComplexSelector(selector: string): SelectorStep[] {
   return steps;
 }
 
-function matchesStepChain(el: SimElement, steps: SelectorStep[], stepIdx: number): boolean {
+function matchesStepChain(
+  el: SimElement,
+  steps: SelectorStep[],
+  stepIdx: number,
+): boolean {
   const step = steps[stepIdx];
   if (!matchesCompound(el, step.compound)) return false;
   if (stepIdx === 0) return true;
 
   const comb = step.combinator;
   if (comb === ">") {
-    return Boolean(el.parent && el.parent.tagName !== "#root" && matchesStepChain(el.parent, steps, stepIdx - 1));
+    return Boolean(
+      el.parent &&
+      el.parent.tagName !== "#root" &&
+      matchesStepChain(el.parent, steps, stepIdx - 1),
+    );
   }
   if (comb === " ") {
     let curr = el.parent;
@@ -213,15 +232,22 @@ function matchesStepChain(el: SimElement, steps: SelectorStep[], stepIdx: number
     if (!el.parent) return false;
     const idx = el.parent.children.indexOf(el);
     for (let k = 0; k < idx; k++) {
-      if (matchesStepChain(el.parent.children[k], steps, stepIdx - 1)) return true;
+      if (matchesStepChain(el.parent.children[k], steps, stepIdx - 1))
+        return true;
     }
     return false;
   }
   return false;
 }
 
-function querySelectorAllSim(root: SimElement, selectorList: string): Set<string> {
-  const selectors = selectorList.split(",").map((s) => s.trim()).filter(Boolean);
+function querySelectorAllSim(
+  root: SimElement,
+  selectorList: string,
+): Set<string> {
+  const selectors = selectorList
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const allElements = collectElements(root);
   const matchedMarkers = new Set<string>();
 
@@ -238,7 +264,17 @@ function querySelectorAllSim(root: SimElement, selectorList: string): Set<string
 }
 
 describe("Semantic differential CSS scoping vs. isolated component DOM", () => {
-  const tagArb = fc.constantFrom("div", "section", "header", "p", "span", "ul", "li", "h3", "button");
+  const tagArb = fc.constantFrom(
+    "div",
+    "section",
+    "header",
+    "p",
+    "span",
+    "ul",
+    "li",
+    "h3",
+    "button",
+  );
   const clsArb = fc.constantFrom("card", "box", "item", "active", "title");
   const idArb = fc.constantFrom("panel", "hero", "nav", "cta");
 
@@ -259,8 +295,9 @@ describe("Semantic differential CSS scoping vs. isolated component DOM", () => {
     `</${t2}>` +
     `</${t1}>`;
 
-  const selectorArb = fc.tuple(tagArb, tagArb, tagArb, clsArb, clsArb, idArb).chain(
-    ([t1, t2, t3, c1, c2, id1]) =>
+  const selectorArb = fc
+    .tuple(tagArb, tagArb, tagArb, clsArb, clsArb, idArb)
+    .chain(([t1, t2, t3, c1, c2, id1]) =>
       fc.constantFrom(
         `.${c1}`,
         `.${c1} .${c2}`,
@@ -280,12 +317,13 @@ describe("Semantic differential CSS scoping vs. isolated component DOM", () => {
         `${t1}, ${t2} > ${t3}`,
         `#${id1}, .${c2} ${t3}`,
       ),
-  );
+    );
 
   it.each([false, true])(
     "matches the exact same component elements in a multi-instance flat page as in an isolated Shadow DOM (minify.identifiers=%s)",
     (minifyIdentifiers) => {
-      (BascikConfig.minify as { identifiers: boolean }).identifiers = minifyIdentifiers;
+      (BascikConfig.minify as { identifiers: boolean }).identifiers =
+        minifyIdentifiers;
       try {
         fc.assert(
           fc.property(
@@ -301,11 +339,38 @@ describe("Semantic differential CSS scoping vs. isolated component DOM", () => {
               const rawCss = `${rawSelector} { color: red; }`;
 
               // Ground truth: isolated component tree for instance 1 and instance 2
-              const rawInst1Html = buildComponentHtml(t1, t2, t3, t4, c1, c2, id1, "inst1");
-              const rawInst2Html = buildComponentHtml(t1, t2, t3, t4, c1, c2, id1, "inst2");
-              const expectedInst1 = querySelectorAllSim(buildSimTree(rawInst1Html), rawSelector);
-              const expectedInst2 = querySelectorAllSim(buildSimTree(rawInst2Html), rawSelector);
-              const expectedUnion = new Set([...expectedInst1, ...expectedInst2]);
+              const rawInst1Html = buildComponentHtml(
+                t1,
+                t2,
+                t3,
+                t4,
+                c1,
+                c2,
+                id1,
+                "inst1",
+              );
+              const rawInst2Html = buildComponentHtml(
+                t1,
+                t2,
+                t3,
+                t4,
+                c1,
+                c2,
+                id1,
+                "inst2",
+              );
+              const expectedInst1 = querySelectorAllSim(
+                buildSimTree(rawInst1Html),
+                rawSelector,
+              );
+              const expectedInst2 = querySelectorAllSim(
+                buildSimTree(rawInst2Html),
+                rawSelector,
+              );
+              const expectedUnion = new Set([
+                ...expectedInst1,
+                ...expectedInst2,
+              ]);
 
               // Scoped compilation of instance 1 and instance 2
               const comp1 = runScopingPipeline(
@@ -337,7 +402,10 @@ describe("Semantic differential CSS scoping vs. isolated component DOM", () => {
                 .replace(/\{\s*color:\s*red;\s*\}\s*$/, "")
                 .trim();
 
-              const actualMatched = querySelectorAllSim(buildSimTree(pageHtml), scopedSelector);
+              const actualMatched = querySelectorAllSim(
+                buildSimTree(pageHtml),
+                scopedSelector,
+              );
 
               // 1. Zero style leakage to surrounding page elements
               for (const id of actualMatched) {

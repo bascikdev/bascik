@@ -19,15 +19,18 @@ src/components/alert-box/
 ### Example: Verifying Accessibility and Script Contracts
 
 ```ts
-import { describe, it, expect } from 'vitest';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { describe, it, expect } from "vitest";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
-describe('alert-box component contract', () => {
-  const filePath = join(process.cwd(), 'src/components/alert-box/alert-box.html');
+describe("alert-box component contract", () => {
+  const filePath = join(
+    process.cwd(),
+    "src/components/alert-box/alert-box.html",
+  );
 
-  it('includes mandatory ARIA role and slot placeholders', async () => {
-    const html = await readFile(filePath, 'utf8');
+  it("includes mandatory ARIA role and slot placeholders", async () => {
+    const html = await readFile(filePath, "utf8");
 
     // Verify accessibility attributes
     expect(html).toContain('role="alert"');
@@ -37,7 +40,8 @@ describe('alert-box component contract', () => {
     expect(html).toContain('data-bascik-slot="title"');
 
     // Verify pure CSS state control (no runtime script tag)
-    const clientScriptRegex = /<script(?![^>]*data-bascik-build)[^>]*>[\s\S]*?<\/script>/gi;
+    const clientScriptRegex =
+      /<script(?![^>]*data-bascik-build)[^>]*>[\s\S]*?<\/script>/gi;
     expect(clientScriptRegex.test(html)).toBe(false);
   });
 });
@@ -50,28 +54,28 @@ Testing compiled pages in `dist/` validates that Bascik expanded custom tags, fi
 ### Example: Validating Production Output
 
 ```ts
-import { describe, it, expect } from 'vitest';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { describe, it, expect } from "vitest";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
-describe('Compiled production build output', () => {
-  const indexPath = join(process.cwd(), 'dist/index.html');
+describe("Compiled production build output", () => {
+  const indexPath = join(process.cwd(), "dist/index.html");
 
-  it('expands custom tags and resolves props without leftover markers', async () => {
-    const html = await readFile(indexPath, 'utf8');
+  it("expands custom tags and resolves props without leftover markers", async () => {
+    const html = await readFile(indexPath, "utf8");
 
     // Verify component tags expanded
-    expect(html).not.toContain('<alert-box');
-    expect(html).not.toContain('<user-badge');
+    expect(html).not.toContain("<alert-box");
+    expect(html).not.toContain("<user-badge");
 
     // Verify prop placeholders were replaced
-    expect(html).not.toContain('data-bascik-prop-');
+    expect(html).not.toContain("data-bascik-prop-");
 
     // Verify slot attributes were removed from final markup
-    expect(html).not.toContain('data-bascik-slot');
+    expect(html).not.toContain("data-bascik-slot");
 
     // Verify slotted text content exists in the page
-    expect(html).toContain('System Update Completed');
+    expect(html).toContain("System Update Completed");
   });
 });
 ```
@@ -82,16 +86,21 @@ When authoring components with optional slots or fallback content, verify both t
 
 ```ts
 // src/components/modal/modal.test.ts
-import { describe, it, expect } from 'vitest';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { describe, it, expect } from "vitest";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
-describe('Modal component fallback contract', () => {
-  it('contains default fallback markup for optional action slot', async () => {
-    const html = await readFile(join(process.cwd(), 'src/components/modal/modal.html'), 'utf8');
+describe("Modal component fallback contract", () => {
+  it("contains default fallback markup for optional action slot", async () => {
+    const html = await readFile(
+      join(process.cwd(), "src/components/modal/modal.html"),
+      "utf8",
+    );
 
     // Verify default fallback button exists inside the slot tag
-    expect(html).toMatch(/<div[^>]*data-bascik-slot="actions"[^>]*>[\s\S]*?<button[^>]*>Close<\/button>/);
+    expect(html).toMatch(
+      /<div[^>]*data-bascik-slot="actions"[^>]*>[\s\S]*?<button[^>]*>Close<\/button>/,
+    );
   });
 });
 ```
@@ -107,18 +116,21 @@ npm install --save-dev parse5
 ```
 
 ```ts
-import { describe, it, expect } from 'vitest';
-import { readdir, readFile } from 'node:fs/promises';
-import path from 'node:path';
-import { parse, type ParserError } from 'parse5';
+import { describe, it, expect } from "vitest";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+import { parse, type ParserError } from "parse5";
 
-const DIST_DIR = path.resolve(process.cwd(), 'dist');
+const DIST_DIR = path.resolve(process.cwd(), "dist");
 
 async function walk(dir: string, ext: string): Promise<string[]> {
   const out: string[] = [];
   let entries;
-  try { entries = await readdir(dir, { withFileTypes: true }); }
-  catch { return out; }
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) out.push(...(await walk(full, ext)));
@@ -127,31 +139,32 @@ async function walk(dir: string, ext: string): Promise<string[]> {
   return out;
 }
 
-describe('dist HTML: WHATWG spec compliance', () => {
-  it('every page is free of parse errors', async () => {
-    const files = await walk(DIST_DIR, '.html');
+describe("dist HTML: WHATWG spec compliance", () => {
+  it("every page is free of parse errors", async () => {
+    const files = await walk(DIST_DIR, ".html");
     const failures: string[] = [];
 
     for (const file of files) {
-      const html = await readFile(file, 'utf-8');
+      const html = await readFile(file, "utf-8");
       const errors: ParserError[] = [];
       parse(html, {
         sourceCodeLocationInfo: true,
         onParseError: (err) => errors.push(err),
       });
       for (const err of errors) {
-        const lines = html.split('\n');
-        const srcLine = (err.startLine ?? 0) > 0
-          ? lines[(err.startLine ?? 1) - 1].slice(0, 120)
-          : '';
+        const lines = html.split("\n");
+        const srcLine =
+          (err.startLine ?? 0) > 0
+            ? lines[(err.startLine ?? 1) - 1].slice(0, 120)
+            : "";
         failures.push(
           `${path.relative(DIST_DIR, file)}:${err.startLine}:${err.startCol}  [${err.code}]` +
-          (srcLine ? `\n  ${srcLine}` : ''),
+            (srcLine ? `\n  ${srcLine}` : ""),
         );
       }
     }
 
-    expect(failures, failures.join('\n\n')).toHaveLength(0);
+    expect(failures, failures.join("\n\n")).toHaveLength(0);
   });
 });
 ```

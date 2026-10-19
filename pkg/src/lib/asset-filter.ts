@@ -48,9 +48,14 @@ export const isStaticAssetPath = (
   }
   if (!/\.[a-zA-Z0-9]+$/.test(relativePath)) return false;
 
-  const extension = relativePath.slice(relativePath.lastIndexOf(".")).toLowerCase();
-  const isConfiguredExclude = applyConfiguredExcludes &&
-    (BascikConfig.assets?.exclude ?? []).some((pattern) => matchesGlob(relativePath, pattern));
+  const extension = relativePath
+    .slice(relativePath.lastIndexOf("."))
+    .toLowerCase();
+  const isConfiguredExclude =
+    applyConfiguredExcludes &&
+    (BascikConfig.assets?.exclude ?? []).some((pattern) =>
+      matchesGlob(relativePath, pattern),
+    );
   return (
     !STATIC_ASSET_DENIED_EXTENSIONS.has(extension) &&
     !/\.(test|spec)\.[a-zA-Z0-9]+$/i.test(relativePath) &&

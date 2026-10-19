@@ -10,40 +10,67 @@
     <a href="/" class="dnav-logo" aria-label="Bascik home"><docs-logo /></a>
     <div class="dnav-right">
       <docs-search />
-      <button type="button" class="dnav-toggle" aria-label="Toggle navigation" aria-expanded="false">
+      <button
+        type="button"
+        class="dnav-toggle"
+        aria-label="Toggle navigation"
+        aria-expanded="false"
+      >
         <span class="dnav-toggle-icon"></span>
       </button>
       <div class="dnav-links-wrapper">
         <ul class="dnav-links">
           <li><a href="/why-bascik">Why Bascik</a></li>
           <li><a href="/getting-started">Docs</a></li>
-          <li><a href="https://github.com/bascikdev/bascik" target="_blank" rel="noopener">GitHub</a></li>
+          <li>
+            <a
+              href="https://github.com/bascikdev/bascik"
+              target="_blank"
+              rel="noopener"
+              >GitHub</a
+            >
+          </li>
         </ul>
         <div class="mobile-only-sections">
           <script data-bascik-build>
-            import { NAV } from '@/lib/nav.ts';
-            import { renderNavListItem } from '@/lib/nav-helpers.ts';
+            import { NAV } from "@/lib/nav.ts";
+            import { renderNavListItem } from "@/lib/nav-helpers.ts";
             export default async function () {
-              let html = '';
+              let html = "";
               for (const section of NAV) {
                 html += `<p class="mobile-sec-heading">${section.section}</p><ul class="mobile-sec-nav">`;
                 for (const page of section.pages) {
                   html += renderNavListItem(page);
                 }
-                html += '</ul>';
+                html += "</ul>";
               }
               return html;
-            };
+            }
           </script>
           <hr class="mobile-sep" />
           <ul class="mobile-sec-nav">
-            <li><a href="https://github.com/bascikdev/bascik" target="_blank" rel="noopener">GitHub &#x2197;</a>
+            <li>
+              <a
+                href="https://github.com/bascikdev/bascik"
+                target="_blank"
+                rel="noopener"
+                >GitHub &#x2197;</a
+              >
             </li>
             <li>
               <button type="button" class="mobile-theme-btn">
-                <svg class="theme-icon theme-icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                  aria-hidden="true">
+                <svg
+                  class="theme-icon theme-icon-sun"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
                   <circle cx="12" cy="12" r="5" />
                   <line x1="12" y1="1" x2="12" y2="3" />
                   <line x1="12" y1="21" x2="12" y2="23" />
@@ -54,9 +81,18 @@
                   <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
                   <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
                 </svg>
-                <svg class="theme-icon theme-icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                  aria-hidden="true">
+                <svg
+                  class="theme-icon theme-icon-moon"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
                   <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
                 </svg>
                 <span class="mobile-theme-label">Light</span>
@@ -65,10 +101,24 @@
           </ul>
         </div>
       </div>
-      <button type="button" class="dnav-theme-toggle" aria-label="Switch to light theme">
+      <button
+        type="button"
+        class="dnav-theme-toggle"
+        aria-label="Switch to light theme"
+      >
         <!-- Sun: shown in dark mode, click to go light -->
-        <svg class="theme-icon theme-icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <svg
+          class="theme-icon theme-icon-sun"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
           <circle cx="12" cy="12" r="5" />
           <line x1="12" y1="1" x2="12" y2="3" />
           <line x1="12" y1="21" x2="12" y2="23" />
@@ -80,8 +130,18 @@
           <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
         </svg>
         <!-- Moon: shown in light mode, click to go dark -->
-        <svg class="theme-icon theme-icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <svg
+          class="theme-icon theme-icon-moon"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
         </svg>
       </button>
@@ -91,54 +151,63 @@
 <script>
   /* bascik-disable js-document-class-query */
   (function () {
-    var toggle = document.querySelector('.dnav-toggle');
-    var wrapper = document.querySelector('.dnav-links-wrapper');
+    var toggle = document.querySelector(".dnav-toggle");
+    var wrapper = document.querySelector(".dnav-links-wrapper");
     if (toggle && wrapper) {
-      toggle.addEventListener('click', function () {
-        var isOpen = toggle.getAttribute('aria-expanded') !== 'true';
-        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        document.body.style.overflow = isOpen ? 'hidden' : '';
+      toggle.addEventListener("click", function () {
+        var isOpen = toggle.getAttribute("aria-expanded") !== "true";
+        toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        document.body.style.overflow = isOpen ? "hidden" : "";
       });
     }
 
-    var themeBtn = document.querySelector('.dnav-theme-toggle');
-    var mobileThemeBtn = document.querySelector('.mobile-theme-btn');
+    var themeBtn = document.querySelector(".dnav-theme-toggle");
+    var mobileThemeBtn = document.querySelector(".mobile-theme-btn");
     if (themeBtn || mobileThemeBtn) {
       function effectiveTheme() {
-        return document.documentElement.getAttribute('data-theme') || 'dark';
+        return document.documentElement.getAttribute("data-theme") || "dark";
       }
       function syncThemeLabels() {
-        var isDark = effectiveTheme() === 'dark';
-        if (themeBtn) themeBtn.setAttribute('aria-label', isDark ? 'Switch to light theme' : 'Switch to dark theme');
+        var isDark = effectiveTheme() === "dark";
+        if (themeBtn)
+          themeBtn.setAttribute(
+            "aria-label",
+            isDark ? "Switch to light theme" : "Switch to dark theme",
+          );
         if (mobileThemeBtn) {
-          var span = mobileThemeBtn.querySelector('.mobile-theme-label');
-          if (span) span.textContent = isDark ? 'Light' : 'Dark';
+          var span = mobileThemeBtn.querySelector(".mobile-theme-label");
+          if (span) span.textContent = isDark ? "Light" : "Dark";
         }
       }
       function toggleTheme() {
-        var next = effectiveTheme() === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', next);
-        sessionStorage.setItem('theme', next);
+        var next = effectiveTheme() === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        sessionStorage.setItem("theme", next);
         syncThemeLabels();
       }
       syncThemeLabels();
-      if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
-      if (mobileThemeBtn) mobileThemeBtn.addEventListener('click', toggleTheme);
+      if (themeBtn) themeBtn.addEventListener("click", toggleTheme);
+      if (mobileThemeBtn) mobileThemeBtn.addEventListener("click", toggleTheme);
     }
 
     var path = window.location.pathname;
-    document.querySelectorAll('.dnav a').forEach(function (a) {
-      var href = a.getAttribute('href');
-      if (!href || href.startsWith('http')) return;
+    document.querySelectorAll(".dnav a").forEach(function (a) {
+      var href = a.getAttribute("href");
+      if (!href || href.startsWith("http")) return;
       var current = false;
-      if (href === '/why-bascik') {
-        current = (path === '/why-bascik');
-      } else if (href === '/getting-started' && a.closest('.dnav-links')) {
-        current = (path !== '' && path !== '/' && path !== '/why-bascik' && path !== '/sponsor' && path !== '/press');
+      if (href === "/why-bascik") {
+        current = path === "/why-bascik";
+      } else if (href === "/getting-started" && a.closest(".dnav-links")) {
+        current =
+          path !== "" &&
+          path !== "/" &&
+          path !== "/why-bascik" &&
+          path !== "/sponsor" &&
+          path !== "/press";
       } else {
-        current = (href === path);
+        current = href === path;
       }
-      if (current) a.setAttribute('aria-current', 'page');
+      if (current) a.setAttribute("aria-current", "page");
     });
   })();
 </script>

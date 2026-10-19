@@ -82,8 +82,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '24'
-          cache: 'npm'
+          node-version: "24"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -118,10 +118,10 @@ If your repository is published to a project subpath (e.g. `https://username.git
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
-  base: '/my-site/',
+  base: "/my-site/",
 });
 ```
 

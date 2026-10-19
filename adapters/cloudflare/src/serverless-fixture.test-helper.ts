@@ -29,14 +29,24 @@ export type DeployTarget = "cloudflare-pages" | "cloudflare-workers";
 
 export const SERVERLESS_FIXTURE_HEADER = "x-bascik-gate";
 
-const write = async (root: string, rel: string, content: string): Promise<void> => {
+const write = async (
+  root: string,
+  rel: string,
+  content: string,
+): Promise<void> => {
   const abs = join(root, rel);
   await mkdir(dirname(abs), { recursive: true });
   await writeFile(abs, content, "utf8");
 };
 
-export const createServerlessFixture = async (name: string, options: { base?: string } = {}): Promise<string> => {
-  const root = join(tmpdir(), `bascik-serverless-${name}-${process.pid}-${Date.now()}`);
+export const createServerlessFixture = async (
+  name: string,
+  options: { base?: string } = {},
+): Promise<string> => {
+  const root = join(
+    tmpdir(),
+    `bascik-serverless-${name}-${process.pid}-${Date.now()}`,
+  );
   await mkdir(join(root, "src/pages"), { recursive: true });
   await mkdir(join(root, "src/components"), { recursive: true });
   await mkdir(join(root, "node_modules"), { recursive: true });
@@ -47,7 +57,11 @@ export const createServerlessFixture = async (name: string, options: { base?: st
   const bascikPkgDir = resolve(rootDir, "pkg");
 
   await mkdir(join(root, "node_modules/@bascik"), { recursive: true });
-  await symlink(adapterPkgDir, join(root, "node_modules/@bascik/adapter-cloudflare"), "dir");
+  await symlink(
+    adapterPkgDir,
+    join(root, "node_modules/@bascik/adapter-cloudflare"),
+    "dir",
+  );
   await symlink(bascikPkgDir, join(root, "node_modules/@bascik/bascik"), "dir");
 
   await write(
@@ -62,7 +76,15 @@ export const createServerlessFixture = async (name: string, options: { base?: st
   http: { apiTimeout: 2000 },
 };`,
   );
-  await write(root, "package.json", JSON.stringify({ name: "serverless-fixture", type: "module", private: true }));
+  await write(
+    root,
+    "package.json",
+    JSON.stringify({
+      name: "serverless-fixture",
+      type: "module",
+      private: true,
+    }),
+  );
 
   await write(
     root,
@@ -70,8 +92,16 @@ export const createServerlessFixture = async (name: string, options: { base?: st
     `<!DOCTYPE html><html><head><title>Static</title></head><body><h1 data-testid="static-heading">Static home</h1></body></html>`,
   );
   // RFC 8615: a leading .well-known directory is the one public dot-directory.
-  await write(root, "src/pages/.well-known/security.txt", "Contact: mailto:security@example.com\n");
-  await write(root, "src/pages/.well-known/.private/secret.txt", "well-known private marker\n");
+  await write(
+    root,
+    "src/pages/.well-known/security.txt",
+    "Contact: mailto:security@example.com\n",
+  );
+  await write(
+    root,
+    "src/pages/.well-known/.private/secret.txt",
+    "well-known private marker\n",
+  );
   await write(
     root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
     "src/pages/account.html",
@@ -92,7 +122,11 @@ export default function (request, context) {
     `import { wrap } from "./wrap.ts";
 export const label = (text: string): string => wrap("label", text);`,
   );
-  await write(root, "src/lib/wrap.ts", `export const wrap = (tag: string, text: string): string => "<" + tag + ">" + text + "</" + tag + ">";`);
+  await write(
+    root,
+    "src/lib/wrap.ts",
+    `export const wrap = (tag: string, text: string): string => "<" + tag + ">" + text + "</" + tag + ">";`,
+  );
   await write(
     root,
     "src/pages/scripts/header.ts",
@@ -140,8 +174,16 @@ export default async function (request, context) {
 <script data-bascik-server>export default function () { throw new Error("server job failed on purpose SECRET_DETAIL"); }</script>
 </body></html>`,
   );
-  await write(root, "src/pages/404.html", `<!DOCTYPE html><html><body><h1 data-testid="not-found">Custom 404</h1></body></html>`);
-  await write(root, "src/pages/500.html", `<!DOCTYPE html><html><body><h1 data-testid="server-error">Custom 500</h1></body></html>`);
+  await write(
+    root,
+    "src/pages/404.html",
+    `<!DOCTYPE html><html><body><h1 data-testid="not-found">Custom 404</h1></body></html>`,
+  );
+  await write(
+    root,
+    "src/pages/500.html",
+    `<!DOCTYPE html><html><body><h1 data-testid="server-error">Custom 500</h1></body></html>`,
+  );
   await write(root, "src/pages/assets/logo.txt", "logo bytes\n");
   await write(root, "src/pages/style.css", "body{color:#111}\n");
 
@@ -196,7 +238,9 @@ export const DELETE = async () => new Response(null, { status: 204 });`,
 };
 
 /** Add an API route that imports a builtin Workers does not provide. */
-export const addUnsupportedImportRoute = async (root: string): Promise<void> => {
+export const addUnsupportedImportRoute = async (
+  root: string,
+): Promise<void> => {
   await write(
     root,
     "src/lib/run.ts",
@@ -211,14 +255,22 @@ export const GET = async () => new Response(run());`,
   );
 };
 
-export const buildServerlessFixture = async (root: string, target: DeployTarget, extraArgs: string[] = []) => {
+export const buildServerlessFixture = async (
+  root: string,
+  target: DeployTarget,
+  extraArgs: string[] = [],
+) => {
   const here = dirname(fileURLToPath(import.meta.url));
   const cliPath = resolve(here, "../../../pkg/dist/index.js");
   try {
-    const { stdout, stderr } = await execFileAsync(process.execPath, [cliPath, "--build", "--target", target, ...extraArgs], {
-      cwd: root,
-      env: { ...process.env, BASCIK_BUILD: "1" },
-    });
+    const { stdout, stderr } = await execFileAsync(
+      process.execPath,
+      [cliPath, "--build", "--target", target, ...extraArgs],
+      {
+        cwd: root,
+        env: { ...process.env, BASCIK_BUILD: "1" },
+      },
+    );
     return { stdout, stderr };
   } catch (err: any) {
     return { stdout: err.stdout ?? "", stderr: err.stderr ?? err.message };

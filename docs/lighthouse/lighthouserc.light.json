@@ -11,9 +11,7 @@
       "numberOfRuns": 1,
       "settings": {
         "chromeFlags": "--no-sandbox --headless",
-        "onlyCategories": [
-          "accessibility"
-        ]
+        "onlyCategories": ["accessibility"]
       }
     },
     "assert": {

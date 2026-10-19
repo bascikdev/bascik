@@ -1,4 +1,8 @@
-import type { HostingAdapter, AdapterBuildContext, AdapterBuildResult } from "../adapter-contract.ts";
+import type {
+  HostingAdapter,
+  AdapterBuildContext,
+  AdapterBuildResult,
+} from "../adapter-contract.ts";
 import { join } from "node:path";
 import { mkdir, copyFile, writeFile } from "node:fs/promises";
 
@@ -23,7 +27,11 @@ export const referenceAdapter: HostingAdapter = {
       pages: Object.keys(context.graph.pages),
       apiRoutes: context.graph.apiRoutes.map((r) => r.path),
     };
-    await writeFile(join(context.outDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
+    await writeFile(
+      join(context.outDir, "manifest.json"),
+      JSON.stringify(manifest, null, 2),
+      "utf8",
+    );
 
     return {
       publicDir,

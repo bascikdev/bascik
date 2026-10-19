@@ -1,4 +1,5 @@
 <!-- demo:dynamic-routes-expansion-source -->
+
 ```text
 src/pages/
   blog/
@@ -6,12 +7,14 @@ src/pages/
 ```
 
 <!-- demo:dynamic-routes-expansion-slugs -->
+
 ```text
 hello-world
 second-post
 ```
 
 <!-- demo:dynamic-routes-expansion-built -->
+
 ```text
 dist/
   blog/

@@ -29,7 +29,7 @@ a[aria-current="location"] {
    identifies the section currently in view without adding a full rail. */
 a[aria-current="location"]::before {
   background: var(--accent);
-  content: '';
+  content: "";
   height: 1.1em;
   left: 4px;
   position: absolute;

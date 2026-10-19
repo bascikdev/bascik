@@ -30,14 +30,19 @@ describe("trimTrailingSlashes", () => {
 
   it("matches the regex it replaces for any string", () => {
     fc.assert(
-      fc.property(fc.string({ unit: fc.constantFrom("/", "\\", "a", ".", " ") }), (input) => {
-        expect(trimTrailingSlashes(input)).toBe(input.replace(/\/+$/, ""));
-      }),
+      fc.property(
+        fc.string({ unit: fc.constantFrom("/", "\\", "a", ".", " ") }),
+        (input) => {
+          expect(trimTrailingSlashes(input)).toBe(input.replace(/\/+$/, ""));
+        },
+      ),
     );
   });
 
   it("runs in linear time on a long slash run that does not end the string", () => {
-    expect(timed(() => trimTrailingSlashes(LONG_SLASH_RUN))).toBeLessThan(LINEAR_BUDGET_MS);
+    expect(timed(() => trimTrailingSlashes(LONG_SLASH_RUN))).toBeLessThan(
+      LINEAR_BUDGET_MS,
+    );
   });
 });
 
@@ -54,13 +59,18 @@ describe("trimSlashes", () => {
 
   it("matches the regex it replaces for any string", () => {
     fc.assert(
-      fc.property(fc.string({ unit: fc.constantFrom("/", "a", ".") }), (input) => {
-        expect(trimSlashes(input)).toBe(input.replace(/^\/+|\/+$/g, ""));
-      }),
+      fc.property(
+        fc.string({ unit: fc.constantFrom("/", "a", ".") }),
+        (input) => {
+          expect(trimSlashes(input)).toBe(input.replace(/^\/+|\/+$/g, ""));
+        },
+      ),
     );
   });
 
   it("runs in linear time on a long slash run that does not end the string", () => {
-    expect(timed(() => trimSlashes(LONG_SLASH_RUN))).toBeLessThan(LINEAR_BUDGET_MS);
+    expect(timed(() => trimSlashes(LONG_SLASH_RUN))).toBeLessThan(
+      LINEAR_BUDGET_MS,
+    );
   });
 });

@@ -16,7 +16,9 @@ export const __shieldStatsForTests = {
   },
 };
 
-export const createContentShield = (source: string): {
+export const createContentShield = (
+  source: string,
+): {
   hide: (value: string) => string;
   restore: (value: string) => string;
 } => {
@@ -82,7 +84,10 @@ export const shieldElementContents = (
     const attributes = `(?:[^>"']|"[^"]*"|'[^']*')*`;
     result = result.replace(
       // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-      new RegExp(`(<${fragment}(?:\\b${attributes})?>)([\\s\\S]*?)(<\\/${fragment}>)`, "gi"),
+      new RegExp(
+        `(<${fragment}(?:\\b${attributes})?>)([\\s\\S]*?)(<\\/${fragment}>)`,
+        "gi",
+      ),
       (_match, open: string, inner: string, close: string) =>
         `${open}${shield.hide(inner)}${close}`,
     );
@@ -92,7 +97,8 @@ export const shieldElementContents = (
 };
 
 const PRESERVABLE_ATTRIBUTES = new Set(["id", "name", "class"]);
-const HTML_TAG_PATTERN = /<!--[\s\S]*?-->|<\/?[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g;
+const HTML_TAG_PATTERN =
+  /<!--[\s\S]*?-->|<\/?[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g;
 
 /**
  * Translate one preserve entry into a tag-name fragment for a RegExp. Exact
@@ -136,7 +142,8 @@ const matchesPreservedTag = (
   compiled: { exact: Set<string>; patterns: RegExp[] },
   tagName: string,
 ): boolean =>
-  compiled.exact.has(tagName) || compiled.patterns.some((pattern) => pattern.test(tagName));
+  compiled.exact.has(tagName) ||
+  compiled.patterns.some((pattern) => pattern.test(tagName));
 
 type PreserveFrame = {
   tagName: string;
@@ -152,8 +159,11 @@ const getPreserveTokens = (tag: string): Set<string> | null => {
   if (!match) return null;
   const value = (match[2] ?? match[3] ?? match[4] ?? "").trim();
   // An empty value is the bare directive as DOM serializers write it.
-  if (match[1] === undefined || value === "") return new Set(PRESERVABLE_ATTRIBUTES);
-  return new Set(value.split(/\s+/).filter((token) => PRESERVABLE_ATTRIBUTES.has(token)));
+  if (match[1] === undefined || value === "")
+    return new Set(PRESERVABLE_ATTRIBUTES);
+  return new Set(
+    value.split(/\s+/).filter((token) => PRESERVABLE_ATTRIBUTES.has(token)),
+  );
 };
 
 const identityRestore = (value: string): string => value;
@@ -168,7 +178,10 @@ const identityRestore = (value: string): string => value;
  * name only appears in text or an attribute value. Case-insensitive because
  * HTML_TAG_PATTERN and the tag-name comparison lowercase the tag.
  */
-const mayContainPreserved = (html: string, preservedTags: string[]): boolean => {
+const mayContainPreserved = (
+  html: string,
+  preservedTags: string[],
+): boolean => {
   const lower = html.toLowerCase();
   if (lower.includes("data-bascik-preserve")) return true;
   for (const tag of preservedTags) {
@@ -238,7 +251,11 @@ export const shieldPreservedAttribute = (
     const shieldsContent =
       inherited.size !== PRESERVABLE_ATTRIBUTES.size &&
       (isPreservedTag || own?.size === PRESERVABLE_ATTRIBUTES.size);
-    const isVoid = /\/\s*>$/.test(tag) || /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/.test(tagName);
+    const isVoid =
+      /\/\s*>$/.test(tag) ||
+      /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/.test(
+        tagName,
+      );
     if (!isVoid) {
       frames.push({
         tagName,
@@ -250,7 +267,9 @@ export const shieldPreservedAttribute = (
   }
 
   let result = html;
-  for (const range of contentRanges.sort((left, right) => right.start - left.start)) {
+  for (const range of contentRanges.sort(
+    (left, right) => right.start - left.start,
+  )) {
     result = `${result.slice(0, range.start)}${shield.hide(result.slice(range.start, range.end))}${result.slice(range.end)}`;
   }
 
@@ -261,7 +280,9 @@ export const shieldPreservedAttribute = (
     const closingMatch = tag.match(/^<\/\s*([a-zA-Z][a-zA-Z0-9:-]*)/);
     if (closingMatch) {
       const tagName = closingMatch[1].toLowerCase();
-      const index = activeFrames.findLastIndex((frame) => frame.tagName === tagName);
+      const index = activeFrames.findLastIndex(
+        (frame) => frame.tagName === tagName,
+      );
       if (index >= 0) activeFrames.splice(index);
       return tag;
     }
@@ -276,7 +297,11 @@ export const shieldPreservedAttribute = (
     if (own) {
       for (const name of own) attributes.add(name);
     }
-    const isVoid = /\/\s*>$/.test(tag) || /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/.test(tagName);
+    const isVoid =
+      /\/\s*>$/.test(tag) ||
+      /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/.test(
+        tagName,
+      );
     if (!isVoid) activeFrames.push({ tagName, attributes });
     if (!attributes.has(attribute)) return tag;
     return shield.hide(tag);
@@ -292,11 +317,22 @@ export const stripPreserveDirectives = (
   if (!/data-bascik-preserve/i.test(html)) return html;
   return html.replace(
     /\sdata-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'=<>`/>]+)))?(?=\s|\/?>)/gi,
-    (_directive, rawValue: string | undefined, doubleValue: string | undefined, singleValue: string | undefined, unquotedValue: string | undefined) => {
+    (
+      _directive,
+      rawValue: string | undefined,
+      doubleValue: string | undefined,
+      singleValue: string | undefined,
+      unquotedValue: string | undefined,
+    ) => {
       if (rawValue !== undefined) {
-        for (const token of (doubleValue ?? singleValue ?? unquotedValue ?? "").trim().split(/\s+/).filter(Boolean)) {
+        for (const token of (doubleValue ?? singleValue ?? unquotedValue ?? "")
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean)) {
           if (!PRESERVABLE_ATTRIBUTES.has(token)) {
-            warn(`[bascik] warning: data-bascik-preserve ignores unknown token "${token}".`);
+            warn(
+              `[bascik] warning: data-bascik-preserve ignores unknown token "${token}".`,
+            );
           }
         }
       }
@@ -325,7 +361,10 @@ export const maskElementContents = (html: string, tags: string[]): string => {
     const attributes = `(?:[^>"']|"[^"]*"|'[^']*')*`;
     result = result.replace(
       // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-      new RegExp(`(<${fragment}(?:\\b${attributes})?>)([\\s\\S]*?)(<\\/${fragment}\\s*>)`, "gi"),
+      new RegExp(
+        `(<${fragment}(?:\\b${attributes})?>)([\\s\\S]*?)(<\\/${fragment}\\s*>)`,
+        "gi",
+      ),
       (_match, open: string, inner: string, close: string) =>
         `${open}${" ".repeat(inner.length)}${close}`,
     );

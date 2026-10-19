@@ -14,11 +14,16 @@ import { compilePreservedTags } from "./shielding.ts";
 export const createExternalTagMatcher = (
   entries: readonly string[] | undefined,
 ): ((tagName: string) => boolean) => {
-  const valid = (entries ?? []).filter((entry): entry is string => typeof entry === "string" && entry !== "");
+  const valid = (entries ?? []).filter(
+    (entry): entry is string => typeof entry === "string" && entry !== "",
+  );
   if (valid.length === 0) return () => false;
   const compiled = compilePreservedTags(valid);
   return (tagName) => {
     const tag = tagName.toLowerCase();
-    return compiled.exact.has(tag) || compiled.patterns.some((pattern) => pattern.test(tag));
+    return (
+      compiled.exact.has(tag) ||
+      compiled.patterns.some((pattern) => pattern.test(tag))
+    );
   };
 };

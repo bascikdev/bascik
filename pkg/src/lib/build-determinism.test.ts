@@ -101,11 +101,15 @@ describe("Build determinism", () => {
     const runMinified = await transpilePage(pageFile, componentList, "");
     expect(runMinified).not.toBeNull();
     // The distHtml contains the component's <style> block where #card-inner was converted to a minified class (b...)
-    const cardInnerClassMatch = runMinified!.distHtml.match(/<style[^>]*>[\s\S]*?\.(b[0-9a-zA-Z]{11})[\s\S]*?font-weight:\s*bold/);
+    const cardInnerClassMatch = runMinified!.distHtml.match(
+      /<style[^>]*>[\s\S]*?\.(b[0-9a-zA-Z]{11})[\s\S]*?font-weight:\s*bold/,
+    );
     expect(cardInnerClassMatch).not.toBeNull();
     const minifiedScopedClass = cardInnerClassMatch![1];
     // And that class was injected into the matching element tag
-    expect(runMinified!.distHtml).toMatch(new RegExp(`<div[^>]*class="[^"]*\\b${minifiedScopedClass}\\b[^"]*"`));
+    expect(runMinified!.distHtml).toMatch(
+      new RegExp(`<div[^>]*class="[^"]*\\b${minifiedScopedClass}\\b[^"]*"`),
+    );
     (BascikConfig as any).minify = { identifiers: false };
 
     await rm(testDir, { recursive: true, force: true });

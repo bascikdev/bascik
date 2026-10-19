@@ -3,8 +3,8 @@
 Bascik gives you an enormous head start on Lighthouse scores. Because it outputs vanilla HTML with zero framework runtime, you begin every page with near-perfect scores, and reaching 100 across the scored Lighthouse categories, plus a clean Agentic Browsing report, is a matter of applying a small, well-known set of HTML patterns. This section has one page for each of the five categories.
 
 | Performance | Accessibility | Best Practices | SEO | Agentic Browsing |
-| :---: | :---: | :---: | :---: | :---: |
-| 100 | 100 | 100 | 100 | 3/3 |
+| :---------: | :-----------: | :------------: | :-: | :--------------: |
+|     100     |      100      |      100       | 100 |       3/3        |
 
 Agentic Browsing is the newest Lighthouse category. It reports a pass ratio instead of a 0 to 100 score. See [Agentic Browsing](/lighthouse/agentic-browsing) for what it checks and which audits are opt-in.
 

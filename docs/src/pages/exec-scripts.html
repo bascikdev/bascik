@@ -1,72 +1,80 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Run Node.js lifecycle tasks with pipeline.exec in Bascik. Generate search indices, sitemaps, and bundles at pre, parallel, or post phases."
+    />
+    <title>Run Node.js Scripts Before and After a Build - Bascik</title>
+  </head>
 
-<head>
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <script data-bascik-build>
-    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    export default async () => await breadcrumbLd();
-  </script>
-  <script data-bascik-build>
-    import { articleSchema } from '@/lib/article-schema.ts';
-    export default async () => await articleSchema();
-  </script>
-  <meta name="description"
-    content="Run Node.js lifecycle tasks with pipeline.exec in Bascik. Generate search indices, sitemaps, and bundles at pre, parallel, or post phases." />
-  <title>Run Node.js Scripts Before and After a Build - Bascik</title>
-</head>
+  <body>
+    <docs-nav />
 
-<body>
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
 
-  <docs-nav />
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/exec-scripts");
+          </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/exec-scripts.md", {
+                to: "Configuration Options",
+              });
+          </script>
 
-  <div class="container">
-    <div class="docs-layout">
+          <diagram-figure data-bascik-prop-title="One build, three phases">
+            <diagram-steps>
+              <diagram-step
+                data-bascik-prop-title="'pre' scripts"
+                data-bascik-prop-detail="Awaited before any page or component is transpiled. Fetch data, prepare catalogs."
+              />
+              <diagram-step
+                data-bascik-prop-title="Pages and components"
+                data-bascik-prop-detail="Transpile and write to dist/. 'parallel' scripts start alongside this step."
+              />
+              <diagram-step
+                data-bascik-prop-title="'post' scripts"
+                data-bascik-prop-detail="Run once everything is on disk. Build a search index, post-process bundles."
+              />
+            </diagram-steps>
+          </diagram-figure>
 
-      <docs-sidebar />
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/exec-scripts.md", {
+                from: "Configuration Options",
+              });
+          </script>
 
-      <main class="docs-content" id="main-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/exec-scripts');
-        </script>
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/exec-scripts.md', { to: 'Configuration Options' });
-        </script>
-
-        <diagram-figure data-bascik-prop-title="One build, three phases">
-          <diagram-steps>
-            <diagram-step data-bascik-prop-title="'pre' scripts"
-              data-bascik-prop-detail="Awaited before any page or component is transpiled. Fetch data, prepare catalogs." />
-            <diagram-step data-bascik-prop-title="Pages and components"
-              data-bascik-prop-detail="Transpile and write to dist/. 'parallel' scripts start alongside this step." />
-            <diagram-step data-bascik-prop-title="'post' scripts"
-              data-bascik-prop-detail="Run once everything is on disk. Build a search index, post-process bundles." />
-          </diagram-steps>
-        </diagram-figure>
-
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/exec-scripts.md', { from: 'Configuration Options' });
-        </script>
-
-        <docs-pagination />
-
-      </main>
+          <docs-pagination />
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-
-</body>
-
+    <docs-footer />
+  </body>
 </html>

@@ -15,14 +15,14 @@ When developing Bascik (`pkg/`), writing documentation (`docs/`), or authoring c
 
 ## 1. Primary Documentation Hubs on MDN
 
-| Topic | Direct Hub URL | Key Areas Covered |
-| :--- | :--- | :--- |
-| **HTML** | [https://developer.mozilla.org/en-US/docs/Web/HTML](https://developer.mozilla.org/en-US/docs/Web/HTML) | Elements reference, global attributes, `data-*` custom attributes, form semantics |
-| **CSS** | [https://developer.mozilla.org/en-US/docs/Web/CSS](https://developer.mozilla.org/en-US/docs/Web/CSS) | Properties, selectors, pseudo-classes, at-rules (`@container`, `@layer`, `@keyframes`, `@scope`), CSS nesting |
-| **JavaScript** | [https://developer.mozilla.org/en-US/docs/Web/JavaScript](https://developer.mozilla.org/en-US/docs/Web/JavaScript) | Language reference, built-in objects, regular expressions, modules |
-| **Web APIs & DOM** | [https://developer.mozilla.org/en-US/docs/Web/API](https://developer.mozilla.org/en-US/docs/Web/API) | `Document`, `Element`, `EventTarget`, `CustomEvent`, `EventSource` (SSE), `MutationObserver` |
-| **Accessibility (ARIA)** | [https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA) | ARIA roles, states, properties, and HTML semantic equivalents |
-| **HTTP & Security** | [https://developer.mozilla.org/en-US/docs/Web/HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP) | Status codes, headers, MIME types, caching policies, ALPN/HTTP2, Server-Sent Events |
+| Topic                    | Direct Hub URL                                                                                                                     | Key Areas Covered                                                                                             |
+| :----------------------- | :--------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------ |
+| **HTML**                 | [https://developer.mozilla.org/en-US/docs/Web/HTML](https://developer.mozilla.org/en-US/docs/Web/HTML)                             | Elements reference, global attributes, `data-*` custom attributes, form semantics                             |
+| **CSS**                  | [https://developer.mozilla.org/en-US/docs/Web/CSS](https://developer.mozilla.org/en-US/docs/Web/CSS)                               | Properties, selectors, pseudo-classes, at-rules (`@container`, `@layer`, `@keyframes`, `@scope`), CSS nesting |
+| **JavaScript**           | [https://developer.mozilla.org/en-US/docs/Web/JavaScript](https://developer.mozilla.org/en-US/docs/Web/JavaScript)                 | Language reference, built-in objects, regular expressions, modules                                            |
+| **Web APIs & DOM**       | [https://developer.mozilla.org/en-US/docs/Web/API](https://developer.mozilla.org/en-US/docs/Web/API)                               | `Document`, `Element`, `EventTarget`, `CustomEvent`, `EventSource` (SSE), `MutationObserver`                  |
+| **Accessibility (ARIA)** | [https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA) | ARIA roles, states, properties, and HTML semantic equivalents                                                 |
+| **HTTP & Security**      | [https://developer.mozilla.org/en-US/docs/Web/HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP)                             | Status codes, headers, MIME types, caching policies, ALPN/HTTP2, Server-Sent Events                           |
 
 ---
 
@@ -31,37 +31,41 @@ When developing Bascik (`pkg/`), writing documentation (`docs/`), or authoring c
 MDN uses predictable URL structures. You can construct direct canonical URLs for almost any feature:
 
 ### HTML Elements & Attributes
-* **HTML Element:** `https://developer.mozilla.org/en-US/docs/Web/HTML/Element/<element-name>`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/HTML/Element/template`
-* **Global Attributes:** `https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/<attribute-name>`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/data-*`
+
+- **HTML Element:** `https://developer.mozilla.org/en-US/docs/Web/HTML/Element/<element-name>`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/HTML/Element/template`
+- **Global Attributes:** `https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/<attribute-name>`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/data-*`
 
 ### CSS Properties, Selectors, and At-Rules
-* **CSS Property:** `https://developer.mozilla.org/en-US/docs/Web/CSS/<property-name>`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/CSS/container-type`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/CSS/color-scheme`
-* **CSS Pseudo-classes:** `https://developer.mozilla.org/en-US/docs/Web/CSS/:<pseudo-name>`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/CSS/:has`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/CSS/:is`
-* **CSS At-Rules:** `https://developer.mozilla.org/en-US/docs/Web/CSS/@<rule-name>`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/CSS/@container`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/CSS/@layer`
-* **CSS Nesting:** `https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_nesting/Using_CSS_nesting`
+
+- **CSS Property:** `https://developer.mozilla.org/en-US/docs/Web/CSS/<property-name>`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/CSS/container-type`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/CSS/color-scheme`
+- **CSS Pseudo-classes:** `https://developer.mozilla.org/en-US/docs/Web/CSS/:<pseudo-name>`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/CSS/:has`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/CSS/:is`
+- **CSS At-Rules:** `https://developer.mozilla.org/en-US/docs/Web/CSS/@<rule-name>`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/CSS/@container`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/CSS/@layer`
+- **CSS Nesting:** `https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_nesting/Using_CSS_nesting`
 
 ### Web APIs & DOM Interfaces
-* **Interface / Class:** `https://developer.mozilla.org/en-US/docs/Web/API/<Interface>`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/API/Element`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/API/EventSource`
-* **Method / Property:** `https://developer.mozilla.org/en-US/docs/Web/API/<Interface>/<member>`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/API/Element/querySelector`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/API/Element/closest`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/API/Document/getElementById`
+
+- **Interface / Class:** `https://developer.mozilla.org/en-US/docs/Web/API/<Interface>`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/API/Element`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/API/EventSource`
+- **Method / Property:** `https://developer.mozilla.org/en-US/docs/Web/API/<Interface>/<member>`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/API/Element/querySelector`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/API/Element/closest`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/API/Document/getElementById`
 
 ### JavaScript Built-ins
-* **Global Object / Method:** `https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/<Object>/<method>`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/replace`
-  * *Example:* `https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp`
+
+- **Global Object / Method:** `https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/<Object>/<method>`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/replace`
+  - _Example:_ `https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp`
 
 ---
 

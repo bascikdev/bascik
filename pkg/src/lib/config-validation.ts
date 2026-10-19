@@ -82,7 +82,13 @@ const KNOWN_KEYS: Record<string, unknown> = {
   },
   minify: { html: null, css: null, js: null, identifiers: null },
   assets: { inlineStyles: null, exclude: null, symlink: null },
-  generate: { sitemap: null, robots: null, sitemapLastmod: null, cspHashes: null, manifest: null },
+  generate: {
+    sitemap: null,
+    robots: null,
+    sitemapLastmod: null,
+    cspHashes: null,
+    manifest: null,
+  },
   pipeline: { watchPaths: null, exec: null, workers: null, onExecError: null },
   scripts: {
     cache: { enabled: null, include: null, exclude: null, environment: null },
@@ -108,11 +114,25 @@ const KNOWN_KEYS: Record<string, unknown> = {
     maxBodySize: null,
     apiTimeout: null,
   },
-  logging: { level: null, requests: null, copies: null, deletes: null, transpiles: null },
+  logging: {
+    level: null,
+    requests: null,
+    copies: null,
+    deletes: null,
+    transpiles: null,
+  },
   base: null,
 };
 
-const KNOWN_EXEC_ENTRY_KEYS = ["script", "watch", "phase", "cwd", "env", "args", "timeout"];
+const KNOWN_EXEC_ENTRY_KEYS = [
+  "script",
+  "watch",
+  "phase",
+  "cwd",
+  "env",
+  "args",
+  "timeout",
+];
 
 /* ── Edit-distance suggestions ────────────────────────────────────────── */
 
@@ -135,7 +155,11 @@ const editDistance = (a: string, b: string): number => {
 };
 
 /** Suggest the closest known key within a small edit distance, if any. */
-const suggestKey = (key: string, known: string[], pathPrefix: string): string => {
+const suggestKey = (
+  key: string,
+  known: string[],
+  pathPrefix: string,
+): string => {
   let best: string | undefined;
   let bestDistance = Infinity;
   for (const candidate of known) {
@@ -168,7 +192,9 @@ export const normalizeBasePath = (base: string): string => {
 const isValidBasePathPrefix = (base: string): boolean => {
   const normalized = base.trim();
   if (/[?#%\\\u0000-\u001f\u007f]/.test(normalized)) return false;
-  return !normalized.split("/").some((segment) => segment === "." || segment === "..");
+  return !normalized
+    .split("/")
+    .some((segment) => segment === "." || segment === "..");
 };
 
 /* ── Pure validation half ─────────────────────────────────────────────── */
@@ -223,7 +249,9 @@ const collectUnknownKeys = (
       errors.push({
         key: fullKey,
         value: undefined,
-        message: MOVED_KEY_MESSAGES[fullKey] ?? suggestKey(key, Object.keys(schema), pathPrefix),
+        message:
+          MOVED_KEY_MESSAGES[fullKey] ??
+          suggestKey(key, Object.keys(schema), pathPrefix),
         unknownKey: true,
       });
       continue;
@@ -245,7 +273,11 @@ const collectUnknownKeys = (
             errors.push({
               key: `${fullKey}[${index}].${entryKey}`,
               value: undefined,
-              message: suggestKey(entryKey, KNOWN_EXEC_ENTRY_KEYS, `${fullKey}[${index}].`),
+              message: suggestKey(
+                entryKey,
+                KNOWN_EXEC_ENTRY_KEYS,
+                `${fullKey}[${index}].`,
+              ),
               unknownKey: true,
             });
           }
@@ -295,19 +327,35 @@ export const validateConfigShape = (
     if (components !== undefined) {
       if (typeof components === "string") {
         if (components.trim() === "") {
-          push("directory.components", components, "expected a non-empty directory path");
+          push(
+            "directory.components",
+            components,
+            "expected a non-empty directory path",
+          );
         }
       } else if (Array.isArray(components)) {
         if (components.length === 0) {
-          push("directory.components", components, "expected a non-empty array of directory paths");
+          push(
+            "directory.components",
+            components,
+            "expected a non-empty array of directory paths",
+          );
         }
         components.forEach((entry, index) => {
           if (typeof entry !== "string" || entry.trim() === "") {
-            push(`directory.components[${index}]`, entry, "expected a non-empty directory path");
+            push(
+              `directory.components[${index}]`,
+              entry,
+              "expected a non-empty directory path",
+            );
           }
         });
       } else {
-        push("directory.components", components, "expected a string path or an array of string paths");
+        push(
+          "directory.components",
+          components,
+          "expected a string path or an array of string paths",
+        );
       }
     }
     if (typeof dir.out === "string") {
@@ -354,7 +402,12 @@ export const validateConfigShape = (
     const http = raw.http;
     if (http.port !== undefined) {
       const port = http.port;
-      if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) {
+      if (
+        typeof port !== "number" ||
+        !Number.isInteger(port) ||
+        port < 1 ||
+        port > 65535
+      ) {
         push("http.port", port, "expected an integer between 1 and 65535");
       }
     }
@@ -391,26 +444,48 @@ export const validateConfigShape = (
     if (http.trustProxy !== undefined && typeof http.trustProxy !== "boolean") {
       push("http.trustProxy", http.trustProxy, "expected true or false");
     }
-    if (http.compression !== undefined && typeof http.compression !== "boolean") {
+    if (
+      http.compression !== undefined &&
+      typeof http.compression !== "boolean"
+    ) {
       push("http.compression", http.compression, "expected true or false");
     }
-    if (http.precompress !== undefined && typeof http.precompress !== "boolean") {
+    if (
+      http.precompress !== undefined &&
+      typeof http.precompress !== "boolean"
+    ) {
       push("http.precompress", http.precompress, "expected true or false");
     }
     if (http.rateLimit !== undefined) {
       const rateLimit = http.rateLimit;
       if (typeof rateLimit !== "boolean" && !isPlainObject(rateLimit)) {
-        push("http.rateLimit", rateLimit, "expected true, false, or an object { window?, max? }");
+        push(
+          "http.rateLimit",
+          rateLimit,
+          "expected true, false, or an object { window?, max? }",
+        );
       } else if (isPlainObject(rateLimit)) {
         if (rateLimit.window !== undefined) {
           const windowVal = rateLimit.window;
-          if (typeof windowVal !== "number" || Number.isNaN(windowVal) || windowVal <= 0) {
-            push("http.rateLimit.window", windowVal, "expected a positive number (milliseconds)");
+          if (
+            typeof windowVal !== "number" ||
+            Number.isNaN(windowVal) ||
+            windowVal <= 0
+          ) {
+            push(
+              "http.rateLimit.window",
+              windowVal,
+              "expected a positive number (milliseconds)",
+            );
           }
         }
         if (rateLimit.max !== undefined) {
           const maxVal = rateLimit.max;
-          if (typeof maxVal !== "number" || !Number.isInteger(maxVal) || maxVal <= 0) {
+          if (
+            typeof maxVal !== "number" ||
+            !Number.isInteger(maxVal) ||
+            maxVal <= 0
+          ) {
             push("http.rateLimit.max", maxVal, "expected a positive integer");
           }
         }
@@ -419,12 +494,28 @@ export const validateConfigShape = (
     if (http.timeouts !== undefined) {
       const timeouts = http.timeouts;
       if (!isPlainObject(timeouts)) {
-        push("http.timeouts", timeouts, "expected an object with timeout values");
+        push(
+          "http.timeouts",
+          timeouts,
+          "expected an object with timeout values",
+        );
       } else {
-        for (const key of ["request", "headers", "keepAlive", "drain"] as const) {
+        for (const key of [
+          "request",
+          "headers",
+          "keepAlive",
+          "drain",
+        ] as const) {
           const val = timeouts[key];
-          if (val !== undefined && (typeof val !== "number" || Number.isNaN(val) || val <= 0)) {
-            push(`http.timeouts.${key}`, val, "expected a positive number (milliseconds)");
+          if (
+            val !== undefined &&
+            (typeof val !== "number" || Number.isNaN(val) || val <= 0)
+          ) {
+            push(
+              `http.timeouts.${key}`,
+              val,
+              "expected a positive number (milliseconds)",
+            );
           }
         }
       }
@@ -436,13 +527,28 @@ export const validateConfigShape = (
     const scripts = raw.scripts;
     if (scripts.timeout !== undefined) {
       const timeout = scripts.timeout;
-      if (typeof timeout !== "number" || Number.isNaN(timeout) || timeout <= 0) {
-        push("scripts.timeout", timeout, "expected a positive number (milliseconds)");
+      if (
+        typeof timeout !== "number" ||
+        Number.isNaN(timeout) ||
+        timeout <= 0
+      ) {
+        push(
+          "scripts.timeout",
+          timeout,
+          "expected a positive number (milliseconds)",
+        );
       }
     }
-    for (const key of ["onBuildScriptError", "onRoutesScriptError", "onServerScriptError"] as const) {
+    for (const key of [
+      "onBuildScriptError",
+      "onRoutesScriptError",
+      "onServerScriptError",
+    ] as const) {
       const value = scripts[key];
-      if (value !== undefined && !VALID_SCRIPT_ERROR_VALUES.has(value as string)) {
+      if (
+        value !== undefined &&
+        !VALID_SCRIPT_ERROR_VALUES.has(value as string)
+      ) {
         push(`scripts.${key}`, value, `expected ${SCRIPT_ERROR_ACTIONS}`);
       }
     }
@@ -451,7 +557,11 @@ export const validateConfigShape = (
       typeof scripts.typescript !== "boolean" &&
       typeof scripts.typescript !== "function"
     ) {
-      push("scripts.typescript", scripts.typescript, "expected true, false, or a function");
+      push(
+        "scripts.typescript",
+        scripts.typescript,
+        "expected true, false, or a function",
+      );
     }
     // importRoot is read-only and may legitimately resolve outside the project
     // root (monorepo shared scripts), so there is deliberately no escape check
@@ -459,12 +569,19 @@ export const validateConfigShape = (
     if (scripts.importRoot !== undefined) {
       const importRoot = scripts.importRoot;
       if (typeof importRoot !== "string" || importRoot.length === 0) {
-        push("scripts.importRoot", importRoot, 'expected a non-empty directory path like "src"');
+        push(
+          "scripts.importRoot",
+          importRoot,
+          'expected a non-empty directory path like "src"',
+        );
       }
     }
   }
 
-  if (raw.onMinifyError !== undefined && !VALID_MINIFY_ERROR_VALUES.has(raw.onMinifyError as string)) {
+  if (
+    raw.onMinifyError !== undefined &&
+    !VALID_MINIFY_ERROR_VALUES.has(raw.onMinifyError as string)
+  ) {
     push("onMinifyError", raw.onMinifyError, 'expected "warn" or "error"');
   }
 
@@ -475,22 +592,43 @@ export const validateConfigShape = (
       const workers = pipeline.workers;
       const valid =
         typeof workers === "boolean" ||
-        (typeof workers === "number" && Number.isInteger(workers) && workers > 0);
+        (typeof workers === "number" &&
+          Number.isInteger(workers) &&
+          workers > 0);
       if (!valid) {
-        push("pipeline.workers", workers, "expected true, false, or a positive integer");
+        push(
+          "pipeline.workers",
+          workers,
+          "expected true, false, or a positive integer",
+        );
       }
     }
-    if (pipeline.onExecError !== undefined && !VALID_MINIFY_ERROR_VALUES.has(pipeline.onExecError as string)) {
-      push("pipeline.onExecError", pipeline.onExecError, 'expected "warn" or "error"');
+    if (
+      pipeline.onExecError !== undefined &&
+      !VALID_MINIFY_ERROR_VALUES.has(pipeline.onExecError as string)
+    ) {
+      push(
+        "pipeline.onExecError",
+        pipeline.onExecError,
+        'expected "warn" or "error"',
+      );
     }
     if (pipeline.watchPaths !== undefined) {
       const watchPaths = pipeline.watchPaths;
       if (!Array.isArray(watchPaths)) {
-        push("pipeline.watchPaths", watchPaths, "expected an array of path strings");
+        push(
+          "pipeline.watchPaths",
+          watchPaths,
+          "expected an array of path strings",
+        );
       } else {
         watchPaths.forEach((entry, index) => {
           if (typeof entry !== "string" || entry.length === 0) {
-            push(`pipeline.watchPaths[${index}]`, entry, "expected a non-empty path string");
+            push(
+              `pipeline.watchPaths[${index}]`,
+              entry,
+              "expected a non-empty path string",
+            );
           }
         });
       }
@@ -502,14 +640,29 @@ export const validateConfigShape = (
       } else {
         exec.forEach((entry, index) => {
           if (!isPlainObject(entry)) {
-            push(`pipeline.exec[${index}]`, entry, "expected an object with a script key");
+            push(
+              `pipeline.exec[${index}]`,
+              entry,
+              "expected an object with a script key",
+            );
             return;
           }
           if (typeof entry.script !== "string" || entry.script.length === 0) {
-            push(`pipeline.exec[${index}].script`, entry.script, "expected a non-empty script path");
+            push(
+              `pipeline.exec[${index}].script`,
+              entry.script,
+              "expected a non-empty script path",
+            );
           }
-          if (entry.phase !== undefined && !VALID_EXEC_PHASES.includes(entry.phase as string)) {
-            push(`pipeline.exec[${index}].phase`, entry.phase, 'expected "pre", "post", or "parallel"');
+          if (
+            entry.phase !== undefined &&
+            !VALID_EXEC_PHASES.includes(entry.phase as string)
+          ) {
+            push(
+              `pipeline.exec[${index}].phase`,
+              entry.phase,
+              'expected "pre", "post", or "parallel"',
+            );
           }
         });
       }
@@ -522,11 +675,19 @@ export const validateConfigShape = (
     if (assets.inlineStyles !== undefined) {
       const inlineStyles = assets.inlineStyles;
       if (typeof inlineStyles !== "boolean" && !Array.isArray(inlineStyles)) {
-        push("assets.inlineStyles", inlineStyles, "expected true, false, or an array of stylesheet paths");
+        push(
+          "assets.inlineStyles",
+          inlineStyles,
+          "expected true, false, or an array of stylesheet paths",
+        );
       } else if (Array.isArray(inlineStyles)) {
         inlineStyles.forEach((entry, index) => {
           if (typeof entry !== "string" || entry.length === 0) {
-            push(`assets.inlineStyles[${index}]`, entry, "expected a non-empty stylesheet path");
+            push(
+              `assets.inlineStyles[${index}]`,
+              entry,
+              "expected a non-empty stylesheet path",
+            );
           }
         });
       }
@@ -538,7 +699,11 @@ export const validateConfigShape = (
       } else {
         exclude.forEach((entry, index) => {
           if (!isPlausibleGlob(entry)) {
-            push(`assets.exclude[${index}]`, entry, "expected a non-empty glob string with balanced brackets");
+            push(
+              `assets.exclude[${index}]`,
+              entry,
+              "expected a non-empty glob string with balanced brackets",
+            );
           }
         });
       }
@@ -557,9 +722,14 @@ export const validateConfigShape = (
       external.forEach((entry, index) => {
         if (
           typeof entry !== "string" ||
-          (!PLAUSIBLE_TAG_NAME.test(entry) && !PRESERVE_WILDCARD_PATTERN.test(entry))
+          (!PLAUSIBLE_TAG_NAME.test(entry) &&
+            !PRESERVE_WILDCARD_PATTERN.test(entry))
         ) {
-          push(`components.external[${index}]`, entry, 'expected a tag name or wildcard pattern like "heading-anchors" or "vendor-*"');
+          push(
+            `components.external[${index}]`,
+            entry,
+            'expected a tag name or wildcard pattern like "heading-anchors" or "vendor-*"',
+          );
         }
       });
     }
@@ -574,9 +744,14 @@ export const validateConfigShape = (
       preserve.forEach((entry, index) => {
         if (
           typeof entry !== "string" ||
-          (!PLAUSIBLE_TAG_NAME.test(entry) && !PRESERVE_WILDCARD_PATTERN.test(entry))
+          (!PLAUSIBLE_TAG_NAME.test(entry) &&
+            !PRESERVE_WILDCARD_PATTERN.test(entry))
         ) {
-          push(`scoping.preserve[${index}]`, entry, 'expected a tag name or wildcard pattern like "code" or "vendor-*"');
+          push(
+            `scoping.preserve[${index}]`,
+            entry,
+            'expected a tag name or wildcard pattern like "code" or "vendor-*"',
+          );
         }
       });
     }
@@ -586,7 +761,11 @@ export const validateConfigShape = (
   if (isPlainObject(raw.logging)) {
     const level = raw.logging.level;
     if (level !== undefined && !VALID_LOG_LEVELS.has(level as string)) {
-      push("logging.level", level, 'expected "silent", "error", "warn", "info", or "debug"');
+      push(
+        "logging.level",
+        level,
+        'expected "silent", "error", "warn", "info", or "debug"',
+      );
     }
   }
 
@@ -595,10 +774,21 @@ export const validateConfigShape = (
     const base = raw.base;
     if (typeof base !== "string") {
       push("base", base, 'expected a root-relative path like "/docs/"');
-    } else if (/^(?:[a-zA-Z][a-zA-Z0-9+.-]*:)?\/\//.test(base) || /^[a-zA-Z]:[\\/]/.test(base)) {
-      push("base", base, 'expected a root-relative path like "/docs/", not a URL');
+    } else if (
+      /^(?:[a-zA-Z][a-zA-Z0-9+.-]*:)?\/\//.test(base) ||
+      /^[a-zA-Z]:[\\/]/.test(base)
+    ) {
+      push(
+        "base",
+        base,
+        'expected a root-relative path like "/docs/", not a URL',
+      );
     } else if (!isValidBasePathPrefix(base)) {
-      push("base", base, 'expected a literal URL path prefix without query, fragment, escape, backslash, or dot segments');
+      push(
+        "base",
+        base,
+        "expected a literal URL path prefix without query, fragment, escape, backslash, or dot segments",
+      );
     }
   }
 
@@ -639,11 +829,19 @@ export const validateConfigPaths = (
     }
   }
 
-  if (isPlainObject(raw.http) && isPlainObject(raw.http.tls) && raw.http.tls.enabled === true) {
+  if (
+    isPlainObject(raw.http) &&
+    isPlainObject(raw.http.tls) &&
+    raw.http.tls.enabled === true
+  ) {
     for (const key of ["keyFile", "certFile"] as const) {
       const value = raw.http.tls[key];
       if (typeof value === "string" && !fs.isReadableFile(resolvePath(value))) {
-        push(`http.tls.${key}`, value, "file does not exist or is not readable");
+        push(
+          `http.tls.${key}`,
+          value,
+          "file does not exist or is not readable",
+        );
       }
     }
   }
@@ -652,7 +850,11 @@ export const validateConfigPaths = (
     const pipeline = raw.pipeline;
     if (Array.isArray(pipeline.watchPaths)) {
       pipeline.watchPaths.forEach((entry, index) => {
-        if (typeof entry === "string" && entry.length > 0 && !fs.existsSync(resolvePath(entry))) {
+        if (
+          typeof entry === "string" &&
+          entry.length > 0 &&
+          !fs.existsSync(resolvePath(entry))
+        ) {
           push(`pipeline.watchPaths[${index}]`, entry, "path does not exist");
         }
       });
@@ -665,7 +867,11 @@ export const validateConfigPaths = (
           entry.script.length > 0 &&
           !fs.existsSync(resolvePath(entry.script))
         ) {
-          push(`pipeline.exec[${index}].script`, entry.script, "file does not exist");
+          push(
+            `pipeline.exec[${index}].script`,
+            entry.script,
+            "file does not exist",
+          );
         }
       });
     }
@@ -673,7 +879,11 @@ export const validateConfigPaths = (
 
   if (isPlainObject(raw.assets) && Array.isArray(raw.assets.inlineStyles)) {
     raw.assets.inlineStyles.forEach((entry, index) => {
-      if (typeof entry === "string" && entry.length > 0 && !fs.existsSync(resolvePath(entry))) {
+      if (
+        typeof entry === "string" &&
+        entry.length > 0 &&
+        !fs.existsSync(resolvePath(entry))
+      ) {
         push(`assets.inlineStyles[${index}]`, entry, "file does not exist");
       }
     });
@@ -699,13 +909,18 @@ export const collectConfigWarnings = (
   const fs = deps.fs ?? defaultFs;
   const cwd = deps.cwd ?? process.cwd();
 
-  if (isPlainObject(raw.scripts) && typeof raw.scripts.importRoot === "string" && raw.scripts.importRoot.length > 0) {
+  if (
+    isPlainObject(raw.scripts) &&
+    typeof raw.scripts.importRoot === "string" &&
+    raw.scripts.importRoot.length > 0
+  ) {
     const importRoot = raw.scripts.importRoot;
     if (!fs.existsSync(resolve(cwd, importRoot))) {
       warnings.push({
         key: "scripts.importRoot",
         value: importRoot,
-        message: "directory does not exist; @/ and / imports in scripts will fail until it is created",
+        message:
+          "directory does not exist; @/ and / imports in scripts will fail until it is created",
       });
     }
   }
@@ -732,7 +947,11 @@ export const validateUserConfig = (
   const layers: unknown[] = [userConfig];
 
   if (isPlainObject(modeOverrides)) {
-    if ("dev" in modeOverrides || "build" in modeOverrides || "server" in modeOverrides) {
+    if (
+      "dev" in modeOverrides ||
+      "build" in modeOverrides ||
+      "server" in modeOverrides
+    ) {
       for (const mode of ["dev", "build", "server"] as const) {
         if (mode in modeOverrides) layers.push(modeOverrides[mode]);
       }
@@ -758,7 +977,8 @@ export const validateUserConfig = (
       errors.push({
         key: SITE_URL_ENV_VAR,
         value: siteUrl,
-        message: 'expected an absolute http or https URL, e.g. "https://example.com"',
+        message:
+          'expected an absolute http or https URL, e.g. "https://example.com"',
       });
     }
   }
@@ -803,7 +1023,9 @@ export const formatConfigErrors = (
   const width = Math.max(...errors.map((error) => error.key.length));
   const valueColumn = width + 2;
   const blocks = errors.map((error) => {
-    const displayValue = error.unknownKey ? "unknown key" : formatValue(error.value);
+    const displayValue = error.unknownKey
+      ? "unknown key"
+      : formatValue(error.value);
     const head = `  ${error.key.padEnd(valueColumn)}${displayValue}`;
     const tail = `${" ".repeat(valueColumn + 2)}${error.message}`;
     return `${head}\n${tail}`;

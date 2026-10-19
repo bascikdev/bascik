@@ -64,7 +64,10 @@ interface BuildResult {
   exitCode: number;
 }
 
-async function runBascikBuild(projectDir: string, extraArgs: string[] = []): Promise<BuildResult> {
+async function runBascikBuild(
+  projectDir: string,
+  extraArgs: string[] = [],
+): Promise<BuildResult> {
   try {
     const { stdout, stderr } = await execFileAsync(
       process.execPath,
@@ -96,7 +99,7 @@ describe("scaffold-to-compiler integration", () => {
     if (!existsSync(PKG_DIST_INDEX)) {
       throw new Error(
         `[scaffold.integration.test] Required artifact missing: ${PKG_DIST_INDEX}. ` +
-        "Run `yarn pkg:build` before running create-bascik integration tests.",
+          "Run `yarn pkg:build` before running create-bascik integration tests.",
       );
     }
   });
@@ -110,20 +113,36 @@ describe("scaffold-to-compiler integration", () => {
     await scaffold(projectName, parentDir);
 
     // Verify the agent skills were copied from real assets, with their scripts
-    for (const file of ["bascik/SKILL.md", "bascik/scripts/verify.mjs", "bascik-components/SKILL.md", "bascik-config/scripts/audit-config.mjs"]) {
-      const agentsCopy = await readFile(join(projectDir, ".agents/skills", file), "utf8");
-      const claudeCopy = await readFile(join(projectDir, ".claude/skills", file), "utf8");
+    for (const file of [
+      "bascik/SKILL.md",
+      "bascik/scripts/verify.mjs",
+      "bascik-components/SKILL.md",
+      "bascik-config/scripts/audit-config.mjs",
+    ]) {
+      const agentsCopy = await readFile(
+        join(projectDir, ".agents/skills", file),
+        "utf8",
+      );
+      const claudeCopy = await readFile(
+        join(projectDir, ".claude/skills", file),
+        "utf8",
+      );
       const bundled = await readFile(join(SKILLS_DIR, file), "utf8");
       expect(agentsCopy.length, file).toBeGreaterThan(100);
       expect(agentsCopy, file).toBe(bundled);
       expect(claudeCopy, file).toBe(bundled);
     }
-    expect(existsSync(join(projectDir, ".agents/skills/README.md"))).toBe(false);
+    expect(existsSync(join(projectDir, ".agents/skills/README.md"))).toBe(
+      false,
+    );
     expect(existsSync(join(projectDir, ".github/skills"))).toBe(false);
 
     // 2. Compile via real Bascik CLI child process
     const buildResult = await runBascikBuild(projectDir);
-    expect(buildResult.exitCode, `Build failed with stderr: ${buildResult.stderr}`).toBe(0);
+    expect(
+      buildResult.exitCode,
+      `Build failed with stderr: ${buildResult.stderr}`,
+    ).toBe(0);
     expect(buildResult.stdout).toContain("Build complete");
 
     const distDir = join(projectDir, "dist");
@@ -134,33 +153,46 @@ describe("scaffold-to-compiler integration", () => {
     const contactHtml = await readFile(join(distDir, "contact.html"), "utf8");
     const notFoundHtml = await readFile(join(distDir, "404.html"), "utf8");
 
-    expect(indexHtml).toContain("<!DOCTYPE html>");
-    expect(aboutHtml).toContain("<!DOCTYPE html>");
-    expect(contactHtml).toContain("<!DOCTYPE html>");
-    expect(notFoundHtml).toContain("<!DOCTYPE html>");
+    expect(indexHtml).toMatch(/<!doctype html>/i);
+    expect(aboutHtml).toMatch(/<!doctype html>/i);
+    expect(contactHtml).toMatch(/<!doctype html>/i);
+    expect(notFoundHtml).toMatch(/<!doctype html>/i);
 
     // 4. Verify component expansion and props
     // site-header expands to <header with brand prop or site name
     expect(indexHtml).toContain("<header");
     expect(indexHtml).toContain("test-site");
     // my-counter expanded to counter button/UI
-    expect(indexHtml).toContain("data-testid=\"counter-inc\"");
-    expect(indexHtml).toContain("data-testid=\"counter-dec\"");
+    expect(indexHtml).toContain('data-testid="counter-inc"');
+    expect(indexHtml).toContain('data-testid="counter-dec"');
 
     // 5. Verify build script executed in site-footer (current year)
     const currentYear = String(new Date().getFullYear());
     expect(indexHtml).toContain(`&copy; ${currentYear}`);
     expect(aboutHtml).toContain(`&copy; ${currentYear}`);
     // Confirm default export handler was scaffolded in site-footer
-    const footerHtml = await readFile(join(projectDir, "src/components/site-footer/site-footer.html"), "utf8");
-    expect(footerHtml).toContain("export default () => String(new Date().getFullYear())");
+    const footerHtml = await readFile(
+      join(projectDir, "src/components/site-footer/site-footer.html"),
+      "utf8",
+    );
+    expect(footerHtml).toContain(
+      "export default () => String(new Date().getFullYear())",
+    );
 
     // 6. Verify representative assets copied to dist
     await expect(access(join(distDir, "favicon.ico"))).resolves.toBeUndefined();
-    await expect(access(join(distDir, "assets/favicon.svg"))).resolves.toBeUndefined();
-    await expect(access(join(distDir, "assets/favicon-32x32.png"))).resolves.toBeUndefined();
-    await expect(access(join(distDir, "assets/apple-touch-icon.png"))).resolves.toBeUndefined();
-    await expect(access(join(distDir, "css/styles.css"))).resolves.toBeUndefined();
+    await expect(
+      access(join(distDir, "assets/favicon.svg")),
+    ).resolves.toBeUndefined();
+    await expect(
+      access(join(distDir, "assets/favicon-32x32.png")),
+    ).resolves.toBeUndefined();
+    await expect(
+      access(join(distDir, "assets/apple-touch-icon.png")),
+    ).resolves.toBeUndefined();
+    await expect(
+      access(join(distDir, "css/styles.css")),
+    ).resolves.toBeUndefined();
   }, 45_000);
 
   it("compiles scaffolded project with workers enabled in config", async () => {
@@ -181,10 +213,16 @@ describe("scaffold-to-compiler integration", () => {
     );
 
     const buildResult = await runBascikBuild(projectDir);
-    expect(buildResult.exitCode, `Worker build failed with stderr: ${buildResult.stderr}`).toBe(0);
+    expect(
+      buildResult.exitCode,
+      `Worker build failed with stderr: ${buildResult.stderr}`,
+    ).toBe(0);
     expect(buildResult.stdout).toContain("Build complete");
 
-    const indexHtml = await readFile(join(projectDir, "dist/index.html"), "utf8");
+    const indexHtml = await readFile(
+      join(projectDir, "dist/index.html"),
+      "utf8",
+    );
     const currentYear = String(new Date().getFullYear());
     expect(indexHtml).toContain("<header");
     expect(indexHtml).toContain(`&copy; ${currentYear}`);
@@ -208,7 +246,11 @@ describe("scaffold-to-compiler integration", () => {
   </script>
 </body>
 </html>`;
-    await writeFile(join(projectDir, "src/pages/index.html"), corruptPage, "utf8");
+    await writeFile(
+      join(projectDir, "src/pages/index.html"),
+      corruptPage,
+      "utf8",
+    );
 
     const buildResult = await runBascikBuild(projectDir);
     expect(buildResult.exitCode).not.toBe(0);
@@ -233,7 +275,11 @@ describe("scaffold-to-compiler integration", () => {
   </script>
 </body>
 </html>`;
-    await writeFile(join(projectDir, "src/pages/index.html"), legacyStdoutPage, "utf8");
+    await writeFile(
+      join(projectDir, "src/pages/index.html"),
+      legacyStdoutPage,
+      "utf8",
+    );
 
     const buildResult = await runBascikBuild(projectDir);
     expect(buildResult.exitCode).not.toBe(0);

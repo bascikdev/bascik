@@ -1,197 +1,266 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Slots let you pass inner HTML content into a component at the usage site. Bascik supports both default and named slots."
+    />
+    <title>HTML Component Slots: Named and Default - Bascik</title>
+  </head>
 
-<head>
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <script data-bascik-build>
-    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    export default async () => await breadcrumbLd();
-  </script>
-  <script data-bascik-build>
-    import { articleSchema } from '@/lib/article-schema.ts';
-    export default async () => await articleSchema();
-  </script>
-  <meta name="description"
-    content="Slots let you pass inner HTML content into a component at the usage site. Bascik supports both default and named slots." />
-  <title>HTML Component Slots: Named and Default - Bascik</title>
-</head>
+  <body>
+    <docs-nav />
 
-<body>
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
 
-  <docs-nav />
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/slots");
+          </script>
 
-  <div class="container">
-    <div class="docs-layout">
-      <docs-sidebar />
+          <!-- Intro and demo context rendered from docs/content/slots.md. -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              (await renderMdRange("./content/slots.md", {
+                to: "Default slots and fallback content",
+              })) +
+              (await renderMdRange(
+                "./content/slots.md",
+                { from: "See it in action" },
+                { stripDemoBlocks: true },
+              ));
+          </script>
 
-      <main class="docs-content" id="main-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/slots');
-        </script>
-
-        <!-- Intro and demo context rendered from docs/content/slots.md. -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => (await renderMdRange('./content/slots.md', { to: 'Default slots and fallback content' })) + (await renderMdRange('./content/slots.md', { from: 'See it in action' }, { stripDemoBlocks: true }));
-        </script>
-
-        <component-demo data-bascik-prop-file="src/components/slot-layout-demo/">
-          <div data-bascik-slot="example">
-            <slot-layout-demo>
-              <span data-bascik-slot="eyebrow">Named slot</span>
-              <span data-bascik-slot="title">Build-time slot layout</span>
-              <p>Use named slots for fixed regions and the default slot for the main body content.</p>
-              <div data-bascik-slot="actions"><a href="/configuration">Read configuration</a></div>
-            </slot-layout-demo>
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/slots.md', 'source-usage');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/slots.md', 'source-html');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-css">
-            <code-block data-bascik-prop-lang="css">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/slots.md', 'source-css');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/slots.md', 'output-html');
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
-
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/slots.md', { from: 'Default slots and fallback content', to: 'Named Slots' }, { stripDemoBlocks: true });
-        </script>
-
-        <style>
-          .slot-demo-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 16px;
-            width: 100%;
-          }
-        </style>
-
-        <component-demo data-bascik-prop-file="src/components/simple-slot-card/">
-          <div data-bascik-slot="example">
-            <div class="slot-demo-grid">
-              <simple-slot-card>
-                <p>Custom content replaces the fallback.</p>
-              </simple-slot-card>
-              <simple-slot-card></simple-slot-card>
+          <component-demo
+            data-bascik-prop-file="src/components/slot-layout-demo/"
+          >
+            <div data-bascik-slot="example">
+              <slot-layout-demo>
+                <span data-bascik-slot="eyebrow">Named slot</span>
+                <span data-bascik-slot="title">Build-time slot layout</span>
+                <p>
+                  Use named slots for fixed regions and the default slot for the
+                  main body content.
+                </p>
+                <div data-bascik-slot="actions">
+                  <a href="/configuration">Read configuration</a>
+                </div>
+              </slot-layout-demo>
             </div>
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/slots.md', 'basic-slot-usage');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/slots.md', 'basic-slot-html');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-css">
-            <code-block data-bascik-prop-lang="css">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/slots.md', 'basic-slot-css');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/slots.md', 'basic-slot-output-html');
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
-
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/slots.md', { from: 'Named Slots', to: 'Forwarding a Slot into a Nested Component' });
-        </script>
-
-        <diagram-figure data-bascik-prop-title="Named zones, the default zone, and a fallback">
-          <diagram-row data-bascik-prop-direction="stack">
-            <diagram-panel data-bascik-prop-label="Template: panel-box.html">
+            <div data-bascik-slot="source-usage">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/slots.md', 'slots-zones-template');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/slots.md",
+                      "source-usage",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-            <diagram-panel data-bascik-prop-label="Usage">
+            </div>
+            <div data-bascik-slot="source-html">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/slots.md', 'slots-zones-usage');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock("./content/slots.md", "source-html");
                 </script>
               </code-block>
-            </diagram-panel>
-            <diagram-panel
-              data-bascik-prop-label="Bascik emits: the wrapper is dropped and the unfilled zone keeps its fallback"
-              data-bascik-prop-arrow="↓">
+            </div>
+            <div data-bascik-slot="source-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock("./content/slots.md", "source-css");
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/slots.md', 'slots-zones-out');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock("./content/slots.md", "output-html");
                 </script>
               </code-block>
-            </diagram-panel>
-          </diagram-row>
-        </diagram-figure>
+            </div>
+          </component-demo>
 
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/slots.md', { from: 'Forwarding a Slot into a Nested Component', to: 'See it in action' });
-        </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/slots.md",
+                {
+                  from: "Default slots and fallback content",
+                  to: "Named Slots",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
 
-        <docs-pagination />
+          <style>
+            .slot-demo-grid {
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+              gap: 16px;
+              width: 100%;
+            }
+          </style>
 
-      </main>
+          <component-demo
+            data-bascik-prop-file="src/components/simple-slot-card/"
+          >
+            <div data-bascik-slot="example">
+              <div class="slot-demo-grid">
+                <simple-slot-card>
+                  <p>Custom content replaces the fallback.</p>
+                </simple-slot-card>
+                <simple-slot-card></simple-slot-card>
+              </div>
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/slots.md",
+                      "basic-slot-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/slots.md",
+                      "basic-slot-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/slots.md",
+                      "basic-slot-css",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/slots.md",
+                      "basic-slot-output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/slots.md", {
+                from: "Named Slots",
+                to: "Forwarding a Slot into a Nested Component",
+              });
+          </script>
+
+          <diagram-figure
+            data-bascik-prop-title="Named zones, the default zone, and a fallback"
+          >
+            <diagram-row data-bascik-prop-direction="stack">
+              <diagram-panel data-bascik-prop-label="Template: panel-box.html">
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/slots.md",
+                        "slots-zones-template",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+              <diagram-panel data-bascik-prop-label="Usage">
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/slots.md",
+                        "slots-zones-usage",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+              <diagram-panel
+                data-bascik-prop-label="Bascik emits: the wrapper is dropped and the unfilled zone keeps its fallback"
+                data-bascik-prop-arrow="↓"
+              >
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/slots.md",
+                        "slots-zones-out",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+            </diagram-row>
+          </diagram-figure>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/slots.md", {
+                from: "Forwarding a Slot into a Nested Component",
+                to: "See it in action",
+              });
+          </script>
+
+          <docs-pagination />
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-</body>
-
+    <docs-footer />
+  </body>
 </html>

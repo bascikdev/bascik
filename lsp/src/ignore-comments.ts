@@ -4,8 +4,11 @@ export interface DiagnosticIgnoreRange {
   rules?: Set<string>;
 }
 
-export function parseIgnoreDirectives(text: string, _languageId?: string): DiagnosticIgnoreRange[] {
-  const lines = text.split('\n');
+export function parseIgnoreDirectives(
+  text: string,
+  _languageId?: string,
+): DiagnosticIgnoreRange[] {
+  const lines = text.split("\n");
   const ranges: DiagnosticIgnoreRange[] = [];
   let disableStart: number | null = null;
   let disabledRules: Set<string> | undefined;
@@ -18,12 +21,18 @@ export function parseIgnoreDirectives(text: string, _languageId?: string): Diagn
     // CSS/JS: /* bascik-ignore [rules] */
     // JS/TS: // bascik-ignore [rules]
     const ignoreMatch =
-      /<!--\s*bascik-ignore(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*-->/.exec(line) ||
-      /\/\*\s*bascik-ignore(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*\*\//.exec(line) ||
+      /<!--\s*bascik-ignore(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*-->/.exec(
+        line,
+      ) ||
+      /\/\*\s*bascik-ignore(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*\*\//.exec(
+        line,
+      ) ||
       /\/\/\s*bascik-ignore(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?/.exec(line);
 
     if (ignoreMatch) {
-      const rules = ignoreMatch[1] ? new Set(ignoreMatch[1].split(',').map((r) => r.trim().toLowerCase())) : undefined;
+      const rules = ignoreMatch[1]
+        ? new Set(ignoreMatch[1].split(",").map((r) => r.trim().toLowerCase()))
+        : undefined;
       // Ignores the current line and the next line
       ranges.push({
         startLine: lineIndex,
@@ -34,13 +43,19 @@ export function parseIgnoreDirectives(text: string, _languageId?: string): Diagn
 
     // Check for block disable: bascik-disable / bascik-enable
     const disableMatch =
-      /<!--\s*bascik-disable(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*-->/.exec(line) ||
-      /\/\*\s*bascik-disable(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*\*\//.exec(line) ||
+      /<!--\s*bascik-disable(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*-->/.exec(
+        line,
+      ) ||
+      /\/\*\s*bascik-disable(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*\*\//.exec(
+        line,
+      ) ||
       /\/\/\s*bascik-disable(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?/.exec(line);
 
     if (disableMatch && disableStart === null) {
       disableStart = lineIndex;
-      disabledRules = disableMatch[1] ? new Set(disableMatch[1].split(',').map((r) => r.trim().toLowerCase())) : undefined;
+      disabledRules = disableMatch[1]
+        ? new Set(disableMatch[1].split(",").map((r) => r.trim().toLowerCase()))
+        : undefined;
     }
 
     const enableMatch =

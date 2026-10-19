@@ -1,15 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { articleSchema } from './article-schema.js';
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { articleSchema } from "./article-schema.js";
 
-describe('articleSchema', () => {
+describe("articleSchema", () => {
   let tempDir: string;
   const originalEnv = { ...process.env };
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), 'article-schema-test-'));
+    tempDir = await mkdtemp(join(tmpdir(), "article-schema-test-"));
   });
 
   afterEach(async () => {
@@ -17,15 +17,15 @@ describe('articleSchema', () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  it('returns empty string if env vars are missing', async () => {
+  it("returns empty string if env vars are missing", async () => {
     delete process.env.BASCIK_PAGE_FILE;
     delete process.env.BASCIK_SITE_URL;
     const result = await articleSchema();
-    expect(result).toBe('');
+    expect(result).toBe("");
   });
 
-  it('extracts headline and description when name precedes content with double quotes', async () => {
-    const pageFile = join(tempDir, 'index.html');
+  it("extracts headline and description when name precedes content with double quotes", async () => {
+    const pageFile = join(tempDir, "index.html");
     await writeFile(
       pageFile,
       `<!DOCTYPE html>
@@ -40,19 +40,21 @@ describe('articleSchema', () => {
 
     process.env.BASCIK_PAGE_FILE = pageFile;
     process.env.BASCIK_PAGES_DIR = tempDir;
-    process.env.BASCIK_SITE_URL = 'https://bascik.dev';
+    process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
     const result = await articleSchema();
     expect(result).toContain('<script type="application/ld+json">');
     expect(result).toContain('"headline": "Test Title - Bascik Docs"');
-    expect(result).toContain('"description": "A test description for the page."');
+    expect(result).toContain(
+      '"description": "A test description for the page."',
+    );
     expect(result).toContain('"url": "https://bascik.dev/"');
     expect(result).toContain('"mainEntityOfPage": "https://bascik.dev/"');
     expect(result).toContain('"inLanguage": "en-US"');
   });
 
-  it('points image at a generated social card, never the removed og-image.jpg', async () => {
-    const pageFile = join(tempDir, 'components.html');
+  it("points image at a generated social card, never the removed og-image.jpg", async () => {
+    const pageFile = join(tempDir, "components.html");
     await writeFile(
       pageFile,
       `<title>Components - Bascik Docs</title><meta name="description" content="Components." />`,
@@ -60,29 +62,34 @@ describe('articleSchema', () => {
 
     process.env.BASCIK_PAGE_FILE = pageFile;
     process.env.BASCIK_PAGES_DIR = tempDir;
-    process.env.BASCIK_SITE_URL = 'https://bascik.dev';
+    process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
     const result = await articleSchema();
-    expect(result).toContain('"image": "https://bascik.dev/assets/og/components.jpg"');
-    expect(result).not.toContain('og-image.jpg');
+    expect(result).toContain(
+      '"image": "https://bascik.dev/assets/og/components.jpg"',
+    );
+    expect(result).not.toContain("og-image.jpg");
   });
 
-  it('declares the official brand profiles on the publisher', async () => {
-    const pageFile = join(tempDir, 'topic.html');
-    await writeFile(pageFile, `<title>Topic</title><meta name="description" content="Topic." />`);
+  it("declares the official brand profiles on the publisher", async () => {
+    const pageFile = join(tempDir, "topic.html");
+    await writeFile(
+      pageFile,
+      `<title>Topic</title><meta name="description" content="Topic." />`,
+    );
 
     process.env.BASCIK_PAGE_FILE = pageFile;
     process.env.BASCIK_PAGES_DIR = tempDir;
-    process.env.BASCIK_SITE_URL = 'https://bascik.dev';
+    process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
     const result = await articleSchema();
     expect(result).toContain('"sameAs"');
-    expect(result).toContain('https://github.com/bascikdev/bascik');
-    expect(result).toContain('https://www.npmjs.com/package/@bascik/bascik');
+    expect(result).toContain("https://github.com/bascikdev/bascik");
+    expect(result).toContain("https://www.npmjs.com/package/@bascik/bascik");
   });
 
-  it('extracts description when content precedes name or uses single quotes', async () => {
-    const pageFile = join(tempDir, 'topic.html');
+  it("extracts description when content precedes name or uses single quotes", async () => {
+    const pageFile = join(tempDir, "topic.html");
     await writeFile(
       pageFile,
       `<!DOCTYPE html>
@@ -97,7 +104,7 @@ describe('articleSchema', () => {
 
     process.env.BASCIK_PAGE_FILE = pageFile;
     process.env.BASCIK_PAGES_DIR = tempDir;
-    process.env.BASCIK_SITE_URL = 'https://bascik.dev';
+    process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
     const result = await articleSchema();
     expect(result).toContain('"headline": "Topic Page"');

@@ -41,13 +41,13 @@ const {
     handle: Promise<void> & { tasks: unknown[] };
     reset: () => void;
   } = {
-    release: () => { },
+    release: () => {},
     settled: Promise.resolve(),
     handle: Object.assign(Promise.resolve(), { tasks: [] as unknown[] }),
-    reset: () => { },
+    reset: () => {},
   };
   _parallel.reset = () => {
-    let resolveSettled: () => void = () => { };
+    let resolveSettled: () => void = () => {};
     const joined = new Promise<void>((resolve) => {
       resolveSettled = resolve;
     });
@@ -62,34 +62,50 @@ const {
     _state,
     _callOrder,
     _parallel,
-    _mockWatchFiles: vi.fn().mockImplementation(async (options?: {
-      bootCompile?: (compileInitialSources: () => Promise<void>) => Promise<void>;
-    }) => {
-      _callOrder.push("watchFiles");
-      _state.emitFromWatcher = async () => {
-        const compilationEvents = await import("./lib/compilation-events.ts");
-        compilationEvents.publishTranspiled({ relativePagePath: "watcher-after-boot.html" });
-      };
-      if (options?.bootCompile) {
-        await options.bootCompile(async () => {
-          const compilationEvents = await import("./lib/compilation-events.ts");
-          _state.hasPublisherDuringBoot = compilationEvents.hasCompilationPublisher();
-          if (_state.emitDuringBoot) {
-            compilationEvents.publishTranspiled({ relativePagePath: "boot-buffered.html" });
+    _mockWatchFiles: vi
+      .fn()
+      .mockImplementation(
+        async (options?: {
+          bootCompile?: (
+            compileInitialSources: () => Promise<void>,
+          ) => Promise<void>;
+        }) => {
+          _callOrder.push("watchFiles");
+          _state.emitFromWatcher = async () => {
+            const compilationEvents =
+              await import("./lib/compilation-events.ts");
+            compilationEvents.publishTranspiled({
+              relativePagePath: "watcher-after-boot.html",
+            });
+          };
+          if (options?.bootCompile) {
+            await options.bootCompile(async () => {
+              const compilationEvents =
+                await import("./lib/compilation-events.ts");
+              _state.hasPublisherDuringBoot =
+                compilationEvents.hasCompilationPublisher();
+              if (_state.emitDuringBoot) {
+                compilationEvents.publishTranspiled({
+                  relativePagePath: "boot-buffered.html",
+                });
+              }
+              if (_state.bootError) {
+                if (
+                  compilationEvents.getCompilationPageErrorPolicy() ===
+                  "publish"
+                ) {
+                  eventEmitter.emit("build-error", {
+                    message: (_state.bootError as Error).message,
+                    file: "/project/src/pages/broken.html",
+                  });
+                  return;
+                }
+                throw _state.bootError;
+              }
+            });
           }
-          if (_state.bootError) {
-            if (compilationEvents.getCompilationPageErrorPolicy() === "publish") {
-              eventEmitter.emit("build-error", {
-                message: (_state.bootError as Error).message,
-                file: "/project/src/pages/broken.html",
-              });
-              return;
-            }
-            throw _state.bootError;
-          }
-        });
-      }
-    }),
+        },
+      ),
     _mockRunExecPhase: vi.fn().mockImplementation(async (phase: string) => {
       _callOrder.push(`runExecPhase:${phase}`);
       return { count: 1, totalElapsed: 5 };
@@ -156,7 +172,10 @@ import { runTranspile } from "./transpile.ts";
 import { BascikConfig } from "./lib/config.ts";
 import { mem } from "./lib/mem.ts";
 import { eventEmitter } from "./lib/events.ts";
-import { PageProcessingAggregateError, PageProcessingError } from "./lib/processing.ts";
+import {
+  PageProcessingAggregateError,
+  PageProcessingError,
+} from "./lib/processing.ts";
 
 describe("runTranspile", () => {
   beforeEach(() => {
@@ -168,12 +187,16 @@ describe("runTranspile", () => {
   });
 
   it("compiles alongside parallel exec and joins before declaring build success", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     (BascikConfig as any).isBuild = true;
     const run = runTranspile();
     try {
-      await vi.waitFor(() => expect(_mockWatchFiles).toHaveBeenCalled(), { timeout: 250 });
-      expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining("Build complete"));
+      await vi.waitFor(() => expect(_mockWatchFiles).toHaveBeenCalled(), {
+        timeout: 250,
+      });
+      expect(logSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("Build complete"),
+      );
     } finally {
       _parallel.release();
       await run;
@@ -195,12 +218,14 @@ describe("runTranspile", () => {
       "startExecParallel:settled",
     ]);
 
-    expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/✓ Build complete in (?:[<]?[\d.]+(?:ms|s))/));
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/✓ Build complete in (?:[<]?[\d.]+(?:ms|s))/),
+    );
     logSpy.mockRestore();
   });
 
   it("runs dev pipeline awaiting pre exec BEFORE watchFiles, then post after watchFiles", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const emitSpy = vi.spyOn(eventEmitter, "emit");
     (BascikConfig as any).isBuild = false;
     // The parallel handle stays pending until the server has bound. An
@@ -239,10 +264,14 @@ describe("runTranspile", () => {
     // Dev does NOT join the parallel phase before binding the server: the
     // parallel work settles only after `startServer` was reached.
     const serverIndex = _callOrder.indexOf("startServer");
-    const parallelSettledIndex = _callOrder.indexOf("startExecParallel:settled");
+    const parallelSettledIndex = _callOrder.indexOf(
+      "startExecParallel:settled",
+    );
     expect(serverIndex).toBeGreaterThanOrEqual(0);
     expect(parallelSettledIndex).toBeGreaterThan(serverIndex);
-    expect(_callOrder.filter((step) => step !== "startExecParallel:settled")).toEqual([
+    expect(
+      _callOrder.filter((step) => step !== "startExecParallel:settled"),
+    ).toEqual([
       "cleanOutput",
       "runExecPhase:pre",
       "startExecParallel",
@@ -258,13 +287,19 @@ describe("runTranspile", () => {
       expect.objectContaining({ parallel: _parallel.handle }),
     );
 
-    expect(logSpy).toHaveBeenNthCalledWith(1, expect.stringMatching(/✓ All tasks completed in (?:[<]?[\d.]+(?:ms|s))/));
-    expect(logSpy).toHaveBeenNthCalledWith(2, "Server running at http://localhost:8080");
+    expect(logSpy).toHaveBeenNthCalledWith(
+      1,
+      expect.stringMatching(/✓ All tasks completed in (?:[<]?[\d.]+(?:ms|s))/),
+    );
+    expect(logSpy).toHaveBeenNthCalledWith(
+      2,
+      "Server running at http://localhost:8080",
+    );
     logSpy.mockRestore();
   });
 
   it("cleans the output directory before pre exec in dev and build modes", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     for (const isBuild of [false, true]) {
       _callOrder.length = 0;
@@ -294,7 +329,9 @@ describe("runTranspile", () => {
     _parallel.release();
     _mockStartServer.mockRejectedValueOnce(new Error("Port in use"));
 
-    await expect(runTranspile({ exitOnError: false })).rejects.toThrow("Port in use");
+    await expect(runTranspile({ exitOnError: false })).rejects.toThrow(
+      "Port in use",
+    );
   });
 
   describe("pipeline.onExecError", () => {
@@ -312,8 +349,8 @@ describe("runTranspile", () => {
       });
     };
     const quiet = () => ({
-      error: vi.spyOn(console, "error").mockImplementation(() => { }),
-      log: vi.spyOn(console, "log").mockImplementation(() => { }),
+      error: vi.spyOn(console, "error").mockImplementation(() => {}),
+      log: vi.spyOn(console, "log").mockImplementation(() => {}),
     });
 
     it("dev keeps running when a pre script fails: reports a build-error, still compiles and boots", async () => {
@@ -323,9 +360,13 @@ describe("runTranspile", () => {
       _parallel.release();
       failOnce("pre");
       try {
-        await expect(runTranspile({ exitOnError: false })).resolves.toBeUndefined();
+        await expect(
+          runTranspile({ exitOnError: false }),
+        ).resolves.toBeUndefined();
         expect(_mockWatchFiles).toHaveBeenCalled();
-        expect(emitSpy).toHaveBeenCalledWith("build-error", { message: "exec failed: exec pre failed" });
+        expect(emitSpy).toHaveBeenCalledWith("build-error", {
+          message: "exec failed: exec pre failed",
+        });
         expect(emitSpy).toHaveBeenCalledWith("boot-done");
         expect(mem.setBootingDone).toHaveBeenCalledOnce();
       } finally {
@@ -343,8 +384,12 @@ describe("runTranspile", () => {
       _parallel.release();
       failOnce("post");
       try {
-        await expect(runTranspile({ exitOnError: false })).resolves.toBeUndefined();
-        expect(emitSpy).toHaveBeenCalledWith("build-error", { message: "exec failed: exec post failed" });
+        await expect(
+          runTranspile({ exitOnError: false }),
+        ).resolves.toBeUndefined();
+        expect(emitSpy).toHaveBeenCalledWith("build-error", {
+          message: "exec failed: exec post failed",
+        });
         expect(emitSpy).toHaveBeenCalledWith("boot-done");
       } finally {
         restore();
@@ -360,7 +405,9 @@ describe("runTranspile", () => {
       (BascikConfig.pipeline as any).onExecError = "error";
       failOnce("pre");
       try {
-        await expect(runTranspile({ exitOnError: false })).rejects.toThrow("exec pre failed");
+        await expect(runTranspile({ exitOnError: false })).rejects.toThrow(
+          "exec pre failed",
+        );
         expect(_mockWatchFiles).not.toHaveBeenCalled();
       } finally {
         restore();
@@ -376,7 +423,9 @@ describe("runTranspile", () => {
       _parallel.release();
       failOnce("post");
       try {
-        await expect(runTranspile({ exitOnError: false })).rejects.toThrow("exec post failed");
+        await expect(runTranspile({ exitOnError: false })).rejects.toThrow(
+          "exec post failed",
+        );
         expect(mem.setBootingDone).not.toHaveBeenCalled();
       } finally {
         restore();
@@ -390,7 +439,9 @@ describe("runTranspile", () => {
       (BascikConfig as any).isBuild = true;
       failOnce("pre");
       try {
-        await expect(runTranspile({ exitOnError: false })).rejects.toThrow("exec pre failed");
+        await expect(runTranspile({ exitOnError: false })).rejects.toThrow(
+          "exec pre failed",
+        );
         expect(_mockWatchFiles).not.toHaveBeenCalled();
       } finally {
         restore();
@@ -405,8 +456,12 @@ describe("runTranspile", () => {
       _parallel.release();
       failOnce("post");
       try {
-        await expect(runTranspile({ exitOnError: false })).rejects.toThrow("exec post failed");
-        expect(spies.log).not.toHaveBeenCalledWith(expect.stringContaining("Build complete"));
+        await expect(runTranspile({ exitOnError: false })).rejects.toThrow(
+          "exec post failed",
+        );
+        expect(spies.log).not.toHaveBeenCalledWith(
+          expect.stringContaining("Build complete"),
+        );
       } finally {
         restore();
         spies.error.mockRestore();
@@ -421,10 +476,16 @@ describe("runTranspile", () => {
       _parallel.release();
       failOnce("pre");
       try {
-        await expect(runTranspile({ exitOnError: false })).resolves.toBeUndefined();
+        await expect(
+          runTranspile({ exitOnError: false }),
+        ).resolves.toBeUndefined();
         expect(_mockWatchFiles).toHaveBeenCalled();
-        expect(spies.error).toHaveBeenCalledWith(expect.stringContaining("pipeline.onExecError"));
-        expect(spies.log).toHaveBeenCalledWith(expect.stringMatching(/Build complete/));
+        expect(spies.error).toHaveBeenCalledWith(
+          expect.stringContaining("pipeline.onExecError"),
+        );
+        expect(spies.log).toHaveBeenCalledWith(
+          expect.stringMatching(/Build complete/),
+        );
       } finally {
         restore();
         spies.error.mockRestore();
@@ -445,11 +506,15 @@ describe("runTranspile", () => {
       expect.objectContaining({ bootCompile: expect.any(Function) }),
     );
     expect(_state.hasPublisherDuringBoot).toBe(true);
-    expect(emitSpy).toHaveBeenCalledWith("transpiled", { relativePagePath: "boot-buffered.html" });
+    expect(emitSpy).toHaveBeenCalledWith("transpiled", {
+      relativePagePath: "boot-buffered.html",
+    });
 
     emitSpy.mockClear();
     await _state.emitFromWatcher?.();
-    expect(emitSpy).toHaveBeenCalledWith("transpiled", { relativePagePath: "watcher-after-boot.html" });
+    expect(emitSpy).toHaveBeenCalledWith("transpiled", {
+      relativePagePath: "watcher-after-boot.html",
+    });
     emitSpy.mockRestore();
   });
 
@@ -476,4 +541,3 @@ describe("runTranspile", () => {
     emitSpy.mockRestore();
   });
 });
-

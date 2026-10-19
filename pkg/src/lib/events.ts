@@ -1,4 +1,4 @@
-import EventEmitter from 'node:events';
+import EventEmitter from "node:events";
 
 export const eventEmitter = new EventEmitter();
 // Every open browser tab adds a `transpiled` + `asset-changed` listener for its
@@ -25,11 +25,11 @@ export const runShutdownHandlers = async (): Promise<void> => {
   for (const fn of _shutdownHandlers) {
     try {
       const res = fn();
-      if (res && typeof (res as Promise<void>).then === 'function') {
+      if (res && typeof (res as Promise<void>).then === "function") {
         promises.push(
           (res as Promise<void>).catch((err) => {
             errors.push(err);
-          })
+          }),
         );
       }
     } catch (err) {
@@ -43,6 +43,9 @@ export const runShutdownHandlers = async (): Promise<void> => {
     if (errors.length === 1 && errors[0] instanceof Error) {
       throw errors[0];
     }
-    throw new AggregateError(errors, `Errors occurred during shutdown handlers (${errors.length} error(s))`);
+    throw new AggregateError(
+      errors,
+      `Errors occurred during shutdown handlers (${errors.length} error(s))`,
+    );
   }
 };

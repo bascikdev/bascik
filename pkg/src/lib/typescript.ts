@@ -31,7 +31,10 @@ import { BascikConfig } from "./config.ts";
 import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
 import { getScriptType } from "./script-types.ts";
 import { hasStaticModuleSyntax } from "./module-specifiers.ts";
-import type { TypeScriptCompileContext, TypeScriptCompilerOption } from "./types.ts";
+import type {
+  TypeScriptCompileContext,
+  TypeScriptCompilerOption,
+} from "./types.ts";
 
 export { hasStaticModuleSyntax };
 
@@ -41,12 +44,25 @@ const TYPESCRIPT_FILE_RE = /\.m?ts$/i;
 
 // Whole-attribute-name match: `data-bascik-server-foo` is NOT a directive.
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const DIRECTIVE_SCRIPT_RE = new RegExp(String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`, "i");
+const DIRECTIVE_SCRIPT_RE = new RegExp(
+  String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`,
+  "i",
+);
 
 const TYPE_ATTR_RE = /(?:^|\s+)type\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+)/i;
 const TAG_START_RE = /<(\/)?([a-z][\w:-]*)\b/gi;
 const SCRIPT_CLOSE_RE = /<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
-const RAW_TEXT_ELEMENTS = new Set(["textarea", "title", "noscript", "xmp", "style", "iframe", "noembed", "noframes", "plaintext"]);
+const RAW_TEXT_ELEMENTS = new Set([
+  "textarea",
+  "title",
+  "noscript",
+  "xmp",
+  "style",
+  "iframe",
+  "noembed",
+  "noframes",
+  "plaintext",
+]);
 
 const findTagEnd = (html: string, start: number): number => {
   let quote: string | undefined;
@@ -78,13 +94,26 @@ const suppressStripExperimentalWarning = (): void => {
   // original immediately so no other warning is ever affected.
   const originalEmitWarning = process.emitWarning;
   process.emitWarning = ((warning: unknown, ...rest: unknown[]) => {
-    const message = typeof warning === "string" ? warning : (warning as Error)?.message ?? "";
-    const type = typeof rest[0] === "string" ? rest[0] : (rest[0] as { type?: string } | undefined)?.type;
-    if (type === "ExperimentalWarning" && /stripTypeScriptTypes/.test(message)) {
+    const message =
+      typeof warning === "string"
+        ? warning
+        : ((warning as Error)?.message ?? "");
+    const type =
+      typeof rest[0] === "string"
+        ? rest[0]
+        : (rest[0] as { type?: string } | undefined)?.type;
+    if (
+      type === "ExperimentalWarning" &&
+      /stripTypeScriptTypes/.test(message)
+    ) {
       process.emitWarning = originalEmitWarning;
       return;
     }
-    return (originalEmitWarning as (...args: unknown[]) => void).call(process, warning, ...rest);
+    return (originalEmitWarning as (...args: unknown[]) => void).call(
+      process,
+      warning,
+      ...rest,
+    );
   }) as typeof process.emitWarning;
 };
 
@@ -102,7 +131,8 @@ export class TypeScriptTransformError extends Error {
 }
 
 /** `.ts` or `.mts` browser script file (not `.tsx`, not `.js`). */
-export const isTypeScriptFile = (filePath: string): boolean => TYPESCRIPT_FILE_RE.test(filePath);
+export const isTypeScriptFile = (filePath: string): boolean =>
+  TYPESCRIPT_FILE_RE.test(filePath);
 
 /**
  * An inline browser script explicitly opted into TypeScript via
@@ -110,7 +140,8 @@ export const isTypeScriptFile = (filePath: string): boolean => TYPESCRIPT_FILE_R
  * in Node and are never browser TypeScript regardless of their type.
  */
 export const isTypeScriptScriptTag = (openTag: string): boolean =>
-  !DIRECTIVE_SCRIPT_RE.test(openTag) && getScriptType(openTag) === TYPESCRIPT_SCRIPT_TYPE;
+  !DIRECTIVE_SCRIPT_RE.test(openTag) &&
+  getScriptType(openTag) === TYPESCRIPT_SCRIPT_TYPE;
 
 /**
  * Strip erasable TypeScript syntax from `code`, preserving line structure.
@@ -118,7 +149,10 @@ export const isTypeScriptScriptTag = (openTag: string): boolean =>
  * syntax (`enum`, parameter properties, runtime namespaces) or is not valid
  * TypeScript at all.
  */
-export const stripBrowserTypeScript = (code: string, sourceLabel?: string): string => {
+export const stripBrowserTypeScript = (
+  code: string,
+  sourceLabel?: string,
+): string => {
   suppressStripExperimentalWarning();
   try {
     return stripTypeScriptTypes(code, { mode: "strip" });
@@ -127,9 +161,9 @@ export const stripBrowserTypeScript = (code: string, sourceLabel?: string): stri
     const where = sourceLabel ? ` in "${sourceLabel}"` : "";
     throw new TypeScriptTransformError(
       `[bascik] TypeScript transformation failed${where}: ${detail}\n` +
-      `  Bascik strips erasable TypeScript only (type annotations, interfaces, type aliases, ` +
-      `\`as\` casts, \`!\` assertions, \`import type\`). Non-erasable syntax such as \`enum\`, ` +
-      `parameter properties, or namespaces with runtime code must be compiled with tsc or esbuild first.`,
+        `  Bascik strips erasable TypeScript only (type annotations, interfaces, type aliases, ` +
+        `\`as\` casts, \`!\` assertions, \`import type\`). Non-erasable syntax such as \`enum\`, ` +
+        `parameter properties, or namespaces with runtime code must be compiled with tsc or esbuild first.`,
       { cause: err },
     );
   }
@@ -142,7 +176,8 @@ const resolveCompilerOption = (): TypeScriptCompilerOption => {
 };
 
 /** True when Bascik will transform browser TypeScript at all. */
-export const isBrowserTypeScriptEnabled = (): boolean => resolveCompilerOption() !== false;
+export const isBrowserTypeScriptEnabled = (): boolean =>
+  resolveCompilerOption() !== false;
 
 /**
  * Parse check for compiler output. `import`/`export` are not allowed in a
@@ -190,14 +225,14 @@ export const transformBrowserTypeScript = async (
   if (typeof output !== "string") {
     throw new TypeScriptTransformError(
       `[bascik] scripts.typescript compiler must return a string of JavaScript for "${context.sourcePath}", ` +
-      `received ${output === null ? "null" : typeof output}.`,
+        `received ${output === null ? "null" : typeof output}.`,
     );
   }
   if (!isParseableJavaScript(output)) {
     throw new TypeScriptTransformError(
       `[bascik] TypeScript transformation failed in "${context.sourcePath}": ` +
-      `the scripts.typescript compiler did not return valid JavaScript. ` +
-      `The function must emit plain JavaScript (for example esbuild with loader: 'ts').`,
+        `the scripts.typescript compiler did not return valid JavaScript. ` +
+        `The function must emit plain JavaScript (for example esbuild with loader: 'ts').`,
     );
   }
   return output;
@@ -238,7 +273,9 @@ export const looksLikeTypeScript = (code: string): boolean => {
 const withoutTypeAttribute = (openTag: string): string => {
   const cleaned = openTag.replace(TYPE_ATTR_RE, "");
   // `<script  defer>` -> `<script defer>`; `<script>` stays `<script>`.
-  return cleaned.replace(/<script\s+/i, "<script ").replace(/<script\s*>/i, "<script>");
+  return cleaned
+    .replace(/<script\s+/i, "<script ")
+    .replace(/<script\s*>/i, "<script>");
 };
 
 /**
@@ -252,10 +289,10 @@ const withoutTypeAttribute = (openTag: string): string => {
 const throwModuleSyntaxError = (sourcePath: string): never => {
   throw new TypeScriptTransformError(
     `[bascik] TypeScript transformation failed in "${sourcePath}": ` +
-    `the script contains a static import/export declaration, which is only valid in an ES module. ` +
-    `Bascik would otherwise wrap this in a classic script IIFE and it would throw a SyntaxError in the browser. ` +
-    `Mark the <script> tag type="module" (native ES modules are never wrapped), or bundle this file with ` +
-    `esbuild, swc, or another tool first so it has no import/export left.`,
+      `the script contains a static import/export declaration, which is only valid in an ES module. ` +
+      `Bascik would otherwise wrap this in a classic script IIFE and it would throw a SyntaxError in the browser. ` +
+      `Mark the <script> tag type="module" (native ES modules are never wrapped), or bundle this file with ` +
+      `esbuild, swc, or another tool first so it has no import/export left.`,
   );
 };
 
@@ -281,7 +318,13 @@ export const transformTypeScriptScriptTags = async (
   // TypeScript script is present; skip the per-tag work in that case.
   if (!diagnose && !/text\/typescript/i.test(html)) return html;
   const transformEnabled = isBrowserTypeScriptEnabled();
-  const ops: Array<{ index: number; len: number; open: string; body: string; close: string }> = [];
+  const ops: Array<{
+    index: number;
+    len: number;
+    open: string;
+    body: string;
+    close: string;
+  }> = [];
   let cursor = 0;
   while (cursor < html.length) {
     const start = html.indexOf("<", cursor);
@@ -319,18 +362,22 @@ export const transformTypeScriptScriptTags = async (
       if (/(?:^|\s)src\s*=/i.test(open)) continue;
 
       if (isTypeScriptScriptTag(open)) {
-        if (transformEnabled) ops.push({ index: start, len: fullLength, open, body, close });
+        if (transformEnabled)
+          ops.push({ index: start, len: fullLength, open, body, close });
         continue;
       }
 
       if (!diagnose) continue;
       const type = getScriptType(open);
-      if ((type === undefined || type === "text/javascript") && looksLikeTypeScript(body)) {
+      if (
+        (type === undefined || type === "text/javascript") &&
+        looksLikeTypeScript(body)
+      ) {
         console.warn(
           `[bascik] warning: TypeScript syntax found in an ordinary <script> block in "${sourceFile}". ` +
-          `Browsers do not execute TypeScript in an unmarked <script>, so this block will fail at runtime. ` +
-          `Mark it <script type="text/typescript"> to have Bascik strip the types, ` +
-          `or move it to a companion .ts file referenced with <script src="name.ts">.`,
+            `Browsers do not execute TypeScript in an unmarked <script>, so this block will fail at runtime. ` +
+            `Mark it <script type="text/typescript"> to have Bascik strip the types, ` +
+            `or move it to a companion .ts file referenced with <script src="name.ts">.`,
         );
       }
       continue;
@@ -340,7 +387,10 @@ export const transformTypeScriptScriptTags = async (
         cursor = html.length;
         continue;
       }
-      const closeTag = new RegExp(`</${tagName}(?:[\\t\\n\\f\\r /][^>]*)?>`, "ig");
+      const closeTag = new RegExp(
+        `</${tagName}(?:[\\t\\n\\f\\r /][^>]*)?>`,
+        "ig",
+      );
       closeTag.lastIndex = tagEnd + 1;
       const closing = closeTag.exec(html);
       cursor = closing ? closing.index + closing[0].length : html.length;
@@ -351,7 +401,12 @@ export const transformTypeScriptScriptTags = async (
   if (!ops.length) return html;
 
   const compiled = await Promise.all(
-    ops.map(({ body }) => transformBrowserTypeScript(body, { sourcePath: sourceFile, kind: "inline" })),
+    ops.map(({ body }) =>
+      transformBrowserTypeScript(body, {
+        sourcePath: sourceFile,
+        kind: "inline",
+      }),
+    ),
   );
   // A `type="text/typescript"` block always comes out as a classic script
   // (the `type` attribute is removed below), so static `import`/`export`
@@ -363,7 +418,10 @@ export const transformTypeScriptScriptTags = async (
   let result = html;
   for (let i = ops.length - 1; i >= 0; i--) {
     const { index, len, open, close } = ops[i];
-    result = result.slice(0, index) + `${withoutTypeAttribute(open)}${compiled[i]}${close}` + result.slice(index + len);
+    result =
+      result.slice(0, index) +
+      `${withoutTypeAttribute(open)}${compiled[i]}${close}` +
+      result.slice(index + len);
   }
   return result;
 };

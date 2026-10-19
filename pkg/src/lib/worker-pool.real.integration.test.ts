@@ -70,127 +70,110 @@ throw new Error("broken module");
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("WorkerPool real-worker lifecycle settlement", () => {
-  it(
-    "settles every task when work is submitted as earlier tasks finish",
-    async () => {
-      // The dev pipeline keeps a few tasks per worker in flight and submits the next one as
-      // each finishes. A worker that took a queued task was once still listed as idle, so the
-      // next submission replaced its task and that task never settled.
-      const script = await fixture("waves", EXIT_ON_SIGNAL);
-      const pool = new WorkerPool<unknown, unknown>(script, 2, {});
-      try {
-        const total = 60;
-        let next = 0;
-        const lane = async (): Promise<unknown[]> => {
-          const done: unknown[] = [];
-          while (next < total) done.push(await pool.run(`task-${next++}`));
-          return done;
-        };
-        const settled = await Promise.race([
-          Promise.all(Array.from({ length: 4 }, lane)),
-          sleep(8000).then(() => "timed out" as const),
-        ]);
-        expect(settled).not.toBe("timed out");
-        expect((settled as unknown[][]).flat()).toHaveLength(total);
-      } finally {
-        await pool.terminate();
-      }
-    },
-    15_000,
-  );
-
-  it(
-    "rejects a clean exit(0) active task and dispatches the queued task to a replacement",
-    async () => {
-      const script = await fixture("exit0", EXIT_ON_SIGNAL);
-      const pool = new WorkerPool<unknown, unknown>(script, 1, {});
-      try {
-        const active = pool.run({ kind: "exit0" });
-        await expect(active).rejects.toThrow("Worker exited with code 0");
-        // The replacement worker must pick up the second task from the queue.
-        const queued = pool.run("queued-ok");
-        await expect(queued).resolves.toEqual("queued-ok");
-      } finally {
-        await pool.terminate();
-      }
-    },
-    10_000,
-  );
-
-  it(
-    "settles late queued work after an idle clean exit(0) and restores capacity",
-    async () => {
-      const script = await fixture("idle", IDLE_EXIT);
-      const pool = new WorkerPool<unknown, unknown>(script, 1, {});
-      try {
-        // Wait past the idle auto-exit window so the first worker dissolves
-        // while idle and a replacement is spawned.
-        await sleep(1200);
-        const late = pool.run("after-idle");
-        await expect(late).resolves.toEqual("after-idle");
-      } finally {
-        await pool.terminate();
-      }
-    },
-    15_000,
-  );
-
-  it(
-    "settles the active task exactly once when a worker errors then exits",
-    async () => {
-      const script = await fixture("err", ERROR_THEN_EXIT);
-      const pool = new WorkerPool<unknown, unknown>(script, 1, {});
-      try {
-        const active = pool.run("task-a");
-        await expect(active).rejects.toThrow("boom-then-exit");
-      } finally {
-        await pool.terminate();
-      }
-    },
-    10_000,
-  );
-
-  it(
-    "bounded startup failure: a broken module rejects queued callers instead of respawning forever",
-    async () => {
-      const script = await fixture("broken", BROKEN_TOP);
-      const pool = new WorkerPool<unknown, unknown>(script, 1, {});
-      try {
-        // No fixed wait: how fast respawns exhaust depends on machine load. A
-        // call made before the budget is spent goes to a live broken worker and
-        // is rejected with that worker's error. Every call must settle, and at
-        // most one call per startup attempt (4) can land before exhaustion.
-        const MAX_STARTUP_ATTEMPTS = 4;
-        const earlyErrors: string[] = [];
-        for (let call = 0; ; call++) {
-          const error = await pool.run(`never-${call}`).then(
-            () => { throw new Error("a broken worker must never resolve a task"); },
-            (rejection: Error) => rejection,
-          );
-          if (/no viable worker/.test(error.message)) break;
-          earlyErrors.push(error.message);
-          expect(earlyErrors.length, `pre-exhaustion rejections: ${earlyErrors.join(" | ")}`)
-            .toBeLessThanOrEqual(MAX_STARTUP_ATTEMPTS);
-        }
-        for (const message of earlyErrors) expect(message).toMatch(/broken module|Worker exited/);
-        // Once exhausted, every later caller is rejected immediately.
-        await expect(pool.run("after-exhaustion")).rejects.toThrow(/no viable worker/);
-      } finally {
-        await pool.terminate();
-      }
-    },
-    15_000,
-  );
-
-  it(
-    "explicit shutdown terminates even with a worker that would otherwise auto-exit",
-    async () => {
-      const script = await fixture("idle", IDLE_EXIT);
-      const pool = new WorkerPool<unknown, unknown>(script, 1, {});
+  it("settles every task when work is submitted as earlier tasks finish", async () => {
+    // The dev pipeline keeps a few tasks per worker in flight and submits the next one as
+    // each finishes. A worker that took a queued task was once still listed as idle, so the
+    // next submission replaced its task and that task never settled.
+    const script = await fixture("waves", EXIT_ON_SIGNAL);
+    const pool = new WorkerPool<unknown, unknown>(script, 2, {});
+    try {
+      const total = 60;
+      let next = 0;
+      const lane = async (): Promise<unknown[]> => {
+        const done: unknown[] = [];
+        while (next < total) done.push(await pool.run(`task-${next++}`));
+        return done;
+      };
+      const settled = await Promise.race([
+        Promise.all(Array.from({ length: 4 }, lane)),
+        sleep(8000).then(() => "timed out" as const),
+      ]);
+      expect(settled).not.toBe("timed out");
+      expect((settled as unknown[][]).flat()).toHaveLength(total);
+    } finally {
       await pool.terminate();
-      // terminate() resolved without leaving a hanging task.
-      expect(true).toBe(true);
-    },
-    10_000,
-  );
+    }
+  }, 15_000);
+
+  it("rejects a clean exit(0) active task and dispatches the queued task to a replacement", async () => {
+    const script = await fixture("exit0", EXIT_ON_SIGNAL);
+    const pool = new WorkerPool<unknown, unknown>(script, 1, {});
+    try {
+      const active = pool.run({ kind: "exit0" });
+      await expect(active).rejects.toThrow("Worker exited with code 0");
+      // The replacement worker must pick up the second task from the queue.
+      const queued = pool.run("queued-ok");
+      await expect(queued).resolves.toEqual("queued-ok");
+    } finally {
+      await pool.terminate();
+    }
+  }, 10_000);
+
+  it("settles late queued work after an idle clean exit(0) and restores capacity", async () => {
+    const script = await fixture("idle", IDLE_EXIT);
+    const pool = new WorkerPool<unknown, unknown>(script, 1, {});
+    try {
+      // Wait past the idle auto-exit window so the first worker dissolves
+      // while idle and a replacement is spawned.
+      await sleep(1200);
+      const late = pool.run("after-idle");
+      await expect(late).resolves.toEqual("after-idle");
+    } finally {
+      await pool.terminate();
+    }
+  }, 15_000);
+
+  it("settles the active task exactly once when a worker errors then exits", async () => {
+    const script = await fixture("err", ERROR_THEN_EXIT);
+    const pool = new WorkerPool<unknown, unknown>(script, 1, {});
+    try {
+      const active = pool.run("task-a");
+      await expect(active).rejects.toThrow("boom-then-exit");
+    } finally {
+      await pool.terminate();
+    }
+  }, 10_000);
+
+  it("bounded startup failure: a broken module rejects queued callers instead of respawning forever", async () => {
+    const script = await fixture("broken", BROKEN_TOP);
+    const pool = new WorkerPool<unknown, unknown>(script, 1, {});
+    try {
+      // No fixed wait: how fast respawns exhaust depends on machine load. A
+      // call made before the budget is spent goes to a live broken worker and
+      // is rejected with that worker's error. Every call must settle, and at
+      // most one call per startup attempt (4) can land before exhaustion.
+      const MAX_STARTUP_ATTEMPTS = 4;
+      const earlyErrors: string[] = [];
+      for (let call = 0; ; call++) {
+        const error = await pool.run(`never-${call}`).then(
+          () => {
+            throw new Error("a broken worker must never resolve a task");
+          },
+          (rejection: Error) => rejection,
+        );
+        if (/no viable worker/.test(error.message)) break;
+        earlyErrors.push(error.message);
+        expect(
+          earlyErrors.length,
+          `pre-exhaustion rejections: ${earlyErrors.join(" | ")}`,
+        ).toBeLessThanOrEqual(MAX_STARTUP_ATTEMPTS);
+      }
+      for (const message of earlyErrors)
+        expect(message).toMatch(/broken module|Worker exited/);
+      // Once exhausted, every later caller is rejected immediately.
+      await expect(pool.run("after-exhaustion")).rejects.toThrow(
+        /no viable worker/,
+      );
+    } finally {
+      await pool.terminate();
+    }
+  }, 15_000);
+
+  it("explicit shutdown terminates even with a worker that would otherwise auto-exit", async () => {
+    const script = await fixture("idle", IDLE_EXIT);
+    const pool = new WorkerPool<unknown, unknown>(script, 1, {});
+    await pool.terminate();
+    // terminate() resolved without leaving a hanging task.
+    expect(true).toBe(true);
+  }, 10_000);
 });

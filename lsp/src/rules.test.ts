@@ -1,96 +1,121 @@
-import { describe, it, expect } from 'vitest';
-import { matchCompatibilityRules } from './rules.js';
-import { analyzeApiRouteSource } from './api-rules.js';
+import { describe, it, expect } from "vitest";
+import { matchCompatibilityRules } from "./rules.js";
+import { analyzeApiRouteSource } from "./api-rules.js";
 
-describe('Scoping Compatibility Rules', () => {
-  describe('CSS rules', () => {
-    it('detects [id] attribute selectors', () => {
+describe("Scoping Compatibility Rules", () => {
+  describe("CSS rules", () => {
+    it("detects [id] attribute selectors", () => {
       const css = '[id="report-form"] { color: red; }';
-      const matches = matchCompatibilityRules(css, 'css');
-      expect(matches.some((m) => m.id === 'css-id-attribute-selector')).toBe(true);
+      const matches = matchCompatibilityRules(css, "css");
+      expect(matches.some((m) => m.id === "css-id-attribute-selector")).toBe(
+        true,
+      );
     });
 
-    it('detects unanchored standalone attribute selector', () => {
-      const css = '[data-state] { color: red; }';
-      const matches = matchCompatibilityRules(css, 'css');
-      expect(matches.some((m) => m.id === 'css-attribute-selector')).toBe(true);
+    it("detects unanchored standalone attribute selector", () => {
+      const css = "[data-state] { color: red; }";
+      const matches = matchCompatibilityRules(css, "css");
+      expect(matches.some((m) => m.id === "css-attribute-selector")).toBe(true);
     });
 
-    it.each(['[data-state]:hover { color: red; }', '[data-state][hidden] { color: red; }'])(
-      'detects unanchored compound selector %s',
-      (css) => {
-        const matches = matchCompatibilityRules(css, 'css');
-        expect(matches.some((m) => m.id === 'css-attribute-selector')).toBe(true);
-      },
-    );
-
-    it('allows an attribute selector with a scoped descendant class', () => {
-      const css = '[data-state] > .scoped-class { color: red; }';
-      const matches = matchCompatibilityRules(css, 'css');
-      expect(matches.some((m) => m.id === 'css-attribute-selector')).toBe(false);
+    it.each([
+      "[data-state]:hover { color: red; }",
+      "[data-state][hidden] { color: red; }",
+      "[data-state]:not(.disabled) { color: red; }",
+      "[data-state]:is(.disabled, button) { color: red; }",
+    ])("detects unanchored compound selector %s", (css) => {
+      const matches = matchCompatibilityRules(css, "css");
+      expect(matches.some((m) => m.id === "css-attribute-selector")).toBe(true);
     });
 
-    it('detects bare element selector in :is()', () => {
-      const css = ':is(div, span) { color: blue; }';
-      const matches = matchCompatibilityRules(css, 'css');
-      expect(matches.some((m) => m.id === 'css-is-element-names')).toBe(true);
+    it("allows an attribute selector with a scoped descendant class", () => {
+      const css = "[data-state] > .scoped-class { color: red; }";
+      const matches = matchCompatibilityRules(css, "css");
+      expect(matches.some((m) => m.id === "css-attribute-selector")).toBe(
+        false,
+      );
     });
 
-    it('ignores class selectors inside :is()', () => {
-      const css = ':is(.btn, .link) { color: blue; }';
-      const matches = matchCompatibilityRules(css, 'css');
-      expect(matches.some((m) => m.id === 'css-is-element-names')).toBe(false);
+    it("allows a class outside a negative pseudo-class", () => {
+      const matches = matchCompatibilityRules(
+        "[data-state]:not(.disabled) .card { color: red; }",
+        "css",
+      );
+      expect(matches.some((m) => m.id === "css-attribute-selector")).toBe(
+        false,
+      );
+    });
+
+    it("detects bare element selector in :is()", () => {
+      const css = ":is(div, span) { color: blue; }";
+      const matches = matchCompatibilityRules(css, "css");
+      expect(matches.some((m) => m.id === "css-is-element-names")).toBe(true);
+    });
+
+    it("ignores class selectors inside :is()", () => {
+      const css = ":is(.btn, .link) { color: blue; }";
+      const matches = matchCompatibilityRules(css, "css");
+      expect(matches.some((m) => m.id === "css-is-element-names")).toBe(false);
     });
   });
 
-  describe('JavaScript rules', () => {
-    it('detects runtime .id assignment', () => {
+  describe("JavaScript rules", () => {
+    it("detects runtime .id assignment", () => {
       const js = 'element.id = "my-id";';
-      const matches = matchCompatibilityRules(js, 'js');
-      expect(matches.some((m) => m.id === 'js-id-setter')).toBe(true);
+      const matches = matchCompatibilityRules(js, "js");
+      expect(matches.some((m) => m.id === "js-id-setter")).toBe(true);
     });
 
-    it('detects attribute selector in querySelector', () => {
+    it("detects attribute selector in querySelector", () => {
       const js = 'document.querySelector("[data-active]");';
-      const matches = matchCompatibilityRules(js, 'js');
-      expect(matches.some((m) => m.id === 'js-attribute-selector')).toBe(true);
+      const matches = matchCompatibilityRules(js, "js");
+      expect(matches.some((m) => m.id === "js-attribute-selector")).toBe(true);
     });
 
-    it('detects template literal in classList.replace', () => {
-      const js = 'element.classList.replace(oldName, `card-${state}`);';
-      const matches = matchCompatibilityRules(js, 'js');
-      expect(matches.some((m) => m.id === 'js-template-classname')).toBe(true);
+    it("detects template literal in classList.replace", () => {
+      const js = "element.classList.replace(oldName, `card-${state}`);";
+      const matches = matchCompatibilityRules(js, "js");
+      expect(matches.some((m) => m.id === "js-template-classname")).toBe(true);
     });
 
-    it('detects dynamic custom property name in setProperty', () => {
+    it("detects dynamic custom property name in setProperty", () => {
       const js = 'el.style.setProperty("--theme-color", "red");';
-      const matches = matchCompatibilityRules(js, 'js');
-      expect(matches.some((m) => m.id === 'js-style-setproperty')).toBe(true);
+      const matches = matchCompatibilityRules(js, "js");
+      expect(matches.some((m) => m.id === "js-style-setproperty")).toBe(true);
     });
 
-    it('detects unsupported DOM methods (removeAttribute, hasAttribute, toggleAttribute)', () => {
-      const js = 'el.removeAttribute("class"); el.hasAttribute("id"); el.toggleAttribute("hidden");';
-      const matches = matchCompatibilityRules(js, 'js');
-      expect(matches.some((m) => m.id === 'js-unsupported-dom-methods')).toBe(true);
+    it("detects unsupported DOM methods (removeAttribute, hasAttribute, toggleAttribute)", () => {
+      const js =
+        'el.removeAttribute("class"); el.hasAttribute("id"); el.toggleAttribute("hidden");';
+      const matches = matchCompatibilityRules(js, "js");
+      expect(matches.some((m) => m.id === "js-unsupported-dom-methods")).toBe(
+        true,
+      );
     });
 
-    it('sets error severity on unsupported compatibility rules', () => {
+    it("sets error severity on unsupported compatibility rules", () => {
       const css = '[id="report-form"] { color: red; }';
-      const matches = matchCompatibilityRules(css, 'css');
-      const rule = matches.find((m) => m.id === 'css-id-attribute-selector');
-      expect(rule?.severity).toBe('error');
+      const matches = matchCompatibilityRules(css, "css");
+      const rule = matches.find((m) => m.id === "css-id-attribute-selector");
+      expect(rule?.severity).toBe("error");
     });
   });
 });
 
-describe('API Route Rules', () => {
-  it('reports missing method export when none found', () => {
+describe("API Route Rules", () => {
+  it("reports missing method export when none found", () => {
     const ts = 'export const helper = () => "not a method";';
     const diags = analyzeApiRouteSource(ts);
-    expect(diags.some((d) => d.severity === 'error' && d.message.includes('does not export any recognized HTTP method'))).toBe(true);
+    expect(
+      diags.some(
+        (d) =>
+          d.severity === "error" &&
+          d.message.includes("does not export any recognized HTTP method"),
+      ),
+    ).toBe(true);
   });
 
-  it('passes when valid GET method is exported', () => {
+  it("passes when valid GET method is exported", () => {
     const ts = `export async function GET(request: Request) { return new Response("ok"); }`;
     const diags = analyzeApiRouteSource(ts);
     expect(diags.length).toBe(0);

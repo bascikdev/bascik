@@ -34,8 +34,10 @@ export interface FrameworkClock {
  */
 export const nativeClock: FrameworkClock = Object.freeze({
   now: () => Date.now(),
-  setTimeout: (callback: () => void, delayMs: number) => setTimeout(callback, delayMs),
+  setTimeout: (callback: () => void, delayMs: number) =>
+    setTimeout(callback, delayMs),
   clearTimeout: (handle: TimeoutHandle) => clearTimeout(handle),
-  setInterval: (callback: () => void, intervalMs: number) => setInterval(callback, intervalMs),
+  setInterval: (callback: () => void, intervalMs: number) =>
+    setInterval(callback, intervalMs),
   clearInterval: (handle: IntervalHandle) => clearInterval(handle),
 });

@@ -21,26 +21,30 @@ The script below runs after pages are written. It hashes every inline script in 
 
 ```ts
 // bascik.config.ts: run after pages are written, so the hashes match the final script text.
-import { defineConfig } from '@bascik/bascik';
+import { defineConfig } from "@bascik/bascik";
 
 export default defineConfig({
   pipeline: {
-    exec: [{ script: 'scripts/add-csp-meta.mjs', phase: 'post' }],
+    exec: [{ script: "scripts/add-csp-meta.mjs", phase: "post" }],
   },
 });
 ```
 
 ```js
 // scripts/add-csp-meta.mjs: illustrative recipe, adapt it to your site.
-import { createHash } from 'node:crypto';
-import { readdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { createHash } from "node:crypto";
+import { readdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 const outDir = process.env.BASCIK_OUT_DIR;
-if (!outDir) throw new Error('BASCIK_OUT_DIR is not set; run this as a pipeline.exec step');
+if (!outDir)
+  throw new Error(
+    "BASCIK_OUT_DIR is not set; run this as a pipeline.exec step",
+  );
 
 const SCRIPT = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script>/gi;
-const hash = (body) => `'sha256-${createHash('sha256').update(body, 'utf8').digest('base64')}'`;
+const hash = (body) =>
+  `'sha256-${createHash("sha256").update(body, "utf8").digest("base64")}'`;
 
 function policyFor(html) {
   const hashes = new Set();
@@ -49,21 +53,32 @@ function policyFor(html) {
     const src = /\ssrc\s*=\s*["']([^"']+)["']/i.exec(attributes)?.[1];
     if (src) {
       // A file from your own site is covered by 'self'. Another origin must be named.
-      if (/^(?:https?:)?\/\//i.test(src)) origins.add(new URL(src, 'https://x.invalid').origin);
-    } else if (!/\stype\s*=\s*["']?(?:application\/ld\+json|text\/bascik-server)/i.test(attributes)) {
+      if (/^(?:https?:)?\/\//i.test(src))
+        origins.add(new URL(src, "https://x.invalid").origin);
+    } else if (
+      !/\stype\s*=\s*["']?(?:application\/ld\+json|text\/bascik-server)/i.test(
+        attributes,
+      )
+    ) {
       hashes.add(hash(body));
     }
   }
   const sources = ["'self'", ...origins, ...hashes];
-  return `script-src ${sources.join(' ')}; object-src 'none'; base-uri 'self'`;
+  return `script-src ${sources.join(" ")}; object-src 'none'; base-uri 'self'`;
 }
 
-for (const entry of await readdir(outDir, { recursive: true, withFileTypes: true })) {
-  if (!entry.isFile() || !entry.name.endsWith('.html')) continue;
+for (const entry of await readdir(outDir, {
+  recursive: true,
+  withFileTypes: true,
+})) {
+  if (!entry.isFile() || !entry.name.endsWith(".html")) continue;
   const file = join(entry.parentPath, entry.name);
-  const html = await readFile(file, 'utf8');
+  const html = await readFile(file, "utf8");
   const meta = `<meta http-equiv="Content-Security-Policy" content="${policyFor(html)}" />`;
-  await writeFile(file, html.replace(/<meta\s+charset\s*=[^>]*>/i, (charset) => charset + meta));
+  await writeFile(
+    file,
+    html.replace(/<meta\s+charset\s*=[^>]*>/i, (charset) => charset + meta),
+  );
 }
 ```
 
@@ -88,7 +103,7 @@ Inline `<style>` blocks can be hashed the same way with a `style-src` directive.
 Open the page with the browser console visible. A blocked script logs a Content Security Policy violation that names the directive and shows the hash it expected. To test every page, listen for the event in a browser test:
 
 ```js
-document.addEventListener('securitypolicyviolation', (event) => {
+document.addEventListener("securitypolicyviolation", (event) => {
   console.error(event.violatedDirective, event.blockedURI, event.sample);
 });
 ```

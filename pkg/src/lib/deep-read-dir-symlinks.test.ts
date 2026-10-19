@@ -8,7 +8,14 @@
  * terminate with one warning.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, realpathSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  symlinkSync,
+  rmSync,
+  realpathSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -30,7 +37,7 @@ let warnSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   base = realpathSync(mkdtempSync(join(tmpdir(), "bascik-symlink-read-")));
-  warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+  warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -48,17 +55,30 @@ describe("deepReadDirFlat symlink policy", () => {
   it("recurses into a symlinked directory and reports files under the link path", async () => {
     write("shared/components/hello-card.html");
     mkdirSync(join(base, "site/components"), { recursive: true });
-    symlinkSync(join(base, "shared/components"), join(base, "site/components/shared"), "dir");
+    symlinkSync(
+      join(base, "shared/components"),
+      join(base, "site/components/shared"),
+      "dir",
+    );
 
-    const files = await deepReadDirFlat(join(base, "site/components"), /\.html$/);
-    expect(files).toEqual([join(base, "site/components/shared/hello-card.html")]);
+    const files = await deepReadDirFlat(
+      join(base, "site/components"),
+      /\.html$/,
+    );
+    expect(files).toEqual([
+      join(base, "site/components/shared/hello-card.html"),
+    ]);
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
   it("returns a symlinked file under its link path", async () => {
     write("elsewhere/linked-badge.html");
     mkdirSync(join(base, "root"), { recursive: true });
-    symlinkSync(join(base, "elsewhere/linked-badge.html"), join(base, "root/linked-badge.html"), "file");
+    symlinkSync(
+      join(base, "elsewhere/linked-badge.html"),
+      join(base, "root/linked-badge.html"),
+      "file",
+    );
 
     const files = await deepReadDirFlat(join(base, "root"), /\.html$/);
     expect(files).toEqual([join(base, "root/linked-badge.html")]);

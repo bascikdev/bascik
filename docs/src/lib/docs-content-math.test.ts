@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { readdir, readFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { describe, it, expect } from "vitest";
+import { readdir, readFile } from "node:fs/promises";
+import { join, relative } from "node:path";
 
 async function getAllMdFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -9,7 +9,7 @@ async function getAllMdFiles(dir: string): Promise<string[]> {
     const fullPath = join(dir, entry.name);
     if (entry.isDirectory()) {
       files.push(...(await getAllMdFiles(fullPath)));
-    } else if (entry.isFile() && entry.name.endsWith('.md')) {
+    } else if (entry.isFile() && entry.name.endsWith(".md")) {
       files.push(fullPath);
     }
   }
@@ -23,11 +23,15 @@ interface MathOccurrence {
   lineContent: string;
 }
 
-function findMathOccurrences(content: string, filePath: string, contentDir: string): MathOccurrence[] {
+function findMathOccurrences(
+  content: string,
+  filePath: string,
+  contentDir: string,
+): MathOccurrence[] {
   const lines = content.split(/\r?\n/);
   const occurrences: MathOccurrence[] = [];
   let inFencedCode = false;
-  let fenceChars = '';
+  let fenceChars = "";
   let inHtmlComment = false;
 
   for (let i = 0; i < lines.length; i++) {
@@ -44,7 +48,7 @@ function findMathOccurrences(content: string, filePath: string, contentDir: stri
         continue;
       } else if (fence[0] === fenceChars && fence.length >= 3) {
         inFencedCode = false;
-        fenceChars = '';
+        fenceChars = "";
         continue;
       }
     }
@@ -56,7 +60,7 @@ function findMathOccurrences(content: string, filePath: string, contentDir: stri
     // Handle HTML comments across multiple lines
     let line = rawLine;
     if (inHtmlComment) {
-      const closeIdx = line.indexOf('-->');
+      const closeIdx = line.indexOf("-->");
       if (closeIdx === -1) {
         continue;
       }
@@ -66,17 +70,17 @@ function findMathOccurrences(content: string, filePath: string, contentDir: stri
 
     // Strip any full comments within the line
     // codeql[js/incomplete-multi-character-sanitization] Test scan of first-party Markdown; not a sanitizer.
-    line = line.replace(/<!--[\s\S]*?-->/g, '');
+    line = line.replace(/<!--[\s\S]*?-->/g, "");
 
     // Check if an unclosed HTML comment starts on this line
-    const openIdx = line.indexOf('<!--');
+    const openIdx = line.indexOf("<!--");
     if (openIdx !== -1) {
       line = line.slice(0, openIdx);
       inHtmlComment = true;
     }
 
     // Strip inline code spans: handles `code`, ``code``, etc.
-    line = line.replace(/(`+)(?:(?!\1)[\s\S])*?\1/g, '');
+    line = line.replace(/(`+)(?:(?!\1)[\s\S])*?\1/g, "");
 
     // Look for $...$ math syntax
     const mathRegex = /\$([^$\n]+)\$/g;
@@ -94,9 +98,9 @@ function findMathOccurrences(content: string, filePath: string, contentDir: stri
   return occurrences;
 }
 
-describe('docs content math rendering guard', () => {
-  it('should not contain raw $...$ math syntax in docs/content markdown files', async () => {
-    const contentDir = join(__dirname, '../../../docs/content');
+describe("docs content math rendering guard", () => {
+  it("should not contain raw $...$ math syntax in docs/content markdown files", async () => {
+    const contentDir = join(__dirname, "../../../docs/content");
     const mdFiles = await getAllMdFiles(contentDir);
 
     expect(mdFiles.length).toBeGreaterThan(0);
@@ -104,18 +108,18 @@ describe('docs content math rendering guard', () => {
     const allOccurrences: MathOccurrence[] = [];
 
     for (const filePath of mdFiles) {
-      const content = await readFile(filePath, 'utf8');
+      const content = await readFile(filePath, "utf8");
       const occurrences = findMathOccurrences(content, filePath, contentDir);
       allOccurrences.push(...occurrences);
     }
 
     const failureReport = allOccurrences
-      .map(o => `  ${o.file}:${o.line} -> "${o.match}" in "${o.lineContent}"`)
-      .join('\n');
+      .map((o) => `  ${o.file}:${o.line} -> "${o.match}" in "${o.lineContent}"`)
+      .join("\n");
 
     expect(
       allOccurrences,
-      `Found ${allOccurrences.length} literal math expressions in docs/content:\n${failureReport}`
+      `Found ${allOccurrences.length} literal math expressions in docs/content:\n${failureReport}`,
     ).toEqual([]);
   });
 });

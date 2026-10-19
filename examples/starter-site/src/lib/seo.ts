@@ -17,7 +17,7 @@ export interface SeoOptions {
   image?: string;
   imageAlt?: string;
   /** "article" for posts, otherwise "website". */
-  type?: 'website' | 'article';
+  type?: "website" | "article";
   /** Site name for og:site_name. */
   siteName?: string;
   /**
@@ -33,19 +33,27 @@ export interface SeoOptions {
   modifiedTime?: string;
 }
 
-const ENTITIES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const ENTITIES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
 
 /** Escape text for HTML content and quoted attribute values. */
-export const escapeHtml = (value: unknown): string => String(value ?? '').replace(/[&<>"']/g, (ch) => ENTITIES[ch]);
+export const escapeHtml = (value: unknown): string =>
+  String(value ?? "").replace(/[&<>"']/g, (ch) => ENTITIES[ch]);
 
 /** The site origin without a trailing slash, or undefined when BASCIK_SITE_URL is not set (for example in dev). */
-export const siteUrl = (): string | undefined => process.env.BASCIK_SITE_URL?.replace(/\/+$/, '') || undefined;
+export const siteUrl = (): string | undefined =>
+  process.env.BASCIK_SITE_URL?.replace(/\/+$/, "") || undefined;
 
 /** The deployment base, always with leading and trailing slashes ("/" or "/docs/"). */
-export const basePath = (): string => process.env.BASCIK_BASE || '/';
+export const basePath = (): string => process.env.BASCIK_BASE || "/";
 
 /** Path of the page being built, relative to the base, such as "/" or "/blog/hello-world/". */
-export const pagePath = (): string => process.env.BASCIK_PAGE_PATH || '/';
+export const pagePath = (): string => process.env.BASCIK_PAGE_PATH || "/";
 
 /**
  * Absolute URL for a site path (relative to the base). Already-absolute URLs pass through. Without a site URL the
@@ -53,7 +61,7 @@ export const pagePath = (): string => process.env.BASCIK_PAGE_PATH || '/';
  */
 export function absoluteUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
-  const withBase = `${basePath().replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
+  const withBase = `${basePath().replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
   const origin = siteUrl();
   return origin ? `${origin}${withBase}` : withBase;
 }
@@ -61,33 +69,42 @@ export function absoluteUrl(path: string): string {
 /** The canonical, Open Graph, and Twitter tags for one page. */
 export function seo(options: SeoOptions): string {
   const tags: string[] = [];
-  const meta = (attr: 'name' | 'property', key: string, value: string | undefined) => {
-    if (value) tags.push(`<meta ${attr}="${key}" content="${escapeHtml(value)}" />`);
+  const meta = (
+    attr: "name" | "property",
+    key: string,
+    value: string | undefined,
+  ) => {
+    if (value)
+      tags.push(`<meta ${attr}="${key}" content="${escapeHtml(value)}" />`);
   };
 
   tags.push(`<title>${escapeHtml(options.title)}</title>`);
-  meta('name', 'description', options.description);
-  if (options.noindex) meta('name', 'robots', 'noindex');
+  meta("name", "description", options.description);
+  if (options.noindex) meta("name", "robots", "noindex");
 
   // A canonical URL must be absolute, so it is only emitted when the site URL is known.
   const url = siteUrl() ? absoluteUrl(options.path ?? pagePath()) : undefined;
   if (url) tags.push(`<link rel="canonical" href="${escapeHtml(url)}" />`);
 
-  meta('property', 'og:type', options.type ?? 'website');
-  meta('property', 'og:title', options.title);
-  meta('property', 'og:description', options.description);
-  meta('property', 'og:url', url);
-  meta('property', 'og:site_name', options.siteName);
+  meta("property", "og:type", options.type ?? "website");
+  meta("property", "og:title", options.title);
+  meta("property", "og:description", options.description);
+  meta("property", "og:url", url);
+  meta("property", "og:site_name", options.siteName);
   if (options.image) {
-    meta('property', 'og:image', absoluteUrl(options.image));
-    meta('property', 'og:image:alt', options.imageAlt);
+    meta("property", "og:image", absoluteUrl(options.image));
+    meta("property", "og:image:alt", options.imageAlt);
   }
-  if (options.type === 'article') {
-    meta('property', 'article:published_time', options.publishedTime);
-    meta('property', 'article:modified_time', options.modifiedTime);
+  if (options.type === "article") {
+    meta("property", "article:published_time", options.publishedTime);
+    meta("property", "article:modified_time", options.modifiedTime);
   }
-  meta('name', 'twitter:card', options.image ? 'summary_large_image' : 'summary');
-  return tags.join('\n');
+  meta(
+    "name",
+    "twitter:card",
+    options.image ? "summary_large_image" : "summary",
+  );
+  return tags.join("\n");
 }
 
 /**
@@ -95,16 +112,21 @@ export function seo(options: SeoOptions): string {
  * application/ld+json scripts untouched.
  */
 export function jsonLd(data: Record<string, unknown>): string {
-  const json = JSON.stringify({ '@context': 'https://schema.org', ...data }).replace(/</g, '\\u003c');
+  const json = JSON.stringify({
+    "@context": "https://schema.org",
+    ...data,
+  }).replace(/</g, "\\u003c");
   return `<script type="application/ld+json">${json}</script>`;
 }
 
 /** BreadcrumbList data. Paths are relative to the base; the last item may omit its path. */
-export function breadcrumbList(items: Array<{ name: string; path?: string }>): Record<string, unknown> {
+export function breadcrumbList(
+  items: Array<{ name: string; path?: string }>,
+): Record<string, unknown> {
   return {
-    '@type': 'BreadcrumbList',
+    "@type": "BreadcrumbList",
     itemListElement: items.map((item, index) => ({
-      '@type': 'ListItem',
+      "@type": "ListItem",
       position: index + 1,
       name: item.name,
       ...(item.path ? { item: absoluteUrl(item.path) } : {}),
@@ -122,12 +144,14 @@ export function article(options: {
   image?: string;
 }): Record<string, unknown> {
   return {
-    '@type': 'BlogPosting',
+    "@type": "BlogPosting",
     headline: options.headline,
     ...(options.description ? { description: options.description } : {}),
     datePublished: options.datePublished,
     dateModified: options.dateModified ?? options.datePublished,
-    ...(options.authorName ? { author: { '@type': 'Person', name: options.authorName } } : {}),
+    ...(options.authorName
+      ? { author: { "@type": "Person", name: options.authorName } }
+      : {}),
     ...(options.image ? { image: absoluteUrl(options.image) } : {}),
     ...(siteUrl() ? { mainEntityOfPage: absoluteUrl(pagePath()) } : {}),
   };

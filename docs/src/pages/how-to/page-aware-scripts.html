@@ -1,61 +1,64 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Use BASCIK_SOURCE_FILE and other env vars to write shared build scripts that emit page-specific head tags such as canonical URLs, Open Graph, and JSON-LD."
+    />
+    <title>Per-Page Canonical, Open Graph, and JSON-LD - Bascik</title>
+  </head>
 
-<head>
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <script data-bascik-build>
-    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    export default async () => await breadcrumbLd();
-  </script>
-  <script data-bascik-build>
-    import { articleSchema } from '@/lib/article-schema.ts';
-    export default async () => await articleSchema();
-  </script>
-  <meta name="description"
-    content="Use BASCIK_SOURCE_FILE and other env vars to write shared build scripts that emit page-specific head tags such as canonical URLs, Open Graph, and JSON-LD." />
-  <title>Per-Page Canonical, Open Graph, and JSON-LD - Bascik</title>
-</head>
+  <body>
+    <docs-nav />
 
-<body>
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
 
-  <docs-nav />
-
-  <div class="container">
-    <div class="docs-layout">
-      <docs-sidebar />
-
-      <main class="docs-content" id="main-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/how-to/page-aware-scripts');
-        </script>
-        <!-- Content rendered from docs/content/how-to/page-aware-scripts.md at build time.
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () =>
+              renderSectionLabel("/how-to/page-aware-scripts");
+          </script>
+          <!-- Content rendered from docs/content/how-to/page-aware-scripts.md at build time.
              To update page content, edit the MD file, not this file. -->
-        <script data-bascik-build>
-          import { renderMd } from '@/lib/md-renderer.ts';
-          export default async () => await renderMd('./content/how-to/page-aware-scripts.md');
-        </script>
+          <script data-bascik-build>
+            import { renderMd } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMd("./content/how-to/page-aware-scripts.md");
+          </script>
 
-        <div class="callout">
-          <p><strong>Next:</strong> <a href="/build-scripts">Build Scripts</a> covers the full set of env vars, caching,
-            and shared script patterns.</p>
-        </div>
+          <div class="callout">
+            <p>
+              <strong>Next:</strong>
+              <a href="/build-scripts">Build Scripts</a> covers the full set of
+              env vars, caching, and shared script patterns.
+            </p>
+          </div>
 
-        <docs-pagination />
-      </main>
+          <docs-pagination />
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-
-</body>
-
+    <docs-footer />
+  </body>
 </html>

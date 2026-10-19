@@ -2,13 +2,13 @@
 
 Five artifacts ship from this repo. Each is versioned independently and released by pushing a git tag; `.github/workflows/release.yml` does the rest.
 
-| Artifact | Registry | Tag | Version file |
-| --- | --- | --- | --- |
-| `@bascik/language-server` | npm | `lsp-v<version>` | `lsp/package.json` |
-| `@bascik/bascik` | npm | `v<version>` | `pkg/package.json` |
-| `create-bascik` | npm | `create-v<version>` | `create/package.json` |
-| `@bascik/adapter-cloudflare` | npm | `adapter-cloudflare-v<version>` | `adapters/cloudflare/package.json` |
-| Bascik VS Code extension | Marketplace | `ext-v<version>` or `ext-pre-v<version>` | `extensions/vscode-bascik/package.json` |
+| Artifact                     | Registry    | Tag                                      | Version file                            |
+| ---------------------------- | ----------- | ---------------------------------------- | --------------------------------------- |
+| `@bascik/language-server`    | npm         | `lsp-v<version>`                         | `lsp/package.json`                      |
+| `@bascik/bascik`             | npm         | `v<version>`                             | `pkg/package.json`                      |
+| `create-bascik`              | npm         | `create-v<version>`                      | `create/package.json`                   |
+| `@bascik/adapter-cloudflare` | npm         | `adapter-cloudflare-v<version>`          | `adapters/cloudflare/package.json`      |
+| Bascik VS Code extension     | Marketplace | `ext-v<version>` or `ext-pre-v<version>` | `extensions/vscode-bascik/package.json` |
 
 The tag must equal the prefix plus the `version` in that package's `package.json`, or the publish script fails before publishing anything.
 

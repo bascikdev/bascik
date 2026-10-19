@@ -9,12 +9,19 @@ import { join, resolve, dirname, relative } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { getHttpPath } from "./paths.ts";
 import { getImportRoot } from "./import-root.ts";
-import { rewriteModuleSpecifiers, resolveScriptSrcPath } from "./module-specifiers.ts";
+import {
+  rewriteModuleSpecifiers,
+  resolveScriptSrcPath,
+} from "./module-specifiers.ts";
 import { scanApiRouteFiles, buildApiRouteTree } from "./api-routes.ts";
 import { withBasePath } from "./base-path.ts";
 import { hasHiddenSegment } from "./route-matching.ts";
 import { getHtmlAttributeValue } from "./html-patterns.ts";
-import { SIDECAR_SCHEMA_VERSION, type ServerScriptEntry, type ServerScriptsSidecar } from "./server-sidecar.ts";
+import {
+  SIDECAR_SCHEMA_VERSION,
+  type ServerScriptEntry,
+  type ServerScriptsSidecar,
+} from "./server-sidecar.ts";
 import { DEFAULT_SCRIPT_TIMEOUT_MS } from "./server-scripts.ts";
 import { createHash } from "node:crypto";
 import type {
@@ -36,7 +43,8 @@ export type { DistPageSegment };
  * a distinct character class, and the attribute is read afterward.
  */
 const isPlaceholderOpenTag = (openTag: string): boolean =>
-  getHtmlAttributeValue(openTag, "type")?.toLowerCase() === "text/bascik-server";
+  getHtmlAttributeValue(openTag, "type")?.toLowerCase() ===
+  "text/bascik-server";
 
 const WHITESPACE_CHAR = /\s/;
 
@@ -53,7 +61,8 @@ const matchPlaceholderEndTag = (html: string, from: number): number => {
   if (html.slice(i, i + 8).toLowerCase() !== "</script") return -1;
   i += 8;
   if (html[i] === ">") return i + 1;
-  if (i >= html.length || (html[i] !== "/" && !WHITESPACE_CHAR.test(html[i]))) return -1;
+  if (i >= html.length || (html[i] !== "/" && !WHITESPACE_CHAR.test(html[i])))
+    return -1;
   const close = html.indexOf(">", i + 1);
   return close === -1 ? -1 : close + 1;
 };
@@ -76,13 +85,15 @@ export const splitDistPageIntoSegments = (
     const id = getHtmlAttributeValue(openTag, "data-bascik-server-id");
     if (!id) continue;
     const index = open.index;
-    if (index > cursor) segments.push({ kind: "static", text: html.slice(cursor, index) });
+    if (index > cursor)
+      segments.push({ kind: "static", text: html.slice(cursor, index) });
     segments.push({ kind: "script", id });
     scriptIds.push(id);
     cursor = end;
     openTagRe.lastIndex = cursor;
   }
-  if (cursor < html.length || segments.length === 0) segments.push({ kind: "static", text: html.slice(cursor) });
+  if (cursor < html.length || segments.length === 0)
+    segments.push({ kind: "static", text: html.slice(cursor) });
   return { segments, scriptIds };
 };
 
@@ -117,7 +128,8 @@ export const isPublicAssetPath = (distRelativePath: string): boolean => {
   const normalized = distRelativePath.replace(/\\/g, "/");
   if (hasHiddenSegment(normalized)) return false;
   if (normalized.endsWith(".map")) return false;
-  if (/\.(br|gz)$/i.test(normalized) || /\.bmeta$/i.test(normalized)) return false;
+  if (/\.(br|gz)$/i.test(normalized) || /\.bmeta$/i.test(normalized))
+    return false;
   return true;
 };
 
@@ -136,11 +148,17 @@ export const detectPublicCollisions = (input: {
       );
     }
   }
-  const staticApi = new Set(input.apiRoutePaths.filter((p) => !p.includes("[")).map((p) => p.replace(/^\/+/, "")));
+  const staticApi = new Set(
+    input.apiRoutePaths
+      .filter((p) => !p.includes("["))
+      .map((p) => p.replace(/^\/+/, "")),
+  );
   for (const path of input.publicPaths) {
     const withoutExt = path.replace(/\.[a-zA-Z0-9]+$/, "");
     if (staticApi.has(path) || staticApi.has(withoutExt)) {
-      problems.push(`[bascik] --target: public file "${path}" shadows API route "/${path.replace(/\.[a-zA-Z0-9]+$/, "")}".`);
+      problems.push(
+        `[bascik] --target: public file "${path}" shadows API route "/${path.replace(/\.[a-zA-Z0-9]+$/, "")}".`,
+      );
     }
   }
   return problems;
@@ -172,13 +190,23 @@ export interface ReadSiteGraphOptions {
   apiDir?: string;
 }
 
-export const readSiteGraph = async (options: ReadSiteGraphOptions): Promise<SiteGraph> => {
+export const readSiteGraph = async (
+  options: ReadSiteGraphOptions,
+): Promise<SiteGraph> => {
   const { projectRoot, distDir, version } = options;
   const base = options.base ?? BascikConfig?.base ?? "/";
-  const pagesDir = options.pagesDir ?? BascikConfig?.directory?.pages ?? "src/pages";
-  const scriptTimeoutMs = options.scriptTimeoutMs ?? BascikConfig?.scripts?.timeout ?? DEFAULT_SCRIPT_TIMEOUT_MS;
-  const apiTimeoutMs = options.apiTimeoutMs ?? BascikConfig?.http?.apiTimeout ?? 10000;
-  const onServerScriptError = options.onServerScriptError ?? BascikConfig?.scripts?.onServerScriptError ?? "error";
+  const pagesDir =
+    options.pagesDir ?? BascikConfig?.directory?.pages ?? "src/pages";
+  const scriptTimeoutMs =
+    options.scriptTimeoutMs ??
+    BascikConfig?.scripts?.timeout ??
+    DEFAULT_SCRIPT_TIMEOUT_MS;
+  const apiTimeoutMs =
+    options.apiTimeoutMs ?? BascikConfig?.http?.apiTimeout ?? 10000;
+  const onServerScriptError =
+    options.onServerScriptError ??
+    BascikConfig?.scripts?.onServerScriptError ??
+    "error";
   const importRoot = getImportRoot();
 
   // Read server sidecar
@@ -190,12 +218,17 @@ export const readSiteGraph = async (options: ReadSiteGraphOptions): Promise<Site
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
-  if (sidecar && sidecar.schema !== undefined && sidecar.schema !== SIDECAR_SCHEMA_VERSION) {
+  if (
+    sidecar &&
+    sidecar.schema !== undefined &&
+    sidecar.schema !== SIDECAR_SCHEMA_VERSION
+  ) {
     throw new Error(
       `[bascik] --target: sidecar schema ${sidecar.schema} is not understood (expected ${SIDECAR_SCHEMA_VERSION}). Run \`bascik --build\` again.`,
     );
   }
-  const sidecarScripts: Record<string, ServerScriptEntry> = sidecar?.scripts ?? {};
+  const sidecarScripts: Record<string, ServerScriptEntry> =
+    sidecar?.scripts ?? {};
 
   const distFiles = await readDistFiles(distDir);
   const publicFiles: string[] = [];
@@ -222,12 +255,21 @@ export const readSiteGraph = async (options: ReadSiteGraphOptions): Promise<Site
             `[bascik] --target: page "${rel}" references server script "${id}" that is missing from the sidecar. Run \`bascik --build\` again.`,
           );
         }
-        const owner = `${entry.mode} script in ${entry.sourceFile ? relative(projectRoot, entry.sourceFile).replace(/\\/g, "/") : rel
-          }${entry.sourceLine ? `:${entry.sourceLine}` : ""}`;
-        const containingDir = entry.sourceFile ? dirname(resolve(projectRoot, entry.sourceFile)) : projectRoot;
+        const owner = `${entry.mode} script in ${
+          entry.sourceFile
+            ? relative(projectRoot, entry.sourceFile).replace(/\\/g, "/")
+            : rel
+        }${entry.sourceLine ? `:${entry.sourceLine}` : ""}`;
+        const containingDir = entry.sourceFile
+          ? dirname(resolve(projectRoot, entry.sourceFile))
+          : projectRoot;
 
         if (entry.modulePath) {
-          const modulePath = resolveScriptSrcPath(entry.modulePath, containingDir, importRoot);
+          const modulePath = resolveScriptSrcPath(
+            entry.modulePath,
+            containingDir,
+            importRoot,
+          );
           jobs[id] = {
             id,
             mode: entry.mode,
@@ -235,7 +277,11 @@ export const readSiteGraph = async (options: ReadSiteGraphOptions): Promise<Site
             owner,
           };
         } else {
-          const rewritten = rewriteModuleSpecifiers(entry.source, containingDir, { importRoot });
+          const rewritten = rewriteModuleSpecifiers(
+            entry.source,
+            containingDir,
+            { importRoot },
+          );
           jobs[id] = {
             id,
             mode: entry.mode,
@@ -257,9 +303,14 @@ export const readSiteGraph = async (options: ReadSiteGraphOptions): Promise<Site
   }
 
   // Scan API routes
-  const apiDirPath = resolve(projectRoot, options.apiDir ?? BascikConfig?.directory?.api ?? "src/api");
+  const apiDirPath = resolve(
+    projectRoot,
+    options.apiDir ?? BascikConfig?.directory?.api ?? "src/api",
+  );
   const apiFiles = await scanApiRouteFiles(apiDirPath);
-  const rawApiRoutes = apiFiles.length ? buildApiRouteTree(apiFiles, apiDirPath, base) : [];
+  const rawApiRoutes = apiFiles.length
+    ? buildApiRouteTree(apiFiles, apiDirPath, base)
+    : [];
   const apiRoutes: SiteGraphApiRoute[] = rawApiRoutes.map((r) => ({
     path: r.path,
     filePath: r.filePath,
@@ -267,9 +318,14 @@ export const readSiteGraph = async (options: ReadSiteGraphOptions): Promise<Site
     isDynamic: r.isDynamic,
   }));
 
-  const hashOf = (str: string) => createHash("sha256").update(str).digest("hex").slice(0, 16);
+  const hashOf = (str: string) =>
+    createHash("sha256").update(str).digest("hex").slice(0, 16);
   const release = `${version}+${hashOf(
-    JSON.stringify({ pages: Object.keys(pages).sort(), api: apiRoutes.map((r) => r.path), files: publicFiles.sort() }),
+    JSON.stringify({
+      pages: Object.keys(pages).sort(),
+      api: apiRoutes.map((r) => r.path),
+      files: publicFiles.sort(),
+    }),
   )}`;
 
   return {

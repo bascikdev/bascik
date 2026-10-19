@@ -1,8 +1,8 @@
 export default {
   directory: {
-    components: 'ui/components',
+    components: "ui/components",
   },
   scripts: {
-    importRoot: 'app',
+    importRoot: "app",
   },
 };

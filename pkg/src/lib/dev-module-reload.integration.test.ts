@@ -23,7 +23,10 @@ import { fileURLToPath } from "node:url";
 
 // Source entrypoint. Node 24 runs .ts directly, and pkg/dist is gitignored, so
 // the compiled output cannot be a dependency of a unit test.
-const PKG_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "../index.ts");
+const PKG_ENTRY = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../index.ts",
+);
 
 interface DevServer {
   base: string;
@@ -53,7 +56,11 @@ const startDevServer = async (root: string): Promise<DevServer> => {
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
-  const waiters: Array<{ pattern: RegExp; from: number; resolve: (s: string) => void }> = [];
+  const waiters: Array<{
+    pattern: RegExp;
+    from: number;
+    resolve: (s: string) => void;
+  }> = [];
   const onData = (d: Buffer): void => {
     output += d.toString();
     for (const waiter of [...waiters]) {
@@ -69,12 +76,17 @@ const startDevServer = async (root: string): Promise<DevServer> => {
 
   const waitForLog = (pattern: RegExp, timeoutMs = 15000): Promise<string> => {
     const from = output.length;
-    if (pattern.test(output.slice(from))) return Promise.resolve(output.slice(from));
+    if (pattern.test(output.slice(from)))
+      return Promise.resolve(output.slice(from));
     return new Promise<string>((res, rej) => {
       const timer = setTimeout(() => {
         const idx = waiters.findIndex((w) => w.resolve === wrapped);
         if (idx >= 0) waiters.splice(idx, 1);
-        rej(new Error(`log ${pattern} not seen within ${timeoutMs}ms. Output:\n${output}`));
+        rej(
+          new Error(
+            `log ${pattern} not seen within ${timeoutMs}ms. Output:\n${output}`,
+          ),
+        );
       }, timeoutMs);
       const wrapped = (s: string): void => {
         clearTimeout(timer);
@@ -106,12 +118,18 @@ const startDevServer = async (root: string): Promise<DevServer> => {
   };
 };
 
-const fetchText = async (url: string): Promise<{ status: number; body: string }> => {
+const fetchText = async (
+  url: string,
+): Promise<{ status: number; body: string }> => {
   const res = await fetch(url, { headers: { "accept-encoding": "identity" } });
   return { status: res.status, body: await res.text() };
 };
 
-const writeAt = async (root: string, rel: string, content: string): Promise<string> => {
+const writeAt = async (
+  root: string,
+  rel: string,
+  content: string,
+): Promise<string> => {
   const abs = join(root, rel);
   await mkdir(dirname(abs), { recursive: true });
   await writeFile(abs, content, "utf8");
@@ -163,7 +181,7 @@ describe("live development module invalidation (real dev server)", () => {
 
   afterAll(async () => {
     await server?.close();
-    await rm(root, { recursive: true, force: true }).catch(() => { });
+    await rm(root, { recursive: true, force: true }).catch(() => {});
   });
 
   it("serves the edited API route module after the watcher invalidates it (no restart)", async () => {
@@ -182,7 +200,11 @@ describe("live development module invalidation (real dev server)", () => {
 
   it("recovers an API route after a syntax error is fixed", async () => {
     const broken = server.waitForLog(/api route change: src\/api\/value\.ts/);
-    await writeAt(root, "src/api/value.ts", "export const GET = async ( => {\n");
+    await writeAt(
+      root,
+      "src/api/value.ts",
+      "export const GET = async ( => {\n",
+    );
     await broken;
 
     const failing = await fetchText(`${server.base}/api/value`);
@@ -201,7 +223,9 @@ describe("live development module invalidation (real dev server)", () => {
     const added = server.waitForLog(/api route add: src\/api\/fresh\.ts/);
     await writeAt(root, "src/api/fresh.ts", apiModule("FRESH-1"));
     await added;
-    expect(JSON.parse((await fetchText(`${server.base}/api/fresh`)).body).value).toBe("FRESH-1");
+    expect(
+      JSON.parse((await fetchText(`${server.base}/api/fresh`)).body).value,
+    ).toBe("FRESH-1");
 
     const removed = server.waitForLog(/api route unlink: src\/api\/fresh\.ts/);
     await rm(join(root, "src/api/fresh.ts"));
@@ -211,14 +235,18 @@ describe("live development module invalidation (real dev server)", () => {
     const recreated = server.waitForLog(/api route add: src\/api\/fresh\.ts/);
     await writeAt(root, "src/api/fresh.ts", apiModule("FRESH-2"));
     await recreated;
-    expect(JSON.parse((await fetchText(`${server.base}/api/fresh`)).body).value).toBe("FRESH-2");
+    expect(
+      JSON.parse((await fetchText(`${server.base}/api/fresh`)).body).value,
+    ).toBe("FRESH-2");
   }, 30000);
 
   it("reloads a src= server script entry module when the entry file itself changes", async () => {
     const before = await fetchText(`${server.base}/`);
     expect(before.body).toContain('data-testid="src-value">HELPER-OLD<');
 
-    const changed = server.waitForLog(/module invalidated: src\/lib\/src-script\.ts/);
+    const changed = server.waitForLog(
+      /module invalidated: src\/lib\/src-script\.ts/,
+    );
     await writeAt(
       root,
       "src/lib/src-script.ts",
@@ -240,7 +268,9 @@ describe("live development module invalidation (real dev server)", () => {
    */
   it("reloads a helper imported by a src= server script when only the helper changes", async () => {
     // Re-point the entry at the helper so this test does not depend on order.
-    const entryChanged = server.waitForLog(/module invalidated: src\/lib\/src-script\.ts/);
+    const entryChanged = server.waitForLog(
+      /module invalidated: src\/lib\/src-script\.ts/,
+    );
     await writeAt(root, "src/lib/src-script.ts", srcScriptModule());
     await entryChanged;
     const before = await fetchText(`${server.base}/`);
@@ -248,11 +278,15 @@ describe("live development module invalidation (real dev server)", () => {
 
     // The helper was imported by Node (transitively) and recorded by the
     // module graph hook; the watcher's invalidate must advance it and log it.
-    const helperChanged = server.waitForLog(/module invalidated: src\/lib\/helper\.ts/);
+    const helperChanged = server.waitForLog(
+      /module invalidated: src\/lib\/helper\.ts/,
+    );
     await writeAt(root, "src/lib/helper.ts", helperModule("HELPER-NEW"));
     const logged = await helperChanged;
     // The log names the entry the graph advanced transitively.
-    expect(logged).toMatch(/module invalidated: src\/lib\/helper\.ts \(reloads src\/lib\/src-script\.ts\)/);
+    expect(logged).toMatch(
+      /module invalidated: src\/lib\/helper\.ts \(reloads src\/lib\/src-script\.ts\)/,
+    );
 
     const after = await fetchText(`${server.base}/`);
     expect(after.body).toContain('data-testid="src-value">HELPER-NEW<');
@@ -262,20 +296,27 @@ describe("live development module invalidation (real dev server)", () => {
   it("reloads a helper two levels deep (entry -> helper -> util) when only the util changes", async () => {
     // Entry -> helper -> util: only the leaf is edited.
     // codeql[js/bad-code-sanitization] Writes a test fixture module from test literals.
-    const utilModule = (value: string): string => `export const utilValue = () => ${JSON.stringify(value)};\n`;
+    const utilModule = (value: string): string =>
+      `export const utilValue = () => ${JSON.stringify(value)};\n`;
     const helperViaUtil = `import { utilValue } from "./util.ts";\nexport const helperValue = () => utilValue();\n`;
 
     await writeAt(root, "src/lib/util.ts", utilModule("UTIL-OLD"));
-    const helperChanged = server.waitForLog(/module invalidated: src\/lib\/helper\.ts/);
+    const helperChanged = server.waitForLog(
+      /module invalidated: src\/lib\/helper\.ts/,
+    );
     await writeAt(root, "src/lib/helper.ts", helperViaUtil);
     await helperChanged;
     const before = await fetchText(`${server.base}/`);
     expect(before.body).toContain('data-testid="src-value">UTIL-OLD<');
 
-    const utilChanged = server.waitForLog(/module invalidated: src\/lib\/util\.ts/);
+    const utilChanged = server.waitForLog(
+      /module invalidated: src\/lib\/util\.ts/,
+    );
     await writeAt(root, "src/lib/util.ts", utilModule("UTIL-NEW"));
     const logged = await utilChanged;
-    expect(logged).toMatch(/module invalidated: src\/lib\/util\.ts \(reloads src\/lib\/helper\.ts, src\/lib\/src-script\.ts\)/);
+    expect(logged).toMatch(
+      /module invalidated: src\/lib\/util\.ts \(reloads src\/lib\/helper\.ts, src\/lib\/src-script\.ts\)/,
+    );
 
     const after = await fetchText(`${server.base}/`);
     expect(after.body).toContain('data-testid="src-value">UTIL-NEW<');
@@ -301,13 +342,19 @@ describe("live development module invalidation (real dev server)", () => {
 
     // The helper is tracked (the hook saw Node resolve it), so the watcher
     // logs an invalidation, but with no recorded importer it reloads nothing.
-    const helperChanged = server.waitForLog(/module invalidated: src\/lib\/inline-helper\.ts/);
+    const helperChanged = server.waitForLog(
+      /module invalidated: src\/lib\/inline-helper\.ts/,
+    );
     await writeAt(root, "src/lib/inline-helper.ts", helperModule("INLINE-NEW"));
     const logged = await helperChanged;
-    expect(logged).not.toMatch(/module invalidated: src\/lib\/inline-helper\.ts \(reloads/);
+    expect(logged).not.toMatch(
+      /module invalidated: src\/lib\/inline-helper\.ts \(reloads/,
+    );
 
     const helperReloaded = await fetchText(`${server.base}/inline`);
-    expect(helperReloaded.body).toContain('data-testid="inline-value">INLINE-NEW<');
+    expect(helperReloaded.body).toContain(
+      'data-testid="inline-value">INLINE-NEW<',
+    );
 
     // Editing the page produces a new data: URL; resolving the helper from it
     // now hands back the helper's advanced generation, so the new value shows.
@@ -320,7 +367,9 @@ describe("live development module invalidation (real dev server)", () => {
     const reverted = server.waitForLog(/transpiled: pages\/inline\.html/);
     await writeAt(root, "src/pages/inline.html", inlinePage("v1"));
     await reverted;
-    expect((await fetchText(`${server.base}/inline`)).body).toContain('data-testid="inline-value">INLINE-NEW<');
+    expect((await fetchText(`${server.base}/inline`)).body).toContain(
+      'data-testid="inline-value">INLINE-NEW<',
+    );
   }, 30000);
 });
 
@@ -345,23 +394,43 @@ describe("production server module reuse (real --server)", () => {
     );
     await mkdir(join(root, "src/components"), { recursive: true });
     await writeAt(root, "src/api/value.ts", apiModule("PROD-OLD"));
-    await writeAt(root, "src/pages/index.html", `<!DOCTYPE html><html><head><title>p</title></head><body><p>p</p></body></html>`);
+    await writeAt(
+      root,
+      "src/pages/index.html",
+      `<!DOCTYPE html><html><head><title>p</title></head><body><p>p</p></body></html>`,
+    );
 
     // Build first so --server has a dist to load.
     await new Promise<void>((res, rej) => {
-      const build = spawn(process.execPath, [PKG_ENTRY, "--build"], { cwd: root, stdio: "ignore", env: { ...process.env, BASCIK_SERVER: "0", BASCIK_BUILD: "0" } });
-      build.once("exit", (code) => (code === 0 ? res() : rej(new Error(`build exited ${code}`))));
+      const build = spawn(process.execPath, [PKG_ENTRY, "--build"], {
+        cwd: root,
+        stdio: "ignore",
+        env: { ...process.env, BASCIK_SERVER: "0", BASCIK_BUILD: "0" },
+      });
+      build.once("exit", (code) =>
+        code === 0 ? res() : rej(new Error(`build exited ${code}`)),
+      );
     });
 
     const port = nextPort();
     base = `http://localhost:${port}`;
     child = spawn(process.execPath, [PKG_ENTRY, "--server"], {
       cwd: root,
-      env: { ...process.env, BASCIK_SERVER_PORT: String(port), BASCIK_ENABLE_TLS: "false", BASCIK_BUILD: "0", BASCIK_SERVER: "0" },
+      env: {
+        ...process.env,
+        BASCIK_SERVER_PORT: String(port),
+        BASCIK_ENABLE_TLS: "false",
+        BASCIK_BUILD: "0",
+        BASCIK_SERVER: "0",
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
-    child.stdout?.on("data", (d: Buffer) => { prodOutput += d.toString(); });
-    child.stderr?.on("data", (d: Buffer) => { prodOutput += d.toString(); });
+    child.stdout?.on("data", (d: Buffer) => {
+      prodOutput += d.toString();
+    });
+    child.stderr?.on("data", (d: Buffer) => {
+      prodOutput += d.toString();
+    });
     const started = Date.now();
     while (Date.now() - started < 20000) {
       try {
@@ -380,7 +449,7 @@ describe("production server module reuse (real --server)", () => {
         child!.kill("SIGTERM");
       });
     }
-    await rm(root, { recursive: true, force: true }).catch(() => { });
+    await rm(root, { recursive: true, force: true }).catch(() => {});
   });
 
   it("keeps serving the loaded module after the source file is edited on disk", async () => {

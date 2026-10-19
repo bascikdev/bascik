@@ -26,9 +26,9 @@ const SPILLED_ENV_PRELOAD =
   "data:text/javascript," +
   encodeURIComponent(
     `import { readFileSync } from "node:fs";` +
-    `const file = process.env.${SPILLED_ENV_FILE_VAR};` +
-    `delete process.env.${SPILLED_ENV_FILE_VAR};` +
-    `if (file) Object.assign(process.env, JSON.parse(readFileSync(file, "utf8")));`,
+      `const file = process.env.${SPILLED_ENV_FILE_VAR};` +
+      `delete process.env.${SPILLED_ENV_FILE_VAR};` +
+      `if (file) Object.assign(process.env, JSON.parse(readFileSync(file, "utf8")));`,
   );
 
 /**
@@ -42,17 +42,23 @@ export const spillLargeEnv = async (
   const spilled: Record<string, string> = {};
   for (const name of SPILLABLE_ENV) {
     const value = env[name];
-    if (value !== undefined && Buffer.byteLength(value, "utf8") > MAX_INLINE_ENV_BYTES) {
+    if (
+      value !== undefined &&
+      Buffer.byteLength(value, "utf8") > MAX_INLINE_ENV_BYTES
+    ) {
       spilled[name] = value;
       delete env[name];
     }
   }
   if (Object.keys(spilled).length === 0) {
-    return { execArgv: [], cleanup: async () => { } };
+    return { execArgv: [], cleanup: async () => {} };
   }
   const directory = await mkdtemp(join(tmpdir(), "bascik-env-"));
   const file = join(directory, "env.json");
-  await writeFile(file, JSON.stringify(spilled), { encoding: "utf8", mode: 0o600 });
+  await writeFile(file, JSON.stringify(spilled), {
+    encoding: "utf8",
+    mode: 0o600,
+  });
   env[SPILLED_ENV_FILE_VAR] = file;
   return {
     execArgv: ["--import", SPILLED_ENV_PRELOAD],
@@ -61,14 +67,18 @@ export const spillLargeEnv = async (
 };
 
 export const stripAnsiEscapeCodes = (value: string): string =>
-  value.replace(/\u001B\[[0-9;?]*[ -/]*[@-~]/g, "")
+  value
+    .replace(/\u001B\[[0-9;?]*[ -/]*[@-~]/g, "")
     .replace(/\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g, "")
     .replace(/\u001B[@-Z\\-_]/g, "");
 
 const MEM_PER_CHILD = 120 * 1024 * 1024; // 120 MB conservative per worker
 const MAX_CHILD_PROCESSES = Math.min(
   cpus().length,
-  Math.max(1, Math.floor(Math.max(freemem() * 0.6, totalmem() * 0.25) / MEM_PER_CHILD)),
+  Math.max(
+    1,
+    Math.floor(Math.max(freemem() * 0.6, totalmem() * 0.25) / MEM_PER_CHILD),
+  ),
 );
 
 class Semaphore {
@@ -162,46 +172,57 @@ export const runModule = async (
   delete childEnv[SPILLED_ENV_FILE_VAR];
 
   await semaphore.acquire();
-  let cleanupSpill: () => Promise<void> = async () => { };
+  let cleanupSpill: () => Promise<void> = async () => {};
   try {
     const spill = await spillLargeEnv(childEnv);
     cleanupSpill = spill.cleanup;
-    return await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-      let settled = false;
+    return await new Promise<{ stdout: string; stderr: string }>(
+      (resolve, reject) => {
+        let settled = false;
 
-      const settle = (err: Error | null, stdout: string, stderr: string): void => {
-        if (settled) return;
-        settled = true;
-        const cleanedStdout = stdout ? stripAnsiEscapeCodes(stdout) : "";
-        const cleanedStderr = stderr ? stripAnsiEscapeCodes(stderr) : "";
-        if (err) {
-          reject(Object.assign(err, { stdout: cleanedStdout, stderr: cleanedStderr }));
-        } else {
-          resolve({ stdout: cleanedStdout, stderr: cleanedStderr });
-        }
-      };
+        const settle = (
+          err: Error | null,
+          stdout: string,
+          stderr: string,
+        ): void => {
+          if (settled) return;
+          settled = true;
+          const cleanedStdout = stdout ? stripAnsiEscapeCodes(stdout) : "";
+          const cleanedStderr = stderr ? stripAnsiEscapeCodes(stderr) : "";
+          if (err) {
+            reject(
+              Object.assign(err, {
+                stdout: cleanedStdout,
+                stderr: cleanedStderr,
+              }),
+            );
+          } else {
+            resolve({ stdout: cleanedStdout, stderr: cleanedStderr });
+          }
+        };
 
-      // execFile throws synchronously for invalid arguments (for example a NUL
-      // byte in `path`). The callback never runs, so the release must not depend
-      // on it. A synchronous throw settles the Promise with the error; the
-      // surrounding try/finally releases the admitted permit.
-      execFile(
-        process.execPath,
-        [...spill.execArgv, path, ...args],
-        {
-          cwd: process.cwd(),
-          env: childEnv as Record<string, string>,
-          timeout: timeoutMs,
-          maxBuffer,
-          killSignal: "SIGTERM",
-        },
-        (err, stdout, stderr) => {
-          settle(err, stdout ?? "", stderr ?? "");
-        },
-      );
-    });
+        // execFile throws synchronously for invalid arguments (for example a NUL
+        // byte in `path`). The callback never runs, so the release must not depend
+        // on it. A synchronous throw settles the Promise with the error; the
+        // surrounding try/finally releases the admitted permit.
+        execFile(
+          process.execPath,
+          [...spill.execArgv, path, ...args],
+          {
+            cwd: process.cwd(),
+            env: childEnv as Record<string, string>,
+            timeout: timeoutMs,
+            maxBuffer,
+            killSignal: "SIGTERM",
+          },
+          (err, stdout, stderr) => {
+            settle(err, stdout ?? "", stderr ?? "");
+          },
+        );
+      },
+    );
   } finally {
-    await cleanupSpill().catch(() => { });
+    await cleanupSpill().catch(() => {});
     // Exactly-once release: this runs whether the child succeeded, failed, was
     // killed by timeout, or execFile threw synchronously. `release()` is safe to
     // call from a `finally` even when the acquire above resolved immediately.

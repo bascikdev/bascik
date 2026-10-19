@@ -17,6 +17,7 @@ bascik add @acme/ui/card
 ```
 
 When you run `bascik add`:
+
 - Files are copied directly into `src/components/` and belong to your project.
 - A `bascik-lock.json` file is created or updated to track package versions and file content hashes.
 - Re-adding an unmodified component updates it safely. If you locally edit a copied component, `bascik add` refuses to overwrite it unless you pass `--force`.
@@ -29,6 +30,7 @@ See [Publishing Components](/how-to/publishing-components) for details on creati
 Component names are derived from filenames, regardless of subfolder nesting. Two files that produce the same tag name fail the build, by design:
 
 <!-- demo:colliding-component -->
+
 ```html
 <!-- src/components/hero-card.html -->
 <!-- FAILS THE BUILD: two files both define the tag <hero-card>.
@@ -47,6 +49,7 @@ When using `bascik add` or manual copying, any collision with an existing projec
 For one or two components without npm packaging, copying files manually is straightforward. Copy `hero-card.html` plus its paired `hero-card.css` and companion scripts into `src/components/`:
 
 <!-- demo:shared-component -->
+
 ```html
 <!-- src/components/marketing/hero-card.html -->
 <!-- Component names derive from the filename, regardless of subfolder nesting. -->

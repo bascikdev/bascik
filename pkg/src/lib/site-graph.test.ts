@@ -30,7 +30,9 @@ describe("splitDistPageIntoSegments", () => {
   it("returns a single static segment and no ids for a plain page", () => {
     const result = splitDistPageIntoSegments("<p>static</p>");
     expect(result.scriptIds).toEqual([]);
-    expect(result.segments).toEqual([{ kind: "static", text: "<p>static</p>" }]);
+    expect(result.segments).toEqual([
+      { kind: "static", text: "<p>static</p>" },
+    ]);
   });
 
   it("matches the type attribute as a whole name, any quote style or case, and only with an empty body", () => {
@@ -54,22 +56,51 @@ describe("splitDistPageIntoSegments", () => {
   });
 
   it("accepts every end tag spelling the browser accepts, case-insensitively", () => {
-    const ends = ["</script>", "</SCRIPT>", "</Script >", "</script/>", "</script\t\n bar>"];
-    const html = ends.map((end, i) => `<p>${i}</p><script type="text/bascik-server" data-bascik-server-id="e${i}">${end}`).join("");
-    expect(splitDistPageIntoSegments(html).scriptIds).toEqual(["e0", "e1", "e2", "e3", "e4"]);
-    const lookalike = '<script type="text/bascik-server" data-bascik-server-id="x"></scripts><p>after</p>';
-    expect(splitDistPageIntoSegments(lookalike)).toEqual({ segments: [{ kind: "static", text: lookalike }], scriptIds: [] });
+    const ends = [
+      "</script>",
+      "</SCRIPT>",
+      "</Script >",
+      "</script/>",
+      "</script\t\n bar>",
+    ];
+    const html = ends
+      .map(
+        (end, i) =>
+          `<p>${i}</p><script type="text/bascik-server" data-bascik-server-id="e${i}">${end}`,
+      )
+      .join("");
+    expect(splitDistPageIntoSegments(html).scriptIds).toEqual([
+      "e0",
+      "e1",
+      "e2",
+      "e3",
+      "e4",
+    ]);
+    const lookalike =
+      '<script type="text/bascik-server" data-bascik-server-id="x"></scripts><p>after</p>';
+    expect(splitDistPageIntoSegments(lookalike)).toEqual({
+      segments: [{ kind: "static", text: lookalike }],
+      scriptIds: [],
+    });
   });
 
   it("reads unquoted type and id values", () => {
-    expect(splitDistPageIntoSegments("<script type=text/bascik-server data-bascik-server-id=u></script>").scriptIds).toEqual(["u"]);
+    expect(
+      splitDistPageIntoSegments(
+        "<script type=text/bascik-server data-bascik-server-id=u></script>",
+      ).scriptIds,
+    ).toEqual(["u"]);
   });
 
   it("leaves a placeholder without an id in the static text and keeps scanning after it", () => {
-    const html = '<p>a</p><script type="text/bascik-server"></script><p>b</p><script type="text/bascik-server" data-bascik-server-id="s"></script>';
+    const html =
+      '<p>a</p><script type="text/bascik-server"></script><p>b</p><script type="text/bascik-server" data-bascik-server-id="s"></script>';
     expect(splitDistPageIntoSegments(html)).toEqual({
       segments: [
-        { kind: "static", text: '<p>a</p><script type="text/bascik-server"></script><p>b</p>' },
+        {
+          kind: "static",
+          text: '<p>a</p><script type="text/bascik-server"></script><p>b</p>',
+        },
         { kind: "script", id: "s" },
       ],
       scriptIds: ["s"],
@@ -77,19 +108,31 @@ describe("splitDistPageIntoSegments", () => {
   });
 
   it("reassembles the page exactly from its static segments and placeholders", () => {
-    const placeholder = (id: string) => `<script type="text/bascik-server" data-bascik-server-id="${id}"></script>`;
+    const placeholder = (id: string) =>
+      `<script type="text/bascik-server" data-bascik-server-id="${id}"></script>`;
     const html = `<p>a</p>${placeholder("s1")}${placeholder("s2")}<p>b</p><script>client()</script>${placeholder("s3")}`;
-    const rebuilt = splitDistPageIntoSegments(html).segments
-      .map((segment) => (segment.kind === "static" ? segment.text : placeholder(segment.id!)))
+    const rebuilt = splitDistPageIntoSegments(html)
+      .segments.map((segment) =>
+        segment.kind === "static" ? segment.text : placeholder(segment.id!),
+      )
       .join("");
     expect(rebuilt).toBe(html);
   });
 
   it("stays linear on many placeholders and many unterminated placeholder open tags", () => {
     const started = performance.now();
-    const many = '<p>a</p><script type="text/bascik-server" data-bascik-server-id="s"></script>'.repeat(50_000);
+    const many =
+      '<p>a</p><script type="text/bascik-server" data-bascik-server-id="s"></script>'.repeat(
+        50_000,
+      );
     expect(splitDistPageIntoSegments(many).scriptIds).toHaveLength(50_000);
-    expect(splitDistPageIntoSegments('<script type="text/bascik-server" data-bascik-server-id="s">'.repeat(50_000)).scriptIds).toEqual([]);
+    expect(
+      splitDistPageIntoSegments(
+        '<script type="text/bascik-server" data-bascik-server-id="s">'.repeat(
+          50_000,
+        ),
+      ).scriptIds,
+    ).toEqual([]);
     expect(performance.now() - started).toBeLessThan(2000);
   });
 
@@ -111,9 +154,17 @@ describe("splitDistPageIntoSegments", () => {
   it("stays linear on long whitespace runs and repeated unterminated end tags", () => {
     const open = '<script type="text/bascik-server" data-bascik-server-id="s">';
     const started = performance.now();
-    expect(splitDistPageIntoSegments(`${open}${" ".repeat(200_000)}x`).scriptIds).toEqual([]);
-    expect(splitDistPageIntoSegments(`${open}${"</script\t".repeat(50_000)}`).scriptIds).toEqual([]);
-    expect(splitDistPageIntoSegments(`${open}${" ".repeat(200_000)}</script>`).scriptIds).toEqual(["s"]);
+    expect(
+      splitDistPageIntoSegments(`${open}${" ".repeat(200_000)}x`).scriptIds,
+    ).toEqual([]);
+    expect(
+      splitDistPageIntoSegments(`${open}${"</script\t".repeat(50_000)}`)
+        .scriptIds,
+    ).toEqual([]);
+    expect(
+      splitDistPageIntoSegments(`${open}${" ".repeat(200_000)}</script>`)
+        .scriptIds,
+    ).toEqual(["s"]);
     expect(performance.now() - started).toBeLessThan(1000);
   });
 
@@ -136,13 +187,31 @@ describe("splitDistPageIntoSegments", () => {
 describe("pageAliasesFor", () => {
   it("lists every request spelling the Node server accepts for a page", () => {
     expect(pageAliasesFor("/", "/")).toEqual(["/", "/index", "/index.html"]);
-    expect(pageAliasesFor("/about", "/")).toEqual(["/about", "/about/", "/about.html"]);
-    expect(pageAliasesFor("/blog/", "/")).toEqual(["/blog/", "/blog", "/blog/index", "/blog/index.html"]);
+    expect(pageAliasesFor("/about", "/")).toEqual([
+      "/about",
+      "/about/",
+      "/about.html",
+    ]);
+    expect(pageAliasesFor("/blog/", "/")).toEqual([
+      "/blog/",
+      "/blog",
+      "/blog/index",
+      "/blog/index.html",
+    ]);
   });
 
   it("prefixes the base path", () => {
-    expect(pageAliasesFor("/about", "/docs/")).toEqual(["/docs/about", "/docs/about/", "/docs/about.html"]);
-    expect(pageAliasesFor("/", "/docs/")).toEqual(["/docs/", "/docs", "/docs/index", "/docs/index.html"]);
+    expect(pageAliasesFor("/about", "/docs/")).toEqual([
+      "/docs/about",
+      "/docs/about/",
+      "/docs/about.html",
+    ]);
+    expect(pageAliasesFor("/", "/docs/")).toEqual([
+      "/docs/",
+      "/docs",
+      "/docs/index",
+      "/docs/index.html",
+    ]);
   });
 });
 
@@ -213,7 +282,7 @@ describe("readSiteGraph", () => {
     await writeFile(
       join(distDir, "dynamic.html"),
       `<p>Hi</p><script type="text/bascik-server" data-bascik-server-id="job-inline"></script>` +
-      `<p>Stream</p><script type="text/bascik-server" data-bascik-server-id="job-src" data-bascik-stream></script>`,
+        `<p>Stream</p><script type="text/bascik-server" data-bascik-server-id="job-src" data-bascik-stream></script>`,
       "utf8",
     );
     // sidecar
@@ -234,18 +303,34 @@ describe("readSiteGraph", () => {
         },
       },
     };
-    await writeFile(join(bascikHiddenDir, "server-scripts.json"), JSON.stringify(sidecar), "utf8");
+    await writeFile(
+      join(bascikHiddenDir, "server-scripts.json"),
+      JSON.stringify(sidecar),
+      "utf8",
+    );
 
     // helper file for src=
     await mkdir(join(testDir, "src/pages"), { recursive: true });
-    await writeFile(join(testDir, "src/pages/helper.ts"), "export default () => 'streamed';", "utf8");
+    await writeFile(
+      join(testDir, "src/pages/helper.ts"),
+      "export default () => 'streamed';",
+      "utf8",
+    );
 
     // static asset
     await mkdir(join(distDir, "css"), { recursive: true });
-    await writeFile(join(distDir, "css/main.css"), "body { color: red; }", "utf8");
+    await writeFile(
+      join(distDir, "css/main.css"),
+      "body { color: red; }",
+      "utf8",
+    );
 
     // API route
-    await writeFile(join(srcApiDir, "hello.ts"), "export const GET = () => new Response('world');", "utf8");
+    await writeFile(
+      join(srcApiDir, "hello.ts"),
+      "export const GET = () => new Response('world');",
+      "utf8",
+    );
 
     try {
       const graph = await readSiteGraph({
@@ -264,9 +349,13 @@ describe("readSiteGraph", () => {
       expect(graph.custom500).toBe("<h1>Server Error</h1>");
       expect(graph.pages["/dynamic"]).toBeDefined();
       expect(graph.pages["/dynamic"].jobs["job-inline"]).toBeDefined();
-      expect(graph.pages["/dynamic"].jobs["job-inline"].source.kind).toBe("inline");
+      expect(graph.pages["/dynamic"].jobs["job-inline"].source.kind).toBe(
+        "inline",
+      );
       expect(graph.pages["/dynamic"].jobs["job-src"]).toBeDefined();
-      expect(graph.pages["/dynamic"].jobs["job-src"].source.kind).toBe("module");
+      expect(graph.pages["/dynamic"].jobs["job-src"].source.kind).toBe(
+        "module",
+      );
 
       expect(graph.apiRoutes).toHaveLength(1);
       expect(graph.apiRoutes[0].path).toBe("/api/hello");

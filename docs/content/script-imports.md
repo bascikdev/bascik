@@ -29,8 +29,8 @@ Relative paths change shape with the depth of the file that contains them (`../l
 
 ```html
 <script data-bascik-build>
-  import { renderCards } from '@/lib/render-cards.ts';
-  export default async () => await renderCards('./content/cards.json');
+  import { renderCards } from "@/lib/render-cards.ts";
+  export default async () => await renderCards("./content/cards.json");
 </script>
 ```
 
@@ -60,11 +60,11 @@ npm install gray-matter
 
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
-  import matter from 'gray-matter';
+  import { readFile } from "node:fs/promises";
+  import matter from "gray-matter";
 
   export default async function () {
-    const raw = await readFile('./content/post.md', 'utf8');
+    const raw = await readFile("./content/post.md", "utf8");
     const { data, content } = matter(raw);
     return `
       <article>

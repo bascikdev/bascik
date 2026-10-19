@@ -29,7 +29,7 @@
   display: inline-flex;
   align-items: center;
   text-decoration: none;
-  transition: opacity .15s;
+  transition: opacity 0.15s;
 }
 
 .dfooter-logo:hover {
@@ -61,7 +61,7 @@
   height: 32px;
   border-radius: 6px;
   color: var(--text-muted);
-  transition: color .15s;
+  transition: color 0.15s;
 }
 
 .dfooter-social a:hover {
@@ -79,7 +79,7 @@
 .dfooter-made-by a {
   color: var(--accent-fg);
   text-decoration: none;
-  transition: opacity .15s;
+  transition: opacity 0.15s;
 }
 
 .dfooter-made-by a:hover {
@@ -101,7 +101,7 @@
   font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .1em;
+  letter-spacing: 0.1em;
   color: var(--accent-fg);
   margin: 0 0 10px;
 }
@@ -119,7 +119,7 @@
   font-size: 0.82rem;
   color: var(--text-muted);
   text-decoration: none;
-  transition: color .15s;
+  transition: color 0.15s;
 }
 
 .dfooter-col-links a:hover {
@@ -145,7 +145,7 @@
 .dfooter-copy a {
   color: var(--text-muted);
   text-decoration: none;
-  transition: color .15s;
+  transition: color 0.15s;
 }
 
 .dfooter-copy a:hover {
@@ -162,7 +162,7 @@
   font-size: 0.78rem;
   color: var(--text-muted);
   text-decoration: none;
-  transition: color .15s;
+  transition: color 0.15s;
 }
 
 .dfooter-links a:hover {

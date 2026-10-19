@@ -53,7 +53,11 @@ describe("Prompt 39 - Caching Layer Unit Tests", () => {
     // First call computes
     const res1 = spy();
     // Subsequent lookup uses cache
-    STATIC_CACHE_METADATA.set("/path/to/asset.svg", { etag: res1, size: buf.length, mtimeMs: 12345 });
+    STATIC_CACHE_METADATA.set("/path/to/asset.svg", {
+      etag: res1,
+      size: buf.length,
+      mtimeMs: 12345,
+    });
 
     const cached = STATIC_CACHE_METADATA.get("/path/to/asset.svg");
     expect(cached?.etag).toBe(res1);
@@ -62,15 +66,23 @@ describe("Prompt 39 - Caching Layer Unit Tests", () => {
 
   it("resolves cache-control with default and per-extension mapping", () => {
     expect(resolveCacheControl(".js", undefined)).toBe("public, max-age=3600");
-    expect(resolveCacheControl(".png", "public, max-age=3600")).toBe("public, max-age=3600");
+    expect(resolveCacheControl(".png", "public, max-age=3600")).toBe(
+      "public, max-age=3600",
+    );
 
     const configMapping = {
       ".js": "public, max-age=31536000, immutable",
       ".png": "public, max-age=86400",
     };
-    expect(resolveCacheControl(".js", configMapping)).toBe("public, max-age=31536000, immutable");
-    expect(resolveCacheControl(".png", configMapping)).toBe("public, max-age=86400");
-    expect(resolveCacheControl(".unknown", configMapping)).toBe("public, max-age=3600");
+    expect(resolveCacheControl(".js", configMapping)).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    expect(resolveCacheControl(".png", configMapping)).toBe(
+      "public, max-age=86400",
+    );
+    expect(resolveCacheControl(".unknown", configMapping)).toBe(
+      "public, max-age=3600",
+    );
   });
 
   it("emits immutable when configured", () => {
@@ -131,7 +143,9 @@ describe("Prompt 39 - Caching Layer Unit Tests", () => {
 
     it("restricts negotiation to available encodings", () => {
       // Client accepts br with higher preference, but server only has gzip available
-      expect(negotiateCompression("br;q=1.0, gzip;q=0.8", ["gzip"])).toBe("gzip");
+      expect(negotiateCompression("br;q=1.0, gzip;q=0.8", ["gzip"])).toBe(
+        "gzip",
+      );
       // Client accepts only br, but server only has gzip
       expect(negotiateCompression("br, deflate", ["gzip"])).toBe("identity");
     });
@@ -142,17 +156,28 @@ describe("Prompt 39 - Caching Layer Unit Tests", () => {
       { header: '"tag1"', etags: ['"tag1"'], expected: true },
       { header: '"tag1"', etags: ['"tag2"'], expected: false },
       { header: '"tag1", "tag2", "tag3"', etags: ['"tag2"'], expected: true },
-      { header: ' "other" , "abc123-br" ', etags: ['"abc123-br"'], expected: true },
+      {
+        header: ' "other" , "abc123-br" ',
+        etags: ['"abc123-br"'],
+        expected: true,
+      },
       { header: 'W/"tag1"', etags: ['"tag1"'], expected: true },
       { header: '"tag1"', etags: ['W/"tag1"'], expected: true },
       { header: 'W/"tag1"', etags: ['W/"tag1"'], expected: true },
-      { header: '*', etags: ['"anything"'], expected: true },
-      { header: ['"other"', '"matching"'], etags: ['"matching"'], expected: true },
-      { header: '', etags: ['"tag1"'], expected: false },
+      { header: "*", etags: ['"anything"'], expected: true },
+      {
+        header: ['"other"', '"matching"'],
+        etags: ['"matching"'],
+        expected: true,
+      },
+      { header: "", etags: ['"tag1"'], expected: false },
       { header: undefined, etags: ['"tag1"'], expected: false },
-    ])("matchesIfNoneMatch($header, $etags) -> $expected", ({ header, etags, expected }) => {
-      expect(matchesIfNoneMatch(header, ...etags)).toBe(expected);
-    });
+    ])(
+      "matchesIfNoneMatch($header, $etags) -> $expected",
+      ({ header, etags, expected }) => {
+        expect(matchesIfNoneMatch(header, ...etags)).toBe(expected);
+      },
+    );
   });
 
   it("recognizes compressible and already-compressed MIME types / extensions", () => {
@@ -188,7 +213,7 @@ describe("Prompt 96 - Bounded Asynchronous Static Compression", () => {
   afterEach(async () => {
     clearCompressedRepresentationCache();
     if (tempDir) {
-      await rm(tempDir, { recursive: true, force: true }).catch(() => { });
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
   });
 
@@ -244,7 +269,10 @@ describe("Prompt 96 - Bounded Asynchronous Static Compression", () => {
 
     const res1 = await getCompressedStaticAsset(filePath, 1000, 17, "br");
 
-    await writeFile(filePath, Buffer.from("version 2 content with different size"));
+    await writeFile(
+      filePath,
+      Buffer.from("version 2 content with different size"),
+    );
     const res2 = await getCompressedStaticAsset(filePath, 2000, 38, "br");
 
     expect(res1).toBeDefined();
@@ -272,7 +300,7 @@ describe("Prompt 107 - Static representation snapshot owner", () => {
 
   afterEach(async () => {
     clearStaticRepresentationCache();
-    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => { });
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
   });
 
   it("derives a strong etag and length from the exact immutable bytes delivered", async () => {
@@ -364,7 +392,8 @@ describe("Prompt 107 - Static representation snapshot owner", () => {
       const delivery = await getStaticDelivery(p, "br", st);
       expect(delivery).not.toBeNull();
       expect(delivery!.kind).toBe("streamed");
-      if (!delivery || delivery.kind !== "streamed") throw new Error("unreachable");
+      if (!delivery || delivery.kind !== "streamed")
+        throw new Error("unreachable");
       try {
         expect(delivery.encoding).toBe("identity");
         expect(delivery.size).toBe(MAX_BUFFERED_ASSET_BYTES + 1);
@@ -396,7 +425,8 @@ describe("Prompt 107 - Static representation snapshot owner", () => {
 
       const delivery = await getStaticDelivery(p, "identity", st);
       expect(delivery!.kind).toBe("buffered");
-      if (!delivery || delivery.kind !== "buffered") throw new Error("unreachable");
+      if (!delivery || delivery.kind !== "buffered")
+        throw new Error("unreachable");
       expect(delivery.representation.etag).toBe(getContentHashEtag(body));
       expect(delivery.representation.size).toBe(MAX_BUFFERED_ASSET_BYTES);
       expect(getOpenStreamedAssetHandles()).toBe(0);
@@ -409,7 +439,8 @@ describe("Prompt 107 - Static representation snapshot owner", () => {
       const st = await fsStat(p);
       const delivery = await getStaticDelivery(p, "gzip", st);
       expect(delivery!.kind).toBe("buffered");
-      if (!delivery || delivery.kind !== "buffered") throw new Error("unreachable");
+      if (!delivery || delivery.kind !== "buffered")
+        throw new Error("unreachable");
       expect(delivery.representation.encoding).toBe("gzip");
       expect(delivery.representation.rawEtag).toBe(getContentHashEtag(body));
     });
@@ -435,7 +466,10 @@ describe("Prompt 107 - Static representation snapshot owner", () => {
     const body = Buffer.from("export const answer = 42;".repeat(40));
     await writeFile(p, body);
     // A sidecar with recognizably different (stale) content.
-    await writeFile(`${p}.br`, zlib.brotliCompressSync(Buffer.from("stale bytes")));
+    await writeFile(
+      `${p}.br`,
+      zlib.brotliCompressSync(Buffer.from("stale bytes")),
+    );
 
     const br = await getStaticRepresentation(p, "br");
     expect(br).not.toBeNull();
@@ -445,7 +479,10 @@ describe("Prompt 107 - Static representation snapshot owner", () => {
     clearStaticRepresentationCache();
     const sidecar = zlib.brotliCompressSync(body);
     await writeFile(`${p}.br`, sidecar);
-    await writeFile(`${p}.br.bmeta`, JSON.stringify({ rawHash: getContentHashEtag(body) }));
+    await writeFile(
+      `${p}.br.bmeta`,
+      JSON.stringify({ rawHash: getContentHashEtag(body) }),
+    );
     const verified = await getStaticRepresentation(p, "br");
     expect(verified!.buffer.equals(sidecar)).toBe(true);
   });
@@ -466,23 +503,37 @@ describe("Prompt 107 - Static representation snapshot owner", () => {
 
       // Create 205 small files on disk with real content
       const fileCount = MAX_COMPRESSED_CACHE_ENTRIES + 5;
-      const fileStats = new Map<string, { mtimeMs: number; size: number; content: string }>();
+      const fileStats = new Map<
+        string,
+        { mtimeMs: number; size: number; content: string }
+      >();
       for (let i = 0; i < fileCount; i++) {
         const filePath = join(dir, `asset-${i}.txt`);
         const content = `content-${i}`;
         await writeFile(filePath, Buffer.from(content));
         const fileStat = await fsStat(filePath);
-        fileStats.set(filePath, { mtimeMs: fileStat.mtimeMs, size: fileStat.size, content });
+        fileStats.set(filePath, {
+          mtimeMs: fileStat.mtimeMs,
+          size: fileStat.size,
+          content,
+        });
       }
 
       // Populate cache with first 200 entries using REAL stat mtimeMs and size
       for (let i = 0; i < MAX_COMPRESSED_CACHE_ENTRIES; i++) {
         const filePath = join(dir, `asset-${i}.txt`);
         const { mtimeMs, size, content } = fileStats.get(filePath)!;
-        const repr = await getStaticRepresentation(filePath, "identity", mtimeMs, size);
+        const repr = await getStaticRepresentation(
+          filePath,
+          "identity",
+          mtimeMs,
+          size,
+        );
         assertRetainedEntry(repr, content);
       }
-      expect(getCompressedCacheEntriesCount()).toBe(MAX_COMPRESSED_CACHE_ENTRIES);
+      expect(getCompressedCacheEntriesCount()).toBe(
+        MAX_COMPRESSED_CACHE_ENTRIES,
+      );
 
       // Delete the first file from disk
       const deletedPath = join(dir, "asset-0.txt");
@@ -491,24 +542,44 @@ describe("Prompt 107 - Static representation snapshot owner", () => {
 
       // Direct cache observation (not server-stat proof): the representation is retained in memory
       // before FIFO eviction when accessed directly with previously recorded stat
-      const cachedBeforeEviction = await getStaticRepresentation(deletedPath, "identity", deletedInfo.mtimeMs, deletedInfo.size);
+      const cachedBeforeEviction = await getStaticRepresentation(
+        deletedPath,
+        "identity",
+        deletedInfo.mtimeMs,
+        deletedInfo.size,
+      );
       assertRetainedEntry(cachedBeforeEviction, "content-0");
 
       // Bypassing known stat forces a disk re-read/stat, returning null for the deleted file
-      const reStatAfterDelete = await getStaticRepresentation(deletedPath, "identity");
+      const reStatAfterDelete = await getStaticRepresentation(
+        deletedPath,
+        "identity",
+      );
       expect(reStatAfterDelete).toBeNull();
 
       // Push 5 more entries to trigger FIFO eviction of the oldest entries (including asset-0.txt)
       for (let i = MAX_COMPRESSED_CACHE_ENTRIES; i < fileCount; i++) {
         const filePath = join(dir, `asset-${i}.txt`);
         const { mtimeMs, size, content } = fileStats.get(filePath)!;
-        const repr = await getStaticRepresentation(filePath, "identity", mtimeMs, size);
+        const repr = await getStaticRepresentation(
+          filePath,
+          "identity",
+          mtimeMs,
+          size,
+        );
         assertRetainedEntry(repr, content);
       }
-      expect(getCompressedCacheEntriesCount()).toBe(MAX_COMPRESSED_CACHE_ENTRIES);
+      expect(getCompressedCacheEntriesCount()).toBe(
+        MAX_COMPRESSED_CACHE_ENTRIES,
+      );
 
       // asset-0.txt was evicted; even with original stat it now misses
-      const afterEviction = await getStaticRepresentation(deletedPath, "identity", deletedInfo.mtimeMs, deletedInfo.size);
+      const afterEviction = await getStaticRepresentation(
+        deletedPath,
+        "identity",
+        deletedInfo.mtimeMs,
+        deletedInfo.size,
+      );
       expect(afterEviction).toBeNull();
 
       // Shutdown / clear drops all cached representations

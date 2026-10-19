@@ -9,7 +9,9 @@ describe("Security Headers (Prompt 45)", () => {
 
   it("includes Cross-Origin Opener Policy (COOP) header", () => {
     const headers = getSecurityHeaders();
-    expect(headers["cross-origin-opener-policy"]).toBe("same-origin-allow-popups");
+    expect(headers["cross-origin-opener-policy"]).toBe(
+      "same-origin-allow-popups",
+    );
   });
 
   it("includes Cross-Origin Resource Policy (CORP) header", () => {

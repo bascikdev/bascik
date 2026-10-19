@@ -30,14 +30,20 @@ export const createPackageFixtureDirs = async (root: string): Promise<void> => {
   await mkdir(join(root, "node_modules", ".cache"), { recursive: true });
 };
 
-export const writeFixtureFile = async (root: string, relPath: string, content: string): Promise<void> => {
+export const writeFixtureFile = async (
+  root: string,
+  relPath: string,
+  content: string,
+): Promise<void> => {
   const abs = join(root, relPath);
   await mkdir(dirname(abs), { recursive: true });
   await writeFile(abs, content, "utf8");
 };
 
-export const readFixtureFile = async (root: string, relPath: string): Promise<string> =>
-  readFile(join(root, relPath), "utf8");
+export const readFixtureFile = async (
+  root: string,
+  relPath: string,
+): Promise<string> => readFile(join(root, relPath), "utf8");
 
 export const cleanupFixture = async (root: string): Promise<void> => {
   await rm(root, { recursive: true, force: true });
@@ -52,13 +58,20 @@ export const runRealPackageBuild = async (
   root: string,
   args: string[] = [],
 ): Promise<{ stdout: string; stderr: string }> => {
-  const cli = resolve(dirname(fileURLToPath(import.meta.url)), "../../src/index.ts");
-  const { stdout, stderr } = await execFileAsync(process.execPath, [cli, "--build", ...args], {
-    cwd: root,
-    encoding: "utf8",
-    env: { ...process.env },
-    maxBuffer: 1024 * 1024 * 16,
-  });
+  const cli = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../src/index.ts",
+  );
+  const { stdout, stderr } = await execFileAsync(
+    process.execPath,
+    [cli, "--build", ...args],
+    {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...process.env },
+      maxBuffer: 1024 * 1024 * 16,
+    },
+  );
   return { stdout, stderr };
 };
 
@@ -120,11 +133,13 @@ export const writeInstalledPackage = async (
  * must invalidate via the cache key, not by clearing the cache.
  */
 export const resetFixtureCache = async (root: string): Promise<void> => {
-  await rm(
-    join(root, "node_modules", ".cache", "bascik", "script-cache"),
-    { recursive: true, force: true },
-  );
+  await rm(join(root, "node_modules", ".cache", "bascik", "script-cache"), {
+    recursive: true,
+    force: true,
+  });
 };
 
-export const readDistHtml = async (root: string, routeFile = "index.html"): Promise<string> =>
-  readFile(join(root, "dist", routeFile), "utf8");
+export const readDistHtml = async (
+  root: string,
+  routeFile = "index.html",
+): Promise<string> => readFile(join(root, "dist", routeFile), "utf8");

@@ -13,8 +13,11 @@ import { styleText, stripVTControlCharacters } from "node:util";
 
 type Format = Parameters<typeof styleText>[0];
 
-const paint = (stream: NodeJS.WriteStream, format: Format, text: string): string =>
-  styleText(format, text, { stream, validateStream: true });
+const paint = (
+  stream: NodeJS.WriteStream,
+  format: Format,
+  text: string,
+): string => styleText(format, text, { stream, validateStream: true });
 
 const painter = (stream: () => NodeJS.WriteStream) => ({
   /** Success and completed work. */
@@ -30,7 +33,15 @@ const painter = (stream: () => NodeJS.WriteStream) => ({
   bold: (text: string) => paint(stream(), "bold", text),
   /** The `[bascik]` prefix, in the color of the message it introduces. */
   tag: (level: "info" | "warn" | "error", text = "[bascik]") =>
-    paint(stream(), level === "error" ? ["bold", "red"] : level === "warn" ? ["bold", "yellow"] : ["bold", "cyan"], text),
+    paint(
+      stream(),
+      level === "error"
+        ? ["bold", "red"]
+        : level === "warn"
+          ? ["bold", "yellow"]
+          : ["bold", "cyan"],
+      text,
+    ),
 });
 
 /** Colors for `console.log` output. */
@@ -49,7 +60,8 @@ export const colorStatus = (status: number): string => {
 };
 
 /** Whether Node would color text for this stream: a terminal, with `NO_COLOR`, `FORCE_COLOR` and `TERM=dumb` honored. */
-const canColor = (stream: NodeJS.WriteStream): boolean => styleText("green", "x", { stream, validateStream: true }) !== "x";
+const canColor = (stream: NodeJS.WriteStream): boolean =>
+  styleText("green", "x", { stream, validateStream: true }) !== "x";
 
 /**
  * The environment to give a worker thread so its output is colored exactly when this thread's would be.
@@ -66,10 +78,12 @@ const canColor = (stream: NodeJS.WriteStream): boolean => styleText("green", "x"
 export const workerEnvironment = (
   streams: { stdout?: NodeJS.WriteStream; stderr?: NodeJS.WriteStream } = {},
 ): NodeJS.ProcessEnv | undefined => {
-  const { stdout: out = process.stdout, stderr: err = process.stderr } = streams;
+  const { stdout: out = process.stdout, stderr: err = process.stderr } =
+    streams;
   if (!canColor(out) || !canColor(err)) return undefined;
   return { ...process.env, FORCE_COLOR: "1" };
 };
 
 /** Removes terminal control sequences, so log files never contain color codes. */
-export const stripColors = (text: string): string => stripVTControlCharacters(text);
+export const stripColors = (text: string): string =>
+  stripVTControlCharacters(text);

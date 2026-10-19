@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { readdir, readFile } from 'node:fs/promises';
-import path from 'node:path';
-import { parse, type ParserError } from 'parse5';
+import { describe, it, expect } from "vitest";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+import { parse, type ParserError } from "parse5";
 
 /**
  * Dist sanity checks.
@@ -26,7 +26,7 @@ import { parse, type ParserError } from 'parse5';
  * break cold CI runs where a separate build step precedes the test step.
  */
 
-const DIST_DIR = path.resolve(import.meta.dirname, '../../dist');
+const DIST_DIR = path.resolve(import.meta.dirname, "../../dist");
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -67,18 +67,19 @@ function collectParseErrors(html: string): ParserError[] {
  * failure message, including the source line context when available.
  */
 function formatError(err: ParserError, html: string, relPath: string): string {
-  const lines = html.split('\n');
+  const lines = html.split("\n");
   const line = err.startLine ?? 0;
   const col = err.startCol ?? 0;
-  const srcLine = line > 0 && line <= lines.length ? lines[line - 1].slice(0, 120) : '';
-  const pointer = col > 1 ? ' '.repeat(col - 1) + '^' : '^';
+  const srcLine =
+    line > 0 && line <= lines.length ? lines[line - 1].slice(0, 120) : "";
+  const pointer = col > 1 ? " ".repeat(col - 1) + "^" : "^";
   return [
     `${relPath}:${line}:${col}  [${err.code}]`,
-    srcLine ? `  ${srcLine}` : '',
-    srcLine ? `  ${pointer}` : '',
+    srcLine ? `  ${srcLine}` : "",
+    srcLine ? `  ${pointer}` : "",
   ]
     .filter(Boolean)
-    .join('\n');
+    .join("\n");
 }
 
 /** Internal pipeline tokens that must never survive into the output. */
@@ -86,29 +87,29 @@ const PIPELINE_TOKEN_RE = /\x00BASCIK_SHIELD_\d+\x00|BASCIK_COMMENT_\d+/;
 
 // ─── tests ────────────────────────────────────────────────────────────────────
 
-describe('dist sanity: HTML parse errors (parse5 WHATWG)', () => {
-  it('dist directory exists (build ran before tests)', async () => {
-    const files = await walk(DIST_DIR, '.html');
+describe("dist sanity: HTML parse errors (parse5 WHATWG)", () => {
+  it("dist directory exists (build ran before tests)", async () => {
+    const files = await walk(DIST_DIR, ".html");
     // If zero files found the dist just hasn't been built; skip gracefully.
     if (files.length === 0) {
       console.warn(
-        '[dist-sanity] No HTML files found under dist/. ' +
-        'Run `yarn docs:build` before `yarn docs:unit`.',
+        "[dist-sanity] No HTML files found under dist/. " +
+          "Run `yarn docs:build` before `yarn docs:unit`.",
       );
     }
     // The test itself doesn't fail: the per-file tests below will simply not
     // run. This avoids false-red on a fresh checkout with no build yet.
-    expect(typeof files.length).toBe('number');
+    expect(typeof files.length).toBe("number");
   });
 
-  it('every dist HTML file is free of WHATWG parse errors', async () => {
-    const files = await walk(DIST_DIR, '.html');
+  it("every dist HTML file is free of WHATWG parse errors", async () => {
+    const files = await walk(DIST_DIR, ".html");
     if (files.length === 0) return; // build not run yet, handled above
 
     const failures: string[] = [];
 
     for (const file of files) {
-      const html = await readFile(file, 'utf-8');
+      const html = await readFile(file, "utf-8");
       const errors = collectParseErrors(html);
       if (errors.length > 0) {
         const relPath = path.relative(DIST_DIR, file);
@@ -121,11 +122,12 @@ describe('dist sanity: HTML parse errors (parse5 WHATWG)', () => {
     if (failures.length > 0) {
       // Show the first 20 errors to keep output readable.
       const shown = failures.slice(0, 20);
-      const extra = failures.length > 20 ? `\n  … and ${failures.length - 20} more` : '';
+      const extra =
+        failures.length > 20 ? `\n  … and ${failures.length - 20} more` : "";
       expect.fail(
         `${failures.length} parse error(s) found in dist HTML files:\n\n` +
-        shown.join('\n\n') +
-        extra,
+          shown.join("\n\n") +
+          extra,
       );
     }
 
@@ -133,52 +135,58 @@ describe('dist sanity: HTML parse errors (parse5 WHATWG)', () => {
   }, 30_000);
 });
 
-describe('dist sanity: unreplaced pipeline tokens', () => {
-  it('no HTML file contains an unreplaced Bascik shield token', async () => {
-    const files = await walk(DIST_DIR, '.html');
+describe("dist sanity: unreplaced pipeline tokens", () => {
+  it("no HTML file contains an unreplaced Bascik shield token", async () => {
+    const files = await walk(DIST_DIR, ".html");
     if (files.length === 0) return;
 
     const hits: string[] = [];
     for (const file of files) {
-      const html = await readFile(file, 'utf-8');
+      const html = await readFile(file, "utf-8");
       if (PIPELINE_TOKEN_RE.test(html)) {
         const relPath = path.relative(DIST_DIR, file);
         const match = PIPELINE_TOKEN_RE.exec(html)!;
-        hits.push(`${relPath}: found token "${match[0]}" at offset ${match.index}`);
+        hits.push(
+          `${relPath}: found token "${match[0]}" at offset ${match.index}`,
+        );
       }
     }
 
     expect(hits).toHaveLength(0);
   }, 30_000);
 
-  it('no CSS file contains an unreplaced Bascik shield token', async () => {
-    const files = await walk(DIST_DIR, '.css');
+  it("no CSS file contains an unreplaced Bascik shield token", async () => {
+    const files = await walk(DIST_DIR, ".css");
     if (files.length === 0) return;
 
     const hits: string[] = [];
     for (const file of files) {
-      const css = await readFile(file, 'utf-8');
+      const css = await readFile(file, "utf-8");
       if (PIPELINE_TOKEN_RE.test(css)) {
         const relPath = path.relative(DIST_DIR, file);
         const match = PIPELINE_TOKEN_RE.exec(css)!;
-        hits.push(`${relPath}: found token "${match[0]}" at offset ${match.index}`);
+        hits.push(
+          `${relPath}: found token "${match[0]}" at offset ${match.index}`,
+        );
       }
     }
 
     expect(hits).toHaveLength(0);
   });
 
-  it('no JS file contains an unreplaced Bascik shield token', async () => {
-    const files = await walk(DIST_DIR, '.js');
+  it("no JS file contains an unreplaced Bascik shield token", async () => {
+    const files = await walk(DIST_DIR, ".js");
     if (files.length === 0) return;
 
     const hits: string[] = [];
     for (const file of files) {
-      const js = await readFile(file, 'utf-8');
+      const js = await readFile(file, "utf-8");
       if (PIPELINE_TOKEN_RE.test(js)) {
         const relPath = path.relative(DIST_DIR, file);
         const match = PIPELINE_TOKEN_RE.exec(js)!;
-        hits.push(`${relPath}: found token "${match[0]}" at offset ${match.index}`);
+        hits.push(
+          `${relPath}: found token "${match[0]}" at offset ${match.index}`,
+        );
       }
     }
 

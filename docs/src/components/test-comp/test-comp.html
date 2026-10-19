@@ -1,37 +1,34 @@
-<div id="my-div-id" name="my-name">
-  Test Comp Div Tag
-</div>
+<div id="my-div-id" name="my-name">Test Comp Div Tag</div>
 <p name="my-name">Test Comp P Tag</p>
 <button id="btn" class="btn" type="button">Change Color</button>
 
 <script>
-  document.getElementsByName('my-name').forEach(el => {
-    el.style.textDecoration = 'underline';
+  document.getElementsByName("my-name").forEach((el) => {
+    el.style.textDecoration = "underline";
   });
 
-  document.getElementById('my-div-id').style.color = '#d3ff8d';
+  document.getElementById("my-div-id").style.color = "#d3ff8d";
 
   document.getElementById("btn").addEventListener("click", () => {
-    document.getElementsByName('my-name').forEach(el => {
-      el.style.color = '#ff7a09';
+    document.getElementsByName("my-name").forEach((el) => {
+      el.style.color = "#ff7a09";
     });
   });
 </script>
 
-
 <script>
   // bascik-ignore js-document-class-query
-  const btn = document.querySelector('.btn')
-  btn.style.backgroundColor = '#d3ff8d'
+  const btn = document.querySelector(".btn");
+  btn.style.backgroundColor = "#d3ff8d";
 
-  const btns = document.querySelectorAll(".btn")
+  const btns = document.querySelectorAll(".btn");
   btns.forEach((btn) => {
-    btn.style.border = 'dashed'
-  })
+    btn.style.border = "dashed";
+  });
 </script>
 
 <script>
-  const myBtns = document.getElementsByClassName('btn')
-  myBtns[0].style.width = '120px'
-  myBtns[0].style.height = '30px'
+  const myBtns = document.getElementsByClassName("btn");
+  myBtns[0].style.width = "120px";
+  myBtns[0].style.height = "30px";
 </script>

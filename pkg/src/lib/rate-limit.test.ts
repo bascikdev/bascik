@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import {
-  RateLimiter,
-  getClientIp,
-} from "./rate-limit.ts";
+import { RateLimiter, getClientIp } from "./rate-limit.ts";
 import { nativeClock } from "./clock.ts";
 
 describe("getClientIp", () => {
@@ -19,7 +16,9 @@ describe("getClientIp", () => {
   });
 
   it("on: derives the client IP from the rightmost (last) entry of X-Forwarded-For", () => {
-    const headers = { "x-forwarded-for": "203.0.113.195, 70.41.3.18, 198.51.100.1" };
+    const headers = {
+      "x-forwarded-for": "203.0.113.195, 70.41.3.18, 198.51.100.1",
+    };
     const ip = getClientIp("127.0.0.1", headers, true);
     expect(ip).toBe("198.51.100.1");
   });
@@ -32,7 +31,9 @@ describe("getClientIp", () => {
 
   it("on: falls back to socket address if X-Forwarded-For is missing or empty", () => {
     expect(getClientIp("127.0.0.1", {}, true)).toBe("127.0.0.1");
-    expect(getClientIp("127.0.0.1", { "x-forwarded-for": "   " }, true)).toBe("127.0.0.1");
+    expect(getClientIp("127.0.0.1", { "x-forwarded-for": "   " }, true)).toBe(
+      "127.0.0.1",
+    );
   });
 });
 
@@ -100,7 +101,11 @@ describe("RateLimiter sliding window", () => {
   });
 
   it("tracking structure is bounded and fails closed (rejects) when capacity is reached", () => {
-    const smallLimiter = new RateLimiter({ windowMs: 10_000, max: 5, maxTrackedIps: 3 });
+    const smallLimiter = new RateLimiter({
+      windowMs: 10_000,
+      max: 5,
+      maxTrackedIps: 3,
+    });
     // Add 3 distinct IPs at t = 1000
     smallLimiter.isRateLimited("10.0.0.1", 1000);
     smallLimiter.isRateLimited("10.0.0.2", 1000);
@@ -112,7 +117,11 @@ describe("RateLimiter sliding window", () => {
   });
 
   it("reclaims expired entries under capacity pressure without requiring manual sweep", () => {
-    const smallLimiter = new RateLimiter({ windowMs: 100, max: 5, maxTrackedIps: 2 });
+    const smallLimiter = new RateLimiter({
+      windowMs: 100,
+      max: 5,
+      maxTrackedIps: 2,
+    });
     expect(smallLimiter.isRateLimited("a", 0)).toBe(false);
     expect(smallLimiter.isRateLimited("b", 0)).toBe(false);
 
@@ -126,7 +135,11 @@ describe("RateLimiter sliding window", () => {
   });
 
   it("does not discard active entries prematurely during capacity pressure", () => {
-    const smallLimiter = new RateLimiter({ windowMs: 1000, max: 5, maxTrackedIps: 2 });
+    const smallLimiter = new RateLimiter({
+      windowMs: 1000,
+      max: 5,
+      maxTrackedIps: 2,
+    });
     smallLimiter.isRateLimited("a", 100);
     smallLimiter.isRateLimited("b", 500);
 
@@ -184,7 +197,11 @@ describe("RateLimiter - deterministic clock-driven bucket and sweep boundaries",
   });
 
   it("startSweep() drives a real interval that removes stale entries at the window boundary", () => {
-    const limiter = new RateLimiter({ windowMs: 10_000, max: 5, clock: nativeClock });
+    const limiter = new RateLimiter({
+      windowMs: 10_000,
+      max: 5,
+      clock: nativeClock,
+    });
     limiter.isRateLimited("6.6.6.6", nativeClock.now());
     limiter.startSweep();
     expect(vi.getTimerCount()).toBe(1);
@@ -199,7 +216,11 @@ describe("RateLimiter - deterministic clock-driven bucket and sweep boundaries",
   });
 
   it("clear()/destroy() removes tracked state and cancels an active sweep", () => {
-    const limiter = new RateLimiter({ windowMs: 10_000, max: 5, clock: nativeClock });
+    const limiter = new RateLimiter({
+      windowMs: 10_000,
+      max: 5,
+      clock: nativeClock,
+    });
     limiter.isRateLimited("7.7.7.7", nativeClock.now());
     limiter.startSweep();
     expect(vi.getTimerCount()).toBe(1);

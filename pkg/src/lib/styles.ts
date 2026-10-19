@@ -15,30 +15,71 @@ import type { BascikComponent } from "./types.ts";
 // never HTML element names and must not be converted to scoped classes.
 const CSS_UNIT_KEYWORDS = new Set([
   // Relative length
-  "rem", "ex", "rex", "cap", "rcap", "ch", "rch", "ic", "ric", "lh", "rlh",
+  "rem",
+  "ex",
+  "rex",
+  "cap",
+  "rcap",
+  "ch",
+  "rch",
+  "ic",
+  "ric",
+  "lh",
+  "rlh",
   // Viewport
-  "vw", "vh", "vmin", "vmax",
-  "svw", "svh", "svmin", "svmax",
-  "dvw", "dvh", "dvmin", "dvmax",
-  "lvw", "lvh", "lvmin", "lvmax",
+  "vw",
+  "vh",
+  "vmin",
+  "vmax",
+  "svw",
+  "svh",
+  "svmin",
+  "svmax",
+  "dvw",
+  "dvh",
+  "dvmin",
+  "dvmax",
+  "lvw",
+  "lvh",
+  "lvmin",
+  "lvmax",
   // Container query
-  "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax",
+  "cqw",
+  "cqh",
+  "cqi",
+  "cqb",
+  "cqmin",
+  "cqmax",
   // Absolute length
-  "px", "cm", "mm", "in", "pt", "pc",
+  "px",
+  "cm",
+  "mm",
+  "in",
+  "pt",
+  "pc",
   // Angle
-  "deg", "rad", "grad", "turn",
+  "deg",
+  "rad",
+  "grad",
+  "turn",
   // Time  (note: "s" IS an HTML element, so it is intentionally omitted)
   "ms",
   // Frequency
-  "hz", "khz",
+  "hz",
+  "khz",
   // Resolution
-  "dpi", "dpcm", "dppx",
+  "dpi",
+  "dpcm",
+  "dppx",
   // CSS @keyframes pseudo-selectors — not HTML elements
-  "from", "to",
+  "from",
+  "to",
   // Root/structural elements — never inside a component; must not be hashed
   // so that cross-boundary selectors like `html[data-theme="light"] .class`
   // compile correctly in component CSS.
-  "html", "body", "head",
+  "html",
+  "body",
+  "head",
 ]);
 
 export const convertCssElementSelectorsToClasses = (
@@ -80,7 +121,8 @@ export const convertCssElementSelectorsToClasses = (
   // such as `40%` or `0%, 100%` are never mistaken for element selectors.
   let result = shielded.replace(
     /(^\s*|[;{}]\s*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/gim,
-    (_match, prefix: string, elementName: string) => `${prefix}${toClass(elementName)}`,
+    (_match, prefix: string, elementName: string) =>
+      `${prefix}${toClass(elementName)}`,
   );
 
   // Pass 2: same-line comma-separated selector list, e.g. `h1, h2 { }`.
@@ -93,7 +135,8 @@ export const convertCssElementSelectorsToClasses = (
   // inside :is(), :where(), :has() pseudo-functions (e.g. h2 in :is(p, h2)).
   result = result.replace(
     /(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};)]*\{)/g,
-    (_match, prefix: string, elementName: string) => `${prefix}${toClass(elementName)}`,
+    (_match, prefix: string, elementName: string) =>
+      `${prefix}${toClass(elementName)}`,
   );
 
   // Pass 3: element selectors in CSS nesting context (W3C CSS Nesting Module).
@@ -103,11 +146,13 @@ export const convertCssElementSelectorsToClasses = (
   //     `> h2 { }`, `+ li { }`, `~ span { }`.
   result = result.replace(
     /(&\s*(?:[>+~]\s*)?)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
-    (_match, prefix: string, elementName: string) => `${prefix}${toClass(elementName)}`,
+    (_match, prefix: string, elementName: string) =>
+      `${prefix}${toClass(elementName)}`,
   );
   result = result.replace(
     /((?:^|[;{}])\s*[>+~]\s*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
-    (_match, prefix: string, elementName: string) => `${prefix}${toClass(elementName)}`,
+    (_match, prefix: string, elementName: string) =>
+      `${prefix}${toClass(elementName)}`,
   );
 
   // Pass 4: element selectors that are descendants of an already-scoped class.
@@ -127,7 +172,8 @@ export const convertCssElementSelectorsToClasses = (
     previousResult = result;
     result = result.replace(
       /((?:\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\([^)]*\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})[^)]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
-      (_match, prefix: string, elementName: string) => `${prefix}${toClass(elementName)}`,
+      (_match, prefix: string, elementName: string) =>
+        `${prefix}${toClass(elementName)}`,
     );
   } while (result !== previousResult);
 
@@ -138,7 +184,10 @@ export const convertCssElementSelectorsToClasses = (
  * Helper to inject or append a scoped class onto an open HTML tag without
  * corrupting class-like text nested inside other attribute values.
  */
-export const injectClassIntoTag = (openTag: string, className: string): string => {
+export const injectClassIntoTag = (
+  openTag: string,
+  className: string,
+): string => {
   if (!/\sclass\s*=/i.test(openTag)) {
     return openTag.replace(
       /^<[a-zA-Z0-9-]+/i,
@@ -165,7 +214,8 @@ export const injectClassIntoTag = (openTag: string, className: string): string =
 
   let replaced = false;
   let finalStr = "";
-  const attrRegexG = /(?:\s)class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+?))(?=\s|\/>|>|$)/gi;
+  const attrRegexG =
+    /(?:\s)class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+?))(?=\s|\/>|>|$)/gi;
   let match;
 
   while (!replaced && (match = attrRegexG.exec(openTag)) !== null) {
@@ -176,10 +226,12 @@ export const injectClassIntoTag = (openTag: string, className: string): string =
     if (!isInside) {
       const classQuote = match[2] !== undefined ? "'" : '"';
       const rawUnquoted = match[3];
-      const trailingSlash = rawUnquoted !== undefined && rawUnquoted.endsWith("/") ? "/" : "";
-      const unquotedClean = rawUnquoted !== undefined && rawUnquoted.endsWith("/")
-        ? rawUnquoted.slice(0, -1)
-        : rawUnquoted;
+      const trailingSlash =
+        rawUnquoted !== undefined && rawUnquoted.endsWith("/") ? "/" : "";
+      const unquotedClean =
+        rawUnquoted !== undefined && rawUnquoted.endsWith("/")
+          ? rawUnquoted.slice(0, -1)
+          : rawUnquoted;
       const classVal = match[1] ?? match[2] ?? unquotedClean ?? "";
       finalStr =
         openTag.substring(0, matchStart) +
@@ -203,9 +255,15 @@ const shieldNonMarkupHtml = (
 ): { html: string; restore: (value: string) => string } => {
   const commentShield = createContentShield(html);
   const withoutComments = html.includes("<!--")
-    ? html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => commentShield.hide(comment))
+    ? html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
+        commentShield.hide(comment),
+      )
     : html;
-  const rawText = shieldElementContents(withoutComments, ["script", "style", "textarea"]);
+  const rawText = shieldElementContents(withoutComments, [
+    "script",
+    "style",
+    "textarea",
+  ]);
   return {
     html: rawText.html,
     restore: (value: string) => commentShield.restore(rawText.restore(value)),
@@ -243,7 +301,9 @@ export const addElementClassesInHtml = (
     combinedPattern,
     (openTag, tagName: string) => {
       const bascikClassName = elementClassMap.get(tagName.toLowerCase());
-      return bascikClassName ? injectClassIntoTag(openTag, bascikClassName) : openTag;
+      return bascikClassName
+        ? injectClassIntoTag(openTag, bascikClassName)
+        : openTag;
     },
   );
   return shielded.restore(result);
@@ -395,7 +455,8 @@ export const addIdClassesInHtml = (
   let result = shielded.html;
   idsConverted.forEach(({ idName, className }) => {
     const scopedId = scopedIdNames?.[idName];
-    if (!result.includes(idName) && (!scopedId || !result.includes(scopedId))) return;
+    if (!result.includes(idName) && (!scopedId || !result.includes(scopedId)))
+      return;
     const escaped = idName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const escapedScoped = scopedId
       ? scopedId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -602,7 +663,8 @@ const cssOpaqueRanges = (css: string): Array<[number, number]> => {
     } else if (char === '"' || char === "'") {
       // A string ends at its unescaped quote, or at an unescaped newline (bad-string).
       let j = i + 1;
-      while (j < css.length && css[j] !== char && css[j] !== "\n") j += css[j] === "\\" ? 2 : 1;
+      while (j < css.length && css[j] !== char && css[j] !== "\n")
+        j += css[j] === "\\" ? 2 : 1;
       const end = Math.min(j + 1, css.length);
       ranges.push([i, end]);
       i = end;
@@ -640,7 +702,10 @@ let cssImportPlanningObserver: (() => void) | null = null;
  * Run `run` synchronously while reporting whether any CSS `@import` planning
  * (and so any file system access) happened. The previous observer is restored.
  */
-export const observeCssImportPlanning = <T>(observer: () => void, run: () => T): T => {
+export const observeCssImportPlanning = <T>(
+  observer: () => void,
+  run: () => T,
+): T => {
   const previous = cssImportPlanningObserver;
   cssImportPlanningObserver = observer;
   try {
@@ -657,14 +722,17 @@ const planCssImports = (
 ): CssImportPlan[] => {
   if (!css || !css.includes("@import")) return [];
   cssImportPlanningObserver?.();
-  const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?/gi;
+  const importRegex =
+    /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?/gi;
   const opaque = cssOpaqueRanges(css);
   let opaqueIndex = 0;
   const plans: CssImportPlan[] = [];
   for (const match of css.matchAll(importRegex)) {
     const start = match.index;
-    while (opaqueIndex < opaque.length && opaque[opaqueIndex][1] <= start) opaqueIndex++;
-    if (opaqueIndex < opaque.length && opaque[opaqueIndex][0] <= start) continue;
+    while (opaqueIndex < opaque.length && opaque[opaqueIndex][1] <= start)
+      opaqueIndex++;
+    if (opaqueIndex < opaque.length && opaque[opaqueIndex][0] <= start)
+      continue;
     const fullStatement = match[0];
     const parsed = parseCssImport(fullStatement);
     if (!parsed || parsed.isRemote) continue;
@@ -700,9 +768,22 @@ const planCssImports = (
         replacement: `/* @import "${parsed.url}" not found */`,
       });
     } else if (visited.has(targetPath)) {
-      plans.push({ fullStatement, parsed, targetPath, dependencyPaths, nextVisited, replacement: "" });
+      plans.push({
+        fullStatement,
+        parsed,
+        targetPath,
+        dependencyPaths,
+        nextVisited,
+        replacement: "",
+      });
     } else {
-      plans.push({ fullStatement, parsed, targetPath, dependencyPaths, nextVisited });
+      plans.push({
+        fullStatement,
+        parsed,
+        targetPath,
+        dependencyPaths,
+        nextVisited,
+      });
     }
   }
   return plans;
@@ -749,11 +830,26 @@ export const resolveCssImports = async (
     }
 
     try {
-      const importedRaw = cleanImportedCss((await readFile(plan.targetPath)).toString());
-      const nestedResolved = await resolveCssImports(importedRaw, plan.targetPath, plan.nextVisited, dependencies);
-      result = replaceCssImport(result, plan.fullStatement, wrapPlannedCss(nestedResolved, plan));
+      const importedRaw = cleanImportedCss(
+        (await readFile(plan.targetPath)).toString(),
+      );
+      const nestedResolved = await resolveCssImports(
+        importedRaw,
+        plan.targetPath,
+        plan.nextVisited,
+        dependencies,
+      );
+      result = replaceCssImport(
+        result,
+        plan.fullStatement,
+        wrapPlannedCss(nestedResolved, plan),
+      );
     } catch (err) {
-      console.warn("[bascik] warning: Failed to read imported CSS file %s:", plan.targetPath, err);
+      console.warn(
+        "[bascik] warning: Failed to read imported CSS file %s:",
+        plan.targetPath,
+        err,
+      );
       result = replaceCssImport(result, plan.fullStatement, "");
     }
   }
@@ -780,11 +876,26 @@ export const resolveCssImportsSync = (
     }
 
     try {
-      const importedRaw = cleanImportedCss(readFileSync(plan.targetPath, "utf-8"));
-      const nestedResolved = resolveCssImportsSync(importedRaw, plan.targetPath, plan.nextVisited, dependencies);
-      result = replaceCssImport(result, plan.fullStatement, wrapPlannedCss(nestedResolved, plan));
+      const importedRaw = cleanImportedCss(
+        readFileSync(plan.targetPath, "utf-8"),
+      );
+      const nestedResolved = resolveCssImportsSync(
+        importedRaw,
+        plan.targetPath,
+        plan.nextVisited,
+        dependencies,
+      );
+      result = replaceCssImport(
+        result,
+        plan.fullStatement,
+        wrapPlannedCss(nestedResolved, plan),
+      );
     } catch (err) {
-      console.warn("[bascik] warning: Failed to read imported CSS file %s:", plan.targetPath, err);
+      console.warn(
+        "[bascik] warning: Failed to read imported CSS file %s:",
+        plan.targetPath,
+        err,
+      );
       result = replaceCssImport(result, plan.fullStatement, "");
     }
   }
@@ -802,7 +913,8 @@ export const resolveCssImportsSync = (
 export const hoistCssImports = (css: string): string => {
   if (!css || !css.includes("@import")) return css;
 
-  const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)[^;]*;/gi;
+  const importRegex =
+    /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)[^;]*;/gi;
   const imports: string[] = [];
   const seen = new Set<string>();
 
@@ -833,7 +945,12 @@ export const getComponentCss = async (
   if (!cssFileName) return;
   try {
     const raw = removeCommentsFromCss((await readFile(cssFileName)).toString());
-    return await resolveCssImports(raw, cssFileName, undefined, importDependencies);
+    return await resolveCssImports(
+      raw,
+      cssFileName,
+      undefined,
+      importDependencies,
+    );
   } catch (error) {
     console.warn("warning: Failed to read css for %s", htmlFileName, error);
   }
@@ -968,14 +1085,23 @@ export const scopeContainerNames = (
   // later name match inside an earlier generated name or a longer name.
   const scopedNames = new Map<string, string>();
   containerNames.forEach((name) => {
-    scopedNames.set(name, minifyAttributeName(`bascik__${componentName}__container__${name}`));
+    scopedNames.set(
+      name,
+      minifyAttributeName(`bascik__${componentName}__container__${name}`),
+    );
   });
   const replaced = shielded
-    .replace(/(?<=@container\s+)([\w-]+)(?=\s*[({])/gm, (name: string) => scopedNames.get(name) ?? name)
-    .replace(/((?<![\w-])container(?:-name)?\s*:\s*)([\w-]+)/gm, (match: string, prefix: string, name: string) => {
-      const scoped = scopedNames.get(name);
-      return scoped === undefined ? match : `${prefix}${scoped}`;
-    });
+    .replace(
+      /(?<=@container\s+)([\w-]+)(?=\s*[({])/gm,
+      (name: string) => scopedNames.get(name) ?? name,
+    )
+    .replace(
+      /((?<![\w-])container(?:-name)?\s*:\s*)([\w-]+)/gm,
+      (match: string, prefix: string, name: string) => {
+        const scoped = scopedNames.get(name);
+        return scoped === undefined ? match : `${prefix}${scoped}`;
+      },
+    );
   return restore(replaced);
 };
 
@@ -1066,7 +1192,10 @@ export const scopeCounterStyleNames = (
 
   const scopedNames = new Map<string, string>();
   names.forEach((name) => {
-    scopedNames.set(name, minifyAttributeName(`bascik__${componentName}__counter__${name}`));
+    scopedNames.set(
+      name,
+      minifyAttributeName(`bascik__${componentName}__counter__${name}`),
+    );
   });
   // One pass per pattern over whole names: rewriting one name at a time let a
   // later name match inside an earlier generated name or a longer name.
@@ -1082,7 +1211,10 @@ export const scopeCounterStyleNames = (
     // counter() second argument: counter(name, style)
     .replace(/((?<![\w-])counter\([^,)]+,\s*)([\w-]+)(?=[^)]*\))/gm, scopeName)
     // counters() third argument: counters(name, sep, style)
-    .replace(/((?<![\w-])counters\([^,)]+,\s*[^,)]+,\s*)([\w-]+)(?=[^)]*\))/gm, scopeName);
+    .replace(
+      /((?<![\w-])counters\([^,)]+,\s*[^,)]+,\s*)([\w-]+)(?=[^)]*\))/gm,
+      scopeName,
+    );
   return restore(replaced);
 };
 
@@ -1109,7 +1241,8 @@ export const scopeAnchorNames = (
   css: string,
   componentName: string,
 ): string => {
-  if (!css.includes("anchor-name") && !css.includes("@position-try")) return css;
+  if (!css.includes("anchor-name") && !css.includes("@position-try"))
+    return css;
   const names = new Set<string>();
   const { css: shielded, restore } = shieldCssStrings(css);
   // Collect all anchor-name: --name declarations and @position-try --name declarations
@@ -1142,7 +1275,10 @@ export const scopeAnchorNames = (
   };
   const replaced = shielded
     .replace(/((?<![\w-])anchor-name\s*:\s*)--(\w[\w-]*)(?![\w-])/gm, scopeName)
-    .replace(/((?<![\w-])position-anchor\s*:\s*)--(\w[\w-]*)(?![\w-])/gm, scopeName)
+    .replace(
+      /((?<![\w-])position-anchor\s*:\s*)--(\w[\w-]*)(?![\w-])/gm,
+      scopeName,
+    )
     .replace(/(@position-try\s+)--(\w[\w-]*)(?=\s*\{)/gm, scopeName);
   return restore(replaced);
 };
@@ -1169,20 +1305,37 @@ export const extractInlineStyles = (
   // <style> block") is never mistaken for a real style tag opener.
   const commentShield = createContentShield(html);
   const htmlWithMaskedComments = html.includes("<!--")
-    ? html.replace(/<!--[\s\S]*?(?:-->|$)/g, (match) => commentShield.hide(match))
+    ? html.replace(/<!--[\s\S]*?(?:-->|$)/g, (match) =>
+        commentShield.hide(match),
+      )
     : html;
 
-  const shielded = shieldElementContents(htmlWithMaskedComments, ["code", "pre", "script", "textarea"]);
+  const shielded = shieldElementContents(htmlWithMaskedComments, [
+    "code",
+    "pre",
+    "script",
+    "textarea",
+  ]);
 
   const cssBlocks: string[] = [];
-  const collectStyleBlock = (_match: string, openTag: string, styleContent: string): string => {
+  const collectStyleBlock = (
+    _match: string,
+    openTag: string,
+    styleContent: string,
+  ): string => {
     let css = removeCommentsFromCss(styleContent).trim();
     if (!css) return "";
     // Read `media` the way the browser does, so a range query such as
     // `(width > 600px)` is read whole. The first `media` attribute counts.
-    const media = readStartTagAttributes(openTag, 0)
-      .find((attribute) => attribute.name === "media")?.value.trim() ?? "";
-    if (media && media.toLowerCase() !== "all" && media.toLowerCase() !== "screen") {
+    const media =
+      readStartTagAttributes(openTag, 0)
+        .find((attribute) => attribute.name === "media")
+        ?.value.trim() ?? "";
+    if (
+      media &&
+      media.toLowerCase() !== "all" &&
+      media.toLowerCase() !== "screen"
+    ) {
       css = `@media ${media} {\n${css}\n}`;
     }
     cssBlocks.push(css);
@@ -1241,7 +1394,10 @@ export const scopeInlineStyleTags = (
   const processedHtml = html.replace(
     /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
     (_match, open: string, styleContent: string, close: string) => {
-      let css = resolveCssImportsSync(removeCommentsFromCss(styleContent), baseFilePath);
+      let css = resolveCssImportsSync(
+        removeCommentsFromCss(styleContent),
+        baseFilePath,
+      );
       // Shield strings/url() so dots inside them aren't treated as class selectors
       const { css: shieldedCss, restore } = shieldCssStrings(css);
       css = restore(

@@ -25,20 +25,12 @@ Webhint loads its project configuration from one of three sources in order of pr
 
 ```json
 {
-  "extends": [
-    "development"
-  ],
+  "extends": ["development"],
   "connector": {
     "name": "local"
   },
-  "formatters": [
-    "stylish"
-  ],
-  "parsers": [
-    "html",
-    "css",
-    "javascript"
-  ],
+  "formatters": ["stylish"],
+  "parsers": ["html", "css", "javascript"],
   "hints": {
     "apple-touch-icons": "off",
     "meta-viewport": "off",
@@ -47,56 +39,52 @@ Webhint loads its project configuration from one of three sources in order of pr
     "compat-api/css": [
       "default",
       {
-        "ignore": [
-          "scrollbar-width",
-          "scrollbar-width: none"
-        ]
+        "ignore": ["scrollbar-width", "scrollbar-width: none"]
       }
     ],
     "compat-api/html": [
       "default",
       {
-        "ignore": [
-          "meta[name=theme-color]"
-        ]
+        "ignore": ["meta[name=theme-color]"]
       }
     ]
   },
   "ignoredUrls": [
     {
       "domain": ".*(e2e|dist|test-results|coverage|hint-report).*",
-      "hints": [
-        "*"
-      ]
+      "hints": ["*"]
     }
   ]
 }
 ```
 
 ### Key Configuration Sections
-* **`extends`**: Inherits preset rule sets:
-  * `"development"`: Best practices for local development workflows.
-  * `"web-recommended"`: Standard production web guidelines.
-  * `"accessibility"`: Focused accessibility auditing.
-  * `"progressive-web-apps"`: PWA manifest and service worker requirements.
-* **`connector`**: Defines how resources are retrieved (`"local"` for static local files, `"jsdom"` or `"puppeteer"` for browser rendering).
-* **`formatters`**: Output formats (`"stylish"`, `"codeframe"`, `"summary"`, `"html"`, `"json"`).
-* **`parsers`**: File AST parsers (`"html"`, `"css"`, `"javascript"`, `"typescript"`, `"babel-config"`).
+
+- **`extends`**: Inherits preset rule sets:
+  - `"development"`: Best practices for local development workflows.
+  - `"web-recommended"`: Standard production web guidelines.
+  - `"accessibility"`: Focused accessibility auditing.
+  - `"progressive-web-apps"`: PWA manifest and service worker requirements.
+- **`connector`**: Defines how resources are retrieved (`"local"` for static local files, `"jsdom"` or `"puppeteer"` for browser rendering).
+- **`formatters`**: Output formats (`"stylish"`, `"codeframe"`, `"summary"`, `"html"`, `"json"`).
+- **`parsers`**: File AST parsers (`"html"`, `"css"`, `"javascript"`, `"typescript"`, `"babel-config"`).
 
 ---
 
 ## 3. Configuring Hints and Severities
 
 ### Severity Levels
-* **`"off"`** (or `"-"` prefix): Disables the hint completely.
-* **`"error"`**: Critical standards violation; must be fixed immediately.
-* **`"warning"`**: Potential problem or browser compatibility issue to investigate.
-* **`"hint"`**: Minor optimization or code style suggestion.
-* **`"information"`**: Informational notice.
+
+- **`"off"`** (or `"-"` prefix): Disables the hint completely.
+- **`"error"`**: Critical standards violation; must be fixed immediately.
+- **`"warning"`**: Potential problem or browser compatibility issue to investigate.
+- **`"hint"`**: Minor optimization or code style suggestion.
+- **`"information"`**: Informational notice.
 
 ### Hint Syntax Variations
 
 #### Object Syntax (Recommended)
+
 ```json
 {
   "hints": {
@@ -113,6 +101,7 @@ Webhint loads its project configuration from one of three sources in order of pr
 ```
 
 #### Array Syntax
+
 ```json
 {
   "hints": [
@@ -139,22 +128,18 @@ To prevent false positives on test files, generated build artifacts, or third-pa
   "ignoredUrls": [
     {
       "domain": ".*[\\\\/](e2e|dist|test-results|coverage|hint-report)[\\\\/].*",
-      "hints": [
-        "*"
-      ]
+      "hints": ["*"]
     },
     {
       "domain": "www.external-analytics.com",
-      "hints": [
-        "no-disallowed-headers"
-      ]
+      "hints": ["no-disallowed-headers"]
     }
   ]
 }
 ```
 
-* **`domain`**: String or regular expression matching target file paths or URLs.
-* **`hints`**: Array of hint IDs to ignore on matching URLs, or `["*"]` to ignore all hints.
+- **`domain`**: String or regular expression matching target file paths or URLs.
+- **`hints`**: Array of hint IDs to ignore on matching URLs, or `["*"]` to ignore all hints.
 
 ---
 
@@ -162,9 +147,9 @@ To prevent false positives on test files, generated build artifacts, or third-pa
 
 Properties can be overridden dynamically using environment variables prefixed with `webhint_`:
 
-* Nesting is represented using underscores (`_`).
-* **Example:** `webhint_connector_options_waitFor=60000` corresponds to `.hintrc` `{ "connector": { "options": { "waitFor": 60000 } } }`.
-* *Note:* Environment variables are ignored if the exact key is explicitly defined in `.hintrc`.
+- Nesting is represented using underscores (`_`).
+- **Example:** `webhint_connector_options_waitFor=60000` corresponds to `.hintrc` `{ "connector": { "options": { "waitFor": 60000 } } }`.
+- _Note:_ Environment variables are ignored if the exact key is explicitly defined in `.hintrc`.
 
 ---
 

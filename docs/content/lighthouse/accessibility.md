@@ -11,28 +11,28 @@ Most failed audits come from a handful of missing basics. Use landmark elements,
 ```html
 <!-- Declare the page language -->
 <html lang="en">
+  <!-- Use semantic landmark elements -->
+  <header>…</header>
+  <nav aria-label="Primary navigation">…</nav>
+  <main>…</main>
+  <footer>…</footer>
 
-<!-- Use semantic landmark elements -->
-<header>…</header>
-<nav aria-label="Primary navigation">…</nav>
-<main>…</main>
-<footer>…</footer>
+  <!-- Every image needs a meaningful alt (or empty alt for decorative images) -->
+  <img src="chart.png" alt="Bar chart showing 40% growth in Q3" />
+  <img src="divider.svg" alt="" role="presentation" />
 
-<!-- Every image needs a meaningful alt (or empty alt for decorative images) -->
-<img src="chart.png" alt="Bar chart showing 40% growth in Q3" />
-<img src="divider.svg" alt="" role="presentation" />
+  <!-- Buttons must have accessible names -->
+  <button type="button" aria-label="Close dialog">
+    <svg aria-hidden="true">…</svg>
+  </button>
 
-<!-- Buttons must have accessible names -->
-<button type="button" aria-label="Close dialog">
-  <svg aria-hidden="true">…</svg>
-</button>
+  <!-- Form inputs must be labeled -->
+  <label for="email">Email address</label>
+  <input type="email" id="email" name="email" autocomplete="email" />
 
-<!-- Form inputs must be labeled -->
-<label for="email">Email address</label>
-<input type="email" id="email" name="email" autocomplete="email" />
-
-<!-- Skip link: lets keyboard users bypass the navigation -->
-<a href="#main-content" class="skip-link">Skip to main content</a>
+  <!-- Skip link: lets keyboard users bypass the navigation -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+</html>
 ```
 
 Other rules that Lighthouse reports frequently:
@@ -85,7 +85,9 @@ The `color-contrast` audit is the most common accessibility failure on otherwise
 
 /* Respect users who ask for less motion */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -109,7 +111,9 @@ The browser ships a set of interactive primitives that require zero JavaScript. 
 ```html
 <details>
   <summary>How does Bascik scope CSS?</summary>
-  <p>It prefixes every class name with a component-unique hash at build time.</p>
+  <p>
+    It prefixes every class name with a component-unique hash at build time.
+  </p>
 </details>
 ```
 
@@ -132,25 +136,50 @@ The same pattern works for mobile navigation drawers. Wrap the nav links in `<de
 
 ```css
 /* Remove the default <summary> triangle marker */
-.nav-toggle { list-style: none; cursor: pointer; }
-.nav-toggle::-webkit-details-marker { display: none; }
+.nav-toggle {
+  list-style: none;
+  cursor: pointer;
+}
+.nav-toggle::-webkit-details-marker {
+  display: none;
+}
 
 /* Desktop: always show nav links regardless of open/closed state */
 @media (min-width: 769px) {
-  .nav-details { display: flex; align-items: center; }
-  .nav-details > summary { display: none; }
-  .nav-details > .nav-links { display: flex; } /* override UA hidden state */
+  .nav-details {
+    display: flex;
+    align-items: center;
+  }
+  .nav-details > summary {
+    display: none;
+  }
+  .nav-details > .nav-links {
+    display: flex;
+  } /* override UA hidden state */
 }
 
 /* Mobile: show links when open - pure CSS, no event listeners */
 @media (max-width: 768px) {
-  .nav-links { display: none; }
-  .nav-details[open] > .nav-links { display: flex; flex-direction: column; }
+  .nav-links {
+    display: none;
+  }
+  .nav-details[open] > .nav-links {
+    display: flex;
+    flex-direction: column;
+  }
 
   /* Animate hamburger → X using the [open] selector */
-  .nav-details[open] .hamburger-icon { background: transparent; }
-  .nav-details[open] .hamburger-icon::before { top: 0; transform: rotate(45deg); }
-  .nav-details[open] .hamburger-icon::after  { top: 0; transform: rotate(-45deg); }
+  .nav-details[open] .hamburger-icon {
+    background: transparent;
+  }
+  .nav-details[open] .hamburger-icon::before {
+    top: 0;
+    transform: rotate(45deg);
+  }
+  .nav-details[open] .hamburger-icon::after {
+    top: 0;
+    transform: rotate(-45deg);
+  }
 }
 
 /* Lock body scroll when the overlay is open - still no JS */

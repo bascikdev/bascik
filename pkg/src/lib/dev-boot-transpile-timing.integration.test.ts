@@ -17,7 +17,10 @@ import { join, dirname, resolve } from "node:path";
 import { tmpdir, cpus } from "node:os";
 import { fileURLToPath } from "node:url";
 
-const PKG_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "../index.ts");
+const PKG_ENTRY = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../index.ts",
+);
 
 interface DevServer {
   logs(): string;
@@ -63,7 +66,12 @@ const startDevServer = async (root: string): Promise<DevServer> => {
   };
 
   let output = "";
-  const waiters: Array<{ pattern: RegExp; from: number; resolve: (s: string) => void; reject: (err: Error) => void }> = [];
+  const waiters: Array<{
+    pattern: RegExp;
+    from: number;
+    resolve: (s: string) => void;
+    reject: (err: Error) => void;
+  }> = [];
 
   const onData = (d: Buffer): void => {
     output += d.toString();
@@ -89,14 +97,22 @@ const startDevServer = async (root: string): Promise<DevServer> => {
   const onError = (err: Error): void => {
     cleanupListeners();
     for (const waiter of waiters.splice(0)) {
-      waiter.reject(new Error(`Dev server process error: ${err.message}\nOutput:\n${output}`));
+      waiter.reject(
+        new Error(
+          `Dev server process error: ${err.message}\nOutput:\n${output}`,
+        ),
+      );
     }
   };
 
   const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
     cleanupListeners();
     for (const waiter of waiters.splice(0)) {
-      waiter.reject(new Error(`Dev server exited early with code ${code}, signal ${signal}\nOutput:\n${output}`));
+      waiter.reject(
+        new Error(
+          `Dev server exited early with code ${code}, signal ${signal}\nOutput:\n${output}`,
+        ),
+      );
     }
   };
 
@@ -105,12 +121,17 @@ const startDevServer = async (root: string): Promise<DevServer> => {
 
   const waitForLog = (pattern: RegExp, timeoutMs = 30000): Promise<string> => {
     const from = 0;
-    if (pattern.test(output.slice(from))) return Promise.resolve(output.slice(from));
+    if (pattern.test(output.slice(from)))
+      return Promise.resolve(output.slice(from));
     return new Promise<string>((res, rej) => {
       const timer = setTimeout(() => {
         const idx = waiters.findIndex((w) => w.resolve === wrappedRes);
         if (idx >= 0) waiters.splice(idx, 1);
-        rej(new Error(`log ${pattern} not seen within ${timeoutMs}ms. Output:\n${output}`));
+        rej(
+          new Error(
+            `log ${pattern} not seen within ${timeoutMs}ms. Output:\n${output}`,
+          ),
+        );
       }, timeoutMs);
       const wrappedRes = (s: string): void => {
         clearTimeout(timer);
@@ -137,7 +158,11 @@ const startDevServer = async (root: string): Promise<DevServer> => {
   };
 };
 
-const writeAt = async (root: string, rel: string, content: string): Promise<string> => {
+const writeAt = async (
+  root: string,
+  rel: string,
+  content: string,
+): Promise<string> => {
   const abs = join(root, rel);
   await mkdir(dirname(abs), { recursive: true });
   await writeFile(abs, content, "utf8");
@@ -148,9 +173,15 @@ const writeAt = async (root: string, rel: string, content: string): Promise<stri
 const makeHeavyCss = (id: number): string => {
   const rules: string[] = [];
   for (let i = 0; i < 1200; i++) {
-    rules.push(`.card-${id}-${i} { color: #333; padding: 10px; margin: 4px; display: flex; align-items: center; }`);
-    rules.push(`.card-${id}-${i} > span { font-weight: bold; font-size: 14px; }`);
-    rules.push(`@media (min-width: 768px) { .card-${id}-${i} { padding: 20px; } }`);
+    rules.push(
+      `.card-${id}-${i} { color: #333; padding: 10px; margin: 4px; display: flex; align-items: center; }`,
+    );
+    rules.push(
+      `.card-${id}-${i} > span { font-weight: bold; font-size: 14px; }`,
+    );
+    rules.push(
+      `@media (min-width: 768px) { .card-${id}-${i} { padding: 20px; } }`,
+    );
   }
   return rules.join("\n");
 };
@@ -160,7 +191,6 @@ describe("dev boot transpile timing and worker diagnostic", () => {
     const root = await mkdtemp(join(tmpdir(), "bascik-147-dev-"));
     let server: DevServer | null = null;
     try {
-
       await writeAt(
         root,
         "bascik.config.js",
@@ -247,10 +277,14 @@ describe("dev boot transpile timing and worker diagnostic", () => {
       for (const d of sorted.slice(0, -1)) {
         expect(d).toBeLessThanOrEqual(median * 5);
       }
-      expect(sorted[sorted.length - 1]).toBeLessThanOrEqual(Math.max(median * 10, 150));
+      expect(sorted[sorted.length - 1]).toBeLessThanOrEqual(
+        Math.max(median * 10, 150),
+      );
 
       // Extract total boot time
-      const totalMatch = logs.match(/✓\s+40\s+pages\s+transpiled\s+in\s+(\d+(?:\.\d+)?)(ms|s)/);
+      const totalMatch = logs.match(
+        /✓\s+40\s+pages\s+transpiled\s+in\s+(\d+(?:\.\d+)?)(ms|s)/,
+      );
       expect(totalMatch).not.toBeNull();
       const totalVal = parseFloat(totalMatch![1]);
       const totalUnit = totalMatch![2];

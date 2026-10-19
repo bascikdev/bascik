@@ -15,7 +15,7 @@ const unsupported =
 if (unsupported) {
   console.error(
     `[bascik] Node.js ${MIN_MAJOR}.${MIN_MINOR}.0 or newer is required. ` +
-    `Detected ${process.versions.node}.`,
+      `Detected ${process.versions.node}.`,
   );
   process.exit(1);
 }
@@ -26,15 +26,17 @@ let installProcessCrashHandlers;
 try {
   ({ runCli, installProcessCrashHandlers } = await import(distEntrypoint));
 } catch (err) {
-  const code = err && typeof err === "object" && "code" in err ? err.code : undefined;
+  const code =
+    err && typeof err === "object" && "code" in err ? err.code : undefined;
   const message = err instanceof Error ? err.message : String(err);
   const missingDist =
     code === "ERR_MODULE_NOT_FOUND" &&
-    (message.includes("/dist/index.js") || message.includes("../dist/index.js"));
+    (message.includes("/dist/index.js") ||
+      message.includes("../dist/index.js"));
   if (missingDist) {
     console.error(
       "[bascik] Could not start because pkg/dist/index.js is missing. " +
-      "Build the package first: `yarn workspace @bascik/bascik build`.",
+        "Build the package first: `yarn workspace @bascik/bascik build`.",
     );
     process.exit(1);
   }

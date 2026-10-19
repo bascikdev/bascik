@@ -1,60 +1,58 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Catch invalid component tags, undeclared props, misplaced directives, and unscoped CSS or JS with the Bascik CLI linter and editor integration."
+    />
+    <title>Bascik Linter: Check Components, Props, and Scoping</title>
+  </head>
 
-<head>
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <script data-bascik-build>
-    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    export default async () => await breadcrumbLd();
-  </script>
-  <script data-bascik-build>
-    import { articleSchema } from '@/lib/article-schema.ts';
-    export default async () => await articleSchema();
-  </script>
-  <meta name="description"
-    content="Catch invalid component tags, undeclared props, misplaced directives, and unscoped CSS or JS with the Bascik CLI linter and editor integration." />
-  <title>Bascik Linter: Check Components, Props, and Scoping</title>
-</head>
+  <body>
+    <docs-nav />
 
-<body>
+    <div class="container">
+      <div class="docs-layout">
+        <!-- Sidebar -->
+        <docs-sidebar />
 
-  <docs-nav />
+        <!-- Content -->
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/tools/linter");
+          </script>
 
-  <div class="container">
-    <div class="docs-layout">
-
-      <!-- Sidebar -->
-      <docs-sidebar />
-
-      <!-- Content -->
-      <main class="docs-content" id="main-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/tools/linter');
-        </script>
-
-        <!-- Content rendered from docs/content/tools/linter.md at build time.
+          <!-- Content rendered from docs/content/tools/linter.md at build time.
              To update page content, edit the MD file - not this file. -->
-        <script data-bascik-build>
-          import { renderMd } from '@/lib/md-renderer.ts';
-          export default async () => await renderMd('./content/tools/linter.md');
-        </script>
+          <script data-bascik-build>
+            import { renderMd } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMd("./content/tools/linter.md");
+          </script>
 
-        <docs-pagination />
-
-      </main>
+          <docs-pagination />
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-</body>
-
+    <docs-footer />
+  </body>
 </html>

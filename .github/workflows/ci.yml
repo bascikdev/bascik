@@ -24,7 +24,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -53,7 +53,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -79,7 +79,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -111,7 +111,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -149,7 +149,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       # On Windows, Corepack's shims are written next to the active `node`, so the
       # ones from the runner's preinstalled Node are gone once Node 24 is on PATH.
@@ -189,7 +189,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -215,7 +215,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -238,7 +238,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -261,7 +261,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -287,10 +287,13 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
+
+      - name: Check formatting
+        run: yarn check:format
 
       - name: Install codespell
         run: pipx install codespell
@@ -308,7 +311,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs:
+      [
+        jelly,
+        unit-pkg,
+        integration-pkg,
+        unit-create,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-extension,
+        typecheck,
+        standards,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -319,7 +333,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -338,7 +352,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs:
+      [
+        jelly,
+        unit-pkg,
+        integration-pkg,
+        unit-create,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-extension,
+        typecheck,
+        standards,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -349,7 +374,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -374,7 +399,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs:
+      [
+        jelly,
+        unit-pkg,
+        integration-pkg,
+        unit-create,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-extension,
+        typecheck,
+        standards,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -385,7 +421,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -404,7 +440,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs:
+      [
+        jelly,
+        unit-pkg,
+        integration-pkg,
+        unit-create,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-extension,
+        typecheck,
+        standards,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -415,7 +462,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -434,7 +481,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs:
+      [
+        jelly,
+        unit-pkg,
+        integration-pkg,
+        unit-create,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-extension,
+        typecheck,
+        standards,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -445,7 +503,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -464,7 +522,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs:
+      [
+        jelly,
+        unit-pkg,
+        integration-pkg,
+        unit-create,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-extension,
+        typecheck,
+        standards,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -475,7 +544,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -494,7 +563,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs:
+      [
+        jelly,
+        unit-pkg,
+        integration-pkg,
+        unit-create,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-extension,
+        typecheck,
+        standards,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -505,7 +585,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -523,7 +603,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [e2e-pkg-static, e2e-pkg-dev, e2e-pkg-prod-http1, e2e-pkg-prod-http2, e2e-adapter-cloudflare, e2e-docs, e2e-create]
+    needs:
+      [
+        e2e-pkg-static,
+        e2e-pkg-dev,
+        e2e-pkg-prod-http1,
+        e2e-pkg-prod-http2,
+        e2e-adapter-cloudflare,
+        e2e-docs,
+        e2e-create,
+      ]
     steps:
       - uses: actions/checkout@v5
 

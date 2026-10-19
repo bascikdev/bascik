@@ -1,169 +1,193 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
-<head>
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <script data-bascik-build>
-    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    export default async () => await breadcrumbLd();
-  </script>
-  <script data-bascik-build>
-    import { articleSchema } from '@/lib/article-schema.ts';
-    export default async () => await articleSchema();
-  </script>
-  <meta name="description"
-    content="Bascik recommends Node.js 24 LTS (minimum v22.18). Install the CLI and build your first HTML component with scoped CSS and JS in under five minutes." />
-  <title>Getting Started with Bascik: Install and Create a Project</title>
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "HowTo",
-    "name": "Getting Started with Bascik",
-    "description": "Set up a Bascik project in under five minutes. Node.js 24 LTS recommended, v22.18 minimum.",
-    "step": [
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Bascik recommends Node.js 24 LTS (minimum v22.18). Install the CLI and build your first HTML component with scoped CSS and JS in under five minutes."
+    />
+    <title>Getting Started with Bascik: Install and Create a Project</title>
+    <script type="application/ld+json">
       {
-        "@type": "HowToStep",
-        "position": "1",
-        "name": "Create a new project",
-        "text": "Run: npm create bascik@latest my-site -y. This scaffolds the project, installs dependencies, and starts the dev server in one shot."
-      },
-      {
-        "@type": "HowToStep",
-        "position": "2",
-        "name": "Start the development server",
-        "text": "Run npm run dev from your project directory. Bascik serves your site over HTTP at http://localhost:8080 by default."
-      },
-      {
-        "@type": "HowToStep",
-        "position": "3",
-        "name": "Build for production",
-        "text": "Run npm run build to output a dist/ directory of vanilla HTML files ready for any static host."
+        "@context": "https://schema.org",
+        "@type": "HowTo",
+        "name": "Getting Started with Bascik",
+        "description": "Set up a Bascik project in under five minutes. Node.js 24 LTS recommended, v22.18 minimum.",
+        "step": [
+          {
+            "@type": "HowToStep",
+            "position": "1",
+            "name": "Create a new project",
+            "text": "Run: npm create bascik@latest my-site -y. This scaffolds the project, installs dependencies, and starts the dev server in one shot."
+          },
+          {
+            "@type": "HowToStep",
+            "position": "2",
+            "name": "Start the development server",
+            "text": "Run npm run dev from your project directory. Bascik serves your site over HTTP at http://localhost:8080 by default."
+          },
+          {
+            "@type": "HowToStep",
+            "position": "3",
+            "name": "Build for production",
+            "text": "Run npm run build to output a dist/ directory of vanilla HTML files ready for any static host."
+          }
+        ]
       }
-    ]
-  }
-  </script>
-</head>
+    </script>
+  </head>
 
-<body>
+  <body>
+    <docs-nav />
 
-  <docs-nav />
+    <div class="container">
+      <div class="docs-layout">
+        <!-- Sidebar -->
+        <docs-sidebar />
 
-  <div class="container">
-    <div class="docs-layout">
+        <!-- Content -->
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/getting-started");
+          </script>
 
-      <!-- Sidebar -->
-      <docs-sidebar />
-
-      <!-- Content -->
-      <main class="docs-content" id="main-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/getting-started');
-        </script>
-
-        <!-- Content rendered from docs/content/getting-started.md at build time.
+          <!-- Content rendered from docs/content/getting-started.md at build time.
              To update page content, edit the MD file - not this file. -->
-        <script data-bascik-build>
-          import { renderMd } from '@/lib/md-renderer.ts';
-          export default async () => await renderMd('./content/getting-started.md');
-        </script>
+          <script data-bascik-build>
+            import { renderMd } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMd("./content/getting-started.md");
+          </script>
 
-        <h2>Your First Component</h2>
+          <h2>Your First Component</h2>
 
-        <ol class="steps">
-          <li class="step">
-            <div class="step-num">1</div>
-            <div class="step-body">
-              <h3>Create the component file</h3>
-              <p>The file name becomes the tag name.</p>
-              <code-block data-bascik-prop-lang="html" data-bascik-prop-file="src/components/site-nav.html">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./content/getting-started.md', 'component-html');
-                </script>
-              </code-block>
-            </div>
-          </li>
+          <ol class="steps">
+            <li class="step">
+              <div class="step-num">1</div>
+              <div class="step-body">
+                <h3>Create the component file</h3>
+                <p>The file name becomes the tag name.</p>
+                <code-block
+                  data-bascik-prop-lang="html"
+                  data-bascik-prop-file="src/components/site-nav.html"
+                >
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./content/getting-started.md",
+                        "component-html",
+                      );
+                  </script>
+                </code-block>
+              </div>
+            </li>
 
-          <li class="step">
-            <div class="step-num">2</div>
-            <div class="step-body">
-              <h3>Reference it in a page</h3>
-              <p>No imports or registration. Just use the tag.</p>
-              <code-block data-bascik-prop-lang="html" data-bascik-prop-file="src/pages/index.html">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./content/getting-started.md', 'page-html');
-                </script>
-              </code-block>
-            </div>
-          </li>
+            <li class="step">
+              <div class="step-num">2</div>
+              <div class="step-body">
+                <h3>Reference it in a page</h3>
+                <p>No imports or registration. Just use the tag.</p>
+                <code-block
+                  data-bascik-prop-lang="html"
+                  data-bascik-prop-file="src/pages/index.html"
+                >
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./content/getting-started.md",
+                        "page-html",
+                      );
+                  </script>
+                </code-block>
+              </div>
+            </li>
 
-          <li class="step">
-            <div class="step-num">3</div>
-            <div class="step-body">
-              <h3>Start the dev server</h3>
-              <code-block data-bascik-prop-lang="sh">npm run dev</code-block>
-              <p>The server runs on <code>http://localhost:8080</code> and live-reloads on every change.</p>
-            </div>
-          </li>
+            <li class="step">
+              <div class="step-num">3</div>
+              <div class="step-body">
+                <h3>Start the dev server</h3>
+                <code-block data-bascik-prop-lang="sh">npm run dev</code-block>
+                <p>
+                  The server runs on <code>http://localhost:8080</code> and
+                  live-reloads on every change.
+                </p>
+              </div>
+            </li>
 
-          <li class="step">
-            <div class="step-num">4</div>
-            <div class="step-body">
-              <h3>Build for production</h3>
-              <code-block data-bascik-prop-lang="sh">npm run build</code-block>
-              <p>Output is written to the <code>dist/</code> directory. Deploy it anywhere that serves static files.</p>
-            </div>
-          </li>
-        </ol>
+            <li class="step">
+              <div class="step-num">4</div>
+              <div class="step-body">
+                <h3>Build for production</h3>
+                <code-block data-bascik-prop-lang="sh"
+                  >npm run build</code-block
+                >
+                <p>
+                  Output is written to the <code>dist/</code> directory. Deploy
+                  it anywhere that serves static files.
+                </p>
+              </div>
+            </li>
+          </ol>
 
-        <style>
-          .next-step-card {
-            margin-top: 48px;
-            padding: 28px;
-            border-color: var(--accent-border);
-            background: var(--accent-dim);
-          }
+          <style>
+            .next-step-card {
+              margin-top: 48px;
+              padding: 28px;
+              border-color: var(--accent-border);
+              background: var(--accent-dim);
+            }
 
-          .next-step-label {
-            margin-bottom: 8px;
-          }
+            .next-step-label {
+              margin-bottom: 8px;
+            }
 
-          .next-step-title {
-            margin: 0 0 8px;
-            font-size: 1.3rem;
-          }
+            .next-step-title {
+              margin: 0 0 8px;
+              font-size: 1.3rem;
+            }
 
-          .next-step-desc {
-            margin: 0 0 16px;
-            color: var(--text);
-          }
-        </style>
+            .next-step-desc {
+              margin: 0 0 16px;
+              color: var(--text);
+            }
+          </style>
 
-        <div class="card next-step-card">
-          <p class="section-label next-step-label">Next Step</p>
-          <h3 class="next-step-title">Learn How Components Work</h3>
-          <p class="next-step-desc">Discover how Bascik resolves custom tags, passes props,
-            scopes CSS and JS, and handles slots with zero runtime footprint.</p>
-          <a href="/components" class="btn btn-primary">Explore Components →</a>
-        </div>
+          <div class="card next-step-card">
+            <p class="section-label next-step-label">Next Step</p>
+            <h3 class="next-step-title">Learn How Components Work</h3>
+            <p class="next-step-desc">
+              Discover how Bascik resolves custom tags, passes props, scopes CSS
+              and JS, and handles slots with zero runtime footprint.
+            </p>
+            <a href="/components" class="btn btn-primary"
+              >Explore Components →</a
+            >
+          </div>
 
-        <docs-pagination />
-
-      </main>
+          <docs-pagination />
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-</body>
-
+    <docs-footer />
+  </body>
 </html>

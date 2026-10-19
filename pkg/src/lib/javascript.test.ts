@@ -1,9 +1,19 @@
 import fc from "fast-check";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  realpathSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { prefixElementAttribute, namespaceScriptTags, getComponentScripts } from "./javascript.ts";
+import {
+  prefixElementAttribute,
+  namespaceScriptTags,
+  getComponentScripts,
+} from "./javascript.ts";
 import { BascikConfig } from "./config.ts";
 import type { BascikComponent } from "./types.ts";
 
@@ -42,16 +52,26 @@ const makeScopedComponent = (
   cssFileContent: string | undefined = undefined,
 ): BascikComponent => {
   const names = new Set<string>();
-  for (const attribute of fileContent.matchAll(/\sclass\s*=\s*(["'])([^"']*)\1/gi)) {
+  for (const attribute of fileContent.matchAll(
+    /\sclass\s*=\s*(["'])([^"']*)\1/gi,
+  )) {
     for (const token of attribute[2].split(/\s+/)) if (token) names.add(token);
   }
-  for (const script of fileContent.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/gi)) {
+  for (const script of fileContent.matchAll(
+    /<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/gi,
+  )) {
     for (const quoted of script[1].matchAll(/["']([^"'\n]*)["']/g)) {
-      for (const token of quoted[1].split(/[\s.]+/)) if (/^[a-zA-Z_][\w-]*$/.test(token)) names.add(token);
+      for (const token of quoted[1].split(/[\s.]+/))
+        if (/^[a-zA-Z_][\w-]*$/.test(token)) names.add(token);
     }
   }
-  const defined = [...names].map((name) => `.${name.replace(/[^\w-]/g, '\\$&')} { color: red; }`).join('\n');
-  return makeComponent(fileContent, [cssFileContent, defined].filter(Boolean).join('\n'));
+  const defined = [...names]
+    .map((name) => `.${name.replace(/[^\w-]/g, "\\$&")} { color: red; }`)
+    .join("\n");
+  return makeComponent(
+    fileContent,
+    [cssFileContent, defined].filter(Boolean).join("\n"),
+  );
 };
 
 // IDs and names include the instanceId for DOM uniqueness.
@@ -128,7 +148,9 @@ describe("prefixElementAttribute - data-bascik-preserve", () => {
     component = prefixElementAttribute(component, "id", "test1234");
     component = prefixElementAttribute(component, "name", "test1234");
     component = prefixElementAttribute(component, "class", "test1234");
-    expect(component.fileContent).toBe(`<input id="${scope("email")}" name="email">`);
+    expect(component.fileContent).toBe(
+      `<input id="${scope("email")}" name="email">`,
+    );
     expect(warn).toHaveBeenCalledOnce();
     expect(warn).toHaveBeenCalledWith(
       '[bascik] warning: data-bascik-preserve ignores unknown token "href".',
@@ -164,9 +186,15 @@ describe("prefixElementAttribute - data-bascik-preserve", () => {
     let component = makeComponent(
       '<code id="sample" name="sample" class="sample"><span id="inner" name="inner" class="inner"></span></code>',
     );
-    component = prefixElementAttribute(component, "id", "test1234", true, ["code"]);
-    component = prefixElementAttribute(component, "name", "test1234", true, ["code"]);
-    component = prefixElementAttribute(component, "class", "test1234", true, ["code"]);
+    component = prefixElementAttribute(component, "id", "test1234", true, [
+      "code",
+    ]);
+    component = prefixElementAttribute(component, "name", "test1234", true, [
+      "code",
+    ]);
+    component = prefixElementAttribute(component, "class", "test1234", true, [
+      "code",
+    ]);
     expect(component.fileContent).toBe(
       '<code id="sample" name="sample" class="sample"><span id="inner" name="inner" class="inner"></span></code>',
     );
@@ -175,21 +203,36 @@ describe("prefixElementAttribute - data-bascik-preserve", () => {
   it("uses the same preservation path for a configured wildcard pattern", () => {
     let component = makeScopedComponent(
       '<vendor-widget id="keep" name="keep" class="keep"><span id="inner" name="inner" class="inner"></span></vendor-widget>' +
-      '<p id="outer" name="outer" class="outer"></p>',
+        '<p id="outer" name="outer" class="outer"></p>',
     );
-    component = prefixElementAttribute(component, "id", "test1234", true, ["vendor-*"]);
-    component = prefixElementAttribute(component, "name", "test1234", true, ["vendor-*"]);
-    component = prefixElementAttribute(component, "class", "test1234", true, ["vendor-*"]);
+    component = prefixElementAttribute(component, "id", "test1234", true, [
+      "vendor-*",
+    ]);
+    component = prefixElementAttribute(component, "name", "test1234", true, [
+      "vendor-*",
+    ]);
+    component = prefixElementAttribute(component, "class", "test1234", true, [
+      "vendor-*",
+    ]);
     expect(component.fileContent).toBe(
       '<vendor-widget id="keep" name="keep" class="keep"><span id="inner" name="inner" class="inner"></span></vendor-widget>' +
-      `<p id="${scope("outer")}" name="${scope("outer")}" class="${scopeClass("outer")}"></p>`,
+        `<p id="${scope("outer")}" name="${scope("outer")}" class="${scopeClass("outer")}"></p>`,
     );
   });
 
   it("keeps radio names shared within an instance and distinct between instances", () => {
-    const source = '<input type="radio" name="plan"><input type="radio" name="plan">';
-    const first = prefixElementAttribute(makeComponent(source), "name", "first123");
-    const second = prefixElementAttribute(makeComponent(source), "name", "second12");
+    const source =
+      '<input type="radio" name="plan"><input type="radio" name="plan">';
+    const first = prefixElementAttribute(
+      makeComponent(source),
+      "name",
+      "first123",
+    );
+    const second = prefixElementAttribute(
+      makeComponent(source),
+      "name",
+      "second12",
+    );
     expect(first.fileContent.match(/name="([^"]+)"/g)).toEqual([
       'name="bascik__my-comp__first123__plan"',
       'name="bascik__my-comp__first123__plan"',
@@ -201,9 +244,18 @@ describe("prefixElementAttribute - data-bascik-preserve", () => {
   });
 
   it("deliberately gives up radio isolation when name is preserved", () => {
-    const source = '<fieldset data-bascik-preserve="name"><input type="radio" name="plan"><input type="radio" name="plan"></fieldset>';
-    const first = prefixElementAttribute(makeComponent(source), "name", "first123");
-    const second = prefixElementAttribute(makeComponent(source), "name", "second12");
+    const source =
+      '<fieldset data-bascik-preserve="name"><input type="radio" name="plan"><input type="radio" name="plan"></fieldset>';
+    const first = prefixElementAttribute(
+      makeComponent(source),
+      "name",
+      "first123",
+    );
+    const second = prefixElementAttribute(
+      makeComponent(source),
+      "name",
+      "second12",
+    );
     expect(first.fileContent.match(/name="([^"]+)"/g)).toEqual([
       'name="plan"',
       'name="plan"',
@@ -217,7 +269,7 @@ describe("prefixElementAttribute - data-bascik-preserve", () => {
   it("does not leak preservation past an ancestor with an omitted child end tag", () => {
     const component = makeComponent(
       '<ul data-bascik-preserve="name"><li><input name="inside"></ul>' +
-      '<input name="outside">',
+        '<input name="outside">',
     );
     const result = prefixElementAttribute(component, "name", "test1234");
     expect(result.fileContent).toContain('name="inside"');
@@ -232,7 +284,7 @@ describe("prefixElementAttribute - data-bascik-preserve", () => {
 describe("prefixElementAttribute – id (existing patterns)", () => {
   it("scopes unquoted and whitespace-spaced class, id, and name attributes", () => {
     let component = makeComponent(
-      '<label for = email>Email</label><input id = email name=email class = field><div class=card/>',
+      "<label for = email>Email</label><input id = email name=email class = field><div class=card/>",
       ".field { color: red; } .card { color: blue; }",
     );
     component = prefixElementAttribute(component, "id", "test1234");
@@ -242,7 +294,9 @@ describe("prefixElementAttribute – id (existing patterns)", () => {
     expect(component.fileContent).toContain(`id = "${scope("email")}"`);
     expect(component.fileContent).toContain(`name="${scope("email")}"`);
     expect(component.fileContent).toContain(`class = "${scopeClass("field")}"`);
-    expect(component.fileContent).toContain(`<div class="${scopeClass("card")}"/>`);
+    expect(component.fileContent).toContain(
+      `<div class="${scopeClass("card")}"/>`,
+    );
   });
 
   it("scopes the for attribute to match a scoped input id", () => {
@@ -258,7 +312,7 @@ describe("prefixElementAttribute – id (existing patterns)", () => {
     let component = makeComponent(
       [
         '<input id="email" name="email">',
-        '<script>',
+        "<script>",
         '  document.getElementById ("email");',
         '  document.querySelector ("#email");',
         '  document.querySelectorAll (".js-only");',
@@ -267,21 +321,37 @@ describe("prefixElementAttribute – id (existing patterns)", () => {
         '  el.setAttribute ( "id" , "email" );',
         '  el.setAttribute ( "name" , "email" );',
         '  el.setAttribute ( "class" , "js-only" );',
-        '</script>',
+        "</script>",
       ].join("\n"),
       ".js-only { color: red; }",
     );
     component = prefixElementAttribute(component, "id", "test1234");
     component = prefixElementAttribute(component, "name", "test1234");
     component = prefixElementAttribute(component, "class", "test1234");
-    expect(component.fileContent).toContain(`getElementById ("${scope("email")}")`);
-    expect(component.fileContent).toContain(`querySelector ("#${scope("email")}")`);
-    expect(component.fileContent).toContain(`querySelectorAll (".${scopeClass("js-only")}")`);
-    expect(component.fileContent).toContain(`getElementsByName ("${scope("email")}")`);
-    expect(component.fileContent).toContain(`getElementsByClassName ("${scopeClass("js-only")}")`);
-    expect(component.fileContent).toContain(`setAttribute ( "id" , "${scope("email")}" )`);
-    expect(component.fileContent).toContain(`setAttribute ( "name" , "${scope("email")}" )`);
-    expect(component.fileContent).toContain(`setAttribute ( "class" , "${scopeClass("js-only")}" )`);
+    expect(component.fileContent).toContain(
+      `getElementById ("${scope("email")}")`,
+    );
+    expect(component.fileContent).toContain(
+      `querySelector ("#${scope("email")}")`,
+    );
+    expect(component.fileContent).toContain(
+      `querySelectorAll (".${scopeClass("js-only")}")`,
+    );
+    expect(component.fileContent).toContain(
+      `getElementsByName ("${scope("email")}")`,
+    );
+    expect(component.fileContent).toContain(
+      `getElementsByClassName ("${scopeClass("js-only")}")`,
+    );
+    expect(component.fileContent).toContain(
+      `setAttribute ( "id" , "${scope("email")}" )`,
+    );
+    expect(component.fileContent).toContain(
+      `setAttribute ( "name" , "${scope("email")}" )`,
+    );
+    expect(component.fileContent).toContain(
+      `setAttribute ( "class" , "${scopeClass("js-only")}" )`,
+    );
   });
 
   it("scopes aria-labelledby tokens that resolve to local ids", () => {
@@ -302,10 +372,22 @@ describe("prefixElementAttribute – id (existing patterns)", () => {
 
   it("resolves each component instance to its own scoped id", () => {
     const source = '<label for="email">Email</label><input id="email">';
-    const first = prefixElementAttribute(makeComponent(source), "id", "first123");
-    const second = prefixElementAttribute(makeComponent(source), "id", "second12");
-    expect(first.fileContent).toContain('for="bascik__my-comp__first123__email"');
-    expect(second.fileContent).toContain('for="bascik__my-comp__second12__email"');
+    const first = prefixElementAttribute(
+      makeComponent(source),
+      "id",
+      "first123",
+    );
+    const second = prefixElementAttribute(
+      makeComponent(source),
+      "id",
+      "second12",
+    );
+    expect(first.fileContent).toContain(
+      'for="bascik__my-comp__first123__email"',
+    );
+    expect(second.fileContent).toContain(
+      'for="bascik__my-comp__second12__email"',
+    );
   });
 
   it("uses the declaration hash for references when identifiers are minified", () => {
@@ -325,21 +407,40 @@ describe("prefixElementAttribute – id (existing patterns)", () => {
   });
 
   it("leaves nonlocal references byte-identical", () => {
-    const source = '<a href="#main">Main</a><label for="page-input">Input</label><div id="local"></div>';
-    const result = prefixElementAttribute(makeComponent(source), "id", "test1234");
+    const source =
+      '<a href="#main">Main</a><label for="page-input">Input</label><div id="local"></div>';
+    const result = prefixElementAttribute(
+      makeComponent(source),
+      "id",
+      "test1234",
+    );
     expect(result.fileContent).toContain('<a href="#main">Main</a>');
-    expect(result.fileContent).toContain('<label for="page-input">Input</label>');
+    expect(result.fileContent).toContain(
+      '<label for="page-input">Input</label>',
+    );
   });
 
   it("does not rewrite references or declarations in an id-preserved subtree", () => {
-    const source = '<div data-bascik-preserve="id"><label for="email">Email</label><input id="email"></div>';
-    const result = prefixElementAttribute(makeComponent(source), "id", "test1234");
-    expect(result.fileContent).toContain('<label for="email">Email</label><input id="email">');
+    const source =
+      '<div data-bascik-preserve="id"><label for="email">Email</label><input id="email"></div>';
+    const result = prefixElementAttribute(
+      makeComponent(source),
+      "id",
+      "test1234",
+    );
+    expect(result.fileContent).toContain(
+      '<label for="email">Email</label><input id="email">',
+    );
   });
 
   it("does not rewrite references inside an id-preserved subtree to an outside id", () => {
-    const source = '<div id="outside"></div><div data-bascik-preserve="id"><a href="#outside">Outside</a></div>';
-    const result = prefixElementAttribute(makeComponent(source), "id", "test1234");
+    const source =
+      '<div id="outside"></div><div data-bascik-preserve="id"><a href="#outside">Outside</a></div>';
+    const result = prefixElementAttribute(
+      makeComponent(source),
+      "id",
+      "test1234",
+    );
     expect(result.fileContent).toContain('<a href="#outside">Outside</a>');
   });
 
@@ -396,7 +497,10 @@ describe("prefixElementAttribute – class with deduplicateCss: false", () => {
   });
 
   it("rewrites CSS class selectors with per-instance key", () => {
-    const c = makeComponent('<div class="card"></div>', ".card { color: red; }");
+    const c = makeComponent(
+      '<div class="card"></div>',
+      ".card { color: red; }",
+    );
     const result = prefixElementAttribute(c, "class", "test1234", false);
     expect(result.cssFileContent).toContain(
       `.${scopeClassPerInstance("card")}`,
@@ -436,7 +540,11 @@ describe("prefixElementAttribute – class (existing patterns)", () => {
       '<script>document.querySelector(".skip-link"); el.classList.add("skip-link");</script>';
 
     it("leaves every class literal when the component has no stylesheet at all", () => {
-      const result = prefixElementAttribute(makeComponent(markup), "class", "test1234");
+      const result = prefixElementAttribute(
+        makeComponent(markup),
+        "class",
+        "test1234",
+      );
       expect(result.fileContent).toContain('class="skip-link"');
       expect(result.fileContent).toContain('querySelector(".skip-link")');
       expect(result.fileContent).toContain('classList.add("skip-link")');
@@ -444,19 +552,35 @@ describe("prefixElementAttribute – class (existing patterns)", () => {
     });
 
     it("leaves every class literal when the stylesheet is an empty string", () => {
-      const result = prefixElementAttribute(makeComponent(markup, ""), "class", "test1234");
+      const result = prefixElementAttribute(
+        makeComponent(markup, ""),
+        "class",
+        "test1234",
+      );
       expect(result.fileContent).toContain('class="skip-link"');
       expect(result.fileContent).not.toContain("bascik__");
     });
 
     it("treats a comment-only stylesheet the same as no stylesheet", () => {
-      const withComment = prefixElementAttribute(makeComponent(markup, "/* global styles live elsewhere */"), "class", "test1234");
-      const without = prefixElementAttribute(makeComponent(markup), "class", "test1234");
+      const withComment = prefixElementAttribute(
+        makeComponent(markup, "/* global styles live elsewhere */"),
+        "class",
+        "test1234",
+      );
+      const without = prefixElementAttribute(
+        makeComponent(markup),
+        "class",
+        "test1234",
+      );
       expect(withComment.fileContent).toBe(without.fileContent);
     });
 
     it("leaves classes literal in a component whose only <style> is empty", () => {
-      const result = prefixElementAttribute(makeComponent(`${markup}<style></style>`), "class", "test1234");
+      const result = prefixElementAttribute(
+        makeComponent(`${markup}<style></style>`),
+        "class",
+        "test1234",
+      );
       expect(result.fileContent).toContain('class="skip-link"');
       expect(result.fileContent).not.toContain("bascik__");
     });
@@ -467,13 +591,23 @@ describe("prefixElementAttribute – class (existing patterns)", () => {
         "class",
         "test1234",
       );
-      expect(result.fileContent).toContain(`class="skip-link ${scopeClass("own")}"`);
+      expect(result.fileContent).toContain(
+        `class="skip-link ${scopeClass("own")}"`,
+      );
     });
 
     it("keeps scoping id and name when the component has no stylesheet", () => {
       const html = '<input id="email" name="email" class="field">';
-      const withId = prefixElementAttribute(makeComponent(html), "id", "test1234");
-      const withName = prefixElementAttribute(makeComponent(html), "name", "test1234");
+      const withId = prefixElementAttribute(
+        makeComponent(html),
+        "id",
+        "test1234",
+      );
+      const withName = prefixElementAttribute(
+        makeComponent(html),
+        "name",
+        "test1234",
+      );
       expect(withId.fileContent).toContain(`id="${scope("email")}"`);
       expect(withName.fileContent).toContain(`name="${scope("email")}"`);
     });
@@ -530,7 +664,9 @@ describe("prefixElementAttribute – class (existing patterns)", () => {
 
   it("does not corrupt empty string literals when a class has trailing whitespace", () => {
     const result = prefixElementAttribute(
-      makeComponent('<div class="card "></div><script>const value = "";</script>'),
+      makeComponent(
+        '<div class="card "></div><script>const value = "";</script>',
+      ),
       "class",
       "test1234",
     );
@@ -589,10 +725,10 @@ describe("prefixElementAttribute – id querySelector/querySelectorAll (new)", (
   it("scopes multiple querySelector and getElementById for the same id", () => {
     const c = makeComponent(
       '<button id="btn"></button>' +
-      "<script>" +
-      'document.getElementById("btn");' +
-      'document.querySelector("#btn");' +
-      "</script>",
+        "<script>" +
+        'document.getElementById("btn");' +
+        'document.querySelector("#btn");' +
+        "</script>",
     );
     const result = prefixElementAttribute(c, "id", "test1234");
     const scopedId = scope("btn");
@@ -603,11 +739,11 @@ describe("prefixElementAttribute – id querySelector/querySelectorAll (new)", (
   it("handles whitespace inside getElementById, querySelector, and getElementsByClassName calls", () => {
     const c = makeScopedComponent(
       '<button id="btn" class="my-cls"></button>' +
-      "<script>" +
-      'document.getElementById( "btn" );\n' +
-      'document.querySelector( "#btn" );\n' +
-      'document.getElementsByClassName( "my-cls" );\n' +
-      "</script>",
+        "<script>" +
+        'document.getElementById( "btn" );\n' +
+        'document.querySelector( "#btn" );\n' +
+        'document.getElementsByClassName( "my-cls" );\n' +
+        "</script>",
     );
     let result = prefixElementAttribute(c, "id", "test1234");
     result = prefixElementAttribute(result, "class", "test1234");
@@ -615,7 +751,9 @@ describe("prefixElementAttribute – id querySelector/querySelectorAll (new)", (
     const scopedCls = scopeClass("my-cls");
     expect(result.fileContent).toContain(`getElementById( "${scopedId}" )`);
     expect(result.fileContent).toContain(`querySelector( "#${scopedId}" )`);
-    expect(result.fileContent).toContain(`getElementsByClassName( "${scopedCls}" )`);
+    expect(result.fileContent).toContain(
+      `getElementsByClassName( "${scopedCls}" )`,
+    );
   });
 });
 
@@ -796,7 +934,9 @@ describe("prefixElementAttribute – JS-only class discovery via classList", () 
       ".btn { } .btn--active { color: red; }",
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.fileContent).toContain(`classList.add("${scopeClass("btn--active")}")`);
+    expect(result.fileContent).toContain(
+      `classList.add("${scopeClass("btn--active")}")`,
+    );
     expect(result.cssFileContent).toContain(`.${scopeClass("btn--active")}`);
   });
 
@@ -806,7 +946,9 @@ describe("prefixElementAttribute – JS-only class discovery via classList", () 
       ".loading { opacity: 0.5; }",
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.fileContent).toContain(`classList.remove("${scopeClass("loading")}")`);
+    expect(result.fileContent).toContain(
+      `classList.remove("${scopeClass("loading")}")`,
+    );
     expect(result.cssFileContent).toContain(`.${scopeClass("loading")}`);
   });
 
@@ -815,7 +957,9 @@ describe("prefixElementAttribute – JS-only class discovery via classList", () 
       '<nav></nav><script>el.classList.toggle("open")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.fileContent).toContain(`classList.toggle("${scopeClass("open")}")`);
+    expect(result.fileContent).toContain(
+      `classList.toggle("${scopeClass("open")}")`,
+    );
   });
 
   it("scopes a JS-only class in classList.contains", () => {
@@ -823,7 +967,9 @@ describe("prefixElementAttribute – JS-only class discovery via classList", () 
       '<div></div><script>el.classList.contains("selected")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.fileContent).toContain(`classList.contains("${scopeClass("selected")}")`);
+    expect(result.fileContent).toContain(
+      `classList.contains("${scopeClass("selected")}")`,
+    );
   });
 
   it("does not double-scope a class that appears in both HTML attrs and classList.add", () => {
@@ -843,8 +989,12 @@ describe("prefixElementAttribute – JS-only class discovery via classList", () 
       ".spinner { } .done { }",
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.fileContent).toContain(`classList.add("${scopeClass("spinner")}")`);
-    expect(result.fileContent).toContain(`classList.remove("${scopeClass("done")}")`);
+    expect(result.fileContent).toContain(
+      `classList.add("${scopeClass("spinner")}")`,
+    );
+    expect(result.fileContent).toContain(
+      `classList.remove("${scopeClass("done")}")`,
+    );
     expect(result.cssFileContent).toContain(`.${scopeClass("spinner")}`);
     expect(result.cssFileContent).toContain(`.${scopeClass("done")}`);
   });
@@ -855,7 +1005,9 @@ describe("prefixElementAttribute – JS-only class discovery via classList", () 
       ".spinner { } .done { }",
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.fileContent).toContain(`classList.add(getCls("${scopeClass("spinner")}"), "${scopeClass("done")}")`);
+    expect(result.fileContent).toContain(
+      `classList.add(getCls("${scopeClass("spinner")}"), "${scopeClass("done")}")`,
+    );
     expect(result.cssFileContent).toContain(`.${scopeClass("spinner")}`);
     expect(result.cssFileContent).toContain(`.${scopeClass("done")}`);
   });
@@ -872,7 +1024,9 @@ describe("prefixElementAttribute – JS-only class discovery via selector and as
       ".js-only { color: red; }",
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.fileContent).toContain(`querySelector(".${scopeClass("js-only")}")`);
+    expect(result.fileContent).toContain(
+      `querySelector(".${scopeClass("js-only")}")`,
+    );
     expect(result.cssFileContent).toContain(`.${scopeClass("js-only")}`);
   });
 
@@ -881,7 +1035,9 @@ describe("prefixElementAttribute – JS-only class discovery via selector and as
       '<ul></ul><script>el.querySelectorAll(".item")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.fileContent).toContain(`querySelectorAll(".${scopeClass("item")}")`);
+    expect(result.fileContent).toContain(
+      `querySelectorAll(".${scopeClass("item")}")`,
+    );
   });
 
   it("scopes a JS-only class used in closest", () => {
@@ -906,7 +1062,9 @@ describe("prefixElementAttribute – JS-only class discovery via selector and as
       ".loading { opacity: 0.5; }",
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.fileContent).toContain(`className = "${scopeClass("loading")}"`);
+    expect(result.fileContent).toContain(
+      `className = "${scopeClass("loading")}"`,
+    );
     expect(result.cssFileContent).toContain(`.${scopeClass("loading")}`);
   });
 
@@ -920,13 +1078,15 @@ describe("prefixElementAttribute – JS-only class discovery via selector and as
     );
   });
 
-  it("scopes a JS-only class set via setAttribute(\"class\", …)", () => {
+  it('scopes a JS-only class set via setAttribute("class", …)', () => {
     const c = makeComponent(
       '<div></div><script>el.setAttribute("class", "hidden")</script>',
       ".hidden { display: none; }",
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.fileContent).toContain(`setAttribute("class", "${scopeClass("hidden")}")`);
+    expect(result.fileContent).toContain(
+      `setAttribute("class", "${scopeClass("hidden")}")`,
+    );
     expect(result.cssFileContent).toContain(`.${scopeClass("hidden")}`);
   });
 
@@ -936,7 +1096,9 @@ describe("prefixElementAttribute – JS-only class discovery via selector and as
       ".js-only-cls { display: flex; }",
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.fileContent).toContain(`getElementsByClassName("${scopeClass("js-only-cls")}")`);
+    expect(result.fileContent).toContain(
+      `getElementsByClassName("${scopeClass("js-only-cls")}")`,
+    );
     expect(result.cssFileContent).toContain(`.${scopeClass("js-only-cls")}`);
   });
 
@@ -945,7 +1107,9 @@ describe("prefixElementAttribute – JS-only class discovery via selector and as
       '<div class="card"></div><script>el.querySelector(".card")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.fileContent).toContain(`querySelector(".${scopeClass("card")}")`);
+    expect(result.fileContent).toContain(
+      `querySelector(".${scopeClass("card")}")`,
+    );
     expect(result.fileContent).not.toContain(`bascik__my-comp__bascik__`);
   });
 });
@@ -956,7 +1120,9 @@ describe("prefixElementAttribute – JS-only class discovery via selector and as
 
 describe("prefixElementAttribute – name setAttribute", () => {
   it("rewrites usemap against a locally scoped map name", () => {
-    const component = makeComponent('<map name="choices"></map><img usemap="#choices">');
+    const component = makeComponent(
+      '<map name="choices"></map><img usemap="#choices">',
+    );
     const result = prefixElementAttribute(component, "name", "test1234");
     expect(result.fileContent).toContain(`usemap="#${scope("choices")}"`);
   });
@@ -1143,7 +1309,7 @@ describe("prefixElementAttribute – CSS #id selector scoping", () => {
     try {
       let c = makeComponent(
         '<form id="report-form"><label>Assigned employee</label></form>',
-        '#report-form { display: grid; gap: 16px 20px; }',
+        "#report-form { display: grid; gap: 16px 20px; }",
       );
       // Simulates buildScopingPipeline: id scoping runs first, then class scoping
       c = prefixElementAttribute(c, "id", "test1234");
@@ -1172,14 +1338,14 @@ describe("prefixElementAttribute – CSS #id selector scoping", () => {
     try {
       let c = makeComponent(
         '<form id="report-form" class="existing"><input></form>',
-        '@media (min-width: 600px) { #report-form { display: grid; } }',
+        "@media (min-width: 600px) { #report-form { display: grid; } }",
       );
       c = prefixElementAttribute(c, "id", "test1234");
       c = prefixElementAttribute(c, "class", "test1234");
 
       expect(c.cssFileContent).toBeDefined();
-      expect(c.cssFileContent).toContain('@media (min-width: 600px)');
-      expect(c.cssFileContent).not.toContain('#report-form');
+      expect(c.cssFileContent).toContain("@media (min-width: 600px)");
+      expect(c.cssFileContent).not.toContain("#report-form");
       const classMatch = c.cssFileContent!.match(/\.(b[0-9a-zA-Z]{11})/);
       expect(classMatch).not.toBeNull();
       const scopedClass = classMatch![1];
@@ -1242,7 +1408,7 @@ describe("prefixElementAttribute – compound querySelector (class)", () => {
   it("scopes both tokens in querySelector('.foo .bar')", () => {
     const c = makeScopedComponent(
       '<div class="foo"><span class="bar"></span></div>' +
-      '<script>document.querySelector(".foo .bar")</script>',
+        '<script>document.querySelector(".foo .bar")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
     expect(result.fileContent).toContain(
@@ -1253,7 +1419,7 @@ describe("prefixElementAttribute – compound querySelector (class)", () => {
   it("scopes both tokens in querySelectorAll('.foo > .bar')", () => {
     const c = makeScopedComponent(
       '<div class="foo"><span class="bar"></span></div>' +
-      '<script>document.querySelectorAll(".foo > .bar")</script>',
+        '<script>document.querySelectorAll(".foo > .bar")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
     expect(result.fileContent).toContain(
@@ -1264,7 +1430,7 @@ describe("prefixElementAttribute – compound querySelector (class)", () => {
   it("scopes the class token in querySelector('#id .cls')", () => {
     const c = makeScopedComponent(
       '<div id="panel" class="card"></div>' +
-      '<script>document.querySelector("#panel .card")</script>',
+        '<script>document.querySelector("#panel .card")</script>',
     );
     // class pass rewrites .card token in the compound selector
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -1276,7 +1442,7 @@ describe("prefixElementAttribute – compound querySelector (id)", () => {
   it("scopes #id token in querySelector('#id .child')", () => {
     const c = makeComponent(
       '<div id="panel"><span class="icon"></span></div>' +
-      '<script>document.querySelector("#panel .icon")</script>',
+        '<script>document.querySelector("#panel .icon")</script>',
     );
     // id pass rewrites #panel token in the compound selector
     const result = prefixElementAttribute(c, "id", "test1234");
@@ -1292,7 +1458,7 @@ describe("prefixElementAttribute – setAttribute", () => {
   it("scopes setAttribute('class', 'value')", () => {
     const c = makeScopedComponent(
       '<div class="card"></div>' +
-      '<script>el.setAttribute("class", "card")</script>',
+        '<script>el.setAttribute("class", "card")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
     expect(result.fileContent).toContain(
@@ -1303,7 +1469,7 @@ describe("prefixElementAttribute – setAttribute", () => {
   it("scopes setAttribute('id', 'value')", () => {
     const c = makeComponent(
       '<div id="panel"></div>' +
-      '<script>el.setAttribute("id", "panel")</script>',
+        '<script>el.setAttribute("id", "panel")</script>',
     );
     const result = prefixElementAttribute(c, "id", "test1234");
     expect(result.fileContent).toContain(
@@ -1328,7 +1494,7 @@ describe("prefixElementAttribute – element.className setter", () => {
   it("scopes both tokens in a space-separated assignment", () => {
     const c = makeScopedComponent(
       '<div class="card active"></div>' +
-      '<script>el.className = "card active"</script>',
+        '<script>el.className = "card active"</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
     expect(result.fileContent).toContain(
@@ -1351,7 +1517,7 @@ describe("prefixElementAttribute – element.className setter", () => {
     // iteration for a different class should not touch it.
     const c = makeScopedComponent(
       '<div class="card btn"></div>' +
-      '<script>el.className = "card btn"</script>',
+        '<script>el.className = "card btn"</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
     const content = result.fileContent;
@@ -1431,7 +1597,7 @@ describe("prefixElementAttribute – skipElementContents", () => {
     const codeContent = '<span class="code-example">CODE EXAMPLE</span>';
     const component = makeComponent(
       `<pre>${preContent}</pre><code>${codeContent}</code>` +
-      '<style>.outside { color: red; }</style><div class="outside">Live</div>',
+        '<style>.outside { color: red; }</style><div class="outside">Live</div>',
     );
     const result = prefixElementAttribute(
       component,
@@ -1446,7 +1612,9 @@ describe("prefixElementAttribute – skipElementContents", () => {
 
   it("preserves attributes on a configured tag's opening tag", () => {
     const c = makeComponent('<code class="cblock-body">literal</code>');
-    const result = prefixElementAttribute(c, "class", "test1234", true, ["code"]);
+    const result = prefixElementAttribute(c, "class", "test1234", true, [
+      "code",
+    ]);
     expect(result.fileContent).toContain('class="cblock-body"');
     expect(result.fileContent).not.toContain(scopeClass("cblock-body"));
   });
@@ -1456,7 +1624,9 @@ describe("prefixElementAttribute – skipElementContents", () => {
     const c = makeScopedComponent(
       '<div class="outer"><code class="cblock-body"><div class="inner">literal</div></code></div>',
     );
-    const result = prefixElementAttribute(c, "class", "test1234", true, ["code"]);
+    const result = prefixElementAttribute(c, "class", "test1234", true, [
+      "code",
+    ]);
     expect(result.fileContent).toContain(scopeClass("outer"));
     expect(result.fileContent).toContain('class="cblock-body"');
     // <div class="inner"> is inside <code> — must not be scoped
@@ -1480,22 +1650,35 @@ describe("prefixElementAttribute – skipElementContents", () => {
       '<div class="outer"><code class="cblock-body"><p>paragraph in code</p></code></div>',
       "p { color: red; }",
     );
-    const result = prefixElementAttribute(c, "class", "test1234", true, ["code"]);
+    const result = prefixElementAttribute(c, "class", "test1234", true, [
+      "code",
+    ]);
     // The <p> inside <code> should NOT receive an element class
     expect(result.fileContent).toContain("<p>paragraph in code</p>");
   });
 
   it("restores the original inner content of skipped tags intact", () => {
-    const inner = '<span class="highlight">example <strong>code</strong></span>';
-    const c = makeComponent(`<div class="wrap"><code class="cblock-body">${inner}</code></div>`);
-    const result = prefixElementAttribute(c, "class", "test1234", true, ["code"]);
+    const inner =
+      '<span class="highlight">example <strong>code</strong></span>';
+    const c = makeComponent(
+      `<div class="wrap"><code class="cblock-body">${inner}</code></div>`,
+    );
+    const result = prefixElementAttribute(c, "class", "test1234", true, [
+      "code",
+    ]);
     expect(result.fileContent).toContain(inner);
   });
 
   it("handles nested skip tags (pre > code)", () => {
-    const inner = '<code class="language-html"><div class="inner">content</div></code>';
-    const c = makeScopedComponent(`<pre>${inner}</pre><div class="outside"></div>`);
-    const result = prefixElementAttribute(c, "class", "test1234", true, ["pre", "code"]);
+    const inner =
+      '<code class="language-html"><div class="inner">content</div></code>';
+    const c = makeScopedComponent(
+      `<pre>${inner}</pre><div class="outside"></div>`,
+    );
+    const result = prefixElementAttribute(c, "class", "test1234", true, [
+      "pre",
+      "code",
+    ]);
     // Outer class is scoped
     expect(result.fileContent).toContain(scopeClass("outside"));
     // Inner content is preserved verbatim (not scoped)
@@ -1510,7 +1693,10 @@ describe("prefixElementAttribute – skipElementContents", () => {
     const c = makeComponent(
       `<div class="wrapper"><pre><code class="cblock-body">${inner}</code></pre></div>`,
     );
-    const result = prefixElementAttribute(c, "class", "test1234", true, ["code", "pre"]);
+    const result = prefixElementAttribute(c, "class", "test1234", true, [
+      "code",
+      "pre",
+    ]);
     // No sentinel may survive in the output
     expect(result.fileContent).not.toContain("\x00");
     expect(result.fileContent).not.toContain("BASCIK_SHIELD");
@@ -1530,7 +1716,9 @@ describe("prefixElementAttribute – skipElementContents", () => {
     const c = makeScopedComponent(
       `<code class="cblock-body" data-x="a>b">${inner}</code><div class="outer"></div>`,
     );
-    const result = prefixElementAttribute(c, "class", "test1234", true, ["code"]);
+    const result = prefixElementAttribute(c, "class", "test1234", true, [
+      "code",
+    ]);
     // Open tag attribute must survive verbatim (not truncated at the `>`)
     expect(result.fileContent).toContain('data-x="a>b"');
     // Content inside <code> is shielded
@@ -1547,7 +1735,9 @@ describe("prefixElementAttribute – skipElementContents", () => {
     const c = makeScopedComponent(
       `<code data-x='a>b'><div class="inner">literal</div></code><div class="outer"></div>`,
     );
-    const result = prefixElementAttribute(c, "class", "test1234", true, ["code"]);
+    const result = prefixElementAttribute(c, "class", "test1234", true, [
+      "code",
+    ]);
     expect(result.fileContent).toContain("data-x='a>b'");
     expect(result.fileContent).toContain('<div class="inner">literal</div>');
     expect(result.fileContent).toContain(scopeClass("outer"));
@@ -1572,9 +1762,12 @@ describe("prefixElementAttribute – skipElementContents", () => {
     const c = makeComponent(
       '<pre><code class="cblock-body"><span data-bascik-slot></span></code></pre>',
     );
-    const result = prefixElementAttribute(c, "class", "test1234", true, ["code", "pre"]);
+    const result = prefixElementAttribute(c, "class", "test1234", true, [
+      "code",
+      "pre",
+    ]);
     // Slot marker must survive intact for the slot-injection step
-    expect(result.fileContent).toContain('<span data-bascik-slot></span>');
+    expect(result.fileContent).toContain("<span data-bascik-slot></span>");
     expect(result.fileContent).not.toContain("BASCIK_SHIELD");
   });
 });
@@ -1616,7 +1809,14 @@ describe("prefixElementAttribute – name attribute: meta element shielding", ()
 
 describe("property-based JS scoping fuzzing", () => {
   it("does not throw or corrupt output for generated HTML with ids and classes", () => {
-    const tagArb = fc.constantFrom("div", "span", "p", "button", "a", "section");
+    const tagArb = fc.constantFrom(
+      "div",
+      "span",
+      "p",
+      "button",
+      "a",
+      "section",
+    );
     const nameArb = fc.stringMatching(/^[a-z][a-z0-9-]{1,10}$/);
 
     const attrArb = fc.oneof(
@@ -1627,9 +1827,7 @@ describe("property-based JS scoping fuzzing", () => {
     const elementArb = fc
       .tuple(tagArb, fc.array(attrArb, { minLength: 0, maxLength: 3 }))
       .map(([tag, attrs]) => {
-        const attrStr = attrs
-          .map((a) => `${a.kind}="${a.value}"`)
-          .join(" ");
+        const attrStr = attrs.map((a) => `${a.kind}="${a.value}"`).join(" ");
         return `<${tag}${attrStr ? " " + attrStr : ""}></${tag}>`;
       });
 
@@ -1646,7 +1844,10 @@ describe("property-based JS scoping fuzzing", () => {
     fc.assert(
       fc.property(
         fc.array(elementArb, { minLength: 1, maxLength: 6 }),
-        fc.array(fc.constantFrom(...scriptSnippets), { minLength: 0, maxLength: 3 }),
+        fc.array(fc.constantFrom(...scriptSnippets), {
+          minLength: 0,
+          maxLength: 3,
+        }),
         (elements, scripts) => {
           const html = elements.join("\n");
           const scriptBlock = scripts.length
@@ -1657,8 +1858,12 @@ describe("property-based JS scoping fuzzing", () => {
             fileContent: `${html}\n${scriptBlock}`,
           };
 
-          expect(() => prefixElementAttribute(component, "id", "abc12345")).not.toThrow();
-          expect(() => prefixElementAttribute(component, "class", "abc12345")).not.toThrow();
+          expect(() =>
+            prefixElementAttribute(component, "id", "abc12345"),
+          ).not.toThrow();
+          expect(() =>
+            prefixElementAttribute(component, "class", "abc12345"),
+          ).not.toThrow();
           const result = prefixElementAttribute(component, "id", "abc12345");
           expect(typeof result.fileContent).toBe("string");
         },
@@ -1706,68 +1911,77 @@ describe("prefixElementAttribute – JS regex scoping design decision boundaries
   it("rewrites DOM query patterns inside JS line comments and block comments", () => {
     const c = makeScopedComponent(
       '<button id="btn" class="card"></button>' +
-      '<script>' +
-      '// document.querySelector("#btn");\n' +
-      '/* document.getElementsByClassName("card") */\n' +
-      '</script>',
+        "<script>" +
+        '// document.querySelector("#btn");\n' +
+        '/* document.getElementsByClassName("card") */\n' +
+        "</script>",
     );
     const resId = prefixElementAttribute(c, "id", "test1234");
     const resClass = prefixElementAttribute(c, "class", "test1234");
     expect(resId.fileContent).toContain(`querySelector("#${scope("btn")}")`);
-    expect(resClass.fileContent).toContain(`getElementsByClassName("${scopeClass("card")}")`);
+    expect(resClass.fileContent).toContain(
+      `getElementsByClassName("${scopeClass("card")}")`,
+    );
   });
 
   it("preserves dynamic variable expressions in template literals without corrupting JavaScript", () => {
     const c = makeComponent(
       '<div id="panel" class="card"></div>' +
-      '<script>' +
-      'const myId = "panel";\n' +
-      'document.getElementById(`${myId}`);\n' +
-      'document.querySelector(`#${myId}`);\n' +
-      '</script>',
+        "<script>" +
+        'const myId = "panel";\n' +
+        "document.getElementById(`${myId}`);\n" +
+        "document.querySelector(`#${myId}`);\n" +
+        "</script>",
     );
     const resId = prefixElementAttribute(c, "id", "test1234");
     // Dynamic expressions inside template literals stay evaluated at runtime as variable expressions
-    expect(resId.fileContent).toContain('document.getElementById(`${myId}`)');
-    expect(resId.fileContent).toContain('document.querySelector(`#${myId}`)');
+    expect(resId.fileContent).toContain("document.getElementById(`${myId}`)");
+    expect(resId.fileContent).toContain("document.querySelector(`#${myId}`)");
   });
 
   it("does not rewrite variable parameters passed to getElementById or querySelector", () => {
     const c = makeComponent(
       '<div id="panel"></div>' +
-      '<script>' +
-      'function find(target) { return document.getElementById(target); }\n' +
-      '</script>',
+        "<script>" +
+        "function find(target) { return document.getElementById(target); }\n" +
+        "</script>",
     );
     const resId = prefixElementAttribute(c, "id", "test1234");
-    expect(resId.fileContent).toContain('document.getElementById(target)');
+    expect(resId.fileContent).toContain("document.getElementById(target)");
   });
 
   it("wraps multiple script blocks in IIFEs to enforce scope isolation", () => {
-    const html = '<script>var secret = "A";</script><script>const secret = "B";</script>';
+    const html =
+      '<script>var secret = "A";</script><script>const secret = "B";</script>';
     const c = makeComponent(html);
     const isolated = namespaceScriptTags(c);
     expect(isolated.fileContent).toContain('var secret = "A";');
-    expect(isolated.fileContent).toContain('(function() {');
+    expect(isolated.fileContent).toContain("(function() {");
   });
 
   it("wraps a classic script with an empty type attribute in an IIFE", () => {
     const c = makeComponent('<script type="">const shared = 1;</script>');
-    expect(namespaceScriptTags(c).fileContent).toContain('(function() {\nconst shared = 1;\n})();');
+    expect(namespaceScriptTags(c).fileContent).toContain(
+      "(function() {\nconst shared = 1;\n})();",
+    );
   });
 
   it("does not treat script examples in HTML comments as browser scripts", () => {
     const c = makeComponent(
-      '<!-- The <script> below runs after markup. -->' +
-      '<div id="panel"></div>' +
-      '<script>document.getElementById("panel");</script>',
+      "<!-- The <script> below runs after markup. -->" +
+        '<div id="panel"></div>' +
+        '<script>document.getElementById("panel");</script>',
     );
 
     const isolated = namespaceScriptTags(c);
 
-    expect(isolated.fileContent).toContain('<!-- The <script> below runs after markup. -->');
-    expect(isolated.fileContent).toContain('(function() {\ndocument.getElementById("panel");\n})();');
-    expect(isolated.fileContent).not.toContain('<!-- The <script>(function()');
+    expect(isolated.fileContent).toContain(
+      "<!-- The <script> below runs after markup. -->",
+    );
+    expect(isolated.fileContent).toContain(
+      '(function() {\ndocument.getElementById("panel");\n})();',
+    );
+    expect(isolated.fileContent).not.toContain("<!-- The <script>(function()");
   });
 });
 
@@ -1786,18 +2000,27 @@ describe("namespaceScriptTags – property-based fuzzing", () => {
       "var s = '<div class=\"x\">text</div>';",
     );
 
-    const scriptTagArb = fc.tuple(
-      scriptBodies,
-      fc.constantFrom("", ' type="text/javascript"', ' type="module"', ' data-bascik-dev'),
-    ).map(([body, attrs]) => `<script${attrs}>${body}</script>`);
+    const scriptTagArb = fc
+      .tuple(
+        scriptBodies,
+        fc.constantFrom(
+          "",
+          ' type="text/javascript"',
+          ' type="module"',
+          " data-bascik-dev",
+        ),
+      )
+      .map(([body, attrs]) => `<script${attrs}>${body}</script>`);
 
-    const htmlArb = fc.array(
-      fc.oneof(
-        scriptTagArb,
-        fc.constantFrom("<div class=\"x\">hello</div>", "<p>text</p>", ""),
-      ),
-      { minLength: 1, maxLength: 5 },
-    ).map((parts) => parts.join("\n"));
+    const htmlArb = fc
+      .array(
+        fc.oneof(
+          scriptTagArb,
+          fc.constantFrom('<div class="x">hello</div>', "<p>text</p>", ""),
+        ),
+        { minLength: 1, maxLength: 5 },
+      )
+      .map((parts) => parts.join("\n"));
 
     fc.assert(
       fc.property(htmlArb, (html) => {
@@ -1817,22 +2040,24 @@ describe("namespaceScriptTags – property-based fuzzing", () => {
 });
 
 describe("prefixElementAttribute – scoping completeness", () => {
-  it("no original bare class name remains in class=\"...\" after scoping", () => {
+  it('no original bare class name remains in class="..." after scoping', () => {
     const classNameArb = fc.stringMatching(/^[a-z][a-z0-9-]{1,10}$/);
     const tagArb = fc.constantFrom("div", "span", "p", "button", "section");
 
     fc.assert(
       fc.property(
-        fc.array(
-          fc.record({ tag: tagArb, cls: classNameArb }),
-          { minLength: 1, maxLength: 6 },
-        ),
+        fc.array(fc.record({ tag: tagArb, cls: classNameArb }), {
+          minLength: 1,
+          maxLength: 6,
+        }),
         (elements) => {
           const html = elements
             .map(({ tag, cls }) => `<${tag} class="${cls}">x</${tag}>`)
             .join("\n");
           // Only classes the component's own stylesheet defines are renamed, so define them all.
-          const cssFileContent = elements.map(({ cls }) => `.${cls} { color: red; }`).join("\n");
+          const cssFileContent = elements
+            .map(({ cls }) => `.${cls} { color: red; }`)
+            .join("\n");
           const component = { name: "comp", fileContent: html, cssFileContent };
           const result = prefixElementAttribute(component, "class", "abc12345");
           for (const { cls } of elements) {
@@ -1860,7 +2085,10 @@ describe("prefixElementAttribute – scoping completeness", () => {
 
 describe("namespaceScriptTags – data-bascik-server shielding", () => {
   it("does not wrap a data-bascik-server script in an IIFE", () => {
-    const c = { name: "my-comp", fileContent: "<script data-bascik-server>var x = 1;</script>" };
+    const c = {
+      name: "my-comp",
+      fileContent: "<script data-bascik-server>var x = 1;</script>",
+    };
     const result = namespaceScriptTags(c);
     // The script body must be unchanged — no IIFE wrapping
     expect(result.fileContent).toContain("var x = 1;");
@@ -1879,7 +2107,10 @@ describe("namespaceScriptTags – data-bascik-server shielding", () => {
     expect(result.fileContent).toContain("var server = 2;");
     // The server block must not be wrapped
     const serverIdx = result.fileContent.indexOf("var server = 2;");
-    const iffeAfterServer = result.fileContent.indexOf("(function()", serverIdx);
+    const iffeAfterServer = result.fileContent.indexOf(
+      "(function()",
+      serverIdx,
+    );
     expect(iffeAfterServer).toBe(-1);
   });
 
@@ -1887,8 +2118,7 @@ describe("namespaceScriptTags – data-bascik-server shielding", () => {
     const c = {
       name: "my-comp",
       fileContent:
-        "<script>const a = 1;</script>" +
-        "<script>const b = 2;</script>",
+        "<script>const a = 1;</script>" + "<script>const b = 2;</script>",
     };
     const result = namespaceScriptTags(c);
     const matches = result.fileContent.match(/\(function\(\)/g);
@@ -1941,15 +2171,15 @@ describe("namespaceScriptTags – line-offset padding and sourceURL", () => {
 
   it("preserves exact line numbers of inner JS code relative to original HTML file", () => {
     const fileContent =
-      "<html>\n" +                  // line 1
-      "<body>\n" +                  // line 2
-      "  <h1>Hello</h1>\n" +        // line 3
-      "  <script>\n" +              // line 4
+      "<html>\n" + // line 1
+      "<body>\n" + // line 2
+      "  <h1>Hello</h1>\n" + // line 3
+      "  <script>\n" + // line 4
       "    const greeting = 'hi';\n" + // line 5
       "    console.log(greeting);\n" + // line 6
-      "  </script>\n" +             // line 7
-      "</body>\n" +                 // line 8
-      "</html>";                    // line 9
+      "  </script>\n" + // line 7
+      "</body>\n" + // line 8
+      "</html>"; // line 9
 
     const c = {
       name: "hello-comp",
@@ -1971,11 +2201,11 @@ describe("namespaceScriptTags – line-offset padding and sourceURL", () => {
       name: "my-comp",
       fileName: "src/components/my-comp.html",
       fileContent:
-        "<div class=\"box\"></div>\n" + // line 1
-        "<script>\n" +                 // line 2
-        "const a = 1;\n" +             // line 3
-        "console.log(a);\n" +          // line 4
-        "</script>"
+        '<div class="box"></div>\n' + // line 1
+        "<script>\n" + // line 2
+        "const a = 1;\n" + // line 3
+        "console.log(a);\n" + // line 4
+        "</script>",
     };
 
     const result = namespaceScriptTags(c);
@@ -1989,13 +2219,13 @@ describe("namespaceScriptTags – line-offset padding and sourceURL", () => {
       fileName: "src/components/my-comp.html",
       fileContent:
         '<script type="application/ld+json">{"@type":"Thing"}</script>\n' +
-        '<script type="importmap">{"imports":{}}</script>'
+        '<script type="importmap">{"imports":{}}</script>',
     };
 
     const result = namespaceScriptTags(c);
     expect(result.fileContent).toBe(
       '<script type="application/ld+json">{"@type":"Thing"}</script>\n' +
-      '<script type="importmap">{"imports":{}}</script>'
+        '<script type="importmap">{"imports":{}}</script>',
     );
   });
 
@@ -2005,12 +2235,14 @@ describe("namespaceScriptTags – line-offset padding and sourceURL", () => {
       fileName: "src/components/demo-counter/demo-counter.html",
       fileContent:
         '<script data-bascik-source="src/components/demo-counter/demo-counter.ts">\n' +
-        'const a = 1;\n' +
-        '</script>'
+        "const a = 1;\n" +
+        "</script>",
     };
 
     const result = namespaceScriptTags(c);
-    expect(result.fileContent).toContain("//# sourceURL=src/components/demo-counter/demo-counter.ts");
+    expect(result.fileContent).toContain(
+      "//# sourceURL=src/components/demo-counter/demo-counter.ts",
+    );
     expect(result.fileContent).not.toContain("data-bascik-source");
   });
 });
@@ -2026,7 +2258,8 @@ describe("getComponentScripts", () => {
     const originalRoots = BascikConfig.directory.components;
 
     afterEach(() => {
-      (BascikConfig.directory as { components: string[] }).components = originalRoots;
+      (BascikConfig.directory as { components: string[] }).components =
+        originalRoots;
       if (base) rmSync(base, { recursive: true, force: true });
     });
 
@@ -2046,9 +2279,15 @@ describe("getComponentScripts", () => {
       // the subfolder rule.
       const decoy = join(firstRoot, "shared-badge.ts");
       writeFileSync(decoy, "export const decoy = 1;");
-      (BascikConfig.directory as { components: string[] }).components = [firstRoot, secondRoot];
+      (BascikConfig.directory as { components: string[] }).components = [
+        firstRoot,
+        secondRoot,
+      ];
 
-      const res = await getComponentScripts(join(compDir, "shared-badge.html"), [helper, decoy]);
+      const res = await getComponentScripts(
+        join(compDir, "shared-badge.html"),
+        [helper, decoy],
+      );
       expect(res.scriptMap.has("helper.ts")).toBe(true);
       expect(res.scriptMap.has("shared-badge.ts")).toBe(false);
     });
@@ -2096,7 +2335,9 @@ describe("prefixElementAttribute – page-aware build script output scope", () =
 
   it("does not annotate a page-aware script in a component with no stylesheet", () => {
     const component = prefixElementAttribute(
-      makeComponent('<nav><script data-bascik-build="page">console.log("x");</script></nav>'),
+      makeComponent(
+        '<nav><script data-bascik-build="page">console.log("x");</script></nav>',
+      ),
       "class",
       "abc12345",
     );

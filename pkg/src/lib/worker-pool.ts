@@ -50,7 +50,12 @@ export class WorkerPool<Task, Result> {
 
   #env: NodeJS.ProcessEnv | undefined;
 
-  constructor(workerScript: string, size: number, initData: unknown, options: { env?: NodeJS.ProcessEnv } = {}) {
+  constructor(
+    workerScript: string,
+    size: number,
+    initData: unknown,
+    options: { env?: NodeJS.ProcessEnv } = {},
+  ) {
     this.#env = options.env;
     this.#workerScript = workerScript;
     this.#initData = initData;
@@ -64,7 +69,9 @@ export class WorkerPool<Task, Result> {
     if (this.#terminated || this.#capacityExhausted) return;
     let worker: Worker;
     try {
-      const execArgv = process.execArgv.filter((arg) => !arg.startsWith("--input-type"));
+      const execArgv = process.execArgv.filter(
+        (arg) => !arg.startsWith("--input-type"),
+      );
       worker = new Worker(this.#workerScript, {
         workerData: this.#initData,
         execArgv,
@@ -77,7 +84,11 @@ export class WorkerPool<Task, Result> {
       this.#noteStartupFailure();
       return;
     }
-    const slot: Slot<Task, Result> = { worker, pending: null, completedAny: false };
+    const slot: Slot<Task, Result> = {
+      worker,
+      pending: null,
+      completedAny: false,
+    };
     this.#slots.push(slot);
     worker.on("message", (message: any) => this.#onMessage(slot, message));
     worker.on("error", (error: Error) => this.#onError(slot, error));
@@ -137,7 +148,7 @@ export class WorkerPool<Task, Result> {
     slot.pending = null;
     this.#slots = this.#slots.filter((s) => s !== slot);
     this.#idleSlots = this.#idleSlots.filter((s) => s !== slot);
-    slot.worker.terminate().catch(() => { });
+    slot.worker.terminate().catch(() => {});
     if (slot.completedAny) {
       this.#consecutiveStartupFailures = 0;
       this.#spawn();

@@ -27,7 +27,11 @@ import { listComponents } from "./components.ts";
 import { BascikConfig } from "./config.ts";
 import { maskElementContents } from "./shielding.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
-import { scanApiRouteFiles, fileToApiRoutePath, findApiRoutePatternProblems } from "./api-routes.ts";
+import {
+  scanApiRouteFiles,
+  fileToApiRoutePath,
+  findApiRoutePatternProblems,
+} from "./api-routes.ts";
 import {
   LanguageServerRequiredError,
   languageServerFixMessage,
@@ -85,7 +89,10 @@ export interface CheckFindings {
   /** Files `--fix` rewrote, relative to the project. */
   fixedFiles: string[];
   /** The language server's own one-line rendering of a finding. Absent when the per-file checks did not run. */
-  perFileFormat?: (diagnostic: LanguageServerDiagnostic, color?: boolean) => string;
+  perFileFormat?: (
+    diagnostic: LanguageServerDiagnostic,
+    color?: boolean,
+  ) => string;
 }
 
 /**
@@ -94,12 +101,16 @@ export interface CheckFindings {
  */
 async function loadParse5(): Promise<
   | ((
-    html: string,
-    opts: {
-      sourceCodeLocationInfo: boolean;
-      onParseError: (e: { code: string; startLine?: number; startCol?: number }) => void;
-    },
-  ) => void)
+      html: string,
+      opts: {
+        sourceCodeLocationInfo: boolean;
+        onParseError: (e: {
+          code: string;
+          startLine?: number;
+          startCol?: number;
+        }) => void;
+      },
+    ) => void)
   | null
 > {
   try {
@@ -109,7 +120,8 @@ async function loadParse5(): Promise<
     return mod.parse;
   } catch (err: unknown) {
     const code = (err as { code?: string })?.code;
-    if (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND") return null;
+    if (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND")
+      return null;
     throw err;
   }
 }
@@ -150,13 +162,19 @@ const editDistance = (a: string, b: string): number => {
 };
 
 /** Suggest closest component name if within edit distance <= 2. */
-export const suggestComponentName = (tag: string, knownComponents: Iterable<string>): string | undefined => {
+export const suggestComponentName = (
+  tag: string,
+  knownComponents: Iterable<string>,
+): string | undefined => {
   const normTag = tag.toLowerCase();
   let bestMatch: { candidate: string; distance: number } | undefined;
   for (const candidate of knownComponents) {
     const normCandidate = candidate.toLowerCase();
     const distance = editDistance(normTag, normCandidate);
-    if (distance <= 2 && (bestMatch === undefined || distance < bestMatch.distance)) {
+    if (
+      distance <= 2 &&
+      (bestMatch === undefined || distance < bestMatch.distance)
+    ) {
       bestMatch = { candidate, distance };
     }
   }
@@ -173,7 +191,9 @@ const stripElementContents = (html: string): string => {
   // and `*` wildcard patterns) and drop anything else.
   const extra = (BascikConfig.scoping?.preserve ?? [])
     .map((t) => String(t))
-    .filter((t) => PLAUSIBLE_TAG_NAME.test(t) || PRESERVE_WILDCARD_PATTERN.test(t));
+    .filter(
+      (t) => PLAUSIBLE_TAG_NAME.test(t) || PRESERVE_WILDCARD_PATTERN.test(t),
+    );
   const protectedTags = ["script", "style", "textarea", ...extra];
   return maskElementContents(html, protectedTags);
 };
@@ -228,7 +248,11 @@ export const extractCustomTags = (html: string): Set<string> => {
 const toDisplay = (filePath: string): string => {
   try {
     const normalized = filePath.replace(/\\/g, "/");
-    if (normalized.includes(BascikConfig.directory?.pages?.replace(/\\/g, "/") ?? "src/pages")) {
+    if (
+      normalized.includes(
+        BascikConfig.directory?.pages?.replace(/\\/g, "/") ?? "src/pages",
+      )
+    ) {
       return getRelativePath(filePath, "pages");
     }
     if (findComponentRoot(normalized) !== undefined) {
@@ -249,7 +273,8 @@ const toDisplay = (filePath: string): string => {
  */
 const extractBuildScripts = (html: string): string[] => {
   const scripts: string[] = [];
-  const scriptRegex = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
+  const scriptRegex =
+    /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
   let match: RegExpExecArray | null;
   while ((match = scriptRegex.exec(html)) !== null) {
     const attrs = match[1];
@@ -268,18 +293,26 @@ const maskPreservedSubtrees = (html: string): string => {
   let previous = "";
   while (previous !== result) {
     previous = result;
-    result = result.replace(re, (_m, open: string, _tag: string, inner: string, close: string) => {
-      return `${open}${" ".repeat(inner.length)}${close}`;
-    });
+    result = result.replace(
+      re,
+      (_m, open: string, _tag: string, inner: string, close: string) => {
+        return `${open}${" ".repeat(inner.length)}${close}`;
+      },
+    );
   }
   return result;
 };
 
 // Whole-attribute-name directive test (prompt 65 step 0).
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const BUILD_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${BUILD_ATTR_NAME}`, "i");
+const BUILD_DIRECTIVE_RE = new RegExp(
+  String.raw`(?:^|\s)${BUILD_ATTR_NAME}`,
+  "i",
+);
 
-const mapConfigErrorSeverity = (error: ConfigValidationError): FindingSeverity => {
+const mapConfigErrorSeverity = (
+  error: ConfigValidationError,
+): FindingSeverity => {
   if (error.key.startsWith("pipeline.watchPaths[")) return "warning";
   if (error.key.startsWith("assets.inlineStyles[")) return "warning";
   return "error";
@@ -291,12 +324,17 @@ const resolveConfigSourcePath = (): string => {
   const inlinePath = inline ? inline.slice("--config=".length) : undefined;
   const configFlagIndex = argv.indexOf("--config");
   const flaggedPath =
-    configFlagIndex !== -1 && argv[configFlagIndex + 1] && !argv[configFlagIndex + 1].startsWith("-")
+    configFlagIndex !== -1 &&
+    argv[configFlagIndex + 1] &&
+    !argv[configFlagIndex + 1].startsWith("-")
       ? argv[configFlagIndex + 1]
       : undefined;
   const explicitPath = inlinePath || flaggedPath;
   if (explicitPath) {
-    return relative(process.cwd(), resolve(process.cwd(), explicitPath)).replace(/\\/g, "/");
+    return relative(
+      process.cwd(),
+      resolve(process.cwd(), explicitPath),
+    ).replace(/\\/g, "/");
   }
 
   const jsPath = resolve(process.cwd(), "bascik.config.js");
@@ -306,11 +344,10 @@ const resolveConfigSourcePath = (): string => {
   return "bascik.config.js";
 };
 
-const canonicalPath = (filePath: string): string => resolve(process.cwd(), filePath).replace(/\\/g, "/");
+const canonicalPath = (filePath: string): string =>
+  resolve(process.cwd(), filePath).replace(/\\/g, "/");
 
-const findComponentCycles = (
-  graph: Map<string, Set<string>>,
-): string[][] => {
+const findComponentCycles = (graph: Map<string, Set<string>>): string[][] => {
   const state = new Map<string, 0 | 1 | 2>();
   const stack: string[] = [];
   const cycles: string[][] = [];
@@ -353,7 +390,9 @@ const findComponentCycles = (
  * Run the static check across pages, components, and API routes.
  * Produces structured data without printing.
  */
-export const checkProject = async (options: { fix?: boolean } = {}): Promise<CheckFindings> => {
+export const checkProject = async (
+  options: { fix?: boolean } = {},
+): Promise<CheckFindings> => {
   const items: CheckFinding[] = [];
   const configSource = resolveConfigSourcePath();
 
@@ -373,9 +412,15 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
     }
   };
 
-  const configErrors = validateUserConfig(userConfig, modeOverrides, { env: process.env, cwd: process.cwd() });
+  const configErrors = validateUserConfig(userConfig, modeOverrides, {
+    env: process.env,
+    cwd: process.cwd(),
+  });
   for (const error of configErrors) {
-    const valueSuffix = error.value === undefined ? "" : ` (received ${formatConfigValue(error.value)})`;
+    const valueSuffix =
+      error.value === undefined
+        ? ""
+        : ` (received ${formatConfigValue(error.value)})`;
     items.push({
       category: "config-validation",
       severity: mapConfigErrorSeverity(error),
@@ -391,8 +436,10 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
     const siteUrl = getSiteUrl();
     if (!siteUrl) {
       const features: string[] = [];
-      if (BascikConfig.generate?.sitemap ?? true) features.push("generate.sitemap");
-      if (BascikConfig.generate?.robots ?? true) features.push("generate.robots");
+      if (BascikConfig.generate?.sitemap ?? true)
+        features.push("generate.sitemap");
+      if (BascikConfig.generate?.robots ?? true)
+        features.push("generate.robots");
       items.push({
         category: "missing-site-url",
         severity: "error",
@@ -414,7 +461,10 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
     });
   }
 
-  const pagesDir = resolve(process.cwd(), BascikConfig.directory?.pages ?? "src/pages");
+  const pagesDir = resolve(
+    process.cwd(),
+    BascikConfig.directory?.pages ?? "src/pages",
+  );
   if (existsSync(pagesDir) && pageList.length === 0) {
     items.push({
       category: "pages-directory",
@@ -433,7 +483,8 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
       .filter((f): f is string => Boolean(f));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const duplicateBlockRegex = /error:\s*two component files both define the tag <([^>]+)>\s*\n([\s\S]*?)(?:\n\n|$)/gi;
+    const duplicateBlockRegex =
+      /error:\s*two component files both define the tag <([^>]+)>\s*\n([\s\S]*?)(?:\n\n|$)/gi;
     let matchedDuplicate = false;
     let block: RegExpExecArray | null;
     while ((block = duplicateBlockRegex.exec(message)) !== null) {
@@ -462,16 +513,23 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
 
     // Scan every configured root so components outside the failing one are
     // still known and their tags are not reported as unmatched.
-    const componentRoots = (BascikConfig.directory?.components ?? ["src/components"])
+    const componentRoots = (
+      BascikConfig.directory?.components ?? ["src/components"]
+    )
       .map((root) => resolve(process.cwd(), root))
       .filter((root) => existsSync(root));
     if (componentRoots.length > 0) {
       const htmlFiles = (
-        await Promise.all(componentRoots.map((root) => deepReadDirFlat(root, /\.html$/i)))
+        await Promise.all(
+          componentRoots.map((root) => deepReadDirFlat(root, /\.html$/i)),
+        )
       ).flat();
       const nameToPaths = new Map<string, string[]>();
       for (const filePath of htmlFiles) {
-        const componentName = filePath.replace(/^.*[\\/]/, "").split(".")[0].toLowerCase();
+        const componentName = filePath
+          .replace(/^.*[\\/]/, "")
+          .split(".")[0]
+          .toLowerCase();
         const list = nameToPaths.get(componentName) ?? [];
         list.push(filePath);
         nameToPaths.set(componentName, list);
@@ -508,7 +566,9 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
     }),
   );
 
-  const isExternalTag = createExternalTagMatcher(BascikConfig.components?.external);
+  const isExternalTag = createExternalTagMatcher(
+    BascikConfig.components?.external,
+  );
   const usedComponents = new Set<string>();
   const unmatchedTagLocations = new Map<string, FindingLocation[]>();
   const componentGraph = new Map<string, Set<string>>();
@@ -582,7 +642,9 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
   for (const cycle of cycles) {
     const start = cycle[0];
     const sourceName = componentNameByPath.get(start);
-    const sourcePath = sourceName ? componentList[sourceName]?.fileName : undefined;
+    const sourcePath = sourceName
+      ? componentList[sourceName]?.fileName
+      : undefined;
     items.push({
       category: "circular-component-reference",
       severity: "error",
@@ -593,10 +655,16 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
 
   // Route output collisions from page path resolution.
   const pagesByRouteExact = new Map<string, string[]>();
-  const firstRouteByLower = new Map<string, { route: string; filePath: string }>();
+  const firstRouteByLower = new Map<
+    string,
+    { route: string; filePath: string }
+  >();
   for (const pagePath of pageList) {
     const rel = getRelativePath(pagePath, "pages");
-    const route = getHttpPath(rel, BascikConfig.directory?.pages ?? "src/pages");
+    const route = getHttpPath(
+      rel,
+      BascikConfig.directory?.pages ?? "src/pages",
+    );
 
     const list = pagesByRouteExact.get(route) ?? [];
     list.push(pagePath);
@@ -609,7 +677,10 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
         category: "duplicate-route-resolution",
         severity: "error",
         message: `Case-insensitive route output collision between "${firstSeen.route}" and "${route}", skipping duplicate`,
-        locations: [{ filePath: toDisplay(firstSeen.filePath) }, { filePath: toDisplay(pagePath) }],
+        locations: [
+          { filePath: toDisplay(firstSeen.filePath) },
+          { filePath: toDisplay(pagePath) },
+        ],
       });
     } else if (!firstSeen) {
       firstRouteByLower.set(lowerRoute, { route, filePath: pagePath });
@@ -628,7 +699,10 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
   // ── API route table analysis (Prompt 49) ────────────────────────────
   // Whether a route file exports a handler is a per-file question and belongs to the language server. Whether two
   // files claim one URL needs every route at once, so it is checked here.
-  const apiDir = resolve(process.cwd(), BascikConfig.directory?.api ?? "src/api");
+  const apiDir = resolve(
+    process.cwd(),
+    BascikConfig.directory?.api ?? "src/api",
+  );
   if (existsSync(apiDir)) {
     const apiFiles = await scanApiRouteFiles(apiDir);
     const routesByUrl = new Map<string, string[]>();
@@ -662,10 +736,16 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
     }
 
     // Catch-all patterns: malformed `[...name]` segments and ambiguous pairs.
-    const uniqueRoutes = [...routesByUrl.entries()].map(([path, files]) => ({ path, filePath: files[0] }));
+    const uniqueRoutes = [...routesByUrl.entries()].map(([path, files]) => ({
+      path,
+      filePath: files[0],
+    }));
     for (const problem of findApiRoutePatternProblems(uniqueRoutes)) {
       items.push({
-        category: problem.kind === "ambiguous" ? "route-collision" : "invalid-catch-all",
+        category:
+          problem.kind === "ambiguous"
+            ? "route-collision"
+            : "invalid-catch-all",
         severity: "error",
         message: problem.message,
         locations: problem.filePaths.map((f) => ({ filePath: toDisplay(f) })),
@@ -714,7 +794,11 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
           const relPath = relative(distDir, file);
           parse5Parse(html, {
             sourceCodeLocationInfo: true,
-            onParseError: (err: { code: string; startLine?: number; startCol?: number }) => {
+            onParseError: (err: {
+              code: string;
+              startLine?: number;
+              startCol?: number;
+            }) => {
               items.push({
                 category: "dist-html-spec",
                 severity: "error",
@@ -729,12 +813,20 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
   }
 
   // ── Per-file findings from the language server ───────────────────────────
-  for (const diagnostic of perFile.status === "ran" ? perFile.diagnostics : []) {
+  for (const diagnostic of perFile.status === "ran"
+    ? perFile.diagnostics
+    : []) {
     items.push({
       category: diagnostic.code ?? "language-server",
       severity: diagnostic.severity,
       message: diagnostic.message,
-      locations: [{ filePath: diagnostic.filePath.replace(/\\/g, "/"), line: diagnostic.line, column: diagnostic.column }],
+      locations: [
+        {
+          filePath: diagnostic.filePath.replace(/\\/g, "/"),
+          line: diagnostic.line,
+          column: diagnostic.column,
+        },
+      ],
       source: "language-server",
     });
   }
@@ -753,7 +845,8 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
     perFileChecked: perFile.status === "ran" ? perFile.filesChecked : null,
     perFileHint: languageServerHint(perFile),
     fixedFiles: perFile.status === "ran" ? perFile.fixedFiles : [],
-    perFileFormat: perFile.status === "ran" ? perFile.formatDiagnostic : undefined,
+    perFileFormat:
+      perFile.status === "ran" ? perFile.formatDiagnostic : undefined,
   };
 };
 
@@ -771,15 +864,18 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
   },
   "route-collision": {
     title: "API route collisions",
-    description: "Multiple API route files resolve to the same URL path, or to ambiguous catch-all patterns.",
+    description:
+      "Multiple API route files resolve to the same URL path, or to ambiguous catch-all patterns.",
   },
   "invalid-catch-all": {
     title: "Invalid API catch-all routes",
-    description: "A catch-all must be a named, whole, final segment such as [...path].",
+    description:
+      "A catch-all must be a named, whole, final segment such as [...path].",
   },
   "config-validation": {
     title: "Configuration validation",
-    description: "Configuration keys, values, and path references that need correction.",
+    description:
+      "Configuration keys, values, and path references that need correction.",
   },
   "missing-site-url": {
     title: "Missing site URL",
@@ -791,11 +887,13 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
   },
   "circular-component-reference": {
     title: "Circular component references",
-    description: "Component templates reference each other in a cycle, which causes runaway expansion.",
+    description:
+      "Component templates reference each other in a cycle, which causes runaway expansion.",
   },
   "pages-directory": {
     title: "Pages directory issues",
-    description: "The configured pages directory must exist, be readable, and contain at least one HTML page.",
+    description:
+      "The configured pages directory must exist, be readable, and contain at least one HTML page.",
   },
   "duplicate-route-resolution": {
     title: "Duplicate route resolution",
@@ -803,7 +901,8 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
   },
   "component-list": {
     title: "Component scan failures",
-    description: "Component discovery failed and needs correction before a reliable check run.",
+    description:
+      "Component discovery failed and needs correction before a reliable check run.",
   },
   "dist-html-spec": {
     title: "dist/ HTML spec violations (WHATWG HTML5)",
@@ -814,29 +913,40 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
   },
 };
 
-const plural = (count: number, word: string): string => `${count} ${word}${count !== 1 ? "s" : ""}`;
+const plural = (count: number, word: string): string =>
+  `${count} ${word}${count !== 1 ? "s" : ""}`;
 
 /** The lines under the summary: what else was checked, what was skipped, and what `--fix` rewrote. */
 const statusLines = (findings: CheckFindings): string[] => {
   const lines: string[] = [];
   if ((findings.distHtmlChecked ?? null) !== null) {
-    lines.push(`✓ ${plural(findings.distHtmlChecked as number, "dist/ HTML file")} pass WHATWG spec (parse5)`);
+    lines.push(
+      `✓ ${plural(findings.distHtmlChecked as number, "dist/ HTML file")} pass WHATWG spec (parse5)`,
+    );
   } else if (findings.distHtmlSpecHintNeeded) {
-    lines.push("ℹ  dist/ HTML not validated — install parse5 to enable WHATWG spec checking");
+    lines.push(
+      "ℹ  dist/ HTML not validated — install parse5 to enable WHATWG spec checking",
+    );
   }
   if ((findings.perFileChecked ?? null) !== null) {
-    lines.push(`✓ ${plural(findings.perFileChecked as number, "file")} checked by @bascik/language-server`);
+    lines.push(
+      `✓ ${plural(findings.perFileChecked as number, "file")} checked by @bascik/language-server`,
+    );
   } else if (findings.perFileHint) {
     lines.push(`ℹ  ${findings.perFileHint}`);
   }
   if (findings.fixedFiles?.length) {
-    lines.push(`✓ fixed ${plural(findings.fixedFiles.length, "file")}: ${findings.fixedFiles.join(", ")}`);
+    lines.push(
+      `✓ fixed ${plural(findings.fixedFiles.length, "file")}: ${findings.fixedFiles.join(", ")}`,
+    );
   }
   return lines;
 };
 
 /** A per-file finding rebuilt as the language server reports it, so both commands print it the same way. */
-const toLanguageServerDiagnostic = (item: CheckFinding): LanguageServerDiagnostic => ({
+const toLanguageServerDiagnostic = (
+  item: CheckFinding,
+): LanguageServerDiagnostic => ({
   filePath: item.locations[0]?.filePath ?? "",
   line: item.locations[0]?.line ?? 1,
   column: item.locations[0]?.column ?? 1,
@@ -845,12 +955,23 @@ const toLanguageServerDiagnostic = (item: CheckFinding): LanguageServerDiagnosti
   message: item.message,
 });
 
-const perFileSection = (findings: CheckFindings, items: CheckFinding[]): string => {
-  const render = findings.perFileFormat ?? ((d: LanguageServerDiagnostic) => `${d.filePath}:${d.line}:${d.column} - ${d.severity}: ${d.code ? `(${d.code}) ` : ""}${d.message}`);
+const perFileSection = (
+  findings: CheckFindings,
+  items: CheckFinding[],
+): string => {
+  const render =
+    findings.perFileFormat ??
+    ((d: LanguageServerDiagnostic) =>
+      `${d.filePath}:${d.line}:${d.column} - ${d.severity}: ${d.code ? `(${d.code}) ` : ""}${d.message}`);
   const color = stdout.green("x") !== "x";
   const lines = items
     .map(toLanguageServerDiagnostic)
-    .sort((a, b) => a.filePath.localeCompare(b.filePath) || a.line - b.line || a.column - b.column)
+    .sort(
+      (a, b) =>
+        a.filePath.localeCompare(b.filePath) ||
+        a.line - b.line ||
+        a.column - b.column,
+    )
     .map((diagnostic) => `  ${render(diagnostic, color)}`);
   return (
     `Per-file checks (${items.length})\n` +
@@ -880,8 +1001,11 @@ export const formatFindingsHuman = (findings: CheckFindings): string => {
   }
 
   if (findings.items.length === 0) {
-    const warnNote = findings.warnings > 0 ? ` (${findings.warnings} warnings)` : "";
-    const status = statusLines(findings).map((line) => `\n${line}`).join("");
+    const warnNote =
+      findings.warnings > 0 ? ` (${findings.warnings} warnings)` : "";
+    const status = statusLines(findings)
+      .map((line) => `\n${line}`)
+      .join("");
     return `bascik --check\n\n✓ ${findings.pagesChecked} page${findings.pagesChecked !== 1 ? "s" : ""} and ${findings.componentsChecked} component${findings.componentsChecked !== 1 ? "s" : ""} checked — no errors${warnNote}${status}`;
   }
 
@@ -903,7 +1027,11 @@ export const formatFindingsHuman = (findings: CheckFindings): string => {
     for (const item of items) {
       if (category === "unmatched-tag") {
         const locStr = item.locations
-          .map((loc) => (loc.line !== undefined ? `${loc.filePath}:${loc.line}` : loc.filePath))
+          .map((loc) =>
+            loc.line !== undefined
+              ? `${loc.filePath}:${loc.line}`
+              : loc.filePath,
+          )
           .join(", ");
         const tagFormatted = item.message.padEnd(18);
         section += `  ${tagFormatted} ${locStr}\n`;
@@ -920,7 +1048,11 @@ export const formatFindingsHuman = (findings: CheckFindings): string => {
         }
       } else {
         const locStr = item.locations
-          .map((loc) => (loc.line !== undefined ? `${loc.filePath}:${loc.line}` : loc.filePath))
+          .map((loc) =>
+            loc.line !== undefined
+              ? `${loc.filePath}:${loc.line}`
+              : loc.filePath,
+          )
           .join(", ");
         section += `  ${item.message} (${locStr})\n`;
       }
@@ -928,7 +1060,8 @@ export const formatFindingsHuman = (findings: CheckFindings): string => {
     sections.push(section);
   }
 
-  if (perFileItems.length > 0) sections.push(perFileSection(findings, perFileItems));
+  if (perFileItems.length > 0)
+    sections.push(perFileSection(findings, perFileItems));
 
   const symbol = findings.errors > 0 ? "✗" : "✓";
   const summary = [

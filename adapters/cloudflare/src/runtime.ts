@@ -123,7 +123,11 @@ export interface CloudflareExecutionContext {
 }
 
 export interface CloudflareWorker {
-  fetch(request: Request, env: CloudflareEnv, ctx: CloudflareExecutionContext): Promise<Response>;
+  fetch(
+    request: Request,
+    env: CloudflareEnv,
+    ctx: CloudflareExecutionContext,
+  ): Promise<Response>;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -145,7 +149,8 @@ export const stripBase = (pathname: string, base: string): string | null => {
 export const cloudflareRemoteIp = (request: Request): string =>
   request.headers.get("cf-connecting-ip") ?? "";
 
-const isHttps = (request: Request): boolean => new URL(request.url).protocol === "https:";
+const isHttps = (request: Request): boolean =>
+  new URL(request.url).protocol === "https:";
 
 const toExecutionPlan = (page: GraphPage): ExecutionPlan => {
   const segments: ExecutionSegment[] = page.segments.map((segment) =>
@@ -153,10 +158,18 @@ const toExecutionPlan = (page: GraphPage): ExecutionPlan => {
       ? { kind: "static", bytes: encoder.encode(segment.text ?? "") }
       : { kind: "script", mode: page.jobs[segment.id!].mode, id: segment.id! },
   );
-  return { segments, firstStreamIndex: segments.findIndex((s) => s.kind === "script" && s.mode === "stream") };
+  return {
+    segments,
+    firstStreamIndex: segments.findIndex(
+      (s) => s.kind === "script" && s.mode === "stream",
+    ),
+  };
 };
 
-const findPage = (graph: SiteGraph, pathname: string): GraphPage | undefined => {
+const findPage = (
+  graph: SiteGraph,
+  pathname: string,
+): GraphPage | undefined => {
   for (const candidate of pageLookupCandidates(pathname)) {
     const page = graph.pages[candidate];
     if (page) return page;
@@ -179,13 +192,18 @@ export const createGraphJobRunner = (
 ): ScriptJobRunner => {
   return async (id, signal) => {
     const job = page.jobs[id];
-    if (!job) throw new Error(`[bascik] server script job "${id}" is missing from the deployment graph.`);
+    if (!job)
+      throw new Error(
+        `[bascik] server script job "${id}" is missing from the deployment graph.`,
+      );
     const result = await invokeWithDeadline(
       async ({ signal: jobSignal }) => {
         const mod = await job.load();
         const handler = mod.default;
         if (typeof handler !== "function") {
-          throw new TypeError(`Server script "${id}" does not export a default function.`);
+          throw new TypeError(
+            `Server script "${id}" does not export a default function.`,
+          );
         }
         return handler(request, context, { signal: jobSignal });
       },
@@ -193,7 +211,11 @@ export const createGraphJobRunner = (
     );
     if (result.ok) {
       const value = result.value;
-      return typeof value === "string" ? value : value !== undefined && value !== null ? String(value) : "";
+      return typeof value === "string"
+        ? value
+        : value !== undefined && value !== null
+          ? String(value)
+          : "";
     }
     if (result.aborted && !result.timedOut) return "";
     const error = result.error ?? new Error("Server script failed");
@@ -213,18 +235,32 @@ export interface CreateWorkerOptions {
  * Build the Module Worker `fetch` handler for a site graph. The returned
  * object is what `_worker.js` exports as `default`.
  */
-export const createCloudflareWorker = (graph: SiteGraph, options: CreateWorkerOptions = {}): CloudflareWorker => {
+export const createCloudflareWorker = (
+  graph: SiteGraph,
+  options: CreateWorkerOptions = {},
+): CloudflareWorker => {
   const log = options.log ?? ((message: string) => console.error(message));
 
-  const forwardToAssets = async (request: Request, env: CloudflareEnv): Promise<Response> => {
+  const forwardToAssets = async (
+    request: Request,
+    env: CloudflareEnv,
+  ): Promise<Response> => {
     if (!env.ASSETS) {
-      log("[bascik] ASSETS binding is missing: static requests cannot be served.");
-      return errorResponse(500, "Internal Server Error", { https: isHttps(request) });
+      log(
+        "[bascik] ASSETS binding is missing: static requests cannot be served.",
+      );
+      return errorResponse(500, "Internal Server Error", {
+        https: isHttps(request),
+      });
     }
     return env.ASSETS.fetch(request);
   };
 
-  const fetchHandler = async (request: Request, env: CloudflareEnv, ctx: CloudflareExecutionContext): Promise<Response> => {
+  const fetchHandler = async (
+    request: Request,
+    env: CloudflareEnv,
+    ctx: CloudflareExecutionContext,
+  ): Promise<Response> => {
     const https = isHttps(request);
     const url = new URL(request.url);
     let pathname: string;
@@ -233,17 +269,21 @@ export const createCloudflareWorker = (graph: SiteGraph, options: CreateWorkerOp
     } catch {
       return errorResponse(400, "Bad Request", { https });
     }
-    if (isUnsafePathname(pathname)) return errorResponse(400, "Bad Request", { https });
+    if (isUnsafePathname(pathname))
+      return errorResponse(400, "Bad Request", { https });
     // Same rule as the Node server: dot segments are private except a leading
     // RFC 8615 /.well-known/ below the site root, which the asset layer serves.
-    if (hasHiddenSegment(pathname, graph.base)) return errorResponse(404, "Not Found", { https });
+    if (hasHiddenSegment(pathname, graph.base))
+      return errorResponse(404, "Not Found", { https });
 
     const baseRelative = stripBase(pathname, graph.base);
-    if (baseRelative === null) return errorResponse(404, "Not Found", { https });
+    if (baseRelative === null)
+      return errorResponse(404, "Not Found", { https });
     // The bundle and its routing table are deployment control files, never
     // content. Refusing them here makes the guarantee independent of how a
     // host treats underscore-prefixed uploads.
-    if (CONTROL_PATHS.has(baseRelative)) return errorResponse(404, "Not Found", { https });
+    if (CONTROL_PATHS.has(baseRelative))
+      return errorResponse(404, "Not Found", { https });
 
     const platform: PlatformContext = {
       name: "cloudflare",
@@ -268,14 +308,23 @@ export const createCloudflareWorker = (graph: SiteGraph, options: CreateWorkerOp
       try {
         mod = await route.load();
       } catch (err) {
-        log(`[bascik] Failed to load API route module ${route.filePath}: ${(err as Error).stack ?? String(err)}`);
+        log(
+          `[bascik] Failed to load API route module ${route.filePath}: ${(err as Error).stack ?? String(err)}`,
+        );
         return errorResponse(500, "Internal Server Error", { https });
       }
-      const context: ApiHandlerContext = { params: apiMatch.params, remoteIp, platform };
+      const context: ApiHandlerContext = {
+        params: apiMatch.params,
+        remoteIp,
+        platform,
+      };
       const response = await dispatchApiHandler(mod, request, context, {
         timeoutMs: graph.apiTimeoutMs,
         signal: request.signal,
-        onError: (message, error) => log(`[bascik] ${message}${error ? `\n${(error as Error).stack ?? String(error)}` : ""}`),
+        onError: (message, error) =>
+          log(
+            `[bascik] ${message}${error ? `\n${(error as Error).stack ?? String(error)}` : ""}`,
+          ),
       });
       const headers = mergeHandlerHeaders(response.headers, { https });
       return new Response(request.method === "HEAD" ? null : response.body, {
@@ -288,16 +337,35 @@ export const createCloudflareWorker = (graph: SiteGraph, options: CreateWorkerOp
     // ── Dynamic pages ─────────────────────────────────────────────────────
     const page = findPage(graph, baseRelative);
     if (!page) {
-      if (graph.staticNotFoundPage && pageLookupCandidates(baseRelative).includes("/404")) {
+      if (
+        graph.staticNotFoundPage &&
+        pageLookupCandidates(baseRelative).includes("/404")
+      ) {
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          const headers = new Headers(
+            errorResponse(405, "", { https }).headers,
+          );
+          headers.set("allow", "GET, HEAD");
+          return new Response("Method Not Allowed", { status: 405, headers });
+        }
         // The asset layer serves 404.html at its own URL with 200 (and
         // redirects its aliases). Fetch the canonical asset and answer with
         // the status the Node server uses for the custom 404 page.
         const assetUrl = new URL(request.url);
         assetUrl.pathname = graph.base === "/" ? "/404" : `${graph.base}404`;
         assetUrl.search = "";
-        const asset = await forwardToAssets(new Request(assetUrl, { method: request.method === "HEAD" ? "HEAD" : "GET", headers: request.headers }), env);
+        const asset = await forwardToAssets(
+          new Request(assetUrl, {
+            method: request.method === "HEAD" ? "HEAD" : "GET",
+            headers: request.headers,
+          }),
+          env,
+        );
         if (asset.status !== 200) return asset;
-        return new Response(request.method === "HEAD" ? null : asset.body, { status: 404, headers: asset.headers });
+        return new Response(request.method === "HEAD" ? null : asset.body, {
+          status: 404,
+          headers: asset.headers,
+        });
       }
       return forwardToAssets(request, env);
     }
@@ -311,7 +379,13 @@ export const createCloudflareWorker = (graph: SiteGraph, options: CreateWorkerOp
 
     const status = page.is404 ? 404 : 200;
     const plan = toExecutionPlan(page);
-    const run = createGraphJobRunner(page, graph, request, { remoteIp, platform }, log);
+    const run = createGraphJobRunner(
+      page,
+      graph,
+      request,
+      { remoteIp, platform },
+      log,
+    );
 
     if (plan.firstStreamIndex === -1 || isHead) {
       let body: Uint8Array;
@@ -321,7 +395,10 @@ export const createCloudflareWorker = (graph: SiteGraph, options: CreateWorkerOp
         log(err instanceof Error ? err.message : String(err));
         return internalErrorPage(graph.custom500, { https });
       }
-      const headers = dynamicPageHeaders({ https, contentLength: body.byteLength });
+      const headers = dynamicPageHeaders({
+        https,
+        contentLength: body.byteLength,
+      });
       return new Response(isHead ? null : body, { status, headers });
     }
 
@@ -330,7 +407,8 @@ export const createCloudflareWorker = (graph: SiteGraph, options: CreateWorkerOp
     // the body completes. Stream failures are logged, never a status change.
     const streamer = streamComposedResponse(plan, run, undefined, {
       signal: request.signal,
-      onStreamError: (err) => log(err instanceof Error ? err.message : String(err)),
+      onStreamError: (err) =>
+        log(err instanceof Error ? err.message : String(err)),
     });
     try {
       await streamer.ready;

@@ -11,14 +11,14 @@ That is all the setup there is. The extension activates for HTML, CSS, JavaScrip
 
 ## What You Get
 
-| When you... | The extension... | Learn more |
-| --- | --- | --- |
-| Type `<` and the start of a tag | Suggests your project's components | [Component tags](#complete-component-tags) |
-| Add attributes to a component | Suggests its props and named slots | [Props and slots](#complete-props-and-slots) |
-| Write a `<script>` | Offers the four execution directives | [Script directives](#complete-script-directives) |
-| Hover a component tag | Shows its source, props, and slots | [Hover details](#see-a-components-contract-on-hover) |
-| Cmd/Ctrl-click a tag or import | Jumps to the component or module | [Navigation](#navigate-components-and-imports) |
-| Save or type a mistake | Flags it in the editor and Problems panel | [Diagnostics](#catch-problems-as-you-type) |
+| When you...                     | The extension...                          | Learn more                                           |
+| ------------------------------- | ----------------------------------------- | ---------------------------------------------------- |
+| Type `<` and the start of a tag | Suggests your project's components        | [Component tags](#complete-component-tags)           |
+| Add attributes to a component   | Suggests its props and named slots        | [Props and slots](#complete-props-and-slots)         |
+| Write a `<script>`              | Offers the four execution directives      | [Script directives](#complete-script-directives)     |
+| Hover a component tag           | Shows its source, props, and slots        | [Hover details](#see-a-components-contract-on-hover) |
+| Cmd/Ctrl-click a tag or import  | Jumps to the component or module          | [Navigation](#navigate-components-and-imports)       |
+| Save or type a mistake          | Flags it in the editor and Problems panel | [Diagnostics](#catch-problems-as-you-type)           |
 
 ## Complete Component Tags
 
@@ -33,8 +33,7 @@ Suggestions use `directory.components` from the closest owning Bascik config, in
 The inserted snippet depends on the component. A component with a default slot completes as a pair and places the cursor between the tags. A component without one completes as a void element:
 
 ```html
-<user-card></user-card>
-<docs-head />
+<user-card></user-card> <docs-head />
 ```
 
 ## Complete Props and Slots
@@ -104,7 +103,7 @@ Hold `Cmd` on macOS or `Ctrl` on Windows and Linux, then click:
 <user-card data-bascik-prop-role="Lead Engineer"></user-card>
 
 <script data-bascik-build>
-  import { canonical } from '@/lib/canonical.ts';
+  import { canonical } from "@/lib/canonical.ts";
   export default async () => await canonical();
 </script>
 
@@ -125,18 +124,18 @@ Diagnostics appear as squiggles in the editor and as entries in the Problems pan
 
 The checks below cover the most common mistakes. Metadata annotation warnings use the current unsaved component text, so they appear as you edit. Hover and completion contracts refresh from disk when component files change.
 
-| Area | The extension reports |
-| --- | --- |
-| Component naming | A component filename without the hyphen a custom element name requires |
-| Unclosed elements | A non-self-closing component tag with no matching closing tag |
+| Area              | The extension reports                                                                                                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Component naming  | A component filename without the hyphen a custom element name requires                                                                                                                            |
+| Unclosed elements | A non-self-closing component tag with no matching closing tag                                                                                                                                     |
 | Script directives | A script combining more than one of `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream` (error), or a directive on an element other than `<script>` (error) |
-| Props | A `data-bascik-prop-*` attribute the component does not declare or infer (warning), and a `data-bascik-attr-*` binding whose prop no project caller supplies (hint) |
-| Slots | `data-bascik-slot` outside any parent component, a slot name the containing component does not have, or an empty named slot (errors) |
-| Imports | Imports and script `src` values that begin with `/`, with guidance to use `@/` or a relative path |
-| Styles | A component that combines an inline `<style>` element with a companion `.css` file (warning). Multiple inline `<style>` elements are supported and are not reported |
-| ID references | `for`, `itemref`, ARIA ID references, and `href="#fragment"` values whose target ID is not declared in the component |
-| Preserve | A `data-bascik-preserve` value other than `id`, `name`, or `class`, and a form that posts to an external URL without `data-bascik-preserve="name"` |
-| Annotations | An `@prop` or `@slot` line documented twice, or one that does not match a member inferred from the markup (warnings) |
+| Props             | A `data-bascik-prop-*` attribute the component does not declare or infer (warning), and a `data-bascik-attr-*` binding whose prop no project caller supplies (hint)                               |
+| Slots             | `data-bascik-slot` outside any parent component, a slot name the containing component does not have, or an empty named slot (errors)                                                              |
+| Imports           | Imports and script `src` values that begin with `/`, with guidance to use `@/` or a relative path                                                                                                 |
+| Styles            | A component that combines an inline `<style>` element with a companion `.css` file (warning). Multiple inline `<style>` elements are supported and are not reported                               |
+| ID references     | `for`, `itemref`, ARIA ID references, and `href="#fragment"` values whose target ID is not declared in the component                                                                              |
+| Preserve          | A `data-bascik-preserve` value other than `id`, `name`, or `class`, and a form that posts to an external URL without `data-bascik-preserve="name"`                                                |
+| Annotations       | An `@prop` or `@slot` line documented twice, or one that does not match a member inferred from the markup (warnings)                                                                              |
 
 ### Find Scoping Compatibility Issues Early
 
@@ -148,14 +147,14 @@ Every warning includes a safer alternative, such as retaining an element referen
 
 These checks apply to component files only: the component's `.html` file and the `.css`, `.js`, and `.ts` files beside it. Those are the only files Bascik scopes, so a page, an API route, or a script outside your component folders is not checked.
 
-| Language | Patterns that are flagged |
-| --- | --- |
-| CSS | Standalone attribute selectors such as `[data-state]`, which can leak globally unless anchored by a scoped class |
-| CSS | Bare element names inside `:is()`, `:where()`, and `:has()`, which are not converted |
-| JavaScript and TypeScript | Runtime `.id` assignment |
-| JavaScript and TypeScript | Attribute selectors passed to `querySelector()` or `querySelectorAll()` |
-| JavaScript and TypeScript | Template-literal class values assigned through `className` or `classList.replace()` |
-| JavaScript and TypeScript | Runtime custom-property names passed to `style.setProperty('--name', value)` |
+| Language                  | Patterns that are flagged                                                                                        |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| CSS                       | Standalone attribute selectors such as `[data-state]`, which can leak globally unless anchored by a scoped class |
+| CSS                       | Bare element names inside `:is()`, `:where()`, and `:has()`, which are not converted                             |
+| JavaScript and TypeScript | Runtime `.id` assignment                                                                                         |
+| JavaScript and TypeScript | Attribute selectors passed to `querySelector()` or `querySelectorAll()`                                          |
+| JavaScript and TypeScript | Template-literal class values assigned through `className` or `classList.replace()`                              |
+| JavaScript and TypeScript | Runtime custom-property names passed to `style.setProperty('--name', value)`                                     |
 
 ### Audit Server and Stream Scripts
 
@@ -179,11 +178,11 @@ JavaScript and TypeScript files under `src/api/` receive route-specific checks:
 
 The extension also ships snippets for scaffolding route handlers in TypeScript and JavaScript:
 
-| Prefix | Inserts |
-| --- | --- |
-| `bascik-api` | A route handler with an HTTP method picker and pre-typed `request: Request` and `context: { params: Record<string, string>; remoteIp: string }` arguments |
-| `bascik-get` | A typed `GET` handler |
-| `bascik-post` | A typed `POST` handler with JSON request body parsing |
+| Prefix        | Inserts                                                                                                                                                   |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bascik-api`  | A route handler with an HTTP method picker and pre-typed `request: Request` and `context: { params: Record<string, string>; remoteIp: string }` arguments |
+| `bascik-get`  | A typed `GET` handler                                                                                                                                     |
+| `bascik-post` | A typed `POST` handler with JSON request body parsing                                                                                                     |
 
 ## Configure the Extension
 
@@ -213,7 +212,9 @@ Suppress diagnostics on a line or block using in-file comments:
 
   ```css
   /* bascik-ignore */
-  [data-state] { color: red; }
+  [data-state] {
+    color: red;
+  }
   ```
 
 ### Configure Per Project with `bascik.ext.json`

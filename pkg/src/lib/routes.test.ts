@@ -41,7 +41,9 @@ describe("isDynamicRoute", () => {
 
 describe("extractRouteParamNames", () => {
   it("extracts single param name", () => {
-    expect(extractRouteParamNames("src/pages/blog/[slug].html")).toEqual(["slug"]);
+    expect(extractRouteParamNames("src/pages/blog/[slug].html")).toEqual([
+      "slug",
+    ]);
   });
 
   it("extracts multiple param names in order", () => {
@@ -49,7 +51,11 @@ describe("extractRouteParamNames", () => {
       "category",
       "slug",
     ]);
-    expect(extractRouteParamNames("[a]/[b]/[c]/index.html")).toEqual(["a", "b", "c"]);
+    expect(extractRouteParamNames("[a]/[b]/[c]/index.html")).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
   });
 
   it("returns empty array for non-dynamic routes", () => {
@@ -57,10 +63,9 @@ describe("extractRouteParamNames", () => {
   });
 
   it("handles Windows backslash paths", () => {
-    expect(extractRouteParamNames("src\\pages\\[category]\\[slug].html")).toEqual([
-      "category",
-      "slug",
-    ]);
+    expect(
+      extractRouteParamNames("src\\pages\\[category]\\[slug].html"),
+    ).toEqual(["category", "slug"]);
   });
 });
 
@@ -73,7 +78,9 @@ describe("resolveRoutePath", () => {
 
   it("resolves directory form", () => {
     expect(
-      resolveRoutePath("src/pages/blog/[slug]/index.html", { slug: "first-post" }),
+      resolveRoutePath("src/pages/blog/[slug]/index.html", {
+        slug: "first-post",
+      }),
     ).toBe("src/pages/blog/first-post/index.html");
   });
 
@@ -87,9 +94,9 @@ describe("resolveRoutePath", () => {
   });
 
   it("supports numeric param values", () => {
-    expect(
-      resolveRoutePath("src/pages/page/[n].html", { n: 1 }),
-    ).toBe("src/pages/page/1.html");
+    expect(resolveRoutePath("src/pages/page/[n].html", { n: 1 })).toBe(
+      "src/pages/page/1.html",
+    );
   });
 
   it("handles Unicode param values verbatim in path", () => {
@@ -107,7 +114,9 @@ describe("resolveRoutePath", () => {
 
   it("handles relative, bare-filename, and absolute paths", () => {
     expect(resolveRoutePath("[slug].html", { slug: "a" })).toBe("a.html");
-    expect(resolveRoutePath("pages/[slug].html", { slug: "a" })).toBe("pages/a.html");
+    expect(resolveRoutePath("pages/[slug].html", { slug: "a" })).toBe(
+      "pages/a.html",
+    );
     expect(resolveRoutePath("/abs/src/pages/[slug].html", { slug: "a" })).toBe(
       "/abs/src/pages/a.html",
     );
@@ -130,17 +139,11 @@ describe("validateRouteList", () => {
   });
 
   it("handles numeric param values", () => {
-    const rawRoutes = [
-      { params: { n: 1 } },
-      { params: { n: 2 } },
-    ];
+    const rawRoutes = [{ params: { n: 1 } }, { params: { n: 2 } }];
     const { routes, warnings, error } = validateRouteList(rawRoutes, ["n"]);
     expect(error).toBeUndefined();
     expect(warnings).toEqual([]);
-    expect(routes).toEqual([
-      { params: { n: 1 } },
-      { params: { n: 2 } },
-    ]);
+    expect(routes).toEqual([{ params: { n: 1 } }, { params: { n: 2 } }]);
   });
 
   it("rejects shorthand [{ slug: 'a' }] with descriptive error / warning", () => {
@@ -168,8 +171,12 @@ describe("validateRouteList", () => {
   });
 
   it("returns error when returned value is null or undefined", () => {
-    expect(validateRouteList(null, ["slug"]).error).toMatch(/must return an array.*null/);
-    expect(validateRouteList(undefined, ["slug"]).error).toMatch(/must return an array.*undefined/);
+    expect(validateRouteList(null, ["slug"]).error).toMatch(
+      /must return an array.*null/,
+    );
+    expect(validateRouteList(undefined, ["slug"]).error).toMatch(
+      /must return an array.*undefined/,
+    );
   });
 
   it("returns empty routes with no warnings for empty array", () => {
@@ -192,9 +199,7 @@ describe("validateRouteList", () => {
   });
 
   it("allows extra params beyond the path", () => {
-    const rawRoutes = [
-      { params: { slug: "post", extra: "val", id: 123 } },
-    ];
+    const rawRoutes = [{ params: { slug: "post", extra: "val", id: 123 } }];
     const { routes, warnings, error } = validateRouteList(rawRoutes, ["slug"]);
     expect(error).toBeUndefined();
     expect(warnings).toEqual([]);
@@ -216,10 +221,7 @@ describe("validateRouteList", () => {
   });
 
   it("warns and skips item with empty string param value", () => {
-    const rawRoutes = [
-      { params: { slug: "" } },
-      { params: { slug: "valid" } },
-    ];
+    const rawRoutes = [{ params: { slug: "" } }, { params: { slug: "valid" } }];
     const { routes, warnings } = validateRouteList(rawRoutes, ["slug"]);
     expect(routes).toEqual([{ params: { slug: "valid" } }]);
     expect(warnings.length).toBe(1);
@@ -238,7 +240,7 @@ describe("validateRouteList", () => {
     expect(warnings.length).toBe(3);
   });
 
-  it("warns and skips item with Windows-illegal filename characters (<>:\"|?*) or control chars", () => {
+  it('warns and skips item with Windows-illegal filename characters (<>:"|?*) or control chars', () => {
     const rawRoutes = [
       { params: { slug: "bad<name" } },
       { params: { slug: "bad>name" } },
@@ -269,7 +271,6 @@ describe("validateRouteList", () => {
     expect(routes).toEqual([{ params: { slug: "valid" } }]);
     expect(warnings.length).toBe(6);
   });
-
 });
 
 describe("dedupeRoutes", () => {
@@ -279,7 +280,10 @@ describe("dedupeRoutes", () => {
       { params: { slug: "second" }, data: 2 },
       { params: { slug: "first" }, data: 3 },
     ];
-    const { routes: deduped, warnings } = dedupeRoutes("src/pages/blog/[slug].html", routes);
+    const { routes: deduped, warnings } = dedupeRoutes(
+      "src/pages/blog/[slug].html",
+      routes,
+    );
     expect(deduped).toEqual([
       { params: { slug: "first" }, data: 1 },
       { params: { slug: "second" }, data: 2 },
@@ -293,7 +297,10 @@ describe("dedupeRoutes", () => {
       { params: { slug: "Hello" }, data: 1 },
       { params: { slug: "hello" }, data: 2 },
     ];
-    const { routes: deduped, warnings } = dedupeRoutes("src/pages/blog/[slug].html", routes);
+    const { routes: deduped, warnings } = dedupeRoutes(
+      "src/pages/blog/[slug].html",
+      routes,
+    );
     expect(deduped).toEqual([{ params: { slug: "Hello" }, data: 1 }]);
     expect(warnings.length).toBe(1);
     expect(warnings[0]).toMatch(/case-insensitive/i);
@@ -302,26 +309,38 @@ describe("dedupeRoutes", () => {
 
 describe("computePagePath", () => {
   it("computes root index as /", () => {
-    expect(computePagePath("/app/src/pages/index.html", "/app/src/pages")).toBe("/");
+    expect(computePagePath("/app/src/pages/index.html", "/app/src/pages")).toBe(
+      "/",
+    );
   });
 
   it("computes top-level page as /name", () => {
-    expect(computePagePath("/app/src/pages/about.html", "/app/src/pages")).toBe("/about");
+    expect(computePagePath("/app/src/pages/about.html", "/app/src/pages")).toBe(
+      "/about",
+    );
   });
 
   it("computes directory index as /dir/", () => {
-    expect(computePagePath("/app/src/pages/blog/index.html", "/app/src/pages")).toBe("/blog/");
+    expect(
+      computePagePath("/app/src/pages/blog/index.html", "/app/src/pages"),
+    ).toBe("/blog/");
   });
 
   it("computes nested guide page as /guides/getting-started", () => {
-    expect(computePagePath("/app/src/pages/guides/getting-started.html", "/app/src/pages")).toBe(
-      "/guides/getting-started",
-    );
+    expect(
+      computePagePath(
+        "/app/src/pages/guides/getting-started.html",
+        "/app/src/pages",
+      ),
+    ).toBe("/guides/getting-started");
   });
 
   it("handles Windows backslashes", () => {
     expect(
-      computePagePath("C:\\project\\src\\pages\\switch\\from-vue.html", "C:\\project\\src\\pages"),
+      computePagePath(
+        "C:\\project\\src\\pages\\switch\\from-vue.html",
+        "C:\\project\\src\\pages",
+      ),
     ).toBe("/switch/from-vue");
   });
 
@@ -335,13 +354,18 @@ describe("computePagePath", () => {
 
   it("handles relative paths with default or custom pagesDir", () => {
     expect(computePagePath("src/pages/index.html", "src/pages")).toBe("/");
-    expect(computePagePath("src/pages/blog/post.html", "src/pages")).toBe("/blog/post");
+    expect(computePagePath("src/pages/blog/post.html", "src/pages")).toBe(
+      "/blog/post",
+    );
     expect(computePagePath("blog/index.html", "pages")).toBe("/blog/");
   });
 
   it("uses the last configured pages directory occurrence", () => {
     expect(
-      computePagePath("/srv/src/pages/demo/src/pages/blog/index.html", "src/pages"),
+      computePagePath(
+        "/srv/src/pages/demo/src/pages/blog/index.html",
+        "src/pages",
+      ),
     ).toBe("/blog/");
   });
 });

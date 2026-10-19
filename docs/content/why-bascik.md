@@ -9,16 +9,18 @@ The guiding principle behind Bascik is simple: use what already exists. Do not i
 Create one HTML file, then use its filename as a tag anywhere, with no registration, imports, or framework API.
 
 <!-- demo:source-usage -->
+
 ```html
 <!DOCTYPE html>
 <html lang="en">
-<body>
-  <hello-card />
-</body>
+  <body>
+    <hello-card />
+  </body>
 </html>
 ```
 
 <!-- demo:source-html -->
+
 ```html
 <style>
   .hello-card {
@@ -38,29 +40,33 @@ Create one HTML file, then use its filename as a tag anywhere, with no registrat
 ```
 
 <!-- demo:output-html -->
+
 ```html
 <!-- dist/index.html -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <style>
-    .bascik__hello-card__hello-card {
-      padding: 24px;
-      background: #242628;
-      border: 1px solid #3a3d40;
-      border-top: 3px solid #d3ff8d;
-    }
-  </style>
-</head>
-<body>
-  <article class="bascik__hello-card__hello-card">
-    <p class="bascik__hello-card__hello-card-kicker">One file. One tag.</p>
-    <h3 class="bascik__hello-card__hello-card-title">Plain HTML, ready to reuse.</h3>
-    <p class="bascik__hello-card__hello-card-body">
-      Bascik replaces the custom tag at build time and ships the finished markup.
-    </p>
-  </article>
-</body>
+  <head>
+    <style>
+      .bascik__hello-card__hello-card {
+        padding: 24px;
+        background: #242628;
+        border: 1px solid #3a3d40;
+        border-top: 3px solid #d3ff8d;
+      }
+    </style>
+  </head>
+  <body>
+    <article class="bascik__hello-card__hello-card">
+      <p class="bascik__hello-card__hello-card-kicker">One file. One tag.</p>
+      <h3 class="bascik__hello-card__hello-card-title">
+        Plain HTML, ready to reuse.
+      </h3>
+      <p class="bascik__hello-card__hello-card-body">
+        Bascik replaces the custom tag at build time and ships the finished
+        markup.
+      </p>
+    </article>
+  </body>
 </html>
 ```
 

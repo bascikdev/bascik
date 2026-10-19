@@ -115,7 +115,7 @@ The same gesture works for relative imports, the `@/` import-root alias, and `sr
 ```html
 <!-- Hold Cmd/Ctrl and click the path to open src/lib/canonical.ts -->
 <script data-bascik-build>
-  import { canonical } from '@/lib/canonical.ts';
+  import { canonical } from "@/lib/canonical.ts";
   export default async () => await canonical();
 </script>
 
@@ -166,9 +166,20 @@ Write standard HTML, plain CSS, and standard JavaScript in one file:
 </article>
 
 <style>
-  .card { padding: 16px; border: 1px solid #3a3d40; border-radius: 8px; }
-  .name { margin: 0 0 8px 0; font-size: 1.1rem; }
-  .role { margin: 0; color: #a0a0a0; font-size: 0.875rem; }
+  .card {
+    padding: 16px;
+    border: 1px solid #3a3d40;
+    border-radius: 8px;
+  }
+  .name {
+    margin: 0 0 8px 0;
+    font-size: 1.1rem;
+  }
+  .role {
+    margin: 0;
+    color: #a0a0a0;
+    font-size: 0.875rem;
+  }
 </style>
 ```
 
@@ -179,13 +190,15 @@ Use custom tags anywhere in your pages without `import` statements or component 
 ```html
 <!DOCTYPE html>
 <html lang="en">
-<head><title>Team Directory</title></head>
-<body>
-  <!-- Bascik auto-discovers <user-card> from src/components/user-card/user-card.html -->
-  <user-card data-bascik-prop-role="Lead Engineer">
-    <span data-bascik-slot="name">Sarah Chen</span>
-  </user-card>
-</body>
+  <head>
+    <title>Team Directory</title>
+  </head>
+  <body>
+    <!-- Bascik auto-discovers <user-card> from src/components/user-card/user-card.html -->
+    <user-card data-bascik-prop-role="Lead Engineer">
+      <span data-bascik-slot="name">Sarah Chen</span>
+    </user-card>
+  </body>
 </html>
 ```
 
@@ -200,6 +213,7 @@ Because Bascik resolves components ahead of time, the HTML and CSS that run in t
 Compare source template code with what appears when inspecting elements in browser DevTools:
 
 **Your Source Code (`src/pages/index.html`):**
+
 ```html
 <user-card data-bascik-prop-role="Lead Engineer">
   <span data-bascik-slot="name">Sarah Chen</span>
@@ -207,6 +221,7 @@ Compare source template code with what appears when inspecting elements in brows
 ```
 
 **Inspected Element in Browser DevTools (`Cmd+Option+I`):**
+
 ```html
 <article class="bascik__user-card__card">
   <h3 class="bascik__user-card__name">
@@ -225,9 +240,9 @@ Open the DevTools **Sources** tab to set breakpoints in component scripts. Becau
 ```html
 <!-- Inside src/components/counter/counter.html -->
 <script>
-  document.getElementById('counter-btn').addEventListener('click', (e) => {
+  document.getElementById("counter-btn").addEventListener("click", (e) => {
     // Set a breakpoint directly on this line in browser DevTools
-    const count = parseInt(e.target.dataset.count || '0', 10) + 1;
+    const count = parseInt(e.target.dataset.count || "0", 10) + 1;
     e.target.dataset.count = String(count);
   });
 </script>
@@ -275,13 +290,14 @@ During component compilation, Bascik automatically appends a `//# sourceURL` com
 ```html
 <!-- Compiled output injected into page HTML -->
 <script>
-
-(function() {
-  document.getElementById("bascik__counter__a1b2__btn").addEventListener("click", () => {
-    console.log("Button clicked");
-  });
-})();
-//# sourceURL=src/components/counter/counter.html
+  (function () {
+    document
+      .getElementById("bascik__counter__a1b2__btn")
+      .addEventListener("click", () => {
+        console.log("Button clicked");
+      });
+  })();
+  //# sourceURL=src/components/counter/counter.html
 </script>
 ```
 
@@ -291,6 +307,7 @@ When inspecting your application in Chrome DevTools, Firefox Developer Tools, Sa
 - **Accurate Breakpoints:** Clicking a line number in DevTools pauses that instance directly on the original source line. A `debugger;` statement pauses every instance.
 
 Line numbers match while JavaScript is not minified, which is the default for the dev server. `bascik --build` minifies JavaScript by default.
+
 - **Console Log and Error Mapping:** Messages from `console.log()` and uncaught runtime errors reference the component file and line number rather than a compiled monolithic page.
 
 ### Build and Server Script Stack Trace Remapping
@@ -319,17 +336,20 @@ Every scaffolded Bascik project includes co-located unit tests, Playwright end-t
 Test component template contracts right next to the component HTML file:
 
 ```ts
-import { describe, it, expect } from 'vitest';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { describe, it, expect } from "vitest";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
-describe('user-card contract', () => {
-  const filePath = join(process.cwd(), 'src/components/user-card/user-card.html');
+describe("user-card contract", () => {
+  const filePath = join(
+    process.cwd(),
+    "src/components/user-card/user-card.html",
+  );
 
-  it('defines slot and prop placeholders correctly', async () => {
-    const html = await readFile(filePath, 'utf8');
+  it("defines slot and prop placeholders correctly", async () => {
+    const html = await readFile(filePath, "utf8");
     expect(html).toContain('<slot name="name">');
-    expect(html).toContain('data-bascik-prop-role');
+    expect(html).toContain("data-bascik-prop-role");
   });
 });
 ```
@@ -345,12 +365,14 @@ npm run test:watch
 Test user interactions in real browsers using Playwright:
 
 ```ts
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
-test('renders user card with expanded slot content', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.locator('.bascik__user-card__card')).toBeVisible();
-  await expect(page.locator('.bascik__user-card__role')).toHaveText('Lead Engineer');
+test("renders user card with expanded slot content", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bascik__user-card__card")).toBeVisible();
+  await expect(page.locator(".bascik__user-card__role")).toHaveText(
+    "Lead Engineer",
+  );
 });
 ```
 
@@ -369,6 +391,7 @@ npx bascik --check
 ```
 
 Output:
+
 ```terminal
 ✓ Checked 4 pages and 12 components in 14ms (0 errors, 0 warnings)
 ```
@@ -391,6 +414,7 @@ npm run build
 ```
 
 Terminal Output:
+
 ```terminal
 transpiled: pages/index.html -> dist/index.html
 transpiled: pages/about.html -> dist/about.html
@@ -406,16 +430,16 @@ Open `dist/index.html` to see the compiled result. Custom component tags are ful
 ```html
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <title>Team Directory</title>
-  <link rel="stylesheet" href="/css/styles.css">
-</head>
-<body>
-  <article class="bascik__user-card__card">
-    <h3 class="bascik__user-card__name"><span>Sarah Chen</span></h3>
-    <p class="bascik__user-card__role">Lead Engineer</p>
-  </article>
-</body>
+  <head>
+    <title>Team Directory</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <article class="bascik__user-card__card">
+      <h3 class="bascik__user-card__name"><span>Sarah Chen</span></h3>
+      <p class="bascik__user-card__role">Lead Engineer</p>
+    </article>
+  </body>
 </html>
 ```
 
@@ -428,6 +452,7 @@ npx bascik --server
 ```
 
 Terminal Output:
+
 ```terminal
 Serving dist/ at http://localhost:8080
 ```

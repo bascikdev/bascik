@@ -45,23 +45,33 @@ describe("hasHiddenSegment", () => {
 
   describe("with a non-root base", () => {
     it("allows the well-known segment directly below the base", () => {
-      expect(hasHiddenSegment("/docs/.well-known/security.txt", "/docs/")).toBe(false);
-      expect(hasHiddenSegment("/docs/.well-known/agent-skills/index.json", "/docs/")).toBe(false);
+      expect(hasHiddenSegment("/docs/.well-known/security.txt", "/docs/")).toBe(
+        false,
+      );
+      expect(
+        hasHiddenSegment("/docs/.well-known/agent-skills/index.json", "/docs/"),
+      ).toBe(false);
     });
 
     it("still hides other dot segments below the base", () => {
       expect(hasHiddenSegment("/docs/.env", "/docs/")).toBe(true);
       expect(hasHiddenSegment("/docs/.well-known/.env", "/docs/")).toBe(true);
-      expect(hasHiddenSegment("/docs/blog/.well-known/a.json", "/docs/")).toBe(true);
+      expect(hasHiddenSegment("/docs/blog/.well-known/a.json", "/docs/")).toBe(
+        true,
+      );
     });
 
     it("applies the root rule to paths outside the base, which are 404 anyway", () => {
-      expect(hasHiddenSegment("/other/.well-known/a.json", "/docs/")).toBe(true);
+      expect(hasHiddenSegment("/other/.well-known/a.json", "/docs/")).toBe(
+        true,
+      );
       expect(hasHiddenSegment("/.env", "/docs/")).toBe(true);
     });
 
     it("does not treat a base-like prefix without a boundary as the base", () => {
-      expect(hasHiddenSegment("/docsx/.well-known/a.json", "/docs/")).toBe(true);
+      expect(hasHiddenSegment("/docsx/.well-known/a.json", "/docs/")).toBe(
+        true,
+      );
     });
   });
 });

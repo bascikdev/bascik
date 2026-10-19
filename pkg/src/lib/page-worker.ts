@@ -13,11 +13,13 @@ export type PageWorkerResult = Omit<TranspilePageResult, "distHtml"> & {
 };
 
 export type PageWorkerMessage =
-  | { ok: true; result: PageWorkerResult | null }
-  | { ok: false; error: string };
+  { ok: true; result: PageWorkerResult | null } | { ok: false; error: string };
 
 export interface PageWorkerPort {
-  postMessage(message: PageWorkerMessage, transferList?: readonly ArrayBuffer[]): void;
+  postMessage(
+    message: PageWorkerMessage,
+    transferList?: readonly ArrayBuffer[],
+  ): void;
 }
 
 const utf8 = new TextEncoder();
@@ -28,7 +30,9 @@ const utf8 = new TextEncoder();
  * into Node's shared Buffer pool), which is what makes the buffer safe to
  * hand over in a transfer list.
  */
-export const toPageWorkerResult = (result: TranspilePageResult): PageWorkerResult => {
+export const toPageWorkerResult = (
+  result: TranspilePageResult,
+): PageWorkerResult => {
   const { distHtml, ...rest } = result;
   return { ...rest, distHtmlBytes: utf8.encode(distHtml) };
 };
@@ -45,7 +49,8 @@ export const handlePageWorkerMessage = async (
     };
     const pagePath = typeof input === "string" ? input : input.pagePath;
     const route = typeof input === "string" ? null : (input.route ?? null);
-    const preCleanedHtml = typeof input === "string" ? undefined : input.preCleanedHtml;
+    const preCleanedHtml =
+      typeof input === "string" ? undefined : input.preCleanedHtml;
 
     const result = await transpilePage(
       pagePath,
@@ -63,7 +68,9 @@ export const handlePageWorkerMessage = async (
       return;
     }
     const workerResult = toPageWorkerResult(result);
-    port?.postMessage({ ok: true, result: workerResult }, [workerResult.distHtmlBytes.buffer as ArrayBuffer]);
+    port?.postMessage({ ok: true, result: workerResult }, [
+      workerResult.distHtmlBytes.buffer as ArrayBuffer,
+    ]);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     port?.postMessage({ ok: false, error: errorMsg });
@@ -71,9 +78,11 @@ export const handlePageWorkerMessage = async (
 };
 
 if (parentPort && workerData) {
-  const data = workerData as { componentList: ComponentList; globalStylesHtml: string };
+  const data = workerData as {
+    componentList: ComponentList;
+    globalStylesHtml: string;
+  };
   parentPort.on("message", (input: string | PageJob) => {
     handlePageWorkerMessage(parentPort, data, input);
   });
 }
-

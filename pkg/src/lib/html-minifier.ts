@@ -37,14 +37,31 @@ import {
   type TagAttribute,
 } from "./html-scanner.ts";
 
-const DIRECTIVE_ATTRIBUTES = new Set(["data-bascik-build", "data-bascik-server", "data-bascik-routes", "data-bascik-stream"]);
+const DIRECTIVE_ATTRIBUTES = new Set([
+  "data-bascik-build",
+  "data-bascik-server",
+  "data-bascik-routes",
+  "data-bascik-stream",
+]);
 
 /** JavaScript MIME type essences (WHATWG MIME Sniffing). */
 const JAVASCRIPT_MIME_TYPES = new Set([
-  "application/ecmascript", "application/javascript", "application/x-ecmascript", "application/x-javascript",
-  "text/ecmascript", "text/javascript", "text/javascript1.0", "text/javascript1.1", "text/javascript1.2",
-  "text/javascript1.3", "text/javascript1.4", "text/javascript1.5", "text/jscript", "text/livescript",
-  "text/x-ecmascript", "text/x-javascript",
+  "application/ecmascript",
+  "application/javascript",
+  "application/x-ecmascript",
+  "application/x-javascript",
+  "text/ecmascript",
+  "text/javascript",
+  "text/javascript1.0",
+  "text/javascript1.1",
+  "text/javascript1.2",
+  "text/javascript1.3",
+  "text/javascript1.4",
+  "text/javascript1.5",
+  "text/jscript",
+  "text/livescript",
+  "text/x-ecmascript",
+  "text/x-javascript",
 ]);
 
 type ScriptKind = "classic" | "module" | "processed" | "inert";
@@ -56,13 +73,18 @@ type ScriptKind = "classic" | "module" | "processed" | "inert";
  * block. Bascik directive scripts never reach the browser as written.
  */
 const scriptKind = (attributes: TagAttribute[]): ScriptKind => {
-  if (attributes.some((attribute) => DIRECTIVE_ATTRIBUTES.has(attribute.name))) return "inert";
+  if (attributes.some((attribute) => DIRECTIVE_ATTRIBUTES.has(attribute.name)))
+    return "inert";
   // The tokenizer drops repeated attributes, so the first one counts.
   const type = attributes.find((attribute) => attribute.name === "type");
-  const language = attributes.find((attribute) => attribute.name === "language");
+  const language = attributes.find(
+    (attribute) => attribute.name === "language",
+  );
   let typeString: string;
-  if (type ? type.value === "" : !language || language.value === "") typeString = "text/javascript";
-  else if (type) typeString = type.value.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, "");
+  if (type ? type.value === "" : !language || language.value === "")
+    typeString = "text/javascript";
+  else if (type)
+    typeString = type.value.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, "");
   else typeString = `text/${language!.value}`;
   const lower = typeString.toLowerCase();
   if (JAVASCRIPT_MIME_TYPES.has(lower)) return "classic";
@@ -107,22 +129,44 @@ const planMinification = (htmlString: string): MinificationPlan => {
     // In a table, a comment or script keeps the text runs around it apart,
     // which decides what text moves before the table; an empty comment stands in.
     comment(comment) {
-      if (!comment.inPre) removals.push({ start: comment.start, end: comment.end, separate: comment.inTable });
+      if (!comment.inPre)
+        removals.push({
+          start: comment.start,
+          end: comment.end,
+          separate: comment.inTable,
+        });
     },
     script(script) {
       // A script cut off by the end of the input never runs; it stays as is.
       if (script.inTemplate || !script.terminated) return;
       const kind = scriptKind(readStartTagAttributes(htmlString, script.start));
       if (kind === "inert") return;
-      if ((kind === "classic" || kind === "module") && !script.inForeign && !script.inPre) {
-        candidates.push({ start: script.start, end: script.end, separate: script.inTable });
-      }
-      else keepBefore = Math.max(keepBefore, script.end);
+      if (
+        (kind === "classic" || kind === "module") &&
+        !script.inForeign &&
+        !script.inPre
+      ) {
+        candidates.push({
+          start: script.start,
+          end: script.end,
+          separate: script.inTable,
+        });
+      } else keepBefore = Math.max(keepBefore, script.end);
     },
   });
   const hoisted = candidates.filter((script) => script.start >= keepBefore);
-  const { html, index } = removeHtmlRanges(htmlString, [...removals, ...hoisted], insertionPoint);
-  return { remainder: html, scripts: hoisted.map((script) => htmlString.slice(script.start, script.end)), insertAt: index };
+  const { html, index } = removeHtmlRanges(
+    htmlString,
+    [...removals, ...hoisted],
+    insertionPoint,
+  );
+  return {
+    remainder: html,
+    scripts: hoisted.map((script) =>
+      htmlString.slice(script.start, script.end),
+    ),
+    insertAt: index,
+  };
 };
 
 export const extractScriptTags = (htmlString: string): string =>
@@ -187,7 +231,8 @@ const TEXT_WHITESPACE_ONLY_RE = /^[\t\n\r ]+$/;
 const TAG_WHITESPACE_RE = /[\t\n\f\r ]{2,}|[\n\r]/g;
 const HAS_TAG_WHITESPACE_RE = /[\t\n\f\r ]{2}|[\n\r]/;
 
-const collapseText = (text: string): string => text.replace(TEXT_WHITESPACE_RE, " ");
+const collapseText = (text: string): string =>
+  text.replace(TEXT_WHITESPACE_RE, " ");
 
 /** Collapse whitespace between the parts of a tag, leaving quoted values as written. */
 const collapseTag = (html: string, start: number, end: number): string => {
@@ -197,7 +242,9 @@ const collapseTag = (html: string, start: number, end: number): string => {
   let out = "";
   let cursor = start;
   for (let k = 0; k < values.length; k += 2) {
-    out += html.slice(cursor, values[k]).replace(TAG_WHITESPACE_RE, " ") + html.slice(values[k], values[k + 1]);
+    out +=
+      html.slice(cursor, values[k]).replace(TAG_WHITESPACE_RE, " ") +
+      html.slice(values[k], values[k + 1]);
     cursor = values[k + 1];
   }
   return out + html.slice(cursor, end).replace(TAG_WHITESPACE_RE, " ");
@@ -205,14 +252,28 @@ const collapseTag = (html: string, start: number, end: number): string => {
 
 /** HTML formatting elements, which the parser re-creates after they are implicitly closed. */
 const FORMATTING_ELEMENTS = new Set([
-  "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike", "strong", "tt", "u",
+  "a",
+  "b",
+  "big",
+  "code",
+  "em",
+  "font",
+  "i",
+  "nobr",
+  "s",
+  "small",
+  "strike",
+  "strong",
+  "tt",
+  "u",
 ]);
 
 /** Tags and other complete markup end with `>` and start with `<`. */
 const isMarkupToken = (token: HtmlToken | undefined): token is HtmlToken =>
   token !== undefined && (token.kind === "tag" || token.kind === "markup");
 
-const isInlineTag = (token: HtmlToken): boolean => token.kind === "tag" && INLINE_TAGS.has(token.name);
+const isInlineTag = (token: HtmlToken): boolean =>
+  token.kind === "tag" && INLINE_TAGS.has(token.name);
 
 interface CollapsedHtml {
   html: string;
@@ -238,7 +299,10 @@ interface CollapsedHtml {
  * formatting elements that a misnested end tag closed implicitly, so removing
  * it there could change which elements end up inside them.
  */
-const collapseWhitespace = (html: string, splitAt = html.length): CollapsedHtml => {
+const collapseWhitespace = (
+  html: string,
+  splitAt = html.length,
+): CollapsedHtml => {
   const tokens: HtmlToken[] = [];
   scanHtml(html, { token: (token) => tokens.push(token) });
   const parts: string[] = [];
@@ -279,13 +343,26 @@ const collapseWhitespace = (html: string, splitAt = html.length): CollapsedHtml 
     } else if (token.kind === "raw") {
       // `document.title` strips and collapses whitespace itself; every other
       // raw text or RCDATA body is code, data, or preformatted text.
-      write(token.name === "title" && !token.inPre && !token.inForeignCode ? collapseText(source) : source);
+      write(
+        token.name === "title" && !token.inPre && !token.inForeignCode
+          ? collapseText(source)
+          : source,
+      );
     } else if (token.kind !== "text") {
       write(source);
     } else if (token.inPre || token.inForeignCode) {
       write(source);
-    } else if (TEXT_WHITESPACE_ONLY_RE.test(source) && isMarkupToken(tokens[k - 1]) && isMarkupToken(tokens[k + 1])) {
-      write(openFormatting > 0 || (isInlineTag(tokens[k - 1]) && isInlineTag(tokens[k + 1])) ? " " : "");
+    } else if (
+      TEXT_WHITESPACE_ONLY_RE.test(source) &&
+      isMarkupToken(tokens[k - 1]) &&
+      isMarkupToken(tokens[k + 1])
+    ) {
+      write(
+        openFormatting > 0 ||
+          (isInlineTag(tokens[k - 1]) && isInlineTag(tokens[k + 1]))
+          ? " "
+          : "",
+      );
     } else {
       write(collapseText(source));
     }
@@ -301,7 +378,8 @@ const collapseWhitespace = (html: string, splitAt = html.length): CollapsedHtml 
 };
 
 /** Space, tab, LF, CR: the whitespace that renders as nothing at a line's edges. */
-const isCollapsibleWhitespace = (code: number): boolean => code === 32 || code === 10 || code === 9 || code === 13;
+const isCollapsibleWhitespace = (code: number): boolean =>
+  code === 32 || code === 10 || code === 9 || code === 13;
 
 /**
  * Trim collapsible whitespace from both ends. A form feed, U+00A0, or other
@@ -310,21 +388,33 @@ const isCollapsibleWhitespace = (code: number): boolean => code === 32 || code =
 const trimCollapsibleWhitespace = (text: string, trimEnd = true): string => {
   let start = 0;
   let end = text.length;
-  while (start < end && isCollapsibleWhitespace(text.charCodeAt(start))) start++;
-  while (trimEnd && end > start && isCollapsibleWhitespace(text.charCodeAt(end - 1))) end--;
+  while (start < end && isCollapsibleWhitespace(text.charCodeAt(start)))
+    start++;
+  while (
+    trimEnd &&
+    end > start &&
+    isCollapsibleWhitespace(text.charCodeAt(end - 1))
+  )
+    end--;
   return text.slice(start, end);
 };
 
 export const minifyHtml = (htmlString: string): string => {
   const { remainder, scripts, insertAt } = planMinification(htmlString);
   if (scripts.length === 0) return collapseWhitespace(remainder).html;
-  const { html, split, keepWhitespaceAtSplit } = collapseWhitespace(remainder, insertAt);
+  const { html, split, keepWhitespaceAtSplit } = collapseWhitespace(
+    remainder,
+    insertAt,
+  );
   // Inside `<pre>`, a line break between scripts would render and the
   // whitespace before them is content. With a formatting element open, a line
   // break would make the parser re-create it around what follows. Script
   // tags themselves never do, and never join with the text around them.
   const separator = keepWhitespaceAtSplit ? "" : "\n";
-  const head = trimCollapsibleWhitespace(html.slice(0, split), !keepWhitespaceAtSplit);
+  const head = trimCollapsibleWhitespace(
+    html.slice(0, split),
+    !keepWhitespaceAtSplit,
+  );
   const tail = html.slice(split);
   const placed = `${head}${separator}${scripts.join(separator)}`;
   // When the document ends inside markup where an appended script would not

@@ -1,14 +1,18 @@
-import { spawn, type ChildProcess } from 'node:child_process';
-import { matchesGlob, resolve, sep } from 'node:path';
-import { BascikConfig } from './config.ts';
-import { eventEmitter, registerShutdownHandler } from './events.ts';
-import { formatDuration } from './format.ts';
-import { logInfo } from './log.ts';
-import { stdout as colorOut } from './colors.ts';
-import { getSiteUrl } from './environment.ts';
-import { nativeClock, type FrameworkClock, type TimeoutHandle } from './clock.ts';
-import { getExecErrorAction, stopAfterExecFailure } from './exec-policy.ts';
-import type { ExecEntry, ExecPhase } from './types.ts';
+import { spawn, type ChildProcess } from "node:child_process";
+import { matchesGlob, resolve, sep } from "node:path";
+import { BascikConfig } from "./config.ts";
+import { eventEmitter, registerShutdownHandler } from "./events.ts";
+import { formatDuration } from "./format.ts";
+import { logInfo } from "./log.ts";
+import { stdout as colorOut } from "./colors.ts";
+import { getSiteUrl } from "./environment.ts";
+import {
+  nativeClock,
+  type FrameworkClock,
+  type TimeoutHandle,
+} from "./clock.ts";
+import { getExecErrorAction, stopAfterExecFailure } from "./exec-policy.ts";
+import type { ExecEntry, ExecPhase } from "./types.ts";
 
 export interface ExecOptions {
   clock?: FrameworkClock;
@@ -38,14 +42,16 @@ export const resetActiveExecChildrenForTests = (): void => {
  * Sends SIGTERM, awaits event-driven settlement (or up to 200ms deadline),
  * and sends SIGKILL to any remaining active processes.
  */
-export const execShutdownHandler = async (options?: ExecOptions): Promise<void> => {
+export const execShutdownHandler = async (
+  options?: ExecOptions,
+): Promise<void> => {
   if (activeChildren.size === 0) return;
   const clock = options?.clock ?? nativeClock;
   const childrenToClose = Array.from(activeChildren);
 
   const closePromises = childrenToClose.map((child) => {
     try {
-      child.kill('SIGTERM');
+      child.kill("SIGTERM");
     } catch {
       // ignore
     }
@@ -62,12 +68,12 @@ export const execShutdownHandler = async (options?: ExecOptions): Promise<void> 
           clock.clearTimeout(deadlineTimer);
           deadlineTimer = null;
         }
-        if (typeof (child as any).removeListener === 'function') {
-          (child as any).removeListener('close', onClose);
-          (child as any).removeListener('error', onClose);
-        } else if (typeof (child as any).off === 'function') {
-          (child as any).off('close', onClose);
-          (child as any).off('error', onClose);
+        if (typeof (child as any).removeListener === "function") {
+          (child as any).removeListener("close", onClose);
+          (child as any).removeListener("error", onClose);
+        } else if (typeof (child as any).off === "function") {
+          (child as any).off("close", onClose);
+          (child as any).off("error", onClose);
         }
       };
 
@@ -78,19 +84,19 @@ export const execShutdownHandler = async (options?: ExecOptions): Promise<void> 
         resolve();
       };
 
-      if (typeof (child as any).once === 'function') {
-        (child as any).once('close', onClose);
-        (child as any).once('error', onClose);
+      if (typeof (child as any).once === "function") {
+        (child as any).once("close", onClose);
+        (child as any).once("error", onClose);
       } else {
-        child.on('close', onClose);
-        child.on('error', onClose);
+        child.on("close", onClose);
+        child.on("error", onClose);
       }
 
       deadlineTimer = clock.setTimeout(() => {
         cleanup();
         if (activeChildren.has(child)) {
           try {
-            child.kill('SIGKILL');
+            child.kill("SIGKILL");
           } catch {
             // ignore
           }
@@ -98,7 +104,7 @@ export const execShutdownHandler = async (options?: ExecOptions): Promise<void> 
         resolve();
       }, 200);
 
-      if (typeof (deadlineTimer as any)?.unref === 'function') {
+      if (typeof (deadlineTimer as any)?.unref === "function") {
         (deadlineTimer as any).unref();
       }
     });
@@ -109,54 +115,74 @@ export const execShutdownHandler = async (options?: ExecOptions): Promise<void> 
 
 registerShutdownHandler(() => execShutdownHandler());
 
-export const runScript = (entry: ExecEntry | string, options?: ExecOptions): Promise<number> => {
-  if (typeof entry === 'string') return spawnScript(entry, options);
+export const runScript = (
+  entry: ExecEntry | string,
+  options?: ExecOptions,
+): Promise<number> => {
+  if (typeof entry === "string") return spawnScript(entry, options);
   const previous = entryExecutions.get(entry);
   const execution = previous
     ? previous.catch(() => undefined).then(() => spawnScript(entry, options))
     : spawnScript(entry, options);
   entryExecutions.set(entry, execution);
-  const cleanup = () => { if (entryExecutions.get(entry) === execution) entryExecutions.delete(entry); };
+  const cleanup = () => {
+    if (entryExecutions.get(entry) === execution) entryExecutions.delete(entry);
+  };
   void execution.then(cleanup, cleanup);
   return execution;
 };
 
-const spawnScript = (entry: ExecEntry | string, options?: ExecOptions): Promise<number> => {
+const spawnScript = (
+  entry: ExecEntry | string,
+  options?: ExecOptions,
+): Promise<number> => {
   const clock = options?.clock ?? nativeClock;
-  const scriptPath = typeof entry === 'string' ? entry : entry.script;
-  const entryObj = typeof entry === 'string' ? { script: entry } : entry;
+  const scriptPath = typeof entry === "string" ? entry : entry.script;
+  const entryObj = typeof entry === "string" ? { script: entry } : entry;
 
   const start = performance.now();
   logInfo(`${colorOut.dim("(started)")} exec: ${scriptPath}`);
 
-  const cwd = entryObj.cwd ? resolve(process.cwd(), entryObj.cwd) : process.cwd();
+  const cwd = entryObj.cwd
+    ? resolve(process.cwd(), entryObj.cwd)
+    : process.cwd();
   const args = entryObj.args ?? [];
   const timeoutMs = entryObj.timeout ?? 60_000;
 
-  const siteUrl = getSiteUrl() ?? '';
-  const pagesDir = resolve(process.cwd(), BascikConfig.directory?.pages ?? 'src/pages');
-  const componentRoots = (BascikConfig.directory?.components ?? ['src/components'])
-    .map((root) => resolve(process.cwd(), root));
+  const siteUrl = getSiteUrl() ?? "";
+  const pagesDir = resolve(
+    process.cwd(),
+    BascikConfig.directory?.pages ?? "src/pages",
+  );
+  const componentRoots = (
+    BascikConfig.directory?.components ?? ["src/components"]
+  ).map((root) => resolve(process.cwd(), root));
 
   const resolvedScript = resolve(cwd, scriptPath);
-  const isInside = (dir: string): boolean => resolvedScript === dir || resolvedScript.startsWith(dir + sep);
+  const isInside = (dir: string): boolean =>
+    resolvedScript === dir || resolvedScript.startsWith(dir + sep);
   if (isInside(pagesDir) || componentRoots.some(isInside)) {
-    console.warn(`[bascik] warning: exec script "${scriptPath}" is located inside source directories (pages/components). Keep exec scripts in scripts/ or project root.`);
+    console.warn(
+      `[bascik] warning: exec script "${scriptPath}" is located inside source directories (pages/components). Keep exec scripts in scripts/ or project root.`,
+    );
   }
 
   const childEnv: Record<string, string> = {
     ...process.env,
-    BASCIK_BUILD: BascikConfig.isBuild ? '1' : '0',
+    BASCIK_BUILD: BascikConfig.isBuild ? "1" : "0",
     BASCIK_PAGES_DIR: pagesDir,
-    BASCIK_OUT_DIR: resolve(process.cwd(), BascikConfig.directory?.out ?? 'dist'),
-    BASCIK_BASE: BascikConfig.base ?? '/',
+    BASCIK_OUT_DIR: resolve(
+      process.cwd(),
+      BascikConfig.directory?.out ?? "dist",
+    ),
+    BASCIK_BASE: BascikConfig.base ?? "/",
     ...(siteUrl ? { BASCIK_SITE_URL: siteUrl } : {}),
     ...(entryObj.env ?? {}),
   };
 
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(process.execPath, [scriptPath, ...args], {
-      stdio: 'inherit',
+      stdio: "inherit",
       cwd,
       env: childEnv,
     });
@@ -188,7 +214,7 @@ const spawnScript = (entry: ExecEntry | string, options?: ExecOptions): Promise<
       record.timeoutTimer = clock.setTimeout(() => {
         record.timeoutTimer = null;
         try {
-          child.kill('SIGTERM');
+          child.kill("SIGTERM");
         } catch {
           // ignore
         }
@@ -197,38 +223,46 @@ const spawnScript = (entry: ExecEntry | string, options?: ExecOptions): Promise<
           record.escalationTimer = null;
           if (activeChildren.has(child)) {
             try {
-              child.kill('SIGKILL');
+              child.kill("SIGKILL");
             } catch {
               // ignore
             }
           }
         }, 500);
 
-        if (typeof (record.escalationTimer as any)?.unref === 'function') {
+        if (typeof (record.escalationTimer as any)?.unref === "function") {
           (record.escalationTimer as any).unref();
         }
 
         if (!record.settled) {
           record.settled = true;
-          rejectPromise(new Error(`[bascik] exec "${scriptPath}" timed out after ${timeoutMs}ms`));
+          rejectPromise(
+            new Error(
+              `[bascik] exec "${scriptPath}" timed out after ${timeoutMs}ms`,
+            ),
+          );
         }
       }, timeoutMs);
     }
 
-    child.on('close', (code) => {
+    child.on("close", (code) => {
       cleanupRecord();
       if (record.settled) return;
       record.settled = true;
       const elapsed = performance.now() - start;
       if (code === 0) {
-        logInfo(`${colorOut.green("(completed)")} exec: ${scriptPath} ${colorOut.dim(`in ${formatDuration(elapsed)}`)}`);
+        logInfo(
+          `${colorOut.green("(completed)")} exec: ${scriptPath} ${colorOut.dim(`in ${formatDuration(elapsed)}`)}`,
+        );
         resolvePromise(elapsed);
       } else {
-        rejectPromise(new Error(`[bascik] exec "${scriptPath}" exited with code ${code}`));
+        rejectPromise(
+          new Error(`[bascik] exec "${scriptPath}" exited with code ${code}`),
+        );
       }
     });
 
-    child.on('error', (err) => {
+    child.on("error", (err) => {
       cleanupRecord();
       if (record.settled) return;
       record.settled = true;
@@ -238,10 +272,13 @@ const spawnScript = (entry: ExecEntry | string, options?: ExecOptions): Promise<
 };
 
 /** Run exec entries matching the specified phase sequentially in array order. */
-export const runExecPhase = async (phase: ExecPhase, options?: ExecOptions): Promise<{ count: number; totalElapsed: number }> => {
+export const runExecPhase = async (
+  phase: ExecPhase,
+  options?: ExecOptions,
+): Promise<{ count: number; totalElapsed: number }> => {
   const entries = BascikConfig.pipeline?.exec;
   if (!entries?.length) return { count: 0, totalElapsed: 0 };
-  const matching = entries.filter((e) => (e.phase ?? 'pre') === phase);
+  const matching = entries.filter((e) => (e.phase ?? "pre") === phase);
   if (!matching.length) return { count: 0, totalElapsed: 0 };
 
   const start = performance.now();
@@ -275,17 +312,27 @@ export type ParallelExecHandle = Promise<void> & { tasks: ParallelExecTask[] };
  * `startExecDev` observes each settlement and reports failures without
  * scheduling compilation.
  */
-export const startExecParallel = (options?: ExecOptions): ParallelExecHandle => {
+export const startExecParallel = (
+  options?: ExecOptions,
+): ParallelExecHandle => {
   const entries = BascikConfig.pipeline?.exec;
-  const matching = entries?.length ? entries.filter((e) => e.phase === 'parallel') : [];
+  const matching = entries?.length
+    ? entries.filter((e) => e.phase === "parallel")
+    : [];
   const tasks: ParallelExecTask[] = matching.map((entry) => ({
     entry,
     promise: runScript(entry, options),
   }));
-  const joined = Promise.allSettled(tasks.map((task) => task.promise)).then(results => {
-    const failures = results.filter(result => result.status === 'rejected');
-    if (failures.length) throw new AggregateError(failures.map(result => result.reason), `Parallel exec failed: ${failures.map(result => String(result.reason)).join('; ')}`);
-  });
+  const joined = Promise.allSettled(tasks.map((task) => task.promise)).then(
+    (results) => {
+      const failures = results.filter((result) => result.status === "rejected");
+      if (failures.length)
+        throw new AggregateError(
+          failures.map((result) => result.reason),
+          `Parallel exec failed: ${failures.map((result) => String(result.reason)).join("; ")}`,
+        );
+    },
+  );
   // Observe immediately across the lazy dev-server import gap. Keep the
   // original rejected handle for build callers and per-task dev reporting.
   void joined.catch(() => undefined);
@@ -311,17 +358,17 @@ const publishParallelOutcomes = (handle: ParallelExecHandle): void => {
     const paths: string[] = [];
     promise
       .then(() => {
-        eventEmitter.emit('exec-completed', { entry, paths });
+        eventEmitter.emit("exec-completed", { entry, paths });
       })
       .catch((err) => {
         // Single stderr report per failure. The `exec-failed` -> `build-error`
         // path only broadcasts an SSE frame to browser overlays (sse.ts); it
         // does not write to stderr, so this is the one terminal line.
-        console.error('[bascik] exec error:', err);
-        eventEmitter.emit('exec-failed', { entry, paths, error: err });
+        console.error("[bascik] exec error:", err);
+        eventEmitter.emit("exec-failed", { entry, paths, error: err });
         // A parallel script has no caller to reject to once boot has moved on,
         // so `pipeline.onExecError: 'error'` ends the dev session here.
-        if (getExecErrorAction() === 'error') stopAfterExecFailure(err);
+        if (getExecErrorAction() === "error") stopAfterExecFailure(err);
       });
   }
 };

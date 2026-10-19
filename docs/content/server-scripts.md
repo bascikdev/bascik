@@ -18,7 +18,7 @@ Tag any `<script>` block with `data-bascik-server` to run it at request time on 
 ```html
 <script data-bascik-server>
   export default function (request) {
-    const name = request.headers.get('x-display-name') ?? 'Guest';
+    const name = request.headers.get("x-display-name") ?? "Guest";
     return `<p class="greeting">Hello, ${name}!</p>`;
   }
 </script>
@@ -35,7 +35,7 @@ This recording shows a real dev server running a server script that lives in a c
 Every server script handler uses the standard signature:
 
 ```ts
-export default async function (request, context, { signal })
+export default async function (request, context, { signal });
 ```
 
 - `request`: A standard WHATWG [`Request`](https://developer.mozilla.org/en-US/docs/Web/API/Request), identical to API routes. Access `request.method`, `new URL(request.url).pathname`, `new URL(request.url).searchParams.get('page')`, or `request.headers.get('cookie')`. Note that `request.url` carries the real scheme and host of the incoming request. See MDN documentation for [`Request`](https://developer.mozilla.org/en-US/docs/Web/API/Request), [`Headers`](https://developer.mozilla.org/en-US/docs/Web/API/Headers), [`URL`](https://developer.mozilla.org/en-US/docs/Web/API/URL), and [`URLSearchParams`](https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams).
@@ -46,9 +46,11 @@ export default async function (request, context, { signal })
 <script data-bascik-server>
   export default function (request) {
     const url = new URL(request.url);
-    const page = parseInt(url.searchParams.get('page') ?? '1', 10);
-    const session = request.headers.get('cookie')?.match(/session=([^;]+)/)?.[1];
-    return `<p>Page ${page} &bull; Session: ${session ?? 'anonymous'}</p>`;
+    const page = parseInt(url.searchParams.get("page") ?? "1", 10);
+    const session = request.headers
+      .get("cookie")
+      ?.match(/session=([^;]+)/)?.[1];
+    return `<p>Page ${page} &bull; Session: ${session ?? "anonymous"}</p>`;
   }
 </script>
 ```
@@ -59,16 +61,16 @@ The return value of a server script is HTML by contract. Auto-escaping it would 
 
 Which interpolations need escaping, and how, depends on where each one lands:
 
-| Sink | Correct treatment |
-| :--- | :--- |
-| Text between tags | HTML entity escape (`& < > " '`) |
-| Quoted attribute value (`title="..."`) | HTML entity escape |
-| Unquoted attribute (`class=...`) | Never do this; quote the attribute |
-| `href`, `src`, `action` | Validate the URL: `new URL(v, base)` and allow-list `http:` / `https:`. Entity escaping does not stop `javascript:` |
-| Inline `<script>` body | Never interpolate untrusted data. Put it in a `data-*` attribute and read it from a static client script |
-| `on*` event handler attributes | Never interpolate untrusted data |
-| `<style>` body or `style=""` | Never interpolate untrusted data |
-| Already-rendered HTML (Markdown output, CMS rich text) | An HTML sanitizer at the data layer; entity escaping would destroy it |
+| Sink                                                   | Correct treatment                                                                                                   |
+| :----------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------ |
+| Text between tags                                      | HTML entity escape (`& < > " '`)                                                                                    |
+| Quoted attribute value (`title="..."`)                 | HTML entity escape                                                                                                  |
+| Unquoted attribute (`class=...`)                       | Never do this; quote the attribute                                                                                  |
+| `href`, `src`, `action`                                | Validate the URL: `new URL(v, base)` and allow-list `http:` / `https:`. Entity escaping does not stop `javascript:` |
+| Inline `<script>` body                                 | Never interpolate untrusted data. Put it in a `data-*` attribute and read it from a static client script            |
+| `on*` event handler attributes                         | Never interpolate untrusted data                                                                                    |
+| `<style>` body or `style=""`                           | Never interpolate untrusted data                                                                                    |
+| Already-rendered HTML (Markdown output, CMS rich text) | An HTML sanitizer at the data layer; entity escaping would destroy it                                               |
 
 A framework cannot know which row a given `${x}` is in. A single escaper function is therefore only correct for the first two rows, and shipping it as "the" helper teaches authors that one function makes output safe.
 
@@ -77,8 +79,13 @@ Write this five-line escaper once in your project or install an npm escaper such
 ```ts
 // src/lib/server.ts
 export const escape = (value: unknown): string =>
-  String(value ?? '').replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+  String(value ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ]!,
+  );
 ```
 
 ### Trusted vs untrusted data
@@ -96,10 +103,10 @@ Server script execution is bounded by `scripts.timeout` in `bascik.config.ts`. P
 
 ```html
 <script data-bascik-server>
-  import { escape } from '@/lib/server.ts';
+  import { escape } from "@/lib/server.ts";
 
   export default async function (request, context, { signal }) {
-    const res = await fetch('https://api.example.com/user', { signal });
+    const res = await fetch("https://api.example.com/user", { signal });
     const data = await res.json();
     return `<div class="user-profile">User: ${escape(data.name)}</div>`;
   }
@@ -115,11 +122,16 @@ Create a shared helper file such as `src/lib/server.ts` or `lib/server.mjs` for 
 ```ts
 // src/lib/server.ts
 export const escape = (value: unknown): string =>
-  String(value ?? '').replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+  String(value ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ]!,
+  );
 
 export function getSessionUser(request: Request): string {
-  return request.headers.get('x-user-name') ?? 'Guest';
+  return request.headers.get("x-user-name") ?? "Guest";
 }
 ```
 
@@ -127,7 +139,7 @@ Import it from any server script using the `@/` import root alias (see [Script I
 
 ```html
 <script data-bascik-server>
-  import { escape, getSessionUser } from '@/lib/server.ts';
+  import { escape, getSessionUser } from "@/lib/server.ts";
 
   export default function (request) {
     const user = escape(getSessionUser(request));
@@ -144,15 +156,19 @@ Use `new URL(request.url).searchParams` to page through database records without
 
 ```html
 <script data-bascik-server>
-  import Database from 'better-sqlite3';
-  import { escape } from '@/lib/server.ts';
+  import Database from "better-sqlite3";
+  import { escape } from "@/lib/server.ts";
 
   export default function (request) {
     const url = new URL(request.url);
-    const page = Math.max(1, Number(url.searchParams.get('page') ?? 1));
-    const db = new Database('./data/app.db');
-    const items = db.prepare('SELECT title FROM articles ORDER BY created_at DESC LIMIT 20 OFFSET ?').all((page - 1) * 20);
-    const list = items.map(a => `<li>${escape(a.title)}</li>`).join('');
+    const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
+    const db = new Database("./data/app.db");
+    const items = db
+      .prepare(
+        "SELECT title FROM articles ORDER BY created_at DESC LIMIT 20 OFFSET ?",
+      )
+      .all((page - 1) * 20);
+    const list = items.map((a) => `<li>${escape(a.title)}</li>`).join("");
     return `<ul>${list}</ul>`;
   }
 </script>
@@ -164,15 +180,21 @@ Use `new URL(request.url).searchParams` to page through database records without
 
 ```html
 <script data-bascik-server>
-  import Database from 'better-sqlite3';
-  import { escape } from '@/lib/server.ts';
+  import Database from "better-sqlite3";
+  import { escape } from "@/lib/server.ts";
 
   export default function (request) {
-    const sessionId = request.headers.get('cookie')?.match(/session=([^;]+)/)?.[1];
-    if (!sessionId) return '<p>Not signed in.</p>';
-    const db = new Database('./data/app.db');
-    const row = db.prepare('SELECT name FROM users WHERE session_id = ?').get(sessionId);
-    return row ? `<p>Hello, ${escape(row.name)}</p>` : '<p>Session expired.</p>';
+    const sessionId = request.headers
+      .get("cookie")
+      ?.match(/session=([^;]+)/)?.[1];
+    if (!sessionId) return "<p>Not signed in.</p>";
+    const db = new Database("./data/app.db");
+    const row = db
+      .prepare("SELECT name FROM users WHERE session_id = ?")
+      .get(sessionId);
+    return row
+      ? `<p>Hello, ${escape(row.name)}</p>`
+      : "<p>Session expired.</p>";
   }
 </script>
 ```
@@ -183,14 +205,16 @@ Top-level `await` and ESM imports work seamlessly:
 
 ```html
 <script data-bascik-server>
-  import pg from 'pg';
-  import { escape } from '@/lib/server.ts';
+  import pg from "pg";
+  import { escape } from "@/lib/server.ts";
 
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
   export default async function (request, context, { signal }) {
-    const { rows } = await pool.query('SELECT title FROM posts ORDER BY date DESC LIMIT 10');
-    return `<ul>${rows.map(r => `<li>${escape(r.title)}</li>`).join('')}</ul>`;
+    const { rows } = await pool.query(
+      "SELECT title FROM posts ORDER BY date DESC LIMIT 10",
+    );
+    return `<ul>${rows.map((r) => `<li>${escape(r.title)}</li>`).join("")}</ul>`;
   }
 </script>
 ```
@@ -202,20 +226,20 @@ Top-level `await` and ESM imports work seamlessly:
 ```html
 <!-- runs once at build time: static navigation -->
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
+  import { readFile } from "node:fs/promises";
 
   export default async function () {
-    const links = JSON.parse(await readFile('./data/nav.json', 'utf8'));
-    return links.map(l => `<a href="${l.href}">${l.label}</a>`).join('');
+    const links = JSON.parse(await readFile("./data/nav.json", "utf8"));
+    return links.map((l) => `<a href="${l.href}">${l.label}</a>`).join("");
   }
 </script>
 
 <!-- runs on every request: personalized greeting -->
 <script data-bascik-server>
-  import { escape } from '@/lib/server.ts';
+  import { escape } from "@/lib/server.ts";
 
   export default function (request) {
-    const user = escape(request.headers.get('x-display-name') ?? 'Guest');
+    const user = escape(request.headers.get("x-display-name") ?? "Guest");
     return `<p class="greeting">Hello, ${user}</p>`;
   }
 </script>
@@ -230,18 +254,18 @@ This parallels Next.js `getServerSideProps` client hydration, but emits clean st
 ```html
 <!-- src/pages/dashboard.html -->
 <script data-bascik-server>
-  import { getUserFromRequest } from '@/lib/auth.ts';
+  import { getUserFromRequest } from "@/lib/auth.ts";
 
   export default async function (request) {
     const user = await getUserFromRequest(request);
     const session = {
       id: user?.id ?? null,
-      name: user?.name ?? 'Guest',
-      roles: user?.roles ?? []
+      name: user?.name ?? "Guest",
+      roles: user?.roles ?? [],
     };
 
     // Escape < to prevent any closing script tag breakout
-    const safeJson = JSON.stringify(session).replaceAll('<', () => '\\u003c');
+    const safeJson = JSON.stringify(session).replaceAll("<", () => "\\u003c");
     return `<script type="application/json" id="session-data">${safeJson}<\/script>`;
   }
 </script>
@@ -249,11 +273,11 @@ This parallels Next.js `getServerSideProps` client hydration, but emits clean st
 <script>
   // Browser client script reads the per-request session
   const session = JSON.parse(
-    document.getElementById('session-data').textContent
+    document.getElementById("session-data").textContent,
   );
 
   if (session.id) {
-    console.log('Logged in as', session.name);
+    console.log("Logged in as", session.name);
   }
 </script>
 ```
@@ -264,13 +288,13 @@ This parallels Next.js `getServerSideProps` client hydration, but emits clean st
 
 Both `data-bascik-server` script blocks and [API Routes](/api-routes) run in-process through Bascik's script registry at request time, receiving the same `Request` object, but they serve different architectural purposes:
 
-| Feature | Server Scripts (`data-bascik-server`) | API Routes (`src/api/*.ts`) |
-| :--- | :--- | :--- |
-| **Destination** | Injected directly into HTML pages | Standalone JSON, streaming, or binary HTTP endpoints |
-| **Methods** | GET only (page render) | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD` |
-| **Contract** | Takes WHATWG `Request`, returns HTML string | Takes WHATWG `Request`, returns WHATWG `Response` |
-| **Response Control** | Cannot set HTTP status code or custom headers | Full control over status codes, response headers, and cookies |
-| **Use Cases** | Page personalization, user greetings, auth state in UI | Form submissions, webhook receivers, authenticated REST APIs |
+| Feature              | Server Scripts (`data-bascik-server`)                  | API Routes (`src/api/*.ts`)                                   |
+| :------------------- | :----------------------------------------------------- | :------------------------------------------------------------ |
+| **Destination**      | Injected directly into HTML pages                      | Standalone JSON, streaming, or binary HTTP endpoints          |
+| **Methods**          | GET only (page render)                                 | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`    |
+| **Contract**         | Takes WHATWG `Request`, returns HTML string            | Takes WHATWG `Request`, returns WHATWG `Response`             |
+| **Response Control** | Cannot set HTTP status code or custom headers          | Full control over status codes, response headers, and cookies |
+| **Use Cases**        | Page personalization, user greetings, auth state in UI | Form submissions, webhook receivers, authenticated REST APIs  |
 
 Use `data-bascik-server` when rendering HTML into the document flow. Use API routes when returning data, receiving client submissions, or controlling response headers.
 
@@ -286,12 +310,13 @@ Use `data-bascik-server` when rendering HTML into the document flow. Use API rou
 > **Next:** See [Stream Scripts](/stream-scripts) for chunked streaming scripts (`data-bascik-stream`), or consult the [Production Server](/production-server) reference for server runtime configuration.
 
 <!-- demo:source-usage -->
+
 ```html
 <script data-bascik-server>
-  import { escape } from '@/lib/server.ts';
+  import { escape } from "@/lib/server.ts";
 
   export default function (request) {
-    const name = escape(request.headers.get('x-display-name') ?? 'Guest');
+    const name = escape(request.headers.get("x-display-name") ?? "Guest");
     return `
       <aside class="alert-box">
         <strong class="alert-box-title">Session Active</strong>
@@ -303,6 +328,7 @@ Use `data-bascik-server` when rendering HTML into the document flow. Use API rou
 ```
 
 <!-- demo:output-html -->
+
 ```html
 <!-- The script tag is replaced by its returned markup per request -->
 <aside class="alert-box">

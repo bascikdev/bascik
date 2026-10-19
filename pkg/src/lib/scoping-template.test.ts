@@ -13,7 +13,11 @@ vi.mock("./config.js", () => ({
       preserve: ["code"],
       deduplicateCss: true,
     },
-    directory: { pages: "src/pages", components: ["src/components"], out: "dist" },
+    directory: {
+      pages: "src/pages",
+      components: ["src/components"],
+      out: "dist",
+    },
     isBuild: true,
   },
   shouldLog: vi.fn(() => true),
@@ -39,16 +43,26 @@ const card = (): BascikComponent => ({
   fileContent: `<div id="root" class="card"><label for="field">L</label><input id="field" name="q">
 <button class="toggle" aria-controls="root">t</button></div>
 <script>const root = document.getElementById("root"); root.querySelector(".toggle").classList.add("on");</script>`,
-  cssFileContent: "#root { margin: 0 } .card { padding: 0 } .toggle { color: red }",
+  cssFileContent:
+    "#root { margin: 0 } .card { padding: 0 } .toggle { color: red }",
 });
 
-const ids = ["1a2b3c4d", "5e6f7a8b", "9c0d1e2f", "3a4b5c6d", "7e8f9a0b", "c1d2e3f4"];
+const ids = [
+  "1a2b3c4d",
+  "5e6f7a8b",
+  "9c0d1e2f",
+  "3a4b5c6d",
+  "7e8f9a0b",
+  "c1d2e3f4",
+];
 
 const realFor = (component: BascikComponent, instanceId: string) =>
   internals.snapshotResult(runScopingPipeline({ ...component }, instanceId));
 
 const scopedFor = (component: BascikComponent, instanceId: string) =>
-  internals.snapshotResult(scopeComponentInstance({ ...component }, instanceId));
+  internals.snapshotResult(
+    scopeComponentInstance({ ...component }, instanceId),
+  );
 
 beforeEach(() => {
   clearScopingTemplates();
@@ -64,8 +78,10 @@ afterEach(() => {
 describe("scopeComponentInstance", () => {
   for (const identifiers of [true, false]) {
     it(`records, verifies twice, then reuses, always matching the real pipeline (identifiers ${identifiers})`, () => {
-      (BascikConfig.minify as { identifiers: boolean }).identifiers = identifiers;
-      for (const id of ids) expect(scopedFor(card(), id)).toEqual(realFor(card(), id));
+      (BascikConfig.minify as { identifiers: boolean }).identifiers =
+        identifiers;
+      for (const id of ids)
+        expect(scopedFor(card(), id)).toEqual(realFor(card(), id));
       expect(stats.recorded).toBe(1);
       expect(stats.verified).toBe(2);
       expect(stats.reused).toBe(ids.length - 3);
@@ -84,7 +100,10 @@ describe("scopeComponentInstance", () => {
   });
 
   it("keeps a separate template per distinct input", () => {
-    const other = { ...card(), fileContent: card().fileContent.replace("card", "panel") };
+    const other = {
+      ...card(),
+      fileContent: card().fileContent.replace("card", "panel"),
+    };
     for (const id of ids) {
       expect(scopedFor(card(), id)).toEqual(realFor(card(), id));
       expect(scopedFor(other, id)).toEqual(realFor(other, id));
@@ -104,15 +123,21 @@ describe("scopeComponentInstance", () => {
       const real = runScopingPipeline({ ...component }, id);
       expect(scoped.requiresPerInstanceCss).toBe(true);
       expect(scoped.scopedIdNames).toEqual(real.scopedIdNames);
-      expect(internals.snapshotResult(scoped)).toEqual(internals.snapshotResult(real));
+      expect(internals.snapshotResult(scoped)).toEqual(
+        internals.snapshotResult(real),
+      );
     }
     expect(stats.reused).toBe(ids.length - 3);
   });
 
   it("never reuses a run that wrote to the console", () => {
-    vi.spyOn(console, "warn").mockImplementation(() => { });
-    const component = { ...card(), fileContent: `<p data-bascik-preserve="bogus" class="card">x</p>` };
-    for (const id of ids) expect(scopedFor(component, id)).toEqual(realFor(component, id));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const component = {
+      ...card(),
+      fileContent: `<p data-bascik-preserve="bogus" class="card">x</p>`,
+    };
+    for (const id of ids)
+      expect(scopedFor(component, id)).toEqual(realFor(component, id));
     expect(stats.rejected).toBe(1);
     expect(stats.reused).toBe(0);
     // Every instance still warns, exactly as without templates.
@@ -120,25 +145,38 @@ describe("scopeComponentInstance", () => {
   });
 
   it("never reuses a run that planned a CSS @import", () => {
-    vi.spyOn(console, "warn").mockImplementation(() => { });
-    const component = { ...card(), cssFileContent: `@import "./missing.css";\n.card { color: red }` };
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const component = {
+      ...card(),
+      cssFileContent: `@import "./missing.css";\n.card { color: red }`,
+    };
     for (const id of ids) scopedFor(component, id);
     expect(stats.reused).toBe(0);
     expect(stats.rejected).toBe(1);
   });
 
   it("never reuses when the instance ID occurs in the authored input", () => {
-    const component = { ...card(), fileContent: `${card().fileContent}<!-- ${ids[0]} -->` };
-    for (const id of ids) expect(scopedFor(component, id)).toEqual(realFor(component, id));
+    const component = {
+      ...card(),
+      fileContent: `${card().fileContent}<!-- ${ids[0]} -->`,
+    };
+    for (const id of ids)
+      expect(scopedFor(component, id)).toEqual(realFor(component, id));
     expect(stats.rejected).toBe(1);
     expect(stats.reused).toBe(0);
   });
 
   it("uses the real pipeline for an instance whose generated name occurs in the authored input", () => {
     const later = ids[5];
-    const collidingName = getAttributeNameHash(`bascik__my-card__${later}__root`);
-    const component = { ...card(), fileContent: `${card().fileContent}<!-- ${collidingName} -->` };
-    for (const id of ids) expect(scopedFor(component, id)).toEqual(realFor(component, id));
+    const collidingName = getAttributeNameHash(
+      `bascik__my-card__${later}__root`,
+    );
+    const component = {
+      ...card(),
+      fileContent: `${card().fileContent}<!-- ${collidingName} -->`,
+    };
+    for (const id of ids)
+      expect(scopedFor(component, id)).toEqual(realFor(component, id));
     // ids[3] and ids[4] reuse; ids[5] collides and runs the real pipeline.
     expect(stats.reused).toBe(2);
   });
@@ -147,7 +185,8 @@ describe("scopeComponentInstance", () => {
     scopedFor(card(), ids[0]);
     const template = internals.templateFor(card())!;
     template.fileContent.parts[0] = `<!-- wrong -->${template.fileContent.parts[0]}`;
-    for (const id of ids.slice(1)) expect(scopedFor(card(), id)).toEqual(realFor(card(), id));
+    for (const id of ids.slice(1))
+      expect(scopedFor(card(), id)).toEqual(realFor(card(), id));
     expect(stats.rejected).toBe(1);
     expect(stats.reused).toBe(0);
     expect(internals.templateFor(card())).toBeNull();
@@ -158,17 +197,24 @@ describe("scopeComponentInstance", () => {
     const template = internals.templateFor(card())!;
     template.fileContent.parts[0] = `<!-- wrong -->${template.fileContent.parts[0]}`;
     process.env.BASCIK_VERIFY_SCOPING_TEMPLATES = "1";
-    expect(() => scopedFor(card(), ids[3])).toThrow(/scoping template mismatch for <my-card>.*fileContent/);
+    expect(() => scopedFor(card(), ids[3])).toThrow(
+      /scoping template mismatch for <my-card>.*fileContent/,
+    );
   });
 
   it("passes verify mode for correct reuse", () => {
     process.env.BASCIK_VERIFY_SCOPING_TEMPLATES = "1";
-    for (const id of ids) expect(scopedFor(card(), id)).toEqual(realFor(card(), id));
+    for (const id of ids)
+      expect(scopedFor(card(), id)).toEqual(realFor(card(), id));
     expect(stats.reused).toBe(ids.length - 3);
   });
 
   it("bounds the number of cached templates", () => {
-    for (let n = 0; n < 600; n++) scopedFor({ ...card(), fileContent: `<p class="c${n}">${n}</p>` }, ids[0]);
+    for (let n = 0; n < 600; n++)
+      scopedFor(
+        { ...card(), fileContent: `<p class="c${n}">${n}</p>` },
+        ids[0],
+      );
     expect(internals.entryCount()).toBeLessThanOrEqual(512);
   });
 
@@ -183,7 +229,10 @@ describe("scopeComponentInstance", () => {
 // The cache key must include every input the pipeline reads, and the stored
 // result every field it writes. Recording proxies over real components pin
 // SCOPING_INPUT_FIELDS, SCOPING_RESULT_FIELDS, and SCOPING_CONFIG_KEYS.
-const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+const repositoryRoot = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
 const corpusInputs = (): BascikComponent[] => {
   const files: string[] = [];
   for (const dir of ["docs/src/components", "pkg/e2e/src/components"]) {
@@ -195,12 +244,18 @@ const corpusInputs = (): BascikComponent[] => {
   }
   return files.map((htmlPath) => {
     const cssPath = htmlPath.replace(/\.html$/, ".css");
-    const name = htmlPath.replace(/\\/g, "/").split("/").pop()!.replace(/\.html$/, "");
+    const name = htmlPath
+      .replace(/\\/g, "/")
+      .split("/")
+      .pop()!
+      .replace(/\.html$/, "");
     return {
       name,
       fileName: htmlPath,
       fileContent: readFileSync(htmlPath, "utf8"),
-      ...(existsSync(cssPath) ? { cssFileContent: readFileSync(cssPath, "utf8") } : {}),
+      ...(existsSync(cssPath)
+        ? { cssFileContent: readFileSync(cssPath, "utf8") }
+        : {}),
     };
   });
 };
@@ -212,9 +267,10 @@ describe("scoping pipeline inputs and outputs", () => {
     let enumerated = false;
     const inputs = [...corpusInputs(), card()];
     expect(inputs.length).toBeGreaterThan(50);
-    vi.spyOn(console, "warn").mockImplementation(() => { });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     for (const identifiers of [true, false]) {
-      (BascikConfig.minify as { identifiers: boolean }).identifiers = identifiers;
+      (BascikConfig.minify as { identifiers: boolean }).identifiers =
+        identifiers;
       for (const input of inputs) {
         const target = { ...input };
         const tracked = new Proxy(target, {
@@ -239,15 +295,25 @@ describe("scoping pipeline inputs and outputs", () => {
       }
     }
     expect(enumerated).toBe(false);
-    expect([...reads].filter((key) => !(SCOPING_INPUT_FIELDS as readonly string[]).includes(key))).toEqual([]);
-    expect([...writes].filter((key) => !(SCOPING_RESULT_FIELDS as readonly string[]).includes(key))).toEqual([]);
+    expect(
+      [...reads].filter(
+        (key) => !(SCOPING_INPUT_FIELDS as readonly string[]).includes(key),
+      ),
+    ).toEqual([]);
+    expect(
+      [...writes].filter(
+        (key) => !(SCOPING_RESULT_FIELDS as readonly string[]).includes(key),
+      ),
+    ).toEqual([]);
   });
 
   it("reads only the pinned config keys, and only identifiers from minify", () => {
     const config = BascikConfig as unknown as Record<string, unknown>;
     const topLevel = new Set<string>();
     const minifyReads = new Set<string>();
-    const originals = new Map(Object.keys(config).map((key) => [key, config[key]]));
+    const originals = new Map(
+      Object.keys(config).map((key) => [key, config[key]]),
+    );
     for (const [key, value] of originals) {
       Object.defineProperty(config, key, {
         configurable: true,
@@ -267,14 +333,24 @@ describe("scoping pipeline inputs and outputs", () => {
       });
     }
     try {
-      vi.spyOn(console, "warn").mockImplementation(() => { });
-      for (const input of [...corpusInputs(), card()]) runScopingPipeline({ ...input }, "1a2b3c4d");
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      for (const input of [...corpusInputs(), card()])
+        runScopingPipeline({ ...input }, "1a2b3c4d");
     } finally {
       for (const [key, value] of originals) {
-        Object.defineProperty(config, key, { configurable: true, enumerable: true, writable: true, value });
+        Object.defineProperty(config, key, {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value,
+        });
       }
     }
-    expect([...topLevel].filter((key) => !(SCOPING_CONFIG_KEYS as readonly string[]).includes(key))).toEqual([]);
+    expect(
+      [...topLevel].filter(
+        (key) => !(SCOPING_CONFIG_KEYS as readonly string[]).includes(key),
+      ),
+    ).toEqual([]);
     expect([...minifyReads]).toEqual(["identifiers"]);
   });
 
@@ -289,7 +365,10 @@ describe("scoping pipeline inputs and outputs", () => {
       { scopedIdNames: { root: "x" } },
       { requiresPerInstanceCss: true },
     ];
-    expect(variants.map((variant) => Object.keys(variant)[0]).sort()).toEqual([...SCOPING_INPUT_FIELDS].sort());
-    for (const variant of variants) expect(internals.inputKey({ ...base, ...variant })).not.toBe(key);
+    expect(variants.map((variant) => Object.keys(variant)[0]).sort()).toEqual(
+      [...SCOPING_INPUT_FIELDS].sort(),
+    );
+    for (const variant of variants)
+      expect(internals.inputKey({ ...base, ...variant })).not.toBe(key);
   });
 });

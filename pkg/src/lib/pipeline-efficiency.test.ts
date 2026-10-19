@@ -24,7 +24,11 @@ vi.mock("./config.js", () => ({
       preserve: ["code"],
       deduplicateCss: true,
     },
-    directory: { pages: "src/pages", components: ["src/components"], out: "dist" },
+    directory: {
+      pages: "src/pages",
+      components: ["src/components"],
+      out: "dist",
+    },
     isBuild: true,
   },
   shouldLog: vi.fn(() => true),
@@ -35,12 +39,12 @@ import {
   clearScopedCssCache,
   __scopedCssCacheStatsForTests,
 } from "./javascript.ts";
-import {
-  addElementClassesInHtml,
-  addIdClassesInHtml,
-} from "./styles.ts";
+import { addElementClassesInHtml, addIdClassesInHtml } from "./styles.ts";
 import { rewriteIdReferencesInHtml } from "./id-references.ts";
-import { runScopingPipeline, clearScopingTemplates } from "./scoping-template.ts";
+import {
+  runScopingPipeline,
+  clearScopingTemplates,
+} from "./scoping-template.ts";
 import { recursivelyTranspile } from "./processing.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
 
@@ -75,9 +79,15 @@ describe("pipeline loop consolidation & parity invariants", () => {
       expect(__scopedCssCacheStatsForTests.hits).toBe(2);
 
       // HTML IDs are per-instance
-      expect(inst1.fileContent).toContain(`id="bascik__id-card__11111111__card-root"`);
-      expect(inst2.fileContent).toContain(`id="bascik__id-card__22222222__card-root"`);
-      expect(inst3.fileContent).toContain(`id="bascik__id-card__33333333__card-root"`);
+      expect(inst1.fileContent).toContain(
+        `id="bascik__id-card__11111111__card-root"`,
+      );
+      expect(inst2.fileContent).toContain(
+        `id="bascik__id-card__22222222__card-root"`,
+      );
+      expect(inst3.fileContent).toContain(
+        `id="bascik__id-card__33333333__card-root"`,
+      );
 
       // ID-converted classes and element classes are injected onto all instances
       expect(inst1.fileContent).toContain("bascik__id-card__id__card-root");
@@ -107,10 +117,18 @@ describe("pipeline loop consolidation & parity invariants", () => {
 
       expect(inst1.requiresPerInstanceCss).toBe(true);
       expect(inst2.requiresPerInstanceCss).toBe(true);
-      expect(inst1.cssFileContent).toContain("url(#bascik__svg-badge__aaaa1111__grad)");
-      expect(inst2.cssFileContent).toContain("url(#bascik__svg-badge__bbbb2222__grad)");
-      expect(inst1.cssFileContent).toContain(".bascik__svg-badge__aaaa1111__id__box");
-      expect(inst2.cssFileContent).toContain(".bascik__svg-badge__bbbb2222__id__box");
+      expect(inst1.cssFileContent).toContain(
+        "url(#bascik__svg-badge__aaaa1111__grad)",
+      );
+      expect(inst2.cssFileContent).toContain(
+        "url(#bascik__svg-badge__bbbb2222__grad)",
+      );
+      expect(inst1.cssFileContent).toContain(
+        ".bascik__svg-badge__aaaa1111__id__box",
+      );
+      expect(inst2.cssFileContent).toContain(
+        ".bascik__svg-badge__bbbb2222__id__box",
+      );
     });
   });
 
@@ -139,11 +157,18 @@ describe("pipeline loop consolidation & parity invariants", () => {
       };
 
       const withScopedIds = html
-        .replace('<div id="root" class=', `<div id="${scopedIdNames.root}" class=`)
+        .replace(
+          '<div id="root" class=',
+          `<div id="${scopedIdNames.root}" class=`,
+        )
         .replace('id="title"', `id="${scopedIdNames.title}"`)
         .replace('id="second"', `id="${scopedIdNames.second}"`);
 
-      const afterElements = addElementClassesInHtml(withScopedIds, "comp", elements);
+      const afterElements = addElementClassesInHtml(
+        withScopedIds,
+        "comp",
+        elements,
+      );
       const afterBoth = addIdClassesInHtml(afterElements, ids, scopedIdNames);
 
       // Root div had class="wrapper", gets __el__div then __id__root
@@ -159,15 +184,22 @@ describe("pipeline loop consolidation & parity invariants", () => {
         `<p class="bascik__comp__el__p bascik__comp__id__second" id="${scopedIdNames.second}">`,
       );
       // Comment, script, and textarea contents are untouched
-      expect(afterBoth).toContain(`<!-- <div id="root"><p class="lead">comment</p></div> -->`);
-      expect(afterBoth).toContain(`<script>const tmpl = '<p id="root">in script</p>';</script>`);
-      expect(afterBoth).toContain(`<textarea><p id="root">in textarea</p></textarea>`);
+      expect(afterBoth).toContain(
+        `<!-- <div id="root"><p class="lead">comment</p></div> -->`,
+      );
+      expect(afterBoth).toContain(
+        `<script>const tmpl = '<p id="root">in script</p>';</script>`,
+      );
+      expect(afterBoth).toContain(
+        `<textarea><p id="root">in textarea</p></textarea>`,
+      );
     });
   });
 
   describe("3. rewriteIdReferencesInHtml single-pass attribute rewrite parity", () => {
     it("rewrites all ID reference attributes in a single tag scan without false matches in other attributes", () => {
-      const resolveId = (id: string) => (id === "target" || id === "desc" ? `scoped__${id}` : null);
+      const resolveId = (id: string) =>
+        id === "target" || id === "desc" ? `scoped__${id}` : null;
       const html = [
         `<label for="target" aria-describedby="desc external" data-note='for="target"'>Label</label>`,
         `<input id="target" form="target" list="target" aria-controls="target desc" aria-labelledby="target">`,
@@ -191,18 +223,23 @@ describe("pipeline loop consolidation & parity invariants", () => {
       expect(result).toContain(`<output for="scoped__target external"`);
       expect(result).toContain(`<td headers="scoped__target external">`);
       expect(result).toContain(`<a href="#scoped__target">`);
-      expect(result).toContain(`<use href="#scoped__target" xlink:href="#scoped__desc">`);
+      expect(result).toContain(
+        `<use href="#scoped__target" xlink:href="#scoped__desc">`,
+      );
       expect(result).toContain(`fill="url(#scoped__target)"`);
       expect(result).toContain(`stroke="url('#scoped__desc')"`);
       expect(result).toContain(`filter='url("#scoped__target")'`);
-      expect(result).toContain(`style="clip-path: url(#scoped__target); mask: url(#external)"`);
+      expect(result).toContain(
+        `style="clip-path: url(#scoped__target); mask: url(#external)"`,
+      );
     });
   });
 
   describe("4. CSS pipeline full feature parity under both plain and minified identifiers", () => {
     for (const minifyIdentifiers of [false, true]) {
       it(`scopes all CSS constructs identically (minify.identifiers = ${minifyIdentifiers})`, () => {
-        (BascikConfig.minify as { identifiers: boolean }).identifiers = minifyIdentifiers;
+        (BascikConfig.minify as { identifiers: boolean }).identifiers =
+          minifyIdentifiers;
         const comp: BascikComponent = {
           name: "full-css",
           fileName: "/project/src/components/full-css/full-css.html",
@@ -267,11 +304,15 @@ describe("pipeline loop consolidation & parity invariants", () => {
 
         const scoped = runScopingPipeline({ ...comp }, "abcd1234");
         // Verify preserved code block stays untouched
-        expect(scoped.fileContent).toContain(`<code class="preserve-me"><span id="keep-id" class="box">code</span></code>`);
+        expect(scoped.fileContent).toContain(
+          `<code class="preserve-me"><span id="keep-id" class="box">code</span></code>`,
+        );
         // Verify [id] selector is stripped
         expect(scoped.cssFileContent).not.toContain("[id]");
         // Verify string literal inside .active is untouched
-        expect(scoped.cssFileContent).toContain(`content: ".box #hero --brand-color fade-in"`);
+        expect(scoped.cssFileContent).toContain(
+          `content: ".box #hero --brand-color fade-in"`,
+        );
       });
     }
   });
@@ -291,29 +332,46 @@ describe("pipeline loop consolidation & parity invariants", () => {
         },
       };
 
-      const pageArb = fc.array(
-        fc.oneof(
-          fc.stringMatching(/^[a-zA-Z0-9 _-]{1,20}$/).map(
-            (text) => `<ui-badge data-bascik-prop-label="${text}"></ui-badge>`,
+      const pageArb = fc
+        .array(
+          fc.oneof(
+            fc
+              .stringMatching(/^[a-zA-Z0-9 _-]{1,20}$/)
+              .map(
+                (text) =>
+                  `<ui-badge data-bascik-prop-label="${text}"></ui-badge>`,
+              ),
+            fc
+              .tuple(
+                fc.stringMatching(/^[a-zA-Z0-9 _-]{1,15}$/),
+                fc.stringMatching(/^[a-zA-Z0-9 _-]{1,15}$/),
+              )
+              .map(
+                ([h, b]) =>
+                  `<ui-card><span data-bascik-slot="header">${h}</span><p>${b} <ui-badge data-bascik-prop-label="${h}"></ui-badge></p></ui-card>`,
+              ),
           ),
-          fc.tuple(
-            fc.stringMatching(/^[a-zA-Z0-9 _-]{1,15}$/),
-            fc.stringMatching(/^[a-zA-Z0-9 _-]{1,15}$/),
-          ).map(
-            ([h, b]) =>
-              `<ui-card><span data-bascik-slot="header">${h}</span><p>${b} <ui-badge data-bascik-prop-label="${h}"></ui-badge></p></ui-card>`,
-          ),
-        ),
-        { minLength: 1, maxLength: 8 },
-      ).map((items) => `<main>${items.join("\n")}</main>`);
+          { minLength: 1, maxLength: 8 },
+        )
+        .map((items) => `<main>${items.join("\n")}</main>`);
 
       fc.assert(
         fc.property(pageArb, (pageHtml) => {
           clearScopedCssCache();
           clearScopingTemplates();
-          const first = recursivelyTranspile(pageHtml, componentList, [], "src/pages/test.html");
+          const first = recursivelyTranspile(
+            pageHtml,
+            componentList,
+            [],
+            "src/pages/test.html",
+          );
           // Second run with warm caches must be byte-for-byte identical to cold run
-          const second = recursivelyTranspile(pageHtml, componentList, [], "src/pages/test.html");
+          const second = recursivelyTranspile(
+            pageHtml,
+            componentList,
+            [],
+            "src/pages/test.html",
+          );
           expect(second.transpiledHtmlBody).toBe(first.transpiledHtmlBody);
           expect(second.usedComponents.map((c) => c.cssFileContent)).toEqual(
             first.usedComponents.map((c) => c.cssFileContent),

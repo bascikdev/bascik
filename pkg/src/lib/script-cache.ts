@@ -23,8 +23,15 @@ export const isScriptCacheEnabledForPath = (filePath?: string): boolean => {
   }
 
   const normalized = filePath.replace(/\\/g, "/");
-  const projectRelative = relative(process.cwd(), normalized).replace(/\\/g, "/");
-  const pathsToMatch = [normalized, normalized.replace(/^\.?\//, ""), projectRelative];
+  const projectRelative = relative(process.cwd(), normalized).replace(
+    /\\/g,
+    "/",
+  );
+  const pathsToMatch = [
+    normalized,
+    normalized.replace(/^\.?\//, ""),
+    projectRelative,
+  ];
   const matchesPath = (pattern: string): boolean =>
     pathsToMatch.some((path) => matchesGlob(path, pattern));
 
@@ -67,7 +74,7 @@ export const pruneScriptCache = async (
           try {
             const st = await stat(fullPath);
             if (now - st.mtimeMs > SCRIPT_CACHE_TTL_MS) {
-              await unlink(fullPath).catch(() => { });
+              await unlink(fullPath).catch(() => {});
             }
           } catch {
             // ignore

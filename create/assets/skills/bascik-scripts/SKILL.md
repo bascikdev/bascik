@@ -13,13 +13,13 @@ Bascik runs Node.js code inside special `<script>` tags. Each is a standard ESM 
 
 ## Pick the right tag
 
-| Need | Tag | Runs |
-|---|---|---|
-| HTML from files, Markdown, JSON, or an API, the same for every visitor | `data-bascik-build` | Build and dev, once per page compile (cached) |
-| Many pages from one `[param].html` template | `data-bascik-routes` | Build and dev startup |
-| Markup that depends on the request (cookies, headers, query) | `data-bascik-server` | Every request, before the response starts |
-| A slow per-request block that should not delay the page shell | `data-bascik-stream` | Every request, streamed in document order |
-| A JSON or HTTP endpoint | `src/api/<name>.ts` exporting `GET`, `POST`, ... | Every request |
+| Need                                                                   | Tag                                              | Runs                                          |
+| ---------------------------------------------------------------------- | ------------------------------------------------ | --------------------------------------------- |
+| HTML from files, Markdown, JSON, or an API, the same for every visitor | `data-bascik-build`                              | Build and dev, once per page compile (cached) |
+| Many pages from one `[param].html` template                            | `data-bascik-routes`                             | Build and dev startup                         |
+| Markup that depends on the request (cookies, headers, query)           | `data-bascik-server`                             | Every request, before the response starts     |
+| A slow per-request block that should not delay the page shell          | `data-bascik-stream`                             | Every request, streamed in document order     |
+| A JSON or HTTP endpoint                                                | `src/api/<name>.ts` exporting `GET`, `POST`, ... | Every request                                 |
 
 Prefer build-time work. Server, stream, and API code needs `bascik --server` (or a serverless target such as Cloudflare); a plain static host cannot run it.
 
@@ -39,11 +39,11 @@ Prefer build-time work. Server, stream, and API code needs `bascik --server` (or
 
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
-  import { marked } from 'marked';
+  import { readFile } from "node:fs/promises";
+  import { marked } from "marked";
 
   export default async function () {
-    const md = await readFile('./content/intro.md', 'utf8');
+    const md = await readFile("./content/intro.md", "utf8");
     return marked(md);
   }
 </script>
@@ -63,16 +63,16 @@ Per-page values come from environment variables: `BASCIK_PAGE_PATH` (`/about`), 
 ```html
 <!-- src/pages/blog/[slug].html -->
 <script data-bascik-routes>
-  import { listPosts } from '@/lib/posts.ts';
+  import { listPosts } from "@/lib/posts.ts";
   export default async function () {
     const posts = await listPosts();
     return posts.map((post) => ({ params: { slug: post.slug }, data: post }));
   }
 </script>
 <script data-bascik-build>
-  import { escapeHtml } from '@/lib/escape.ts';
+  import { escapeHtml } from "@/lib/escape.ts";
   export default function () {
-    const { data } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+    const { data } = JSON.parse(process.env.BASCIK_ROUTE || "{}");
     return `<h1>${escapeHtml(data.title)}</h1>`;
   }
 </script>
@@ -84,9 +84,9 @@ Every bracket name needs a matching `params` key; a param cannot contain `/` (us
 
 ```html
 <script data-bascik-server>
-  import { escapeHtml } from '@/lib/escape.ts';
+  import { escapeHtml } from "@/lib/escape.ts";
   export default function (request, context, { signal }) {
-    const name = escapeHtml(request.headers.get('x-display-name') ?? 'Guest');
+    const name = escapeHtml(request.headers.get("x-display-name") ?? "Guest");
     return `<p>Welcome, ${name}!</p>`;
   }
 </script>
@@ -103,7 +103,8 @@ Every bracket name needs a matching `params` key; a param cannot contain `/` (us
 // src/api/contact.ts  ->  POST /api/contact
 export const POST = async (request: Request): Promise<Response> => {
   const data = await request.json();
-  if (!data.name) return Response.json({ error: 'name is required' }, { status: 400 });
+  if (!data.name)
+    return Response.json({ error: "name is required" }, { status: 400 });
   return Response.json({ ok: true }, { status: 201 });
 };
 ```
@@ -131,14 +132,14 @@ Details: `read-doc.mjs /how-to/markdown`, and the working blog in `add-example.m
 
 ## Look it up
 
-| How do I... | Read |
-|---|---|
-| Import helpers, use `@/`, or load TypeScript | `/script-imports` |
-| Read the page's own path or source, set per-page head tags | `/how-to/page-aware-scripts` |
-| Render Markdown, front matter, a collection | `/how-to/markdown` |
-| Bundle npm packages for the browser | `/how-to/bundling-npm-packages` |
-| Run scripts before or after the build | `/exec-scripts` |
-| Rebuild on changes outside pages and components | `/watch-paths` |
-| Test build and server scripts | `/testing/build-scripts`, `/testing/server-scripts` |
+| How do I...                                                | Read                                                |
+| ---------------------------------------------------------- | --------------------------------------------------- |
+| Import helpers, use `@/`, or load TypeScript               | `/script-imports`                                   |
+| Read the page's own path or source, set per-page head tags | `/how-to/page-aware-scripts`                        |
+| Render Markdown, front matter, a collection                | `/how-to/markdown`                                  |
+| Bundle npm packages for the browser                        | `/how-to/bundling-npm-packages`                     |
+| Run scripts before or after the build                      | `/exec-scripts`                                     |
+| Rebuild on changes outside pages and components            | `/watch-paths`                                      |
+| Test build and server scripts                              | `/testing/build-scripts`, `/testing/server-scripts` |
 
 `node <skills-dir>/bascik/scripts/read-doc.mjs <path>` prints any of these; `search-docs.mjs "server script timeout"` searches them.

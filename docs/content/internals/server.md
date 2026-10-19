@@ -244,18 +244,18 @@ Production mode enforces a sliding-window rate limit per IP address (by default 
 
 ## Development vs Production Comparison
 
-| Capability | Development (`bascik`) | Production (`bascik --server`) |
-| --- | --- | --- |
-| Entry Module | `transpile.ts` via `server-dev.ts` | `server-prod.ts` |
-| Shared Core | `server.ts` | `server.ts` |
-| Page Storage | `MemoryStore` in memory (`mem.ts`) | Pre-built files in `dist/` |
-| Brotli Quality | `BROTLI_MIN_QUALITY = 1` | `BROTLI_MAX_QUALITY = 11` |
-| HTTP Caching | Disabled (`http.httpCache: false`) | Enabled (`http.httpCache: true` with ETags & 304s) |
-| Rate Limiting | Disabled | Active (500 req / 10s per IP) |
-| Live Reload SSE | Injected & active | Stripped & inactive |
-| File Watchers | Active for assets, pages, components | Inactive |
-| Boot Page | Active during initial build | Disabled |
-| `data-bascik-server` Execution | On-demand per request | Per request |
+| Capability                     | Development (`bascik`)               | Production (`bascik --server`)                     |
+| ------------------------------ | ------------------------------------ | -------------------------------------------------- |
+| Entry Module                   | `transpile.ts` via `server-dev.ts`   | `server-prod.ts`                                   |
+| Shared Core                    | `server.ts`                          | `server.ts`                                        |
+| Page Storage                   | `MemoryStore` in memory (`mem.ts`)   | Pre-built files in `dist/`                         |
+| Brotli Quality                 | `BROTLI_MIN_QUALITY = 1`             | `BROTLI_MAX_QUALITY = 11`                          |
+| HTTP Caching                   | Disabled (`http.httpCache: false`)   | Enabled (`http.httpCache: true` with ETags & 304s) |
+| Rate Limiting                  | Disabled                             | Active (500 req / 10s per IP)                      |
+| Live Reload SSE                | Injected & active                    | Stripped & inactive                                |
+| File Watchers                  | Active for assets, pages, components | Inactive                                           |
+| Boot Page                      | Active during initial build          | Disabled                                           |
+| `data-bascik-server` Execution | On-demand per request                | Per request                                        |
 
 ## Shared Security & Reliability
 
@@ -282,13 +282,13 @@ Every incoming request (`req.path`) passes through a deterministic normalization
 
 Every response includes standard security headers:
 
-| Header | Value |
-| --- | --- |
-| `x-content-type-options` | `nosniff` |
-| `x-frame-options` | `SAMEORIGIN` |
-| `referrer-policy` | `strict-origin-when-cross-origin` |
-| `cross-origin-opener-policy` | `same-origin-allow-popups` |
-| `cross-origin-resource-policy` | `cross-origin` |
+| Header                         | Value                             |
+| ------------------------------ | --------------------------------- |
+| `x-content-type-options`       | `nosniff`                         |
+| `x-frame-options`              | `SAMEORIGIN`                      |
+| `referrer-policy`              | `strict-origin-when-cross-origin` |
+| `cross-origin-opener-policy`   | `same-origin-allow-popups`        |
+| `cross-origin-resource-policy` | `cross-origin`                    |
 
 ### Graceful shutdown sequence and health checks
 

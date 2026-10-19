@@ -25,12 +25,14 @@
       display.classList.add("updated");
     });
 
-    document.getElementById("check-global-btn").addEventListener("click", () => {
-      // window.leakVar should be undefined because var is inside IIFE
-      const globalVal = window.leakVar;
-      display.textContent = "window.leakVar = " + globalVal;
-      display.classList.add("updated");
-    });
+    document
+      .getElementById("check-global-btn")
+      .addEventListener("click", () => {
+        // window.leakVar should be undefined because var is inside IIFE
+        const globalVal = window.leakVar;
+        display.textContent = "window.leakVar = " + globalVal;
+        display.classList.add("updated");
+      });
 
     document.getElementById("read-local-btn").addEventListener("click", () => {
       display.textContent = "local leakVar = " + leakVar;
@@ -43,9 +45,11 @@
       display.classList.add("updated");
     });
 
-    document.getElementById("read-counter-btn").addEventListener("click", () => {
-      display.textContent = "counter = " + counter;
-      display.classList.add("updated");
-    });
+    document
+      .getElementById("read-counter-btn")
+      .addEventListener("click", () => {
+        display.textContent = "counter = " + counter;
+        display.classList.add("updated");
+      });
   </script>
 </div>

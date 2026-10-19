@@ -62,29 +62,29 @@ It reports an **error** for `var(--x)` with no declaration and no fallback, a **
 
 ## Examples to copy
 
-| Example | Shows |
-|---|---|
-| `tab-group` | Runtime ARIA IDs from a scoped ID, arrow keys, roving `tabindex`, static class names |
-| `modal-dialog` | `<dialog>` and `showModal()`, backdrop click, `html:has()` scroll lock |
-| `popover-menu` | No JavaScript: `popover`, implicit anchor, `position-area` in `@supports` |
-| `copy-button` | Prop bound to an attribute with `data-bascik-attr-*`, clipboard, `role="status"` |
-| `filter-list` | Slotted `<li>` items reached through a container, `pageshow` re-sync |
-| `contact-form` | Preserved field names, validation, JSON `fetch`, the API route behind it |
-| `theme-toggle`, `theme-init` | Theme with no flash, `aria-pressed`, a `theme-change` event |
+| Example                      | Shows                                                                                |
+| ---------------------------- | ------------------------------------------------------------------------------------ |
+| `tab-group`                  | Runtime ARIA IDs from a scoped ID, arrow keys, roving `tabindex`, static class names |
+| `modal-dialog`               | `<dialog>` and `showModal()`, backdrop click, `html:has()` scroll lock               |
+| `popover-menu`               | No JavaScript: `popover`, implicit anchor, `position-area` in `@supports`            |
+| `copy-button`                | Prop bound to an attribute with `data-bascik-attr-*`, clipboard, `role="status"`     |
+| `filter-list`                | Slotted `<li>` items reached through a container, `pageshow` re-sync                 |
+| `contact-form`               | Preserved field names, validation, JSON `fetch`, the API route behind it             |
+| `theme-toggle`, `theme-init` | Theme with no flash, `aria-pressed`, a `theme-change` event                          |
 
 `node <skills-dir>/bascik/scripts/add-example.mjs <name>`. Each page at `https://bascik.dev/example-components/<name>` explains how it works and how to adapt it.
 
 ## Look it up
 
-| How do I... | Read |
-|---|---|
-| Know exactly what CSS is scoped | `/scoped-styles`, `/compatibility#css-scoping` |
-| Know which DOM calls are rewritten | `/scoped-javascript`, `/compatibility#dom-selector-rewriting` |
-| Keep names literal (`preserve`, `data-bascik-preserve`) | `/preserve` |
-| Pick an interactivity pattern (fetch, storage, events, delegation, a11y) | `/how-to/interactivity` |
-| Set up tokens, dark mode, fonts, Tailwind | `/how-to/theming` |
-| Style a child component's root from its parent | `/attribute-inheritance` |
-| Use TypeScript in a component script | `/scoped-javascript#typescript-in-component-scripts` |
+| How do I...                                                              | Read                                                          |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| Know exactly what CSS is scoped                                          | `/scoped-styles`, `/compatibility#css-scoping`                |
+| Know which DOM calls are rewritten                                       | `/scoped-javascript`, `/compatibility#dom-selector-rewriting` |
+| Keep names literal (`preserve`, `data-bascik-preserve`)                  | `/preserve`                                                   |
+| Pick an interactivity pattern (fetch, storage, events, delegation, a11y) | `/how-to/interactivity`                                       |
+| Set up tokens, dark mode, fonts, Tailwind                                | `/how-to/theming`                                             |
+| Style a child component's root from its parent                           | `/attribute-inheritance`                                      |
+| Use TypeScript in a component script                                     | `/scoped-javascript#typescript-in-component-scripts`          |
 
 `node <skills-dir>/bascik/scripts/read-doc.mjs <path>` prints any of these.
 

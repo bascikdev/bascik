@@ -6,13 +6,13 @@ Official Bascik logos, colors, and usage rules for articles, talks, videos, podc
 
 The brand kit is a single zip containing a `bascik-press-kit/` folder. Every raster file is generated from the same two master SVGs, so all sizes stay consistent.
 
-| Folder | Contents | Use for |
-| --- | --- | --- |
-| `logo/svg` | Wordmark and mark in full color, black, and white | Web, print, slides, and anywhere SVG is supported |
-| `logo/png` | Full-color wordmark at 600, 1200, and 2400 px wide; mark at 256, 512, and 1024 px. Transparent backgrounds | Tools that do not accept SVG |
-| `avatar` | 1024 x 1024 profile images on dark and light backgrounds | Profile pictures on social networks and community sites |
-| `social` | Link preview image and profile banners | Article headers, repository previews, and social profiles |
-| `README.txt` | One-page summary of the rules on this page | Sharing the rules with collaborators |
+| Folder       | Contents                                                                                                   | Use for                                                   |
+| ------------ | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `logo/svg`   | Wordmark and mark in full color, black, and white                                                          | Web, print, slides, and anywhere SVG is supported         |
+| `logo/png`   | Full-color wordmark at 600, 1200, and 2400 px wide; mark at 256, 512, and 1024 px. Transparent backgrounds | Tools that do not accept SVG                              |
+| `avatar`     | 1024 x 1024 profile images on dark and light backgrounds                                                   | Profile pictures on social networks and community sites   |
+| `social`     | Link preview image and profile banners                                                                     | Article headers, repository previews, and social profiles |
+| `README.txt` | One-page summary of the rules on this page                                                                 | Sharing the rules with collaborators                      |
 
 ## Brand Guidelines
 
@@ -27,11 +27,11 @@ Bascik has two logos. Both are skewed lime tiles with an ink cursor, and both ar
 
 ### Color Versions
 
-| Version | Use on |
-| --- | --- |
+| Version                                        | Use on                                                          |
+| ---------------------------------------------- | --------------------------------------------------------------- |
 | Full color (lime tile, ink cursor and letters) | Everywhere by default, on dark, light, and mid-tone backgrounds |
-| Black | Only when a single ink is required, such as one-color print |
-| White | Only when a single ink is required on a dark stock |
+| Black                                          | Only when a single ink is required, such as one-color print     |
+| White                                          | Only when a single ink is required on a dark stock              |
 
 Use the full-color logo unless you are limited to one color. The black and white versions are a solid tile with the cursor and letters cut out, so the background shows through them. On a plain white background, give the full-color logo a little extra clear space so the lime tile reads as a shape.
 
@@ -43,12 +43,12 @@ The wordmark and the mark should always be at least 24 px tall in digital applic
 
 ## Colors
 
-| Name | Hex | RGB | Use |
-| --- | --- | --- | --- |
-| Lime | `#d3ff8d` | 211, 255, 141 | Logo tile and accents |
-| Ink | `#0e0f10` | 14, 15, 16 | Logo cursor and letters, and text on Lime |
-| Charcoal | `#18191b` | 24, 25, 27 | Dark backgrounds |
-| Paper | `#f2f3f0` | 242, 243, 240 | Light backgrounds |
+| Name     | Hex       | RGB           | Use                                       |
+| -------- | --------- | ------------- | ----------------------------------------- |
+| Lime     | `#d3ff8d` | 211, 255, 141 | Logo tile and accents                     |
+| Ink      | `#0e0f10` | 14, 15, 16    | Logo cursor and letters, and text on Lime |
+| Charcoal | `#18191b` | 24, 25, 27    | Dark backgrounds                          |
+| Paper    | `#f2f3f0` | 242, 243, 240 | Light backgrounds                         |
 
 Ink on Lime has a contrast ratio of 16.9:1, and Lime on Charcoal has 15.5:1. Both pass WCAG AAA for body text.
 
@@ -74,17 +74,17 @@ Official links:
 
 Use the SVG whenever the destination accepts it. SVG is resolution independent, so it stays sharp at any size. When you need a raster image, pick the file that matches the destination:
 
-| Destination | Size (px) | File |
-| --- | --- | --- |
-| Article header, Open Graph, and link previews | 1200 x 630 | `social/bascik-social-1200x630.png` |
-| GitHub repository social preview | 1280 x 640 | `social/bascik-github-social-1280x640.png` |
-| X (Twitter) profile header | 1500 x 500 | `social/bascik-banner-1500x500.png` |
-| LinkedIn profile or page banner | 1584 x 396 | `social/bascik-banner-1584x396.png` |
-| Profile picture on a dark theme | 1024 x 1024 | `avatar/bascik-avatar-dark-1024.png` |
-| Profile picture on a light theme | 1024 x 1024 | `avatar/bascik-avatar-light-1024.png` |
-| Slides, video, and print layouts that need a transparent image | 2400 px wide | `logo/png/bascik-wordmark-2400.png` |
-| Documents and web pages (transparent) | 1200 px wide | `logo/png/bascik-wordmark-1200.png` |
-| Small interface elements | 256 x 256 | `logo/png/bascik-mark-256.png` |
+| Destination                                                    | Size (px)    | File                                       |
+| -------------------------------------------------------------- | ------------ | ------------------------------------------ |
+| Article header, Open Graph, and link previews                  | 1200 x 630   | `social/bascik-social-1200x630.png`        |
+| GitHub repository social preview                               | 1280 x 640   | `social/bascik-github-social-1280x640.png` |
+| X (Twitter) profile header                                     | 1500 x 500   | `social/bascik-banner-1500x500.png`        |
+| LinkedIn profile or page banner                                | 1584 x 396   | `social/bascik-banner-1584x396.png`        |
+| Profile picture on a dark theme                                | 1024 x 1024  | `avatar/bascik-avatar-dark-1024.png`       |
+| Profile picture on a light theme                               | 1024 x 1024  | `avatar/bascik-avatar-light-1024.png`      |
+| Slides, video, and print layouts that need a transparent image | 2400 px wide | `logo/png/bascik-wordmark-2400.png`        |
+| Documents and web pages (transparent)                          | 1200 px wide | `logo/png/bascik-wordmark-1200.png`        |
+| Small interface elements                                       | 256 x 256    | `logo/png/bascik-mark-256.png`             |
 
 The profile pictures keep the mark well inside the frame, so circular crops do not clip it.
 

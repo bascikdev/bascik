@@ -9,6 +9,7 @@ Accessible tabs built from the sections you pass in, with arrow-key navigation a
 Each child of the slot becomes one panel, and its `data-tab` attribute is the tab's text. `label` names the tab list for screen readers.
 
 <!-- demo:usage -->
+
 ```html
 <tab-group data-bascik-prop-label="Pricing plans">
   <section data-tab="Monthly"><p>$10 per month, cancel any time.</p></section>

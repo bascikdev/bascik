@@ -32,13 +32,15 @@ export interface NavItem {
 }
 
 export function generateNavList(items: NavItem[], activeHref?: string): string {
-  if (!items.length) return '';
+  if (!items.length) return "";
 
-  const links = items.map(item => {
-    const isCurrent = item.href === activeHref;
-    const currentAttr = isCurrent ? ' aria-current="page"' : '';
-    return `  <li><a href="${item.href}"${currentAttr}>${item.label}</a></li>`;
-  }).join('\n');
+  const links = items
+    .map((item) => {
+      const isCurrent = item.href === activeHref;
+      const currentAttr = isCurrent ? ' aria-current="page"' : "";
+      return `  <li><a href="${item.href}"${currentAttr}>${item.label}</a></li>`;
+    })
+    .join("\n");
 
   return `<ul class="site-nav">\n${links}\n</ul>`;
 }
@@ -49,12 +51,12 @@ export function generateNavList(items: NavItem[], activeHref?: string): string {
 ```html
 <nav>
   <script data-bascik-build>
-    import { readFile } from 'node:fs/promises';
-    import { generateNavList } from '../lib/nav-generator.js';
+    import { readFile } from "node:fs/promises";
+    import { generateNavList } from "../lib/nav-generator.js";
 
     export default async function () {
-      const items = JSON.parse(await readFile('./src/data/nav.json', 'utf8'));
-      return generateNavList(items, '/');
+      const items = JSON.parse(await readFile("./src/data/nav.json", "utf8"));
+      return generateNavList(items, "/");
     }
   </script>
 </nav>
@@ -63,26 +65,28 @@ export function generateNavList(items: NavItem[], activeHref?: string): string {
 ### 3. Unit Test (`src/lib/nav-generator.test.ts`)
 
 ```ts
-import { describe, it, expect } from 'vitest';
-import { generateNavList } from './nav-generator.ts';
+import { describe, it, expect } from "vitest";
+import { generateNavList } from "./nav-generator.ts";
 
-describe('generateNavList', () => {
+describe("generateNavList", () => {
   const sampleNav = [
-    { href: '/', label: 'Home' },
-    { href: '/docs', label: 'Docs' },
-    { href: '/about', label: 'About' },
+    { href: "/", label: "Home" },
+    { href: "/docs", label: "Docs" },
+    { href: "/about", label: "About" },
   ];
 
-  it('generates an accessible navigation list with active page indicators', () => {
-    const html = generateNavList(sampleNav, '/docs');
+  it("generates an accessible navigation list with active page indicators", () => {
+    const html = generateNavList(sampleNav, "/docs");
 
     expect(html).toContain('<ul class="site-nav">');
-    expect(html).toContain('<li><a href="/docs" aria-current="page">Docs</a></li>');
+    expect(html).toContain(
+      '<li><a href="/docs" aria-current="page">Docs</a></li>',
+    );
     expect(html).toContain('<li><a href="/" >Home</a></li>');
   });
 
-  it('returns empty string when no navigation items are provided', () => {
-    expect(generateNavList([])).toBe('');
+  it("returns empty string when no navigation items are provided", () => {
+    expect(generateNavList([])).toBe("");
   });
 });
 ```
@@ -91,13 +95,13 @@ describe('generateNavList', () => {
 
 Bascik injects environment variables into every `data-bascik-build` execution subprocess:
 
-| Variable | Value |
-| --- | --- |
-| `BASCIK_PAGE_PATH` | Normalized root-relative route path of the page shell (e.g. `/getting-started`, `/`) |
-| `BASCIK_SOURCE_FILE`| Absolute path to the file currently being transpiled (page or component template) |
-| `BASCIK_PAGE_FILE` | Absolute path to the HTML page currently being compiled |
-| `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory |
-| `BASCIK_SITE_URL` | The site URL from `--site-url`, the environment, or `.env`; absent when unset |
+| Variable             | Value                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------ |
+| `BASCIK_PAGE_PATH`   | Normalized root-relative route path of the page shell (e.g. `/getting-started`, `/`) |
+| `BASCIK_SOURCE_FILE` | Absolute path to the file currently being transpiled (page or component template)    |
+| `BASCIK_PAGE_FILE`   | Absolute path to the HTML page currently being compiled                              |
+| `BASCIK_PAGES_DIR`   | Absolute path to the configured pages directory                                      |
+| `BASCIK_SITE_URL`    | The site URL from `--site-url`, the environment, or `.env`; absent when unset        |
 
 Page-aware helpers derive canonical tags, Open Graph metadata, breadcrumbs, and schema markup from these variables.
 
@@ -108,20 +112,22 @@ Test page-aware functions in Vitest by setting `process.env` values in test case
 ```ts
 // src/lib/canonical.ts
 export function getCanonicalUrl(): string {
-  const siteUrl = (process.env.BASCIK_SITE_URL ?? '').replace(/\/$/, '');
-  const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
-  const pagesDir = process.env.BASCIK_PAGES_DIR ?? '';
+  const siteUrl = (process.env.BASCIK_SITE_URL ?? "").replace(/\/$/, "");
+  const pageFile =
+    process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? "";
+  const pagesDir = process.env.BASCIK_PAGES_DIR ?? "";
 
-  if (!siteUrl || !pageFile || !pagesDir) return '';
+  if (!siteUrl || !pageFile || !pagesDir) return "";
 
   const relPath = pageFile
     .slice(pagesDir.length)
-    .replace(/^[\\/]/, '')
-    .replace(/\\/g, '/');
+    .replace(/^[\\/]/, "")
+    .replace(/\\/g, "/");
 
-  const withoutExt = relPath.replace(/\.html$/, '');
-  const route = withoutExt === 'index' ? '' : withoutExt.replace(/\/index$/, '/');
-  const urlPath = route ? `/${route}` : '/';
+  const withoutExt = relPath.replace(/\.html$/, "");
+  const route =
+    withoutExt === "index" ? "" : withoutExt.replace(/\/index$/, "/");
+  const urlPath = route ? `/${route}` : "/";
 
   return `<link rel="canonical" href="${siteUrl}${urlPath}" />`;
 }
@@ -129,35 +135,39 @@ export function getCanonicalUrl(): string {
 
 ```ts
 // src/lib/canonical.test.ts
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { getCanonicalUrl } from './canonical.ts';
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { getCanonicalUrl } from "./canonical.ts";
 
-describe('getCanonicalUrl', () => {
+describe("getCanonicalUrl", () => {
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
-    process.env.BASCIK_SITE_URL = 'https://example.com';
-    process.env.BASCIK_PAGES_DIR = '/app/src/pages';
+    process.env.BASCIK_SITE_URL = "https://example.com";
+    process.env.BASCIK_PAGES_DIR = "/app/src/pages";
   });
 
   afterEach(() => {
     process.env = { ...originalEnv };
   });
 
-  it('generates canonical tag for index pages', () => {
-    process.env.BASCIK_SOURCE_FILE = '/app/src/pages/index.html';
-    expect(getCanonicalUrl()).toBe('<link rel="canonical" href="https://example.com/" />');
+  it("generates canonical tag for index pages", () => {
+    process.env.BASCIK_SOURCE_FILE = "/app/src/pages/index.html";
+    expect(getCanonicalUrl()).toBe(
+      '<link rel="canonical" href="https://example.com/" />',
+    );
   });
 
-  it('generates canonical tag for nested routes', () => {
-    process.env.BASCIK_SOURCE_FILE = '/app/src/pages/blog/post.html';
-    expect(getCanonicalUrl()).toBe('<link rel="canonical" href="https://example.com/blog/post" />');
+  it("generates canonical tag for nested routes", () => {
+    process.env.BASCIK_SOURCE_FILE = "/app/src/pages/blog/post.html";
+    expect(getCanonicalUrl()).toBe(
+      '<link rel="canonical" href="https://example.com/blog/post" />',
+    );
   });
 
-  it('returns empty string when required environment variables are missing', () => {
+  it("returns empty string when required environment variables are missing", () => {
     delete process.env.BASCIK_SOURCE_FILE;
     delete process.env.BASCIK_PAGE_FILE;
-    expect(getCanonicalUrl()).toBe('');
+    expect(getCanonicalUrl()).toBe("");
   });
 });
 ```
@@ -175,7 +185,9 @@ export async function fetchHeroData(endpoint: string): Promise<string> {
     const data = await res.json();
     return `<h1 class="hero-title">${data.title}</h1>`;
   } catch (err) {
-    console.warn(`[build-scripts] Fallback used for ${endpoint}: ${(err as Error).message}`);
+    console.warn(
+      `[build-scripts] Fallback used for ${endpoint}: ${(err as Error).message}`,
+    );
     return `<h1 class="hero-title">Welcome to Bascik</h1>`;
   }
 }
@@ -183,27 +195,31 @@ export async function fetchHeroData(endpoint: string): Promise<string> {
 
 ```ts
 // src/lib/remote-data.test.ts
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { fetchHeroData } from './remote-data.ts';
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { fetchHeroData } from "./remote-data.ts";
 
-describe('fetchHeroData', () => {
+describe("fetchHeroData", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('returns formatted HTML on successful response', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ title: 'Latest Release v1.0' }), { status: 200 })
+  it("returns formatted HTML on successful response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ title: "Latest Release v1.0" }), {
+        status: 200,
+      }),
     );
 
-    const html = await fetchHeroData('https://api.example.com/release');
+    const html = await fetchHeroData("https://api.example.com/release");
     expect(html).toBe('<h1 class="hero-title">Latest Release v1.0</h1>');
   });
 
-  it('returns fallback markup when fetch fails', async () => {
-    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('Network error'));
+  it("returns fallback markup when fetch fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(
+      new Error("Network error"),
+    );
 
-    const html = await fetchHeroData('https://api.example.com/release');
+    const html = await fetchHeroData("https://api.example.com/release");
     expect(html).toBe('<h1 class="hero-title">Welcome to Bascik</h1>');
   });
 });
@@ -215,14 +231,14 @@ If your project configures lifecycle build scripts in `bascik.config.ts` via the
 
 ```ts
 // scripts/generate-sitemap.test.ts
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { generateSitemap } from './generate-sitemap.ts';
-import { readFile, rm, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { generateSitemap } from "./generate-sitemap.ts";
+import { readFile, rm, mkdir } from "node:fs/promises";
+import { join } from "node:path";
 
-describe('generateSitemap lifecycle script', () => {
-  const distDir = join(process.cwd(), 'test-dist');
-  const sitemapPath = join(distDir, 'sitemap.xml');
+describe("generateSitemap lifecycle script", () => {
+  const distDir = join(process.cwd(), "test-dist");
+  const sitemapPath = join(distDir, "sitemap.xml");
 
   beforeEach(async () => {
     await mkdir(distDir, { recursive: true });
@@ -232,16 +248,16 @@ describe('generateSitemap lifecycle script', () => {
     await rm(distDir, { recursive: true, force: true });
   });
 
-  it('writes valid sitemap XML directly to dist without polluting src', async () => {
+  it("writes valid sitemap XML directly to dist without polluting src", async () => {
     await generateSitemap({
-      siteUrl: 'https://example.com',
+      siteUrl: "https://example.com",
       distDir,
-      routes: ['/', '/docs', '/about'],
+      routes: ["/", "/docs", "/about"],
     });
 
-    const xml = await readFile(sitemapPath, 'utf8');
+    const xml = await readFile(sitemapPath, "utf8");
     expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
-    expect(xml).toContain('<loc>https://example.com/docs</loc>');
+    expect(xml).toContain("<loc>https://example.com/docs</loc>");
   });
 });
 ```

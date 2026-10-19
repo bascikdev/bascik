@@ -17,7 +17,9 @@ import { shieldCssStrings, removeCommentsFromCss } from "./styles.ts";
  * `url(data:...)`) is never altered.
  */
 export const minifyCss = (css: string): string => {
-  const { css: shielded, restore } = shieldCssStrings(removeCommentsFromCss(css));
+  const { css: shielded, restore } = shieldCssStrings(
+    removeCommentsFromCss(css),
+  );
   const minified = shielded
     .replace(/\n/g, " ")
     .replace(/\s\s+/g, " ")

@@ -1,5 +1,5 @@
-import { BascikConfig } from './config.ts';
-import { eventEmitter, runShutdownHandlers } from './events.ts';
+import { BascikConfig } from "./config.ts";
+import { eventEmitter, runShutdownHandlers } from "./events.ts";
 
 /**
  * What happens when a `pipeline.exec` script fails.
@@ -13,12 +13,14 @@ import { eventEmitter, runShutdownHandlers } from './events.ts';
  * should not lose the dev server on every typo, and a build must never claim
  * success after a script failed. `pipeline.onExecError` flips either one.
  */
-export type ExecErrorAction = 'error' | 'warn';
+export type ExecErrorAction = "error" | "warn";
 
 export const getExecErrorAction = (): ExecErrorAction =>
-  BascikConfig.pipeline?.onExecError ?? (BascikConfig.isBuild ? 'error' : 'warn');
+  BascikConfig.pipeline?.onExecError ??
+  (BascikConfig.isBuild ? "error" : "warn");
 
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+const messageOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 
 /**
  * Report a failure that the `'warn'` action tolerates. In dev the failure also
@@ -27,10 +29,12 @@ const messageOf = (error: unknown): string => (error instanceof Error ? error.me
 export const reportToleratedExecFailure = (error: unknown): void => {
   console.error(
     `[bascik] ${messageOf(error)}\n` +
-    `  Continuing because pipeline.onExecError is 'warn'. Set it to 'error' to stop on exec failures.`,
+      `  Continuing because pipeline.onExecError is 'warn'. Set it to 'error' to stop on exec failures.`,
   );
   if (!BascikConfig.isBuild) {
-    eventEmitter.emit('build-error', { message: `exec failed: ${messageOf(error)}` });
+    eventEmitter.emit("build-error", {
+      message: `exec failed: ${messageOf(error)}`,
+    });
   }
 };
 
@@ -40,12 +44,14 @@ export const reportToleratedExecFailure = (error: unknown): void => {
  * under `'error'` so the caller's existing failure path (a build exit or the
  * dev boot rejecting) is unchanged.
  */
-export const toleratingExecFailure = async (work: () => Promise<unknown>): Promise<boolean> => {
+export const toleratingExecFailure = async (
+  work: () => Promise<unknown>,
+): Promise<boolean> => {
   try {
     await work();
     return true;
   } catch (error) {
-    if (getExecErrorAction() === 'error') throw error;
+    if (getExecErrorAction() === "error") throw error;
     reportToleratedExecFailure(error);
     return false;
   }
@@ -64,14 +70,21 @@ let stopping = false;
  * reject to, so this closes the server cleanly and exits 1. Safe to call from
  * several failures at once: only the first one acts.
  */
-export const stopAfterExecFailure = (error: unknown, deps: StopDeps = {}): void => {
+export const stopAfterExecFailure = (
+  error: unknown,
+  deps: StopDeps = {},
+): void => {
   if (stopping) return;
   stopping = true;
-  console.error(`[bascik] ${messageOf(error)}\n  Stopping because pipeline.onExecError is 'error'.`);
+  console.error(
+    `[bascik] ${messageOf(error)}\n  Stopping because pipeline.onExecError is 'error'.`,
+  );
   const exit = deps.exit ?? ((code: number) => process.exit(code));
   const shutdown = deps.runShutdownHandlers ?? runShutdownHandlers;
-  void shutdown().catch(() => undefined).finally(() => {
-    stopping = false;
-    exit(1);
-  });
+  void shutdown()
+    .catch(() => undefined)
+    .finally(() => {
+      stopping = false;
+      exit(1);
+    });
 };

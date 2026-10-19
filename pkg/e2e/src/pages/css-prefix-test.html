@@ -1,25 +1,23 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>CSS Prefixing & Custom Minifier E2E Test</title>
+    <style>
+      .page-no-select {
+        user-select: none;
+      }
+    </style>
+  </head>
 
-<head>
-  <meta charset="UTF-8">
-  <title>CSS Prefixing & Custom Minifier E2E Test</title>
-  <style>
-    .page-no-select {
-      user-select: none;
-    }
-  </style>
-</head>
-
-<body>
-  <h1>CSS Vendor Prefixing E2E Test</h1>
-  <div class="page-no-select">Page level element</div>
-  <css-prefix></css-prefix>
-  <script>
-    // Comment that should be stripped by BYOMinifier esbuild
-    const byoOutputMessage = "BYOMinifier JS Active";
-    document.body.setAttribute("data-byo-js", byoOutputMessage);
-  </script>
-</body>
-
+  <body>
+    <h1>CSS Vendor Prefixing E2E Test</h1>
+    <div class="page-no-select">Page level element</div>
+    <css-prefix></css-prefix>
+    <script>
+      // Comment that should be stripped by BYOMinifier esbuild
+      const byoOutputMessage = "BYOMinifier JS Active";
+      document.body.setAttribute("data-byo-js", byoOutputMessage);
+    </script>
+  </body>
 </html>

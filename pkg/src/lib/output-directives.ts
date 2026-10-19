@@ -10,7 +10,13 @@
  * privileges. Directives are therefore only honored where an author wrote them
  * in a source file; printed ones are removed before any later pass sees them.
  */
-import { ATTR, ANY_DIRECTIVE_ATTR_NAME, ATTR_NAME_END, SCRIPT_END_TAG, SCRIPT_TAG_PREFIX } from "./html-patterns.ts";
+import {
+  ATTR,
+  ANY_DIRECTIVE_ATTR_NAME,
+  ATTR_NAME_END,
+  SCRIPT_END_TAG,
+  SCRIPT_TAG_PREFIX,
+} from "./html-patterns.ts";
 
 // A `<script>` open tag carrying any directive attribute, with its body and closing tag when
 // present. Without a closing tag the open tag alone is removed, so a later pass can never pair it
@@ -33,5 +39,7 @@ export const removeOutputDirectives = (html: string): RemovedDirectives => {
     removed.add(name.toLowerCase());
     return "";
   });
-  return removed.size === 0 ? { html, removed: [] } : { html: cleaned, removed: [...removed] };
+  return removed.size === 0
+    ? { html, removed: [] }
+    : { html: cleaned, removed: [...removed] };
 };

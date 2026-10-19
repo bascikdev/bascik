@@ -16,7 +16,8 @@ import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 
 describe("computePageCspHashes end tags", () => {
-  const sha = (body: string) => `sha256-${createHash("sha256").update(body, "utf8").digest("base64")}`;
+  const sha = (body: string) =>
+    `sha256-${createHash("sha256").update(body, "utf8").digest("base64")}`;
 
   it("hashes exactly the body the browser sees for every accepted end tag spelling", () => {
     const html =
@@ -38,13 +39,15 @@ describe("computePageCspHashes end tags", () => {
   it("treats src and type as whole attribute names", () => {
     const hashes = computePageCspHashes(
       '<script data-src="a.js">one()</script><script data-type="text/bascik-server">two()</script>' +
-      '<script src="b.js"></script><script type="text/bascik-server" data-bascik-server-id="x"></script>',
+        '<script src="b.js"></script><script type="text/bascik-server" data-bascik-server-id="x"></script>',
     );
     expect(hashes.scripts).toEqual([sha("one()"), sha("two()")].sort());
   });
 
   it("does not end a script at a lookalike tag", () => {
-    expect(computePageCspHashes("<script>a('</scripts>')</script>").scripts).toEqual([sha("a('</scripts>')")]);
+    expect(
+      computePageCspHashes("<script>a('</scripts>')</script>").scripts,
+    ).toEqual([sha("a('</scripts>')")]);
   });
 
   it("ignores script and style tags inside HTML comments, <textarea>, and JavaScript string literals", () => {
@@ -54,7 +57,9 @@ describe("computePageCspHashes end tags", () => {
       '<script>const s = "<style>.fake{}</style>";</script>' +
       "<style>.real{}</style>";
     const hashes = computePageCspHashes(html);
-    expect(hashes.scripts).toEqual([sha('const s = "<style>.fake{}</style>";')]);
+    expect(hashes.scripts).toEqual([
+      sha('const s = "<style>.fake{}</style>";'),
+    ]);
     expect(hashes.styles).toEqual([sha(".real{}")]);
   });
 
@@ -81,9 +86,9 @@ describe("computePageCspHashes end tags", () => {
   it("reads src and type the way the tokenizer does, including spaced and unquoted values", () => {
     const hashes = computePageCspHashes(
       '<script src = "a.js"></script><script SRC=b.js></script>' +
-      '<script type = "text/bascik-server" data-bascik-server-id="x"></script>' +
-      "<script type=text/bascik-server data-bascik-server-id=y></script>" +
-      "<script type = module>inline()</script>",
+        '<script type = "text/bascik-server" data-bascik-server-id="x"></script>' +
+        "<script type=text/bascik-server data-bascik-server-id=y></script>" +
+        "<script type = module>inline()</script>",
     );
     expect(hashes.scripts).toEqual([sha("inline()")]);
   });
@@ -91,8 +96,8 @@ describe("computePageCspHashes end tags", () => {
   it("hashes scripts inside <template> and SVG, and skips a script the document never closes", () => {
     const hashes = computePageCspHashes(
       "<template><script>cloned()</script></template>" +
-      "<svg><script>svgRun()</script></svg>" +
-      "<script>never()",
+        "<svg><script>svgRun()</script></svg>" +
+        "<script>never()",
     );
     expect(hashes.scripts).toEqual([sha("cloned()"), sha("svgRun()")].sort());
   });
@@ -170,10 +175,16 @@ describe("csp-hashes manifest", () => {
     cspHashCollector.recordPage("/b", html);
 
     await cspHashCollector.writeCspHashes();
-    const run1 = await readFile(join(outDir, ".bascik", "csp-hashes.json"), "utf8");
+    const run1 = await readFile(
+      join(outDir, ".bascik", "csp-hashes.json"),
+      "utf8",
+    );
 
     await cspHashCollector.writeCspHashes();
-    const run2 = await readFile(join(outDir, ".bascik", "csp-hashes.json"), "utf8");
+    const run2 = await readFile(
+      join(outDir, ".bascik", "csp-hashes.json"),
+      "utf8",
+    );
 
     expect(run1).toBe(run2);
     await rm(outDir, { recursive: true, force: true });

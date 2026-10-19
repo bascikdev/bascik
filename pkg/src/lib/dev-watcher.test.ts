@@ -13,14 +13,14 @@ describe("loadChokidar", () => {
       Promise.reject(
         Object.assign(new Error("Cannot find module 'chokidar'"), {
           code: "ERR_MODULE_NOT_FOUND",
-        })
+        }),
       );
 
     await expect(loadChokidar(missingModuleLoader)).rejects.toThrowError(
-      /`bascik dev` requires chokidar for file watching, but it is not installed/
+      /`bascik dev` requires chokidar for file watching, but it is not installed/,
     );
     await expect(loadChokidar(missingModuleLoader)).rejects.toThrowError(
-      /--omit=optional/
+      /--omit=optional/,
     );
   });
 
@@ -29,11 +29,11 @@ describe("loadChokidar", () => {
       Promise.reject(
         Object.assign(new Error("Cannot find module 'chokidar'"), {
           code: "MODULE_NOT_FOUND",
-        })
+        }),
       );
 
     await expect(loadChokidar(missingModuleLoader)).rejects.toThrowError(
-      /`bascik dev` requires chokidar for file watching, but it is not installed/
+      /`bascik dev` requires chokidar for file watching, but it is not installed/,
     );
   });
 

@@ -1,58 +1,56 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Astro and Bascik are both build-time component systems that output zero-JS HTML. Learn how to switch an Astro project to Bascik."
+    />
+    <title>Migrate from Astro to Bascik</title>
+  </head>
 
-<head>
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <script data-bascik-build>
-    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    export default async () => await breadcrumbLd();
-  </script>
-  <script data-bascik-build>
-    import { articleSchema } from '@/lib/article-schema.ts';
-    export default async () => await articleSchema();
-  </script>
-  <meta name="description"
-    content="Astro and Bascik are both build-time component systems that output zero-JS HTML. Learn how to switch an Astro project to Bascik." />
-  <title>Migrate from Astro to Bascik</title>
-</head>
+  <body>
+    <docs-nav />
 
-<body>
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
 
-  <docs-nav />
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/switch/from-astro");
+          </script>
 
-  <div class="container">
-    <div class="docs-layout">
-
-      <docs-sidebar />
-
-      <main class="docs-content" id="main-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/switch/from-astro');
-        </script>
-
-        <!-- Content rendered from docs/content/switch/from-astro.md at build time.
+          <!-- Content rendered from docs/content/switch/from-astro.md at build time.
              To update page content, edit the MD file - not this file. -->
-        <script data-bascik-build>
-          import { renderMd } from '@/lib/md-renderer.ts';
-          export default async () => await renderMd('./content/switch/from-astro.md');
-        </script>
+          <script data-bascik-build>
+            import { renderMd } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMd("./content/switch/from-astro.md");
+          </script>
 
-        <docs-pagination />
-
-      </main>
+          <docs-pagination />
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-</body>
-
+    <docs-footer />
+  </body>
 </html>

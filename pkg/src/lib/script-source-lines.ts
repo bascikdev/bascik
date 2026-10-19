@@ -27,7 +27,10 @@ import { getScriptType, isJavaScriptScript } from "./script-types.ts";
 /** Internal attribute: the source line the script's body starts on. Never reaches the output. */
 export const SCRIPT_LINE_ATTRIBUTE = "data-bascik-script-line";
 
-const DIRECTIVE_SCRIPT_RE = new RegExp(String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`, "i");
+const DIRECTIVE_SCRIPT_RE = new RegExp(
+  String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`,
+  "i",
+);
 /** A comment, or a whole script element. Comments come first so a script written inside one is skipped. */
 const COMMENT_OR_SCRIPT_RE =
   /<!--[\s\S]*?-->|(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi;
@@ -53,26 +56,49 @@ export const stampScriptLines = (html: string): string => {
   if (!/<script\b/i.test(html)) return html;
   let line = 1;
   let counted = 0;
-  return html.replace(COMMENT_OR_SCRIPT_RE, (match, open: string | undefined, body: string, close: string, offset: number) => {
-    if (open === undefined || !getsSourceUrl(open) || SCRIPT_LINE_ATTR_RE.test(open)) return match;
-    const bodyStart = offset + open.length;
-    for (let index = counted; index < bodyStart; index++) if (html.charCodeAt(index) === 10) line++;
-    counted = bodyStart;
-    return `${withScriptLine(open, line)}${body}${close}`;
-  });
+  return html.replace(
+    COMMENT_OR_SCRIPT_RE,
+    (
+      match,
+      open: string | undefined,
+      body: string,
+      close: string,
+      offset: number,
+    ) => {
+      if (
+        open === undefined ||
+        !getsSourceUrl(open) ||
+        SCRIPT_LINE_ATTR_RE.test(open)
+      )
+        return match;
+      const bodyStart = offset + open.length;
+      for (let index = counted; index < bodyStart; index++)
+        if (html.charCodeAt(index) === 10) line++;
+      counted = bodyStart;
+      return `${withScriptLine(open, line)}${body}${close}`;
+    },
+  );
 };
 
 /** Splits the stamp off a script open tag. */
-export const takeScriptLine = (openTag: string): { openTag: string; line: number | undefined } => {
+export const takeScriptLine = (
+  openTag: string,
+): { openTag: string; line: number | undefined } => {
   const match = SCRIPT_LINE_ATTR_RE.exec(openTag);
   if (!match) return { openTag, line: undefined };
-  return { openTag: openTag.replace(SCRIPT_LINE_ATTR_RE, ""), line: Number(match[1]) };
+  return {
+    openTag: openTag.replace(SCRIPT_LINE_ATTR_RE, ""),
+    line: Number(match[1]),
+  };
 };
 
 /** Removes every stamp, for when script scoping is turned off. */
 export const stripScriptLines = (html: string): string =>
   html.includes(SCRIPT_LINE_ATTRIBUTE)
-    ? html.replace(SCRIPT_OPEN_TAG_RE, (openTag) => takeScriptLine(openTag).openTag)
+    ? html.replace(
+        SCRIPT_OPEN_TAG_RE,
+        (openTag) => takeScriptLine(openTag).openTag,
+      )
     : html;
 
 /**
@@ -98,7 +124,10 @@ const TRAILING_SOURCE_URL_RE = /(\n\/\/# sourceURL=)([^\n]*?)(<\/script)/gi;
  * Gives the scripts of the `ordinal`-th instance of a component on a page
  * their own sourceURL. The first instance keeps the plain file path.
  */
-export const numberInstanceSourceUrls = (html: string, ordinal: number): string => {
+export const numberInstanceSourceUrls = (
+  html: string,
+  ordinal: number,
+): string => {
   if (ordinal < 2 || !html.includes("//# sourceURL=")) return html;
   return html.replace(
     TRAILING_SOURCE_URL_RE,

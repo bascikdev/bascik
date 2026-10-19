@@ -10,15 +10,15 @@ React and Bascik both structure user interfaces into reusable components, but th
 
 ## Mental Model Comparison
 
-| Concept | React | Bascik |
-| --- | --- | --- |
-| Component definition | JSX function returning React elements | Plain `.html` file in `src/components/` |
+| Concept              | React                                      | Bascik                                                           |
+| -------------------- | ------------------------------------------ | ---------------------------------------------------------------- |
+| Component definition | JSX function returning React elements      | Plain `.html` file in `src/components/`                          |
 | Component invocation | `<SiteNav prop="val" />` (requires import) | `<site-nav data-bascik-prop-*="val"></site-nav>` (auto-resolved) |
-| Child content | `props.children` | `<div data-bascik-slot></div>` |
-| Named content areas | Render props / Compound components | Named slots (`data-bascik-slot="name"`) |
-| Scoped styles | CSS Modules (`styles.foo`) / CSS-in-JS | Paired `.css` files or inline `<style>` (auto-scoped) |
-| Client interactivity | `useState`, `useEffect`, SyntheticEvents | Standard vanilla DOM APIs in `<script>` tags |
-| Build output | JS bundles + Client hydration runtime | Vanilla HTML, CSS, and optional scoped JS |
+| Child content        | `props.children`                           | `<div data-bascik-slot></div>`                                   |
+| Named content areas  | Render props / Compound components         | Named slots (`data-bascik-slot="name"`)                          |
+| Scoped styles        | CSS Modules (`styles.foo`) / CSS-in-JS     | Paired `.css` files or inline `<style>` (auto-scoped)            |
+| Client interactivity | `useState`, `useEffect`, SyntheticEvents   | Standard vanilla DOM APIs in `<script>` tags                     |
+| Build output         | JS bundles + Client hydration runtime      | Vanilla HTML, CSS, and optional scoped JS                        |
 
 ## A Low-Risk First Step
 
@@ -36,12 +36,14 @@ A Bascik component is a vanilla HTML file. There are no imports, no function dec
 
 ```jsx
 // SiteNav.jsx (React - before)
-import styles from './SiteNav.module.css';
+import styles from "./SiteNav.module.css";
 
 export function SiteNav() {
   return (
     <nav className={styles.nav}>
-      <a href="/" className={styles.logo}>Acme</a>
+      <a href="/" className={styles.logo}>
+        Acme
+      </a>
     </nav>
   );
 }
@@ -67,7 +69,9 @@ export function Card({ children }) {
 }
 
 // Usage
-<Card><p>Card content here.</p></Card>
+<Card>
+  <p>Card content here.</p>
+</Card>;
 ```
 
 ```html
@@ -98,7 +102,7 @@ export function PageLayout({ header, children }) {
 // Usage
 <PageLayout header={<h1>Welcome</h1>}>
   <p>Main content.</p>
-</PageLayout>
+</PageLayout>;
 ```
 
 ```html
@@ -130,7 +134,7 @@ export function AlertBox({ title, message }) {
   );
 }
 
-<AlertBox title="Success" message="Your changes were saved." />
+<AlertBox title="Success" message="Your changes were saved." />;
 ```
 
 ```html
@@ -166,14 +170,14 @@ See [Props](/props#put-a-prop-in-an-attribute) for the rules.
 
 ```jsx
 // Counter.jsx (React - before)
-import { useState } from 'react';
+import { useState } from "react";
 
 export function Counter() {
   const [count, setCount] = useState(0);
   return (
     <div>
       <span id="count">{count}</span>
-      <button onClick={() => setCount(c => c + 1)}>+</button>
+      <button onClick={() => setCount((c) => c + 1)}>+</button>
     </div>
   );
 }
@@ -235,12 +239,17 @@ React's rule is that state lives in the closest common parent, which passes valu
 
 ```html
 <!-- src/components/search-bar/search-bar.html: the child reports -->
-<form id="form"><input id="text" type="text" aria-label="Search"></form>
+<form id="form"><input id="text" type="text" aria-label="Search" /></form>
 <script>
-  const form = document.getElementById('form');
-  const text = document.getElementById('text');
-  text.addEventListener('input', () => {
-    form.dispatchEvent(new CustomEvent('filterchange', { bubbles: true, detail: { filterText: text.value } }));
+  const form = document.getElementById("form");
+  const text = document.getElementById("text");
+  text.addEventListener("input", () => {
+    form.dispatchEvent(
+      new CustomEvent("filterchange", {
+        bubbles: true,
+        detail: { filterText: text.value },
+      }),
+    );
   });
 </script>
 ```
@@ -251,9 +260,9 @@ React's rule is that state lives in the closest common parent, which passes valu
   <search-bar></search-bar>
 </div>
 <script>
-  const root = document.getElementById('root');
-  let filterText = '';
-  root.addEventListener('filterchange', (event) => {
+  const root = document.getElementById("root");
+  let filterText = "";
+  root.addEventListener("filterchange", (event) => {
     filterText = event.detail.filterText;
     // Apply filterText to the page here.
   });
@@ -272,7 +281,9 @@ A component template can use another component, and the nested component resolve
 
 ```html
 <!-- src/components/outer-box/outer-box.html -->
-<div class="outer"><inner-box><div data-bascik-slot>No content provided.</div></inner-box></div>
+<div class="outer">
+  <inner-box><div data-bascik-slot>No content provided.</div></inner-box>
+</div>
 ```
 
 ```html
@@ -298,14 +309,14 @@ src/App.jsx                  src/pages/
 <script data-bascik-routes>
   export default async function () {
     return [
-      { params: { slug: 'my-first-post' }, data: { title: 'My first post' } },
-      { params: { slug: 'another-post' }, data: { title: 'Another post' } },
+      { params: { slug: "my-first-post" }, data: { title: "My first post" } },
+      { params: { slug: "another-post" }, data: { title: "Another post" } },
     ];
   }
 </script>
 <script data-bascik-build>
   export default function () {
-    const route = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+    const route = JSON.parse(process.env.BASCIK_ROUTE || "{}");
     return `<h1>${route.data.title}</h1>`;
   }
 </script>
@@ -332,20 +343,30 @@ Data fetched at component mount time in React becomes a `<script data-bascik-bui
   <h1>Blog</h1>
   <ul>
     <script data-bascik-build>
-      import { readdir } from 'node:fs/promises';
+      import { readdir } from "node:fs/promises";
 
-      const escape = (text) => text.replace(/[&<>"']/g, (character) =>
-        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+      const escape = (text) =>
+        text.replace(
+          /[&<>"']/g,
+          (character) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[character],
+        );
 
       export default async function () {
-        const files = await readdir('./content/posts');
+        const files = await readdir("./content/posts");
         const items = files
-          .filter(f => f.endsWith('.md'))
-          .map(f => {
-            const slug = f.replace('.md', '');
+          .filter((f) => f.endsWith(".md"))
+          .map((f) => {
+            const slug = f.replace(".md", "");
             return `<li><a href="/blog/${escape(slug)}">${escape(slug)}</a></li>`;
           });
-        return items.join('\n');
+        return items.join("\n");
       }
     </script>
   </ul>
@@ -364,8 +385,8 @@ A realistic nav with a logo slot, link items, and a mobile menu toggle button.
 
 ```jsx
 // SiteNav.jsx (React - before)
-import { useState } from 'react';
-import styles from './SiteNav.module.css';
+import { useState } from "react";
+import styles from "./SiteNav.module.css";
 
 export function SiteNav({ logo, children }) {
   const [open, setOpen] = useState(false);
@@ -375,11 +396,11 @@ export function SiteNav({ logo, children }) {
       <button
         className={styles.toggle}
         aria-expanded={open}
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((o) => !o)}
       >
         Menu
       </button>
-      <ul className={`${styles.links} ${open ? styles.open : ''}`}>
+      <ul className={`${styles.links} ${open ? styles.open : ""}`}>
         {children}
       </ul>
     </nav>

@@ -1,7 +1,22 @@
 import fc from "fast-check";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resolve } from "node:path";
-import { recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProcessPagesForWatchPath, partitionByOpenPages, getDisplayPath, findActiveSourceFile, getFilePosition, transpilePage, processAllPages, selectivelyProcessPages, processPagesImportingStylesheet, removePage, pageWriteIdle } from "./processing.ts";
+import {
+  recursivelyTranspile,
+  pageProcessing,
+  processPageBatch,
+  selectivelyProcessPagesForWatchPath,
+  partitionByOpenPages,
+  getDisplayPath,
+  findActiveSourceFile,
+  getFilePosition,
+  transpilePage,
+  processAllPages,
+  selectivelyProcessPages,
+  processPagesImportingStylesheet,
+  removePage,
+  pageWriteIdle,
+} from "./processing.ts";
 import { collectAllScriptDeps } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { manifestCollector } from "./manifest.ts";
@@ -52,7 +67,7 @@ vi.mock("./config.js", () => ({
 }));
 
 vi.mock("./file-system.js", async (importOriginal) => {
-  const actual = await importOriginal() as any;
+  const actual = (await importOriginal()) as any;
   return {
     ...actual,
     listPages: vi.fn(),
@@ -62,9 +77,9 @@ vi.mock("./file-system.js", async (importOriginal) => {
 
 vi.mock("node:fs/promises", () => ({
   readFile: vi.fn(),
-  writeFile: vi.fn(async () => { }),
-  mkdir: vi.fn(async () => { }),
-  rm: vi.fn(async () => { }),
+  writeFile: vi.fn(async () => {}),
+  mkdir: vi.fn(async () => {}),
+  rm: vi.fn(async () => {}),
 }));
 
 vi.mock("./build-scripts.js", () => ({
@@ -73,7 +88,7 @@ vi.mock("./build-scripts.js", () => ({
 }));
 
 vi.mock("./sitemap.js", () => ({
-  generateSitemapFiles: vi.fn(async () => { }),
+  generateSitemapFiles: vi.fn(async () => {}),
 }));
 
 vi.mock("./mem.js", () => ({
@@ -97,12 +112,17 @@ vi.mock("./events.js", () => ({
 
 vi.mock("./worker-pool.js", () => {
   return {
-    WorkerPool: vi.fn().mockImplementation(function(this: any) {
+    WorkerPool: vi.fn().mockImplementation(function (this: any) {
       this.run = vi.fn(async (job: any) => {
         const pagePath = typeof job === "string" ? job : job.pagePath;
-        const relativePagePath = typeof job === "string"
-          ? (pagePath.startsWith("src/") ? pagePath.slice(4) : (pagePath.startsWith("pages/") ? pagePath : `pages/${pagePath}`))
-          : job.relativePagePath;
+        const relativePagePath =
+          typeof job === "string"
+            ? pagePath.startsWith("src/")
+              ? pagePath.slice(4)
+              : pagePath.startsWith("pages/")
+                ? pagePath
+                : `pages/${pagePath}`
+            : job.relativePagePath;
         // Mirrors page-worker.ts (prompt 86): the HTML arrives as UTF-8 bytes
         // in a transferred ArrayBuffer, never as a string.
         return {
@@ -113,7 +133,7 @@ vi.mock("./worker-pool.js", () => {
           fileDependencies: ["scripts/md-renderer.ts"],
         };
       });
-      this.terminate = vi.fn(async () => { });
+      this.terminate = vi.fn(async () => {});
     }),
   };
 });
@@ -128,7 +148,7 @@ vi.mock("./names.js", async (importOriginal) => {
 });
 
 vi.mock("./components.js", async (importOriginal) => {
-  const actual = await importOriginal() as any;
+  const actual = (await importOriginal()) as any;
   return {
     ...actual,
     invalidateComponentListCache: vi.fn(),
@@ -148,7 +168,7 @@ vi.mock("./components.js", async (importOriginal) => {
 });
 
 vi.mock("node:fs", async (importOriginal) => {
-  const actual = await importOriginal() as any;
+  const actual = (await importOriginal()) as any;
   return {
     ...actual,
     readFileSync: (path: string, options?: any) => {
@@ -159,7 +179,7 @@ vi.mock("node:fs", async (importOriginal) => {
         return "<div>\n  <child-comp></child-comp>\n</div>";
       }
       return actual.readFileSync(path, options);
-    }
+    },
   };
 });
 
@@ -181,19 +201,52 @@ import { listPages } from "./file-system.ts";
 // A: Slot fallback content
 // ─────────────────────────────────────────────────────────────────────────────
 
+const PAGE_HTML =
+  '<!DOCTYPE html><html lang="en"><head></head><body><p>hello</p></body></html>';
 
-const PAGE_HTML = '<!DOCTYPE html><html lang="en"><head></head><body><p>hello</p></body></html>';
+const PAGE_PATH = "src/pages/index.html";
 
-const PAGE_PATH = 'src/pages/index.html';
-
-export { fc, describe, it, expect, vi, beforeEach, afterEach, resolve, recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProcessPagesForWatchPath, partitionByOpenPages, getDisplayPath, findActiveSourceFile, getFilePosition, transpilePage, processAllPages, selectivelyProcessPages, removePage, pageWriteIdle, collectAllScriptDeps, BascikConfig, manifestCollector, cspHashCollector, LIVE_RELOAD_SCRIPT, readFile, cpus, mem, invalidateComponentListCache, listPages, PAGE_HTML, PAGE_PATH };
+export {
+  fc,
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  resolve,
+  recursivelyTranspile,
+  pageProcessing,
+  processPageBatch,
+  selectivelyProcessPagesForWatchPath,
+  partitionByOpenPages,
+  getDisplayPath,
+  findActiveSourceFile,
+  getFilePosition,
+  transpilePage,
+  processAllPages,
+  selectivelyProcessPages,
+  removePage,
+  pageWriteIdle,
+  collectAllScriptDeps,
+  BascikConfig,
+  manifestCollector,
+  cspHashCollector,
+  LIVE_RELOAD_SCRIPT,
+  readFile,
+  cpus,
+  mem,
+  invalidateComponentListCache,
+  listPages,
+  PAGE_HTML,
+  PAGE_PATH,
+};
 
 describe("recursivelyTranspile – slot fallback content", () => {
   const componentList = {
     "my-card": {
       fileName: "components/my-card.html",
-      fileContent:
-        "<div><div data-bascik-slot>default content</div></div>",
+      fileContent: "<div><div data-bascik-slot>default content</div></div>",
     },
   };
 
@@ -295,8 +348,7 @@ describe("recursivelyTranspile – integration", () => {
     const componentList = {
       outer: {
         fileName: "components/outer.html",
-        fileContent:
-          "<div class='outer'><div data-bascik-slot></div></div>",
+        fileContent: "<div class='outer'><div data-bascik-slot></div></div>",
       },
       inner: {
         fileName: "components/inner.html",
@@ -350,7 +402,8 @@ describe("recursivelyTranspile – integration", () => {
       },
       "inner-demo": {
         fileName: "components/inner-demo.html",
-        fileContent: '<article data-bascik-slot="content">child fallback</article>',
+        fileContent:
+          '<article data-bascik-slot="content">child fallback</article>',
       },
     };
 
@@ -378,7 +431,7 @@ describe("recursivelyTranspile – integration", () => {
       },
       "code-block": {
         fileName: "components/code-block.html",
-        fileContent: '<pre data-code-block><div data-bascik-slot></div></pre>',
+        fileContent: "<pre data-code-block><div data-bascik-slot></div></pre>",
       },
     };
 
@@ -388,7 +441,7 @@ describe("recursivelyTranspile – integration", () => {
     );
 
     expect(transpiledHtmlBody).toBe(
-      '<section><article><pre data-code-block><strong>generated source</strong></pre></article></section>',
+      "<section><article><pre data-code-block><strong>generated source</strong></pre></article></section>",
     );
   });
 
@@ -418,7 +471,8 @@ describe("recursivelyTranspile – integration", () => {
   describe("forwarding the default slot into a nested component", () => {
     const innerBox = {
       fileName: "components/inner-box.html",
-      fileContent: "<section><div data-bascik-slot>inner fallback</div></section>",
+      fileContent:
+        "<section><div data-bascik-slot>inner fallback</div></section>",
     };
 
     it("fills a default slot marker written inside a child's usage tag", () => {
@@ -434,7 +488,9 @@ describe("recursivelyTranspile – integration", () => {
         "<outer-box><p>given</p></outer-box>",
         componentList,
       );
-      expect(transpiledHtmlBody).toBe('<div class="outer"><section><p>given</p></section></div>');
+      expect(transpiledHtmlBody).toBe(
+        '<div class="outer"><section><p>given</p></section></div>',
+      );
       expect(transpiledHtmlBody).not.toContain("data-bascik-slot");
     });
 
@@ -447,8 +503,13 @@ describe("recursivelyTranspile – integration", () => {
         },
         "inner-box": innerBox,
       };
-      const { transpiledHtmlBody } = recursivelyTranspile("<outer-box></outer-box>", componentList);
-      expect(transpiledHtmlBody).toBe('<div class="outer"><section>outer fallback</section></div>');
+      const { transpiledHtmlBody } = recursivelyTranspile(
+        "<outer-box></outer-box>",
+        componentList,
+      );
+      expect(transpiledHtmlBody).toBe(
+        '<div class="outer"><section>outer fallback</section></div>',
+      );
     });
 
     it("keeps the rest of the child's content around the forwarded slot", () => {
@@ -473,11 +534,13 @@ describe("recursivelyTranspile – integration", () => {
       const componentList = {
         "outer-box": {
           fileName: "components/outer-box.html",
-          fileContent: "<main><mid-box><div data-bascik-slot></div></mid-box></main>",
+          fileContent:
+            "<main><mid-box><div data-bascik-slot></div></mid-box></main>",
         },
         "mid-box": {
           fileName: "components/mid-box.html",
-          fileContent: "<div class='mid'><inner-box><div data-bascik-slot></div></inner-box></div>",
+          fileContent:
+            "<div class='mid'><inner-box><div data-bascik-slot></div></inner-box></div>",
         },
         "inner-box": innerBox,
       };
@@ -485,14 +548,17 @@ describe("recursivelyTranspile – integration", () => {
         "<outer-box><b>deep</b></outer-box>",
         componentList,
       );
-      expect(transpiledHtmlBody).toBe("<main><div class='mid'><section><b>deep</b></section></div></main>");
+      expect(transpiledHtmlBody).toBe(
+        "<main><div class='mid'><section><b>deep</b></section></div></main>",
+      );
     });
 
     it("keeps two instances with different content separate", () => {
       const componentList = {
         "outer-box": {
           fileName: "components/outer-box.html",
-          fileContent: "<div><inner-box><div data-bascik-slot></div></inner-box></div>",
+          fileContent:
+            "<div><inner-box><div data-bascik-slot></div></inner-box></div>",
         },
         "inner-box": innerBox,
       };
@@ -509,7 +575,8 @@ describe("recursivelyTranspile – integration", () => {
       const componentList = {
         "outer-box": {
           fileName: "components/outer-box.html",
-          fileContent: "<div><inner-box><div data-bascik-slot></div></inner-box></div>",
+          fileContent:
+            "<div><inner-box><div data-bascik-slot></div></inner-box></div>",
         },
         "inner-box": innerBox,
       };
@@ -517,7 +584,9 @@ describe("recursivelyTranspile – integration", () => {
         "<outer-box><p>$& $1 $` $' $$</p></outer-box>",
         componentList,
       );
-      expect(transpiledHtmlBody).toBe("<div><section><p>$& $1 $` $' $$</p></section></div>");
+      expect(transpiledHtmlBody).toBe(
+        "<div><section><p>$& $1 $` $' $$</p></section></div>",
+      );
     });
 
     it("still routes named wrappers inside a child's usage tag to the child", () => {
@@ -529,7 +598,8 @@ describe("recursivelyTranspile – integration", () => {
         },
         "named-box": {
           fileName: "components/named-box.html",
-          fileContent: '<article><h1 data-bascik-slot="head">fallback head</h1><div data-bascik-slot>fallback body</div></article>',
+          fileContent:
+            '<article><h1 data-bascik-slot="head">fallback head</h1><div data-bascik-slot>fallback body</div></article>',
         },
       };
       const { transpiledHtmlBody } = recursivelyTranspile(
@@ -545,7 +615,8 @@ describe("recursivelyTranspile – integration", () => {
       const componentList = {
         "outer-box": {
           fileName: "components/outer-box.html",
-          fileContent: "<div><inner-box data-bascik-slot>kept</inner-box></div>",
+          fileContent:
+            "<div><inner-box data-bascik-slot>kept</inner-box></div>",
         },
         "inner-box": innerBox,
       };
@@ -630,7 +701,9 @@ describe("recursivelyTranspile – property-based fuzzing", () => {
             })
             .join("\n");
 
-          expect(() => recursivelyTranspile(usage, componentList)).not.toThrow();
+          expect(() =>
+            recursivelyTranspile(usage, componentList),
+          ).not.toThrow();
           const result = recursivelyTranspile(usage, componentList);
           expect(typeof result.transpiledHtmlBody).toBe("string");
           expect(Array.isArray(result.usedComponents)).toBe(true);
@@ -645,7 +718,10 @@ describe("recursivelyTranspile – recursion guard", () => {
   it("terminates and returns a string for a deeply nested (non-recursive) component tree", () => {
     // Build 50 leaf components and 50 wrapper usages — representative of
     // a real deeply nested page without triggering the OOM-risk guard path.
-    const componentList: Record<string, { fileName: string; fileContent: string }> = {};
+    const componentList: Record<
+      string,
+      { fileName: string; fileContent: string }
+    > = {};
     let usage = "";
     for (let i = 0; i < 50; i++) {
       componentList[`leaf-${i}`] = {
@@ -656,7 +732,10 @@ describe("recursivelyTranspile – recursion guard", () => {
     }
 
     expect(() => recursivelyTranspile(usage, componentList)).not.toThrow();
-    const { transpiledHtmlBody, usedComponents } = recursivelyTranspile(usage, componentList);
+    const { transpiledHtmlBody, usedComponents } = recursivelyTranspile(
+      usage,
+      componentList,
+    );
     expect(typeof transpiledHtmlBody).toBe("string");
     expect(usedComponents).toHaveLength(50);
     for (let i = 0; i < 50; i++) {
@@ -678,7 +757,10 @@ describe("recursivelyTranspile – recursion guard", () => {
         fileContent: "<p>done</p>",
       },
     };
-    const usage = Array.from({ length: 20 }, () => `<test-single></test-single>`).join("");
+    const usage = Array.from(
+      { length: 20 },
+      () => `<test-single></test-single>`,
+    ).join("");
     const { usedComponents } = recursivelyTranspile(usage, singleComponent);
     expect(usedComponents).toHaveLength(20);
   });
@@ -691,12 +773,14 @@ describe("recursivelyTranspile – recursion guard", () => {
       },
     };
 
-    expect(() => recursivelyTranspile(
-      "<recursive-card></recursive-card>",
-      componentList,
-      [],
-      PAGE_PATH,
-    )).toThrow(/component expansion.*safety limits/i);
+    expect(() =>
+      recursivelyTranspile(
+        "<recursive-card></recursive-card>",
+        componentList,
+        [],
+        PAGE_PATH,
+      ),
+    ).toThrow(/component expansion.*safety limits/i);
   });
 
   it("does not expand a component tag written inside the template's own HTML comment", () => {
@@ -706,9 +790,10 @@ describe("recursivelyTranspile – recursion guard", () => {
     const componentList = {
       "post-body": {
         fileName: "components/post-body.html",
-        fileContent: "<!-- the page prints Markdown inside <post-body> -->\n" +
+        fileContent:
+          "<!-- the page prints Markdown inside <post-body> -->\n" +
           "<!-- a multi-line note\n     about <post-body>. -->" +
-          "<div class=\"markdown\"><div data-bascik-slot></div></div>",
+          '<div class="markdown"><div data-bascik-slot></div></div>',
       },
     };
     const { transpiledHtmlBody, usedComponents } = recursivelyTranspile(
@@ -721,7 +806,9 @@ describe("recursivelyTranspile – recursion guard", () => {
     expect(transpiledHtmlBody).toContain("<h2>Heading</h2>");
     expect(transpiledHtmlBody).toContain("<p>Second</p>");
     // The comments survive as written.
-    expect(transpiledHtmlBody).toContain("<!-- the page prints Markdown inside <post-body> -->");
+    expect(transpiledHtmlBody).toContain(
+      "<!-- the page prints Markdown inside <post-body> -->",
+    );
   });
 });
 
@@ -730,12 +817,16 @@ describe("recursivelyTranspile – idempotence", () => {
     const componentList = {
       "my-card": {
         fileName: "components/my-card.html",
-        fileContent: "<div class='card'><div data-bascik-slot>fallback</div></div>",
+        fileContent:
+          "<div class='card'><div data-bascik-slot>fallback</div></div>",
       },
     };
     const page = "<my-card><p>hello</p></my-card>";
     const first = recursivelyTranspile(page, componentList).transpiledHtmlBody;
-    const second = recursivelyTranspile(first, componentList).transpiledHtmlBody;
+    const second = recursivelyTranspile(
+      first,
+      componentList,
+    ).transpiledHtmlBody;
     expect(second).toBe(first);
   });
 });
@@ -794,7 +885,10 @@ describe("recursivelyTranspile – named slot fallback content", () => {
 
 describe("recursivelyTranspile – attribute inheritance", () => {
   beforeEach(() => {
-    (BascikConfig as any).scoping = { ...(BascikConfig as any).scoping, inheritAttributes: true };
+    (BascikConfig as any).scoping = {
+      ...(BascikConfig as any).scoping,
+      inheritAttributes: true,
+    };
   });
 
   it("merges class from usage tag onto component root element", () => {
@@ -841,7 +935,10 @@ describe("recursivelyTranspile – attribute inheritance", () => {
   });
 
   it("can disable attribute inheritance via config", () => {
-    (BascikConfig as any).scoping = { ...(BascikConfig as any).scoping, inheritAttributes: false };
+    (BascikConfig as any).scoping = {
+      ...(BascikConfig as any).scoping,
+      inheritAttributes: false,
+    };
     const componentList = {
       "site-nav": {
         fileName: "components/site-nav.html",
@@ -866,7 +963,9 @@ describe("recursivelyTranspile – detailed transpilation errors", () => {
       },
     };
 
-    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     recursivelyTranspile(
       "<my-prop fail-during-prop-injection></my-prop>",
@@ -887,7 +986,9 @@ describe("recursivelyTranspile – detailed transpilation errors", () => {
     expect(errorLog).toContain("line 2");
     expect(errorLog).toContain("column 3");
     // 4. Exact template file defining the component
-    expect(errorLog).toContain('Defined in component template: "components/my-prop.html"');
+    expect(errorLog).toContain(
+      'Defined in component template: "components/my-prop.html"',
+    );
 
     consoleErrorSpy.mockRestore();
   });
@@ -904,7 +1005,9 @@ describe("recursivelyTranspile – detailed transpilation errors", () => {
       },
     };
 
-    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     recursivelyTranspile(
       "<parent-comp></parent-comp>",
@@ -925,7 +1028,9 @@ describe("recursivelyTranspile – detailed transpilation errors", () => {
     expect(errorLog).toContain("line 2");
     expect(errorLog).toContain("column 3");
     // 4. Component template definition
-    expect(errorLog).toContain('Defined in component template: "components/child-comp.html"');
+    expect(errorLog).toContain(
+      'Defined in component template: "components/child-comp.html"',
+    );
 
     consoleErrorSpy.mockRestore();
   });
@@ -939,39 +1044,45 @@ describe("pageProcessing – $-pattern safety in body/head reassembly", () => {
   });
 
   it("preserves $1 in page body verbatim (not expanded as capture-group back-ref)", async () => {
-    const html = '<!DOCTYPE html><html lang="en"><head></head><body><p><code>$1</code></p></body></html>';
+    const html =
+      '<!DOCTYPE html><html lang="en"><head></head><body><p><code>$1</code></p></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     await pageProcessing(PAGE_PATH, {});
-    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(pageContent).toContain('<code>$1</code>');
+    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
+    expect(pageContent).toContain("<code>$1</code>");
   });
 
   it("preserves $1 and $2 together in page body", async () => {
-    const html = '<!DOCTYPE html><html lang="en"><head></head><body><p>params <code>$1</code>, <code>$2</code></p></body></html>';
+    const html =
+      '<!DOCTYPE html><html lang="en"><head></head><body><p>params <code>$1</code>, <code>$2</code></p></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     await pageProcessing(PAGE_PATH, {});
-    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(pageContent).toContain('<code>$1</code>');
-    expect(pageContent).toContain('<code>$2</code>');
+    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
+    expect(pageContent).toContain("<code>$1</code>");
+    expect(pageContent).toContain("<code>$2</code>");
   });
 
   it("preserves $& in page body verbatim", async () => {
-    const html = '<!DOCTYPE html><html lang="en"><head></head><body><p>cost $&amp; tax</p></body></html>';
+    const html =
+      '<!DOCTYPE html><html lang="en"><head></head><body><p>cost $&amp; tax</p></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     await pageProcessing(PAGE_PATH, {});
-    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(pageContent).toContain('cost $&amp; tax');
+    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
+    expect(pageContent).toContain("cost $&amp; tax");
   });
 
   it("reassembles a body containing a literal closing tag in textarea content exactly once", async () => {
     const html =
-      '<!DOCTYPE html><html><head><title>Test</title></head><body><textarea></body></textarea><p>tail</p></body></html>';
+      "<!DOCTYPE html><html><head><title>Test</title></head><body><textarea></body></textarea><p>tail</p></body></html>";
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const result = await transpilePage(PAGE_PATH, {});
     expect(result?.distHtml).toBe(
-      '<!DOCTYPE html><html><head><title>Test</title></head><body><textarea></body></textarea><p>tail</p>' +
-      LIVE_RELOAD_SCRIPT +
-      "</body></html>",
+      "<!DOCTYPE html><html><head><title>Test</title></head><body><textarea></body></textarea><p>tail</p>" +
+        LIVE_RELOAD_SCRIPT +
+        "</body></html>",
     );
   });
 
@@ -982,8 +1093,8 @@ describe("pageProcessing – $-pattern safety in body/head reassembly", () => {
     const result = await transpilePage(PAGE_PATH, {});
     expect(result?.distHtml).toBe(
       '<!DOCTYPE html><html><head><script>const closing = "</head>";</script><title>Test</title></head><body><p>body</p>' +
-      LIVE_RELOAD_SCRIPT +
-      "</body></html>",
+        LIVE_RELOAD_SCRIPT +
+        "</body></html>",
     );
   });
 });
@@ -1000,20 +1111,25 @@ describe("transpilePage – base path transform", () => {
   });
 
   it("keeps output byte-identical when base is root", async () => {
-    const html = '<!DOCTYPE html><html><head><link href="/app.css"></head><body><a href="/about">About</a></body></html>';
+    const html =
+      '<!DOCTYPE html><html><head><link href="/app.css"></head><body><a href="/about">About</a></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const result = await transpilePage(PAGE_PATH, {});
-    expect(result?.distHtml).toBe(html.replace("</body>", `${LIVE_RELOAD_SCRIPT}</body>`));
+    expect(result?.distHtml).toBe(
+      html.replace("</body>", `${LIVE_RELOAD_SCRIPT}</body>`),
+    );
   });
 
   it("rewrites final component and page URLs after fragment ID references", async () => {
     (BascikConfig as any).base = "/sub/";
-    const html = '<!DOCTYPE html><html><head><style>.hero{background:url(/hero.png)}</style></head><body><nav-links></nav-links></body></html>';
+    const html =
+      "<!DOCTYPE html><html><head><style>.hero{background:url(/hero.png)}</style></head><body><nav-links></nav-links></body></html>";
     const componentList = {
       "nav-links": {
         name: "nav-links",
         fileName: "src/components/nav-links.html",
-        fileContent: '<div><a href="#local-id">Local</a><a href="/about">About</a></div>',
+        fileContent:
+          '<div><a href="#local-id">Local</a><a href="/about">About</a></div>',
       },
     };
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
@@ -1021,18 +1137,23 @@ describe("transpilePage – base path transform", () => {
     expect(result?.distHtml).toContain('href="#local-id"');
     expect(result?.distHtml).toContain('href="/sub/about"');
     expect(result?.distHtml).toContain("url(/sub/hero.png)");
-    expect(result?.distHtml).toContain('new EventSource("/sub/bascik-live-reload")');
+    expect(result?.distHtml).toContain(
+      'new EventSource("/sub/bascik-live-reload")',
+    );
   });
 
   it("rewrites inline styles on document root elements", async () => {
     (BascikConfig as any).base = "/sub/";
-    const html = '<!DOCTYPE html><html style="background:url(/page.png)"><head></head><body style="background:url(\'/body.png\')"><p>Body</p></body></html>';
+    const html =
+      '<!DOCTYPE html><html style="background:url(/page.png)"><head></head><body style="background:url(\'/body.png\')"><p>Body</p></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
 
     const result = await transpilePage(PAGE_PATH, {});
 
     expect(result?.distHtml).toContain('style="background:url(/sub/page.png)"');
-    expect(result?.distHtml).toContain("style=\"background:url('/sub/body.png')\"");
+    expect(result?.distHtml).toContain(
+      "style=\"background:url('/sub/body.png')\"",
+    );
   });
 });
 
@@ -1046,42 +1167,54 @@ describe("pageProcessing – inlineStyles", () => {
   it("does not inject a global <style> when inlineStyles is false", async () => {
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     await pageProcessing(PAGE_PATH, {});
-    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
     const styleMatches = [...pageContent.matchAll(/<style>/gi)];
     expect(styleMatches).toHaveLength(0);
   });
 
   it("inlines a single stylesheet into the head without an empty component style", async () => {
-    (BascikConfig as any).assets = { inlineStyles: ['src/css/styles.css'], exclude: [] };
+    (BascikConfig as any).assets = {
+      inlineStyles: ["src/css/styles.css"],
+      exclude: [],
+    };
     (readFile as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce(PAGE_HTML)          // page read
-      .mockResolvedValueOnce('body { color: red; }'); // inlineStyles file
+      .mockResolvedValueOnce(PAGE_HTML) // page read
+      .mockResolvedValueOnce("body { color: red; }"); // inlineStyles file
     await pageProcessing(PAGE_PATH, {});
-    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(pageContent).toContain('body { color: red; }');
+    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
+    expect(pageContent).toContain("body { color: red; }");
     expect([...pageContent.matchAll(/<style>/gi)]).toHaveLength(1);
   });
 
   it("concatenates multiple stylesheets into one <style> block", async () => {
-    (BascikConfig as any).assets = { inlineStyles: ['a.css', 'b.css'], exclude: [] };
+    (BascikConfig as any).assets = {
+      inlineStyles: ["a.css", "b.css"],
+      exclude: [],
+    };
     (readFile as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(PAGE_HTML)
-      .mockResolvedValueOnce('.a { color: red; }')
-      .mockResolvedValueOnce('.b { color: blue; }');
+      .mockResolvedValueOnce(".a { color: red; }")
+      .mockResolvedValueOnce(".b { color: blue; }");
     await pageProcessing(PAGE_PATH, {});
-    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(pageContent).toContain('.a { color: red; }');
-    expect(pageContent).toContain('.b { color: blue; }');
+    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
+    expect(pageContent).toContain(".a { color: red; }");
+    expect(pageContent).toContain(".b { color: blue; }");
     const styleCount = [...pageContent.matchAll(/<style>/gi)].length;
     expect(styleCount).toBe(1);
   });
 
   it("logs a warning and continues when an inlineStyles file cannot be read", async () => {
-    (BascikConfig as any).assets = { inlineStyles: ['missing.css'], exclude: [] };
+    (BascikConfig as any).assets = {
+      inlineStyles: ["missing.css"],
+      exclude: [],
+    };
     (readFile as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(PAGE_HTML)
-      .mockRejectedValueOnce(new Error('ENOENT'));
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
+      .mockRejectedValueOnce(new Error("ENOENT"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     await pageProcessing(PAGE_PATH, {});
     expect(warnSpy).toHaveBeenCalledWith(
       "[bascik] inlineStyles: could not read %s:",
@@ -1092,15 +1225,19 @@ describe("pageProcessing – inlineStyles", () => {
   });
 
   it("minifies inlined CSS when minify.css is true", async () => {
-    (BascikConfig as any).assets = { inlineStyles: ['src/css/styles.css'], exclude: [] };
+    (BascikConfig as any).assets = {
+      inlineStyles: ["src/css/styles.css"],
+      exclude: [],
+    };
     (BascikConfig.minify as any).css = true;
     (readFile as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(PAGE_HTML)
-      .mockResolvedValueOnce('body {  color:  red;  }');
+      .mockResolvedValueOnce("body {  color:  red;  }");
     await pageProcessing(PAGE_PATH, {});
-    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(pageContent).toContain('body{color:red;}');
-    expect(pageContent).not.toContain('body {  color:  red;  }');
+    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
+    expect(pageContent).toContain("body{color:red;}");
+    expect(pageContent).not.toContain("body {  color:  red;  }");
   });
 
   it("preserves media and custom attributes on page-level <style> tags when minify.css is true", async () => {
@@ -1109,11 +1246,13 @@ describe("pageProcessing – inlineStyles", () => {
       '<!DOCTYPE html><html><head><style media="print" data-theme="print">.print-only { display: block; }</style></head><body><p data-note="x > y">Body</p></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValueOnce(html);
     const result = await transpilePage(PAGE_PATH, {});
-    expect(result?.distHtml).toContain('<style media="print" data-theme="print">.print-only{display:block;}</style>');
+    expect(result?.distHtml).toContain(
+      '<style media="print" data-theme="print">.print-only{display:block;}</style>',
+    );
   });
 
   it("does not emit false unresolved component warnings when script or style open tags contain a quoted >", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const html =
       '<!DOCTYPE html><html><head></head><body><script data-note="a > b">const tpl = "<fake-comp></fake-comp>";</script></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValueOnce(html);
@@ -1123,14 +1262,19 @@ describe("pageProcessing – inlineStyles", () => {
   });
 
   it("minifies inlined CSS using a custom minify.css function", async () => {
-    (BascikConfig as any).assets = { inlineStyles: ['src/css/styles.css'], exclude: [] };
-    (BascikConfig.minify as any).css = async (css: string) => `/* custom */ ${css.trim()}`;
+    (BascikConfig as any).assets = {
+      inlineStyles: ["src/css/styles.css"],
+      exclude: [],
+    };
+    (BascikConfig.minify as any).css = async (css: string) =>
+      `/* custom */ ${css.trim()}`;
     (readFile as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(PAGE_HTML)
-      .mockResolvedValueOnce('body { color: red; }');
+      .mockResolvedValueOnce("body { color: red; }");
     await pageProcessing(PAGE_PATH, {});
-    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(pageContent).toContain('/* custom */ body { color: red; }');
+    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
+    expect(pageContent).toContain("/* custom */ body { color: red; }");
   });
 
   it("inlines every page stylesheet when inlineStyles is true", async () => {
@@ -1145,7 +1289,8 @@ describe("pageProcessing – inlineStyles", () => {
       .mockResolvedValueOnce(".a { color: red; }")
       .mockResolvedValueOnce(".b { color: blue; }");
     await pageProcessing(PAGE_PATH, {});
-    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
     expect(pageContent).toContain(".a { color: red; }");
     expect(pageContent).toContain(".b { color: blue; }");
   });
@@ -1167,10 +1312,13 @@ describe("selectivelyProcessPagesForWatchPath", () => {
   it("rebuilds all pages when a watched file changes", async () => {
     const pages = ["src/pages/index.html", "src/pages/about.html"];
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
-    (readFile as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-      if (path === "src/pages/index.html") return Promise.resolve("<html><body>uses nav.mjs</body></html>");
-      return Promise.resolve("<html><body>unrelated</body></html>");
-    });
+    (readFile as ReturnType<typeof vi.fn>).mockImplementation(
+      (path: string) => {
+        if (path === "src/pages/index.html")
+          return Promise.resolve("<html><body>uses nav.mjs</body></html>");
+        return Promise.resolve("<html><body>unrelated</body></html>");
+      },
+    );
     await selectivelyProcessPagesForWatchPath("scripts/nav.mjs");
     const { eventEmitter } = await import("./events.ts");
     expect(eventEmitter.emit).toHaveBeenCalledTimes(pages.length);
@@ -1179,17 +1327,22 @@ describe("selectivelyProcessPagesForWatchPath", () => {
   it("rebuilds only the dependent pages when mem identifies specific page dependencies", async () => {
     const pages = ["src/pages/cli.html", "src/pages/testing.html"];
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
-    (mem.pagesDependentOnFile as ReturnType<typeof vi.fn>).mockReturnValueOnce(["src/pages/cli.html"]);
-    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue("<html><body>cli content</body></html>");
+    (mem.pagesDependentOnFile as ReturnType<typeof vi.fn>).mockReturnValueOnce([
+      "src/pages/cli.html",
+    ]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "<html><body>cli content</body></html>",
+    );
 
     await selectivelyProcessPagesForWatchPath("content/cli.md");
 
     const { eventEmitter } = await import("./events.ts");
     expect(mem.pagesDependentOnFile).toHaveBeenCalledWith("content/cli.md");
     expect(eventEmitter.emit).toHaveBeenCalledTimes(1);
-    expect(eventEmitter.emit).toHaveBeenCalledWith("transpiled", { relativePagePath: "pages/cli.html" });
+    expect(eventEmitter.emit).toHaveBeenCalledWith("transpiled", {
+      relativePagePath: "pages/cli.html",
+    });
   });
-
 });
 
 describe("partitionByOpenPages", () => {
@@ -1207,7 +1360,11 @@ describe("partitionByOpenPages", () => {
 
   it("moves the open page to the front partition", () => {
     (mem as any).openPages = ["/about"];
-    const pages = ["src/pages/index.html", "src/pages/about.html", "src/pages/faq.html"];
+    const pages = [
+      "src/pages/index.html",
+      "src/pages/about.html",
+      "src/pages/faq.html",
+    ];
     const [open, rest] = partitionByOpenPages(pages);
     expect(open).toEqual(["src/pages/about.html"]);
     expect(rest).toContain("src/pages/index.html");
@@ -1217,7 +1374,11 @@ describe("partitionByOpenPages", () => {
 
   it("handles multiple open pages", () => {
     (mem as any).openPages = ["/about", "/faq"];
-    const pages = ["src/pages/index.html", "src/pages/about.html", "src/pages/faq.html"];
+    const pages = [
+      "src/pages/index.html",
+      "src/pages/about.html",
+      "src/pages/faq.html",
+    ];
     const [open, rest] = partitionByOpenPages(pages);
     expect(open).toHaveLength(2);
     expect(open).toContain("src/pages/about.html");
@@ -1245,20 +1406,28 @@ describe("processPageBatch – open page priority & instant reloading", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (mem as any).openPages = [];
-    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue("<html><body>test</body></html>");
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "<html><body>test</body></html>",
+    );
   });
 
   it("transpiles and emits open pages FIRST before rest of pages", async () => {
     (mem as any).openPages = ["/about"];
     const emitOrder: string[] = [];
     const { eventEmitter } = await import("./events.ts");
-    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation((event: string, payload: { relativePagePath: string }) => {
-      if (event === "transpiled") {
-        emitOrder.push(payload.relativePagePath);
-      }
-    });
+    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation(
+      (event: string, payload: { relativePagePath: string }) => {
+        if (event === "transpiled") {
+          emitOrder.push(payload.relativePagePath);
+        }
+      },
+    );
 
-    const pages = ["src/pages/index.html", "src/pages/about.html", "src/pages/faq.html"];
+    const pages = [
+      "src/pages/index.html",
+      "src/pages/about.html",
+      "src/pages/faq.html",
+    ];
     await processPageBatch(pages, {});
 
     // about.html (the open page) MUST be transpiled and emitted FIRST
@@ -1269,42 +1438,67 @@ describe("processPageBatch – open page priority & instant reloading", () => {
   });
 
   it("awaits dev artifact writes inside a lifecycle publication scope before post can run", async () => {
-    const { writeFile } = await import('node:fs/promises');
-    const { withCompilationPublisher } = await import('./compilation-events.ts');
+    const { writeFile } = await import("node:fs/promises");
+    const { withCompilationPublisher } =
+      await import("./compilation-events.ts");
     const writeGate = Promise.withResolvers<void>();
-    (writeFile as ReturnType<typeof vi.fn>).mockReturnValueOnce(writeGate.promise);
+    (writeFile as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      writeGate.promise,
+    );
     let completed = false;
-    const work = withCompilationPublisher(vi.fn(), () => processPageBatch(['src/pages/phase.html'], {}))
-      .then(() => { completed = true; });
+    const work = withCompilationPublisher(vi.fn(), () =>
+      processPageBatch(["src/pages/phase.html"], {}),
+    ).then(() => {
+      completed = true;
+    });
     try {
       await vi.waitFor(() => expect(writeFile).toHaveBeenCalled());
       expect(completed).toBe(false);
-    } finally { writeGate.resolve(); await work; }
+    } finally {
+      writeGate.resolve();
+      await work;
+    }
   });
 
   it("rejects scoped dev artifact write failures instead of allowing post success", async () => {
-    const { writeFile } = await import('node:fs/promises');
-    const { withCompilationPublisher } = await import('./compilation-events.ts');
-    (writeFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('disk full'));
-    await expect(withCompilationPublisher(vi.fn(), () => processPageBatch(['src/pages/write-failure.html'], {})))
-      .rejects.toThrow('disk full');
+    const { writeFile } = await import("node:fs/promises");
+    const { withCompilationPublisher } =
+      await import("./compilation-events.ts");
+    (writeFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("disk full"),
+    );
+    await expect(
+      withCompilationPublisher(vi.fn(), () =>
+        processPageBatch(["src/pages/write-failure.html"], {}),
+      ),
+    ).rejects.toThrow("disk full");
   });
 
   it("rejects scoped compilation errors so post cannot run after invalid markup", async () => {
-    const { withCompilationPublisher } = await import('./compilation-events.ts');
-    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue('<html><head></head></html>');
-    await expect(withCompilationPublisher(vi.fn(), () => processPageBatch(['src/pages/invalid-phase.html'], {})))
-      .rejects.toThrow('validate markup');
+    const { withCompilationPublisher } =
+      await import("./compilation-events.ts");
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "<html><head></head></html>",
+    );
+    await expect(
+      withCompilationPublisher(vi.fn(), () =>
+        processPageBatch(["src/pages/invalid-phase.html"], {}),
+      ),
+    ).rejects.toThrow("validate markup");
   });
 
   it("pageWriteIdle joins a queued dev write that publication does not await", async () => {
-    const { writeFile } = await import('node:fs/promises');
+    const { writeFile } = await import("node:fs/promises");
     const writeGate = Promise.withResolvers<void>();
-    (writeFile as ReturnType<typeof vi.fn>).mockReturnValueOnce(writeGate.promise);
+    (writeFile as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      writeGate.promise,
+    );
     // Publication resolves while the queued disk write is still pending.
-    await processPageBatch(['src/pages/idle.html'], {});
+    await processPageBatch(["src/pages/idle.html"], {});
     let idle = false;
-    const joined = pageWriteIdle('src/pages/idle.html').then(() => { idle = true; });
+    const joined = pageWriteIdle("src/pages/idle.html").then(() => {
+      idle = true;
+    });
     await new Promise((r) => setImmediate(r));
     expect(idle).toBe(false);
     writeGate.resolve();
@@ -1313,23 +1507,29 @@ describe("processPageBatch – open page priority & instant reloading", () => {
   });
 
   it("pageWriteIdle resolves immediately when no write is queued", async () => {
-    await expect(pageWriteIdle('src/pages/never-written.html')).resolves.toBeUndefined();
+    await expect(
+      pageWriteIdle("src/pages/never-written.html"),
+    ).resolves.toBeUndefined();
   });
 
   it("stores open page in memory and emits transpiled BEFORE rest pages start transpiling", async () => {
     (mem as any).openPages = ["/internals/scoping-system"];
     const callSequence: string[] = [];
 
-    (mem.storePage as ReturnType<typeof vi.fn>).mockImplementation(async ({ relativePagePath }) => {
-      callSequence.push(`store:${relativePagePath}`);
-    });
+    (mem.storePage as ReturnType<typeof vi.fn>).mockImplementation(
+      async ({ relativePagePath }) => {
+        callSequence.push(`store:${relativePagePath}`);
+      },
+    );
 
     const { eventEmitter } = await import("./events.ts");
-    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation((event: string, payload: { relativePagePath: string }) => {
-      if (event === "transpiled") {
-        callSequence.push(`emit:${payload.relativePagePath}`);
-      }
-    });
+    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation(
+      (event: string, payload: { relativePagePath: string }) => {
+        if (event === "transpiled") {
+          callSequence.push(`emit:${payload.relativePagePath}`);
+        }
+      },
+    );
 
     const pages = [
       "src/pages/index.html",
@@ -1349,7 +1549,7 @@ describe("processPageBatch – open page priority & instant reloading", () => {
   });
 
   it("reports only active per-page work time, excluding a shared batch wait", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const nowSpy = vi.spyOn(performance, "now");
 
     try {
@@ -1359,26 +1559,36 @@ describe("processPageBatch – open page priority & instant reloading", () => {
       // that transpilePage pauses its per-page clock around awaited work.
       let now = 0;
       nowSpy.mockImplementation(() => now);
-      const reads = Array.from({ length: 3 }, () => Promise.withResolvers<Buffer>());
+      const reads = Array.from({ length: 3 }, () =>
+        Promise.withResolvers<Buffer>(),
+      );
       let readIndex = 0;
       (readFile as ReturnType<typeof vi.fn>).mockImplementation(() => {
         now += 7;
         return reads[readIndex++].promise;
       });
 
-      const pages = ["src/pages/one.html", "src/pages/two.html", "src/pages/three.html"];
+      const pages = [
+        "src/pages/one.html",
+        "src/pages/two.html",
+        "src/pages/three.html",
+      ];
       const batch = processPageBatch(pages, {}, "");
       await vi.waitFor(() => expect(readFile).toHaveBeenCalledTimes(3));
 
       // All reads are in flight. Advancing the clock by one second simulates
       // queue/I/O wait which must not appear in any page's work duration.
       now += 1_000;
-      for (const read of reads) read.resolve(Buffer.from("<html><body>test</body></html>"));
+      for (const read of reads)
+        read.resolve(Buffer.from("<html><body>test</body></html>"));
       await batch;
 
       const transpiledLogs = logSpy.mock.calls
         .map((call) => call[0])
-        .filter((msg): msg is string => typeof msg === "string" && msg.startsWith("transpiled:"));
+        .filter(
+          (msg): msg is string =>
+            typeof msg === "string" && msg.startsWith("transpiled:"),
+        );
 
       expect(transpiledLogs).toHaveLength(3);
 
@@ -1398,15 +1608,25 @@ describe("processPageBatch – open page priority & instant reloading", () => {
 
   it("overlaps async child-process work across pages in processPageBatch", async () => {
     const { executeBuildScripts } = await import("./build-scripts.ts");
-    const originalExecute = (executeBuildScripts as ReturnType<typeof vi.fn>).getMockImplementation();
-    (executeBuildScripts as ReturnType<typeof vi.fn>).mockImplementation(async (html: string) => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      return html;
-    });
+    const originalExecute = (
+      executeBuildScripts as ReturnType<typeof vi.fn>
+    ).getMockImplementation();
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockImplementation(
+      async (html: string) => {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return html;
+      },
+    );
 
     try {
-      (readFile as ReturnType<typeof vi.fn>).mockResolvedValue("<html><body>test</body></html>");
-      const pages = ["src/pages/one.html", "src/pages/two.html", "src/pages/three.html"];
+      (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+        "<html><body>test</body></html>",
+      );
+      const pages = [
+        "src/pages/one.html",
+        "src/pages/two.html",
+        "src/pages/three.html",
+      ];
       const start = performance.now();
       await processPageBatch(pages, {});
       const elapsed = performance.now() - start;
@@ -1416,7 +1636,9 @@ describe("processPageBatch – open page priority & instant reloading", () => {
       expect(elapsed).toBeLessThan(200);
     } finally {
       if (originalExecute) {
-        (executeBuildScripts as ReturnType<typeof vi.fn>).mockImplementation(originalExecute);
+        (executeBuildScripts as ReturnType<typeof vi.fn>).mockImplementation(
+          originalExecute,
+        );
       } else {
         (executeBuildScripts as ReturnType<typeof vi.fn>).mockReset();
       }
@@ -1439,7 +1661,8 @@ describe("pageProcessing – live-reload script injection", () => {
 
   it("injects the live-reload script in dev mode", async () => {
     await pageProcessing(PAGE_PATH, {});
-    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
     expect(pageContent).toContain("/bascik-live-reload");
   });
 
@@ -1541,27 +1764,31 @@ describe("pageProcessing – live-reload script injection", () => {
     (BascikConfig as Record<string, unknown>).isBuild = true;
     const { writeFile } = await import("node:fs/promises");
     await pageProcessing(PAGE_PATH, {});
-    const writtenContent = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as string;
+    const writtenContent = (writeFile as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[1] as string;
     expect(writtenContent).not.toContain("/bascik-live-reload");
   });
 
   it("uses addEventListener for beforeunload instead of window.onbeforeunload", async () => {
     await pageProcessing(PAGE_PATH, {});
-    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
     expect(pageContent).toContain("addEventListener('beforeunload'");
     expect(pageContent).not.toContain("window.onbeforeunload");
   });
 
   it("includes interactive focus and visibility listeners", async () => {
     await pageProcessing(PAGE_PATH, {});
-    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
     expect(pageContent).toContain("addEventListener('focus'");
     expect(pageContent).toContain("visibilitychange");
   });
 
   it("sets wasConnected only after connected message check", async () => {
     await pageProcessing(PAGE_PATH, {});
-    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
     const checkIdx = pageContent.indexOf("if (wasConnected)");
     const assignIdx = pageContent.indexOf("wasConnected = true");
     expect(checkIdx).toBeGreaterThan(-1);
@@ -1570,7 +1797,10 @@ describe("pageProcessing – live-reload script injection", () => {
   });
 
   it("passes fileDependencies from transpilePage to mem.storePage", async () => {
-    (collectAllScriptDeps as ReturnType<typeof vi.fn>).mockResolvedValueOnce(["scripts/md-renderer.ts", "content/cli.md"]);
+    (collectAllScriptDeps as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      "scripts/md-renderer.ts",
+      "content/cli.md",
+    ]);
     const html = `
       <!DOCTYPE html><html><head></head><body>
       <script data-bascik-build>
@@ -1581,7 +1811,8 @@ describe("pageProcessing – live-reload script injection", () => {
     `;
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     await pageProcessing(PAGE_PATH, {});
-    const storeArgs = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const storeArgs = (mem.storePage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
     expect(storeArgs.fileDependencies).toBeDefined();
     expect(storeArgs.fileDependencies).toContain("scripts/md-renderer.ts");
     expect(storeArgs.fileDependencies).toContain("content/cli.md");
@@ -1590,22 +1821,30 @@ describe("pageProcessing – live-reload script injection", () => {
   it.each([
     ["data-bascik-build", "src/scripts/build-entry.ts"],
     ["data-bascik-routes", "src/scripts/routes-entry.ts"],
-  ])("stores external %s src files in fileDependencies", async (directive, dependencyPath) => {
-    (collectAllScriptDeps as ReturnType<typeof vi.fn>).mockResolvedValueOnce([dependencyPath]);
-    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
-      `<html><head></head><body><script ${directive} src="./scripts/entry.ts"></script></body></html>`,
-    );
+  ])(
+    "stores external %s src files in fileDependencies",
+    async (directive, dependencyPath) => {
+      (collectAllScriptDeps as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        dependencyPath,
+      ]);
+      (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+        `<html><head></head><body><script ${directive} src="./scripts/entry.ts"></script></body></html>`,
+      );
 
-    await pageProcessing(PAGE_PATH, {});
+      await pageProcessing(PAGE_PATH, {});
 
-    const storeArgs = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(storeArgs.fileDependencies).toContain(dependencyPath);
-  });
+      const storeArgs = (mem.storePage as ReturnType<typeof vi.fn>).mock
+        .calls[0][0];
+      expect(storeArgs.fileDependencies).toContain(dependencyPath);
+    },
+  );
 });
 
 describe("getDisplayPath", () => {
   it("returns a components-relative path when path includes the components dir", () => {
-    expect(getDisplayPath("src/components/my-nav.html")).toBe("components/my-nav.html");
+    expect(getDisplayPath("src/components/my-nav.html")).toBe(
+      "components/my-nav.html",
+    );
   });
 
   it("returns a pages-relative path when path includes the pages dir", () => {
@@ -1613,37 +1852,55 @@ describe("getDisplayPath", () => {
   });
 
   it("returns the original path when it matches neither known directory", () => {
-    expect(getDisplayPath("/some/other/path.html")).toBe("/some/other/path.html");
+    expect(getDisplayPath("/some/other/path.html")).toBe(
+      "/some/other/path.html",
+    );
   });
 
   it("recognizes a component under any configured root", () => {
     const previous = BascikConfig.directory.components;
-    (BascikConfig.directory as { components: string[] }).components = ["/shared/components", "src/components"];
+    (BascikConfig.directory as { components: string[] }).components = [
+      "/shared/components",
+      "src/components",
+    ];
     try {
-      expect(getDisplayPath("src/components/my-nav.html")).toBe("components/my-nav.html");
-      expect(getDisplayPath("/shared/components/site-nav.html")).toMatch(/site-nav\.html$/);
-      expect(getDisplayPath("/shared/components/site-nav.html")).not.toBe("/shared/components/site-nav.html");
+      expect(getDisplayPath("src/components/my-nav.html")).toBe(
+        "components/my-nav.html",
+      );
+      expect(getDisplayPath("/shared/components/site-nav.html")).toMatch(
+        /site-nav\.html$/,
+      );
+      expect(getDisplayPath("/shared/components/site-nav.html")).not.toBe(
+        "/shared/components/site-nav.html",
+      );
     } finally {
-      (BascikConfig.directory as { components: string[] }).components = previous;
+      (BascikConfig.directory as { components: string[] }).components =
+        previous;
     }
   });
 });
 
 describe("findActiveSourceFile", () => {
   it("returns the fallback when the HTML has no source-file markers", () => {
-    expect(findActiveSourceFile("<div>no markers</div>", 10, "fallback.html")).toBe("fallback.html");
+    expect(
+      findActiveSourceFile("<div>no markers</div>", 10, "fallback.html"),
+    ).toBe("fallback.html");
   });
 
   it("returns the open source file when the index is inside its markers", () => {
-    const html = "<!--bascik-source-file:comp.html-->content<!--bascik-source-file-end:comp.html-->";
+    const html =
+      "<!--bascik-source-file:comp.html-->content<!--bascik-source-file-end:comp.html-->";
     // index 40 is inside the markers
     expect(findActiveSourceFile(html, 40, "fallback.html")).toBe("comp.html");
   });
 
   it("returns fallback after the source file region has been closed by its end marker", () => {
-    const html = "<!--bascik-source-file:comp.html-->x<!--bascik-source-file-end:comp.html-->after";
+    const html =
+      "<!--bascik-source-file:comp.html-->x<!--bascik-source-file-end:comp.html-->after";
     // index at the very end — stack is empty
-    expect(findActiveSourceFile(html, html.length, "fallback.html")).toBe("fallback.html");
+    expect(findActiveSourceFile(html, html.length, "fallback.html")).toBe(
+      "fallback.html",
+    );
   });
 
   it("uses stack.splice when the end-marker file is in the stack (normal close)", () => {
@@ -1654,7 +1911,9 @@ describe("findActiveSourceFile", () => {
       "between" +
       "<!--bascik-source-file-end:outer.html-->";
     const betweenIdx = html.indexOf("between");
-    expect(findActiveSourceFile(html, betweenIdx + 1, "fallback.html")).toBe("outer.html");
+    expect(findActiveSourceFile(html, betweenIdx + 1, "fallback.html")).toBe(
+      "outer.html",
+    );
   });
 
   it("uses stack.pop when end-marker file is not in the stack (mismatched close)", () => {
@@ -1664,7 +1923,9 @@ describe("findActiveSourceFile", () => {
       "<!--bascik-source-file-end:ghost.html-->" +
       "after";
     // After the mismatched end, real.html is popped — fallback is returned
-    expect(findActiveSourceFile(html, html.length, "fallback.html")).toBe("fallback.html");
+    expect(findActiveSourceFile(html, html.length, "fallback.html")).toBe(
+      "fallback.html",
+    );
   });
 });
 
@@ -1678,7 +1939,10 @@ describe("getFilePosition", () => {
 
   it("returns the correct line and character for a string on line 2", () => {
     // "<my-comp></my-comp>\n  <my-prop...>" — the <my-prop starts on line 2 with 2-space indent
-    const pos = getFilePosition("src/pages/test.html", "<my-prop fail-during-prop-injection>");
+    const pos = getFilePosition(
+      "src/pages/test.html",
+      "<my-prop fail-during-prop-injection>",
+    );
     expect(pos).not.toBeNull();
     expect(pos?.line).toBe(2);
     expect(pos?.character).toBe(3);
@@ -1686,7 +1950,11 @@ describe("getFilePosition", () => {
 
   it("falls back to tagName regex when searchString is not found literally", () => {
     // searchString absent, but tagName="child-comp" matches <child-comp> on line 2
-    const pos = getFilePosition("src/components/parent-comp.html", "NOTFOUND", "child-comp");
+    const pos = getFilePosition(
+      "src/components/parent-comp.html",
+      "NOTFOUND",
+      "child-comp",
+    );
     expect(pos).not.toBeNull();
     expect(pos?.line).toBe(2);
   });
@@ -1699,12 +1967,18 @@ describe("getFilePosition", () => {
   });
 
   it("returns null when searchString is not found and no fallback matches", () => {
-    const pos = getFilePosition("src/pages/test.html", "COMPLETELY_ABSENT_STRING");
+    const pos = getFilePosition(
+      "src/pages/test.html",
+      "COMPLETELY_ABSENT_STRING",
+    );
     expect(pos).toBeNull();
   });
 
   it("returns null when readFileSync throws (file does not exist)", () => {
-    const pos = getFilePosition("/tmp/definitely-does-not-exist-bascik-test-xyz.html", "anything");
+    const pos = getFilePosition(
+      "/tmp/definitely-does-not-exist-bascik-test-xyz.html",
+      "anything",
+    );
     expect(pos).toBeNull();
   });
 });
@@ -1717,7 +1991,9 @@ describe("transpilePage – missing body", () => {
   });
 
   it("rejects when page has no <body> tag", async () => {
-    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue("<html><head></head></html>");
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "<html><head></head></html>",
+    );
 
     await expect(transpilePage(PAGE_PATH, {})).rejects.toThrow(
       /validate markup.*does not contain a non-empty <body>/i,
@@ -1733,11 +2009,14 @@ describe("transpilePage – unresolved component tag warning", () => {
   });
 
   it("warns when a hyphenated tag has no matching component file", async () => {
-    const html = "<!DOCTYPE html><html><head></head><body><unknown-widget></unknown-widget></body></html>";
+    const html =
+      "<!DOCTYPE html><html><head></head><body><unknown-widget></unknown-widget></body></html>";
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     await transpilePage(PAGE_PATH, {});
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("<unknown-widget>"));
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("<unknown-widget>"),
+    );
     warnSpy.mockRestore();
   });
 
@@ -1748,11 +2027,14 @@ describe("transpilePage – unresolved component tag warning", () => {
         fileContent: "<span>resolved</span>",
       },
     };
-    const html = "<!DOCTYPE html><html><head></head><body><my-resolved></my-resolved></body></html>";
+    const html =
+      "<!DOCTYPE html><html><head></head><body><my-resolved></my-resolved></body></html>";
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     await transpilePage(PAGE_PATH, componentList);
-    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("<my-resolved>"));
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("<my-resolved>"),
+    );
     warnSpy.mockRestore();
   });
 
@@ -1765,11 +2047,15 @@ describe("transpilePage – unresolved component tag warning", () => {
     ].join("");
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const original = (BascikConfig as any).components;
-    (BascikConfig as any).components = { external: ["Heading-Anchors", "vendor-*"] };
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    (BascikConfig as any).components = {
+      external: ["Heading-Anchors", "vendor-*"],
+    };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       await transpilePage(PAGE_PATH, {});
-      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("Unresolved component tag"));
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("Unresolved component tag"),
+      );
     } finally {
       warnSpy.mockRestore();
       (BascikConfig as any).components = original;
@@ -1785,10 +2071,12 @@ describe("transpilePage – unresolved component tag warning", () => {
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const original = (BascikConfig as any).components;
     (BascikConfig as any).components = { external: ["heading-anchors"] };
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       await transpilePage(PAGE_PATH, {});
-      const message = warnSpy.mock.calls.map((call) => String(call[0])).find((text) => text.includes("Unresolved"));
+      const message = warnSpy.mock.calls
+        .map((call) => String(call[0]))
+        .find((text) => text.includes("Unresolved"));
       expect(message).toContain("<my-typo>");
       expect(message).not.toContain("<heading-anchors>");
     } finally {
@@ -1804,11 +2092,12 @@ describe("transpilePage – unresolved component tag warning", () => {
         fileContent: "<section>from component</section>",
       },
     };
-    const html = "<!DOCTYPE html><html><head></head><body><heading-anchors></heading-anchors></body></html>";
+    const html =
+      "<!DOCTYPE html><html><head></head><body><heading-anchors></heading-anchors></body></html>";
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const original = (BascikConfig as any).components;
     (BascikConfig as any).components = { external: ["heading-anchors"] };
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const result = await transpilePage(PAGE_PATH, componentList);
       expect(JSON.stringify(result)).toContain("from component");
@@ -1826,10 +2115,14 @@ describe("transpilePage – unresolved component tag warning", () => {
       "</html>",
     ].join("");
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     await transpilePage(PAGE_PATH, {});
-    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("<my-card>"));
-    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("<my-widget>"));
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("<my-card>"),
+    );
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("<my-widget>"),
+    );
     warnSpy.mockRestore();
   });
 
@@ -1846,10 +2139,14 @@ describe("transpilePage – unresolved component tag warning", () => {
       "</html>",
     ].join("");
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     await transpilePage(PAGE_PATH, {});
-    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("<my-commented-tag>"));
-    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("<another-commented-tag>"));
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("<my-commented-tag>"),
+    );
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("<another-commented-tag>"),
+    );
     warnSpy.mockRestore();
   });
 });
@@ -1871,7 +2168,9 @@ describe("transpilePage – build mode file system error handling", () => {
 
   it("rejects when mkdir fails", async () => {
     const { mkdir } = await import("node:fs/promises");
-    const error = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    const error = Object.assign(new Error("EACCES: permission denied"), {
+      code: "EACCES",
+    });
     (mkdir as ReturnType<typeof vi.fn>).mockRejectedValueOnce(error);
 
     await expect(transpilePage(PAGE_PATH, {})).rejects.toMatchObject({
@@ -1883,7 +2182,9 @@ describe("transpilePage – build mode file system error handling", () => {
 
   it("rejects when writeFile fails with EACCES", async () => {
     const { writeFile } = await import("node:fs/promises");
-    const error = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    const error = Object.assign(new Error("EACCES: permission denied"), {
+      code: "EACCES",
+    });
     (writeFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(error);
 
     await expect(transpilePage(PAGE_PATH, {})).rejects.toMatchObject({
@@ -1895,7 +2196,9 @@ describe("transpilePage – build mode file system error handling", () => {
 
   it("rejects when writeFile fails with ENOENT", async () => {
     const { writeFile } = await import("node:fs/promises");
-    const error = Object.assign(new Error("ENOENT: output directory missing"), { code: "ENOENT" });
+    const error = Object.assign(new Error("ENOENT: output directory missing"), {
+      code: "ENOENT",
+    });
     (writeFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(error);
 
     await expect(transpilePage(PAGE_PATH, {})).rejects.toMatchObject({
@@ -1907,12 +2210,16 @@ describe("transpilePage – build mode file system error handling", () => {
 
   it("does not record a failed write as emitted (failure honesty)", async () => {
     const { writeFile } = await import("node:fs/promises");
-    const error = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    const error = Object.assign(new Error("EACCES: permission denied"), {
+      code: "EACCES",
+    });
     (writeFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(error);
     manifestCollector.clear();
     cspHashCollector.clear();
 
-    await expect(transpilePage(PAGE_PATH, {})).rejects.toMatchObject({ stage: "write output" });
+    await expect(transpilePage(PAGE_PATH, {})).rejects.toMatchObject({
+      stage: "write output",
+    });
 
     // A failed write must never be accounted as emitted: no manifest entry and
     // no CSP entry for this page (recording happens only after a successful
@@ -1937,7 +2244,8 @@ describe("transpilePage – usedComponentsNames", () => {
         fileContent: "<header><p>title</p></header>",
       },
     };
-    const html = "<!DOCTYPE html><html><head></head><body><site-header /></body></html>";
+    const html =
+      "<!DOCTYPE html><html><head></head><body><site-header /></body></html>";
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const result = await transpilePage(PAGE_PATH, componentList);
     expect(result).not.toBeNull();
@@ -1975,7 +2283,9 @@ describe("removePage", () => {
 
   it("calls mem.removePage in dev mode", () => {
     removePage("src/pages/about.html");
-    expect((mem as any).removePage).toHaveBeenCalledWith("src/pages/about.html");
+    expect((mem as any).removePage).toHaveBeenCalledWith(
+      "src/pages/about.html",
+    );
   });
 
   it("does not call mem.removePage in build mode", () => {
@@ -1997,7 +2307,9 @@ describe("processAllPages – side effects", () => {
   });
 
   it("calls mem.storePage and emits transpiled for each successfully transpiled page", async () => {
-    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
+      "src/pages/index.html",
+    ]);
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     await processAllPages();
     expect(mem.storePage).toHaveBeenCalledOnce();
@@ -2009,7 +2321,9 @@ describe("processAllPages – side effects", () => {
   });
 
   it("returns an array of relative page paths", async () => {
-    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
+      "src/pages/index.html",
+    ]);
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     const result = await processAllPages();
     expect(result).toEqual(["pages/index.html"]);
@@ -2026,39 +2340,50 @@ describe("processAllPages – side effects", () => {
       "src/pages/broken.html",
       "src/pages/working.html",
     ]);
-    (readFile as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) =>
-      path.endsWith("broken.html") ? "<html><head></head></html>" : PAGE_HTML
+    (readFile as ReturnType<typeof vi.fn>).mockImplementation(
+      async (path: string) =>
+        path.endsWith("broken.html") ? "<html><head></head></html>" : PAGE_HTML,
     );
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await expect(processAllPages({ useWorkers: false })).resolves.toEqual([
       "pages/working.html",
     ]);
     expect(mem.storePage).toHaveBeenCalledOnce();
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("src/pages/broken.html"));
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("src/pages/broken.html"),
+    );
     errorSpy.mockRestore();
   });
 
   it("reports an asynchronous dev page write failure without rejecting the batch", async () => {
-    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
+      "src/pages/index.html",
+    ]);
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     const { writeFile } = await import("node:fs/promises");
-    const writeError = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    const writeError = Object.assign(new Error("EACCES: permission denied"), {
+      code: "EACCES",
+    });
     (writeFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(writeError);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await expect(processAllPages({ useWorkers: false })).resolves.toEqual([
       "pages/index.html",
     ]);
-    await vi.waitFor(() => expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("src/pages/index.html"),
-      expect.objectContaining({ cause: writeError }),
-    ));
+    await vi.waitFor(() =>
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("src/pages/index.html"),
+        expect.objectContaining({ cause: writeError }),
+      ),
+    );
     errorSpy.mockRestore();
   });
 
   it("processes pages using workers when useWorkers option is true and passes fileDependencies to storePage", async () => {
-    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
+      "src/pages/index.html",
+    ]);
     const result = await processAllPages({ useWorkers: true });
     expect(result).toEqual(["pages/index.html"]);
     expect(mem.storePage).toHaveBeenCalledWith(
@@ -2070,14 +2395,18 @@ describe("processAllPages – side effects", () => {
   });
 
   it("processes pages on main thread when useWorkers option is false", async () => {
-    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
+      "src/pages/index.html",
+    ]);
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     const result = await processAllPages({ useWorkers: false });
     expect(result).toEqual(["pages/index.html"]);
   });
 
   it("prompt 86: forwards transferred worker bytes to the store and disk writer without decoding to a string", async () => {
-    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
+      "src/pages/index.html",
+    ]);
     const { writeFile } = await import("node:fs/promises");
     (writeFile as ReturnType<typeof vi.fn>).mockClear();
     await processAllPages({ useWorkers: true });
@@ -2098,17 +2427,23 @@ describe("processAllPages – side effects", () => {
 
   it("prioritizes open pages over other pages during dev mode (main thread)", async () => {
     (mem as any).openPages = ["/about"];
-    const pages = ["src/pages/index.html", "src/pages/about.html", "src/pages/faq.html"];
+    const pages = [
+      "src/pages/index.html",
+      "src/pages/about.html",
+      "src/pages/faq.html",
+    ];
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
 
     const emitOrder: string[] = [];
     const { eventEmitter } = await import("./events.ts");
-    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation((event: string, payload: { relativePagePath: string }) => {
-      if (event === "transpiled") {
-        emitOrder.push(payload.relativePagePath);
-      }
-    });
+    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation(
+      (event: string, payload: { relativePagePath: string }) => {
+        if (event === "transpiled") {
+          emitOrder.push(payload.relativePagePath);
+        }
+      },
+    );
 
     await processAllPages({ useWorkers: false });
 
@@ -2120,20 +2455,28 @@ describe("processAllPages – side effects", () => {
 
   it("prioritizes open pages over other pages when useWorkers is true", async () => {
     (mem as any).openPages = ["/faq"];
-    const pages = ["src/pages/index.html", "src/pages/about.html", "src/pages/faq.html"];
+    const pages = [
+      "src/pages/index.html",
+      "src/pages/about.html",
+      "src/pages/faq.html",
+    ];
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
 
     const callOrder: string[] = [];
-    (mem.storePage as ReturnType<typeof vi.fn>).mockImplementation(async ({ relativePagePath }) => {
-      callOrder.push(`store:${relativePagePath}`);
-    });
+    (mem.storePage as ReturnType<typeof vi.fn>).mockImplementation(
+      async ({ relativePagePath }) => {
+        callOrder.push(`store:${relativePagePath}`);
+      },
+    );
 
     const { eventEmitter } = await import("./events.ts");
-    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation((event: string, payload: { relativePagePath: string }) => {
-      if (event === "transpiled") {
-        callOrder.push(`emit:${payload.relativePagePath}`);
-      }
-    });
+    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation(
+      (event: string, payload: { relativePagePath: string }) => {
+        if (event === "transpiled") {
+          callOrder.push(`emit:${payload.relativePagePath}`);
+        }
+      },
+    );
 
     await processAllPages({ useWorkers: true });
 
@@ -2149,17 +2492,24 @@ describe("processAllPages – side effects", () => {
     const recordEmitOrder = async () => {
       const emitOrder: string[] = [];
       const { eventEmitter } = await import("./events.ts");
-      (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation((event: string, payload: { relativePagePath: string }) => {
-        if (event === "transpiled") emitOrder.push(payload.relativePagePath);
-      });
+      (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation(
+        (event: string, payload: { relativePagePath: string }) => {
+          if (event === "transpiled") emitOrder.push(payload.relativePagePath);
+        },
+      );
       return emitOrder;
     };
 
     // The pool mock records every dispatched job in call order.
     const dispatchedPages = async (): Promise<string[]> => {
       const { WorkerPool } = await import("./worker-pool.ts");
-      const instances = (WorkerPool as unknown as ReturnType<typeof vi.fn>).mock.instances as any[];
-      return instances.at(-1).run.mock.calls.map(([job]: [{ relativePagePath: string }]) => job.relativePagePath);
+      const instances = (WorkerPool as unknown as ReturnType<typeof vi.fn>).mock
+        .instances as any[];
+      return instances
+        .at(-1)
+        .run.mock.calls.map(
+          ([job]: [{ relativePagePath: string }]) => job.relativePagePath,
+        );
     };
 
     afterEach(() => {
@@ -2167,7 +2517,12 @@ describe("processAllPages – side effects", () => {
     });
 
     // listPages is alphabetical, which puts the home page after 404 and about.
-    const alphabetical = ["src/pages/404.html", "src/pages/about.html", "src/pages/faq.html", "src/pages/index.html"];
+    const alphabetical = [
+      "src/pages/404.html",
+      "src/pages/about.html",
+      "src/pages/faq.html",
+      "src/pages/index.html",
+    ];
 
     it("compiles the home page first on the main thread when no page is open", async () => {
       (mem as any).openPages = [];
@@ -2200,7 +2555,9 @@ describe("processAllPages – side effects", () => {
 
       expect(emitOrder).toHaveLength(4);
       // The open page and the home page both finish before any other page.
-      expect(new Set(emitOrder.slice(0, 2))).toEqual(new Set(["pages/faq.html", "pages/index.html"]));
+      expect(new Set(emitOrder.slice(0, 2))).toEqual(
+        new Set(["pages/faq.html", "pages/index.html"]),
+      );
     });
 
     it("dispatches an open page, then the home page, then the rest to workers", async () => {
@@ -2233,29 +2590,50 @@ describe("processAllPages – side effects", () => {
 
     it("keeps alphabetical order for the rest when there is no home page", async () => {
       (mem as any).openPages = [];
-      (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/a.html", "src/pages/b.html", "src/pages/c.html"]);
+      (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
+        "src/pages/a.html",
+        "src/pages/b.html",
+        "src/pages/c.html",
+      ]);
 
       await processAllPages({ useWorkers: true });
 
-      expect(await dispatchedPages()).toEqual(["pages/a.html", "pages/b.html", "pages/c.html"]);
+      expect(await dispatchedPages()).toEqual([
+        "pages/a.html",
+        "pages/b.html",
+        "pages/c.html",
+      ]);
     });
 
     it("treats a nested directory index as an ordinary page, not the home page", async () => {
       (mem as any).openPages = [];
-      (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/blog/index.html", "src/pages/index.html"]);
+      (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
+        "src/pages/blog/index.html",
+        "src/pages/index.html",
+      ]);
 
       await processAllPages({ useWorkers: true });
 
-      expect(await dispatchedPages()).toEqual(["pages/index.html", "pages/blog/index.html"]);
+      expect(await dispatchedPages()).toEqual([
+        "pages/index.html",
+        "pages/blog/index.html",
+      ]);
     });
 
     it("moves a page that was opened after the batch started to the front of the queue", async () => {
       (mem as any).openPages = [];
-      const names = Array.from({ length: 12 }, (_, i) => `page-${String(i + 1).padStart(2, "0")}`);
-      (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(names.map((name) => `src/pages/${name}.html`));
+      const names = Array.from(
+        { length: 12 },
+        (_, i) => `page-${String(i + 1).padStart(2, "0")}`,
+      );
+      (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(
+        names.map((name) => `src/pages/${name}.html`),
+      );
 
       const { WorkerPool } = await import("./worker-pool.ts");
-      (WorkerPool as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(function(this: any) {
+      (
+        WorkerPool as unknown as ReturnType<typeof vi.fn>
+      ).mockImplementationOnce(function (this: any) {
         let calls = 0;
         this.run = vi.fn(async (job: any) => {
           // A browser connects its live-reload stream while the first page compiles.
@@ -2269,7 +2647,7 @@ describe("processAllPages – side effects", () => {
             fileDependencies: [],
           };
         });
-        this.terminate = vi.fn(async () => { });
+        this.terminate = vi.fn(async () => {});
       });
 
       await processAllPages({ useWorkers: true });
@@ -2288,7 +2666,7 @@ describe("processAllPages – side effects", () => {
   });
 
   it("logs 'Starting transpiling...' when processAllPages starts", async () => {
-    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     await processAllPages();
     expect(consoleSpy).toHaveBeenCalledWith("Starting transpiling...");
@@ -2313,13 +2691,17 @@ describe("selectivelyProcessPages", () => {
   });
 
   it("queries pagesThisComponentIsUsedOn with the extracted component name", async () => {
-    (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>).mockReturnValue([]);
+    (
+      mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>
+    ).mockReturnValue([]);
     await selectivelyProcessPages("src/components/my-nav.html");
     expect(mem.pagesThisComponentIsUsedOn).toHaveBeenCalledWith("my-nav");
   });
 
   it("extracts the correct component name for nested component file paths", async () => {
-    (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>).mockReturnValue([]);
+    (
+      mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>
+    ).mockReturnValue([]);
     await selectivelyProcessPages("src/components/ui/button/button.html");
     expect(mem.pagesThisComponentIsUsedOn).toHaveBeenCalledWith("button");
 
@@ -2328,29 +2710,45 @@ describe("selectivelyProcessPages", () => {
   });
 
   it("calls pageProcessing for each page returned by pagesThisComponentIsUsedOn", async () => {
-    (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>).mockReturnValue(["src/pages/index.html"]);
+    (
+      mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>
+    ).mockReturnValue(["src/pages/index.html"]);
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     await selectivelyProcessPages("src/components/my-nav.html");
     const { eventEmitter } = await import("./events.ts");
-    expect(eventEmitter.emit).toHaveBeenCalledWith("transpiled", expect.anything());
+    expect(eventEmitter.emit).toHaveBeenCalledWith(
+      "transpiled",
+      expect.anything(),
+    );
   });
 
   it("rebuilds the pages of components whose stylesheets import the changed file", async () => {
     const componentsModule = await import("./components.ts");
-    const importers = vi.spyOn(componentsModule, "componentsImportingStylesheet").mockReturnValue(["my-card"]);
-    (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>).mockImplementation((name: string) =>
+    const importers = vi
+      .spyOn(componentsModule, "componentsImportingStylesheet")
+      .mockReturnValue(["my-card"]);
+    (
+      mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>
+    ).mockImplementation((name: string) =>
       name === "my-card" ? ["src/pages/index.html"] : [],
     );
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     try {
       await selectivelyProcessPages("src/components/my-card/shared.css");
-      expect(importers).toHaveBeenCalledWith("src/components/my-card/shared.css");
+      expect(importers).toHaveBeenCalledWith(
+        "src/components/my-card/shared.css",
+      );
       expect(mem.pagesThisComponentIsUsedOn).toHaveBeenCalledWith("shared");
       const { eventEmitter } = await import("./events.ts");
-      expect(eventEmitter.emit).toHaveBeenCalledWith("transpiled", expect.anything());
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        "transpiled",
+        expect.anything(),
+      );
     } finally {
       importers.mockRestore();
-      (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>).mockReset().mockReturnValue([]);
+      (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>)
+        .mockReset()
+        .mockReturnValue([]);
     }
   });
 });
@@ -2363,7 +2761,9 @@ describe("processPagesImportingStylesheet", () => {
 
   it("does nothing when no component imports the stylesheet", async () => {
     const componentsModule = await import("./components.ts");
-    const importers = vi.spyOn(componentsModule, "componentsImportingStylesheet").mockReturnValue([]);
+    const importers = vi
+      .spyOn(componentsModule, "componentsImportingStylesheet")
+      .mockReturnValue([]);
     try {
       await processPagesImportingStylesheet("src/pages/styles/tokens.css");
       expect(invalidateComponentListCache).not.toHaveBeenCalled();
@@ -2375,19 +2775,27 @@ describe("processPagesImportingStylesheet", () => {
 
   it("reloads components and rebuilds each importing page once", async () => {
     const componentsModule = await import("./components.ts");
-    const importers = vi.spyOn(componentsModule, "componentsImportingStylesheet").mockReturnValue(["my-card", "my-nav"]);
+    const importers = vi
+      .spyOn(componentsModule, "componentsImportingStylesheet")
+      .mockReturnValue(["my-card", "my-nav"]);
     vi.spyOn(componentsModule, "listComponents").mockResolvedValue({});
-    (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>).mockReturnValue(["src/pages/index.html"]);
+    (
+      mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>
+    ).mockReturnValue(["src/pages/index.html"]);
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     try {
       await processPagesImportingStylesheet("src/pages/styles/tokens.css");
       expect(invalidateComponentListCache).toHaveBeenCalledOnce();
       const { eventEmitter } = await import("./events.ts");
-      const transpiled = (eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls.filter(([name]) => name === "transpiled");
+      const transpiled = (
+        eventEmitter.emit as ReturnType<typeof vi.fn>
+      ).mock.calls.filter(([name]) => name === "transpiled");
       expect(transpiled).toHaveLength(1);
     } finally {
       importers.mockRestore();
-      (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>).mockReset().mockReturnValue([]);
+      (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>)
+        .mockReset()
+        .mockReturnValue([]);
     }
   });
 });
@@ -2413,16 +2821,20 @@ describe("selectivelyProcessPagesForWatchPath – open pages first", () => {
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
 
     const callOrder: string[] = [];
-    (mem.storePage as ReturnType<typeof vi.fn>).mockImplementation(async ({ relativePagePath }) => {
-      callOrder.push(`store:${relativePagePath}`);
-    });
+    (mem.storePage as ReturnType<typeof vi.fn>).mockImplementation(
+      async ({ relativePagePath }) => {
+        callOrder.push(`store:${relativePagePath}`);
+      },
+    );
 
     const { eventEmitter } = await import("./events.ts");
-    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation((event, payload) => {
-      if (event === "transpiled") {
-        callOrder.push(`emit:${payload.relativePagePath}`);
-      }
-    });
+    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation(
+      (event, payload) => {
+        if (event === "transpiled") {
+          callOrder.push(`emit:${payload.relativePagePath}`);
+        }
+      },
+    );
 
     await selectivelyProcessPagesForWatchPath("nav.mjs");
 
@@ -2442,14 +2854,19 @@ describe("selectivelyProcessPagesForWatchPath – open pages first", () => {
 
 describe("component load failures (a component build script that throws)", () => {
   const failure = () =>
-    new BuildScriptError('[bascik] build script error in "components/site-footer.html" at (line 37, column 16):\nStrin is not defined', {
-      sourceFile: "components/site-footer.html",
-      line: 37,
-      column: 16,
-    });
+    new BuildScriptError(
+      '[bascik] build script error in "components/site-footer.html" at (line 37, column 16):\nStrin is not defined',
+      {
+        sourceFile: "components/site-footer.html",
+        line: 37,
+        column: 16,
+      },
+    );
   const emitted = async () => {
     const { eventEmitter } = await import("./events.ts");
-    return (eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls.filter(([event]) => event === "build-error");
+    return (eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls.filter(
+      ([event]) => event === "build-error",
+    );
   };
 
   beforeEach(async () => {
@@ -2460,7 +2877,9 @@ describe("component load failures (a component build script that throws)", () =>
   });
 
   it("publishes one located build-error and still rejects, so a caller outside a compile scope still sees the failure", async () => {
-    await expect(processPageBatch(["src/pages/index.html"])).rejects.toBeInstanceOf(BuildScriptError);
+    await expect(
+      processPageBatch(["src/pages/index.html"]),
+    ).rejects.toBeInstanceOf(BuildScriptError);
 
     const errors = await emitted();
     expect(errors).toHaveLength(1);
@@ -2473,26 +2892,40 @@ describe("component load failures (a component build script that throws)", () =>
   });
 
   it("publishes for the processAllPages path that a newly added component takes", async () => {
-    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
-    await expect(processAllPages({ useWorkers: false })).rejects.toBeInstanceOf(BuildScriptError);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
+      "src/pages/index.html",
+    ]);
+    await expect(processAllPages({ useWorkers: false })).rejects.toBeInstanceOf(
+      BuildScriptError,
+    );
     expect(await emitted()).toHaveLength(1);
   });
 
   it("publishes for the selectivelyProcessPagesForWatchPath path", async () => {
-    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
-    await expect(selectivelyProcessPagesForWatchPath("nav.mjs")).rejects.toBeInstanceOf(BuildScriptError);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
+      "src/pages/index.html",
+    ]);
+    await expect(
+      selectivelyProcessPagesForWatchPath("nav.mjs"),
+    ).rejects.toBeInstanceOf(BuildScriptError);
     expect(await emitted()).toHaveLength(1);
   });
 
   it("publishes a message-only build-error for a failure that has no location", async () => {
     const componentsModule = await import("./components.ts");
-    vi.spyOn(componentsModule, "listComponents").mockRejectedValue(new Error("two component files both define the tag <x-y>"));
+    vi.spyOn(componentsModule, "listComponents").mockRejectedValue(
+      new Error("two component files both define the tag <x-y>"),
+    );
 
-    await expect(processPageBatch(["src/pages/index.html"])).rejects.toThrow("two component files");
+    await expect(processPageBatch(["src/pages/index.html"])).rejects.toThrow(
+      "two component files",
+    );
 
     const errors = await emitted();
     expect(errors).toHaveLength(1);
-    expect(errors[0][1]).toEqual({ message: expect.stringContaining("two component files") });
+    expect(errors[0][1]).toEqual({
+      message: expect.stringContaining("two component files"),
+    });
   });
 
   it("names a failing page build script's own file and line in the overlay, as the terminal does", async () => {
@@ -2503,13 +2936,18 @@ describe("component load failures (a component build script that throws)", () =>
     const execute = executeBuildScripts as ReturnType<typeof vi.fn>;
     const originalExecute = execute.getMockImplementation();
     execute.mockImplementation(async () => {
-      throw new BuildScriptError('[bascik] build script error in "src/pages/index.html" at (line 13, column 5):\nboom', {
-        sourceFile: "src/pages/index.html",
-        line: 13,
-        column: 5,
-      });
+      throw new BuildScriptError(
+        '[bascik] build script error in "src/pages/index.html" at (line 13, column 5):\nboom',
+        {
+          sourceFile: "src/pages/index.html",
+          line: 13,
+          column: 5,
+        },
+      );
     });
-    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue('<html><body><script data-bascik-build>boom()</script></body></html>');
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "<html><body><script data-bascik-build>boom()</script></body></html>",
+    );
 
     try {
       await processPageBatch(["src/pages/index.html"]).catch(() => undefined);
@@ -2528,16 +2966,23 @@ describe("component load failures (a component build script that throws)", () =>
   });
 
   it("does not publish when a compile scope owns the failure, so the cycle reports it exactly once", async () => {
-    const { withCompilationPublisher } = await import("./compilation-events.ts");
+    const { withCompilationPublisher } =
+      await import("./compilation-events.ts");
     await expect(
-      withCompilationPublisher(vi.fn(), () => processPageBatch(["src/pages/index.html"]), { onPageErrors: "throw" }),
+      withCompilationPublisher(
+        vi.fn(),
+        () => processPageBatch(["src/pages/index.html"]),
+        { onPageErrors: "throw" },
+      ),
     ).rejects.toBeInstanceOf(AggregateError);
     expect(await emitted()).toHaveLength(0);
   });
 
   it("does not publish in a production build, which has no browsers to tell", async () => {
     (BascikConfig as Record<string, unknown>).isBuild = true;
-    await expect(processPageBatch(["src/pages/index.html"])).rejects.toBeInstanceOf(BuildScriptError);
+    await expect(
+      processPageBatch(["src/pages/index.html"]),
+    ).rejects.toBeInstanceOf(BuildScriptError);
     expect(await emitted()).toHaveLength(0);
   });
 

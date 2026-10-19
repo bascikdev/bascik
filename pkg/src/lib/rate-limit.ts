@@ -1,4 +1,8 @@
-import { nativeClock, type FrameworkClock, type IntervalHandle } from "./clock.ts";
+import {
+  nativeClock,
+  type FrameworkClock,
+  type IntervalHandle,
+} from "./clock.ts";
 
 export const DEFAULT_RATE_LIMIT_WINDOW_MS = 10_000;
 export const DEFAULT_RATE_LIMIT_MAX = 500;
@@ -14,20 +18,26 @@ const SUB_BUCKETS = 10;
 export const getClientIp = (
   socketRemoteAddress: string,
   headers: Record<string, string | string[] | undefined>,
-  trustProxy: boolean
+  trustProxy: boolean,
 ): string => {
   if (!trustProxy) {
     return socketRemoteAddress;
   }
   const xForwardedFor = headers["x-forwarded-for"];
   if (typeof xForwardedFor === "string") {
-    const parts = xForwardedFor.split(",").map((p) => p.trim()).filter(Boolean);
+    const parts = xForwardedFor
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
     if (parts.length > 0) {
       return parts[parts.length - 1];
     }
   } else if (Array.isArray(xForwardedFor) && xForwardedFor.length > 0) {
     const lastItem = xForwardedFor[xForwardedFor.length - 1];
-    const parts = lastItem.split(",").map((p) => p.trim()).filter(Boolean);
+    const parts = lastItem
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
     if (parts.length > 0) {
       return parts[parts.length - 1];
     }
@@ -60,7 +70,10 @@ export class RateLimiter {
     this.windowMs = options.windowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS;
     this.max = options.max ?? DEFAULT_RATE_LIMIT_MAX;
     this.maxTrackedIps = options.maxTrackedIps ?? MAX_TRACKED_IPS;
-    this.bucketDurationMs = Math.max(1, Math.floor(this.windowMs / SUB_BUCKETS));
+    this.bucketDurationMs = Math.max(
+      1,
+      Math.floor(this.windowMs / SUB_BUCKETS),
+    );
     this.clock = options.clock ?? nativeClock;
   }
 

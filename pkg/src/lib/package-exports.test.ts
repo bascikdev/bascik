@@ -4,7 +4,9 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { build, type Message } from "esbuild";
 
-const bundleForWeb = async (entry: string): Promise<{ errors: Message[]; bytes: number }> => {
+const bundleForWeb = async (
+  entry: string,
+): Promise<{ errors: Message[]; bytes: number }> => {
   try {
     const result = await build({
       entryPoints: [entry],
@@ -16,7 +18,10 @@ const bundleForWeb = async (entry: string): Promise<{ errors: Message[]; bytes: 
       logLevel: "silent",
       external: [],
     });
-    return { errors: result.errors, bytes: result.outputFiles?.[0]?.contents.byteLength ?? 0 };
+    return {
+      errors: result.errors,
+      bytes: result.outputFiles?.[0]?.contents.byteLength ?? 0,
+    };
   } catch (err) {
     const failure = err as { errors?: Message[] };
     return { errors: failure.errors ?? [], bytes: 0 };
@@ -42,11 +47,13 @@ describe("package exports surface", () => {
     expect(pkg.types).toBe("./dist/lib/defineConfig.d.ts");
     expect(pkg.files).not.toContain("src/");
 
-    const runtimeExport = pkg.exports?.["./runtime"] as { types?: string; default?: string } | undefined;
+    const runtimeExport = pkg.exports?.["./runtime"] as
+      { types?: string; default?: string } | undefined;
     expect(runtimeExport?.types).toBe("./dist/runtime.d.ts");
     expect(runtimeExport?.default).toBe("./dist/runtime.js");
 
-    const adapterExport = pkg.exports?.["./adapter"] as { types?: string; default?: string } | undefined;
+    const adapterExport = pkg.exports?.["./adapter"] as
+      { types?: string; default?: string } | undefined;
     expect(adapterExport?.types).toBe("./dist/adapter.d.ts");
     expect(adapterExport?.default).toBe("./dist/adapter.js");
 

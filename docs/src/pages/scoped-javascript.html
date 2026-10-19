@@ -1,255 +1,360 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Bascik rewrites DOM selector calls inside component script tags to be scoped to the current component instance automatically."
+    />
+    <title>Scoped JavaScript for HTML Components - Bascik</title>
+  </head>
 
-<head>
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <script data-bascik-build>
-    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    export default async () => await breadcrumbLd();
-  </script>
-  <script data-bascik-build>
-    import { articleSchema } from '@/lib/article-schema.ts';
-    export default async () => await articleSchema();
-  </script>
-  <meta name="description"
-    content="Bascik rewrites DOM selector calls inside component script tags to be scoped to the current component instance automatically." />
-  <title>Scoped JavaScript for HTML Components - Bascik</title>
-</head>
+  <body>
+    <docs-nav />
 
-<body>
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
 
-  <docs-nav />
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/scoped-javascript");
+          </script>
+          <!-- Intro rendered from docs/content/scoped-javascript.md. -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/scoped-javascript.md", {
+                to: "Writing Component Scripts",
+              });
+          </script>
 
-  <div class="container">
-    <div class="docs-layout">
-      <docs-sidebar />
+          <style>
+            .demo-spacer {
+              margin-top: 24px;
+            }
 
-      <main class="docs-content" id="main-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/scoped-javascript');
-        </script>
-        <!-- Intro rendered from docs/content/scoped-javascript.md. -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/scoped-javascript.md', { to: 'Writing Component Scripts' });
-        </script>
+            .demo-counters-flex {
+              display: flex;
+              gap: 32px;
+              flex-wrap: wrap;
+              justify-content: center;
+              padding: 8px 0;
+            }
+          </style>
 
-        <style>
-          .demo-spacer {
-            margin-top: 24px;
-          }
-
-          .demo-counters-flex {
-            display: flex;
-            gap: 32px;
-            flex-wrap: wrap;
-            justify-content: center;
-            padding: 8px 0;
-          }
-        </style>
-
-        <component-demo class="demo-spacer" data-bascik-prop-file="src/components/demo-counter/">
-          <div data-bascik-slot="example">
-            <div class="demo-counters-flex">
-              <demo-counter data-bascik-prop-label="Counter A" />
-              <demo-counter data-bascik-prop-label="Counter B" />
+          <component-demo
+            class="demo-spacer"
+            data-bascik-prop-file="src/components/demo-counter/"
+          >
+            <div data-bascik-slot="example">
+              <div class="demo-counters-flex">
+                <demo-counter data-bascik-prop-label="Counter A" />
+                <demo-counter data-bascik-prop-label="Counter B" />
+              </div>
             </div>
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-javascript.md', 'source-usage');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-javascript.md', 'source-html');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-css">
-            <code-block data-bascik-prop-lang="css">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-javascript.md', 'source-css');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-js">
-            <code-block data-bascik-prop-lang="ts">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-javascript.md', 'source-js');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-javascript.md', 'output-html');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-css">
-            <code-block data-bascik-prop-lang="css">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-javascript.md', 'output-css');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-js">
-            <code-block data-bascik-prop-lang="js">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-javascript.md', 'output-js');
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
-
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/scoped-javascript.md', { from: 'Writing Component Scripts', to: 'HTML ID References' });
-        </script>
-
-        <diagram-figure data-bascik-prop-title="Where a component script lands">
-          <diagram-row data-bascik-prop-direction="stack">
-            <diagram-panel data-bascik-prop-label="Development server: the script stays after its component">
+            <div data-bascik-slot="source-usage">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/scoped-javascript.md', 'scoped-javascript-script-placement-dev');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "source-usage",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-            <diagram-panel data-bascik-prop-label="Production build: the script moves to the end of the body">
+            </div>
+            <div data-bascik-slot="source-html">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/scoped-javascript.md', 'scoped-javascript-script-placement-prod');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "source-html",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-          </diagram-row>
-        </diagram-figure>
-
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/scoped-javascript.md', { from: 'HTML ID References', to: 'Pitfall: Class-Based DOM Lookups' });
-        </script>
-
-        <diagram-figure data-bascik-prop-title="References follow the id they point at">
-          <diagram-row data-bascik-prop-direction="stack">
-            <diagram-panel data-bascik-prop-label="You write">
+            </div>
+            <div data-bascik-slot="source-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "source-css",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-js">
+              <code-block data-bascik-prop-lang="ts">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "source-js",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/scoped-javascript.md', 'scoped-javascript-id-references-in');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "output-html",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+            </div>
+            <div data-bascik-slot="output-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "output-css",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-js">
+              <code-block data-bascik-prop-lang="js">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "output-js",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/scoped-javascript.md", {
+                from: "Writing Component Scripts",
+                to: "HTML ID References",
+              });
+          </script>
+
+          <diagram-figure
+            data-bascik-prop-title="Where a component script lands"
+          >
+            <diagram-row data-bascik-prop-direction="stack">
+              <diagram-panel
+                data-bascik-prop-label="Development server: the script stays after its component"
+              >
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/scoped-javascript.md",
+                        "scoped-javascript-script-placement-dev",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+              <diagram-panel
+                data-bascik-prop-label="Production build: the script moves to the end of the body"
+              >
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/scoped-javascript.md",
+                        "scoped-javascript-script-placement-prod",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+            </diagram-row>
+          </diagram-figure>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/scoped-javascript.md", {
+                from: "HTML ID References",
+                to: "Pitfall: Class-Based DOM Lookups",
+              });
+          </script>
+
+          <diagram-figure
+            data-bascik-prop-title="References follow the id they point at"
+          >
+            <diagram-row data-bascik-prop-direction="stack">
+              <diagram-panel data-bascik-prop-label="You write">
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/scoped-javascript.md",
+                        "scoped-javascript-id-references-in",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+              <diagram-panel
+                data-bascik-prop-label="Bascik emits"
+                data-bascik-prop-arrow="↓"
+              >
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/scoped-javascript.md",
+                        "scoped-javascript-id-references-out",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+            </diagram-row>
+          </diagram-figure>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/scoped-javascript.md", {
+                from: "Pitfall: Class-Based DOM Lookups",
+                to: "Dynamic Runtime Classes",
+              });
+          </script>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/scoped-javascript.md",
+                { from: "Dynamic Runtime Classes", to: "Supported Selectors" },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo data-bascik-prop-file="src/components/state-toggle/">
+            <div data-bascik-slot="example">
+              <state-toggle />
+            </div>
+            <div data-bascik-slot="source-usage">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/scoped-javascript.md', 'scoped-javascript-id-references-out');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "runtime-class-usage",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-          </diagram-row>
-        </diagram-figure>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "runtime-class-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "runtime-class-css",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-js">
+              <code-block data-bascik-prop-lang="js">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "runtime-class-js",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "runtime-class-output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-js">
+              <code-block data-bascik-prop-lang="js">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "runtime-class-output-js",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
 
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/scoped-javascript.md', { from: 'Pitfall: Class-Based DOM Lookups', to: 'Dynamic Runtime Classes' });
-        </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/scoped-javascript.md",
+                { from: "Supported Selectors" },
+                { stripDemoBlocks: true },
+              );
+          </script>
 
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/scoped-javascript.md', { from: 'Dynamic Runtime Classes', to: 'Supported Selectors' }, { stripDemoBlocks: true });
-        </script>
-
-        <component-demo data-bascik-prop-file="src/components/state-toggle/">
-          <div data-bascik-slot="example">
-            <state-toggle />
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-javascript.md', 'runtime-class-usage');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-javascript.md', 'runtime-class-html');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-css">
-            <code-block data-bascik-prop-lang="css">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-javascript.md', 'runtime-class-css');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-js">
-            <code-block data-bascik-prop-lang="js">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-javascript.md', 'runtime-class-js');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-javascript.md', 'runtime-class-output-html');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-js">
-            <code-block data-bascik-prop-lang="js">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/scoped-javascript.md', 'runtime-class-output-js');
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
-
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/scoped-javascript.md', { from: 'Supported Selectors' }, { stripDemoBlocks: true });
-        </script>
-
-        <docs-pagination />
-
-      </main>
+          <docs-pagination />
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-</body>
-
+    <docs-footer />
+  </body>
 </html>

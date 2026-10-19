@@ -26,7 +26,9 @@ import { build, type Message } from "esbuild";
 const here = resolve(import.meta.dirname);
 const docsContent = resolve(here, "../../../docs/content");
 
-const bundleForWeb = async (entry: string): Promise<{ errors: Message[]; bytes: number }> => {
+const bundleForWeb = async (
+  entry: string,
+): Promise<{ errors: Message[]; bytes: number }> => {
   try {
     const result = await build({
       entryPoints: [entry],
@@ -39,7 +41,10 @@ const bundleForWeb = async (entry: string): Promise<{ errors: Message[]; bytes: 
       // Nothing is external: every import must resolve inside the graph.
       external: [],
     });
-    return { errors: result.errors, bytes: result.outputFiles?.[0]?.contents.byteLength ?? 0 };
+    return {
+      errors: result.errors,
+      bytes: result.outputFiles?.[0]?.contents.byteLength ?? 0,
+    };
   } catch (err) {
     const failure = err as { errors?: Message[] };
     return { errors: failure.errors ?? [], bytes: 0 };
@@ -54,7 +59,9 @@ const nodeBuiltinErrors = (errors: Message[]): string[] =>
 
 describe("serverless contract: host-neutral runtime boundary", () => {
   it("positive control: a plain Request/Response handler bundles for the Web", async () => {
-    const { errors, bytes } = await bundleForWeb(resolve(here, "__fixtures__/portable-handler.ts"));
+    const { errors, bytes } = await bundleForWeb(
+      resolve(here, "__fixtures__/portable-handler.ts"),
+    );
     expect(errors).toEqual([]);
     expect(bytes).toBeGreaterThan(0);
   });
@@ -67,7 +74,9 @@ describe("serverless contract: host-neutral runtime boundary", () => {
     ];
     for (const entry of entries) {
       const { errors } = await bundleForWeb(entry);
-      expect(nodeBuiltinErrors(errors), `${entry} leaks Node builtins`).toEqual([]);
+      expect(nodeBuiltinErrors(errors), `${entry} leaks Node builtins`).toEqual(
+        [],
+      );
       expect(errors, `${entry} does not bundle for the Web`).toEqual([]);
     }
   });
@@ -77,7 +86,10 @@ describe("serverless contract: host-neutral runtime boundary", () => {
     // the portable graph; a pass here means the control is broken.
     for (const entry of ["server-scripts.ts", "api-runtime.ts", "server.ts"]) {
       const { errors } = await bundleForWeb(resolve(here, entry));
-      expect(nodeBuiltinErrors(errors).length, `${entry} unexpectedly bundled for the Web`).toBeGreaterThan(0);
+      expect(
+        nodeBuiltinErrors(errors).length,
+        `${entry} unexpectedly bundled for the Web`,
+      ).toBeGreaterThan(0);
     }
   });
 });

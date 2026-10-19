@@ -11,10 +11,18 @@ import {
 describe("shieldPreservedAttribute fast path (prompt 83)", () => {
   const plain = `<div class="card" id="root"><p class="body" name="n">Hello <b>there</b></p><img class="pic" /></div>`;
 
-  const scans = (html: string, attribute: "id" | "name" | "class", preservedTags: string[]) => {
+  const scans = (
+    html: string,
+    attribute: "id" | "name" | "class",
+    preservedTags: string[],
+  ) => {
     __shieldStatsForTests.reset();
     const result = shieldPreservedAttribute(html, attribute, preservedTags);
-    return { result, tagScans: __shieldStatsForTests.tagScans, hidden: __shieldStatsForTests.hiddenValues };
+    return {
+      result,
+      tagScans: __shieldStatsForTests.tagScans,
+      hidden: __shieldStatsForTests.hiddenValues,
+    };
   };
 
   it("performs no tag scan and hides nothing when the markup has no preserve directive and no preserved tag", () => {
@@ -23,7 +31,9 @@ describe("shieldPreservedAttribute fast path (prompt 83)", () => {
       expect(tagScans).toBe(0);
       expect(hidden).toBe(0);
       expect(result.html).toBe(plain);
-      expect(result.restore("anything \x00BASCIK_SHIELD_1\x00")).toBe("anything \x00BASCIK_SHIELD_1\x00");
+      expect(result.restore("anything \x00BASCIK_SHIELD_1\x00")).toBe(
+        "anything \x00BASCIK_SHIELD_1\x00",
+      );
     }
   });
 
@@ -70,10 +80,18 @@ describe("shieldPreservedAttribute fast path (prompt 83)", () => {
 });
 
 describe("shieldPreservedAttribute wildcard patterns", () => {
-  const scans = (html: string, attribute: "id" | "name" | "class", preservedTags: string[]) => {
+  const scans = (
+    html: string,
+    attribute: "id" | "name" | "class",
+    preservedTags: string[],
+  ) => {
     __shieldStatsForTests.reset();
     const result = shieldPreservedAttribute(html, attribute, preservedTags);
-    return { result, tagScans: __shieldStatsForTests.tagScans, hidden: __shieldStatsForTests.hiddenValues };
+    return {
+      result,
+      tagScans: __shieldStatsForTests.tagScans,
+      hidden: __shieldStatsForTests.hiddenValues,
+    };
   };
 
   it("preserves id, name, and class on a prefix-matched tag and its descendants", () => {
@@ -195,7 +213,10 @@ describe("maskElementContents", () => {
   });
 
   it("masks content for suffix and bare-star patterns", () => {
-    const suffix = maskElementContents("<acme-widget>X</acme-widget><acme-panel>Y</acme-panel>", ["*-widget"]);
+    const suffix = maskElementContents(
+      "<acme-widget>X</acme-widget><acme-panel>Y</acme-panel>",
+      ["*-widget"],
+    );
     expect(suffix).not.toContain(">X<");
     expect(suffix).toContain(">Y<");
     const star = maskElementContents("<div>X</div>", ["*"]);
@@ -213,7 +234,9 @@ describe("maskElementContents", () => {
 describe("shieldElementContents wildcard patterns", () => {
   it("shields and restores content of tags matching a wildcard pattern", () => {
     const html = "<vendor-widget><b>bold</b></vendor-widget><p>keep</p>";
-    const { html: shielded, restore } = shieldElementContents(html, ["vendor-*"]);
+    const { html: shielded, restore } = shieldElementContents(html, [
+      "vendor-*",
+    ]);
     expect(shielded).not.toContain("<b>bold</b>");
     expect(shielded).toContain("<p>keep</p>");
     expect(restore(shielded)).toBe(html);
@@ -260,21 +283,29 @@ describe("data-bascik-preserve with an empty value", () => {
     "data-bascik-preserve = ''",
     'data-bascik-preserve="  "',
     "data-bascik-preserve",
-  ])("%s preserves id, name, and class on the element and its descendants", (directive) => {
-    const html = `<div id="mount" name="m" class="vendor" ${directive}><span class="inner">x</span></div><p class="scoped">y</p>`;
-    for (const attribute of ["id", "name", "class"] as const) {
-      const result = shieldPreservedAttribute(html, attribute);
-      expect(result.restore(result.html)).toBe(html);
-      expect(result.html).not.toContain(`<div id="mount"`);
-    }
-    const classResult = shieldPreservedAttribute(html, "class");
-    expect(classResult.html).not.toContain(`<span class="inner">`);
-    expect(classResult.html).toContain(`<p class="scoped">`);
-  });
+  ])(
+    "%s preserves id, name, and class on the element and its descendants",
+    (directive) => {
+      const html = `<div id="mount" name="m" class="vendor" ${directive}><span class="inner">x</span></div><p class="scoped">y</p>`;
+      for (const attribute of ["id", "name", "class"] as const) {
+        const result = shieldPreservedAttribute(html, attribute);
+        expect(result.restore(result.html)).toBe(html);
+        expect(result.html).not.toContain(`<div id="mount"`);
+      }
+      const classResult = shieldPreservedAttribute(html, "class");
+      expect(classResult.html).not.toContain(`<span class="inner">`);
+      expect(classResult.html).toContain(`<p class="scoped">`);
+    },
+  );
 
   it("strips the empty-valued directive without an unknown-token warning", () => {
     const warnings: string[] = [];
-    expect(stripPreserveDirectives('<div data-bascik-preserve="" id="a"></div>', (m) => warnings.push(m))).toBe('<div id="a"></div>');
+    expect(
+      stripPreserveDirectives(
+        '<div data-bascik-preserve="" id="a"></div>',
+        (m) => warnings.push(m),
+      ),
+    ).toBe('<div id="a"></div>');
     expect(warnings).toEqual([]);
   });
 });

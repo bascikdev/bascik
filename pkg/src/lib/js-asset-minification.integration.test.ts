@@ -27,20 +27,32 @@ describe("static JavaScript asset minification integration", () => {
     const root = fixtureRoot("js-asset-minification");
     fixtureRoots.push(root);
     await createFixtureDirs(root);
-    await writeFixtureFile(root, "bascik.config.js", `module.exports = {
+    await writeFixtureFile(
+      root,
+      "bascik.config.js",
+      `module.exports = {
   generate: { sitemap: false, robots: false },
   minify: { js: true },
-};`);
-    await writeFixtureFile(root, "src/pages/index.html", "<!doctype html><html><body>Asset fixture</body></html>");
+};`,
+    );
+    await writeFixtureFile(
+      root,
+      "src/pages/index.html",
+      "<!doctype html><html><body>Asset fixture</body></html>",
+    );
     await writeFixtureFile(root, "src/pages/assets/app.js", source);
 
     await runRealBuild({ projectRoot: root });
     const emitted = await readFile(join(root, "dist/assets/app.js"), "utf8");
     expect(emitted.length).toBeLessThan(source.length);
 
-    const context = {} as { __bascikMinifiedAsset?: { seconds: number; message: string } };
+    const context = {} as {
+      __bascikMinifiedAsset?: { seconds: number; message: string };
+    };
     expect(() => new Function("globalThis", emitted)(context)).not.toThrow();
     expect(context.__bascikMinifiedAsset?.seconds).toBeGreaterThan(0);
-    expect(context.__bascikMinifiedAsset?.message).toBe("See https://login.example/tenant-id/errors for details");
+    expect(context.__bascikMinifiedAsset?.message).toBe(
+      "See https://login.example/tenant-id/errors for details",
+    );
   });
 });

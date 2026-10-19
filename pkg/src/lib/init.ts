@@ -92,8 +92,8 @@ export async function initProject(): Promise<void> {
 
   if (pkg.type === "commonjs") {
     throw new Error(
-      "[bascik] init aborted: package.json sets \"type\": \"commonjs\". " +
-      "Bascik config uses ESM syntax, so update this project manually if you want to migrate.",
+      '[bascik] init aborted: package.json sets "type": "commonjs". ' +
+        "Bascik config uses ESM syntax, so update this project manually if you want to migrate.",
     );
   }
 
@@ -149,7 +149,10 @@ to change a default: https://bascik.dev/configuration
 `);
 }
 
-async function ensureGitignoreEntries(path: string, entries: string[]): Promise<void> {
+async function ensureGitignoreEntries(
+  path: string,
+  entries: string[],
+): Promise<void> {
   let current = "";
   try {
     current = await readFile(path, "utf8");

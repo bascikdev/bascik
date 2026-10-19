@@ -64,13 +64,19 @@ describe("getHttpPath", () => {
   });
 
   it("handles mixed backslashes, leading slashes, and 'pages' segment in directory names", () => {
-    expect(getHttpPath("C:\\my-project\\src\\pages\\docs\\pages-guide.html")).toBe("/docs/pages-guide");
-    expect(getHttpPath("///src/pages/deeply//nested///index.html")).toBe("/deeply/nested/");
+    expect(
+      getHttpPath("C:\\my-project\\src\\pages\\docs\\pages-guide.html"),
+    ).toBe("/docs/pages-guide");
+    expect(getHttpPath("///src/pages/deeply//nested///index.html")).toBe(
+      "/deeply/nested/",
+    );
     expect(getHttpPath("pages/sub-pages/index.html")).toBe("/sub-pages/");
   });
 
   it("honors a custom pages directory", () => {
-    expect(getHttpPath("/project/src/html/blog/index.html", "src/html")).toBe("/blog/");
+    expect(getHttpPath("/project/src/html/blog/index.html", "src/html")).toBe(
+      "/blog/",
+    );
   });
 
   it.each([
@@ -83,4 +89,3 @@ describe("getHttpPath", () => {
     expect(getHttpPath(input)).toBe(expected);
   });
 });
-

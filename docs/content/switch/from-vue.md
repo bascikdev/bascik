@@ -12,17 +12,17 @@ A client widget in Bascik ships only the inline script it needs, with no framewo
 
 ## Mental Model Comparison
 
-| Concept | Vue (SFC) | Bascik |
-| --- | --- | --- |
-| Component file | `InfoCard.vue` (`<template>`, `<script>`, `<style>`) | `info-card.html` in `src/components/info-card/` |
-| Component usage | `<InfoCard />` (imported or registered) | `<info-card></info-card>` (auto-resolved by file name) |
-| Scoped styles | `<style scoped>` | Paired `.css` file or inline `<style>` (auto-scoped) |
-| Slots | `<slot />` / `<slot name="…" />` | `data-bascik-slot` / `data-bascik-slot="name"` |
-| Component props | `defineProps(['title'])` | `data-bascik-prop-title` / `data-bascik-attr-*` (text only) |
-| Arrays and objects as props | `:data="rows"` | JSON in a `<script type="application/json">` slot |
-| Events up (`$emit`, `v-model`) | `emit('change')`, `@change` | DOM events, `CustomEvent`, `addEventListener` |
-| Client interactivity | `ref()`, `computed()`, directives (`v-if`, `v-for`) | Vanilla JavaScript DOM APIs in `<script>` tags |
-| Routes | `vue-router` | One `.html` file per URL, or a [dynamic route](/dynamic-routes) |
+| Concept                        | Vue (SFC)                                            | Bascik                                                          |
+| ------------------------------ | ---------------------------------------------------- | --------------------------------------------------------------- |
+| Component file                 | `InfoCard.vue` (`<template>`, `<script>`, `<style>`) | `info-card.html` in `src/components/info-card/`                 |
+| Component usage                | `<InfoCard />` (imported or registered)              | `<info-card></info-card>` (auto-resolved by file name)          |
+| Scoped styles                  | `<style scoped>`                                     | Paired `.css` file or inline `<style>` (auto-scoped)            |
+| Slots                          | `<slot />` / `<slot name="…" />`                     | `data-bascik-slot` / `data-bascik-slot="name"`                  |
+| Component props                | `defineProps(['title'])`                             | `data-bascik-prop-title` / `data-bascik-attr-*` (text only)     |
+| Arrays and objects as props    | `:data="rows"`                                       | JSON in a `<script type="application/json">` slot               |
+| Events up (`$emit`, `v-model`) | `emit('change')`, `@change`                          | DOM events, `CustomEvent`, `addEventListener`                   |
+| Client interactivity           | `ref()`, `computed()`, directives (`v-if`, `v-for`)  | Vanilla JavaScript DOM APIs in `<script>` tags                  |
+| Routes                         | `vue-router`                                         | One `.html` file per URL, or a [dynamic route](/dynamic-routes) |
 
 ## A Low-Risk First Step
 
@@ -65,8 +65,13 @@ A Bascik component is a vanilla HTML file. There are no `<template>`, `<script s
 </template>
 
 <style scoped>
-.nav { display: flex; gap: 16px; }
-.logo { font-weight: bold; }
+  .nav {
+    display: flex;
+    gap: 16px;
+  }
+  .logo {
+    font-weight: bold;
+  }
 </style>
 ```
 
@@ -79,8 +84,13 @@ A Bascik component is a vanilla HTML file. There are no `<template>`, `<script s
 
 ```css
 /* src/components/site-nav/site-nav.css */
-.nav { display: flex; gap: 16px; }
-.logo { font-weight: bold; }
+.nav {
+  display: flex;
+  gap: 16px;
+}
+.logo {
+  font-weight: bold;
+}
 ```
 
 No import or registration is needed to use this component. Bascik resolves `<site-nav></site-nav>` to `src/components/site-nav/site-nav.html` automatically by tag name.
@@ -156,7 +166,7 @@ Vue's `defineProps` becomes Bascik's `data-bascik-prop-*` attribute system. Add 
 ```html
 <!-- InfoCard.vue (Vue - before) -->
 <script setup>
-defineProps({ title: String, description: String });
+  defineProps({ title: String, description: String });
 </script>
 <template>
   <div class="card">
@@ -195,8 +205,8 @@ Vue passes an array to a component with `:data="rows"`. In Bascik, a build scrip
 <!-- usage in a page -->
 <data-grid>
   <script data-bascik-build>
-    import { rows } from '@/data/rows.ts';
-    import { jsonScript } from '@/lib/json-script.ts';
+    import { rows } from "@/data/rows.ts";
+    import { jsonScript } from "@/lib/json-script.ts";
 
     export default () => jsonScript({ rows });
   </script>
@@ -207,14 +217,16 @@ Vue passes an array to a component with `:data="rows"`. In Bascik, a build scrip
 // src/lib/json-script.ts
 // Escape `<` so no value can end the script early.
 export const jsonScript = (value: unknown) =>
-  `<script type="application/json">${JSON.stringify(value).replaceAll('<', () => '\\u003c')}</script>`;
+  `<script type="application/json">${JSON.stringify(value).replaceAll("<", () => "\\u003c")}</script>`;
 ```
 
 ```html
 <!-- src/components/data-grid/data-grid.html -->
 <div hidden id="input"><div data-bascik-slot></div></div>
 <script>
-  const { rows } = JSON.parse(document.getElementById('input').firstElementChild.textContent);
+  const { rows } = JSON.parse(
+    document.getElementById("input").firstElementChild.textContent,
+  );
 </script>
 ```
 
@@ -226,15 +238,17 @@ JSON has no `Infinity`, `NaN`, `undefined`, dates, or `Map`. `JSON.stringify` tu
 
 ```html
 <!-- Vue: the parent binds the child's input to a prop -->
-<input v-model="searchQuery">
+<input v-model="searchQuery" />
 <DemoGrid :filter-key="searchQuery" />
 ```
 
 ```html
 <!-- Bascik: the input announces its value, and the grid listens on its own element -->
 <script>
-  input.addEventListener('input', () => {
-    grid.dispatchEvent(new CustomEvent('grid-filter', { detail: { query: input.value } }));
+  input.addEventListener("input", () => {
+    grid.dispatchEvent(
+      new CustomEvent("grid-filter", { detail: { query: input.value } }),
+    );
   });
 </script>
 ```
@@ -248,8 +262,8 @@ Vue's `ref`, `reactive`, and event handlers become vanilla JavaScript in a `<scr
 ```html
 <!-- Counter.vue (Vue - before) -->
 <script setup>
-import { ref } from 'vue';
-const count = ref(0);
+  import { ref } from "vue";
+  const count = ref(0);
 </script>
 <template>
   <div>
@@ -305,7 +319,9 @@ Element selectors such as `h3` and `td` apply to the elements written in the com
 ```html
 <template id="cell-template"><td></td></template>
 <script>
-  const cell = document.getElementById('cell-template').content.firstElementChild.cloneNode(true);
+  const cell = document
+    .getElementById("cell-template")
+    .content.firstElementChild.cloneNode(true);
 </script>
 ```
 
@@ -327,15 +343,15 @@ src/router/index.js          src/pages/
 <script data-bascik-routes>
   export default async function () {
     return [
-      { params: { slug: 'my-first-post' }, data: { title: 'My First Post' } },
-      { params: { slug: 'another-post' }, data: { title: 'Another Post' } },
+      { params: { slug: "my-first-post" }, data: { title: "My First Post" } },
+      { params: { slug: "another-post" }, data: { title: "Another Post" } },
     ];
   }
 </script>
 <h1>Post</h1>
 <script data-bascik-build>
   export default function () {
-    const route = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+    const route = JSON.parse(process.env.BASCIK_ROUTE || "{}");
     return `<p>${route.params.slug}</p>`;
   }
 </script>
@@ -352,8 +368,13 @@ Data you load once for a page becomes a `<script data-bascik-build>` block that 
 ```ts
 // src/lib/escape.ts
 export const escapeHtml = (text: string) =>
-  text.replace(/[&<>"']/g, (character) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
+  text.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        character
+      ]!,
+  );
 ```
 
 ```html
@@ -362,16 +383,21 @@ export const escapeHtml = (text: string) =>
   <h1>Blog</h1>
   <ul>
     <script data-bascik-build>
-      import { readdir } from 'node:fs/promises';
-      import { escapeHtml } from '@/lib/escape.ts';
+      import { readdir } from "node:fs/promises";
+      import { escapeHtml } from "@/lib/escape.ts";
 
       export default async function () {
-        const files = await readdir('./content/posts');
+        const files = await readdir("./content/posts");
         const slugs = files
-          .filter((file) => file.endsWith('.md'))
+          .filter((file) => file.endsWith(".md"))
           .map((file) => file.slice(0, -3))
           .filter((slug) => /^[a-z0-9-]+$/.test(slug));
-        return slugs.map((slug) => `<li><a href="/blog/${escapeHtml(slug)}">${escapeHtml(slug)}</a></li>`).join('\n');
+        return slugs
+          .map(
+            (slug) =>
+              `<li><a href="/blog/${escapeHtml(slug)}">${escapeHtml(slug)}</a></li>`,
+          )
+          .join("\n");
       }
     </script>
   </ul>
@@ -397,23 +423,33 @@ A realistic nav with a logo slot, link list, and mobile menu toggle.
 ```html
 <!-- SiteNav.vue (Vue - before) -->
 <script setup>
-import { ref } from 'vue';
-const open = ref(false);
-defineProps({ logo: String });
+  import { ref } from "vue";
+  const open = ref(false);
+  defineProps({ logo: String });
 </script>
 <template>
   <nav class="nav">
     <div class="logo">{{ logo }}</div>
-    <button class="toggle" :aria-expanded="open" @click="open = !open">Menu</button>
+    <button class="toggle" :aria-expanded="open" @click="open = !open">
+      Menu
+    </button>
     <ul :class="['links', { open }]">
       <slot />
     </ul>
   </nav>
 </template>
 <style scoped>
-.nav { display: flex; align-items: center; gap: 16px; }
-.links { display: none; }
-.links.open { display: flex; }
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .links {
+    display: none;
+  }
+  .links.open {
+    display: flex;
+  }
 </style>
 ```
 
@@ -439,9 +475,17 @@ defineProps({ logo: String });
 
 ```css
 /* src/components/site-nav/site-nav.css */
-.nav { display: flex; align-items: center; gap: 16px; }
-.links { display: none; }
-.links.open { display: flex; }
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.links {
+  display: none;
+}
+.links.open {
+  display: flex;
+}
 ```
 
 Usage:

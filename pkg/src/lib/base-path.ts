@@ -12,7 +12,8 @@ const URL_ATTRIBUTES = new Set([
 
 const SRCSET_ATTRIBUTES = new Set(["imagesrcset", "srcset"]);
 const URL_META_PROPERTIES = new Set(["og:image", "og:url", "twitter:image"]);
-const HTML_OPENING_TAG_PATTERN = /<[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g;
+const HTML_OPENING_TAG_PATTERN =
+  /<[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g;
 
 const joinBasePath = (value: string, base: string): string =>
   `${base}${value.slice(1)}`;
@@ -26,20 +27,32 @@ export const shouldRewriteBasePath = (value: string, base: string): boolean =>
 export const withBasePath = (value: string, base: string): string =>
   shouldRewriteBasePath(value, base) ? joinBasePath(value, base) : value;
 
-export const stripBasePath = (pathname: string, base: string): string | null => {
+export const stripBasePath = (
+  pathname: string,
+  base: string,
+): string | null => {
   if (base === "/") return pathname;
   const prefix = base.slice(0, -1);
   if (pathname === prefix || pathname === base) return "/";
   return pathname.startsWith(base) ? pathname.slice(prefix.length) : null;
 };
 
-export const composeSiteUrl = (siteUrl: string, base: string, pathname: string): string => {
+export const composeSiteUrl = (
+  siteUrl: string,
+  base: string,
+  pathname: string,
+): string => {
   const normalizedSiteUrl = trimTrailingSlashes(siteUrl);
-  const normalizedPathname = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  const normalizedPathname = pathname.startsWith("/")
+    ? pathname
+    : `/${pathname}`;
   return `${normalizedSiteUrl}${withBasePath(normalizedPathname, base)}`;
 };
 
-export const rewriteSrcsetBasePaths = (srcset: string, base: string): string => {
+export const rewriteSrcsetBasePaths = (
+  srcset: string,
+  base: string,
+): string => {
   if (base === "/") return srcset;
 
   let result = "";
@@ -56,7 +69,8 @@ export const rewriteSrcsetBasePaths = (srcset: string, base: string): string => 
     }
 
     const urlStart = position;
-    const isDataUrl = srcset.slice(position, position + 5).toLowerCase() === "data:";
+    const isDataUrl =
+      srcset.slice(position, position + 5).toLowerCase() === "data:";
     while (
       position < srcset.length &&
       !/\s/.test(srcset[position]) &&
@@ -78,7 +92,9 @@ const rewriteImageSetContents = (contents: string, base: string): string =>
   contents.replace(
     /(["'])(\/[^"']*)\1/g,
     (match, quote: string, value: string) =>
-      shouldRewriteBasePath(value, base) ? `${quote}${joinBasePath(value, base)}${quote}` : match,
+      shouldRewriteBasePath(value, base)
+        ? `${quote}${joinBasePath(value, base)}${quote}`
+        : match,
   );
 
 const rewriteImageSetFunctions = (css: string, base: string): string => {
@@ -124,14 +140,18 @@ export const rewriteCssBasePaths = (css: string, base: string): string => {
 
   let result = css.replace(
     /url\(\s*(?:"([^"]*)"|'([^']*)'|([^"')\s]+))\s*\)/gi,
-    (match, doubleValue: string | undefined, singleValue: string | undefined, unquotedValue: string | undefined) => {
+    (
+      match,
+      doubleValue: string | undefined,
+      singleValue: string | undefined,
+      unquotedValue: string | undefined,
+    ) => {
       const value = doubleValue ?? singleValue ?? unquotedValue ?? "";
-      const quote = doubleValue !== undefined ? '"' : singleValue !== undefined ? "'" : "";
-      return (
-        shouldRewriteBasePath(value, base)
-          ? `url(${quote}${joinBasePath(value, base)}${quote})`
-          : match
-      );
+      const quote =
+        doubleValue !== undefined ? '"' : singleValue !== undefined ? "'" : "";
+      return shouldRewriteBasePath(value, base)
+        ? `url(${quote}${joinBasePath(value, base)}${quote})`
+        : match;
     },
   );
   result = result.replace(
@@ -144,7 +164,10 @@ export const rewriteCssBasePaths = (css: string, base: string): string => {
   return rewriteImageSetFunctions(result, base);
 };
 
-const getAttributeValue = (tag: string, attribute: string): string | undefined => {
+const getAttributeValue = (
+  tag: string,
+  attribute: string,
+): string | undefined => {
   // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const pattern = new RegExp(
     `\\s${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>\\\`]+?))(?=\\s|\\/>|>|$)`,
@@ -156,9 +179,12 @@ const getAttributeValue = (tag: string, attribute: string): string | undefined =
 
 const rewriteTagAttributes = (tag: string, base: string): string => {
   const tagName = /^<\s*([a-zA-Z][\w:-]*)/.exec(tag)?.[1].toLowerCase() ?? "";
-  const metaProperty = tagName === "meta"
-    ? (getAttributeValue(tag, "property") ?? getAttributeValue(tag, "name"))?.toLowerCase()
-    : undefined;
+  const metaProperty =
+    tagName === "meta"
+      ? (
+          getAttributeValue(tag, "property") ?? getAttributeValue(tag, "name")
+        )?.toLowerCase()
+      : undefined;
 
   const stringRanges: Array<{ start: number; end: number }> = [];
   let scanIdx = 0;
@@ -179,7 +205,15 @@ const rewriteTagAttributes = (tag: string, base: string): string => {
 
   return tag.replace(
     /\s([a-zA-Z_:][\w:.-]*)\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'=<>`]+?))(?=\s|\/>|>|$)/g,
-    (match, rawName: string, _rawValue: string, doubleValue: string | undefined, singleValue: string | undefined, unquotedValue: string | undefined, offset: number) => {
+    (
+      match,
+      rawName: string,
+      _rawValue: string,
+      doubleValue: string | undefined,
+      singleValue: string | undefined,
+      unquotedValue: string | undefined,
+      offset: number,
+    ) => {
       if (stringRanges.some((r) => offset > r.start && offset < r.end)) {
         return match;
       }
@@ -193,12 +227,17 @@ const rewriteTagAttributes = (tag: string, base: string): string => {
         rewritten = rewriteSrcsetBasePaths(value, base);
       } else if (name === "style") {
         rewritten = rewriteCssBasePaths(value, base);
-      } else if (name === "content" && metaProperty && URL_META_PROPERTIES.has(metaProperty)) {
+      } else if (
+        name === "content" &&
+        metaProperty &&
+        URL_META_PROPERTIES.has(metaProperty)
+      ) {
         rewritten = withBasePath(value, base);
       }
 
       if (rewritten === value) return match;
-      const quote = doubleValue !== undefined ? '"' : singleValue !== undefined ? "'" : "";
+      const quote =
+        doubleValue !== undefined ? '"' : singleValue !== undefined ? "'" : "";
       return ` ${rawName}=${quote}${rewritten}${quote}`;
     },
   );
@@ -208,24 +247,30 @@ export const rewriteHtmlBasePaths = (html: string, base: string): string => {
   if (base === "/") return html;
 
   const commentShield = createContentShield(html);
-  const withoutComments = html.replace(
-    /<!--[\s\S]*?(?:-->|$)/g,
-    (comment) => commentShield.hide(comment),
+  const withoutComments = html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
+    commentShield.hide(comment),
   );
   const withCss = withoutComments.replace(
     /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
     (_match, open: string, css: string, close: string) =>
       `${rewriteTagAttributes(open, base)}${rewriteCssBasePaths(css, base)}${close}`,
   );
-  const shielded = shieldElementContents(withCss, ["script", "style", "textarea", "title"]);
-  const rewritten = shielded.html.replace(
-    HTML_OPENING_TAG_PATTERN,
-    (tag) => rewriteTagAttributes(tag, base),
+  const shielded = shieldElementContents(withCss, [
+    "script",
+    "style",
+    "textarea",
+    "title",
+  ]);
+  const rewritten = shielded.html.replace(HTML_OPENING_TAG_PATTERN, (tag) =>
+    rewriteTagAttributes(tag, base),
   );
   return commentShield.restore(shielded.restore(rewritten));
 };
 
-export const rewriteManifestBasePaths = (source: string, base: string): string => {
+export const rewriteManifestBasePaths = (
+  source: string,
+  base: string,
+): string => {
   if (base === "/") return source;
 
   try {
@@ -244,7 +289,9 @@ export const rewriteManifestBasePaths = (source: string, base: string): string =
     }
     return JSON.stringify(manifest);
   } catch (error) {
-    console.warn(`[bascik] Could not rewrite web app manifest base paths: ${(error as Error).message}`);
+    console.warn(
+      `[bascik] Could not rewrite web app manifest base paths: ${(error as Error).message}`,
+    );
     return source;
   }
 };

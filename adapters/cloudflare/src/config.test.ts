@@ -27,7 +27,10 @@ describe("parseJsonc", () => {
   it("parses valid JSON without comments", () => {
     const json = `{"name": "my-worker", "compatibility_date": "2026-08-01"}`;
     const result = parseJsonc(json);
-    expect(result).toEqual({ name: "my-worker", compatibility_date: "2026-08-01" });
+    expect(result).toEqual({
+      name: "my-worker",
+      compatibility_date: "2026-08-01",
+    });
   });
 
   it("handles line comments (//) and block comments (/* */)", () => {
@@ -41,7 +44,10 @@ describe("parseJsonc", () => {
     }
     `;
     const result = parseJsonc(jsonc);
-    expect(result).toEqual({ name: "commented-worker", compatibility_date: "2026-08-01" });
+    expect(result).toEqual({
+      name: "commented-worker",
+      compatibility_date: "2026-08-01",
+    });
   });
 
   it("handles trailing commas in objects and arrays", () => {
@@ -268,7 +274,10 @@ describe("parseToml", () => {
   it("throws actionable errors for malformed TOML that can contain secret canaries without disclosing them", () => {
     const canary = "THIS_IS_A_SECRET_CANARY_12345_ABCD";
     // Use truly malformed TOML syntax that causes throwing (unclosed array), with a canary embedded
-    const badToml = `name = "bad-worker"\ncompatibility_flags = ["nodejs_compat", "` + canary + `"`;
+    const badToml =
+      `name = "bad-worker"\ncompatibility_flags = ["nodejs_compat", "` +
+      canary +
+      `"`;
     expect(() => parseToml(badToml, "wrangler.toml")).toThrowError(
       /\[bascik\] Failed to parse wrangler\.toml/,
     );
@@ -277,7 +286,7 @@ describe("parseToml", () => {
     expect(msg).not.toContain(canary);
   });
 
-  it("parses quoted table names like [env.\"staging\"]", () => {
+  it('parses quoted table names like [env."staging"]', () => {
     const toml = `
     name = "demo"
     [env."staging"]
@@ -361,13 +370,17 @@ describe("parseToml", () => {
     expect(() => parseToml(dupKeyToml, "wrangler.toml")).toThrowError(
       /\[bascik\] Failed to parse wrangler\.toml/,
     );
-    expect(errorMessageFrom(() => parseToml(dupKeyToml, "wrangler.toml"))).not.toContain(canary);
+    expect(
+      errorMessageFrom(() => parseToml(dupKeyToml, "wrangler.toml")),
+    ).not.toContain(canary);
 
     const dupTableToml = `[vars]\na = "` + canary + `"\n[vars]\nb = 2`;
     expect(() => parseToml(dupTableToml, "wrangler.toml")).toThrowError(
       /\[bascik\] Failed to parse wrangler\.toml/,
     );
-    expect(errorMessageFrom(() => parseToml(dupTableToml, "wrangler.toml"))).not.toContain(canary);
+    expect(
+      errorMessageFrom(() => parseToml(dupTableToml, "wrangler.toml")),
+    ).not.toContain(canary);
   });
 
   it("rejects malformed values", () => {
@@ -384,7 +397,10 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
   const envBackup = { ...process.env };
 
   beforeEach(async () => {
-    testDir = join(tmpdir(), `bascik-cf-config-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    testDir = join(
+      tmpdir(),
+      `bascik-cf-config-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
     await mkdir(testDir, { recursive: true });
     delete process.env.CLOUDFLARE_WORKER_NAME;
     delete process.env.WORKER_NAME;
@@ -397,7 +413,11 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
   });
 
   it("matches Wrangler discovery precedence: wrangler.jsonc > wrangler.json > wrangler.toml", () => {
-    expect(WRANGLER_CONFIG_FILES).toEqual(["wrangler.jsonc", "wrangler.json", "wrangler.toml"]);
+    expect(WRANGLER_CONFIG_FILES).toEqual([
+      "wrangler.jsonc",
+      "wrangler.json",
+      "wrangler.toml",
+    ]);
   });
 
   it("returns null when no configuration file is present", async () => {
@@ -406,9 +426,21 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
   });
 
   it("prefers wrangler.jsonc over wrangler.json and wrangler.toml", async () => {
-    await writeFile(join(testDir, "wrangler.jsonc"), `{"name": "from-jsonc"}`, "utf8");
-    await writeFile(join(testDir, "wrangler.json"), `{"name": "from-json"}`, "utf8");
-    await writeFile(join(testDir, "wrangler.toml"), `name = "from-toml"`, "utf8");
+    await writeFile(
+      join(testDir, "wrangler.jsonc"),
+      `{"name": "from-jsonc"}`,
+      "utf8",
+    );
+    await writeFile(
+      join(testDir, "wrangler.json"),
+      `{"name": "from-json"}`,
+      "utf8",
+    );
+    await writeFile(
+      join(testDir, "wrangler.toml"),
+      `name = "from-toml"`,
+      "utf8",
+    );
 
     const discovered = await discoverWranglerConfig(testDir);
     expect(discovered?.filename).toBe("wrangler.jsonc");
@@ -416,8 +448,16 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
   });
 
   it("prefers wrangler.json over wrangler.toml when wrangler.jsonc is absent", async () => {
-    await writeFile(join(testDir, "wrangler.json"), `{"name": "from-json"}`, "utf8");
-    await writeFile(join(testDir, "wrangler.toml"), `name = "from-toml"`, "utf8");
+    await writeFile(
+      join(testDir, "wrangler.json"),
+      `{"name": "from-json"}`,
+      "utf8",
+    );
+    await writeFile(
+      join(testDir, "wrangler.toml"),
+      `name = "from-toml"`,
+      "utf8",
+    );
 
     const discovered = await discoverWranglerConfig(testDir);
     expect(discovered?.filename).toBe("wrangler.json");
@@ -425,7 +465,11 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
   });
 
   it("finds wrangler.toml when json/jsonc are absent", async () => {
-    await writeFile(join(testDir, "wrangler.toml"), `name = "from-toml"`, "utf8");
+    await writeFile(
+      join(testDir, "wrangler.toml"),
+      `name = "from-toml"`,
+      "utf8",
+    );
 
     const discovered = await discoverWranglerConfig(testDir);
     expect(discovered?.filename).toBe("wrangler.toml");
@@ -433,7 +477,11 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
   });
 
   it("throws when the discovered configuration file is malformed rather than silently ignoring it", async () => {
-    await writeFile(join(testDir, "wrangler.jsonc"), `{ "name": "bad", `, "utf8");
+    await writeFile(
+      join(testDir, "wrangler.jsonc"),
+      `{ "name": "bad", `,
+      "utf8",
+    );
     await expect(discoverWranglerConfig(testDir)).rejects.toThrowError(
       /\[bascik\] Failed to parse wrangler\.jsonc/,
     );
@@ -441,8 +489,16 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
 
   it("respects explicit environment variable overrides over config and package.json", async () => {
     process.env.CLOUDFLARE_WORKER_NAME = "env-override";
-    await writeFile(join(testDir, "wrangler.jsonc"), `{"name": "config-name"}`, "utf8");
-    await writeFile(join(testDir, "package.json"), `{"name": "pkg-name"}`, "utf8");
+    await writeFile(
+      join(testDir, "wrangler.jsonc"),
+      `{"name": "config-name"}`,
+      "utf8",
+    );
+    await writeFile(
+      join(testDir, "package.json"),
+      `{"name": "pkg-name"}`,
+      "utf8",
+    );
 
     const resolved = await resolveWorkerName(testDir);
     expect(resolved.workerName).toBe("env-override");
@@ -450,7 +506,11 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
   });
 
   it("uses package.json name when no config file or env var exists", async () => {
-    await writeFile(join(testDir, "package.json"), `{"name": "@my-scope/my-app"}`, "utf8");
+    await writeFile(
+      join(testDir, "package.json"),
+      `{"name": "@my-scope/my-app"}`,
+      "utf8",
+    );
 
     const resolved = await resolveWorkerName(testDir);
     expect(resolved.workerName).toBe("my-app");
@@ -476,7 +536,9 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
 
     const resolved = await resolveWorkerName(testDir);
     expect(resolved.workerName).toBe("toml-meta-worker");
-    expect(resolved.discoveredConfig?.values.compatibility_date).toBe("2026-09-01");
+    expect(resolved.discoveredConfig?.values.compatibility_date).toBe(
+      "2026-09-01",
+    );
     expect(resolved.discoveredConfig?.values.compatibility_flags).toEqual([
       "custom_toml_flag",
       "nodejs_compat",
@@ -500,7 +562,11 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
   });
 
   it("discovers TOML names with decoded escapes", async () => {
-    await writeFile(join(testDir, "wrangler.toml"), `name = "my\\u002dworker"`, "utf8");
+    await writeFile(
+      join(testDir, "wrangler.toml"),
+      `name = "my\\u002dworker"`,
+      "utf8",
+    );
 
     const resolved = await resolveWorkerName(testDir);
     expect(resolved.workerName).toBe("my-worker");
@@ -508,8 +574,16 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
   });
 
   it("reports malformed selected config instead of falling back to another file", async () => {
-    await writeFile(join(testDir, "wrangler.jsonc"), `{"value":1/* comment */2}`, "utf8");
-    await writeFile(join(testDir, "wrangler.toml"), `name = "valid-toml"`, "utf8");
+    await writeFile(
+      join(testDir, "wrangler.jsonc"),
+      `{"value":1/* comment */2}`,
+      "utf8",
+    );
+    await writeFile(
+      join(testDir, "wrangler.toml"),
+      `name = "valid-toml"`,
+      "utf8",
+    );
 
     await expect(discoverWranglerConfig(testDir)).rejects.toThrowError(
       /\[bascik\] Failed to parse wrangler\.jsonc/,
@@ -517,8 +591,16 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
   });
 
   it("reports malformed TOML instead of falling back to package.json", async () => {
-    await writeFile(join(testDir, "wrangler.toml"), `name = "a"\nname = "b"`, "utf8");
-    await writeFile(join(testDir, "package.json"), `{"name": "pkg-name"}`, "utf8");
+    await writeFile(
+      join(testDir, "wrangler.toml"),
+      `name = "a"\nname = "b"`,
+      "utf8",
+    );
+    await writeFile(
+      join(testDir, "package.json"),
+      `{"name": "pkg-name"}`,
+      "utf8",
+    );
 
     await expect(resolveWorkerName(testDir)).rejects.toThrowError(
       /\[bascik\] Failed to parse wrangler\.toml/,

@@ -31,11 +31,18 @@ export interface OutputScope {
 export const encodeOutputScope = (scope: OutputScope): string =>
   encodeURIComponent(JSON.stringify(scope));
 
-export const decodeOutputScope = (value: string | undefined | null): OutputScope | null => {
+export const decodeOutputScope = (
+  value: string | undefined | null,
+): OutputScope | null => {
   if (!value) return null;
   try {
-    const parsed = JSON.parse(decodeURIComponent(value)) as Partial<OutputScope>;
-    return { classes: keepStringEntries(parsed.classes), elements: keepStringEntries(parsed.elements) };
+    const parsed = JSON.parse(
+      decodeURIComponent(value),
+    ) as Partial<OutputScope>;
+    return {
+      classes: keepStringEntries(parsed.classes),
+      elements: keepStringEntries(parsed.elements),
+    };
   } catch {
     return null;
   }
@@ -54,27 +61,50 @@ const keepStringEntries = (map: unknown): Record<string, string> => {
 
 /** Remove the annotation from a script open tag (it never reaches emitted HTML or the script). */
 export const stripOutputScopeAttribute = (openTag: string): string =>
-  openTag.replace(/\s+data-bascik-output-scope\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, "");
+  openTag.replace(
+    /\s+data-bascik-output-scope\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i,
+    "",
+  );
 
 const OPEN_TAG_RE = /<([a-zA-Z][a-zA-Z0-9-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
 // One attribute at a time, so text inside another attribute's quoted value
 // (for example `title="<a class=item>"`) is never mistaken for `class`.
-const ATTRIBUTE_RE = /(\s+)([^\s"'>/=]+)(?:(\s*=\s*)("([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+const ATTRIBUTE_RE =
+  /(\s+)([^\s"'>/=]+)(?:(\s*=\s*)("([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
 
 const findClassAttribute = (
   attributes: string,
-): { start: number; length: number; prefix: string; value: string; quote: string; suffix: string } | null => {
+): {
+  start: number;
+  length: number;
+  prefix: string;
+  value: string;
+  quote: string;
+  suffix: string;
+} | null => {
   ATTRIBUTE_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = ATTRIBUTE_RE.exec(attributes)) !== null) {
     if (match[2].toLowerCase() !== "class" || match[3] === undefined) continue;
     const rawUnquoted = match[7];
-    const hasTrailingSlash = rawUnquoted !== undefined && rawUnquoted.endsWith("/") && match.index + match[0].length === attributes.length;
-    const unquotedValue = hasTrailingSlash ? rawUnquoted.slice(0, -1) : rawUnquoted;
+    const hasTrailingSlash =
+      rawUnquoted !== undefined &&
+      rawUnquoted.endsWith("/") &&
+      match.index + match[0].length === attributes.length;
+    const unquotedValue = hasTrailingSlash
+      ? rawUnquoted.slice(0, -1)
+      : rawUnquoted;
     const value = match[5] ?? match[6] ?? unquotedValue ?? "";
     const quote = match[6] !== undefined ? "'" : '"';
     const suffix = hasTrailingSlash ? "/" : "";
-    return { start: match.index, length: match[0].length, prefix: `${match[1]}class${match[3]}`, value, quote, suffix };
+    return {
+      start: match.index,
+      length: match[0].length,
+      prefix: `${match[1]}class${match[3]}`,
+      value,
+      quote,
+      suffix,
+    };
   }
   return null;
 };
@@ -94,10 +124,14 @@ const scopeOpenTag = (
   }
 
   const { start, length, prefix, value, quote, suffix } = classMatch;
-  const tokens = value.split(/\s+/).filter(Boolean).map((token) => scope.classes[token] ?? token);
+  const tokens = value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => scope.classes[token] ?? token);
   if (elementClass && !tokens.includes(elementClass)) tokens.push(elementClass);
   const replacement = `${prefix}${quote}${tokens.join(" ")}${quote}${suffix}`;
-  const updated = attributes.slice(0, start) + replacement + attributes.slice(start + length);
+  const updated =
+    attributes.slice(0, start) + replacement + attributes.slice(start + length);
   return `<${tagName}${updated}>`;
 };
 
@@ -109,7 +143,11 @@ const scopeOpenTag = (
  * stay global, the same rule as for template markup.
  */
 export const applyOutputScope = (html: string, scope: OutputScope): string => {
-  if (!html || (Object.keys(scope.classes).length === 0 && Object.keys(scope.elements).length === 0)) {
+  if (
+    !html ||
+    (Object.keys(scope.classes).length === 0 &&
+      Object.keys(scope.elements).length === 0)
+  ) {
     return html;
   }
   const masked = maskNonMarkup(html);
@@ -123,9 +161,12 @@ export const applyOutputScope = (html: string, scope: OutputScope): string => {
     const original = html.slice(start, end);
     // Re-match on the original text: masking blanks only raw-text content and
     // comments, so an open tag found in the mask is identical in the source.
-    const originalMatch = /^<([a-zA-Z][a-zA-Z0-9-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>$/.exec(original);
+    const originalMatch =
+      /^<([a-zA-Z][a-zA-Z0-9-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>$/.exec(original);
     if (!originalMatch) continue;
-    result += html.slice(cursor, start) + scopeOpenTag(original, originalMatch[1], originalMatch[2], scope);
+    result +=
+      html.slice(cursor, start) +
+      scopeOpenTag(original, originalMatch[1], originalMatch[2], scope);
     cursor = end;
   }
   return result + html.slice(cursor);

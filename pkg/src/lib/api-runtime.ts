@@ -18,7 +18,11 @@ import { Readable, PassThrough } from "node:stream";
 import { scriptRegistry } from "./script-registry.ts";
 import { BascikConfig } from "./config.ts";
 import { isNetworkResetError, type BascikRequest } from "./server.ts";
-import { nativeClock, type FrameworkClock, type TimeoutHandle } from "./clock.ts";
+import {
+  nativeClock,
+  type FrameworkClock,
+  type TimeoutHandle,
+} from "./clock.ts";
 import {
   ALLOWED_METHODS,
   NODE_PLATFORM,
@@ -42,7 +46,6 @@ export interface ExecuteApiRouteOptions {
   clock?: FrameworkClock;
 }
 
-
 export class PayloadTooLargeError extends Error {
   constructor(message = "Payload Too Large") {
     super(message);
@@ -56,7 +59,7 @@ export class PayloadTooLargeError extends Error {
  */
 export const createByteLimitTransform = (
   maxBytes: number,
-  onExceeded?: () => void
+  onExceeded?: () => void,
 ): TransformStream<Uint8Array, Uint8Array> => {
   let bytesReceived = 0;
   return new TransformStream<Uint8Array, Uint8Array>({
@@ -64,7 +67,9 @@ export const createByteLimitTransform = (
       bytesReceived += chunk.byteLength;
       if (bytesReceived > maxBytes) {
         if (onExceeded) onExceeded();
-        controller.error(new PayloadTooLargeError(`Request body exceeded ${maxBytes} bytes.`));
+        controller.error(
+          new PayloadTooLargeError(`Request body exceeded ${maxBytes} bytes.`),
+        );
         return;
       }
       controller.enqueue(chunk);
@@ -77,16 +82,22 @@ export const createByteLimitTransform = (
  * comma-delimited or an array of strings.
  */
 export const getRightmostHeaderValue = (
-  value: string | string[] | undefined
+  value: string | string[] | undefined,
 ): string | undefined => {
   if (typeof value === "string") {
-    const parts = value.split(",").map((p) => p.trim()).filter(Boolean);
+    const parts = value
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
     return parts.length > 0 ? parts[parts.length - 1] : undefined;
   }
   if (Array.isArray(value) && value.length > 0) {
     const lastItem = value[value.length - 1];
     if (typeof lastItem === "string") {
-      const parts = lastItem.split(",").map((p) => p.trim()).filter(Boolean);
+      const parts = lastItem
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean);
       return parts.length > 0 ? parts[parts.length - 1] : undefined;
     }
   }
@@ -101,7 +112,9 @@ export const getRightmostHeaderValue = (
  */
 const isValidAuthority = (authority: string): boolean => {
   if (!authority || authority.length > 255) return false;
-  const match = /^(\[[0-9a-fA-F:.]+\]|[a-zA-Z0-9.-]+)(?::(\d{1,5}))?$/.exec(authority);
+  const match = /^(\[[0-9a-fA-F:.]+\]|[a-zA-Z0-9.-]+)(?::(\d{1,5}))?$/.exec(
+    authority,
+  );
   if (!match) return false;
   const [, host, port] = match;
   if (host.startsWith(".")) return false;
@@ -127,18 +140,28 @@ const isValidAuthority = (authority: string): boolean => {
  * to prevent spoofing, and the origin is derived from local TLS configuration
  * and HTTP/2 :authority or HTTP/1.1 Host headers.
  */
-export const requestOrigin = (rawReq: BascikRequest, config = BascikConfig): string => {
+export const requestOrigin = (
+  rawReq: BascikRequest,
+  config = BascikConfig,
+): string => {
   const localScheme = config.http.tls?.enabled ? "https" : "http";
   const rawAuthority = rawReq.headers[":authority"] ?? rawReq.headers.host;
-  const rawAuthorityStr = Array.isArray(rawAuthority) ? rawAuthority[0] : rawAuthority;
+  const rawAuthorityStr = Array.isArray(rawAuthority)
+    ? rawAuthority[0]
+    : rawAuthority;
   const fallbackAuthority =
-    typeof rawAuthorityStr === "string" && isValidAuthority(rawAuthorityStr.trim())
+    typeof rawAuthorityStr === "string" &&
+    isValidAuthority(rawAuthorityStr.trim())
       ? rawAuthorityStr.trim()
       : "localhost";
 
   if (config.http.trustProxy === true) {
-    const protoHeader = getRightmostHeaderValue(rawReq.headers["x-forwarded-proto"]);
-    const hostHeader = getRightmostHeaderValue(rawReq.headers["x-forwarded-host"]);
+    const protoHeader = getRightmostHeaderValue(
+      rawReq.headers["x-forwarded-proto"],
+    );
+    const hostHeader = getRightmostHeaderValue(
+      rawReq.headers["x-forwarded-host"],
+    );
 
     let scheme = localScheme;
     if (protoHeader) {
@@ -167,7 +190,7 @@ export const requestOrigin = (rawReq: BascikRequest, config = BascikConfig): str
 export const createWebRequest = (
   rawReq: BascikRequest,
   origin = "http://localhost",
-  maxBodySize?: number
+  maxBodySize?: number,
 ): Request => {
   const method = rawReq.method ? rawReq.method.toUpperCase() : "GET";
   const url = new URL(rawReq.path ?? "/", origin).href;
@@ -199,7 +222,9 @@ export const createWebRequest = (
           stream.pipe(pass);
           nodeStream = pass;
         }
-        const rawWebStream = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
+        const rawWebStream = Readable.toWeb(
+          nodeStream,
+        ) as ReadableStream<Uint8Array>;
         const limit = maxBodySize ?? BascikConfig.http?.maxBodySize ?? 1048576;
         if (limit > 0) {
           const limitTransform = createByteLimitTransform(limit, () => {
@@ -232,9 +257,17 @@ export const createWebRequest = (
  * Execute an API route handler module.
  */
 export const executeApiRoute = async (
-  options: ExecuteApiRouteOptions
+  options: ExecuteApiRouteOptions,
 ): Promise<Response> => {
-  const { filePath, request, params, remoteIp, signal: userSignal, timeoutMs, clock = nativeClock } = options;
+  const {
+    filePath,
+    request,
+    params,
+    remoteIp,
+    signal: userSignal,
+    timeoutMs,
+    clock = nativeClock,
+  } = options;
   const method = request.method.toUpperCase() as HttpMethod;
 
   const effectiveTimeout = timeoutMs ?? BascikConfig.http?.apiTimeout ?? 10000;
@@ -247,7 +280,8 @@ export const executeApiRoute = async (
     } else {
       const onAbort = () => abortController.abort(userSignal.reason);
       userSignal.addEventListener("abort", onAbort, { once: true });
-      upstreamSignalUnsubscribe = () => userSignal.removeEventListener("abort", onAbort);
+      upstreamSignalUnsubscribe = () =>
+        userSignal.removeEventListener("abort", onAbort);
     }
   }
 
@@ -257,7 +291,9 @@ export const executeApiRoute = async (
   if (effectiveTimeout && effectiveTimeout > 0) {
     timer = clock.setTimeout(() => {
       didTimeout = true;
-      abortController.abort(new Error(`API route handler timed out after ${effectiveTimeout}ms`));
+      abortController.abort(
+        new Error(`API route handler timed out after ${effectiveTimeout}ms`),
+      );
     }, effectiveTimeout);
   }
 
@@ -272,7 +308,7 @@ export const executeApiRoute = async (
     let loadedModule: any;
     try {
       const loadPromise = Promise.resolve(scriptRegistry.load(filePath));
-      loadPromise.catch(() => { });
+      loadPromise.catch(() => {});
 
       const abortDuringLoadPromise = new Promise<never>((_, reject) => {
         if (abortController.signal.aborted) {
@@ -282,17 +318,26 @@ export const executeApiRoute = async (
         onAbortListener = () => {
           if (!settled) {
             if (didTimeout) {
-              reject(new Error(`API route handler timed out after ${effectiveTimeout}ms`));
+              reject(
+                new Error(
+                  `API route handler timed out after ${effectiveTimeout}ms`,
+                ),
+              );
             } else {
               reject(abortController.signal.reason);
             }
           }
         };
-        abortController.signal.addEventListener("abort", onAbortListener, { once: true });
+        abortController.signal.addEventListener("abort", onAbortListener, {
+          once: true,
+        });
       });
-      abortDuringLoadPromise.catch(() => { });
+      abortDuringLoadPromise.catch(() => {});
 
-      const loaded = (await Promise.race([loadPromise, abortDuringLoadPromise])) as any;
+      const loaded = (await Promise.race([
+        loadPromise,
+        abortDuringLoadPromise,
+      ])) as any;
       if (onAbortListener) {
         abortController.signal.removeEventListener("abort", onAbortListener);
         onAbortListener = undefined;
@@ -302,7 +347,11 @@ export const executeApiRoute = async (
       if (abortController.signal.aborted) {
         throw abortController.signal.reason;
       }
-      console.error("[bascik] Failed to load API route module %s:", filePath, (err as Error).stack ?? String(err));
+      console.error(
+        "[bascik] Failed to load API route module %s:",
+        filePath,
+        (err as Error).stack ?? String(err),
+      );
       return new Response("Internal Server Error", { status: 500 });
     }
 
@@ -324,13 +373,20 @@ export const executeApiRoute = async (
       signal: abortController.signal,
       // Node transport failures the core cannot know about.
       classifyError: (err) => {
-        if (err instanceof PayloadTooLargeError || (err as { name?: string })?.name === "PayloadTooLargeError") {
+        if (
+          err instanceof PayloadTooLargeError ||
+          (err as { name?: string })?.name === "PayloadTooLargeError"
+        ) {
           return new Response("Payload Too Large", {
             status: 413,
-            headers: { "Connection": "close", "Content-Type": "text/plain; charset=utf-8" },
+            headers: {
+              Connection: "close",
+              "Content-Type": "text/plain; charset=utf-8",
+            },
           });
         }
-        if (isNetworkResetError(err)) return new Response("Client Closed Request", { status: 499 });
+        if (isNetworkResetError(err))
+          return new Response("Client Closed Request", { status: 499 });
         return undefined;
       },
       onError: (message, error) => {
@@ -340,7 +396,9 @@ export const executeApiRoute = async (
           "[bascik] %s in %s%s",
           message,
           filePath,
-          error !== undefined ? `:\n${(error as Error).stack ?? String(error)}` : "",
+          error !== undefined
+            ? `:\n${(error as Error).stack ?? String(error)}`
+            : "",
         );
       },
     });
@@ -348,17 +406,25 @@ export const executeApiRoute = async (
     // The core reports an upstream abort as 499. When our own deadline caused
     // that abort the truthful status is 504, matching the pre-132 behavior.
     if (response.status === 499 && didTimeout) {
-      console.error("[bascik] API route handler timed out in %s (%s) after %dms", filePath, method, effectiveTimeout);
+      console.error(
+        "[bascik] API route handler timed out in %s (%s) after %dms",
+        filePath,
+        method,
+        effectiveTimeout,
+      );
       return new Response("Gateway Timeout", { status: 504 });
     }
     return response;
   } catch (err) {
     settled = true;
-    if (err instanceof PayloadTooLargeError || (err as any)?.name === "PayloadTooLargeError") {
+    if (
+      err instanceof PayloadTooLargeError ||
+      (err as any)?.name === "PayloadTooLargeError"
+    ) {
       return new Response("Payload Too Large", {
         status: 413,
         headers: {
-          "Connection": "close",
+          Connection: "close",
           "Content-Type": "text/plain; charset=utf-8",
         },
       });
@@ -371,12 +437,20 @@ export const executeApiRoute = async (
     // Upstream (transport) cancellation is not a handler defect: the client
     // went away, so the result is a quiet 499 that dispatch never delivers.
     // Only a deadline is reported as a timeout below.
-    if (!didTimeout && (userSignal?.aborted || abortController.signal.aborted)) {
+    if (
+      !didTimeout &&
+      (userSignal?.aborted || abortController.signal.aborted)
+    ) {
       return new Response("Client Closed Request", { status: 499 });
     }
 
     if (didTimeout || (err as Error)?.message?.includes("timed out after")) {
-      console.error("[bascik] API route handler timed out in %s (%s) after %dms", filePath, method, effectiveTimeout);
+      console.error(
+        "[bascik] API route handler timed out in %s (%s) after %dms",
+        filePath,
+        method,
+        effectiveTimeout,
+      );
       return new Response("Gateway Timeout", { status: 504 });
     }
 
@@ -384,7 +458,7 @@ export const executeApiRoute = async (
       "[bascik] API route handler error in %s (%s):",
       filePath,
       method,
-      (err as Error).stack ?? String(err)
+      (err as Error).stack ?? String(err),
     );
     return new Response("Internal Server Error", { status: 500 });
   } finally {

@@ -14,7 +14,11 @@ vi.mock("./config.js", () => ({
       preserve: ["code"],
       deduplicateCss: true,
     },
-    directory: { pages: "src/pages", components: ["src/components"], out: "dist" },
+    directory: {
+      pages: "src/pages",
+      components: ["src/components"],
+      out: "dist",
+    },
     isBuild: true,
   },
   shouldLog: vi.fn(() => true),
@@ -37,10 +41,13 @@ import type { BascikComponent } from "./types.ts";
 
 const setConfig = (identifiers: boolean, deduplicateCss: boolean): void => {
   (BascikConfig.minify as { identifiers: boolean }).identifiers = identifiers;
-  (BascikConfig.scoping as { deduplicateCss: boolean }).deduplicateCss = deduplicateCss;
+  (BascikConfig.scoping as { deduplicateCss: boolean }).deduplicateCss =
+    deduplicateCss;
 };
 
-const copy = (component: BascikComponent): BascikComponent => ({ ...component });
+const copy = (component: BascikComponent): BascikComponent => ({
+  ...component,
+});
 
 /** Predict instance `next` from a recorded run of `first`; null when not reusable. */
 const predict = (input: BascikComponent, first: string, next: string) => {
@@ -53,7 +60,14 @@ const predict = (input: BascikComponent, first: string, next: string) => {
     internals.snapshotResult(recorded.component),
   );
   if (!template) return { template: null, predicted: null };
-  return { template, predicted: instantiateScopingTemplate(template, next, internals.inputTexts(input)) };
+  return {
+    template,
+    predicted: instantiateScopingTemplate(
+      template,
+      next,
+      internals.inputTexts(input),
+    ),
+  };
 };
 
 const real = (input: BascikComponent, instanceId: string) =>
@@ -61,83 +75,195 @@ const real = (input: BascikComponent, instanceId: string) =>
 
 // Short values on purpose: single letters and common words appear inside
 // hashed names and instance IDs, so substring-sensitive checks get exercised.
-const value = fc.constantFrom("a", "b", "f", "x1", "btn", "lang", "root", "c-d", "el", "id", "p", "ab12", "bascik");
+const value = fc.constantFrom(
+  "a",
+  "b",
+  "f",
+  "x1",
+  "btn",
+  "lang",
+  "root",
+  "c-d",
+  "el",
+  "id",
+  "p",
+  "ab12",
+  "bascik",
+);
 
 const htmlFragment = fc.oneof(
-  fc.tuple(value, value, value).map(([a, b, c]) => `<div id="${a}" class="${b} ${c}">`),
+  fc
+    .tuple(value, value, value)
+    .map(([a, b, c]) => `<div id="${a}" class="${b} ${c}">`),
   fc.constant("</div>"),
   fc.tuple(value, value).map(([a, b]) => `<input name="${a}" id="${b}">`),
   value.map((a) => `<label for="${a}">L</label>`),
-  fc.tuple(value, value).map(([a, b]) => `<span aria-labelledby="${a} ${b}" aria-describedby="${a}">s</span>`),
+  fc
+    .tuple(value, value)
+    .map(
+      ([a, b]) =>
+        `<span aria-labelledby="${a} ${b}" aria-describedby="${a}">s</span>`,
+    ),
   value.map((a) => `<a href="#${a}">link</a>`),
   value.map((a) => `<img usemap="#${a}" alt=""><map name="${a}"></map>`),
   fc.constant(`<meta name="viewport" content="width=device-width">`),
   value.map((a) => `<code class="${a}">c</code>`),
-  value.map((a) => `<pre data-bascik-preserve="class"><span class="${a}">k</span></pre>`),
+  value.map(
+    (a) =>
+      `<pre data-bascik-preserve="class"><span class="${a}">k</span></pre>`,
+  ),
   value.map((a) => `<p class="${a}">t</p>`),
   value.map((a) => `<!-- note id="${a}" class="${a}" -->`),
   value.map((a) => `<svg><use href="#${a}"></use></svg>`),
-  fc.tuple(value, value).map(([a, b]) => `<button popovertarget="${a}" commandfor="${b}">b</button>`),
-  fc.tuple(value, value).map(([a, b]) =>
-    `<script>const r = document.getElementById("${a}"); document.querySelector("#${a} .${b}"); ` +
-    `r.classList.add("${b}", "${a}"); r.classList.toggle("${b}", true); r.classList.contains("${a}"); ` +
-    `r.setAttribute("id", "${a}"); document.getElementsByName("${b}"); r.className = "${a} ${b}"; ` +
-    `r.closest(".${b}"); document.getElementsByClassName("${a}");</script>`),
-  value.map((a) => `<script type="module">document.querySelector(".${a}")?.remove();</script>`),
-  value.map((a) => `<script type="application/ld+json">{"id": "${a}"}</script>`),
-  value.map((a) => `<script data-bascik-build="page">export default () => "<p class='${a}'>x</p>";</script>`),
-  fc.tuple(value, value).map(([a, b]) =>
-    `<style>#${a} { color: red } .${b} > p { margin: 0 } @keyframes ${b} { from { opacity: 0 } } ` +
-    `.${a} { animation: ${b} 1s; --${a}: 1; color: var(--${a}); } [id] { color: blue } .${b} { color: #abcdef12 }</style>`),
+  fc
+    .tuple(value, value)
+    .map(
+      ([a, b]) => `<button popovertarget="${a}" commandfor="${b}">b</button>`,
+    ),
+  fc
+    .tuple(value, value)
+    .map(
+      ([a, b]) =>
+        `<script>const r = document.getElementById("${a}"); document.querySelector("#${a} .${b}"); ` +
+        `r.classList.add("${b}", "${a}"); r.classList.toggle("${b}", true); r.classList.contains("${a}"); ` +
+        `r.setAttribute("id", "${a}"); document.getElementsByName("${b}"); r.className = "${a} ${b}"; ` +
+        `r.closest(".${b}"); document.getElementsByClassName("${a}");</script>`,
+    ),
+  value.map(
+    (a) =>
+      `<script type="module">document.querySelector(".${a}")?.remove();</script>`,
+  ),
+  value.map(
+    (a) => `<script type="application/ld+json">{"id": "${a}"}</script>`,
+  ),
+  value.map(
+    (a) =>
+      `<script data-bascik-build="page">export default () => "<p class='${a}'>x</p>";</script>`,
+  ),
+  fc
+    .tuple(value, value)
+    .map(
+      ([a, b]) =>
+        `<style>#${a} { color: red } .${b} > p { margin: 0 } @keyframes ${b} { from { opacity: 0 } } ` +
+        `.${a} { animation: ${b} 1s; --${a}: 1; color: var(--${a}); } [id] { color: blue } .${b} { color: #abcdef12 }</style>`,
+    ),
   value.map((a) => `<textarea class="${a}">raw <b id="${a}"></b></textarea>`),
-  fc.tuple(value, value).map(([a, b]) => `<input list="${a}" form="${b}"><datalist id="${a}"></datalist><form id="${b}"></form>`),
-  fc.tuple(value, value).map(([a, b]) => `<table><tr><th id="${a}">h</th><td headers="${a} ${b}">d</td></tr></table>`),
-  value.map((a) => `<div style="clip-path: url(#${a}); color: red" class="${a}">s</div>`),
-  value.map((a) => `<svg><use xlink:href="#${a}"></use><linearGradient id="${a}"></linearGradient><rect fill="url(#${a})"/></svg>`),
-  value.map((a) => `<template><p id="${a}" class="${a}">t</p></template><slot name="${a}"></slot>`),
+  fc
+    .tuple(value, value)
+    .map(
+      ([a, b]) =>
+        `<input list="${a}" form="${b}"><datalist id="${a}"></datalist><form id="${b}"></form>`,
+    ),
+  fc
+    .tuple(value, value)
+    .map(
+      ([a, b]) =>
+        `<table><tr><th id="${a}">h</th><td headers="${a} ${b}">d</td></tr></table>`,
+    ),
+  value.map(
+    (a) =>
+      `<div style="clip-path: url(#${a}); color: red" class="${a}">s</div>`,
+  ),
+  value.map(
+    (a) =>
+      `<svg><use xlink:href="#${a}"></use><linearGradient id="${a}"></linearGradient><rect fill="url(#${a})"/></svg>`,
+  ),
+  value.map(
+    (a) =>
+      `<template><p id="${a}" class="${a}">t</p></template><slot name="${a}"></slot>`,
+  ),
   value.map((a) => `<pre><code class="${a}" id="${a}">x</code></pre>`),
-  fc.tuple(value, value).map(([a, b]) => `<script>el.className += " ${a}"; el.classList.replace("${a}", "${b}");</script>`),
-  fc.tuple(value, value).map(([a, b]) =>
-    `<style>:has(#${a}) { color: red } #${a}:hover .${b} {} [id="${a}"] { color: blue } @property --${a} { syntax: '*'; inherits: false; }</style>`),
+  fc
+    .tuple(value, value)
+    .map(
+      ([a, b]) =>
+        `<script>el.className += " ${a}"; el.classList.replace("${a}", "${b}");</script>`,
+    ),
+  fc
+    .tuple(value, value)
+    .map(
+      ([a, b]) =>
+        `<style>:has(#${a}) { color: red } #${a}:hover .${b} {} [id="${a}"] { color: blue } @property --${a} { syntax: '*'; inherits: false; }</style>`,
+    ),
 );
 
 const cssFile = fc.option(
-  fc.array(
-    fc.oneof(
-      value.map((a) => `.${a} { color: red; }`),
-      value.map((a) => `#${a} { color: blue; }`),
-      fc.constant("p { margin: 0; } div > span { padding: 1px; }"),
-      value.map((a) => `@keyframes ${a} { to { opacity: 1; } } .${a} { animation: ${a} 2s; }`),
-      value.map((a) => `@layer ${a} { .${a} { color: green; } }`),
-      value.map((a) => `.${a} { container-name: ${a}; anchor-name: --${a}; view-transition-name: ${a}; }`),
-      value.map((a) => `:root { --${a}: 2px; } .${a} { width: var(--${a}); }`),
-      value.map((a) => `.${a}::after { content: "#${a} .${a}"; background: url(./${a}.png); }`),
-      fc.tuple(value, value).map(([a, b]) =>
-        `@counter-style ${a} { system: cyclic; symbols: x; } ol { list-style: ${a}; } li::before { content: counter(i, ${a}) counters(i, ".", ${b}); }`),
-      fc.tuple(value, value).map(([a, b]) => `.${a} { position-anchor: --${b}; } @position-try --${b} { top: 0; } .${b} { anchor-name: --${b}; }`),
-      value.map((a) => `.${a} { filter: url(#${a}); } @container ${a} (min-width: 1px) { .${a} { color: red } }`),
-      value.map((a) => `::view-transition-old(${a}) { opacity: 0 } .${a} { view-transition-name: ${a}; }`),
-    ),
-    { maxLength: 6 },
-  ).map((rules) => rules.join("\n")),
+  fc
+    .array(
+      fc.oneof(
+        value.map((a) => `.${a} { color: red; }`),
+        value.map((a) => `#${a} { color: blue; }`),
+        fc.constant("p { margin: 0; } div > span { padding: 1px; }"),
+        value.map(
+          (a) =>
+            `@keyframes ${a} { to { opacity: 1; } } .${a} { animation: ${a} 2s; }`,
+        ),
+        value.map((a) => `@layer ${a} { .${a} { color: green; } }`),
+        value.map(
+          (a) =>
+            `.${a} { container-name: ${a}; anchor-name: --${a}; view-transition-name: ${a}; }`,
+        ),
+        value.map(
+          (a) => `:root { --${a}: 2px; } .${a} { width: var(--${a}); }`,
+        ),
+        value.map(
+          (a) =>
+            `.${a}::after { content: "#${a} .${a}"; background: url(./${a}.png); }`,
+        ),
+        fc
+          .tuple(value, value)
+          .map(
+            ([a, b]) =>
+              `@counter-style ${a} { system: cyclic; symbols: x; } ol { list-style: ${a}; } li::before { content: counter(i, ${a}) counters(i, ".", ${b}); }`,
+          ),
+        fc
+          .tuple(value, value)
+          .map(
+            ([a, b]) =>
+              `.${a} { position-anchor: --${b}; } @position-try --${b} { top: 0; } .${b} { anchor-name: --${b}; }`,
+          ),
+        value.map(
+          (a) =>
+            `.${a} { filter: url(#${a}); } @container ${a} (min-width: 1px) { .${a} { color: red } }`,
+        ),
+        value.map(
+          (a) =>
+            `::view-transition-old(${a}) { opacity: 0 } .${a} { view-transition-name: ${a}; }`,
+        ),
+      ),
+      { maxLength: 6 },
+    )
+    .map((rules) => rules.join("\n")),
   { nil: undefined },
 );
 
-const componentArb = fc.record({
-  name: fc.constantFrom("my-card", "code-block", "x-a", "nav-bar"),
-  fileContent: fc.array(htmlFragment, { minLength: 1, maxLength: 10 }).map((parts) => parts.join("\n")),
-  cssFileContent: cssFile,
-}).map(({ name, fileContent, cssFileContent }): BascikComponent => ({
-  name,
-  fileName: `/project/src/components/${name}/${name}.html`,
-  fileContent,
-  ...(cssFileContent === undefined ? {} : { cssFileContent }),
-}));
+const componentArb = fc
+  .record({
+    name: fc.constantFrom("my-card", "code-block", "x-a", "nav-bar"),
+    fileContent: fc
+      .array(htmlFragment, { minLength: 1, maxLength: 10 })
+      .map((parts) => parts.join("\n")),
+    cssFileContent: cssFile,
+  })
+  .map(({ name, fileContent, cssFileContent }): BascikComponent => ({
+    name,
+    fileName: `/project/src/components/${name}/${name}.html`,
+    fileContent,
+    ...(cssFileContent === undefined ? {} : { cssFileContent }),
+  }));
 
 const hex = "0123456789abcdef".split("");
 const instanceIdArb = fc.oneof(
   fc.string({ unit: fc.constantFrom(...hex), minLength: 8, maxLength: 8 }),
-  fc.constantFrom("00000000", "aaaaaaaa", "abcdef12", "ab12ab12", "ffffffff", "0a0a0a0a", "deadbeef"),
+  fc.constantFrom(
+    "00000000",
+    "aaaaaaaa",
+    "abcdef12",
+    "ab12ab12",
+    "ffffffff",
+    "0a0a0a0a",
+    "deadbeef",
+  ),
 );
 
 describe("scoping pipeline treats generated names as opaque tokens", () => {
@@ -148,14 +274,19 @@ describe("scoping pipeline treats generated names as opaque tokens", () => {
         let reusable = 0;
         let runs = 0;
         fc.assert(
-          fc.property(componentArb, instanceIdArb, instanceIdArb, (input, first, next) => {
-            fc.pre(first !== next);
-            runs++;
-            const { predicted } = predict(input, first, next);
-            if (!predicted) return;
-            reusable++;
-            expect(predicted).toEqual(real(input, next));
-          }),
+          fc.property(
+            componentArb,
+            instanceIdArb,
+            instanceIdArb,
+            (input, first, next) => {
+              fc.pre(first !== next);
+              runs++;
+              const { predicted } = predict(input, first, next);
+              if (!predicted) return;
+              reusable++;
+              expect(predicted).toEqual(real(input, next));
+            },
+          ),
           // SCOPING_PROPERTY_RUNS raises the search depth for local deep runs.
           { numRuns: Number(process.env.SCOPING_PROPERTY_RUNS ?? 400) },
         );
@@ -212,7 +343,10 @@ describe("scoping pipeline treats generated names as opaque tokens", () => {
 });
 
 // Every real component in the repository, predicted for several instance IDs.
-const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+const repositoryRoot = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
 const componentFiles = (dir: string): string[] => {
   if (!existsSync(dir)) return [];
   return readdirSync(dir, { recursive: true })
@@ -233,28 +367,50 @@ describe("scoping templates on the repository's components", () => {
   for (const identifiers of [false, true]) {
     it(`predicts every reusable component exactly (identifiers ${identifiers})`, () => {
       setConfig(identifiers, true);
-      const ids = ["3f2a9c01", "00000000", "ffffffff", "a1b2c3d4", "deadbeef", "0badf00d"];
+      const ids = [
+        "3f2a9c01",
+        "00000000",
+        "ffffffff",
+        "a1b2c3d4",
+        "deadbeef",
+        "0badf00d",
+      ];
       let reusable = 0;
       for (const htmlPath of corpus) {
         const cssPath = htmlPath.replace(/\.html$/, ".css");
-        const name = htmlPath.replace(/\\/g, "/").split("/").pop()!.replace(/\.html$/, "");
+        const name = htmlPath
+          .replace(/\\/g, "/")
+          .split("/")
+          .pop()!
+          .replace(/\.html$/, "");
         const input: BascikComponent = {
           name,
           fileName: htmlPath,
           fileContent: readFileSync(htmlPath, "utf8"),
-          ...(existsSync(cssPath) ? { cssFileContent: readFileSync(cssPath, "utf8") } : {}),
+          ...(existsSync(cssPath)
+            ? { cssFileContent: readFileSync(cssPath, "utf8") }
+            : {}),
         };
         const recorded = recordScopingRun(copy(input), ids[0]);
         if (!recorded.clean) continue;
         const template = buildScopingTemplate(
-          internals.inputTexts(input), ids[0], recorded.calls, internals.snapshotResult(recorded.component),
+          internals.inputTexts(input),
+          ids[0],
+          recorded.calls,
+          internals.snapshotResult(recorded.component),
         );
         if (!template) continue;
         reusable++;
         for (const next of ids.slice(1)) {
-          const predicted = instantiateScopingTemplate(template, next, internals.inputTexts(input));
+          const predicted = instantiateScopingTemplate(
+            template,
+            next,
+            internals.inputTexts(input),
+          );
           if (!predicted) continue;
-          expect(predicted, `${htmlPath} instance ${next}`).toEqual(real(input, next));
+          expect(predicted, `${htmlPath} instance ${next}`).toEqual(
+            real(input, next),
+          );
         }
       }
       expect(reusable).toBeGreaterThan(corpus.length * 0.8);

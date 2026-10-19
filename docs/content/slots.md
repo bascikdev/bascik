@@ -11,16 +11,20 @@ Add `data-bascik-slot` (no value) to any element in your component template to m
 Place default content inside the marker and it renders whenever the component tag has no inner content.
 
 <!-- demo:basic-slot-html -->
+
 ```html
 <section class="simple-slot-card">
   <p class="simple-slot-label">Default slot</p>
   <div data-bascik-slot>
-    <p class="simple-slot-fallback">Fallback content appears when the tag is empty.</p>
+    <p class="simple-slot-fallback">
+      Fallback content appears when the tag is empty.
+    </p>
   </div>
 </section>
 ```
 
 <!-- demo:basic-slot-css -->
+
 ```css
 .simple-slot-card {
   min-height: 9rem;
@@ -30,6 +34,7 @@ Place default content inside the marker and it renders whenever the component ta
 ```
 
 <!-- demo:basic-slot-usage -->
+
 ```html
 <simple-slot-card>
   <p>Custom content replaces the fallback.</p>
@@ -39,6 +44,7 @@ Place default content inside the marker and it renders whenever the component ta
 ```
 
 <!-- demo:basic-slot-output-html -->
+
 ```html
 <section class="bascik__simple-slot-card__simple-slot-card">
   <p class="bascik__simple-slot-card__simple-slot-label">Default slot</p>
@@ -100,7 +106,7 @@ Leading and trailing whitespace is trimmed from all slot content at build time. 
 </my-card>
 ```
 
-Whitespace *within* slot content is preserved exactly as written.
+Whitespace _within_ slot content is preserved exactly as written.
 
 > **Code examples stay literal by default.** Bascik skips transpilation inside `<code>` elements by default, so slot trimming only applies to regular component resolution. If you configure `scoping.preserve: ['code', 'pre']`, raw `<pre>` content is preserved too.
 
@@ -111,16 +117,22 @@ Whitespace *within* slot content is preserved exactly as written.
 This example uses two named slots (`eyebrow` and `actions`) plus the default slot for the body content.
 
 <!-- demo:source-usage -->
+
 ```html
 <slot-layout-demo>
   <span data-bascik-slot="eyebrow">Named slot</span>
   <span data-bascik-slot="title">Build-time slot layout</span>
-  <p>Use named slots for fixed regions and the default slot for body content.</p>
-  <div data-bascik-slot="actions"><a href="/configuration">Read configuration</a></div>
+  <p>
+    Use named slots for fixed regions and the default slot for body content.
+  </p>
+  <div data-bascik-slot="actions">
+    <a href="/configuration">Read configuration</a>
+  </div>
 </slot-layout-demo>
 ```
 
 <!-- demo:source-html -->
+
 ```html
 <section class="slot-panel">
   <header class="slot-panel-header">
@@ -147,6 +159,7 @@ This example uses two named slots (`eyebrow` and `actions`) plus the default slo
 ```
 
 <!-- demo:source-css -->
+
 ```css
 .slot-panel {
   width: min(100%, 34rem);
@@ -192,15 +205,21 @@ This example uses two named slots (`eyebrow` and `actions`) plus the default slo
 ```
 
 <!-- demo:output-html -->
+
 ```html
 <section class="bascik__slot-layout-demo__slot-panel">
   <header class="bascik__slot-layout-demo__slot-panel-header">
     <p class="bascik__slot-layout-demo__slot-panel-eyebrow">Named slot</p>
-    <h3 class="bascik__slot-layout-demo__slot-panel-title">Build-time slot layout</h3>
+    <h3 class="bascik__slot-layout-demo__slot-panel-title">
+      Build-time slot layout
+    </h3>
   </header>
 
   <div class="bascik__slot-layout-demo__slot-panel-body">
-    <p>Use named slots for fixed regions and the default slot for the main body content.</p>
+    <p>
+      Use named slots for fixed regions and the default slot for the main body
+      content.
+    </p>
   </div>
 
   <footer class="bascik__slot-layout-demo__slot-panel-actions">

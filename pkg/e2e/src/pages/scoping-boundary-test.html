@@ -1,26 +1,27 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Scoping Boundary Test</title>
+  </head>
 
-<head>
-  <meta charset="UTF-8">
-  <title>Scoping Boundary Test</title>
-</head>
+  <body>
+    <h1>Scoping Boundary Test Page</h1>
 
-<body>
-  <h1>Scoping Boundary Test Page</h1>
+    <!-- Commented custom component must not expand: <scoping-boundary></scoping-boundary> -->
 
-  <!-- Commented custom component must not expand: <scoping-boundary></scoping-boundary> -->
+    <section class="test-container">
+      <scoping-boundary
+        class="passed-root-class"
+        style="outline-width: 2px"
+      ></scoping-boundary>
+      <scoping-boundary></scoping-boundary>
+    </section>
 
-  <section class="test-container">
-    <scoping-boundary class="passed-root-class" style="outline-width: 2px;"></scoping-boundary>
-    <scoping-boundary></scoping-boundary>
-  </section>
-
-  <script>
-    // Component tag in script block string literal must not expand
-    const scriptLiteral = '<scoping-boundary></scoping-boundary>';
-    window.scriptLiteralTag = scriptLiteral;
-  </script>
-</body>
-
+    <script>
+      // Component tag in script block string literal must not expand
+      const scriptLiteral = "<scoping-boundary></scoping-boundary>";
+      window.scriptLiteralTag = scriptLiteral;
+    </script>
+  </body>
 </html>

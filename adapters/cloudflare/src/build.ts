@@ -4,7 +4,11 @@
  * Cloudflare adapter build implementation.
  */
 
-import { pageAliasesFor, type AdapterBuildContext, type AdapterBuildResult } from "@bascik/bascik/adapter";
+import {
+  pageAliasesFor,
+  type AdapterBuildContext,
+  type AdapterBuildResult,
+} from "@bascik/bascik/adapter";
 import { resolve, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mkdir, copyFile, writeFile } from "node:fs/promises";
@@ -40,14 +44,20 @@ export const buildInvocationRoutes = (input: {
   hasStaticNotFoundPage?: boolean;
 }): InvocationRoutes => {
   const include = new Set<string>();
-  for (const path of input.dynamicPagePaths) for (const alias of pageAliasesFor(path, input.base)) include.add(alias);
-  if (input.hasStaticNotFoundPage) for (const alias of pageAliasesFor("/404", input.base)) include.add(alias);
+  for (const path of input.dynamicPagePaths)
+    for (const alias of pageAliasesFor(path, input.base)) include.add(alias);
+  if (input.hasStaticNotFoundPage)
+    for (const alias of pageAliasesFor("/404", input.base)) include.add(alias);
   if (input.hasApiRoutes) include.add(withBasePath("/api/*", input.base));
   include.add(withBasePath("/_routes.json", input.base));
   include.add(withBasePath("/_worker.js", input.base));
   const sorted = Array.from(include).sort();
   if (sorted.length > PAGES_ROUTES_LIMIT) {
-    return { include: [withBasePath("/*", input.base)], exclude: [], overflowed: true };
+    return {
+      include: [withBasePath("/*", input.base)],
+      exclude: [],
+      overflowed: true,
+    };
   }
   return { include: sorted, exclude: [], overflowed: false };
 };
@@ -58,7 +68,10 @@ const CONTROL_FILES: Record<string, string[]> = {
 };
 const ASSET_CONTROL_FILES = new Set(["_headers", "_redirects"]);
 
-export const detectControlCollisions = (publicPaths: string[], variant: string): string[] => {
+export const detectControlCollisions = (
+  publicPaths: string[],
+  variant: string,
+): string[] => {
   const control = new Set(CONTROL_FILES[variant] ?? []);
   const problems: string[] = [];
   for (const path of [...publicPaths].sort()) {
@@ -71,10 +84,14 @@ export const detectControlCollisions = (publicPaths: string[], variant: string):
   return problems;
 };
 
-export const build = async (context: AdapterBuildContext): Promise<AdapterBuildResult> => {
+export const build = async (
+  context: AdapterBuildContext,
+): Promise<AdapterBuildResult> => {
   const { graph, distDir, outDir, projectRoot, variant = "workers" } = context;
   if (variant !== "pages" && variant !== "workers") {
-    throw new Error(`[bascik] --target cloudflare: unknown variant "${variant}". Valid variants are "pages" and "workers".`);
+    throw new Error(
+      `[bascik] --target cloudflare: unknown variant "${variant}". Valid variants are "pages" and "workers".`,
+    );
   }
 
   const publicDir = join(outDir, "public");
@@ -95,16 +112,24 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
 
   // A dynamic /404 page already answers 404 from the worker. A static one is
   // served by the asset layer, which answers 200 at its own URL.
-  const hasStaticNotFoundPage = graph.publicFiles.includes("404.html") && graph.pages["/404"] === undefined;
+  const hasStaticNotFoundPage =
+    graph.publicFiles.includes("404.html") && graph.pages["/404"] === undefined;
 
   const here = fileURLToPath(import.meta.url);
-  const runtimeFile = resolve(here, `../runtime${here.endsWith(".ts") ? ".ts" : ".js"}`);
+  const runtimeFile = resolve(
+    here,
+    `../runtime${here.endsWith(".ts") ? ".ts" : ".js"}`,
+  );
 
   const lines: string[] = [];
-  lines.push(`import { createCloudflareWorker } from ${JSON.stringify(runtimeFile)};`);
+  lines.push(
+    `import { createCloudflareWorker } from ${JSON.stringify(runtimeFile)};`,
+  );
 
   const pageLiterals: string[] = [];
-  for (const [httpPath, page] of Object.entries(graph.pages).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+  for (const [httpPath, page] of Object.entries(graph.pages).sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  )) {
     const jobLiterals: string[] = [];
     for (const [id, job] of Object.entries(page.jobs)) {
       let specifier: string;
@@ -134,9 +159,12 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
   lines.push(`  base: ${JSON.stringify(graph.base)},`);
   lines.push(`  scriptTimeoutMs: ${graph.scriptTimeoutMs},`);
   lines.push(`  apiTimeoutMs: ${graph.apiTimeoutMs},`);
-  lines.push(`  onServerScriptError: ${JSON.stringify(graph.onServerScriptError)},`);
+  lines.push(
+    `  onServerScriptError: ${JSON.stringify(graph.onServerScriptError)},`,
+  );
   lines.push(`  release: ${JSON.stringify(graph.release)},`);
-  if (graph.custom500 !== undefined) lines.push(`  custom500: ${JSON.stringify(graph.custom500)},`);
+  if (graph.custom500 !== undefined)
+    lines.push(`  custom500: ${JSON.stringify(graph.custom500)},`);
   if (hasStaticNotFoundPage) lines.push(`  staticNotFoundPage: true,`);
   lines.push(`  pages: { ${pageLiterals.join(",\n    ")} },`);
   lines.push(`  apiRoutes: [ ${routeLiterals.join(",\n    ")} ],`);
@@ -177,20 +205,35 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
           }));
           buildInstance.onResolve({ filter: /^file:/ }, (args) => {
             const resolved = fileURLToPath(args.path);
-            for (const owner of owners.get(args.importer) ?? []) addOwner(resolved, owner);
+            for (const owner of owners.get(args.importer) ?? [])
+              addOwner(resolved, owner);
             return { path: resolved };
           });
           buildInstance.onResolve({ filter: /^\.\.?\// }, (args) => {
             const resolved = resolve(dirname(args.importer), args.path);
-            for (const owner of owners.get(args.importer) ?? []) addOwner(resolved, owner);
+            for (const owner of owners.get(args.importer) ?? [])
+              addOwner(resolved, owner);
             return undefined;
           });
           buildInstance.onResolve({ filter: /^(node:)?[a-z_/]+$/ }, (args) => {
             const kind = classifyNodeBuiltin(args.path);
             if (kind === "not-builtin") return undefined;
-            if (kind === "provided") return { path: args.path.startsWith("node:") ? args.path : `node:${args.path}`, external: true };
+            if (kind === "provided")
+              return {
+                path: args.path.startsWith("node:")
+                  ? args.path
+                  : `node:${args.path}`,
+                external: true,
+              };
             const ownerList = [...(owners.get(args.importer) ?? [])];
-            unsupported.push(formatUnsupportedImport({ specifier: args.path, importer: args.importer, projectRoot, owners: ownerList }));
+            unsupported.push(
+              formatUnsupportedImport({
+                specifier: args.path,
+                importer: args.importer,
+                projectRoot,
+                owners: ownerList,
+              }),
+            );
             return { path: args.path, external: true };
           });
         },
@@ -200,7 +243,9 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
 
   if (unsupported.length) throw new Error([...new Set(unsupported)].join("\n"));
   if (result.errors.length) {
-    throw new Error(`[bascik] --target cloudflare-${variant}: bundling failed:\n${result.errors.map((e) => `  ${e.location?.file ? `${e.location.file}: ` : ""}${e.text}`).join("\n")}`);
+    throw new Error(
+      `[bascik] --target cloudflare-${variant}: bundling failed:\n${result.errors.map((e) => `  ${e.location?.file ? `${e.location.file}: ` : ""}${e.text}`).join("\n")}`,
+    );
   }
   const workerCode = result.outputFiles?.[0]?.text ?? "";
 
@@ -208,9 +253,10 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
   // under public/, and every URL of a non-root base site carries the prefix,
   // so assets are staged below it. Control files stay at the public root,
   // where the platform reads them.
-  const assetRoot = graph.base && graph.base !== "/"
-    ? join(publicDir, ...graph.base.split("/").filter(Boolean))
-    : publicDir;
+  const assetRoot =
+    graph.base && graph.base !== "/"
+      ? join(publicDir, ...graph.base.split("/").filter(Boolean))
+      : publicDir;
   for (const rel of graph.publicFiles) {
     const from = join(distDir, rel);
     const to = join(ASSET_CONTROL_FILES.has(rel) ? publicDir : assetRoot, rel);
@@ -232,7 +278,15 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
     await writeFile(workerPath, workerCode, "utf8");
     await writeFile(
       join(publicDir, "_routes.json"),
-      JSON.stringify({ version: 1, include: invocationRoutes.include, exclude: invocationRoutes.exclude }, null, 2),
+      JSON.stringify(
+        {
+          version: 1,
+          include: invocationRoutes.include,
+          exclude: invocationRoutes.exclude,
+        },
+        null,
+        2,
+      ),
       "utf8",
     );
   } else {
@@ -244,18 +298,27 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
     // 2. Authored wrangler.jsonc / wrangler.json / wrangler.toml in project root
     // 3. Project package.json "name"
     // 4. Fallback to "bascik-site"
-    const { workerName, discoveredConfig } = await resolveWorkerName(projectRoot);
+    const { workerName, discoveredConfig } =
+      await resolveWorkerName(projectRoot);
 
-    const authoredFlags = Array.isArray(discoveredConfig?.values?.compatibility_flags)
-      ? discoveredConfig.values.compatibility_flags.filter((f): f is string => typeof f === "string" && f.trim().length > 0)
+    const authoredFlags = Array.isArray(
+      discoveredConfig?.values?.compatibility_flags,
+    )
+      ? discoveredConfig.values.compatibility_flags.filter(
+          (f): f is string => typeof f === "string" && f.trim().length > 0,
+        )
       : [];
 
     const wrangler = {
       $schema: "node_modules/wrangler/config-schema.json",
       name: workerName,
       main: "worker.js",
-      compatibility_date: (discoveredConfig?.values?.compatibility_date as string | undefined) ?? CLOUDFLARE_COMPATIBILITY_DATE,
-      compatibility_flags: [...new Set([...authoredFlags, ...CLOUDFLARE_COMPATIBILITY_FLAGS])],
+      compatibility_date:
+        (discoveredConfig?.values?.compatibility_date as string | undefined) ??
+        CLOUDFLARE_COMPATIBILITY_DATE,
+      compatibility_flags: [
+        ...new Set([...authoredFlags, ...CLOUDFLARE_COMPATIBILITY_FLAGS]),
+      ],
       assets: {
         directory: "./public",
         binding: "ASSETS",
@@ -263,7 +326,11 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
         run_worker_first: invocationRoutes.include,
       },
     };
-    await writeFile(join(outDir, "wrangler.jsonc"), `${JSON.stringify(wrangler, null, 2)}\n`, "utf8");
+    await writeFile(
+      join(outDir, "wrangler.jsonc"),
+      `${JSON.stringify(wrangler, null, 2)}\n`,
+      "utf8",
+    );
   }
 
   const bundleBytes = Buffer.byteLength(workerCode, "utf8");

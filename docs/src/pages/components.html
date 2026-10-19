@@ -1,460 +1,683 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Components are the core building block in Bascik. Learn to write HTML-only components, add scoped CSS or JavaScript, and split into separate files as they grow."
+    />
+    <title>HTML Components Without a Framework - Bascik</title>
+  </head>
 
-<head>
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <script data-bascik-build>
-    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    export default async () => await breadcrumbLd();
-  </script>
-  <script data-bascik-build>
-    import { articleSchema } from '@/lib/article-schema.ts';
-    export default async () => await articleSchema();
-  </script>
-  <meta name="description"
-    content="Components are the core building block in Bascik. Learn to write HTML-only components, add scoped CSS or JavaScript, and split into separate files as they grow." />
-  <title>HTML Components Without a Framework - Bascik</title>
-</head>
+  <body>
+    <docs-nav />
 
-<body>
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
 
-  <docs-nav />
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/components");
+          </script>
 
-  <div class="container">
-    <div class="docs-layout">
-      <docs-sidebar />
+          <!-- Intro through end of first section heading, from docs/content/components.md -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/components.md", {
+                to: "HTML-Only Components",
+              });
+          </script>
 
-      <main class="docs-content" id="main-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/components');
-        </script>
+          <!-- Section: HTML-only -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/components.md",
+                { from: "HTML-Only Components", to: "HTML with CSS" },
+                { stripDemoBlocks: true },
+              );
+          </script>
 
-        <!-- Intro through end of first section heading, from docs/content/components.md -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/components.md', { to: 'HTML-Only Components' });
-        </script>
-
-        <!-- Section: HTML-only -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/components.md', { from: 'HTML-Only Components', to: 'HTML with CSS' }, { stripDemoBlocks: true });
-        </script>
-
-        <component-demo data-bascik-prop-file="src/components/hello-card/">
-          <div data-bascik-slot="example">
-            <hello-card />
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'source-usage-hello');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'source-html-hello');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'output-html-hello');
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
-
-        <!-- Section: HTML with CSS -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/components.md', { from: 'HTML with CSS', to: 'HTML with JavaScript' }, { stripDemoBlocks: true });
-        </script>
-
-        <component-demo data-bascik-prop-file="src/components/comp-badge/">
-          <div data-bascik-slot="example">
-            <comp-badge />
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'source-usage-badge');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'source-html-badge');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'output-html-badge');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-css">
-            <code-block data-bascik-prop-lang="css">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'output-css-badge');
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
-
-        <!-- Section: HTML with JavaScript -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/components.md', { from: 'HTML with JavaScript', to: 'HTML, CSS, and JavaScript Together' }, { stripDemoBlocks: true });
-        </script>
-
-        <component-demo data-bascik-prop-file="src/components/comp-toggle/">
-          <div data-bascik-slot="example">
-            <comp-toggle />
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'source-usage-toggle');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'source-html-toggle');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-js">
-            <code-block data-bascik-prop-lang="js">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'source-js-toggle');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'output-html-toggle');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-css">
-            <code-block data-bascik-prop-lang="css">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'output-css-toggle');
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
-
-        <!-- Section: HTML, CSS, and JavaScript Together -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/components.md', { from: 'HTML, CSS, and JavaScript Together', to: 'Companion CSS and Script Files' }, { stripDemoBlocks: true });
-        </script>
-
-        <component-demo data-bascik-prop-file="src/components/comp-alert/">
-          <div data-bascik-slot="example">
-            <comp-alert />
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'source-usage-alert');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'source-html-alert');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'output-html-alert');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-css">
-            <code-block data-bascik-prop-lang="css">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'output-css-alert');
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
-
-        <!-- Section: Companion CSS and Script Files -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/components.md', { from: 'Companion CSS and Script Files', to: 'Subfolder Layout' }, { stripDemoBlocks: true });
-        </script>
-
-        <component-demo data-bascik-prop-file="src/components/feature-card/">
-          <div data-bascik-slot="example">
-            <feature-card data-bascik-prop-title="Build-time Components"
-              data-bascik-prop-desc="Bascik resolves tags and ships vanilla HTML." />
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'source-usage-card');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'source-html-card');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-css">
-            <code-block data-bascik-prop-lang="css">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'source-css-card');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'output-html-card');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-css">
-            <code-block data-bascik-prop-lang="css">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'output-css-card');
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
-
-        <!-- Section: Subfolder Layout through Multiple Root Elements intro (plain prose) -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/components.md', { from: 'Subfolder Layout', to: 'Component Naming and Hyphens' });
-        </script>
-
-        <diagram-figure data-bascik-prop-title="Four ways to lay out the same component"
-          data-bascik-prop-footer="The tag name comes from the filename, not the folder, so every one registers the my-card tag.">
-          <diagram-row>
-            <diagram-panel data-bascik-prop-label="HTML only">
-              <code-block data-bascik-prop-lang="text">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-layouts-html-only');
-                </script>
-              </code-block>
-            </diagram-panel>
-            <diagram-panel data-bascik-prop-label="Single file">
-              <code-block data-bascik-prop-lang="text">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-layouts-single-file');
-                </script>
-              </code-block>
-            </diagram-panel>
-          </diagram-row>
-          <diagram-row>
-            <diagram-panel data-bascik-prop-label="Companion files">
-              <code-block data-bascik-prop-lang="text">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-layouts-companion');
-                </script>
-              </code-block>
-            </diagram-panel>
-            <diagram-panel data-bascik-prop-label="Subfolder">
-              <code-block data-bascik-prop-lang="text">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-layouts-subfolder');
-                </script>
-              </code-block>
-            </diagram-panel>
-          </diagram-row>
-        </diagram-figure>
-
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/components.md', { from: 'Component Naming and Hyphens', to: 'Multiple Root Elements' });
-        </script>
-
-        <!-- Section: Multiple Root Elements -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/components.md', { from: 'Multiple Root Elements', to: 'Component Structure & Tag Ordering' }, { stripDemoBlocks: true });
-        </script>
-
-        <component-demo data-bascik-prop-file="src/components/roots-demo/">
-          <div data-bascik-slot="example">
-            <!-- The preview pane lays children out in a row. A block wrapper stacks the three roots as they would sit in a page. -->
-            <div style="width: 100%">
-              <roots-demo />
+          <component-demo data-bascik-prop-file="src/components/hello-card/">
+            <div data-bascik-slot="example">
+              <hello-card />
             </div>
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'source-usage-roots');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="source-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'source-html-roots');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'output-html-roots');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-css">
-            <code-block data-bascik-prop-lang="css">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/components.md', 'output-css-roots');
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
-
-        <!-- Section: Component Structure & Tag Ordering onward (plain prose) -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/components.md', { from: 'Component Structure & Tag Ordering', to: 'Shared Head Tags & Layout Component Decomposition' });
-        </script>
-
-        <diagram-figure data-bascik-prop-title="Where scoping starts and stops">
-          <diagram-row data-bascik-prop-label="Page shell: src/pages/about.html">
-            <diagram-panel data-bascik-prop-label="You write">
+            <div data-bascik-slot="source-usage">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-scope-boundary-page-in');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-usage-hello",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-            <diagram-panel data-bascik-prop-label="Bascik emits">
+            </div>
+            <div data-bascik-slot="source-html">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-scope-boundary-page-out');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-html-hello",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-          </diagram-row>
-          <diagram-row data-bascik-prop-label="Component template: src/components/site-nav.html"
-            data-bascik-prop-direction="stack">
-            <diagram-panel data-bascik-prop-label="You write">
+            </div>
+            <div data-bascik-slot="output-html">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-scope-boundary-component-in');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "output-html-hello",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+            </div>
+          </component-demo>
+
+          <!-- Section: HTML with CSS -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/components.md",
+                { from: "HTML with CSS", to: "HTML with JavaScript" },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo data-bascik-prop-file="src/components/comp-badge/">
+            <div data-bascik-slot="example">
+              <comp-badge />
+            </div>
+            <div data-bascik-slot="source-usage">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-scope-boundary-component-out');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-usage-badge",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-          </diagram-row>
-        </diagram-figure>
-
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/components.md', { from: 'Shared Head Tags & Layout Component Decomposition', to: 'Accessible Skip Links and Focus Order' });
-        </script>
-
-        <diagram-figure data-bascik-prop-title="A component inside the head element">
-          <diagram-row data-bascik-prop-label="One tag in every page shell" data-bascik-prop-direction="stack">
-            <diagram-panel data-bascik-prop-label="src/pages/index.html">
+            </div>
+            <div data-bascik-slot="source-html">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-shared-head-page');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-html-badge",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-            <diagram-panel data-bascik-prop-label="dist/index.html" data-bascik-prop-arrow="↓">
+            </div>
+            <div data-bascik-slot="output-html">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-shared-head-built');
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "output-html-badge",
+                    );
                 </script>
               </code-block>
-            </diagram-panel>
-          </diagram-row>
-        </diagram-figure>
+            </div>
+            <div data-bascik-slot="output-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "output-css-badge",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
 
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/components.md', { from: 'Accessible Skip Links and Focus Order' });
-        </script>
+          <!-- Section: HTML with JavaScript -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/components.md",
+                {
+                  from: "HTML with JavaScript",
+                  to: "HTML, CSS, and JavaScript Together",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
 
-        <docs-pagination />
+          <component-demo data-bascik-prop-file="src/components/comp-toggle/">
+            <div data-bascik-slot="example">
+              <comp-toggle />
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-usage-toggle",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-html-toggle",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-js">
+              <code-block data-bascik-prop-lang="js">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-js-toggle",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "output-html-toggle",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "output-css-toggle",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
 
-      </main>
+          <!-- Section: HTML, CSS, and JavaScript Together -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/components.md",
+                {
+                  from: "HTML, CSS, and JavaScript Together",
+                  to: "Companion CSS and Script Files",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo data-bascik-prop-file="src/components/comp-alert/">
+            <div data-bascik-slot="example">
+              <comp-alert />
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-usage-alert",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-html-alert",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "output-html-alert",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "output-css-alert",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <!-- Section: Companion CSS and Script Files -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/components.md",
+                {
+                  from: "Companion CSS and Script Files",
+                  to: "Subfolder Layout",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo data-bascik-prop-file="src/components/feature-card/">
+            <div data-bascik-slot="example">
+              <feature-card
+                data-bascik-prop-title="Build-time Components"
+                data-bascik-prop-desc="Bascik resolves tags and ships vanilla HTML."
+              />
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-usage-card",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-html-card",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-css-card",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "output-html-card",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "output-css-card",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <!-- Section: Subfolder Layout through Multiple Root Elements intro (plain prose) -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/components.md", {
+                from: "Subfolder Layout",
+                to: "Component Naming and Hyphens",
+              });
+          </script>
+
+          <diagram-figure
+            data-bascik-prop-title="Four ways to lay out the same component"
+            data-bascik-prop-footer="The tag name comes from the filename, not the folder, so every one registers the my-card tag."
+          >
+            <diagram-row>
+              <diagram-panel data-bascik-prop-label="HTML only">
+                <code-block data-bascik-prop-lang="text">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/components.md",
+                        "components-layouts-html-only",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+              <diagram-panel data-bascik-prop-label="Single file">
+                <code-block data-bascik-prop-lang="text">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/components.md",
+                        "components-layouts-single-file",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+            </diagram-row>
+            <diagram-row>
+              <diagram-panel data-bascik-prop-label="Companion files">
+                <code-block data-bascik-prop-lang="text">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/components.md",
+                        "components-layouts-companion",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+              <diagram-panel data-bascik-prop-label="Subfolder">
+                <code-block data-bascik-prop-lang="text">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/components.md",
+                        "components-layouts-subfolder",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+            </diagram-row>
+          </diagram-figure>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/components.md", {
+                from: "Component Naming and Hyphens",
+                to: "Multiple Root Elements",
+              });
+          </script>
+
+          <!-- Section: Multiple Root Elements -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/components.md",
+                {
+                  from: "Multiple Root Elements",
+                  to: "Component Structure & Tag Ordering",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo data-bascik-prop-file="src/components/roots-demo/">
+            <div data-bascik-slot="example">
+              <!-- The preview pane lays children out in a row. A block wrapper stacks the three roots as they would sit in a page. -->
+              <div style="width: 100%">
+                <roots-demo />
+              </div>
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-usage-roots",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-html-roots",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "output-html-roots",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "output-css-roots",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <!-- Section: Component Structure & Tag Ordering onward (plain prose) -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/components.md", {
+                from: "Component Structure & Tag Ordering",
+                to: "Shared Head Tags & Layout Component Decomposition",
+              });
+          </script>
+
+          <diagram-figure
+            data-bascik-prop-title="Where scoping starts and stops"
+          >
+            <diagram-row
+              data-bascik-prop-label="Page shell: src/pages/about.html"
+            >
+              <diagram-panel data-bascik-prop-label="You write">
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/components.md",
+                        "components-scope-boundary-page-in",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+              <diagram-panel data-bascik-prop-label="Bascik emits">
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/components.md",
+                        "components-scope-boundary-page-out",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+            </diagram-row>
+            <diagram-row
+              data-bascik-prop-label="Component template: src/components/site-nav.html"
+              data-bascik-prop-direction="stack"
+            >
+              <diagram-panel data-bascik-prop-label="You write">
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/components.md",
+                        "components-scope-boundary-component-in",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+              <diagram-panel
+                data-bascik-prop-label="Bascik emits"
+                data-bascik-prop-arrow="↓"
+              >
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/components.md",
+                        "components-scope-boundary-component-out",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+            </diagram-row>
+          </diagram-figure>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/components.md", {
+                from: "Shared Head Tags & Layout Component Decomposition",
+                to: "Accessible Skip Links and Focus Order",
+              });
+          </script>
+
+          <diagram-figure
+            data-bascik-prop-title="A component inside the head element"
+          >
+            <diagram-row
+              data-bascik-prop-label="One tag in every page shell"
+              data-bascik-prop-direction="stack"
+            >
+              <diagram-panel data-bascik-prop-label="src/pages/index.html">
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/components.md",
+                        "components-shared-head-page",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+              <diagram-panel
+                data-bascik-prop-label="dist/index.html"
+                data-bascik-prop-arrow="↓"
+              >
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/components.md",
+                        "components-shared-head-built",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+            </diagram-row>
+          </diagram-figure>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/components.md", {
+                from: "Accessible Skip Links and Focus Order",
+              });
+          </script>
+
+          <docs-pagination />
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-</body>
-
+    <docs-footer />
+  </body>
 </html>

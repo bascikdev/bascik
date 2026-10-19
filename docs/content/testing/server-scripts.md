@@ -4,12 +4,12 @@ Server scripts (`<script data-bascik-server>`) execute in Node.js at request tim
 
 ## Build Scripts vs Server Scripts Testing
 
-| Characteristic | Build Scripts (`data-bascik-build`) | Server Scripts (`data-bascik-server`) |
-| --- | --- | --- |
-| **Execution Time** | Once at compile time (`bascik --build`) | On every incoming HTTP request (`bascik --server`) |
-| **Data Sources** | Local Markdown/JSON files, build-time env vars, static APIs | Database queries, session cookies, request headers, query parameters |
+| Characteristic       | Build Scripts (`data-bascik-build`)                                                            | Server Scripts (`data-bascik-server`)                                         |
+| -------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **Execution Time**   | Once at compile time (`bascik --build`)                                                        | On every incoming HTTP request (`bascik --server`)                            |
+| **Data Sources**     | Local Markdown/JSON files, build-time env vars, static APIs                                    | Database queries, session cookies, request headers, query parameters          |
 | **Testing Strategy** | Mock build env vars (`BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`), test static outputs in `dist/` | Unit test pure handlers, mock database connections, test request-time parsers |
-| **Detailed Guide** | [Build Scripts Testing](/testing/build-scripts) | [Server Scripts Testing](/testing/server-scripts) |
+| **Detailed Guide**   | [Build Scripts Testing](/testing/build-scripts)                                                | [Server Scripts Testing](/testing/server-scripts)                             |
 
 ## Architecture & Directory Structure
 
@@ -35,14 +35,21 @@ export interface WeatherData {
 
 export function formatWeatherReport(data: WeatherData): string {
   const roundedTemp = Math.round(data.temp);
-  return `<div class="weather-report">` +
+  return (
+    `<div class="weather-report">` +
     `<h4>${data.city}</h4>` +
     `<p>${roundedTemp}°F - ${data.condition}</p>` +
-    `</div>`;
+    `</div>`
+  );
 }
 
-export async function fetchCityWeather(city: string, apiKey: string): Promise<WeatherData> {
-  const res = await fetch(`https://api.weather.example/v1?q=${encodeURIComponent(city)}&key=${apiKey}`);
+export async function fetchCityWeather(
+  city: string,
+  apiKey: string,
+): Promise<WeatherData> {
+  const res = await fetch(
+    `https://api.weather.example/v1?q=${encodeURIComponent(city)}&key=${apiKey}`,
+  );
   if (!res.ok) throw new Error(`Weather lookup failed: ${res.statusText}`);
   return res.json();
 }
@@ -54,12 +61,12 @@ Inside the component template, import the helper module and execute request-time
 
 ```html
 <script data-bascik-server>
-  import { fetchCityWeather, formatWeatherReport } from './weather-service.js';
+  import { fetchCityWeather, formatWeatherReport } from "./weather-service.js";
 
   export default async function (request) {
-    const apiKey = process.env.WEATHER_API_KEY ?? '';
+    const apiKey = process.env.WEATHER_API_KEY ?? "";
     try {
-      const data = await fetchCityWeather('Seattle', apiKey);
+      const data = await fetchCityWeather("Seattle", apiKey);
       return formatWeatherReport(data);
     } catch (err) {
       return '<p class="error-msg">Weather currently unavailable</p>';
@@ -76,47 +83,52 @@ Test pure server logic functions and async backend integrations directly using V
 
 ```ts
 // weather-service.test.ts
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { formatWeatherReport, fetchCityWeather } from './weather-service.ts';
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { formatWeatherReport, fetchCityWeather } from "./weather-service.ts";
 
-describe('formatWeatherReport', () => {
-  it('formats weather data into HTML markup', () => {
+describe("formatWeatherReport", () => {
+  it("formats weather data into HTML markup", () => {
     const output = formatWeatherReport({
-      city: 'Fountain Hills',
+      city: "Fountain Hills",
       temp: 72.6,
-      condition: 'Sunny',
+      condition: "Sunny",
     });
 
-    expect(output).toContain('<h4>Fountain Hills</h4>');
-    expect(output).toContain('73°F - Sunny');
+    expect(output).toContain("<h4>Fountain Hills</h4>");
+    expect(output).toContain("73°F - Sunny");
     expect(output).toContain('class="weather-report"');
   });
 });
 
-describe('fetchCityWeather', () => {
+describe("fetchCityWeather", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('fetches and returns weather data for a valid city', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ city: 'Seattle', temp: 65, condition: 'Cloudy' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      })
+  it("fetches and returns weather data for a valid city", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ city: "Seattle", temp: 65, condition: "Cloudy" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
     );
 
-    const data = await fetchCityWeather('Seattle', 'test-key');
-    expect(data.city).toBe('Seattle');
+    const data = await fetchCityWeather("Seattle", "test-key");
+    expect(data.city).toBe("Seattle");
     expect(data.temp).toBe(65);
   });
 
-  it('throws an error when external API responds with error code', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(null, { status: 404, statusText: 'Not Found' })
+  it("throws an error when external API responds with error code", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(null, { status: 404, statusText: "Not Found" }),
     );
 
-    await expect(fetchCityWeather('UnknownCity', 'test-key')).rejects.toThrow('Weather lookup failed: Not Found');
+    await expect(fetchCityWeather("UnknownCity", "test-key")).rejects.toThrow(
+      "Weather lookup failed: Not Found",
+    );
   });
 });
 ```
@@ -127,19 +139,21 @@ Under Bascik's in-process execution model, server scripts export standard async 
 
 ```ts
 // src/components/weather-widget/weather-widget.server.test.ts
-import { describe, it, expect } from 'vitest';
-import weatherHandler from './weather-widget.server.ts';
+import { describe, it, expect } from "vitest";
+import weatherHandler from "./weather-widget.server.ts";
 
-describe('weatherHandler', () => {
-  it('renders greeting and weather for requested city query param', async () => {
-    const request = new Request('http://localhost/weather?city=Seattle', {
-      headers: { 'x-display-name': 'Alice' },
+describe("weatherHandler", () => {
+  it("renders greeting and weather for requested city query param", async () => {
+    const request = new Request("http://localhost/weather?city=Seattle", {
+      headers: { "x-display-name": "Alice" },
     });
-    const context = { remoteIp: '127.0.0.1' };
+    const context = { remoteIp: "127.0.0.1" };
 
-    const output = await weatherHandler(request, context, { signal: new AbortController().signal });
-    expect(output).toContain('Seattle');
-    expect(output).toContain('Alice');
+    const output = await weatherHandler(request, context, {
+      signal: new AbortController().signal,
+    });
+    expect(output).toContain("Seattle");
+    expect(output).toContain("Alice");
   });
 });
 ```
@@ -150,13 +164,17 @@ When your server scripts parse incoming query strings or request headers, test p
 
 ```ts
 // src/lib/query-parser.ts
-export function parsePaginationParams(queryString: string): { page: number; limit: number } {
+export function parsePaginationParams(queryString: string): {
+  page: number;
+  limit: number;
+} {
   const params = new URLSearchParams(queryString);
-  const rawPage = parseInt(params.get('page') ?? '1', 10);
-  const rawLimit = parseInt(params.get('limit') ?? '20', 10);
+  const rawPage = parseInt(params.get("page") ?? "1", 10);
+  const rawLimit = parseInt(params.get("limit") ?? "20", 10);
 
   const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
-  const limit = isNaN(rawLimit) || rawLimit < 1 || rawLimit > 100 ? 20 : rawLimit;
+  const limit =
+    isNaN(rawLimit) || rawLimit < 1 || rawLimit > 100 ? 20 : rawLimit;
 
   return { page, limit };
 }
@@ -164,19 +182,24 @@ export function parsePaginationParams(queryString: string): { page: number; limi
 
 ```ts
 // src/lib/query-parser.test.ts
-import { describe, it, expect } from 'vitest';
-import { parsePaginationParams } from './query-parser.ts';
+import { describe, it, expect } from "vitest";
+import { parsePaginationParams } from "./query-parser.ts";
 
-describe('parsePaginationParams', () => {
-  it('parses valid query parameters', () => {
-    expect(parsePaginationParams('page=3&limit=50')).toEqual({ page: 3, limit: 50 });
+describe("parsePaginationParams", () => {
+  it("parses valid query parameters", () => {
+    expect(parsePaginationParams("page=3&limit=50")).toEqual({
+      page: 3,
+      limit: 50,
+    });
   });
 
-  it('falls back to defaults for missing or invalid values', () => {
-    expect(parsePaginationParams('')).toEqual({ page: 1, limit: 20 });
-    expect(parsePaginationParams('page=-5&limit=999')).toEqual({ page: 1, limit: 20 });
-    expect(parsePaginationParams('page=abc')).toEqual({ page: 1, limit: 20 });
+  it("falls back to defaults for missing or invalid values", () => {
+    expect(parsePaginationParams("")).toEqual({ page: 1, limit: 20 });
+    expect(parsePaginationParams("page=-5&limit=999")).toEqual({
+      page: 1,
+      limit: 20,
+    });
+    expect(parsePaginationParams("page=abc")).toEqual({ page: 1, limit: 20 });
   });
 });
 ```
-

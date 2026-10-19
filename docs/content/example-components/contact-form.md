@@ -7,6 +7,7 @@ A form that validates in the browser, posts JSON to an API route, and announces 
 ## Usage
 
 <!-- demo:usage -->
+
 ```html
 <contact-form />
 ```

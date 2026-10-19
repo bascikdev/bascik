@@ -17,7 +17,8 @@ const { _mockStartServer, _mockStartExecDev, _callOrder } = vi.hoisted(() => {
 vi.mock("./server.js", () => ({ startServer: _mockStartServer }));
 vi.mock("./exec.js", () => ({
   startExecDev: _mockStartExecDev,
-  execWatchCoversPath: (_patterns: string[], _path: string, _script?: string) => false,
+  execWatchCoversPath: (_patterns: string[], _path: string, _script?: string) =>
+    false,
 }));
 vi.mock("./mem.js", () => ({ mem: { setBootingDone: vi.fn() } }));
 vi.mock("./events.js", async () => {
@@ -29,9 +30,14 @@ vi.mock("./config.js", () => ({
   BascikConfig: { pipeline: { exec: undefined } },
 }));
 const { _mockInstallModuleGraphHook } = vi.hoisted(() => ({
-  _mockInstallModuleGraphHook: vi.fn(() => ({ installed: true, deregister: () => { } })),
+  _mockInstallModuleGraphHook: vi.fn(() => ({
+    installed: true,
+    deregister: () => {},
+  })),
 }));
-vi.mock("./module-graph.js", () => ({ installModuleGraphHook: _mockInstallModuleGraphHook }));
+vi.mock("./module-graph.js", () => ({
+  installModuleGraphHook: _mockInstallModuleGraphHook,
+}));
 
 import { startDevServer } from "./server-dev.ts";
 import { mem } from "./mem.ts";
@@ -67,22 +73,29 @@ describe("server-dev: the dev-only additions on top of the shared server", () =>
   });
 
   it("surfaces a startup failure through url without exiting when exitOnError is false", async () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     _mockStartServer.mockRejectedValueOnce(new Error("Port in use"));
 
     const dev = startDevServer({ exitOnError: false });
     await expect(dev.url).rejects.toThrow("Port in use");
     expect(exitSpy).not.toHaveBeenCalled();
-    expect(errorSpy).toHaveBeenCalledWith("Server startup failed:", expect.any(Error));
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Server startup failed:",
+      expect.any(Error),
+    );
     await dev.execReady;
     exitSpy.mockRestore();
     errorSpy.mockRestore();
   });
 
   it("exits the process on startup failure when exitOnError is true (CLI default)", async () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     _mockStartServer.mockRejectedValueOnce(new Error("Port in use"));
 
     const dev = startDevServer({ exitOnError: true });
@@ -94,23 +107,27 @@ describe("server-dev: the dev-only additions on top of the shared server", () =>
   });
 
   it("observes failures before exec starts and finishes boot without waiting for parallel completion", async () => {
-    let release: () => void = () => { };
+    let release: () => void = () => {};
     const joined = new Promise<void>((resolve) => {
       release = resolve;
     });
     const parallel = Object.assign(joined, { tasks: [] });
-    _mockStartExecDev.mockImplementationOnce(async (opts?: { parallel?: unknown }) => {
-      _callOrder.push("startExecDev");
-      expect(opts?.parallel).toBe(parallel);
-      expect(eventEmitter.listenerCount("exec-completed")).toBe(0);
-      expect(eventEmitter.listenerCount("exec-failed")).toBeGreaterThan(0);
-    });
+    _mockStartExecDev.mockImplementationOnce(
+      async (opts?: { parallel?: unknown }) => {
+        _callOrder.push("startExecDev");
+        expect(opts?.parallel).toBe(parallel);
+        expect(eventEmitter.listenerCount("exec-completed")).toBe(0);
+        expect(eventEmitter.listenerCount("exec-failed")).toBeGreaterThan(0);
+      },
+    );
 
     const dev = startDevServer({ exitOnError: false, parallel });
     await dev.finishBoot();
     expect(mem.setBootingDone).toHaveBeenCalledOnce();
     release();
-    expect(_mockStartExecDev).toHaveBeenCalledWith(expect.objectContaining({ parallel }));
+    expect(_mockStartExecDev).toHaveBeenCalledWith(
+      expect.objectContaining({ parallel }),
+    );
   });
 
   it("installs the dev-only module graph hook before the server binds (prompt 138)", async () => {
@@ -122,9 +139,9 @@ describe("server-dev: the dev-only additions on top of the shared server", () =>
       expect.objectContaining({ isDev: true, projectRoot: process.cwd() }),
     );
     // The hook must be registered before any request can import a runtime module.
-    expect(_mockInstallModuleGraphHook.mock.invocationCallOrder[0]).toBeLessThan(
-      _mockStartServer.mock.invocationCallOrder[0],
-    );
+    expect(
+      _mockInstallModuleGraphHook.mock.invocationCallOrder[0],
+    ).toBeLessThan(_mockStartServer.mock.invocationCallOrder[0]);
     await dev.execReady;
   });
 

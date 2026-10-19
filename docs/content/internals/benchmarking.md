@@ -4,13 +4,13 @@ Bascik ships a repeatable benchmarking and profiling harness in `pkg/bench/` for
 
 ## Tooling Overview
 
-| Command (from the repository root) | Entry point | Purpose |
-| --- | --- | --- |
-| `yarn pkg:bench` | `pkg/bench/*.bench.ts` | Vitest throughput microbenchmarks on fixed in-memory inputs |
-| `yarn workspace @bascik/bascik profile:compare` | `pkg/bench/compiler-compare.ts` | Paired baseline versus candidate compiler builds with byte-identity verification |
-| `yarn workspace @bascik/bascik profile:compiler` | `pkg/bench/compiler-timeline.ts` | Cold, warm, and live-edit compiler timelines on an isolated project copy |
-| `yarn workspace @bascik/bascik profile:workload` | `pkg/bench/profile-workload.ts` | Bounded runtime captures (HTTP/1.1, HTTP/2 with TLS, static serving, dev, and builds) |
-| `node pkg/bench/profile-boundaries.ts <report-dir>` | `pkg/bench/profile-boundaries.ts` | Resource-boundary capture with optional heap allocation sampling |
+| Command (from the repository root)                  | Entry point                       | Purpose                                                                               |
+| --------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------- |
+| `yarn pkg:bench`                                    | `pkg/bench/*.bench.ts`            | Vitest throughput microbenchmarks on fixed in-memory inputs                           |
+| `yarn workspace @bascik/bascik profile:compare`     | `pkg/bench/compiler-compare.ts`   | Paired baseline versus candidate compiler builds with byte-identity verification      |
+| `yarn workspace @bascik/bascik profile:compiler`    | `pkg/bench/compiler-timeline.ts`  | Cold, warm, and live-edit compiler timelines on an isolated project copy              |
+| `yarn workspace @bascik/bascik profile:workload`    | `pkg/bench/profile-workload.ts`   | Bounded runtime captures (HTTP/1.1, HTTP/2 with TLS, static serving, dev, and builds) |
+| `node pkg/bench/profile-boundaries.ts <report-dir>` | `pkg/bench/profile-boundaries.ts` | Resource-boundary capture with optional heap allocation sampling                      |
 
 ## Throughput Microbenchmarks (`yarn pkg:bench`)
 

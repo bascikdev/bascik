@@ -9,11 +9,12 @@ Two audits check that the browser can interpret the page correctly. Bascik does 
 ```html
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Page Title - Site Name</title>
-</head>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Page Title - Site Name</title>
+  </head>
+</html>
 ```
 
 - **Doctype.** A page without `<!DOCTYPE html>` renders in quirks mode, which changes layout and box-model behavior.
@@ -56,7 +57,7 @@ For a Content Security Policy that does not rely on `'unsafe-inline'`, Bascik ca
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   generate: {

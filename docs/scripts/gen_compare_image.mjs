@@ -1,13 +1,15 @@
-import { chromium } from '@playwright/test';
-import fs from 'node:fs/promises';
-import opentype from 'opentype.js';
+import { chromium } from "@playwright/test";
+import fs from "node:fs/promises";
+import opentype from "opentype.js";
 
 async function main() {
   let fontBuffer;
   try {
-    fontBuffer = await fs.readFile('docs/fonts/CourierNew-700.ttf');
+    fontBuffer = await fs.readFile("docs/fonts/CourierNew-700.ttf");
   } catch {
-    fontBuffer = await fs.readFile('/System/Library/Fonts/Supplemental/Courier New Bold.ttf');
+    fontBuffer = await fs.readFile(
+      "/System/Library/Fonts/Supplemental/Courier New Bold.ttf",
+    );
   }
   const font = opentype.parse(fontBuffer.buffer);
 
@@ -19,14 +21,15 @@ async function main() {
   const startY = 20.2;
   const pathParts = [];
 
-  for (const char of 'BASCIK') {
+  for (const char of "BASCIK") {
     const glyph = font.charToGlyph(char);
     const p = glyph.getPath(currentX, startY, fontSize);
     pathParts.push(p.toPathData(2));
-    currentX += glyph.advanceWidth * (fontSize / font.unitsPerEm) + letterSpacing;
+    currentX +=
+      glyph.advanceWidth * (fontSize / font.unitsPerEm) + letterSpacing;
   }
 
-  const generatedPath = pathParts.join(' ');
+  const generatedPath = pathParts.join(" ");
 
   const browser = await chromium.launch();
   const page = await browser.newPage();
@@ -38,7 +41,7 @@ async function main() {
   <style>
     @font-face {
       font-family: 'Courier New Local';
-      src: url('data:font/ttf;base64,${fontBuffer.toString('base64')}') format('truetype');
+      src: url('data:font/ttf;base64,${fontBuffer.toString("base64")}') format('truetype');
       font-weight: bold;
     }
     body { background: #111; color: #fff; font-family: sans-serif; padding: 30px; }
@@ -72,8 +75,8 @@ async function main() {
 
   await page.evaluate(() => document.fonts.ready);
   const screenshot = await page.screenshot({ fullPage: true });
-  await fs.writeFile('/tmp/logo-compare-result.png', screenshot);
-  console.log('Successfully saved /tmp/logo-compare-result.png');
+  await fs.writeFile("/tmp/logo-compare-result.png", screenshot);
+  console.log("Successfully saved /tmp/logo-compare-result.png");
   await browser.close();
 }
 

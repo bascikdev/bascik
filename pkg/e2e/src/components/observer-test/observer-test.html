@@ -31,7 +31,12 @@
     const container = document.getElementById("container");
     const mutStatus = document.getElementById("mutation-status");
     const mutObserver = new MutationObserver((mutations) => {
-      mutStatus.textContent = "mutations: " + mutations[0].addedNodes.length + " added, " + mutations[0].removedNodes.length + " removed";
+      mutStatus.textContent =
+        "mutations: " +
+        mutations[0].addedNodes.length +
+        " added, " +
+        mutations[0].removedNodes.length +
+        " removed";
     });
     mutObserver.observe(container, { childList: true });
 
@@ -43,17 +48,24 @@
       div.textContent = "Child " + childCount;
       container.appendChild(div);
     });
-    document.getElementById("remove-child-btn").addEventListener("click", () => {
-      const items = container.querySelectorAll(".child-item");
-      if (items.length > 0) container.removeChild(items[items.length - 1]);
-    });
+    document
+      .getElementById("remove-child-btn")
+      .addEventListener("click", () => {
+        const items = container.querySelectorAll(".child-item");
+        if (items.length > 0) container.removeChild(items[items.length - 1]);
+      });
 
     // IntersectionObserver — element is in viewport, fires immediately
     const observeTarget = document.getElementById("observe-target");
     const intStatus = document.getElementById("intersection-status");
-    const io = new IntersectionObserver((entries) => {
-      intStatus.textContent = entries[0].isIntersecting ? "intersecting" : "not intersecting";
-    }, { threshold: 0 });
+    const io = new IntersectionObserver(
+      (entries) => {
+        intStatus.textContent = entries[0].isIntersecting
+          ? "intersecting"
+          : "not intersecting";
+      },
+      { threshold: 0 },
+    );
     io.observe(observeTarget);
 
     // ResizeObserver

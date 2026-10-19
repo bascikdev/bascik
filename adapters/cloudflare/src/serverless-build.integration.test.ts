@@ -45,7 +45,9 @@ describe("serverless build artifacts (real build, cloudflare-pages)", () => {
   it("leaves the default dist/ output unchanged (static tree with placeholders and sidecar)", async () => {
     const account = await readFile(join(root, "dist", "account.html"), "utf8");
     expect(account).toContain('type="text/bascik-server"');
-    await expect(stat(join(root, "dist", ".bascik", "server-scripts.json"))).resolves.toBeTruthy();
+    await expect(
+      stat(join(root, "dist", ".bascik", "server-scripts.json")),
+    ).resolves.toBeTruthy();
   });
 
   it("emits a public tree with static files, the worker, and routing, and no dynamic templates", async () => {
@@ -62,7 +64,9 @@ describe("serverless build artifacts (real build, cloudflare-pages)", () => {
     expect(files).not.toContain("broken-stream.html");
     // Metadata, sidecars, and source never reach the upload tree.
     expect(files.some((f) => f.startsWith(".bascik/"))).toBe(false);
-    expect(files.some((f) => f.endsWith(".map") || f.endsWith(".ts"))).toBe(false);
+    expect(files.some((f) => f.endsWith(".map") || f.endsWith(".ts"))).toBe(
+      false,
+    );
     expect(files.some((f) => f.includes("server-scripts.json"))).toBe(false);
   });
 
@@ -83,9 +87,19 @@ describe("serverless build artifacts (real build, cloudflare-pages)", () => {
   });
 
   it("_routes.json invokes the worker for every dynamic alias and the API prefix only", async () => {
-    const routes = JSON.parse(await readFile(join(publicDir, "_routes.json"), "utf8")) as { include: string[]; exclude: string[] };
+    const routes = JSON.parse(
+      await readFile(join(publicDir, "_routes.json"), "utf8"),
+    ) as { include: string[]; exclude: string[] };
     expect(routes.include).toEqual(
-      expect.arrayContaining(["/account", "/account/", "/account.html", "/dashboard", "/broken-stream", "/broken-server", "/api/*"]),
+      expect.arrayContaining([
+        "/account",
+        "/account/",
+        "/account.html",
+        "/dashboard",
+        "/broken-stream",
+        "/broken-server",
+        "/api/*",
+      ]),
     );
     expect(routes.include).not.toContain("/");
     expect(routes.include).not.toContain("/index.html");
@@ -94,12 +108,27 @@ describe("serverless build artifacts (real build, cloudflare-pages)", () => {
   });
 
   it("build-info.json records release identity, bundle size, and inventory with notes", async () => {
-    const info = JSON.parse(await readFile(join(targetDir, "build-info.json"), "utf8"));
+    const info = JSON.parse(
+      await readFile(join(targetDir, "build-info.json"), "utf8"),
+    );
     expect(info.target).toBe("cloudflare-pages");
     expect(info.adapter).toBe("cloudflare");
     expect(info.bundleBytes).toBeGreaterThan(1000);
-    expect(info.dynamicPages).toEqual(["/account", "/broken-server", "/broken-stream", "/dashboard"]);
-    expect(info.apiRoutes).toEqual(expect.arrayContaining(["/api/health", "/api/users/[id]", "/api/echo", "/api/stream", "/api/boom"]));
+    expect(info.dynamicPages).toEqual([
+      "/account",
+      "/broken-server",
+      "/broken-stream",
+      "/dashboard",
+    ]);
+    expect(info.apiRoutes).toEqual(
+      expect.arrayContaining([
+        "/api/health",
+        "/api/users/[id]",
+        "/api/echo",
+        "/api/stream",
+        "/api/boom",
+      ]),
+    );
     expect(typeof info.release).toBe("string");
     expect(info.notes).toEqual(
       expect.arrayContaining([
@@ -142,11 +171,15 @@ describe("serverless build artifacts (real build, cloudflare-workers)", () => {
     expect(files).not.toContain("public/_worker.js");
     expect(files).not.toContain("public/docs/account.html");
     expect(files).not.toContain("public/account.html");
-    const wrangler = JSON.parse(await readFile(join(targetDir, "wrangler.jsonc"), "utf8"));
+    const wrangler = JSON.parse(
+      await readFile(join(targetDir, "wrangler.jsonc"), "utf8"),
+    );
     expect(wrangler.main).toBe("worker.js");
     expect(wrangler.assets.directory).toBe("./public");
     expect(wrangler.assets.binding).toBe("ASSETS");
-    expect(wrangler.assets.run_worker_first).toEqual(expect.arrayContaining(["/docs/account", "/docs/api/*"]));
+    expect(wrangler.assets.run_worker_first).toEqual(
+      expect.arrayContaining(["/docs/account", "/docs/api/*"]),
+    );
     expect(wrangler.compatibility_flags).toContain("nodejs_compat");
   });
 });
@@ -156,12 +189,26 @@ describe("serverless build failures", () => {
     const root = await createServerlessFixture("unsupported");
     try {
       await addUnsupportedImportRoute(root);
-      const failure = await buildServerlessFixture(root, "cloudflare-pages").catch((e: { stderr?: string; stdout?: string }) => e);
+      const failure = await buildServerlessFixture(
+        root,
+        "cloudflare-pages",
+      ).catch((e: { stderr?: string; stdout?: string }) => e);
       const text = `${failure.stderr ?? ""}${failure.stdout ?? ""}`;
       expect(text).toContain('"node:child_process"');
       expect(text).toContain("src/lib/run.ts");
       expect(text).toContain("API route /api/run");
-      await expect(stat(join(root, "dist", ".bascik", "cloudflare-pages", "public", "_worker.js"))).rejects.toThrow();
+      await expect(
+        stat(
+          join(
+            root,
+            "dist",
+            ".bascik",
+            "cloudflare-pages",
+            "public",
+            "_worker.js",
+          ),
+        ),
+      ).rejects.toThrow();
     } finally {
       await cleanupServerlessFixture(root);
     }
@@ -170,8 +217,13 @@ describe("serverless build failures", () => {
   it("rejects --target combined with --only", async () => {
     const root = await createServerlessFixture("only");
     try {
-      const failure = await buildServerlessFixture(root, "cloudflare-pages", ["--only", "index.html"]).catch((e: { stderr?: string }) => e);
-      expect(failure.stderr).toContain("--target cannot be combined with --only");
+      const failure = await buildServerlessFixture(root, "cloudflare-pages", [
+        "--only",
+        "index.html",
+      ]).catch((e: { stderr?: string }) => e);
+      expect(failure.stderr).toContain(
+        "--target cannot be combined with --only",
+      );
     } finally {
       await cleanupServerlessFixture(root);
     }

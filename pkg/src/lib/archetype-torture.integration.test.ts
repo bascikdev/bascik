@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync, symlinkSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  readFileSync,
+  readdirSync,
+  existsSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
@@ -23,7 +32,11 @@ function createTempSite(files: Record<string, string>): string {
   return dir;
 }
 
-function runBascikCli(cwd: string, args: string[], env: NodeJS.ProcessEnv = {}): { status: number; stdout: string; stderr: string } {
+function runBascikCli(
+  cwd: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = {},
+): { status: number; stdout: string; stderr: string } {
   const res = spawnSync(process.execPath, [cliPath, ...args], {
     cwd,
     env: { ...process.env, BASCIK_SITE_URL: "https://example.com", ...env },
@@ -63,10 +76,11 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       "src/components/code-sample/code-sample.html": [
         '<div class="sample-wrap">',
         '  <span class="lang" data-bascik-prop-lang></span>',
-        '  <pre><code data-bascik-slot></code></pre>',
+        "  <pre><code data-bascik-slot></code></pre>",
         "</div>",
       ].join("\n"),
-      "src/components/code-sample/code-sample.css": ".sample-wrap { border: 1px solid #ccc; } .lang { font-weight: bold; }\n",
+      "src/components/code-sample/code-sample.css":
+        ".sample-wrap { border: 1px solid #ccc; } .lang { font-weight: bold; }\n",
       "src/pages/index.html": [
         "<!DOCTYPE html><html><head><title>Tech Blog</title></head><body>",
         "<doc-shell>",
@@ -107,21 +121,26 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
   it("Archetype 2: E-Commerce / Product Catalog (Dynamic routes, server + stream scripts, forms, 4-level nested slots)", () => {
     const dir = createTempSite({
       "bascik.config.ts": `export default {};\n`,
-      "src/components/level-one/level-one.html": '<div class="l1"><div data-bascik-slot></div></div>',
+      "src/components/level-one/level-one.html":
+        '<div class="l1"><div data-bascik-slot></div></div>',
       "src/components/level-one/level-one.css": ".l1 { padding: 4px; }",
-      "src/components/level-two/level-two.html": '<div class="l2"><div data-bascik-slot></div></div>',
+      "src/components/level-two/level-two.html":
+        '<div class="l2"><div data-bascik-slot></div></div>',
       "src/components/level-two/level-two.css": ".l2 { padding: 4px; }",
-      "src/components/level-three/level-three.html": '<div class="l3"><div data-bascik-slot></div></div>',
+      "src/components/level-three/level-three.html":
+        '<div class="l3"><div data-bascik-slot></div></div>',
       "src/components/level-three/level-three.css": ".l3 { padding: 4px; }",
       "src/components/product-card/product-card.html": [
         '<article id="card" class="card">',
-        '  <h2 data-bascik-prop-title></h2>',
+        "  <h2 data-bascik-prop-title></h2>",
         '  <form id="buy-form"><label for="qty">Qty</label><input id="qty" name="qty" form="buy-form"></form>',
         '  <div class="details"><div data-bascik-slot="specs"></div></div>',
         "</article>",
       ].join("\n"),
-      "src/components/product-card/product-card.css": "#card > h2 { font-size: 1.2rem; } .card { border: 1px solid #000; }",
-      "src/pages/index.html": '<!DOCTYPE html><html><head><title>Store</title></head><body><a href="/products/synth">Synth</a></body></html>',
+      "src/components/product-card/product-card.css":
+        "#card > h2 { font-size: 1.2rem; } .card { border: 1px solid #000; }",
+      "src/pages/index.html":
+        '<!DOCTYPE html><html><head><title>Store</title></head><body><a href="/products/synth">Synth</a></body></html>',
       "src/pages/products/[slug].html": [
         "<!DOCTYPE html><html><head><title>Product</title></head><body>",
         "<script data-bascik-routes>",
@@ -149,26 +168,36 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       const buildRes = runBascikCli(dir, ["--build"]);
       expect(buildRes.status, buildRes.stderr).toBe(0);
 
-      const synthHtml = readFileSync(join(dir, "dist/products/synth.html"), "utf8");
+      const synthHtml = readFileSync(
+        join(dir, "dist/products/synth.html"),
+        "utf8",
+      );
       assertValidHtml5(synthHtml, "Archetype 2 synth.html");
       expect(synthHtml).toContain("4 oscillators");
       expect(synthHtml).not.toContain("#card > h2");
-      const h2Class = synthHtml.match(/<h2 class="([^"]+)">Featured<\/h2>/)?.[1];
+      const h2Class = synthHtml.match(
+        /<h2 class="([^"]+)">Featured<\/h2>/,
+      )?.[1];
       expect(h2Class).toBeDefined();
       expect(synthHtml).toContain(`> .${h2Class}`);
-      expect(existsSync(join(dir, "dist/.bascik/server-scripts.json"))).toBe(true);
+      expect(existsSync(join(dir, "dist/.bascik/server-scripts.json"))).toBe(
+        true,
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
   it("Archetype 3: Interactive Dashboard & 20-Instance SVG Gradient / ClipPath Isolation", () => {
-    const instances = Array.from({ length: 20 }, (_, i) => `<spark-chart data-bascik-prop-label="Metric ${i + 1}" />`).join("\n");
+    const instances = Array.from(
+      { length: 20 },
+      (_, i) => `<spark-chart data-bascik-prop-label="Metric ${i + 1}" />`,
+    ).join("\n");
     const dir = createTempSite({
       "bascik.config.ts": `export default {};\n`,
       "src/components/spark-chart/spark-chart.html": [
         '<div id="wrap" class="chart">',
-        '  <span data-bascik-prop-label></span>',
+        "  <span data-bascik-prop-label></span>",
         '  <svg viewBox="0 0 100 30">',
         '    <defs><linearGradient id="grad"><stop offset="0%" stop-color="red"/></linearGradient><clipPath id="clip"><rect width="100" height="30"/></clipPath></defs>',
         '    <rect class="bar" clip-path="url(#clip)" width="80" height="20"/>',
@@ -179,7 +208,8 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
         '  wrap.classList.add("ready");',
         "</script>",
       ].join("\n"),
-      "src/components/spark-chart/spark-chart.css": ".chart { display: inline-block; } .bar { fill: url(#grad); } .ready { opacity: 1; }",
+      "src/components/spark-chart/spark-chart.css":
+        ".chart { display: inline-block; } .bar { fill: url(#grad); } .ready { opacity: 1; }",
       "src/pages/index.html": `<!DOCTYPE html><html><head><title>Dashboard</title></head><body>${instances}</body></html>`,
     });
 
@@ -189,7 +219,9 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
 
       const html = readFileSync(join(dir, "dist/index.html"), "utf8");
       assertValidHtml5(html, "Archetype 3 dashboard");
-      const gradIds = [...html.matchAll(/<linearGradient id="([^"]+)"/g)].map((m) => m[1]);
+      const gradIds = [...html.matchAll(/<linearGradient id="([^"]+)"/g)].map(
+        (m) => m[1],
+      );
       expect(new Set(gradIds).size).toBe(20);
       for (const id of gradIds) {
         expect(html).toContain(`url(#${id})`);
@@ -202,11 +234,15 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
   it("Archetype 4: Subpath Deployment Site (base: '/docs/v1' across links, images, srcset, forms, and API routes)", () => {
     const dir = createTempSite({
       "bascik.config.ts": `export default { base: "/docs/v1" };\n`,
-      "src/components/nav-bar/nav-bar.html": '<nav><a href="/guide">Guide</a><img src="/logo.png" srcset="/logo-1x.png 1x, /logo-2x.png 2x" alt="Logo"></nav>',
+      "src/components/nav-bar/nav-bar.html":
+        '<nav><a href="/guide">Guide</a><img src="/logo.png" srcset="/logo-1x.png 1x, /logo-2x.png 2x" alt="Logo"></nav>',
       "src/components/nav-bar/nav-bar.css": "nav a { text-decoration: none; }",
-      "src/api/status.ts": "export async function GET() { return Response.json({ ok: true }); }\n",
-      "src/pages/index.html": '<!DOCTYPE html><html><head><title>Subpath</title><link rel="stylesheet" href="/app.css"></head><body><nav-bar /><form action="/submit"><button>Go</button></form></body></html>',
-      "src/pages/guide.html": "<!DOCTYPE html><html><head><title>Guide</title></head><body><h1>Guide</h1></body></html>",
+      "src/api/status.ts":
+        "export async function GET() { return Response.json({ ok: true }); }\n",
+      "src/pages/index.html":
+        '<!DOCTYPE html><html><head><title>Subpath</title><link rel="stylesheet" href="/app.css"></head><body><nav-bar /><form action="/submit"><button>Go</button></form></body></html>',
+      "src/pages/guide.html":
+        "<!DOCTYPE html><html><head><title>Guide</title></head><body><h1>Guide</h1></body></html>",
     });
 
     try {
@@ -220,7 +256,9 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       assertValidHtml5(html, "Archetype 4 subpath index.html");
       expect(html).toContain('href="/docs/v1/guide"');
       expect(html).toContain('src="/docs/v1/logo.png"');
-      expect(html).toContain('srcset="/docs/v1/logo-1x.png 1x, /docs/v1/logo-2x.png 2x"');
+      expect(html).toContain(
+        'srcset="/docs/v1/logo-1x.png 1x, /docs/v1/logo-2x.png 2x"',
+      );
       expect(html).toContain('action="/docs/v1/submit"');
       expect(html).toContain('href="/docs/v1/app.css"');
     } finally {
@@ -231,9 +269,11 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
   it("Archetype 5: Broken Authoring & Dev Recovery Resilience", async () => {
     const dir = createTempSite({
       "bascik.config.ts": `export default { http: { port: 19876 } };\n`,
-      "src/components/my-widget/my-widget.html": '<div class="box">Initial</div>',
+      "src/components/my-widget/my-widget.html":
+        '<div class="box">Initial</div>',
       "src/components/my-widget/my-widget.css": ".box { color: green; }",
-      "src/pages/index.html": "<!DOCTYPE html><html><head><title>Dev</title></head><body><my-widget /></body></html>",
+      "src/pages/index.html":
+        "<!DOCTYPE html><html><head><title>Dev</title></head><body><my-widget /></body></html>",
     });
 
     const child = spawn(process.execPath, [cliPath, "--port", "19876"], {
@@ -243,8 +283,12 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
     });
 
     let output = "";
-    child.stdout?.on("data", (chunk) => { output += String(chunk); });
-    child.stderr?.on("data", (chunk) => { output += String(chunk); });
+    child.stdout?.on("data", (chunk) => {
+      output += String(chunk);
+    });
+    child.stderr?.on("data", (chunk) => {
+      output += String(chunk);
+    });
 
     const waitForText = (needle: string, timeoutMs = 15000): Promise<void> =>
       new Promise((resolvePromise, rejectPromise) => {
@@ -255,7 +299,11 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
             resolvePromise();
           } else if (Date.now() - start > timeoutMs) {
             clearInterval(timer);
-            rejectPromise(new Error(`Timed out waiting for "${needle}". Output:\n${output}`));
+            rejectPromise(
+              new Error(
+                `Timed out waiting for "${needle}". Output:\n${output}`,
+              ),
+            );
           }
         }, 50);
       });
@@ -317,7 +365,7 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       ].join("\n"),
       "src/components/user-list/user-list.html": [
         '<section id="users-root" class="user-list">',
-        '  <h2>Users</h2>',
+        "  <h2>Users</h2>",
         '  <ul id="list" class="items"></ul>',
         "</section>",
         "<script>",
@@ -327,8 +375,10 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
         "  });",
         "</script>",
       ].join("\n"),
-      "src/components/user-list/user-list.css": "#users-root > h2 { margin: 0; } .user-list .item { list-style: none; }",
-      "src/pages/index.html": "<!DOCTYPE html><html><head><title>Users API</title></head><body><user-list /></body></html>",
+      "src/components/user-list/user-list.css":
+        "#users-root > h2 { margin: 0; } .user-list .item { list-style: none; }",
+      "src/pages/index.html":
+        "<!DOCTYPE html><html><head><title>Users API</title></head><body><user-list /></body></html>",
       "src/pages/user/[id].html": [
         "<!DOCTYPE html><html><head><title>User Profile</title></head><body>",
         "<script data-bascik-routes>",
@@ -337,7 +387,7 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
         "<script data-bascik-server>",
         "  export default async (request) => {",
         "    const url = new URL(request.url);",
-        "    return `<h1 data-path=\"${url.pathname}\">Profile</h1>`;",
+        '    return `<h1 data-path="${url.pathname}">Profile</h1>`;',
         "  };",
         "</script>",
         "</body></html>",
@@ -352,15 +402,23 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
     const checkRes = runBascikCli(dir, ["--check"]);
     expect(checkRes.status, checkRes.stdout + checkRes.stderr).toBe(0);
 
-    const child = spawn(process.execPath, [cliPath, "--server", "--port", "19877"], {
-      cwd: dir,
-      env: { ...process.env, BASCIK_SITE_URL: "https://example.com" },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const child = spawn(
+      process.execPath,
+      [cliPath, "--server", "--port", "19877"],
+      {
+        cwd: dir,
+        env: { ...process.env, BASCIK_SITE_URL: "https://example.com" },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
 
     let output = "";
-    child.stdout?.on("data", (chunk) => { output += String(chunk); });
-    child.stderr?.on("data", (chunk) => { output += String(chunk); });
+    child.stdout?.on("data", (chunk) => {
+      output += String(chunk);
+    });
+    child.stderr?.on("data", (chunk) => {
+      output += String(chunk);
+    });
 
     const waitForServer = (): Promise<void> =>
       new Promise((resolvePromise, rejectPromise) => {
@@ -391,7 +449,10 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       expect(getUser.status).toBe(200);
       expect(await getUser.json()).toEqual({ id: 2, name: "User 2" });
 
-      const putUser = await fetch("http://localhost:19877/api/user/2?name=Grace+Hopper", { method: "PUT" });
+      const putUser = await fetch(
+        "http://localhost:19877/api/user/2?name=Grace+Hopper",
+        { method: "PUT" },
+      );
       expect(putUser.status).toBe(200);
       expect(await putUser.json()).toEqual({ id: 2, name: "Grace Hopper" });
 
@@ -400,17 +461,23 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       expect(await nonNumeric.json()).toEqual({ id: null, name: "User abc" });
 
       // 405 Method Not Allowed + Allow header
-      const postUser = await fetch("http://localhost:19877/api/user/2", { method: "POST" });
+      const postUser = await fetch("http://localhost:19877/api/user/2", {
+        method: "POST",
+      });
       expect(postUser.status).toBe(405);
       expect(postUser.headers.get("allow")).toContain("GET");
       expect(postUser.headers.get("allow")).toContain("PUT");
 
       // Derived HEAD and auto OPTIONS
-      const headUser = await fetch("http://localhost:19877/api/user/2", { method: "HEAD" });
+      const headUser = await fetch("http://localhost:19877/api/user/2", {
+        method: "HEAD",
+      });
       expect(headUser.status).toBe(200);
       expect(await headUser.text()).toBe("");
 
-      const optionsUser = await fetch("http://localhost:19877/api/user/2", { method: "OPTIONS" });
+      const optionsUser = await fetch("http://localhost:19877/api/user/2", {
+        method: "OPTIONS",
+      });
       expect(optionsUser.status).toBe(204);
       expect(optionsUser.headers.get("allow")).toContain("GET");
     } finally {
@@ -430,7 +497,8 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
         '  <a class="lang-link" data-bascik-attr-href="nlHref" hreflang="nl">Nederlands</a>',
         "</nav>",
       ].join("\n"),
-      "src/components/locale-switcher/locale-switcher.css": "#lang-nav > a.lang-link { padding: 4px 8px; }",
+      "src/components/locale-switcher/locale-switcher.css":
+        "#lang-nav > a.lang-link { padding: 4px 8px; }",
       "src/api/i18n/[locale]/[...slug].ts": [
         "export async function GET(_request: Request, context: { params: { locale: string; slug: string[] } }) {",
         "  return Response.json({ locale: context.params.locale, path: context.params.slug.join('/') });",
@@ -468,7 +536,10 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
         ["fr", "Bonjour le monde"],
         ["nl", "Hallo Wereld"],
       ] as const) {
-        const html = readFileSync(join(dir, `dist/${locale}/index.html`), "utf8");
+        const html = readFileSync(
+          join(dir, `dist/${locale}/index.html`),
+          "utf8",
+        );
         assertValidHtml5(html, `Archetype 7 ${locale}/index.html`);
         expect(html).toContain(`<h1>${greeting}</h1>`);
         expect(html).toContain('href="/en/"');
@@ -525,7 +596,9 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       expect(html).toContain("Project Alpha");
       expect(html).toContain("Project Beta");
       // Verify commandfor=modal-box was rewritten to match each instance's scoped dialog id
-      const dialogIds = [...html.matchAll(/<dialog[^>]*\sid\s*=\s*"([^"]+)"/g)].map((m) => m[1]);
+      const dialogIds = [
+        ...html.matchAll(/<dialog[^>]*\sid\s*=\s*"([^"]+)"/g),
+      ].map((m) => m[1]);
       expect(dialogIds).toHaveLength(2);
       expect(dialogIds[0]).not.toBe(dialogIds[1]);
       for (const id of dialogIds) {
@@ -555,8 +628,10 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
         "const state: BoardState = 'won';",
         "if (board && state === 'won') board.classList.add('board-won');",
       ].join("\n"),
-      "src/components/word-board/word-board.css": "#board table td { padding: 4px; } .board-won { border-color: green; }",
-      "src/pages/index.html": "<!DOCTYPE html><html><head><title>Word Game</title></head><body><word-board /><word-board /></body></html>",
+      "src/components/word-board/word-board.css":
+        "#board table td { padding: 4px; } .board-won { border-color: green; }",
+      "src/pages/index.html":
+        "<!DOCTYPE html><html><head><title>Word Game</title></head><body><word-board /><word-board /></body></html>",
     });
 
     try {
@@ -571,7 +646,9 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       // TypeScript type annotation should be stripped
       expect(html).not.toContain("BoardState");
       // Exclusive details name groups should be scoped per instance (2 instances x 2 details = 2 distinct names)
-      const detailNames = [...html.matchAll(/<details name="([^"]+)">/g)].map((m) => m[1]);
+      const detailNames = [...html.matchAll(/<details name="([^"]+)">/g)].map(
+        (m) => m[1],
+      );
       expect(detailNames).toHaveLength(4);
       expect(detailNames[0]).toBe(detailNames[1]);
       expect(detailNames[2]).toBe(detailNames[3]);
@@ -592,12 +669,13 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       ].join("\n"),
       "src/components/tour-stop/tour-stop.html": [
         '<article id="stop" class="tour-stop">',
-        '  <h3 data-bascik-prop-city></h3>',
+        "  <h3 data-bascik-prop-city></h3>",
         '  <time data-bascik-attr-datetime="date" data-bascik-prop-date></time>',
         '  <a class="ticket-btn" data-bascik-attr-href="ticketUrl">Tickets</a>',
         "</article>",
       ].join("\n"),
-      "src/components/tour-stop/tour-stop.css": "#stop > h3 { text-transform: uppercase; } .tour-stop .ticket-btn { font-weight: bold; }",
+      "src/components/tour-stop/tour-stop.css":
+        "#stop > h3 { text-transform: uppercase; } .tour-stop .ticket-btn { font-weight: bold; }",
       "src/pages/index.html": [
         "<!DOCTYPE html><html><head><title>Band Tour</title></head><body>",
         '<tour-stop data-bascik-prop-city="Seattle" data-bascik-prop-date="2026-11-01" data-bascik-prop-ticketUrl="/tickets/sea" />',
@@ -619,7 +697,9 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       assertValidHtml5(html, "Archetype 10 band tour index.html");
       expect(html).toContain('datetime="2026-11-01"');
       expect(html).toContain('href="/tickets/sea"');
-      expect(html).toContain('<bandcamp-player id="literal-player" class="literal-cls"><span id="inner-id">Audio</span></bandcamp-player>');
+      expect(html).toContain(
+        '<bandcamp-player id="literal-player" class="literal-cls"><span id="inner-id">Audio</span></bandcamp-player>',
+      );
       expect(existsSync(join(dir, "dist/.bascik/csp-hashes.json"))).toBe(true);
       expect(existsSync(join(dir, "dist/.bascik/manifest.json"))).toBe(true);
     } finally {
@@ -664,7 +744,8 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
         '  <div class="popover">Tip</div>',
         "</div>",
       ].join("\n"),
-      "src/pages/index.html": "<!DOCTYPE html><html><head><title>CSS Torture</title></head><body><css-torture /></body></html>",
+      "src/pages/index.html":
+        "<!DOCTYPE html><html><head><title>CSS Torture</title></head><body><css-torture /></body></html>",
     });
 
     try {
@@ -717,8 +798,10 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
         "  </script>",
         "</nav>",
       ].join("\n"),
-      "src/components/breadcrumbs/breadcrumbs.css": ".crumbs .crumb-list { display: flex; } li a { color: navy; }",
-      "src/pages/index.html": "<!DOCTYPE html><html><head><title>Home</title></head><body><breadcrumbs /></body></html>",
+      "src/components/breadcrumbs/breadcrumbs.css":
+        ".crumbs .crumb-list { display: flex; } li a { color: navy; }",
+      "src/pages/index.html":
+        "<!DOCTYPE html><html><head><title>Home</title></head><body><breadcrumbs /></body></html>",
       "src/pages/articles/[slug].html": [
         "<!DOCTYPE html><html><head><title>Article</title></head><body>",
         "<script data-bascik-routes>",
@@ -741,7 +824,10 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       const buildRes = runBascikCli(dir, ["--build"]);
       expect(buildRes.status, buildRes.stderr).toBe(0);
 
-      const articleHtml = readFileSync(join(dir, "dist/articles/deep-dive.html"), "utf8");
+      const articleHtml = readFileSync(
+        join(dir, "dist/articles/deep-dive.html"),
+        "utf8",
+      );
       assertValidHtml5(articleHtml, "Archetype 12 deep-dive.html");
       expect(articleHtml).toContain('data-len="40000"');
       expect(articleHtml).toContain("Large payload");
@@ -762,15 +848,15 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       "src/components/complex-widget/complex-widget.html": [
         '<div id="widget" class="widget">',
         '  <template id="row-tpl"><p class="tpl-row">Template Row</p></template>',
-        '  <pre><!-- preserved comment inside pre --><code>const x = 1 &lt; 2;</code></pre>',
+        "  <pre><!-- preserved comment inside pre --><code>const x = 1 &lt; 2;</code></pre>",
         '  <textarea aria-label="Raw">&lt;/body&gt;&lt;/html&gt;</textarea>',
         '  <svg viewBox="0 0 100 100"><foreignObject width="100" height="100"><div class="fo-inner">Foreign</div></foreignObject></svg>',
         "</div>",
         "<script>",
         '  const root = document.getElementById("widget");',
-        '  const ratio = (100 / 2) / 5;',
-        '  const re = /\\/[a-z]+\\//g;',
-        '  const tpl = `nested ${`inner ${1 + 2}`} end`;',
+        "  const ratio = (100 / 2) / 5;",
+        "  const re = /\\/[a-z]+\\//g;",
+        "  const tpl = `nested ${`inner ${1 + 2}`} end`;",
         '  if (root && re.test("/abc/") && ratio === 10 && tpl) {',
         '    const found = document.getElementsByClassName("js-discovered-only");',
         '    if (found.length === 0) root.classList.add("js-discovered-only");',
@@ -782,7 +868,8 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
         ".tpl-row, .fo-inner, .js-discovered-only { color: green; }",
         "p { margin: 0; }",
       ].join("\n"),
-      "src/pages/index.html": "<!DOCTYPE html><html><head><title>Tokenizer Torture</title></head><body><complex-widget /></body></html>",
+      "src/pages/index.html":
+        "<!DOCTYPE html><html><head><title>Tokenizer Torture</title></head><body><complex-widget /></body></html>",
     });
 
     try {
@@ -812,7 +899,7 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       "bascik.config.ts": `export default {};\n`,
       "src/components/hero-banner/hero-banner.html": [
         '<section class="hero">',
-        '  <h1 data-bascik-prop-headline></h1>',
+        "  <h1 data-bascik-prop-headline></h1>",
         '  <a data-bascik-attr-href="ctaUrl" data-bascik-prop-ctaLabel></a>',
         "</section>",
       ].join("\n"),
@@ -829,7 +916,9 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       //    one place that rule lives, so they are listed per file under their rule id.
       const initialLint = runBascikCli(dir, ["--check"]);
       expect(initialLint.stdout).toContain("Per-file checks");
-      expect(initialLint.stdout.match(/\(missing-prop-prefix\)/g)).toHaveLength(3);
+      expect(initialLint.stdout.match(/\(missing-prop-prefix\)/g)).toHaveLength(
+        3,
+      );
 
       // 2. Run bascik --check --fix
       const fixRes = runBascikCli(dir, ["--check", "--fix"]);
@@ -955,7 +1044,10 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
             interface BrowserNode {
               getAttribute(name: string): string | null;
               querySelectorAll(selector: string): Iterable<BrowserNode>;
-              attachShadow(init: { mode: string }): { innerHTML: string; querySelectorAll(selector: string): Iterable<BrowserNode> };
+              attachShadow(init: { mode: string }): {
+                innerHTML: string;
+                querySelectorAll(selector: string): Iterable<BrowserNode>;
+              };
             }
             const g = globalThis as unknown as {
               document: { getElementById(id: string): BrowserNode | null };
@@ -969,7 +1061,9 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
             const shadow2 = host2.attachShadow({ mode: "open" });
             shadow2.innerHTML = `<style>:host { color: rgb(0, 0, 0); } ${rawCssText}</style>${rawInst2Html}`;
 
-            const collectColoredNodes = (root: { querySelectorAll(selector: string): Iterable<BrowserNode> }): string[] => {
+            const collectColoredNodes = (root: {
+              querySelectorAll(selector: string): Iterable<BrowserNode>;
+            }): string[] => {
               const matched: string[] = [];
               for (const el of root.querySelectorAll("[data-node-id]")) {
                 const id = el.getAttribute("data-node-id")!;
@@ -979,13 +1073,23 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
             };
 
             const flatRoot = g.document.getElementById("flat-root")!;
-            const pageTrapColors = Array.from(flatRoot.querySelectorAll('[data-node-id^="page-"]')).map(
-              (el) => `${el.getAttribute("data-node-id")}:${g.window.getComputedStyle(el).color}`,
+            const pageTrapColors = Array.from(
+              flatRoot.querySelectorAll('[data-node-id^="page-"]'),
+            ).map(
+              (el) =>
+                `${el.getAttribute("data-node-id")}:${g.window.getComputedStyle(el).color}`,
             );
             const flatInstColors = [
-              ...Array.from(flatRoot.querySelectorAll('[data-node-id^="inst1-"]')),
-              ...Array.from(flatRoot.querySelectorAll('[data-node-id^="inst2-"]')),
-            ].map((el) => `${el.getAttribute("data-node-id")}:${g.window.getComputedStyle(el).color}`);
+              ...Array.from(
+                flatRoot.querySelectorAll('[data-node-id^="inst1-"]'),
+              ),
+              ...Array.from(
+                flatRoot.querySelectorAll('[data-node-id^="inst2-"]'),
+              ),
+            ].map(
+              (el) =>
+                `${el.getAttribute("data-node-id")}:${g.window.getComputedStyle(el).color}`,
+            );
 
             const shadowInstColors = [
               ...collectColoredNodes(shadow1),
@@ -994,12 +1098,18 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
 
             return { pageTrapColors, flatInstColors, shadowInstColors };
           },
-          { rawInst1Html: rawInst1, rawInst2Html: rawInst2, rawCssText: rawCss },
+          {
+            rawInst1Html: rawInst1,
+            rawInst2Html: rawInst2,
+            rawCssText: rawCss,
+          },
         );
 
         // 1. Every page trap element must stay rgb(0, 0, 0) (zero leakage)
         for (const entry of comparison.pageTrapColors) {
-          expect(entry, `selector="${rawSelector}"`).toMatch(/:rgb\(0, 0, 0\)$/);
+          expect(entry, `selector="${rawSelector}"`).toMatch(
+            /:rgb\(0, 0, 0\)$/,
+          );
         }
         // 2. Every component element's computed color in the flat DOM must match the isolated Shadow DOM 1:1
         expect(comparison.flatInstColors, `selector="${rawSelector}"`).toEqual(
@@ -1019,307 +1129,420 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
     "migration-examples/ports/nextjs-blog",
     "migration-examples/ports/wordpress-blog",
     "templates/blog",
-  ])("builds and passes --check on real example site from migration-tutorials-oct052026: %s", (siteSubpath) => {
-    let branchExists = false;
-    try {
-      execFileSync("git", ["rev-parse", "--verify", "migration-tutorials-oct052026"], {
-        cwd: repoRoot,
-        stdio: "ignore",
-      });
-      branchExists = true;
-    } catch {
-      branchExists = false;
-    }
-    if (!branchExists) return;
-
-    const dir = mkdtempSync(join(tmpdir(), "bascik-migration-port-"));
-    try {
-      execFileSync(
-        "sh",
-        ["-c", `git archive migration-tutorials-oct052026 "${siteSubpath}" | tar -x -C "${dir}"`],
-        { cwd: repoRoot },
-      );
-      const siteRoot = join(dir, siteSubpath);
-      const localNodeModules = join(siteRoot, "node_modules");
-      mkdirSync(localNodeModules, { recursive: true });
-      const rootNodeModules = join(repoRoot, "node_modules");
-      for (const entry of readdirSync(rootNodeModules)) {
-        if (entry === "zod") continue;
-        symlinkSync(join(rootNodeModules, entry), join(localNodeModules, entry));
-      }
-
-      const writePkgShim = (pkgName: string, files: Record<string, string>) => {
-        const pkgDir = join(localNodeModules, pkgName);
-        if (existsSync(pkgDir)) return;
-        mkdirSync(pkgDir, { recursive: true });
-        for (const [relFile, content] of Object.entries(files)) {
-          const absFile = join(pkgDir, relFile);
-          mkdirSync(join(absFile, ".."), { recursive: true });
-          writeFileSync(absFile, content, "utf8");
-        }
-      };
-
-      const realZodIndexUrl = new URL("../../../node_modules/zod/index.js", import.meta.url).href;
-      writePkgShim("zod", {
-        "package.json": JSON.stringify({ name: "zod", version: "4.6.5", type: "module", main: "index.js" }),
-        "index.js": [
-          `import * as realZod from ${JSON.stringify(realZodIndexUrl)};`,
-          "const z = Object.assign({}, realZod.z, {",
-          "  url: () => realZod.z.string().url(),",
-          "  iso: { datetime: () => realZod.z.string() },",
-          "  prettifyError: (err) => String(err?.message ?? err),",
-          "});",
-          "export { z };",
-          "export default z;",
-        ].join("\n"),
-      });
-
-      writePkgShim("gray-matter", {
-        "package.json": JSON.stringify({ name: "gray-matter", version: "4.0.3", type: "module", main: "index.js" }),
-        "index.js": [
-          "export default function matter(src) {",
-          "  const m = /^---\\r?\\n([\\s\\S]*?)\\r?\\n---\\r?\\n?([\\s\\S]*)$/.exec(String(src));",
-          "  if (!m) return { data: {}, content: String(src) };",
-          "  const data = {};",
-          "  const lines = m[1].split(/\\r?\\n/);",
-          "  for (let i = 0; i < lines.length; i++) {",
-          "    const line = lines[i];",
-          "    const kv = /^([a-zA-Z0-9_-]+):\\s*(.*)$/.exec(line);",
-          "    if (!kv) continue;",
-          "    const key = kv[1];",
-          "    let val = kv[2].trim();",
-          "    if (val === '') {",
-          "      const arr = [];",
-          "      let obj = null;",
-          "      while (i + 1 < lines.length && /^\\s+/.test(lines[i + 1])) {",
-          "        i++;",
-          "        const sub = lines[i].trim();",
-          "        if (sub.startsWith('- ')) {",
-          "          arr.push(sub.slice(2).trim().replace(/^['\"]|['\"]$/g, ''));",
-          "        } else {",
-          "          const skv = /^([a-zA-Z0-9_-]+):\\s*(.*)$/.exec(sub);",
-          "          if (skv) {",
-          "            obj = obj || {};",
-          "            obj[skv[1]] = skv[2].trim().replace(/^['\"]|['\"]$/g, '');",
-          "          }",
-          "        }",
-          "      }",
-          "      data[key] = obj || arr;",
-          "    } else if (val.startsWith('[') && val.endsWith(']')) {",
-          "      const inner = val.slice(1, -1).trim();",
-          "      data[key] = inner ? inner.split(',').map(s => s.trim().replace(/^['\"]|['\"]$/g, '')) : [];",
-          "    } else if (val === 'true' || val === 'false') {",
-          "      data[key] = val === 'true';",
-          "    } else if (/^-?\\d+$/.test(val)) {",
-          "      data[key] = Number(val);",
-          "    } else {",
-          "      data[key] = val.replace(/^['\"]|['\"]$/g, '');",
-          "    }",
-          "  }",
-          "  return { data, content: m[2] };",
-          "}",
-        ].join("\n"),
-      });
-
-      writePkgShim("feed", {
-        "package.json": JSON.stringify({ name: "feed", version: "6.0.0", type: "module", main: "index.js" }),
-        "index.js": [
-          "export class Feed {",
-          "  constructor(opts = {}) { this.opts = opts; this.items = []; }",
-          "  addItem(item) { this.items.push(item); }",
-          "  rss2() { return `<?xml version=\"1.0\" encoding=\"utf-8\"?><rss version=\"2.0\"><channel><title>${this.opts.title ?? ''}</title>${this.items.map(i => `<item><title>${i.title ?? ''}</title><link>${i.link ?? ''}</link></item>`).join('')}</channel></rss>`; }",
-          "  atom1() { return `<?xml version=\"1.0\" encoding=\"utf-8\"?><feed xmlns=\"http://www.w3.org/2005/Atom\"><title>${this.opts.title ?? ''}</title>${this.items.map(i => `<entry><title>${i.title ?? ''}</title><id>${i.id ?? ''}</id></entry>`).join('')}</feed>`; }",
-          "}",
-        ].join("\n"),
-      });
-
-      writePkgShim("marked-footnote", {
-        "package.json": JSON.stringify({ name: "marked-footnote", version: "1.4.0", type: "module", main: "index.js" }),
-        "index.js": "export default function markedFootnote() { return {}; }\n",
-      });
-
-      writePkgShim("marked-gfm-heading-id", {
-        "package.json": JSON.stringify({ name: "marked-gfm-heading-id", version: "4.1.4", type: "module", main: "index.js" }),
-        "index.js": "export function gfmHeadingId() { return {}; }\n",
-      });
-
-      writePkgShim("image-size", {
-        "package.json": JSON.stringify({ name: "image-size", version: "2.0.4", type: "module", main: "index.js" }),
-        "index.js": [
-          "export function imageSize(buf) {",
-          "  if (buf && buf.length >= 24 && buf[0] === 0x89 && buf[1] === 0x50) {",
-          "    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20), type: 'png' };",
-          "  }",
-          "  return { width: 800, height: 600, type: 'png' };",
-          "}",
-          "export default imageSize;",
-        ].join("\n"),
-      });
-
-      writePkgShim("prismjs", {
-        "package.json": JSON.stringify({ name: "prismjs", version: "1.30.0", main: "index.js" }),
-        "index.js": [
-          "const Prism = {",
-          "  languages: { diff: {}, javascript: {}, html: {}, css: {}, bash: {}, markdown: {}, json: {}, typescript: {} },",
-          "  highlight(code) {",
-          "    return String(code).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');",
-          "  },",
-          "};",
-          "globalThis.Prism = Prism;",
-          "module.exports = Prism;",
-        ].join("\n"),
-        "components.json": JSON.stringify({
-          languages: {
-            javascript: { alias: ["js"] },
-            typescript: { alias: ["ts"] },
-            markdown: { alias: ["md"] },
-            markup: { alias: ["html", "xml", "svg"] },
-            css: {},
-            bash: { alias: ["sh", "shell"] },
-            json: {},
-            diff: {},
+  ])(
+    "builds and passes --check on real example site from migration-tutorials-oct052026: %s",
+    (siteSubpath) => {
+      let branchExists = false;
+      try {
+        execFileSync(
+          "git",
+          ["rev-parse", "--verify", "migration-tutorials-oct052026"],
+          {
+            cwd: repoRoot,
+            stdio: "ignore",
           },
-        }),
-        "components/index.js": "module.exports = function loadLanguages() {};\n",
-        "components/prism-diff.js": "module.exports = {};\n",
-        "plugins/diff-highlight/prism-diff-highlight.js": "module.exports = {};\n",
-        "themes/prism-okaidia.css": "code[class*=\"language-\"], pre[class*=\"language-\"] { color: #f8f8f2; background: #272822; }\n",
-      });
+        );
+        branchExists = true;
+      } catch {
+        branchExists = false;
+      }
+      if (!branchExists) return;
 
-      writePkgShim("date-fns", {
-        "package.json": JSON.stringify({ name: "date-fns", version: "3.6.0", type: "module", main: "index.js" }),
-        "index.js": [
-          "export function parseISO(s) { return new Date(s); }",
-          "export function format(d) {",
-          "  return d instanceof Date && !Number.isNaN(d.valueOf())",
-          "    ? d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })",
-          "    : String(d);",
-          "}",
-        ].join("\n"),
-      });
-
-      writePkgShim("remark", {
-        "package.json": JSON.stringify({ name: "remark", version: "15.0.1", type: "module", main: "index.js" }),
-        "index.js": [
-          "import { marked } from 'marked';",
-          "export function remark() {",
-          "  return {",
-          "    use() { return this; },",
-          "    async process(md) { return { toString: () => marked.parse(String(md), { async: false }) }; },",
-          "  };",
-          "}",
-        ].join("\n"),
-      });
-
-      writePkgShim("remark-html", {
-        "package.json": JSON.stringify({ name: "remark-html", version: "16.0.1", type: "module", main: "index.js" }),
-        "index.js": "export default function html() { return {}; }\n",
-      });
-
-      writePkgShim("tailwindcss", {
-        "package.json": JSON.stringify({ name: "tailwindcss", version: "3.4.4", type: "module", main: "index.js" }),
-        "index.js": [
-          "export default function tailwindcss() {",
-          "  return {",
-          "    postcssPlugin: 'tailwindcss-shim',",
-          "    Once(root) {",
-          "      root.walkAtRules('tailwind', (rule) => rule.remove());",
-          "    },",
-          "  };",
-          "}",
-          "tailwindcss.postcss = true;",
-        ].join("\n"),
-      });
-
-      writePkgShim("sanitize-html", {
-        "package.json": JSON.stringify({ name: "sanitize-html", version: "2.17.7", type: "module", main: "index.js" }),
-        "index.js": [
-          "function sanitizeHtml(html, opts = {}) {",
-          "  let s = String(html ?? '');",
-          "  if (Array.isArray(opts.allowedTags) && opts.allowedTags.length === 0) {",
-          "    return s.replace(/<[^>]*>/g, '');",
-          "  }",
-          "  s = s.replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi, '');",
-          "  if (opts.transformTags) {",
-          "    for (const [tag, fn] of Object.entries(opts.transformTags)) {",
-          "      const re = new RegExp(`<(${tag})\\\\b([^>]*)>`, 'gi');",
-          "      s = s.replace(re, (_m, tn, attrStr) => {",
-          "        const attribs = {};",
-          "        for (const am of attrStr.matchAll(/([a-zA-Z0-9_-]+)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')/g)) {",
-          "          attribs[am[1]] = am[2] ?? am[3] ?? '';",
-          "        }",
-          "        const res = fn(tn.toLowerCase(), attribs);",
-          "        const outAttrs = Object.entries(res.attribs || {}).map(([k, v]) => ` ${k}=\"${v}\"`).join('');",
-          "        return `<${res.tagName}${outAttrs}>`;",
-          "      });",
-          "    }",
-          "  }",
-          "  return s;",
-          "}",
-          "sanitizeHtml.defaults = {",
-          "  allowedTags: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li', 'strong', 'em', 'code', 'pre', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'br', 'div', 'span'],",
-          "  allowedAttributes: { a: ['href', 'name', 'target'], img: ['src', 'srcset', 'alt', 'title', 'width', 'height', 'loading'] },",
-          "};",
-          "export default sanitizeHtml;",
-        ].join("\n"),
-      });
-
-      // Upgrade pre-rc.5 console.log build and routes scripts in the extracted oct052026 branch fixture to current export default contract
-      const upgradeDirectiveScripts = (rootDir: string) => {
-        const htmlFiles = execFileSync("find", [rootDir, "-name", "*.html"], { encoding: "utf8" })
-          .split("\n")
-          .filter(Boolean);
-        for (const htmlFile of htmlFiles) {
-          const raw = readFileSync(htmlFile, "utf8");
-          if ((!raw.includes("data-bascik-build") && !raw.includes("data-bascik-routes")) || raw.includes("export default")) continue;
-          const updated = raw
-            .replace(
-              /(<script\s+data-bascik-build(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?\s*>)([\s\S]*?)(<\/script>)/g,
-              (_m, open: string, body: string, close: string) => {
-                const imports: string[] = [];
-                const statements: string[] = [];
-                for (const line of body.split("\n")) {
-                  if (/^\s*import\s+/.test(line)) imports.push(line);
-                  else statements.push(line);
-                }
-                const rewrittenBody = statements
-                  .join("\n")
-                  .replace(/\bconsole\.log\s*\(([\s\S]*?)\)\s*;/g, "__out.push(String($1));");
-                return `${open}\n${imports.join("\n")}\nexport default async function () {\nconst __out = [];\n${rewrittenBody}\nreturn __out.join("\\n");\n}\n${close}`;
-              },
-            )
-            .replace(
-              /(<script\s+data-bascik-routes\s*>)([\s\S]*?)(<\/script>)/g,
-              (_m, open: string, body: string, close: string) => {
-                const imports: string[] = [];
-                const statements: string[] = [];
-                for (const line of body.split("\n")) {
-                  if (/^\s*import\s+/.test(line)) imports.push(line);
-                  else statements.push(line);
-                }
-                const rewrittenBody = statements
-                  .join("\n")
-                  .replace(/\bconsole\.log\s*\(\s*JSON\.stringify\s*\(([\s\S]*?)\)\s*\)\s*;/g, "return $1;");
-                return `${open}\n${imports.join("\n")}\nexport default async function () {\n${rewrittenBody}\n}\n${close}`;
-              },
-            );
-          writeFileSync(htmlFile, updated, "utf8");
+      const dir = mkdtempSync(join(tmpdir(), "bascik-migration-port-"));
+      try {
+        execFileSync(
+          "sh",
+          [
+            "-c",
+            `git archive migration-tutorials-oct052026 "${siteSubpath}" | tar -x -C "${dir}"`,
+          ],
+          { cwd: repoRoot },
+        );
+        const siteRoot = join(dir, siteSubpath);
+        const localNodeModules = join(siteRoot, "node_modules");
+        mkdirSync(localNodeModules, { recursive: true });
+        const rootNodeModules = join(repoRoot, "node_modules");
+        for (const entry of readdirSync(rootNodeModules)) {
+          if (entry === "zod") continue;
+          symlinkSync(
+            join(rootNodeModules, entry),
+            join(localNodeModules, entry),
+          );
         }
-      };
-      upgradeDirectiveScripts(siteRoot);
 
-      const buildRes = runBascikCli(siteRoot, ["--build", "--site-url", "https://example.com"]);
-      expect(buildRes.status, `${siteSubpath} build failed:\n${buildRes.stdout}\n${buildRes.stderr}`).toBe(0);
+        const writePkgShim = (
+          pkgName: string,
+          files: Record<string, string>,
+        ) => {
+          const pkgDir = join(localNodeModules, pkgName);
+          if (existsSync(pkgDir)) return;
+          mkdirSync(pkgDir, { recursive: true });
+          for (const [relFile, content] of Object.entries(files)) {
+            const absFile = join(pkgDir, relFile);
+            mkdirSync(join(absFile, ".."), { recursive: true });
+            writeFileSync(absFile, content, "utf8");
+          }
+        };
 
-      const indexHtml = readFileSync(join(siteRoot, "dist/index.html"), "utf8");
-      assertValidHtml5(indexHtml, `${siteSubpath} dist/index.html`);
+        const realZodIndexUrl = new URL(
+          "../../../node_modules/zod/index.js",
+          import.meta.url,
+        ).href;
+        writePkgShim("zod", {
+          "package.json": JSON.stringify({
+            name: "zod",
+            version: "4.6.5",
+            type: "module",
+            main: "index.js",
+          }),
+          "index.js": [
+            `import * as realZod from ${JSON.stringify(realZodIndexUrl)};`,
+            "const z = Object.assign({}, realZod.z, {",
+            "  url: () => realZod.z.string().url(),",
+            "  iso: { datetime: () => realZod.z.string() },",
+            "  prettifyError: (err) => String(err?.message ?? err),",
+            "});",
+            "export { z };",
+            "export default z;",
+          ].join("\n"),
+        });
 
-      const checkRes = runBascikCli(siteRoot, ["--check", "--site-url", "https://example.com"]);
-      expect(checkRes.status, `${siteSubpath} check failed:\n${checkRes.stdout}\n${checkRes.stderr}`).toBe(0);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-    // Each case spawns git archive, a full --build, and --check. Under the parallel integration run that exceeds
-    // vitest's 5 s default even though a case takes 0.7 to 2.3 s alone.
-  }, 30000);
+        writePkgShim("gray-matter", {
+          "package.json": JSON.stringify({
+            name: "gray-matter",
+            version: "4.0.3",
+            type: "module",
+            main: "index.js",
+          }),
+          "index.js": [
+            "export default function matter(src) {",
+            "  const m = /^---\\r?\\n([\\s\\S]*?)\\r?\\n---\\r?\\n?([\\s\\S]*)$/.exec(String(src));",
+            "  if (!m) return { data: {}, content: String(src) };",
+            "  const data = {};",
+            "  const lines = m[1].split(/\\r?\\n/);",
+            "  for (let i = 0; i < lines.length; i++) {",
+            "    const line = lines[i];",
+            "    const kv = /^([a-zA-Z0-9_-]+):\\s*(.*)$/.exec(line);",
+            "    if (!kv) continue;",
+            "    const key = kv[1];",
+            "    let val = kv[2].trim();",
+            "    if (val === '') {",
+            "      const arr = [];",
+            "      let obj = null;",
+            "      while (i + 1 < lines.length && /^\\s+/.test(lines[i + 1])) {",
+            "        i++;",
+            "        const sub = lines[i].trim();",
+            "        if (sub.startsWith('- ')) {",
+            "          arr.push(sub.slice(2).trim().replace(/^['\"]|['\"]$/g, ''));",
+            "        } else {",
+            "          const skv = /^([a-zA-Z0-9_-]+):\\s*(.*)$/.exec(sub);",
+            "          if (skv) {",
+            "            obj = obj || {};",
+            "            obj[skv[1]] = skv[2].trim().replace(/^['\"]|['\"]$/g, '');",
+            "          }",
+            "        }",
+            "      }",
+            "      data[key] = obj || arr;",
+            "    } else if (val.startsWith('[') && val.endsWith(']')) {",
+            "      const inner = val.slice(1, -1).trim();",
+            "      data[key] = inner ? inner.split(',').map(s => s.trim().replace(/^['\"]|['\"]$/g, '')) : [];",
+            "    } else if (val === 'true' || val === 'false') {",
+            "      data[key] = val === 'true';",
+            "    } else if (/^-?\\d+$/.test(val)) {",
+            "      data[key] = Number(val);",
+            "    } else {",
+            "      data[key] = val.replace(/^['\"]|['\"]$/g, '');",
+            "    }",
+            "  }",
+            "  return { data, content: m[2] };",
+            "}",
+          ].join("\n"),
+        });
+
+        writePkgShim("feed", {
+          "package.json": JSON.stringify({
+            name: "feed",
+            version: "6.0.0",
+            type: "module",
+            main: "index.js",
+          }),
+          "index.js": [
+            "export class Feed {",
+            "  constructor(opts = {}) { this.opts = opts; this.items = []; }",
+            "  addItem(item) { this.items.push(item); }",
+            "  rss2() { return `<?xml version=\"1.0\" encoding=\"utf-8\"?><rss version=\"2.0\"><channel><title>${this.opts.title ?? ''}</title>${this.items.map(i => `<item><title>${i.title ?? ''}</title><link>${i.link ?? ''}</link></item>`).join('')}</channel></rss>`; }",
+            "  atom1() { return `<?xml version=\"1.0\" encoding=\"utf-8\"?><feed xmlns=\"http://www.w3.org/2005/Atom\"><title>${this.opts.title ?? ''}</title>${this.items.map(i => `<entry><title>${i.title ?? ''}</title><id>${i.id ?? ''}</id></entry>`).join('')}</feed>`; }",
+            "}",
+          ].join("\n"),
+        });
+
+        writePkgShim("marked-footnote", {
+          "package.json": JSON.stringify({
+            name: "marked-footnote",
+            version: "1.4.0",
+            type: "module",
+            main: "index.js",
+          }),
+          "index.js":
+            "export default function markedFootnote() { return {}; }\n",
+        });
+
+        writePkgShim("marked-gfm-heading-id", {
+          "package.json": JSON.stringify({
+            name: "marked-gfm-heading-id",
+            version: "4.1.4",
+            type: "module",
+            main: "index.js",
+          }),
+          "index.js": "export function gfmHeadingId() { return {}; }\n",
+        });
+
+        writePkgShim("image-size", {
+          "package.json": JSON.stringify({
+            name: "image-size",
+            version: "2.0.4",
+            type: "module",
+            main: "index.js",
+          }),
+          "index.js": [
+            "export function imageSize(buf) {",
+            "  if (buf && buf.length >= 24 && buf[0] === 0x89 && buf[1] === 0x50) {",
+            "    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20), type: 'png' };",
+            "  }",
+            "  return { width: 800, height: 600, type: 'png' };",
+            "}",
+            "export default imageSize;",
+          ].join("\n"),
+        });
+
+        writePkgShim("prismjs", {
+          "package.json": JSON.stringify({
+            name: "prismjs",
+            version: "1.30.0",
+            main: "index.js",
+          }),
+          "index.js": [
+            "const Prism = {",
+            "  languages: { diff: {}, javascript: {}, html: {}, css: {}, bash: {}, markdown: {}, json: {}, typescript: {} },",
+            "  highlight(code) {",
+            "    return String(code).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');",
+            "  },",
+            "};",
+            "globalThis.Prism = Prism;",
+            "module.exports = Prism;",
+          ].join("\n"),
+          "components.json": JSON.stringify({
+            languages: {
+              javascript: { alias: ["js"] },
+              typescript: { alias: ["ts"] },
+              markdown: { alias: ["md"] },
+              markup: { alias: ["html", "xml", "svg"] },
+              css: {},
+              bash: { alias: ["sh", "shell"] },
+              json: {},
+              diff: {},
+            },
+          }),
+          "components/index.js":
+            "module.exports = function loadLanguages() {};\n",
+          "components/prism-diff.js": "module.exports = {};\n",
+          "plugins/diff-highlight/prism-diff-highlight.js":
+            "module.exports = {};\n",
+          "themes/prism-okaidia.css":
+            'code[class*="language-"], pre[class*="language-"] { color: #f8f8f2; background: #272822; }\n',
+        });
+
+        writePkgShim("date-fns", {
+          "package.json": JSON.stringify({
+            name: "date-fns",
+            version: "3.6.0",
+            type: "module",
+            main: "index.js",
+          }),
+          "index.js": [
+            "export function parseISO(s) { return new Date(s); }",
+            "export function format(d) {",
+            "  return d instanceof Date && !Number.isNaN(d.valueOf())",
+            "    ? d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })",
+            "    : String(d);",
+            "}",
+          ].join("\n"),
+        });
+
+        writePkgShim("remark", {
+          "package.json": JSON.stringify({
+            name: "remark",
+            version: "15.0.1",
+            type: "module",
+            main: "index.js",
+          }),
+          "index.js": [
+            "import { marked } from 'marked';",
+            "export function remark() {",
+            "  return {",
+            "    use() { return this; },",
+            "    async process(md) { return { toString: () => marked.parse(String(md), { async: false }) }; },",
+            "  };",
+            "}",
+          ].join("\n"),
+        });
+
+        writePkgShim("remark-html", {
+          "package.json": JSON.stringify({
+            name: "remark-html",
+            version: "16.0.1",
+            type: "module",
+            main: "index.js",
+          }),
+          "index.js": "export default function html() { return {}; }\n",
+        });
+
+        writePkgShim("tailwindcss", {
+          "package.json": JSON.stringify({
+            name: "tailwindcss",
+            version: "3.4.4",
+            type: "module",
+            main: "index.js",
+          }),
+          "index.js": [
+            "export default function tailwindcss() {",
+            "  return {",
+            "    postcssPlugin: 'tailwindcss-shim',",
+            "    Once(root) {",
+            "      root.walkAtRules('tailwind', (rule) => rule.remove());",
+            "    },",
+            "  };",
+            "}",
+            "tailwindcss.postcss = true;",
+          ].join("\n"),
+        });
+
+        writePkgShim("sanitize-html", {
+          "package.json": JSON.stringify({
+            name: "sanitize-html",
+            version: "2.17.7",
+            type: "module",
+            main: "index.js",
+          }),
+          "index.js": [
+            "function sanitizeHtml(html, opts = {}) {",
+            "  let s = String(html ?? '');",
+            "  if (Array.isArray(opts.allowedTags) && opts.allowedTags.length === 0) {",
+            "    return s.replace(/<[^>]*>/g, '');",
+            "  }",
+            "  s = s.replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi, '');",
+            "  if (opts.transformTags) {",
+            "    for (const [tag, fn] of Object.entries(opts.transformTags)) {",
+            "      const re = new RegExp(`<(${tag})\\\\b([^>]*)>`, 'gi');",
+            "      s = s.replace(re, (_m, tn, attrStr) => {",
+            "        const attribs = {};",
+            "        for (const am of attrStr.matchAll(/([a-zA-Z0-9_-]+)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')/g)) {",
+            "          attribs[am[1]] = am[2] ?? am[3] ?? '';",
+            "        }",
+            "        const res = fn(tn.toLowerCase(), attribs);",
+            "        const outAttrs = Object.entries(res.attribs || {}).map(([k, v]) => ` ${k}=\"${v}\"`).join('');",
+            "        return `<${res.tagName}${outAttrs}>`;",
+            "      });",
+            "    }",
+            "  }",
+            "  return s;",
+            "}",
+            "sanitizeHtml.defaults = {",
+            "  allowedTags: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li', 'strong', 'em', 'code', 'pre', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'br', 'div', 'span'],",
+            "  allowedAttributes: { a: ['href', 'name', 'target'], img: ['src', 'srcset', 'alt', 'title', 'width', 'height', 'loading'] },",
+            "};",
+            "export default sanitizeHtml;",
+          ].join("\n"),
+        });
+
+        // Upgrade pre-rc.5 console.log build and routes scripts in the extracted oct052026 branch fixture to current export default contract
+        const upgradeDirectiveScripts = (rootDir: string) => {
+          const htmlFiles = execFileSync("find", [rootDir, "-name", "*.html"], {
+            encoding: "utf8",
+          })
+            .split("\n")
+            .filter(Boolean);
+          for (const htmlFile of htmlFiles) {
+            const raw = readFileSync(htmlFile, "utf8");
+            if (
+              (!raw.includes("data-bascik-build") &&
+                !raw.includes("data-bascik-routes")) ||
+              raw.includes("export default")
+            )
+              continue;
+            const updated = raw
+              .replace(
+                /(<script\s+data-bascik-build(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?\s*>)([\s\S]*?)(<\/script>)/g,
+                (_m, open: string, body: string, close: string) => {
+                  const imports: string[] = [];
+                  const statements: string[] = [];
+                  for (const line of body.split("\n")) {
+                    if (/^\s*import\s+/.test(line)) imports.push(line);
+                    else statements.push(line);
+                  }
+                  const rewrittenBody = statements
+                    .join("\n")
+                    .replace(
+                      /\bconsole\.log\s*\(([\s\S]*?)\)\s*;/g,
+                      "__out.push(String($1));",
+                    );
+                  return `${open}\n${imports.join("\n")}\nexport default async function () {\nconst __out = [];\n${rewrittenBody}\nreturn __out.join("\\n");\n}\n${close}`;
+                },
+              )
+              .replace(
+                /(<script\s+data-bascik-routes\s*>)([\s\S]*?)(<\/script>)/g,
+                (_m, open: string, body: string, close: string) => {
+                  const imports: string[] = [];
+                  const statements: string[] = [];
+                  for (const line of body.split("\n")) {
+                    if (/^\s*import\s+/.test(line)) imports.push(line);
+                    else statements.push(line);
+                  }
+                  const rewrittenBody = statements
+                    .join("\n")
+                    .replace(
+                      /\bconsole\.log\s*\(\s*JSON\.stringify\s*\(([\s\S]*?)\)\s*\)\s*;/g,
+                      "return $1;",
+                    );
+                  return `${open}\n${imports.join("\n")}\nexport default async function () {\n${rewrittenBody}\n}\n${close}`;
+                },
+              );
+            writeFileSync(htmlFile, updated, "utf8");
+          }
+        };
+        upgradeDirectiveScripts(siteRoot);
+
+        const buildRes = runBascikCli(siteRoot, [
+          "--build",
+          "--site-url",
+          "https://example.com",
+        ]);
+        expect(
+          buildRes.status,
+          `${siteSubpath} build failed:\n${buildRes.stdout}\n${buildRes.stderr}`,
+        ).toBe(0);
+
+        const indexHtml = readFileSync(
+          join(siteRoot, "dist/index.html"),
+          "utf8",
+        );
+        assertValidHtml5(indexHtml, `${siteSubpath} dist/index.html`);
+
+        const checkRes = runBascikCli(siteRoot, [
+          "--check",
+          "--site-url",
+          "https://example.com",
+        ]);
+        expect(
+          checkRes.status,
+          `${siteSubpath} check failed:\n${checkRes.stdout}\n${checkRes.stderr}`,
+        ).toBe(0);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+      // Each case spawns git archive, a full --build, and --check. Under the parallel integration run that exceeds
+      // vitest's 5 s default even though a case takes 0.7 to 2.3 s alone.
+    },
+    30000,
+  );
 });

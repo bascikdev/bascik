@@ -8,14 +8,14 @@ Because Node 24 and Node 22.18+ natively execute TypeScript files by erasing typ
 
 Testing a Bascik application is structured into six core tiers:
 
-| Tier | Primary Tool | Key Responsibility | Execution Speed |
-| --- | --- | --- | --- |
-| **[Unit Testing](/testing/unit-testing)** | Vitest | Validates pure functions, calculations, algorithms, and data transformations. | Sub-second (~10ms) |
-| **[Component Testing](/testing/component-testing)** | Vitest | Validates `.html` component contracts, slot placeholders, prop substitutions, and compiled `dist/` HTML output. | Sub-second (~100ms) |
-| **[Build Scripts](/testing/build-scripts)** | Vitest | Validates compile-time `<script data-bascik-build>` logic, page-aware helpers, and data pipelines. | Sub-second (~30ms) |
-| **[Server Scripts](/testing/server-scripts)** | Vitest | Validates request-time `<script data-bascik-server>` logic, database integrations, and dynamic routing. | Sub-second (~20ms) |
-| **[Exec Scripts](/testing/exec-scripts)** | Vitest | Validates build configuration lifecycle scripts (XML sitemaps, search indexes, RSS feeds). | Sub-second (~20ms) |
-| **[End-to-End Testing](/testing/e2e-testing)** | Playwright | Validates full browser interactions, DOM event handling, CSS `:has()` rules, and multi-page routing across static, dev, and production servers. | Seconds |
+| Tier                                                | Primary Tool | Key Responsibility                                                                                                                              | Execution Speed     |
+| --------------------------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| **[Unit Testing](/testing/unit-testing)**           | Vitest       | Validates pure functions, calculations, algorithms, and data transformations.                                                                   | Sub-second (~10ms)  |
+| **[Component Testing](/testing/component-testing)** | Vitest       | Validates `.html` component contracts, slot placeholders, prop substitutions, and compiled `dist/` HTML output.                                 | Sub-second (~100ms) |
+| **[Build Scripts](/testing/build-scripts)**         | Vitest       | Validates compile-time `<script data-bascik-build>` logic, page-aware helpers, and data pipelines.                                              | Sub-second (~30ms)  |
+| **[Server Scripts](/testing/server-scripts)**       | Vitest       | Validates request-time `<script data-bascik-server>` logic, database integrations, and dynamic routing.                                         | Sub-second (~20ms)  |
+| **[Exec Scripts](/testing/exec-scripts)**           | Vitest       | Validates build configuration lifecycle scripts (XML sitemaps, search indexes, RSS feeds).                                                      | Sub-second (~20ms)  |
+| **[End-to-End Testing](/testing/e2e-testing)**      | Playwright   | Validates full browser interactions, DOM event handling, CSS `:has()` rules, and multi-page routing across static, dev, and production servers. | Seconds             |
 
 ## Quick Start with `create-bascik`
 
@@ -45,11 +45,11 @@ Isolate core business logic, calculations, and data formatting in pure TypeScrip
 
 ```ts
 // src/utils/pricing.test.ts
-import { describe, it, expect } from 'vitest';
-import { calculateTax } from './pricing.ts';
+import { describe, it, expect } from "vitest";
+import { calculateTax } from "./pricing.ts";
 
-describe('calculateTax', () => {
-  it('calculates state sales tax accurately', () => {
+describe("calculateTax", () => {
+  it("calculates state sales tax accurately", () => {
     expect(calculateTax(10000, 0.0825)).toBe(825);
   });
 });
@@ -64,22 +64,28 @@ Component testing in Bascik operates in two distinct phases:
 
 ```ts
 // src/components/card/card.test.ts
-import { describe, it, expect } from 'vitest';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { describe, it, expect } from "vitest";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
-describe('Card component', () => {
-  it('preserves slot structure in source template', async () => {
-    const html = await readFile(join(process.cwd(), 'src/components/card/card.html'), 'utf8');
+describe("Card component", () => {
+  it("preserves slot structure in source template", async () => {
+    const html = await readFile(
+      join(process.cwd(), "src/components/card/card.html"),
+      "utf8",
+    );
     expect(html).toContain('data-bascik-slot="header"');
     expect(html).toContain('data-bascik-slot="body"');
   });
 
-  it('compiles without leftover compiler attributes in dist', async () => {
-    const distHtml = await readFile(join(process.cwd(), 'dist/index.html'), 'utf8');
-    expect(distHtml).not.toContain('<my-card');
-    expect(distHtml).not.toContain('data-bascik-prop-');
-    expect(distHtml).not.toContain('data-bascik-slot');
+  it("compiles without leftover compiler attributes in dist", async () => {
+    const distHtml = await readFile(
+      join(process.cwd(), "dist/index.html"),
+      "utf8",
+    );
+    expect(distHtml).not.toContain("<my-card");
+    expect(distHtml).not.toContain("data-bascik-prop-");
+    expect(distHtml).not.toContain("data-bascik-slot");
   });
 });
 ```
@@ -92,24 +98,26 @@ This allows testing Markdown parsers, navigation generators, and page-aware help
 
 ```ts
 // src/lib/canonical.test.ts
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { getCanonicalUrl } from './canonical.ts';
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { getCanonicalUrl } from "./canonical.ts";
 
-describe('getCanonicalUrl', () => {
+describe("getCanonicalUrl", () => {
   const envSnapshot = { ...process.env };
 
   beforeEach(() => {
-    process.env.BASCIK_SITE_URL = 'https://example.com';
-    process.env.BASCIK_PAGES_DIR = '/app/src/pages';
+    process.env.BASCIK_SITE_URL = "https://example.com";
+    process.env.BASCIK_PAGES_DIR = "/app/src/pages";
   });
 
   afterEach(() => {
     process.env = { ...envSnapshot };
   });
 
-  it('computes correct canonical tag from page file path', () => {
-    process.env.BASCIK_SOURCE_FILE = '/app/src/pages/about.html';
-    expect(getCanonicalUrl()).toBe('<link rel="canonical" href="https://example.com/about" />');
+  it("computes correct canonical tag from page file path", () => {
+    process.env.BASCIK_SOURCE_FILE = "/app/src/pages/about.html";
+    expect(getCanonicalUrl()).toBe(
+      '<link rel="canonical" href="https://example.com/about" />',
+    );
   });
 });
 ```
@@ -120,14 +128,18 @@ Server scripts execute dynamically on incoming HTTP/1.1 and HTTP/2 requests when
 
 ```ts
 // src/components/weather-widget/weather-service.test.ts
-import { describe, it, expect } from 'vitest';
-import { formatWeatherCard } from './weather-service.ts';
+import { describe, it, expect } from "vitest";
+import { formatWeatherCard } from "./weather-service.ts";
 
-describe('formatWeatherCard', () => {
-  it('renders dynamic weather HTML with temperature and conditions', () => {
-    const html = formatWeatherCard({ city: 'Phoenix', temp: 88, condition: 'Sunny' });
-    expect(html).toContain('<h4>Phoenix</h4>');
-    expect(html).toContain('88°F');
+describe("formatWeatherCard", () => {
+  it("renders dynamic weather HTML with temperature and conditions", () => {
+    const html = formatWeatherCard({
+      city: "Phoenix",
+      temp: 88,
+      condition: "Sunny",
+    });
+    expect(html).toContain("<h4>Phoenix</h4>");
+    expect(html).toContain("88°F");
   });
 });
 ```
@@ -145,15 +157,15 @@ Because production builds compress and minify class names and element IDs when `
 
 ```ts
 // e2e/theme-toggle.spec.ts
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
-test('theme toggle switches dark mode class on html root', async ({ page }) => {
-  await page.goto('/');
+test("theme toggle switches dark mode class on html root", async ({ page }) => {
+  await page.goto("/");
 
-  const toggle = page.getByTestId('theme-toggle');
+  const toggle = page.getByTestId("theme-toggle");
   await toggle.click();
 
-  await expect(page.locator('html')).toHaveClass(/dark-theme/);
+  await expect(page.locator("html")).toHaveClass(/dark-theme/);
 });
 ```
 

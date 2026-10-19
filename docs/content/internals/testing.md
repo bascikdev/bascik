@@ -147,7 +147,7 @@ Tests navigate to pages on the active server and assert against the live browser
 
 ```ts
 // pkg/e2e/bascik.config.ts (excerpt)
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   pipeline: { workers: true },
@@ -187,18 +187,18 @@ Each test file is paired with a fixture page. See the full list on [GitHub](http
 A typical test file:
 
 ```ts
-import { test, expect, type Locator } from '@playwright/test';
+import { test, expect, type Locator } from "@playwright/test";
 
 function getInstance(page, n: number): Locator {
-  return page.locator('.bascik__my-feature__wrapper').nth(n);
+  return page.locator(".bascik__my-feature__wrapper").nth(n);
 }
 
-test.describe('my-feature-test page', () => {
+test.describe("my-feature-test page", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/my-feature-test');
+    await page.goto("/my-feature-test");
   });
 
-  test('instances are isolated', async ({ page }) => {
+  test("instances are isolated", async ({ page }) => {
     const a = getInstance(page, 0);
     const b = getInstance(page, 1);
     // assert that state in A does not affect B
@@ -285,7 +285,7 @@ describe("prefixElementAttribute", () => {
 });
 ```
 
-> **Important.** Always import the module under test *after* calling `vi.mock`. Vitest hoists mock calls to the top of the file, but the import order still matters for ensuring the mock is in place when the module initializes its dependencies.
+> **Important.** Always import the module under test _after_ calling `vi.mock`. Vitest hoists mock calls to the top of the file, but the import order still matters for ensuring the mock is in place when the module initializes its dependencies.
 
 ## Boundary Test Patterns
 

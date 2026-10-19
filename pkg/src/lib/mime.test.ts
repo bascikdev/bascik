@@ -13,12 +13,30 @@ describe("MIME_MAP", () => {
 
   it("does not assign readable MIME types to denied or source/config files", () => {
     const unsafeExtensions = [
-      ".env", ".map", ".md", ".ts", ".mts", ".cts",
-      ".yaml", ".yml", ".toml", ".ini", ".lock", ".sh", ".py", ".rb",
-      ".go", ".java", ".c", ".cpp", ".h",
+      ".env",
+      ".map",
+      ".md",
+      ".ts",
+      ".mts",
+      ".cts",
+      ".yaml",
+      ".yml",
+      ".toml",
+      ".ini",
+      ".lock",
+      ".sh",
+      ".py",
+      ".rb",
+      ".go",
+      ".java",
+      ".c",
+      ".cpp",
+      ".h",
     ];
 
-    expect(unsafeExtensions.filter((extension) => MIME_MAP.has(extension))).toEqual([]);
+    expect(
+      unsafeExtensions.filter((extension) => MIME_MAP.has(extension)),
+    ).toEqual([]);
   });
 
   it(".css → text/css; charset=utf-8", () => {

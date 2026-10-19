@@ -29,11 +29,11 @@
     }
 
     /* Selectors 4 :nth-child(An+B of S) */
-    ul.item-list>li {
+    ul.item-list > li {
       padding: 0.25rem 0.5rem;
     }
 
-    ul.item-list>li:nth-child(even of .featured) {
+    ul.item-list > li:nth-child(even of .featured) {
       background-color: #fef08a;
       /* Yellow for even featured items */
       font-weight: bold;
@@ -59,14 +59,16 @@
         color: #334155;
       }
 
-      >span {
+      > span {
         display: block;
         color: #0284c7;
       }
     }
   </style>
 
-  <h3 class="heading-special" data-testid="selector-heading">Special Heading</h3>
+  <h3 class="heading-special" data-testid="selector-heading">
+    Special Heading
+  </h3>
 
   <div class="card-item" data-testid="card-plain">
     <p>Plain Card Item</p>
@@ -80,13 +82,17 @@
   <ul class="item-list" data-testid="item-list">
     <li class="featured" data-testid="feat-1">Featured 1 (1st featured)</li>
     <li class="regular" data-testid="reg-1">Regular 1</li>
-    <li class="featured" data-testid="feat-2">Featured 2 (2nd featured - even)</li>
+    <li class="featured" data-testid="feat-2">
+      Featured 2 (2nd featured - even)
+    </li>
     <li class="featured" data-testid="feat-3">Featured 3 (3rd featured)</li>
   </ul>
 
   <div class="link-box">
     <a href="https://example.com" data-testid="secure-link">Secure Link</a>
-    <a href="//insecure.example.com" data-testid="insecure-link">Insecure Link</a>
+    <a href="//insecure.example.com" data-testid="insecure-link"
+      >Insecure Link</a
+    >
   </div>
 
   <div data-priority="high" data-testid="high-priority-box">

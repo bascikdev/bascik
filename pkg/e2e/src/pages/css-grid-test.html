@@ -1,32 +1,36 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CSS Grid Test</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 32px 24px;
+        background: #111;
+        color: #eee;
+        font-family: sans-serif;
+      }
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CSS Grid Test</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 32px 24px;
-      background: #111;
-      color: #eee;
-      font-family: sans-serif;
-    }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.2rem;
+      }
+    </style>
+  </head>
 
-    h1 {
-      margin: 0 0 8px;
-      font-size: 1.2rem;
-    }
-  </style>
-</head>
+  <body>
+    <h1>CSS Grid Test</h1>
+    <p>
+      Two instances of &lt;css-grid&gt; for grid-template-areas and grid layout
+      scoping tests.
+    </p>
 
-<body>
-  <h1>CSS Grid Test</h1>
-  <p>Two instances of &lt;css-grid&gt; for grid-template-areas and grid layout scoping tests.</p>
-
-  <css-grid data-bascik-prop-sidebar-label="Navigation" data-bascik-prop-main-content="Article content"></css-grid>
-  <css-grid></css-grid>
-</body>
-
+    <css-grid
+      data-bascik-prop-sidebar-label="Navigation"
+      data-bascik-prop-main-content="Article content"
+    ></css-grid>
+    <css-grid></css-grid>
+  </body>
 </html>

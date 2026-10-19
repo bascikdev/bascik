@@ -42,11 +42,15 @@ export interface EmittedInventory {
 }
 
 /** Recursively collect every file under `dir` as output-relative path -> bytes. */
-export const readEmittedFiles = async (dir: string): Promise<Record<string, Buffer>> => {
+export const readEmittedFiles = async (
+  dir: string,
+): Promise<Record<string, Buffer>> => {
   const out: Record<string, Buffer> = {};
   const walk = async (current: string): Promise<void> => {
     const entries = await readdir(current, { withFileTypes: true });
-    for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+    for (const entry of entries.sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+    )) {
       const full = join(current, entry.name);
       if (entry.isDirectory()) {
         await walk(full);
@@ -63,7 +67,9 @@ export const readEmittedFiles = async (dir: string): Promise<Record<string, Buff
 export const hashBytes = (buf: Buffer): string =>
   createHash("sha256").update(buf).digest("hex");
 
-export const toInventory = (emitted: Record<string, Buffer>): EmittedInventory => ({
+export const toInventory = (
+  emitted: Record<string, Buffer>,
+): EmittedInventory => ({
   files: Object.fromEntries(
     Object.entries(emitted)
       .filter(([rel]) => rel !== ".bascik/manifest.json")
@@ -71,9 +77,14 @@ export const toInventory = (emitted: Record<string, Buffer>): EmittedInventory =
       .map(([rel, buf]) => [rel, { hash: hashBytes(buf), size: buf.length }]),
   ),
   csp: JSON.parse(emitted[".bascik/csp-hashes.json"]?.toString("utf8") ?? "{}"),
-  sidecar: (Object.entries(
-    JSON.parse(emitted[".bascik/server-scripts.json"]?.toString("utf8") ?? '{"scripts":{}}').scripts ?? {},
-  ) as [string, { source: string }][]).reduce<Record<string, string>>((acc, [id, entry]) => {
+  sidecar: (
+    Object.entries(
+      JSON.parse(
+        emitted[".bascik/server-scripts.json"]?.toString("utf8") ??
+          '{"scripts":{}}',
+      ).scripts ?? {},
+    ) as [string, { source: string }][]
+  ).reduce<Record<string, string>>((acc, [id, entry]) => {
     acc[id] = entry.source;
     return acc;
   }, {}),
@@ -93,24 +104,38 @@ export interface RunBuildOptions {
  * Run a real `bascik --build` in a child Node process against `projectRoot`.
  * Exit 0 + non-empty dist is required; a failure surfaces stdout/stderr.
  */
-export const runRealBuild = async (options: RunBuildOptions): Promise<{ stdout: string; stderr: string }> => {
-  const cli = options.cliPath ?? resolve(dirname(fileURLToPath(import.meta.url)), "../../src/index.ts");
+export const runRealBuild = async (
+  options: RunBuildOptions,
+): Promise<{ stdout: string; stderr: string }> => {
+  const cli =
+    options.cliPath ??
+    resolve(dirname(fileURLToPath(import.meta.url)), "../../src/index.ts");
   const args = ["--build", ...(options.args ?? [])];
-  const { stdout, stderr } = await execFileAsync(process.execPath, [cli, ...args], {
-    cwd: options.projectRoot,
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      ...(options.env ?? {}),
+  const { stdout, stderr } = await execFileAsync(
+    process.execPath,
+    [cli, ...args],
+    {
+      cwd: options.projectRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ...(options.env ?? {}),
+      },
+      maxBuffer: 1024 * 1024 * 16,
     },
-    maxBuffer: 1024 * 1024 * 16,
-  });
+  );
   return { stdout, stderr };
 };
 
 export const readSiteManifest = async (projectRoot: string) => {
-  const content = await readFile(join(projectRoot, "dist", ".bascik", "manifest.json"), "utf8");
-  return JSON.parse(content) as { version: string; files: Record<string, { hash: string; size: number }> };
+  const content = await readFile(
+    join(projectRoot, "dist", ".bascik", "manifest.json"),
+    "utf8",
+  );
+  return JSON.parse(content) as {
+    version: string;
+    files: Record<string, { hash: string; size: number }>;
+  };
 };
 
 export interface BuildFixture {
@@ -121,7 +146,10 @@ export interface BuildFixture {
 
 /** Absolute path of the isolated fixture at the given root, creating subdirs. */
 export const fixtureRoot = (name: string): string => {
-  const root = join(tmpdir(), `bascik-100-${name}-${process.pid}-${Date.now()}`);
+  const root = join(
+    tmpdir(),
+    `bascik-100-${name}-${process.pid}-${Date.now()}`,
+  );
   return root;
 };
 
@@ -131,14 +159,21 @@ export const createFixtureDirs = async (root: string): Promise<void> => {
   await mkdir(join(root, "src/pages/assets"), { recursive: true });
 };
 
-export const writeFixtureFile = async (root: string, relPath: string, content: string): Promise<void> => {
+export const writeFixtureFile = async (
+  root: string,
+  relPath: string,
+  content: string,
+): Promise<void> => {
   const abs = join(root, relPath);
   await mkdir(dirname(abs), { recursive: true });
   await writeFile(abs, content, "utf8");
 };
 
 /** (Re)write the fixture config to target a specific worker mode. */
-export const writeWorkersConfig = async (root: string, workers: boolean): Promise<void> => {
+export const writeWorkersConfig = async (
+  root: string,
+  workers: boolean,
+): Promise<void> => {
   await writeFixtureFile(
     root,
     "bascik.config.js",
@@ -157,7 +192,9 @@ export const writeWorkersConfig = async (root: string, workers: boolean): Promis
  * the page path. Worker-versus-serial parity must therefore run both builds
  * against the SAME filesystem root, toggling the workers config between runs.
  */
-export const writeParityFixture = async (root: string): Promise<BuildFixture> => {
+export const writeParityFixture = async (
+  root: string,
+): Promise<BuildFixture> => {
   await createFixtureDirs(root);
   await writeWorkersConfig(root, true);
 
@@ -194,12 +231,21 @@ export const writeParityFixture = async (root: string): Promise<BuildFixture> =>
     `<!DOCTYPE html><html><head><title>B</title></head><body><p data-testid="b">B page</p></body></html>`,
   );
 
-  await writeFixtureFile(root, "src/pages/assets/logo.txt", "raw asset bytes\n");
+  await writeFixtureFile(
+    root,
+    "src/pages/assets/logo.txt",
+    "raw asset bytes\n",
+  );
   // unchanged-copy asset: content identical to its eventual dist copy (hash-equal no-op).
-  await writeFixtureFile(root, "src/pages/assets/unchanged.txt", "same bytes both sides");
+  await writeFixtureFile(
+    root,
+    "src/pages/assets/unchanged.txt",
+    "same bytes both sides",
+  );
 
   return {
-    root, emittedAssetPaths: [
+    root,
+    emittedAssetPaths: [
       "a.html",
       "b.html",
       "index.html",
@@ -207,7 +253,7 @@ export const writeParityFixture = async (root: string): Promise<BuildFixture> =>
       "assets/unchanged.txt",
       ".bascik/csp-hashes.json",
       ".bascik/server-scripts.json",
-    ]
+    ],
   };
 };
 

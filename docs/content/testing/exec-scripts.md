@@ -10,13 +10,10 @@ Bascik supports registering scripts that execute before or after the main compil
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
-  exec: [
-    'scripts/generate-sitemap.ts',
-    'scripts/generate-search-index.ts',
-  ],
+  exec: ["scripts/generate-sitemap.ts", "scripts/generate-search-index.ts"],
 });
 ```
 
@@ -37,8 +34,8 @@ By separating the file-writing layer from the XML/JSON generation logic, you can
 Export the generator and output functions so they can be imported and executed in isolation:
 
 ```ts
-import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 export interface SitemapConfig {
   siteUrl: string;
@@ -47,18 +44,20 @@ export interface SitemapConfig {
 }
 
 export function buildSitemapXml(siteUrl: string, routes: string[]): string {
-  const cleanUrl = siteUrl.replace(/\/$/, '');
-  const urlEntries = routes.map(r => {
-    const path = r === '/' ? '' : r.startsWith('/') ? r : `/${r}`;
-    return `  <url>\n    <loc>${cleanUrl}${path}</loc>\n  </url>`;
-  }).join('\n');
+  const cleanUrl = siteUrl.replace(/\/$/, "");
+  const urlEntries = routes
+    .map((r) => {
+      const path = r === "/" ? "" : r.startsWith("/") ? r : `/${r}`;
+      return `  <url>\n    <loc>${cleanUrl}${path}</loc>\n  </url>`;
+    })
+    .join("\n");
 
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urlEntries}\n</urlset>`;
 }
 
 export async function generateSitemap(config: SitemapConfig): Promise<void> {
   const xml = buildSitemapXml(config.siteUrl, config.routes);
-  await writeFile(join(config.distDir, 'sitemap.xml'), xml, 'utf8');
+  await writeFile(join(config.distDir, "sitemap.xml"), xml, "utf8");
 }
 ```
 
@@ -67,25 +66,25 @@ export async function generateSitemap(config: SitemapConfig): Promise<void> {
 Test the string builder as a pure function first, then verify the asynchronous disk-writing layer using a temporary directory:
 
 ```ts
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { buildSitemapXml, generateSitemap } from './generate-sitemap.ts';
-import { readFile, rm, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { buildSitemapXml, generateSitemap } from "./generate-sitemap.ts";
+import { readFile, rm, mkdir } from "node:fs/promises";
+import { join } from "node:path";
 
-describe('buildSitemapXml', () => {
-  it('generates valid sitemap XML structure from a list of routes', () => {
-    const xml = buildSitemapXml('https://bascik.dev', ['/', '/docs', '/about']);
+describe("buildSitemapXml", () => {
+  it("generates valid sitemap XML structure from a list of routes", () => {
+    const xml = buildSitemapXml("https://bascik.dev", ["/", "/docs", "/about"]);
 
     expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
-    expect(xml).toContain('<loc>https://bascik.dev</loc>');
-    expect(xml).toContain('<loc>https://bascik.dev/docs</loc>');
-    expect(xml).toContain('<loc>https://bascik.dev/about</loc>');
+    expect(xml).toContain("<loc>https://bascik.dev</loc>");
+    expect(xml).toContain("<loc>https://bascik.dev/docs</loc>");
+    expect(xml).toContain("<loc>https://bascik.dev/about</loc>");
   });
 });
 
-describe('generateSitemap disk operations', () => {
-  const tempDistDir = join(process.cwd(), 'temp-dist-sitemap');
-  const sitemapPath = join(tempDistDir, 'sitemap.xml');
+describe("generateSitemap disk operations", () => {
+  const tempDistDir = join(process.cwd(), "temp-dist-sitemap");
+  const sitemapPath = join(tempDistDir, "sitemap.xml");
 
   beforeEach(async () => {
     await mkdir(tempDistDir, { recursive: true });
@@ -95,15 +94,15 @@ describe('generateSitemap disk operations', () => {
     await rm(tempDistDir, { recursive: true, force: true });
   });
 
-  it('writes sitemap XML directly to the specified destination directory', async () => {
+  it("writes sitemap XML directly to the specified destination directory", async () => {
     await generateSitemap({
-      siteUrl: 'https://bascik.dev',
+      siteUrl: "https://bascik.dev",
       distDir: tempDistDir,
-      routes: ['/', '/docs'],
+      routes: ["/", "/docs"],
     });
 
-    const fileContent = await readFile(sitemapPath, 'utf8');
-    expect(fileContent).toContain('<loc>https://bascik.dev/docs</loc>');
+    const fileContent = await readFile(sitemapPath, "utf8");
+    expect(fileContent).toContain("<loc>https://bascik.dev/docs</loc>");
   });
 });
 ```
@@ -117,8 +116,8 @@ For complex JSON artifacts (such as client-side search indexes), verify that fie
 ### 1. The Search Index Module (`scripts/generate-search-index.ts`)
 
 ```ts
-import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 export interface SearchRecord {
   title: string;
@@ -128,43 +127,49 @@ export interface SearchRecord {
 
 export function buildSearchIndexJson(records: SearchRecord[]): string {
   // Strip raw HTML elements or markdown markers before indexing
-  const cleanedRecords = records.map(r => ({
+  const cleanedRecords = records.map((r) => ({
     title: r.title,
     route: r.route,
-    text: r.text.replace(/<[^>]*>/g, '').replace(/[*#`]/g, '').trim(),
+    text: r.text
+      .replace(/<[^>]*>/g, "")
+      .replace(/[*#`]/g, "")
+      .trim(),
   }));
 
   return JSON.stringify(cleanedRecords, null, 2);
 }
-export async function generateSearchIndex(distDir: string, records: SearchRecord[]): Promise<void> {
+export async function generateSearchIndex(
+  distDir: string,
+  records: SearchRecord[],
+): Promise<void> {
   const json = buildSearchIndexJson(records);
-  await writeFile(join(distDir, 'search-index.json'), json, 'utf8');
+  await writeFile(join(distDir, "search-index.json"), json, "utf8");
 }
 ```
 
 ### 2. The Vitest Test Suite (`scripts/generate-search-index.test.ts`)
 
 ```ts
-import { describe, it, expect } from 'vitest';
-import { buildSearchIndexJson } from './generate-search-index.ts';
+import { describe, it, expect } from "vitest";
+import { buildSearchIndexJson } from "./generate-search-index.ts";
 
-describe('buildSearchIndexJson', () => {
-  it('sanitizes text content by removing HTML elements and markdown markers', () => {
+describe("buildSearchIndexJson", () => {
+  it("sanitizes text content by removing HTML elements and markdown markers", () => {
     const rawRecords = [
       {
-        title: 'Introduction',
-        route: '/intro',
-        text: '<p>Welcome to **Bascik**! Let`s build fast sites.</p>',
+        title: "Introduction",
+        route: "/intro",
+        text: "<p>Welcome to **Bascik**! Let`s build fast sites.</p>",
       },
     ];
 
     const json = buildSearchIndexJson(rawRecords);
     const parsed = JSON.parse(json);
 
-    expect(parsed[0].title).toBe('Introduction');
-    expect(parsed[0].route).toBe('/intro');
+    expect(parsed[0].title).toBe("Introduction");
+    expect(parsed[0].route).toBe("/intro");
     // HTML tag and markdown ** stripped
-    expect(parsed[0].text).toBe('Welcome to Bascik! Let`s build fast sites.');
+    expect(parsed[0].text).toBe("Welcome to Bascik! Let`s build fast sites.");
   });
 });
 ```

@@ -20,7 +20,7 @@
     document.getElementById("dispatch-btn").addEventListener("click", () => {
       const event = new CustomEvent("comp-update", {
         bubbles: true,
-        detail: { instanceId: document.getElementById("wrapper").id }
+        detail: { instanceId: document.getElementById("wrapper").id },
       });
       document.getElementById("wrapper").dispatchEvent(event);
     });
@@ -31,8 +31,10 @@
     });
 
     // Simulate resize by manually firing the resize event
-    document.getElementById("trigger-resize-btn").addEventListener("click", () => {
-      window.dispatchEvent(new Event("resize"));
-    });
+    document
+      .getElementById("trigger-resize-btn")
+      .addEventListener("click", () => {
+        window.dispatchEvent(new Event("resize"));
+      });
   </script>
 </div>

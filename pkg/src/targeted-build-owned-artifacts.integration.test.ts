@@ -51,12 +51,18 @@ const PKG_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "index.ts");
 const startServerFixture = async (root: string, port: number) => {
   const child = spawn(process.execPath, [PKG_ENTRY, "--server"], {
     cwd: root,
-    env: { ...process.env, BASCIK_SERVER_PORT: String(port), BASCIK_ENABLE_TLS: "false" },
+    env: {
+      ...process.env,
+      BASCIK_SERVER_PORT: String(port),
+      BASCIK_ENABLE_TLS: "false",
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   const base = `http://localhost:${port}`;
   let stderr = "";
-  child.stderr?.on("data", (d) => { stderr += d.toString(); });
+  child.stderr?.on("data", (d) => {
+    stderr += d.toString();
+  });
   // Wait for the server to accept connections.
   const started = Date.now();
   while (Date.now() - started < 15000) {
@@ -134,8 +140,12 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
 
         // B sidecar entry exists after full build.
         const fullSidecar = Object.values(fullInv.sidecar);
-        expect(fullSidecar.some((s) => s.includes("B server value"))).toBe(true);
-        expect(fullSidecar.some((s) => s.includes("A server value"))).toBe(true);
+        expect(fullSidecar.some((s) => s.includes("B server value"))).toBe(
+          true,
+        );
+        expect(fullSidecar.some((s) => s.includes("A server value"))).toBe(
+          true,
+        );
         expect(fullInv.files["blog/one.html"]).toBeDefined();
         expect(fullInv.files["blog/two.html"]).toBeDefined();
 
@@ -155,18 +165,35 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
   ];</script></head>
   <body><h1 data-testid="post">post</h1></body></html>`,
         );
-        const targeted = await runBuild(root, ["--only", "a.html", "--only", "blog/*.html"]);
+        const targeted = await runBuild(root, [
+          "--only",
+          "a.html",
+          "--only",
+          "blog/*.html",
+        ]);
         expect(targeted.stdout).toContain("Build complete");
 
-        const targetedInv = toInventory(await readEmittedFiles(join(root, "dist")));
+        const targetedInv = toInventory(
+          await readEmittedFiles(join(root, "dist")),
+        );
 
         // B's sidecar entry must survive (untouched owner retained).
-        const bEntry = Object.values(targetedInv.sidecar).find((s) => s.includes("B server value"));
-        expect(bEntry, "untouched B sidecar entry must survive targeted rebuild of A").toBeDefined();
+        const bEntry = Object.values(targetedInv.sidecar).find((s) =>
+          s.includes("B server value"),
+        );
+        expect(
+          bEntry,
+          "untouched B sidecar entry must survive targeted rebuild of A",
+        ).toBeDefined();
 
         // A's removed server script must be pruned.
-        const aEntry = Object.values(targetedInv.sidecar).find((s) => s.includes("A server value"));
-        expect(aEntry, "removed A server script must be pruned from sidecar").toBeUndefined();
+        const aEntry = Object.values(targetedInv.sidecar).find((s) =>
+          s.includes("A server value"),
+        );
+        expect(
+          aEntry,
+          "removed A server script must be pruned from sidecar",
+        ).toBeUndefined();
 
         // Removed route two must be gone from disk, manifest, and CSP.
         expect(existsSync(join(root, "dist", "blog", "two.html"))).toBe(false);
@@ -236,8 +263,16 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
         );
         const full = await runBuild(root);
         expect(full.stdout).toContain("Build complete");
-        expect(toInventory(await readEmittedFiles(join(root, "dist"))).files["blog/one.html"]).toBeDefined();
-        expect(toInventory(await readEmittedFiles(join(root, "dist"))).files["blog/two.html"]).toBeDefined();
+        expect(
+          toInventory(await readEmittedFiles(join(root, "dist"))).files[
+            "blog/one.html"
+          ],
+        ).toBeDefined();
+        expect(
+          toInventory(await readEmittedFiles(join(root, "dist"))).files[
+            "blog/two.html"
+          ],
+        ).toBeDefined();
 
         // Template now emits zero routes.
         await writeFixtureFile(
@@ -294,8 +329,16 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
         );
         const full = await runBuild(root);
         expect(full.stdout).toContain("Build complete");
-        expect(toInventory(await readEmittedFiles(join(root, "dist"))).files["blog/one.html"]).toBeDefined();
-        expect(toInventory(await readEmittedFiles(join(root, "dist"))).files["blog/two.html"]).toBeDefined();
+        expect(
+          toInventory(await readEmittedFiles(join(root, "dist"))).files[
+            "blog/one.html"
+          ],
+        ).toBeDefined();
+        expect(
+          toInventory(await readEmittedFiles(join(root, "dist"))).files[
+            "blog/two.html"
+          ],
+        ).toBeDefined();
 
         // Template now emits ZERO routes. Run TWO fresh targeted builds in a row.
         await writeFixtureFile(
@@ -325,15 +368,22 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
 
         // Untouched A page and its server script survive.
         expect(inv.files["a.html"]).toBeDefined();
-        expect(Object.values(inv.sidecar).some((s) => s.includes("A server"))).toBe(true);
+        expect(
+          Object.values(inv.sidecar).some((s) => s.includes("A server")),
+        ).toBe(true);
 
         // (b) The zero-route owner's pair of sidecar script entries is dropped
         // from the sidecar exactly once. Bascik stores server-script bodies
         // inline in server-scripts.json (no separate .js files under
         // dist/.bascik/server-scripts/), so the sidecar entry removal is the
         // only cleanup the (now inert, unreachable) bodies require.
-        const blogScriptEntries = Object.values(inv.sidecar).filter((s) => s.includes("Blog server"));
-        expect(blogScriptEntries, "zero-route owner's sidecar entries must be dropped").toEqual([]);
+        const blogScriptEntries = Object.values(inv.sidecar).filter((s) =>
+          s.includes("Blog server"),
+        );
+        expect(
+          blogScriptEntries,
+          "zero-route owner's sidecar entries must be dropped",
+        ).toEqual([]);
       } finally {
         await cleanupFixture(root);
       }
@@ -347,8 +397,14 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
       try {
         const full = await runBuild(root);
         expect(full.stdout).toContain("Build complete");
-        const beforeSidecar = (await readFile(join(root, "dist", ".bascik", "server-scripts.json"), "utf8"));
-        const beforeOwnership = (await readFile(join(root, "dist", ".bascik", "ownership.json"), "utf8"));
+        const beforeSidecar = await readFile(
+          join(root, "dist", ".bascik", "server-scripts.json"),
+          "utf8",
+        );
+        const beforeOwnership = await readFile(
+          join(root, "dist", ".bascik", "ownership.json"),
+          "utf8",
+        );
 
         // Corrupt a rebuilt page's source so the targeted build of A fails.
         await writeFixtureFile(
@@ -356,16 +412,30 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
           "src/pages/a.html",
           `<!DOCTYPE html><html><head><title>A</title></head><body><p data-testid="a">broken`,
         );
-        const targeted = await runBuild(root, ["--only", "a.html"]).catch((e) => ({ failed: true as const, error: e }));
+        const targeted = await runBuild(root, ["--only", "a.html"]).catch(
+          (e) => ({ failed: true as const, error: e }),
+        );
         expect((targeted as { failed: true }).failed).toBe(true);
 
         // Prior artifact set is unchanged: B's sidecar entry, ownership, and
         // on-disk page outputs survive a failed targeted build.
-        const afterSidecar = JSON.parse(await readFile(join(root, "dist", ".bascik", "server-scripts.json"), "utf8")) as {
+        const afterSidecar = JSON.parse(
+          await readFile(
+            join(root, "dist", ".bascik", "server-scripts.json"),
+            "utf8",
+          ),
+        ) as {
           scripts: Record<string, { source?: string }>;
         };
-        expect(Object.values(afterSidecar.scripts).some((s) => s.source?.includes("B server value"))).toBe(true);
-        const afterOwnership = (await readFile(join(root, "dist", ".bascik", "ownership.json"), "utf8"));
+        expect(
+          Object.values(afterSidecar.scripts).some((s) =>
+            s.source?.includes("B server value"),
+          ),
+        ).toBe(true);
+        const afterOwnership = await readFile(
+          join(root, "dist", ".bascik", "ownership.json"),
+          "utf8",
+        );
         expect(afterOwnership).toBe(beforeOwnership);
         // A's unchanged prior output still on disk.
         expect(existsSync(join(root, "dist", "a.html"))).toBe(true);

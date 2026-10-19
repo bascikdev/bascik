@@ -8,14 +8,24 @@ import { cleanGeneratorEnvironment } from "../../bench/profile-workload.ts";
 
 const directories: string[] = [];
 afterEach(async () => {
-  await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true })));
+  await Promise.all(
+    directories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
+  );
 });
 
 async function nativeInvariant(body: string): Promise<void> {
-  const directory = await mkdtemp(join(tmpdir(), "bascik-retention-invariant-"));
+  const directory = await mkdtemp(
+    join(tmpdir(), "bascik-retention-invariant-"),
+  );
   directories.push(directory);
-  await writeFile(join(directory, "bascik.config.ts"), 'export default { pipeline: { workers: false }, logging: { level: "error" }, minify: false };');
-  const moduleUrl = (name: string) => JSON.stringify(new URL(name, import.meta.url).href);
+  await writeFile(
+    join(directory, "bascik.config.ts"),
+    'export default { pipeline: { workers: false }, logging: { level: "error" }, minify: false };',
+  );
+  const moduleUrl = (name: string) =>
+    JSON.stringify(new URL(name, import.meta.url).href);
   const source = `
     import assert from "node:assert/strict";
     import { writeFile } from "node:fs/promises";
@@ -40,11 +50,23 @@ async function nativeInvariant(body: string): Promise<void> {
   `;
   const environment = cleanGeneratorEnvironment(process.env);
   for (const key of Object.keys(environment)) {
-    if (key.startsWith("BASCIK_") || key.startsWith("VITEST") || key === "NODE_ENV") delete environment[key];
+    if (
+      key.startsWith("BASCIK_") ||
+      key.startsWith("VITEST") ||
+      key === "NODE_ENV"
+    )
+      delete environment[key];
   }
-  const result = await promisify(execFile)(process.execPath, ["--input-type=module", "--eval", source], {
-    cwd: directory, env: environment, timeout: 20_000, maxBuffer: 256 * 1024,
-  });
+  const result = await promisify(execFile)(
+    process.execPath,
+    ["--input-type=module", "--eval", source],
+    {
+      cwd: directory,
+      env: environment,
+      timeout: 20_000,
+      maxBuffer: 256 * 1024,
+    },
+  );
   expect(result.stderr).toBe("");
 }
 
@@ -71,8 +93,10 @@ describe("inline plan ownership and dependency freshness", () => {
     `);
   });
 
-  it.each(["tracked-helper computed import", "literal dynamic import"])("keeps dependencies fresh through %s without mutating the plan", async scenario => {
-    await nativeInvariant(`
+  it.each(["tracked-helper computed import", "literal dynamic import"])(
+    "keeps dependencies fresh through %s without mutating the plan",
+    async (scenario) => {
+      await nativeInvariant(`
       await writeFile("leaf.mjs", "export const value = 0;");
       await writeFile("helper.mjs", 'const target = "./leaf.mjs"; const {value} = await import(target); export {value};');
       const source = ${JSON.stringify(scenario)} === "tracked-helper computed import"
@@ -86,7 +110,8 @@ describe("inline plan ownership and dependency freshness", () => {
       assert.equal(await run(plan), "1");
       assert.equal(JSON.stringify(plan), original, "execution must not mutate the retained plan");
     `);
-  });
+    },
+  );
 
   it("keeps the global cache and graph free of inline history at a fixed twenty live pages", async () => {
     await nativeInvariant(`
@@ -102,8 +127,10 @@ describe("inline plan ownership and dependency freshness", () => {
     `);
   });
 
-  it.each(["unchanged", "reverted"])("reloads a three-level helper through %s inline source", async scenario => {
-    await nativeInvariant(`
+  it.each(["unchanged", "reverted"])(
+    "reloads a three-level helper through %s inline source",
+    async (scenario) => {
+      await nativeInvariant(`
       await writeFile("leaf.mjs", "export const value = 0;");
       await writeFile("middle.mjs", 'export { value } from "./leaf.mjs";');
       await writeFile("helper.mjs", 'export { value } from "./middle.mjs";');
@@ -120,7 +147,8 @@ describe("inline plan ownership and dependency freshness", () => {
         assert.equal(await run(plan), "original:1", "unchanged inline body must observe the edited transitive helper");
       }
     `);
-  });
+    },
+  );
 
   it("lets a suspended old request finish without publishing its retired inline load", async () => {
     await nativeInvariant(`

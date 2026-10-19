@@ -40,7 +40,8 @@ describe("maskCssSyntax – perfect round-trip", () => {
   });
 
   it("keeps genuine url() fragments live for keepUrlArguments:true", () => {
-    const css = '.icon::before { content: "url(#local)"; fill: url("#local"); }';
+    const css =
+      '.icon::before { content: "url(#local)"; fill: url("#local"); }';
     const { masked } = maskCssSyntax(css, { keepUrlArguments: true });
     // The content string is hidden but the real quoted url("#local") stays live,
     // so a url-fragment rewrite can still target it.
@@ -64,6 +65,6 @@ describe("maskCssSyntax – perfect round-trip", () => {
     const { masked, restore } = maskCssSyntax(css, { keepUrlArguments: true });
     expect(restore(masked)).toBe(css);
     // The real attribute selector after the url() must stay live.
-    expect(masked).toContain('svg');
+    expect(masked).toContain("svg");
   });
 });

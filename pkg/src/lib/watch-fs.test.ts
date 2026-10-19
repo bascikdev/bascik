@@ -16,7 +16,7 @@ describe("Watch Mode Real-Filesystem Scenarios (Prompt 44)", () => {
   afterEach(async () => {
     try {
       await rm(tempDir, { recursive: true, force: true });
-    } catch { }
+    } catch {}
   });
 
   it("handles atomic save sequence (temp write + rename) cleanly without data loss", async () => {

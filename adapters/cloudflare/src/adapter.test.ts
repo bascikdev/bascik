@@ -36,7 +36,7 @@ describe("cloudflare adapter definition and execution", () => {
         distDir,
         outDir,
         projectRoot: testDir,
-        log: () => { },
+        log: () => {},
         runtimeEntry: "",
       });
 
@@ -83,12 +83,15 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "pages",
-        log: () => { },
+        log: () => {},
         runtimeEntry: "",
       });
 
       expect(result.workerPath).toBe(join(outDir, "public/_worker.js"));
-      const routesJson = await readFile(join(outDir, "public/_routes.json"), "utf8");
+      const routesJson = await readFile(
+        join(outDir, "public/_routes.json"),
+        "utf8",
+      );
       expect(JSON.parse(routesJson).version).toBe(1);
     } finally {
       await rm(testDir, { recursive: true, force: true });
@@ -109,7 +112,10 @@ describe("cloudflare adapter definition and execution", () => {
       await writeFile(join(distDir, "index.html"), "<p>home</p>");
       await writeFile(join(distDir, "404.html"), "<p>missing</p>");
       await writeFile(join(distDir, "assets/logo.txt"), "logo");
-      await writeFile(join(distDir, "_headers"), "/*\n  X-Frame-Options: DENY\n");
+      await writeFile(
+        join(distDir, "_headers"),
+        "/*\n  X-Frame-Options: DENY\n",
+      );
       await writeFile(join(distDir, "_redirects"), "/old /new 301\n");
 
       const graph: SiteGraph = {
@@ -118,25 +124,59 @@ describe("cloudflare adapter definition and execution", () => {
         scriptTimeoutMs: 1000,
         apiTimeoutMs: 1000,
         onServerScriptError: "error",
-        publicFiles: ["index.html", "404.html", "assets/logo.txt", "_headers", "_redirects"],
+        publicFiles: [
+          "index.html",
+          "404.html",
+          "assets/logo.txt",
+          "_headers",
+          "_redirects",
+        ],
         pages: {},
         apiRoutes: [],
         importRoot: testDir,
       };
 
       try {
-        await adapter.build({ graph, distDir, outDir, projectRoot: testDir, variant, log: () => { }, runtimeEntry: "" });
-        expect(await readFile(join(outDir, "public/docs/index.html"), "utf8")).toBe("<p>home</p>");
-        expect(await readFile(join(outDir, "public/docs/404.html"), "utf8")).toBe("<p>missing</p>");
-        expect(await readFile(join(outDir, "public/docs/assets/logo.txt"), "utf8")).toBe("logo");
-        expect(await readFile(join(outDir, "public/_headers"), "utf8")).toContain("X-Frame-Options");
-        expect(await readFile(join(outDir, "public/_redirects"), "utf8")).toBe("/old /new 301\n");
-        await expect(readFile(join(outDir, "public/docs/_headers"))).rejects.toThrow();
-        await expect(readFile(join(outDir, "public/docs/_redirects"))).rejects.toThrow();
-        await expect(readFile(join(outDir, "public/index.html"))).rejects.toThrow();
+        await adapter.build({
+          graph,
+          distDir,
+          outDir,
+          projectRoot: testDir,
+          variant,
+          log: () => {},
+          runtimeEntry: "",
+        });
+        expect(
+          await readFile(join(outDir, "public/docs/index.html"), "utf8"),
+        ).toBe("<p>home</p>");
+        expect(
+          await readFile(join(outDir, "public/docs/404.html"), "utf8"),
+        ).toBe("<p>missing</p>");
+        expect(
+          await readFile(join(outDir, "public/docs/assets/logo.txt"), "utf8"),
+        ).toBe("logo");
+        expect(
+          await readFile(join(outDir, "public/_headers"), "utf8"),
+        ).toContain("X-Frame-Options");
+        expect(await readFile(join(outDir, "public/_redirects"), "utf8")).toBe(
+          "/old /new 301\n",
+        );
+        await expect(
+          readFile(join(outDir, "public/docs/_headers")),
+        ).rejects.toThrow();
+        await expect(
+          readFile(join(outDir, "public/docs/_redirects")),
+        ).rejects.toThrow();
+        await expect(
+          readFile(join(outDir, "public/index.html")),
+        ).rejects.toThrow();
         if (variant === "pages") {
-          await expect(readFile(join(outDir, "public/_worker.js"), "utf8")).resolves.toBeTypeOf("string");
-          await expect(readFile(join(outDir, "public/_routes.json"), "utf8")).resolves.toBeTypeOf("string");
+          await expect(
+            readFile(join(outDir, "public/_worker.js"), "utf8"),
+          ).resolves.toBeTypeOf("string");
+          await expect(
+            readFile(join(outDir, "public/_routes.json"), "utf8"),
+          ).resolves.toBeTypeOf("string");
         }
       } finally {
         await rm(testDir, { recursive: true, force: true });
@@ -170,7 +210,7 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "workers",
-        log: () => { },
+        log: () => {},
         runtimeEntry: "",
       });
 
@@ -214,11 +254,13 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "workers",
-        log: () => { },
+        log: () => {},
         runtimeEntry: "",
       });
 
-      const wrangler = JSON.parse(await readFile(join(outDir, "wrangler.jsonc"), "utf8"));
+      const wrangler = JSON.parse(
+        await readFile(join(outDir, "wrangler.jsonc"), "utf8"),
+      );
       expect(wrangler.name).toBe("custom-worker-app");
 
       // Test root wrangler.jsonc takes precedence over package.json
@@ -233,10 +275,12 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "workers",
-        log: () => { },
+        log: () => {},
         runtimeEntry: "",
       });
-      const authoredWrangler = JSON.parse(await readFile(join(outDir, "wrangler.jsonc"), "utf8"));
+      const authoredWrangler = JSON.parse(
+        await readFile(join(outDir, "wrangler.jsonc"), "utf8"),
+      );
       expect(authoredWrangler.name).toBe("authored-wrangler-name");
       await rm(join(testDir, "wrangler.jsonc"), { force: true });
 
@@ -248,10 +292,12 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "workers",
-        log: () => { },
+        log: () => {},
         runtimeEntry: "",
       });
-      const overridden = JSON.parse(await readFile(join(outDir, "wrangler.jsonc"), "utf8"));
+      const overridden = JSON.parse(
+        await readFile(join(outDir, "wrangler.jsonc"), "utf8"),
+      );
       expect(overridden.name).toBe("env-worker-override");
       delete process.env.CLOUDFLARE_WORKER_NAME;
     } finally {
@@ -277,7 +323,11 @@ describe("cloudflare adapter definition and execution", () => {
   },
 }
 `;
-    await writeFile(join(testDir, "wrangler.jsonc"), authoredConfigContent, "utf8");
+    await writeFile(
+      join(testDir, "wrangler.jsonc"),
+      authoredConfigContent,
+      "utf8",
+    );
 
     const graph: SiteGraph = {
       base: "/",
@@ -299,16 +349,21 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "workers",
-        log: () => { },
+        log: () => {},
         runtimeEntry: "",
       });
 
       // Confirm root wrangler.jsonc was not overwritten or touched
-      const rootConfigAfterFirstBuild = await readFile(join(testDir, "wrangler.jsonc"), "utf8");
+      const rootConfigAfterFirstBuild = await readFile(
+        join(testDir, "wrangler.jsonc"),
+        "utf8",
+      );
       expect(rootConfigAfterFirstBuild).toBe(authoredConfigContent);
 
       // Confirm generated wrangler.jsonc in outDir has derived settings
-      const generated1 = JSON.parse(await readFile(join(outDir, "wrangler.jsonc"), "utf8"));
+      const generated1 = JSON.parse(
+        await readFile(join(outDir, "wrangler.jsonc"), "utf8"),
+      );
       expect(generated1.name).toBe("my-custom-authored-worker");
       expect(generated1.compatibility_flags).toContain("custom_flag");
       expect(generated1.compatibility_flags).toContain("nodejs_compat");
@@ -320,12 +375,15 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "workers",
-        log: () => { },
+        log: () => {},
         runtimeEntry: "",
       });
 
       // Still unchanged in root
-      const rootConfigAfterSecondBuild = await readFile(join(testDir, "wrangler.jsonc"), "utf8");
+      const rootConfigAfterSecondBuild = await readFile(
+        join(testDir, "wrangler.jsonc"),
+        "utf8",
+      );
       expect(rootConfigAfterSecondBuild).toBe(authoredConfigContent);
     } finally {
       await rm(testDir, { recursive: true, force: true });
@@ -349,7 +407,11 @@ describe("cloudflare adapter definition and execution", () => {
     [vars]
     KEY = "val"
     `;
-    await writeFile(join(testDir, "wrangler.toml"), authoredTomlContent, "utf8");
+    await writeFile(
+      join(testDir, "wrangler.toml"),
+      authoredTomlContent,
+      "utf8",
+    );
 
     const graph: SiteGraph = {
       base: "/",
@@ -370,14 +432,19 @@ describe("cloudflare adapter definition and execution", () => {
         outDir,
         projectRoot: testDir,
         variant: "workers",
-        log: () => { },
+        log: () => {},
         runtimeEntry: "",
       });
 
-      const rootTomlAfterBuild = await readFile(join(testDir, "wrangler.toml"), "utf8");
+      const rootTomlAfterBuild = await readFile(
+        join(testDir, "wrangler.toml"),
+        "utf8",
+      );
       expect(rootTomlAfterBuild).toBe(authoredTomlContent);
 
-      const generated = JSON.parse(await readFile(join(outDir, "wrangler.jsonc"), "utf8"));
+      const generated = JSON.parse(
+        await readFile(join(outDir, "wrangler.jsonc"), "utf8"),
+      );
       expect(generated.name).toBe("authored-toml-worker");
       expect(generated.compatibility_date).toBe("2026-09-01");
       expect(generated.compatibility_flags).toContain("custom_toml_flag");
@@ -414,10 +481,12 @@ describe("cloudflare adapter definition and execution", () => {
           outDir,
           projectRoot: testDir,
           variant: "invalid",
-          log: () => { },
+          log: () => {},
           runtimeEntry: "",
         }),
-      ).rejects.toThrow(/unknown variant "invalid". Valid variants are "pages" and "workers"/);
+      ).rejects.toThrow(
+        /unknown variant "invalid". Valid variants are "pages" and "workers"/,
+      );
     } finally {
       await rm(testDir, { recursive: true, force: true });
     }

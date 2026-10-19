@@ -6,7 +6,7 @@ Bascik transforms source HTML into deployable HTML by replacing every custom com
 
 Every time a source page or component file changes, `pageProcessing(filePath)` in `processing.ts` is called. This is the top-level entry point for the whole pipeline.
 
-Build scripts (`<script data-bascik-build>`) run **first**, before component resolution, so their output can contain component tags. Body HTML minification runs *after* component resolution so that whitespace-sensitive content from resolved components (e.g. `<pre>` blocks from `<code-block>`) is preserved intact.
+Build scripts (`<script data-bascik-build>`) run **first**, before component resolution, so their output can contain component tags. Body HTML minification runs _after_ component resolution so that whitespace-sensitive content from resolved components (e.g. `<pre>` blocks from `<code-block>`) is preserved intact.
 
 ## Lifecycle and Pipeline Ordering Guarantee
 
@@ -123,7 +123,7 @@ On startup (and whenever a component is added), the watch system calls `processA
 
 ## Generation Ownership: Monotonic Dev Publication
 
-Concurrent invalidation entrypoints (`processPageBatch`, `pageProcessing`, and the worker path in `processAllPages`) can race for the same page. Without coordination, an older, slower batch could finish *after* a newer direct edit and overwrite the newer state in memory, on disk, in the dependency indexes, or in the reload stream.
+Concurrent invalidation entrypoints (`processPageBatch`, `pageProcessing`, and the worker path in `processAllPages`) can race for the same page. Without coordination, an older, slower batch could finish _after_ a newer direct edit and overwrite the newer state in memory, on disk, in the dependency indexes, or in the reload stream.
 
 Bascik assigns every page a monotonically increasing **generation** at publication time. A job carries the generation it was claimed under and, when it completes, applies its side effects (memory store, disk write, sidecar record, `transpiled` event) only if that generation is still the latest for the page:
 
@@ -148,7 +148,7 @@ For bracket-parameter pages, `<script data-bascik-routes>` runs before page buil
 6. **Rewrite base paths.** When `base` is not `/`, root-relative HTML and CSS URLs receive the normalized prefix. This runs after component ID-reference rewriting, so `href="#id"` and `url(#id)` are already final and remain untouched, and before minification. Markup-like text in comments and raw-text elements is shielded. With the default `/`, the step returns the original bytes immediately.
 7. **Inject live-reload script.** In dev mode only, a small `<script>` that opens a Server-Sent Events connection to `/bascik-live-reload` is appended to the body.
 8. **Extract server scripts to sidecar.** Any `<script data-bascik-server>` blocks have their source recorded in the server sidecar registry and are replaced with inert placeholders (`<script type="text/bascik-server" data-bascik-server-id="...">`). This keeps server source code out of the emitted HTML.
-9. **Minify.** HTML comments are stripped and excess whitespace is collapsed via `minifyHtml`. This runs *after* component resolution so that whitespace-sensitive content inside resolved components (e.g. `<pre>` blocks from `<code-block>`) is preserved intact.
+9. **Minify.** HTML comments are stripped and excess whitespace is collapsed via `minifyHtml`. This runs _after_ component resolution so that whitespace-sensitive content inside resolved components (e.g. `<pre>` blocks from `<code-block>`) is preserved intact.
 10. **Reassemble HTML.** The resolved body and head are placed back into the original HTML document structure. An idempotent whole-document base-path pass then covers URL-bearing attributes on the `html`, `head`, and `body` opening tags.
 11. **Store and write output.** In build mode, the finished HTML is written to `dist/` before transpilation completes. In dev mode, the result is stored in the in-memory page store first, then written to `dist/` asynchronously so serving never waits for file I/O. Writes for repeated edits to the same page are serialized.
 12. **Emit transpiled event.** `eventEmitter.emit("transpiled")` triggers live-reload for any connected browser.
@@ -172,6 +172,7 @@ Uncached `<script data-bascik-build>` blocks are executed by Node.js, which carr
 ### Page-Level Batch Execution
 
 When a page contains multiple uncached `<script data-bascik-build>` blocks:
+
 1. Bascik groups all uncached tasks into a single batch.
 2. A lightweight ESM runner harness dynamically imports each script sequentially in one child process. Each task retains its own `BASCIK_SOURCE_FILE` value and source map identity, including scripts authored by components and deferred until the page phase.
 3. During evaluation, `process.stdout.write` and `process.stderr.write` are intercepted per script block to ensure clean output separation.

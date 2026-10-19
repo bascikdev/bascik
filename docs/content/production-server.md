@@ -21,14 +21,14 @@ The production server is read-only and designed for deployment:
 
 ## CLI Flags
 
-| Flag | Description | Default |
-| :--- | :--- | :--- |
-| `--server` | Start the production server runtime | `false` |
-| `--port <number>` | Port to listen on | `8080` (HTTP) or `8443` (HTTPS/HTTP2) |
-| `--hostname <string>` | Interface to bind | `localhost` |
-| `--base <path>` | Deployment path prefix | `/` |
-| `--config <path>` | Path to explicit config file | `bascik.config.ts` |
-| `--env-file <path>` | Custom environment file path | `./.env` |
+| Flag                  | Description                         | Default                               |
+| :-------------------- | :---------------------------------- | :------------------------------------ |
+| `--server`            | Start the production server runtime | `false`                               |
+| `--port <number>`     | Port to listen on                   | `8080` (HTTP) or `8443` (HTTPS/HTTP2) |
+| `--hostname <string>` | Interface to bind                   | `localhost`                           |
+| `--base <path>`       | Deployment path prefix              | `/`                                   |
+| `--config <path>`     | Path to explicit config file        | `bascik.config.ts`                    |
+| `--env-file <path>`   | Custom environment file path        | `./.env`                              |
 
 ```sh
 # Run on port 3000 bound to all interfaces
@@ -41,12 +41,12 @@ Configure production server runtime behavior under the `http` key in `bascik.con
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   http: {
     port: 8080,
-    hostname: '0.0.0.0',
+    hostname: "0.0.0.0",
     compression: true,
     trustProxy: true,
     rateLimit: {
@@ -54,13 +54,13 @@ export default defineConfig({
       max: 1000,
     },
     cacheControl: {
-      '.woff2': 'public, max-age=31536000, immutable',
-      '.png': 'public, max-age=86400',
+      ".woff2": "public, max-age=31536000, immutable",
+      ".png": "public, max-age=86400",
     },
     tls: {
       enabled: false,
-      keyFile: './certs/key.pem',
-      certFile: './certs/cert.pem',
+      keyFile: "./certs/key.pem",
+      certFile: "./certs/cert.pem",
     },
   },
 });
@@ -68,17 +68,17 @@ export default defineConfig({
 
 ### Server Configuration Options
 
-| Option | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `http.port` | `number` | `8080` / `8443` | TCP port to listen on |
-| `http.hostname` | `string` | `'localhost'` | Network interface to bind |
-| `http.compression` | `boolean` | `true` | Enables automatic Gzip and Brotli compression |
-| `http.trustProxy` | `boolean` | `false` | Trust `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` proxy headers |
-| `http.rateLimit` | `boolean \| object` | `false` | In-memory sliding-window IP rate limiter |
-| `http.cacheControl` | `Record<string, string>` | `{}` | Custom `Cache-Control` headers matched by file extension |
-| `http.timeouts` | `object` | `{}` | Socket request, headers, and keep-alive timeout values |
-| `http.maxBodySize` | `number` | `10485760` (10MB) | Maximum payload byte size for API route requests |
-| `http.tls` | `object` | `{ enabled: false }` | TLS / HTTPS and HTTP/2 certificate configuration |
+| Option              | Type                     | Default              | Description                                                                        |
+| :------------------ | :----------------------- | :------------------- | :--------------------------------------------------------------------------------- |
+| `http.port`         | `number`                 | `8080` / `8443`      | TCP port to listen on                                                              |
+| `http.hostname`     | `string`                 | `'localhost'`        | Network interface to bind                                                          |
+| `http.compression`  | `boolean`                | `true`               | Enables automatic Gzip and Brotli compression                                      |
+| `http.trustProxy`   | `boolean`                | `false`              | Trust `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` proxy headers |
+| `http.rateLimit`    | `boolean \| object`      | `false`              | In-memory sliding-window IP rate limiter                                           |
+| `http.cacheControl` | `Record<string, string>` | `{}`                 | Custom `Cache-Control` headers matched by file extension                           |
+| `http.timeouts`     | `object`                 | `{}`                 | Socket request, headers, and keep-alive timeout values                             |
+| `http.maxBodySize`  | `number`                 | `10485760` (10MB)    | Maximum payload byte size for API route requests                                   |
+| `http.tls`          | `object`                 | `{ enabled: false }` | TLS / HTTPS and HTTP/2 certificate configuration                                   |
 
 ## HTTP/2 & TLS Support
 
@@ -91,14 +91,15 @@ export default defineConfig({
     port: 8443,
     tls: {
       enabled: true,
-      keyFile: './certs/privkey.pem',
-      certFile: './certs/fullchain.pem',
+      keyFile: "./certs/privkey.pem",
+      certFile: "./certs/fullchain.pem",
     },
   },
 });
 ```
 
 When TLS is enabled:
+
 - ALPN negotiation enables HTTP/2 for modern clients and HTTP/1.1 for legacy agents.
 - TLS session tickets and SNI routing are configured automatically.
 - Development certificates (e.g. generated with `mkcert`) work seamlessly for local HTTPS testing.

@@ -1,20 +1,43 @@
 import { readFile } from "node:fs/promises";
 import { basename, relative, resolve } from "node:path";
-import { getComponentCss, extractInlineStyles, resolveCssImports } from "./styles.ts";
+import {
+  getComponentCss,
+  extractInlineStyles,
+  resolveCssImports,
+} from "./styles.ts";
 import { getComponentScripts } from "./javascript.ts";
 import { deepReadDirFlat } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { minifyHtml } from "./html-minifier.ts";
-import { createContentShield, maskElementContents, shieldElementContents } from "./shielding.ts";
-import { transformTypeScriptScriptTags, TypeScriptTransformError, hasStaticModuleSyntax } from "./typescript.ts";
+import {
+  createContentShield,
+  maskElementContents,
+  shieldElementContents,
+} from "./shielding.ts";
+import {
+  transformTypeScriptScriptTags,
+  TypeScriptTransformError,
+  hasStaticModuleSyntax,
+} from "./typescript.ts";
 import { getScriptType } from "./script-types.ts";
 import { stampScriptLines, withScriptLine } from "./script-source-lines.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
-import { SCRIPT_END_TAG, scriptOpenTag, BUILD_ATTR_NAME, ROUTES_ATTR_NAME, SERVER_ATTR_NAME, STREAM_ATTR_NAME, isPageAwareBuildOpenTag } from "./html-patterns.ts";
+import {
+  SCRIPT_END_TAG,
+  scriptOpenTag,
+  BUILD_ATTR_NAME,
+  ROUTES_ATTR_NAME,
+  SERVER_ATTR_NAME,
+  STREAM_ATTR_NAME,
+  isPageAwareBuildOpenTag,
+} from "./html-patterns.ts";
 import { findCompatibilityMatches } from "./compatibility-checker.ts";
 import { stderr as colorErr } from "./colors.ts";
-import { PLAUSIBLE_TAG_NAME, PRESERVE_WILDCARD_PATTERN } from "./config-validation.ts";
+import {
+  PLAUSIBLE_TAG_NAME,
+  PRESERVE_WILDCARD_PATTERN,
+} from "./config-validation.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
 
 // Warn if a component name shadows a native HTML element
@@ -167,13 +190,25 @@ const COMPONENT_BUILD_SCRIPT_RE = new RegExp(
 );
 
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const BUILD_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${BUILD_ATTR_NAME}`, "i");
+const BUILD_DIRECTIVE_RE = new RegExp(
+  String.raw`(?:^|\s)${BUILD_ATTR_NAME}`,
+  "i",
+);
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const SERVER_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${SERVER_ATTR_NAME}`, "i");
+const SERVER_DIRECTIVE_RE = new RegExp(
+  String.raw`(?:^|\s)${SERVER_ATTR_NAME}`,
+  "i",
+);
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const ROUTES_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${ROUTES_ATTR_NAME}`, "i");
+const ROUTES_DIRECTIVE_RE = new RegExp(
+  String.raw`(?:^|\s)${ROUTES_ATTR_NAME}`,
+  "i",
+);
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const STREAM_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${STREAM_ATTR_NAME}`, "i");
+const STREAM_DIRECTIVE_RE = new RegExp(
+  String.raw`(?:^|\s)${STREAM_ATTR_NAME}`,
+  "i",
+);
 
 const getLineAtOffset = (source: string, offset: number): number => {
   let line = 1;
@@ -200,18 +235,27 @@ const warnComponentCompatibility = async (
       rawCss = "";
     }
   }
-  const companionFingerprint = companionScripts && companionScripts.scriptMap.size > 0
-    ? [...new Map([...companionScripts.scriptMap.values()].map((s) => [s.relPath, s.code])).entries()]
-      .map(([rel, code]) => `${rel}::${code}`)
-      .join("\0")
-    : "";
+  const companionFingerprint =
+    companionScripts && companionScripts.scriptMap.size > 0
+      ? [
+          ...new Map(
+            [...companionScripts.scriptMap.values()].map((s) => [
+              s.relPath,
+              s.code,
+            ]),
+          ).entries(),
+        ]
+          .map(([rel, code]) => `${rel}::${code}`)
+          .join("\0")
+      : "";
   const fingerprint = `${rawHtml}\0${rawCss}\0${companionFingerprint}`;
   if (componentCompatFingerprints.get(fileName) === fingerprint) {
     return;
   }
   componentCompatFingerprints.set(fileName, fingerprint);
 
-  const relHtml = relative(process.cwd(), fileName).replace(/\\/g, "/") || fileName;
+  const relHtml =
+    relative(process.cwd(), fileName).replace(/\\/g, "/") || fileName;
   const noComments = rawHtml.replace(/<!--[\s\S]*?-->/g, (match) => {
     const newlines = match.match(/\n/g);
     return newlines ? newlines.join("") : " ";
@@ -220,11 +264,19 @@ const warnComponentCompatibility = async (
     "textarea",
     ...(BascikConfig.scoping?.preserve ?? ["code"])
       .map((t) => String(t))
-      .filter((t) => PLAUSIBLE_TAG_NAME.test(t) || PRESERVE_WILDCARD_PATTERN.test(t)),
+      .filter(
+        (t) => PLAUSIBLE_TAG_NAME.test(t) || PRESERVE_WILDCARD_PATTERN.test(t),
+      ),
   ]);
 
   const seenWarnings = new Set<string>();
-  const emitWarning = (displayPath: string, line: number, ruleId: string, message: string, suggestion: string) => {
+  const emitWarning = (
+    displayPath: string,
+    line: number,
+    ruleId: string,
+    message: string,
+    suggestion: string,
+  ) => {
     const key = `${displayPath}:${line}:${ruleId}`;
     if (seenWarnings.has(key)) return;
     seenWarnings.add(key);
@@ -233,17 +285,25 @@ const warnComponentCompatibility = async (
     );
   };
 
-  const styleBlockRegex = /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
+  const styleBlockRegex =
+    /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
   let styleMatch: RegExpExecArray | null;
   while ((styleMatch = styleBlockRegex.exec(nonCodeScan)) !== null) {
     const styleBody = styleMatch[2] ?? "";
     const styleOffset = styleMatch.index + styleMatch[1].length;
     for (const m of findCompatibilityMatches(styleBody, "css")) {
-      emitWarning(relHtml, getLineAtOffset(rawHtml, styleOffset + m.index), m.rule.id, m.rule.message, m.rule.suggestion);
+      emitWarning(
+        relHtml,
+        getLineAtOffset(rawHtml, styleOffset + m.index),
+        m.rule.id,
+        m.rule.message,
+        m.rule.suggestion,
+      );
     }
   }
 
-  const scriptBlockRegex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
+  const scriptBlockRegex =
+    /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
   let scriptMatch: RegExpExecArray | null;
   while ((scriptMatch = scriptBlockRegex.exec(nonCodeScan)) !== null) {
     const openTag = scriptMatch[1];
@@ -255,8 +315,15 @@ const warnComponentCompatibility = async (
     ) {
       continue;
     }
-    const typeMatch = openTag.match(/\stype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
-    const typeVal = (typeMatch?.[1] ?? typeMatch?.[2] ?? typeMatch?.[3] ?? "").toLowerCase();
+    const typeMatch = openTag.match(
+      /\stype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i,
+    );
+    const typeVal = (
+      typeMatch?.[1] ??
+      typeMatch?.[2] ??
+      typeMatch?.[3] ??
+      ""
+    ).toLowerCase();
     const isJs =
       !typeVal ||
       typeVal === "module" ||
@@ -267,15 +334,28 @@ const warnComponentCompatibility = async (
       const scriptBody = scriptMatch[2] ?? "";
       const scriptOffset = scriptMatch.index + openTag.length;
       for (const m of findCompatibilityMatches(scriptBody, "js")) {
-        emitWarning(relHtml, getLineAtOffset(rawHtml, scriptOffset + m.index), m.rule.id, m.rule.message, m.rule.suggestion);
+        emitWarning(
+          relHtml,
+          getLineAtOffset(rawHtml, scriptOffset + m.index),
+          m.rule.id,
+          m.rule.message,
+          m.rule.suggestion,
+        );
       }
     }
   }
 
   if (cssFileName && rawCss) {
-    const relCss = relative(process.cwd(), cssFileName).replace(/\\/g, "/") || cssFileName;
+    const relCss =
+      relative(process.cwd(), cssFileName).replace(/\\/g, "/") || cssFileName;
     for (const m of findCompatibilityMatches(rawCss, "css")) {
-      emitWarning(relCss, getLineAtOffset(rawCss, m.index), m.rule.id, m.rule.message, m.rule.suggestion);
+      emitWarning(
+        relCss,
+        getLineAtOffset(rawCss, m.index),
+        m.rule.id,
+        m.rule.message,
+        m.rule.suggestion,
+      );
     }
   }
 
@@ -285,7 +365,13 @@ const warnComponentCompatibility = async (
       if (visitedCompanions.has(scriptInfo.relPath)) continue;
       visitedCompanions.add(scriptInfo.relPath);
       for (const m of findCompatibilityMatches(scriptInfo.code, "js")) {
-        emitWarning(scriptInfo.relPath, getLineAtOffset(scriptInfo.code, m.index), m.rule.id, m.rule.message, m.rule.suggestion);
+        emitWarning(
+          scriptInfo.relPath,
+          getLineAtOffset(scriptInfo.code, m.index),
+          m.rule.id,
+          m.rule.message,
+          m.rule.suggestion,
+        );
       }
     }
   }
@@ -296,7 +382,11 @@ export const isPageAwareBuildScript = (
   scriptContent: string,
 ): boolean => {
   if (isPageAwareBuildOpenTag(openTag)) return true;
-  if (/\bprocess\.env\.(BASCIK_PAGE_PATH|BASCIK_PAGE_FILE|BASCIK_ROUTE)\b/.test(scriptContent)) {
+  if (
+    /\bprocess\.env\.(BASCIK_PAGE_PATH|BASCIK_PAGE_FILE|BASCIK_ROUTE)\b/.test(
+      scriptContent,
+    )
+  ) {
     return true;
   }
   return false;
@@ -307,7 +397,10 @@ export const isPageAwareBuildScript = (
  * Lowercases the base name without the file extension.
  */
 export const deriveComponentName = (fileName: string): string => {
-  return fileName.replace(/^.*[\\/]/, "").split(".")[0].toLowerCase();
+  return fileName
+    .replace(/^.*[\\/]/, "")
+    .split(".")[0]
+    .toLowerCase();
 };
 
 const COMPONENT_FILE_RE = /\.(html|css|js|ts|mjs)$/;
@@ -320,7 +413,10 @@ const DEFAULT_COMPONENT_ROOT = "src/components";
  * that names the path, most often a typo. Unreadable roots still fail with the
  * original error.
  */
-export const readComponentRoot = async (root: string, cwd = process.cwd()): Promise<string[]> => {
+export const readComponentRoot = async (
+  root: string,
+  cwd = process.cwd(),
+): Promise<string[]> => {
   try {
     return (await deepReadDirFlat(root, COMPONENT_FILE_RE)) ?? [];
   } catch (error) {
@@ -331,7 +427,7 @@ export const readComponentRoot = async (root: string, cwd = process.cwd()): Prom
     const problem = code === "ENOENT" ? "does not exist" : "is not a directory";
     throw new Error(
       `components directory "${display}" ${problem}.\n` +
-      `  It is listed in directory.components in your Bascik config. Create the directory, or fix or remove the entry.`,
+        `  It is listed in directory.components in your Bascik config. Create the directory, or fix or remove the entry.`,
       { cause: error },
     );
   }
@@ -348,13 +444,17 @@ export const listComponents = async (
     await Promise.all(componentRoots.map((root) => readComponentRoot(root)))
   ).flat();
   const componentHtmlFileNames = (componentFileNames as string[]).filter(
-    (fileName) => fileName.match(/\.html$/) && !fileName.match(/\.(test|spec)\.html$/),
+    (fileName) =>
+      fileName.match(/\.html$/) && !fileName.match(/\.(test|spec)\.html$/),
   );
   const componentCssFileNames = (componentFileNames as string[]).filter(
-    (fileName) => fileName.match(/\.css$/) && !fileName.match(/\.(test|spec)\.css$/),
+    (fileName) =>
+      fileName.match(/\.css$/) && !fileName.match(/\.(test|spec)\.css$/),
   );
   const componentScriptFileNames = (componentFileNames as string[]).filter(
-    (fileName) => fileName.match(/\.(js|ts|mjs)$/) && !fileName.match(/\.(test|spec)\.(js|ts|mjs)$/),
+    (fileName) =>
+      fileName.match(/\.(js|ts|mjs)$/) &&
+      !fileName.match(/\.(test|spec)\.(js|ts|mjs)$/),
   );
   // Check for duplicate component names across files
   const nameToFilePaths = new Map<string, string[]>();
@@ -368,13 +468,15 @@ export const listComponents = async (
   const collisions: string[] = [];
   for (const [tag, paths] of nameToFilePaths.entries()) {
     if (paths.length > 1) {
-      const formattedPaths = paths.map((p) => `  ${p.replace(/\\/g, "/")}`).join("\n");
+      const formattedPaths = paths
+        .map((p) => `  ${p.replace(/\\/g, "/")}`)
+        .join("\n");
       collisions.push(
         `error: two component files both define the tag <${tag}>\n` +
-        `${formattedPaths}\n` +
-        `  Component names come from the filename, so neither subfolders nor the roots\n` +
-        `  listed in directory.components create separate namespaces.\n` +
-        `  Rename one file, for example marketing-${tag}.html.`,
+          `${formattedPaths}\n` +
+          `  Component names come from the filename, so neither subfolders nor the roots\n` +
+          `  listed in directory.components create separate namespaces.\n` +
+          `  Rename one file, for example marketing-${tag}.html.`,
       );
     }
   }
@@ -392,31 +494,38 @@ export const listComponents = async (
       if (NATIVE_HTML_ELEMENTS.has(componentName)) {
         console.warn(
           `warning: Component "${componentName}" has the same name as a native HTML element. ` +
-          `This may cause unexpected behavior — consider a hyphenated name like "my-${componentName}".`,
+            `This may cause unexpected behavior — consider a hyphenated name like "my-${componentName}".`,
         );
       } else if (!componentName.includes("-")) {
         console.warn(
           `warning: Component "${componentName}" is not hyphenated. ` +
-          `Under WHATWG HTML §4.13, custom elements should include a hyphen (e.g. "my-${componentName}") to avoid collisions with future HTML standards.`,
+            `Under WHATWG HTML §4.13, custom elements should include a hyphen (e.g. "my-${componentName}") to avoid collisions with future HTML standards.`,
         );
       }
       let fileContentBuffer: Buffer;
       let cssFileContent: string | undefined;
-      let companionScripts: Awaited<ReturnType<typeof getComponentScripts>> | undefined;
+      let companionScripts:
+        Awaited<ReturnType<typeof getComponentScripts>> | undefined;
       const importedStylesheets = new Set<string>();
       const recordImportedStylesheets = () => {
         for (const path of importedStylesheets) {
-          const importers = nextStylesheetImporters.get(path) ?? new Set<string>();
+          const importers =
+            nextStylesheetImporters.get(path) ?? new Set<string>();
           importers.add(componentName);
           nextStylesheetImporters.set(path, importers);
         }
       };
       try {
-        [fileContentBuffer, cssFileContent, companionScripts] = await Promise.all([
-          readFile(fileName),
-          getComponentCss(fileName, componentCssFileNames, importedStylesheets),
-          getComponentScripts(fileName, componentScriptFileNames),
-        ]);
+        [fileContentBuffer, cssFileContent, companionScripts] =
+          await Promise.all([
+            readFile(fileName),
+            getComponentCss(
+              fileName,
+              componentCssFileNames,
+              importedStylesheets,
+            ),
+            getComponentScripts(fileName, componentScriptFileNames),
+          ]);
       } catch (e) {
         // A companion `.ts` that cannot be transformed is an authoring error in
         // the user's source, not an I/O hiccup; surface it instead of shipping
@@ -428,20 +537,32 @@ export const listComponents = async (
       }
 
       const rawContent = fileContentBuffer.toString();
-      await warnComponentCompatibility(rawContent, fileName, componentCssFileNames, companionScripts);
+      await warnComponentCompatibility(
+        rawContent,
+        fileName,
+        componentCssFileNames,
+        companionScripts,
+      );
       // Record every script's source position now: style extraction, build
       // scripts, and minification below all move scripts around. Directive
       // scripts first, because the browser-script stamp adds characters that
       // would shift columns on a shared line. Neither stamp adds newlines.
-      const stampedContent = stampScriptLines(stampDirectiveSources(rawContent, fileName));
+      const stampedContent = stampScriptLines(
+        stampDirectiveSources(rawContent, fileName),
+      );
       // Run build scripts before minification so that generated content
       // stays in its original position (minifyHtml moves <script> tags).
       // Page-aware component build scripts are deferred to page transpilation time.
-      const buildMatches = [...stampedContent.matchAll(COMPONENT_BUILD_SCRIPT_RE)];
+      const buildMatches = [
+        ...stampedContent.matchAll(COMPONENT_BUILD_SCRIPT_RE),
+      ];
       let resolvedContent = stampedContent;
 
       if (buildMatches.length > 0) {
-        const deferredPlaceholders: Array<{ placeholder: string; tag: string }> = [];
+        const deferredPlaceholders: Array<{
+          placeholder: string;
+          tag: string;
+        }> = [];
         let hasStaticScripts = false;
         let withPlaceholders = stampedContent;
 
@@ -464,7 +585,10 @@ export const listComponents = async (
         }
 
         if (hasStaticScripts) {
-          resolvedContent = await executeBuildScripts(withPlaceholders, fileName);
+          resolvedContent = await executeBuildScripts(
+            withPlaceholders,
+            fileName,
+          );
           for (const { placeholder, tag } of deferredPlaceholders) {
             resolvedContent = resolvedContent.replace(placeholder, () => tag);
           }
@@ -479,32 +603,42 @@ export const listComponents = async (
           /<script\b((?:[^>"']|"[^"]*"|'[^']*')*?)\ssrc=["']([^"']+)["']((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi,
           (match, preSrc, srcVal, postSrc, ignoredBody: string) => {
             const baseSrc = basename(srcVal);
-            const scriptInfo = companionScripts!.scriptMap.get(baseSrc) ?? companionScripts!.scriptMap.get(srcVal);
+            const scriptInfo =
+              companionScripts!.scriptMap.get(baseSrc) ??
+              companionScripts!.scriptMap.get(srcVal);
             if (scriptInfo) {
               if (ignoredBody.trim()) {
                 console.warn(
                   `warning: <script src="${srcVal}"> in "${fileName}" has inline content, which browsers ignore when src is set. ` +
-                  `Bascik inlines "${scriptInfo.relPath}" and drops that content. Move it into the companion file or a separate <script>.`,
+                    `Bascik inlines "${scriptInfo.relPath}" and drops that content. Move it into the companion file or a separate <script>.`,
                 );
               }
-              const otherAttrs = `${preSrc}${postSrc}`.replace(/\s+/g, " ").trim();
+              const otherAttrs = `${preSrc}${postSrc}`
+                .replace(/\s+/g, " ")
+                .trim();
               const attrStr = otherAttrs ? ` ${otherAttrs}` : "";
               // A companion script inlined here becomes a classic <script>
               // and is later wrapped in an IIFE unless the referencing tag is
               // type="module" (native ES modules are never wrapped). Static
               // import/export surviving the TypeScript strip would otherwise
               // throw a SyntaxError in the browser; fail the build instead.
-              if (getScriptType(`<script${attrStr}>`) !== "module" && hasStaticModuleSyntax(scriptInfo.code)) {
+              if (
+                getScriptType(`<script${attrStr}>`) !== "module" &&
+                hasStaticModuleSyntax(scriptInfo.code)
+              ) {
                 throw new TypeScriptTransformError(
                   `[bascik] TypeScript transformation failed in "${scriptInfo.relPath}": ` +
-                  `the script contains a static import/export declaration, which is only valid in an ES module. ` +
-                  `Bascik would otherwise wrap this in a classic script IIFE and it would throw a SyntaxError in the browser. ` +
-                  `Mark the referencing <script src="${srcVal}"> tag type="module" (native ES modules are never wrapped), ` +
-                  `or bundle this file with esbuild, swc, or another tool first so it has no import/export left.`,
+                    `the script contains a static import/export declaration, which is only valid in an ES module. ` +
+                    `Bascik would otherwise wrap this in a classic script IIFE and it would throw a SyntaxError in the browser. ` +
+                    `Mark the referencing <script src="${srcVal}"> tag type="module" (native ES modules are never wrapped), ` +
+                    `or bundle this file with esbuild, swc, or another tool first so it has no import/export left.`,
                 );
               }
               // The companion's first line is line 1 of its own sourceURL file.
-              const openTag = withScriptLine(`<script${attrStr} data-bascik-source="${scriptInfo.relPath}">`, 1);
+              const openTag = withScriptLine(
+                `<script${attrStr} data-bascik-source="${scriptInfo.relPath}">`,
+                1,
+              );
               return `${openTag}${scriptInfo.code}\n</script>`;
             }
             return match;
@@ -515,13 +649,24 @@ export const listComponents = async (
       // JavaScript here, before HTML minification hoists scripts and before
       // page-time scoping and optional `minify.js`. Ordinary `<script>` blocks
       // are left alone; TypeScript syntax in one is diagnosed, never rewritten.
-      resolvedContent = await transformTypeScriptScriptTags(resolvedContent, fileName);
-      const { html: cleanedContent, css: inlineCss } = extractInlineStyles(resolvedContent);
+      resolvedContent = await transformTypeScriptScriptTags(
+        resolvedContent,
+        fileName,
+      );
+      const { html: cleanedContent, css: inlineCss } =
+        extractInlineStyles(resolvedContent);
       const resolvedInlineCss = inlineCss
-        ? await resolveCssImports(inlineCss, fileName, undefined, importedStylesheets)
+        ? await resolveCssImports(
+            inlineCss,
+            fileName,
+            undefined,
+            importedStylesheets,
+          )
         : "";
       recordImportedStylesheets();
-      const combinedCss = [cssFileContent, resolvedInlineCss].filter(Boolean).join("\n");
+      const combinedCss = [cssFileContent, resolvedInlineCss]
+        .filter(Boolean)
+        .join("\n");
       let minifiedContent: string;
       try {
         minifiedContent = BascikConfig.minify?.html
@@ -530,10 +675,16 @@ export const listComponents = async (
       } catch (minErr) {
         const behavior = BascikConfig.onMinifyError ?? "error";
         if (behavior === "error") {
-          console.error(`[bascik] HTML minification failed for component "${fileName}":`, minErr);
+          console.error(
+            `[bascik] HTML minification failed for component "${fileName}":`,
+            minErr,
+          );
           throw minErr;
         }
-        console.warn(`[bascik] HTML minification failed for component "${fileName}", proceeding unminified:`, minErr);
+        console.warn(
+          `[bascik] HTML minification failed for component "${fileName}", proceeding unminified:`,
+          minErr,
+        );
         minifiedContent = cleanedContent;
       }
       const component: BascikComponent = {
@@ -609,15 +760,28 @@ export const maskRawTextContent = (htmlString: string): string => {
 
 // The passes maskRawTextContent runs, in order, each with the opener text a
 // scan could start a match at. Mirrors maskElementContents for the raw tags.
-const MASK_PASSES: Array<{ match: RegExp; opener: RegExp; blank: (match: string, open?: string, inner?: string, close?: string) => string }> = [
+const MASK_PASSES: Array<{
+  match: RegExp;
+  opener: RegExp;
+  blank: (
+    match: string,
+    open?: string,
+    inner?: string,
+    close?: string,
+  ) => string;
+}> = [
   {
     match: /<!--[\s\S]*?-->/g,
     opener: /<!--/g,
-    blank: (match) => match.length >= 7 ? `<!--${" ".repeat(match.length - 7)}-->` : match,
+    blank: (match) =>
+      match.length >= 7 ? `<!--${" ".repeat(match.length - 7)}-->` : match,
   },
   ...["script", "style", "textarea"].map((tag) => ({
     // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    match: new RegExp(`(<${tag}(?:\\b(?:[^>"']|"[^"]*"|'[^']*')*)?>)([\\s\\S]*?)(<\\/${tag}\\s*>)`, "gi"),
+    match: new RegExp(
+      `(<${tag}(?:\\b(?:[^>"']|"[^"]*"|'[^']*')*)?>)([\\s\\S]*?)(<\\/${tag}\\s*>)`,
+      "gi",
+    ),
     // `\b` after the name passes for any following character outside [A-Za-z0-9_].
     // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     opener: new RegExp(`<${tag}(?![A-Za-z0-9_])`, "gi"),
@@ -628,7 +792,8 @@ const MASK_PASSES: Array<{ match: RegExp; opener: RegExp; blank: (match: string,
 
 // The end of a segment is unsafe when it could be the start of an opener that
 // the following text completes (`<scr` + `ipt>`).
-const PARTIAL_OPENER_AT_END = /<(?:!-?-?|s(?:c(?:r(?:i(?:pt?)?)?)?|t(?:y(?:le?)?)?)?|t(?:e(?:x(?:t(?:a(?:r(?:ea?)?)?)?)?)?)?)?$/i;
+const PARTIAL_OPENER_AT_END =
+  /<(?:!-?-?|s(?:c(?:r(?:i(?:pt?)?)?)?|t(?:y(?:le?)?)?)?|t(?:e(?:x(?:t(?:a(?:r(?:ea?)?)?)?)?)?)?)?$/i;
 
 /**
  * Mask `htmlString` exactly like `maskRawTextContent`, and report whether the
@@ -637,11 +802,14 @@ const PARTIAL_OPENER_AT_END = /<(?:!-?-?|s(?:c(?:r(?:i(?:pt?)?)?)?|t(?:y(?:le?)?
  * For a closed string `a`, `maskRawTextContent(a + b)` always equals
  * `masked + maskRawTextContent(b)`, so its mask can be reused as a prefix.
  */
-export const maskRawTextContentWithClosure = (htmlString: string): { masked: string; closed: boolean } => {
+export const maskRawTextContentWithClosure = (
+  htmlString: string,
+): { masked: string; closed: boolean } => {
   const hasComments = htmlString.includes("<!--");
   const hasRawTags = /<(?:script|style|textarea)\b/i.test(htmlString);
   const closedEnd = !PARTIAL_OPENER_AT_END.test(htmlString.slice(-9));
-  if (!hasComments && !hasRawTags) return { masked: htmlString, closed: closedEnd };
+  if (!hasComments && !hasRawTags)
+    return { masked: htmlString, closed: closedEnd };
   let masked = htmlString;
   let closed = closedEnd;
   MASK_PASSES.forEach((pass, index) => {
@@ -654,14 +822,26 @@ export const maskRawTextContentWithClosure = (htmlString: string): { masked: str
       const offset = args[index === 0 ? 1 : 4] as number;
       starts.push(offset);
       ends.push(offset + match.length);
-      return index === 0 ? pass.blank(match) : pass.blank(match, args[1] as string, args[2] as string, args[3] as string);
+      return index === 0
+        ? pass.blank(match)
+        : pass.blank(
+            match,
+            args[1] as string,
+            args[2] as string,
+            args[3] as string,
+          );
     });
     if (!closed) return;
     // Any opener outside every match is a failed attempt that more text could complete.
     let matchIndex = 0;
     pass.opener.lastIndex = 0;
-    for (let opener = pass.opener.exec(input); opener !== null; opener = pass.opener.exec(input)) {
-      while (matchIndex < ends.length && ends[matchIndex] <= opener.index) matchIndex++;
+    for (
+      let opener = pass.opener.exec(input);
+      opener !== null;
+      opener = pass.opener.exec(input)
+    ) {
+      while (matchIndex < ends.length && ends[matchIndex] <= opener.index)
+        matchIndex++;
       if (matchIndex >= starts.length || opener.index < starts[matchIndex]) {
         closed = false;
         break;
@@ -692,12 +872,18 @@ export const spliceRawTextMask = (
   replacement: string,
   closedThrough: number,
 ): { masked: string | null; closedThrough: number } => {
-  if (closedThrough < 0 || closedThrough > start) return { masked: null, closedThrough: -1 };
-  if (!maskRawTextContentWithClosure(body.slice(closedThrough, start)).closed) return { masked: null, closedThrough: -1 };
-  if (!maskRawTextContentWithClosure(body.slice(start, end)).closed) return { masked: null, closedThrough: start };
+  if (closedThrough < 0 || closedThrough > start)
+    return { masked: null, closedThrough: -1 };
+  if (!maskRawTextContentWithClosure(body.slice(closedThrough, start)).closed)
+    return { masked: null, closedThrough: -1 };
+  if (!maskRawTextContentWithClosure(body.slice(start, end)).closed)
+    return { masked: null, closedThrough: start };
   const inserted = maskRawTextContentWithClosure(replacement);
   if (!inserted.closed) return { masked: null, closedThrough: start };
-  return { masked: masked.slice(0, start) + inserted.masked + masked.slice(end), closedThrough: start };
+  return {
+    masked: masked.slice(0, start) + inserted.masked + masked.slice(end),
+    closedThrough: start,
+  };
 };
 
 /**
@@ -720,7 +906,8 @@ const findOpenTag = (
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const openTagRegexp = new RegExp(`<${tn}(?![\\w-])(?:${ATTR_VALUE})>`, "gi");
   openTagRegexp.lastIndex = searchFrom;
-  const maskedHtml = masked !== undefined ? masked : maskRawTextContent(htmlString);
+  const maskedHtml =
+    masked !== undefined ? masked : maskRawTextContent(htmlString);
   const openTagMatch = openTagRegexp.exec(maskedHtml);
   if (!openTagMatch) return null;
   return {
@@ -737,7 +924,11 @@ export const replaceTag = (
   masked?: string,
   offsets?: { startIndex?: number; endIndex?: number },
 ): string => {
-  if (offsets && typeof offsets.startIndex === "number" && typeof offsets.endIndex === "number") {
+  if (
+    offsets &&
+    typeof offsets.startIndex === "number" &&
+    typeof offsets.endIndex === "number"
+  ) {
     return (
       htmlString.slice(0, offsets.startIndex) +
       transpiledTag +
@@ -750,10 +941,16 @@ export const replaceTag = (
   // Use findMatchingClose (a depth counter) instead of a lazy regex so nested
   // same-name elements pair with the correct (balanced) closing tag, e.g.
   // <my-list>...<my-list></my-list>...</my-list>.
-  const maskedHtml = masked !== undefined ? masked : maskRawTextContent(htmlString);
+  const maskedHtml =
+    masked !== undefined ? masked : maskRawTextContent(htmlString);
   const openTag = findOpenTag(htmlString, tagName, maskedHtml);
   if (openTag && !/\/\s*>$/.test(openTag.openTag)) {
-    const closeIndex = findMatchingClose(htmlString, tagName, openTag.end, maskedHtml);
+    const closeIndex = findMatchingClose(
+      htmlString,
+      tagName,
+      openTag.end,
+      maskedHtml,
+    );
     if (closeIndex !== -1) {
       // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       const closeTagRegexp = new RegExp(`^<\\/${tn}\\s*>`, "i");
@@ -787,7 +984,15 @@ export const replaceTag = (
   );
 };
 
-const componentRegexCache = new WeakMap<ComponentList, { keyCount: number; firstKey: string | undefined; lastKey: string | undefined; regex: RegExp | null }>();
+const componentRegexCache = new WeakMap<
+  ComponentList,
+  {
+    keyCount: number;
+    firstKey: string | undefined;
+    lastKey: string | undefined;
+    regex: RegExp | null;
+  }
+>();
 
 /**
  * Test-only instrumentation: bytes of already-resolved document prefix that a
@@ -824,7 +1029,12 @@ export const getFirstComponent = (
   const firstKey = rawKeys[0];
   const lastKey = rawKeys[keyCount - 1];
   let cached = componentRegexCache.get(componentList);
-  if (!cached || cached.keyCount !== keyCount || cached.firstKey !== firstKey || cached.lastKey !== lastKey) {
+  if (
+    !cached ||
+    cached.keyCount !== keyCount ||
+    cached.firstKey !== firstKey ||
+    cached.lastKey !== lastKey
+  ) {
     const componentNames = rawKeys
       .filter((name) => /^[a-zA-Z][\w:-]*$/.test(name))
       .sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0));
@@ -832,11 +1042,16 @@ export const getFirstComponent = (
     // Meaning, it will find test-comp-clone before test-comp,
     // because reverse, the longer tag will be first in the regexp, and therefore match first.
     // It's like how an ingress controller works.
-    const escapedComponentNames = componentNames
-      .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-    const regex = escapedComponentNames.length === 0
-      ? null
-      : new RegExp(`<(${escapedComponentNames.join("|")})(?![\\w-])[\\s\\S]*?>`, "gi");
+    const escapedComponentNames = componentNames.map((name) =>
+      name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    );
+    const regex =
+      escapedComponentNames.length === 0
+        ? null
+        : new RegExp(
+            `<(${escapedComponentNames.join("|")})(?![\\w-])[\\s\\S]*?>`,
+            "gi",
+          );
     cached = { keyCount, firstKey, lastKey, regex };
     componentRegexCache.set(componentList, cached);
   }
@@ -844,20 +1059,33 @@ export const getFirstComponent = (
   if (!cached.regex) return {};
   // Never exec the shared cached instance: `lastIndex` on a `g` regex is
   // mutable state, and pages can transpile concurrently. Clone per call.
-  const matchComponentName = new RegExp(cached.regex.source, cached.regex.flags);
+  const matchComponentName = new RegExp(
+    cached.regex.source,
+    cached.regex.flags,
+  );
   matchComponentName.lastIndex = searchFrom;
 
   // Match against the masked string so literal component-tag text inside
   // <script>/<style>/<textarea> content (e.g. JSON-LD strings) is ignored.
-  const maskedHtml = masked !== undefined ? masked : maskRawTextContent(htmlString);
+  const maskedHtml =
+    masked !== undefined ? masked : maskRawTextContent(htmlString);
   const match = matchComponentName.exec(maskedHtml);
   if (!match) {
-    __componentScanStatsForTests.prefixBytesExamined += Math.max(0, maskedHtml.length - searchFrom);
+    __componentScanStatsForTests.prefixBytesExamined += Math.max(
+      0,
+      maskedHtml.length - searchFrom,
+    );
     return {};
   }
   __componentScanStatsForTests.prefixBytesExamined += match.index - searchFrom;
   const firstComponentName = match[1].toLowerCase();
-  const tagInfo = getTag(htmlString, firstComponentName, componentList, maskedHtml, match.index);
+  const tagInfo = getTag(
+    htmlString,
+    firstComponentName,
+    componentList,
+    maskedHtml,
+    match.index,
+  );
   const resultObj: Partial<BascikComponent> & {
     index?: number;
     startIndex?: number;
@@ -870,18 +1098,30 @@ export const getFirstComponent = (
     ...tagInfo,
   };
   if (typeof tagInfo.startIndex === "number") {
-    Object.defineProperty(resultObj, "startIndex", { value: tagInfo.startIndex, enumerable: false });
+    Object.defineProperty(resultObj, "startIndex", {
+      value: tagInfo.startIndex,
+      enumerable: false,
+    });
   }
   if (typeof tagInfo.endIndex === "number") {
-    Object.defineProperty(resultObj, "endIndex", { value: tagInfo.endIndex, enumerable: false });
+    Object.defineProperty(resultObj, "endIndex", {
+      value: tagInfo.endIndex,
+      enumerable: false,
+    });
   }
   // Where the usage tag's inner content starts and its closing tag begins (-1 when the tag has
   // no closing tag), so a caller can edit just the inner content.
   if (typeof tagInfo.contentStart === "number") {
-    Object.defineProperty(resultObj, "contentStart", { value: tagInfo.contentStart, enumerable: false });
+    Object.defineProperty(resultObj, "contentStart", {
+      value: tagInfo.contentStart,
+      enumerable: false,
+    });
   }
   if (typeof tagInfo.closeIndex === "number") {
-    Object.defineProperty(resultObj, "closeIndex", { value: tagInfo.closeIndex, enumerable: false });
+    Object.defineProperty(resultObj, "closeIndex", {
+      value: tagInfo.closeIndex,
+      enumerable: false,
+    });
   }
   return resultObj;
 };
@@ -904,10 +1144,16 @@ export const getTag = (
   // Use findMatchingClose (a depth counter) instead of a lazy regex so nested
   // same-name elements pair with the correct (balanced) closing tag, e.g.
   // <my-list>...<my-list></my-list>...</my-list>.
-  const maskedHtml = masked !== undefined ? masked : maskRawTextContent(htmlString);
+  const maskedHtml =
+    masked !== undefined ? masked : maskRawTextContent(htmlString);
   const openTag = findOpenTag(htmlString, tagName, maskedHtml, searchFrom);
   if (openTag && !/\/\s*>$/.test(openTag.openTag)) {
-    const closeIndex = findMatchingClose(htmlString, tagName, openTag.end, maskedHtml);
+    const closeIndex = findMatchingClose(
+      htmlString,
+      tagName,
+      openTag.end,
+      maskedHtml,
+    );
     if (closeIndex !== -1) {
       // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       const closeTagRegexp = new RegExp(`^<\\/${tn}\\s*>`, "i");
@@ -929,7 +1175,10 @@ export const getTag = (
           startIndex: { value: openTag.start, enumerable: false },
           contentStart: { value: openTag.end, enumerable: false },
           closeIndex: { value: closeIndex, enumerable: false },
-          endIndex: { value: closeIndex + closeTagMatch[0].length, enumerable: false },
+          endIndex: {
+            value: closeIndex + closeTagMatch[0].length,
+            enumerable: false,
+          },
         });
         if (!componentList) return returnObj;
         const res = { ...returnObj, ...componentList[tagName.toLowerCase()] };
@@ -937,7 +1186,10 @@ export const getTag = (
           startIndex: { value: openTag.start, enumerable: false },
           contentStart: { value: openTag.end, enumerable: false },
           closeIndex: { value: closeIndex, enumerable: false },
-          endIndex: { value: closeIndex + closeTagMatch[0].length, enumerable: false },
+          endIndex: {
+            value: closeIndex + closeTagMatch[0].length,
+            enumerable: false,
+          },
         });
         return res;
       }
@@ -995,17 +1247,29 @@ export const getTag = (
     };
     Object.defineProperties(returnObj, {
       startIndex: { value: selfClosingMatch.index, enumerable: false },
-      contentStart: { value: selfClosingMatch.index + selfClosingMatch[0].length, enumerable: false },
+      contentStart: {
+        value: selfClosingMatch.index + selfClosingMatch[0].length,
+        enumerable: false,
+      },
       closeIndex: { value: -1, enumerable: false },
-      endIndex: { value: selfClosingMatch.index + selfClosingMatch[0].length, enumerable: false },
+      endIndex: {
+        value: selfClosingMatch.index + selfClosingMatch[0].length,
+        enumerable: false,
+      },
     });
     if (!componentList) return returnObj;
     const res = { ...returnObj, ...componentList[tagName.toLowerCase()] };
     Object.defineProperties(res, {
       startIndex: { value: selfClosingMatch.index, enumerable: false },
-      contentStart: { value: selfClosingMatch.index + selfClosingMatch[0].length, enumerable: false },
+      contentStart: {
+        value: selfClosingMatch.index + selfClosingMatch[0].length,
+        enumerable: false,
+      },
       closeIndex: { value: -1, enumerable: false },
-      endIndex: { value: selfClosingMatch.index + selfClosingMatch[0].length, enumerable: false },
+      endIndex: {
+        value: selfClosingMatch.index + selfClosingMatch[0].length,
+        enumerable: false,
+      },
     });
     return res;
   }
@@ -1015,24 +1279,27 @@ export const getTag = (
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
-const decodePropEntities = (value: string): string => value.replace(
-  /&(amp|lt|gt|quot|#39|#x27);/gi,
-  (_match, entity: string) => ({
-    amp: "&",
-    lt: "<",
-    gt: ">",
-    quot: '"',
-    "#39": "'",
-    "#x27": "'",
-  })[entity.toLowerCase()] ?? _match,
-);
+const decodePropEntities = (value: string): string =>
+  value.replace(
+    /&(amp|lt|gt|quot|#39|#x27);/gi,
+    (_match, entity: string) =>
+      ({
+        amp: "&",
+        lt: "<",
+        gt: ">",
+        quot: '"',
+        "#39": "'",
+        "#x27": "'",
+      })[entity.toLowerCase()] ?? _match,
+  );
 
-const escapePropValue = (value: string): string => value
-  .replace(/&/g, "&amp;")
-  .replace(/</g, "&lt;")
-  .replace(/>/g, "&gt;")
-  .replace(/"/g, "&quot;")
-  .replace(/'/g, "&#39;");
+const escapePropValue = (value: string): string =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 /**
  * Extract data-bascik-prop-* attributes from a component usage tag string.
@@ -1042,14 +1309,16 @@ export const extractProps = (
   componentContent: string | undefined,
 ): Record<string, string> => {
   const props: Record<string, string> = {};
-  if (!componentContent || !/data-bascik-prop-/i.test(componentContent)) return props;
+  if (!componentContent || !/data-bascik-prop-/i.test(componentContent))
+    return props;
   const openingTag = componentContent.match(
     // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     new RegExp(`^<[a-zA-Z][\\w:-]*(?:${ATTR_VALUE})>`, "i"),
   )?.[0];
   if (!openingTag) return props;
   // Accept double-quoted, single-quoted, whitespace-spaced, and unquoted prop values.
-  const regexp = /data-bascik-prop-([\w-]+)\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+?)/gi;
+  const regexp =
+    /data-bascik-prop-([\w-]+)\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+?)/gi;
   let match;
   while ((match = regexp.exec(openingTag)) !== null) {
     const rawVal = match[2];
@@ -1065,9 +1334,13 @@ export const extractProps = (
       props[match[1]] = decodePropEntities(rawVal.slice(1, -1));
     } else {
       // Unquoted value: consume up to whitespace, `/>`, or `>`
-      const unquotedMatch = /^[^\s"'=<>`]+/.exec(openingTag.slice(match.index + match[0].length - rawVal.length));
+      const unquotedMatch = /^[^\s"'=<>`]+/.exec(
+        openingTag.slice(match.index + match[0].length - rawVal.length),
+      );
       const fullUnquoted = unquotedMatch ? unquotedMatch[0] : rawVal;
-      const cleanUnquoted = fullUnquoted.endsWith("/") ? fullUnquoted.slice(0, -1) : fullUnquoted;
+      const cleanUnquoted = fullUnquoted.endsWith("/")
+        ? fullUnquoted.slice(0, -1)
+        : fullUnquoted;
       props[match[1]] = decodePropEntities(cleanUnquoted);
     }
   }
@@ -1088,9 +1361,15 @@ export const injectPropAttributes = (
 
   const commentShield = createContentShield(fileContent);
   const withoutComments = fileContent.includes("<!--")
-    ? fileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => commentShield.hide(comment))
+    ? fileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
+        commentShield.hide(comment),
+      )
     : fileContent;
-  const rawShield = shieldElementContents(withoutComments, ["script", "style", "textarea"]);
+  const rawShield = shieldElementContents(withoutComments, [
+    "script",
+    "style",
+    "textarea",
+  ]);
 
   const rewritten = rawShield.html.replace(
     new RegExp(`<([a-zA-Z][\\w:-]*)(?:${ATTR_VALUE})>`, "gi"),
@@ -1102,7 +1381,8 @@ export const injectPropAttributes = (
         targetName: string;
         rawPropName?: string;
       }> = [];
-      const directiveRegex = /\s+data-bascik-attr-([^\s=/>]*)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s/>]+))?/gi;
+      const directiveRegex =
+        /\s+data-bascik-attr-([^\s=/>]*)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s/>]+))?/gi;
       let directiveMatch: RegExpExecArray | null;
       while ((directiveMatch = directiveRegex.exec(openingTag)) !== null) {
         directives.push({
@@ -1120,7 +1400,8 @@ export const injectPropAttributes = (
       }
 
       for (const { targetName, rawPropName } of directives) {
-        const isQuoted = rawPropName?.startsWith('"') || rawPropName?.startsWith("'");
+        const isQuoted =
+          rawPropName?.startsWith('"') || rawPropName?.startsWith("'");
         const propName = isQuoted ? rawPropName?.slice(1, -1) : undefined;
         if (
           !/^[a-zA-Z_:][\w:.-]*$/.test(targetName) ||
@@ -1133,9 +1414,13 @@ export const injectPropAttributes = (
           continue;
         }
 
-        const propValue = props[propName] ?? propsLowerMap.get(propName.toLowerCase());
+        const propValue =
+          props[propName] ?? propsLowerMap.get(propName.toLowerCase());
         if (propValue === undefined) continue;
-        const escapedTargetName = targetName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const escapedTargetName = targetName.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&",
+        );
         const targetRegex = new RegExp(
           `\\s+${escapedTargetName}(?:\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+))?(?=[\\s/>])`,
           "i",
@@ -1147,7 +1432,10 @@ export const injectPropAttributes = (
           );
           result = result.replace(targetRegex, () => attribute);
         } else {
-          result = result.replace(/(\s*\/?>)$/, (_match, close: string) => `${attribute}${close}`);
+          result = result.replace(
+            /(\s*\/?>)$/,
+            (_match, close: string) => `${attribute}${close}`,
+          );
         }
       }
 
@@ -1174,14 +1462,23 @@ export const injectProps = (
   props: Record<string, string>,
 ): string => {
   if (!fileContent) return "";
-  if (Object.keys(props).length === 0 && !fileContent.includes("data-bascik-prop-")) {
+  if (
+    Object.keys(props).length === 0 &&
+    !fileContent.includes("data-bascik-prop-")
+  ) {
     return fileContent;
   }
   const commentShield = createContentShield(fileContent);
   const withoutComments = fileContent.includes("<!--")
-    ? fileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => commentShield.hide(comment))
+    ? fileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
+        commentShield.hide(comment),
+      )
     : fileContent;
-  const rawShield = shieldElementContents(withoutComments, ["script", "style", "textarea"]);
+  const rawShield = shieldElementContents(withoutComments, [
+    "script",
+    "style",
+    "textarea",
+  ]);
   let result = rawShield.html;
   const resultLower = result.toLowerCase();
   Object.entries(props).forEach(([propName, propValue]) => {
@@ -1213,8 +1510,7 @@ export const injectProps = (
         searchIndex = contentStart;
         continue;
       }
-      const replacement =
-        `<${tagName}${attrsBefore}${attrsAfter}>${escapedPropValue}${closeTag}`;
+      const replacement = `<${tagName}${attrsBefore}${attrsAfter}>${escapedPropValue}${closeTag}`;
       result =
         result.slice(0, receiver.index) +
         replacement +
@@ -1291,28 +1587,52 @@ const findMatchingClose = (
 const parseNamedSlots = (
   innerContent: string,
   componentNames: ReadonlySet<string> = new Set(),
-): Array<{ slotName: string; startIndex: number; endIndex: number; content: string }> => {
+): Array<{
+  slotName: string;
+  startIndex: number;
+  endIndex: number;
+  content: string;
+}> => {
   if (!innerContent.includes("data-bascik-slot")) return [];
-  const results: Array<{ slotName: string; startIndex: number; endIndex: number; content: string }> = [];
+  const results: Array<{
+    slotName: string;
+    startIndex: number;
+    endIndex: number;
+    content: string;
+  }> = [];
   const masked = maskRawTextContent(innerContent);
   // Quote-aware attribute scan (ATTR_VALUE) so the marker may appear after
   // other attributes, and `data-bascik-slot` inside a quoted attribute value
   // never false-positives.
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const openTagRe = new RegExp(
-    `<(\\w+(?:-\\w+)*)(?=[\\s>])(?:${ATTR_VALUE}?)\\s+data-bascik-slot\\s*=\\s*(?:"([^"]+)"|'([^']+)'|([^\\s"'=<>` + "`" + `/>]+))(?:${ATTR_VALUE})>`,
+    `<(\\w+(?:-\\w+)*)(?=[\\s>])(?:${ATTR_VALUE}?)\\s+data-bascik-slot\\s*=\\s*(?:"([^"]+)"|'([^']+)'|([^\\s"'=<>` +
+      "`" +
+      `/>]+))(?:${ATTR_VALUE})>`,
     "gi",
   );
   let match: RegExpExecArray | null;
   while ((match = openTagRe.exec(masked)) !== null) {
     const [fullOpen, tagName, doubleName, singleName, unquotedName] = match;
     const slotName = doubleName ?? singleName ?? unquotedName;
-    if (isInsideNestedComponent(innerContent, match.index, componentNames, masked)) continue;
+    if (
+      isInsideNestedComponent(innerContent, match.index, componentNames, masked)
+    )
+      continue;
     const contentStart = match.index + fullOpen.length;
-    const closeIndex = findMatchingClose(innerContent, tagName, contentStart, masked);
+    const closeIndex = findMatchingClose(
+      innerContent,
+      tagName,
+      contentStart,
+      masked,
+    );
     if (closeIndex === -1) continue;
-    const closeTagMatch = new RegExp(`^<\\/${tagName}\\s*>`, "i").exec(innerContent.slice(closeIndex));
-    const closeTagLen = closeTagMatch ? closeTagMatch[0].length : `</${tagName}>`.length;
+    const closeTagMatch = new RegExp(`^<\\/${tagName}\\s*>`, "i").exec(
+      innerContent.slice(closeIndex),
+    );
+    const closeTagLen = closeTagMatch
+      ? closeTagMatch[0].length
+      : `</${tagName}>`.length;
     const endIndex = closeIndex + closeTagLen;
     results.push({
       slotName,
@@ -1357,9 +1677,10 @@ const isInsideNestedComponent = (
       ) {
         return true;
       }
-      searchFrom = typeof endIndex === "number" && endIndex > startIndex
-        ? endIndex
-        : startIndex + 1;
+      searchFrom =
+        typeof endIndex === "number" && endIndex > startIndex
+          ? endIndex
+          : startIndex + 1;
     }
   }
   return false;
@@ -1401,7 +1722,10 @@ export const extractNamedSlotContent = (
 ): Record<string, string> => {
   if (!innerContent) return {};
   const slots: Record<string, string> = {};
-  for (const { slotName, content } of parseNamedSlots(innerContent, componentNames)) {
+  for (const { slotName, content } of parseNamedSlots(
+    innerContent,
+    componentNames,
+  )) {
     slots[slotName] = content;
   }
   return slots;
@@ -1434,7 +1758,10 @@ export const replaceNamedSlots = (
   for (let i = wrappers.length - 1; i >= 0; i--) {
     const { slotName, startIndex, endIndex, content } = wrappers[i];
     // Use the element's own inner content as fallback when the slot is not provided
-    const matchedSlot = slotName in slots ? slots[slotName] : slotsLowerMap.get(slotName.toLowerCase());
+    const matchedSlot =
+      slotName in slots
+        ? slots[slotName]
+        : slotsLowerMap.get(slotName.toLowerCase());
     const replacement = matchedSlot !== undefined ? matchedSlot : content;
     result = result.slice(0, startIndex) + replacement + result.slice(endIndex);
   }
@@ -1460,15 +1787,28 @@ export const replaceDefaultSlots = (
     `<(\\w+(?:-\\w+)*)(?=[\\s>])(?:${ATTR_VALUE}?)\\s+data-bascik-slot(?!\\s*=)(?:${ATTR_VALUE})>`,
     "gi",
   );
-  const wrappers: Array<{ startIndex: number; endIndex: number; content: string }> = [];
+  const wrappers: Array<{
+    startIndex: number;
+    endIndex: number;
+    content: string;
+  }> = [];
   let match: RegExpExecArray | null;
   while ((match = openTagRe.exec(masked)) !== null) {
     const [fullOpen, tagName] = match;
     const contentStart = match.index + fullOpen.length;
-    const closeIndex = findMatchingClose(fileContent, tagName, contentStart, masked);
+    const closeIndex = findMatchingClose(
+      fileContent,
+      tagName,
+      contentStart,
+      masked,
+    );
     if (closeIndex === -1) continue;
-    const closeTagMatch = new RegExp(`^<\\/${tagName}\\s*>`, "i").exec(fileContent.slice(closeIndex));
-    const closeTagLen = closeTagMatch ? closeTagMatch[0].length : `</${tagName}>`.length;
+    const closeTagMatch = new RegExp(`^<\\/${tagName}\\s*>`, "i").exec(
+      fileContent.slice(closeIndex),
+    );
+    const closeTagLen = closeTagMatch
+      ? closeTagMatch[0].length
+      : `</${tagName}>`.length;
     const endIndex = closeIndex + closeTagLen;
     wrappers.push({
       startIndex: match.index,
@@ -1551,8 +1891,12 @@ export const mergeAttributesOntoRoot = (
   }
   if (!rootMatch) return html;
 
-  const rootTag = html.slice(rootMatch.index, rootMatch.index + rootMatch[0].length);
-  const rootParts = /^<([a-zA-Z][\w-]*)((?:[^>"']|"[^"]*"|'[^']*')*)(\s*\/?>)$/i.exec(rootTag);
+  const rootTag = html.slice(
+    rootMatch.index,
+    rootMatch.index + rootMatch[0].length,
+  );
+  const rootParts =
+    /^<([a-zA-Z][\w-]*)((?:[^>"']|"[^"]*"|'[^']*')*)(\s*\/?>)$/i.exec(rootTag);
   if (!rootParts) return html;
   const [, tagName, existing, close] = rootParts;
   let attrStr = existing || "";
@@ -1569,17 +1913,20 @@ export const mergeAttributesOntoRoot = (
       if (/\sclass\s*=\s*"/i.test(attrStr)) {
         attrStr = attrStr.replace(
           /\s(class)\s*=\s*"([^"]*)"/i,
-          (_, attrName: string, classes: string) => ` ${attrName}="${classes ? `${classes} ` : ""}${value}"`,
+          (_, attrName: string, classes: string) =>
+            ` ${attrName}="${classes ? `${classes} ` : ""}${value}"`,
         );
       } else if (/\sclass\s*=\s*'/i.test(attrStr)) {
         attrStr = attrStr.replace(
           /\s(class)\s*=\s*'([^']*)'/i,
-          (_, attrName: string, classes: string) => ` ${attrName}='${classes ? `${classes} ` : ""}${value}'`,
+          (_, attrName: string, classes: string) =>
+            ` ${attrName}='${classes ? `${classes} ` : ""}${value}'`,
         );
       } else if (/\sclass\s*=\s*[^\s"'=<>`/>]+/i.test(attrStr)) {
         attrStr = attrStr.replace(
           /\s(class)\s*=\s*([^\s"'=<>`/>]+)/i,
-          (_, attrName: string, classes: string) => ` ${attrName}="${classes} ${value}"`,
+          (_, attrName: string, classes: string) =>
+            ` ${attrName}="${classes} ${value}"`,
         );
       } else {
         attrStr += ` class="${value}"`;
@@ -1588,17 +1935,20 @@ export const mergeAttributesOntoRoot = (
       if (/\sstyle\s*=\s*"/i.test(attrStr)) {
         attrStr = attrStr.replace(
           /\s(style)\s*=\s*"([^"]*)"/i,
-          (_, attrName: string, style: string) => ` ${attrName}="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
+          (_, attrName: string, style: string) =>
+            ` ${attrName}="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
         );
       } else if (/\sstyle\s*=\s*'/i.test(attrStr)) {
         attrStr = attrStr.replace(
           /\s(style)\s*=\s*'([^']*)'/i,
-          (_, attrName: string, style: string) => ` ${attrName}='${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}'`,
+          (_, attrName: string, style: string) =>
+            ` ${attrName}='${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}'`,
         );
       } else if (/\sstyle\s*=\s*[^\s"'=<>`/>]+/i.test(attrStr)) {
         attrStr = attrStr.replace(
           /\s(style)\s*=\s*([^\s"'=<>`/>]+)/i,
-          (_, attrName: string, style: string) => ` ${attrName}="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
+          (_, attrName: string, style: string) =>
+            ` ${attrName}="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
         );
       } else {
         attrStr += ` style="${value}"`;

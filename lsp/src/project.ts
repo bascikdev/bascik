@@ -1,10 +1,10 @@
-import * as fs from 'node:fs';
-import * as fsPromises from 'node:fs/promises';
-import * as path from 'node:path';
+import * as fs from "node:fs";
+import * as fsPromises from "node:fs/promises";
+import * as path from "node:path";
 import {
   analyzeComponentSource,
   type ComponentMetadata,
-} from './component-metadata.js';
+} from "./component-metadata.js";
 
 export interface ProjectSnapshot {
   projectRoot: string;
@@ -18,27 +18,29 @@ export interface ProjectSnapshot {
 }
 
 export const CONFIG_FILE_CANDIDATES = [
-  'bascik.config.ts',
-  'bascik.config.js',
-  'bascik.config.mjs',
+  "bascik.config.ts",
+  "bascik.config.js",
+  "bascik.config.mjs",
 ];
-const DEFAULT_COMPONENT_ROOTS = ['src/components'];
-const DEFAULT_IMPORT_ROOT = 'src';
-const DEFAULT_API_ROOT = 'src/api';
+const DEFAULT_COMPONENT_ROOTS = ["src/components"];
+const DEFAULT_IMPORT_ROOT = "src";
+const DEFAULT_API_ROOT = "src/api";
 
 /** Reads `directory.api` from the config source. `apiTimeout` does not match: the key must be exactly `api`. */
 export function parseApiRoot(source: string | undefined): string {
-  return /\bapi\s*:\s*['"]([^'"]+)['"]/.exec(source ?? '')?.[1] ?? DEFAULT_API_ROOT;
+  return (
+    /\bapi\s*:\s*['"]([^'"]+)['"]/.exec(source ?? "")?.[1] ?? DEFAULT_API_ROOT
+  );
 }
 
 export function normalizeComponentName(name: string): string {
   return (
     name
-      .replace(/\\/g, '/')
-      .split('/')
+      .replace(/\\/g, "/")
+      .split("/")
       .pop()
-      ?.replace(/\.html$/i, '')
-      .toLowerCase() ?? ''
+      ?.replace(/\.html$/i, "")
+      .toLowerCase() ?? ""
   );
 }
 
@@ -55,7 +57,7 @@ export function parseComponentRoots(source: string | undefined): string[] {
 
 export function parseImportRoot(source: string | undefined): string {
   return (
-    /importRoot\s*:\s*['"]([^'"]+)['"]/.exec(source ?? '')?.[1] ??
+    /importRoot\s*:\s*['"]([^'"]+)['"]/.exec(source ?? "")?.[1] ??
     DEFAULT_IMPORT_ROOT
   );
 }
@@ -66,9 +68,9 @@ export async function readConfigSource(
   for (const candidate of CONFIG_FILE_CANDIDATES) {
     const configPath = path.join(workspaceRoot, candidate);
     try {
-      return await fsPromises.readFile(configPath, 'utf8');
+      return await fsPromises.readFile(configPath, "utf8");
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return undefined;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined;
     }
   }
   return undefined;
@@ -86,12 +88,15 @@ export function resolveComponentRoots(
   configuredRoots: string[],
 ): string[] {
   return configuredRoots.map((root) =>
-    trimTrailingSlashes(path.resolve(workspaceRoot, root).replace(/\\/g, '/')),
+    trimTrailingSlashes(path.resolve(workspaceRoot, root).replace(/\\/g, "/")),
   );
 }
 
-export function isInsideComponentRoots(fsPath: string, roots: string[]): boolean {
-  const normalized = fsPath.replace(/\\/g, '/');
+export function isInsideComponentRoots(
+  fsPath: string,
+  roots: string[],
+): boolean {
+  const normalized = fsPath.replace(/\\/g, "/");
   return roots.some(
     (root) => normalized === root || normalized.startsWith(`${root}/`),
   );
@@ -114,7 +119,7 @@ export async function findHtmlFiles(roots: string[]): Promise<string[]> {
       const fullPath = path.join(current, entry.name);
       if (entry.isDirectory()) {
         stack.push(fullPath);
-      } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.html')) {
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".html")) {
         files.push(fullPath);
       }
     }
@@ -122,7 +127,9 @@ export async function findHtmlFiles(roots: string[]): Promise<string[]> {
   return files;
 }
 
-export async function buildSnapshot(workspaceRoot: string): Promise<ProjectSnapshot> {
+export async function buildSnapshot(
+  workspaceRoot: string,
+): Promise<ProjectSnapshot> {
   const configSource = await readConfigSource(workspaceRoot);
   const componentRoots = resolveComponentRoots(
     workspaceRoot,
@@ -138,12 +145,12 @@ export async function buildSnapshot(workspaceRoot: string): Promise<ProjectSnaps
   await Promise.all(
     Array.from(componentMap, async ([name, filePath]) => {
       try {
-        const source = await fsPromises.readFile(filePath, 'utf8');
+        const source = await fsPromises.readFile(filePath, "utf8");
         componentMetadata.set(
           name,
           analyzeComponentSource(source, {
             hasCompanionStyles: fs.existsSync(
-              filePath.replace(/\.html$/i, '.css'),
+              filePath.replace(/\.html$/i, ".css"),
             ),
           }),
         );
@@ -154,13 +161,13 @@ export async function buildSnapshot(workspaceRoot: string): Promise<ProjectSnaps
   );
 
   const htmlUsageByFile = new Map<string, string>();
-  const usageFiles = await findHtmlFiles([path.join(workspaceRoot, 'src')]);
+  const usageFiles = await findHtmlFiles([path.join(workspaceRoot, "src")]);
   await Promise.all(
     usageFiles.map(async (filePath) => {
       try {
         htmlUsageByFile.set(
           filePath,
-          await fsPromises.readFile(filePath, 'utf8'),
+          await fsPromises.readFile(filePath, "utf8"),
         );
       } catch {
         // Ignored
@@ -172,7 +179,9 @@ export async function buildSnapshot(workspaceRoot: string): Promise<ProjectSnaps
     projectRoot: path.resolve(workspaceRoot),
     componentRoots,
     apiRoot: trimTrailingSlashes(
-      path.resolve(workspaceRoot, parseApiRoot(configSource)).replace(/\\/g, '/'),
+      path
+        .resolve(workspaceRoot, parseApiRoot(configSource))
+        .replace(/\\/g, "/"),
     ),
     componentMap,
     componentMetadata,
@@ -184,8 +193,8 @@ export async function buildSnapshot(workspaceRoot: string): Promise<ProjectSnaps
 export function isPathInside(fsPath: string, root: string): boolean {
   const relative = path.relative(path.resolve(root), path.resolve(fsPath));
   return (
-    relative === '' ||
-    (!relative.startsWith('..') && !path.isAbsolute(relative))
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
   );
 }
 
@@ -198,12 +207,15 @@ export function isConfigFile(fsPath: string): boolean {
  * Paths that never hold a project: installed packages, build output, and git internals. Judged relative to the
  * workspace folder, so a workspace that itself lives under a folder named `dist` still works.
  */
-export function isExcludedProjectPath(fsPath: string, workspaceRoot: string): boolean {
+export function isExcludedProjectPath(
+  fsPath: string,
+  workspaceRoot: string,
+): boolean {
   const relativeParts = path
     .relative(path.resolve(workspaceRoot), path.resolve(fsPath))
     .split(path.sep);
   return relativeParts.some(
-    (part) => part === 'node_modules' || part === 'dist' || part === '.git',
+    (part) => part === "node_modules" || part === "dist" || part === ".git",
   );
 }
 
@@ -214,16 +226,16 @@ export function htmlSuppliesComponentProp(
 ): boolean {
   const escapedComponentName = componentName.replace(
     /[.*+?^${}()|[\]\\]/g,
-    '\\$&',
+    "\\$&",
   );
-  const escapedPropName = propName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedPropName = propName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const usageRegex = new RegExp(
     `<${escapedComponentName}(?![\\w-])(?:[^>"']|"[^"]*"|'[^']*')*>`,
-    'gi',
+    "gi",
   );
   const propRegex = new RegExp(
     `\\sdata-bascik-prop-${escapedPropName}\\s*=`,
-    'i',
+    "i",
   );
   return Array.from(html.matchAll(usageRegex)).some((match) =>
     propRegex.test(match[0]),

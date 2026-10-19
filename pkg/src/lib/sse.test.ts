@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import {
-  SseManager,
-} from "./sse.ts";
+import { SseManager } from "./sse.ts";
 import { nativeClock } from "./clock.ts";
 import { eventEmitter } from "./events.ts";
 
@@ -65,7 +63,10 @@ describe("SseManager", () => {
     try {
       // Constructed after fake timers are installed so its heartbeat interval
       // is scheduled on the deterministic fake clock, not real wall time.
-      localManager = new SseManager({ heartbeatIntervalMs: 100, maxConnections: 5 });
+      localManager = new SseManager({
+        heartbeatIntervalMs: 100,
+        maxConnections: 5,
+      });
       const writes: string[] = [];
       const mockRes: any = {
         destroyed: false,
@@ -82,7 +83,14 @@ describe("SseManager", () => {
       // Two full heartbeat intervals.
       vi.advanceTimersByTime(200);
 
-      const heartbeats = writes.filter((w) => w.startsWith(": ping") || w.startsWith(":\n") || w === ":\n\n" || w === ": keep-alive\n\n" || w.startsWith(":"));
+      const heartbeats = writes.filter(
+        (w) =>
+          w.startsWith(": ping") ||
+          w.startsWith(":\n") ||
+          w === ":\n\n" ||
+          w === ": keep-alive\n\n" ||
+          w.startsWith(":"),
+      );
       expect(heartbeats.length).toBeGreaterThanOrEqual(2);
     } finally {
       localManager?.destroy();
@@ -119,7 +127,10 @@ describe("SseManager", () => {
     const writes1: string[] = [];
     const mockRes1: any = {
       destroyed: false,
-      write: vi.fn((data: string) => { writes1.push(data); return true; }),
+      write: vi.fn((data: string) => {
+        writes1.push(data);
+        return true;
+      }),
       end: vi.fn(),
       close: vi.fn(),
       on: vi.fn(),
@@ -134,7 +145,10 @@ describe("SseManager", () => {
     const writes: string[] = [];
     const mockRes: any = {
       destroyed: false,
-      write: vi.fn((data: string) => { writes.push(data); return true; }),
+      write: vi.fn((data: string) => {
+        writes.push(data);
+        return true;
+      }),
       end: vi.fn(),
       close: vi.fn(),
       on: vi.fn(),
@@ -158,7 +172,10 @@ describe("SseManager", () => {
     const writes1: string[] = [];
     const mockRes1: any = {
       destroyed: false,
-      write: vi.fn((data: string) => { writes1.push(data); return true; }),
+      write: vi.fn((data: string) => {
+        writes1.push(data);
+        return true;
+      }),
       end: vi.fn(),
       close: vi.fn(),
       on: vi.fn(),
@@ -171,7 +188,11 @@ describe("SseManager", () => {
       line: 12,
     });
 
-    const errorEvent = writes1.find((w) => w.startsWith("event: build-error\n") || w.includes('"message":"Syntax error in component"'));
+    const errorEvent = writes1.find(
+      (w) =>
+        w.startsWith("event: build-error\n") ||
+        w.includes('"message":"Syntax error in component"'),
+    );
     expect(errorEvent).toBeDefined();
   });
 
@@ -185,7 +206,11 @@ describe("SseManager", () => {
     c1.writes.length = 0;
     c2.writes.length = 0;
 
-    eventEmitter.emit("build-error", { message: "boom", file: "pages/a.html", line: 1 });
+    eventEmitter.emit("build-error", {
+      message: "boom",
+      file: "pages/a.html",
+      line: 1,
+    });
 
     const frames1 = c1.writes.filter((w) => w.startsWith("event: build-error"));
     const frames2 = c2.writes.filter((w) => w.startsWith("event: build-error"));
@@ -417,7 +442,11 @@ describe("SseManager - prompt 97 bounded drain subscriptions", () => {
   });
 
   it("rejects connections beyond maxConnections and ends the stream before headers are committed", () => {
-    manager = new SseManager({ heartbeatIntervalMs: 100, maxConnections: 2, clock: nativeClock });
+    manager = new SseManager({
+      heartbeatIntervalMs: 100,
+      maxConnections: 2,
+      clock: nativeClock,
+    });
     manager.addClient(makeMockRes().mockRes);
     manager.addClient(makeMockRes().mockRes);
 

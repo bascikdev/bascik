@@ -58,7 +58,11 @@ export interface CliFlags {
   addTargets?: string[];
 }
 
-export const DEPLOY_TARGETS = ["cloudflare", "cloudflare-pages", "cloudflare-workers"] as const;
+export const DEPLOY_TARGETS = [
+  "cloudflare",
+  "cloudflare-pages",
+  "cloudflare-workers",
+] as const;
 export type DeployTarget = string;
 
 export interface CliDecision {
@@ -114,7 +118,11 @@ const VALUE_FLAGS = new Set([
 const OPTIONAL_VALUE_FLAGS = new Set(["--log"]);
 
 /** Every flag the parser accepts, for the help-text drift test. */
-export const CLI_FLAGS: readonly string[] = [...BOOLEAN_FLAGS, ...VALUE_FLAGS, ...OPTIONAL_VALUE_FLAGS];
+export const CLI_FLAGS: readonly string[] = [
+  ...BOOLEAN_FLAGS,
+  ...VALUE_FLAGS,
+  ...OPTIONAL_VALUE_FLAGS,
+];
 
 /** Positional subcommands the CLI understands. */
 const KNOWN_SUBCOMMANDS = new Set(["init", "add"]);
@@ -232,12 +240,20 @@ export const filterNodeArgs = (args: string[]): string[] => {
 
 const isRecognizedToken = (arg: string): boolean => {
   if (KNOWN_SUBCOMMANDS.has(arg)) return true;
-  if (BOOLEAN_FLAGS.has(arg) || VALUE_FLAGS.has(arg) || OPTIONAL_VALUE_FLAGS.has(arg)) {
+  if (
+    BOOLEAN_FLAGS.has(arg) ||
+    VALUE_FLAGS.has(arg) ||
+    OPTIONAL_VALUE_FLAGS.has(arg)
+  ) {
     return true;
   }
   if (arg.startsWith("--") && arg.includes("=")) {
     const name = arg.slice(0, arg.indexOf("="));
-    return VALUE_FLAGS.has(name) || OPTIONAL_VALUE_FLAGS.has(name) || BOOLEAN_FLAGS.has(name);
+    return (
+      VALUE_FLAGS.has(name) ||
+      OPTIONAL_VALUE_FLAGS.has(name) ||
+      BOOLEAN_FLAGS.has(name)
+    );
   }
   return false;
 };
@@ -264,7 +280,12 @@ export const resolveCliAction = (args: string[]): CliDecision => {
         break;
       case "--port": {
         const port = Number.parseInt(value, 10);
-        if (!/^\d+$/.test(value) || !Number.isInteger(port) || port < 1 || port > 65535) {
+        if (
+          !/^\d+$/.test(value) ||
+          !Number.isInteger(port) ||
+          port < 1 ||
+          port > 65535
+        ) {
           valueErrors.push(
             `Error: --port expects an integer between 1 and 65535 (received "${value}").`,
           );
@@ -327,7 +348,11 @@ export const resolveCliAction = (args: string[]): CliDecision => {
       continue;
     }
 
-    if (BOOLEAN_FLAGS.has(arg) || VALUE_FLAGS.has(arg) || OPTIONAL_VALUE_FLAGS.has(arg)) {
+    if (
+      BOOLEAN_FLAGS.has(arg) ||
+      VALUE_FLAGS.has(arg) ||
+      OPTIONAL_VALUE_FLAGS.has(arg)
+    ) {
       seenKnownToken = true;
       present.add(arg);
       if (VALUE_FLAGS.has(arg)) {
@@ -407,7 +432,9 @@ export const resolveCliAction = (args: string[]): CliDecision => {
       return error("Error: cannot specify multiple subcommands (init, add).");
     }
     if (positionals.length === 0) {
-      return error("Error: `bascik add` expects at least one package or component target (e.g. `bascik add @acme/ui` or `bascik add @acme/ui/card`).");
+      return error(
+        "Error: `bascik add` expects at least one package or component target (e.g. `bascik add @acme/ui` or `bascik add @acme/ui/card`).",
+      );
     }
     flags.addTargets = positionals;
     return { action: "add", flags };
@@ -433,7 +460,7 @@ export const resolveCliAction = (args: string[]): CliDecision => {
   if (present.has("--build") && present.has("--server")) {
     return error(
       "Error: --build and --server cannot be used together. " +
-      "Run `bascik --build` to produce the output directory, then `bascik --server` to serve it.",
+        "Run `bascik --build` to produce the output directory, then `bascik --server` to serve it.",
     );
   }
 
@@ -445,7 +472,9 @@ export const resolveCliAction = (args: string[]): CliDecision => {
   // `--quiet` is `--log-level warn`. Giving both is a contradiction, so it is rejected instead of one winning.
   if (present.has("--quiet") || present.has("-q")) {
     if (flags.logLevel !== undefined) {
-      return error(`Error: --quiet is the same as --log-level ${QUIET_LOG_LEVEL}. Use one or the other.`);
+      return error(
+        `Error: --quiet is the same as --log-level ${QUIET_LOG_LEVEL}. Use one or the other.`,
+      );
     }
     flags.logLevel = QUIET_LOG_LEVEL;
   }
@@ -502,7 +531,9 @@ export const resolveCliAction = (args: string[]): CliDecision => {
   // cannot produce one, so the combination is rejected instead of emitting a
   // half-assembled bundle.
   if (flags.target !== undefined && flags.only !== undefined) {
-    return error("Error: --target cannot be combined with --only. A deployment bundle needs a full build.");
+    return error(
+      "Error: --target cannot be combined with --only. A deployment bundle needs a full build.",
+    );
   }
 
   return { action, flags };

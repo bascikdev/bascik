@@ -13,14 +13,14 @@ npm install -D vitest @vitest/coverage-v8
 Create a `vite.config.js` file in your project root:
 
 ```js
-import { defineConfig } from 'vite';
+import { defineConfig } from "vite";
 
 export default defineConfig({
   test: {
-    include: ['src/**/*.test.ts'],
+    include: ["src/**/*.test.ts"],
     coverage: {
-      provider: 'v8',
-      reporter: ['text', 'json', 'html'],
+      provider: "v8",
+      reporter: ["text", "json", "html"],
     },
   },
 });
@@ -44,10 +44,10 @@ Focus unit tests on core business logic, algorithm correctness, and edge-case ha
 
 ```ts
 // src/utils/formatters.ts
-export function formatCurrency(cents: number, currency = 'USD'): string {
-  if (isNaN(cents) || cents < 0) return '$0.00';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
+export function formatCurrency(cents: number, currency = "USD"): string {
+  if (isNaN(cents) || cents < 0) return "$0.00";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
     currency,
   }).format(cents / 100);
 }
@@ -55,19 +55,19 @@ export function formatCurrency(cents: number, currency = 'USD'): string {
 
 ```ts
 // src/utils/formatters.test.ts
-import { describe, it, expect } from 'vitest';
-import { formatCurrency } from './formatters.ts';
+import { describe, it, expect } from "vitest";
+import { formatCurrency } from "./formatters.ts";
 
-describe('formatCurrency', () => {
-  it('formats positive cent values correctly', () => {
-    expect(formatCurrency(1999)).toBe('$19.99');
-    expect(formatCurrency(500)).toBe('$5.00');
+describe("formatCurrency", () => {
+  it("formats positive cent values correctly", () => {
+    expect(formatCurrency(1999)).toBe("$19.99");
+    expect(formatCurrency(500)).toBe("$5.00");
   });
 
-  it('handles zero and invalid inputs gracefully', () => {
-    expect(formatCurrency(0)).toBe('$0.00');
-    expect(formatCurrency(-500)).toBe('$0.00');
-    expect(formatCurrency(NaN)).toBe('$0.00');
+  it("handles zero and invalid inputs gracefully", () => {
+    expect(formatCurrency(0)).toBe("$0.00");
+    expect(formatCurrency(-500)).toBe("$0.00");
+    expect(formatCurrency(NaN)).toBe("$0.00");
   });
 });
 ```
@@ -78,18 +78,18 @@ Because Bascik API routes use the web standard `Request` and `Response` contract
 
 ```ts
 // src/api/contact.test.ts
-import { describe, it, expect } from 'vitest';
-import { POST } from './contact.ts';
+import { describe, it, expect } from "vitest";
+import { POST } from "./contact.ts";
 
-describe('POST /api/contact', () => {
-  it('creates contact message successfully', async () => {
-    const request = new Request('http://localhost/api/contact', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'Alice', email: 'alice@example.com' }),
+describe("POST /api/contact", () => {
+  it("creates contact message successfully", async () => {
+    const request = new Request("http://localhost/api/contact", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Alice", email: "alice@example.com" }),
     });
 
-    const response = await POST(request, { params: {}, remoteIp: '127.0.0.1' });
+    const response = await POST(request, { params: {}, remoteIp: "127.0.0.1" });
     expect(response.status).toBe(201);
 
     const data = await response.json();
@@ -108,26 +108,26 @@ npm install -D fast-check
 
 ```ts
 // src/utils/slugify.test.ts
-import { describe, it, expect } from 'vitest';
-import fc from 'fast-check';
+import { describe, it, expect } from "vitest";
+import fc from "fast-check";
 
 function slugify(input: string): string {
   return input
     .toLowerCase()
     .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(/[^\w\s-]/g, "")
+    .replace(/[\s_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
-describe('slugify property invariants', () => {
-  it('never outputs spaces or uppercase characters', () => {
+describe("slugify property invariants", () => {
+  it("never outputs spaces or uppercase characters", () => {
     fc.assert(
       fc.property(fc.string(), (str) => {
         const slug = slugify(str);
         expect(slug).not.toMatch(/\s/);
         expect(slug).toBe(slug.toLowerCase());
-      })
+      }),
     );
   });
 });

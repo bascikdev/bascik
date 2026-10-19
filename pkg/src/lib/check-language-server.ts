@@ -38,12 +38,27 @@ type CheckTarget = string | { path: string; extensions?: string[] };
 
 /** The part of `@bascik/language-server/check` this module uses. Checked at run time, because the version is the user's. */
 interface LanguageServerCheckModule {
-  checkFiles: (options: { cwd: string; targets: CheckTarget[]; projectPath: string; fix: boolean; hints: boolean }) => Promise<LanguageServerCheckResult>;
-  formatDiagnostic: (diagnostic: LanguageServerDiagnostic, color?: boolean) => string;
+  checkFiles: (options: {
+    cwd: string;
+    targets: CheckTarget[];
+    projectPath: string;
+    fix: boolean;
+    hints: boolean;
+  }) => Promise<LanguageServerCheckResult>;
+  formatDiagnostic: (
+    diagnostic: LanguageServerDiagnostic,
+    color?: boolean,
+  ) => string;
 }
 
 export type LanguageServerOutcome =
-  | { status: "ran"; filesChecked: number; fixedFiles: string[]; diagnostics: LanguageServerDiagnostic[]; formatDiagnostic: LanguageServerCheckModule["formatDiagnostic"] }
+  | {
+      status: "ran";
+      filesChecked: number;
+      fixedFiles: string[];
+      diagnostics: LanguageServerDiagnostic[];
+      formatDiagnostic: LanguageServerCheckModule["formatDiagnostic"];
+    }
   | { status: "missing" }
   | { status: "outdated" };
 
@@ -56,7 +71,11 @@ const SPECIFIER = "@bascik/language-server/check";
 
 const isNotFound = (error: unknown): boolean => {
   const code = (error as { code?: string } | null)?.code;
-  return code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND" || code === "ERR_PACKAGE_PATH_NOT_EXPORTED";
+  return (
+    code === "ERR_MODULE_NOT_FOUND" ||
+    code === "MODULE_NOT_FOUND" ||
+    code === "ERR_PACKAGE_PATH_NOT_EXPORTED"
+  );
 };
 
 /**
@@ -69,7 +88,10 @@ export async function loadLanguageServerCheck(
   projectRoot: string = process.cwd(),
   fallbackFrom: string | null = import.meta.url,
 ): Promise<LanguageServerCheckModule | null | "outdated"> {
-  const lookups = [join(projectRoot, "package.json"), ...(fallbackFrom === null ? [] : [fallbackFrom])];
+  const lookups = [
+    join(projectRoot, "package.json"),
+    ...(fallbackFrom === null ? [] : [fallbackFrom]),
+  ];
   let installedWithoutCheck = false;
   for (const from of lookups) {
     let resolved: string;
@@ -77,34 +99,56 @@ export async function loadLanguageServerCheck(
       resolved = createRequire(from).resolve(SPECIFIER);
     } catch (error) {
       // The package is there but does not export ./check: a release from before the per-file checks moved into it.
-      if ((error as { code?: string } | null)?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED") {
+      if (
+        (error as { code?: string } | null)?.code ===
+        "ERR_PACKAGE_PATH_NOT_EXPORTED"
+      ) {
         installedWithoutCheck = true;
         continue;
       }
       if (isNotFound(error)) continue;
       throw error;
     }
-    const mod = (await import(pathToFileURL(resolved).href)) as Partial<LanguageServerCheckModule>;
+    const mod = (await import(
+      pathToFileURL(resolved).href
+    )) as Partial<LanguageServerCheckModule>;
     // A newer language server that renamed these would land here too.
-    if (typeof mod.checkFiles !== "function" || typeof mod.formatDiagnostic !== "function") return "outdated";
+    if (
+      typeof mod.checkFiles !== "function" ||
+      typeof mod.formatDiagnostic !== "function"
+    )
+      return "outdated";
     return mod as LanguageServerCheckModule;
   }
   return installedWithoutCheck ? "outdated" : null;
 }
 
 /** The folders `bascik --check` hands to the language server, each with the file types that belong there. */
-export function languageServerTargets(cwd: string = process.cwd()): CheckTarget[] {
+export function languageServerTargets(
+  cwd: string = process.cwd(),
+): CheckTarget[] {
   const directory = BascikConfig.directory;
   const targets: CheckTarget[] = [];
   // Pages are markup. Their static assets (.js, .css) are served as they are and are not Bascik source.
-  targets.push({ path: resolve(cwd, directory?.pages ?? "src/pages"), extensions: ["html"] });
-  for (const root of directory?.components ?? ["src/components"]) targets.push({ path: resolve(cwd, root) });
-  targets.push({ path: resolve(cwd, directory?.api ?? "src/api"), extensions: ["ts", "js", "mjs"] });
-  return targets.filter((target) => typeof target === "string" || existsSync(target.path));
+  targets.push({
+    path: resolve(cwd, directory?.pages ?? "src/pages"),
+    extensions: ["html"],
+  });
+  for (const root of directory?.components ?? ["src/components"])
+    targets.push({ path: resolve(cwd, root) });
+  targets.push({
+    path: resolve(cwd, directory?.api ?? "src/api"),
+    extensions: ["ts", "js", "mjs"],
+  });
+  return targets.filter(
+    (target) => typeof target === "string" || existsSync(target.path),
+  );
 }
 
 /** Runs the per-file checks over the project's pages, components, and API routes. */
-export async function runLanguageServerCheck(options: { fix?: boolean; cwd?: string } = {}): Promise<LanguageServerOutcome> {
+export async function runLanguageServerCheck(
+  options: { fix?: boolean; cwd?: string } = {},
+): Promise<LanguageServerOutcome> {
   const cwd = options.cwd ?? process.cwd();
   const mod = await loadLanguageServerCheck(cwd);
   if (mod === null) return { status: "missing" };
@@ -121,14 +165,18 @@ export async function runLanguageServerCheck(options: { fix?: boolean; cwd?: str
 }
 
 /** Why `--fix` cannot run. Fixes are applied by the language server, so without it there is nothing to apply. */
-export function languageServerFixMessage(outcome: LanguageServerOutcome): string {
+export function languageServerFixMessage(
+  outcome: LanguageServerOutcome,
+): string {
   return outcome.status === "outdated"
     ? "[bascik] --fix needs a newer @bascik/language-server than the one installed. Update it with: npm install --save-dev @bascik/language-server@latest"
     : "[bascik] --fix needs @bascik/language-server to apply fixes, and it is not installed. Install it with: npm install --save-dev @bascik/language-server";
 }
 
 /** What to tell the user when the per-file checks could not run, or `undefined` when they did. */
-export function languageServerHint(outcome: LanguageServerOutcome): string | undefined {
+export function languageServerHint(
+  outcome: LanguageServerOutcome,
+): string | undefined {
   if (outcome.status === "missing") {
     return "per-file checks skipped: install @bascik/language-server to run them (npm install --save-dev @bascik/language-server)";
   }

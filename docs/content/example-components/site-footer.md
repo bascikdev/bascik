@@ -9,6 +9,7 @@ A footer for every page: secondary links and a copyright line. The links and the
 `name` is the copyright holder and defaults to "Example Site".
 
 <!-- demo:usage -->
+
 ```html
 <site-footer data-bascik-prop-name="Example Site" />
 ```

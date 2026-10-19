@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LOG_LEVELS, QUIET_LOG_LEVEL, shouldLog } from "./log-level.ts";
 
-const { config } = vi.hoisted(() => ({ config: { logging: undefined as { level?: string } | undefined } }));
+const { config } = vi.hoisted(() => ({
+  config: { logging: undefined as { level?: string } | undefined },
+}));
 vi.mock("./config.js", () => ({ BascikConfig: config }));
 
 import { logInfo } from "./log.ts";
@@ -14,7 +16,7 @@ afterEach(() => {
 describe("logInfo", () => {
   const run = (level: string | undefined) => {
     config.logging = level === undefined ? undefined : { level };
-    const log = vi.spyOn(console, "log").mockImplementation(() => { });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
     logInfo("progress", 1);
     return log;
   };

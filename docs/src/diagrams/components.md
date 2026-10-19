@@ -1,16 +1,19 @@
 <!-- demo:components-layouts-html-only -->
+
 ```text
 src/components/
   my-card.html
 ```
 
 <!-- demo:components-layouts-single-file -->
+
 ```text
 src/components/
   my-card.html   (markup, style, script)
 ```
 
 <!-- demo:components-layouts-companion -->
+
 ```text
 src/components/
   my-card.html
@@ -18,6 +21,7 @@ src/components/
 ```
 
 <!-- demo:components-layouts-subfolder -->
+
 ```text
 src/components/
   my-card/
@@ -26,26 +30,31 @@ src/components/
 ```
 
 <!-- demo:components-scope-boundary-page-in -->
+
 ```html
-<main id="main-content">
+<main id="main-content"></main>
 ```
 
 <!-- demo:components-scope-boundary-page-out -->
+
 ```html
-<main id="main-content">
+<main id="main-content"></main>
 ```
 
 <!-- demo:components-scope-boundary-component-in -->
+
 ```html
-<button id="menu">
+<button id="menu"></button>
 ```
 
 <!-- demo:components-scope-boundary-component-out -->
+
 ```html
-<button id="bascik__site-nav__a1b2c3d4__menu">
+<button id="bascik__site-nav__a1b2c3d4__menu"></button>
 ```
 
 <!-- demo:components-shared-head-page -->
+
 ```html
 <head>
   <site-head />
@@ -54,6 +63,7 @@ src/components/
 ```
 
 <!-- demo:components-shared-head-built -->
+
 ```html
 <head>
   <meta charset="UTF-8" />

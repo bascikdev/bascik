@@ -31,15 +31,21 @@ beforeEach(() => {
 
 describe("executeServerScripts in-process execution", () => {
   it("never spawns a child node process per request", async () => {
-    const html = "<main><script data-bascik-server>export default function() { return '<p>InProcess</p>'; }</script></main>";
+    const html =
+      "<main><script data-bascik-server>export default function() { return '<p>InProcess</p>'; }</script></main>";
     const result = await executeServerScripts(html, baseRequest, baseContext);
     expect(result).toBe("<main><p>InProcess</p></main>");
   });
 
   it("resolves sidecar placeholder to the registered module in-process", async () => {
-    serverSidecarRegistry.recordScript("placeholder_123", "export default function(req) { return `<b>User:${req.headers.get('x-user')}</b>`; }");
+    serverSidecarRegistry.recordScript(
+      "placeholder_123",
+      "export default function(req) { return `<b>User:${req.headers.get('x-user')}</b>`; }",
+    );
     const html = `<script type="text/bascik-server" data-bascik-server-id="placeholder_123"></script>`;
-    const req = new Request("http://localhost/", { headers: { "x-user": "Dana" } });
+    const req = new Request("http://localhost/", {
+      headers: { "x-user": "Dana" },
+    });
     const result = await executeServerScripts(html, req, baseContext);
     expect(result).toBe("<b>User:Dana</b>");
   });
@@ -62,7 +68,9 @@ describe("executeServerScripts in-process execution", () => {
       headers: { authorization: "Bearer token123" },
     });
     const result = await executeServerScripts(html, req, baseContext);
-    expect(result).toBe("<div>POST /profile ?tab=security auth=Bearer token123</div>");
+    expect(result).toBe(
+      "<div>POST /profile ?tab=security auth=Bearer token123</div>",
+    );
   });
 
   it("executes concurrent requests with distinct contexts without cross-contamination", async () => {
@@ -80,7 +88,10 @@ describe("executeServerScripts in-process execution", () => {
         headers: { "x-client": `Client-${i}` },
       });
       const res = await executeServerScripts(html, req, baseContext);
-      return { expected: `<span data-id="req-${i}">Client-${i}</span>`, actual: res };
+      return {
+        expected: `<span data-id="req-${i}">Client-${i}</span>`,
+        actual: res,
+      };
     });
 
     const results = await Promise.all(tasks);
@@ -106,15 +117,19 @@ describe("executeServerScripts in-process execution", () => {
       }
     </script></main>`;
 
-    const req = new Request(`http://localhost/?q=${encodeURIComponent(xssPayload)}`);
+    const req = new Request(
+      `http://localhost/?q=${encodeURIComponent(xssPayload)}`,
+    );
     const result = await executeServerScripts(html, req, baseContext);
-    expect(result).toBe("<main><p>&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;</p></main>");
+    expect(result).toBe(
+      "<main><p>&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;</p></main>",
+    );
     expect(result).not.toContain("<script>alert");
   });
 
   it("handles thrown errors per onServerScriptError without leaking paths or stacks to response", async () => {
     (BascikConfig as any).scripts = { onServerScriptError: "warn" };
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const html = `<p>before</p><script data-bascik-server>export default function() { throw new Error('SECRET_DB_PASSWORD_123'); }</script><p>after</p>`;
     const result = await executeServerScripts(html, baseRequest, baseContext);
 
@@ -127,7 +142,7 @@ describe("executeServerScripts in-process execution", () => {
 
   it("contains syntax errors to their own block without failing other scripts or the page", async () => {
     (BascikConfig as any).scripts = { onServerScriptError: "warn" };
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const html = `<div>
       <script data-bascik-server>export default function() { return '<span>first ok</span>'; }</script>
       <script data-bascik-server>export default function() { const === invalid_syntax; }</script>
@@ -142,7 +157,7 @@ describe("executeServerScripts in-process execution", () => {
   });
 
   it("does not log or fail violently on network reset errors during script execution", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const html = `<script data-bascik-server>
       export default function() {
         const err = new Error('Client reset');
@@ -159,7 +174,7 @@ describe("executeServerScripts in-process execution", () => {
 
   it("captures async promise rejections gracefully", async () => {
     (BascikConfig as any).scripts = { onServerScriptError: "warn" };
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const html = `<script data-bascik-server>
       export default async function() {
         return Promise.reject(new Error('Async service down'));
@@ -174,7 +189,7 @@ describe("executeServerScripts in-process execution", () => {
 
   it("aborts and times out hung async scripts when exceeding timeoutMs", async () => {
     (BascikConfig as any).scripts = { onServerScriptError: "warn" };
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const html = `<script data-bascik-server>
       export default async function(req, ctx, { signal } = {}) {
         await new Promise((resolve) => {
@@ -184,15 +199,22 @@ describe("executeServerScripts in-process execution", () => {
       }
     </script>`;
 
-    const result = await executeServerScripts(html, baseRequest, baseContext, 50);
+    const result = await executeServerScripts(
+      html,
+      baseRequest,
+      baseContext,
+      50,
+    );
     expect(result).toBe("");
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("timed out after 50ms"));
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("timed out after 50ms"),
+    );
     warnSpy.mockRestore();
   });
 
   it("ensures no internal stack frames, source code, or cache paths leak into the output", async () => {
     (BascikConfig as any).scripts = { onServerScriptError: "warn" };
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const marker = "UNIQUE_INTERNAL_SIGNATURE_987654";
     const html = `<div id="shell"><script data-bascik-server>
       // Marker: ${marker}
@@ -206,11 +228,13 @@ describe("executeServerScripts in-process execution", () => {
   });
 
   it("invalidates and applies updated script modules in dev mode", async () => {
-    const html1 = "<script data-bascik-server>export default function() { return 'v1'; }</script>";
+    const html1 =
+      "<script data-bascik-server>export default function() { return 'v1'; }</script>";
     const res1 = await executeServerScripts(html1, baseRequest, baseContext);
     expect(res1).toBe("v1");
 
-    const html2 = "<script data-bascik-server>export default function() { return 'v2'; }</script>";
+    const html2 =
+      "<script data-bascik-server>export default function() { return 'v2'; }</script>";
     const res2 = await executeServerScripts(html2, baseRequest, baseContext);
     expect(res2).toBe("v2");
   });
@@ -234,17 +258,31 @@ describe("executeServerScripts in-process execution", () => {
   });
 
   it("throws an error when script tag has both data-bascik-server and data-bascik-build", async () => {
-    const html = "<script data-bascik-server data-bascik-build>export default function() {}</script>";
-    await expect(executeServerScripts(html, baseRequest, baseContext, 30000, "src/pages/index.html")).rejects.toThrow(
-      /has both data-bascik-server and data-bascik-build/,
-    );
+    const html =
+      "<script data-bascik-server data-bascik-build>export default function() {}</script>";
+    await expect(
+      executeServerScripts(
+        html,
+        baseRequest,
+        baseContext,
+        30000,
+        "src/pages/index.html",
+      ),
+    ).rejects.toThrow(/has both data-bascik-server and data-bascik-build/);
   });
 
   it("throws an error when script tag has both data-bascik-server and data-bascik-routes", async () => {
-    const html = "<script data-bascik-server data-bascik-routes>export default function() {}</script>";
-    await expect(executeServerScripts(html, baseRequest, baseContext, 30000, "src/pages/index.html")).rejects.toThrow(
-      /has both data-bascik-server and data-bascik-routes/,
-    );
+    const html =
+      "<script data-bascik-server data-bascik-routes>export default function() {}</script>";
+    await expect(
+      executeServerScripts(
+        html,
+        baseRequest,
+        baseContext,
+        30000,
+        "src/pages/index.html",
+      ),
+    ).rejects.toThrow(/has both data-bascik-server and data-bascik-routes/);
   });
 
   it("passes standard WHATWG Request and context to script handler", async () => {
@@ -280,7 +318,9 @@ describe("executeServerScripts in-process execution", () => {
     const req = new Request("http://localhost/");
     const context = { remoteIp: "127.0.0.1" };
     await expect(
-      executeServerScripts(html, req, context, 30000, "src/pages/test.html")
-    ).rejects.toThrow(/must export default a function.*src\/pages\/test\.html/s);
+      executeServerScripts(html, req, context, 30000, "src/pages/test.html"),
+    ).rejects.toThrow(
+      /must export default a function.*src\/pages\/test\.html/s,
+    );
   });
 });

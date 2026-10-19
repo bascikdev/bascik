@@ -164,12 +164,12 @@ export const readPackageManifest = async (
   ) {
     throw new Error(
       `package "${packageName}" is missing a "bascik.components" field in its package.json.\n` +
-      `  To publish Bascik components, add a "bascik" field to package.json pointing to your components directory:\n` +
-      `  {\n` +
-      `    "bascik": {\n` +
-      `      "components": "./components"\n` +
-      `    }\n` +
-      `  }`,
+        `  To publish Bascik components, add a "bascik" field to package.json pointing to your components directory:\n` +
+        `  {\n` +
+        `    "bascik": {\n` +
+        `      "components": "./components"\n` +
+        `    }\n` +
+        `  }`,
     );
   }
 
@@ -220,7 +220,11 @@ export const saveLockfile = async (
   lockfile: BascikLockfile,
 ): Promise<void> => {
   const lockfilePath = join(cwd, LOCKFILE_NAME);
-  await writeFile(lockfilePath, `${JSON.stringify(lockfile, null, 2)}\n`, "utf8");
+  await writeFile(
+    lockfilePath,
+    `${JSON.stringify(lockfile, null, 2)}\n`,
+    "utf8",
+  );
 };
 
 /**
@@ -233,7 +237,8 @@ export const addComponents = async (
   const cwd = options.cwd ?? process.cwd();
   // `bascik add` targets the FIRST configured root; order is otherwise
   // documentation-only because duplicates across roots are build errors.
-  const configuredComponentsDir = options.componentsDir ??
+  const configuredComponentsDir =
+    options.componentsDir ??
     (options.cwd
       ? join(options.cwd, "src", "components")
       : (BascikConfig.directory?.components?.[0] ?? "src/components"));
@@ -250,14 +255,15 @@ export const addComponents = async (
 
   // Find all existing local component files to build the existing tag collision map
   const localComponentFiles = existsSync(targetComponentsDir)
-    ? (await deepReadDirFlat(
-      targetComponentsDir,
-      /\.(html|css|js|ts|mjs)$/,
-    ).catch(() => [])) ?? []
+    ? ((await deepReadDirFlat(
+        targetComponentsDir,
+        /\.(html|css|js|ts|mjs)$/,
+      ).catch(() => [])) ?? [])
     : [];
 
   const existingLocalHtmlFiles = (localComponentFiles as string[]).filter(
-    (fileName) => fileName.match(/\.html$/) && !fileName.match(/\.(test|spec)\.html$/),
+    (fileName) =>
+      fileName.match(/\.html$/) && !fileName.match(/\.(test|spec)\.html$/),
   );
 
   const existingTagToFilePath = new Map<string, string>();
@@ -281,16 +287,13 @@ export const addComponents = async (
   for (const target of targets) {
     const { packageName, componentSelector } = parseAddTarget(target);
     const pkgDir = resolvePackageDir(packageName, cwd);
-    const { version, componentsDir: pkgComponentsDir } = await readPackageManifest(
-      pkgDir,
-      packageName,
-    );
+    const { version, componentsDir: pkgComponentsDir } =
+      await readPackageManifest(pkgDir, packageName);
 
     // List all component files in the package's advertised components directory
-    const packageFiles = (await deepReadDirFlat(
-      pkgComponentsDir,
-      /\.(html|css|js|ts|mjs)$/,
-    )) ?? [];
+    const packageFiles =
+      (await deepReadDirFlat(pkgComponentsDir, /\.(html|css|js|ts|mjs)$/)) ??
+      [];
 
     if (packageFiles.length === 0) {
       throw new Error(
@@ -331,7 +334,8 @@ export const addComponents = async (
       const content = await readFile(srcFilePath, "utf8");
       const hash = computeContentHash(content);
       const isHtml = Boolean(
-        srcFilePath.match(/\.html$/) && !srcFilePath.match(/\.(test|spec)\.html$/),
+        srcFilePath.match(/\.html$/) &&
+        !srcFilePath.match(/\.(test|spec)\.html$/),
       );
       const derivedTag = isHtml ? deriveComponentName(srcFilePath) : undefined;
 
@@ -356,9 +360,9 @@ export const addComponents = async (
       const existingSrc = destPathToSrcMap.get(item.destPath)!;
       throw new Error(
         `error: destination file collision for "${item.destPath}"\n` +
-        `  source 1: ${existingSrc}\n` +
-        `  source 2: ${item.srcPath}\n` +
-        `  Multiple add targets resolve to the same destination path. Refusing to overwrite.`,
+          `  source 1: ${existingSrc}\n` +
+          `  source 2: ${item.srcPath}\n` +
+          `  Multiple add targets resolve to the same destination path. Refusing to overwrite.`,
       );
     }
     destPathToSrcMap.set(item.destPath, item.srcPath);
@@ -376,9 +380,9 @@ export const addComponents = async (
         const existingSrc = batchTagToFilePath.get(tag)!;
         throw new Error(
           `error: component name collision for <${tag}>\n` +
-          `  ${existingSrc}\n` +
-          `  ${item.srcPath}\n` +
-          `  Component names come from the filename, so subfolders do not create separate namespaces.`,
+            `  ${existingSrc}\n` +
+            `  ${item.srcPath}\n` +
+            `  Component names come from the filename, so subfolders do not create separate namespaces.`,
         );
       }
       batchTagToFilePath.set(tag, item.srcPath);
@@ -387,18 +391,26 @@ export const addComponents = async (
       if (existingTagToFilePath.has(tag)) {
         const existingLocalPath = existingTagToFilePath.get(tag)!;
         const pkgRecord = lockfile.components[item.packageName];
-        const isTrackedUnderThisPkg = Boolean(pkgRecord?.files?.[item.relFromCompDir]);
-        const existingRel = relative(targetComponentsDir, existingLocalPath).replace(/\\/g, "/");
-        const destRel = relative(targetComponentsDir, item.destPath).replace(/\\/g, "/");
+        const isTrackedUnderThisPkg = Boolean(
+          pkgRecord?.files?.[item.relFromCompDir],
+        );
+        const existingRel = relative(
+          targetComponentsDir,
+          existingLocalPath,
+        ).replace(/\\/g, "/");
+        const destRel = relative(targetComponentsDir, item.destPath).replace(
+          /\\/g,
+          "/",
+        );
 
         // If it was not previously added from this package, or if the relative path in components dir differs:
         // it is a collision with an existing project component!
         if (!isTrackedUnderThisPkg || existingRel !== destRel) {
           throw new Error(
             `error: component name collision for <${tag}>\n` +
-            `  existing project component: ${existingLocalPath}\n` +
-            `  package component: ${item.srcPath}\n` +
-            `  Component names come from the filename, so subfolders do not create separate namespaces. Rename the existing component or adjust the package.`,
+              `  existing project component: ${existingLocalPath}\n` +
+              `  package component: ${item.srcPath}\n` +
+              `  Component names come from the filename, so subfolders do not create separate namespaces. Rename the existing component or adjust the package.`,
           );
         }
       }
@@ -422,8 +434,8 @@ export const addComponents = async (
           if (!options.force) {
             throw new Error(
               `Component file "${item.relFromCompDir}" has been modified locally. ` +
-              `Refusing to overwrite without --force.\n` +
-              `  Run with --force to overwrite local modifications: bascik add --force <package>`,
+                `Refusing to overwrite without --force.\n` +
+                `  Run with --force to overwrite local modifications: bascik add --force <package>`,
             );
           }
         }
@@ -432,8 +444,8 @@ export const addComponents = async (
         if (currentLocalHash !== item.hash && !options.force) {
           throw new Error(
             `Component file "${item.relFromCompDir}" exists and has different content. ` +
-            `Refusing to overwrite without --force.\n` +
-            `  Run with --force to overwrite: bascik add --force <package>`,
+              `Refusing to overwrite without --force.\n` +
+              `  Run with --force to overwrite: bascik add --force <package>`,
           );
         }
       }
@@ -497,9 +509,9 @@ export const addComponents = async (
     // Rollback: restore all files to original state
     for (const [filePath, originalContent] of originalFileSnapshots.entries()) {
       if (originalContent === null) {
-        await rm(filePath, { force: true }).catch(() => { });
+        await rm(filePath, { force: true }).catch(() => {});
       } else {
-        await writeFile(filePath, originalContent, "utf8").catch(() => { });
+        await writeFile(filePath, originalContent, "utf8").catch(() => {});
       }
     }
     throw err;

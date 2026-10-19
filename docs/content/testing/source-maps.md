@@ -9,13 +9,14 @@ During component compilation, Bascik automatically appends a `//# sourceURL` com
 ```html
 <!-- Compiled output injected into page HTML -->
 <script>
-
-(function() {
-  document.getElementById("bascik__counter__a1b2__btn").addEventListener("click", () => {
-    console.log("Button clicked");
-  });
-})();
-//# sourceURL=src/components/counter/counter.html
+  (function () {
+    document
+      .getElementById("bascik__counter__a1b2__btn")
+      .addEventListener("click", () => {
+        console.log("Button clicked");
+      });
+  })();
+  //# sourceURL=src/components/counter/counter.html
 </script>
 ```
 

@@ -29,7 +29,7 @@ const { workers, WorkerMock } = vi.hoisted(() => {
     }
   }
   const workers: FakeWorkerImpl[] = [];
-  const WorkerMock = vi.fn(function(this: FakeWorkerImpl) {
+  const WorkerMock = vi.fn(function (this: FakeWorkerImpl) {
     const w = new FakeWorkerImpl();
     workers.push(w);
     return w;
@@ -70,11 +70,21 @@ describe("WorkerPool", () => {
   });
 
   it("gives workers the environment it was handed, and leaves the default alone when it was not", () => {
-    new WorkerPool<string, string>("/fake/worker.js", 1, {}, { env: { FORCE_COLOR: "1" } });
-    expect(WorkerMock).toHaveBeenLastCalledWith("/fake/worker.js", expect.objectContaining({ env: { FORCE_COLOR: "1" } }));
+    new WorkerPool<string, string>(
+      "/fake/worker.js",
+      1,
+      {},
+      { env: { FORCE_COLOR: "1" } },
+    );
+    expect(WorkerMock).toHaveBeenLastCalledWith(
+      "/fake/worker.js",
+      expect.objectContaining({ env: { FORCE_COLOR: "1" } }),
+    );
     WorkerMock.mockClear();
     makePool(1);
-    expect((WorkerMock.mock.calls[0] as unknown[])[1]).not.toHaveProperty("env");
+    expect((WorkerMock.mock.calls[0] as unknown[])[1]).not.toHaveProperty(
+      "env",
+    );
   });
 
   it("dispatches tasks to idle workers and resolves with the result", async () => {
@@ -280,7 +290,10 @@ describe("WorkerPool", () => {
       // double-dispatch to a wasted replacement, and the completed worker's
       // freed capacity must be restored exactly once.
       let resolves = 0;
-      const first = running.then((r) => { resolves += 1; return r; });
+      const first = running.then((r) => {
+        resolves += 1;
+        return r;
+      });
       workers[0].emit("message", { ok: true, result: "r1" });
       workers[0].emit("exit", 0);
       await expect(first).resolves.toBe("r1");
@@ -294,7 +307,9 @@ describe("WorkerPool", () => {
       expect(workers[1].postMessage).toHaveBeenCalledWith("task-2");
       // No duplicate idle/dispatch on the retired worker; only workers[0] was
       // the original, workers[1] the single replacement.
-      const dispatched = workers.filter((w) => w.postMessage.mock.calls.length > 0);
+      const dispatched = workers.filter(
+        (w) => w.postMessage.mock.calls.length > 0,
+      );
       expect(dispatched.map((w) => workers.indexOf(w))).toEqual([0, 1]);
       completeWith(workers[1], "r2");
       await expect(second).resolves.toBe("r2");

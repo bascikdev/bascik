@@ -1,83 +1,83 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Attribute Inheritance Test</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 32px 24px;
+        background: #111;
+        color: #eee;
+        font-family: sans-serif;
+      }
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Attribute Inheritance Test</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 32px 24px;
-      background: #111;
-      color: #eee;
-      font-family: sans-serif;
-    }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.2rem;
+      }
 
-    h1 {
-      margin: 0 0 8px;
-      font-size: 1.2rem;
-    }
+      .instance-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #888;
+        margin: 0 0 10px;
+      }
 
-    .instance-label {
-      font-size: 0.72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #888;
-      margin: 0 0 10px;
-    }
+      .instances {
+        display: flex;
+        flex-direction: column;
+        gap: 28px;
+      }
+    </style>
+  </head>
 
-    .instances {
-      display: flex;
-      flex-direction: column;
-      gap: 28px;
-    }
-  </style>
-</head>
+  <body>
+    <h1>Attribute Inheritance Test</h1>
 
-<body>
-  <h1>Attribute Inheritance Test</h1>
+    <div class="instances">
+      <div>
+        <p class="instance-label">Usage 1 — no extra attrs (baseline)</p>
+        <attr-inherit></attr-inherit>
+      </div>
 
-  <div class="instances">
+      <div>
+        <p class="instance-label">Usage 2 — class passthrough</p>
+        <attr-inherit class="extra-class"></attr-inherit>
+      </div>
 
-    <div>
-      <p class="instance-label">Usage 1 — no extra attrs (baseline)</p>
-      <attr-inherit></attr-inherit>
+      <div>
+        <p class="instance-label">Usage 3 — data-* passthrough</p>
+        <attr-inherit data-theme="dark"></attr-inherit>
+      </div>
+
+      <div>
+        <p class="instance-label">Usage 4 — aria-label passthrough</p>
+        <attr-inherit aria-label="test card"></attr-inherit>
+      </div>
+
+      <div>
+        <p class="instance-label">Usage 5 — style passthrough</p>
+        <attr-inherit style="border-color: blue"></attr-inherit>
+      </div>
+
+      <div>
+        <p class="instance-label">Usage 6 — id is NOT inherited</p>
+        <attr-inherit id="should-not-appear-on-root"></attr-inherit>
+      </div>
+
+      <div>
+        <p class="instance-label">Usage 7 — multiple attrs combined</p>
+        <attr-inherit
+          class="featured"
+          data-testid="combined-card"
+          aria-label="combined card"
+        >
+        </attr-inherit>
+      </div>
     </div>
-
-    <div>
-      <p class="instance-label">Usage 2 — class passthrough</p>
-      <attr-inherit class="extra-class"></attr-inherit>
-    </div>
-
-    <div>
-      <p class="instance-label">Usage 3 — data-* passthrough</p>
-      <attr-inherit data-theme="dark"></attr-inherit>
-    </div>
-
-    <div>
-      <p class="instance-label">Usage 4 — aria-label passthrough</p>
-      <attr-inherit aria-label="test card"></attr-inherit>
-    </div>
-
-    <div>
-      <p class="instance-label">Usage 5 — style passthrough</p>
-      <attr-inherit style="border-color: blue;"></attr-inherit>
-    </div>
-
-    <div>
-      <p class="instance-label">Usage 6 — id is NOT inherited</p>
-      <attr-inherit id="should-not-appear-on-root"></attr-inherit>
-    </div>
-
-    <div>
-      <p class="instance-label">Usage 7 — multiple attrs combined</p>
-      <attr-inherit class="featured" data-testid="combined-card" aria-label="combined card">
-      </attr-inherit>
-    </div>
-
-  </div>
-</body>
-
+  </body>
 </html>

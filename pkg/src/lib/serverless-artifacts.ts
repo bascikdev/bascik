@@ -4,7 +4,14 @@
  * Orchestrates serverless artifact emission via HostingAdapter (prompts 133, 142).
  */
 
-import { mkdir, writeFile, readdir, rm, realpath, lstat } from "node:fs/promises";
+import {
+  mkdir,
+  writeFile,
+  readdir,
+  rm,
+  realpath,
+  lstat,
+} from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve, relative, sep, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,11 +53,15 @@ export interface EmitServerlessOptions {
 }
 
 const ident = (id: string) => `m_${id.replace(/[^a-zA-Z0-9_]/g, "_")}`;
-const hashOf = (str: string) => createHash("sha256").update(str).digest("hex").slice(0, 16);
+const hashOf = (str: string) =>
+  createHash("sha256").update(str).digest("hex").slice(0, 16);
 
 const isSubpath = (parent: string, child: string): boolean => {
   const rel = relative(resolve(parent), resolve(child));
-  return rel === "" || (!rel.startsWith("..") && !rel.startsWith(sep) && !rel.startsWith("/"));
+  return (
+    rel === "" ||
+    (!rel.startsWith("..") && !rel.startsWith(sep) && !rel.startsWith("/"))
+  );
 };
 
 interface DistFileSnapshot {
@@ -58,7 +69,11 @@ interface DistFileSnapshot {
   mtimeMs: number;
 }
 
-const snapshotDistInventory = async (distDir: string, outDir: string, root = distDir): Promise<Map<string, DistFileSnapshot>> => {
+const snapshotDistInventory = async (
+  distDir: string,
+  outDir: string,
+  root = distDir,
+): Promise<Map<string, DistFileSnapshot>> => {
   const map = new Map<string, DistFileSnapshot>();
   if (!existsSync(root)) return map;
   const entries = await readdir(root, { withFileTypes: true });
@@ -76,16 +91,24 @@ const snapshotDistInventory = async (distDir: string, outDir: string, root = dis
   return map;
 };
 
-const verifyDistNotModified = async (distDir: string, outDir: string, prior: Map<string, DistFileSnapshot>): Promise<void> => {
+const verifyDistNotModified = async (
+  distDir: string,
+  outDir: string,
+  prior: Map<string, DistFileSnapshot>,
+): Promise<void> => {
   for (const [path, snap] of prior) {
     try {
       const current = await lstat(path);
       if (current.size !== snap.size || current.mtimeMs !== snap.mtimeMs) {
-        throw new Error(`[bascik] Adapter modified dist/ which is read-only for adapters: ${path}`);
+        throw new Error(
+          `[bascik] Adapter modified dist/ which is read-only for adapters: ${path}`,
+        );
       }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        throw new Error(`[bascik] Adapter modified dist/ which is read-only for adapters (deleted file): ${path}`);
+        throw new Error(
+          `[bascik] Adapter modified dist/ which is read-only for adapters (deleted file): ${path}`,
+        );
       }
       throw err;
     }
@@ -95,7 +118,9 @@ const verifyDistNotModified = async (distDir: string, outDir: string, prior: Map
   const currentSnapshot = await snapshotDistInventory(distDir, outDir);
   for (const [path] of currentSnapshot) {
     if (!prior.has(path)) {
-      throw new Error(`[bascik] Adapter modified dist/ which is read-only for adapters (new file): ${path}`);
+      throw new Error(
+        `[bascik] Adapter modified dist/ which is read-only for adapters (new file): ${path}`,
+      );
     }
   }
 };
@@ -120,8 +145,13 @@ const assertWrittenPathsUnderOutDir = async (
     } catch {
       canonicalPath = resolve(full);
     }
-    if (!canonicalPath.startsWith(canonicalOutDir + sep) && canonicalPath !== canonicalOutDir) {
-      throw new Error(`[bascik] Adapter wrote path outside target output directory: ${full}`);
+    if (
+      !canonicalPath.startsWith(canonicalOutDir + sep) &&
+      canonicalPath !== canonicalOutDir
+    ) {
+      throw new Error(
+        `[bascik] Adapter wrote path outside target output directory: ${full}`,
+      );
     }
     if (linkStat.isDirectory()) {
       await assertWrittenPathsUnderOutDir(outDir, full, visited);
@@ -141,7 +171,9 @@ export const emitServerlessArtifacts = async (
   options: EmitServerlessOptions,
 ): Promise<ServerlessBuildResult> => {
   const projectRoot = options.projectRoot ?? process.cwd();
-  const distDir = options.distDir ?? resolve(projectRoot, BascikConfig?.directory?.out ?? "dist");
+  const distDir =
+    options.distDir ??
+    resolve(projectRoot, BascikConfig?.directory?.out ?? "dist");
   const base = options.base ?? BascikConfig?.base ?? "/";
   const log = options.log ?? console.log;
 
@@ -180,8 +212,15 @@ export const emitServerlessArtifacts = async (
   for (const page of Object.values(graph.pages)) {
     for (const job of Object.values(page.jobs)) {
       if (job.source.kind === "inline") {
-        const rewritten = rewriteModuleSpecifiers(job.source.code, projectRoot, { importRoot });
-        const stagedFile = join(stagingDir, `${ident(job.id)}.${hashOf(rewritten)}.mjs`);
+        const rewritten = rewriteModuleSpecifiers(
+          job.source.code,
+          projectRoot,
+          { importRoot },
+        );
+        const stagedFile = join(
+          stagingDir,
+          `${ident(job.id)}.${hashOf(rewritten)}.mjs`,
+        );
         await writeFile(stagedFile, rewritten, "utf8");
         job.source.stagedPath = stagedFile;
       }
@@ -190,7 +229,10 @@ export const emitServerlessArtifacts = async (
 
   // Runtime entry path: resolve .js in dist/ or .ts in src/
   const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
-  const runtimeEntry = resolve(dirname(fileURLToPath(import.meta.url)), `../runtime${ext}`);
+  const runtimeEntry = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    `../runtime${ext}`,
+  );
 
   const context: AdapterBuildContext = {
     graph,
@@ -215,21 +257,37 @@ export const emitServerlessArtifacts = async (
   }
 
   if (!buildResult || typeof buildResult !== "object") {
-    throw new Error(`[bascik] --target ${target}: HostingAdapter contract violation: build() returned invalid result`);
+    throw new Error(
+      `[bascik] --target ${target}: HostingAdapter contract violation: build() returned invalid result`,
+    );
   }
-  if (typeof buildResult.publicDir !== "string" || !buildResult.publicDir.trim()) {
-    throw new Error(`[bascik] --target ${target}: HostingAdapter contract violation: publicDir must be a non-empty string`);
+  if (
+    typeof buildResult.publicDir !== "string" ||
+    !buildResult.publicDir.trim()
+  ) {
+    throw new Error(
+      `[bascik] --target ${target}: HostingAdapter contract violation: publicDir must be a non-empty string`,
+    );
   }
   if (!existsSync(buildResult.publicDir)) {
-    throw new Error(`[bascik] --target ${target}: HostingAdapter contract violation: publicDir does not exist: ${buildResult.publicDir}`);
+    throw new Error(
+      `[bascik] --target ${target}: HostingAdapter contract violation: publicDir does not exist: ${buildResult.publicDir}`,
+    );
   }
   const publicDirStat = await lstat(buildResult.publicDir);
   if (!publicDirStat.isDirectory()) {
-    throw new Error(`[bascik] --target ${target}: HostingAdapter contract violation: publicDir is not a directory: ${buildResult.publicDir}`);
+    throw new Error(
+      `[bascik] --target ${target}: HostingAdapter contract violation: publicDir is not a directory: ${buildResult.publicDir}`,
+    );
   }
   if (buildResult.notes !== undefined) {
-    if (!Array.isArray(buildResult.notes) || buildResult.notes.some((n) => typeof n !== "string")) {
-      throw new Error(`[bascik] --target ${target}: HostingAdapter contract violation: notes must be an array of strings`);
+    if (
+      !Array.isArray(buildResult.notes) ||
+      buildResult.notes.some((n) => typeof n !== "string")
+    ) {
+      throw new Error(
+        `[bascik] --target ${target}: HostingAdapter contract violation: notes must be an array of strings`,
+      );
     }
   }
 
@@ -242,14 +300,18 @@ export const emitServerlessArtifacts = async (
     !resolve(buildResult.workerPath).startsWith(resolve(outDir) + sep) &&
     resolve(buildResult.workerPath) !== resolve(outDir)
   ) {
-    throw new Error(`[bascik] Adapter wrote path outside target output directory: ${buildResult.workerPath}`);
+    throw new Error(
+      `[bascik] Adapter wrote path outside target output directory: ${buildResult.workerPath}`,
+    );
   }
   if (
     buildResult.publicDir &&
     !resolve(buildResult.publicDir).startsWith(resolve(outDir) + sep) &&
     resolve(buildResult.publicDir) !== resolve(outDir)
   ) {
-    throw new Error(`[bascik] Adapter wrote path outside target output directory: ${buildResult.publicDir}`);
+    throw new Error(
+      `[bascik] Adapter wrote path outside target output directory: ${buildResult.publicDir}`,
+    );
   }
   await assertWrittenPathsUnderOutDir(outDir);
 
@@ -265,7 +327,11 @@ export const emitServerlessArtifacts = async (
     publicFiles: graph.publicFiles.length,
     notes: buildResult.notes ?? [],
   };
-  await writeFile(join(outDir, "build-info.json"), `${JSON.stringify(buildInfo, null, 2)}\n`, "utf8");
+  await writeFile(
+    join(outDir, "build-info.json"),
+    `${JSON.stringify(buildInfo, null, 2)}\n`,
+    "utf8",
+  );
 
   return {
     target,
@@ -282,7 +348,10 @@ export const emitServerlessArtifacts = async (
   };
 };
 
-export const formatServerlessSummary = (result: ServerlessBuildResult, projectRoot = process.cwd()): string => {
+export const formatServerlessSummary = (
+  result: ServerlessBuildResult,
+  projectRoot = process.cwd(),
+): string => {
   const rel = (p: string) => relative(projectRoot, p).replace(/\\/g, "/");
   const kb = (result.bundleBytes / 1024).toFixed(1);
   const lines = [
@@ -292,7 +361,9 @@ export const formatServerlessSummary = (result: ServerlessBuildResult, projectRo
   if (result.workerPath) {
     lines.push(`  worker: ${rel(result.workerPath)} (${kb} kB)`);
   }
-  lines.push(`  dynamic pages: ${result.dynamicPages.length}, API routes: ${result.apiRoutes.length}`);
+  lines.push(
+    `  dynamic pages: ${result.dynamicPages.length}, API routes: ${result.apiRoutes.length}`,
+  );
   if (result.notes) {
     for (const note of result.notes) {
       lines.push(`  note: ${note}`);

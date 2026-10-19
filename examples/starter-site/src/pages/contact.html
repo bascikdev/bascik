@@ -1,23 +1,28 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <site-head />
+    <script data-bascik-build>
+      import { seo } from "@/lib/seo.ts";
+      export default () =>
+        seo({
+          title: "Contact - Example Site",
+          description:
+            "Send the Example Site team a message. We answer every note within two working days.",
+        });
+    </script>
+  </head>
 
-<head>
-  <site-head />
-  <script data-bascik-build>
-    import { seo } from '@/lib/seo.ts';
-    export default () => seo({ title: 'Contact - Example Site', description: 'Send the Example Site team a message. We answer every note within two working days.' });
-  </script>
-</head>
-
-<body>
-  <site-header><theme-toggle /></site-header>
-  <main id="main" class="container">
-    <h1>Contact</h1>
-    <p>Messages go to <code>src/api/contact.ts</code>, which needs <code>bascik --server</code> or a serverless target.
-    </p>
-    <contact-form />
-  </main>
-  <site-footer />
-</body>
-
+  <body>
+    <site-header><theme-toggle /></site-header>
+    <main id="main" class="container">
+      <h1>Contact</h1>
+      <p>
+        Messages go to <code>src/api/contact.ts</code>, which needs
+        <code>bascik --server</code> or a serverless target.
+      </p>
+      <contact-form />
+    </main>
+    <site-footer />
+  </body>
 </html>

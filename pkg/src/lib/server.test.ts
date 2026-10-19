@@ -3,23 +3,40 @@ import { createHash } from "node:crypto";
 
 // ─── Hoisted mock factories ───────────────────────────────────────────────────
 
-const { mockServer, mockCreateSecureServer, registeredShutdownFns, mockExecuteServerScripts } = vi.hoisted(() => {
+const {
+  mockServer,
+  mockCreateSecureServer,
+  registeredShutdownFns,
+  mockExecuteServerScripts,
+} = vi.hoisted(() => {
   const mockServer = {
     on: vi.fn().mockReturnThis(),
     once: vi.fn().mockReturnThis(),
     removeListener: vi.fn().mockReturnThis(),
-    listen: vi.fn().mockImplementation(
-      (_port: number, hostnameOrCb: any, cb?: () => void) => {
-        const callback = typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
-        callback?.();
-      },
-    ),
-    close: vi.fn().mockImplementation((cb?: (err?: Error) => void) => { cb?.(); }),
+    listen: vi
+      .fn()
+      .mockImplementation(
+        (_port: number, hostnameOrCb: any, cb?: () => void) => {
+          const callback =
+            typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
+          callback?.();
+        },
+      ),
+    close: vi.fn().mockImplementation((cb?: (err?: Error) => void) => {
+      cb?.();
+    }),
   };
   const mockCreateSecureServer = vi.fn(() => mockServer);
   const registeredShutdownFns: Array<() => void | Promise<void>> = [];
-  const mockExecuteServerScripts = vi.fn(async (html: string, ..._rest: unknown[]) => html);
-  return { mockServer, mockCreateSecureServer, registeredShutdownFns, mockExecuteServerScripts };
+  const mockExecuteServerScripts = vi.fn(
+    async (html: string, ..._rest: unknown[]) => html,
+  );
+  return {
+    mockServer,
+    mockCreateSecureServer,
+    registeredShutdownFns,
+    mockExecuteServerScripts,
+  };
 });
 
 vi.mock("node:http", () => ({
@@ -62,7 +79,14 @@ vi.mock("node:fs", () => ({
 }));
 
 vi.mock("./mem.js", () => ({
-  mem: { getPage: vi.fn(), getPageExact: vi.fn(), trackOpenPage: vi.fn(), untrackOpenPage: vi.fn(), isBooting: false, setBootingDone: vi.fn() },
+  mem: {
+    getPage: vi.fn(),
+    getPageExact: vi.fn(),
+    trackOpenPage: vi.fn(),
+    untrackOpenPage: vi.fn(),
+    isBooting: false,
+    setBootingDone: vi.fn(),
+  },
 }));
 
 vi.mock("./config.js", () => ({
@@ -86,7 +110,11 @@ vi.mock("./config.js", () => ({
       requests: true,
     },
     isProdServer: false,
-    directory: { pages: "src/pages", components: ["src/components"], out: "dist" },
+    directory: {
+      pages: "src/pages",
+      components: ["src/components"],
+      out: "dist",
+    },
   },
 }));
 
@@ -95,7 +123,9 @@ vi.mock("./events.js", () => ({
     on: vi.fn(),
     removeListener: vi.fn(),
   },
-  registerShutdownHandler: vi.fn((fn) => { registeredShutdownFns.push(fn); }),
+  registerShutdownHandler: vi.fn((fn) => {
+    registeredShutdownFns.push(fn);
+  }),
   runShutdownHandlers: vi.fn(async () => {
     for (const fn of registeredShutdownFns) {
       await fn();
@@ -113,8 +143,22 @@ vi.mock("./server-scripts.js", () => {
     // The plan is stored on the page (prompt 67); makePage builds a stub plan
     // carrying the html so the executor can forward it to the spy.
     executeServerScriptPlan: vi.fn(
-      async (plan: any, request: unknown, context: unknown, timeout: number, filePath: string) =>
-        Buffer.from(await mockExecuteServerScripts(plan.__html, request, context, timeout, filePath)),
+      async (
+        plan: any,
+        request: unknown,
+        context: unknown,
+        timeout: number,
+        filePath: string,
+      ) =>
+        Buffer.from(
+          await mockExecuteServerScripts(
+            plan.__html,
+            request,
+            context,
+            timeout,
+            filePath,
+          ),
+        ),
     ),
     streamServerScripts: vi.fn(),
     DEFAULT_SCRIPT_TIMEOUT_MS: 5000,
@@ -125,7 +169,10 @@ vi.mock("./paths.js", () => ({
   // Faithful port of the real getHttpPath so is404Page logic is genuinely
   // exercised: pages/404.html → /404, pages/blog/index.html → /blog/.
   getHttpPath: vi.fn((p: string) =>
-    p.replace(/^pages/, "").replace(/\.html$/, "").replace(/\/index$/, "/")
+    p
+      .replace(/^pages/, "")
+      .replace(/\.html$/, "")
+      .replace(/\/index$/, "/"),
   ),
 }));
 
@@ -140,13 +187,20 @@ vi.mock("./mime.js", () => ({
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
 import { startHttp2Server } from "./http2.ts";
-import { resetActiveRateLimiter, resetSseManager, startServerInstance } from "./server.ts";
+import {
+  resetActiveRateLimiter,
+  resetSseManager,
+  startServerInstance,
+} from "./server.ts";
 import { mem } from "./mem.ts";
 import { BascikConfig } from "./config.ts";
 import { createReadStream } from "node:fs";
 import { stat, readFile, access, open } from "node:fs/promises";
 import { Readable, Writable } from "node:stream";
-import { MAX_BUFFERED_ASSET_BYTES, getOpenStreamedAssetHandles } from "./caching.ts";
+import {
+  MAX_BUFFERED_ASSET_BYTES,
+  getOpenStreamedAssetHandles,
+} from "./caching.ts";
 import { exec, execFile } from "node:child_process";
 import { eventEmitter } from "./events.ts";
 
@@ -158,7 +212,9 @@ const mockMem = mem as unknown as {
   isBooting: boolean;
   setBootingDone: ReturnType<typeof vi.fn>;
 };
-const mockCreateReadStream = createReadStream as unknown as ReturnType<typeof vi.fn>;
+const mockCreateReadStream = createReadStream as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockStat = stat as unknown as ReturnType<typeof vi.fn>;
 const mockOpen = open as unknown as ReturnType<typeof vi.fn>;
 const mockReadFile = readFile as unknown as ReturnType<typeof vi.fn>;
@@ -232,7 +288,9 @@ const getStreamHandler = () => {
   // If the server didn't register a stream listener, check if it's because TLS is disabled
   // and it registered a standard HTTP 'request' listener instead.
   if (!call) {
-    const httpCall = mockServer.on.mock.calls.find((c: any[]) => c[0] === "request");
+    const httpCall = mockServer.on.mock.calls.find(
+      (c: any[]) => c[0] === "request",
+    );
     if (httpCall) {
       // Return a wrapper that converts mockStream / mockHeaders into adapted HTTP objects
       return async (mockStream: any, mockHeaders: any) => {
@@ -249,7 +307,7 @@ const getStreamHandler = () => {
             mockStream.respond({ ":status": status, ...headers });
           }),
           write: vi.fn((chunk) => mockStream.write(chunk)),
-          end: vi.fn(function(chunk) {
+          end: vi.fn(function (chunk) {
             if (arguments.length === 0 || chunk === undefined) {
               mockStream.end(undefined);
             } else {
@@ -264,8 +322,7 @@ const getStreamHandler = () => {
     }
   }
   return call?.[1] as
-    | ((stream: any, headers: any) => Promise<void>)
-    | undefined;
+    ((stream: any, headers: any) => Promise<void>) | undefined;
 };
 
 /**
@@ -274,7 +331,9 @@ const getStreamHandler = () => {
  * page content (the executor mock forwards `__html` to the spy).
  */
 const makePage = (overrides: Record<string, unknown> = {}) => {
-  const { hasServerScripts, ...rest } = overrides as { hasServerScripts?: boolean } & Record<string, unknown>;
+  const { hasServerScripts, ...rest } = overrides as {
+    hasServerScripts?: boolean;
+  } & Record<string, unknown>;
   const page: Record<string, unknown> = {
     relativePagePath: "pages/about.html",
     absolutePagePath: "/abs/pages/about.html",
@@ -285,7 +344,11 @@ const makePage = (overrides: Record<string, unknown> = {}) => {
   };
   if (hasServerScripts) {
     const html = (page.content as Buffer).toString();
-    page.serverScriptPlan = { segments: [{ kind: "static", bytes: Buffer.from(html) }], firstStreamIndex: -1, __html: html };
+    page.serverScriptPlan = {
+      segments: [{ kind: "static", bytes: Buffer.from(html) }],
+      firstStreamIndex: -1,
+      __html: html,
+    };
   }
   return page;
 };
@@ -294,8 +357,49 @@ const makePage = (overrides: Record<string, unknown> = {}) => {
 // Server setup
 // ─────────────────────────────────────────────────────────────────────────────
 
-
-export { describe, it, expect, vi, beforeEach, afterEach, createHash, mockServer, mockCreateSecureServer, registeredShutdownFns, mockExecuteServerScripts, startHttp2Server, resetActiveRateLimiter, resetSseManager, startServerInstance, mem, BascikConfig, createReadStream, stat, readFile, access, open, Readable, Writable, MAX_BUFFERED_ASSET_BYTES, getOpenStreamedAssetHandles, exec, execFile, eventEmitter, mockMem, mockCreateReadStream, mockStat, mockOpen, mockReadFile, mockAccess, mockExec, mockExecFile, makeStream, makeHeaders, getStreamHandler, makePage };
+export {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  createHash,
+  mockServer,
+  mockCreateSecureServer,
+  registeredShutdownFns,
+  mockExecuteServerScripts,
+  startHttp2Server,
+  resetActiveRateLimiter,
+  resetSseManager,
+  startServerInstance,
+  mem,
+  BascikConfig,
+  createReadStream,
+  stat,
+  readFile,
+  access,
+  open,
+  Readable,
+  Writable,
+  MAX_BUFFERED_ASSET_BYTES,
+  getOpenStreamedAssetHandles,
+  exec,
+  execFile,
+  eventEmitter,
+  mockMem,
+  mockCreateReadStream,
+  mockStat,
+  mockOpen,
+  mockReadFile,
+  mockAccess,
+  mockExec,
+  mockExecFile,
+  makeStream,
+  makeHeaders,
+  getStreamHandler,
+  makePage,
+};
 
 describe("startHttp2Server – stream handler", () => {
   beforeEach(async () => {
@@ -531,7 +635,12 @@ describe("startHttp2Server – stream handler", () => {
       mockMem.getPage.mockReturnValue(page);
       const handler = getStreamHandler()!;
       const stream = makeStream();
-      await handler(stream, makeHeaders("/", "GET", "gzip", undefined, { "if-none-match": '"abc-gzip"' }));
+      await handler(
+        stream,
+        makeHeaders("/", "GET", "gzip", undefined, {
+          "if-none-match": '"abc-gzip"',
+        }),
+      );
       expect(stream.respond).toHaveBeenCalledWith(
         expect.objectContaining({ ":status": 304, etag: '"abc-gzip"' }),
       );
@@ -566,7 +675,10 @@ describe("startHttp2Server – stream handler", () => {
     // The response body and headers come from ONE representation read, not a
     // re-opened createReadStream (prompt 107).
     expect(stream.respond).toHaveBeenCalledWith(
-      expect.objectContaining({ ":status": 200, "content-length": body.byteLength }),
+      expect.objectContaining({
+        ":status": 200,
+        "content-length": body.byteLength,
+      }),
     );
     expect(stream.end).toHaveBeenCalledWith(body);
     (BascikConfig as any).http.compression = true;
@@ -578,7 +690,9 @@ describe("startHttp2Server – stream handler", () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/my%20style.css", "GET"));
-    expect(mockStat).toHaveBeenCalledWith(expect.stringContaining("my style.css"));
+    expect(mockStat).toHaveBeenCalledWith(
+      expect.stringContaining("my style.css"),
+    );
   });
 
   it("handles double-slash leading paths safely within dist", async () => {
@@ -587,7 +701,9 @@ describe("startHttp2Server – stream handler", () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("//assets/app.js", "GET"));
-    expect(mockStat).toHaveBeenCalledWith(expect.stringMatching(/assets[\\/]app\.js/));
+    expect(mockStat).toHaveBeenCalledWith(
+      expect.stringMatching(/assets[\\/]app\.js/),
+    );
   });
 
   it("responds 400 Bad Request for malformed percent-encoded URIs", async () => {
@@ -602,7 +718,10 @@ describe("startHttp2Server – stream handler", () => {
   it("serves in-memory pages with dots in path like /v1.0/about", async () => {
     mockMem.getPageExact.mockImplementation((p: string) => {
       if (p === "/v1.0/about") {
-        return { relativePagePath: "pages/v1.0/about.html", content: Buffer.from("<h1>v1.0</h1>") };
+        return {
+          relativePagePath: "pages/v1.0/about.html",
+          content: Buffer.from("<h1>v1.0</h1>"),
+        };
       }
       return undefined;
     });
@@ -690,7 +809,9 @@ describe("startHttp2Server – security headers", () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/style.css", "GET"));
-    const openCall = fakeFileStream.on.mock.calls.find((c: any[]) => c[0] === "open");
+    const openCall = fakeFileStream.on.mock.calls.find(
+      (c: any[]) => c[0] === "open",
+    );
     openCall?.[1]?.();
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining(EXPECTED_SECURITY_HEADERS),
@@ -701,7 +822,10 @@ describe("startHttp2Server – security headers", () => {
     mockMem.getPage.mockReturnValue(makePage());
     const handler = getStreamHandler()!;
     const stream = makeStream();
-    await handler(stream, makeHeaders("/about", "GET", "", undefined, { ":scheme": "https" }));
+    await handler(
+      stream,
+      makeHeaders("/about", "GET", "", undefined, { ":scheme": "https" }),
+    );
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({
         ...EXPECTED_SECURITY_HEADERS,
@@ -716,7 +840,12 @@ describe("startHttp2Server – security headers", () => {
     mockMem.getPage.mockReturnValue(makePage());
     const handler = getStreamHandler()!;
     const stream = makeStream();
-    await handler(stream, makeHeaders("/about", "GET", "", undefined, { "x-forwarded-proto": "https" }));
+    await handler(
+      stream,
+      makeHeaders("/about", "GET", "", undefined, {
+        "x-forwarded-proto": "https",
+      }),
+    );
     expect(stream.respond).toHaveBeenCalledWith(
       expect.not.objectContaining({
         "strict-transport-security": expect.any(String),
@@ -730,7 +859,12 @@ describe("startHttp2Server – security headers", () => {
     mockMem.getPage.mockReturnValue(makePage());
     const handler = getStreamHandler()!;
     const stream = makeStream();
-    await handler(stream, makeHeaders("/about", "GET", "", undefined, { "x-forwarded-proto": "https" }));
+    await handler(
+      stream,
+      makeHeaders("/about", "GET", "", undefined, {
+        "x-forwarded-proto": "https",
+      }),
+    );
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({
         ...EXPECTED_SECURITY_HEADERS,
@@ -746,7 +880,12 @@ describe("startHttp2Server – security headers", () => {
     mockMem.getPage.mockReturnValue(makePage());
     const handler = getStreamHandler()!;
     const stream = makeStream();
-    await handler(stream, makeHeaders("/about", "GET", "", undefined, { "x-forwarded-proto": "http, https" }));
+    await handler(
+      stream,
+      makeHeaders("/about", "GET", "", undefined, {
+        "x-forwarded-proto": "http, https",
+      }),
+    );
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({
         ...EXPECTED_SECURITY_HEADERS,
@@ -762,7 +901,12 @@ describe("startHttp2Server – security headers", () => {
     mockMem.getPage.mockReturnValue(makePage());
     const handler = getStreamHandler()!;
     const stream = makeStream();
-    await handler(stream, makeHeaders("/about", "GET", "", undefined, { "x-forwarded-proto": "https, http" }));
+    await handler(
+      stream,
+      makeHeaders("/about", "GET", "", undefined, {
+        "x-forwarded-proto": "https, http",
+      }),
+    );
     expect(stream.respond).toHaveBeenCalledWith(
       expect.not.objectContaining({
         "strict-transport-security": expect.any(String),
@@ -778,7 +922,9 @@ describe("startHttp2Server – HEAD method", () => {
   });
 
   it("responds 200 for HEAD on a page without a body", async () => {
-    mockMem.getPage.mockReturnValue(makePage({ content: Buffer.from("<html>Hi</html>") }));
+    mockMem.getPage.mockReturnValue(
+      makePage({ content: Buffer.from("<html>Hi</html>") }),
+    );
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/about", "HEAD"));
@@ -801,7 +947,11 @@ describe("startHttp2Server – HEAD method", () => {
   });
 
   it("responds 200 for HEAD on a static asset without creating a read stream body", async () => {
-    const fakeFileStream = { on: vi.fn().mockReturnThis(), pipe: vi.fn(), destroy: vi.fn() };
+    const fakeFileStream = {
+      on: vi.fn().mockReturnThis(),
+      pipe: vi.fn(),
+      destroy: vi.fn(),
+    };
     mockCreateReadStream.mockReturnValue(fakeFileStream);
     const handler = getStreamHandler()!;
     const stream = makeStream();
@@ -833,7 +983,10 @@ describe("startHttp2Server – Content-Length and Vary", () => {
   it("sets content-length to compressed size when sending brotli", async () => {
     const compressed = Buffer.from("br-data");
     mockMem.getPage.mockReturnValue(
-      makePage({ content: Buffer.from("<html>Hi</html>"), compressedContent: compressed }),
+      makePage({
+        content: Buffer.from("<html>Hi</html>"),
+        compressedContent: compressed,
+      }),
     );
     const handler = getStreamHandler()!;
     const stream = makeStream();
@@ -849,7 +1002,7 @@ describe("startHttp2Server – Content-Length and Vary", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/", "GET"));
     expect(stream.respond).toHaveBeenCalledWith(
-      expect.objectContaining({ "vary": "Accept-Encoding" }),
+      expect.objectContaining({ vary: "Accept-Encoding" }),
     );
   });
 
@@ -903,23 +1056,33 @@ describe("startHttp2Server – path traversal protection", () => {
     "/blog/.well-known/security.txt",
     "/.Well-Known/security.txt",
     "/%2Ewell-known/%2Eenv",
-  ])("returns 404 for hidden path %s even next to .well-known", async (path) => {
-    const handler = getStreamHandler()!;
-    const stream = makeStream();
+  ])(
+    "returns 404 for hidden path %s even next to .well-known",
+    async (path) => {
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
 
-    await handler(stream, makeHeaders(path, "GET"));
+      await handler(stream, makeHeaders(path, "GET"));
 
-    expect(stream.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 404 }));
-    expect(stream.end).toHaveBeenCalledWith("Not Found");
-    expect(mockStat).not.toHaveBeenCalled();
-  });
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 404 }),
+      );
+      expect(stream.end).toHaveBeenCalledWith("Not Found");
+      expect(mockStat).not.toHaveBeenCalled();
+    },
+  );
 
-  it.each(["/.well-known/security.txt", "/%2Ewell-known/agent-skills/index.json"])(
+  it.each([
+    "/.well-known/security.txt",
+    "/%2Ewell-known/agent-skills/index.json",
+  ])(
     "looks up %s in dist/.well-known instead of rejecting it as hidden",
     async (path) => {
       const handler = getStreamHandler()!;
       const stream = makeStream();
-      mockStat.mockRejectedValueOnce(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
+      mockStat.mockRejectedValueOnce(
+        Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+      );
 
       await handler(stream, makeHeaders(path, "GET"));
 
@@ -936,14 +1099,25 @@ describe("startHttp2Server – path traversal protection", () => {
     try {
       const handler = getStreamHandler()!;
       const inside = makeStream();
-      mockStat.mockRejectedValueOnce(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
-      await handler(inside, makeHeaders("/docs/.well-known/security.txt", "GET"));
+      mockStat.mockRejectedValueOnce(
+        Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+      );
+      await handler(
+        inside,
+        makeHeaders("/docs/.well-known/security.txt", "GET"),
+      );
       expect(mockStat).toHaveBeenCalledTimes(1);
-      expect(String(mockStat.mock.calls[0][0]).replace(/\\/g, "/").endsWith("/.well-known/security.txt")).toBe(true);
+      expect(
+        String(mockStat.mock.calls[0][0])
+          .replace(/\\/g, "/")
+          .endsWith("/.well-known/security.txt"),
+      ).toBe(true);
 
       const hidden = makeStream();
       await handler(hidden, makeHeaders("/docs/.env", "GET"));
-      expect(hidden.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 404 }));
+      expect(hidden.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 404 }),
+      );
       expect(mockStat).toHaveBeenCalledTimes(1);
     } finally {
       (BascikConfig as any).base = previousBase;
@@ -964,7 +1138,9 @@ describe("startHttp2Server – path traversal protection", () => {
     // Guard passes (stays inside dist/). stat succeeds. Response is set up.
     expect(mockStat).toHaveBeenCalled();
     // Trigger open to send headers
-    const openCall = fakeFileStream.on.mock.calls.find((c: any[]) => c[0] === "open");
+    const openCall = fakeFileStream.on.mock.calls.find(
+      (c: any[]) => c[0] === "open",
+    );
     openCall?.[1]?.();
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({ ":status": 200 }),
@@ -990,23 +1166,32 @@ describe("startHttp2Server – base path routing", () => {
     ["/%73ub/about", "/about"],
     ["/sub/", "/"],
     ["/sub/index.html", "/"],
-  ])("serves %s from the base-relative route %s", async (requestPath, lookupPath) => {
-    const page = makePage();
-    mockMem.getPageExact.mockImplementation((path) => path === lookupPath ? page : undefined);
-    const handler = getStreamHandler()!;
-    const stream = makeStream();
+  ])(
+    "serves %s from the base-relative route %s",
+    async (requestPath, lookupPath) => {
+      const page = makePage();
+      mockMem.getPageExact.mockImplementation((path) =>
+        path === lookupPath ? page : undefined,
+      );
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
 
-    await handler(stream, makeHeaders(requestPath));
+      await handler(stream, makeHeaders(requestPath));
 
-    expect(stream.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 200 }));
-    expect(mockMem.getPageExact).toHaveBeenCalledWith(lookupPath);
-  });
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 200 }),
+      );
+      expect(mockMem.getPageExact).toHaveBeenCalledWith(lookupPath);
+    },
+  );
 
   it("returns 404 for a request outside the configured base", async () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/about"));
-    expect(stream.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 404 }));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 404 }),
+    );
     expect(mockMem.getPage).not.toHaveBeenCalled();
   });
 
@@ -1016,14 +1201,18 @@ describe("startHttp2Server – base path routing", () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/sub/logo.png"));
-    expect(mockStat).toHaveBeenCalledWith(expect.stringMatching(/dist[\\/]logo\.png$/));
+    expect(mockStat).toHaveBeenCalledWith(
+      expect.stringMatching(/dist[\\/]logo\.png$/),
+    );
   });
 
   it("rejects traversal before stripping the configured base", async () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/sub/../../etc/passwd"));
-    expect(stream.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 400 }));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 400 }),
+    );
     expect(mockMem.getPage).not.toHaveBeenCalled();
   });
 
@@ -1031,7 +1220,9 @@ describe("startHttp2Server – base path routing", () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/sub/.env"));
-    expect(stream.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 404 }));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 404 }),
+    );
     expect(mockStat).not.toHaveBeenCalled();
   });
 
@@ -1040,7 +1231,12 @@ describe("startHttp2Server – base path routing", () => {
     const stream = makeStream();
     await handler(
       stream,
-      makeHeaders("/sub/bascik-live-reload", "GET", "", "https://localhost:8443/sub/about"),
+      makeHeaders(
+        "/sub/bascik-live-reload",
+        "GET",
+        "",
+        "https://localhost:8443/sub/about",
+      ),
     );
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({ "content-type": "text/event-stream" }),
@@ -1066,11 +1262,15 @@ describe("startHttp2Server – base path routing", () => {
     const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).base = "/";
     const page = makePage();
-    mockMem.getPageExact.mockImplementation((path) => path === "/about" ? page : undefined);
+    mockMem.getPageExact.mockImplementation((path) =>
+      path === "/about" ? page : undefined,
+    );
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/about"));
-    expect(stream.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 200 }));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 200 }),
+    );
   });
 });
 
@@ -1081,7 +1281,9 @@ describe("onError and server resiliency edge cases", () => {
     expect(isNetworkResetError({ code: "EPIPE" })).toBe(true);
     expect(isNetworkResetError({ code: "ECANCELED" })).toBe(true);
     expect(isNetworkResetError({ code: "ERR_HTTP2_STREAM_CANCEL" })).toBe(true);
-    expect(isNetworkResetError({ code: "ERR_HTTP2_INVALID_STREAM" })).toBe(true);
+    expect(isNetworkResetError({ code: "ERR_HTTP2_INVALID_STREAM" })).toBe(
+      true,
+    );
     expect(isNetworkResetError({ code: "500_INTERNAL" })).toBe(false);
 
     const mockRes: any = {
@@ -1121,16 +1323,26 @@ describe("onError and server resiliency edge cases", () => {
 
   it("handles exceptions thrown during res.respond in onError safely", async () => {
     const { onError } = await import("./server.ts");
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const mockRes: any = {
       headersSent: false,
-      respond: vi.fn().mockImplementation(() => { throw new Error("Stream destroyed"); }),
-      end: vi.fn().mockImplementation(() => { throw new Error("End destroyed"); }),
+      respond: vi.fn().mockImplementation(() => {
+        throw new Error("Stream destroyed");
+      }),
+      end: vi.fn().mockImplementation(() => {
+        throw new Error("End destroyed");
+      }),
     };
     onError(new Error("Fail"), mockRes);
 
-    expect(consoleSpy).toHaveBeenCalledWith("Error responding to stream/request:", expect.any(Error));
-    expect(consoleSpy).toHaveBeenCalledWith("Error ending stream/request:", expect.any(Error));
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "Error responding to stream/request:",
+      expect.any(Error),
+    );
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "Error ending stream/request:",
+      expect.any(Error),
+    );
   });
 
   it("returns 400 for malformed percent encoding in request path", async () => {
@@ -1139,7 +1351,9 @@ describe("onError and server resiliency edge cases", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/%FF%FF", "GET"));
 
-    expect(stream.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 400 }));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 400 }),
+    );
     expect(stream.end).toHaveBeenCalledWith("Bad Request");
   });
 
@@ -1150,7 +1364,9 @@ describe("onError and server resiliency edge cases", () => {
     // returns null and the handler 404s rather than serving a partial or
     // mismatched representation (prompt 107).
     mockStat.mockResolvedValueOnce({ mtimeMs: 1_705_000_000_000, size: 1_024 });
-    mockReadFile.mockRejectedValueOnce(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
+    mockReadFile.mockRejectedValueOnce(
+      Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+    );
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/style.css", "GET"));
@@ -1177,7 +1393,9 @@ describe("onError and server resiliency edge cases", () => {
 
   it("executes server scripts and sets private, no-store cache-control header", async () => {
     const { executeServerScripts } = await import("./server-scripts.ts");
-    const mockExecute = executeServerScripts as unknown as ReturnType<typeof vi.fn>;
+    const mockExecute = executeServerScripts as unknown as ReturnType<
+      typeof vi.fn
+    >;
     mockExecute.mockResolvedValueOnce("<p>Server Script Result</p>");
 
     const page = makePage({
@@ -1195,7 +1413,7 @@ describe("onError and server resiliency edge cases", () => {
       makeHeaders("/dashboard?user=alice&tab=overview", "GET", "", undefined, {
         ":authority": "localhost:8443",
         ":scheme": "https",
-        "cookie": "session=abc12345",
+        cookie: "session=abc12345",
         "x-custom-header": "test-val",
       }),
     );
@@ -1209,7 +1427,9 @@ describe("onError and server resiliency edge cases", () => {
     );
 
     const webReq = mockExecute.mock.calls[0][1] as Request;
-    expect(webReq.url).toBe("https://localhost:8443/dashboard?user=alice&tab=overview");
+    expect(webReq.url).toBe(
+      "https://localhost:8443/dashboard?user=alice&tab=overview",
+    );
     expect(webReq.method).toBe("GET");
     expect(webReq.headers.get("cookie")).toBe("session=abc12345");
     expect(webReq.headers.get("x-custom-header")).toBe("test-val");
@@ -1220,7 +1440,9 @@ describe("onError and server resiliency edge cases", () => {
         "cache-control": "private, no-store",
       }),
     );
-    expect(stream.end).toHaveBeenCalledWith(Buffer.from("<p>Server Script Result</p>"));
+    expect(stream.end).toHaveBeenCalledWith(
+      Buffer.from("<p>Server Script Result</p>"),
+    );
   });
 
   it("returns 404 for /bascik-live-reload when isProdServer is true", async () => {
@@ -1254,7 +1476,9 @@ describe("onError and server resiliency edge cases", () => {
 
   it("responds 404 when the representation read fails (owner maps read failure to not-found)", async () => {
     await startHttp2Server();
-    mockReadFile.mockRejectedValueOnce(Object.assign(new Error("EACCES"), { code: "EACCES" }));
+    mockReadFile.mockRejectedValueOnce(
+      Object.assign(new Error("EACCES"), { code: "EACCES" }),
+    );
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/style.css", "GET"));
@@ -1273,14 +1497,21 @@ describe("onError and server resiliency edge cases", () => {
     const stream = makeStream();
 
     let closeCallback: (() => void) | undefined;
-    (stream as any).on = vi.fn().mockImplementation((event: string, cb: any) => {
-      if (event === "close") closeCallback = cb;
-      return stream;
-    });
+    (stream as any).on = vi
+      .fn()
+      .mockImplementation((event: string, cb: any) => {
+        if (event === "close") closeCallback = cb;
+        return stream;
+      });
 
     await handler(
       stream,
-      makeHeaders("/bascik-live-reload", "GET", "", "http://localhost:8443/about"),
+      makeHeaders(
+        "/bascik-live-reload",
+        "GET",
+        "",
+        "http://localhost:8443/about",
+      ),
     );
 
     expect(mockMem.trackOpenPage).toHaveBeenCalledWith("/about");
@@ -1329,7 +1560,9 @@ describe("startHttp2Server – onError: stream already has headers sent", () => 
     stream.respond.mockImplementationOnce(() => {
       (stream as any).headersSent = true;
     });
-    stream.end.mockImplementationOnce(() => { throw new Error("stream destroyed"); });
+    stream.end.mockImplementationOnce(() => {
+      throw new Error("stream destroyed");
+    });
     await handler(stream, makeHeaders("/about", "GET"));
     // Only one respond() call (the page response); onError() must not add a second.
     expect(stream.respond).toHaveBeenCalledTimes(1);
@@ -1337,7 +1570,9 @@ describe("startHttp2Server – onError: stream already has headers sent", () => 
 
   it("responds 500 when stat throws a non-ENOENT error", async () => {
     const handler = getStreamHandler()!;
-    mockStat.mockRejectedValueOnce(Object.assign(new Error("EPERM"), { code: "EPERM" }));
+    mockStat.mockRejectedValueOnce(
+      Object.assign(new Error("EPERM"), { code: "EPERM" }),
+    );
     const stream = makeStream();
     await handler(stream, makeHeaders("/style.css", "GET"));
     expect(stream.respond).toHaveBeenCalledWith(
@@ -1351,7 +1586,7 @@ describe("startHttp2Server – logAccess skip conditions", () => {
   let consoleSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
-    consoleSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await startHttp2Server();
   });
 
@@ -1363,8 +1598,8 @@ describe("startHttp2Server – logAccess skip conditions", () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/bascik-live-reload"));
-    const accessLines = consoleSpy.mock.calls.filter(
-      (c: unknown[]) => String(c[0]).includes("bascik-live-reload"),
+    const accessLines = consoleSpy.mock.calls.filter((c: unknown[]) =>
+      String(c[0]).includes("bascik-live-reload"),
     );
     expect(accessLines).toHaveLength(0);
   });
@@ -1376,8 +1611,9 @@ describe("startHttp2Server – logAccess skip conditions", () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/about", "GET"));
-    const accessLines = consoleSpy.mock.calls.filter((c: unknown[]) =>
-      String(c[0]).includes("GET") && String(c[0]).includes("/about"),
+    const accessLines = consoleSpy.mock.calls.filter(
+      (c: unknown[]) =>
+        String(c[0]).includes("GET") && String(c[0]).includes("/about"),
     );
     expect(accessLines.length).toBeGreaterThan(0);
   });
@@ -1389,8 +1625,9 @@ describe("startHttp2Server – logAccess skip conditions", () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/about", "GET"));
-    const accessLines = consoleSpy.mock.calls.filter((c: unknown[]) =>
-      String(c[0]).includes("GET") && String(c[0]).includes("/about"),
+    const accessLines = consoleSpy.mock.calls.filter(
+      (c: unknown[]) =>
+        String(c[0]).includes("GET") && String(c[0]).includes("/about"),
     );
     expect(accessLines).toHaveLength(0);
     (BascikConfig as any).logging = { level: "info", requests: true };
@@ -1475,7 +1712,9 @@ describe("startHttp2Server – query string and trailing-slash routing", () => {
 describe("startHttp2Server – port bind: non-EADDRINUSE error rejects", () => {
   afterEach(() => {
     mockServer.listen.mockImplementation(
-      (_port: number, _hostname: string, cb?: () => void) => { cb?.(); },
+      (_port: number, _hostname: string, cb?: () => void) => {
+        cb?.();
+      },
     );
   });
 
@@ -1523,11 +1762,19 @@ describe("startHttp2Server – server-scripts execution", () => {
     const mockExecute = executeServerScripts as ReturnType<typeof vi.fn>;
     mockExecute.mockResolvedValueOnce("<p>ok</p>");
 
-    const page = makePage({ hasServerScripts: true, content: Buffer.from("ok") });
+    const page = makePage({
+      hasServerScripts: true,
+      content: Buffer.from("ok"),
+    });
     mockMem.getPage.mockReturnValue(page);
     const handler = getStreamHandler()!;
     const stream = makeStream();
-    await handler(stream, makeHeaders("/greeting?color=blue", "GET", "", undefined, { "x-test": "val" }));
+    await handler(
+      stream,
+      makeHeaders("/greeting?color=blue", "GET", "", undefined, {
+        "x-test": "val",
+      }),
+    );
     const [, req] = mockExecute.mock.calls[0] as [string, Request];
     expect(new URL(req.url).pathname).toBe("/greeting");
     expect(new URL(req.url).searchParams.get("color")).toBe("blue");
@@ -1539,7 +1786,10 @@ describe("startHttp2Server – server-scripts execution", () => {
     const mockExecute = executeServerScripts as ReturnType<typeof vi.fn>;
     mockExecute.mockResolvedValueOnce("<html>ok</html>");
 
-    const page = makePage({ hasServerScripts: true, content: Buffer.from("ok") });
+    const page = makePage({
+      hasServerScripts: true,
+      content: Buffer.from("ok"),
+    });
     mockMem.getPage.mockReturnValue(page);
     const handler = getStreamHandler()!;
     const stream = makeStream();
@@ -1564,7 +1814,11 @@ describe("startHttp2Server – boot page", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/about", "GET"));
     expect(stream.respond).toHaveBeenCalledWith(
-      expect.objectContaining({ ":status": 200, "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }),
+      expect.objectContaining({
+        ":status": 200,
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      }),
     );
     const body = stream.end.mock.calls[0]?.[0];
     expect(body?.toString()).toContain("Building site");
@@ -1574,13 +1828,22 @@ describe("startHttp2Server – boot page", () => {
     mockMem.isBooting = true;
     mockMem.getPageExact.mockReturnValue(undefined);
     // Simulate /404 page being in memory during cold boot
-    mockMem.getPage.mockReturnValue(makePage({ relativePagePath: "pages/404.html", content: Buffer.from("<html>404 Page</html>") }));
+    mockMem.getPage.mockReturnValue(
+      makePage({
+        relativePagePath: "pages/404.html",
+        content: Buffer.from("<html>404 Page</html>"),
+      }),
+    );
     const handler = getStreamHandler()!;
     for (const path of ["/", "/getting-started", "/index.html", "/about"]) {
       const stream = makeStream();
       await handler(stream, makeHeaders(path, "GET"));
       expect(stream.respond).toHaveBeenCalledWith(
-        expect.objectContaining({ ":status": 200, "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }),
+        expect.objectContaining({
+          ":status": 200,
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+        }),
       );
       const body = stream.end.mock.calls[0]?.[0];
       expect(body?.toString()).toContain("Building site");
@@ -1589,8 +1852,13 @@ describe("startHttp2Server – boot page", () => {
 
   it("resolves /index.html to index page stored at / in mem", async () => {
     mockMem.isBooting = false;
-    const indexPage = makePage({ relativePagePath: "pages/index.html", content: Buffer.from("<html>Home</html>") });
-    mockMem.getPageExact.mockImplementation((p: string) => (p === "/" ? indexPage : undefined));
+    const indexPage = makePage({
+      relativePagePath: "pages/index.html",
+      content: Buffer.from("<html>Home</html>"),
+    });
+    mockMem.getPageExact.mockImplementation((p: string) =>
+      p === "/" ? indexPage : undefined,
+    );
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/index.html", "GET"));
@@ -1649,7 +1917,7 @@ describe("startHttp2Server – onError suppresses ERR_HTTP2_INVALID_STREAM", () 
 
   beforeEach(async () => {
     await startHttp2Server();
-    consoleSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -1664,8 +1932,12 @@ describe("startHttp2Server – onError suppresses ERR_HTTP2_INVALID_STREAM", () 
     const stream = makeStream();
     // Simulate stream.respond() throwing ERR_HTTP2_INVALID_STREAM (client disconnected
     // between the await stat() / await executeServerScripts() and the respond() call).
-    const invalidStreamErr = Object.assign(new Error("invalid stream"), { code: "ERR_HTTP2_INVALID_STREAM" });
-    stream.respond.mockImplementationOnce(() => { throw invalidStreamErr; });
+    const invalidStreamErr = Object.assign(new Error("invalid stream"), {
+      code: "ERR_HTTP2_INVALID_STREAM",
+    });
+    stream.respond.mockImplementationOnce(() => {
+      throw invalidStreamErr;
+    });
     await handler(stream, makeHeaders("/about", "GET"));
     expect(consoleSpy).not.toHaveBeenCalled();
   });

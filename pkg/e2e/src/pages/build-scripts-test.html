@@ -1,47 +1,49 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Build Scripts Test</title>
+  </head>
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Build Scripts Test</title>
-</head>
+  <body>
+    <p id="static-before">static-before</p>
 
-<body>
-  <p id="static-before">static-before</p>
+    <!-- Single element output -->
+    <script data-bascik-build>
+      console.log("diagnostic log: single element");
+      export default function () {
+        return '<p id="generated-one">generated-one</p>';
+      }
+    </script>
 
-  <!-- Single element output -->
-  <script data-bascik-build>
-    console.log("diagnostic log: single element");
-    export default function () {
-      return '<p id="generated-one">generated-one</p>';
-    }
-  </script>
+    <!-- Multiple items via array -->
+    <script data-bascik-build>
+      export default function () {
+        const items = ["apple", "banana", "cherry"];
+        return (
+          '<ul id="fruit-list">' +
+          items.map((v) => "<li>" + v + "</li>").join("") +
+          "</ul>"
+        );
+      }
+    </script>
 
-  <!-- Multiple items via array -->
-  <script data-bascik-build>
-    export default function () {
-      const items = ['apple', 'banana', 'cherry'];
-      return '<ul id="fruit-list">' + items.map(v => '<li>' + v + '</li>').join('') + '</ul>';
-    }
-  </script>
+    <!-- Top-level await (async script) -->
+    <script data-bascik-build>
+      const msg = await Promise.resolve('async-ok');
+      export default async function () {
+        return '<p id="async-result">' + msg + '</p>';
+      }
+    </script>
 
-  <!-- Top-level await (async script) -->
-  <script data-bascik-build>
-    const msg = await Promise.resolve('async-ok');
-    export default async function () {
-      return '<p id="async-result">' + msg + '</p>';
-    }
-  </script>
+    <!-- Intentional error — bascik removes the tag and continues rendering -->
+    <script data-bascik-build>
+      export default function () {
+        throw new Error("intentional build script error for e2e coverage");
+      }
+    </script>
 
-  <!-- Intentional error — bascik removes the tag and continues rendering -->
-  <script data-bascik-build>
-    export default function () {
-      throw new Error('intentional build script error for e2e coverage');
-    }
-  </script>
-
-  <p id="static-after">static-after</p>
-</body>
-
+    <p id="static-after">static-after</p>
+  </body>
 </html>

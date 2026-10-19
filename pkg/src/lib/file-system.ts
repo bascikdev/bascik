@@ -1,10 +1,34 @@
-import { readdir, rm, mkdir, copyFile, readFile, writeFile, stat, realpath, lstat, symlink, unlink, rename } from "node:fs/promises";
-import { join, dirname, resolve, relative, isAbsolute, basename } from "node:path";
+import {
+  readdir,
+  rm,
+  mkdir,
+  copyFile,
+  readFile,
+  writeFile,
+  stat,
+  realpath,
+  lstat,
+  symlink,
+  unlink,
+  rename,
+} from "node:fs/promises";
+import {
+  join,
+  dirname,
+  resolve,
+  relative,
+  isAbsolute,
+  basename,
+} from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import type { Dirent } from "node:fs";
 import { BascikConfig, shouldLog } from "./config.ts";
-import { displayComponentRoot, findComponentRoot, getComponentRoots } from "./component-roots.ts";
+import {
+  displayComponentRoot,
+  findComponentRoot,
+  getComponentRoots,
+} from "./component-roots.ts";
 import { minifyCss } from "./css-minifier.ts";
 import { minifyJs } from "./js-minifier.ts";
 import { isStaticAssetPath } from "./asset-filter.ts";
@@ -30,8 +54,14 @@ const unlinkDestinationSymlink = async (destPath: string): Promise<void> => {
 const isLinkableAsset = (src: string): boolean => {
   const isCss = src.endsWith(".css");
   const isJavaScript = src.endsWith(".js");
-  const isWebManifest = src.endsWith(".webmanifest") || basename(src).toLowerCase() === "manifest.json";
-  if (isCss && ((BascikConfig.minify?.css ?? false) || BascikConfig.base !== "/")) return false;
+  const isWebManifest =
+    src.endsWith(".webmanifest") ||
+    basename(src).toLowerCase() === "manifest.json";
+  if (
+    isCss &&
+    ((BascikConfig.minify?.css ?? false) || BascikConfig.base !== "/")
+  )
+    return false;
   if (isJavaScript && (BascikConfig.minify?.js ?? false)) return false;
   return !(isWebManifest && BascikConfig.base !== "/");
 };
@@ -41,10 +71,16 @@ const isLinkableAsset = (src: string): boolean => {
  * occurrence so a path like `/Users/x/my-pages/pages/a.png` keeps only the
  * tail after the real directory.
  */
-const stripDirMarker = (normalizedPath: string, configuredDir: string): string => {
+const stripDirMarker = (
+  normalizedPath: string,
+  configuredDir: string,
+): string => {
   const marker = `${configuredDir}/`;
   const markerIndex = normalizedPath.lastIndexOf(marker);
-  const suffix = markerIndex >= 0 ? normalizedPath.slice(markerIndex + marker.length) : normalizedPath;
+  const suffix =
+    markerIndex >= 0
+      ? normalizedPath.slice(markerIndex + marker.length)
+      : normalizedPath;
   return suffix.replace(/^\.?\//, "").replace(/^\//, "");
 };
 
@@ -62,27 +98,39 @@ export const getProjectPath = (path: string): string =>
  * a root outside the project is displayed cwd-relative
  * (`../shared/components/x.html`), never as an absolute path.
  */
-export const getRelativePath = (path: string, parentDir: "pages" | "components"): string => {
+export const getRelativePath = (
+  path: string,
+  parentDir: "pages" | "components",
+): string => {
   const normalizedPath = path.replace(/\\/g, "/");
 
   if (normalizedPath === parentDir) return parentDir;
 
   if (normalizedPath.startsWith(`${parentDir}/`)) {
-    const relative = normalizedPath.slice(parentDir.length + 1).replace(/^\.?\//, "").replace(/^\//, "");
-    return relative ? `${parentDir}/${relative}`.replace(/\/+/g, "/") : parentDir;
+    const relative = normalizedPath
+      .slice(parentDir.length + 1)
+      .replace(/^\.?\//, "")
+      .replace(/^\//, "");
+    return relative
+      ? `${parentDir}/${relative}`.replace(/\/+/g, "/")
+      : parentDir;
   }
 
   if (parentDir === "pages") {
     const configuredDir = BascikConfig.directory.pages.replace(/\\/g, "/");
     if (normalizedPath === configuredDir) return parentDir;
     const relative = stripDirMarker(normalizedPath, configuredDir);
-    return relative ? `${parentDir}/${relative}`.replace(/\/+/g, "/") : parentDir;
+    return relative
+      ? `${parentDir}/${relative}`.replace(/\/+/g, "/")
+      : parentDir;
   }
 
   const owningRoot = findComponentRoot(normalizedPath);
   if (owningRoot !== undefined) {
     const prefix = displayComponentRoot(owningRoot);
-    const relative = normalizedPath.slice(owningRoot.length).replace(/^\/+/, "");
+    const relative = normalizedPath
+      .slice(owningRoot.length)
+      .replace(/^\/+/, "");
     return relative ? `${prefix}/${relative}`.replace(/\/+/g, "/") : prefix;
   }
 
@@ -93,7 +141,9 @@ export const getRelativePath = (path: string, parentDir: "pages" | "components")
     if (normalizedPath === root) return parentDir;
     if (normalizedPath.lastIndexOf(`${root}/`) >= 0) {
       const relative = stripDirMarker(normalizedPath, root);
-      return relative ? `${parentDir}/${relative}`.replace(/\/+/g, "/") : parentDir;
+      return relative
+        ? `${parentDir}/${relative}`.replace(/\/+/g, "/")
+        : parentDir;
     }
   }
   const relative = normalizedPath.replace(/^\.?\//, "").replace(/^\//, "");
@@ -123,8 +173,12 @@ const displayRelativePath = (path: string): string => {
       return normalized;
     }
   }
-  const outDirRel = relative(process.cwd(), BascikConfig.directory.out) || "dist";
-  return normalized.replace(/^\.\//, "").replace(/^\//, "").replace(new RegExp(`^${outDirRel}/`), "");
+  const outDirRel =
+    relative(process.cwd(), BascikConfig.directory.out) || "dist";
+  return normalized
+    .replace(/^\.\//, "")
+    .replace(/^\//, "")
+    .replace(new RegExp(`^${outDirRel}/`), "");
 };
 
 /** Stream-hash a file using SHA-256. Only used for change detection. */
@@ -164,15 +218,25 @@ export async function copyReplicatePath(
   await mkdir(destDir, { recursive: true });
 
   // Helper: compare generated/transformed text hash with destination file hash and write if changed
-  const writeIfChanged = async (content: string, isMinified = false): Promise<void> => {
-    const destHash = createHash("sha256").update(await readFile(destPath).catch(() => "")).digest("hex");
+  const writeIfChanged = async (
+    content: string,
+    isMinified = false,
+  ): Promise<void> => {
+    const destHash = createHash("sha256")
+      .update(await readFile(destPath).catch(() => ""))
+      .digest("hex");
     const contentHash = createHash("sha256").update(content).digest("hex");
-    const destinationIsSymlink = await lstat(destPath).then(entry => entry.isSymbolicLink()).catch(() => false);
+    const destinationIsSymlink = await lstat(destPath)
+      .then((entry) => entry.isSymbolicLink())
+      .catch(() => false);
     if (contentHash !== destHash || destinationIsSymlink) {
       await unlinkDestinationSymlink(destPath);
       await writeFile(destPath, content);
       if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
-        console.log(colorOut.dim(isMinified ? "copied (minified):" : "copied:"), displayRelativePath(src));
+        console.log(
+          colorOut.dim(isMinified ? "copied (minified):" : "copied:"),
+          displayRelativePath(src),
+        );
       }
     }
     // Record the DESTINATION after a successful write (or a hash-equal no-op),
@@ -186,11 +250,16 @@ export async function copyReplicatePath(
     const isMinifyCss = BascikConfig.minify?.css ?? false;
     const minifyJsCfg = BascikConfig.minify?.js ?? false;
     const isCss = src.endsWith(".css");
-    const isWebManifest = src.endsWith(".webmanifest") || basename(src).toLowerCase() === "manifest.json";
+    const isWebManifest =
+      src.endsWith(".webmanifest") ||
+      basename(src).toLowerCase() === "manifest.json";
 
     if (isMinifyCss && isCss) {
       const minifyFn = isMinifyCss === true ? minifyCss : isMinifyCss;
-      const css = rewriteCssBasePaths((await readFile(src)).toString(), BascikConfig.base);
+      const css = rewriteCssBasePaths(
+        (await readFile(src)).toString(),
+        BascikConfig.base,
+      );
       let minified: string;
       try {
         minified = await minifyFn(css);
@@ -200,7 +269,10 @@ export async function copyReplicatePath(
           console.error(`[bascik] CSS minification failed for ${src}:`, minErr);
           throw minErr;
         }
-        console.warn(`[bascik] CSS minification failed for ${src}, falling back to unminified copy:`, minErr);
+        console.warn(
+          `[bascik] CSS minification failed for ${src}, falling back to unminified copy:`,
+          minErr,
+        );
         minified = css;
       }
       await writeIfChanged(minified, true);
@@ -223,7 +295,10 @@ export async function copyReplicatePath(
           console.error(`[bascik] JS minification failed for ${src}:`, minErr);
           throw minErr;
         }
-        console.warn(`[bascik] JS minification failed for ${src}, falling back to unminified copy:`, minErr);
+        console.warn(
+          `[bascik] JS minification failed for ${src}, falling back to unminified copy:`,
+          minErr,
+        );
         minified = (await readFile(src)).toString();
       }
       await writeIfChanged(minified, true);
@@ -235,15 +310,23 @@ export async function copyReplicatePath(
       // The dest file might not exist, so return null
       calculateFileHash(destPath).catch(() => null),
     ]);
-    const useSymlink = !BascikConfig.isBuild && BascikConfig.assets?.symlink && isLinkableAsset(src);
-    const destinationIsSymlink = await lstat(destPath).then(entry => entry.isSymbolicLink()).catch(() => false);
+    const useSymlink =
+      !BascikConfig.isBuild &&
+      BascikConfig.assets?.symlink &&
+      isLinkableAsset(src);
+    const destinationIsSymlink = await lstat(destPath)
+      .then((entry) => entry.isSymbolicLink())
+      .catch(() => false);
     if (srcHash !== destHash || destinationIsSymlink !== Boolean(useSymlink)) {
       if (useSymlink) {
         // Create the replacement beside its destination, then atomically put
         // it in place. Removing the old link first leaves a request-visible
         // 404 window, and concurrent watcher events can otherwise mistake an
         // EEXIST race for an unavailable symlink capability.
-        const temporaryLinkPath = join(destDir, `.${basename(destPath)}.bascik-link-${randomUUID()}`);
+        const temporaryLinkPath = join(
+          destDir,
+          `.${basename(destPath)}.bascik-link-${randomUUID()}`,
+        );
         try {
           await symlink(relative(destDir, src), temporaryLinkPath, "file");
           await rename(temporaryLinkPath, destPath);
@@ -251,14 +334,14 @@ export async function copyReplicatePath(
             console.log(colorOut.dim("linked:"), displayRelativePath(src));
           }
         } catch (error) {
-          await rm(temporaryLinkPath, { force: true }).catch(() => { });
+          await rm(temporaryLinkPath, { force: true }).catch(() => {});
           // Windows can reject symlink creation when Developer Mode or the
           // required privilege is unavailable. Copying keeps dev usable.
           if (!warnedSymlinkFallback) {
             warnedSymlinkFallback = true;
             console.warn(
               "[bascik] could not create static-asset symlinks; copying assets instead. " +
-              "On Windows, enable Developer Mode or grant symlink permission to use assets.symlink.",
+                "On Windows, enable Developer Mode or grant symlink permission to use assets.symlink.",
             );
           }
           // Never follow an old destination link when falling back: doing so
@@ -360,7 +443,10 @@ const deepReadDir = async (
       try {
         target = await stat(path);
       } catch {
-        console.warn("[bascik] warning: skipping dangling symlink %s (target does not exist)", path);
+        console.warn(
+          "[bascik] warning: skipping dangling symlink %s (target does not exist)",
+          path,
+        );
         continue;
       }
       if (!target.isDirectory()) {
@@ -407,10 +493,13 @@ export const copyStaticAssets = async (): Promise<void> => {
   const pagesRoot = BascikConfig.directory.pages;
   const allPageFiles = await deepReadDirFlat(pagesRoot);
   const pageAssetFiles = allPageFiles.filter((filePath) =>
-    isStaticAssetPath(filePath, pagesRoot, true));
+    isStaticAssetPath(filePath, pagesRoot, true),
+  );
 
   await Promise.all(
-    pageAssetFiles.map((filePath) => copyReplicatePath(filePath, BascikConfig.directory.out)),
+    pageAssetFiles.map((filePath) =>
+      copyReplicatePath(filePath, BascikConfig.directory.out),
+    ),
   );
 };
 
@@ -420,7 +509,10 @@ export const getDirectoryPath = (pagePath: string): string => {
 };
 
 export const getDistPagePath = (pagePath: string): string => {
-  const outDirRel = (BascikConfig.directory.out ? relative(process.cwd(), BascikConfig.directory.out) : "") || "dist";
+  const outDirRel =
+    (BascikConfig.directory.out
+      ? relative(process.cwd(), BascikConfig.directory.out)
+      : "") || "dist";
   const normalized = pagePath.replace(/\\/g, "/").replace(/^\/+/, "");
   const relativePagePath = normalized.replace(/^pages\//, "");
   return `${outDirRel}/${relativePagePath}`;
@@ -433,9 +525,14 @@ export const getDistPagePath = (pagePath: string): string => {
  * handed us an absolute or relative path.
  */
 export const toDistPath = (srcPath: string): string => {
-  const outDirRel = (BascikConfig.directory.out ? relative(process.cwd(), BascikConfig.directory.out) : "") || "dist";
+  const outDirRel =
+    (BascikConfig.directory.out
+      ? relative(process.cwd(), BascikConfig.directory.out)
+      : "") || "dist";
   const outputRoot = resolve(BascikConfig.directory.out);
-  const normalizedOutputRoot = trimTrailingSlashes(outputRoot.replace(/\\/g, "/"));
+  const normalizedOutputRoot = trimTrailingSlashes(
+    outputRoot.replace(/\\/g, "/"),
+  );
   const normalizedSrc = srcPath.replace(/\\/g, "/").replace(/\/+/g, "/");
   let targetPath = "";
   if (normalizedSrc.startsWith(`${outDirRel}/`)) {
@@ -444,10 +541,15 @@ export const toDistPath = (srcPath: string): string => {
     targetPath = `${outDirRel}/${normalizedSrc.slice(normalizedOutputRoot.length + 1)}`;
   } else {
     const sourceSegments = normalizedSrc.split("/");
-    const configuredPagesDir = trimTrailingSlashes(BascikConfig.directory.pages.replace(/\\/g, "/"));
+    const configuredPagesDir = trimTrailingSlashes(
+      BascikConfig.directory.pages.replace(/\\/g, "/"),
+    );
     const hasConfiguredRoot = (configuredDir: string): boolean => {
       const root = trimSlashes(configuredDir);
-      return normalizedSrc.replace(/^\/+/, "").startsWith(`${root}/`) || normalizedSrc.includes(`/${root}/`);
+      return (
+        normalizedSrc.replace(/^\/+/, "").startsWith(`${root}/`) ||
+        normalizedSrc.includes(`/${root}/`)
+      );
     };
     const owningComponentRoot = findComponentRoot(normalizedSrc);
     const isComponentSource =
@@ -458,7 +560,8 @@ export const toDistPath = (srcPath: string): string => {
       normalizedSrc.startsWith("pages/") ||
       hasConfiguredRoot(configuredPagesDir) ||
       isComponentSource;
-    const isAbsoluteSource = normalizedSrc.startsWith("/") || /^[A-Za-z]:\//.test(normalizedSrc);
+    const isAbsoluteSource =
+      normalizedSrc.startsWith("/") || /^[A-Za-z]:\//.test(normalizedSrc);
     if (
       sourceSegments.includes("..") ||
       !normalizedSrc.includes("/") ||
@@ -467,9 +570,15 @@ export const toDistPath = (srcPath: string): string => {
       throw new OutputPathError(srcPath);
     }
     if (owningComponentRoot !== undefined) {
-      const rel = normalizedSrc.slice(owningComponentRoot.length).replace(/^\/+/, "");
+      const rel = normalizedSrc
+        .slice(owningComponentRoot.length)
+        .replace(/^\/+/, "");
       targetPath = `${outDirRel}/${rel}`;
-    } else if (isComponentSource && !normalizedSrc.startsWith("pages/") && !hasConfiguredRoot(configuredPagesDir)) {
+    } else if (
+      isComponentSource &&
+      !normalizedSrc.startsWith("pages/") &&
+      !hasConfiguredRoot(configuredPagesDir)
+    ) {
       const rel = getRelativePath(srcPath, "components");
       targetPath = rel.replace(/^components[\/]/, `${outDirRel}/`);
     } else {
@@ -480,7 +589,11 @@ export const toDistPath = (srcPath: string): string => {
 
   const resolvedTarget = resolve(targetPath);
   const relativeTarget = relative(outputRoot, resolvedTarget);
-  if (!relativeTarget || relativeTarget.startsWith("..") || isAbsolute(relativeTarget)) {
+  if (
+    !relativeTarget ||
+    relativeTarget.startsWith("..") ||
+    isAbsolute(relativeTarget)
+  ) {
     throw new OutputPathError(srcPath);
   }
   return targetPath;

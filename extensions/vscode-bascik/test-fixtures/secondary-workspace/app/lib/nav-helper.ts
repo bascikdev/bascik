@@ -1,1 +1,1 @@
-export const workspaceIdentity = 'secondary';
+export const workspaceIdentity = "secondary";

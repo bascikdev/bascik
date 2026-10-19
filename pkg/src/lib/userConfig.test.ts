@@ -48,7 +48,9 @@ describe("loadUserConfig", () => {
 
   it("handles primitive or null exports cleanly", async () => {
     const { loadUserConfig } = await import("./userConfig.ts");
-    const p = await writeConfig(`export default null; export const build = "invalid";`);
+    const p = await writeConfig(
+      `export default null; export const build = "invalid";`,
+    );
     const { config, build } = await loadUserConfig(p);
     expect(config).toEqual({});
     expect(build).toEqual({});
@@ -56,7 +58,7 @@ describe("loadUserConfig", () => {
 
   it("returns empty config silently when the file does not exist", async () => {
     const { loadUserConfig } = await import("./userConfig.ts");
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { config } = await loadUserConfig("/nonexistent/bascik.config.js");
     expect(config).toEqual({});
     // Zero-config is the default posture: a missing config is not a problem,
@@ -66,7 +68,7 @@ describe("loadUserConfig", () => {
 
   it("surfaces an ENOENT thrown from inside the config, not the no-config path", async () => {
     const { loadUserConfig } = await import("./userConfig.ts");
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const p = await writeConfig(
       `import { readFileSync } from "node:fs";
        readFileSync("./data/site.json", "utf8");
@@ -76,7 +78,9 @@ describe("loadUserConfig", () => {
     // That real ENOENT must propagate with its message; it must never be
     // misreported as "no config found" and defaults silently applied.
     await expect(loadUserConfig(p)).rejects.toThrow(/ENOENT/);
-    await expect(loadUserConfig(p)).rejects.toThrow(/Failed to load bascik\.config/);
+    await expect(loadUserConfig(p)).rejects.toThrow(
+      /Failed to load bascik\.config/,
+    );
     expect(warn).not.toHaveBeenCalledWith(
       expect.stringContaining("No bascik.config found"),
     );
@@ -111,7 +115,11 @@ describe("loadUserConfig", () => {
     const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
     dirs.push(dir);
     const p = join(dir, "bascik.config.ts");
-    await writeFile(p, `const cfg: Record<string, unknown> = { scopeScriptBlocks: false }; export default cfg;`, "utf8");
+    await writeFile(
+      p,
+      `const cfg: Record<string, unknown> = { scopeScriptBlocks: false }; export default cfg;`,
+      "utf8",
+    );
     const { config } = await loadUserConfig(p);
     expect(config).toEqual({ scopeScriptBlocks: false });
   });
@@ -156,7 +164,10 @@ describe("loadUserConfig", () => {
       `enum Mode { Fast }\nexport default { mode: Mode.Fast };`,
       "utf8",
     );
-    const cliPath = join(dirname(fileURLToPath(import.meta.url)), "../index.ts");
+    const cliPath = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "../index.ts",
+    );
     const result = spawnSync(process.execPath, [cliPath, "--build"], {
       cwd: dir,
       encoding: "utf8",
@@ -172,8 +183,16 @@ describe("resolveConfigPath", () => {
     const { resolveConfigPath } = await import("./userConfig.ts");
     const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
     dirs.push(dir);
-    await writeFile(join(dir, "bascik.config.js"), `export default {};`, "utf8");
-    await writeFile(join(dir, "bascik.config.ts"), `export default {};`, "utf8");
+    await writeFile(
+      join(dir, "bascik.config.js"),
+      `export default {};`,
+      "utf8",
+    );
+    await writeFile(
+      join(dir, "bascik.config.ts"),
+      `export default {};`,
+      "utf8",
+    );
     const { path, explicit } = await resolveConfigPath([], dir);
     expect(path).toBe(join(dir, "bascik.config.js"));
     expect(explicit).toBe(false);
@@ -192,7 +211,10 @@ describe("resolveConfigPath", () => {
     const { resolveConfigPath } = await import("./userConfig.ts");
     const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
     dirs.push(dir);
-    const { path, explicit } = await resolveConfigPath(["--config", "conf/custom.js"], dir);
+    const { path, explicit } = await resolveConfigPath(
+      ["--config", "conf/custom.js"],
+      dir,
+    );
     expect(path).toBe(join(dir, "conf/custom.js"));
     expect(explicit).toBe(true);
   });
@@ -201,7 +223,10 @@ describe("resolveConfigPath", () => {
     const { resolveConfigPath } = await import("./userConfig.ts");
     const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
     dirs.push(dir);
-    const { path, explicit } = await resolveConfigPath(["--config=conf/custom.ts"], dir);
+    const { path, explicit } = await resolveConfigPath(
+      ["--config=conf/custom.ts"],
+      dir,
+    );
     expect(path).toBe(join(dir, "conf/custom.ts"));
     expect(explicit).toBe(true);
   });

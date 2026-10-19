@@ -38,8 +38,10 @@ const isSpaceCode = (code: number): boolean => {
 const isAlphaCode = (code: number): boolean =>
   (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 const isDigitCode = (code: number): boolean => code >= 48 && code <= 57;
-const isIdStartCode = (code: number): boolean => isAlphaCode(code) || code === 95 || code === 36;
-const isIdPartCode = (code: number): boolean => isIdStartCode(code) || isDigitCode(code);
+const isIdStartCode = (code: number): boolean =>
+  isAlphaCode(code) || code === 95 || code === 36;
+const isIdPartCode = (code: number): boolean =>
+  isIdStartCode(code) || isDigitCode(code);
 const isNumberPartCode = (code: number): boolean =>
   isAlphaCode(code) || isDigitCode(code) || code === 95 || code === 46;
 
@@ -61,8 +63,23 @@ export const __tokenizeStatsForTests = {
   },
 };
 
-const REGEX_PRECEDING_IDENTIFIERS = new Set(["case", "delete", "return", "throw", "typeof", "void", "yield"]);
-const CONTROL_HEAD_KEYWORDS = new Set(["catch", "for", "if", "switch", "while", "with"]);
+const REGEX_PRECEDING_IDENTIFIERS = new Set([
+  "case",
+  "delete",
+  "return",
+  "throw",
+  "typeof",
+  "void",
+  "yield",
+]);
+const CONTROL_HEAD_KEYWORDS = new Set([
+  "catch",
+  "for",
+  "if",
+  "switch",
+  "while",
+  "with",
+]);
 const STATEMENT_PREFIX_KEYWORDS = new Set(["do", "else", "finally", "try"]);
 
 interface DelimiterContext {
@@ -99,7 +116,11 @@ const tokenizeJavaScript = (source: string): Token[] => {
 
       if (character === "/" && next === "*") {
         index += 2;
-        while (index < source.length && !(source[index] === "*" && source[index + 1] === "/")) index++;
+        while (
+          index < source.length &&
+          !(source[index] === "*" && source[index + 1] === "/")
+        )
+          index++;
         index = Math.min(index + 2, source.length);
         continue;
       }
@@ -161,7 +182,11 @@ const tokenizeJavaScript = (source: string): Token[] => {
             index++;
           } else if (source[index] === "/" && !inCharacterClass) {
             index++;
-            while (index < source.length && isAlphaCode(source.charCodeAt(index))) index++;
+            while (
+              index < source.length &&
+              isAlphaCode(source.charCodeAt(index))
+            )
+              index++;
             break;
           } else {
             index++;
@@ -174,9 +199,15 @@ const tokenizeJavaScript = (source: string): Token[] => {
 
       if (isIdStartCode(code)) {
         const tokenStart = index++;
-        while (index < source.length && isIdPartCode(source.charCodeAt(index))) index++;
+        while (index < source.length && isIdPartCode(source.charCodeAt(index)))
+          index++;
         const value = source.slice(tokenStart, index);
-        tokens.push({ type: "identifier", value, start: tokenStart, end: index });
+        tokens.push({
+          type: "identifier",
+          value,
+          start: tokenStart,
+          end: index,
+        });
         canStartRegex = REGEX_PRECEDING_IDENTIFIERS.has(value);
         statementExpected = STATEMENT_PREFIX_KEYWORDS.has(value);
         continue;
@@ -184,7 +215,11 @@ const tokenizeJavaScript = (source: string): Token[] => {
 
       if (isDigitCode(code)) {
         index++;
-        while (index < source.length && isNumberPartCode(source.charCodeAt(index))) index++;
+        while (
+          index < source.length &&
+          isNumberPartCode(source.charCodeAt(index))
+        )
+          index++;
         canStartRegex = false;
         statementExpected = false;
         continue;
@@ -197,19 +232,28 @@ const tokenizeJavaScript = (source: string): Token[] => {
         braceDepth--;
       }
 
-      tokens.push({ type: "punctuation", value: character, start: index, end: index + 1 });
+      tokens.push({
+        type: "punctuation",
+        value: character,
+        start: index,
+        end: index + 1,
+      });
       const previousToken = tokens[tokens.length - 2];
       if (character === "(") {
         delimiters.push({
           character,
           allowsRegexAfterClose:
-            previousToken?.type === "identifier" && CONTROL_HEAD_KEYWORDS.has(previousToken.value),
+            previousToken?.type === "identifier" &&
+            CONTROL_HEAD_KEYWORDS.has(previousToken.value),
         });
         canStartRegex = true;
         statementExpected = false;
       } else if (character === "{") {
-        const isStatementBlock = statementExpected || previousToken?.value === ")" ||
-          (previousToken?.value === ">" && tokens[tokens.length - 3]?.value === "=");
+        const isStatementBlock =
+          statementExpected ||
+          previousToken?.value === ")" ||
+          (previousToken?.value === ">" &&
+            tokens[tokens.length - 3]?.value === "=");
         delimiters.push({ character, allowsRegexAfterClose: isStatementBlock });
         canStartRegex = true;
         statementExpected = true;
@@ -218,8 +262,12 @@ const tokenizeJavaScript = (source: string): Token[] => {
         canStartRegex = true;
         statementExpected = false;
       } else if (character === ")" || character === "}" || character === "]") {
-        const expectedOpen = character === ")" ? "(" : character === "}" ? "{" : "[";
-        const delimiter = delimiters.at(-1)?.character === expectedOpen ? delimiters.pop() : undefined;
+        const expectedOpen =
+          character === ")" ? "(" : character === "}" ? "{" : "[";
+        const delimiter =
+          delimiters.at(-1)?.character === expectedOpen
+            ? delimiters.pop()
+            : undefined;
         canStartRegex = delimiter?.allowsRegexAfterClose ?? false;
         statementExpected = canStartRegex;
       } else {
@@ -241,7 +289,11 @@ const moduleSpecifiersFromTokens = (tokens: Token[]): ModuleSpecifier[] => {
 
   for (let index = 0; index < tokens.length; index++) {
     const token = tokens[index];
-    if (token.type !== "identifier" || (token.value !== "import" && token.value !== "export")) continue;
+    if (
+      token.type !== "identifier" ||
+      (token.value !== "import" && token.value !== "export")
+    )
+      continue;
     if (tokens[index - 1]?.value === ".") continue;
 
     const next = tokens[index + 1];
@@ -249,18 +301,29 @@ const moduleSpecifiersFromTokens = (tokens: Token[]): ModuleSpecifier[] => {
       specifiers.push(next);
       continue;
     }
-    if (token.value === "import" && next?.value === "(" && tokens[index + 2]?.type === "string") {
+    if (
+      token.value === "import" &&
+      next?.value === "(" &&
+      tokens[index + 2]?.type === "string"
+    ) {
       specifiers.push(tokens[index + 2]);
       continue;
     }
 
     for (let cursor = index + 1; cursor < tokens.length; cursor++) {
       const candidate = tokens[cursor];
-      if (candidate.value === ";" ||
-        (candidate.type === "identifier" && (candidate.value === "import" || candidate.value === "export"))) {
+      if (
+        candidate.value === ";" ||
+        (candidate.type === "identifier" &&
+          (candidate.value === "import" || candidate.value === "export"))
+      ) {
         break;
       }
-      if (candidate.type === "identifier" && candidate.value === "from" && tokens[cursor + 1]?.type === "string") {
+      if (
+        candidate.type === "identifier" &&
+        candidate.value === "from" &&
+        tokens[cursor + 1]?.type === "string"
+      ) {
         specifiers.push(tokens[cursor + 1]);
         break;
       }
@@ -271,14 +334,17 @@ const moduleSpecifiersFromTokens = (tokens: Token[]): ModuleSpecifier[] => {
 };
 
 const callArgumentLiteralsFromTokens = (tokens: Token[]): ModuleSpecifier[] =>
-  tokens.filter((token, index): token is Token & ModuleSpecifier =>
-    token.type === "string" && ["(", ","].includes(tokens[index - 1]?.value),
+  tokens.filter(
+    (token, index): token is Token & ModuleSpecifier =>
+      token.type === "string" && ["(", ","].includes(tokens[index - 1]?.value),
   );
 
 export const findModuleSpecifiers = (source: string): ModuleSpecifier[] =>
   moduleSpecifiersFromTokens(tokenizeJavaScript(source));
 
-export const findCallArgumentStringLiterals = (source: string): ModuleSpecifier[] =>
+export const findCallArgumentStringLiterals = (
+  source: string,
+): ModuleSpecifier[] =>
   callArgumentLiteralsFromTokens(tokenizeJavaScript(source));
 
 export interface ScriptScan {
@@ -323,10 +389,17 @@ export const hasDynamicImportExpression = (source: string): boolean => {
     // Skip static forms: `import "x"`, `import x from "x"`, `import {} from "x"`,
     // `import("x")` (dynamic import of a fixed literal).
     if (tokens[i + 1]?.type === "string") continue;
-    if (tokens[i + 1]?.type === "identifier" && tokens[i + 2]?.value === "from") continue;
-    if (tokens[i + 1]?.type === "punctuation" && tokens[i + 1]?.value === "{") continue;
-    if (tokens[i + 1]?.type === "identifier" && tokens[i + 2]?.type === "string") continue;
-    if (tokens[i + 1]?.value === "(" && tokens[i + 2]?.type === "string") continue;
+    if (tokens[i + 1]?.type === "identifier" && tokens[i + 2]?.value === "from")
+      continue;
+    if (tokens[i + 1]?.type === "punctuation" && tokens[i + 1]?.value === "{")
+      continue;
+    if (
+      tokens[i + 1]?.type === "identifier" &&
+      tokens[i + 2]?.type === "string"
+    )
+      continue;
+    if (tokens[i + 1]?.value === "(" && tokens[i + 2]?.type === "string")
+      continue;
     // `import.meta` and member `.import(...)` are not dynamic imports.
     if (tokens[i + 1]?.value === ".") continue;
     if (tokens[i - 1]?.value === ".") continue;
@@ -413,7 +486,9 @@ export class LeadingSlashSpecifierError extends Error {
     const rest = specifier.replace(/^\/+/, "");
     const aliasSuggestion = `@/${rest}`;
     const relativeSuggestion = `./${rest}`;
-    super(formatLeadingSlashMessage(specifier, aliasSuggestion, relativeSuggestion));
+    super(
+      formatLeadingSlashMessage(specifier, aliasSuggestion, relativeSuggestion),
+    );
     this.name = "LeadingSlashSpecifierError";
     this.specifier = specifier;
     this.aliasSuggestion = aliasSuggestion;
@@ -520,7 +595,10 @@ export const rewriteModuleSpecifiersWithEdits = (
       ...specifier,
       resolved: resolveSpecifierPath(specifier.value, baseDir, importRoot),
     }))
-    .filter((specifier): specifier is ModuleSpecifier & { resolved: string } => specifier.resolved !== undefined)
+    .filter(
+      (specifier): specifier is ModuleSpecifier & { resolved: string } =>
+        specifier.resolved !== undefined,
+    )
     .sort((left, right) => right.start - left.start);
 
   const edits: SpecifierEdit[] = [];
@@ -529,8 +607,18 @@ export const rewriteModuleSpecifiersWithEdits = (
     const href = pathToFileURL(resolved).href;
     const lineStart = source.lastIndexOf("\n", start - 1) + 1;
     let line = 1;
-    for (let index = source.indexOf("\n"); index !== -1 && index < start; index = source.indexOf("\n", index + 1)) line++;
-    edits.push({ line, column: start - lineStart + 1, oldLength: end - start, newLength: href.length });
+    for (
+      let index = source.indexOf("\n");
+      index !== -1 && index < start;
+      index = source.indexOf("\n", index + 1)
+    )
+      line++;
+    edits.push({
+      line,
+      column: start - lineStart + 1,
+      oldLength: end - start,
+      newLength: href.length,
+    });
     // String concatenation (not String.replace) so `$&`, `$1`, and similar
     // tokens in paths are inserted literally.
     rewritten = rewritten.slice(0, start) + href + rewritten.slice(end);

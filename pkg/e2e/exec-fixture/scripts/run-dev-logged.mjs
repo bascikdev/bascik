@@ -62,7 +62,9 @@ process.on("SIGINT", forward("SIGINT"));
 process.on("SIGHUP", forward("SIGHUP"));
 
 child.on("error", (err) => {
-  process.stderr.write(`[run-dev-logged] failed to start dev server: ${err.message}\n`);
+  process.stderr.write(
+    `[run-dev-logged] failed to start dev server: ${err.message}\n`,
+  );
   log.end(() => process.exit(1));
 });
 

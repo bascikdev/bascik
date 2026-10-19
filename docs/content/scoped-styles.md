@@ -12,10 +12,14 @@ You can define component CSS in either of these places:
 Both approaches are fully equivalent in functionality. At build time, Bascik extracts inline `<style>` tags from component HTML files, applies the full scoping pipeline, deduplicates the CSS across all instances on the page, and injects the compiled styles into the page `<head>`. Component markup in the `<body>` stays clean with no `<style>` tags left behind.
 
 <!-- demo:style-hoisting-example -->
+
 ```html
 <!-- src/components/site-card.html -->
 <style>
-  .card { padding: 20px; border: 1px solid #3a3d40; }
+  .card {
+    padding: 20px;
+    border: 1px solid #3a3d40;
+  }
 </style>
 <article class="card">
   <div data-bascik-slot></div>
@@ -24,24 +28,27 @@ Both approaches are fully equivalent in functionality. At build time, Bascik ext
 <!-- src/pages/index.html -->
 <!DOCTYPE html>
 <html lang="en">
-<body>
-  <site-card><p>Card content</p></site-card>
-</body>
+  <body>
+    <site-card><p>Card content</p></site-card>
+  </body>
 </html>
 
 <!-- dist/index.html -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <style>
-    .bascik__site-card__card { padding: 20px; border: 1px solid #3a3d40; }
-  </style>
-</head>
-<body>
-  <article class="bascik__site-card__card">
-    <p>Card content</p>
-  </article>
-</body>
+  <head>
+    <style>
+      .bascik__site-card__card {
+        padding: 20px;
+        border: 1px solid #3a3d40;
+      }
+    </style>
+  </head>
+  <body>
+    <article class="bascik__site-card__card">
+      <p>Card content</p>
+    </article>
+  </body>
 </html>
 ```
 
@@ -81,22 +88,28 @@ In production builds (`minify.identifiers: true`, the default), these verbose na
 This component combines a class, an ID selector, bare `h3` and `p` selectors, a local custom property, a media query, and a keyframe animation. Inspect Source and Output to see Bascik rewrite them while the meter sweeps in the preview.
 
 <!-- demo:scope-lab-usage -->
+
 ```html
 <scope-lab />
 ```
 
 <!-- demo:scope-lab-html -->
+
 ```html
 <section class="scope-lab">
   <div>
     <h3>Scoped selectors are active</h3>
-    <p>Bare element selectors, keyframes, and custom properties stay inside this component.</p>
+    <p>
+      Bare element selectors, keyframes, and custom properties stay inside this
+      component.
+    </p>
   </div>
   <span class="scope-lab-meter" id="signal" aria-hidden="true"></span>
 </section>
 ```
 
 <!-- demo:scope-lab-css -->
+
 ```css
 .scope-lab {
   --signal-color: #d3ff8d;
@@ -116,32 +129,47 @@ This component combines a class, an ID selector, bare `h3` and `p` selectors, a 
   border-radius: 999px;
 }
 
-h3 { color: #f0f1f2; }
-p { color: #8d929e; }
+h3 {
+  color: #f0f1f2;
+}
+p {
+  color: #8d929e;
+}
 
 @keyframes scope-sweep {
-  from { transform: scaleX(0.15); }
-  to { transform: scaleX(1); }
+  from {
+    transform: scaleX(0.15);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .scope-lab-meter { animation: none; }
+  .scope-lab-meter {
+    animation: none;
+  }
 }
 ```
 
 <!-- demo:scope-lab-output-html -->
+
 ```html
 <section class="bascik__scope-lab__scope-lab">
   <div>
     <h3 class="bascik__scope-lab__el__h3">Scoped selectors are active</h3>
     <p class="bascik__scope-lab__el__p">Bare element selectors stay local.</p>
   </div>
-  <span class="bascik__scope-lab__scope-lab-meter bascik__scope-lab__id__signal"
-        id="bascik__scope-lab__a1b2__signal" aria-hidden="true"></span>
+  <span
+    class="bascik__scope-lab__scope-lab-meter bascik__scope-lab__id__signal"
+    id="bascik__scope-lab__a1b2__signal"
+    aria-hidden="true"
+  ></span>
 </section>
 ```
 
 <!-- demo:scope-lab-output-css -->
+
 ```css
 .bascik__scope-lab__scope-lab {
   --bascik__scope-lab__signal-color: #d3ff8d;
@@ -149,23 +177,34 @@ p { color: #8d929e; }
 
 .bascik__scope-lab__scope-lab-meter {
   background: var(--bascik__scope-lab__signal-color);
-  animation: bascik__scope-lab__keyframe__scope-sweep 1.6s ease-in-out infinite alternate;
+  animation: bascik__scope-lab__keyframe__scope-sweep 1.6s ease-in-out infinite
+    alternate;
 }
 
 .bascik__scope-lab__id__signal {
   border-radius: 999px;
 }
 
-.bascik__scope-lab__el__h3 { color: #f0f1f2; }
-.bascik__scope-lab__el__p { color: #8d929e; }
+.bascik__scope-lab__el__h3 {
+  color: #f0f1f2;
+}
+.bascik__scope-lab__el__p {
+  color: #8d929e;
+}
 
 @keyframes bascik__scope-lab__keyframe__scope-sweep {
-  from { transform: scaleX(0.15); }
-  to { transform: scaleX(1); }
+  from {
+    transform: scaleX(0.15);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bascik__scope-lab__scope-lab-meter { animation: none; }
+  .bascik__scope-lab__scope-lab-meter {
+    animation: none;
+  }
 }
 ```
 
@@ -284,8 +323,8 @@ Define your design tokens once in a global stylesheet, then consume them inside 
 ```css
 /* src/styles.css: design tokens, linked in every page <head> */
 :root {
-  --brand:     #d3ff8d;
-  --card-bg:   #1e2022;
+  --brand: #d3ff8d;
+  --card-bg: #1e2022;
   --text-muted: #8d929e;
 }
 ```
@@ -295,7 +334,7 @@ Define your design tokens once in a global stylesheet, then consume them inside 
 <style>
   .card {
     padding: 24px 28px;
-    background: var(--card-bg);    /* global: Bascik leaves untouched */
+    background: var(--card-bg); /* global: Bascik leaves untouched */
     border-top: 3px solid var(--brand);
     border-radius: 10px;
   }
@@ -340,14 +379,14 @@ Bascik supports standard CSS `@import` statements in component CSS (`.css` files
 Attribute scoping can be controlled in [`bascik.config.ts`](/configuration). The following is an illustrative reference showing the defaults, so do not add it unless a project needs to disable one of these options:
 
 ```ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   scoping: {
     attributes: {
       class: true, // scope class names
-      id: true,    // scope id attributes
-      name: true,  // scope name attributes
+      id: true, // scope id attributes
+      name: true, // scope name attributes
     },
   },
 });
@@ -368,8 +407,8 @@ Because all instances of the same component share the same scoped class names (f
 </div>
 
 <script>
-  const root = document.getElementById('root');  // ✓ unique per instance
-  const btn  = root.querySelector('button');      // ✓ scoped to this instance
+  const root = document.getElementById("root"); // ✓ unique per instance
+  const btn = root.querySelector("button"); // ✓ scoped to this instance
 </script>
 ```
 
@@ -382,14 +421,14 @@ Avoid this anti-pattern:
 
 <script>
   // ✗ finds the FIRST .wrapper on the page - wrong for instance 2+
-  const root = document.querySelector('.wrapper');
+  const root = document.querySelector(".wrapper");
 </script>
 ```
 
 By default, all instances of the same component share identical scoped class names so Bascik can emit a single `<style>` block per component, regardless of how many times it appears on the page. If you genuinely need class selectors to be unique per instance (for example, to use `querySelector` safely across multiple instances), set `scoping.deduplicateCss` to `false`:
 
 ```ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   scoping: {
@@ -404,13 +443,13 @@ Setting `scoping.deduplicateCss` in `bascik.config.ts` controls whether class na
 
 > **Go deeper.** To understand how Bascik collects, scopes, and compiles CSS blocks at the parser level, check out the [CSS Deduplication internals guide](/internals/scoping-system#css-deduplication).
 
-| Feature / Aspect | `deduplicateCss: true` (Default) | `deduplicateCss: false` |
-| --- | --- | --- |
-| **Class Scoping Scheme** | `bascik__card__wrapper` (shared per component) | `bascik__card__a1b2c3d4__wrapper` (unique per instance) |
-| **CSS Payload** | Single `<style>` block per component type, zero CSS duplication | Multiplied `<style>` blocks (one block per component instance) |
-| **`querySelector('.cls')` Behavior** | Targets the first instance on the page | Targets the matching element inside that specific instance |
-| **Instance Isolation Model** | Use `id` + `getElementById()` for per-instance script isolation | Class selectors inherently isolate per instance |
-| **Best For** | Virtually all production sites and design systems | Migrating legacy or third-party code that relies on class queries |
+| Feature / Aspect                     | `deduplicateCss: true` (Default)                                | `deduplicateCss: false`                                           |
+| ------------------------------------ | --------------------------------------------------------------- | ----------------------------------------------------------------- |
+| **Class Scoping Scheme**             | `bascik__card__wrapper` (shared per component)                  | `bascik__card__a1b2c3d4__wrapper` (unique per instance)           |
+| **CSS Payload**                      | Single `<style>` block per component type, zero CSS duplication | Multiplied `<style>` blocks (one block per component instance)    |
+| **`querySelector('.cls')` Behavior** | Targets the first instance on the page                          | Targets the matching element inside that specific instance        |
+| **Instance Isolation Model**         | Use `id` + `getElementById()` for per-instance script isolation | Class selectors inherently isolate per instance                   |
+| **Best For**                         | Virtually all production sites and design systems               | Migrating legacy or third-party code that relies on class queries |
 
 #### Side-by-Side Code Example
 
@@ -426,12 +465,18 @@ Given two instances of `<my-card>` on the same page:
 
 ```html
 <!-- HTML Output: Shared classes, unique IDs -->
-<div class="bascik__my-card__wrapper" id="bascik__my-card__a1b2c3d4__root">...</div>
-<div class="bascik__my-card__wrapper" id="bascik__my-card__e5f6g7h8__root">...</div>
+<div class="bascik__my-card__wrapper" id="bascik__my-card__a1b2c3d4__root">
+  ...
+</div>
+<div class="bascik__my-card__wrapper" id="bascik__my-card__e5f6g7h8__root">
+  ...
+</div>
 
 <!-- CSS Output: Emitted once in <head> -->
 <style>
-  .bascik__my-card__wrapper { padding: 1rem; }
+  .bascik__my-card__wrapper {
+    padding: 1rem;
+  }
 </style>
 ```
 
@@ -439,13 +484,27 @@ Given two instances of `<my-card>` on the same page:
 
 ```html
 <!-- HTML Output: Unique classes per instance -->
-<div class="bascik__my-card__a1b2c3d4__wrapper" id="bascik__my-card__a1b2c3d4__root">...</div>
-<div class="bascik__my-card__e5f6g7h8__wrapper" id="bascik__my-card__e5f6g7h8__root">...</div>
+<div
+  class="bascik__my-card__a1b2c3d4__wrapper"
+  id="bascik__my-card__a1b2c3d4__root"
+>
+  ...
+</div>
+<div
+  class="bascik__my-card__e5f6g7h8__wrapper"
+  id="bascik__my-card__e5f6g7h8__root"
+>
+  ...
+</div>
 
 <!-- CSS Output: Emitted for every instance -->
 <style>
-  .bascik__my-card__a1b2c3d4__wrapper { padding: 1rem; }
-  .bascik__my-card__e5f6g7h8__wrapper { padding: 1rem; }
+  .bascik__my-card__a1b2c3d4__wrapper {
+    padding: 1rem;
+  }
+  .bascik__my-card__e5f6g7h8__wrapper {
+    padding: 1rem;
+  }
 </style>
 ```
 
@@ -461,14 +520,16 @@ Thanks to Bascik's **BYOMinifier (Bring Your Own Minifier)** feature, if your pr
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
-import autoprefixer from 'autoprefixer';
-import postcss from 'postcss';
+import { defineConfig } from "@bascik/bascik/config";
+import autoprefixer from "autoprefixer";
+import postcss from "postcss";
 
 export const build = defineConfig({
   minify: {
     css: async (css) => {
-      const result = await postcss([autoprefixer]).process(css, { from: undefined });
+      const result = await postcss([autoprefixer]).process(css, {
+        from: undefined,
+      });
       return result.css;
     },
   },
@@ -479,17 +540,17 @@ export const build = defineConfig({
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
-import { transform } from 'lightningcss';
+import { defineConfig } from "@bascik/bascik/config";
+import { transform } from "lightningcss";
 
 export const build = defineConfig({
   minify: {
     css: (css) => {
       const { code } = transform({
-        filename: 'style.css',
+        filename: "style.css",
         code: Buffer.from(css),
         minify: true,
-        targets: { safari: (15 << 16) },
+        targets: { safari: 15 << 16 },
       });
       return code.toString();
     },
@@ -514,12 +575,13 @@ Two components sit side by side on the same page. Their markup is identical: bot
 **Source** (`plan-card` and `alert-card`, each an `.html` file with a paired `.css` file):
 
 <!-- demo:source-usage -->
+
 ```html
-<plan-card></plan-card>
-<alert-card></alert-card>
+<plan-card></plan-card> <alert-card></alert-card>
 ```
 
 <!-- demo:source-html -->
+
 ```html
 <!-- src/components/plan-card/plan-card.html -->
 <article class="card">
@@ -537,6 +599,7 @@ Two components sit side by side on the same page. Their markup is identical: bot
 ```
 
 <!-- demo:source-css -->
+
 ```css
 /* src/components/plan-card/plan-card.css */
 .card {
@@ -602,11 +665,14 @@ p {
 **Compiled output** (each class and element selector carries its component's name):
 
 <!-- demo:output-html -->
+
 ```html
 <article class="bascik__plan-card__card">
   <span class="bascik__plan-card__tag">plan-card</span>
   <h3 class="bascik__plan-card__title">Pro plan</h3>
-  <p class="bascik__plan-card__el__p">Same class names as the card beside it.</p>
+  <p class="bascik__plan-card__el__p">
+    Same class names as the card beside it.
+  </p>
 </article>
 
 <article class="bascik__alert-card__card">
@@ -617,6 +683,7 @@ p {
 ```
 
 <!-- demo:output-css -->
+
 ```css
 /* Hoisted into the page <head>, one block per component */
 .bascik__plan-card__card {

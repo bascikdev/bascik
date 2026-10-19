@@ -7,19 +7,22 @@
  *
  * Run via pipeline.exec in bascik.config.ts (build only), or directly: node scripts/generate-csp-meta.ts
  */
-import { readdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { injectCspMeta } from '../src/lib/csp-meta.ts';
+import { readdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { injectCspMeta } from "../src/lib/csp-meta.ts";
 
-const docsDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = process.env.BASCIK_OUT_DIR ?? join(docsDir, 'dist');
+const docsDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const outDir = process.env.BASCIK_OUT_DIR ?? join(docsDir, "dist");
 
 let updated = 0;
-for (const entry of await readdir(outDir, { recursive: true, withFileTypes: true })) {
-  if (!entry.isFile() || !entry.name.endsWith('.html')) continue;
+for (const entry of await readdir(outDir, {
+  recursive: true,
+  withFileTypes: true,
+})) {
+  if (!entry.isFile() || !entry.name.endsWith(".html")) continue;
   const file = join(entry.parentPath, entry.name);
-  const html = await readFile(file, 'utf8');
+  const html = await readFile(file, "utf8");
   const withPolicy = injectCspMeta(html);
   if (withPolicy === html) continue;
   await writeFile(file, withPolicy);

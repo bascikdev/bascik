@@ -16,7 +16,8 @@ A list with a live text filter. Pass <li> items in the default slot. Without Jav
 
   .input {
     padding: 0.5rem 0.75rem;
-    border: 1px solid var(--color-border, color-mix(in srgb, currentColor 30%, transparent));
+    border: 1px solid
+      var(--color-border, color-mix(in srgb, currentColor 30%, transparent));
     border-radius: var(--radius, 0.5rem);
     background: var(--color-bg, Field);
     color: inherit;
@@ -32,7 +33,10 @@ A list with a live text filter. Pass <li> items in the default slot. Without Jav
     margin: 0;
     padding: 0.75rem 0.75rem 0.75rem 2rem;
     border-radius: var(--radius, 0.5rem);
-    background: var(--color-surface, color-mix(in srgb, currentColor 8%, transparent));
+    background: var(
+      --color-surface,
+      color-mix(in srgb, currentColor 8%, transparent)
+    );
   }
 
   .count {
@@ -52,9 +56,9 @@ A list with a live text filter. Pass <li> items in the default slot. Without Jav
   </ul>
 </div>
 <script>
-  const query = document.getElementById('query');
-  const count = document.getElementById('count');
-  const items = [...document.getElementById('items').children];
+  const query = document.getElementById("query");
+  const count = document.getElementById("count");
+  const items = [...document.getElementById("items").children];
 
   const apply = () => {
     const needle = query.value.trim().toLowerCase();
@@ -64,11 +68,11 @@ A list with a live text filter. Pass <li> items in the default slot. Without Jav
       item.hidden = !match;
       if (match) shown++;
     }
-    count.textContent = needle ? `${shown} of ${items.length} shown` : '';
+    count.textContent = needle ? `${shown} of ${items.length} shown` : "";
   };
 
-  query.addEventListener('input', apply);
+  query.addEventListener("input", apply);
   // The browser may restore a typed value on Back or reload without firing input.
-  window.addEventListener('pageshow', apply);
-  document.getElementById('controls').hidden = false;
+  window.addEventListener("pageshow", apply);
+  document.getElementById("controls").hidden = false;
 </script>

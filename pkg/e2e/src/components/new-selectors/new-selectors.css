@@ -60,7 +60,7 @@
   margin: 0 0 12px;
 }
 
-.list>li {
+.list > li {
   padding: 6px 8px;
   color: rgb(167, 139, 250);
   border-bottom: 1px solid #333;
@@ -71,7 +71,7 @@
   padding: 10px;
 }
 
-.article>h2 {
+.article > h2 {
   color: rgb(251, 191, 36);
   margin: 0 0 8px;
   font-size: 1rem;

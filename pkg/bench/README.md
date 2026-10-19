@@ -2,13 +2,13 @@
 
 Contributor tooling for measuring Bascik itself. Nothing in this directory ships in the npm package. The public overview lives on the [Testing Internals](https://bascik.dev/internals/testing) page; this file holds the operational detail for running and interpreting captures.
 
-| Command (from the repository root) | Entry point | Purpose |
-| --- | --- | --- |
-| `yarn pkg:bench` | `*.bench.ts` | Vitest throughput benchmarks on fixed inputs |
-| `yarn workspace @bascik/bascik profile:workload` | `profile-workload.ts` | Bounded runtime captures (servers, dev, builds) on a synthetic fixture |
-| `yarn workspace @bascik/bascik profile:compiler` | `compiler-timeline.ts` | Dev and build timelines on a copy of a real project |
-| `yarn workspace @bascik/bascik profile:compare` | `compiler-compare.ts` | Paired baseline versus candidate compiler runs on one fixture |
-| `node pkg/bench/profile-boundaries.ts <report-dir>` | `profile-boundaries.ts` | Resource-boundary capture with optional allocation sampling |
+| Command (from the repository root)                  | Entry point             | Purpose                                                                |
+| --------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------- |
+| `yarn pkg:bench`                                    | `*.bench.ts`            | Vitest throughput benchmarks on fixed inputs                           |
+| `yarn workspace @bascik/bascik profile:workload`    | `profile-workload.ts`   | Bounded runtime captures (servers, dev, builds) on a synthetic fixture |
+| `yarn workspace @bascik/bascik profile:compiler`    | `compiler-timeline.ts`  | Dev and build timelines on a copy of a real project                    |
+| `yarn workspace @bascik/bascik profile:compare`     | `compiler-compare.ts`   | Paired baseline versus candidate compiler runs on one fixture          |
+| `node pkg/bench/profile-boundaries.ts <report-dir>` | `profile-boundaries.ts` | Resource-boundary capture with optional allocation sampling            |
 
 Supporting modules: `profile-runner.ts` (bounded, process-group-owned command execution), `profile-fixture.ts` and `profile-tls.ts` (synthetic project and private TLS trust), `profile-subject.ts` and `compiler-timeline-subject.ts` (the processes being measured), `profile-load.ts` (load generator), `profile-observers.ts`, `profile-isolate.ts`, and `profile-diagnostics.ts` (worker/child observation, inspector profiling, and event journals).
 
@@ -127,13 +127,13 @@ Tools are `control`, `cpu`, `doctor`, `bubbleprof`, `heapprofiler`, `0x`, and `f
 
 The `cpu` tool requires the main isolate's profile and records page-worker profiles against observed worker starts. Build-script children are not covered by that tool. `--worker-cpu` chooses how page workers are profiled:
 
-| Value | Behavior |
-| --- | --- |
-| `all` | Inherit native `--cpu-prof` in every worker |
-| `first` | Inherit native `--cpu-prof` in the first worker only |
-| `inspector` | Start the inspector profiler from a preload after worker bootstrap and write one profile per task |
-| `none` | Profile the main isolate only |
-| `auto` (default) | `all`, unless native worker capture is known to stall on the current runtime, then `none` |
+| Value            | Behavior                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------- |
+| `all`            | Inherit native `--cpu-prof` in every worker                                                       |
+| `first`          | Inherit native `--cpu-prof` in the first worker only                                              |
+| `inspector`      | Start the inspector profiler from a preload after worker bootstrap and write one profile per task |
+| `none`           | Profile the main isolate only                                                                     |
+| `auto` (default) | `all`, unless native worker capture is known to stall on the current runtime, then `none`         |
 
 `--edits` measures dev edits until validated output reaches disk, not until a browser refreshes. On the docs site it edits a page, a Markdown file, and a shared helper. For another project, `--edit-page src/pages/<page>.html` edits one page and implies `--edits`. Pass `--edit-output` when the page does not map to `dist/` under the default directories.
 

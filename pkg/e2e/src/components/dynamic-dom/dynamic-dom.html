@@ -35,15 +35,17 @@
       updateStatus();
     });
 
-    document.getElementById("add-unscoped-btn").addEventListener("click", () => {
-      const li = document.createElement("li");
-      // setAttribute with a string literal that contains a known class name —
-      // bascik may or may not scope "item" here depending on the rewrite rules
-      li.setAttribute("class", "item unscoped-item");
-      li.textContent = "Unscoped item " + (list.children.length + 1);
-      list.appendChild(li);
-      updateStatus();
-    });
+    document
+      .getElementById("add-unscoped-btn")
+      .addEventListener("click", () => {
+        const li = document.createElement("li");
+        // setAttribute with a string literal that contains a known class name —
+        // bascik may or may not scope "item" here depending on the rewrite rules
+        li.setAttribute("class", "item unscoped-item");
+        li.textContent = "Unscoped item " + (list.children.length + 1);
+        list.appendChild(li);
+        updateStatus();
+      });
 
     document.getElementById("clear-btn").addEventListener("click", () => {
       list.innerHTML = "";

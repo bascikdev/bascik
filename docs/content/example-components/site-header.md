@@ -9,6 +9,7 @@ A header for every page: a skip link, the site name, and the main navigation. Th
 `name` is the site name and defaults to "Example Site". Anything inside the tag goes at the end of the bar, for example a [Theme Toggle](/example-components/theme-toggle). Every page needs a `<main id="main">` for the skip link to land on.
 
 <!-- demo:usage -->
+
 ```html
 <site-header data-bascik-prop-name="Example Site" />
 ```

@@ -17,24 +17,34 @@
  * The hash is computed from the emitted bytes, so this must run after every step that edits inline script
  * text. It runs in the `post` phase.
  */
-import { createHash } from 'node:crypto';
+import { createHash } from "node:crypto";
 
 const META_MARKER = 'http-equiv="Content-Security-Policy"';
 
 /** The `type` values of a `<script>` whose body runs, or is an import map. Other types are data. */
-const EXECUTABLE_TYPES = new Set(['', 'module', 'importmap', 'text/javascript', 'application/javascript']);
+const EXECUTABLE_TYPES = new Set([
+  "",
+  "module",
+  "importmap",
+  "text/javascript",
+  "application/javascript",
+]);
 
-const SCRIPT_RE = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
+const SCRIPT_RE =
+  /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
 
 function attribute(attributes: string, name: string): string | null {
-  const match = new RegExp(`(?:^|[\\s"'/])${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, 'i').exec(attributes);
-  return match ? (match[1] ?? match[2] ?? match[3] ?? '') : null;
+  const match = new RegExp(
+    `(?:^|[\\s"'/])${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`,
+    "i",
+  ).exec(attributes);
+  return match ? (match[1] ?? match[2] ?? match[3] ?? "") : null;
 }
 
 function sha256Source(body: string): string {
   // The HTML parser normalizes newlines before a browser hashes the body.
-  const normalized = body.replace(/\r\n?/g, '\n');
-  return `'sha256-${createHash('sha256').update(normalized, 'utf8').digest('base64')}'`;
+  const normalized = body.replace(/\r\n?/g, "\n");
+  return `'sha256-${createHash("sha256").update(normalized, "utf8").digest("base64")}'`;
 }
 
 export interface PageScripts {
@@ -49,15 +59,16 @@ export function collectPageScripts(html: string): PageScripts {
   const hashes = new Set<string>();
   const origins = new Set<string>();
   for (const match of html.matchAll(SCRIPT_RE)) {
-    const attributes = match[1] ?? '';
-    const type = (attribute(attributes, 'type') ?? '').trim().toLowerCase();
-    const src = attribute(attributes, 'src');
+    const attributes = match[1] ?? "";
+    const type = (attribute(attributes, "type") ?? "").trim().toLowerCase();
+    const src = attribute(attributes, "src");
     if (src !== null) {
-      if (/^(?:https?:)?\/\//i.test(src.trim())) origins.add(new URL(src.trim(), 'https://example.invalid').origin);
+      if (/^(?:https?:)?\/\//i.test(src.trim()))
+        origins.add(new URL(src.trim(), "https://example.invalid").origin);
       continue;
     }
     if (!EXECUTABLE_TYPES.has(type)) continue;
-    hashes.add(sha256Source(match[2] ?? ''));
+    hashes.add(sha256Source(match[2] ?? ""));
   }
   return { hashes: [...hashes].sort(), origins: [...origins].sort() };
 }
@@ -66,7 +77,7 @@ export function collectPageScripts(html: string): PageScripts {
 export function pagePolicy(scripts: PageScripts): string {
   const sources = ["'self'", ...scripts.origins, ...scripts.hashes];
   if (scripts.origins.length > 0) sources.push("'unsafe-eval'");
-  return `script-src ${sources.join(' ')}; object-src 'none'; base-uri 'self'`;
+  return `script-src ${sources.join(" ")}; object-src 'none'; base-uri 'self'`;
 }
 
 /**

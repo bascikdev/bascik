@@ -88,7 +88,11 @@ export const readCursorPosition = (
   timeoutMs: number = CURSOR_QUERY_TIMEOUT_MS,
 ): Promise<CursorPosition | undefined> =>
   new Promise((resolve) => {
-    if (!input || input.isTTY !== true || typeof input.setRawMode !== "function") {
+    if (
+      !input ||
+      input.isTTY !== true ||
+      typeof input.setRawMode !== "function"
+    ) {
       resolve(undefined);
       return;
     }
@@ -101,7 +105,11 @@ export const readCursorPosition = (
       clearTimeout(timer);
       // Cleanup must not throw, and one step failing must not skip the others. A terminal that refused raw mode may
       // refuse to leave it too, and a banner is not worth failing the server over.
-      for (const step of [() => input.off("data", onData), () => input.setRawMode?.(wasRaw), () => input.pause()]) {
+      for (const step of [
+        () => input.off("data", onData),
+        () => input.setRawMode?.(wasRaw),
+        () => input.pause(),
+      ]) {
         try {
           step();
         } catch {
@@ -130,7 +138,9 @@ export const readCursorPosition = (
 export const PIN_SERVER_URL_ENV_VAR = "BASCIK_PIN_SERVER_URL";
 
 /** Whether the user turned pinning off: `0`, `false`, `off`, or `no` (any case). Any other value leaves it on. */
-export const isPinningDisabled = (env: PinnedBannerEnvironment = process.env): boolean =>
+export const isPinningDisabled = (
+  env: PinnedBannerEnvironment = process.env,
+): boolean =>
   /^(?:0|false|off|no)$/i.test((env[PIN_SERVER_URL_ENV_VAR] ?? "").trim());
 
 /** Whether the stream is an interactive terminal tall enough to give up its first row. */
@@ -148,13 +158,17 @@ export const canPinBanner = (
  * Whether the scrollback has to be emptied for the banner to stay visible: VS Code's terminal (and editors built
  * on it) with shell integration on, which is what turns on the sticky scroll overlay.
  */
-export const needsEmptyScrollback = (env: PinnedBannerEnvironment = process.env): boolean =>
-  env.TERM_PROGRAM === "vscode" && Boolean(env.VSCODE_INJECTION || env.VSCODE_SHELL_INTEGRATION);
+export const needsEmptyScrollback = (
+  env: PinnedBannerEnvironment = process.env,
+): boolean =>
+  env.TERM_PROGRAM === "vscode" &&
+  Boolean(env.VSCODE_INJECTION || env.VSCODE_SHELL_INTEGRATION);
 
 /** The banner text, with the URL shortened so it never wraps onto row 2. */
 export const formatBanner = (url: string, columns: number): string => {
   const room = Math.max(1, columns - LABEL.length - 2);
-  const shown = url.length > room ? `${url.slice(0, Math.max(0, room - 1))}…` : url;
+  const shown =
+    url.length > room ? `${url.slice(0, Math.max(0, room - 1))}…` : url;
   return `${colorOut.green(LABEL)} ${colorOut.cyan(shown)}`;
 };
 
@@ -204,7 +218,7 @@ export const pinServerUrl = async (
   const resumeRow = full ? total : cursorRow + 1;
   stream.write(
     `${RESET_SCROLL_REGION}${RESET_ORIGIN_MODE}${full ? `${ESC}[${total};1H\n` : ""}${emptyScrollback ? ERASE_SCROLLBACK : ""}` +
-    `${ESC}[1;1H${INSERT_LINE}${drawBanner()}${ESC}[${resumeRow};${cursorColumn}H`,
+      `${ESC}[1;1H${INSERT_LINE}${drawBanner()}${ESC}[${resumeRow};${cursorColumn}H`,
   );
 
   // A resize can reset the region and reflow the text, and shrinking the window pushes the top rows, banner
@@ -212,7 +226,9 @@ export const pinServerUrl = async (
   // that is needed so the pushed rows cannot own the top row.
   const onResize = () => {
     if (!canPinBanner(stream, env)) return;
-    stream.write(`${SAVE_CURSOR}${emptyScrollback ? ERASE_SCROLLBACK : ""}${drawBanner()}${RESTORE_CURSOR}`);
+    stream.write(
+      `${SAVE_CURSOR}${emptyScrollback ? ERASE_SCROLLBACK : ""}${drawBanner()}${RESTORE_CURSOR}`,
+    );
   };
   const onExit = () => {
     stream.write(`${RESET_SCROLL_REGION}${ESC}[${stream.rows ?? 1};1H\n`);

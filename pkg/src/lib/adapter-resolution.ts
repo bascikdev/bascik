@@ -21,27 +21,31 @@ export interface ResolveAdapterOptions {
   load?: boolean;
 }
 
-const OFFICIAL_TARGETS: Record<string, { package: string; variant?: string }> = {
-  cloudflare: {
-    package: "@bascik/adapter-cloudflare",
-    variant: "workers",
-  },
-  "cloudflare-pages": {
-    package: "@bascik/adapter-cloudflare",
-    variant: "pages",
-  },
-  "cloudflare-workers": {
-    package: "@bascik/adapter-cloudflare",
-    variant: "workers",
-  },
-};
+const OFFICIAL_TARGETS: Record<string, { package: string; variant?: string }> =
+  {
+    cloudflare: {
+      package: "@bascik/adapter-cloudflare",
+      variant: "workers",
+    },
+    "cloudflare-pages": {
+      package: "@bascik/adapter-cloudflare",
+      variant: "pages",
+    },
+    "cloudflare-workers": {
+      package: "@bascik/adapter-cloudflare",
+      variant: "workers",
+    },
+  };
 
 export const resolveAdapterTarget = async (
   target: string,
   projectRoot = process.cwd(),
   options: ResolveAdapterOptions = {},
 ): Promise<ResolvedAdapterTarget> => {
-  const official = Object.prototype.hasOwnProperty.call(OFFICIAL_TARGETS, target)
+  const official = Object.prototype.hasOwnProperty.call(
+    OFFICIAL_TARGETS,
+    target,
+  )
     ? OFFICIAL_TARGETS[target]
     : undefined;
   let specifier: string;
@@ -62,10 +66,14 @@ export const resolveAdapterTarget = async (
     } catch {
       throw new Error(
         `[bascik] --target ${target}: required package "${pkgName}" is not installed in this project.\n` +
-        `  Install it as a dev dependency: npm install --save-dev ${pkgName}`,
+          `  Install it as a dev dependency: npm install --save-dev ${pkgName}`,
       );
     }
-  } else if (target.startsWith("./") || target.startsWith("../") || isAbsolute(target)) {
+  } else if (
+    target.startsWith("./") ||
+    target.startsWith("../") ||
+    isAbsolute(target)
+  ) {
     localPath = isAbsolute(target) ? target : join(projectRoot, target);
     specifier = localPath;
     if (options.load === false) {
@@ -82,7 +90,7 @@ export const resolveAdapterTarget = async (
     } catch {
       throw new Error(
         `[bascik] --target: could not resolve adapter package "${target}" from ${projectRoot}.\n` +
-        `  Ensure it is installed in package.json dependencies or devDependencies.`,
+          `  Ensure it is installed in package.json dependencies or devDependencies.`,
       );
     }
   }
@@ -93,17 +101,22 @@ export const resolveAdapterTarget = async (
     const importUrl = pathToFileURL(specifier).href;
     importedModule = await import(importUrl);
   } catch (err) {
-    if (official && (err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") {
+    if (
+      official &&
+      (err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND"
+    ) {
       throw new Error(
         `[bascik] --target ${target}: required package "${pkgName}" is not installed in this project.\n` +
-        `  Install it as a dev dependency: npm install --save-dev ${pkgName}`,
+          `  Install it as a dev dependency: npm install --save-dev ${pkgName}`,
       );
     }
     throw err;
   }
 
   const rawAdapter =
-    importedModule && typeof importedModule === "object" && "default" in importedModule
+    importedModule &&
+    typeof importedModule === "object" &&
+    "default" in importedModule
       ? (importedModule as Record<string, unknown>).default
       : importedModule;
 

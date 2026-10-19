@@ -1,254 +1,278 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Progressively stream HTML chunks with data-bascik-stream scripts. Paint the page shell immediately while async backend data resolves."
+    />
+    <title>Stream HTML Progressively from Node.js - Bascik</title>
+  </head>
 
-<head>
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <script data-bascik-build>
-    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    export default async () => await breadcrumbLd();
-  </script>
-  <script data-bascik-build>
-    import { articleSchema } from '@/lib/article-schema.ts';
-    export default async () => await articleSchema();
-  </script>
-  <meta name="description"
-    content="Progressively stream HTML chunks with data-bascik-stream scripts. Paint the page shell immediately while async backend data resolves." />
-  <title>Stream HTML Progressively from Node.js - Bascik</title>
-</head>
+  <body>
+    <docs-nav />
 
-<body>
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
 
-  <docs-nav />
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/stream-scripts");
+          </script>
 
-  <div class="container">
-    <div class="docs-layout">
+          <!-- Intro rendered from docs/content/stream-scripts.md. -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/stream-scripts.md", {
+                to: "data-bascik-stream",
+              });
+          </script>
 
-      <docs-sidebar />
-
-      <main class="docs-content" id="main-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/stream-scripts');
-        </script>
-
-        <!-- Intro rendered from docs/content/stream-scripts.md. -->
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/stream-scripts.md', { to: 'data-bascik-stream' });
-        </script>
-
-        <style>
-          .stream-demo-wrap {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-            padding: 0.25rem 0;
-          }
-
-          .stream-demo-timeline {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.8rem;
-            font-weight: 600;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-            color: var(--text-muted, #6b7280);
-          }
-
-          .stream-demo-card-stage {
-            position: relative;
-            min-block-size: 5.5rem;
-            display: grid;
-          }
-
-          .stream-demo-stage-1,
-          .stream-demo-stage-2 {
-            grid-area: 1 / 1;
-            transition: opacity 0.3s ease, transform 0.3s ease;
-          }
-
-          .stream-demo-stage-1 {
-            animation: stream-loop-pending 6s ease-in-out infinite;
-          }
-
-          .stream-demo-stage-2 {
-            animation: stream-loop-result 6s ease-in-out infinite;
-          }
-
-          @keyframes stream-loop-pending {
-
-            0%,
-            35% {
-              opacity: 1;
-              visibility: visible;
-              pointer-events: auto;
-              transform: translateY(0);
+          <style>
+            .stream-demo-wrap {
+              display: flex;
+              flex-direction: column;
+              gap: 0.75rem;
+              padding: 0.25rem 0;
             }
 
-            42%,
-            92% {
-              opacity: 0;
-              visibility: hidden;
-              pointer-events: none;
-              transform: translateY(-4px);
-            }
-
-            97%,
-            100% {
-              opacity: 1;
-              visibility: visible;
-              pointer-events: auto;
-              transform: translateY(0);
-            }
-          }
-
-          @keyframes stream-loop-result {
-
-            0%,
-            35% {
-              opacity: 0;
-              visibility: hidden;
-              pointer-events: none;
-              transform: translateY(4px);
-            }
-
-            42%,
-            92% {
-              opacity: 1;
-              visibility: visible;
-              pointer-events: auto;
-              transform: translateY(0);
-            }
-
-            97%,
-            100% {
-              opacity: 0;
-              visibility: hidden;
-              pointer-events: none;
-              transform: translateY(4px);
-            }
-          }
-
-          .stream-badge-text::before {
-            content: "Stage 1: Initial Paint (Shell & Pending Placeholder)";
-            animation: stream-badge-swap 6s step-end infinite;
-          }
-
-          @keyframes stream-badge-swap {
-
-            0%,
-            97% {
-              content: "Stage 1: Initial Paint (Shell & Pending Placeholder)";
-            }
-
-            42% {
-              content: "Stage 2: Stream Chunk Arrived (Placeholder Hidden)";
-            }
-          }
-
-          @media (prefers-reduced-motion: reduce) {
-
-            .stream-demo-stage-1,
-            .stream-demo-stage-2 {
-              animation: none;
-              position: static;
-              opacity: 1;
-              visibility: visible;
-              pointer-events: auto;
-              transform: none;
+            .stream-demo-timeline {
+              display: flex;
+              align-items: center;
+              gap: 0.5rem;
+              font-size: 0.8rem;
+              font-weight: 600;
+              letter-spacing: 0.04em;
+              text-transform: uppercase;
+              color: var(--text-muted, #6b7280);
             }
 
             .stream-demo-card-stage {
-              display: flex;
-              flex-direction: column;
-              gap: 1rem;
+              position: relative;
+              min-block-size: 5.5rem;
+              display: grid;
+            }
+
+            .stream-demo-stage-1,
+            .stream-demo-stage-2 {
+              grid-area: 1 / 1;
+              transition:
+                opacity 0.3s ease,
+                transform 0.3s ease;
+            }
+
+            .stream-demo-stage-1 {
+              animation: stream-loop-pending 6s ease-in-out infinite;
+            }
+
+            .stream-demo-stage-2 {
+              animation: stream-loop-result 6s ease-in-out infinite;
+            }
+
+            @keyframes stream-loop-pending {
+              0%,
+              35% {
+                opacity: 1;
+                visibility: visible;
+                pointer-events: auto;
+                transform: translateY(0);
+              }
+
+              42%,
+              92% {
+                opacity: 0;
+                visibility: hidden;
+                pointer-events: none;
+                transform: translateY(-4px);
+              }
+
+              97%,
+              100% {
+                opacity: 1;
+                visibility: visible;
+                pointer-events: auto;
+                transform: translateY(0);
+              }
+            }
+
+            @keyframes stream-loop-result {
+              0%,
+              35% {
+                opacity: 0;
+                visibility: hidden;
+                pointer-events: none;
+                transform: translateY(4px);
+              }
+
+              42%,
+              92% {
+                opacity: 1;
+                visibility: visible;
+                pointer-events: auto;
+                transform: translateY(0);
+              }
+
+              97%,
+              100% {
+                opacity: 0;
+                visibility: hidden;
+                pointer-events: none;
+                transform: translateY(4px);
+              }
             }
 
             .stream-badge-text::before {
-              content: "Stage 1 & Stage 2 Overview";
-              animation: none;
+              content: "Stage 1: Initial Paint (Shell & Pending Placeholder)";
+              animation: stream-badge-swap 6s step-end infinite;
             }
-          }
-        </style>
 
-        <component-demo data-bascik-prop-file="src/pages/stream-scripts.html">
-          <div data-bascik-slot="example">
-            <div class="stream-demo-wrap">
-              <div class="stream-demo-timeline">
-                <span class="stream-badge-text"></span>
-              </div>
-              <div class="stream-demo-card-stage">
-                <div class="stream-demo-stage-1">
-                  <aside class="alert-box" style="opacity: 0.85;">
-                    <strong class="alert-box-title">System Status</strong>
-                    <p class="alert-box-message">Loading live metrics…</p>
-                  </aside>
+            @keyframes stream-badge-swap {
+              0%,
+              97% {
+                content: "Stage 1: Initial Paint (Shell & Pending Placeholder)";
+              }
+
+              42% {
+                content: "Stage 2: Stream Chunk Arrived (Placeholder Hidden)";
+              }
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+              .stream-demo-stage-1,
+              .stream-demo-stage-2 {
+                animation: none;
+                position: static;
+                opacity: 1;
+                visibility: visible;
+                pointer-events: auto;
+                transform: none;
+              }
+
+              .stream-demo-card-stage {
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+              }
+
+              .stream-badge-text::before {
+                content: "Stage 1 & Stage 2 Overview";
+                animation: none;
+              }
+            }
+          </style>
+
+          <component-demo data-bascik-prop-file="src/pages/stream-scripts.html">
+            <div data-bascik-slot="example">
+              <div class="stream-demo-wrap">
+                <div class="stream-demo-timeline">
+                  <span class="stream-badge-text"></span>
                 </div>
-                <div class="stream-demo-stage-2">
-                  <aside class="alert-box">
-                    <strong class="alert-box-title">System Online</strong>
-                    <p class="alert-box-message">Streaming chunks active &bull; Uptime 99.99%</p>
-                  </aside>
+                <div class="stream-demo-card-stage">
+                  <div class="stream-demo-stage-1">
+                    <aside class="alert-box" style="opacity: 0.85">
+                      <strong class="alert-box-title">System Status</strong>
+                      <p class="alert-box-message">Loading live metrics…</p>
+                    </aside>
+                  </div>
+                  <div class="stream-demo-stage-2">
+                    <aside class="alert-box">
+                      <strong class="alert-box-title">System Online</strong>
+                      <p class="alert-box-message">
+                        Streaming chunks active &bull; Uptime 99.99%
+                      </p>
+                    </aside>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/stream-scripts.md', 'source-usage');
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/stream-scripts.md', 'output-html');
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/stream-scripts.md",
+                      "source-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/stream-scripts.md",
+                      "output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
 
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/stream-scripts.md', { from: 'data-bascik-stream', to: 'Placeholders That Do Not Shift Layout' });
-        </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/stream-scripts.md", {
+                from: "data-bascik-stream",
+                to: "Placeholders That Do Not Shift Layout",
+              });
+          </script>
 
-        <diagram-figure data-bascik-prop-title="A page with both server and stream scripts">
-          <diagram-steps>
-            <diagram-step data-bascik-prop-title="Prepare"
-              data-bascik-prop-detail="Every data-bascik-server script runs first. A failure can still become a 500." />
-            <diagram-step data-bascik-prop-title="Commit and flush"
-              data-bascik-prop-detail="Headers and the HTML before the first stream script go to the browser at once." />
-            <diagram-step data-bascik-prop-title="Stream"
-              data-bascik-prop-detail="Stream scripts run concurrently, and their output is flushed in source order." />
-          </diagram-steps>
-        </diagram-figure>
+          <diagram-figure
+            data-bascik-prop-title="A page with both server and stream scripts"
+          >
+            <diagram-steps>
+              <diagram-step
+                data-bascik-prop-title="Prepare"
+                data-bascik-prop-detail="Every data-bascik-server script runs first. A failure can still become a 500."
+              />
+              <diagram-step
+                data-bascik-prop-title="Commit and flush"
+                data-bascik-prop-detail="Headers and the HTML before the first stream script go to the browser at once."
+              />
+              <diagram-step
+                data-bascik-prop-title="Stream"
+                data-bascik-prop-detail="Stream scripts run concurrently, and their output is flushed in source order."
+              />
+            </diagram-steps>
+          </diagram-figure>
 
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/stream-scripts.md', { from: 'Placeholders That Do Not Shift Layout' }, { stripDemoBlocks: true });
-        </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/stream-scripts.md",
+                { from: "Placeholders That Do Not Shift Layout" },
+                { stripDemoBlocks: true },
+              );
+          </script>
 
-        <docs-pagination />
-
-      </main>
+          <docs-pagination />
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-
-</body>
-
+    <docs-footer />
+  </body>
 </html>

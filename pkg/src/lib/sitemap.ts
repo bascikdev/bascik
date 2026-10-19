@@ -54,7 +54,10 @@ export const escapeXml = (value: string): string =>
  * Empty segments are retained so directory-index trailing slashes remain canonical.
  */
 export const encodeUrlPath = (urlPath: string): string =>
-  urlPath.split("/").map((segment) => encodeURIComponent(segment)).join("/");
+  urlPath
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
 
 /**
  * True when a relative page path resolves to the site's 404 page
@@ -79,12 +82,17 @@ const SITEMAP_EXCLUDE_META_RE =
 /**
  * Check whether a page HTML contains `<meta name="bascik-sitemap" content="exclude">`.
  */
-export const isPageExcludedFromSitemap = async (pageFilePath: string): Promise<boolean> => {
+export const isPageExcludedFromSitemap = async (
+  pageFilePath: string,
+): Promise<boolean> => {
   try {
     const content = await readFile(pageFilePath, "utf8");
     const scannable = content
       .replace(/<!--[\s\S]*?(?:-->|$)/g, () => "")
-      .replace(/<(script|style|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>/gi, () => "");
+      .replace(
+        /<(script|style|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>/gi,
+        () => "",
+      );
     return SITEMAP_EXCLUDE_META_RE.test(scannable);
   } catch {
     return false;
@@ -107,7 +115,10 @@ export const buildSitemapXml = (
   const urls = entries
     .map((entry) => {
       const path = typeof entry === "string" ? entry : entry.path;
-      const lastmodTag = typeof entry === "object" && entry.lastmod ? `\n    <lastmod>${entry.lastmod}</lastmod>` : "";
+      const lastmodTag =
+        typeof entry === "object" && entry.lastmod
+          ? `\n    <lastmod>${entry.lastmod}</lastmod>`
+          : "";
       return `  <url>\n    <loc>${escapeXml(composeSiteUrl(siteUrl, base, path))}</loc>${lastmodTag}\n  </url>`;
     })
     .join("\n");
@@ -148,15 +159,21 @@ export const buildMissingSiteUrlError = (features: string[]): string => {
 export const generateSitemapFiles = async (
   transpiledPaths?: string[],
 ): Promise<void> => {
-  const { sitemap: doSitemap, robots: doRobots, sitemapLastmod } = BascikConfig.generate;
+  const {
+    sitemap: doSitemap,
+    robots: doRobots,
+    sitemapLastmod,
+  } = BascikConfig.generate;
   if (!doSitemap && !doRobots) return;
 
-  const isTargetedBuild = Boolean(BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0);
+  const isTargetedBuild = Boolean(
+    BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0,
+  );
   if (isTargetedBuild) {
     if (doSitemap || doRobots) {
       console.warn(
         `[bascik] warning: Skipping sitemap and robots.txt generation during targeted build (--only).\n` +
-        `  The existing sitemap and robots.txt may be stale. Run a full build (bascik --build) to regenerate them.`,
+          `  The existing sitemap and robots.txt may be stale. Run a full build (bascik --build) to regenerate them.`,
       );
     }
     return;
@@ -180,17 +197,17 @@ export const generateSitemapFiles = async (
   if (doRobots && hasAuthoredRobots) {
     console.warn(
       `warning: ${relative(process.cwd(), authoredRobotsPath)} exists, so generate.robots did not write ${join(BascikConfig.directory.out, "robots.txt")}.\n` +
-      `  - To keep your authored file and silence this warning, set generate.robots: false\n` +
-      `  - To use Bascik's generated file, delete ${relative(process.cwd(), authoredRobotsPath)}\n` +
-      `  - Your authored robots.txt should include its own "Sitemap:" line`,
+        `  - To keep your authored file and silence this warning, set generate.robots: false\n` +
+        `  - To use Bascik's generated file, delete ${relative(process.cwd(), authoredRobotsPath)}\n` +
+        `  - Your authored robots.txt should include its own "Sitemap:" line`,
     );
   }
 
   if (doSitemap && hasAuthoredSitemap) {
     console.warn(
       `warning: ${relative(process.cwd(), authoredSitemapPath)} exists, so generate.sitemap did not write ${join(BascikConfig.directory.out, "sitemap.xml")}.\n` +
-      `  - To keep your authored file and silence this warning, set generate.sitemap: false\n` +
-      `  - To use Bascik's generated file, delete ${relative(process.cwd(), authoredSitemapPath)}`,
+        `  - To keep your authored file and silence this warning, set generate.sitemap: false\n` +
+        `  - To use Bascik's generated file, delete ${relative(process.cwd(), authoredSitemapPath)}`,
     );
   }
 
@@ -199,10 +216,13 @@ export const generateSitemapFiles = async (
 
   if (doSitemap && !hasAuthoredSitemap) {
     const allPagePaths = await listPages();
-    const rawPaths = transpiledPaths ?? allPagePaths.map((p) => getRelativePath(p, "pages"));
+    const rawPaths =
+      transpiledPaths ?? allPagePaths.map((p) => getRelativePath(p, "pages"));
 
     const validPaths = rawPaths
-      .map((p) => (p.startsWith("pages/") ? p : `pages/${p.replace(/^\/+/, "")}`))
+      .map((p) =>
+        p.startsWith("pages/") ? p : `pages/${p.replace(/^\/+/, "")}`,
+      )
       .filter((rel) => !is404Page(rel) && !is500Page(rel));
 
     // Remove duplicates and filter excluded meta
@@ -215,7 +235,11 @@ export const generateSitemapFiles = async (
       const pageFile = resolve(pagesDir, pageSubpath);
       const distFile = resolve(outDir, pageSubpath);
       const hasSourceFile = existsSync(pageFile);
-      const excludeCheckPath = hasSourceFile ? pageFile : existsSync(distFile) ? distFile : null;
+      const excludeCheckPath = hasSourceFile
+        ? pageFile
+        : existsSync(distFile)
+          ? distFile
+          : null;
       if (excludeCheckPath) {
         const isExcluded = await isPageExcludedFromSitemap(excludeCheckPath);
         if (isExcluded) continue;

@@ -120,7 +120,7 @@ For a site with many large images, PDFs, fonts, media files, or downloads, enabl
 
 ```ts
 export default defineConfig({
-  assets: { symlink: true }
+  assets: { symlink: true },
 });
 ```
 
@@ -264,6 +264,7 @@ Unreferenced local files are ignored so Node build/server helpers are never acci
 Nothing gets copied to `dist/`.
 
 The `src/components/` directory is treated strictly as source-only files:
+
 - Component `.html` templates are resolved and inlined into pages at build time.
 - Companion `.css` files are scoped and deduplicated into page `<style>` blocks.
 - Client `.ts`, `.js`, or `.mjs` scripts referenced via `<script src="...">` are inlined and scoped into page `<script>` blocks.
@@ -277,6 +278,7 @@ Static assets intended to be served directly as public URLs should be placed in 
 Eligible static assets placed in `src/pages/` are copied to `dist/` with their directory structure preserved. This makes `src/pages/` the publish tree for both routes and their browser assets.
 
 The following files are **excluded** from static asset copying:
+
 - **`.html` page templates**: compiled into output HTML pages in `dist/`.
 - **Source and documentation files**: `.ts`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.map`, and `.md`.
 - **Test files**: any file matching `*.test.*` or `*.spec.*` (such as `styles.test.ts` or `api.spec.js`).

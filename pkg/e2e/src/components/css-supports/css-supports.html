@@ -19,24 +19,31 @@
   <!-- Script block 1 -->
   <script>
     var block1Var = "from-block-1";
-    document.getElementById("check-block1-btn").addEventListener("click", () => {
-      document.getElementById("script-result").textContent = "block1: " + block1Var;
-    });
+    document
+      .getElementById("check-block1-btn")
+      .addEventListener("click", () => {
+        document.getElementById("script-result").textContent =
+          "block1: " + block1Var;
+      });
   </script>
 
   <!-- Script block 2 — block1Var is NOT accessible here (separate IIFE) -->
   <script>
     var block2Var = "from-block-2";
-    document.getElementById("check-block2-btn").addEventListener("click", () => {
-      document.getElementById("script-result").textContent = "block2: " + block2Var;
-    });
+    document
+      .getElementById("check-block2-btn")
+      .addEventListener("click", () => {
+        document.getElementById("script-result").textContent =
+          "block2: " + block2Var;
+      });
     document.getElementById("check-cross-btn").addEventListener("click", () => {
       // block1Var from script 1 is in a different IIFE scope — should be undefined
       try {
         const val = typeof block1Var !== "undefined" ? block1Var : "undefined";
         document.getElementById("script-result").textContent = "cross: " + val;
       } catch (e) {
-        document.getElementById("script-result").textContent = "cross: ReferenceError";
+        document.getElementById("script-result").textContent =
+          "cross: ReferenceError";
       }
     });
   </script>

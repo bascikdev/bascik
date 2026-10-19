@@ -1,4 +1,4 @@
-.row+.row {
+.row + .row {
   margin-top: 18px;
 }
 
@@ -21,7 +21,7 @@
   gap: 32px;
 }
 
-.row-panels[data-direction='stack'] {
+.row-panels[data-direction="stack"] {
   grid-auto-flow: row;
   grid-auto-columns: auto;
   gap: 28px;

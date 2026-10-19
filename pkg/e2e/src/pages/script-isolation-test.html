@@ -1,66 +1,65 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Script Isolation Test</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 32px 24px;
+        background: #111;
+        color: #eee;
+        font-family: sans-serif;
+      }
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Script Isolation Test</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 32px 24px;
-      background: #111;
-      color: #eee;
-      font-family: sans-serif;
-    }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.2rem;
+      }
 
-    h1 {
-      margin: 0 0 8px;
-      font-size: 1.2rem;
-    }
+      .desc {
+        color: #aaa;
+        font-size: 0.85rem;
+        margin: 0 0 24px;
+        max-width: 560px;
+      }
 
-    .desc {
-      color: #aaa;
-      font-size: 0.85rem;
-      margin: 0 0 24px;
-      max-width: 560px;
-    }
+      .instances {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+      }
 
-    .instances {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 28px;
-    }
+      .instance-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #888;
+        margin: 0 0 10px;
+      }
+    </style>
+  </head>
 
-    .instance-label {
-      font-size: 0.72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #888;
-      margin: 0 0 10px;
-    }
-  </style>
-</head>
+  <body>
+    <h1>Script Isolation — Live Test</h1>
+    <p class="desc">
+      Two independent instances of the same component. Tests that
+      <code>var</code>, <code>let</code>, and <code>const</code> declared inside
+      a component script are isolated inside the IIFE and do not leak to
+      <code>window</code>.
+    </p>
 
-<body>
-  <h1>Script Isolation — Live Test</h1>
-  <p class="desc">
-    Two independent instances of the same component. Tests that <code>var</code>,
-    <code>let</code>, and <code>const</code> declared inside a component script
-    are isolated inside the IIFE and do not leak to <code>window</code>.
-  </p>
-
-  <div class="instances">
-    <div>
-      <p class="instance-label">Instance A</p>
-      <script-isolation></script-isolation>
+    <div class="instances">
+      <div>
+        <p class="instance-label">Instance A</p>
+        <script-isolation></script-isolation>
+      </div>
+      <div>
+        <p class="instance-label">Instance B</p>
+        <script-isolation></script-isolation>
+      </div>
     </div>
-    <div>
-      <p class="instance-label">Instance B</p>
-      <script-isolation></script-isolation>
-    </div>
-  </div>
-</body>
-
+  </body>
 </html>

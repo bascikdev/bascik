@@ -6,39 +6,76 @@ import { emitServerlessArtifacts } from "./serverless-artifacts.ts";
 import { resolveAdapterTarget } from "./adapter-resolution.ts";
 
 describe("adapter review regressions", () => {
-  it.each(["toString", "__proto__", "constructor"])("treats %s as a package", async (target) => {
-    expect(await resolveAdapterTarget(target, process.cwd(), { load: false })).toEqual({ package: target });
-  });
+  it.each(["toString", "__proto__", "constructor"])(
+    "treats %s as a package",
+    async (target) => {
+      expect(
+        await resolveAdapterTarget(target, process.cwd(), { load: false }),
+      ).toEqual({ package: target });
+    },
+  );
 
   it("CI dependencies refer to existing jobs", async () => {
-    const workflow = await readFile(resolve(import.meta.dirname, "../../../.github/workflows/ci.yml"), "utf8");
-    const jobs = new Set([...workflow.matchAll(/^  ([\w-]+):$/gm)].map((match) => match[1]));
+    const workflow = await readFile(
+      resolve(import.meta.dirname, "../../../.github/workflows/ci.yml"),
+      "utf8",
+    );
+    const jobs = new Set(
+      [...workflow.matchAll(/^  ([\w-]+):$/gm)].map((match) => match[1]),
+    );
     for (const match of workflow.matchAll(/^    needs: \[([^\]]+)\]/gm)) {
-      for (const dependency of match[1].split(",").map((name) => name.trim())) expect(jobs.has(dependency), dependency).toBe(true);
+      for (const dependency of match[1].split(",").map((name) => name.trim()))
+        expect(jobs.has(dependency), dependency).toBe(true);
     }
   });
 
   it("core E2E scripts no longer refer to the moved Cloudflare lane", async () => {
-    const manifest = JSON.parse(await readFile(resolve(import.meta.dirname, "../../package.json"), "utf8"));
+    const manifest = JSON.parse(
+      await readFile(
+        resolve(import.meta.dirname, "../../package.json"),
+        "utf8",
+      ),
+    );
     expect(manifest.scripts).not.toHaveProperty("e2e:cloudflare");
     expect(manifest.scripts["e2e:all"]).not.toContain("e2e:cloudflare");
   });
 
   it.each([
-    ["new dist file", 'await writeFile(join(context.distDir, "unexpected.html"), "unexpected"); return { publicDir: context.outDir };', /Adapter modified dist/],
+    [
+      "new dist file",
+      'await writeFile(join(context.distDir, "unexpected.html"), "unexpected"); return { publicDir: context.outDir };',
+      /Adapter modified dist/,
+    ],
     ["missing publicDir", "return {};", /contract violation/i],
     ["empty publicDir", 'return { publicDir: "" };', /contract violation/i],
     ["null result", "return null;", /contract violation/i],
-    ["invalid notes", 'return { publicDir: context.outDir, notes: [42] };', /contract violation/i],
-    ["missing public directory", 'return { publicDir: join(context.outDir, "missing") };', /contract violation/i],
+    [
+      "invalid notes",
+      "return { publicDir: context.outDir, notes: [42] };",
+      /contract violation/i,
+    ],
+    [
+      "missing public directory",
+      'return { publicDir: join(context.outDir, "missing") };',
+      /contract violation/i,
+    ],
   ])("rejects %s", async (_name, body, message) => {
     const root = await mkdtemp(join(tmpdir(), "bascik-adapter-review-"));
     try {
       const distDir = join(root, "dist");
       await mkdir(distDir);
       await writeFile(join(distDir, "index.html"), "home");
-      await writeFile(join(root, "adapter.mjs"), `import { writeFile } from "node:fs/promises"; import { join } from "node:path"; export default { name: "probe", async build(context) { ${body} } };`);
-      await expect(emitServerlessArtifacts("./adapter.mjs", { version: "1.0.0", projectRoot: root, distDir })).rejects.toThrow(message);
+      await writeFile(
+        join(root, "adapter.mjs"),
+        `import { writeFile } from "node:fs/promises"; import { join } from "node:path"; export default { name: "probe", async build(context) { ${body} } };`,
+      );
+      await expect(
+        emitServerlessArtifacts("./adapter.mjs", {
+          version: "1.0.0",
+          projectRoot: root,
+          distDir,
+        }),
+      ).rejects.toThrow(message);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -68,7 +105,11 @@ describe("adapter review regressions", () => {
       );
 
       await expect(
-        emitServerlessArtifacts("./adapter.mjs", { version: "1.0.0", projectRoot: root, distDir }),
+        emitServerlessArtifacts("./adapter.mjs", {
+          version: "1.0.0",
+          projectRoot: root,
+          distDir,
+        }),
       ).rejects.toThrow(/Adapter modified dist/);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -94,8 +135,16 @@ describe("adapter review regressions", () => {
         `export default { name: "t2", async build(context) { return { publicDir: context.outDir, notes: [context.outDir] }; } };`,
       );
 
-      const r1 = await emitServerlessArtifacts("./custom-adapter.mjs", { version: "1.0.0", projectRoot: root, distDir });
-      const r2 = await emitServerlessArtifacts("./custom/adapter.mjs", { version: "1.0.0", projectRoot: root, distDir });
+      const r1 = await emitServerlessArtifacts("./custom-adapter.mjs", {
+        version: "1.0.0",
+        projectRoot: root,
+        distDir,
+      });
+      const r2 = await emitServerlessArtifacts("./custom/adapter.mjs", {
+        version: "1.0.0",
+        projectRoot: root,
+        distDir,
+      });
 
       expect(r1.outDir).not.toBe(r2.outDir);
     } finally {
@@ -119,8 +168,14 @@ describe("adapter review regressions", () => {
 
       // Attempt to emit for nonexistent/uninstalled adapter in empty project
       await expect(
-        emitServerlessArtifacts(target, { version: "1.0.0", projectRoot: root, distDir }),
-      ).rejects.toThrow(/required package "@bascik\/adapter-cloudflare" is not installed/);
+        emitServerlessArtifacts(target, {
+          version: "1.0.0",
+          projectRoot: root,
+          distDir,
+        }),
+      ).rejects.toThrow(
+        /required package "@bascik\/adapter-cloudflare" is not installed/,
+      );
 
       // Sentinel must still exist untouched
       expect(await readFile(sentinel, "utf8")).toBe("preserve-me");
@@ -148,7 +203,11 @@ describe("adapter review regressions", () => {
       );
 
       // Should complete without hanging in infinite recursion
-      const res = await emitServerlessArtifacts("./adapter.mjs", { version: "1.0.0", projectRoot: root, distDir });
+      const res = await emitServerlessArtifacts("./adapter.mjs", {
+        version: "1.0.0",
+        projectRoot: root,
+        distDir,
+      });
       expect(res.outDir).toBeDefined();
     } finally {
       await rm(root, { recursive: true, force: true });

@@ -55,20 +55,21 @@ Modern native CSS nesting rules are resolved and scoped correctly:
 ### Relational & Pseudo-Class Selectors (`:has()`, `:is()`, `:where()`, `:not()`)
 
 When traversing complex selector lists inside pseudo-classes:
-* Ensure that inner target classes are scoped without corrupting the structural pseudo-class syntax.
-* For `:global(.cls)`, strip the pseudo-wrapper and leave `.cls` unscoped.
+
+- Ensure that inner target classes are scoped without corrupting the structural pseudo-class syntax.
+- For `:global(.cls)`, strip the pseudo-wrapper and leave `.cls` unscoped.
 
 ### Container Queries (`@container`) & Layer Rules (`@layer`)
 
-* Scopes selectors inside `@container` blocks and `@layer` blocks identically to root rules.
-* Scopes named container names if configured.
+- Scopes selectors inside `@container` blocks and `@layer` blocks identically to root rules.
+- Scopes named container names if configured.
 
 ---
 
 ## 3. Performance & AST Optimization
 
-* **Single-Pass PostCSS AST Walking:** Traverse the AST using `root.walkRules` and `root.walkAtRules` rather than performing multiple complete traversals.
-* **String Replacement Traps:** When substituting scoped names back into CSS declarations, use replacer functions `() => scopedName` to avoid `$` replacement bugs.
+- **Single-Pass PostCSS AST Walking:** Traverse the AST using `root.walkRules` and `root.walkAtRules` rather than performing multiple complete traversals.
+- **String Replacement Traps:** When substituting scoped names back into CSS declarations, use replacer functions `() => scopedName` to avoid `$` replacement bugs.
 
 ---
 

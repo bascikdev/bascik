@@ -7,7 +7,9 @@
   font-family: inherit;
   font-size: 0.95rem;
   color: var(--text);
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .tab[data-state="on"] {

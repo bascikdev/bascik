@@ -35,7 +35,9 @@ export interface Gate {
 
 export const createGate = (): Gate => {
   let release!: () => void;
-  const released = new Promise<void>((resolve) => { release = resolve; });
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   return { release, released };
 };
 
@@ -60,7 +62,10 @@ export interface Harness {
   /** Plain fetch through undici; fine for status/headers/full-body checks. */
   fetch(path: string, init?: RequestInit): Promise<Response>;
   /** Raw HTTP request that reports each body chunk with its arrival time. */
-  streamed(path: string, headers?: Record<string, string>): Promise<StreamedResponse>;
+  streamed(
+    path: string,
+    headers?: Record<string, string>,
+  ): Promise<StreamedResponse>;
 }
 
 export interface StreamedResponse {
@@ -76,23 +81,33 @@ export interface StreamedResponse {
   destroy(): void;
 }
 
-export const startHarness = async (options: HarnessOptions): Promise<Harness> => {
+export const startHarness = async (
+  options: HarnessOptions,
+): Promise<Harness> => {
   // workerd resolves paths itself and rejects a symlinked prefix such as
   // macOS `/tmp` or `/var/folders`; hand it the canonical path.
-  const targetDir = await realpath(join(options.projectRoot, "dist", ".bascik", options.target));
+  const targetDir = await realpath(
+    join(options.projectRoot, "dist", ".bascik", options.target),
+  );
   const scriptPath =
-    options.target === "cloudflare-pages" ? join(targetDir, "public", "_worker.js") : join(targetDir, "worker.js");
+    options.target === "cloudflare-pages"
+      ? join(targetDir, "public", "_worker.js")
+      : join(targetDir, "worker.js");
 
   let userWorkerRoutes: string[];
   if (options.invocationRoutes) {
     userWorkerRoutes = options.invocationRoutes;
   } else if (options.target === "cloudflare-pages") {
-    const routes = JSON.parse(await readFile(join(targetDir, "public", "_routes.json"), "utf8")) as {
+    const routes = JSON.parse(
+      await readFile(join(targetDir, "public", "_routes.json"), "utf8"),
+    ) as {
       include: string[];
     };
     userWorkerRoutes = routes.include;
   } else {
-    const wrangler = JSON.parse(await readFile(join(targetDir, "wrangler.jsonc"), "utf8")) as {
+    const wrangler = JSON.parse(
+      await readFile(join(targetDir, "wrangler.jsonc"), "utf8"),
+    ) as {
       assets?: { run_worker_first?: string[] };
     };
     userWorkerRoutes = wrangler.assets?.run_worker_first ?? ["/*"];
@@ -105,23 +120,27 @@ export const startHarness = async (options: HarnessOptions): Promise<Harness> =>
     // outside cwd gets a `../..`-prefixed name that workerd rejects.
     modulesRoot: dirname(scriptPath),
     scriptPath,
-    compatibilityDate: options.compatibilityDate ?? CLOUDFLARE_COMPATIBILITY_DATE,
+    compatibilityDate:
+      options.compatibilityDate ?? CLOUDFLARE_COMPATIBILITY_DATE,
     compatibilityFlags: [...CLOUDFLARE_COMPATIBILITY_FLAGS],
     bindings: options.bindings ?? {},
     serviceBindings: gate
       ? {
-        GATE: async () => {
-          await gate.released;
-          return new Response("released");
-        },
-      }
+          GATE: async () => {
+            await gate.released;
+            return new Response("released");
+          },
+        }
       : {},
     assets: {
       directory: join(targetDir, "public"),
       binding: "ASSETS",
       // Mirrors the platform defaults the generated config asks for: an
       // authored 404.html answers misses, and `/about` serves `about.html`.
-      assetConfig: { not_found_handling: "404-page", html_handling: "auto-trailing-slash" },
+      assetConfig: {
+        not_found_handling: "404-page",
+        html_handling: "auto-trailing-slash",
+      },
       routerConfig: {
         has_user_worker: true,
         invoke_user_worker_ahead_of_assets: false,
@@ -133,18 +152,25 @@ export const startHarness = async (options: HarnessOptions): Promise<Harness> =>
   try {
     url = await mf.ready;
   } catch (err) {
-    await mf.dispose().catch(() => { });
+    await mf.dispose().catch(() => {});
     throw err;
   }
 
-  const streamed = (path: string, headers: Record<string, string> = {}): Promise<StreamedResponse> =>
+  const streamed = (
+    path: string,
+    headers: Record<string, string> = {},
+  ): Promise<StreamedResponse> =>
     new Promise((resolveResponse, reject) => {
       const start = Date.now();
       const chunks: Array<{ text: string; atMs: number }> = [];
-      let firstResolve: ((c: { text: string; atMs: number }) => void) | undefined;
+      let firstResolve:
+        ((c: { text: string; atMs: number }) => void) | undefined;
       let ended = false;
       let endResolvers: Array<() => void> = [];
-      const markerWaiters: Array<{ marker: string; resolve: (body: string) => void }> = [];
+      const markerWaiters: Array<{
+        marker: string;
+        resolve: (body: string) => void;
+      }> = [];
       const bodySoFar = () => chunks.map((c) => c.text).join("");
       const checkMarkers = () => {
         const body = bodySoFar();
@@ -156,7 +182,13 @@ export const startHarness = async (options: HarnessOptions): Promise<Harness> =>
         }
       };
       const req = http.request(
-        { host: url.hostname, port: url.port, path, method: "GET", headers: { "accept-encoding": "identity", ...headers } },
+        {
+          host: url.hostname,
+          port: url.port,
+          path,
+          method: "GET",
+          headers: { "accept-encoding": "identity", ...headers },
+        },
         (res) => {
           res.setEncoding("utf8");
           res.on("data", (text: string) => {
@@ -181,21 +213,53 @@ export const startHarness = async (options: HarnessOptions): Promise<Harness> =>
             first: (timeoutMs = 5000) =>
               new Promise((resolveFirst, rejectFirst) => {
                 if (chunks.length) return resolveFirst(chunks[0]);
-                const watchdog = setTimeout(() => rejectFirst(new Error(`no first chunk within ${timeoutMs}ms`)), timeoutMs);
-                firstResolve = (c) => { clearTimeout(watchdog); resolveFirst(c); };
+                const watchdog = setTimeout(
+                  () =>
+                    rejectFirst(
+                      new Error(`no first chunk within ${timeoutMs}ms`),
+                    ),
+                  timeoutMs,
+                );
+                firstResolve = (c) => {
+                  clearTimeout(watchdog);
+                  resolveFirst(c);
+                };
               }),
             until: (marker, timeoutMs = 5000) =>
               new Promise((resolveMarker, rejectMarker) => {
                 const body = bodySoFar();
                 if (body.includes(marker)) return resolveMarker(body);
-                const watchdog = setTimeout(() => rejectMarker(new Error(`marker "${marker}" not seen within ${timeoutMs}ms; body so far: ${bodySoFar().slice(0, 300)}`)), timeoutMs);
-                markerWaiters.push({ marker, resolve: (b) => { clearTimeout(watchdog); resolveMarker(b); } });
+                const watchdog = setTimeout(
+                  () =>
+                    rejectMarker(
+                      new Error(
+                        `marker "${marker}" not seen within ${timeoutMs}ms; body so far: ${bodySoFar().slice(0, 300)}`,
+                      ),
+                    ),
+                  timeoutMs,
+                );
+                markerWaiters.push({
+                  marker,
+                  resolve: (b) => {
+                    clearTimeout(watchdog);
+                    resolveMarker(b);
+                  },
+                });
               }),
             all: (timeoutMs = 10000) =>
               new Promise((resolveAll, rejectAll) => {
                 if (ended) return resolveAll(chunks);
-                const watchdog = setTimeout(() => rejectAll(new Error(`body did not end within ${timeoutMs}ms`)), timeoutMs);
-                endResolvers.push(() => { clearTimeout(watchdog); resolveAll(chunks); });
+                const watchdog = setTimeout(
+                  () =>
+                    rejectAll(
+                      new Error(`body did not end within ${timeoutMs}ms`),
+                    ),
+                  timeoutMs,
+                );
+                endResolvers.push(() => {
+                  clearTimeout(watchdog);
+                  resolveAll(chunks);
+                });
               }),
             destroy: () => req.destroy(),
           });

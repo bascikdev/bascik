@@ -23,8 +23,20 @@ Shared head markup component. Place inside the head block of a page shell:
 <meta name="theme-color" content="#18191b" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="icon" href="/favicon.ico" sizes="any" />
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png" />
+<link
+  rel="icon"
+  type="image/png"
+  sizes="32x32"
+  href="/assets/favicon-32x32.png"
+/>
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
 <!-- Apply saved theme before first paint to prevent flash -->
-<script>!function () { var t = new URLSearchParams(location.search).get('theme') || sessionStorage.getItem('theme'); if (t) document.documentElement.setAttribute('data-theme', t) }()</script>
+<script>
+  !(function () {
+    var t =
+      new URLSearchParams(location.search).get("theme") ||
+      sessionStorage.getItem("theme");
+    if (t) document.documentElement.setAttribute("data-theme", t);
+  })();
+</script>

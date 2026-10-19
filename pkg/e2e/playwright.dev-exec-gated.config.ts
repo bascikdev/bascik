@@ -8,36 +8,38 @@
  * Run with:
  *   npx playwright test --config e2e/playwright.dev-exec-gated.config.ts
  */
-import { defineConfig } from '@playwright/test';
-import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
+import { defineConfig } from "@playwright/test";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 // Recompute every reused scoping result and fail on any difference (scoping-template.ts).
-process.env.BASCIK_VERIFY_SCOPING_TEMPLATES ??= '1';
+process.env.BASCIK_VERIFY_SCOPING_TEMPLATES ??= "1";
 
-const e2eDir = fileURLToPath(new URL('.', import.meta.url));
-const pkgDir = join(e2eDir, '..');
-const fixtureDir = join(e2eDir, 'exec-fixture');
+const e2eDir = fileURLToPath(new URL(".", import.meta.url));
+const pkgDir = join(e2eDir, "..");
+const fixtureDir = join(e2eDir, "exec-fixture");
 
 export default defineConfig({
-  testDir: './tests',
-  testMatch: '**/dev-exec-lifecycle.test.ts',
+  testDir: "./tests",
+  testMatch: "**/dev-exec-lifecycle.test.ts",
   grep: /gated/,
   workers: 1,
   fullyParallel: false,
   retries: 0,
   use: {
-    baseURL: 'http://localhost:9661',
+    baseURL: "http://localhost:9661",
     headless: true,
   },
-  webServer: [{
-    // See playwright.dev-exec.config.ts for why the wrapper replaces `| tee`.
-    command: `node scripts/run-dev-logged.mjs ${pkgDir}/dist/index.js`,
-    env: { BASCIK_SERVER_PORT: '9661', BASCIK_GENERATOR_GATE: '1' },
-    cwd: fixtureDir,
-    url: 'http://localhost:9661/consumer',
-    reuseExistingServer: false,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  }],
+  webServer: [
+    {
+      // See playwright.dev-exec.config.ts for why the wrapper replaces `| tee`.
+      command: `node scripts/run-dev-logged.mjs ${pkgDir}/dist/index.js`,
+      env: { BASCIK_SERVER_PORT: "9661", BASCIK_GENERATOR_GATE: "1" },
+      cwd: fixtureDir,
+      url: "http://localhost:9661/consumer",
+      reuseExistingServer: false,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  ],
 });

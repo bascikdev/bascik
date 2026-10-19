@@ -17,7 +17,7 @@ export interface ExecEntry {
    * - 'pre' (default): awaited before any page is transpiled, in dev and build alike.
    * - 'post': runs after all pages are transpiled and written to dist.
    * - 'parallel': started before transpilation and run concurrently with it. Build joins it before
-    *   dist/ is finalized; dev observes every outcome without awaiting or recompiling on completion.
+   *   dist/ is finalized; dev observes every outcome without awaiting or recompiling on completion.
    */
   phase?: ExecPhase;
   /** Working directory for the script execution. Defaults to process.cwd(). */
@@ -78,15 +78,18 @@ export interface TranspilePageResult {
   distHtml: string;
   usedComponentsNames: string[];
   fileDependencies?: string[];
-  serverScripts?: Record<string, {
-    id: string;
-    mode: "server" | "stream";
-    source: string;
-    modulePath?: string;
-    sourceFile?: string;
-    sourceLine?: number;
-    sourceColumn?: number;
-  }>;
+  serverScripts?: Record<
+    string,
+    {
+      id: string;
+      mode: "server" | "stream";
+      source: string;
+      modulePath?: string;
+      sourceFile?: string;
+      sourceLine?: number;
+      sourceColumn?: number;
+    }
+  >;
   /**
    * Inline script/style CSP hashes for this page's final emitted HTML,
    * computed at the defined publishing point (see `computePageCspHashes`).
@@ -229,12 +232,14 @@ export interface ScopableOptions {
   environment?: string[];
 }
 
-export type ScopableConfig = boolean | {
-  enabled?: boolean;
-  include?: string[];
-  exclude?: string[];
-  environment?: string[];
-};
+export type ScopableConfig =
+  | boolean
+  | {
+      enabled?: boolean;
+      include?: string[];
+      exclude?: string[];
+      environment?: string[];
+    };
 
 /**
  * Context passed to a custom `scripts.typescript` compiler.
@@ -264,7 +269,10 @@ export interface TypeScriptCompileContext {
  */
 export type TypeScriptCompilerOption =
   | boolean
-  | ((code: string, context: TypeScriptCompileContext) => string | Promise<string>);
+  | ((
+      code: string,
+      context: TypeScriptCompileContext,
+    ) => string | Promise<string>);
 
 export interface ScriptsOptions {
   cache: ScopableOptions;
@@ -429,7 +437,8 @@ export interface StoredPage {
    * so one bad page yields a 500 for that page only and never blocks the rest
    * of the site from loading.
    */
-  serverScriptPlan?: import("./server-scripts.ts").ServerScriptPlan | { error: Error };
+  serverScriptPlan?:
+    import("./server-scripts.ts").ServerScriptPlan | { error: Error };
   /** Pre-computed ETag from the page content buffer for fast response headers. */
   etag?: string;
 }

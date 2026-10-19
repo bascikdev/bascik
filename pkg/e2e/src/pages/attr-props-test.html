@@ -1,67 +1,73 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Attr Props Test</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 32px 24px;
+        background: #111;
+        color: #eee;
+        font-family: sans-serif;
+      }
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Attr Props Test</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 32px 24px;
-      background: #111;
-      color: #eee;
-      font-family: sans-serif;
-    }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.2rem;
+      }
 
-    h1 {
-      margin: 0 0 8px;
-      font-size: 1.2rem;
-    }
+      .instance-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #888;
+        margin: 0 0 10px;
+      }
 
-    .instance-label {
-      font-size: 0.72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #888;
-      margin: 0 0 10px;
-    }
+      .instances {
+        display: flex;
+        flex-direction: column;
+        gap: 28px;
+      }
+    </style>
+  </head>
 
-    .instances {
-      display: flex;
-      flex-direction: column;
-      gap: 28px;
-    }
-  </style>
-</head>
+  <body>
+    <h1>Attr Props Test</h1>
 
-<body>
-  <h1>Attr Props Test</h1>
+    <div class="instances">
+      <div>
+        <p class="instance-label">Usage 1 — both props provided</p>
+        <attr-props
+          data-bascik-prop-title="Custom Title"
+          data-bascik-prop-subtitle="Custom Subtitle"
+        >
+        </attr-props>
+      </div>
 
-  <div class="instances">
-    <div>
-      <p class="instance-label">Usage 1 — both props provided</p>
-      <attr-props data-bascik-prop-title="Custom Title" data-bascik-prop-subtitle="Custom Subtitle">
-      </attr-props>
+      <div>
+        <p class="instance-label">
+          Usage 2 — only subtitle provided (title falls back)
+        </p>
+        <attr-props data-bascik-prop-subtitle="Only Subtitle"> </attr-props>
+      </div>
+
+      <div>
+        <p class="instance-label">Usage 3 — no props (all fallbacks)</p>
+        <attr-props></attr-props>
+      </div>
+
+      <div>
+        <p class="instance-label">Usage 4 — class prop bug simulation</p>
+        <attr-props
+          data-foo=' class="fake" '
+          data-bascik-prop-title="Data Foo Title"
+          class="real"
+        ></attr-props>
+      </div>
     </div>
-
-    <div>
-      <p class="instance-label">Usage 2 — only subtitle provided (title falls back)</p>
-      <attr-props data-bascik-prop-subtitle="Only Subtitle">
-      </attr-props>
-    </div>
-
-    <div>
-      <p class="instance-label">Usage 3 — no props (all fallbacks)</p>
-      <attr-props></attr-props>
-    </div>
-
-    <div>
-      <p class="instance-label">Usage 4 — class prop bug simulation</p>
-      <attr-props data-foo=' class="fake" ' data-bascik-prop-title="Data Foo Title" class="real"></attr-props>
-    </div>
-  </div>
-</body>
-
+  </body>
 </html>

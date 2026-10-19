@@ -19,38 +19,60 @@
  * The fixture is built with `minify.identifiers: false` so scoped names are
  * readable. These are compiler tests, so they assert the exact scoped output.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
-test.describe('attr-inherit-parent-test page', () => {
+test.describe("attr-inherit-parent-test page", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/attr-inherit-parent-test');
+    await page.goto("/attr-inherit-parent-test");
   });
 
-  test('a class written in the parent template is scoped by the parent and merged onto the child root', async ({ page }) => {
-    const child = page.getByTestId('attr-child-styled');
-    await expect(child).toHaveAttribute('class', 'bascik__attr-child__link bascik__attr-parent__nav-link');
+  test("a class written in the parent template is scoped by the parent and merged onto the child root", async ({
+    page,
+  }) => {
+    const child = page.getByTestId("attr-child-styled");
+    await expect(child).toHaveAttribute(
+      "class",
+      "bascik__attr-child__link bascik__attr-parent__nav-link",
+    );
   });
 
-  test('the parent class styles the child root, and the child keeps its own styles', async ({ page }) => {
-    const child = page.getByTestId('attr-child-styled');
-    await expect(child).toHaveCSS('font-weight', '700');
-    await expect(child).toHaveCSS('color', 'rgb(0, 0, 255)');
+  test("the parent class styles the child root, and the child keeps its own styles", async ({
+    page,
+  }) => {
+    const child = page.getByTestId("attr-child-styled");
+    await expect(child).toHaveCSS("font-weight", "700");
+    await expect(child).toHaveCSS("color", "rgb(0, 0, 255)");
   });
 
-  test('a class not defined in the parent stylesheet passes through unscoped', async ({ page }) => {
-    const child = page.getByTestId('attr-child-global');
-    await expect(child).toHaveAttribute('class', 'bascik__attr-child__link utility-global');
-    await expect(child).toHaveCSS('outline-color', 'rgb(255, 0, 0)');
-    await expect(child).toHaveCSS('color', 'rgb(0, 0, 255)');
+  test("a class not defined in the parent stylesheet passes through unscoped", async ({
+    page,
+  }) => {
+    const child = page.getByTestId("attr-child-global");
+    await expect(child).toHaveAttribute(
+      "class",
+      "bascik__attr-child__link utility-global",
+    );
+    await expect(child).toHaveCSS("outline-color", "rgb(255, 0, 0)");
+    await expect(child).toHaveCSS("color", "rgb(0, 0, 255)");
   });
 
-  test("the parent's element selector styles its own anchor", async ({ page }) => {
-    await expect(page.getByTestId('attr-parent-own-anchor')).toHaveCSS('background-color', 'rgb(255, 255, 0)');
+  test("the parent's element selector styles its own anchor", async ({
+    page,
+  }) => {
+    await expect(page.getByTestId("attr-parent-own-anchor")).toHaveCSS(
+      "background-color",
+      "rgb(255, 255, 0)",
+    );
   });
 
-  test("the parent's element selector does not reach the child's root anchor", async ({ page }) => {
-    for (const id of ['attr-child-styled', 'attr-child-global']) {
-      await expect(page.getByTestId(id)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  test("the parent's element selector does not reach the child's root anchor", async ({
+    page,
+  }) => {
+    for (const id of ["attr-child-styled", "attr-child-global"]) {
+      await expect(page.getByTestId(id)).toHaveCSS(
+        "background-color",
+        "rgba(0, 0, 0, 0)",
+      );
     }
   });
 });

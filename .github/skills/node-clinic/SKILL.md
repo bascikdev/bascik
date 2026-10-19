@@ -13,12 +13,12 @@ Clinic.js is a diagnostic and performance profiling suite for Node.js applicatio
 
 Start with `clinic doctor` by default. Use specialized sub-tools based on the doctor's diagnosis or specific profiling goals.
 
-| Tool | Focus Area | Diagnostic Target | Primary Output |
-| :--- | :--- | :--- | :--- |
-| **`clinic doctor`** | Overall Health & Triage | CPU spikes, I/O bottlenecks, Event Loop delay, GC pressure | Interactive dashboard with automated recommendations |
-| **`clinic flame`** | CPU & Sync Bottlenecks | Hot execution paths, synchronous loops, regex backtracking, slow JSON parsing | CPU sampling flamegraph (powered by 0x) |
-| **`clinic bubbleprof`** | Async Operations & I/O | Slow database queries, external HTTP latency, unoptimized async waterfalls | Async execution graph with latency bubbles |
-| **`clinic heapprofiler`** | Memory & Heap Allocations | Memory leaks, allocation hot spots, excessive object churn | Heap allocation flamegraph over time |
+| Tool                      | Focus Area                | Diagnostic Target                                                             | Primary Output                                       |
+| :------------------------ | :------------------------ | :---------------------------------------------------------------------------- | :--------------------------------------------------- |
+| **`clinic doctor`**       | Overall Health & Triage   | CPU spikes, I/O bottlenecks, Event Loop delay, GC pressure                    | Interactive dashboard with automated recommendations |
+| **`clinic flame`**        | CPU & Sync Bottlenecks    | Hot execution paths, synchronous loops, regex backtracking, slow JSON parsing | CPU sampling flamegraph (powered by 0x)              |
+| **`clinic bubbleprof`**   | Async Operations & I/O    | Slow database queries, external HTTP latency, unoptimized async waterfalls    | Async execution graph with latency bubbles           |
+| **`clinic heapprofiler`** | Memory & Heap Allocations | Memory leaks, allocation hot spots, excessive object churn                    | Heap allocation flamegraph over time                 |
 
 ## Prerequisites and Installation
 
@@ -38,10 +38,10 @@ npx clinic <tool> [options] -- node <entrypoint>
 
 When working in this repository (`@bascik/bascik`), pre-configured npm/yarn profiling scripts in `pkg/package.json` can be executed directly to profile the `docs/` site across build, dev, and serve modes:
 
-| Target Mode | Doctor | Flame | Bubbleprof | HeapProfiler |
-| :--- | :--- | :--- | :--- | :--- |
-| **Static Build (`--build`)** | `yarn --cwd pkg profile:clinic:doctor-docs-build` | `yarn --cwd pkg profile:clinic:flame-docs-build` | `yarn --cwd pkg profile:clinic:bubbleprof-docs-build` | `yarn --cwd pkg profile:clinic:heapprofiler-docs-build` |
-| **Dev Server (watch mode)** | `yarn --cwd pkg profile:clinic:doctor-docs-dev` | `yarn --cwd pkg profile:clinic:flame-docs-dev` | `yarn --cwd pkg profile:clinic:bubbleprof-docs-dev` | `yarn --cwd pkg profile:clinic:heapprofiler-docs-dev` |
+| Target Mode                        | Doctor                                            | Flame                                            | Bubbleprof                                            | HeapProfiler                                            |
+| :--------------------------------- | :------------------------------------------------ | :----------------------------------------------- | :---------------------------------------------------- | :------------------------------------------------------ |
+| **Static Build (`--build`)**       | `yarn --cwd pkg profile:clinic:doctor-docs-build` | `yarn --cwd pkg profile:clinic:flame-docs-build` | `yarn --cwd pkg profile:clinic:bubbleprof-docs-build` | `yarn --cwd pkg profile:clinic:heapprofiler-docs-build` |
+| **Dev Server (watch mode)**        | `yarn --cwd pkg profile:clinic:doctor-docs-dev`   | `yarn --cwd pkg profile:clinic:flame-docs-dev`   | `yarn --cwd pkg profile:clinic:bubbleprof-docs-dev`   | `yarn --cwd pkg profile:clinic:heapprofiler-docs-dev`   |
 | **Production Server (`--server`)** | `yarn --cwd pkg profile:clinic:doctor-docs-serve` | `yarn --cwd pkg profile:clinic:flame-docs-serve` | `yarn --cwd pkg profile:clinic:bubbleprof-docs-serve` | `yarn --cwd pkg profile:clinic:heapprofiler-docs-serve` |
 
 Generated reports are saved into `docs/dist/profile-clinic-<tool>-<mode>/`.
@@ -60,6 +60,7 @@ npx clinic doctor --on-port 'npx autocannon -c 10 -d 10 localhost:$PORT' -- node
 ```
 
 **Key Mechanics:**
+
 - The `--` separator divides Clinic.js CLI flags from the application startup command.
 - Clinic dynamically sets `$PORT` in the `--on-port` script string once the child server starts listening.
 - Use single quotes around the `--on-port` command string to avoid early shell evaluation of `$PORT`.
@@ -67,12 +68,14 @@ npx clinic doctor --on-port 'npx autocannon -c 10 -d 10 localhost:$PORT' -- node
 ### Step 2: Interpret Doctor Results and Choose Next Tool
 
 The Doctor report plots four core metrics over time:
+
 1. **CPU Usage:** Kernel and userland CPU consumption percentage.
 2. **Event Loop Delay:** Time spent waiting for event loop execution ticks.
 3. **Memory / Heap Usage:** V8 heap allocation, total allocated memory, and external buffers.
 4. **Active Handles / Requests:** Count of pending timers, sockets, and I/O handles.
 
 Follow the Doctor's triage:
+
 - **High CPU + High Event Loop Delay:** Run `clinic flame` to find synchronous blocking code.
 - **Low CPU + High Latency + High Active Handles:** Run `clinic bubbleprof` to trace slow async boundaries and queries.
 - **Growing Memory / Frequent GC Sawtooth:** Run `clinic heapprofiler` to identify allocation call sites.
@@ -94,11 +97,13 @@ npx clinic flame -- node compute-task.js
 ```
 
 **How to Read the Flamegraph:**
+
 - **X-axis (Width):** Represents the percentage of total CPU time spent in that function call. Wider blocks represent hotter functions.
 - **Y-axis (Depth):** Represents call stack depth. Top-level callers sit at the bottom, nested callees sit above them.
 - **Top of the Stack:** Look at wide blocks located at the top of flame stacks. These are the active leaf functions executing synchronous work (e.g. JSON serialization, cryptographic hashing, nested loops).
 
 **Common Flags:**
+
 - `--sample-interval <ms>`: Sampling interval in milliseconds (default: 10ms for v8 profiler).
 - `--dest <path>`: Custom destination path for HTML and raw output.
 
@@ -114,12 +119,14 @@ npx clinic bubbleprof --on-port 'npx autocannon -c 15 -d 10 localhost:$PORT/api/
 ```
 
 **How to Read Bubbleprof:**
+
 - **Bubbles:** Represent distinct asynchronous scopes / operations grouped by execution origin.
 - **Bubble radius:** Larger radius indicates higher cumulative execution or wait time.
 - **Connecting Lines & Arrows:** Show scheduling dependencies between asynchronous ticks. Thicker lines indicate higher execution frequency.
 - **Color Scale:** Ranges from cool to warm. Warmer colors highlight operations with high scheduling delays (time elapsed between when a callback was queued and when it actually executed).
 
 **Common Bottleneck Patterns in Bubbleprof:**
+
 - **Single Large Bubble with High Latency:** Typically a slow external network call, unindexed database query, or blocking file read.
 - **Long Linear Chain of Small Bubbles:** An asynchronous waterfall pattern where independent requests are executed sequentially with `await` instead of concurrently with `Promise.all`.
 
@@ -135,6 +142,7 @@ npx clinic heapprofiler --on-port 'npx autocannon -c 10 -d 20 localhost:$PORT' -
 ```
 
 **How to Read HeapProfiler:**
+
 - Produces an allocation flamegraph where block width represents the total allocated memory in bytes rather than CPU time.
 - Helps identify memory churn (functions creating short-lived objects rapidly, causing frequent GC pauses) as well as unreleased memory retained across requests.
 

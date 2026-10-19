@@ -13,16 +13,22 @@ interface BuildState {
   version: string;
 }
 
-const statePath = (): string => join(resolve(BascikConfig.directory.out), ".bascik", BUILD_STATE_FILE);
+const statePath = (): string =>
+  join(resolve(BascikConfig.directory.out), ".bascik", BUILD_STATE_FILE);
 
-export const writeBuildState = async (mode: BuildMode, version: string): Promise<void> => {
+export const writeBuildState = async (
+  mode: BuildMode,
+  version: string,
+): Promise<void> => {
   const path = statePath();
   await mkdir(resolve(path, ".."), { recursive: true });
   const state: BuildState = { format: BUILD_STATE_FORMAT, mode, version };
   await writeFile(path, JSON.stringify(state, null, 2), "utf8");
 };
 
-export const assertProductionBuildState = async (purpose: "server" | "targeted-build"): Promise<void> => {
+export const assertProductionBuildState = async (
+  purpose: "server" | "targeted-build",
+): Promise<void> => {
   let state: BuildState;
   try {
     state = JSON.parse(await readFile(statePath(), "utf8")) as BuildState;

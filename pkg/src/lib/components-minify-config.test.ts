@@ -13,7 +13,10 @@ vi.mock("./styles.js", () => ({
   resolveCssImports: vi.fn(async (css: string) => css),
 }));
 vi.mock("./javascript.js", () => ({
-  getComponentScripts: vi.fn(async () => ({ scripts: "", scriptMap: new Map() })),
+  getComponentScripts: vi.fn(async () => ({
+    scripts: "",
+    scriptMap: new Map(),
+  })),
 }));
 vi.mock("./build-scripts.js", () => ({
   executeBuildScripts: vi.fn(async (html: string) => html),

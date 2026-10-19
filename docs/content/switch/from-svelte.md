@@ -10,14 +10,14 @@ Svelte and Bascik share an intuitive single-file authoring feel, combining marku
 
 ## Mental Model Comparison
 
-| Concept | Svelte (Svelte 4 / 5) | Bascik |
-| --- | --- | --- |
-| Component file | `Component.svelte` | `component-name.html` in `src/components/` |
-| Scoped styles | `<style>` block in `.svelte` | Paired `.css` file or inline `<style>` (auto-scoped) |
-| Child content | `<slot />` (Svelte 4) / `children` snippet (Svelte 5) | `<div data-bascik-slot></div>` |
-| Named content | `<slot name="…" />` (Svelte 4) / Named snippet (Svelte 5) | `data-bascik-slot="name"` |
-| Component props | `export let prop` (Svelte 4) / `$props()` (Svelte 5) | `data-bascik-prop-*` and `data-bascik-attr-*` |
-| Client interactivity | Svelte Runes (`$state`, `$derived`, `$effect`) | Standard vanilla DOM APIs in `<script>` tags |
+| Concept              | Svelte (Svelte 4 / 5)                                     | Bascik                                               |
+| -------------------- | --------------------------------------------------------- | ---------------------------------------------------- |
+| Component file       | `Component.svelte`                                        | `component-name.html` in `src/components/`           |
+| Scoped styles        | `<style>` block in `.svelte`                              | Paired `.css` file or inline `<style>` (auto-scoped) |
+| Child content        | `<slot />` (Svelte 4) / `children` snippet (Svelte 5)     | `<div data-bascik-slot></div>`                       |
+| Named content        | `<slot name="…" />` (Svelte 4) / Named snippet (Svelte 5) | `data-bascik-slot="name"`                            |
+| Component props      | `export let prop` (Svelte 4) / `$props()` (Svelte 5)      | `data-bascik-prop-*` and `data-bascik-attr-*`        |
+| Client interactivity | Svelte Runes (`$state`, `$derived`, `$effect`)            | Standard vanilla DOM APIs in `<script>` tags         |
 
 ## A Low-Risk First Step
 
@@ -60,8 +60,13 @@ A Bascik component is a vanilla HTML file. There are no `<script>`, `<template>`
 </nav>
 
 <style>
-.nav { display: flex; gap: 16px; }
-.logo { font-weight: bold; }
+  .nav {
+    display: flex;
+    gap: 16px;
+  }
+  .logo {
+    font-weight: bold;
+  }
 </style>
 ```
 
@@ -74,8 +79,13 @@ A Bascik component is a vanilla HTML file. There are no `<script>`, `<template>`
 
 ```css
 /* src/components/site-nav/site-nav.css */
-.nav { display: flex; gap: 16px; }
-.logo { font-weight: bold; }
+.nav {
+  display: flex;
+  gap: 16px;
+}
+.logo {
+  font-weight: bold;
+}
 ```
 
 No import or registration is needed to use this component. Bascik resolves `<site-nav></site-nav>` to `src/components/site-nav/site-nav.html` automatically by tag name.
@@ -90,11 +100,7 @@ Svelte 5 replaced the `<slot />` element with snippets. The `children` snippet p
   let { children } = $props();
 </script>
 <div class="card">
-  {#if children}
-    {@render children()}
-  {:else}
-    No content provided.
-  {/if}
+  {#if children} {@render children()} {:else} No content provided. {/if}
 </div>
 
 <!-- Usage -->
@@ -129,7 +135,9 @@ Svelte 5 uses named snippet props for what Svelte 4 called named slots. The comp
 
 <!-- Usage -->
 <PageLayout>
-  {#snippet header()}<h1>My Page</h1>{/snippet}
+  {#snippet header()}
+  <h1>My Page</h1>
+  {/snippet}
   <p>Body content here.</p>
 </PageLayout>
 ```
@@ -188,6 +196,7 @@ Svelte 5's `$props()` and Svelte 4's `export let` both become Bascik's `data-bas
 
 Svelte's `$state()` (Svelte 5) and reactive variables (Svelte 4) become vanilla JavaScript in a `<script>` tag inside the component. Bascik automatically scopes `id` values and class names referenced in the script, so multiple instances on the same page work independently.
 
+<!-- prettier-ignore -->
 ```html
 <!-- Counter.svelte (Svelte 5 - before) -->
 <script>
@@ -225,12 +234,12 @@ For static lists and conditional content, write the HTML directly. For dynamic d
 ```html
 <!-- +page.svelte (Svelte - before) -->
 <script>
-  const items = ['Home', 'About', 'Contact'];
+  const items = ["Home", "About", "Contact"];
 </script>
 
 <ul>
   {#each items as item}
-    <li>{item}</li>
+  <li>{item}</li>
   {/each}
 </ul>
 ```
@@ -239,9 +248,9 @@ For static lists and conditional content, write the HTML directly. For dynamic d
 <!-- src/pages/index.html (Bascik - after) -->
 <ul>
   <script data-bascik-build>
-    const items = ['Home', 'About', 'Contact'];
+    const items = ["Home", "About", "Contact"];
 
-    export default () => items.map(item => `<li>${item}</li>`).join('\n');
+    export default () => items.map((item) => `<li>${item}</li>`).join("\n");
   </script>
 </ul>
 ```

@@ -1,8 +1,8 @@
-import { fileURLToPath } from 'node:url';
-import * as path from 'node:path';
-import * as fs from 'node:fs';
-import * as fsPromises from 'node:fs/promises';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from "node:url";
+import * as path from "node:path";
+import * as fs from "node:fs";
+import * as fsPromises from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import {
   type Connection,
   DidChangeWatchedFilesNotification,
@@ -13,8 +13,8 @@ import {
   type InitializeResult,
   TextDocuments,
   TextDocumentSyncKind,
-} from 'vscode-languageserver';
-import { TextDocument } from 'vscode-languageserver-textdocument';
+} from "vscode-languageserver";
+import { TextDocument } from "vscode-languageserver-textdocument";
 import {
   buildSnapshot,
   CONFIG_FILE_CANDIDATES,
@@ -23,17 +23,17 @@ import {
   isExcludedProjectPath,
   isInsideComponentRoots,
   isPathInside,
-} from './project.js';
+} from "./project.js";
 import {
   createDiagnostics,
   createCompletions,
   createHover,
   createDefinition,
   createCodeActions,
-} from './analyzer.js';
+} from "./analyzer.js";
 
 /** Files whose changes can alter a diagnostic: project config, and the HTML that defines or uses components. */
-const WATCHED_FILE_PATTERNS = ['**/bascik.config.{ts,js,mjs}', '**/*.html'];
+const WATCHED_FILE_PATTERNS = ["**/bascik.config.{ts,js,mjs}", "**/*.html"];
 
 /** Quiet period before open documents are checked again after a change elsewhere in the project. */
 const REVALIDATION_DELAY_MS = 50;
@@ -44,7 +44,7 @@ export interface WatchedFileChange {
 }
 
 export function uriToFsPath(uri: string): string {
-  if (uri.startsWith('file://')) {
+  if (uri.startsWith("file://")) {
     try {
       return fileURLToPath(uri);
     } catch {
@@ -101,7 +101,7 @@ export class BascikLanguageServer {
             },
             textDocumentSync: TextDocumentSyncKind.Incremental,
             completionProvider: {
-              triggerCharacters: ['<', ' ', '"', "'", '-'],
+              triggerCharacters: ["<", " ", '"', "'", "-"],
               resolveProvider: false,
             },
             hoverProvider: true,
@@ -131,15 +131,18 @@ export class BascikLanguageServer {
     this.documents.onDidChangeContent((change) => {
       void this.validateDocument(change.document);
       // Open HTML buffers feed prop usage into other documents' diagnostics.
-      if (change.document.languageId === 'html') {
+      if (change.document.languageId === "html") {
         this.scheduleRevalidation(change.document, true);
       }
     });
 
     this.documents.onDidClose((event) => {
-      this.connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
+      this.connection.sendDiagnostics({
+        uri: event.document.uri,
+        diagnostics: [],
+      });
       // Closing an open HTML buffer changes which usages supply component props.
-      if (event.document.languageId === 'html') {
+      if (event.document.languageId === "html") {
         this.scheduleRevalidation(event.document, true);
       }
     });
@@ -207,7 +210,10 @@ export class BascikLanguageServer {
       ),
       ...added,
     ];
-    for (const projectRoot of [...this.projectSnapshots.keys(), ...this.pendingSnapshots.keys()]) {
+    for (const projectRoot of [
+      ...this.projectSnapshots.keys(),
+      ...this.pendingSnapshots.keys(),
+    ]) {
       if (removedRoots.some((root) => isPathInside(projectRoot, root))) {
         this.invalidateProject(projectRoot);
       }
@@ -228,10 +234,10 @@ export class BascikLanguageServer {
     this.watcherRegistration = undefined;
     const watchers: FileSystemWatcher[] = this.clientWatchesFolders
       ? this.workspaceFolders.flatMap((folder) =>
-        WATCHED_FILE_PATTERNS.map((pattern) => ({
-          globPattern: { baseUri: pathToFileURL(folder).toString(), pattern },
-        })),
-      )
+          WATCHED_FILE_PATTERNS.map((pattern) => ({
+            globPattern: { baseUri: pathToFileURL(folder).toString(), pattern },
+          })),
+        )
       : WATCHED_FILE_PATTERNS.map((globPattern) => ({ globPattern }));
     if (watchers.length === 0) return;
     this.watcherRegistration = await this.connection.client.register(
@@ -256,7 +262,9 @@ export class BascikLanguageServer {
    * snapshot. A changed page or other HTML file only updates the stored usage text, so saving a page does not
    * re-read the whole project. Open documents are then checked again, since either can change a diagnostic.
    */
-  public async handleWatchedFileChanges(changes: WatchedFileChange[]): Promise<void> {
+  public async handleWatchedFileChanges(
+    changes: WatchedFileChange[],
+  ): Promise<void> {
     let everything = false;
     const affectedRoots = new Set<string>();
 
@@ -264,7 +272,8 @@ export class BascikLanguageServer {
       const workspaceRoot = this.workspaceFolders.find((root) =>
         isPathInside(fsPath, root),
       );
-      if (workspaceRoot && isExcludedProjectPath(fsPath, workspaceRoot)) continue;
+      if (workspaceRoot && isExcludedProjectPath(fsPath, workspaceRoot))
+        continue;
 
       if (isConfigFile(fsPath)) {
         // A config file appearing or disappearing also changes which project the files below it belong to.
@@ -272,7 +281,7 @@ export class BascikLanguageServer {
         everything = true;
         continue;
       }
-      if (!fsPath.toLowerCase().endsWith('.html')) continue;
+      if (!fsPath.toLowerCase().endsWith(".html")) continue;
 
       const projectRoot = this.findProjectRoot(fsPath);
       if (!projectRoot) continue;
@@ -283,17 +292,17 @@ export class BascikLanguageServer {
         this.invalidateProject(projectRoot);
         continue;
       }
-      const normalized = fsPath.replace(/\\/g, '/');
+      const normalized = fsPath.replace(/\\/g, "/");
       if (isInsideComponentRoots(normalized, snapshot.componentRoots)) {
         this.invalidateProject(projectRoot);
         continue;
       }
-      if (!isPathInside(fsPath, path.join(projectRoot, 'src'))) continue;
+      if (!isPathInside(fsPath, path.join(projectRoot, "src"))) continue;
 
       let html: string | undefined;
       if (type !== FileChangeType.Deleted) {
         try {
-          html = await fsPromises.readFile(fsPath, 'utf8');
+          html = await fsPromises.readFile(fsPath, "utf8");
         } catch {
           html = undefined;
         }
@@ -324,17 +333,17 @@ export class BascikLanguageServer {
 
     let pending = this.pendingSnapshots.get(projectRoot);
     if (!pending) {
-      const building: Promise<ProjectSnapshot> = buildSnapshot(projectRoot).then(
-        (snap) => {
-          // Dropped from the pending list means a change invalidated this build while it ran. Hand the result
-          // to this caller only: it may already be out of date, and the next caller builds a fresh one.
-          if (this.pendingSnapshots.get(projectRoot) === building) {
-            this.projectSnapshots.set(projectRoot, snap);
-            this.pendingSnapshots.delete(projectRoot);
-          }
-          return snap;
-        },
-      );
+      const building: Promise<ProjectSnapshot> = buildSnapshot(
+        projectRoot,
+      ).then((snap) => {
+        // Dropped from the pending list means a change invalidated this build while it ran. Hand the result
+        // to this caller only: it may already be out of date, and the next caller builds a fresh one.
+        if (this.pendingSnapshots.get(projectRoot) === building) {
+          this.projectSnapshots.set(projectRoot, snap);
+          this.pendingSnapshots.delete(projectRoot);
+        }
+        return snap;
+      });
       pending = building;
       this.pendingSnapshots.set(projectRoot, pending);
     }
@@ -364,12 +373,16 @@ export class BascikLanguageServer {
 
   private async validateDocument(document: TextDocument): Promise<void> {
     // Only files on disk have a project. Other schemes (git, output, untitled) must not get diagnostics.
-    if (!document.uri.startsWith('file:')) return;
+    if (!document.uri.startsWith("file:")) return;
     const version = document.version;
     const fsPath = uriToFsPath(document.uri);
     // A file outside every workspace folder belongs to no project, so there is nothing to check it against.
     if (!this.workspaceFolders.some((root) => isPathInside(fsPath, root))) {
-      this.connection.sendDiagnostics({ uri: document.uri, version, diagnostics: [] });
+      this.connection.sendDiagnostics({
+        uri: document.uri,
+        version,
+        diagnostics: [],
+      });
       return;
     }
     const snapshot = await this.getSnapshotForFile(fsPath);
@@ -380,12 +393,7 @@ export class BascikLanguageServer {
       text: d.getText(),
     }));
 
-    const diagnostics = createDiagnostics(
-      document,
-      fsPath,
-      snapshot,
-      openDocs,
-    );
+    const diagnostics = createDiagnostics(document, fsPath, snapshot, openDocs);
 
     this.connection.sendDiagnostics({
       uri: document.uri,
@@ -404,19 +412,19 @@ export class BascikLanguageServer {
     htmlOnly: boolean,
   ): void {
     const projectRoot =
-      typeof scope === 'string'
+      typeof scope === "string"
         ? scope
         : scope
           ? this.findProjectRoot(uriToFsPath(scope.uri))
           : undefined;
-    const key = projectRoot ?? '*';
+    const key = projectRoot ?? "*";
     const previous = this.revalidationTimers.get(key);
     if (previous) clearTimeout(previous.timer);
     const onlyHtml = previous ? previous.htmlOnly && htmlOnly : htmlOnly;
     const timer = setTimeout(() => {
       this.revalidationTimers.delete(key);
       for (const document of this.documents.all()) {
-        if (onlyHtml && document.languageId !== 'html') continue;
+        if (onlyHtml && document.languageId !== "html") continue;
         if (
           projectRoot &&
           this.findProjectRoot(uriToFsPath(document.uri)) !== projectRoot
@@ -435,7 +443,8 @@ export class BascikLanguageServer {
 
   /** Cancels pending checks. For tests and shutdown. */
   public dispose(): void {
-    for (const { timer } of this.revalidationTimers.values()) clearTimeout(timer);
+    for (const { timer } of this.revalidationTimers.values())
+      clearTimeout(timer);
     this.revalidationTimers.clear();
     this.watcherRegistration?.dispose();
     this.watcherRegistration = undefined;

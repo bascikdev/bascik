@@ -1,67 +1,65 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Window Events Test</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 32px 24px;
+        background: #111;
+        color: #eee;
+        font-family: sans-serif;
+      }
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Window Events Test</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 32px 24px;
-      background: #111;
-      color: #eee;
-      font-family: sans-serif;
-    }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.2rem;
+      }
 
-    h1 {
-      margin: 0 0 8px;
-      font-size: 1.2rem;
-    }
+      .desc {
+        color: #aaa;
+        font-size: 0.85rem;
+        margin: 0 0 24px;
+        max-width: 560px;
+      }
 
-    .desc {
-      color: #aaa;
-      font-size: 0.85rem;
-      margin: 0 0 24px;
-      max-width: 560px;
-    }
+      .instances {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+      }
 
-    .instances {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 28px;
-    }
+      .instance-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #888;
+        margin: 0 0 10px;
+      }
+    </style>
+  </head>
 
-    .instance-label {
-      font-size: 0.72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #888;
-      margin: 0 0 10px;
-    }
-  </style>
-</head>
+  <body>
+    <h1>Window Events — Live Test</h1>
+    <p class="desc">
+      Two independent instances of the same component. Both register on
+      <code>window</code> for resize and on <code>document</code> for a
+      CustomEvent — scoped IDs ensure per-instance DOM updates even with global
+      listeners.
+    </p>
 
-<body>
-  <h1>Window Events — Live Test</h1>
-  <p class="desc">
-    Two independent instances of the same component. Both register on
-    <code>window</code> for resize and on <code>document</code> for a
-    CustomEvent — scoped IDs ensure per-instance DOM updates even with global
-    listeners.
-  </p>
-
-  <div class="instances">
-    <div>
-      <p class="instance-label">Instance A</p>
-      <window-events></window-events>
+    <div class="instances">
+      <div>
+        <p class="instance-label">Instance A</p>
+        <window-events></window-events>
+      </div>
+      <div>
+        <p class="instance-label">Instance B</p>
+        <window-events></window-events>
+      </div>
     </div>
-    <div>
-      <p class="instance-label">Instance B</p>
-      <window-events></window-events>
-    </div>
-  </div>
-</body>
-
+  </body>
 </html>

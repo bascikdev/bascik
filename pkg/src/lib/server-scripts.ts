@@ -25,10 +25,18 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { BascikConfig } from "./config.ts";
 import { cleanStackTrace, remapRewrittenColumns } from "./stack-trace.ts";
-import { directiveSourceColumn, directiveSourcePosition, trimmedStartPosition } from "./directive-source.ts";
+import {
+  directiveSourceColumn,
+  directiveSourcePosition,
+  trimmedStartPosition,
+} from "./directive-source.ts";
 import { ServerScriptError } from "./build-error.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
-import { scriptRegistry, resolveModuleIdentity, type ScriptExecutionResult } from "./script-registry.ts";
+import {
+  scriptRegistry,
+  resolveModuleIdentity,
+  type ScriptExecutionResult,
+} from "./script-registry.ts";
 import { stripAnsiEscapeCodes } from "./script-runner.ts";
 import {
   LeadingSlashSpecifierError,
@@ -85,14 +93,19 @@ const createServerScriptRegex = (): RegExp =>
 // ─── Directive presence and conflict detection ─────────────────────────────────────────
 const tagHas = (flag: string): RegExp =>
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  new RegExp(`${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${flag}(?:\\s+${ATTR})*\\s*>`, "i");
+  new RegExp(
+    `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${flag}(?:\\s+${ATTR})*\\s*>`,
+    "i",
+  );
 const HAS_BUILD_RE = tagHas(BUILD_FLAG);
 const HAS_ROUTES_RE = tagHas(ROUTES_FLAG);
 const HAS_SERVER_RE = tagHas(SERVER_FLAG);
 const HAS_STREAM_RE = tagHas(STREAM_FLAG);
 
 /** The four script directives are mutually exclusive; name the offending pair. */
-const findDirectiveConflict = (openTag: string): [string, string] | undefined => {
+const findDirectiveConflict = (
+  openTag: string,
+): [string, string] | undefined => {
   const present: string[] = [];
   if (HAS_SERVER_RE.test(openTag)) present.push("data-bascik-server");
   if (HAS_STREAM_RE.test(openTag)) present.push("data-bascik-stream");
@@ -110,7 +123,9 @@ const findDirectiveConflict = (openTag: string): [string, string] | undefined =>
  */
 export const htmlHasServerScripts = (html: string | Buffer): boolean => {
   if (Buffer.isBuffer(html)) {
-    return html.includes("data-bascik-server") || html.includes("text/bascik-server");
+    return (
+      html.includes("data-bascik-server") || html.includes("text/bascik-server")
+    );
   }
   return createServerScriptRegex().test(html);
 };
@@ -135,7 +150,10 @@ interface ScriptJob {
   sourceColumn?: number;
 }
 
-const inlineDependencies = new WeakMap<ScriptJob, { source: string; keys: string[] }>();
+const inlineDependencies = new WeakMap<
+  ScriptJob,
+  { source: string; keys: string[] }
+>();
 
 const inlineGenerationSuffix = (job: ScriptJob, source: string): string => {
   if (scriptRegistry.mode !== "development") return "";
@@ -144,13 +162,17 @@ const inlineGenerationSuffix = (job: ScriptJob, source: string): string => {
     dependencies = {
       source,
       keys: findModuleSpecifiers(source)
-        .filter(specifier => specifier.value.startsWith("file:"))
-        .map(specifier => resolveModuleIdentity(specifier.value).key),
+        .filter((specifier) => specifier.value.startsWith("file:"))
+        .map((specifier) => resolveModuleIdentity(specifier.value).key),
     };
     inlineDependencies.set(job, dependencies);
   }
-  const generations = dependencies.keys.map(key => scriptRegistry.graph.generationOf(key));
-  return generations.some(generation => generation > 0) ? `#bascik-dependencies=${generations.join(",")}` : "";
+  const generations = dependencies.keys.map((key) =>
+    scriptRegistry.graph.generationOf(key),
+  );
+  return generations.some((generation) => generation > 0)
+    ? `#bascik-dependencies=${generations.join(",")}`
+    : "";
 };
 
 export interface StaticSegment {
@@ -182,7 +204,10 @@ export interface ServerScriptPlan {
  * placeholder in `html` and build the response plan. Pure with respect to the
  * request: no script runs here.
  */
-export const planServerScripts = (html: string, filePath?: string): ServerScriptPlan => {
+export const planServerScripts = (
+  html: string,
+  filePath?: string,
+): ServerScriptPlan => {
   const matches = [...html.matchAll(createServerScriptRegex())];
   const segments: Array<StaticSegment | ScriptSegment> = [];
   let firstStreamIndex = -1;
@@ -200,21 +225,34 @@ export const planServerScripts = (html: string, filePath?: string): ServerScript
       const where = filePath ? ` in "${filePath}"` : "";
       throw new Error(
         `[bascik] error: <script> tag has both ${conflict[0]} and ${conflict[1]}${where}. ` +
-        `A script can carry only one of data-bascik-build, data-bascik-routes, data-bascik-server, ` +
-        `data-bascik-stream. Remove one of the attributes.`,
+          `A script can carry only one of data-bascik-build, data-bascik-routes, data-bascik-server, ` +
+          `data-bascik-stream. Remove one of the attributes.`,
       );
     }
 
-    let mode: ServerScriptMode = HAS_STREAM_RE.test(openTag) ? "stream" : "server";
+    let mode: ServerScriptMode = HAS_STREAM_RE.test(openTag)
+      ? "stream"
+      : "server";
     let placeholderId: string | undefined;
-    const placeholderValue = getHtmlAttributeValue(fullTag, "data-bascik-server-id");
+    const placeholderValue = getHtmlAttributeValue(
+      fullTag,
+      "data-bascik-server-id",
+    );
     let srcPath: string | undefined = getHtmlAttributeValue(fullTag, "src");
     let sourceFile: string | undefined;
     let sourceLine: number | undefined;
-    const annotatedSourceFile = getHtmlAttributeValue(fullTag, "data-bascik-source-file");
-    if (annotatedSourceFile) sourceFile = decodeURIComponent(annotatedSourceFile);
-    const annotatedSourceLine = getHtmlAttributeValue(fullTag, "data-bascik-source-line");
-    if (annotatedSourceLine) sourceLine = Number.parseInt(annotatedSourceLine, 10);
+    const annotatedSourceFile = getHtmlAttributeValue(
+      fullTag,
+      "data-bascik-source-file",
+    );
+    if (annotatedSourceFile)
+      sourceFile = decodeURIComponent(annotatedSourceFile);
+    const annotatedSourceLine = getHtmlAttributeValue(
+      fullTag,
+      "data-bascik-source-line",
+    );
+    if (annotatedSourceLine)
+      sourceLine = Number.parseInt(annotatedSourceLine, 10);
     let sourceColumn = directiveSourceColumn(openTag);
 
     if (placeholderValue) {
@@ -223,16 +261,18 @@ export const planServerScripts = (html: string, filePath?: string): ServerScript
       if (!entry) {
         throw new Error(
           `[bascik] Server script placeholder "${placeholderId}" could not be resolved from sidecar. ` +
-          `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+            `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
         );
       }
       // The sidecar entry is the source of truth for the mode; the marker on
       // the placeholder is a consistency check against a stale sidecar.
-      const markerMode: ServerScriptMode = HAS_STREAM_RE.test(openTag) ? "stream" : "server";
+      const markerMode: ServerScriptMode = HAS_STREAM_RE.test(openTag)
+        ? "stream"
+        : "server";
       if (entry.mode !== markerMode) {
         throw new Error(
           `[bascik] Server script placeholder "${placeholderId}" is marked ${markerMode} in the HTML but ` +
-          `${entry.mode} in the sidecar (stale sidecar). Run \`bascik --build\` to regenerate dist/.`,
+            `${entry.mode} in the sidecar (stale sidecar). Run \`bascik --build\` to regenerate dist/.`,
         );
       }
       mode = entry.mode;
@@ -253,28 +293,52 @@ export const planServerScripts = (html: string, filePath?: string): ServerScript
     }
 
     if (index > cursor) {
-      segments.push({ kind: "static", bytes: Buffer.from(html.slice(cursor, index), "utf8") });
+      segments.push({
+        kind: "static",
+        bytes: Buffer.from(html.slice(cursor, index), "utf8"),
+      });
     }
-    if (mode === "stream" && firstStreamIndex === -1) firstStreamIndex = segments.length;
+    if (mode === "stream" && firstStreamIndex === -1)
+      firstStreamIndex = segments.length;
 
-    if (!placeholderValue && !srcPath && !/^\s*export\s+default\b/m.test(scriptContent)) {
+    if (
+      !placeholderValue &&
+      !srcPath &&
+      !/^\s*export\s+default\b/m.test(scriptContent)
+    ) {
       const where = filePath ? ` in "${filePath}"` : "";
       throw new Error(
         `[bascik] error: Inline server script must export default a function${where} at line ${startLine}. ` +
-        `Example: export default function(request) { return '<p>Hello</p>'; }`,
+          `Example: export default function(request) { return '<p>Hello</p>'; }`,
       );
     }
 
     segments.push({
       kind: "script",
       mode,
-      job: { fullTag, scriptContent, openTag, index, length, startLine, mode, placeholderId, srcPath, sourceFile, sourceLine, sourceColumn },
+      job: {
+        fullTag,
+        scriptContent,
+        openTag,
+        index,
+        length,
+        startLine,
+        mode,
+        placeholderId,
+        srcPath,
+        sourceFile,
+        sourceLine,
+        sourceColumn,
+      },
     });
     cursor = index + length;
   }
 
   if (cursor < html.length) {
-    segments.push({ kind: "static", bytes: Buffer.from(html.slice(cursor), "utf8") });
+    segments.push({
+      kind: "static",
+      bytes: Buffer.from(html.slice(cursor), "utf8"),
+    });
   }
   return { segments, firstStreamIndex };
 };
@@ -305,7 +369,9 @@ export const runServerScriptJob = async (
       const location = where
         ? ` (in "${relative(process.cwd(), where).replace(/\\/g, "/")}"${job.sourceLine !== undefined ? ` at line ${job.sourceLine}` : ""})`
         : "";
-      throw new Error(`[bascik] error: ${err.message}${location}`, { cause: err });
+      throw new Error(`[bascik] error: ${err.message}${location}`, {
+        cause: err,
+      });
     }
     throw err;
   };
@@ -317,7 +383,11 @@ export const runServerScriptJob = async (
       : process.cwd();
     let resolvedPath: string;
     try {
-      resolvedPath = resolveScriptSrcPath(job.srcPath, containingDir, importRoot);
+      resolvedPath = resolveScriptSrcPath(
+        job.srcPath,
+        containingDir,
+        importRoot,
+      );
     } catch (err) {
       return rethrowLeadingSlash(err);
     }
@@ -326,7 +396,11 @@ export const runServerScriptJob = async (
       try {
         codeToExecute = await readFile(resolvedPath, "utf8");
       } catch (err) {
-        console.warn('[bascik] warning: Failed to read server script src "%s":', job.srcPath, err);
+        console.warn(
+          '[bascik] warning: Failed to read server script src "%s":',
+          job.srcPath,
+          err,
+        );
       }
     }
   }
@@ -340,7 +414,10 @@ export const runServerScriptJob = async (
   let rewrittenCode: string;
   let specifierEdits: SpecifierEdit[];
   try {
-    ({ code: rewrittenCode, edits: specifierEdits } = rewriteModuleSpecifiersWithEdits(codeToExecute, scriptBaseDir, { importRoot }));
+    ({ code: rewrittenCode, edits: specifierEdits } =
+      rewriteModuleSpecifiersWithEdits(codeToExecute, scriptBaseDir, {
+        importRoot,
+      }));
   } catch (err) {
     return rethrowLeadingSlash(err);
   }
@@ -348,7 +425,8 @@ export const runServerScriptJob = async (
   // script on two pages (at different positions) must stay one module with shared state.
   // Lines and columns are mapped when an error is reported instead.
   const dataUri = `data:text/javascript;charset=utf-8,${encodeURIComponent(rewrittenCode)}`;
-  const specifier = moduleFilePath ?? dataUri + inlineGenerationSuffix(job, rewrittenCode);
+  const specifier =
+    moduleFilePath ?? dataUri + inlineGenerationSuffix(job, rewrittenCode);
 
   // A `src=` module is its own file; V8 already names it and its lines.
   const originalSourcePath = moduleFilePath
@@ -359,7 +437,11 @@ export const runServerScriptJob = async (
   // Where the trimmed module's first character is in the file.
   const { line: lineOffset, columnOffset } = moduleFilePath
     ? { line: 1, columnOffset: 0 }
-    : trimmedStartPosition(job.scriptContent, job.sourceLine ?? job.startLine, job.sourceColumn ?? 1);
+    : trimmedStartPosition(
+        job.scriptContent,
+        job.sourceLine ?? job.startLine,
+        job.sourceColumn ?? 1,
+      );
 
   const result: ScriptExecutionResult<unknown> = await scriptRegistry.invoke(
     specifier,
@@ -376,7 +458,12 @@ export const runServerScriptJob = async (
 
   if (result.ok) {
     const val = result.value;
-    const strVal = typeof val === "string" ? val : (val !== undefined && val !== null ? String(val) : "");
+    const strVal =
+      typeof val === "string"
+        ? val
+        : val !== undefined && val !== null
+          ? String(val)
+          : "";
     return stripAnsiEscapeCodes(strVal);
   }
 
@@ -385,12 +472,27 @@ export const runServerScriptJob = async (
   if (result.isNetworkReset) return "";
 
   // Columns after a rewritten import on the same line are put back first, in module coordinates.
-  const moduleReferences = moduleFilePath ? [moduleFilePath, pathToFileURL(moduleFilePath).href] : [specifier, dataUri];
-  const rawTrace = remapRewrittenColumns(err.stack || err.message, moduleReferences, specifierEdits);
-  let cleanedMsg = cleanStackTrace(rawTrace, specifier, originalSourcePath, lineOffset, columnOffset);
+  const moduleReferences = moduleFilePath
+    ? [moduleFilePath, pathToFileURL(moduleFilePath).href]
+    : [specifier, dataUri];
+  const rawTrace = remapRewrittenColumns(
+    err.stack || err.message,
+    moduleReferences,
+    specifierEdits,
+  );
+  let cleanedMsg = cleanStackTrace(
+    rawTrace,
+    specifier,
+    originalSourcePath,
+    lineOffset,
+    columnOffset,
+  );
   // An in-process `import()` of a module with a syntax error reports only Node's
   // own loader frames, so nothing names the file. Point at where the script starts.
-  if (err instanceof SyntaxError && !cleanedMsg.includes(`${originalSourcePath}:`)) {
+  if (
+    err instanceof SyntaxError &&
+    !cleanedMsg.includes(`${originalSourcePath}:`)
+  ) {
     cleanedMsg += `\n    in the script that starts at ${originalSourcePath}:${lineOffset}:${columnOffset + 1}`;
   }
   const requestPath = new URL(request.url).pathname;
@@ -423,7 +525,14 @@ const toExecution = (
   };
   const run: ScriptJobRunner = (id) => {
     const segment = plan.segments[Number(id)] as ScriptSegment;
-    return runServerScriptJob(segment.job, request, context, timeoutMs, filePath, signal);
+    return runServerScriptJob(
+      segment.job,
+      request,
+      context,
+      timeoutMs,
+      filePath,
+      signal,
+    );
   };
   return { execution, run };
 };
@@ -440,7 +549,13 @@ export const executeServerScriptPlan = async (
   timeoutMs: number = DEFAULT_SCRIPT_TIMEOUT_MS,
   filePath?: string,
 ): Promise<Buffer> => {
-  const { execution, run } = toExecution(plan, request, context, timeoutMs, filePath);
+  const { execution, run } = toExecution(
+    plan,
+    request,
+    context,
+    timeoutMs,
+    filePath,
+  );
   const bytes = await composeBufferedResponse(execution, run);
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 };
@@ -460,7 +575,9 @@ export const executeServerScripts = async (
 ): Promise<string> => {
   const plan = planServerScripts(html, filePath);
   if (plan.segments.every((segment) => segment.kind === "static")) return html;
-  return (await executeServerScriptPlan(plan, request, context, timeoutMs, filePath)).toString("utf8");
+  return (
+    await executeServerScriptPlan(plan, request, context, timeoutMs, filePath)
+  ).toString("utf8");
 };
 
 /** Where streamed bytes go. Prompt 66 gives this backpressure; here it is a plain write. */
@@ -509,19 +626,34 @@ export const streamServerScripts = (
   sink: ResponseSink,
   signal?: AbortSignal,
 ): ServerScriptStreamer => {
-  const { execution, run } = toExecution(plan, request, context, timeoutMs, filePath, signal);
+  const { execution, run } = toExecution(
+    plan,
+    request,
+    context,
+    timeoutMs,
+    filePath,
+    signal,
+  );
   const streamer = streamComposedResponse(
     execution,
     run,
     {
-      write: (chunk) => sink.write(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)),
+      write: (chunk) =>
+        sink.write(
+          Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength),
+        ),
     },
     {
       signal,
       // Status is already committed; this can never be a 500. Same message
       // shape `warn` uses, at error severity.
-      onStreamError: (err) => console.error(err instanceof Error ? err.message : String(err)),
+      onStreamError: (err) =>
+        console.error(err instanceof Error ? err.message : String(err)),
     },
   );
-  return { ready: streamer.ready, commit: streamer.commit, done: streamer.done };
+  return {
+    ready: streamer.ready,
+    commit: streamer.commit,
+    done: streamer.done,
+  };
 };

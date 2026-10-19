@@ -46,7 +46,11 @@ import { isBuiltin } from "node:module";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { classifySpecifier, scanScript, hasDynamicImportExpression } from "./module-specifiers.ts";
+import {
+  classifySpecifier,
+  scanScript,
+  hasDynamicImportExpression,
+} from "./module-specifiers.ts";
 
 /** Bump together with SCRIPT_CACHE_VERSION whenever identity composition changes. */
 export const PACKAGE_IDENTITY_VERSION = 1;
@@ -123,7 +127,9 @@ const RESOLVER_FILE = "bascik-package-resolver.mjs";
 const RESOLVER_SOURCE =
   "export const resolveFor = (spec) => import.meta.resolve(spec, import.meta.url);\n";
 
-let resolverModule: Promise<{ resolveFor: (spec: string) => string } | null> | null = null;
+let resolverModule: Promise<{
+  resolveFor: (spec: string) => string;
+} | null> | null = null;
 const resolvedSpecMemo = new Map<string, ResolvedPackage>();
 const entrySpecifiersMemo = new Map<string, string[]>();
 const MAX_PACKAGE_IDENTITY_MEMO = 256;
@@ -136,7 +142,9 @@ const MAX_PACKAGE_IDENTITY_MEMO = 256;
  * are idempotent. Returns `null` when the stub cannot be prepared (read-only or
  * mocked fs), in which case callers degrade to stable MISSING identity.
  */
-const resolverModuleRef = async (): Promise<{ resolveFor: (spec: string) => string } | null> => {
+const resolverModuleRef = async (): Promise<{
+  resolveFor: (spec: string) => string;
+} | null> => {
   if (resolverModule) return resolverModule;
   const dir = join(cwd(), "node_modules", ".cache", "bascik");
   const file = join(dir, RESOLVER_FILE);
@@ -153,7 +161,9 @@ const resolverModuleRef = async (): Promise<{ resolveFor: (spec: string) => stri
   }
   const href = pathToFileURL(file).href;
   try {
-    resolverModule = import(href) as Promise<{ resolveFor: (spec: string) => string }>;
+    resolverModule = import(href) as Promise<{
+      resolveFor: (spec: string) => string;
+    }>;
     // Verify the stub actually loads (the fs may be mocked such that writeFile
     // succeeded but no real file exists). If import fails, degrade to MISSING.
     await resolverModule;
@@ -195,7 +205,9 @@ const realpathOf = async (path: string): Promise<string> => {
  * unresolved package never produces a successful cached output, this cannot
  * silently replay stale content.
  */
-export const resolvePackages = async (specifiers: string[]): Promise<ResolvedPackage[]> => {
+export const resolvePackages = async (
+  specifiers: string[],
+): Promise<ResolvedPackage[]> => {
   const resolved: ResolvedPackage[] = [];
   const plain = [...new Set(specifiers)].sort();
   const builtins = plain.filter((s) => isBuiltin(s));
@@ -242,7 +254,11 @@ export const resolvePackages = async (specifiers: string[]): Promise<ResolvedPac
     const pathname = fileURLToPathname(resolvedUrl);
     const realPath = await realpathOf(pathname);
     const kind = await classifyKind(realPath);
-    const pkg: ResolvedPackage = { specifier: spec, kind, resolvedPath: realPath };
+    const pkg: ResolvedPackage = {
+      specifier: spec,
+      kind,
+      resolvedPath: realPath,
+    };
     if (resolvedSpecMemo.size >= MAX_PACKAGE_IDENTITY_MEMO) {
       resolvedSpecMemo.delete(resolvedSpecMemo.keys().next().value as string);
     }
@@ -264,7 +280,10 @@ const readMaybe = async (path: string): Promise<string | null> => {
   }
 };
 
-const hashUpdate = (hash: ReturnType<typeof createHash>, value: string): void => {
+const hashUpdate = (
+  hash: ReturnType<typeof createHash>,
+  value: string,
+): void => {
   hash.update(value);
   hash.update("\u0000");
 };
@@ -279,7 +298,9 @@ const hashUpdate = (hash: ReturnType<typeof createHash>, value: string): void =>
  * itself imports, resolved from the project tree, bounded by the depth budget
  * and cycle-detected on the (kind, realpath) tuple.
  */
-export const computePackageIdentity = async (specifiers: string[]): Promise<string> => {
+export const computePackageIdentity = async (
+  specifiers: string[],
+): Promise<string> => {
   const hash = createHash("sha256");
   hashUpdate(hash, `pkgid:${PACKAGE_IDENTITY_VERSION}`);
   const visited = new Set<string>();
@@ -304,7 +325,9 @@ export const computePackageIdentity = async (specifiers: string[]): Promise<stri
     // and npm-bundled/local-override content changes at a fixed version matter.
     const entry = await readMaybe(pkg.resolvedPath);
     hashUpdate(hash, entry === null ? "MISSING" : entry);
-    const manifest = await readMaybe(join(dirname(pkg.resolvedPath), "package.json"));
+    const manifest = await readMaybe(
+      join(dirname(pkg.resolvedPath), "package.json"),
+    );
     hashUpdate(hash, manifest === null ? "nomanifest" : manifest);
 
     // Recurse into the packages this one imports so a change in a transitive
@@ -323,7 +346,9 @@ export const computePackageIdentity = async (specifiers: string[]): Promise<stri
       } else {
         childSpecs = collectPackageSpecifiers(entry);
         if (entrySpecifiersMemo.size >= MAX_PACKAGE_IDENTITY_MEMO) {
-          entrySpecifiersMemo.delete(entrySpecifiersMemo.keys().next().value as string);
+          entrySpecifiersMemo.delete(
+            entrySpecifiersMemo.keys().next().value as string,
+          );
         }
         entrySpecifiersMemo.set(entry, childSpecs);
       }

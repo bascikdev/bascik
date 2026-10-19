@@ -27,9 +27,17 @@ try {
     }
   } else if (argument) {
     const map = JSON.parse(await readFile(mapPath, "utf8"));
-    const matches = Object.entries(map.modules).filter(([source]) => source.includes(argument));
+    const matches = Object.entries(map.modules).filter(([source]) =>
+      source.includes(argument),
+    );
     if (!matches.length) throw new Error(`No modules match ${argument}`);
-    console.log(JSON.stringify({ generatedAt: map.generatedAt, modules: Object.fromEntries(matches) }, null, 2));
+    console.log(
+      JSON.stringify(
+        { generatedAt: map.generatedAt, modules: Object.fromEntries(matches) },
+        null,
+        2,
+      ),
+    );
   } else {
     process.chdir(packageRoot);
     const { cruise } = await import("dependency-cruiser");
@@ -45,15 +53,20 @@ try {
       graph.modules
         .filter((module) => module.source.startsWith("src/"))
         .sort((first, second) => first.source.localeCompare(second.source))
-        .map((module) => [`pkg/${module.source}`, { imports: [], importedBy: [] }]),
+        .map((module) => [
+          `pkg/${module.source}`,
+          { imports: [], importedBy: [] },
+        ]),
     );
-    if (!Object.keys(modules).length) throw new Error("No source modules found; check parser support");
+    if (!Object.keys(modules).length)
+      throw new Error("No source modules found; check parser support");
     const unresolved = [];
     for (const module of graph.modules) {
       const source = `pkg/${module.source}`;
       if (!modules[source]) continue;
       for (const dependency of module.dependencies) {
-        if (dependency.couldNotResolve) unresolved.push({ source, import: dependency.module });
+        if (dependency.couldNotResolve)
+          unresolved.push({ source, import: dependency.module });
         const target = `pkg/${dependency.resolved}`;
         if (!modules[target]) continue;
         modules[source].imports.push(target);
@@ -66,9 +79,18 @@ try {
     }
     mkdirSync(mapDirectory, { recursive: true });
     const temporaryPath = `${mapPath}.${process.pid}.tmp`;
-    await writeFile(temporaryPath, JSON.stringify({ generatedAt: new Date().toISOString(), unresolved, modules }, null, 2) + "\n");
+    await writeFile(
+      temporaryPath,
+      JSON.stringify(
+        { generatedAt: new Date().toISOString(), unresolved, modules },
+        null,
+        2,
+      ) + "\n",
+    );
     await rename(temporaryPath, mapPath);
-    console.log(`Code map: ${Object.keys(modules).length} modules, ${unresolved.length} unresolved imports (${mapPath})`);
+    console.log(
+      `Code map: ${Object.keys(modules).length} modules, ${unresolved.length} unresolved imports (${mapPath})`,
+    );
   }
 } catch (error) {
   console.error("Code map:", error.message);

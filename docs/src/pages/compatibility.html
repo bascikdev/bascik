@@ -1,155 +1,174 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="A complete audit of which CSS and JavaScript patterns Bascik's build-time scoping engine supports, with notes on known edge cases."
+    />
+    <title>Web Standards & Scoping Compatibility - Bascik Docs</title>
+    <style>
+      .compat-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.88rem;
+        margin: 0;
+      }
 
-<head>
-  <docs-head />
-  <script data-bascik-build>
-    import { canonical } from '@/lib/canonical.ts';
-    export default async () => await canonical();
-  </script>
-  <script data-bascik-build>
-    import { openGraph } from '@/lib/open-graph.ts';
-    export default async () => await openGraph();
-  </script>
-  <script data-bascik-build>
-    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    export default async () => await breadcrumbLd();
-  </script>
-  <script data-bascik-build>
-    import { articleSchema } from '@/lib/article-schema.ts';
-    export default async () => await articleSchema();
-  </script>
-  <meta name="description"
-    content="A complete audit of which CSS and JavaScript patterns Bascik's build-time scoping engine supports, with notes on known edge cases." />
-  <title>Web Standards & Scoping Compatibility - Bascik Docs</title>
-  <style>
-    .compat-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.88rem;
-      margin: 0;
-    }
+      .compat-table th {
+        text-align: left;
+        padding: 8px 12px;
+        border-bottom: 2px solid var(--border);
+        color: var(--fg-muted);
+        font-weight: 600;
+        white-space: nowrap;
+      }
 
-    .compat-table th {
-      text-align: left;
-      padding: 8px 12px;
-      border-bottom: 2px solid var(--border);
-      color: var(--fg-muted);
-      font-weight: 600;
-      white-space: nowrap;
-    }
+      .compat-table td {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
 
-    .compat-table td {
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--border);
-      vertical-align: top;
-    }
+      .compat-table tr:last-child td {
+        border-bottom: none;
+      }
 
-    .compat-table tr:last-child td {
-      border-bottom: none;
-    }
+      .badge-ok {
+        color: #7ecfa0;
+        font-size: 0.9rem;
+        text-align: center;
+      }
 
-    .badge-ok {
-      color: #7ecfa0;
-      font-size: 0.9rem;
-      text-align: center;
-    }
+      .badge-partial {
+        color: #b89340;
+        font-size: 0.9rem;
+        text-align: center;
+      }
 
-    .badge-partial {
-      color: #b89340;
-      font-size: 0.9rem;
-      text-align: center;
-    }
+      .badge-no {
+        color: #c07070;
+        font-size: 0.9rem;
+        text-align: center;
+      }
 
-    .badge-no {
-      color: #c07070;
-      font-size: 0.9rem;
-      text-align: center;
-    }
+      .badge-intentional {
+        color: #7a8795;
+        font-size: 0.9rem;
+        text-align: center;
+      }
 
-    .badge-intentional {
-      color: #7a8795;
-      font-size: 0.9rem;
-      text-align: center;
-    }
+      .status-icon {
+        display: inline-flex;
+        width: 16px;
+        height: 16px;
+        vertical-align: middle;
+      }
 
-    .status-icon {
-      display: inline-flex;
-      width: 16px;
-      height: 16px;
-      vertical-align: middle;
-    }
+      .compat-note {
+        color: var(--fg-muted);
+        font-size: 0.82rem;
+        margin-top: 4px;
+      }
 
-    .compat-note {
-      color: var(--fg-muted);
-      font-size: 0.82rem;
-      margin-top: 4px;
-    }
+      .legend {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+        margin-bottom: 32px;
+        font-size: 0.88rem;
+      }
 
-    .legend {
-      display: flex;
-      gap: 24px;
-      flex-wrap: wrap;
-      margin-bottom: 32px;
-      font-size: 0.88rem;
-    }
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
 
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
+      p:has(> strong:only-child) + ul {
+        margin-block-start: 4px;
+      }
+    </style>
+  </head>
 
-    p:has(> strong:only-child)+ul {
-      margin-block-start: 4px;
-    }
-  </style>
-</head>
+  <body>
+    <docs-nav />
 
-<body>
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
 
-  <docs-nav />
-
-  <div class="container">
-    <div class="docs-layout">
-
-      <docs-sidebar />
-
-      <main class="docs-content" id="main-content">
-        <script data-bascik-build>
-          import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/compatibility');
-        </script>
-        <!-- Content rendered from docs/content/compatibility.md at build time.
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/compatibility");
+          </script>
+          <!-- Content rendered from docs/content/compatibility.md at build time.
              To update page content, edit the MD file - not this file. -->
-        <script data-bascik-build>
-          import { renderMd } from '@/lib/md-renderer.ts';
-          export default async function () {
-            let html = await renderMd('./content/compatibility.md');
-            const statuses = {
-              '✓': { badge: 'badge-ok', label: 'Supported and tested', shape: '<path d="m5 12 4 4L19 6" />' },
-              '△': { badge: 'badge-partial', label: 'Partially supported', shape: '<path d="M12 3 2 21h20L12 3Z" /><path d="M12 9v4m0 4h.01" />' },
-              '✕': { badge: 'badge-no', label: 'Intentionally unsupported', shape: '<path d="m6 6 12 12M6 18 18 6" />' },
-              '–': { badge: 'badge-intentional', label: 'Not yet supported', shape: '<path d="M5 12h14" />' },
-            };
-            const statusIcon = ({ badge, label, shape }) =>
-              `<span class="status-icon ${badge}" role="img" aria-label="${label}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${shape}</svg></span>`;
-            html = html
-              .replace(/<td>\s*([✓△✕–])\s*<\/td>/g, (_, marker) =>
-                `<td class="${statuses[marker].badge}">${statusIcon(statuses[marker])}</td>`)
-              .replace(/<li>([✓△✕–]) /g, (_, marker) =>
-                `<li>${statusIcon(statuses[marker])} `);
-            return html;
-          };
-        </script>
+          <script data-bascik-build>
+            import { renderMd } from "@/lib/md-renderer.ts";
+            export default async function () {
+              let html = await renderMd("./content/compatibility.md");
+              const statuses = {
+                "✓": {
+                  badge: "badge-ok",
+                  label: "Supported and tested",
+                  shape: '<path d="m5 12 4 4L19 6" />',
+                },
+                "△": {
+                  badge: "badge-partial",
+                  label: "Partially supported",
+                  shape:
+                    '<path d="M12 3 2 21h20L12 3Z" /><path d="M12 9v4m0 4h.01" />',
+                },
+                "✕": {
+                  badge: "badge-no",
+                  label: "Intentionally unsupported",
+                  shape: '<path d="m6 6 12 12M6 18 18 6" />',
+                },
+                "–": {
+                  badge: "badge-intentional",
+                  label: "Not yet supported",
+                  shape: '<path d="M5 12h14" />',
+                },
+              };
+              const statusIcon = ({ badge, label, shape }) =>
+                `<span class="status-icon ${badge}" role="img" aria-label="${label}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${shape}</svg></span>`;
+              html = html
+                .replace(
+                  /<td>\s*([✓△✕–])\s*<\/td>/g,
+                  (_, marker) =>
+                    `<td class="${statuses[marker].badge}">${statusIcon(statuses[marker])}</td>`,
+                )
+                .replace(
+                  /<li>([✓△✕–]) /g,
+                  (_, marker) => `<li>${statusIcon(statuses[marker])} `,
+                );
+              return html;
+            }
+          </script>
 
-        <docs-pagination />
-
-      </main>
+          <docs-pagination />
+        </main>
+      </div>
     </div>
-  </div>
 
-  <docs-footer />
-</body>
-
+    <docs-footer />
+  </body>
 </html>

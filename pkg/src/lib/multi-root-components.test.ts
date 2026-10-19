@@ -6,7 +6,13 @@
  * across subfolders, with both paths named.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  realpathSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -39,11 +45,14 @@ beforeEach(() => {
   base = realpathSync(mkdtempSync(join(tmpdir(), "bascik-multi-root-")));
   configState.directory.pages = join(base, "site/src/pages");
   configState.directory.out = join(base, "site/dist");
-  configState.directory.components = [join(base, "shared/components"), join(base, "site/src/components")];
+  configState.directory.components = [
+    join(base, "shared/components"),
+    join(base, "site/src/components"),
+  ];
   mkdirSync(join(base, "shared/components"), { recursive: true });
   mkdirSync(join(base, "site/src/components"), { recursive: true });
   invalidateComponentListCache();
-  warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+  warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -54,23 +63,39 @@ afterEach(() => {
 
 describe("listComponents with multiple roots", () => {
   it("discovers components in every configured root", async () => {
-    writeFileSync(join(base, "shared/components/hello-card.html"), "<div>shared</div>");
-    writeFileSync(join(base, "site/src/components/local-card.html"), "<div>local</div>");
+    writeFileSync(
+      join(base, "shared/components/hello-card.html"),
+      "<div>shared</div>",
+    );
+    writeFileSync(
+      join(base, "site/src/components/local-card.html"),
+      "<div>local</div>",
+    );
 
     const list = await listComponents();
     expect(Object.keys(list).sort()).toEqual(["hello-card", "local-card"]);
-    expect(list["hello-card"].fileName).toBe(join(base, "shared/components/hello-card.html"));
-    expect(list["local-card"].fileName).toBe(join(base, "site/src/components/local-card.html"));
+    expect(list["hello-card"].fileName).toBe(
+      join(base, "shared/components/hello-card.html"),
+    );
+    expect(list["local-card"].fileName).toBe(
+      join(base, "site/src/components/local-card.html"),
+    );
   });
 
   it("throws the collision error naming both paths when two roots define the same tag", async () => {
-    writeFileSync(join(base, "shared/components/hello-card.html"), "<div>shared</div>");
-    writeFileSync(join(base, "site/src/components/hello-card.html"), "<div>local</div>");
+    writeFileSync(
+      join(base, "shared/components/hello-card.html"),
+      "<div>shared</div>",
+    );
+    writeFileSync(
+      join(base, "site/src/components/hello-card.html"),
+      "<div>local</div>",
+    );
 
     await expect(listComponents()).rejects.toThrow(
       new RegExp(
         `two component files both define the tag <hello-card>[\\s\\S]*` +
-        `shared/components/hello-card.html[\\s\\S]*site/src/components/hello-card.html[\\s\\S]*directory\\.components`,
+          `shared/components/hello-card.html[\\s\\S]*site/src/components/hello-card.html[\\s\\S]*directory\\.components`,
       ),
     );
   });

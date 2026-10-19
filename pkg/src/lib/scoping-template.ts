@@ -65,7 +65,11 @@
  */
 
 import { BascikConfig } from "./config.ts";
-import { namespaceScriptTags, prefixElementAttribute, withScopedCssCacheBypassed } from "./javascript.ts";
+import {
+  namespaceScriptTags,
+  prefixElementAttribute,
+  withScopedCssCacheBypassed,
+} from "./javascript.ts";
 import { stripScriptLines } from "./script-source-lines.ts";
 import { minifyAttributeName, observeAttributeNames } from "./names.ts";
 import { observeCssImportPlanning } from "./styles.ts";
@@ -97,7 +101,10 @@ export const SCOPING_CONFIG_KEYS = ["scoping", "minify"] as const;
  * order: id, name, class, then script namespacing. Mutates and returns
  * `component`.
  */
-export const runScopingPipeline = (component: BascikComponent, instanceId: string): BascikComponent => {
+export const runScopingPipeline = (
+  component: BascikComponent,
+  instanceId: string,
+): BascikComponent => {
   const skip = BascikConfig.scoping?.preserve ?? ["code"];
   let current = component;
   if (BascikConfig.scoping?.attributes?.id) {
@@ -107,7 +114,13 @@ export const runScopingPipeline = (component: BascikComponent, instanceId: strin
     current = prefixElementAttribute(current, "name", instanceId, true, skip);
   }
   if (BascikConfig.scoping?.attributes?.class) {
-    current = prefixElementAttribute(current, "class", instanceId, BascikConfig.scoping?.deduplicateCss ?? true, skip);
+    current = prefixElementAttribute(
+      current,
+      "class",
+      instanceId,
+      BascikConfig.scoping?.deduplicateCss ?? true,
+      skip,
+    );
   }
   if (BascikConfig.scoping?.scriptBlocks) {
     current = namespaceScriptTags(current);
@@ -145,7 +158,10 @@ export interface ScopingTemplate {
 const snapshotResult = (component: BascikComponent): ScopingResult => ({
   fileContent: component.fileContent,
   cssFileContent: component.cssFileContent,
-  scopedIdNames: component.scopedIdNames === undefined ? undefined : JSON.stringify(component.scopedIdNames),
+  scopedIdNames:
+    component.scopedIdNames === undefined
+      ? undefined
+      : JSON.stringify(component.scopedIdNames),
   requiresPerInstanceCss: component.requiresPerInstanceCss,
 });
 
@@ -155,7 +171,9 @@ const inputTexts = (component: BascikComponent): string[] => [
   component.fileName ?? "",
   component.fileContent ?? "",
   component.cssFileContent ?? "",
-  component.scopedIdNames === undefined ? "" : JSON.stringify(component.scopedIdNames),
+  component.scopedIdNames === undefined
+    ? ""
+    : JSON.stringify(component.scopedIdNames),
 ];
 
 const inputKey = (component: BascikComponent): string =>
@@ -175,7 +193,11 @@ const inputKey = (component: BascikComponent): string =>
 const segment = (text: string, tokens: string[]): Segmented | null => {
   const hits: Array<{ start: number; end: number; token: number }> = [];
   tokens.forEach((token, index) => {
-    for (let at = text.indexOf(token); at !== -1; at = text.indexOf(token, at + 1)) {
+    for (
+      let at = text.indexOf(token);
+      at !== -1;
+      at = text.indexOf(token, at + 1)
+    ) {
       hits.push({ start: at, end: at + token.length, token: index });
     }
   });
@@ -202,7 +224,9 @@ const join = (segmented: Segmented, values: string[]): string => {
 };
 
 const segmentedSize = (segmented: Segmented | undefined): number =>
-  segmented ? segmented.parts.reduce((total, part) => total + part.length, 0) : 0;
+  segmented
+    ? segmented.parts.reduce((total, part) => total + part.length, 0)
+    : 0;
 
 /**
  * Build a template from one recorded run of the real pipeline, or null when
@@ -248,26 +272,39 @@ export const buildScopingTemplate = (
   for (const token of tokens) {
     if (inputs.some((text) => text.includes(token))) return null;
     if (independentOutputs.has(token)) return null;
-    for (const output of independentOutputs) if (output.includes(token)) return null;
-    for (const input of independentInputs) if (input.includes(token)) return null;
+    for (const output of independentOutputs)
+      if (output.includes(token)) return null;
+    for (const input of independentInputs)
+      if (input.includes(token)) return null;
   }
 
   const steps: ScopingTemplate["steps"] = [];
   for (const { input, token } of stepInputs) {
     const segmented = segment(input, tokens);
     // A hash input may only contain tokens computed before it.
-    if (!segmented || segmented.tokens.some((used) => used >= token)) return null;
+    if (!segmented || segmented.tokens.some((used) => used >= token))
+      return null;
     steps.push({ input: segmented, token });
   }
 
-  for (const text of [result.fileContent, result.cssFileContent, result.scopedIdNames]) {
+  for (const text of [
+    result.fileContent,
+    result.cssFileContent,
+    result.scopedIdNames,
+  ]) {
     if (text !== undefined && text.includes("\x00")) return null;
   }
   const fileContent = segment(result.fileContent, tokens);
   if (!fileContent) return null;
-  const cssFileContent = result.cssFileContent === undefined ? undefined : segment(result.cssFileContent, tokens);
+  const cssFileContent =
+    result.cssFileContent === undefined
+      ? undefined
+      : segment(result.cssFileContent, tokens);
   if (cssFileContent === null) return null;
-  const scopedIdNames = result.scopedIdNames === undefined ? undefined : segment(result.scopedIdNames, tokens);
+  const scopedIdNames =
+    result.scopedIdNames === undefined
+      ? undefined
+      : segment(result.scopedIdNames, tokens);
   if (scopedIdNames === null) return null;
 
   return {
@@ -278,8 +315,12 @@ export const buildScopingTemplate = (
     cssFileContent,
     scopedIdNames,
     requiresPerInstanceCss: result.requiresPerInstanceCss,
-    size: 2 * (segmentedSize(fileContent) + segmentedSize(cssFileContent) + segmentedSize(scopedIdNames)
-      + steps.reduce((total, step) => total + segmentedSize(step.input), 0)),
+    size:
+      2 *
+      (segmentedSize(fileContent) +
+        segmentedSize(cssFileContent) +
+        segmentedSize(scopedIdNames) +
+        steps.reduce((total, step) => total + segmentedSize(step.input), 0)),
   };
 };
 
@@ -294,13 +335,21 @@ export const instantiateScopingTemplate = (
 ): ScopingResult | null => {
   const values = new Array<string>(template.tokenCount);
   values[0] = instanceId;
-  for (const step of template.steps) values[step.token] = minifyAttributeName(join(step.input, values));
+  for (const step of template.steps)
+    values[step.token] = minifyAttributeName(join(step.input, values));
   if (new Set(values).size !== values.length) return null;
-  for (const value of values) if (inputs.some((text) => text.includes(value))) return null;
+  for (const value of values)
+    if (inputs.some((text) => text.includes(value))) return null;
   return {
     fileContent: join(template.fileContent, values),
-    cssFileContent: template.cssFileContent === undefined ? undefined : join(template.cssFileContent, values),
-    scopedIdNames: template.scopedIdNames === undefined ? undefined : join(template.scopedIdNames, values),
+    cssFileContent:
+      template.cssFileContent === undefined
+        ? undefined
+        : join(template.cssFileContent, values),
+    scopedIdNames:
+      template.scopedIdNames === undefined
+        ? undefined
+        : join(template.scopedIdNames, values),
     requiresPerInstanceCss: template.requiresPerInstanceCss,
   };
 };
@@ -312,7 +361,8 @@ export const __scopingTemplateInternalsForTests = {
   inputKey,
   entryCount: (): number => entries.size,
   /** The cached template for `component`, for tests that simulate a wrong prediction. */
-  templateFor: (component: BascikComponent): ScopingTemplate | null => entries.get(inputKey(component))?.template ?? null,
+  templateFor: (component: BascikComponent): ScopingTemplate | null =>
+    entries.get(inputKey(component))?.template ?? null,
 };
 
 const sameResult = (a: ScopingResult, b: ScopingResult): boolean =>
@@ -322,21 +372,42 @@ const sameResult = (a: ScopingResult, b: ScopingResult): boolean =>
   a.requiresPerInstanceCss === b.requiresPerInstanceCss;
 
 const differingField = (a: ScopingResult, b: ScopingResult): string =>
-  (["fileContent", "cssFileContent", "scopedIdNames", "requiresPerInstanceCss"] as const)
-    .find((field) => a[field] !== b[field]) ?? "none";
+  (
+    [
+      "fileContent",
+      "cssFileContent",
+      "scopedIdNames",
+      "requiresPerInstanceCss",
+    ] as const
+  ).find((field) => a[field] !== b[field]) ?? "none";
 
-const applyResult = (component: BascikComponent, result: ScopingResult): BascikComponent => {
+const applyResult = (
+  component: BascikComponent,
+  result: ScopingResult,
+): BascikComponent => {
   component.fileContent = result.fileContent;
   if (result.cssFileContent === undefined) delete component.cssFileContent;
   else component.cssFileContent = result.cssFileContent;
   if (result.scopedIdNames === undefined) delete component.scopedIdNames;
-  else component.scopedIdNames = JSON.parse(result.scopedIdNames) as Record<string, string>;
-  if (result.requiresPerInstanceCss === undefined) delete component.requiresPerInstanceCss;
+  else
+    component.scopedIdNames = JSON.parse(result.scopedIdNames) as Record<
+      string,
+      string
+    >;
+  if (result.requiresPerInstanceCss === undefined)
+    delete component.requiresPerInstanceCss;
   else component.requiresPerInstanceCss = result.requiresPerInstanceCss;
   return component;
 };
 
-const CONSOLE_METHODS = ["log", "info", "warn", "error", "debug", "trace"] as const;
+const CONSOLE_METHODS = [
+  "log",
+  "info",
+  "warn",
+  "error",
+  "debug",
+  "trace",
+] as const;
 
 /**
  * Run the real pipeline once while recording every generated name, whether
@@ -345,24 +416,39 @@ const CONSOLE_METHODS = ["log", "info", "warn", "error", "debug", "trace"] as co
 export const recordScopingRun = (
   component: BascikComponent,
   instanceId: string,
-): { component: BascikComponent; calls: Array<{ input: string; output: string }>; clean: boolean } => {
+): {
+  component: BascikComponent;
+  calls: Array<{ input: string; output: string }>;
+  clean: boolean;
+} => {
   const calls: Array<{ input: string; output: string }> = [];
   let clean = true;
   const originals = CONSOLE_METHODS.map((method) => console[method]);
   CONSOLE_METHODS.forEach((method, index) => {
     console[method] = (...args: unknown[]) => {
       clean = false;
-      return (originals[index] as (...values: unknown[]) => void).apply(console, args);
+      return (originals[index] as (...values: unknown[]) => void).apply(
+        console,
+        args,
+      );
     };
   });
   try {
     const result = observeCssImportPlanning(
-      () => { clean = false; },
-      () => observeAttributeNames(
-        (input, output) => { calls.push({ input, output }); },
-        // A memo hit would hide name generation and import planning.
-        () => withScopedCssCacheBypassed(() => runScopingPipeline(component, instanceId)),
-      ),
+      () => {
+        clean = false;
+      },
+      () =>
+        observeAttributeNames(
+          (input, output) => {
+            calls.push({ input, output });
+          },
+          // A memo hit would hide name generation and import planning.
+          () =>
+            withScopedCssCacheBypassed(() =>
+              runScopingPipeline(component, instanceId),
+            ),
+        ),
     );
     return { component: result, calls, clean };
   } finally {
@@ -408,8 +494,14 @@ export const clearScopingTemplates = (): void => {
 const storeEntry = (key: string, entry: TemplateEntry): void => {
   entries.set(key, entry);
   totalBytes += entry.size;
-  while (entries.size > MAX_TEMPLATE_ENTRIES || totalBytes > MAX_TEMPLATE_BYTES) {
-    const [oldestKey, oldest] = entries.entries().next().value as [string, TemplateEntry];
+  while (
+    entries.size > MAX_TEMPLATE_ENTRIES ||
+    totalBytes > MAX_TEMPLATE_BYTES
+  ) {
+    const [oldestKey, oldest] = entries.entries().next().value as [
+      string,
+      TemplateEntry,
+    ];
     entries.delete(oldestKey);
     totalBytes -= oldest.size;
   }
@@ -420,13 +512,17 @@ const disable = (entry: TemplateEntry): void => {
   entry.template = null;
 };
 
-const verifyEveryReuse = (): boolean => process.env.BASCIK_VERIFY_SCOPING_TEMPLATES === "1";
+const verifyEveryReuse = (): boolean =>
+  process.env.BASCIK_VERIFY_SCOPING_TEMPLATES === "1";
 
 /**
  * Scope one component instance: the same result as `runScopingPipeline`,
  * reusing a verified template for repeated inputs.
  */
-export const scopeComponentInstance = (component: BascikComponent, instanceId: string): BascikComponent => {
+export const scopeComponentInstance = (
+  component: BascikComponent,
+  instanceId: string,
+): BascikComponent => {
   const key = inputKey(component);
   const entry = entries.get(key);
 
@@ -435,7 +531,12 @@ export const scopeComponentInstance = (component: BascikComponent, instanceId: s
     const recorded = recordScopingRun(component, instanceId);
     __scopingTemplateStatsForTests.recorded++;
     const template = recorded.clean
-      ? buildScopingTemplate(inputs, instanceId, recorded.calls, snapshotResult(recorded.component))
+      ? buildScopingTemplate(
+          inputs,
+          instanceId,
+          recorded.calls,
+          snapshotResult(recorded.component),
+        )
       : null;
     if (!template) __scopingTemplateStatsForTests.rejected++;
     storeEntry(key, {
@@ -451,18 +552,28 @@ export const scopeComponentInstance = (component: BascikComponent, instanceId: s
   entries.delete(key);
   entries.set(key, entry);
 
-  if (entry.state === "never" || !entry.template) return runScopingPipeline(component, instanceId);
+  if (entry.state === "never" || !entry.template)
+    return runScopingPipeline(component, instanceId);
 
   const template = entry.template;
-  const predicted = instantiateScopingTemplate(template, instanceId, inputTexts(component));
+  const predicted = instantiateScopingTemplate(
+    template,
+    instanceId,
+    inputTexts(component),
+  );
 
   if (entry.state === "verifying") {
     const real = runScopingPipeline(component, instanceId);
-    if (predicted && instanceId !== template.instanceId && !entry.verifiedIds.has(instanceId)) {
+    if (
+      predicted &&
+      instanceId !== template.instanceId &&
+      !entry.verifiedIds.has(instanceId)
+    ) {
       if (sameResult(predicted, snapshotResult(real))) {
         entry.verifiedIds.add(instanceId);
         __scopingTemplateStatsForTests.verified++;
-        if (entry.verifiedIds.size >= REQUIRED_VERIFICATIONS) entry.state = "trusted";
+        if (entry.verifiedIds.size >= REQUIRED_VERIFICATIONS)
+          entry.state = "trusted";
       } else {
         disable(entry);
         __scopingTemplateStatsForTests.rejected++;
@@ -476,7 +587,10 @@ export const scopeComponentInstance = (component: BascikComponent, instanceId: s
   if (verifyEveryReuse()) {
     const copy: BascikComponent = {
       ...component,
-      scopedIdNames: component.scopedIdNames === undefined ? undefined : { ...component.scopedIdNames },
+      scopedIdNames:
+        component.scopedIdNames === undefined
+          ? undefined
+          : { ...component.scopedIdNames },
     };
     if (component.scopedIdNames === undefined) delete copy.scopedIdNames;
     const real = snapshotResult(runScopingPipeline(copy, instanceId));

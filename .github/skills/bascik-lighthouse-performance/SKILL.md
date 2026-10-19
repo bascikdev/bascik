@@ -25,18 +25,19 @@ docs/lighthouse/
 
 ## 2. Core Web Vitals Expectations for Bascik Pages
 
-* **Largest Contentful Paint (LCP):** Under 1.0s. Achieved by preloading critical fonts and rendering semantic HTML without client-side hydration delays.
-* **Cumulative Layout Shift (CLS):** 0.00. Achieved by setting explicit dimensions or CSS aspect ratios on images and components.
-* **Total Blocking Time (TBT):** 0ms. Pages ship with zero framework JavaScript.
+- **Largest Contentful Paint (LCP):** Under 1.0s. Achieved by preloading critical fonts and rendering semantic HTML without client-side hydration delays.
+- **Cumulative Layout Shift (CLS):** 0.00. Achieved by setting explicit dimensions or CSS aspect ratios on images and components.
+- **Total Blocking Time (TBT):** 0ms. Pages ship with zero framework JavaScript.
 
 ---
 
 ## 3. SEO & Structured Data Requirements
 
 Docs pages include automated JSON-LD schemas verified during build and audits:
-* **BreadcrumbList:** Generated via `docs/scripts/breadcrumb-ld.ts`.
-* **Article & TechArticle:** Generated via `docs/scripts/article-schema.ts`.
-* **FAQPage:** Generated via `docs/scripts/faq-schema.ts`.
+
+- **BreadcrumbList:** Generated via `docs/scripts/breadcrumb-ld.ts`.
+- **Article & TechArticle:** Generated via `docs/scripts/article-schema.ts`.
+- **FAQPage:** Generated via `docs/scripts/faq-schema.ts`.
 
 ---
 

@@ -18,7 +18,9 @@ import {
 const retentionReportDirectories: string[] = [];
 
 afterEach(async ({ task }) => {
-  const failed = task.result?.state === "fail" || process.env.BASCIK_PROFILE_TEST_KEEP_REPORTS === "1";
+  const failed =
+    task.result?.state === "fail" ||
+    process.env.BASCIK_PROFILE_TEST_KEEP_REPORTS === "1";
   if (failed) {
     for (const directory of retentionReportDirectories) {
       console.error(`Private retention diagnostics retained: ${directory}`);
@@ -33,7 +35,10 @@ afterEach(async ({ task }) => {
         await rm(directory, { recursive: true, force: true });
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-          console.error(`Error removing retention test directory ${directory}:`, error);
+          console.error(
+            `Error removing retention test directory ${directory}:`,
+            error,
+          );
           throw error;
         }
       }
@@ -61,15 +66,22 @@ describe("packet R2: fixed production batches", () => {
         "batch-1",
         "batch-2",
       ]);
-      expect(checkpoints.every((checkpoint) => checkpoint.mode === mode)).toBe(true);
+      expect(checkpoints.every((checkpoint) => checkpoint.mode === mode)).toBe(
+        true,
+      );
       assertMeasuredBatchDeltas(
         checkpoints.map((checkpoint) => checkpoint.completed),
         252,
       );
       expect(checkpoints[2].completed - checkpoints[0].completed).toBe(504);
       // Independent authored-handler observations, not parent-supplied sample labels.
-      assertMeasuredBatchDeltas(checkpoints.map(checkpoint => checkpoint.requests), 252);
-      expect(checkpoints.map(checkpoint => checkpoint.completed)).toEqual([0, 252, 504]);
+      assertMeasuredBatchDeltas(
+        checkpoints.map((checkpoint) => checkpoint.requests),
+        252,
+      );
+      expect(checkpoints.map((checkpoint) => checkpoint.completed)).toEqual([
+        0, 252, 504,
+      ]);
 
       for (const checkpoint of checkpoints) {
         expect(checkpoint).toMatchObject({
@@ -86,7 +98,11 @@ describe("packet R2: fixed production batches", () => {
           pending: { dispatch: 0, transport: 0, tls: 0 },
           staleInlineLoads: 0,
         });
-        for (const owner of ["inlineLoads", "dependencyEdges", "sidecar"] as const) {
+        for (const owner of [
+          "inlineLoads",
+          "dependencyEdges",
+          "sidecar",
+        ] as const) {
           expect(checkpoint[owner], owner).toBe(checkpoints[0][owner]);
         }
         for (const bytes of Object.values(checkpoint.memory)) {
@@ -113,10 +129,18 @@ describe("packet R3 row: cancel before headers", () => {
         2,
         mode,
         false,
-        { fault: "cancel-before-headers", smokeCycles: 10, measuredCycles: 100 },
+        {
+          fault: "cancel-before-headers",
+          smokeCycles: 10,
+          measuredCycles: 100,
+        },
       );
 
-      expect(checkpoints.map((c) => c.phase)).toEqual(["baseline", "batch-1", "batch-2"]);
+      expect(checkpoints.map((c) => c.phase)).toEqual([
+        "baseline",
+        "batch-1",
+        "batch-2",
+      ]);
       expect(checkpoints.every((c) => c.mode === mode)).toBe(true);
 
       for (const [index, checkpoint] of checkpoints.entries()) {
@@ -166,10 +190,18 @@ describe("packet R3 row: cancel after exact prefix", () => {
         2,
         mode,
         false,
-        { fault: "cancel-after-exact-prefix", smokeCycles: 10, measuredCycles: 100 },
+        {
+          fault: "cancel-after-exact-prefix",
+          smokeCycles: 10,
+          measuredCycles: 100,
+        },
       );
 
-      expect(checkpoints.map((c) => c.phase)).toEqual(["baseline", "batch-1", "batch-2"]);
+      expect(checkpoints.map((c) => c.phase)).toEqual([
+        "baseline",
+        "batch-1",
+        "batch-2",
+      ]);
       expect(checkpoints.every((c) => c.mode === mode)).toBe(true);
 
       for (const [index, checkpoint] of checkpoints.entries()) {
@@ -178,7 +210,10 @@ describe("packet R3 row: cancel after exact prefix", () => {
 
         expect(checkpoint.cancellation).toBeDefined();
         expect(checkpoint.cancellation!.midBody).toBeDefined();
-        assertCanceledAfterPrefix(checkpoint.cancellation!.midBody!, cancelCount);
+        assertCanceledAfterPrefix(
+          checkpoint.cancellation!.midBody!,
+          cancelCount,
+        );
         expect(checkpoint.cancellation).toMatchObject({
           entered: cancelCount,
           aborted: cancelCount,
@@ -222,10 +257,18 @@ describe("packet R3 row: reject after acknowledged abort", () => {
         2,
         mode,
         false,
-        { fault: "reject-after-acknowledged-abort", smokeCycles: 10, measuredCycles: 100 },
+        {
+          fault: "reject-after-acknowledged-abort",
+          smokeCycles: 10,
+          measuredCycles: 100,
+        },
       );
 
-      expect(checkpoints.map((c) => c.phase)).toEqual(["baseline", "batch-1", "batch-2"]);
+      expect(checkpoints.map((c) => c.phase)).toEqual([
+        "baseline",
+        "batch-1",
+        "batch-2",
+      ]);
       expect(checkpoints.every((c) => c.mode === mode)).toBe(true);
 
       for (const [index, checkpoint] of checkpoints.entries()) {
@@ -277,7 +320,11 @@ describe("packet R3 row: fixed failed import", () => {
         { fault: "fixed-failed-import", smokeCycles: 10, measuredCycles: 100 },
       );
 
-      expect(checkpoints.map((c) => c.phase)).toEqual(["baseline", "batch-1", "batch-2"]);
+      expect(checkpoints.map((c) => c.phase)).toEqual([
+        "baseline",
+        "batch-1",
+        "batch-2",
+      ]);
       expect(checkpoints.every((c) => c.mode === mode)).toBe(true);
 
       for (const checkpoint of checkpoints) {
@@ -304,143 +351,292 @@ describe("packet R3 row: fixed failed import", () => {
 });
 
 describe("packet R5: dev module churn", () => {
-  async function assertDevRowSettlement(directory: string, checkpoints: RetentionCheckpoint[]) {
-    expect(checkpoints.map(checkpoint => checkpoint.phase)).toEqual(["baseline", "batch-1", "batch-2"]);
-    expect(checkpoints.map(checkpoint => checkpoint.completed)).toEqual([0, 50, 100]);
-    assertMeasuredBatchDeltas(checkpoints.map(checkpoint => checkpoint.completed), 50);
+  async function assertDevRowSettlement(
+    directory: string,
+    checkpoints: RetentionCheckpoint[],
+  ) {
+    expect(checkpoints.map((checkpoint) => checkpoint.phase)).toEqual([
+      "baseline",
+      "batch-1",
+      "batch-2",
+    ]);
+    expect(checkpoints.map((checkpoint) => checkpoint.completed)).toEqual([
+      0, 50, 100,
+    ]);
+    assertMeasuredBatchDeltas(
+      checkpoints.map((checkpoint) => checkpoint.completed),
+      50,
+    );
     for (const checkpoint of checkpoints) {
       expect(checkpoint).toMatchObject({
-        activeRequests: 0, liveRequests: 0, liveRequestClosures: 0,
-        stalePlans: 0, staleInlineLoads: 0, pendingCompression: 0,
-        pending: { dispatch: 0, transport: 0, tls: 0 }, devModuleLifecycle: { pending: 0 },
+        activeRequests: 0,
+        liveRequests: 0,
+        liveRequestClosures: 0,
+        stalePlans: 0,
+        staleInlineLoads: 0,
+        pendingCompression: 0,
+        pending: { dispatch: 0, transport: 0, tls: 0 },
+        devModuleLifecycle: { pending: 0 },
       });
-      for (const owner of ["pages", "plans", "cache", "graph", "sidecar", "dependencyEdges", "inlineLoads"] as const) {
-        expect(checkpoint[owner], `${checkpoint.phase}: ${owner}`).toBe(checkpoints[0][owner]);
+      for (const owner of [
+        "pages",
+        "plans",
+        "cache",
+        "graph",
+        "sidecar",
+        "dependencyEdges",
+        "inlineLoads",
+      ] as const) {
+        expect(checkpoint[owner], `${checkpoint.phase}: ${owner}`).toBe(
+          checkpoints[0][owner],
+        );
       }
       expect(checkpoint.resources).toEqual(checkpoints[0].resources);
-      expect(checkpoint.devModuleLifecycle?.listeners).toEqual(checkpoints[0].devModuleLifecycle?.listeners);
+      expect(checkpoint.devModuleLifecycle?.listeners).toEqual(
+        checkpoints[0].devModuleLifecycle?.listeners,
+      );
       expect(checkpoint.devModuleLifecycle?.liveTargetPaths).toHaveLength(1);
-      expect(checkpoint.devModuleLifecycle?.liveTargetPaths).toEqual(checkpoints[0].devModuleLifecycle?.liveTargetPaths);
+      expect(checkpoint.devModuleLifecycle?.liveTargetPaths).toEqual(
+        checkpoints[0].devModuleLifecycle?.liveTargetPaths,
+      );
     }
-    const shutdown = JSON.parse(await readFile(join(directory, "shutdown.json"), "utf8")) as {
-      watchers: number; closedWatchers: number[];
+    const shutdown = JSON.parse(
+      await readFile(join(directory, "shutdown.json"), "utf8"),
+    ) as {
+      watchers: number;
+      closedWatchers: number[];
     };
     expect(shutdown.watchers).toBeGreaterThan(0);
-    expect(shutdown.closedWatchers).toEqual(Array.from({ length: shutdown.watchers }, (_, index) => index));
+    expect(shutdown.closedWatchers).toEqual(
+      Array.from({ length: shutdown.watchers }, (_, index) => index),
+    );
     expect(shutdown).toMatchObject({
-      connected: false, exitCode: 0, signalCode: null,
-      restored: { destroySSL: true, createSecureServer: true, createServer: true },
+      connected: false,
+      exitCode: 0,
+      signalCode: null,
+      restored: {
+        destroySSL: true,
+        createSecureServer: true,
+        createServer: true,
+      },
     });
   }
 
   it("dev module deletion/recovery (API route): 2 smoke then 100 revisions split 50+50 with JSON and stream recovery", async () => {
     const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
     retentionReportDirectories.push(directory);
-    const checkpoints = await runRetentionExperiment(directory, true, 2, "dev", false, {
-      input: "dev-module-api", smokeCycles: 2, measuredRevisions: 100,
-    });
+    const checkpoints = await runRetentionExperiment(
+      directory,
+      true,
+      2,
+      "dev",
+      false,
+      {
+        input: "dev-module-api",
+        smokeCycles: 2,
+        measuredRevisions: 100,
+      },
+    );
     await assertDevRowSettlement(directory, checkpoints);
     const path = join(await realpath(directory), "project/api/probe.mjs");
-    expect(checkpoints.map(checkpoint => checkpoint.completed)).toEqual([0, 50, 100]);
-    expect(checkpoints.map(checkpoint => checkpoint.devModuleLifecycle?.observationGeneration)).toEqual([8, 58, 108]);
-    expect(checkpoints.map(checkpoint => checkpoint.devModuleLifecycle?.publications)).toEqual([8, 58, 108]);
-    assertMeasuredBatchDeltas(checkpoints.map(checkpoint => checkpoint.devModuleLifecycle!.publications), 50);
+    expect(checkpoints.map((checkpoint) => checkpoint.completed)).toEqual([
+      0, 50, 100,
+    ]);
+    expect(
+      checkpoints.map(
+        (checkpoint) => checkpoint.devModuleLifecycle?.observationGeneration,
+      ),
+    ).toEqual([8, 58, 108]);
+    expect(
+      checkpoints.map(
+        (checkpoint) => checkpoint.devModuleLifecycle?.publications,
+      ),
+    ).toEqual([8, 58, 108]);
+    assertMeasuredBatchDeltas(
+      checkpoints.map(
+        (checkpoint) => checkpoint.devModuleLifecycle!.publications,
+      ),
+      50,
+    );
     for (const checkpoint of checkpoints) {
       expect(checkpoint).toMatchObject({
-        activeRequests: 0, liveRequests: 0, liveRequestClosures: 0, stalePlans: 0,
-        staleInlineLoads: 0, pendingCompression: 0, pending: { dispatch: 0, transport: 0, tls: 0 },
+        activeRequests: 0,
+        liveRequests: 0,
+        liveRequestClosures: 0,
+        stalePlans: 0,
+        staleInlineLoads: 0,
+        pendingCompression: 0,
+        pending: { dispatch: 0, transport: 0, tls: 0 },
         devModuleLifecycle: { pending: 0, liveTargetPaths: [path] },
       });
-      expect(checkpoint.devModuleLifecycle?.listeners).toEqual(checkpoints[0].devModuleLifecycle?.listeners);
+      expect(checkpoint.devModuleLifecycle?.listeners).toEqual(
+        checkpoints[0].devModuleLifecycle?.listeners,
+      );
       expect(checkpoint.resources).toEqual(checkpoints[0].resources);
-      for (const owner of ["pages", "plans", "cache", "graph", "sidecar", "dependencyEdges", "inlineLoads", "publications"] as const) {
+      for (const owner of [
+        "pages",
+        "plans",
+        "cache",
+        "graph",
+        "sidecar",
+        "dependencyEdges",
+        "inlineLoads",
+        "publications",
+      ] as const) {
         expect(checkpoint[owner]).toBe(checkpoints[0][owner]);
       }
     }
-    const stages = JSON.parse(await readFile(join(directory, "api-stages.json"), "utf8")) as {
-      observation: DevChurnStageObservation; held?: DevChurnStage; revision: number; deleted: boolean;
+    const stages = JSON.parse(
+      await readFile(join(directory, "api-stages.json"), "utf8"),
+    ) as {
+      observation: DevChurnStageObservation;
+      held?: DevChurnStage;
+      revision: number;
+      deleted: boolean;
     }[];
     expect(stages).toHaveLength(110);
-    expect(stages.slice(0, 6).map(stage => stage.held)).toEqual(["watcher", "invalidation", "reload", "request", "transport", "ipc"]);
-    expect(stages.slice(8, 108).map(stage => stage.revision)).toEqual(Array.from({ length: 100 }, (_, index) => index + 1));
-    for (const [index, stage] of stages.entries()) assertDevChurnStages(stage.observation, { path, generation: index + 1 });
-    const observations = JSON.parse(await readFile(join(directory, "dev-module-observations.json"), "utf8")) as {
-      path: string; generation: number; watchEvent: string; publications: string[];
+    expect(stages.slice(0, 6).map((stage) => stage.held)).toEqual([
+      "watcher",
+      "invalidation",
+      "reload",
+      "request",
+      "transport",
+      "ipc",
+    ]);
+    expect(stages.slice(8, 108).map((stage) => stage.revision)).toEqual(
+      Array.from({ length: 100 }, (_, index) => index + 1),
+    );
+    for (const [index, stage] of stages.entries())
+      assertDevChurnStages(stage.observation, { path, generation: index + 1 });
+    const observations = JSON.parse(
+      await readFile(join(directory, "dev-module-observations.json"), "utf8"),
+    ) as {
+      path: string;
+      generation: number;
+      watchEvent: string;
+      publications: string[];
     }[];
     expect(observations).toHaveLength(110);
-    expect(observations.filter(observation => observation.watchEvent === "unlink")).toHaveLength(3);
+    expect(
+      observations.filter((observation) => observation.watchEvent === "unlink"),
+    ).toHaveLength(3);
     for (const [index, observation] of observations.entries()) {
-      const watchEvent = index < 8 ? ["change", "unlink", "add", "change"][index % 4]
-        : index < 108 ? "change" : index === 108 ? "unlink" : "add";
-      assertInlinePublication(observation, { path, generation: index + 1, watchEvent, publications: ["api-route-changed"] });
+      const watchEvent =
+        index < 8
+          ? ["change", "unlink", "add", "change"][index % 4]
+          : index < 108
+            ? "change"
+            : index === 108
+              ? "unlink"
+              : "add";
+      assertInlinePublication(observation, {
+        path,
+        generation: index + 1,
+        watchEvent,
+        publications: ["api-route-changed"],
+      });
     }
-    expect(stages.slice(-2).map(stage => ({ revision: stage.revision, deleted: stage.deleted }))).toEqual([
-      { revision: 0, deleted: true }, { revision: 0, deleted: false },
+    expect(
+      stages
+        .slice(-2)
+        .map((stage) => ({ revision: stage.revision, deleted: stage.deleted })),
+    ).toEqual([
+      { revision: 0, deleted: true },
+      { revision: 0, deleted: false },
     ]);
   }, 180_000);
 
-  it(
-    "dev module deletion/recovery (external src helper): 2 smoke cycles then 100 revisions split 50+50 and deletion recovery",
-    async () => {
-      const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
-      retentionReportDirectories.push(directory);
-      const checkpoints = await runRetentionExperiment(directory, true, 2, "dev", false, {
+  it("dev module deletion/recovery (external src helper): 2 smoke cycles then 100 revisions split 50+50 and deletion recovery", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
+    retentionReportDirectories.push(directory);
+    const checkpoints = await runRetentionExperiment(
+      directory,
+      true,
+      2,
+      "dev",
+      false,
+      {
         input: "dev-module-external",
         smokeCycles: 2,
         measuredRevisions: 100,
-      });
-      await assertDevRowSettlement(directory, checkpoints);
-      expect(checkpoints.map((checkpoint) => checkpoint.completed)).toEqual([0, 50, 100]);
-      expect(checkpoints.map((checkpoint) => checkpoint.devModuleLifecycle?.observationGeneration)).toEqual([8, 58, 108]);
-      assertMeasuredBatchDeltas(
-        checkpoints.map((checkpoint) => checkpoint.publications),
-        50,
+      },
+    );
+    await assertDevRowSettlement(directory, checkpoints);
+    expect(checkpoints.map((checkpoint) => checkpoint.completed)).toEqual([
+      0, 50, 100,
+    ]);
+    expect(
+      checkpoints.map(
+        (checkpoint) => checkpoint.devModuleLifecycle?.observationGeneration,
+      ),
+    ).toEqual([8, 58, 108]);
+    assertMeasuredBatchDeltas(
+      checkpoints.map((checkpoint) => checkpoint.publications),
+      50,
+    );
+    for (const checkpoint of checkpoints) {
+      expect(checkpoint.pending).toEqual({ dispatch: 0, transport: 0, tls: 0 });
+      expect(checkpoint.devModuleLifecycle?.pending).toBe(0);
+      expect(checkpoint.devModuleLifecycle?.liveTargetPaths).toEqual(
+        checkpoints[0].devModuleLifecycle?.liveTargetPaths,
       );
-      for (const checkpoint of checkpoints) {
-        expect(checkpoint.pending).toEqual({ dispatch: 0, transport: 0, tls: 0 });
-        expect(checkpoint.devModuleLifecycle?.pending).toBe(0);
-        expect(checkpoint.devModuleLifecycle?.liveTargetPaths).toEqual(checkpoints[0].devModuleLifecycle?.liveTargetPaths);
-        expect(checkpoint.devModuleLifecycle?.listeners).toEqual(checkpoints[0].devModuleLifecycle?.listeners);
-        expect(checkpoint.resources).toEqual(checkpoints[0].resources);
-        for (const owner of ["pages", "plans", "cache", "graph", "sidecar", "dependencyEdges"] as const) {
-          expect(checkpoint[owner]).toBe(checkpoints[0][owner]);
-        }
-        expect(checkpoint).toMatchObject({
-          activeRequests: 0,
-          liveRequests: 0,
-          liveRequestClosures: 0,
-          stalePlans: 0,
-          pendingCompression: 0,
-        });
+      expect(checkpoint.devModuleLifecycle?.listeners).toEqual(
+        checkpoints[0].devModuleLifecycle?.listeners,
+      );
+      expect(checkpoint.resources).toEqual(checkpoints[0].resources);
+      for (const owner of [
+        "pages",
+        "plans",
+        "cache",
+        "graph",
+        "sidecar",
+        "dependencyEdges",
+      ] as const) {
+        expect(checkpoint[owner]).toBe(checkpoints[0][owner]);
       }
-      const stages = JSON.parse(await readFile(join(directory, "external-stages.json"), "utf8")) as {
-        observation: DevChurnStageObservation;
-        held?: DevChurnStage;
-      }[];
-      expect(stages).toHaveLength(110);
-      expect(stages.slice(0, 6).map((stage) => stage.held)).toEqual([
-        "watcher",
-        "invalidation",
-        "reload",
-        "request",
-        "transport",
-        "ipc",
-      ]);
-      for (const [index, stage] of stages.entries()) {
-        assertDevChurnStages(stage.observation, { path: stages[0].observation.path, generation: index + 1 });
-      }
-      const publications = JSON.parse(await readFile(join(directory, "dev-module-observations.json"), "utf8")) as {
-        watchEvent: string;
-        publications: string[];
-      }[];
-      expect(publications.filter((event) => event.watchEvent === "unlink")).toHaveLength(3);
-      expect(publications.slice(-2)).toMatchObject([
-        { watchEvent: "unlink", publications: ["build-error"] },
-        { watchEvent: "add", publications: ["transpiled"] },
-      ]);
-    },
-    180_000,
-  );
+      expect(checkpoint).toMatchObject({
+        activeRequests: 0,
+        liveRequests: 0,
+        liveRequestClosures: 0,
+        stalePlans: 0,
+        pendingCompression: 0,
+      });
+    }
+    const stages = JSON.parse(
+      await readFile(join(directory, "external-stages.json"), "utf8"),
+    ) as {
+      observation: DevChurnStageObservation;
+      held?: DevChurnStage;
+    }[];
+    expect(stages).toHaveLength(110);
+    expect(stages.slice(0, 6).map((stage) => stage.held)).toEqual([
+      "watcher",
+      "invalidation",
+      "reload",
+      "request",
+      "transport",
+      "ipc",
+    ]);
+    for (const [index, stage] of stages.entries()) {
+      assertDevChurnStages(stage.observation, {
+        path: stages[0].observation.path,
+        generation: index + 1,
+      });
+    }
+    const publications = JSON.parse(
+      await readFile(join(directory, "dev-module-observations.json"), "utf8"),
+    ) as {
+      watchEvent: string;
+      publications: string[];
+    }[];
+    expect(
+      publications.filter((event) => event.watchEvent === "unlink"),
+    ).toHaveLength(3);
+    expect(publications.slice(-2)).toMatchObject([
+      { watchEvent: "unlink", publications: ["build-error"] },
+      { watchEvent: "add", publications: ["transpiled"] },
+    ]);
+  }, 180_000);
 
   it("dev module deletion/recovery (inline page): 2 smoke then 100 revisions split 50+50 with edit delete recreate restore", async () => {
     const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
@@ -454,7 +650,11 @@ describe("packet R5: dev module churn", () => {
       { input: "dev-module-inline", smokeCycles: 2, measuredRevisions: 100 },
     );
     await assertDevRowSettlement(directory, checkpoints);
-    expect(checkpoints.map(c => c.phase)).toEqual(["baseline", "batch-1", "batch-2"]);
+    expect(checkpoints.map((c) => c.phase)).toEqual([
+      "baseline",
+      "batch-1",
+      "batch-2",
+    ]);
     expect(checkpoints[0].completed).toBe(0);
     expect(checkpoints[1].completed).toBe(50);
     expect(checkpoints[2].completed).toBe(100);
@@ -476,17 +676,27 @@ describe("packet R5: dev module churn", () => {
       expect(checkpoint.fileVersions).toEqual([0, 0, 0, 0]);
       expect(checkpoint.resources).toEqual(checkpoints[0].resources);
       expect(checkpoint.staleInlineLoads).toBe(0);
-      expect(checkpoint.devModuleLifecycle?.listeners).toEqual(checkpoints[0].devModuleLifecycle?.listeners);
-      expect(checkpoint.devModuleLifecycle?.liveTargetPaths).toEqual(checkpoints[0].devModuleLifecycle?.liveTargetPaths);
+      expect(checkpoint.devModuleLifecycle?.listeners).toEqual(
+        checkpoints[0].devModuleLifecycle?.listeners,
+      );
+      expect(checkpoint.devModuleLifecycle?.liveTargetPaths).toEqual(
+        checkpoints[0].devModuleLifecycle?.liveTargetPaths,
+      );
       for (const owner of ["sidecar", "dependencyEdges"] as const) {
         expect(checkpoint[owner]).toBe(checkpoints[0][owner]);
       }
     }
 
-    assertMeasuredBatchDeltas(checkpoints.map(c => c.devModuleLifecycle!.observationGeneration), 50 * 4);
+    assertMeasuredBatchDeltas(
+      checkpoints.map((c) => c.devModuleLifecycle!.observationGeneration),
+      50 * 4,
+    );
     // Each cycle publishes one edit, one surviving page after deletion,
     // both pages after recreation, and one restored-page edit. Boot adds two.
-    assertMeasuredBatchDeltas(checkpoints.map(c => c.devModuleLifecycle!.publications), 50 * 5);
+    assertMeasuredBatchDeltas(
+      checkpoints.map((c) => c.devModuleLifecycle!.publications),
+      50 * 5,
+    );
     expect(checkpoints[2].devModuleLifecycle).toMatchObject({
       observationGeneration: (2 + 100) * 4,
       publications: 2 + (2 + 100) * 5,
@@ -507,7 +717,11 @@ describe("packet R6: static asset lifecycle", () => {
       false,
       { input: "static-asset", smokeCycles: 2, measuredRevisions: 100 },
     );
-    expect(checkpoints.map(c => c.phase)).toEqual(["baseline", "batch-1", "batch-2"]);
+    expect(checkpoints.map((c) => c.phase)).toEqual([
+      "baseline",
+      "batch-1",
+      "batch-2",
+    ]);
     expect(checkpoints[0].completed).toBe(0);
     expect(checkpoints[1].completed).toBe(50);
     expect(checkpoints[2].completed).toBe(100);
@@ -553,7 +767,11 @@ describe("packet R6: local build dependency lifecycle", () => {
       false,
       { input: "build-dependency", smokeCycles: 2, measuredRevisions: 100 },
     );
-    expect(checkpoints.map(c => c.phase)).toEqual(["baseline", "batch-1", "batch-2"]);
+    expect(checkpoints.map((c) => c.phase)).toEqual([
+      "baseline",
+      "batch-1",
+      "batch-2",
+    ]);
     expect(checkpoints[0].completed).toBe(0);
     expect(checkpoints[1].completed).toBe(50);
     expect(checkpoints[2].completed).toBe(100);

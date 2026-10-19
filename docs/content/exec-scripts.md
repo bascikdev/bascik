@@ -8,15 +8,15 @@ Configure lifecycle scripts in `bascik.config.ts` under the `pipeline.exec` arra
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   pipeline: {
     exec: [
       {
-        script: 'scripts/generate-search-index.ts',
-        phase: 'post',
-        watch: ['content/'],
+        script: "scripts/generate-search-index.ts",
+        phase: "post",
+        watch: ["content/"],
       },
     ],
   },
@@ -39,19 +39,19 @@ pipeline: {
 
 The `phase` property controls when your script runs relative to HTML page transpilation:
 
-| Phase | Description | Common Use Cases |
-| :--- | :--- | :--- |
-| `'pre'` (default) | Awaited before any page or component is transpiled. | Fetching external CMS data, preparing JSON catalogs, asset downloading |
-| `'parallel'` | Starts alongside page compilation in dev and build. Dev does not wait; a build joins every parallel task before reporting success. Completion never compiles pages. | Independent background artifact generation |
-| `'post'` | Executed after all pages and assets are compiled and written to `dist/`. | Search indexing, XML sitemap generation, post-processing bundles |
+| Phase             | Description                                                                                                                                                         | Common Use Cases                                                       |
+| :---------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------- |
+| `'pre'` (default) | Awaited before any page or component is transpiled.                                                                                                                 | Fetching external CMS data, preparing JSON catalogs, asset downloading |
+| `'parallel'`      | Starts alongside page compilation in dev and build. Dev does not wait; a build joins every parallel task before reporting success. Completion never compiles pages. | Independent background artifact generation                             |
+| `'post'`          | Executed after all pages and assets are compiled and written to `dist/`.                                                                                            | Search indexing, XML sitemap generation, post-processing bundles       |
 
 ```ts
 // bascik.config.ts
 export default defineConfig({
   pipeline: {
     exec: [
-      { script: 'scripts/sync-cms.ts', phase: 'pre' },
-      { script: 'scripts/generate-index.ts', phase: 'post' },
+      { script: "scripts/sync-cms.ts", phase: "pre" },
+      { script: "scripts/generate-index.ts", phase: "post" },
     ],
   },
 });
@@ -61,15 +61,15 @@ export default defineConfig({
 
 Each exec entry in `pipeline.exec` accepts:
 
-| Property | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `script` (required) | `string` | none | Path to the script file, relative to the project root |
-| `phase` | `'pre' \| 'post' \| 'parallel'` | `'pre'` | When the script executes relative to page transpilation |
-| `watch` | `string \| string[]` | `[]` | File or directory globs that trigger script re-execution during dev mode |
-| `cwd` | `string` | `process.cwd()` | Working directory for the script execution |
-| `env` | `Record<string, string>` | `{}` | Custom environment variables merged with `process.env` |
-| `args` | `string[]` | `[]` | Command-line arguments passed as `process.argv` |
-| `timeout` | `number` | `60000` | Maximum execution time in milliseconds before terminating |
+| Property            | Type                            | Default         | Description                                                              |
+| :------------------ | :------------------------------ | :-------------- | :----------------------------------------------------------------------- |
+| `script` (required) | `string`                        | none            | Path to the script file, relative to the project root                    |
+| `phase`             | `'pre' \| 'post' \| 'parallel'` | `'pre'`         | When the script executes relative to page transpilation                  |
+| `watch`             | `string \| string[]`            | `[]`            | File or directory globs that trigger script re-execution during dev mode |
+| `cwd`               | `string`                        | `process.cwd()` | Working directory for the script execution                               |
+| `env`               | `Record<string, string>`        | `{}`            | Custom environment variables merged with `process.env`                   |
+| `args`              | `string[]`                      | `[]`            | Command-line arguments passed as `process.argv`                          |
+| `timeout`           | `number`                        | `60000`         | Maximum execution time in milliseconds before terminating                |
 
 ```ts
 // Full exec entry configuration
@@ -96,9 +96,9 @@ export default defineConfig({
   pipeline: {
     exec: [
       {
-        script: 'scripts/generate-catalog.ts',
-        phase: 'pre',
-        watch: ['content/'],
+        script: "scripts/generate-catalog.ts",
+        phase: "pre",
+        watch: ["content/"],
       },
     ],
   },
@@ -108,11 +108,11 @@ export default defineConfig({
 ```html
 <!-- src/pages/catalog.html -->
 <script data-bascik-build>
-  import { readFileSync } from 'node:fs';
+  import { readFileSync } from "node:fs";
 
   export default function () {
-    const catalog = JSON.parse(readFileSync('dist/catalog.json', 'utf8'));
-    return catalog.items.map((item) => `<li>${item.title}</li>`).join('');
+    const catalog = JSON.parse(readFileSync("dist/catalog.json", "utf8"));
+    return catalog.items.map((item) => `<li>${item.title}</li>`).join("");
   }
 </script>
 ```
@@ -143,10 +143,10 @@ This recording runs the dev server with a `post` script that watches `content/` 
 
 `pipeline.onExecError` decides what a failing script does. It applies to every phase (`pre`, `parallel`, and `post`), at startup and on later edits.
 
-| `onExecError` | `bascik` (dev) | `bascik --build` |
-| :--- | :--- | :--- |
-| `'warn'` | Reports a build-error in the terminal and in open browsers, keeps serving, and retries on the next edit. **Default.** | Logs the failure and keeps building. The build can still exit 0. |
-| `'error'` | Reports the failure and exits 1. | Stops the build and exits 1, without printing "Build complete". **Default.** |
+| `onExecError` | `bascik` (dev)                                                                                                        | `bascik --build`                                                             |
+| :------------ | :-------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------- |
+| `'warn'`      | Reports a build-error in the terminal and in open browsers, keeps serving, and retries on the next edit. **Default.** | Logs the failure and keeps building. The build can still exit 0.             |
+| `'error'`     | Reports the failure and exits 1.                                                                                      | Stops the build and exits 1, without printing "Build complete". **Default.** |
 
 The defaults are opposite on purpose. While you write a script, a typo should not take down the dev server every time. In a build, a script failure must never produce output that looks successful. Set the option to flip either one:
 
@@ -154,8 +154,8 @@ The defaults are opposite on purpose. While you write a script, a typo should no
 // bascik.config.ts
 export default defineConfig({
   pipeline: {
-    onExecError: 'error', // dev also stops on a failing script
-    exec: [{ script: 'scripts/generate-feed.ts', phase: 'post' }],
+    onExecError: "error", // dev also stops on a failing script
+    exec: [{ script: "scripts/generate-feed.ts", phase: "post" }],
   },
 });
 ```
@@ -164,7 +164,7 @@ To change only one mode, use the [mode exports](/configuration#mode-overrides-de
 
 ```ts
 export const dev = defineConfig({
-  pipeline: { onExecError: 'error' },
+  pipeline: { onExecError: "error" },
 });
 ```
 
@@ -196,21 +196,21 @@ A common pattern is reading content files and writing a lightweight JSON search 
 
 ```ts
 // scripts/generate-search-index.ts
-import { readdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 async function generateIndex() {
-  const files = await readdir('./content');
+  const files = await readdir("./content");
   const index = [];
 
   for (const file of files) {
-    if (!file.endsWith('.md')) continue;
-    const text = await readFile(join('./content', file), 'utf8');
+    if (!file.endsWith(".md")) continue;
+    const text = await readFile(join("./content", file), "utf8");
     const title = text.match(/^#\s+(.+)$/m)?.[1] ?? file;
     index.push({ file, title, length: text.length });
   }
 
-  await writeFile('dist/search-index.json', JSON.stringify(index, null, 2));
+  await writeFile("dist/search-index.json", JSON.stringify(index, null, 2));
   console.log(`[search-index] Generated index for ${index.length} documents.`);
 }
 
@@ -221,15 +221,15 @@ Register it in `bascik.config.ts`:
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   pipeline: {
     exec: [
       {
-        script: 'scripts/generate-search-index.ts',
-        phase: 'post',
-        watch: ['content/**'],
+        script: "scripts/generate-search-index.ts",
+        phase: "post",
+        watch: ["content/**"],
       },
     ],
   },
@@ -242,14 +242,14 @@ Bascik does not rewrite bare specifiers in client scripts. Use an exec script wi
 
 ```ts
 // scripts/bundle-client.ts
-import * as esbuild from 'esbuild';
+import * as esbuild from "esbuild";
 
 await esbuild.build({
-  entryPoints: ['scripts/client-entry.ts'],
+  entryPoints: ["scripts/client-entry.ts"],
   bundle: true,
-  format: 'esm',
-  outfile: 'dist/assets/bundle.js',
-  minify: process.env.NODE_ENV === 'production',
+  format: "esm",
+  outfile: "dist/assets/bundle.js",
+  minify: process.env.NODE_ENV === "production",
 });
 ```
 

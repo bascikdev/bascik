@@ -70,17 +70,17 @@ Worker threads run in isolated V8 contexts. When working on worker tasks, keep t
 
 ## 3. Worker Lifecycle & Pool Sizing
 
-* **Pool Size:** Defaults to `Math.max(1, os.cpus().length - 1)` to prevent CPU starvation on host systems while reserving 1 core for watcher/main thread I/O.
-* **Worker Recycling & Error Boundaries:**
-  * If a worker encounters an unhandled exception or termination (`worker.on('error')`, `worker.on('exit')` with non-zero exit code), the pool must reject the active task, remove the dead worker instance, and instantiate a new worker thread to maintain capacity.
-* **Clean Shutdown:** Calling `pool.destroy()` sends termination signals to all active workers and drains pending queues.
+- **Pool Size:** Defaults to `Math.max(1, os.cpus().length - 1)` to prevent CPU starvation on host systems while reserving 1 core for watcher/main thread I/O.
+- **Worker Recycling & Error Boundaries:**
+  - If a worker encounters an unhandled exception or termination (`worker.on('error')`, `worker.on('exit')` with non-zero exit code), the pool must reject the active task, remove the dead worker instance, and instantiate a new worker thread to maintain capacity.
+- **Clean Shutdown:** Calling `pool.destroy()` sends termination signals to all active workers and drains pending queues.
 
 ---
 
 ## 4. Testing & Verifying Worker Pools
 
-* Always test both single-threaded fallback mode and multi-threaded worker execution.
-* Ensure tests clean up worker threads in `afterEach` / `afterAll` hooks to prevent hanging Vitest test processes.
+- Always test both single-threaded fallback mode and multi-threaded worker execution.
+- Ensure tests clean up worker threads in `afterEach` / `afterAll` hooks to prevent hanging Vitest test processes.
 
 ```sh
 # Run worker pool unit tests

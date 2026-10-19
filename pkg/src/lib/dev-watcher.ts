@@ -3,7 +3,7 @@ import type ChokidarNS from "chokidar";
 export type ChokidarModule = typeof ChokidarNS;
 
 export async function loadChokidar(
-  importModule: () => Promise<unknown> = () => import("chokidar")
+  importModule: () => Promise<unknown> = () => import("chokidar"),
 ): Promise<ChokidarModule> {
   try {
     const mod = (await importModule()) as any;
@@ -19,11 +19,10 @@ export async function loadChokidar(
     if (isNotFound) {
       throw new Error(
         "[bascik] `bascik dev` requires chokidar for file watching, but it is not installed.\n" +
-        "This usually happens if your package installation used `--omit=optional`.\n" +
-        "Run `npm install chokidar` (or drop `--omit=optional`) and try again."
+          "This usually happens if your package installation used `--omit=optional`.\n" +
+          "Run `npm install chokidar` (or drop `--omit=optional`) and try again.",
       );
     }
     throw err;
   }
 }
-

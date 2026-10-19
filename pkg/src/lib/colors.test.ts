@@ -1,7 +1,13 @@
 import { PassThrough } from "node:stream";
 import tty from "node:tty";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { colorStatus, stderr, stdout, stripColors, workerEnvironment } from "./colors.ts";
+import {
+  colorStatus,
+  stderr,
+  stdout,
+  stripColors,
+  workerEnvironment,
+} from "./colors.ts";
 
 const ESC = "\u001B[";
 
@@ -39,7 +45,8 @@ describe("colors", () => {
       const s = new PassThrough() as unknown as NodeJS.WriteStream;
       s.isTTY = isTTY;
       // Delegate to Node's own implementation, so NO_COLOR and TERM=dumb are decided by Node's rules, not mine.
-      s.getColorDepth = (env?: object) => tty.WriteStream.prototype.getColorDepth.call(s, env);
+      s.getColorDepth = (env?: object) =>
+        tty.WriteStream.prototype.getColorDepth.call(s, env);
       return s;
     };
     const terminal = () => stream(true);
@@ -58,17 +65,27 @@ describe("colors", () => {
     });
 
     it("leaves the worker alone when either stream is not a terminal, so redirected output never gets escape codes", () => {
-      expect(workerEnvironment({ stdout: pipe(), stderr: terminal() })).toBeUndefined();
-      expect(workerEnvironment({ stdout: terminal(), stderr: pipe() })).toBeUndefined();
-      expect(workerEnvironment({ stdout: pipe(), stderr: pipe() })).toBeUndefined();
+      expect(
+        workerEnvironment({ stdout: pipe(), stderr: terminal() }),
+      ).toBeUndefined();
+      expect(
+        workerEnvironment({ stdout: terminal(), stderr: pipe() }),
+      ).toBeUndefined();
+      expect(
+        workerEnvironment({ stdout: pipe(), stderr: pipe() }),
+      ).toBeUndefined();
     });
 
     it("honors NO_COLOR and TERM=dumb", () => {
       vi.stubEnv("NO_COLOR", "1");
-      expect(workerEnvironment({ stdout: terminal(), stderr: terminal() })).toBeUndefined();
+      expect(
+        workerEnvironment({ stdout: terminal(), stderr: terminal() }),
+      ).toBeUndefined();
       vi.stubEnv("NO_COLOR", undefined);
       vi.stubEnv("TERM", "dumb");
-      expect(workerEnvironment({ stdout: terminal(), stderr: terminal() })).toBeUndefined();
+      expect(
+        workerEnvironment({ stdout: terminal(), stderr: terminal() }),
+      ).toBeUndefined();
     });
 
     it("keeps the rest of the environment, and does not change this process's own", () => {

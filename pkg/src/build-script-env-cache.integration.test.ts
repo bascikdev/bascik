@@ -17,7 +17,8 @@ import {
  * real disk cache under `node_modules/.cache/bascik/script-cache`.
  */
 describe("scripts.cache.environment invalidates build-script cache (real CLI)", () => {
-  const pageTemplate = (): string => `<!DOCTYPE html><html lang="en"><head><title>env</title></head><body>
+  const pageTemplate =
+    (): string => `<!DOCTYPE html><html lang="en"><head><title>env</title></head><body>
 <script data-bascik-build>
 export default function () {
   return '<span data-testid="flag">' + process.env.MY_FEATURE_FLAG + '</span>';

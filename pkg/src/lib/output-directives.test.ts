@@ -3,17 +3,33 @@ import { removeOutputDirectives } from "./output-directives.ts";
 
 describe("removeOutputDirectives", () => {
   it("leaves output without directive scripts unchanged", () => {
-    const html = '<p>Hi</p><script>window.x = 1</script><post-card data-bascik-prop-title="A"></post-card>';
+    const html =
+      '<p>Hi</p><script>window.x = 1</script><post-card data-bascik-prop-title="A"></post-card>';
     expect(removeOutputDirectives(html)).toEqual({ html, removed: [] });
   });
 
   it.each([
-    ["data-bascik-build", '<script data-bascik-build>import "node:fs"</script>'],
+    [
+      "data-bascik-build",
+      '<script data-bascik-build>import "node:fs"</script>',
+    ],
     ["data-bascik-build", '<script data-bascik-build="page">x()</script>'],
-    ["data-bascik-server", "<script data-bascik-server>export default () => 1</script>"],
-    ["data-bascik-server", '<script type="module" data-bascik-server data-bascik-stream>x</script>'],
-    ["data-bascik-stream", "<script data-bascik-stream>export default async function* () {}</script>"],
-    ["data-bascik-routes", "<script data-bascik-routes>export default () => []</script>"],
+    [
+      "data-bascik-server",
+      "<script data-bascik-server>export default () => 1</script>",
+    ],
+    [
+      "data-bascik-server",
+      '<script type="module" data-bascik-server data-bascik-stream>x</script>',
+    ],
+    [
+      "data-bascik-stream",
+      "<script data-bascik-stream>export default async function* () {}</script>",
+    ],
+    [
+      "data-bascik-routes",
+      "<script data-bascik-routes>export default () => []</script>",
+    ],
     ["data-bascik-build", '<SCRIPT DATA-BASCIK-BUILD src="./x.ts"></SCRIPT >'],
     ["data-bascik-build", "<script data-bascik-build>x()</script\t\n foo>"],
     ["data-bascik-server", "<script data-bascik-server>x()</script/>"],
@@ -24,7 +40,9 @@ describe("removeOutputDirectives", () => {
   });
 
   it("removes an unclosed directive open tag so no later pass can pair it with a closing tag", () => {
-    const result = removeOutputDirectives("<p>a</p><script data-bascik-build>x()");
+    const result = removeOutputDirectives(
+      "<p>a</p><script data-bascik-build>x()",
+    );
     expect(result.html).not.toMatch(/data-bascik-build/i);
     expect(result.removed).toEqual(["data-bascik-build"]);
   });
@@ -37,7 +55,9 @@ describe("removeOutputDirectives", () => {
   });
 
   it("is safe with replacement tokens in surrounding text", () => {
-    const result = removeOutputDirectives("<p>$1 $& $`</p><script data-bascik-build>x</script><p>$'</p>");
+    const result = removeOutputDirectives(
+      "<p>$1 $& $`</p><script data-bascik-build>x</script><p>$'</p>",
+    );
     expect(result.html).toBe("<p>$1 $& $`</p><p>$'</p>");
   });
 });

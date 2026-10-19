@@ -76,16 +76,16 @@ Bascik overlaps with them at the output level, all of these tools can ship plain
 
 ## The Key Difference
 
-| Tool | Runtime shipped | Component model or APIs required | Attribute / source syntax | Requires server |
-| --- | ---: | --- | --- | --- |
-| **Bascik** | None | Only the components you create, plus slots and props | Standards-valid `data-bascik-*` attributes, consumed at build time | No |
-| **Next.js** | 80–100+ KB (React + hydration) | React component model, routing, and Next.js conventions | JSX, React hooks, Next.js file conventions | No (SSG) / Yes (SSR) |
-| **HTMX** | ~14 KB | Request, target, swap, trigger, and history concepts | `hx-*` custom attributes interpreted at runtime | Usually |
-| **Alpine.js** | ~16 KB | Alpine state and directive model | `x-*` and `@*` directives interpreted at runtime | No |
-| **petite-vue** | ~5 KB | Vue reactivity and directive model | `v-*` and `@*` directives interpreted at runtime | No |
-| **Svelte** | Compiled JS bundle (varies) | Svelte component model and reactivity (`$state`, `$effect`) | `.svelte` file format with compiler-resolved directives | No |
-| **Vue / React** | 40–100+ KB | Framework component model, lifecycle, and state APIs | Vue directives/templates or React JSX | No |
-| **Hugo / Eleventy / Jekyll** | None | Template syntax, content collections, front matter, generator conventions | Builder-specific templating languages | No |
+| Tool                         |                Runtime shipped | Component model or APIs required                                          | Attribute / source syntax                                          | Requires server      |
+| ---------------------------- | -----------------------------: | ------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------- |
+| **Bascik**                   |                           None | Only the components you create, plus slots and props                      | Standards-valid `data-bascik-*` attributes, consumed at build time | No                   |
+| **Next.js**                  | 80–100+ KB (React + hydration) | React component model, routing, and Next.js conventions                   | JSX, React hooks, Next.js file conventions                         | No (SSG) / Yes (SSR) |
+| **HTMX**                     |                         ~14 KB | Request, target, swap, trigger, and history concepts                      | `hx-*` custom attributes interpreted at runtime                    | Usually              |
+| **Alpine.js**                |                         ~16 KB | Alpine state and directive model                                          | `x-*` and `@*` directives interpreted at runtime                   | No                   |
+| **petite-vue**               |                          ~5 KB | Vue reactivity and directive model                                        | `v-*` and `@*` directives interpreted at runtime                   | No                   |
+| **Svelte**                   |    Compiled JS bundle (varies) | Svelte component model and reactivity (`$state`, `$effect`)               | `.svelte` file format with compiler-resolved directives            | No                   |
+| **Vue / React**              |                     40–100+ KB | Framework component model, lifecycle, and state APIs                      | Vue directives/templates or React JSX                              | No                   |
+| **Hugo / Eleventy / Jekyll** |                           None | Template syntax, content collections, front matter, generator conventions | Builder-specific templating languages                              | No                   |
 
 The browser can parse Bascik's source without needing to understand a new runtime language: custom tags are valid custom-element-shaped HTML names, and build instructions use the web platform's `data-*` convention. Bascik resolves both before deployment. By contrast, runtime directives such as `hx-get`, `x-data`, and `v-scope` only gain behavior after their library's JavaScript loads.
 

@@ -12,20 +12,26 @@ import { createResponseSink } from "./response-sink.ts";
 import type { BascikResponse } from "./server.ts";
 
 /** Makes a typed synthetic `BascikResponse` fixture backed by a real `EventEmitter`. */
-const makeSyntheticResponse = (writeReturns: boolean): { response: BascikResponse; emitter: EventEmitter; written: Buffer[] } => {
+const makeSyntheticResponse = (
+  writeReturns: boolean,
+): { response: BascikResponse; emitter: EventEmitter; written: Buffer[] } => {
   const emitter = new EventEmitter();
   const written: Buffer[] = [];
   const response: BascikResponse = {
     headersSent: false,
     destroyed: false,
     writable: emitter as unknown as NodeJS.WritableStream,
-    respond: () => { },
+    respond: () => {},
     write: (chunk: string | Buffer): boolean => {
-      written.push(Buffer.isBuffer(chunk) ? Buffer.from(chunk) : Buffer.from(chunk, "utf8"));
+      written.push(
+        Buffer.isBuffer(chunk)
+          ? Buffer.from(chunk)
+          : Buffer.from(chunk, "utf8"),
+      );
       return writeReturns;
     },
-    end: () => { },
-    close: () => { },
+    end: () => {},
+    close: () => {},
     on: (event, cb) => {
       emitter.on(event, cb);
     },

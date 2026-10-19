@@ -1,92 +1,99 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ID Mutation Test</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 32px 24px;
+        background: #111;
+        color: #eee;
+        font-family: sans-serif;
+      }
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ID Mutation Test</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 32px 24px;
-      background: #111;
-      color: #eee;
-      font-family: sans-serif;
-    }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.2rem;
+      }
 
-    h1 {
-      margin: 0 0 8px;
-      font-size: 1.2rem;
-    }
+      .desc {
+        color: #aaa;
+        font-size: 0.85rem;
+        margin: 0 0 24px;
+        max-width: 560px;
+      }
 
-    .desc {
-      color: #aaa;
-      font-size: 0.85rem;
-      margin: 0 0 24px;
-      max-width: 560px;
-    }
+      .instances {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+      }
 
-    .instances {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 28px;
-    }
+      .instance-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #888;
+        margin: 0 0 10px;
+      }
+    </style>
+  </head>
 
-    .instance-label {
-      font-size: 0.72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #888;
-      margin: 0 0 10px;
-    }
-  </style>
-</head>
+  <body>
+    <h1>ID Mutation — Live Test</h1>
+    <p class="desc">
+      Two independent instances. Documents bascik's behavior when setting
+      element.id and setAttribute('id', …) at runtime, and page-level querying
+      of component elements.
+    </p>
 
-<body>
-  <h1>ID Mutation — Live Test</h1>
-  <p class="desc">
-    Two independent instances. Documents bascik's behavior when setting element.id
-    and setAttribute('id', …) at runtime, and page-level querying of component elements.
-  </p>
-
-  <div class="instances">
-    <div>
-      <p class="instance-label">Instance A</p>
-      <id-mutation></id-mutation>
+    <div class="instances">
+      <div>
+        <p class="instance-label">Instance A</p>
+        <id-mutation></id-mutation>
+      </div>
+      <div>
+        <p class="instance-label">Instance B</p>
+        <id-mutation></id-mutation>
+      </div>
     </div>
-    <div>
-      <p class="instance-label">Instance B</p>
-      <id-mutation></id-mutation>
-    </div>
-  </div>
 
-  <!-- Page-level JS testing queries -->
-  <div id="page-query-result"
-    style="font-family: monospace; padding: 12px; background: #111; margin-top: 16px; color: #aaa;"></div>
+    <!-- Page-level JS testing queries -->
+    <div
+      id="page-query-result"
+      style="
+        font-family: monospace;
+        padding: 12px;
+        background: #111;
+        margin-top: 16px;
+        color: #aaa;
+      "
+    ></div>
 
-  <script>
-    // This runs AFTER bascik transpilation (it's in the page HTML, not component HTML)
-    // Page-level scripts are NOT scoped by bascik
-    window.addEventListener('load', () => {
-      const res = document.getElementById('page-query-result');
+    <script>
+      // This runs AFTER bascik transpilation (it's in the page HTML, not component HTML)
+      // Page-level scripts are NOT scoped by bascik
+      window.addEventListener("load", () => {
+        const res = document.getElementById("page-query-result");
 
-      // Unscoped class — finds nothing
-      const unscoped = document.querySelector('.box');
+        // Unscoped class — finds nothing
+        const unscoped = document.querySelector(".box");
 
-      // Scoped class — finds instances
-      const scoped = document.querySelectorAll('.bascik__id-mutation__box');
+        // Scoped class — finds instances
+        const scoped = document.querySelectorAll(".bascik__id-mutation__box");
 
-      // ID suffix selector — finds instances by scoped id pattern
-      const byIdSuffix = document.querySelectorAll('[id$="__my-id"]');
+        // ID suffix selector — finds instances by scoped id pattern
+        const byIdSuffix = document.querySelectorAll('[id$="__my-id"]');
 
-      res.textContent = [
-        'unscoped .box: ' + (unscoped ? 'found' : 'null'),
-        'scoped .bascik__id-mutation__box: ' + scoped.length + ' found',
-        '[id$="__my-id"]: ' + byIdSuffix.length + ' found'
-      ].join(' | ');
-    });
-  </script>
-</body>
-
+        res.textContent = [
+          "unscoped .box: " + (unscoped ? "found" : "null"),
+          "scoped .bascik__id-mutation__box: " + scoped.length + " found",
+          '[id$="__my-id"]: ' + byIdSuffix.length + " found",
+        ].join(" | ");
+      });
+    </script>
+  </body>
 </html>

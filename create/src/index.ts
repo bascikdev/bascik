@@ -40,7 +40,9 @@ if (yesFlag) {
 } else {
   const installAnswer = await rl.question("Install dependencies now? (Y/n) ");
   shouldInstall = installAnswer.trim().toLowerCase() !== "n";
-  const devAnswer = await rl.question("Start the dev server after install? (Y/n) ");
+  const devAnswer = await rl.question(
+    "Start the dev server after install? (Y/n) ",
+  );
   shouldDev = devAnswer.trim().toLowerCase() !== "n";
 }
 
@@ -51,13 +53,19 @@ const projectDir = join(process.cwd(), projectName);
 if (shouldInstall) {
   console.log("\nInstalling dependencies…\n");
   const installed = runNpm(["install"], projectDir);
-  if (installed.error) console.error(`\nCould not run npm: ${installed.error}\nRun "npm install" in ${projectName} yourself.\n`);
+  if (installed.error)
+    console.error(
+      `\nCould not run npm: ${installed.error}\nRun "npm install" in ${projectName} yourself.\n`,
+    );
 }
 
 if (shouldDev) {
   console.log("\nStarting dev server…\n");
   const started = runNpm(["run", "dev"], projectDir);
-  if (started.error) console.error(`\nCould not run npm: ${started.error}\nRun "npm run dev" in ${projectName} yourself.\n`);
+  if (started.error)
+    console.error(
+      `\nCould not run npm: ${started.error}\nRun "npm run dev" in ${projectName} yourself.\n`,
+    );
   console.log(`\nTo start again:  cd ${projectName} && npm run dev\n`);
 } else {
   console.log("\nNext steps:\n");

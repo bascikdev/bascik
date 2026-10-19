@@ -7,12 +7,16 @@
  *
  * It has no dependency on the LSP connection, so loading it never starts a server.
  */
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { TextDocument } from 'vscode-languageserver-textdocument';
-import { DiagnosticSeverity } from 'vscode-languageserver';
-import { buildSnapshot, isInsideComponentRoots, type ProjectSnapshot } from './project.js';
-import { createDiagnostics, applyAutoFixes } from './analyzer.js';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { TextDocument } from "vscode-languageserver-textdocument";
+import { DiagnosticSeverity } from "vscode-languageserver";
+import {
+  buildSnapshot,
+  isInsideComponentRoots,
+  type ProjectSnapshot,
+} from "./project.js";
+import { createDiagnostics, applyAutoFixes } from "./analyzer.js";
 
 /**
  * A file or folder to check. A folder can be limited to some file types, because what belongs in a pages folder
@@ -44,7 +48,7 @@ export interface CheckedDiagnostic {
   /** 1-based. */
   column: number;
   /** Only `error` fails a check. `info` is a hint: advice that may be wrong for a project the file cannot see. */
-  severity: 'error' | 'warning' | 'info';
+  severity: "error" | "warning" | "info";
   /** The rule id, usable in `bascik-ignore`, `bascik-disable` and `disabledRules`. */
   code?: string;
   message: string;
@@ -59,26 +63,36 @@ export interface CheckResult {
 }
 
 /** Thrown for a mistake in how the check was asked for (a path that does not exist), not a finding. */
-export class CheckUsageError extends Error { }
+export class CheckUsageError extends Error {}
 
-const CONFIG_FILES = ['bascik.config.ts', 'bascik.config.js', 'bascik.config.mjs'];
-const DEFAULT_EXTENSIONS = ['html', 'css', 'js', 'mjs', 'ts'];
+const CONFIG_FILES = [
+  "bascik.config.ts",
+  "bascik.config.js",
+  "bascik.config.mjs",
+];
+const DEFAULT_EXTENSIONS = ["html", "css", "js", "mjs", "ts"];
 const TEST_FILE = /\.(test|spec)\.[a-z0-9]+$/i;
 
 /** The nearest directory at or above `start` that holds a Bascik config file. */
 function findConfigRoot(start: string): string | undefined {
   let curr = start;
   while (true) {
-    if (CONFIG_FILES.some((file) => fs.existsSync(path.join(curr, file)))) return curr;
+    if (CONFIG_FILES.some((file) => fs.existsSync(path.join(curr, file))))
+      return curr;
     const parent = path.dirname(curr);
     if (parent === curr) return undefined;
     curr = parent;
   }
 }
 
-function collectFiles(root: string, extensions: string[] = DEFAULT_EXTENSIONS): string[] {
+function collectFiles(
+  root: string,
+  extensions: string[] = DEFAULT_EXTENSIONS,
+): string[] {
   if (fs.statSync(root).isFile()) return [root];
-  const wanted = new Set(extensions.map((extension) => extension.replace(/^\./, '').toLowerCase()));
+  const wanted = new Set(
+    extensions.map((extension) => extension.replace(/^\./, "").toLowerCase()),
+  );
   const files: string[] = [];
   const stack = [root];
   while (stack.length > 0) {
@@ -90,7 +104,12 @@ function collectFiles(root: string, extensions: string[] = DEFAULT_EXTENSIONS): 
       continue;
     }
     for (const entry of entries) {
-      if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') continue;
+      if (
+        entry.name.startsWith(".") ||
+        entry.name === "node_modules" ||
+        entry.name === "dist"
+      )
+        continue;
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) stack.push(full);
       else if (
@@ -105,19 +124,31 @@ function collectFiles(root: string, extensions: string[] = DEFAULT_EXTENSIONS): 
   return files;
 }
 
-function languageIdFor(filePath: string): 'html' | 'css' | 'typescript' | 'javascript' {
+function languageIdFor(
+  filePath: string,
+): "html" | "css" | "typescript" | "javascript" {
   const ext = path.extname(filePath).slice(1).toLowerCase();
-  return ext === 'html' ? 'html' : ext === 'css' ? 'css' : ext === 'ts' ? 'typescript' : 'javascript';
+  return ext === "html"
+    ? "html"
+    : ext === "css"
+      ? "css"
+      : ext === "ts"
+        ? "typescript"
+        : "javascript";
 }
 
 export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
   const { cwd, fix = false } = options;
-  const requested = (options.targets?.length ? options.targets : [cwd]).map((target) =>
-    typeof target === 'string' ? { path: target, extensions: undefined } : target,
+  const requested = (options.targets?.length ? options.targets : [cwd]).map(
+    (target) =>
+      typeof target === "string"
+        ? { path: target, extensions: undefined }
+        : target,
   );
   const targets = requested.map((target) => path.resolve(cwd, target.path));
   for (const target of targets) {
-    if (!fs.existsSync(target)) throw new CheckUsageError(`Path does not exist: ${target}`);
+    if (!fs.existsSync(target))
+      throw new CheckUsageError(`Path does not exist: ${target}`);
   }
 
   // The project whose config decides component roots and the import root:
@@ -129,19 +160,37 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
   let snapshot: ProjectSnapshot | undefined;
   if (options.projectPath !== undefined) {
     projectRoot = path.resolve(cwd, options.projectPath);
-    if (!fs.existsSync(projectRoot) || !fs.statSync(projectRoot).isDirectory()) {
-      throw new CheckUsageError(`Project directory does not exist: ${projectRoot}`);
+    if (
+      !fs.existsSync(projectRoot) ||
+      !fs.statSync(projectRoot).isDirectory()
+    ) {
+      throw new CheckUsageError(
+        `Project directory does not exist: ${projectRoot}`,
+      );
     }
   } else {
     const cwdProject = findConfigRoot(cwd);
     if (cwdProject) {
       const cwdSnapshot = await buildSnapshot(cwdProject);
-      if (isInsideComponentRoots(firstTarget.replace(/\\/g, '/'), cwdSnapshot.componentRoots)) snapshot = cwdSnapshot;
+      if (
+        isInsideComponentRoots(
+          firstTarget.replace(/\\/g, "/"),
+          cwdSnapshot.componentRoots,
+        )
+      )
+        snapshot = cwdSnapshot;
     }
-    projectRoot = snapshot?.projectRoot ?? findConfigRoot(firstTarget) ?? firstTarget;
+    projectRoot =
+      snapshot?.projectRoot ?? findConfigRoot(firstTarget) ?? firstTarget;
   }
 
-  const files = [...new Set(targets.flatMap((target, index) => collectFiles(target, requested[index].extensions)))].sort();
+  const files = [
+    ...new Set(
+      targets.flatMap((target, index) =>
+        collectFiles(target, requested[index].extensions),
+      ),
+    ),
+  ].sort();
   snapshot ??= await buildSnapshot(projectRoot);
 
   const diagnostics: CheckedDiagnostic[] = [];
@@ -149,39 +198,53 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
   for (const filePath of files) {
     let content: string;
     try {
-      content = fs.readFileSync(filePath, 'utf8');
+      content = fs.readFileSync(filePath, "utf8");
     } catch {
       continue;
     }
     const languageId = languageIdFor(filePath);
     const relative = path.relative(cwd, filePath);
 
-    let document = TextDocument.create(`file://${filePath}`, languageId, 1, content);
-    if (fix && languageId === 'html') {
+    let document = TextDocument.create(
+      `file://${filePath}`,
+      languageId,
+      1,
+      content,
+    );
+    if (fix && languageId === "html") {
       const fixed = applyAutoFixes(document, snapshot, filePath);
       if (fixed.fixedCount > 0) {
-        fs.writeFileSync(filePath, fixed.text, 'utf8');
+        fs.writeFileSync(filePath, fixed.text, "utf8");
         fixedFiles.push(relative);
-        document = TextDocument.create(`file://${filePath}`, languageId, 2, fixed.text);
+        document = TextDocument.create(
+          `file://${filePath}`,
+          languageId,
+          2,
+          fixed.text,
+        );
       }
     }
 
     for (const diagnostic of createDiagnostics(document, filePath, snapshot)) {
       const severity =
         diagnostic.severity === DiagnosticSeverity.Error
-          ? 'error'
+          ? "error"
           : diagnostic.severity === DiagnosticSeverity.Warning
-            ? 'warning'
-            : 'info';
-      if (severity === 'info' && options.hints === false) continue;
+            ? "warning"
+            : "info";
+      if (severity === "info" && options.hints === false) continue;
       diagnostics.push({
         filePath: relative,
         line: diagnostic.range.start.line + 1,
         column: diagnostic.range.start.character + 1,
         severity,
-        code: diagnostic.code === undefined ? undefined : String(diagnostic.code),
+        code:
+          diagnostic.code === undefined ? undefined : String(diagnostic.code),
         // LSP 3.18 allows a MarkupContent message; use its text, not [object Object].
-        message: typeof diagnostic.message === 'string' ? diagnostic.message : diagnostic.message.value,
+        message:
+          typeof diagnostic.message === "string"
+            ? diagnostic.message
+            : diagnostic.message.value,
       });
     }
   }
@@ -190,14 +253,18 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
 }
 
 /** One diagnostic as a line of terminal output: `file:line:col - severity: (code) message`. */
-export function formatDiagnostic(diagnostic: CheckedDiagnostic, color = true): string {
-  const paint = (code: string, text: string) => (color ? `\x1b[${code}m${text}\x1b[0m` : text);
+export function formatDiagnostic(
+  diagnostic: CheckedDiagnostic,
+  color = true,
+): string {
+  const paint = (code: string, text: string) =>
+    color ? `\x1b[${code}m${text}\x1b[0m` : text;
   const severity =
-    diagnostic.severity === 'error'
-      ? paint('31', 'error')
-      : diagnostic.severity === 'warning'
-        ? paint('33', 'warning')
-        : paint('36', 'hint');
-  const code = diagnostic.code ? ` ${paint('90', `(${diagnostic.code})`)}` : '';
+    diagnostic.severity === "error"
+      ? paint("31", "error")
+      : diagnostic.severity === "warning"
+        ? paint("33", "warning")
+        : paint("36", "hint");
+  const code = diagnostic.code ? ` ${paint("90", `(${diagnostic.code})`)}` : "";
   return `${diagnostic.filePath}:${diagnostic.line}:${diagnostic.column} - ${severity}:${code} ${diagnostic.message}`;
 }

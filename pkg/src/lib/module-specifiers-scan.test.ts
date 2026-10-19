@@ -42,7 +42,9 @@ describe("scanScript single-pass extraction matches the two separate calls", () 
   it("returns identical module specifiers and call-argument literals", () => {
     const { moduleSpecifiers, callArgumentLiterals } = scanScript(SAMPLE);
     expect(moduleSpecifiers).toEqual(findModuleSpecifiers(SAMPLE));
-    expect(callArgumentLiterals).toEqual(findCallArgumentStringLiterals(SAMPLE));
+    expect(callArgumentLiterals).toEqual(
+      findCallArgumentStringLiterals(SAMPLE),
+    );
     expect(moduleSpecifiers.map((s) => s.value)).toEqual([
       "@/lib/md-renderer.ts",
       "./helpers/x.ts",
@@ -62,16 +64,25 @@ describe("char-code predicates are exhaustively equivalent to their regexes over
   const cases: [string, (code: number) => boolean, RegExp][] = [
     ["isSpace ~ /\\s/", __charClassesForTests.isSpace, /\s/],
     ["isIdStart ~ /[A-Za-z_$]/", __charClassesForTests.isIdStart, /[A-Za-z_$]/],
-    ["isIdPart ~ /[A-Za-z0-9_$]/", __charClassesForTests.isIdPart, /[A-Za-z0-9_$]/],
+    [
+      "isIdPart ~ /[A-Za-z0-9_$]/",
+      __charClassesForTests.isIdPart,
+      /[A-Za-z0-9_$]/,
+    ],
     ["isDigit ~ /[0-9]/", __charClassesForTests.isDigit, /[0-9]/],
-    ["isNumberPart ~ /[A-Za-z0-9_.]/", __charClassesForTests.isNumberPart, /[A-Za-z0-9_.]/],
+    [
+      "isNumberPart ~ /[A-Za-z0-9_.]/",
+      __charClassesForTests.isNumberPart,
+      /[A-Za-z0-9_.]/,
+    ],
     ["isAlpha ~ /[A-Za-z]/", __charClassesForTests.isAlpha, /[A-Za-z]/],
   ];
   for (const [name, predicate, regex] of cases) {
     it(name, () => {
       const mismatches: number[] = [];
       for (let code = 0; code < 0x10000; code++) {
-        if (predicate(code) !== regex.test(String.fromCharCode(code))) mismatches.push(code);
+        if (predicate(code) !== regex.test(String.fromCharCode(code)))
+          mismatches.push(code);
       }
       expect(mismatches).toEqual([]);
     });

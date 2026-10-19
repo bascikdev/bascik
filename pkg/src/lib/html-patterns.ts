@@ -63,14 +63,18 @@ const TRAILING_SCRIPT_END_TAG_RE = new RegExp(`${SCRIPT_END_TAG}$`, "i");
  * `element` is the one the element match ended on, whatever its spelling.
  */
 export const scriptOpenTag = (element: string, body: string): string => {
-  const endTagLength = TRAILING_SCRIPT_END_TAG_RE.exec(element)?.[0].length ?? 0;
+  const endTagLength =
+    TRAILING_SCRIPT_END_TAG_RE.exec(element)?.[0].length ?? 0;
   return element.slice(0, element.length - body.length - endTagLength);
 };
 
 const ATTR_PAIR_REGEX =
   /(?:^|\s)([^\s"'=<>\`\/]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>\`]+?))(?=\s|\/>|>|$)/gi;
 
-export const getHtmlAttributeValue = (openTag: string, attribute: string): string | undefined => {
+export const getHtmlAttributeValue = (
+  openTag: string,
+  attribute: string,
+): string | undefined => {
   const target = attribute.toLowerCase();
   for (const match of openTag.matchAll(ATTR_PAIR_REGEX)) {
     if (match[1]?.toLowerCase() === target) {
@@ -88,7 +92,10 @@ const ATTRIBUTE_NAME_RE = /(?:^|[\s/])([^\s"'=<>`/]+)(?=[\s/>]|$)/g;
  * HTML attribute syntaxes (bare, quoted, unquoted, spaced around `=`). Text
  * inside another attribute's quoted value is never an attribute.
  */
-export const hasHtmlAttribute = (openTag: string, attribute: string): boolean => {
+export const hasHtmlAttribute = (
+  openTag: string,
+  attribute: string,
+): boolean => {
   const target = attribute.toLowerCase();
   // Drop every `= value` first, so only attribute names remain.
   const namesOnly = openTag.replace(ATTRIBUTE_VALUE_RE, "");
@@ -105,5 +112,5 @@ export const hasHtmlAttribute = (openTag: string, attribute: string): boolean =>
  */
 export const isPageAwareBuildOpenTag = (openTag: string): boolean =>
   hasHtmlAttribute(openTag, "data-bascik-page-aware") ||
-  getHtmlAttributeValue(openTag, "data-bascik-build")?.trim().toLowerCase() === "page";
-
+  getHtmlAttributeValue(openTag, "data-bascik-build")?.trim().toLowerCase() ===
+    "page";

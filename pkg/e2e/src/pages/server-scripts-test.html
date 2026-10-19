@@ -1,69 +1,78 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <title>Server Scripts Test</title>
+  </head>
 
-<head>
-  <title>Server Scripts Test</title>
-</head>
+  <body>
+    <p id="static-before" data-testid="static-before">static-before</p>
 
-<body>
-  <p id="static-before" data-testid="static-before">static-before</p>
+    <!-- output from x-test-name header (or "guest" fallback) -->
+    <script data-bascik-server>
+      export default function (request) {
+        const name = request.headers.get("x-test-name") ?? "guest";
+        return `<p id="from-header" data-testid="from-header">${name}</p>`;
+      }
+    </script>
 
-  <!-- output from x-test-name header (or "guest" fallback) -->
-  <script data-bascik-server>
-    export default function (request) {
-      const name = request.headers.get('x-test-name') ?? 'guest';
-      return `<p id="from-header" data-testid="from-header">${name}</p>`;
-    }
-  </script>
+    <!-- output from ?color= query param (or "none" fallback) -->
+    <script data-bascik-server>
+      export default function (request) {
+        const color = new URL(request.url).searchParams.get("color") ?? "none";
+        return `<p id="from-query" data-testid="from-query">${color}</p>`;
+      }
+    </script>
 
-  <!-- output from ?color= query param (or "none" fallback) -->
-  <script data-bascik-server>
-    export default function (request) {
-      const color = new URL(request.url).searchParams.get('color') ?? 'none';
-      return `<p id="from-query" data-testid="from-query">${color}</p>`;
-    }
-  </script>
+    <!-- output the request path -->
+    <script data-bascik-server>
+      export default function (request) {
+        return `<p id="from-path" data-testid="from-path">${new URL(request.url).pathname}</p>`;
+      }
+    </script>
 
-  <!-- output the request path -->
-  <script data-bascik-server>
-    export default function (request) {
-      return `<p id="from-path" data-testid="from-path">${new URL(request.url).pathname}</p>`;
-    }
-  </script>
+    <!-- output the reconstructed origin from request.url -->
+    <script data-bascik-server>
+      export default function (request) {
+        return `<p id="from-origin" data-testid="from-origin">${new URL(request.url).origin}</p>`;
+      }
+    </script>
 
-  <!-- output the reconstructed origin from request.url -->
-  <script data-bascik-server>
-    export default function (request) {
-      return `<p id="from-origin" data-testid="from-origin">${new URL(request.url).origin}</p>`;
-    }
-  </script>
+    <!-- top-level await works in server scripts -->
+    <script data-bascik-server>
+      export default async function () {
+        await new Promise((r) => setTimeout(r, 0));
+        return '<p id="from-async" data-testid="from-async">async-ok</p>';
+      }
+    </script>
 
-  <!-- top-level await works in server scripts -->
-  <script data-bascik-server>
-    export default async function () {
-      await new Promise(r => setTimeout(r, 0));
-      return '<p id="from-async" data-testid="from-async">async-ok</p>';
-    }
-  </script>
+    <!-- author-owned escaping: Bascik ships no helper -->
+    <script data-bascik-server>
+      const escape = (v) =>
+        String(v).replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c],
+        );
+      export default function (request) {
+        const payload = new URL(request.url).searchParams.get("xss") ?? "";
+        if (!payload) return "";
+        return `<p id="from-xss" data-testid="from-xss">${escape(payload)}</p>`;
+      }
+    </script>
 
-  <!-- author-owned escaping: Bascik ships no helper -->
-  <script data-bascik-server>
-    const escape = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-    export default function (request) {
-      const payload = new URL(request.url).searchParams.get('xss') ?? '';
-      if (!payload) return '';
-      return `<p id="from-xss" data-testid="from-xss">${escape(payload)}</p>`;
-    }
-  </script>
+    <!-- this script intentionally throws; the tag should become empty -->
+    <script data-bascik-server>
+      export default function () {
+        throw new Error("intentional-error");
+      }
+    </script>
 
-  <!-- this script intentionally throws; the tag should become empty -->
-  <script data-bascik-server>
-    export default function () {
-      throw new Error('intentional-error');
-    }
-  </script>
-
-  <p id="static-after" data-testid="static-after">static-after</p>
-</body>
-
+    <p id="static-after" data-testid="static-after">static-after</p>
+  </body>
 </html>

@@ -19,7 +19,14 @@ export interface SearchEntry {
 }
 
 var GENERIC_SITE_WORDS: Record<string, boolean> = {
-  dev: true, docs: true, documentation: true, website: true, site: true, official: true, home: true, homepage: true,
+  dev: true,
+  docs: true,
+  documentation: true,
+  website: true,
+  site: true,
+  official: true,
+  home: true,
+  homepage: true,
 };
 
 /**
@@ -28,45 +35,73 @@ var GENERIC_SITE_WORDS: Record<string, boolean> = {
  * Queries that name a topic ("bascik components") or only a generic word ("docs") are not.
  */
 export function isNavigationalQuery(q: string): boolean {
-  var s = (q || '').toLowerCase().trim()
-    .replace(/^https?:\/\//, '')
-    .replace(/^www\./, '')
-    .replace(/\.(d|de)$/, '');
-  var words = s.split(/[\s./]+/).filter(function(w) { return w.length > 0; });
-  var rest = words.filter(function(w) { return !GENERIC_SITE_WORDS[w]; });
+  var s = (q || "")
+    .toLowerCase()
+    .trim()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\.(d|de)$/, "");
+  var words = s.split(/[\s./]+/).filter(function (w) {
+    return w.length > 0;
+  });
+  var rest = words.filter(function (w) {
+    return !GENERIC_SITE_WORDS[w];
+  });
   if (rest.length === 0) {
-    return words.some(function(w) { return w === 'home' || w === 'homepage'; });
+    return words.some(function (w) {
+      return w === "home" || w === "homepage";
+    });
   }
   if (rest.length > 1) return false;
   var w = rest[0];
-  return w === 'bascik' || (w.length >= 4 && 'bascik'.indexOf(w) === 0);
+  return w === "bascik" || (w.length >= 4 && "bascik".indexOf(w) === 0);
 }
 
 export function tokens(q: string): string[] {
-  return q.split(/\s+/).filter(function(w) { return w.length >= 2; });
+  return q.split(/\s+/).filter(function (w) {
+    return w.length >= 2;
+  });
 }
 
 export function basePath(path: string): string {
-  return path.split('#')[0];
+  return path.split("#")[0];
 }
 
 export function score(e: SearchEntry, q: string, toks: string[]): number {
-  q = (q || '').toLowerCase();
-  toks = (toks || []).map(function(tok) { return tok.toLowerCase(); });
-  var sec = (e.section || '').toLowerCase();
-  var nl = (e.navLabel || e.title || '').toLowerCase();
-  var title = (e.title || '').toLowerCase();
-  var h = (e.heading || '').toLowerCase();
-  var t = (e.text || '').toLowerCase();
+  q = (q || "").toLowerCase();
+  toks = (toks || []).map(function (tok) {
+    return tok.toLowerCase();
+  });
+  var sec = (e.section || "").toLowerCase();
+  var nl = (e.navLabel || e.title || "").toLowerCase();
+  var title = (e.title || "").toLowerCase();
+  var h = (e.heading || "").toLowerCase();
+  var t = (e.text || "").toLowerCase();
 
-  var secHits = sec ? toks.reduce(function(n, tok) { return n + (sec.includes(tok) ? 1 : 0); }, 0) : 0;
-  var nlHits = toks.reduce(function(n, tok) { return n + (nl.includes(tok) || (title && title.includes(tok)) ? 1 : 0); }, 0);
-  var hHits = h ? toks.reduce(function(n, tok) { return n + (h.includes(tok) ? 1 : 0); }, 0) : 0;
-  var tHits = toks.reduce(function(n, tok) { return n + (t.includes(tok) ? 1 : 0); }, 0);
+  var secHits = sec
+    ? toks.reduce(function (n, tok) {
+        return n + (sec.includes(tok) ? 1 : 0);
+      }, 0)
+    : 0;
+  var nlHits = toks.reduce(function (n, tok) {
+    return n + (nl.includes(tok) || (title && title.includes(tok)) ? 1 : 0);
+  }, 0);
+  var hHits = h
+    ? toks.reduce(function (n, tok) {
+        return n + (h.includes(tok) ? 1 : 0);
+      }, 0)
+    : 0;
+  var tHits = toks.reduce(function (n, tok) {
+    return n + (t.includes(tok) ? 1 : 0);
+  }, 0);
 
   // Tier 1 (>=2000): Category (section) match, outranks page title, heading, and text
   if (sec) {
-    var secMatch = sec === q || sec.startsWith(q) || sec.includes(q) || (toks.length > 0 && secHits === toks.length);
+    var secMatch =
+      sec === q ||
+      sec.startsWith(q) ||
+      sec.includes(q) ||
+      (toks.length > 0 && secHits === toks.length);
     if (secMatch) {
       var isPage = e.heading === null;
       var secBase = isPage ? 2000 : 1800;
@@ -75,7 +110,8 @@ export function score(e: SearchEntry, q: string, toks: string[]): number {
       if (sec === q) return secBase + 600 + bonus;
       if (sec.startsWith(q)) return secBase + 400 + secHits + bonus;
       if (sec.includes(q)) return secBase + 200 + secHits + bonus;
-      if (toks.length > 0 && secHits === toks.length) return secBase + 100 + secHits + bonus;
+      if (toks.length > 0 && secHits === toks.length)
+        return secBase + 100 + secHits + bonus;
     }
   }
 
@@ -104,19 +140,27 @@ export function score(e: SearchEntry, q: string, toks: string[]): number {
 }
 
 /** Returns ~120 chars centered on the first query/token match in text. */
-export function snippet(text: string | null | undefined, q: string, toks: string[]): string {
-  if (!text) return '';
+export function snippet(
+  text: string | null | undefined,
+  q: string,
+  toks: string[],
+): string {
+  if (!text) return "";
   var lo = text.toLowerCase();
-  var qLo = (q || '').toLowerCase();
+  var qLo = (q || "").toLowerCase();
   var idx = qLo ? lo.indexOf(qLo) : -1;
   if (idx < 0) {
     for (var i = 0; i < toks.length; i++) {
-      idx = lo.indexOf((toks[i] || '').toLowerCase());
+      idx = lo.indexOf((toks[i] || "").toLowerCase());
       if (idx >= 0) break;
     }
   }
   var start = Math.max(0, idx > 40 ? idx - 40 : 0);
-  return (start > 0 ? '\u2026' : '') + text.slice(start, start + 120) + (start + 120 < text.length ? '\u2026' : '');
+  return (
+    (start > 0 ? "\u2026" : "") +
+    text.slice(start, start + 120) +
+    (start + 120 < text.length ? "\u2026" : "")
+  );
 }
 
 /**
@@ -125,14 +169,21 @@ export function snippet(text: string | null | undefined, q: string, toks: string
  * and < 2000, and no other page ties it), that page's entries are grouped first
  * in document order (page entry, then h2s). Remaining slots fill from score-ordered results.
  */
-export function buildResults(fullIndex: SearchEntry[], q: string, toks: string[], limit: number): SearchEntry[] {
+export function buildResults(
+  fullIndex: SearchEntry[],
+  q: string,
+  toks: string[],
+  limit: number,
+): SearchEntry[] {
   // The Home entry is never scored like a page. It is only surfaced for
   // navigational queries, always first, with its sitelink pages nested under it.
   var home: SearchEntry | undefined;
   var index: SearchEntry[] = [];
   for (var h = 0; h < fullIndex.length; h++) {
     var candidate = fullIndex[h];
-    if (candidate.sitelinks && candidate.sitelinks.length) { if (!home) home = candidate; } else index.push(candidate);
+    if (candidate.sitelinks && candidate.sitelinks.length) {
+      if (!home) home = candidate;
+    } else index.push(candidate);
   }
 
   var seen: Record<string, boolean> = {};
@@ -142,32 +193,55 @@ export function buildResults(fullIndex: SearchEntry[], q: string, toks: string[]
   if (home && isNavigationalQuery(q)) {
     seen[home.path] = true;
     top.push(home);
-    (home.sitelinks || []).forEach(function(p) { sitelinkBases[basePath(p)] = true; });
-    index = index.filter(function(e) { return !sitelinkBases[basePath(e.path)]; });
+    (home.sitelinks || []).forEach(function (p) {
+      sitelinkBases[basePath(p)] = true;
+    });
+    index = index.filter(function (e) {
+      return !sitelinkBases[basePath(e.path)];
+    });
   }
 
   var scored = index
-    .map(function(e) { return { e: e, s: score(e, q, toks) }; })
-    .filter(function(x) { return x.s > 0; })
-    .sort(function(a, b) { return b.s - a.s; });
+    .map(function (e) {
+      return { e: e, s: score(e, q, toks) };
+    })
+    .filter(function (x) {
+      return x.s > 0;
+    })
+    .sort(function (a, b) {
+      return b.s - a.s;
+    });
 
-  var pageMatches = scored.filter(function(x) { return x.e.heading === null && x.s >= 1100; });
-  var bestPage = pageMatches.length === 1 ? pageMatches[0]
-    : (pageMatches.length > 1 && pageMatches[0].s > pageMatches[1].s) ? pageMatches[0]
-      : null;
+  var pageMatches = scored.filter(function (x) {
+    return x.e.heading === null && x.s >= 1100;
+  });
+  var bestPage =
+    pageMatches.length === 1
+      ? pageMatches[0]
+      : pageMatches.length > 1 && pageMatches[0].s > pageMatches[1].s
+        ? pageMatches[0]
+        : null;
 
   if (bestPage) {
     var dominantBase = bestPage.e.path;
     index
-      .filter(function(e) { return basePath(e.path) === dominantBase; })
-      .forEach(function(e) {
-        if (!seen[e.path]) { seen[e.path] = true; top.push(e); }
+      .filter(function (e) {
+        return basePath(e.path) === dominantBase;
+      })
+      .forEach(function (e) {
+        if (!seen[e.path]) {
+          seen[e.path] = true;
+          top.push(e);
+        }
       });
   }
 
   for (var i = 0; i < scored.length && top.length < limit; i++) {
     var p = scored[i].e.path;
-    if (!seen[p]) { seen[p] = true; top.push(scored[i].e); }
+    if (!seen[p]) {
+      seen[p] = true;
+      top.push(scored[i].e);
+    }
   }
 
   return top.slice(0, limit);
@@ -177,11 +251,17 @@ export function buildResults(fullIndex: SearchEntry[], q: string, toks: string[]
  * Resolves a Home entry's sitelink paths to their page-level index entries, in
  * the order the entry declares. Paths missing from the index are skipped.
  */
-export function buildSitelinks(index: SearchEntry[], homeEntry: SearchEntry): SearchEntry[] {
+export function buildSitelinks(
+  index: SearchEntry[],
+  homeEntry: SearchEntry,
+): SearchEntry[] {
   var out: SearchEntry[] = [];
-  (homeEntry.sitelinks || []).forEach(function(p) {
+  (homeEntry.sitelinks || []).forEach(function (p) {
     for (var i = 0; i < index.length; i++) {
-      if (index[i].path === p && index[i].heading === null) { out.push(index[i]); return; }
+      if (index[i].path === p && index[i].heading === null) {
+        out.push(index[i]);
+        return;
+      }
     }
   });
   return out;

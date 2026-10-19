@@ -12,26 +12,31 @@
  * Page order comes from nav.ts (the single source of truth).
  */
 
-import { readFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { marked } from 'marked';
-import { headingPlainText, slugFromHeadingHtml } from './heading-slug.ts';
-import { NAV } from './nav.ts';
+import { readFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { marked } from "marked";
+import { headingPlainText, slugFromHeadingHtml } from "./heading-slug.ts";
+import { NAV } from "./nav.ts";
 
 function resolveRoutePath(currentPath?: string): string {
   let path = currentPath || process.env.BASCIK_PAGE_PATH;
   if (!path) {
-    const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
-    const pagesDir = process.env.BASCIK_PAGES_DIR ?? '';
+    const pageFile =
+      process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? "";
+    const pagesDir = process.env.BASCIK_PAGES_DIR ?? "";
     if (pageFile && pagesDir && pageFile.startsWith(pagesDir)) {
-      const relPath = pageFile.slice(pagesDir.length).replace(/^[\\/]/, '').replace(/\\/g, '/');
-      const withoutExt = relPath.replace(/\.html$/, '');
-      const routePath = withoutExt === 'index' ? '' : withoutExt.replace(/\/index$/, '');
-      path = routePath ? `/${routePath}` : '/';
+      const relPath = pageFile
+        .slice(pagesDir.length)
+        .replace(/^[\\/]/, "")
+        .replace(/\\/g, "/");
+      const withoutExt = relPath.replace(/\.html$/, "");
+      const routePath =
+        withoutExt === "index" ? "" : withoutExt.replace(/\/index$/, "");
+      path = routePath ? `/${routePath}` : "/";
     }
   }
-  if (!path) return '';
-  if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+  if (!path) return "";
+  if (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
   return path;
 }
 
@@ -43,18 +48,18 @@ function resolveRoutePath(currentPath?: string): string {
  */
 export function renderSectionLabel(currentPath?: string): string {
   const path = resolveRoutePath(currentPath);
-  if (!path) return '';
-  const section = NAV.find(s => s.pages.some(p => p.href === path));
-  if (!section) return '';
+  if (!path) return "";
+  const section = NAV.find((s) => s.pages.some((p) => p.href === path));
+  if (!section) return "";
   return `<p class="section-label">${section.section}</p>`;
 }
 
 function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /**
@@ -62,36 +67,41 @@ function escapeHtml(text: string): string {
  * sidebar component calls this from a data-bascik-build script, leaving the
  * browser responsible only for indicating the section currently in view.
  */
-export async function renderPageTableOfContents(pageContentPath?: string): Promise<string> {
+export async function renderPageTableOfContents(
+  pageContentPath?: string,
+): Promise<string> {
   let contentPaths: string[];
   if (pageContentPath) {
     contentPaths = [resolve(process.cwd(), pageContentPath)];
   } else {
-    let pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
+    let pageFile =
+      process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? "";
     if (!pageFile) {
       const route = resolveRoutePath();
-      if (!route) return '';
-      const pageRelativePath = route === '/' ? 'index.html' : `${route.slice(1)}.html`;
-      pageFile = join(process.cwd(), 'src/pages', pageRelativePath);
+      if (!route) return "";
+      const pageRelativePath =
+        route === "/" ? "index.html" : `${route.slice(1)}.html`;
+      pageFile = join(process.cwd(), "src/pages", pageRelativePath);
     }
 
     let pageSource: string;
     try {
-      pageSource = await readFile(pageFile, 'utf8');
+      pageSource = await readFile(pageFile, "utf8");
     } catch {
-      return '';
+      return "";
     }
-    contentPaths = [...pageSource.matchAll(/['"]\.\/content\/([^'"]+\.md)['"]/g)]
-      .map(match => join(dirname(pageFile), 'content', match[1]));
+    contentPaths = [
+      ...pageSource.matchAll(/['"]\.\/content\/([^'"]+\.md)['"]/g),
+    ].map((match) => join(dirname(pageFile), "content", match[1]));
   }
   const uniqueContentPaths = [...new Set(contentPaths)];
-  if (!uniqueContentPaths.length) return '';
+  if (!uniqueContentPaths.length) return "";
 
   const headings: Array<{ level: 2 | 3; text: string; id: string }> = [];
   for (const contentPath of uniqueContentPaths) {
     let markdown: string;
     try {
-      markdown = await readFile(contentPath, 'utf8');
+      markdown = await readFile(contentPath, "utf8");
     } catch {
       continue;
     }
@@ -99,7 +109,8 @@ export async function renderPageTableOfContents(pageContentPath?: string): Promi
     // The lexer skips fenced code and indented code, and the heading HTML is
     // slugged by the same function md-renderer.ts uses for the page's ids.
     for (const token of marked.lexer(markdown)) {
-      if (token.type !== 'heading' || (token.depth !== 2 && token.depth !== 3)) continue;
+      if (token.type !== "heading" || (token.depth !== 2 && token.depth !== 3))
+        continue;
       const headingHtml = marked.parseInline(token.text, { async: false });
       headings.push({
         level: token.depth,
@@ -109,21 +120,25 @@ export async function renderPageTableOfContents(pageContentPath?: string): Promi
     }
   }
 
-  if (!headings.length) return '';
+  if (!headings.length) return "";
   // Only data goes through the script. The list items, links, and nested lists
   // belong to the toc-entry and toc-sublist components, so their scoped CSS
   // applies; markup printed by a build script is not scoped.
-  const entryOpen = (heading: { level: 2 | 3; text: string; id: string }): string =>
+  const entryOpen = (heading: {
+    level: 2 | 3;
+    text: string;
+    id: string;
+  }): string =>
     `<toc-entry data-bascik-prop-href="#${escapeHtml(heading.id)}" ` +
     `data-bascik-prop-level="${heading.level}" ` +
     `data-bascik-prop-text="${escapeHtml(heading.text)}">`;
-  let html = '';
+  let html = "";
   let subsectionListOpen = false;
   let subsectionHasItems = false;
   const closeSubsections = (): void => {
     if (!subsectionListOpen) return;
     // An h2 with no h3 children emits no empty sublist.
-    html += subsectionHasItems ? '</toc-sublist></toc-entry>' : '</toc-entry>';
+    html += subsectionHasItems ? "</toc-sublist></toc-entry>" : "</toc-entry>";
     subsectionListOpen = false;
     subsectionHasItems = false;
   };
@@ -133,7 +148,7 @@ export async function renderPageTableOfContents(pageContentPath?: string): Promi
       html += entryOpen(heading);
       subsectionListOpen = true;
     } else if (subsectionListOpen) {
-      if (!subsectionHasItems) html += '<toc-sublist>';
+      if (!subsectionHasItems) html += "<toc-sublist>";
       subsectionHasItems = true;
       html += `${entryOpen(heading)}</toc-entry>`;
     } else {
@@ -152,25 +167,33 @@ export async function renderPageTableOfContents(pageContentPath?: string): Promi
  */
 export function renderPagination(currentPath?: string): string {
   const path = resolveRoutePath(currentPath);
-  if (!path) return '';
+  if (!path) return "";
   // External nav entries (e.g. Merch) are off-site and have no local page, so
   // they are skipped in the prev/next sequence.
-  const flat = NAV.flatMap(s => s.pages.filter(p => !p.external).map(p => ({ ...p, section: s.section })));
-  const idx = flat.findIndex(p => p.href === path);
-  if (idx === -1) return '';
+  const flat = NAV.flatMap((s) =>
+    s.pages
+      .filter((p) => !p.external)
+      .map((p) => ({ ...p, section: s.section })),
+  );
+  const idx = flat.findIndex((p) => p.href === path);
+  if (idx === -1) return "";
   const prev = idx > 0 ? flat[idx - 1] : null;
   const next = idx < flat.length - 1 ? flat[idx + 1] : null;
-  if (!prev && !next) return '';
+  if (!prev && !next) return "";
   // Only data goes through the script. The <nav> and every link's markup and
   // styles belong to components (docs-pagination, pagination-link), so their
   // scoped CSS applies; build-script output is not scoped.
-  const link = (item: { href: string; section: string; label: string }, dir: string, which: 'prev' | 'next'): string =>
+  const link = (
+    item: { href: string; section: string; label: string },
+    dir: string,
+    which: "prev" | "next",
+  ): string =>
     `<pagination-link data-bascik-prop-href="${escapeHtml(item.href)}" data-pg="${which}" ` +
     `data-bascik-prop-dir="${dir}" ` +
     `data-bascik-prop-section="${escapeHtml(item.section)}" ` +
     `data-bascik-prop-label="${escapeHtml(item.label)}"></pagination-link>`;
-  let html = '';
-  if (prev) html += link(prev, '\u2190 Previous', 'prev');
-  if (next) html += link(next, 'Next \u2192', 'next');
+  let html = "";
+  if (prev) html += link(prev, "\u2190 Previous", "prev");
+  if (next) html += link(next, "Next \u2192", "next");
   return html;
 }

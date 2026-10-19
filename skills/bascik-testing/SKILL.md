@@ -32,8 +32,8 @@ Component scripts are IIFEs and cannot be imported. Test logic, not DOM wiring:
 
 ```ts
 // vite.config.ts
-import { defineConfig } from 'vite';
-export default defineConfig({ test: { include: ['src/**/*.test.ts'] } });
+import { defineConfig } from "vite";
+export default defineConfig({ test: { include: ["src/**/*.test.ts"] } });
 ```
 
 Server, stream, and API logic: put it in `src/lib/*.ts`, unit test the functions, and cover the HTTP layer with requests against the dev server or `bascik --server`.
@@ -48,14 +48,14 @@ Server, stream, and API logic: put it in `src/lib/*.ts`, unit test the functions
 - Test against the production build (`bascik --build` served statically, or `bascik --server`), not only the dev server: script placement and identifiers differ.
 
 ```ts
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
-test('each like button toggles independently', async ({ page }) => {
-  await page.goto('/');
-  const buttons = page.getByTestId('like-button');
+test("each like button toggles independently", async ({ page }) => {
+  await page.goto("/");
+  const buttons = page.getByTestId("like-button");
   await buttons.first().click();
-  await expect(buttons.first()).toHaveAttribute('aria-pressed', 'true');
-  await expect(buttons.last()).toHaveAttribute('aria-pressed', 'false');
+  await expect(buttons.first()).toHaveAttribute("aria-pressed", "true");
+  await expect(buttons.last()).toHaveAttribute("aria-pressed", "false");
 });
 ```
 
@@ -78,11 +78,11 @@ Bascik output starts near 100 because it adds no runtime. The remaining points c
 
 ## Look it up
 
-| How do I... | Read |
-|---|---|
-| Unit test helpers and handlers | `/testing/unit-testing` |
-| Test components in a browser | `/testing/component-testing`, `/testing/e2e-testing` |
+| How do I...                          | Read                                                                         |
+| ------------------------------------ | ---------------------------------------------------------------------------- |
+| Unit test helpers and handlers       | `/testing/unit-testing`                                                      |
+| Test components in a browser         | `/testing/component-testing`, `/testing/e2e-testing`                         |
 | Test build, server, and exec scripts | `/testing/build-scripts`, `/testing/server-scripts`, `/testing/exec-scripts` |
-| Lint in CI | `/testing/linting`, `/tools/linter` |
+| Lint in CI                           | `/testing/linting`, `/tools/linter`                                          |
 
 `node <skills-dir>/bascik/scripts/read-doc.mjs <path>` prints any of these.

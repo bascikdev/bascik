@@ -15,11 +15,11 @@
  * The same module parses the CLI's own output into those timings, so the measurement script and its tests
  * share one definition of what each line means.
  */
-import { readdir, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { stripVTControlCharacters } from 'node:util';
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
-export type ExecPhase = 'pre' | 'parallel' | 'post';
+export type ExecPhase = "pre" | "parallel" | "post";
 
 /** One entry of `pipeline.exec`, as far as the timings care. */
 export interface ExecEntry {
@@ -81,37 +81,54 @@ export function parseDuration(text: string): number {
   const match = /^(<)?([\d.]+)(ms|s)$/.exec(text.trim());
   if (!match) throw new Error(`Cannot read the duration "${text}"`);
   const amount = Number(match[2]);
-  return match[3] === 's' ? amount : amount / 1000;
+  return match[3] === "s" ? amount : amount / 1000;
 }
 
 /** Reads the CLI's output from one `bascik --build` into timings. Throws when a line it needs is missing. */
-export function parseBuildLog(rawLog: string, wallSeconds: number, execEntries: ExecEntry[]): BuildRunTimings & { pages: number } {
+export function parseBuildLog(
+  rawLog: string,
+  wallSeconds: number,
+  execEntries: ExecEntry[],
+): BuildRunTimings & { pages: number } {
   const log = stripVTControlCharacters(rawLog);
 
   const pagesLine = /^✓ (\d+) pages? transpiled in (\S+)$/m.exec(log);
-  if (!pagesLine) throw new Error('The build log has no "pages transpiled" line');
+  if (!pagesLine)
+    throw new Error('The build log has no "pages transpiled" line');
   const totalLine = /^✓ Build complete in (\S+)$/m.exec(log);
   if (!totalLine) throw new Error('The build log has no "Build complete" line');
   const pages = Number(pagesLine[1]);
   const pagesSeconds = parseDuration(pagesLine[2]);
   const totalSeconds = parseDuration(totalLine[1]);
 
-  const phases = new Map(execEntries.map((entry) => [entry.script, entry.phase ?? 'parallel'] as const));
-  const execScripts: ExecTiming[] = [...log.matchAll(/^\(completed\) exec: (\S+) in (\S+)$/gm)].map((match) => ({
+  const phases = new Map(
+    execEntries.map(
+      (entry) => [entry.script, entry.phase ?? "parallel"] as const,
+    ),
+  );
+  const execScripts: ExecTiming[] = [
+    ...log.matchAll(/^\(completed\) exec: (\S+) in (\S+)$/gm),
+  ].map((match) => ({
     script: match[1],
-    phase: phases.get(match[1]) ?? 'parallel',
+    phase: phases.get(match[1]) ?? "parallel",
     seconds: round(parseDuration(match[2])),
   }));
   const phaseSeconds = (phase: ExecPhase) =>
-    execScripts.filter((script) => script.phase === phase).reduce((sum, script) => sum + script.seconds, 0);
-  const preScriptsSeconds = phaseSeconds('pre');
-  const postScriptsSeconds = phaseSeconds('post');
+    execScripts
+      .filter((script) => script.phase === phase)
+      .reduce((sum, script) => sum + script.seconds, 0);
+  const preScriptsSeconds = phaseSeconds("pre");
+  const postScriptsSeconds = phaseSeconds("post");
 
   const perPage = [...log.matchAll(/^transpiled: (\S+) in (\S+)$/gm)]
-    .map((match) => ({ path: match[1], ms: Math.round(parseDuration(match[2]) * 1000) }))
+    .map((match) => ({
+      path: match[1],
+      ms: Math.round(parseDuration(match[2]) * 1000),
+    }))
     .sort((a, b) => a.ms - b.ms);
-  const slowestPage = perPage.at(-1) ?? { path: '', ms: 0 };
-  const pageMedianMs = perPage.length > 0 ? perPage[Math.floor(perPage.length / 2)].ms : 0;
+  const slowestPage = perPage.at(-1) ?? { path: "", ms: 0 };
+  const pageMedianMs =
+    perPage.length > 0 ? perPage[Math.floor(perPage.length / 2)].ms : 0;
 
   return {
     pages,
@@ -121,7 +138,12 @@ export function parseBuildLog(rawLog: string, wallSeconds: number, execEntries: 
     preScriptsSeconds: round(preScriptsSeconds),
     pagesSeconds: round(pagesSeconds),
     postScriptsSeconds: round(postScriptsSeconds),
-    otherSeconds: round(Math.max(0, totalSeconds - preScriptsSeconds - pagesSeconds - postScriptsSeconds)),
+    otherSeconds: round(
+      Math.max(
+        0,
+        totalSeconds - preScriptsSeconds - pagesSeconds - postScriptsSeconds,
+      ),
+    ),
     execScripts,
     pageMedianMs,
     slowestPage,
@@ -130,7 +152,10 @@ export function parseBuildLog(rawLog: string, wallSeconds: number, execEntries: 
 
 const listFiles = async (dir: string): Promise<string[]> => {
   try {
-    const entries = await readdir(dir, { recursive: true, withFileTypes: true });
+    const entries = await readdir(dir, {
+      recursive: true,
+      withFileTypes: true,
+    });
     return entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
   } catch {
     return [];
@@ -138,22 +163,35 @@ const listFiles = async (dir: string): Promise<string[]> => {
 };
 
 /** Counts the page sources. A bracketed route file is one source however many pages it expands to. */
-export async function countSourcePages(pagesDir: string = join(process.cwd(), 'src/pages')): Promise<number> {
-  return (await listFiles(pagesDir)).filter((name) => name.endsWith('.html')).length;
+export async function countSourcePages(
+  pagesDir: string = join(process.cwd(), "src/pages"),
+): Promise<number> {
+  return (await listFiles(pagesDir)).filter((name) => name.endsWith(".html"))
+    .length;
 }
 
 /** Counts component files (`.html`) across the component folders. */
 export async function countComponents(
-  componentDirs: string[] = [join(process.cwd(), 'src/components'), join(process.cwd(), '../examples/components')],
+  componentDirs: string[] = [
+    join(process.cwd(), "src/components"),
+    join(process.cwd(), "../examples/components"),
+  ],
 ): Promise<number> {
-  const counts = await Promise.all(componentDirs.map(async (dir) => (await listFiles(dir)).filter((name) => name.endsWith('.html')).length));
+  const counts = await Promise.all(
+    componentDirs.map(
+      async (dir) =>
+        (await listFiles(dir)).filter((name) => name.endsWith(".html")).length,
+    ),
+  );
   return counts.reduce((sum, count) => sum + count, 0);
 }
 
 /** Reads the measured timings, with an error that says how to produce them when the file is missing. */
-export async function readBuildTimings(path: string = join(process.cwd(), 'build-timings.json')): Promise<BuildTimings> {
+export async function readBuildTimings(
+  path: string = join(process.cwd(), "build-timings.json"),
+): Promise<BuildTimings> {
   try {
-    return JSON.parse(await readFile(path, 'utf8')) as BuildTimings;
+    return JSON.parse(await readFile(path, "utf8")) as BuildTimings;
   } catch (error) {
     throw new Error(
       `Cannot read ${path} (${(error as Error).message}). Run \`yarn docs:measure-build\` to measure the docs build and write it.`,
@@ -168,7 +206,10 @@ export function formatSeconds(seconds: number): string {
 }
 
 /** Milliseconds of page compilation per page, rounded to a whole number. */
-export function millisecondsPerPage(pagesSeconds: number, pages: number): number {
+export function millisecondsPerPage(
+  pagesSeconds: number,
+  pages: number,
+): number {
   return pages > 0 ? Math.round((pagesSeconds * 1000) / pages) : 0;
 }
 

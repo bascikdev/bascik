@@ -8,11 +8,11 @@ Editor support and CLI diagnostics are powered by `@bascik/language-server`.
 
 Both, and they do different jobs. Each rule lives in exactly one of them.
 
-| | Linter (`@bascik/language-server`) | [`bascik --check`](/cli#static-analysis-with-bascik-check) |
-| --- | --- | --- |
+|         | Linter (`@bascik/language-server`)                                                                                   | [`bascik --check`](/cli#static-analysis-with-bascik-check)                                                |
+| ------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | Answers | Questions about **one file**: is this attribute a typo, can this CSS be scoped, does this API route export a handler | Questions about the **whole project**: duplicate routes, unused components, config errors, unmatched tags |
-| Runs | In your editor as you type, and from the command line | From the command line and CI |
-| Needs | Nothing but the file (and the project's config, to find components) | The whole project |
+| Runs    | In your editor as you type, and from the command line                                                                | From the command line and CI                                                                              |
+| Needs   | Nothing but the file (and the project's config, to find components)                                                  | The whole project                                                                                         |
 
 `bascik --check` also runs the linter. When `@bascik/language-server` is installed, `bascik --check` hands it your pages, components, and API routes and lists what it finds, so one command covers both halves and an editor squiggle always matches what CI reports. The full list of which rule lives where is in [Diagnostics](/internals/diagnostics#where-each-rule-lives).
 
@@ -172,12 +172,14 @@ In CSS or JavaScript:
 
 ```css
 /* bascik-ignore */
-[data-state] { color: red; }
+[data-state] {
+  color: red;
+}
 ```
 
 ```js
 // bascik-ignore
-element.id = 'dynamic-id';
+element.id = "dynamic-id";
 ```
 
 You can also disable checks across an entire block:
@@ -202,9 +204,7 @@ To configure diagnostics project-wide, create a `bascik.ext.json` or `bascik.ext
 {
   "diagnostics": {
     "selfClosingComponents": false,
-    "disabledRules": [
-      "component-metadata-duplicate-annotation"
-    ]
+    "disabledRules": ["component-metadata-duplicate-annotation"]
   }
 }
 ```

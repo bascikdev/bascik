@@ -19,7 +19,7 @@
   font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .06em;
+  letter-spacing: 0.06em;
   color: var(--accent-fg);
 }
 
@@ -93,7 +93,10 @@
   cursor: pointer;
   line-height: 0;
   opacity: 0;
-  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    opacity 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .cblock-pre-wrap:hover .cblock-copy {

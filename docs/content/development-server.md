@@ -55,14 +55,14 @@ If a Windows environment does not allow symlink creation, Bascik warns once and 
 
 ## CLI Flags
 
-| Flag | Description | Default |
-| :--- | :--- | :--- |
-| `--port <number>` | Port to listen on | `8080` |
-| `--hostname <string>` | Interface to bind | `localhost` |
-| `--base <path>` | Deployment path prefix | `/` |
-| `--config <path>` | Path to explicit config file | `bascik.config.ts` |
-| `--env-file <path>` | Custom environment file path | `./.env` |
-| `--site-url <url>` | Override canonical site URL | `process.env.BASCIK_SITE_URL` |
+| Flag                  | Description                  | Default                       |
+| :-------------------- | :--------------------------- | :---------------------------- |
+| `--port <number>`     | Port to listen on            | `8080`                        |
+| `--hostname <string>` | Interface to bind            | `localhost`                   |
+| `--base <path>`       | Deployment path prefix       | `/`                           |
+| `--config <path>`     | Path to explicit config file | `bascik.config.ts`            |
+| `--env-file <path>`   | Custom environment file path | `./.env`                      |
+| `--site-url <url>`    | Override canonical site URL  | `process.env.BASCIK_SITE_URL` |
 
 ```sh
 # Start dev server on custom port

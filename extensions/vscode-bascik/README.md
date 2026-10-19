@@ -59,7 +59,9 @@ You can suppress Bascik warnings for a specific line or block using standard com
 
   ```css
   /* bascik-ignore */
-  [data-state] { color: red; }
+  [data-state] {
+    color: red;
+  }
   ```
 
 ### Extension Configuration File

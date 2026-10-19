@@ -3,7 +3,9 @@ import { minifyCss } from "./css-minifier.ts";
 
 describe("minifyCss", () => {
   it("strips block comments", () => {
-    expect(minifyCss("/* a comment */\n.foo { color: red; }")).not.toContain("/* a comment */");
+    expect(minifyCss("/* a comment */\n.foo { color: red; }")).not.toContain(
+      "/* a comment */",
+    );
   });
 
   it("strips multi-line block comments", () => {
@@ -32,7 +34,8 @@ describe("minifyCss", () => {
   });
 
   it("handles a realistic stylesheet snippet", () => {
-    const input = "/* Hero */\n.hero {\n  padding: 96px 0 80px;\n  color: red;\n}";
+    const input =
+      "/* Hero */\n.hero {\n  padding: 96px 0 80px;\n  color: red;\n}";
     expect(minifyCss(input)).toBe(".hero{padding:96px 0 80px;color:red;}");
   });
 
@@ -58,7 +61,7 @@ describe("minifyCss", () => {
     ].join("\n");
     expect(minifyCss(input)).toBe(
       ".a :is(h2,h3){color:red;}.a :where(p){margin:0;}.a :hover{color:blue;}" +
-      ".a ::before{content:'';}.a > :first-child{color:green;}.a{.b :focus{outline:0;}}",
+        ".a ::before{content:'';}.a > :first-child{color:green;}.a{.b :focus{outline:0;}}",
     );
   });
 
@@ -76,11 +79,17 @@ describe("minifyCss", () => {
   });
 
   it("still removes spaces around declaration colons", () => {
-    expect(minifyCss(".a { color : red ; margin :0 }")).toBe(".a{color:red;margin:0}");
-    expect(minifyCss(".a { color: red; &:hover { color : blue } }")).toBe(".a{color:red;&:hover{color:blue}}");
+    expect(minifyCss(".a { color : red ; margin :0 }")).toBe(
+      ".a{color:red;margin:0}",
+    );
+    expect(minifyCss(".a { color: red; &:hover { color : blue } }")).toBe(
+      ".a{color:red;&:hover{color:blue}}",
+    );
   });
 
   it("preserves a space for an empty CSS custom property value (--empty: ;)", () => {
-    expect(minifyCss(":root { --empty: ; --x: 1px; }")).toBe(":root{--empty: ;--x:1px;}");
+    expect(minifyCss(":root { --empty: ; --x: 1px; }")).toBe(
+      ":root{--empty: ;--x:1px;}",
+    );
   });
 });

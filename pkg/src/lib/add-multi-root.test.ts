@@ -25,7 +25,9 @@ describe("bascik add with multiple component roots", () => {
 
   beforeEach(async () => {
     prevCwd = process.cwd();
-    testDir = realpathSync(tmpdir()) + `/bascik-add-roots-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    testDir =
+      realpathSync(tmpdir()) +
+      `/bascik-add-roots-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     vendorRoot = join(testDir, "src", "vendor-components");
     localRoot = join(testDir, "src", "components");
     await mkdir(vendorRoot, { recursive: true });
@@ -34,9 +36,16 @@ describe("bascik add with multiple component roots", () => {
     await mkdir(join(pkgDir, "components"), { recursive: true });
     await writeFile(
       join(pkgDir, "package.json"),
-      JSON.stringify({ name: "@acme/ui", version: "1.0.0", bascik: { components: "./components" } }),
+      JSON.stringify({
+        name: "@acme/ui",
+        version: "1.0.0",
+        bascik: { components: "./components" },
+      }),
     );
-    await writeFile(join(pkgDir, "components", "acme-button.html"), "<button><slot></slot></button>");
+    await writeFile(
+      join(pkgDir, "components", "acme-button.html"),
+      "<button><slot></slot></button>",
+    );
     configState.directory.components = [vendorRoot, localRoot];
     process.chdir(testDir);
   });
@@ -49,7 +58,9 @@ describe("bascik add with multiple component roots", () => {
   it("copies into the first listed root and reports it", async () => {
     const result = await addComponents(["@acme/ui"]);
     expect(result.targetComponentsDir).toBe(vendorRoot);
-    expect(await readFile(join(vendorRoot, "acme-button.html"), "utf8")).toBe("<button><slot></slot></button>");
+    expect(await readFile(join(vendorRoot, "acme-button.html"), "utf8")).toBe(
+      "<button><slot></slot></button>",
+    );
     await expect(access(join(localRoot, "acme-button.html"))).rejects.toThrow();
   });
 });

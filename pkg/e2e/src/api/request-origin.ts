@@ -1,6 +1,6 @@
 export const GET = async (
   request: Request,
-  context: { params: Record<string, string>; remoteIp: string }
+  context: { params: Record<string, string>; remoteIp: string },
 ): Promise<Response> => {
   const url = new URL(request.url);
   return Response.json({

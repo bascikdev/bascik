@@ -10,8 +10,8 @@ import { minifyHtml } from "./html-minifier.ts";
 
 vi.mock("node:fs/promises", () => ({
   readFile: vi.fn(),
-  writeFile: vi.fn(async () => { }),
-  mkdir: vi.fn(async () => { }),
+  writeFile: vi.fn(async () => {}),
+  mkdir: vi.fn(async () => {}),
 }));
 
 vi.mock("./html-minifier.ts", async (importOriginal) => {
@@ -62,7 +62,12 @@ describe("BYOMinifier (Bring Your Own Minifier) – real library integrations", 
   });
 
   afterEach(() => {
-    (BascikConfig as any).minify = { html: false, css: false, js: false, identifiers: false };
+    (BascikConfig as any).minify = {
+      html: false,
+      css: false,
+      js: false,
+      identifiers: false,
+    };
   });
 
   it("minifies JavaScript with esbuild via minify.js", async () => {
@@ -126,7 +131,9 @@ describe("BYOMinifier (Bring Your Own Minifier) – real library integrations", 
 
   it("adds vendor prefixes with PostCSS + Autoprefixer via minify.css", async () => {
     (BascikConfig.minify as any).css = async (code: string) => {
-      const result = await postcss([autoprefixer]).process(code, { from: undefined });
+      const result = await postcss([autoprefixer]).process(code, {
+        from: undefined,
+      });
       return result.css;
     };
 
@@ -152,7 +159,8 @@ describe("BYOMinifier (Bring Your Own Minifier) – real library integrations", 
   });
 
   it("erases TypeScript type annotations using Node.js stripTypeScriptTypes via minify.js", async () => {
-    (BascikConfig.minify as any).js = (code: string) => stripTypeScriptTypes(code);
+    (BascikConfig.minify as any).js = (code: string) =>
+      stripTypeScriptTypes(code);
 
     const pageHtml = `<!DOCTYPE html><html><head></head><body><ts-comp></ts-comp></body></html>`;
     vi.mocked(readFile).mockResolvedValue(pageHtml);
@@ -190,7 +198,9 @@ describe("BYOMinifier (Bring Your Own Minifier) – real library integrations", 
 
   it("combines PostCSS + Autoprefixer (minify.css) and esbuild (minify.js) in the same pipeline", async () => {
     (BascikConfig.minify as any).css = async (code: string) => {
-      const result = await postcss([autoprefixer]).process(code, { from: undefined });
+      const result = await postcss([autoprefixer]).process(code, {
+        from: undefined,
+      });
       return result.css;
     };
     (BascikConfig.minify as any).js = async (code: string) => {
@@ -249,12 +259,12 @@ describe("BYOMinifier (Bring Your Own Minifier) – real library integrations", 
     </body></html>`;
     vi.mocked(readFile).mockResolvedValue(pageHtml);
 
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await expect(transpilePage("src/pages/index.html", {})).rejects.toThrow();
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("JS minification failed"),
-      expect.any(Error)
+      expect.any(Error),
     );
 
     errorSpy.mockRestore();
@@ -275,12 +285,14 @@ describe("BYOMinifier (Bring Your Own Minifier) – real library integrations", 
       },
     };
 
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await expect(transpilePage("src/pages/index.html", componentList)).rejects.toThrow("CSS Syntax Error");
+    await expect(
+      transpilePage("src/pages/index.html", componentList),
+    ).rejects.toThrow("CSS Syntax Error");
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("CSS minification failed"),
-      expect.any(Error)
+      expect.any(Error),
     );
 
     errorSpy.mockRestore();
@@ -297,14 +309,14 @@ describe("BYOMinifier (Bring Your Own Minifier) – real library integrations", 
     </body></html>`;
     vi.mocked(readFile).mockResolvedValue(pageHtml);
 
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await transpilePage("src/pages/index.html", {});
     expect(result).not.toBeNull();
     expect(result!.distHtml).toContain("const x = 1;");
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("JS minification failed"),
-      expect.any(Error)
+      expect.any(Error),
     );
 
     warnSpy.mockRestore();
@@ -314,7 +326,8 @@ describe("BYOMinifier (Bring Your Own Minifier) – real library integrations", 
   it("preserves line comments and syntax in <head> components when stripTypeScriptTypes is configured as minify.js", async () => {
     (BascikConfig.minify as any).html = true;
     (BascikConfig.minify as any).css = true;
-    (BascikConfig.minify as any).js = (code: string) => stripTypeScriptTypes(code);
+    (BascikConfig.minify as any).js = (code: string) =>
+      stripTypeScriptTypes(code);
 
     const pageHtml = `<!DOCTYPE html><html><head>
       <site-head-comp></site-head-comp>
@@ -391,15 +404,17 @@ describe("BYOMinifier (Bring Your Own Minifier) – real library integrations", 
     </body></html>`;
     vi.mocked(readFile).mockResolvedValue(pageHtml);
 
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await transpilePage("src/pages/index.html", {});
     expect(result).not.toBeNull();
     // The head still contains the unminified meta tag rather than failing the build.
-    expect(result!.distHtml).toContain('<meta name="description" content="test">');
+    expect(result!.distHtml).toContain(
+      '<meta name="description" content="test">',
+    );
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("HTML minification failed for head"),
-      expect.any(Error)
+      expect.any(Error),
     );
 
     warnSpy.mockRestore();

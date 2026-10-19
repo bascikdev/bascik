@@ -1,51 +1,94 @@
-import { describe, it, expect } from 'vitest';
-import { tokens, basePath, score, snippet, buildResults, isNavigationalQuery, buildSitelinks } from './search-logic.js';
+import { describe, it, expect } from "vitest";
+import {
+  tokens,
+  basePath,
+  score,
+  snippet,
+  buildResults,
+  isNavigationalQuery,
+  buildSitelinks,
+} from "./search-logic.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 const entry = (overrides) => ({
-  navLabel: 'Test Page',
+  navLabel: "Test Page",
   heading: null,
-  text: 'Some page text about the topic.',
-  path: '/test',
-  section: 'Tests',
+  text: "Some page text about the topic.",
+  path: "/test",
+  section: "Tests",
   ...overrides,
 });
 
 // Small representative index for buildResults integration tests
 const MOCK_INDEX = [
-  entry({ navLabel: 'Props', heading: null, text: 'Define and use props.', path: '/props' }),
-  entry({ navLabel: 'Props', heading: 'Passing Props', text: 'How to pass props.', path: '/props#passing-props' }),
-  entry({ navLabel: 'Props', heading: 'Defaults', text: 'Default prop values.', path: '/props#defaults' }),
-  entry({ navLabel: 'Slots', heading: null, text: 'About slots and content.', path: '/slots' }),
-  entry({ navLabel: 'Slots', heading: 'Named Slots', text: 'Named slot usage.', path: '/slots#named-slots' }),
-  entry({ navLabel: 'Configuration', heading: null, text: 'Config file options.', path: '/config' }),
-  entry({ navLabel: 'Configuration', heading: 'Output Dir', text: 'Where output goes.', path: '/config#output-dir' }),
+  entry({
+    navLabel: "Props",
+    heading: null,
+    text: "Define and use props.",
+    path: "/props",
+  }),
+  entry({
+    navLabel: "Props",
+    heading: "Passing Props",
+    text: "How to pass props.",
+    path: "/props#passing-props",
+  }),
+  entry({
+    navLabel: "Props",
+    heading: "Defaults",
+    text: "Default prop values.",
+    path: "/props#defaults",
+  }),
+  entry({
+    navLabel: "Slots",
+    heading: null,
+    text: "About slots and content.",
+    path: "/slots",
+  }),
+  entry({
+    navLabel: "Slots",
+    heading: "Named Slots",
+    text: "Named slot usage.",
+    path: "/slots#named-slots",
+  }),
+  entry({
+    navLabel: "Configuration",
+    heading: null,
+    text: "Config file options.",
+    path: "/config",
+  }),
+  entry({
+    navLabel: "Configuration",
+    heading: "Output Dir",
+    text: "Where output goes.",
+    path: "/config#output-dir",
+  }),
 ];
 
 // ---------------------------------------------------------------------------
 // tokens
 // ---------------------------------------------------------------------------
 
-describe('tokens', () => {
-  it('splits on whitespace', () => {
-    expect(tokens('hello world')).toEqual(['hello', 'world']);
+describe("tokens", () => {
+  it("splits on whitespace", () => {
+    expect(tokens("hello world")).toEqual(["hello", "world"]);
   });
 
-  it('filters words shorter than 2 chars', () => {
-    expect(tokens('a hello b world')).toEqual(['hello', 'world']);
+  it("filters words shorter than 2 chars", () => {
+    expect(tokens("a hello b world")).toEqual(["hello", "world"]);
   });
 
-  it('handles extra whitespace', () => {
-    expect(tokens('  foo  bar  ')).toEqual(['foo', 'bar']);
+  it("handles extra whitespace", () => {
+    expect(tokens("  foo  bar  ")).toEqual(["foo", "bar"]);
   });
 
-  it('returns empty array for empty or whitespace-only input', () => {
-    expect(tokens('')).toEqual([]);
-    expect(tokens('  ')).toEqual([]);
-    expect(tokens('a')).toEqual([]);
+  it("returns empty array for empty or whitespace-only input", () => {
+    expect(tokens("")).toEqual([]);
+    expect(tokens("  ")).toEqual([]);
+    expect(tokens("a")).toEqual([]);
   });
 });
 
@@ -53,14 +96,16 @@ describe('tokens', () => {
 // basePath
 // ---------------------------------------------------------------------------
 
-describe('basePath', () => {
-  it('strips the hash fragment', () => {
-    expect(basePath('/foo#bar')).toBe('/foo');
-    expect(basePath('/scoped-javascript#how-scoping-works')).toBe('/scoped-javascript');
+describe("basePath", () => {
+  it("strips the hash fragment", () => {
+    expect(basePath("/foo#bar")).toBe("/foo");
+    expect(basePath("/scoped-javascript#how-scoping-works")).toBe(
+      "/scoped-javascript",
+    );
   });
 
-  it('returns the path unchanged when there is no hash', () => {
-    expect(basePath('/foo')).toBe('/foo');
+  it("returns the path unchanged when there is no hash", () => {
+    expect(basePath("/foo")).toBe("/foo");
   });
 });
 
@@ -68,122 +113,176 @@ describe('basePath', () => {
 // score
 // ---------------------------------------------------------------------------
 
-describe('score', () => {
-  describe('tier 1 - category (section) match (>=2000)', () => {
-    it('returns >=2600 for an exact category match on a page-level entry', () => {
-      const q = 'how-to';
-      expect(score(entry({ section: 'How-to', navLabel: 'Markdown', heading: null }), q, tokens(q))).toBeGreaterThanOrEqual(2600);
+describe("score", () => {
+  describe("tier 1 - category (section) match (>=2000)", () => {
+    it("returns >=2600 for an exact category match on a page-level entry", () => {
+      const q = "how-to";
+      expect(
+        score(
+          entry({ section: "How-to", navLabel: "Markdown", heading: null }),
+          q,
+          tokens(q),
+        ),
+      ).toBeGreaterThanOrEqual(2600);
     });
 
-    it('does not trigger category match for multi-word query when section only contains one token', () => {
-      const q = 'scoped styles';
+    it("does not trigger category match for multi-word query when section only contains one token", () => {
+      const q = "scoped styles";
       const toks = tokens(q);
-      const e = entry({ section: 'Styles & Scripts', navLabel: 'Scoped Styles', heading: null });
+      const e = entry({
+        section: "Styles & Scripts",
+        navLabel: "Scoped Styles",
+        heading: null,
+      });
       // Should match navLabel tier 2 (>=1200) rather than failing category match
       expect(score(e, q, toks)).toBeGreaterThanOrEqual(1200);
     });
 
-    it('returns category matches above page title matches', () => {
-      const q = 'how-to';
-      const catScore = score(entry({ section: 'How-to', navLabel: 'Markdown', heading: null }), q, tokens(q));
-      const pageScore = score(entry({ section: 'Other', navLabel: 'How-to', heading: null }), q, tokens(q));
+    it("returns category matches above page title matches", () => {
+      const q = "how-to";
+      const catScore = score(
+        entry({ section: "How-to", navLabel: "Markdown", heading: null }),
+        q,
+        tokens(q),
+      );
+      const pageScore = score(
+        entry({ section: "Other", navLabel: "How-to", heading: null }),
+        q,
+        tokens(q),
+      );
       expect(catScore).toBeGreaterThan(pageScore);
     });
   });
 
-  describe('tier 2 - navLabel match (1000-1999)', () => {
-    it('returns 1600 for an exact navLabel match', () => {
-      const q = 'props';
-      expect(score(entry({ navLabel: 'Props' }), q, tokens(q))).toBe(1600);
+  describe("tier 2 - navLabel match (1000-1999)", () => {
+    it("returns 1600 for an exact navLabel match", () => {
+      const q = "props";
+      expect(score(entry({ navLabel: "Props" }), q, tokens(q))).toBe(1600);
     });
 
-    it('returns ≥1400 when navLabel starts with the query', () => {
-      const q = 'pro';
-      expect(score(entry({ navLabel: 'Props' }), q, tokens(q))).toBeGreaterThanOrEqual(1400);
+    it("returns ≥1400 when navLabel starts with the query", () => {
+      const q = "pro";
+      expect(
+        score(entry({ navLabel: "Props" }), q, tokens(q)),
+      ).toBeGreaterThanOrEqual(1400);
     });
 
-    it('returns ≥1200 when navLabel contains the phrase', () => {
-      const q = 'scoped javascript';
+    it("returns ≥1200 when navLabel contains the phrase", () => {
+      const q = "scoped javascript";
       const toks = tokens(q);
-      expect(score(entry({ navLabel: 'Scoped JavaScript Guide' }), q, toks)).toBeGreaterThanOrEqual(1200);
+      expect(
+        score(entry({ navLabel: "Scoped JavaScript Guide" }), q, toks),
+      ).toBeGreaterThanOrEqual(1200);
     });
 
-    it('returns ≥1100 when all tokens match the navLabel', () => {
-      const q = 'scoped javascript';
+    it("returns ≥1100 when all tokens match the navLabel", () => {
+      const q = "scoped javascript";
       const toks = tokens(q);
-      expect(score(entry({ navLabel: 'Scoped JavaScript' }), q, toks)).toBeGreaterThanOrEqual(1100);
+      expect(
+        score(entry({ navLabel: "Scoped JavaScript" }), q, toks),
+      ).toBeGreaterThanOrEqual(1100);
     });
 
-    it('returns ≥1000 for a partial token hit in navLabel', () => {
-      const q = 'scoped javascript';
+    it("returns ≥1000 for a partial token hit in navLabel", () => {
+      const q = "scoped javascript";
       const toks = tokens(q);
-      expect(score(entry({ navLabel: 'Scoped Styles' }), q, toks)).toBeGreaterThanOrEqual(1000);
+      expect(
+        score(entry({ navLabel: "Scoped Styles" }), q, toks),
+      ).toBeGreaterThanOrEqual(1000);
     });
   });
 
-  describe('tier 3 - heading match (100-999)', () => {
-    it('returns 600 for an exact heading match', () => {
-      const q = 'passing props';
-      const e = entry({ navLabel: 'Unrelated', heading: 'Passing Props' });
+  describe("tier 3 - heading match (100-999)", () => {
+    it("returns 600 for an exact heading match", () => {
+      const q = "passing props";
+      const e = entry({ navLabel: "Unrelated", heading: "Passing Props" });
       expect(score(e, q, tokens(q))).toBe(600);
     });
 
-    it('returns >=400 when heading contains the phrase', () => {
-      const q = 'passing';
-      const e = entry({ navLabel: 'Unrelated', heading: 'Passing Props' });
+    it("returns >=400 when heading contains the phrase", () => {
+      const q = "passing";
+      const e = entry({ navLabel: "Unrelated", heading: "Passing Props" });
       expect(score(e, q, tokens(q))).toBeGreaterThanOrEqual(400);
     });
 
-    it('score stays below 1000', () => {
-      const q = 'defaults';
-      const e = entry({ navLabel: 'Other', heading: 'Defaults' });
+    it("score stays below 1000", () => {
+      const q = "defaults";
+      const e = entry({ navLabel: "Other", heading: "Defaults" });
       expect(score(e, q, tokens(q))).toBeLessThan(1000);
     });
   });
 
-  describe('tier 4 - text-only match (1-99)', () => {
-    it('returns ≥80 for a phrase match in text', () => {
-      const q = 'define and use';
-      const e = entry({ navLabel: 'Other', text: 'Define and use props here.' });
+  describe("tier 4 - text-only match (1-99)", () => {
+    it("returns ≥80 for a phrase match in text", () => {
+      const q = "define and use";
+      const e = entry({
+        navLabel: "Other",
+        text: "Define and use props here.",
+      });
       expect(score(e, q, tokens(q))).toBeGreaterThanOrEqual(80);
     });
 
-    it('score stays below 100', () => {
-      const q = 'define and use';
-      const e = entry({ navLabel: 'Other', text: 'Define and use props here.' });
+    it("score stays below 100", () => {
+      const q = "define and use";
+      const e = entry({
+        navLabel: "Other",
+        text: "Define and use props here.",
+      });
       expect(score(e, q, tokens(q))).toBeLessThan(100);
     });
   });
 
-  describe('tier ordering guarantees', () => {
-    it('category match always beats navLabel match', () => {
-      const q = 'how-to';
+  describe("tier ordering guarantees", () => {
+    it("category match always beats navLabel match", () => {
+      const q = "how-to";
       const toks = tokens(q);
-      const cat = score(entry({ section: 'How-to', navLabel: 'Markdown', heading: null }), q, toks);
-      const nl = score(entry({ section: 'Other', navLabel: 'How-to', heading: null }), q, toks);
+      const cat = score(
+        entry({ section: "How-to", navLabel: "Markdown", heading: null }),
+        q,
+        toks,
+      );
+      const nl = score(
+        entry({ section: "Other", navLabel: "How-to", heading: null }),
+        q,
+        toks,
+      );
       expect(cat).toBeGreaterThan(nl);
     });
 
-    it('navLabel match always beats heading match', () => {
-      const q = 'foo';
+    it("navLabel match always beats heading match", () => {
+      const q = "foo";
       const toks = tokens(q);
-      const nl = score(entry({ navLabel: 'Foo' }), q, toks);
-      const h = score(entry({ navLabel: 'Other Page', heading: 'Foo' }), q, toks);
+      const nl = score(entry({ navLabel: "Foo" }), q, toks);
+      const h = score(
+        entry({ navLabel: "Other Page", heading: "Foo" }),
+        q,
+        toks,
+      );
       expect(nl).toBeGreaterThan(h);
     });
 
-    it('heading match always beats text-only match', () => {
-      const q = 'foo bar';
+    it("heading match always beats text-only match", () => {
+      const q = "foo bar";
       const toks = tokens(q);
-      const h = score(entry({ navLabel: 'Other', heading: 'Foo Bar' }), q, toks);
-      const t = score(entry({ navLabel: 'Other', text: 'foo bar here.' }), q, toks);
+      const h = score(
+        entry({ navLabel: "Other", heading: "Foo Bar" }),
+        q,
+        toks,
+      );
+      const t = score(
+        entry({ navLabel: "Other", text: "foo bar here." }),
+        q,
+        toks,
+      );
       expect(h).toBeGreaterThan(t);
     });
   });
 
-  it('returns 0 when nothing matches', () => {
-    const q = 'xyznothing';
-    expect(score(entry({ navLabel: 'Props', text: 'Props stuff' }), q, tokens(q))).toBe(0);
+  it("returns 0 when nothing matches", () => {
+    const q = "xyznothing";
+    expect(
+      score(entry({ navLabel: "Props", text: "Props stuff" }), q, tokens(q)),
+    ).toBe(0);
   });
 });
 
@@ -191,35 +290,35 @@ describe('score', () => {
 // snippet
 // ---------------------------------------------------------------------------
 
-describe('snippet', () => {
-  it('returns empty string for falsy input', () => {
-    expect(snippet('', 'foo', [])).toBe('');
-    expect(snippet(null, 'foo', [])).toBe('');
+describe("snippet", () => {
+  it("returns empty string for falsy input", () => {
+    expect(snippet("", "foo", [])).toBe("");
+    expect(snippet(null, "foo", [])).toBe("");
   });
 
-  it('centres on the phrase match when found', () => {
-    const text = 'word '.repeat(20) + 'TARGET' + ' word'.repeat(20);
-    const result = snippet(text, 'target', tokens('target'));
-    expect(result.toLowerCase()).toContain('target');
+  it("centres on the phrase match when found", () => {
+    const text = "word ".repeat(20) + "TARGET" + " word".repeat(20);
+    const result = snippet(text, "target", tokens("target"));
+    expect(result.toLowerCase()).toContain("target");
   });
 
-  it('adds a leading ellipsis when the match is not near the start', () => {
-    const text = 'a'.repeat(80) + ' match ' + 'b'.repeat(40);
-    const result = snippet(text, 'match', tokens('match'));
-    expect(result.startsWith('\u2026')).toBe(true);
+  it("adds a leading ellipsis when the match is not near the start", () => {
+    const text = "a".repeat(80) + " match " + "b".repeat(40);
+    const result = snippet(text, "match", tokens("match"));
+    expect(result.startsWith("\u2026")).toBe(true);
   });
 
-  it('adds a trailing ellipsis when the text is truncated', () => {
-    const text = 'match ' + 'b'.repeat(200);
-    const result = snippet(text, 'match', tokens('match'));
-    expect(result.endsWith('\u2026')).toBe(true);
+  it("adds a trailing ellipsis when the text is truncated", () => {
+    const text = "match " + "b".repeat(200);
+    const result = snippet(text, "match", tokens("match"));
+    expect(result.endsWith("\u2026")).toBe(true);
   });
 
-  it('keeps output to roughly 120 characters of text', () => {
-    const text = 'word '.repeat(100);
-    const result = snippet(text, 'word', tokens('word'));
+  it("keeps output to roughly 120 characters of text", () => {
+    const text = "word ".repeat(100);
+    const result = snippet(text, "word", tokens("word"));
     // Allow a few extra chars for ellipsis characters
-    expect(result.replace(/\u2026/g, '').length).toBeLessThanOrEqual(125);
+    expect(result.replace(/\u2026/g, "").length).toBeLessThanOrEqual(125);
   });
 });
 
@@ -227,18 +326,41 @@ describe('snippet', () => {
 // isNavigationalQuery
 // ---------------------------------------------------------------------------
 
-describe('isNavigationalQuery', () => {
+describe("isNavigationalQuery", () => {
   it.each([
-    'bascik', 'Bascik', '  bascik  ', 'bascik.dev', 'bascik.de', 'bascik.d', 'bascik dev', 'bascik docs',
-    'bascik documentation', 'https://bascik.dev', 'https://www.bascik.dev/', 'bascik home', 'home', 'homepage',
-    'basc', 'bascik official site',
-  ])('treats %j as a navigational query', (q) => {
+    "bascik",
+    "Bascik",
+    "  bascik  ",
+    "bascik.dev",
+    "bascik.de",
+    "bascik.d",
+    "bascik dev",
+    "bascik docs",
+    "bascik documentation",
+    "https://bascik.dev",
+    "https://www.bascik.dev/",
+    "bascik home",
+    "home",
+    "homepage",
+    "basc",
+    "bascik official site",
+  ])("treats %j as a navigational query", (q) => {
     expect(isNavigationalQuery(q)).toBe(true);
   });
 
   it.each([
-    '', 'bas', 'docs', 'dev', 'site', 'scoped styles', 'bascik components', 'bascik config', 'basic', 'components', 'bascikx',
-  ])('does not treat %j as a navigational query', (q) => {
+    "",
+    "bas",
+    "docs",
+    "dev",
+    "site",
+    "scoped styles",
+    "bascik components",
+    "bascik config",
+    "basic",
+    "components",
+    "bascikx",
+  ])("does not treat %j as a navigational query", (q) => {
     expect(isNavigationalQuery(q)).toBe(false);
   });
 });
@@ -247,70 +369,125 @@ describe('isNavigationalQuery', () => {
 // Home result with sitelinks
 // ---------------------------------------------------------------------------
 
-const SITELINK_PATHS = ['/getting-started', '/why-bascik', '/components', '/scoped-styles'];
-
-const HOME_INDEX = [
-  entry({ navLabel: 'Bascik', section: 'Home', path: '/', text: 'Bascik is a build tool for HTML components.', sitelinks: SITELINK_PATHS }),
-  entry({ navLabel: 'Getting Started', section: 'Overview', path: '/getting-started', text: 'Install Bascik.' }),
-  entry({ navLabel: 'Getting Started', section: 'Overview', heading: 'Install', path: '/getting-started#install', text: 'Install Bascik with yarn.' }),
-  entry({ navLabel: 'Why Bascik', section: 'Overview', path: '/why-bascik', text: 'Why use Bascik.' }),
-  entry({ navLabel: 'Components', section: 'Features', path: '/components', text: 'Bascik components.' }),
-  entry({ navLabel: 'Scoped Styles', section: 'Features', path: '/scoped-styles', text: 'Bascik scopes CSS.' }),
-  entry({ navLabel: 'Slots', section: 'Features', path: '/slots', text: 'Bascik slots.' }),
-  entry({ navLabel: 'From Astro', section: 'Switch to Bascik', path: '/switch/from-astro', text: 'Move to Bascik.' }),
+const SITELINK_PATHS = [
+  "/getting-started",
+  "/why-bascik",
+  "/components",
+  "/scoped-styles",
 ];
 
-describe('buildResults Home result', () => {
-  it.each(['bascik', 'Bascik.dev', 'bascik docs', 'basc', 'home'])('puts Home first for %j', (query) => {
-    const q = query.toLowerCase().trim();
-    const results = buildResults(HOME_INDEX, q, tokens(q), 13);
-    expect(results[0].path).toBe('/');
-    expect(results[0].sitelinks).toEqual(SITELINK_PATHS);
-  });
+const HOME_INDEX = [
+  entry({
+    navLabel: "Bascik",
+    section: "Home",
+    path: "/",
+    text: "Bascik is a build tool for HTML components.",
+    sitelinks: SITELINK_PATHS,
+  }),
+  entry({
+    navLabel: "Getting Started",
+    section: "Overview",
+    path: "/getting-started",
+    text: "Install Bascik.",
+  }),
+  entry({
+    navLabel: "Getting Started",
+    section: "Overview",
+    heading: "Install",
+    path: "/getting-started#install",
+    text: "Install Bascik with yarn.",
+  }),
+  entry({
+    navLabel: "Why Bascik",
+    section: "Overview",
+    path: "/why-bascik",
+    text: "Why use Bascik.",
+  }),
+  entry({
+    navLabel: "Components",
+    section: "Features",
+    path: "/components",
+    text: "Bascik components.",
+  }),
+  entry({
+    navLabel: "Scoped Styles",
+    section: "Features",
+    path: "/scoped-styles",
+    text: "Bascik scopes CSS.",
+  }),
+  entry({
+    navLabel: "Slots",
+    section: "Features",
+    path: "/slots",
+    text: "Bascik slots.",
+  }),
+  entry({
+    navLabel: "From Astro",
+    section: "Switch to Bascik",
+    path: "/switch/from-astro",
+    text: "Move to Bascik.",
+  }),
+];
 
-  it('does not repeat sitelink pages or their section entries in the remaining results', () => {
-    const q = 'bascik';
+describe("buildResults Home result", () => {
+  it.each(["bascik", "Bascik.dev", "bascik docs", "basc", "home"])(
+    "puts Home first for %j",
+    (query) => {
+      const q = query.toLowerCase().trim();
+      const results = buildResults(HOME_INDEX, q, tokens(q), 13);
+      expect(results[0].path).toBe("/");
+      expect(results[0].sitelinks).toEqual(SITELINK_PATHS);
+    },
+  );
+
+  it("does not repeat sitelink pages or their section entries in the remaining results", () => {
+    const q = "bascik";
     const results = buildResults(HOME_INDEX, q, tokens(q), 13);
-    const bases = results.slice(1).map(r => basePath(r.path));
+    const bases = results.slice(1).map((r) => basePath(r.path));
     for (const p of SITELINK_PATHS) expect(bases).not.toContain(p);
-    expect(bases).toContain('/slots');
-    expect(bases).toContain('/switch/from-astro');
+    expect(bases).toContain("/slots");
+    expect(bases).toContain("/switch/from-astro");
   });
 
-  it('counts Home toward the limit', () => {
-    const q = 'bascik';
+  it("counts Home toward the limit", () => {
+    const q = "bascik";
     expect(buildResults(HOME_INDEX, q, tokens(q), 2).length).toBe(2);
   });
 
-  it.each(['scoped styles', 'bascik components', 'docs', 'slots'])('keeps Home out of %j results', (q) => {
+  it.each(["scoped styles", "bascik components", "docs", "slots"])(
+    "keeps Home out of %j results",
+    (q) => {
+      const results = buildResults(HOME_INDEX, q, tokens(q), 13);
+      expect(results.some((r) => r.path === "/")).toBe(false);
+    },
+  );
+
+  it("leaves non-navigational ordering and sitelink pages untouched", () => {
+    const q = "scoped styles";
     const results = buildResults(HOME_INDEX, q, tokens(q), 13);
-    expect(results.some(r => r.path === '/')).toBe(false);
+    expect(results[0].path).toBe("/scoped-styles");
   });
 
-  it('leaves non-navigational ordering and sitelink pages untouched', () => {
-    const q = 'scoped styles';
-    const results = buildResults(HOME_INDEX, q, tokens(q), 13);
-    expect(results[0].path).toBe('/scoped-styles');
-  });
-
-  it('returns no results for a navigational query when the index has no Home entry', () => {
-    const withoutHome = HOME_INDEX.filter(e => e.path !== '/');
-    const results = buildResults(withoutHome, 'bascik', tokens('bascik'), 13);
-    expect(results.some(r => r.sitelinks)).toBe(false);
+  it("returns no results for a navigational query when the index has no Home entry", () => {
+    const withoutHome = HOME_INDEX.filter((e) => e.path !== "/");
+    const results = buildResults(withoutHome, "bascik", tokens("bascik"), 13);
+    expect(results.some((r) => r.sitelinks)).toBe(false);
   });
 });
 
-describe('buildSitelinks', () => {
-  it('resolves sitelink paths to page-level entries in the declared order', () => {
+describe("buildSitelinks", () => {
+  it("resolves sitelink paths to page-level entries in the declared order", () => {
     const links = buildSitelinks(HOME_INDEX, HOME_INDEX[0]);
-    expect(links.map(l => l.path)).toEqual(SITELINK_PATHS);
-    expect(links.every(l => l.heading === null)).toBe(true);
+    expect(links.map((l) => l.path)).toEqual(SITELINK_PATHS);
+    expect(links.every((l) => l.heading === null)).toBe(true);
   });
 
-  it('skips paths missing from the index and tolerates a missing sitelinks list', () => {
-    const home = entry({ path: '/', sitelinks: ['/nope', '/components'] });
-    expect(buildSitelinks(HOME_INDEX, home).map(l => l.path)).toEqual(['/components']);
-    expect(buildSitelinks(HOME_INDEX, entry({ path: '/' }))).toEqual([]);
+  it("skips paths missing from the index and tolerates a missing sitelinks list", () => {
+    const home = entry({ path: "/", sitelinks: ["/nope", "/components"] });
+    expect(buildSitelinks(HOME_INDEX, home).map((l) => l.path)).toEqual([
+      "/components",
+    ]);
+    expect(buildSitelinks(HOME_INDEX, entry({ path: "/" }))).toEqual([]);
   });
 });
 
@@ -318,104 +495,178 @@ describe('buildSitelinks', () => {
 // buildResults
 // ---------------------------------------------------------------------------
 
-describe('buildResults', () => {
-  it('returns empty array when nothing matches', () => {
-    const results = buildResults(MOCK_INDEX, 'xyznothing', tokens('xyznothing'), 13);
+describe("buildResults", () => {
+  it("returns empty array when nothing matches", () => {
+    const results = buildResults(
+      MOCK_INDEX,
+      "xyznothing",
+      tokens("xyznothing"),
+      13,
+    );
     expect(results).toEqual([]);
   });
 
-  it('puts the page entry first for an unambiguous page-name match', () => {
-    const q = 'props';
+  it("puts the page entry first for an unambiguous page-name match", () => {
+    const q = "props";
     const results = buildResults(MOCK_INDEX, q, tokens(q), 13);
     expect(results[0].heading).toBeNull();
-    expect(results[0].navLabel).toBe('Props');
-    expect(results[0].path).toBe('/props');
+    expect(results[0].navLabel).toBe("Props");
+    expect(results[0].path).toBe("/props");
   });
 
-  it('follows the page entry with h2s in document order', () => {
-    const q = 'props';
+  it("follows the page entry with h2s in document order", () => {
+    const q = "props";
     const results = buildResults(MOCK_INDEX, q, tokens(q), 13);
-    expect(results[1].heading).toBe('Passing Props');
-    expect(results[2].heading).toBe('Defaults');
+    expect(results[1].heading).toBe("Passing Props");
+    expect(results[2].heading).toBe("Defaults");
   });
 
-  it('does not group a dominant page for an ambiguous query', () => {
+  it("does not group a dominant page for an ambiguous query", () => {
     // Both 'Props' and 'Configuration' contain 'o' but neither closely matches 'output dir'
     // so this checks that no forced grouping happens for low-confidence matches
-    const q = 'output dir';
+    const q = "output dir";
     const results = buildResults(MOCK_INDEX, q, tokens(q), 13);
     // The heading 'Output Dir' should appear but the page entry needn't be forced first
-    const headingMatch = results.find(r => r.heading === 'Output Dir');
+    const headingMatch = results.find((r) => r.heading === "Output Dir");
     expect(headingMatch).toBeDefined();
   });
 
-  it('respects the limit parameter', () => {
-    const results = buildResults(MOCK_INDEX, 'props', tokens('props'), 2);
+  it("respects the limit parameter", () => {
+    const results = buildResults(MOCK_INDEX, "props", tokens("props"), 2);
     expect(results.length).toBeLessThanOrEqual(2);
   });
 
-  it('deduplicates paths', () => {
-    const q = 'props';
+  it("deduplicates paths", () => {
+    const q = "props";
     const results = buildResults(MOCK_INDEX, q, tokens(q), 13);
-    const paths = results.map(r => r.path);
+    const paths = results.map((r) => r.path);
     expect(new Set(paths).size).toBe(paths.length);
   });
 
-  it('handles mixed-case queries and matches case-insensitively', () => {
-    const query = 'DeduplicateCss';
+  it("handles mixed-case queries and matches case-insensitively", () => {
+    const query = "DeduplicateCss";
     const q = query.toLowerCase().trim();
     const toks = tokens(q);
     const testIndex = [
-      entry({ navLabel: 'Configuration', heading: 'deduplicateCss', text: 'Set deduplicateCss in bascik.config.ts.', path: '/config#deduplicatecss' }),
-      entry({ navLabel: 'Scoped Styles', heading: 'deduplicateCss Trade-Off Comparison', text: 'Side-by-side comparison of deduplicateCss: true vs false.', path: '/scoped-styles#deduplicatecss-trade-off-comparison' }),
-      entry({ navLabel: 'Scoped Styles', heading: 'Class Selectors in Component Scripts', text: 'If you need class selectors unique per instance, set deduplicateCss: false.', path: '/scoped-styles#class-selectors' }),
-      entry({ navLabel: 'Scoping System', heading: 'CSS Deduplication', text: 'deduplicateCss receives the list of used components.', path: '/internals/scoping-system#css-deduplication' }),
+      entry({
+        navLabel: "Configuration",
+        heading: "deduplicateCss",
+        text: "Set deduplicateCss in bascik.config.ts.",
+        path: "/config#deduplicatecss",
+      }),
+      entry({
+        navLabel: "Scoped Styles",
+        heading: "deduplicateCss Trade-Off Comparison",
+        text: "Side-by-side comparison of deduplicateCss: true vs false.",
+        path: "/scoped-styles#deduplicatecss-trade-off-comparison",
+      }),
+      entry({
+        navLabel: "Scoped Styles",
+        heading: "Class Selectors in Component Scripts",
+        text: "If you need class selectors unique per instance, set deduplicateCss: false.",
+        path: "/scoped-styles#class-selectors",
+      }),
+      entry({
+        navLabel: "Scoping System",
+        heading: "CSS Deduplication",
+        text: "deduplicateCss receives the list of used components.",
+        path: "/internals/scoping-system#css-deduplication",
+      }),
     ];
 
     const results = buildResults(testIndex, q, toks, 13);
     expect(results.length).toBe(4);
 
     // Heading matches (score 400+) come before text-only matches (score 80)
-    const navLabels = results.map(r => r.navLabel);
-    expect(navLabels).toContain('Scoped Styles');
-    expect(navLabels).toContain('Configuration');
-    expect(navLabels).toContain('Scoping System');
+    const navLabels = results.map((r) => r.navLabel);
+    expect(navLabels).toContain("Scoped Styles");
+    expect(navLabels).toContain("Configuration");
+    expect(navLabels).toContain("Scoping System");
 
     // Heading matches should rank before text-only matches
-    expect(results[0].heading).toBe('deduplicateCss');
-    expect(results[1].heading).toBe('deduplicateCss Trade-Off Comparison');
-    expect(results[2].heading).toBe('Class Selectors in Component Scripts');
-    expect(results[3].heading).toBe('CSS Deduplication');
+    expect(results[0].heading).toBe("deduplicateCss");
+    expect(results[1].heading).toBe("deduplicateCss Trade-Off Comparison");
+    expect(results[2].heading).toBe("Class Selectors in Component Scripts");
+    expect(results[3].heading).toBe("CSS Deduplication");
   });
 
-  it('returns category pages in document order when searching by category name', () => {
-    const q = 'how-to';
+  it("returns category pages in document order when searching by category name", () => {
+    const q = "how-to";
     const toks = tokens(q);
     const testIndex = [
-      entry({ navLabel: 'Markdown', heading: null, section: 'How-to', path: '/how-to/markdown' }),
-      entry({ navLabel: 'Page-Aware Scripts', heading: null, section: 'How-to', path: '/how-to/page-aware-scripts' }),
-      entry({ navLabel: 'Server Scripts', heading: null, section: 'How-to', text: 'These guides show common patterns.', path: '/how-to/server-scripts' }),
-      entry({ navLabel: 'Templating', heading: null, section: 'How-to', path: '/how-to/templating' }),
-      entry({ navLabel: 'Props', heading: null, section: 'Features', path: '/props' }),
+      entry({
+        navLabel: "Markdown",
+        heading: null,
+        section: "How-to",
+        path: "/how-to/markdown",
+      }),
+      entry({
+        navLabel: "Page-Aware Scripts",
+        heading: null,
+        section: "How-to",
+        path: "/how-to/page-aware-scripts",
+      }),
+      entry({
+        navLabel: "Server Scripts",
+        heading: null,
+        section: "How-to",
+        text: "These guides show common patterns.",
+        path: "/how-to/server-scripts",
+      }),
+      entry({
+        navLabel: "Templating",
+        heading: null,
+        section: "How-to",
+        path: "/how-to/templating",
+      }),
+      entry({
+        navLabel: "Props",
+        heading: null,
+        section: "Features",
+        path: "/props",
+      }),
     ];
 
     const results = buildResults(testIndex, q, toks, 13);
-    expect(results.map(r => r.navLabel)).toEqual(['Markdown', 'Page-Aware Scripts', 'Server Scripts', 'Templating']);
-    expect(results[0].navLabel).toBe('Markdown');
+    expect(results.map((r) => r.navLabel)).toEqual([
+      "Markdown",
+      "Page-Aware Scripts",
+      "Server Scripts",
+      "Templating",
+    ]);
+    expect(results[0].navLabel).toBe("Markdown");
   });
 
-  it('opens up to searching page content when page names/headings do not fill result limit', () => {
-    const query = 'unique instance';
+  it("opens up to searching page content when page names/headings do not fill result limit", () => {
+    const query = "unique instance";
     const q = query.toLowerCase().trim();
     const toks = tokens(q);
     const testIndex = [
-      entry({ navLabel: 'Props', heading: 'Overview', text: 'Passing props.', path: '/props' }),
-      entry({ navLabel: 'Scoped Styles', heading: 'Overview', text: 'Each instance gets unique instance id class names.', path: '/scoped-styles' }),
-      entry({ navLabel: 'Scoped JavaScript', heading: 'Overview', text: 'Unique instance state.', path: '/scoped-javascript' }),
+      entry({
+        navLabel: "Props",
+        heading: "Overview",
+        text: "Passing props.",
+        path: "/props",
+      }),
+      entry({
+        navLabel: "Scoped Styles",
+        heading: "Overview",
+        text: "Each instance gets unique instance id class names.",
+        path: "/scoped-styles",
+      }),
+      entry({
+        navLabel: "Scoped JavaScript",
+        heading: "Overview",
+        text: "Unique instance state.",
+        path: "/scoped-javascript",
+      }),
     ];
 
     const results = buildResults(testIndex, q, toks, 13);
     expect(results.length).toBe(2);
-    expect(results.map(r => r.navLabel)).toEqual(['Scoped Styles', 'Scoped JavaScript']);
+    expect(results.map((r) => r.navLabel)).toEqual([
+      "Scoped Styles",
+      "Scoped JavaScript",
+    ]);
   });
 });
