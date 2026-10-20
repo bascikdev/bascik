@@ -363,6 +363,7 @@ const scopeAnimationShorthandValue = (
       type Token =
         | { type: "func"; raw: string; start: number; end: number }
         | { type: "ident"; value: string; start: number; end: number }
+        | { type: "number"; raw: string; start: number; end: number }
         | { type: "other"; raw: string; start: number; end: number };
 
       const tokens: Token[] = [];
@@ -374,13 +375,15 @@ const scopeAnimationShorthandValue = (
           continue;
         }
         const numericMatch =
-          /^[+-]?(?:\d*\.\d+|\d+)(?:%|[A-Za-z_][\w-]*)?/.exec(single.slice(i));
+          /^([+-]?(?:\d*\.\d+|\d+)(?:[eE][+-]?\d+)?)(%|[A-Za-z_][\w-]*)?/.exec(
+            single.slice(i),
+          );
         if (numericMatch) {
           const raw = numericMatch[0];
           const tokenStart = i;
           const end = i + raw.length;
           tokens.push({
-            type: "other",
+            type: numericMatch[2] ? "other" : "number",
             raw,
             start: tokenStart,
             end,
@@ -449,9 +452,16 @@ const scopeAnimationShorthandValue = (
 
       for (const token of tokens) {
         if (token.type === "func") {
-          if (!timingConsumed) {
+          if (
+            !timingConsumed &&
+            /^(?:linear|cubic-bezier|steps)\(/i.test(token.raw)
+          ) {
             timingConsumed = true;
           }
+          continue;
+        }
+        if (token.type === "number") {
+          iterationConsumed = true;
           continue;
         }
         if (token.type === "ident") {

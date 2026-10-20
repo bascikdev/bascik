@@ -301,6 +301,54 @@ describe("animation shorthand timing-function keyword vs animation-name disambig
     );
   });
 
+  it.each([
+    "calc(1s + 1s)",
+    "min(1s, 2s)",
+    "max(1s, 2s)",
+    "clamp(1s, calc(1s + 1s), 3s)",
+  ])(
+    "does not consume the easing slot for a calculated duration: %s",
+    (duration) => {
+      const css = `@keyframes spin { to { opacity: 1 } } @keyframes ease { to { opacity: 0 } } .card { animation: spin ${duration} ease; }`;
+      expect(prefixKeyframes(css, "my-comp")).toContain(
+        `animation: ${keyframe("spin")} ${duration} ease;`,
+      );
+    },
+  );
+
+  it.each([
+    "steps(2, end)",
+    "cubic-bezier(0, 0, 1, 1)",
+    "linear(0, 1)",
+    "STEPS(2, end)",
+  ])(
+    "consumes the easing slot for a recognized easing function: %s",
+    (easing) => {
+      const css = `@keyframes ease { to { opacity: 0 } } .card { animation: 1s ${easing} ease; }`;
+      expect(prefixKeyframes(css, "my-comp")).toContain(
+        `animation: 1s ${easing} ${keyframe("ease")};`,
+      );
+    },
+  );
+
+  it.each(["2", ".5", "0", "+2", "1e2", "2.5e-1"])(
+    "consumes a unitless iteration count before an infinite-named animation: %s",
+    (count) => {
+      const css = `@keyframes infinite { to { opacity: 0 } } .card { animation: 1s ${count} infinite; }`;
+      expect(prefixKeyframes(css, "my-comp")).toContain(
+        `animation: 1s ${count} ${keyframe("infinite")};`,
+      );
+    },
+  );
+
+  it("resets shorthand slots for each animation and does not treat time units as counts", () => {
+    const css =
+      "@keyframes infinite { to { opacity: 0 } } .card { animation: 1s 2 infinite, infinite 2s 100ms; }";
+    expect(prefixKeyframes(css, "my-comp")).toContain(
+      `animation: 1s 2 ${keyframe("infinite")}, infinite 2s 100ms;`,
+    );
+  });
+
   it("does not split numeric/dimension token so keyframe 's' does not match unit in '1s'", () => {
     const css =
       "@keyframes s { to { opacity: 0; } }\n" +

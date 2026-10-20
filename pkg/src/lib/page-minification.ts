@@ -5,6 +5,7 @@ import { BascikConfig } from "./config.ts";
 import { minifyCss } from "./css-minifier.ts";
 import { memoizedMinifyJs } from "./js-minifier.ts";
 import { isJavaScriptScript } from "./script-types.ts";
+import { scanHtml, type ScannedScript } from "./html-scanner.ts";
 
 type AsyncMinifier = (code: string) => Promise<string>;
 
@@ -151,24 +152,25 @@ export const minifyScriptTagsInHtml = async (
   html: string,
   minifyFn: (code: string) => string | Promise<string>,
 ): Promise<string> => {
-  const scannable = html
-    .replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => " ".repeat(comment.length))
-    .replace(
-      /<(textarea|title|noscript|xmp)\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)(<\/\1(?:[\t\n\f\r /][^>]*)?>)/gi,
-      (_match, tag: string, attrs: string, inner: string, close: string) =>
-        `<${tag}${attrs}>${" ".repeat(inner.length)}${close}`,
-    );
-  const regex =
-    /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi;
   const ops: InlineScriptReplacement[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = regex.exec(scannable)) !== null) {
-    const [full, open, body, close] = m as unknown as [
-      string,
-      string,
-      string,
-      string,
-    ];
+  const scripts: ScannedScript[] = [];
+  const endTagStarts = new Map<number, number>();
+  scanHtml(html, {
+    script: (script) => {
+      scripts.push(script);
+    },
+    token: (token) => {
+      if (token.kind === "tag" && token.isEndTag && token.name === "script")
+        endTagStarts.set(token.end, token.start);
+    },
+  });
+  for (const script of scripts) {
+    if (!script.terminated) continue;
+    const closeStart = endTagStarts.get(script.end);
+    if (closeStart === undefined || closeStart < script.openTagEnd) continue;
+    const open = html.slice(script.start, script.openTagEnd);
+    const body = html.slice(script.openTagEnd, closeStart);
+    const close = html.slice(closeStart, script.end);
     // Skip non-JS types (e.g. application/ld+json, text/template)
     if (!isJavaScriptScript(open)) continue;
     // Server and stream scripts run at request time in Node.js, skip them here
@@ -177,8 +179,8 @@ export const minifyScriptTagsInHtml = async (
     if (/\s+src\s*=/i.test(open)) continue;
     const { code, sourceUrl } = splitTrailingSourceUrl(body);
     ops.push({
-      index: m.index,
-      len: full.length,
+      index: script.start,
+      len: script.end - script.start,
       open,
       code,
       sourceUrl,

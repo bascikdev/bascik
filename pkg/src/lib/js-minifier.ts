@@ -17,6 +17,7 @@ type Segment = {
    * that does not contain its keyword, where no text pattern can recognize it.
    */
   controlHeaderCloses?: Set<number>;
+  postfixUpdateEnds?: Set<number>;
 };
 
 /**
@@ -297,19 +298,24 @@ const scanSegments = (js: string): Segment[] => {
   const parenIsControlHeader: boolean[] = [];
   let lastParenClosedControlHeader = false;
   let controlHeaderCloses: Set<number> | undefined;
+  let postfixUpdateEnds: Set<number> | undefined;
+  let lineBreakSinceSignificant = false;
+  let wordIsProperty = false;
   let i = 0;
   const len = js.length;
 
   const flushCode = (): void => {
     if (codeAccum) {
-      segments.push(
-        controlHeaderCloses
-          ? { literal: false, text: codeAccum, controlHeaderCloses }
-          : { literal: false, text: codeAccum },
-      );
+      segments.push({
+        literal: false,
+        text: codeAccum,
+        controlHeaderCloses,
+        postfixUpdateEnds,
+      });
       codeAccum = "";
     }
     controlHeaderCloses = undefined;
+    postfixUpdateEnds = undefined;
     lastRaw = "";
     lastSig = "";
     wordRun = "";
@@ -331,21 +337,43 @@ const scanSegments = (js: string): Segment[] => {
     }
     codeAccum += c;
     if (isSpace(c)) {
+      if (c === "\n" || c === "\r" || c === "\u2028" || c === "\u2029")
+        lineBreakSinceSignificant = true;
       lastRaw = c;
       return;
     }
     if (isWordChar(c)) {
+      if (!isWordChar(lastRaw)) wordIsProperty = lastSig === ".";
       wordRun = isWordChar(lastRaw) ? wordRun + c : c;
     } else {
       wordRun = "";
     }
     lastRaw = c;
     lastSig = c;
+    lineBreakSinceSignificant = false;
   };
 
   while (i < len) {
     const ch = js[i];
     __scanStatsForTests.charsExamined++;
+
+    if ((ch === "+" || ch === "-") && js[i + 1] === ch) {
+      const previousLiteral = !lastSig && segments.at(-1)?.literal;
+      const postfix =
+        !lineBreakSinceSignificant &&
+        (previousLiteral ||
+          lastSig === "]" ||
+          (lastSig === ")" && !lastParenClosedControlHeader) ||
+          (isWordChar(lastSig) &&
+            (wordIsProperty ||
+              ((!REGEX_PRECEDING_KEYWORDS.has(wordRun) || wordRun === "of") &&
+                wordRun !== "else"))));
+      appendCode(ch);
+      appendCode(ch);
+      if (postfix) (postfixUpdateEnds ??= new Set()).add(codeAccum.length - 1);
+      i += 2;
+      continue;
+    }
 
     // Quoted string literals ("...", '...') — preserve verbatim
     if (ch === '"' || ch === "'") {
@@ -640,10 +668,7 @@ export const minifyJs = (js: string): string => {
         ) {
           needsSemicolon = true;
         }
-      } else if (
-        (lastChar === "+" && /\+\+$/.test(ptTail)) ||
-        (lastChar === "-" && /--$/.test(ptTail))
-      ) {
+      } else if (seg.postfixUpdateEnds?.has(prevLineEnd)) {
         const startsWithContinuation =
           /^(instanceof(?![a-zA-Z0-9_$])|in(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
             line,

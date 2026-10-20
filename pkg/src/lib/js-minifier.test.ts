@@ -328,6 +328,36 @@ describe("minifyJs – statement separation (ASI)", () => {
     expect(minifyJs(inputMinusMinus)).toBe("foo();--x");
   });
 
+  it.each([
+    ["let x = 2; const y = ++\nx; return y;", 3],
+    ["let x = 2; const y = --\nx; return y;", 1],
+    ["let x = 2; return ++\nx;", 3],
+    ["let x = 2; return --\nx;", 1],
+    ["let x = 2; ++\nx; return x;", 3],
+    ["let x = 2; --\nx; return x;", 1],
+    ["const obj = { value: 2 }; const y = ++\nobj.value; return y;", 3],
+    ["const obj = { value: 2 }; const y = --\nobj.value; return y;", 1],
+  ])(
+    "keeps a prefix update attached to its next-line operand: %s",
+    (source, expected) => {
+      expect(new Function(source)()).toBe(expected);
+      expect(new Function(minifyJs(source))()).toBe(expected);
+    },
+  );
+
+  it.each([
+    "let of = 2; of++\nreturn of;",
+    "const obj = { return: 2 }; obj.return++\nreturn obj.return;",
+    'const obj = { value: 2 }; obj["value"]++\nreturn obj.value;',
+    "let value = 2; if (value) ++\nvalue; return value;",
+    "let value = 2; if (false) value--; else ++\nvalue; return value;",
+  ])(
+    "preserves update context for identifiers, properties, and control headers: %s",
+    (source) => {
+      expect(new Function(minifyJs(source))()).toBe(new Function(source)());
+    },
+  );
+
   it("inserts semicolon after a line ending with postfix ++ or --", () => {
     // Postfix ++ and -- end a complete expression. Without a semicolon the next
     // token glues onto them and produces a syntax error (e.g. `x++foo()` or
