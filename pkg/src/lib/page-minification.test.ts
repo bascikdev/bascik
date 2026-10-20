@@ -3,22 +3,30 @@ import { minifyScriptTagsInHtml } from "./page-minification.ts";
 import { minifyJs } from "./js-minifier.ts";
 
 describe("inline script minification uses original source spans", () => {
-  it.each([
-    "<!--keep-->",
-    "<textarea>keep</textarea>",
-    "<title>keep</title>",
-    "<noscript>keep</noscript>",
-    "<xmp>keep</xmp>",
-    "<!-- an unclosed comment",
-  ])(
-    "preserves literal markup inside JavaScript strings: %s",
-    async (literal) => {
+  it.each(
+    [
+      "<!--keep-->",
+      "<textarea>keep</textarea>",
+      "<title>keep</title>",
+      "<noscript>keep</noscript>",
+      "<xmp>keep</xmp>",
+      "<!-- an unclosed comment",
+    ].flatMap((literal) =>
+      ["script", "SCRIPT", "ScRiPt"].map((tag) => ({ literal, tag })),
+    ),
+  )(
+    "preserves literal markup inside <$tag> JavaScript strings: $literal",
+    async ({ literal, tag }) => {
       const source = `const marker = ${JSON.stringify(literal)}; return marker;`;
-      const html = `<script>${source}</script>`;
+      const html = `<${tag}>${source}</${tag}>`;
       const minifier = vi.fn(minifyJs);
       const output = await minifyScriptTagsInHtml(html, minifier);
       expect(minifier).toHaveBeenCalledExactlyOnceWith(source);
-      const script = /^<script>([\s\S]*)<\/script>$/.exec(output)![1];
+      const open = `<${tag}>`;
+      const close = `</${tag}>`;
+      expect(output.startsWith(open)).toBe(true);
+      expect(output.endsWith(close)).toBe(true);
+      const script = output.slice(open.length, -close.length);
       expect(new Function(script)()).toBe(literal);
     },
   );
