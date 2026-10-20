@@ -48,7 +48,7 @@ export const PACKAGE_JSON = (name: string): string =>
         e2e: "playwright test --config e2e/playwright.config.ts",
       },
       dependencies: {
-        "@bascik/bascik": "^1.0.0-rc.7",
+        "@bascik/bascik": "^1.0.0-rc.8",
       },
       devDependencies: {
         "@bascik/language-server": "^0.1.0-rc.4",
