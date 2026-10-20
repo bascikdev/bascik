@@ -94,6 +94,8 @@ Browsers ignore some directives in a `<meta>` policy: `frame-ancestors`, `sandbo
 
 A script loaded from another origin needs that origin in `script-src`, which the recipe adds automatically. Some libraries also need `'unsafe-eval'`. Alpine and petite-vue compile directive expressions with `new Function`, so a page that loads them needs `'unsafe-eval'` to work. Add it only for those pages. See [JavaScript Libraries](/libraries).
 
+Scripts injected by your host after the build are not in the emitted HTML, so the recipe cannot discover them. If Cloudflare Web Analytics is enabled, explicitly add `https://static.cloudflareinsights.com` to `sources` in the recipe. The beacon does not need `'unsafe-inline'` or `'unsafe-eval'`. This docs site allows that origin in every page's policy so Cloudflare's injected beacon can run.
+
 ## Styles
 
 Inline `<style>` blocks can be hashed the same way with a `style-src` directive. Inline `style="..."` attributes are different: a plain hash does not match them, and allowing them needs `'unsafe-hashes'` with the hash of each attribute value. Many sites leave `style-src` out of the first version of the policy and tighten scripts first, where the risk is highest.
