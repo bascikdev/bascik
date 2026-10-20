@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { resolve } from "node:path";
 
 // userConfig is mocked so config.ts can be imported without top-level await
 vi.mock("./userConfig.js", () => ({
@@ -573,7 +574,11 @@ describe("referenced files (fs half)", () => {
   });
 
   it("checks a glob watchPaths entry by the folder before its first wildcard", () => {
-    const existing = new Set(["/project/content", "/project/data"]);
+    // Resolved the way the validator resolves them, so the test holds on Windows too.
+    const existing = new Set([
+      resolve("/project", "content"),
+      resolve("/project", "data"),
+    ]);
     const fs = {
       ...missingFs,
       existsSync: (path: string) => existing.has(path),
