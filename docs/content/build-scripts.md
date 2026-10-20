@@ -93,9 +93,9 @@ Bascik runs the script once, when it registers the component, and every page tha
 </footer>
 ```
 
-The generated markup then goes through the component's usual scoping and expansion, so its classes match the component's styles and its IDs are unique per use. With `data-bascik-build`, the same footer would run the script again for every page.
+The generated markup then goes through the component's usual scoping and expansion, so its classes match the component's styles and its IDs are unique per use. With `data-bascik-build`, the footer's script would run in the context of each page that uses it, and its output would not go through that expansion.
 
-It works in pages too. In a dynamic route template, a `data-bascik-build-once` script runs once for the template and every generated page shares its output, while `data-bascik-build` runs once per route.
+It works in pages too. In a dynamic route template, a `data-bascik-build-once` script runs once for the template and every generated page shares its output, while `data-bascik-build` runs in the context of each route.
 
 | Where it is written  | Runs                                   | Output shared by                  |
 | -------------------- | -------------------------------------- | --------------------------------- |
@@ -417,6 +417,8 @@ Bascik caches build script output in `node_modules/.cache/bascik/script-cache/`.
 - The component file path (if in a component), page path, site URL (`BASCIK_SITE_URL`), deployment base (`BASCIK_BASE`), and dynamic route parameters
 - The contents of the source and page files, when the script or a local helper it imports names `BASCIK_SOURCE_FILE` or `BASCIK_PAGE_FILE`, so a helper that reads its own page re-runs when the page changes
 - **Resolved package identity** for every bare, scoped, and subpath package the script imports: the resolved entry file contents plus the package manifest, resolved with Node ESM semantics and walked as a bounded graph with cycle detection, so a package upgrade or an in-place edit to a workspace/`file:`-linked package invalidates cached output even when the script text is unchanged
+
+**Output shared across pages.** A component's `data-bascik-build` script, and a dynamic route page's script, run in a different page context on every page. When a run never reads `BASCIK_PAGE_PATH`, `BASCIK_PAGE_FILE`, or `BASCIK_ROUTE` (directly, through a helper, or by enumerating `process.env`), its output cannot depend on the page, so Bascik stores it under a second, page-independent key and reuses it on the other pages instead of starting a process for each one. A script that reads any of them runs for every page as before. Uses of a component on the same page each still run.
 
 Package identity is computed per imported package (not per page) and cached, so unrelated installed packages are never hashed on every page. Node core modules (`node:fs`, `fs`) contribute only their runtime name, never a filesystem hash.
 

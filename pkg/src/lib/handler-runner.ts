@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { rmSync } from "node:fs";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -18,6 +19,12 @@ export interface DirectiveHandlerResult<T = unknown> {
   result: T;
   stdout: string;
   stderr: string;
+  /**
+   * Whether the script looked at the page it ran for: read, tested for, or
+   * enumerated `BASCIK_PAGE_PATH`, `BASCIK_PAGE_FILE`, or `BASCIK_ROUTE`.
+   * When it did not, its output is the same on every page.
+   */
+  readsPageContext: boolean;
 }
 
 export interface DirectiveHandlerOptions {
@@ -34,70 +41,48 @@ const ENVELOPE_VERSION = 1;
 const killSignal = "SIGTERM";
 
 /**
- * Executes a prepared user module in a fresh Node.js child process, invoking its default export
- * once with zero arguments and transferring the result across a private result file.
+ * The runner each child process starts with. It is the same for every script
+ * (the script to run comes in the environment), so it is written once per
+ * process and Node's compile cache can reuse its compiled code.
  */
-export const runDirectiveHandler = async <T = unknown>(
-  modulePath: string,
-  kind: DirectiveKind,
-  options: DirectiveHandlerOptions = {},
-): Promise<DirectiveHandlerResult<T>> => {
-  const {
-    extraEnv = {},
-    args = [],
-    timeoutMs = 60_000,
-    maxBuffer = 10 * 1024 * 1024,
-    maxResultBytes = DEFAULT_MAX_RESULT_BYTES,
-    semaphore = sharedChildSemaphore,
-  } = options;
-
-  const runDir = await mkdtemp(join(tmpdir(), "bascik-handler-"));
-  const runnerScriptPath = join(runDir, "runner.mjs");
-  const resultFilePath = join(runDir, "result.json");
-
-  const childEnv: Record<string, string | undefined> = {
-    ...process.env,
-    BASCIK_BUILD: BascikConfig.isBuild ? "1" : "0",
-    FORCE_COLOR: "0",
-    NO_COLOR: "1",
-    ...extraEnv,
-    BASCIK_DIRECTIVE_RESULT_FILE: resultFilePath,
-    BASCIK_DIRECTIVE_KIND: kind,
-    BASCIK_DIRECTIVE_MAX_BYTES: String(maxResultBytes),
-  };
-  if (!extraEnv.BASCIK_ROUTE) {
-    delete childEnv.BASCIK_ROUTE;
-  }
-  delete childEnv[SPILLED_ENV_FILE_VAR];
-  // Each script still runs in its own fresh process. Sharing Node's on-disk
-  // compile cache only lets later children skip recompiling the same modules
-  // (the runner, shared helpers, packages). A user's own setting always wins.
-  if (
-    childEnv.NODE_COMPILE_CACHE === undefined &&
-    childEnv.NODE_DISABLE_COMPILE_CACHE === undefined
-  ) {
-    childEnv.NODE_COMPILE_CACHE = join(
-      process.cwd(),
-      "node_modules",
-      ".cache",
-      "bascik",
-      "compile-cache",
-    );
-  }
-
-  const targetFileUrl = pathToFileURL(modulePath).href;
-
-  const runnerCode = `
+const RUNNER_CODE = `
 import { writeFileSync } from "node:fs";
 import { Buffer } from "node:buffer";
 
 const resultFile = process.env.BASCIK_DIRECTIVE_RESULT_FILE;
 const kind = process.env.BASCIK_DIRECTIVE_KIND;
 const maxBytes = parseInt(process.env.BASCIK_DIRECTIVE_MAX_BYTES || "10485760", 10);
+const target = process.env.BASCIK_DIRECTIVE_TARGET;
+
+// Record whether the script looks at the page it runs for. Enumerating the
+// environment (spreading it, passing it to a child process) counts as a look.
+const PAGE_CONTEXT = new Set(["BASCIK_PAGE_PATH", "BASCIK_PAGE_FILE", "BASCIK_ROUTE"]);
+let readsPageContext = false;
+const watch = (key) => {
+  if (PAGE_CONTEXT.has(key)) readsPageContext = true;
+};
+process.env = new Proxy(process.env, {
+  get(target, key) {
+    watch(key);
+    return Reflect.get(target, key);
+  },
+  has(target, key) {
+    watch(key);
+    return Reflect.has(target, key);
+  },
+  getOwnPropertyDescriptor(target, key) {
+    watch(key);
+    return Reflect.getOwnPropertyDescriptor(target, key);
+  },
+  ownKeys(target) {
+    readsPageContext = true;
+    return Reflect.ownKeys(target);
+  },
+});
 
 let mod;
 try {
-  mod = await import(${JSON.stringify(targetFileUrl)});
+  mod = await import(target);
 } catch (err) {
   // A caught SyntaxError carries no location. Left uncaught at the top level,
   // Node prints the file, the line, and a caret under the offending token.
@@ -139,7 +124,8 @@ async function main() {
   const envelope = {
     version: ${ENVELOPE_VERSION},
     kind,
-    result
+    result,
+    readsPageContext
   };
 
   let serialized;
@@ -167,10 +153,91 @@ main().catch((err) => {
 });
 `;
 
-  await writeFile(runnerScriptPath, runnerCode, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
+let runnerDirectory: Promise<string> | undefined;
+let resultCounter = 0;
+
+/** A private directory holding the runner, made once per process (or thread) and removed at exit. */
+const getRunnerDirectory = async (): Promise<string> => {
+  const pending = (runnerDirectory ??= (async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bascik-handler-"));
+    await writeFile(join(dir, "runner.mjs"), RUNNER_CODE, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    process.once("exit", () => {
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch {
+        // best effort
+      }
+    });
+    return dir;
+  })());
+  const dir = await pending.catch(() => undefined);
+  // A temp-file cleaner can delete the directory during a long dev session.
+  const present =
+    dir !== undefined &&
+    (await stat(join(dir, "runner.mjs")).then(
+      () => true,
+      () => false,
+    ));
+  if (present) return dir;
+  if (runnerDirectory === pending) runnerDirectory = undefined;
+  return getRunnerDirectory();
+};
+
+/**
+ * Executes a prepared user module in a fresh Node.js child process, invoking its default export
+ * once with zero arguments and transferring the result across a private result file.
+ */
+export const runDirectiveHandler = async <T = unknown>(
+  modulePath: string,
+  kind: DirectiveKind,
+  options: DirectiveHandlerOptions = {},
+): Promise<DirectiveHandlerResult<T>> => {
+  const {
+    extraEnv = {},
+    args = [],
+    timeoutMs = 60_000,
+    maxBuffer = 10 * 1024 * 1024,
+    maxResultBytes = DEFAULT_MAX_RESULT_BYTES,
+    semaphore = sharedChildSemaphore,
+  } = options;
+
+  const runDir = await getRunnerDirectory();
+  const runnerScriptPath = join(runDir, "runner.mjs");
+  const resultFilePath = join(runDir, `${++resultCounter}.result.json`);
+
+  const childEnv: Record<string, string | undefined> = {
+    ...process.env,
+    BASCIK_BUILD: BascikConfig.isBuild ? "1" : "0",
+    FORCE_COLOR: "0",
+    NO_COLOR: "1",
+    ...extraEnv,
+    BASCIK_DIRECTIVE_RESULT_FILE: resultFilePath,
+    BASCIK_DIRECTIVE_TARGET: pathToFileURL(modulePath).href,
+    BASCIK_DIRECTIVE_KIND: kind,
+    BASCIK_DIRECTIVE_MAX_BYTES: String(maxResultBytes),
+  };
+  if (!extraEnv.BASCIK_ROUTE) {
+    delete childEnv.BASCIK_ROUTE;
+  }
+  delete childEnv[SPILLED_ENV_FILE_VAR];
+  // Each script still runs in its own fresh process. Sharing Node's on-disk
+  // compile cache only lets later children skip recompiling the same modules
+  // (the runner, shared helpers, packages). A user's own setting always wins.
+  if (
+    childEnv.NODE_COMPILE_CACHE === undefined &&
+    childEnv.NODE_DISABLE_COMPILE_CACHE === undefined
+  ) {
+    childEnv.NODE_COMPILE_CACHE = join(
+      process.cwd(),
+      "node_modules",
+      ".cache",
+      "bascik",
+      "compile-cache",
+    );
+  }
 
   // The runner's own frames (`at main (file:///…/runner.mjs:29:31)`) sit under
   // every error the user's script throws. They are Bascik's, so they are removed.
@@ -289,7 +356,12 @@ main().catch((err) => {
     }
 
     const rawFile = await readFile(resultFilePath, "utf8");
-    let envelope: { version: number; kind: string; result: T };
+    let envelope: {
+      version: number;
+      kind: string;
+      result: T;
+      readsPageContext?: boolean;
+    };
     try {
       envelope = JSON.parse(rawFile);
     } catch (err: any) {
@@ -314,10 +386,12 @@ main().catch((err) => {
       result: envelope.result,
       stdout,
       stderr,
+      // Unknown counts as a look, so output is never shared on a guess.
+      readsPageContext: envelope.readsPageContext !== false,
     };
   } finally {
     await cleanupSpill().catch(() => {});
-    await rm(runDir, { recursive: true, force: true }).catch(() => {});
+    await rm(resultFilePath, { force: true }).catch(() => {});
     semaphore.release();
   }
 };

@@ -106,7 +106,7 @@ The script runs on the source HTML before any other build scripts have fired, so
 
 ## Component Build Scripts
 
-`<script data-bascik-build>` inside a component runs when Bascik expands that component into a page. It receives that page's context, just like a build script written directly in the page. If a component appears more than once, each occurrence has its own build script output.
+`<script data-bascik-build>` inside a component runs when Bascik expands that component into a page. It receives that page's context, just like a build script written directly in the page. If a component appears more than once, each occurrence has its own build script output. When the script never reads the page context, Bascik reuses its output on other pages instead of running it again (see [Output Caching](/build-scripts#performance-output-caching)).
 
 That means shared components can derive navigation state, breadcrumbs, canonical links, or other output from the page path without a special marker. An imported helper can read `BASCIK_PAGE_PATH` directly:
 

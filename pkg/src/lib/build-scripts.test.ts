@@ -20,6 +20,8 @@ import { BuildScriptError } from "./build-error.ts";
 const { state, buildScriptMocks } = vi.hoisted(() => {
   const state = {
     activeHandlerResult: "",
+    // What the mocked child reports about reading page context.
+    readsPageContext: true,
     userReadFileMock: vi.fn().mockRejectedValue(new Error("ENOENT")),
   };
   const mocks = {
@@ -36,6 +38,7 @@ const { state, buildScriptMocks } = vi.hoisted(() => {
           version: 1,
           kind: "build",
           result: state.activeHandlerResult,
+          readsPageContext: state.readsPageContext,
         });
       }
       return state.userReadFileMock(filePath, ...args);
@@ -120,6 +123,7 @@ const resetReadFileMock = (fn?: (path: string) => Promise<string> | string) => {
           version: 1,
           kind: "build",
           result: state.activeHandlerResult,
+          readsPageContext: state.readsPageContext,
         });
       }
       return fn(path);
@@ -131,6 +135,7 @@ const resetReadFileMock = (fn?: (path: string) => Promise<string> | string) => {
           version: 1,
           kind: "build",
           result: state.activeHandlerResult,
+          readsPageContext: state.readsPageContext,
         });
       }
       throw new Error("ENOENT");
@@ -164,6 +169,7 @@ mockReadFile.mockResolvedValueOnce = (val: any) => {
         version: 1,
         kind: "build",
         result: state.activeHandlerResult,
+        readsPageContext: state.readsPageContext,
       });
     }
     if (!used) {
@@ -234,6 +240,7 @@ const resolveSequence = (
 
 beforeEach(() => {
   state.activeHandlerResult = "";
+  state.readsPageContext = true;
   resetReadFileMock();
   buildScriptMocks.execFile.mockReset();
   buildScriptMocks.writeFile.mockReset().mockResolvedValue(undefined);
@@ -1719,6 +1726,95 @@ describe("build-script output cache", () => {
     expect(secondCachePath).toBeDefined();
     expect(secondCachePath).not.toEqual(firstCachePath);
     expect(mockExecFile).toHaveBeenCalledTimes(1);
+  });
+
+  describe("output shared across pages", () => {
+    const sourceFile = "src/components/site-footer.html";
+    const footer =
+      '<script data-bascik-build data-bascik-source-file="src%2Fcomponents%2Fsite-footer.html">year()</script>';
+    const runForPage = (pageFile: string, html = footer) =>
+      executeBuildScripts(html, pageFile, undefined, { pageFile, sourceFile });
+
+    beforeEach(() => {
+      mockReadFile.mockRejectedValue(new Error("ENOENT"));
+    });
+
+    it("reuses a component script's output on other pages when it read no page context", async () => {
+      state.readsPageContext = false;
+      resolveWith("<p>2026</p>");
+      expect(await runForPage("src/pages/a.html")).toBe("<p>2026</p>");
+      expect(await runForPage("src/pages/b.html")).toBe("<p>2026</p>");
+      expect(await runForPage("src/pages/c.html")).toBe("<p>2026</p>");
+      expect(mockExecFile).toHaveBeenCalledTimes(1);
+    });
+
+    it("runs a component script on every page when it read page context", async () => {
+      state.readsPageContext = true;
+      resolveWith("<p>page</p>");
+      await runForPage("src/pages/a.html");
+      await runForPage("src/pages/b.html");
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
+    });
+
+    it("persists shared output so a warm boot reuses it on a page it never ran for", async () => {
+      state.readsPageContext = false;
+      resolveWith("<p>2026</p>");
+      await runForPage("src/pages/a.html");
+      const written = new Map(
+        mockWriteFile.mock.calls
+          .filter(([path]) => String(path).includes("script-cache"))
+          .map(([path, data]) => [String(path), String(data)]),
+      );
+      expect(written.size).toBe(2);
+      // A new process: empty memo, only the disk entries.
+      clearBuildScriptCaches();
+      mockExecFile.mockClear();
+      mockReadFile.mockImplementation(async (path: string) => {
+        const entry = written.get(String(path));
+        if (entry === undefined) throw new Error("ENOENT");
+        return entry;
+      });
+      expect(await runForPage("src/pages/new.html")).toBe("<p>2026</p>");
+      expect(mockExecFile).not.toHaveBeenCalled();
+    });
+
+    it("still runs each use of a component on one page", async () => {
+      state.readsPageContext = false;
+      resolveSequence([{ result: "<p>1</p>" }, { result: "<p>2</p>" }]);
+      expect(await runForPage("src/pages/a.html", footer + footer)).toBe(
+        "<p>1</p><p>2</p>",
+      );
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
+    });
+
+    it("shares a dynamic route template's script across routes when it read no route", async () => {
+      state.readsPageContext = false;
+      resolveWith("<p>shared</p>");
+      const template = "<script data-bascik-build>shared()</script>";
+      for (const slug of ["one", "two"]) {
+        await executeBuildScripts(
+          template,
+          "src/pages/blog/[slug].html",
+          { params: { slug } },
+          { pageFile: "src/pages/blog/[slug].html" },
+        );
+      }
+      expect(mockExecFile).toHaveBeenCalledTimes(1);
+    });
+
+    it("never shares a page's own script with another page", async () => {
+      state.readsPageContext = false;
+      resolveWith("<p>x</p>");
+      await executeBuildScripts(
+        "<script data-bascik-build>x()</script>",
+        "src/pages/a.html",
+      );
+      await executeBuildScripts(
+        "<script data-bascik-build>x()</script>",
+        "src/pages/b.html",
+      );
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("different filePath produces a different cache key so page-specific scripts (canonical, OG) are not reused across pages", async () => {
