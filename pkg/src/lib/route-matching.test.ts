@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { hasHiddenSegment, WELL_KNOWN_SEGMENT } from "./route-matching.ts";
+import {
+  hasHiddenSegment,
+  matchApiRoute,
+  WELL_KNOWN_SEGMENT,
+} from "./route-matching.ts";
 
 describe("hasHiddenSegment", () => {
   it("names the RFC 8615 well-known segment", () => {
@@ -73,5 +77,100 @@ describe("hasHiddenSegment", () => {
         true,
       );
     });
+  });
+});
+
+describe("matchApiRoute dynamic parameter single-decoding", () => {
+  it("does not double-decode dynamic route parameters when rawPathname is provided", () => {
+    const routes = [
+      {
+        path: "/api/users/[id]",
+        filePath: "/app/src/api/users/[id].ts",
+        paramNames: ["id"],
+        isDynamic: true,
+      },
+    ];
+    // pathname is decoded by server (e.g. /api/users/100%20)
+    // rawPathname is wire path (e.g. /api/users/100%2520)
+    const match = matchApiRoute(
+      routes,
+      "/api/users/100%20",
+      "/api/users/100%2520",
+    );
+    expect(match?.params).toEqual({ id: "100%20" });
+  });
+
+  it("decodes exactly once when only decoded pathname is provided", () => {
+    const routes = [
+      {
+        path: "/api/users/[id]",
+        filePath: "/app/src/api/users/[id].ts",
+        paramNames: ["id"],
+        isDynamic: true,
+      },
+    ];
+    // When only pathname is passed without rawPathname, pSeg is decoded once
+    const match = matchApiRoute(routes, "/api/users/100%20");
+    expect(match?.params).toEqual({ id: "100 " });
+  });
+
+  it("matches static routes with doubled slashes like /api//users", () => {
+    const routes = [
+      {
+        path: "/api/users",
+        filePath: "/app/src/api/users.ts",
+        paramNames: [],
+        isDynamic: false,
+      },
+    ];
+    const match = matchApiRoute(routes, "/api//users", "/api//users");
+    expect(match?.route.filePath).toBe("/app/src/api/users.ts");
+    expect(match?.params).toEqual({});
+  });
+
+  it("matches dynamic routes with doubled slashes like /api/users//100", () => {
+    const routes = [
+      {
+        path: "/api/users/[id]",
+        filePath: "/app/src/api/users/[id].ts",
+        paramNames: ["id"],
+        isDynamic: true,
+      },
+    ];
+    const match = matchApiRoute(routes, "/api/users//100", "/api/users//100");
+    expect(match?.route.filePath).toBe("/app/src/api/users/[id].ts");
+    expect(match?.params).toEqual({ id: "100" });
+  });
+
+  it("matches dynamic routes with trailing // like /api/users/100//", () => {
+    const routes = [
+      {
+        path: "/api/users/[id]",
+        filePath: "/app/src/api/users/[id].ts",
+        paramNames: ["id"],
+        isDynamic: true,
+      },
+    ];
+    const match = matchApiRoute(routes, "/api/users/100//", "/api/users/100//");
+    expect(match?.route.filePath).toBe("/app/src/api/users/[id].ts");
+    expect(match?.params).toEqual({ id: "100" });
+  });
+
+  it("decodes dynamic route parameter once with doubled slash e.g. /api/users//100%2520 to id 100%20", () => {
+    const routes = [
+      {
+        path: "/api/users/[id]",
+        filePath: "/app/src/api/users/[id].ts",
+        paramNames: ["id"],
+        isDynamic: true,
+      },
+    ];
+    const match = matchApiRoute(
+      routes,
+      "/api/users//100%20",
+      "/api/users//100%2520",
+    );
+    expect(match?.route.filePath).toBe("/app/src/api/users/[id].ts");
+    expect(match?.params).toEqual({ id: "100%20" });
   });
 });

@@ -240,6 +240,114 @@ describe("getFirstComponent", () => {
     expect(getFirstComponent(html, alphaFirst).name).toBe("bravo-box");
     expect(getFirstComponent(html, bravoFirst).name).toBe("bravo-box");
   });
+
+  describe("getFirstComponent – attribute-aware discovery", () => {
+    const auditLabel: ComponentList = {
+      "audit-label": { fileContent: "<span>label</span>" },
+    };
+
+    it("does not match a component tag inside a double-quoted attribute value", () => {
+      const html = '<p title="Use <audit-label> exactly">Visible text</p>';
+      expect(getFirstComponent(html, auditLabel)).toEqual({});
+    });
+
+    it("ignores closing component tags inside quoted attributes", () => {
+      const html =
+        '<audit-label><p title="Use </audit-label> exactly">text</p></audit-label>';
+      expect(getFirstComponent(html, auditLabel).content).toBe(html);
+    });
+
+    it("handles many tag-like attribute tokens without recursive rescanning", () => {
+      const mentions = "<span><audit-label></audit-label>".repeat(1000);
+      const html = `<p title="${mentions}">text</p><audit-label/>`;
+      const started = performance.now();
+      expect(getFirstComponent(html, auditLabel).content).toBe(
+        "<audit-label/>",
+      );
+      expect(getTag(html, "audit-label").content).toBe("<audit-label/>");
+      expect(replaceTag(html, "audit-label", "replacement")).toBe(
+        `<p title="${mentions}">text</p>replacement`,
+      );
+      expect(performance.now() - started).toBeLessThan(1000);
+    });
+
+    it("does not match a component tag inside a single-quoted attribute value", () => {
+      const html = "<p title='Use <audit-label> exactly'>Visible text</p>";
+      expect(getFirstComponent(html, auditLabel)).toEqual({});
+    });
+
+    it("does not match a component tag inside an unquoted attribute value", () => {
+      const html = "<p data-note=Use<audit-label>Visible text</p>";
+      expect(getFirstComponent(html, auditLabel)).toEqual({});
+    });
+
+    it("still finds a real component after an attribute that mentions it", () => {
+      const html =
+        '<p title="Use <audit-label> exactly">Visible text</p><audit-label></audit-label>';
+      const result = getFirstComponent(html, auditLabel);
+      expect(result.name).toBe("audit-label");
+      expect(result.content).toBe("<audit-label></audit-label>");
+    });
+
+    it("still finds a real component before an attribute that mentions it", () => {
+      const html =
+        '<audit-label></audit-label><p title="Use <audit-label> exactly">Visible text</p>';
+      const result = getFirstComponent(html, auditLabel);
+      expect(result.name).toBe("audit-label");
+      expect(result.content).toBe("<audit-label></audit-label>");
+    });
+
+    it("does not match a component tag inside a quoted attribute value with a quoted >", () => {
+      const html =
+        '<p title="Use <audit-label> exactly > here">Visible text</p>';
+      expect(getFirstComponent(html, auditLabel)).toEqual({});
+    });
+
+    it("does not match a component tag inside a multiline quoted attribute value", () => {
+      const html = `<p
+        title="Use <audit-label> exactly"
+        class="x">Visible text</p>`;
+      expect(getFirstComponent(html, auditLabel)).toEqual({});
+    });
+
+    it("still finds a real component with multiline attributes and quoted >", () => {
+      const html = `<audit-label
+        title="a > b"
+        class="x"></audit-label>`;
+      const result = getFirstComponent(html, auditLabel);
+      expect(result.name).toBe("audit-label");
+      expect(result.content).toBe(
+        `<audit-label
+        title="a > b"
+        class="x"></audit-label>`,
+      );
+    });
+
+    it("does not match a component tag inside a quoted attribute value when the tag is self-closing", () => {
+      const html = '<p title="Use <audit-label/> exactly">Visible text</p>';
+      expect(getFirstComponent(html, auditLabel)).toEqual({});
+    });
+
+    it("does not match a component tag inside a quoted attribute value when the tag is paired", () => {
+      const html =
+        '<p title="Use <audit-label>exactly</audit-label> here">Visible text</p>';
+      expect(getFirstComponent(html, auditLabel)).toEqual({});
+    });
+
+    it("does not match a component tag inside a quoted value that itself contains a <", () => {
+      const html = '<p title="a < b <audit-label>">x</p>';
+      expect(getFirstComponent(html, auditLabel)).toEqual({});
+    });
+
+    it("pairs a real component correctly when a later attribute mentions it", () => {
+      const html =
+        '<audit-label>a</audit-label><p title="Use <audit-label> exactly">b</p>';
+      const result = getFirstComponent(html, auditLabel);
+      expect(result.name).toBe("audit-label");
+      expect(result.content).toBe("<audit-label>a</audit-label>");
+      expect(result.innerContent).toBe("a");
+    });
+  });
 });
 
 describe("getTag – component name boundary", () => {
@@ -417,6 +525,24 @@ describe("extractProps", () => {
       ),
     ).toEqual({ title: 'say "hello"', caption: "it's fine" });
   });
+
+  it("does not treat a marker token inside another attribute's quoted value as a prop", () => {
+    // The marker string appears only inside the `title` value, never as a
+    // whole attribute name, so no prop may be fabricated from it.
+    expect(
+      extractProps(
+        "<my-comp title=\"reference data-bascik-prop-doc='guide' now\"></my-comp>",
+      ),
+    ).toEqual({});
+  });
+
+  it("does not treat marker text in the opening tag when a marker is a real prop elsewhere", () => {
+    expect(
+      extractProps(
+        '<my-comp data-bascik-prop-title="Hello" title="data-bascik-prop-title is used in docs"></my-comp>',
+      ),
+    ).toEqual({ title: "Hello" });
+  });
 });
 
 describe("injectProps", () => {
@@ -474,6 +600,45 @@ describe("injectProps", () => {
 
   it("handles undefined fileContent gracefully", () => {
     expect(injectProps(undefined, {})).toBe("");
+  });
+
+  it("keeps marker text appearing in plain text content", () => {
+    // The marker token is prose, not an attribute, so the unused-marker strip
+    // must leave it untouched.
+    expect(
+      injectProps("<p>See the data-bascik-prop-title docs for details</p>", {}),
+    ).toBe("<p>See the data-bascik-prop-title docs for details</p>");
+  });
+
+  it("keeps marker text appearing inside another attribute's quoted value", () => {
+    // The marker is prose inside the title value, not a receiver attribute, so
+    // it must survive both the injection loop and the unused-marker strip.
+    expect(
+      injectProps('<p title="see data-bascik-prop-title note">fallback</p>', {
+        title: "Hi",
+      }),
+    ).toBe('<p title="see data-bascik-prop-title note">fallback</p>');
+    expect(
+      injectProps(
+        '<p title="see data-bascik-prop-title note">fallback</p>',
+        {},
+      ),
+    ).toBe('<p title="see data-bascik-prop-title note">fallback</p>');
+  });
+
+  it("keeps a child component prop declaration with spaces around the equals", () => {
+    expect(injectProps('<p data-bascik-prop-title = "featured"></p>', {})).toBe(
+      '<p data-bascik-prop-title = "featured"></p>',
+    );
+  });
+
+  it("strips only the valueless marker attribute, not marker text in other attributes", () => {
+    expect(
+      injectProps(
+        '<p class="data-bascik-prop-title" data-bascik-prop-title></p>',
+        {},
+      ),
+    ).toBe('<p class="data-bascik-prop-title"></p>');
   });
 });
 
@@ -560,6 +725,18 @@ describe("injectPropAttributes", () => {
     expect(injectProps(withAttribute, props)).toBe(
       '<a aria-label="About"><span>About</span></a>',
     );
+  });
+
+  it("does not warn or strip when a directive token appears inside another attribute's quoted value", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(
+      injectPropAttributes(
+        '<a title="see data-bascik-attr-href note" data-bascik-attr-href="link">Go</a>',
+        { link: "/about" },
+      ),
+    ).toBe('<a title="see data-bascik-attr-href note" href="/about">Go</a>');
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 });
 

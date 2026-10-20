@@ -2,6 +2,25 @@ import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { minifyJs } from "./js-minifier.ts";
 
+it("preserves binary continuations across line breaks", () => {
+  const sources = [
+    "let x = 1; return x++\ninstanceof Object;",
+    "let x = 1; return (x--\nin { 1: true });",
+    "let x = 4; return x++\n/ 2;",
+    "let x = 4; return x--\n/ 2;",
+    "let value = 8; return value\n/ 2;",
+    "return { valueOf() { return 8; } }\n/ 2;",
+    "let x = 1; return x++\ninstanceofValue();",
+  ];
+  for (const source of sources) {
+    const minified = minifyJs(source);
+    expect(() => new Function(minified)).not.toThrow();
+    if (!source.includes("instanceofValue")) {
+      expect(new Function(minified)()).toEqual(new Function(source)());
+    }
+  }
+});
+
 describe("minifyJs – basic comment stripping and whitespace collapsing", () => {
   it("removes block comments", () => {
     expect(minifyJs("/* hello */var x = 1;")).toBe("var x=1;");
@@ -182,7 +201,7 @@ describe("minifyJs – regex literal handling", () => {
 
   it("treats '/' as division when regex is unterminated before newline", () => {
     const result = minifyJs("var n = /foo\n/bar;");
-    expect(result).toBe("var n=/foo;/bar;");
+    expect(result).toBe("var n=/foo/bar;");
   });
 
   it("treats '/' as division (not regex start) after an identifier", () => {
@@ -307,6 +326,26 @@ describe("minifyJs – statement separation (ASI)", () => {
 
     const inputMinusMinus = "foo()\n--x";
     expect(minifyJs(inputMinusMinus)).toBe("foo();--x");
+  });
+
+  it("inserts semicolon after a line ending with postfix ++ or --", () => {
+    // Postfix ++ and -- end a complete expression. Without a semicolon the next
+    // token glues onto them and produces a syntax error (e.g. `x++foo()` or
+    // `x++return x` or `do x++while(c)` which the parser rejects).
+    expect(minifyJs("x++\nfoo()")).toBe("x++;foo()");
+    expect(minifyJs("x--\nfoo()")).toBe("x--;foo()");
+    expect(minifyJs("x++\nreturn x")).toBe("x++;return x");
+    expect(minifyJs("do x++\nwhile (x < 10)")).toBe("do x++;while(x<10)");
+    expect(minifyJs("do a[i]++\nwhile (i-- > 0)")).toBe(
+      "do a[i]++;while(i-->0)",
+    );
+    // Postfix ++ in the middle of an expression (no newline) must not add semicolons.
+    // Step 5 keeps a space before unary `+1` (to avoid `+++` being read as `++ +`),
+    // and step 4 strips spaces around `>`.
+    expect(minifyJs("x++ + 1")).toBe("x++ +1");
+    expect(minifyJs("x++ > 0")).toBe("x++>0");
+    // Prefix ++ starting the next line keeps its own semicolon-before rule
+    expect(minifyJs("foo()\n++x")).toBe("foo();++x");
   });
 
   it("does not treat identifiers beginning with in as the in keyword", () => {

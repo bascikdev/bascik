@@ -102,3 +102,5 @@ bascik-prompts/
 # Local migration inputs and Eleventy output
 migration-examples/.upstream/
 migration-examples/**/_site/
+
+outreach/

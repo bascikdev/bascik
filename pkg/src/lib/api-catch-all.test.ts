@@ -223,6 +223,11 @@ describe("catch-all: existing behavior preserved", () => {
     expect(matchApiRoute(routes, "/api/users/%E0%A4%A")?.params).toEqual({
       id: "%E0%A4%A",
     });
+    expect(
+      matchApiRoute(routes, "/api/users/100%20", "/api/users/100%2520")?.params,
+    ).toEqual({
+      id: "100%20",
+    });
   });
 
   it("a dotted [...] outside the final position is not treated as a plain param", () => {

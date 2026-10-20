@@ -321,6 +321,184 @@ export const getKeyframeNames = (css: string): string[] | null => {
   return names.length ? names : null;
 };
 
+const scopeAnimationShorthandValue = (
+  value: string,
+  scopedNames: Map<string, string>,
+): string => {
+  const TIMING_KEYWORDS = new Set([
+    "ease",
+    "ease-in",
+    "ease-out",
+    "ease-in-out",
+    "linear",
+    "step-start",
+    "step-end",
+  ]);
+  const DIRECTION_KEYWORDS = new Set([
+    "normal",
+    "reverse",
+    "alternate",
+    "alternate-reverse",
+  ]);
+  const FILL_MODE_KEYWORDS = new Set(["none", "forwards", "backwards", "both"]);
+  const PLAY_STATE_KEYWORDS = new Set(["running", "paused"]);
+  const ITERATION_KEYWORDS = new Set(["infinite"]);
+
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if (ch === "(") depth++;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+    else if (ch === "," && depth === 0) {
+      parts.push(value.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(value.slice(start));
+
+  return parts
+    .map((single) => {
+      type Token =
+        | { type: "func"; raw: string; start: number; end: number }
+        | { type: "ident"; value: string; start: number; end: number }
+        | { type: "other"; raw: string; start: number; end: number };
+
+      const tokens: Token[] = [];
+      let i = 0;
+      while (i < single.length) {
+        const ch = single[i];
+        if (/\s/.test(ch)) {
+          i++;
+          continue;
+        }
+        const numericMatch =
+          /^[+-]?(?:\d*\.\d+|\d+)(?:%|[A-Za-z_][\w-]*)?/.exec(single.slice(i));
+        if (numericMatch) {
+          const raw = numericMatch[0];
+          const tokenStart = i;
+          const end = i + raw.length;
+          tokens.push({
+            type: "other",
+            raw,
+            start: tokenStart,
+            end,
+          });
+          i = end;
+          continue;
+        }
+        const identMatch =
+          /^(?:--[A-Za-z0-9_-]+|-[A-Za-z_][\w-]*|[A-Za-z_][\w-]*)/.exec(
+            single.slice(i),
+          );
+        if (identMatch) {
+          const name = identMatch[0];
+          const tokenStart = i;
+          const afterIdent = i + name.length;
+          if (single[afterIdent] === "(") {
+            let funcDepth = 1;
+            let j = afterIdent + 1;
+            while (j < single.length && funcDepth > 0) {
+              if (single[j] === "(") funcDepth++;
+              else if (single[j] === ")") funcDepth--;
+              j++;
+            }
+            tokens.push({
+              type: "func",
+              raw: single.slice(tokenStart, j),
+              start: tokenStart,
+              end: j,
+            });
+            i = j;
+            continue;
+          } else {
+            tokens.push({
+              type: "ident",
+              value: name,
+              start: tokenStart,
+              end: afterIdent,
+            });
+            i = afterIdent;
+            continue;
+          }
+        }
+        const tokenStart = i;
+        while (
+          i < single.length &&
+          !/\s/.test(single[i]) &&
+          !/^[+-]?(?:\d*\.\d+|\d+)/.test(single.slice(i)) &&
+          !/^(?:--[A-Za-z0-9_-]|-[A-Za-z_]|[A-Za-z_])/.test(single.slice(i))
+        ) {
+          i++;
+        }
+        tokens.push({
+          type: "other",
+          raw: single.slice(tokenStart, i),
+          start: tokenStart,
+          end: i,
+        });
+      }
+
+      let timingConsumed = false;
+      let directionConsumed = false;
+      let fillModeConsumed = false;
+      let playStateConsumed = false;
+      let iterationConsumed = false;
+      const nonNameOffsets = new Set<number>();
+
+      for (const token of tokens) {
+        if (token.type === "func") {
+          if (!timingConsumed) {
+            timingConsumed = true;
+          }
+          continue;
+        }
+        if (token.type === "ident") {
+          const lower = token.value.toLowerCase();
+          if (!timingConsumed && TIMING_KEYWORDS.has(lower)) {
+            nonNameOffsets.add(token.start);
+            timingConsumed = true;
+          } else if (!directionConsumed && DIRECTION_KEYWORDS.has(lower)) {
+            nonNameOffsets.add(token.start);
+            directionConsumed = true;
+          } else if (!fillModeConsumed && FILL_MODE_KEYWORDS.has(lower)) {
+            nonNameOffsets.add(token.start);
+            fillModeConsumed = true;
+          } else if (!playStateConsumed && PLAY_STATE_KEYWORDS.has(lower)) {
+            nonNameOffsets.add(token.start);
+            playStateConsumed = true;
+          } else if (!iterationConsumed && ITERATION_KEYWORDS.has(lower)) {
+            nonNameOffsets.add(token.start);
+            iterationConsumed = true;
+          }
+        }
+      }
+
+      let out = "";
+      let last = 0;
+      for (const token of tokens) {
+        out += single.slice(last, token.start);
+        if (token.type === "ident") {
+          if (
+            !nonNameOffsets.has(token.start) &&
+            scopedNames.has(token.value)
+          ) {
+            out += scopedNames.get(token.value);
+          } else {
+            out += token.value;
+          }
+        } else {
+          out += token.raw;
+        }
+        last = token.end;
+      }
+      out += single.slice(last);
+      return out;
+    })
+    .join(",");
+};
+
 export const prefixKeyframes = (css: string, componentName: string): string => {
   const keyframeNames = getKeyframeNames(css);
   if (!Array.isArray(keyframeNames)) return css;
@@ -346,12 +524,17 @@ export const prefixKeyframes = (css: string, componentName: string): string => {
         `${prefix}${scopedNames.get(name) ?? name}`,
     )
     .replace(
-      /((?:^|[;{]\s*)(?:-[a-z]+-)?animation(?:-name)?\s*:\s*)([^;{}]+)/gim,
+      /((?:^|[;{]\s*)(?:-[a-z]+-)?animation-name\s*:\s*)([^;{}]+)/gim,
       (_match, prefix: string, value: string) =>
         `${prefix}${value.replace(
           /(?<![@.\w#-])([\w-]+)(?![\w(-])/g,
           (name: string) => scopedNames.get(name) ?? name,
         )}`,
+    )
+    .replace(
+      /((?:^|[;{]\s*)(?:-[a-z]+-)?animation\s*:\s*)([^;{}]+)/gim,
+      (_match, prefix: string, value: string) =>
+        `${prefix}${scopeAnimationShorthandValue(value, scopedNames)}`,
     );
   return restore(replaced);
 };

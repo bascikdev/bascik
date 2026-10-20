@@ -731,6 +731,82 @@ export const listComponents = async (
 const ATTR_VALUE = `(?:[^>"']|"[^"]*"|'[^']*')*`;
 
 /**
+ * One attribute of a start tag: the name with its span, plus the value with
+ * the raw (still entity-encoded, quote chars included when quoted) text.
+ * `valueStart`/`valueEnd` are -1 when the attribute has no value. Span
+ * coordinates are relative to the scanned tag string.
+ */
+interface ScannedAttribute {
+  /** Authored attribute name, case preserved. */
+  name: string;
+  nameStart: number;
+  nameEnd: number;
+  /** -1 when the attribute has no value (`disabled`, `data-bascik-slot`). */
+  valueStart: number;
+  valueEnd: number;
+  /** The whole `name=value` span, from name start to value end. */
+  start: number;
+  end: number;
+}
+
+/**
+ * Scan the attributes of one opening tag string (the text between `<` and
+ * `>`).  Following the WHATWG tokenizer states, a quote delimits a value only
+ * after `=`, so a token that merely looks like an attribute inside another
+ * attribute's quoted value (e.g. `data-bascik-prop-x` inside `title=...`) is
+ * never reported as an attribute.  Returns the attributes in document order.
+ */
+const scanWholeAttributes = (openTag: string): ScannedAttribute[] => {
+  const attrs: ScannedAttribute[] = [];
+  // Skip the `<` and the tag name: the first attribute can start anywhere
+  // after the name (whitespace or directly, as in `<div/disabled>`).
+  let i = 0;
+  const n = openTag.length;
+  if (n > 0 && openTag.charCodeAt(0) === 60 /* < */) i = 1;
+  while (i < n && !/[\s/>]/.test(openTag[i])) i++;
+  while (i < n) {
+    while (i < n && /[\s/]/.test(openTag[i])) i++;
+    if (i >= n || openTag[i] === ">") break;
+    const nameStart = i;
+    while (i < n && !/[\s=/>]/.test(openTag[i])) i++;
+    const nameEnd = i;
+    let valueStart = -1;
+    let valueEnd = -1;
+    let attrEnd = nameEnd;
+    while (i < n && /[\s]/.test(openTag[i])) i++;
+    if (i < n && openTag[i] === "=") {
+      i++;
+      while (i < n && /[\s]/.test(openTag[i])) i++;
+      if (i < n && (openTag[i] === '"' || openTag[i] === "'")) {
+        const quote = openTag[i];
+        i++;
+        valueStart = i;
+        while (i < n && openTag[i] !== quote) i++;
+        valueEnd = i;
+        if (i < n) i++; // past the closing quote
+      } else {
+        // Unquoted value: characters other than whitespace, quotes, `=`, `<`,
+        // `>`, and backtick. `/` is allowed (e.g. `path=/about`).
+        valueStart = i;
+        while (i < n && !/[\s"'=<>`]/.test(openTag[i])) i++;
+        valueEnd = i;
+      }
+      attrEnd = i;
+    }
+    attrs.push({
+      name: openTag.slice(nameStart, nameEnd),
+      nameStart,
+      nameEnd,
+      valueStart,
+      valueEnd,
+      start: nameStart,
+      end: attrEnd,
+    });
+  }
+  return attrs;
+};
+
+/**
  * Return a same-length copy of `htmlString` where HTML comments and the inner content of
  * `<script>`, `<style>`, and `<textarea>` elements are blanked out with
  * spaces. Component-tag searches run against the masked string so literal
@@ -886,6 +962,38 @@ export const spliceRawTextMask = (
   };
 };
 
+const createAttributeValueCheck = (html: string) => {
+  let cursor = 0;
+  let state: "text" | "tag" | "before-value" | "quoted" | "unquoted" = "text";
+  let quote = "";
+  return (index: number): boolean => {
+    while (cursor < index) {
+      const char = html[cursor];
+      if (state === "quoted") {
+        if (char === quote) state = "tag";
+      } else if (state === "unquoted") {
+        if (char === ">") state = "text";
+        else if (/\s/.test(char)) state = "tag";
+      } else if (state === "before-value") {
+        if (char === '"' || char === "'") {
+          quote = char;
+          state = "quoted";
+        } else if (char === ">") state = "text";
+        else if (!/\s/.test(char)) state = "unquoted";
+      } else if (state === "tag") {
+        if (char === "=") state = "before-value";
+        else if (char === ">") state = "text";
+      } else if (char === "<" && /[a-zA-Z/!?]/.test(html[cursor + 1] ?? "")) {
+        state = "tag";
+      }
+      cursor++;
+    }
+    return (
+      state === "quoted" || state === "unquoted" || state === "before-value"
+    );
+  };
+};
+
 /**
  * Find the first `<tagName ...>` opening tag in `htmlString` and return its
  * full text plus start/end indices.  The attribute scan is quote-aware so a
@@ -908,13 +1016,17 @@ const findOpenTag = (
   openTagRegexp.lastIndex = searchFrom;
   const maskedHtml =
     masked !== undefined ? masked : maskRawTextContent(htmlString);
-  const openTagMatch = openTagRegexp.exec(maskedHtml);
-  if (!openTagMatch) return null;
-  return {
-    openTag: openTagMatch[0],
-    start: openTagMatch.index,
-    end: openTagMatch.index + openTagMatch[0].length,
-  };
+  const isInsideAttributeValue = createAttributeValueCheck(maskedHtml);
+  let openTagMatch: RegExpExecArray | null;
+  while ((openTagMatch = openTagRegexp.exec(maskedHtml)) !== null) {
+    if (isInsideAttributeValue(openTagMatch.index)) continue;
+    return {
+      openTag: openTagMatch[0],
+      start: openTagMatch.index,
+      end: openTagMatch.index + openTagMatch[0].length,
+    };
+  }
+  return null;
 };
 
 export const replaceTag = (
@@ -974,8 +1086,16 @@ export const replaceTag = (
   // Search the masked string so a literal tag inside <script>/<style>/<textarea>
   // content is never replaced; splice by index into the original string.
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const selfClosingRegexp = new RegExp(`<${tn}(?:${ATTR_VALUE})\\s*\\/?>`, "i");
-  const selfClosingMatch = selfClosingRegexp.exec(maskedHtml);
+  const selfClosingRegexp = new RegExp(
+    `<${tn}(?:${ATTR_VALUE})\\s*\\/?>`,
+    "gi",
+  );
+  const isInsideAttributeValue = createAttributeValueCheck(maskedHtml);
+  let selfClosingMatch: RegExpExecArray | null;
+  while ((selfClosingMatch = selfClosingRegexp.exec(maskedHtml)) !== null) {
+    if (isInsideAttributeValue(selfClosingMatch.index)) continue;
+    break;
+  }
   if (!selfClosingMatch) return htmlString;
   return (
     htmlString.slice(0, selfClosingMatch.index) +
@@ -1069,7 +1189,12 @@ export const getFirstComponent = (
   // <script>/<style>/<textarea> content (e.g. JSON-LD strings) is ignored.
   const maskedHtml =
     masked !== undefined ? masked : maskRawTextContent(htmlString);
-  const match = matchComponentName.exec(maskedHtml);
+  const isInsideAttributeValue = createAttributeValueCheck(maskedHtml);
+  let match: RegExpExecArray | null;
+  while ((match = matchComponentName.exec(maskedHtml)) !== null) {
+    if (isInsideAttributeValue(match.index)) continue;
+    break;
+  }
   if (!match) {
     __componentScanStatsForTests.prefixBytesExamined += Math.max(
       0,
@@ -1231,7 +1356,12 @@ export const getTag = (
     "gi",
   );
   selfClosingPattern.lastIndex = searchFrom;
-  const selfClosingMatch = selfClosingPattern.exec(maskedHtml);
+  const isInsideAttributeValue = createAttributeValueCheck(maskedHtml);
+  let selfClosingMatch: RegExpExecArray | null;
+  while ((selfClosingMatch = selfClosingPattern.exec(maskedHtml)) !== null) {
+    if (isInsideAttributeValue(selfClosingMatch.index)) continue;
+    break;
+  }
   if (selfClosingMatch) {
     const returnObj: Partial<BascikComponent> & {
       startIndex?: number;
@@ -1316,32 +1446,37 @@ export const extractProps = (
     new RegExp(`^<[a-zA-Z][\\w:-]*(?:${ATTR_VALUE})>`, "i"),
   )?.[0];
   if (!openingTag) return props;
-  // Accept double-quoted, single-quoted, whitespace-spaced, and unquoted prop values.
-  const regexp =
-    /data-bascik-prop-([\w-]+)\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+?)/gi;
-  let match;
-  while ((match = regexp.exec(openingTag)) !== null) {
-    const rawVal = match[2];
-    const isQuoted = rawVal.startsWith('"') || rawVal.startsWith("'");
+  // Only whole attribute names count. A token that looks like a prop marker
+  // inside another attribute's quoted value (e.g. a doc reference in
+  // `title="see data-bascik-prop-x"`) is text, never a prop.
+  const propRegexpPrefix = /^data-bascik-prop-/i;
+  for (const attr of scanWholeAttributes(openingTag)) {
+    const propMatch = propRegexpPrefix.exec(attr.name);
+    if (!propMatch) continue;
+    const propName = attr.name.slice(propMatch[0].length);
+    if (!/^[\w-]+$/.test(propName)) continue;
+    // A valueless marker is a template receiver, not a provided value; it
+    // contributes no prop (matching the pre-scanner extraction which required
+    // an `= value`).
+    if (attr.valueStart === -1) continue;
+    const rawVal = openingTag.slice(attr.valueStart, attr.valueEnd);
+    const isQuoted =
+      openingTag[attr.valueStart - 1] === '"' ||
+      openingTag[attr.valueStart - 1] === "'";
     if (isQuoted) {
-      const followingCharacter = openingTag[match.index + match[0].length];
+      const followingCharacter = openingTag[attr.valueEnd + 1];
       if (followingCharacter && !/[\s/>]/.test(followingCharacter)) {
         console.warn(
-          `Ignoring malformed data-bascik-prop-${match[1]}: the value contains an unescaped delimiting quote. Use &quot; or &#39; for quotes inside prop values.`,
+          `Ignoring malformed data-bascik-prop-${propName}: the value contains an unescaped delimiting quote. Use &quot; or &#39; for quotes inside prop values.`,
         );
         continue;
       }
-      props[match[1]] = decodePropEntities(rawVal.slice(1, -1));
+      props[propName] = decodePropEntities(rawVal);
     } else {
-      // Unquoted value: consume up to whitespace, `/>`, or `>`
-      const unquotedMatch = /^[^\s"'=<>`]+/.exec(
-        openingTag.slice(match.index + match[0].length - rawVal.length),
-      );
-      const fullUnquoted = unquotedMatch ? unquotedMatch[0] : rawVal;
-      const cleanUnquoted = fullUnquoted.endsWith("/")
-        ? fullUnquoted.slice(0, -1)
-        : fullUnquoted;
-      props[match[1]] = decodePropEntities(cleanUnquoted);
+      // Unquoted value: it never contains `/>` or `=` delimiters; a trailing
+      // `/` belongs to the self-closing syntax, so drop it.
+      const cleanUnquoted = rawVal.endsWith("/") ? rawVal.slice(0, -1) : rawVal;
+      props[propName] = decodePropEntities(cleanUnquoted);
     }
   }
   return props;
@@ -1375,21 +1510,29 @@ export const injectPropAttributes = (
     new RegExp(`<([a-zA-Z][\\w:-]*)(?:${ATTR_VALUE})>`, "gi"),
     (openingTag: string) => {
       if (!openingTag.includes("data-bascik-attr-")) return openingTag;
+      // Whole attribute names only: a token that looks like a directive inside
+      // another attribute's quoted value is text, never a directive.
       const directives: Array<{
         start: number;
         end: number;
         targetName: string;
         rawPropName?: string;
       }> = [];
-      const directiveRegex =
-        /\s+data-bascik-attr-([^\s=/>]*)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s/>]+))?/gi;
-      let directiveMatch: RegExpExecArray | null;
-      while ((directiveMatch = directiveRegex.exec(openingTag)) !== null) {
+      for (const attr of scanWholeAttributes(openingTag)) {
+        const match = /^data-bascik-attr-(.*)$/i.exec(attr.name);
+        if (!match) continue;
+        const targetName = match[1];
+        const rawPropName =
+          attr.valueStart !== -1
+            ? openingTag.slice(attr.valueStart - 1, attr.valueEnd + 1)
+            : undefined;
+        let start = attr.start;
+        if (start > 0 && /\s/.test(openingTag[start - 1])) start--;
         directives.push({
-          start: directiveMatch.index,
-          end: directiveMatch.index + directiveMatch[0].length,
-          targetName: directiveMatch[1],
-          rawPropName: directiveMatch[2],
+          start,
+          end: attr.end,
+          targetName,
+          rawPropName,
         });
       }
 
@@ -1417,20 +1560,21 @@ export const injectPropAttributes = (
         const propValue =
           props[propName] ?? propsLowerMap.get(propName.toLowerCase());
         if (propValue === undefined) continue;
-        const escapedTargetName = targetName.replace(
-          /[.*+?^${}()|[\]\\]/g,
-          "\\$&",
-        );
-        const targetRegex = new RegExp(
-          `\\s+${escapedTargetName}(?:\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+))?(?=[\\s/>])`,
-          "i",
-        );
         const attribute = ` ${targetName}="${escapePropValue(propValue)}"`;
-        if (targetRegex.test(result)) {
+        // Whole-name conflict check: the target may already exist, but a
+        // "target-looking" token inside another attribute's quoted value is
+        // text and must not count as the target.
+        const existing = scanWholeAttributes(result).find(
+          (attr) => attr.name.toLowerCase() === targetName.toLowerCase(),
+        );
+        if (existing) {
           console.warn(
             `Attribute binding conflict: attribute "${targetName}" already exists; prop "${propName}" wins.`,
           );
-          result = result.replace(targetRegex, () => attribute);
+          result =
+            result.slice(0, existing.start) +
+            attribute.slice(1) +
+            result.slice(existing.end);
         } else {
           result = result.replace(
             /(\s*\/?>)$/,
@@ -1486,18 +1630,31 @@ export const injectProps = (
     if (!/^[a-zA-Z0-9_-]+$/.test(propName)) return;
     const attrName = `data-bascik-prop-${propName}`;
     const escapedPropValue = escapePropValue(propValue);
+    // Scan whole opening tags and act only on whole attribute names, so a
+    // marker token inside another attribute's quoted value is never confused
+    // with a receiver.
     // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    const receiverRe = new RegExp(
-      `<(\\w+(?:-\\w+)*?)(${ATTR_VALUE}?)\\s+${attrName}(?!\\s*=)(?=\\s|>)(${ATTR_VALUE})>`,
-      "gi",
-    );
+    const openTagRe = new RegExp(`<([a-zA-Z][\\w:-]*)(?:${ATTR_VALUE})>`, "gi");
     let searchIndex = 0;
     while (searchIndex < result.length) {
-      receiverRe.lastIndex = searchIndex;
-      const receiver = receiverRe.exec(result);
-      if (!receiver) break;
-      const [openTag, tagName, attrsBefore, attrsAfter] = receiver;
-      const contentStart = receiver.index + openTag.length;
+      openTagRe.lastIndex = searchIndex;
+      const openMatch = openTagRe.exec(result);
+      if (!openMatch) break;
+      const openTag = openMatch[0];
+      const tagName = openMatch[1];
+      const receiverAttr = scanWholeAttributes(openTag).find(
+        (attr) =>
+          attr.name.toLowerCase() === attrName.toLowerCase() &&
+          attr.valueStart === -1 &&
+          // A self-closing marker (`data-bascik-prop-x/>`) is not a receiver.
+          (/[\s>]/.test(openTag[attr.nameEnd] ?? "") ||
+            attr.nameEnd >= openTag.length),
+      );
+      if (!receiverAttr) {
+        searchIndex = openMatch.index + openTag.length;
+        continue;
+      }
+      const contentStart = openMatch.index + openTag.length;
       const closeIndex = findMatchingClose(result, tagName, contentStart);
       if (closeIndex === -1) {
         searchIndex = contentStart;
@@ -1510,21 +1667,81 @@ export const injectProps = (
         searchIndex = contentStart;
         continue;
       }
-      const replacement = `<${tagName}${attrsBefore}${attrsAfter}>${escapedPropValue}${closeTag}`;
+      // Remove the receiver attribute from the opening tag.
+      let attrStart = receiverAttr.start;
+      if (attrStart > 0 && /\s/.test(openTag[attrStart - 1])) attrStart--;
+      const newOpenTag =
+        openTag.slice(0, attrStart) + openTag.slice(receiverAttr.end);
+      const replacement = `${newOpenTag}${escapedPropValue}${closeTag}`;
       result =
-        result.slice(0, receiver.index) +
+        result.slice(0, openMatch.index) +
         replacement +
         result.slice(closeIndex + closeTag.length);
-      searchIndex = receiver.index + replacement.length;
+      searchIndex = openMatch.index + replacement.length;
     }
   });
   // Strip any remaining data-bascik-prop-* markers whose prop was not provided.
-  // Only strip markers that have NO value (prop receivers, e.g. `data-bascik-prop-label`
-  // followed immediately by `>` or whitespace). Markers with a value
-  // (e.g. `data-bascik-prop-label="featured"`) are child component prop declarations
-  // and must be preserved so nested components receive their props.
-  const stripped = result.replace(/\s+data-bascik-prop-[\w-]+(?=[>\s])/gi, "");
+  // Only strip markers that are whole attribute names WITHOUT a value (prop
+  // receivers, e.g. `data-bascik-prop-label` followed by whitespace or `>`).
+  // Markers with a value (e.g. `data-bascik-prop-label="featured"`) are child
+  // component prop declarations and must be preserved so nested components
+  // receive their props.  A token that only appears inside prose or inside
+  // another attribute's quoted value is text, never a marker.
+  const stripped = stripUnfilledPropMarkers(result);
   return commentShield.restore(rawShield.restore(stripped));
+};
+
+const stripUnfilledPropMarkers = (html: string): string => {
+  // Whole attribute names only: a token that merely looks like a marker inside
+  // prose or another attribute's quoted value is text and is never stripped.
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+  const openTagRe = new RegExp(
+    `<([a-zA-Z][\\w:-]*)((?:${ATTR_VALUE})[\\s>])`,
+    "gi",
+  );
+  let result = html;
+  let openTagMatch: RegExpExecArray | null;
+  while ((openTagMatch = openTagRe.exec(result)) !== null) {
+    const openTag = openTagMatch[0];
+    const tagStart = openTagMatch.index;
+    const removals: Array<{ start: number; end: number }> = [];
+    for (const attr of scanWholeAttributes(openTag)) {
+      if (!/^data-bascik-prop-[\w-]+$/i.test(attr.name)) continue;
+      // Keep markers that carry a value: they are child component prop
+      // declarations that must reach the nested component.
+      if (attr.valueStart !== -1) continue;
+      // A marker on a self-closing tag (`data-bascik-prop-x/>`) is left as
+      // authored, matching the old receiver boundary.
+      if (
+        !/[\s>]/.test(openTag[attr.nameEnd] ?? "") &&
+        attr.nameEnd < openTag.length
+      )
+        continue;
+      let start = attr.start;
+      if (start > 0 && /\s/.test(openTag[start - 1])) start--;
+      removals.push({ start, end: attr.end });
+    }
+    if (removals.length === 0) {
+      openTagRe.lastIndex = tagStart + openTag.length;
+      continue;
+    }
+    // Rebuild the tag keeping only the non-removed pieces.
+    let pieces = "";
+    let cursor = 0;
+    for (const { start, end } of removals) {
+      pieces += openTag.slice(cursor, start);
+      cursor = end;
+    }
+    pieces += openTag.slice(cursor);
+    result =
+      result.slice(0, tagStart) +
+      pieces +
+      result.slice(tagStart + openTag.length);
+    // Re-scan from the same document offset: the tag was rewritten but the
+    // outer regex must not skip content (positions after the tag shifted).
+    openTagRe.lastIndex = tagStart;
+  }
+  return result;
 };
 
 // ─── Named Slots ──────────────────────────────────────────────────────────────
@@ -1551,6 +1768,7 @@ const findMatchingClose = (
   // Scan the masked string so literal tag text inside <script>/<style>/<textarea>
   // content never skews the depth counter. Indices are valid in the original.
   const maskedHtml = masked !== undefined ? masked : maskRawTextContent(html);
+  const isInsideAttributeValue = createAttributeValueCheck(maskedHtml);
   let depth = 1;
   let pos = contentStart;
   while (pos < maskedHtml.length) {
@@ -1560,12 +1778,18 @@ const findMatchingClose = (
     const closeMatch = closeRe.exec(maskedHtml);
     if (!closeMatch) return -1;
     if (!openMatch || closeMatch.index < openMatch.index) {
+      if (isInsideAttributeValue(closeMatch.index)) {
+        pos = closeMatch.index + closeMatch[0].length;
+        continue;
+      }
       depth--;
       if (depth === 0) return closeMatch.index;
       pos = closeMatch.index + closeMatch[0].length;
     } else {
-      if (!/\/\s*>$/.test(openMatch[0])) {
-        depth++;
+      if (!isInsideAttributeValue(openMatch.index)) {
+        if (!/\/\s*>$/.test(openMatch[0])) {
+          depth++;
+        }
       }
       pos = openMatch.index + openMatch[0].length;
     }

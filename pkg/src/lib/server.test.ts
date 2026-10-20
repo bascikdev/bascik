@@ -1302,6 +1302,7 @@ describe("onError and server resiliency edge cases", () => {
 
   it("responds 404 for ENOENT and 500 for generic error in onError", async () => {
     const { onError } = await import("./server.ts");
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const mockRes1: any = {
       headersSent: false,
       respond: vi.fn(),
@@ -1317,8 +1318,13 @@ describe("onError and server resiliency edge cases", () => {
       respond: vi.fn(),
       end: vi.fn(),
     };
-    onError(new Error("Database crash"), mockRes2);
+    const serverError = new Error("Database crash");
+    onError(serverError, mockRes2);
     expect(mockRes2.respond).toHaveBeenCalledWith(500, expect.any(Object));
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "Request/Stream error:",
+      serverError,
+    );
   });
 
   it("handles exceptions thrown during res.respond in onError safely", async () => {
@@ -1343,6 +1349,63 @@ describe("onError and server resiliency edge cases", () => {
       "Error ending stream/request:",
       expect.any(Error),
     );
+  });
+
+  it("onError returns priorStatus when headersSent is true and error is not a peer abort", async () => {
+    const { onError } = await import("./server.ts");
+    const mockRes: any = {
+      headersSent: true,
+      respond: vi.fn(),
+      end: vi.fn(),
+    };
+    const status = onError(
+      new Error("Mid-stream write failed"),
+      mockRes,
+      undefined,
+      200,
+    );
+    expect(status).toBe(200);
+    expect(mockRes.respond).not.toHaveBeenCalled();
+  });
+
+  it("onError returns 499 when headersSent is true and error is a peer abort", async () => {
+    const { onError } = await import("./server.ts");
+    const mockRes: any = {
+      headersSent: true,
+      respond: vi.fn(),
+      end: vi.fn(),
+    };
+    const abortErr = new Error("Premature close");
+    (abortErr as any).code = "ERR_STREAM_PREMATURE_CLOSE";
+    const status = onError(abortErr, mockRes, undefined, 200);
+    expect(status).toBe(499);
+    expect(mockRes.respond).not.toHaveBeenCalled();
+  });
+
+  it("onError returns 500 when headersSent is false on non-ENOENT error", async () => {
+    const { onError } = await import("./server.ts");
+    const mockRes: any = {
+      headersSent: false,
+      respond: vi.fn(),
+      end: vi.fn(),
+    };
+    const status = onError(new Error("Pre-commit crash"), mockRes);
+    expect(status).toBe(500);
+    expect(mockRes.respond).toHaveBeenCalledWith(500, expect.any(Object));
+  });
+
+  it("onError returns 499 when headersSent is false on network reset error", async () => {
+    const { onError } = await import("./server.ts");
+    const mockRes: any = {
+      headersSent: false,
+      respond: vi.fn(),
+      end: vi.fn(),
+    };
+    const resetErr = new Error("Reset");
+    (resetErr as any).code = "ECONNRESET";
+    const status = onError(resetErr, mockRes);
+    expect(status).toBe(499);
+    expect(mockRes.respond).not.toHaveBeenCalled();
   });
 
   it("returns 400 for malformed percent encoding in request path", async () => {
@@ -1646,6 +1709,82 @@ describe("startHttp2Server – logAccess skip conditions", () => {
     );
     expect(accessLines.length).toBeGreaterThan(0);
     (BascikConfig as any).isProdServer = false;
+  });
+
+  it("logs 500 in access log when server page script throws an error", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).logging = { level: "info", requests: true };
+    const { executeServerScripts } = await import("./server-scripts.ts");
+    const mockExecute = executeServerScripts as ReturnType<typeof vi.fn>;
+    mockExecute.mockRejectedValueOnce(new Error("Script evaluation failed"));
+
+    const page = makePage({
+      hasServerScripts: true,
+      content: Buffer.from("<p>server script</p>"),
+    });
+    mockMem.getPage.mockReturnValue(page);
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/failing-script", "GET"));
+
+    const accessLines = consoleSpy.mock.calls.filter((c: unknown[]) =>
+      String(c[0]).includes("/failing-script"),
+    );
+    expect(accessLines.length).toBe(1);
+    expect(String(accessLines[0][0])).toContain("500");
+  });
+
+  it("logs committed 200 in access log when non-abort error occurs after headersSent", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).logging = { level: "info", requests: true };
+
+    const page = makePage({
+      content: Buffer.from("<p>committed content</p>"),
+    });
+    mockMem.getPage.mockReturnValue(page);
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    stream.respond.mockImplementationOnce(() => {
+      (stream as any).headersSent = true;
+    });
+    stream.end.mockImplementationOnce(() => {
+      throw new Error("Disk read failure mid-stream");
+    });
+    await handler(stream, makeHeaders("/post-commit-error", "GET"));
+
+    const accessLines = consoleSpy.mock.calls.filter((c: unknown[]) =>
+      String(c[0]).includes("/post-commit-error"),
+    );
+    expect(accessLines.length).toBe(1);
+    expect(String(accessLines[0][0])).toContain("200");
+    expect(String(accessLines[0][0])).not.toContain("500");
+  });
+
+  it("logs 499 in access log when client disconnect abort occurs after headersSent", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).logging = { level: "info", requests: true };
+
+    const page = makePage({
+      content: Buffer.from("<p>aborted content</p>"),
+    });
+    mockMem.getPage.mockReturnValue(page);
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    stream.respond.mockImplementationOnce(() => {
+      (stream as any).headersSent = true;
+    });
+    const abortErr = new Error("stream closed");
+    (abortErr as any).code = "ERR_STREAM_PREMATURE_CLOSE";
+    stream.end.mockImplementationOnce(() => {
+      throw abortErr;
+    });
+    await handler(stream, makeHeaders("/post-commit-abort", "GET"));
+
+    const accessLines = consoleSpy.mock.calls.filter((c: unknown[]) =>
+      String(c[0]).includes("/post-commit-abort"),
+    );
+    expect(accessLines.length).toBe(1);
+    expect(String(accessLines[0][0])).toContain("499");
   });
 });
 

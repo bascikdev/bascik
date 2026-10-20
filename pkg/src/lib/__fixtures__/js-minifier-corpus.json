@@ -10,7 +10,7 @@
   ["return/*x*/value;", "return value;"],
   ["typeof/**/x", "typeof x"],
   ["a /* one */ / /* two */ b", "a / b"],
-  ["let a = 1 // trailing\n/ 2", "let a=1;/ 2"],
+  ["let a = 1 // trailing\n/ 2", "let a=1/ 2"],
   ["foo // c1\n// c2\nbar", "foo;bar"],
   ["if (a) /* c */ b(); else /* d */ c();", "if(a)b();else c();"],
   ["return /ab+c/.test(s);", "return/ab+c/.test(s);"],
@@ -62,7 +62,7 @@
   ["'/* not comment */' / x", "'/* not comment */'/ x"],
   ["a\n++b", "a;++b"],
   ["a\n--b", "a;--b"],
-  ["a++\nb", "a++b"],
+  ["a++\nb", "a++;b"],
   ["x\n?.y", "x?.y"],
   ["x\n?.[0]", "x?.[0]"],
   ["a\n.b()", "a.b()"],
@@ -143,8 +143,8 @@
     "arr.map(x => x / 2).filter(x => /^\\d/.test(x))",
     "arr.map(x=>x / 2).filter(x=>/^\\d/.test(x))"
   ],
-  ["a = b\n/re/.test(c)", "a=b;/re/.test(c)"],
-  ["a = b\n/ c / d", "a=b;/ c / d"],
+  ["a = b\n/re/.test(c)", "a=b/re/.test(c)"],
+  ["a = b\n/ c / d", "a=b/ c / d"],
   ["if (ok) /\"/.test(s) && go();", "if(ok)/\"/.test(s)&&go();"],
   ["while (i--) /a  b/.exec(s);", "while(i--)/a  b/.exec(s);"]
 ]

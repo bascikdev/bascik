@@ -605,7 +605,7 @@ export const minifyJs = (js: string): string => {
 
         // Do NOT insert semicolon if next line starts with closing/continuation structures
         const startsWithContinuation =
-          /^(else|catch|finally|while|instanceof|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
+          /^(else|catch|finally|while|instanceof|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
             line,
           );
 
@@ -619,10 +619,21 @@ export const minifyJs = (js: string): string => {
       } else if (lastChar === "}") {
         // After }, insert semicolon unless followed by control continuation (else, catch, finally, while, etc.)
         if (
-          !/^(else|catch|finally|while|instanceof|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
+          !/^(else|catch|finally|while|instanceof|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
             line,
           )
         ) {
+          needsSemicolon = true;
+        }
+      } else if (
+        (lastChar === "+" && /\+\+$/.test(ptTail)) ||
+        (lastChar === "-" && /--$/.test(ptTail))
+      ) {
+        const startsWithContinuation =
+          /^(instanceof(?![a-zA-Z0-9_$])|in(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
+            line,
+          );
+        if (!startsWithContinuation) {
           needsSemicolon = true;
         }
       }
