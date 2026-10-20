@@ -83,7 +83,9 @@ import {
 import { removeOutputDirectives } from "./output-directives.ts";
 import {
   ATTR,
+  ANY_BUILD_FLAG,
   BUILD_FLAG,
+  BUILD_ONCE_FLAG,
   SERVER_FLAG,
   ROUTES_FLAG,
   STREAM_FLAG,
@@ -100,18 +102,33 @@ const BUILD_SCRIPT_RE = new RegExp(
   "gi",
 );
 
+const BUILD_ONCE_SCRIPT_RE = new RegExp(
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
+  "gi",
+);
+
+const BUILD_ONCE_OUTSIDE_COMPONENT_RE = new RegExp(
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  "i",
+);
+
+const BUILD_MODE_CONFLICT_RE = new RegExp(
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  "i",
+);
+
 const BUILD_SERVER_CONFLICT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
 
 const BUILD_ROUTES_CONFLICT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
 
 const BUILD_STREAM_CONFLICT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
 
@@ -307,13 +324,13 @@ const readCachedFile = async (
 };
 
 const ALL_PAGE_SCRIPTS_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+(?:${BUILD_FLAG}|${ROUTES_FLAG})(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+(?:${ANY_BUILD_FLAG}|${ROUTES_FLAG})(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
   "gi",
 );
 
 /**
- * Extract all local file dependencies referenced by `<script data-bascik-build>`
- * and `<script data-bascik-routes>` blocks in `html`, recursively scanning
+ * Extract all local file dependencies referenced by build, build-once, and
+ * routes script blocks in `html`, recursively scanning
  * referenced local JS/TS/MJS files.
  */
 export const collectAllScriptDeps = async (
@@ -616,6 +633,7 @@ export interface ExecuteBuildScriptOptions {
   pageFile?: string;
   pagePath?: string;
   sourceFile?: string;
+  once?: boolean;
 }
 
 /**
@@ -628,7 +646,20 @@ export const executeBuildScripts = async (
   route?: RouteEntry | null,
   options?: ExecuteBuildScriptOptions,
 ): Promise<string> => {
-  const matches = [...html.matchAll(BUILD_SCRIPT_RE)];
+  if (BUILD_MODE_CONFLICT_RE.test(html)) {
+    throw new Error(
+      "[bascik] error: a <script> tag cannot combine data-bascik-build and data-bascik-build-once. Choose one build-script mode.",
+    );
+  }
+  if (!options?.once && BUILD_ONCE_OUTSIDE_COMPONENT_RE.test(html)) {
+    throw new Error(
+      "[bascik] error: data-bascik-build-once is only supported in component files.",
+    );
+  }
+
+  const matches = [
+    ...html.matchAll(options?.once ? BUILD_ONCE_SCRIPT_RE : BUILD_SCRIPT_RE),
+  ];
   if (matches.length === 0) return html;
 
   let result = html;
@@ -646,20 +677,21 @@ export const executeBuildScripts = async (
   await pruneScriptCache(cacheDir);
 
   const defaultSourceFile = options?.sourceFile ?? filePath ?? "";
-  const pageFile = options?.pageFile ?? filePath ?? "";
+  const pageFile = options?.once ? "" : (options?.pageFile ?? filePath ?? "");
   const importRoot = getImportRoot();
   const resolvedSiteUrl = getSiteUrl();
   const siteUrl = resolvedSiteUrl ?? "";
   const routeStr = route ? JSON.stringify(route) : "";
-  const pagePath =
-    options?.pagePath ??
-    (pageFile
-      ? computePagePath(
-          pageFile,
-          BascikConfig.directory?.pages ?? "src/pages",
-          route,
-        )
-      : "");
+  const pagePath = options?.once
+    ? ""
+    : (options?.pagePath ??
+      (pageFile
+        ? computePagePath(
+            pageFile,
+            BascikConfig.directory?.pages ?? "src/pages",
+            route,
+          )
+        : ""));
 
   interface ScriptTask {
     fullTag: string;
@@ -703,7 +735,8 @@ export const executeBuildScripts = async (
     const where = location
       ? ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})`
       : "";
-    const useCache = isScriptCacheEnabledForPath(sourceFile || filePath);
+    const useCache =
+      !options?.once && isScriptCacheEnabledForPath(sourceFile || filePath);
     if (BUILD_SERVER_CONFLICT_RE.test(openTag)) {
       throw new Error(
         `[bascik] error: <script> tag has both data-bascik-build and data-bascik-server${where}. A script can only run at build time or at request time — not both. Remove one of the attributes.`,

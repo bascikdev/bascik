@@ -38,6 +38,23 @@ Output in the compiled HTML (`dist/index.html`):
 
 > **A few rules to know:** Top-level `import` and `await` are supported at module scope. Relative ESM imports resolve from the page, component, or external script file that contains them. Generic local data paths passed to functions such as `readFile('./content/data.json')` remain relative to the project root (`process.cwd()`). Return an HTML string (or a promise resolving to a string) from the default export. Build scripts run during both dev and production builds. Component tags in the returned markup are resolved normally, so your build script can emit `<my-card>` and it will be transpiled. Standard console methods (`console.log()`, `console.warn()`, `console.error()`) write to the terminal for debugging and logging only; they never generate markup.
 
+## `data-bascik-build-once` in components
+
+Use `<script data-bascik-build-once>` in a component when its generated markup is identical at every use. Bascik evaluates it once while registering the component, before page compilation, and reuses the resulting markup for every occurrence. The generated markup then goes through the component's usual scoping and component expansion.
+
+```html
+<!-- src/components/site-footer/site-footer.html -->
+<footer>
+  <script data-bascik-build-once>
+    export default () => String(new Date().getFullYear());
+  </script>
+</footer>
+```
+
+This directive is component-only and takes no value. It has no page or route context: `BASCIK_PAGE_FILE`, `BASCIK_PAGE_PATH`, and `BASCIK_ROUTE` are empty or unset. Use ordinary `data-bascik-build` when output depends on the page, route, or component props. Once scripts run during each component registration; unlike regular build scripts, their output is not persisted in the build-script cache, so values such as the current year are refreshed on the next build.
+
+Both build directives use the same default-export handler contract, imports, error handling, and dependency/watch behavior. A `data-bascik-build-once` result is shared only among uses of that component, not among different component files. Use a `pre` exec script for work that should run once for the entire project or whose output must be shared by several components.
+
 ### Handler Contract & Console Logging
 
 A build script defines its output through a callable default export:
@@ -317,9 +334,9 @@ export default {
 
 ### Directive Conflicts
 
-Directives (`data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, `data-bascik-stream`) are mutually exclusive and cannot be combined on the same `<script>` tag:
+Directives (`data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`, `data-bascik-server`, `data-bascik-stream`) are mutually exclusive and cannot be combined on the same `<script>` tag:
 
-- Combining `data-bascik-build` with `data-bascik-server` or `data-bascik-stream` is disallowed (a script runs at build time or request time, not both).
+- Combining either build directive with another directive is disallowed (a script runs at build time or request time, not both). The two build directives are also mutually exclusive.
 - Combining `data-bascik-server` and `data-bascik-stream` is disallowed (choose buffered or streaming execution).
 - Combining `data-bascik-routes` with other directives is disallowed (route scripts run independently).
 

@@ -1093,6 +1093,30 @@
                   </script>
                 </code-block>
               </div>
+              <div data-bascik-slot="output-html">
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./content/index.md",
+                        "home-stream-output-html",
+                      );
+                  </script>
+                </code-block>
+              </div>
+              <div data-bascik-slot="output-css">
+                <code-block data-bascik-prop-lang="css">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./content/index.md",
+                        "home-stream-output-css",
+                      );
+                  </script>
+                </code-block>
+              </div>
             </component-demo>
 
             <div class="stream-demo-box">

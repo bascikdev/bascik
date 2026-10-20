@@ -661,7 +661,8 @@ At build time, Bascik extracts every `<style>` block from the component file, co
 Component templates can also contain multiple `<script>` tags. Bascik handles each script according to its type and attributes:
 
 - **Client scripts:** Standard JavaScript blocks (without `data-bascik-server` or `data-bascik-build`) are each wrapped in an isolated IIFE `(function() { ... })();`. You can include multiple client scripts in a component template, and each receives its own scope so local variables do not bleed into other blocks.
-- **Build scripts (`<script data-bascik-build>`):** Executed during build or dev time in Node.js, replacing the tag with its returned HTML string. Multiple build scripts execute concurrently.
+- **Build scripts (`<script data-bascik-build>`):** Executed during build or dev time in Node.js for each component use, with that page's context. Returned HTML replaces the tag.
+- **Build-once scripts (`<script data-bascik-build-once>`):** Executed once when the component is registered, without page or route context. The same returned HTML is reused at every component use, then scoped and expanded normally. Their output is not persisted in the script cache.
 - **Server scripts (`<script data-bascik-server>`):** Executed on the server at request time in Node.js. They are not wrapped in browser IIFEs.
 - **Data scripts (e.g., `type="application/ld+json"`):** Preserved intact without IIFE wrapping or JavaScript minification.
 

@@ -42,6 +42,7 @@ const codesFor = (
 describe("directive-rules", () => {
   it("knows the fixed and the prefixed data-bascik attributes", () => {
     expect(isKnownBascikAttribute("data-bascik-slot")).toBe(true);
+    expect(isKnownBascikAttribute("data-bascik-build-once")).toBe(true);
     expect(isKnownBascikAttribute("data-bascik-prop-title")).toBe(true);
     expect(isKnownBascikAttribute("data-bascik-attr-href")).toBe(true);
     expect(isKnownBascikAttribute("data-bascik-slott")).toBe(false);
@@ -133,6 +134,39 @@ describe("per-file rules reported by the analyzer", () => {
         `<script data-bascik-build>${body}</script>`,
       ),
     ).not.toContain("unknown-directive-value");
+  });
+
+  it("accepts a bare build-once directive only in components", () => {
+    const body = 'export default () => "<p>shared</p>";';
+    const component = `/site/src/components/site-footer.html`;
+    expect(
+      codesFor(
+        component,
+        "html",
+        `<script data-bascik-build-once>${body}</script>`,
+      ),
+    ).not.toContain("build-once-outside-component");
+    expect(
+      codesFor(
+        "/site/src/pages/index.html",
+        "html",
+        `<script data-bascik-build-once>${body}</script>`,
+      ),
+    ).toContain("build-once-outside-component");
+    expect(
+      codesFor(
+        component,
+        "html",
+        `<script data-bascik-build-once="yes">${body}</script>`,
+      ),
+    ).toContain("unknown-directive-value");
+    expect(
+      codesFor(
+        component,
+        "html",
+        `<script data-bascik-build data-bascik-build-once>${body}</script>`,
+      ),
+    ).toContain("script-mode-conflict");
   });
 
   it("gives conflicting script directives their rule id", () => {

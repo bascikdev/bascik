@@ -26,15 +26,77 @@ test.describe("Docs Component E2E Tests", () => {
     // Locate component-demo tab labels/radios using robust test IDs
     const previewLabel = page.getByTestId("demo-tab-preview").first();
     const codeLabel = page.getByTestId("demo-tab-code").first();
+    const outputLabel = page.getByTestId("demo-tab-output").first();
 
     await expect(previewLabel).toBeVisible();
     await expect(codeLabel).toBeVisible();
+    await expect(outputLabel).toBeVisible();
 
     // Click Source tab and verify pane switching
     await codeLabel.click();
 
     const codePane = page.getByTestId("demo-pane-code").first();
     await expect(codePane).toBeVisible();
+
+    await outputLabel.click();
+    await expect(page.getByTestId("demo-pane-output").first()).toBeVisible();
+  });
+
+  test("component-demo hides Output tabs when a demo has no output", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const homeOutputTabs = page.getByTestId("demo-tab-output");
+    await expect(homeOutputTabs).toHaveCount(4);
+    await expect(homeOutputTabs.locator(":visible")).toHaveCount(4);
+
+    const streamDemo = page.locator(".stream-spotlight");
+    const streamOutputTab = streamDemo.getByTestId("demo-tab-output");
+    const homeCodePane = streamDemo.getByTestId("demo-pane-code");
+    const sourceCodeBlock = homeCodePane
+      .locator('[data-language-pane="html"] > div')
+      .first();
+    const codePaneBounds = await homeCodePane.boundingBox();
+    const sourceCodeBounds = await sourceCodeBlock.boundingBox();
+    expect(codePaneBounds).not.toBeNull();
+    expect(sourceCodeBounds).not.toBeNull();
+    expect(
+      Math.abs(
+        codePaneBounds!.y +
+          codePaneBounds!.height -
+          (sourceCodeBounds!.y + sourceCodeBounds!.height),
+      ),
+    ).toBeLessThanOrEqual(2);
+
+    await streamOutputTab.click();
+    const homeOutputPane = streamDemo.getByTestId("demo-pane-output");
+    await expect(homeOutputPane).toBeVisible();
+    await expect(homeOutputPane).toContainText("Primary Cluster");
+
+    const homeOutputCode = homeOutputPane
+      .locator('[data-language-pane="html"] > div')
+      .first();
+    const outputPaneBounds = await homeOutputPane.boundingBox();
+    const outputCodeBounds = await homeOutputCode.boundingBox();
+    expect(outputPaneBounds).not.toBeNull();
+    expect(outputCodeBounds).not.toBeNull();
+    expect(
+      Math.abs(
+        outputPaneBounds!.y +
+          outputPaneBounds!.height -
+          (outputCodeBounds!.y + outputCodeBounds!.height),
+      ),
+    ).toBeLessThanOrEqual(2);
+
+    await page.goto("/libraries");
+    const libraryOutputTabs = page.getByTestId("demo-tab-output");
+    await expect(libraryOutputTabs).toHaveCount(5);
+    await expect(libraryOutputTabs.locator(":visible")).toHaveCount(3);
+
+    await page.goto("/how-to/third-party-web-components");
+    const thirdPartyOutputTab = page.getByTestId("demo-tab-output");
+    await expect(thirdPartyOutputTab).toHaveCount(1);
+    await expect(thirdPartyOutputTab).toBeHidden();
   });
 
   test("comp-toggle expands and collapses detail panel", async ({ page }) => {

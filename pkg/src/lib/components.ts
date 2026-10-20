@@ -6,6 +6,7 @@ import {
   resolveCssImports,
 } from "./styles.ts";
 import { getComponentScripts } from "./javascript.ts";
+import { executeBuildScripts } from "./build-scripts.ts";
 import { deepReadDirFlat } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
 import { minifyHtml } from "./html-minifier.ts";
@@ -20,6 +21,7 @@ import { stampScriptLines, withScriptLine } from "./script-source-lines.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
 import {
   BUILD_ATTR_NAME,
+  BUILD_ONCE_ATTR_NAME,
   ROUTES_ATTR_NAME,
   SERVER_ATTR_NAME,
   STREAM_ATTR_NAME,
@@ -202,7 +204,12 @@ export const componentsImportingStylesheet = (filePath: string): string[] => [
 /** Load all component HTML and CSS files from the configured components directory. */
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const BUILD_DIRECTIVE_RE = new RegExp(
-  String.raw`(?:^|\s)${BUILD_ATTR_NAME}`,
+  String.raw`(?:^|\s)(?:${BUILD_ATTR_NAME}|${BUILD_ONCE_ATTR_NAME})`,
+  "i",
+);
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const BUILD_ONCE_DIRECTIVE_RE = new RegExp(
+  String.raw`(?:^|\s)${BUILD_ONCE_ATTR_NAME}`,
   "i",
 );
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
@@ -546,9 +553,14 @@ export const listComponents = async (
       const stampedContent = stampScriptLines(
         stampDirectiveSources(rawContent, fileName),
       );
-      // Component build scripts run after expansion, once for each occurrence
-      // in the page, with that page's build context.
-      let resolvedContent = stampedContent;
+      // Once scripts render component-wide markup before expansion. The result
+      // then follows the same scoping and expansion path as authored markup.
+      const onceResolvedContent = BUILD_ONCE_DIRECTIVE_RE.test(stampedContent)
+        ? await executeBuildScripts(stampedContent, fileName, null, {
+            once: true,
+          })
+        : stampedContent;
+      let resolvedContent = onceResolvedContent;
 
       if (companionScripts && companionScripts.scriptMap.size > 0) {
         resolvedContent = resolvedContent.replace(

@@ -10,6 +10,7 @@
 export const KNOWN_BASCIK_DATA_EXACT = [
   "data-bascik-slot",
   "data-bascik-build",
+  "data-bascik-build-once",
   "data-bascik-server",
   "data-bascik-routes",
   "data-bascik-stream",
@@ -43,8 +44,10 @@ export function unknownBascikAttributeMessage(name: string): string {
   return `Unknown attribute "${name}". Bascik ignores it, so it is probably a typo. Known attributes: ${known}`;
 }
 
-export function unknownDirectiveValueMessage(): string {
-  return `data-bascik-build does not take a value. Component build scripts run for each use, with that page's context.`;
+export function unknownDirectiveValueMessage(
+  directive = "data-bascik-build",
+): string {
+  return `${directive} does not take a value.`;
 }
 
 /** Whether a `data-bascik-build` value is empty, as with a bare directive. */

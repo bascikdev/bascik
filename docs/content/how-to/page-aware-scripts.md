@@ -120,7 +120,20 @@ That means shared components can derive navigation state, breadcrumbs, canonical
 </script>
 ```
 
-If expensive work should be shared across components or pages, put that preparation in a build-wide `pre` exec script and have the component build script read its output. See [Exec Scripts](/exec-scripts) for lifecycle hooks.
+For output that is the same at every use of a component, use `data-bascik-build-once` instead:
+
+```html
+<!-- src/components/site-footer/site-footer.html -->
+<footer>
+  <script data-bascik-build-once>
+    export default () => String(new Date().getFullYear());
+  </script>
+</footer>
+```
+
+It runs once while that component is registered, before page compilation, and its markup is reused at every occurrence. It has no page or route context; the generated markup is still scoped and expanded normally. This is useful for shared navigation data, embedded assets, or footer values that do not vary by page. Its output is not persisted in the build-script cache, so time-dependent values refresh on the next build.
+
+Use a `pre` exec script instead when expensive preparation should be shared across different components or at a project-wide scope. See [Exec Scripts](/exec-scripts) for lifecycle hooks.
 
 > **Styling generated markup.** Markup a component build script prints is scoped exactly like the component's template, including markup returned by an imported helper and class names built while the script runs. Classes and elements the component's stylesheet defines get scoped names, and classes it does not define stay global. Markup inside comments, `<script>`, `<style>`, and `<textarea>` is left as written.
 

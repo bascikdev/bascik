@@ -262,6 +262,44 @@ describe("executeBuildScripts", () => {
     expect(mockExecFile).not.toHaveBeenCalled();
   });
 
+  it("requires data-bascik-build-once to be registered from a component", async () => {
+    await expect(
+      executeBuildScripts(
+        "<script data-bascik-build-once>x()</script>",
+        "src/pages/index.html",
+      ),
+    ).rejects.toThrow(
+      "data-bascik-build-once is only supported in component files",
+    );
+    expect(mockExecFile).not.toHaveBeenCalled();
+  });
+
+  it("runs once scripts without page context or persistent output caching", async () => {
+    resolveWith("<p>shared</p>");
+    const html = "<script data-bascik-build-once>x()</script>";
+
+    expect(
+      await executeBuildScripts(html, "src/components/site-footer.html", null, {
+        once: true,
+      }),
+    ).toBe("<p>shared</p>");
+    const firstOptions = mockExecFile.mock.calls[0][2] as {
+      env?: Record<string, string>;
+    };
+    expect(firstOptions.env?.BASCIK_SOURCE_FILE).toBe(
+      "src/components/site-footer.html",
+    );
+    expect(firstOptions.env?.BASCIK_PAGE_FILE).toBe("");
+    expect(firstOptions.env?.BASCIK_PAGE_PATH).toBe("");
+    expect(firstOptions.env?.BASCIK_ROUTE).toBeUndefined();
+
+    mockExecFile.mockClear();
+    await executeBuildScripts(html, "src/components/site-footer.html", null, {
+      once: true,
+    });
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+  });
+
   it("replaces a data-bascik-build script tag with handler returned markup", async () => {
     resolveWith("<h1>Generated heading</h1>\n");
     const html =

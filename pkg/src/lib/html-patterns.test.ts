@@ -6,6 +6,7 @@ import {
   ATTR_VALUE,
   ATTR,
   BUILD_FLAG,
+  BUILD_ONCE_FLAG,
   SERVER_FLAG,
   ROUTES_FLAG,
   SCRIPT_END_TAG,
@@ -79,6 +80,7 @@ describe("html-patterns (Prompt 52)", () => {
     expect(ATTR_VALUE).toBeDefined();
     expect(ATTR).toBeDefined();
     expect(BUILD_FLAG).toBeDefined();
+    expect(BUILD_ONCE_FLAG).toBeDefined();
     expect(SERVER_FLAG).toBeDefined();
     expect(ROUTES_FLAG).toBeDefined();
     expect(SCRIPT_TAG_PREFIX).toBeDefined();
@@ -88,6 +90,11 @@ describe("html-patterns (Prompt 52)", () => {
       `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
     );
     expect(testRe.test('<script data-bascik-build type="module">')).toBe(true);
+    expect(
+      new RegExp(
+        `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>`,
+      ).test('<script data-bascik-build-once type="module">'),
+    ).toBe(true);
   });
 
   it("is imported by build-scripts.ts, routes.ts, and server-scripts.ts", () => {
@@ -162,7 +169,8 @@ describe("isBuildScriptOpenTag", () => {
     ['<script DATA-BASCIK-BUILD = "">', true],
     ["<script data-bascik-build=page>", true],
     ["<script data-bascik-build/>", true],
-    ["<script data-bascik-build-once>", false],
+    ["<script data-bascik-build-once>", true],
+    ['<script DATA-BASCIK-BUILD-ONCE = "">', true],
     ['<script data-note="data-bascik-build">', false],
     ["<script data-note='a data-bascik-build b'>", false],
   ])("%s -> %s", (tag, expected) => {

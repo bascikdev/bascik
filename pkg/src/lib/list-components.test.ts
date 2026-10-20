@@ -105,6 +105,42 @@ describe("minifyHtml – script hoisting (documents build-script ordering requir
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("listComponents – build script preservation", () => {
+  it("executes build-once scripts during component registration and preserves per-use scripts", async () => {
+    const rawHtml =
+      "<aside><script data-bascik-build-once>once()</script><script data-bascik-build>perUse()</script></aside>";
+    mockDeepReadDirFlat.mockResolvedValue(["src/components/my-sidebar.html"]);
+    mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
+    mockExecuteBuildScripts.mockImplementation(
+      async (
+        html: string,
+        _fileName: string,
+        _route: unknown,
+        options: { once?: boolean },
+      ) =>
+        options.once
+          ? html.replace(
+              /<script data-bascik-build-once\b[^>]*>once\(\)<\/script>/,
+              "<p>shared output</p>",
+            )
+          : html,
+    );
+
+    const result = await listComponents();
+
+    expect(mockExecuteBuildScripts).toHaveBeenCalledWith(
+      expect.stringContaining("data-bascik-build-once"),
+      "src/components/my-sidebar.html",
+      null,
+      { once: true },
+    );
+    expect(result["my-sidebar"].fileContent).toContain(
+      "<p>shared output</p><script data-bascik-build ",
+    );
+    expect(result["my-sidebar"].fileContent).not.toContain(
+      "data-bascik-build-once",
+    );
+  });
+
   it("stamps directive source positions without executing the script", async () => {
     const rawHtml =
       '<aside class="sidebar"><script data-bascik-build>gen()</script></aside>';

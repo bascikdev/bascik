@@ -56,7 +56,7 @@ import {
 } from "./request-execution.ts";
 import {
   ATTR,
-  BUILD_FLAG,
+  ANY_BUILD_FLAG,
   ROUTES_FLAG,
   SERVER_FLAG,
   STREAM_FLAG,
@@ -97,7 +97,7 @@ const tagHas = (flag: string): RegExp =>
     `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${flag}(?:\\s+${ATTR})*\\s*>`,
     "i",
   );
-const HAS_BUILD_RE = tagHas(BUILD_FLAG);
+const HAS_BUILD_RE = tagHas(ANY_BUILD_FLAG);
 const HAS_ROUTES_RE = tagHas(ROUTES_FLAG);
 const HAS_SERVER_RE = tagHas(SERVER_FLAG);
 const HAS_STREAM_RE = tagHas(STREAM_FLAG);

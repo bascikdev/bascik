@@ -15,6 +15,8 @@ export const ATTR = String.raw`${BARE_TOKEN}(?:\s*=\s*${ATTR_VALUE})?`;
 export const ATTR_NAME_END = String.raw`(?=[\s=/>]|$)`;
 /** `data-bascik-build` as a whole attribute name. */
 export const BUILD_ATTR_NAME = String.raw`data-bascik-build${ATTR_NAME_END}`;
+/** `data-bascik-build-once` as a whole attribute name. */
+export const BUILD_ONCE_ATTR_NAME = String.raw`data-bascik-build-once${ATTR_NAME_END}`;
 /** `data-bascik-server` as a whole attribute name. */
 export const SERVER_ATTR_NAME = String.raw`data-bascik-server${ATTR_NAME_END}`;
 /** `data-bascik-routes` as a whole attribute name. */
@@ -22,10 +24,12 @@ export const ROUTES_ATTR_NAME = String.raw`data-bascik-routes${ATTR_NAME_END}`;
 /** `data-bascik-stream` as a whole attribute name (prompt 65). */
 export const STREAM_ATTR_NAME = String.raw`data-bascik-stream${ATTR_NAME_END}`;
 
-/** Any of the four script directives as a whole attribute name. */
-export const ANY_DIRECTIVE_ATTR_NAME = String.raw`data-bascik-(?:build|server|routes|stream)${ATTR_NAME_END}`;
+/** Any of the script directives as a whole attribute name. */
+export const ANY_DIRECTIVE_ATTR_NAME = String.raw`data-bascik-(?:build(?:-once)?|server|routes|stream)${ATTR_NAME_END}`;
 
 export const BUILD_FLAG = String.raw`data-bascik-build${ATTR_NAME_END}(?:\s*=\s*${ATTR_VALUE})?`;
+export const BUILD_ONCE_FLAG = String.raw`data-bascik-build-once${ATTR_NAME_END}(?:\s*=\s*${ATTR_VALUE})?`;
+export const ANY_BUILD_FLAG = String.raw`(?:${BUILD_FLAG}|${BUILD_ONCE_FLAG})`;
 export const SERVER_FLAG = String.raw`data-bascik-server${ATTR_NAME_END}(?:\s*=\s*${ATTR_VALUE})?`;
 export const ROUTES_FLAG = String.raw`data-bascik-routes${ATTR_NAME_END}(?:\s*=\s*${ATTR_VALUE})?`;
 export const STREAM_FLAG = String.raw`data-bascik-stream${ATTR_NAME_END}(?:\s*=\s*${ATTR_VALUE})?`;
@@ -91,7 +95,11 @@ const ATTRIBUTE_NAME_RE = /(?:^|[\s/])([^\s"'=<>`/]+)(?=[\s/>]|$)/g;
 export const isBuildScriptOpenTag = (openTag: string): boolean => {
   const namesOnly = openTag.replace(ATTRIBUTE_VALUE_RE, "");
   for (const match of namesOnly.matchAll(ATTRIBUTE_NAME_RE)) {
-    if (match[1].toLowerCase() === "data-bascik-build") return true;
+    if (
+      match[1].toLowerCase() === "data-bascik-build" ||
+      match[1].toLowerCase() === "data-bascik-build-once"
+    )
+      return true;
   }
   return false;
 };
