@@ -24,7 +24,7 @@ React and Bascik both structure user interfaces into reusable components, but th
 
 Migrate a simple static component (such as a card or navigation bar) to get familiar with Bascik's HTML component format:
 
-1. Create a project with `npm create bascik@latest my-site`.
+1. Create a project with `npm create bascik@rc my-site`.
 2. Extract your JSX markup into a standard HTML file in `src/components/site-nav/site-nav.html`.
 3. Move your CSS Module rules into `src/components/site-nav/site-nav.css`.
 4. Use `<site-nav></site-nav>` inside `src/pages/index.html` without import statements.

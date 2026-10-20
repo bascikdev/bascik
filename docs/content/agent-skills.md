@@ -49,7 +49,7 @@ del skills.tar.gz
 
 ### New projects
 
-Projects created with `npm create bascik@latest` include every skill in `.agents/skills/` and `.claude/skills/`, so there is nothing to install.
+Projects created with `npm create bascik@rc` include every skill in `.agents/skills/` and `.claude/skills/`, so there is nothing to install.
 
 ### Single file
 

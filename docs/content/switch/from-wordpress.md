@@ -28,7 +28,7 @@ WordPress is a PHP content management system that renders pages from a database 
 
 Move your theme's footer into a Bascik component before touching any content:
 
-1. Create a new Bascik project with `npm create bascik@latest`.
+1. Create a new Bascik project with `npm create bascik@rc`.
 2. Create `src/components/site-footer/site-footer.html` and paste the rendered footer markup from your live site.
 3. Use `<site-footer />` inside `src/pages/index.html`.
 4. Run `npm run dev` to inspect the generated HTML.

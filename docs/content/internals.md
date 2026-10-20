@@ -13,7 +13,7 @@ bascik/
       index.ts        ← CLI entry point
       transpile.ts    ← dev/build startup (called by index.ts)
       lib/            ← all library modules
-  create/       ← standalone generator used by `npm create bascik@latest`
+  create/       ← standalone generator used by `npm create bascik@rc`
   docs/         ← this documentation site (a Bascik project itself)
   extensions/   ← editor tooling, including the VS Code extension
 ```

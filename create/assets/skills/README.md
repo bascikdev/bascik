@@ -18,7 +18,7 @@ Without it, download every skill into the shared `.agents/skills/` folder (use `
 mkdir -p .agents/skills && curl -fsSL https://bascik.dev/assets/skills.tar.gz | tar -xz -C .agents/skills
 ```
 
-New projects created with `npm create bascik@latest` include these skills already.
+New projects created with `npm create bascik@rc` include these skills already.
 
 ## Skills
 

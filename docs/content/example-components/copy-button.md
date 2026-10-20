@@ -12,7 +12,7 @@ Copies a text value to the clipboard and announces the result to screen readers.
 
 ```html
 <copy-button
-  data-bascik-prop-text="npm create bascik@latest"
+  data-bascik-prop-text="npm create bascik@rc"
   data-bascik-prop-label="Copy command"
 />
 ```

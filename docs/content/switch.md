@@ -19,7 +19,7 @@ Most of what you already know translates directly to Bascik:
 
 You do not need to convert your entire project at once. A good first step is migrating a single content page and a shared card component:
 
-1. Create a new Bascik project with `npm create bascik@latest my-site`.
+1. Create a new Bascik project with `npm create bascik@rc my-site`.
 2. Extract one reusable UI block into `src/components/post-card/post-card.html`.
 3. Create `src/pages/index.html` and use `<post-card></post-card>`.
 4. Run `npm run dev` to inspect your zero-JS output immediately.

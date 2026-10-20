@@ -7,8 +7,10 @@ Node.js 24 LTS is recommended. The minimum supported version is Node.js 22.18.
 Create a new site with Bascik:
 
 ```sh
-npm create bascik@latest my-site -y
+npm create bascik@rc my-site -y
 ```
+
+During the release candidate period, `@rc` selects the current release candidate.
 
 That scaffolds the project, installs dependencies, and starts the dev server in one shot.
 
@@ -21,14 +23,14 @@ Edit a page or a component and save. The browser updates on its own, with no man
 ## Create Bascik Command
 
 ```sh
-npm create bascik@latest my-site
+npm create bascik@rc my-site
 ```
 
 Pass a different name to use it as both the directory name and the site title.
 
 If you omit `-y`, the CLI steps through the setup prompts interactively.
 
-`npm create bascik@latest` scaffolds a complete starter site: pages, components with unit tests, Playwright E2E browser tests, global CSS, `vite.config.js`, `.vscode/extensions.json` recommending the official Bascik extension, and a `.gitignore` with Vitest, `npm run lint` (`bascik --check`, with the `@bascik/language-server` linter installed), E2E testing, and code coverage pre-configured.
+`npm create bascik@rc` scaffolds a complete starter site: pages, components with unit tests, Playwright E2E browser tests, global CSS, `vite.config.js`, `.vscode/extensions.json` recommending the official Bascik extension, and a `.gitignore` with Vitest, `npm run lint` (`bascik --check`, with the `@bascik/language-server` linter installed), E2E testing, and code coverage pre-configured.
 
 It does not create `bascik.config.ts` because the starter uses Bascik's built-in defaults.
 

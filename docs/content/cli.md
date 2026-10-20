@@ -5,8 +5,8 @@ Bascik features a simple, fast, and highly informative CLI for both development 
 ## Scaffold a new project
 
 ```sh
-npm create bascik@latest
-# or: npm create bascik@latest my-project
+npm create bascik@rc
+# or: npm create bascik@rc my-project
 ```
 
 Scaffolds a complete starter project in a new directory. Prompts for a project name if not passed as an argument. Creates:

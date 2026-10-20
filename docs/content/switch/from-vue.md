@@ -28,7 +28,7 @@ A client widget in Bascik ships only the inline script it needs, with no framewo
 
 Convert a simple Vue component into Bascik:
 
-1. Create a project with `npm create bascik@latest`.
+1. Create a project with `npm create bascik@rc`.
 2. Extract your `<template>` markup into `src/components/user-card/user-card.html`.
 3. Extract your `<style scoped>` into `src/components/user-card/user-card.css`.
 4. Use `<user-card></user-card>` in `src/pages/index.html`.

@@ -10,13 +10,13 @@ Interactive project initializer for [Bascik](https://bascik.dev).
 Scaffold a new Bascik project in one command:
 
 ```sh
-npm create bascik@latest my-site -y
+npm create bascik@rc my-site -y
 ```
 
 Pass a project name as an argument or run without arguments to be prompted:
 
 ```sh
-npm create bascik@latest
+npm create bascik@rc
 ```
 
 ## What it scaffolds
