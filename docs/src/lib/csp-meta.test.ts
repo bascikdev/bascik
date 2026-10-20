@@ -45,6 +45,16 @@ describe("csp-meta", () => {
     expect(policy).toContain("base-uri 'self'");
   });
 
+  it("allows the Cloudflare-injected beacon without enabling eval", () => {
+    const result = injectCspMeta(
+      '<head><meta charset="UTF-8" /></head><body><script>run()</script></body>',
+    );
+    expect(result).toContain(
+      `content="script-src 'self' ${hashOf("run()")} https://static.cloudflareinsights.com; object-src 'none'; base-uri 'self'"`,
+    );
+    expect(result).not.toMatch(/unsafe-inline|unsafe-eval/);
+  });
+
   it("adds unsafe-eval only for pages that load third-party scripts", () => {
     const policy = pagePolicy(
       collectPageScripts(
@@ -52,7 +62,7 @@ describe("csp-meta", () => {
       ),
     );
     expect(policy).toContain(
-      "script-src 'self' https://unpkg.com 'unsafe-eval'",
+      "script-src 'self' https://unpkg.com https://static.cloudflareinsights.com 'unsafe-eval'",
     );
   });
 

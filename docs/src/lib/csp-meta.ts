@@ -12,7 +12,8 @@
  *
  * `script-src` never gets `'unsafe-inline'` or `data:`. Scripts the page loads from another origin (the
  * Alpine and petite-vue demos on /libraries) add that origin, and `'unsafe-eval'`, because those libraries
- * compile directive expressions with `new Function`. Pages without third-party scripts never get it.
+ * compile directive expressions with `new Function`. Cloudflare injects its analytics beacon after the
+ * build, so its origin is always allowed, without granting it `'unsafe-eval'`.
  *
  * The hash is computed from the emitted bytes, so this must run after every step that edits inline script
  * text. It runs in the `post` phase.
@@ -75,7 +76,12 @@ export function collectPageScripts(html: string): PageScripts {
 
 /** The policy text for a page: hashed inline scripts, same-origin files, no inline allowance. */
 export function pagePolicy(scripts: PageScripts): string {
-  const sources = ["'self'", ...scripts.origins, ...scripts.hashes];
+  const sources = [
+    "'self'",
+    ...scripts.origins,
+    ...scripts.hashes,
+    "https://static.cloudflareinsights.com",
+  ];
   if (scripts.origins.length > 0) sources.push("'unsafe-eval'");
   return `script-src ${sources.join(" ")}; object-src 'none'; base-uri 'self'`;
 }

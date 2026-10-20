@@ -59,7 +59,43 @@ test.describe("Content Security Policy", () => {
       .getAttribute("content");
     expect(policy).toMatch(/script-src 'self' 'sha256-/);
     expect(policy).toContain("object-src 'none'");
-    expect(policy).not.toMatch(/unsafe-inline|unsafe-eval|data:|\*|https:/);
+    expect(policy).not.toMatch(/unsafe-inline|unsafe-eval|data:|\*/);
+    expect(policy?.match(/https:\/\/[^\s;]+/g)).toEqual([
+      "https://static.cloudflareinsights.com",
+    ]);
+  });
+
+  test("allows the analytics beacon injected after the build", async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(message.text());
+    });
+    await page.route("https://static.cloudflareinsights.com/**", (route) =>
+      route.fulfill({
+        contentType: "application/javascript",
+        body: 'document.documentElement.dataset.cloudflareBeaconLoaded = "true";',
+      }),
+    );
+    await page.route("**/*", async (route) => {
+      if (!route.request().isNavigationRequest()) return route.fallback();
+      const response = await route.fetch();
+      await route.fulfill({
+        response,
+        body: (await response.text()).replace(
+          "</body>",
+          '<script defer src="https://static.cloudflareinsights.com/beacon.min.js/test-version"></script></body>',
+        ),
+      });
+    });
+
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-cloudflare-beacon-loaded",
+      "true",
+    );
+    expect(errors).toEqual([]);
   });
 
   test("the theme toggle still works with the policy applied", async ({
