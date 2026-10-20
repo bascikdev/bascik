@@ -347,7 +347,7 @@ describe("executeBuildScripts", () => {
     resolveWith("");
 
     await executeBuildScripts(
-      `<script data-bascik-build="page" data-bascik-source-file="src%2Fcomponents%2Fpage-badge.html">import './page-badge-helper.ts';</script>`,
+      `<script data-bascik-build data-bascik-source-file="src%2Fcomponents%2Fpage-badge.html">import './page-badge-helper.ts';</script>`,
       "src/pages/index.html",
       null,
       { pageFile: "src/pages/index.html" },
@@ -365,7 +365,7 @@ describe("executeBuildScripts", () => {
 
     await executeBuildScripts(
       `<script data-bascik-build>console.log(process.env.BASCIK_SOURCE_FILE)</script>
-       <script data-bascik-build="page" data-bascik-source-file="src%2Fcomponents%2Fpage-badge.html">console.log(process.env.BASCIK_SOURCE_FILE)</script>`,
+       <script data-bascik-build data-bascik-source-file="src%2Fcomponents%2Fpage-badge.html">console.log(process.env.BASCIK_SOURCE_FILE)</script>`,
       "src/pages/index.html",
       null,
       { pageFile: "src/pages/index.html" },
@@ -937,9 +937,9 @@ describe("executeBuildScripts", () => {
   });
 });
 
-// ─── page-aware output scope ─────────────────────────────────────────────────
+// ─── component build output scope ────────────────────────────────────────────
 
-describe("executeBuildScripts – page-aware output scope", () => {
+describe("executeBuildScripts – component build output scope", () => {
   const scope = (value: unknown) => encodeURIComponent(JSON.stringify(value));
   const SCOPE = scope({
     classes: { item: "bascik__my-comp__item", wrap: "bascik__my-comp__wrap" },
@@ -951,7 +951,7 @@ describe("executeBuildScripts – page-aware output scope", () => {
       '<p class="item global-only">x</p><h2><a href="/">y</a></h2><section class="wrap"></section>',
     );
     const result = await executeBuildScripts(
-      `<div><script data-bascik-build="page" data-bascik-output-scope="${SCOPE}">console.log(helper())</script></div>`,
+      `<div><script data-bascik-build data-bascik-output-scope="${SCOPE}">console.log(helper())</script></div>`,
       "src/pages/index.html",
       null,
       { pageFile: "src/pages/index.html" },
@@ -966,7 +966,7 @@ describe("executeBuildScripts – page-aware output scope", () => {
   it("leaves output untouched without an output scope", async () => {
     resolveWith('<p class="item">x</p><h2><a href="/">y</a></h2>');
     const result = await executeBuildScripts(
-      '<div><script data-bascik-build="page">console.log(helper())</script></div>',
+      "<div><script data-bascik-build>console.log(helper())</script></div>",
       "src/pages/index.html",
     );
     expect(result).toBe(
@@ -979,7 +979,7 @@ describe("executeBuildScripts – page-aware output scope", () => {
       '<script>const s = "<a class=\\"item\\">";</script><!-- <a class="item"> --><p title="<a class=item>">z</p><textarea><a></a></textarea>',
     );
     const result = await executeBuildScripts(
-      `<script data-bascik-build="page" data-bascik-output-scope="${SCOPE}">console.log(1)</script>`,
+      `<script data-bascik-build data-bascik-output-scope="${SCOPE}">console.log(1)</script>`,
       "src/pages/index.html",
     );
     expect(result).toBe(
@@ -990,7 +990,7 @@ describe("executeBuildScripts – page-aware output scope", () => {
   it("does not let replacement tokens in output expand", async () => {
     resolveWith('<p class="item">$1 $& $`</p>');
     const result = await executeBuildScripts(
-      `<script data-bascik-build="page" data-bascik-output-scope="${SCOPE}">console.log(1)</script>`,
+      `<script data-bascik-build data-bascik-output-scope="${SCOPE}">console.log(1)</script>`,
       "src/pages/index.html",
     );
     expect(result).toBe('<p class="bascik__my-comp__item">$1 $& $`</p>');
@@ -999,7 +999,7 @@ describe("executeBuildScripts – page-aware output scope", () => {
   it("does not let the scope annotation reach the script or the cache key", async () => {
     resolveWith("");
     await executeBuildScripts(
-      `<script data-bascik-build="page" data-bascik-output-scope="${SCOPE}">console.log(1)</script>`,
+      `<script data-bascik-build data-bascik-output-scope="${SCOPE}">console.log(1)</script>`,
       "src/pages/index.html",
     );
     const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls.find(
@@ -1587,10 +1587,10 @@ describe("build-script output cache", () => {
     expect(mockExecFile).not.toHaveBeenCalled();
   });
 
-  it("uses a distinct cache key for each page-aware component build script page", async () => {
+  it("uses a distinct cache key for each component build script page", async () => {
     const sourceFile = "src/components/base-head.html";
     const html =
-      '<script data-bascik-build="page" data-bascik-source-file="src%2Fcomponents%2Fbase-head.html">canonical()</script>';
+      '<script data-bascik-build data-bascik-source-file="src%2Fcomponents%2Fbase-head.html">canonical()</script>';
     const runForPage = (pageFile: string) =>
       executeBuildScripts(html, pageFile, undefined, { pageFile, sourceFile });
     mockReadFile.mockRejectedValue(new Error("ENOENT"));

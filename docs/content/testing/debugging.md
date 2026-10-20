@@ -53,7 +53,7 @@ Scaffolded Bascik projects include a `.vscode/launch.json` file configured for d
 
 ### 1. Build-Time Scripts (`data-bascik-build`)
 
-To step through build-time scripts or page-aware helpers:
+To step through build-time scripts or helpers that read page context:
 
 1. Set a breakpoint in your helper module (such as `src/lib/canonical.ts` or `src/lib/md-renderer.ts`).
 2. Select **Debug Build Scripts** in VS Code's **Run and Debug** panel and press `F5`.

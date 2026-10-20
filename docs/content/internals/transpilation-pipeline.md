@@ -201,7 +201,7 @@ The key is the SHA-256 hex digest of:
 3. `"1"` or `"0"` for build vs. dev mode (`isBuild`), since the same script may produce different output in each mode via the `BASCIK_BUILD` env var.
 4. The source file path (`BASCIK_SOURCE_FILE`).
 5. The page file path (`BASCIK_PAGE_FILE`).
-6. The page route path (`BASCIK_PAGE_PATH`), which guarantees page-aware component scripts derive distinct cache keys per page.
+6. The page route path (`BASCIK_PAGE_PATH`), so component build scripts that depend on page context use distinct cache entries on different pages.
 7. The site URL (`BASCIK_SITE_URL`), since it can influence output and changes rarely.
 8. The normalized deployment base (`BASCIK_BASE`), since scripts can emit base-aware output.
 9. The dynamic route payload (`BASCIK_ROUTE`), if applicable.

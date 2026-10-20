@@ -87,30 +87,11 @@ export const getHtmlAttributeValue = (
 const ATTRIBUTE_VALUE_RE = /\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/g;
 const ATTRIBUTE_NAME_RE = /(?:^|[\s/])([^\s"'=<>`/]+)(?=[\s/>]|$)/g;
 
-/**
- * True when `openTag` carries `attribute` as a whole name, in any of the four
- * HTML attribute syntaxes (bare, quoted, unquoted, spaced around `=`). Text
- * inside another attribute's quoted value is never an attribute.
- */
-export const hasHtmlAttribute = (
-  openTag: string,
-  attribute: string,
-): boolean => {
-  const target = attribute.toLowerCase();
-  // Drop every `= value` first, so only attribute names remain.
+/** True when an open tag carries `data-bascik-build` as a whole attribute name. */
+export const isBuildScriptOpenTag = (openTag: string): boolean => {
   const namesOnly = openTag.replace(ATTRIBUTE_VALUE_RE, "");
   for (const match of namesOnly.matchAll(ATTRIBUTE_NAME_RE)) {
-    if (match[1].toLowerCase() === target) return true;
+    if (match[1].toLowerCase() === "data-bascik-build") return true;
   }
   return false;
 };
-
-/**
- * True when a build script open tag defers the script to page time:
- * `data-bascik-build="page"` (value compared exactly, ASCII case-insensitive,
- * surrounding whitespace ignored) or a `data-bascik-page-aware` attribute.
- */
-export const isPageAwareBuildOpenTag = (openTag: string): boolean =>
-  hasHtmlAttribute(openTag, "data-bascik-page-aware") ||
-  getHtmlAttributeValue(openTag, "data-bascik-build")?.trim().toLowerCase() ===
-    "page";

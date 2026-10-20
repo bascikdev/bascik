@@ -24,7 +24,7 @@ describe("docs-sidebar component", () => {
     expect(html).toContain(
       '<nav class="docs-toc" aria-label="On this page" hidden>',
     );
-    expect(html).toContain('<script data-bascik-build="page">');
+    expect(html).toContain("<script data-bascik-build>");
     expect(html).toContain("renderPageTableOfContents");
   });
 });

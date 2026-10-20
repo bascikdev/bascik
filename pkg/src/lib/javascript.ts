@@ -80,7 +80,7 @@ import { BascikConfig } from "./config.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import {
   ANY_DIRECTIVE_ATTR_NAME,
-  isPageAwareBuildOpenTag,
+  isBuildScriptOpenTag,
 } from "./html-patterns.ts";
 import {
   encodeOutputScope,
@@ -89,15 +89,14 @@ import {
 } from "./output-scope.ts";
 
 /**
- * Add the output-scope annotation to every page-aware build script open tag
- * (`data-bascik-build="page"` or `data-bascik-page-aware`). Static build
- * scripts already ran before scoping, so their output was scoped with the
- * template and needs no annotation.
+ * Add the output-scope annotation to each component build script. Its output
+ * is generated after component scoping, so the annotation lets that output
+ * receive the same class and element names as the template.
  */
-const annotatePageAwareScripts = (html: string, encodedScope: string): string =>
+const annotateBuildScripts = (html: string, encodedScope: string): string =>
   html.replace(/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, (openTag) => {
     if (openTag.includes(OUTPUT_SCOPE_ATTRIBUTE)) return openTag;
-    if (!isPageAwareBuildOpenTag(openTag)) return openTag;
+    if (!isBuildScriptOpenTag(openTag)) return openTag;
     return openTag.replace(
       />$/,
       ` ${OUTPUT_SCOPE_ATTRIBUTE}="${encodedScope}">`,
@@ -948,9 +947,8 @@ export const prefixElementAttribute = (
       component.scopedIdNames,
     );
 
-    // Deferred page-aware build scripts print their markup at page time, after
-    // this pass. Record the mapping on each one so executeBuildScripts scopes
-    // that output the same way (see output-scope.ts).
+    // Component build scripts print markup at page time, after this pass.
+    // Record the mapping so executeBuildScripts scopes that output the same way.
     if (
       scopedClassesSet &&
       (scopedClassesSet.size > 0 || allElementClasses.length > 0)
@@ -966,7 +964,7 @@ export const prefixElementAttribute = (
           `bascik__${scopeKey}__el__${element}`,
         );
       }
-      component.fileContent = annotatePageAwareScripts(
+      component.fileContent = annotateBuildScripts(
         component.fileContent,
         encodeOutputScope(scope),
       );

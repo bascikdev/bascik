@@ -11,8 +11,7 @@ import {
   SCRIPT_END_TAG,
   SCRIPT_TAG_PREFIX,
   getHtmlAttributeValue,
-  hasHtmlAttribute,
-  isPageAwareBuildOpenTag,
+  isBuildScriptOpenTag,
   scriptOpenTag,
 } from "./html-patterns.ts";
 
@@ -157,38 +156,16 @@ describe("html-patterns (Prompt 52)", () => {
   });
 });
 
-describe("hasHtmlAttribute", () => {
+describe("isBuildScriptOpenTag", () => {
   it.each([
-    ["<script data-bascik-page-aware>", true],
-    ['<script data-bascik-page-aware = "">', true],
-    ["<script DATA-BASCIK-PAGE-AWARE=x>", true],
-    ["<script data-bascik-page-aware/>", true],
-    ["<script data-bascik-page-aware-x>", false],
-    ['<script data-note="data-bascik-page-aware">', false],
-    ["<script data-note='a data-bascik-page-aware b'>", false],
-  ])("%s -> %s", (tag, expected) => {
-    expect(hasHtmlAttribute(tag, "data-bascik-page-aware")).toBe(expected);
-  });
-});
-
-describe("isPageAwareBuildOpenTag", () => {
-  it.each([
-    ['<script data-bascik-build="page">', true],
-    ['<script data-bascik-build = "page">', true],
+    ["<script data-bascik-build>", true],
+    ['<script DATA-BASCIK-BUILD = "">', true],
     ["<script data-bascik-build=page>", true],
-    ["<script data-bascik-build = 'PAGE' >", true],
-    ['<script data-bascik-build=" page ">', true],
-    ["<script data-bascik-build data-bascik-page-aware>", true],
-    ['<script data-bascik-build data-bascik-page-aware="">', true],
-    ["<script data-bascik-build>", false],
-    ['<script data-bascik-build="">', false],
-    ['<script data-bascik-build="pages">', false],
-    ['<script data-bascik-build="page-x">', false],
-    ["<script data-bascik-build=pager>", false],
-    ['<script data-bascik-build data-note="data-bascik-build=page">', false],
-    ["<script data-bascik-build data-bascik-page-aware-x>", false],
-    ["<script data-bascik-build data-x= data-bascik-page-aware>", false],
+    ["<script data-bascik-build/>", true],
+    ["<script data-bascik-build-once>", false],
+    ['<script data-note="data-bascik-build">', false],
+    ["<script data-note='a data-bascik-build b'>", false],
   ])("%s -> %s", (tag, expected) => {
-    expect(isPageAwareBuildOpenTag(tag)).toBe(expected);
+    expect(isBuildScriptOpenTag(tag)).toBe(expected);
   });
 });

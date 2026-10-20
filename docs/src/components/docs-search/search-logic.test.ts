@@ -601,7 +601,7 @@ describe("buildResults", () => {
         path: "/how-to/markdown",
       }),
       entry({
-        navLabel: "Page-Aware Scripts",
+        navLabel: "Build Scripts with Page Context",
         heading: null,
         section: "How-to",
         path: "/how-to/page-aware-scripts",
@@ -630,7 +630,7 @@ describe("buildResults", () => {
     const results = buildResults(testIndex, q, toks, 13);
     expect(results.map((r) => r.navLabel)).toEqual([
       "Markdown",
-      "Page-Aware Scripts",
+      "Build Scripts with Page Context",
       "Server Scripts",
       "Templating",
     ]);

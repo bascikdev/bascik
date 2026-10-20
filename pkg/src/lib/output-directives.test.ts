@@ -13,7 +13,7 @@ describe("removeOutputDirectives", () => {
       "data-bascik-build",
       '<script data-bascik-build>import "node:fs"</script>',
     ],
-    ["data-bascik-build", '<script data-bascik-build="page">x()</script>'],
+    ["data-bascik-build", "<script data-bascik-build>x()</script>"],
     [
       "data-bascik-server",
       "<script data-bascik-server>export default () => 1</script>",

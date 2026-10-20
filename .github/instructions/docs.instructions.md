@@ -167,7 +167,7 @@ The repo-root `examples/` folder is the only copy of every example: `examples/co
 
 When updating a skill, follow the official Agent Skills best practices (https://agentskills.io/skill-creation/best-practices):
 
-- **Illustrative vs. Literal Code Examples:** Frame code blocks and configuration options (such as `exec` script arrays, BYOMinifier custom transformers, or page-aware canonical helpers) with explicit commentary indicating they are illustrative examples. AI agents must understand what capabilities exist without copying example script paths or filenames literally.
+- **Illustrative vs. Literal Code Examples:** Frame code blocks and configuration options (such as `exec` script arrays, BYOMinifier custom transformers, or canonical helpers that read page context) with explicit commentary indicating they are illustrative examples. AI agents must understand what capabilities exist without copying example script paths or filenames literally.
 - **Add What the Agent Lacks, Omit What It Knows:** Focus on Bascik-specific mechanics, transforms, scoping rules, and gotchas. Omit generic explanations of HTML, CSS, JavaScript, or standard web concepts.
 - **Provide Defaults, Not Menus:** Always highlight the primary default pattern first (e.g. `getElementById` for per-instance DOM selection, or `deduplicateCss: true` in `bascik.config.ts`), and list alternative options concisely as escape hatches.
 - **Calibrate Control:** Be prescriptive where operations are fragile or critical (e.g. using `getElementById` for per-instance script isolation, writing `exec` outputs to `dist/`, placing `<style>` above and `<script>` below HTML), and explain the rationale when providing procedural steps.

@@ -143,8 +143,8 @@ const depContentCache = new Map<string, string>();
 
 /**
  * Entry cap for the in-memory build-script output memo. Each entry is one
- * script's rendered output (page-aware scripts produce one per page, and in
- * dev every edit to an inline body is a new key), so an unbounded map grows for
+ * script's rendered output (component scripts use the context of each page,
+ * and in dev every edit to an inline body is a new key), so an unbounded map grows for
  * the life of a dev session. Eviction is FIFO in insertion order, like
  * `representationCache` in `caching.ts`: the on-disk cache still hits for an
  * evicted key, so eviction costs one file read, never a child spawn.
@@ -484,7 +484,7 @@ const computeScriptCacheKey = async (
   hash.update(isBuild ? "1" : "0");
   hash.update(filePath); // BASCIK_SOURCE_FILE
   hash.update(pageFile); // BASCIK_PAGE_FILE
-  hash.update(pagePath); // BASCIK_PAGE_PATH — varies per page for page-aware scripts
+  hash.update(pagePath); // BASCIK_PAGE_PATH — varies by page
   hash.update(siteUrl); // BASCIK_SITE_URL  — can affect script output
   hash.update(base); // BASCIK_BASE      — can affect script output
   hash.update(routeStr); // BASCIK_ROUTE     — varies per dynamic route
@@ -992,8 +992,8 @@ export const executeBuildScripts = async (
     // Only directives written in source files run; printed ones are dropped.
     const { html: safeOutput, removed } = removeOutputDirectives(output ?? "");
     for (const name of removed) removedDirectives.add(name);
-    // A deferred page-aware component script carries its component's scope so
-    // its page-time output matches the component's scoped CSS. Applied after
+    // A component build script carries its component's scope so its output
+    // matches the component's scoped CSS. Applied after
     // caching, so the cache stores the script's own stdout.
     const emitted = outputScope
       ? applyOutputScope(safeOutput, outputScope)

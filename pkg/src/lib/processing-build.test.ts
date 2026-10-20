@@ -1595,8 +1595,8 @@ describe("dynamic routes pipeline expansion", () => {
   });
 });
 
-describe("transpilePage – deferred page-aware component build scripts", () => {
-  it("executes deferred build scripts in components with page context during transpilePage", async () => {
+describe("transpilePage – component build scripts", () => {
+  it("executes component build scripts per use with page context during transpilePage", async () => {
     const { executeBuildScripts } = await import("./build-scripts.ts");
     (executeBuildScripts as ReturnType<typeof vi.fn>).mockImplementation(
       async (
@@ -1618,18 +1618,18 @@ describe("transpilePage – deferred page-aware component build scripts", () => 
       "page-badge": {
         fileName: "src/components/page-badge.html",
         fileContent:
-          '<div class="badge"><script data-bascik-build="page">console.log("<span>" + process.env.BASCIK_PAGE_PATH + "</span>")</script><script data-bascik-server>return "server"</script></div>',
+          '<div class="badge"><script data-bascik-build>console.log("<span>" + process.env.BASCIK_PAGE_PATH + "</span>")</script><script data-bascik-server>return "server"</script></div>',
       },
     };
 
     (readFile as ReturnType<typeof vi.fn>).mockImplementation(async () => {
-      return "<!DOCTYPE html><html><head></head><body><page-badge></page-badge></body></html>";
+      return "<!DOCTYPE html><html><head></head><body><page-badge></page-badge><page-badge></page-badge></body></html>";
     });
 
     const resultA = await transpilePage("src/pages/page-a.html", componentList);
     const resultB = await transpilePage("src/pages/page-b.html", componentList);
 
-    expect(resultA?.distHtml).toContain("<span>/page-a</span>");
+    expect(resultA?.distHtml.match(/<span>\/page-a<\/span>/g)).toHaveLength(2);
     expect(resultB?.distHtml).toContain("<span>/page-b</span>");
     expect(collectAllScriptDeps).toHaveBeenCalledWith(
       expect.stringContaining("data-bascik-build"),
@@ -1667,7 +1667,7 @@ describe("transpilePage – deferred page-aware component build scripts", () => 
   <script data-bascik-server>
 throw new Error("component failure");
   </script>
-  <script data-bascik-build="page">return "";</script>
+  <script data-bascik-build>return "";</script>
 </article>`,
       },
     };
@@ -1700,7 +1700,7 @@ throw new Error("component failure");
       "note-card": {
         fileName: "src/components/note-card.html",
         fileContent:
-          '<section><script data-note="a > b" data-bascik-build="page">console.log("x")</script></section>',
+          '<section><script data-note="a > b" data-bascik-build>console.log("x")</script></section>',
       },
     };
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -1714,20 +1714,20 @@ throw new Error("component failure");
     expect(html).not.toContain("data-bascik-build");
   });
 
-  it("executes a page-aware build script inside a nested child named slot", async () => {
+  it("executes a component build script inside a nested child named slot", async () => {
     const { executeBuildScripts } = await import("./build-scripts.ts");
     (executeBuildScripts as ReturnType<typeof vi.fn>).mockImplementation(
       async (html: string) =>
         html.replace(
           /<script\b[^>]*\bdata-bascik-build[^>]*>[\s\S]*?<\/script>/gi,
-          "<strong>page-aware source</strong>",
+          "<strong>component build source</strong>",
         ),
     );
     const componentList = {
       "outer-shell": {
         fileName: "src/components/outer-shell.html",
         fileContent:
-          '<section><inner-demo><div data-bascik-slot="source-html"><code-block><script data-bascik-build="page">console.log("page-aware source")</script></code-block></div></inner-demo></section>',
+          '<section><inner-demo><div data-bascik-slot="source-html"><code-block><script data-bascik-build>console.log("component build source")</script></code-block></div></inner-demo></section>',
       },
       "inner-demo": {
         fileName: "src/components/inner-demo.html",
@@ -1749,10 +1749,10 @@ throw new Error("component failure");
     );
 
     expect(result?.distHtml).toContain(
-      "<article><pre data-code-block><strong>page-aware source</strong></pre></article>",
+      "<article><pre data-code-block><strong>component build source</strong></pre></article>",
     );
     expect(executeBuildScripts).toHaveBeenCalledWith(
-      expect.stringMatching(/data-bascik-build="page"/),
+      expect.stringMatching(/data-bascik-build/),
       "src/pages/nested-demo.html",
       undefined,
       expect.objectContaining({ pageFile: "src/pages/nested-demo.html" }),

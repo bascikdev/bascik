@@ -233,7 +233,7 @@ One difference: in Astro a parent's selector such as `nav a { }` can also style 
 
 ### Build Script Output
 
-Markup that a component's build script prints is scoped like the rest of the template, including markup returned by a helper the script imports and markup from page-aware scripts (`data-bascik-build="page"`). So a helper in `src/lib/` can print a post card, and the component's `.card` and `h2 a` rules still match it. Classes the component's own stylesheet does not define are never scoped, so a global stylesheet listed in `assets.inlineStyles` can always style them.
+Markup that a component's build script prints is scoped like the rest of the template, including markup returned by an imported helper. So a helper in `src/lib/` can print a post card, and the component's `.card` and `h2 a` rules still match it. Classes the component's own stylesheet does not define are never scoped, so a global stylesheet listed in `assets.inlineStyles` can always style them.
 
 ## Content Collections → Dynamic Routes
 
@@ -384,4 +384,4 @@ These Astro integrations are not part of Bascik:
 | `astro:assets` image optimization          | None. Ship images at the sizes you authored, with `width` and `height`, or resize them in your own exec script                          |
 | Shiki syntax highlighting                  | None. Highlight in your Markdown render step with a library such as `prismjs`                                                           |
 | `<Font>` and fallback metrics              | None. Declare `@font-face` in a global stylesheet and preload the files yourself                                                        |
-| `Astro.url` for canonical and active links | `BASCIK_PAGE_PATH` and `BASCIK_SITE_URL`, read in a [page-aware script](/how-to/page-aware-scripts)                                     |
+| `Astro.url` for canonical and active links | `BASCIK_PAGE_PATH` and `BASCIK_SITE_URL`, read in a [build script with page context](/how-to/page-aware-scripts)                        |

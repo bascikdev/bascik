@@ -36,7 +36,7 @@ describe("stampDirectiveSources", () => {
   it("stamps every directive, and only directives", () => {
     const html = [
       "<script data-bascik-build>a</script>",
-      '<script data-bascik-build="page">b</script>',
+      "<script data-bascik-build>b</script>",
       "<script data-bascik-server>c</script>",
       "<script data-bascik-stream>d</script>",
       "<script data-bascik-routes>e</script>",
@@ -88,7 +88,7 @@ describe("stampDirectiveSources", () => {
   it("leaves every browser script body byte-identical, whatever tag-like text it holds", () => {
     const fragment = fc.constantFrom(
       "<script data-bascik-server>",
-      '<script data-bascik-build="page">',
+      "<script data-bascik-build>",
       "<!--",
       "-->",
       '"',

@@ -53,10 +53,8 @@ describe("encodeOutputScope / decodeOutputScope", () => {
 
 describe("stripOutputScopeAttribute", () => {
   it("removes the annotation with its leading whitespace and quotes", () => {
-    const open = `<script data-bascik-build="page" ${OUTPUT_SCOPE_ATTRIBUTE}="${encodeOutputScope(scope)}">`;
-    expect(stripOutputScopeAttribute(open)).toBe(
-      '<script data-bascik-build="page">',
-    );
+    const open = `<script data-bascik-build ${OUTPUT_SCOPE_ATTRIBUTE}="${encodeOutputScope(scope)}">`;
+    expect(stripOutputScopeAttribute(open)).toBe("<script data-bascik-build>");
   });
 
   it("removes an unquoted annotation value", () => {

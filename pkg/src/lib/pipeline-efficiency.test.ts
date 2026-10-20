@@ -5,7 +5,7 @@
  * 1. Produce byte-identical HTML, CSS, JS, and scoped IDs across all component
  *    and page features (slots, props, IDs, SVG url(#id), element/ID selectors,
  *    @keyframes, @layer, @container, @counter-style, @property, anchor-name,
- *    view-transition-name, preserve directives, and page-aware scripts).
+ *    view-transition-name, preserve directives, and component build scripts).
  * 2. Eliminate redundant per-instance and per-page passes (such as per-instance
  *    `scopedCssCache` misses on ID-bearing components, redundant `collectAllScriptDeps`
  *    scans across repeated component instances, and unnecessary `computePackageIdentity`

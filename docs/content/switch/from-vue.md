@@ -359,7 +359,7 @@ src/router/index.js          src/pages/
 
 This writes `dist/blog/my-first-post.html` and `dist/blog/another-post.html`. Name the file `[slug]/index.html` to get `/blog/my-first-post/` instead. Do not generate page files into `src/pages/`. See [Dynamic Routes](/dynamic-routes).
 
-Route guards, nested layouts with `<RouterView>`, and `<RouterLink>` active classes have no direct equivalent. A layout is a set of components that each page uses, and an active link is computed at build time from the page path ([Page-Aware Scripts](/how-to/page-aware-scripts)).
+Route guards, nested layouts with `<RouterView>`, and `<RouterLink>` active classes have no direct equivalent. A layout is a set of components that each page uses, and an active link is computed at build time from the page path ([Build Scripts with Page Context](/how-to/page-aware-scripts)).
 
 ## Computed / Watch for Data → `<script data-bascik-build>`
 

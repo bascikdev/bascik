@@ -2294,16 +2294,16 @@ describe("getComponentScripts", () => {
   });
 });
 
-describe("prefixElementAttribute – page-aware build script output scope", () => {
+describe("prefixElementAttribute – component build script output scope", () => {
   const readScope = (html: string) => {
     const match = /data-bascik-output-scope="([^"]*)"/.exec(html);
     return match ? JSON.parse(decodeURIComponent(match[1])) : null;
   };
 
-  it("records the component's class and element scope on a deferred page-aware script", () => {
+  it("records the component's class and element scope on a build script", () => {
     const component = prefixElementAttribute(
       makeComponent(
-        '<div class="wrap"><script data-bascik-build="page">console.log(helper());</script></div>',
+        '<div class="wrap"><script data-bascik-build>console.log(helper());</script></div>',
         ".wrap { display: flex; } .item { color: red; } h2 a { color: blue; }",
       ),
       "class",
@@ -2321,7 +2321,7 @@ describe("prefixElementAttribute – page-aware build script output scope", () =
     });
   });
 
-  it("does not annotate scripts that already run during component registration", () => {
+  it("annotates a build script even when its markup is static", () => {
     const component = prefixElementAttribute(
       makeComponent(
         '<div class="wrap"><script data-bascik-build>console.log("x");</script></div>',
@@ -2330,13 +2330,13 @@ describe("prefixElementAttribute – page-aware build script output scope", () =
       "class",
       "abc12345",
     );
-    expect(component.fileContent).not.toContain("data-bascik-output-scope");
+    expect(component.fileContent).toContain("data-bascik-output-scope");
   });
 
-  it("does not annotate a page-aware script in a component with no stylesheet", () => {
+  it("does not annotate a build script in a component with no stylesheet", () => {
     const component = prefixElementAttribute(
       makeComponent(
-        '<nav><script data-bascik-build="page">console.log("x");</script></nav>',
+        '<nav><script data-bascik-build>console.log("x");</script></nav>',
       ),
       "class",
       "abc12345",

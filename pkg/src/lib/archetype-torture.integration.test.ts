@@ -771,7 +771,7 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
     }
   });
 
-  it("Archetype 12: Page-Aware Build Script & Dynamic Route Torture Chamber (data-bascik-build='page', >32KB BASCIK_ROUTE payload, pre/post exec hooks)", () => {
+  it("Archetype 12: Per-use Component Build Script & Dynamic Route Torture Chamber (>32KB BASCIK_ROUTE payload, pre/post exec hooks)", () => {
     const dir = createTempSite({
       "bascik.config.ts": [
         "export default {",
@@ -790,7 +790,7 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       ].join("\n"),
       "src/components/breadcrumbs/breadcrumbs.html": [
         '<nav id="crumb-nav" class="crumbs">',
-        '  <script data-bascik-build="page">',
+        "  <script data-bascik-build>",
         "    export default () => {",
         "      const pagePath = process.env.BASCIK_PAGE_PATH || '/';",
         '      return `<ol class="crumb-list"><li><a href="${pagePath}">Current: ${pagePath}</a></li></ol>`;',

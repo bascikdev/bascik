@@ -163,7 +163,7 @@ export const SCRIPT_DIRECTIVES = [
     name: "data-bascik-build",
     detail: "Bascik build-time script",
     documentation:
-      "Executes in Node.js at build time. The default exported handler function returns HTML markup that replaces this script tag in the generated HTML.",
+      "Executes in Node.js at build time. In a component, it runs for each use with that page's context. The default exported handler function returns HTML markup that replaces this script tag in the generated HTML.",
   },
   {
     name: "data-bascik-routes",
@@ -928,7 +928,7 @@ export function createDiagnostics(
             start: document.positionAt(scriptMatch.index ?? 0),
             end: document.positionAt((scriptMatch.index ?? 0) + openTag.length),
           },
-          message: unknownDirectiveValueMessage(buildValue.trim()),
+          message: unknownDirectiveValueMessage(),
           severity: DiagnosticSeverity.Warning,
           source: "bascik",
           code: "unknown-directive-value",
