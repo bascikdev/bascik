@@ -493,9 +493,14 @@ const computeScriptCacheKey = async (
   pageFile: string = "",
   pagePath: string = "",
   importRoot: string = getImportRoot(),
+  variant: string = "",
 ): Promise<string> => {
   const hash = createHash("sha256");
   hash.update(String(SCRIPT_CACHE_VERSION));
+  // A variant keeps records of another kind (output shared across pages) apart
+  // from page-specific records. Empty for the page-specific key, which keeps
+  // existing cache entries valid.
+  if (variant) hash.update(`VARIANT:${variant}`);
   hash.update(script);
   hash.update(relative(process.cwd(), importRoot).replace(/\\/g, "/")); // alias target can change output
   hash.update(isBuild ? "1" : "0");
@@ -703,6 +708,12 @@ export const executeBuildScripts = async (
     /** The module text: the script, padded so its lines and columns are the file's own. */
     preparedScript: string;
     cacheKey: string | null;
+    /**
+     * Key for output shared by every page, when the page context this script
+     * runs with varies (a component's script, or a dynamic route's page). Its
+     * output is stored under it only after a run that never read page context.
+     */
+    sharedKey: string | null;
     tmpPath: string;
     sourceFile: string;
     /** The file V8 names the module after (`//# sourceURL`): the HTML file, or the `src=` file. */
@@ -875,6 +886,28 @@ export const executeBuildScripts = async (
           )
         : null;
     const cacheKey = scriptIsNonCacheable ? null : computeKey;
+    const pageContextVaries =
+      routeStr !== "" ||
+      (sourceFile !== "" &&
+        pageFile !== "" &&
+        resolve(process.cwd(), sourceFile) !==
+          resolve(process.cwd(), pageFile));
+    const sharedKey =
+      cacheKey !== null && pageContextVaries
+        ? await computeScriptCacheKey(
+            trimmedScript,
+            scriptBaseDir,
+            BascikConfig.isBuild ?? false,
+            sourceFile,
+            siteUrl,
+            BascikConfig.base ?? "/",
+            "",
+            "",
+            "",
+            importRoot,
+            "shared",
+          )
+        : null;
 
     const tmpPath = join(
       tempDir,
@@ -887,6 +920,7 @@ export const executeBuildScripts = async (
       openTag,
       preparedScript,
       cacheKey,
+      sharedKey,
       tmpPath,
       moduleSourcePath,
       location,
@@ -898,15 +932,25 @@ export const executeBuildScripts = async (
     });
   }
 
+  // A page-specific record, or one a run on another page proved page-independent.
+  const readCachedOutput = async (task: ScriptTask): Promise<string | null> => {
+    if (task.cacheKey !== null) {
+      const cached = await readScriptCache(cacheDir, task.cacheKey);
+      if (cached !== null) return cached;
+    }
+    if (task.sharedKey !== null) {
+      return readScriptCache(cacheDir, task.sharedKey);
+    }
+    return null;
+  };
+
   // Check cache for all tasks
   const uncachedTasks: ScriptTask[] = [];
   for (const task of tasks) {
-    if (task.cacheKey !== null) {
-      const cached = await readScriptCache(cacheDir, task.cacheKey);
-      if (cached !== null) {
-        task.output = cached;
-        continue;
-      }
+    const cached = await readCachedOutput(task);
+    if (cached !== null) {
+      task.output = cached;
+      continue;
     }
     uncachedTasks.push(task);
   }
@@ -958,16 +1002,18 @@ export const executeBuildScripts = async (
           task.preparedScript + taskSourceUrlComment,
           "utf8",
         );
-        const { result, stdout, stderr } = await runDirectiveHandler<string>(
-          task.tmpPath,
-          "build",
-          { extraEnv: taskEnv },
-        );
+        const { result, stdout, stderr, readsPageContext } =
+          await runDirectiveHandler<string>(task.tmpPath, "build", {
+            extraEnv: taskEnv,
+          });
         if (stdout) process.stdout.write(stdout);
         if (stderr) process.stderr.write(stderr);
         const output = result;
         if (task.cacheKey !== null)
           await writeScriptCache(cacheDir, task.cacheKey, output);
+        // A run that never looked at its page produced what every page gets.
+        if (task.sharedKey !== null && !readsPageContext)
+          await writeScriptCache(cacheDir, task.sharedKey, output);
         task.output = output;
       } catch (err: any) {
         // The script's own output, printed once. Its error report is the message below.

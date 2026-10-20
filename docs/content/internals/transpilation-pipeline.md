@@ -169,18 +169,16 @@ During a dev session, the active file watcher also removes corresponding output 
 
 ## Build Script Output Cache & Batch Execution
 
-Uncached `<script data-bascik-build>` blocks are executed by Node.js, which carries a ~50–150 ms V8 startup cost when spawning individual processes. Bascik optimizes cold builds by batching all uncached scripts on a page into a single harness runner process, and eliminates startup overhead entirely on warm builds via disk caching for scripts whose inputs have not changed.
+Each uncached `<script data-bascik-build>` block runs in its own fresh Node.js child process, which costs a Node startup (about 30 ms) plus the time to load the modules it imports. Warm builds avoid that cost through the disk cache below, for every script whose inputs have not changed.
 
-### Page-Level Batch Execution
+### Per-Script Execution
 
-When a page contains multiple uncached `<script data-bascik-build>` blocks:
+When a page contains uncached build scripts:
 
-1. Bascik groups all uncached tasks into a single batch.
-2. A lightweight ESM runner harness dynamically imports each script sequentially in one child process. Each task retains its own `BASCIK_SOURCE_FILE` value and source map identity, including scripts authored by components and deferred until the page phase.
-3. During evaluation, `process.stdout.write` and `process.stderr.write` are intercepted per script block to ensure clean output separation.
-4. Outputs are mapped back to their corresponding tags, cached on disk, and spliced into the page simultaneously.
-
-This reduces Node child process spawns from N scripts to 1 per page during cold builds.
+1. Each script is written to a temporary module and run, one at a time and in document order, in its own child process. Scripts never share a module registry, so a helper's process-local state is never shared between them.
+2. Every child starts the same runner file, written once per compiler process (or page worker thread) so Node's compile cache reuses it. The script to run arrives in the environment, and the result travels back in a private result file, separate from stdout and stderr.
+3. The runner records whether the script read, tested for, or enumerated `BASCIK_PAGE_PATH`, `BASCIK_PAGE_FILE`, or `BASCIK_ROUTE`. A component script or dynamic route script that did not is stored under a second, page-independent key as well, and other pages reuse that output instead of starting a process (see `sharedKey` in `build-scripts.ts`). Uses of a component on the same page still each run.
+4. Outputs are cached on disk and spliced into the page by tag index.
 
 ### Location
 
