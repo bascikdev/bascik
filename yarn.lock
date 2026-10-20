@@ -139,7 +139,7 @@ __metadata:
     vite: "npm:^8.3.2"
     vitest: "npm:^5.0.3"
   peerDependencies:
-    "@bascik/bascik": ^1.0.0-rc.8
+    "@bascik/bascik": ^1.0.0-rc.9
   languageName: unknown
   linkType: soft
 
@@ -173,7 +173,7 @@ __metadata:
     web-features: "npm:^3.40.1"
     webidl2: "npm:^24.5.0"
   peerDependencies:
-    "@bascik/language-server": ">=0.1.0-rc.4"
+    "@bascik/language-server": ">=0.1.0-rc.5"
   dependenciesMeta:
     chokidar:
       optional: true
