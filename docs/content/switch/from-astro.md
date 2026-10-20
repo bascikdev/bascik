@@ -17,7 +17,7 @@ Astro and Bascik both compile component-based markup into HTML that ships no fra
 
 Convert a single UI component, such as a card or navigation bar, to Bascik's HTML format:
 
-1. Create a project with `npm create bascik@latest my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`.
+1. Create a project with `npm create bascik@rc my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`.
 2. Create `src/components/site-nav/site-nav.html` with your navigation markup.
 3. Move any scoped styles into `src/components/site-nav/site-nav.css`.
 4. Include `<site-nav></site-nav>` inside `src/pages/index.html`.

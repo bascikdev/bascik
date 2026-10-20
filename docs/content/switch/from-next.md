@@ -8,7 +8,7 @@ Switching to Bascik replaces framework abstractions with standard web platform p
 
 To evaluate Bascik on an existing Next.js codebase, migrate a single static marketing page (like an `/about` page) and a shared header component before touching complex application routes:
 
-1. Create a project with `npm create bascik@latest`.
+1. Create a project with `npm create bascik@rc`.
 2. Create `src/components/site-nav/site-nav.html` from your Next.js navigation component.
 3. Create `src/pages/about.html` containing your page structure and `<site-nav></site-nav>`.
 4. Run `npm run dev` to view your rendered page.

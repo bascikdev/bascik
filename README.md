@@ -12,7 +12,7 @@ Bascik is a build tool for HTML components with automatically scoped CSS and Jav
 ## Get Started
 
 ```sh
-npm create bascik@latest my-site
+npm create bascik@rc my-site
 ```
 
 The CLI scaffolds a starter site and starts the dev server with live reload. See the [Getting Started guide](https://bascik.dev/getting-started) for manual setup in an existing project.
@@ -83,7 +83,7 @@ Use the tag in any page or component. There is no import, export, or registratio
 | Directory                   | Purpose                                                                                                                                    |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `pkg/`                      | The `@bascik/bascik` npm package — source, tests, benchmarks — see [pkg/README.md](pkg/README.md)                                          |
-| `create/`                   | The `create-bascik` scaffolding CLI — `npm create bascik@latest` — see [create/README.md](create/README.md)                                |
+| `create/`                   | The `create-bascik` scaffolding CLI — `npm create bascik@rc` — see [create/README.md](create/README.md)                                    |
 | `extensions/vscode-bascik/` | The VS Code extension — see [extensions/vscode-bascik/README.md](extensions/vscode-bascik/README.md)                                       |
 | `lsp/`                      | The `@bascik/language-server` LSP server — editor-agnostic intelligence for any LSP-compatible editor — see [lsp/README.md](lsp/README.md) |
 | `docs/`                     | Documentation site at [bascik.dev](https://bascik.dev) — built with Bascik itself                                                          |

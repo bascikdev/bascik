@@ -19,7 +19,7 @@ Testing a Bascik application is structured into six core tiers:
 
 ## Quick Start with `create-bascik`
 
-Projects created with `npm create bascik@latest` include a pre-configured testing environment powered by Vitest, Playwright, V8 code coverage, and VS Code debug launchers.
+Projects created with `npm create bascik@rc` include a pre-configured testing environment powered by Vitest, Playwright, V8 code coverage, and VS Code debug launchers.
 
 Execute test suites directly from your project root:
 
