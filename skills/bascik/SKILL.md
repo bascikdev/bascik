@@ -88,7 +88,7 @@ New components are picked up by the running dev server automatically; no restart
 9. **Never write generated files into `src/`.** Generated output goes to `dist/` (`BASCIK_OUT_DIR`) from an existing `pipeline.exec` script.
 10. **Client scripts are not bundled.** Bare imports such as `import x from 'pkg'` fail in the browser. They work only in Node-side scripts (`data-bascik-build`, `data-bascik-server`).
 11. **Extract shared layout.** Repeated `<head>` tags, headers, and footers become components (`<site-head />`, `<site-header />`, `<site-footer />`). Pages keep their own `<html>`, `<head>`, and `<body>`.
-12. **Script directives are exclusive.** One `<script>` tag takes at most one of `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`, `data-bascik-server`, `data-bascik-stream`. `data-bascik-build-once` is component-only and has no page context.
+12. **Script directives are exclusive.** One `<script>` tag takes at most one of `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`, `data-bascik-server`, `data-bascik-stream`. `data-bascik-build-once` runs once per file with no page context.
 
 ## Slots, props, and attributes
 
@@ -104,15 +104,15 @@ Pass props as `data-bascik-prop-<name>="..."` on the usage tag. A plain attribut
 
 ## Script tags at a glance
 
-| Tag                               | Runs                                | Use for                                                              |
-| --------------------------------- | ----------------------------------- | -------------------------------------------------------------------- |
-| `<script>`                        | Browser                             | Component and page behavior (scoped, IIFE-wrapped)                   |
-| `<script data-bascik-build>`      | Node, at build time                 | Markup from files, Markdown, APIs; output replaces the tag           |
-| `<script data-bascik-build-once>` | Node, during component registration | Shared markup reused by all uses of one component                    |
-| `<script data-bascik-routes>`     | Node, at build time                 | Expanding `[slug].html` templates into many pages                    |
-| `<script data-bascik-server>`     | Node, per request                   | Personalized markup (needs `bascik --server` or a serverless target) |
-| `<script data-bascik-stream>`     | Node, per request, streamed         | Slow per-request blocks that should not delay the page shell         |
-| `<script data-bascik-dev>`        | Browser, dev only                   | Debug helpers removed from production builds                         |
+| Tag                               | Runs                        | Use for                                                                |
+| --------------------------------- | --------------------------- | ---------------------------------------------------------------------- |
+| `<script>`                        | Browser                     | Component and page behavior (scoped, IIFE-wrapped)                     |
+| `<script data-bascik-build>`      | Node, at build time         | Markup from files, Markdown, APIs; output replaces the tag             |
+| `<script data-bascik-build-once>` | Node, once per file         | Markup shared by every use of a component or every route of a template |
+| `<script data-bascik-routes>`     | Node, at build time         | Expanding `[slug].html` templates into many pages                      |
+| `<script data-bascik-server>`     | Node, per request           | Personalized markup (needs `bascik --server` or a serverless target)   |
+| `<script data-bascik-stream>`     | Node, per request, streamed | Slow per-request blocks that should not delay the page shell           |
+| `<script data-bascik-dev>`        | Browser, dev only           | Debug helpers removed from production builds                           |
 
 Node-side scripts export a default function that returns an HTML string. Details are in the `bascik-scripts` skill.
 

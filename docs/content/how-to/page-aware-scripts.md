@@ -124,14 +124,18 @@ For output that is the same at every use of a component, use `data-bascik-build-
 
 ```html
 <!-- src/components/site-footer/site-footer.html -->
-<footer>
-  <script data-bascik-build-once>
-    export default () => String(new Date().getFullYear());
-  </script>
+<footer class="site-footer">
+  <p>
+    &copy;
+    <script data-bascik-build-once>
+      export default () => String(new Date().getFullYear());
+    </script>
+    Example Co. All rights reserved.
+  </p>
 </footer>
 ```
 
-It runs once while that component is registered, before page compilation, and its markup is reused at every occurrence. It has no page or route context; the generated markup is still scoped and expanded normally. This is useful for shared navigation data, embedded assets, or footer values that do not vary by page. Its output is not persisted in the build-script cache, so time-dependent values refresh on the next build.
+It runs once while that component is registered, before page compilation, and every page that uses `<site-footer />` gets the same `&copy; 2026 Example Co.` line. It has no page or route context; the generated markup is still scoped and expanded normally. This is useful for shared navigation data, embedded assets, or footer values that do not vary by page. In a dynamic route template, it runs once for all of the template's routes. See [`data-bascik-build-once`](/build-scripts#data-bascik-build-once).
 
 Use a `pre` exec script instead when expensive preparation should be shared across different components or at a project-wide scope. See [Exec Scripts](/exec-scripts) for lifecycle hooks.
 

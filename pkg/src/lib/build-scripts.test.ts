@@ -262,19 +262,24 @@ describe("executeBuildScripts", () => {
     expect(mockExecFile).not.toHaveBeenCalled();
   });
 
-  it("requires data-bascik-build-once to be registered from a component", async () => {
-    await expect(
-      executeBuildScripts(
-        "<script data-bascik-build-once>x()</script>",
-        "src/pages/index.html",
-      ),
-    ).rejects.toThrow(
-      "data-bascik-build-once is only supported in component files",
+  it("runs a page's build-once scripts without page context, before its build scripts", async () => {
+    resolveSequence([{ result: "<p>once</p>" }, { result: "<p>page</p>" }]);
+    const result = await executeBuildScripts(
+      "<script data-bascik-build>page()</script><script data-bascik-build-once>once()</script>",
+      "src/pages/about.html",
     );
-    expect(mockExecFile).not.toHaveBeenCalled();
+
+    expect(result).toBe("<p>page</p><p>once</p>");
+    const envOf = (call: number) =>
+      (mockExecFile.mock.calls[call][2] as { env: Record<string, string> }).env;
+    expect(envOf(0).BASCIK_SOURCE_FILE).toBe("src/pages/about.html");
+    expect(envOf(0).BASCIK_PAGE_FILE).toBe("");
+    expect(envOf(0).BASCIK_PAGE_PATH).toBe("");
+    expect(envOf(1).BASCIK_PAGE_FILE).toBe("src/pages/about.html");
+    expect(envOf(1).BASCIK_PAGE_PATH).toBe("/about");
   });
 
-  it("runs once scripts without page context or persistent output caching", async () => {
+  it("runs once scripts without page context and caches their output", async () => {
     resolveWith("<p>shared</p>");
     const html = "<script data-bascik-build-once>x()</script>";
 
@@ -294,10 +299,59 @@ describe("executeBuildScripts", () => {
     expect(firstOptions.env?.BASCIK_ROUTE).toBeUndefined();
 
     mockExecFile.mockClear();
-    await executeBuildScripts(html, "src/components/site-footer.html", null, {
+    expect(
+      await executeBuildScripts(html, "src/components/site-footer.html", null, {
+        once: true,
+      }),
+    ).toBe("<p>shared</p>");
+    expect(mockExecFile).not.toHaveBeenCalled();
+    expect(
+      buildScriptMocks.writeFile.mock.calls.some(([path]) =>
+        String(path).includes("script-cache"),
+      ),
+    ).toBe(true);
+  });
+
+  it("re-runs a cached once script after a file it depends on changes", async () => {
+    let depVersion = 1;
+    resetReadFileMock((path) => {
+      if (path.endsWith("footer-data.ts"))
+        return `export const v = ${depVersion};`;
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+    resolveWith("<p>v1</p>");
+    const html =
+      "<script data-bascik-build-once>import './footer-data.ts'; x()</script>";
+    const file = "src/components/site-footer.html";
+    await executeBuildScripts(html, file, null, { once: true });
+    await executeBuildScripts(html, file, null, { once: true });
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+
+    depVersion = 2;
+    clearBuildScriptCaches("src/components/footer-data.ts");
+    resolveWith("<p>v2</p>");
+    mockExecFile.mockClear();
+
+    expect(await executeBuildScripts(html, file, null, { once: true })).toBe(
+      "<p>v2</p>",
+    );
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not cache a once script excluded by scripts.cache", async () => {
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      cache: { enabled: true, exclude: ["src/components/live-*.html"] },
+    };
+    resolveWith("<p>live</p>");
+    const html = "<script data-bascik-build-once>x()</script>";
+    await executeBuildScripts(html, "src/components/live-feed.html", null, {
       once: true,
     });
-    expect(mockExecFile).toHaveBeenCalledTimes(1);
+    await executeBuildScripts(html, "src/components/live-feed.html", null, {
+      once: true,
+    });
+    expect(mockExecFile).toHaveBeenCalledTimes(2);
   });
 
   it("replaces a data-bascik-build script tag with handler returned markup", async () => {
@@ -1393,6 +1447,19 @@ describe("collectAllScriptDeps", () => {
       executeBuildScripts(html, "src/pages/index.html"),
     ).rejects.toThrow(/has both data-bascik-build and data-bascik-stream/);
   });
+
+  it.each(["data-bascik-server", "data-bascik-routes", "data-bascik-stream"])(
+    "names data-bascik-build-once when it is combined with %s",
+    async (directive) => {
+      const html = `<script data-bascik-build-once ${directive}>console.log(1)</script>`;
+      await expect(
+        executeBuildScripts(html, "src/components/site-footer.html", null, {
+          once: true,
+        }),
+      ).rejects.toThrow(`has both data-bascik-build-once and ${directive}`);
+      expect(mockExecFile).not.toHaveBeenCalled();
+    },
+  );
 });
 
 // ─── script output cache ─────────────────────────────────────────────────────
@@ -1982,7 +2049,9 @@ describe("build-script output cache", () => {
     // Static `import('marked')` is fully cacheable: a .json entry is written.
     expect(mockPackageIdentity).toHaveBeenCalledWith(["marked"]);
     expect(
-      mockWriteFile.mock.calls.some(([p]) => String(p).endsWith(".json")),
+      buildScriptMocks.writeFile.mock.calls.some(([p]) =>
+        String(p).endsWith(".json"),
+      ),
     ).toBe(true);
   });
 

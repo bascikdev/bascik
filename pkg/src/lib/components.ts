@@ -25,6 +25,7 @@ import {
   ROUTES_ATTR_NAME,
   SERVER_ATTR_NAME,
   STREAM_ATTR_NAME,
+  isDirectiveScriptOpenTag,
 } from "./html-patterns.ts";
 import { findCompatibilityMatches } from "./compatibility-checker.ts";
 import { stderr as colorErr } from "./colors.ts";
@@ -569,6 +570,11 @@ export const listComponents = async (
           // is set, so a body never stops the companion from being inlined.
           /<script\b((?:[^>"']|"[^"]*"|'[^']*')*?)\ssrc=["']([^"']+)["']((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi,
           (match, preSrc, srcVal, postSrc, ignoredBody: string) => {
+            // A directive script's `src=` is a Node.js module that its own
+            // runtime resolves and executes, never browser code to inline.
+            if (isDirectiveScriptOpenTag(`<script${preSrc} ${postSrc}>`)) {
+              return match;
+            }
             const baseSrc = basename(srcVal);
             const scriptInfo =
               companionScripts!.scriptMap.get(baseSrc) ??

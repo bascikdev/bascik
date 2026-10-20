@@ -19,7 +19,7 @@ You access these variables using standard Node.js `process.env.<VARIABLE_NAME>`.
 | `BASCIK_SERVER`      | Server scripts and worker threads                       | `"1"` when running the production server (`bascik --server`), `"0"` otherwise.                                                                                               |
 | `BASCIK_BUILD_LOG`   | CLI runtime                                             | Absolute filesystem path to the build log destination when invoked with `--log`.                                                                                             |
 
-`data-bascik-build-once` is component-only and does not receive page or route context. `BASCIK_SOURCE_FILE` identifies its component source; `BASCIK_PAGE_FILE` and `BASCIK_PAGE_PATH` are empty, and `BASCIK_ROUTE` is unset.
+`data-bascik-build-once` scripts do not receive page or route context, because their output is shared wherever the file is used. `BASCIK_SOURCE_FILE` names the file the script is written in; `BASCIK_PAGE_FILE` and `BASCIK_PAGE_PATH` are empty, and `BASCIK_ROUTE` is unset.
 
 ## Build-Time Scripts (`data-bascik-build`)
 
@@ -42,7 +42,7 @@ const isCurrent = currentPath === "/components";
 
 Component scripts can read this variable directly or through an imported helper; they always run in the context of the page that uses the component.
 
-This applies to `data-bascik-build`. A component's `data-bascik-build-once` script runs before a page is selected and therefore has no page path; use it only when its output is identical across the component's uses.
+This applies to `data-bascik-build`. A `data-bascik-build-once` script has no page path, because one run serves every use of a component and every route of a dynamic template; use it only when its output is identical everywhere.
 
 ### `BASCIK_SOURCE_FILE` vs `BASCIK_PAGE_FILE`
 

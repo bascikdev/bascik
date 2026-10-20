@@ -13,14 +13,14 @@ Bascik runs Node.js code inside special `<script>` tags. Each is a standard ESM 
 
 ## Pick the right tag
 
-| Need                                                          | Tag                                              | Runs                                                   |
-| ------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------ |
-| Page-specific or per-component-use HTML                       | `data-bascik-build`                              | Build and dev, once per use (cached by inputs)         |
-| Identical HTML shared by every use of one component           | `data-bascik-build-once`                         | Once when the component is registered; no output cache |
-| Many pages from one `[param].html` template                   | `data-bascik-routes`                             | Build and dev startup                                  |
-| Markup that depends on the request (cookies, headers, query)  | `data-bascik-server`                             | Every request, before the response starts              |
-| A slow per-request block that should not delay the page shell | `data-bascik-stream`                             | Every request, streamed in document order              |
-| A JSON or HTTP endpoint                                       | `src/api/<name>.ts` exporting `GET`, `POST`, ... | Every request                                          |
+| Need                                                             | Tag                                              | Runs                                                             |
+| ---------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------- |
+| Page-specific or per-component-use HTML                          | `data-bascik-build`                              | Build and dev, once per use (cached by inputs)                   |
+| Identical HTML shared by every use of a component or every route | `data-bascik-build-once`                         | Once per file (component registration or route template), cached |
+| Many pages from one `[param].html` template                      | `data-bascik-routes`                             | Build and dev startup                                            |
+| Markup that depends on the request (cookies, headers, query)     | `data-bascik-server`                             | Every request, before the response starts                        |
+| A slow per-request block that should not delay the page shell    | `data-bascik-stream`                             | Every request, streamed in document order                        |
+| A JSON or HTTP endpoint                                          | `src/api/<name>.ts` exporting `GET`, `POST`, ... | Every request                                                    |
 
 Prefer build-time work. Server, stream, and API code needs `bascik --server` (or a serverless target such as Cloudflare); a plain static host cannot run it.
 
@@ -54,7 +54,7 @@ Prefer build-time work. Server, stream, and API code needs `bascik --server` (or
 - Each uncached script runs in its own child process (about 50 to 150 ms). Output is cached on disk in `node_modules/.cache/bascik/script-cache/`.
 - **Cache gotcha:** the cache key covers the script, its statically referenced local files, installed package versions, the page path, site URL, and base. It cannot see network responses, `readdir` results, or computed paths. Exclude scripts that read remote or directory data with `scripts.cache.exclude`, and declare environment variables a script reads in `scripts.cache.environment`.
 - **Fetch once:** read data once per page in one script, then feed it to the parts that need it, instead of fetching per component instance.
-- **Component context:** `data-bascik-build` runs for each use with that page's context. Use `data-bascik-build-once` for identical output shared by uses of one component; it runs during component registration without page or route context and is not persisted in the script cache. Use a build-wide `pre` exec script when work should be shared across different components.
+- **Component context:** `data-bascik-build` runs for each use with that page's context. Use `data-bascik-build-once` for identical output with no page or route context: in a component every use shares one run, and in a dynamic route template every route shares one run. Its output is cached like any build script. Use a build-wide `pre` exec script when work should be shared across different files.
 - Errors follow `scripts.onBuildScriptError` (`'error'` by default): dev shows the error on that page and keeps serving; `--build` fails.
 
 Per-page values come from environment variables: `BASCIK_PAGE_PATH` (`/about`), `BASCIK_PAGE_FILE`, `BASCIK_SOURCE_FILE`, `BASCIK_PAGES_DIR`, `BASCIK_BUILD` (`"1"` in `--build`), `BASCIK_SITE_URL` (absent when unset), `BASCIK_BASE`, and `BASCIK_ROUTE` (dynamic routes). Details: `read-doc.mjs /build-scripts`, `/environment-variables`, `/how-to/page-aware-scripts`.

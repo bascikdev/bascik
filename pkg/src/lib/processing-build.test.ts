@@ -1325,6 +1325,63 @@ describe("dynamic routes pipeline expansion", () => {
     routesSpy.mockRestore();
   });
 
+  it("runs a dynamic template's build-once scripts once and shares the output with every route", async () => {
+    const templatePath = "src/pages/blog/[slug].html";
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([templatePath]);
+    const template =
+      "<!DOCTYPE html><html><head></head><body><footer><script data-bascik-build-once>once()</script></footer></body></html>";
+    const routesModule = await import("./routes.ts");
+    const routesSpy = vi
+      .spyOn(routesModule, "executeRoutesScript")
+      .mockResolvedValueOnce({
+        routes: [
+          { params: { slug: "post-1" } },
+          { params: { slug: "post-2" } },
+        ],
+        cleanedHtml: template,
+      });
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      `<script data-bascik-routes></script>${template}`,
+    );
+    const { executeBuildScripts, collectAllScriptDeps } =
+      await import("./build-scripts.ts");
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockImplementation(
+      async (
+        html: string,
+        _file: string,
+        _route: unknown,
+        options?: { once?: boolean },
+      ) => {
+        if (html.includes("data-bascik-build-once") && !options?.once) {
+          throw new Error("build-once reached a per-route build");
+        }
+        return html.replace(
+          /<script data-bascik-build-once>[\s\S]*?<\/script>/,
+          "<p>shared</p>",
+        );
+      },
+    );
+
+    await processAllPages({ useWorkers: false });
+
+    const onceCalls = (
+      executeBuildScripts as ReturnType<typeof vi.fn>
+    ).mock.calls.filter((call) => call[3]?.once);
+    expect(onceCalls).toHaveLength(1);
+    expect(onceCalls[0][1]).toBe(templatePath);
+    const stored = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([page]) => String(page.pageContent),
+    );
+    expect(stored).toHaveLength(2);
+    for (const html of stored) expect(html).toContain("<p>shared</p>");
+    // Dependencies are still read from the authored script.
+    expect(collectAllScriptDeps).toHaveBeenCalledWith(
+      expect.stringContaining("data-bascik-build-once"),
+      templatePath,
+    );
+    routesSpy.mockRestore();
+  });
+
   it("aggregates multiple dynamic route expansion failures in build mode", async () => {
     const pages = [
       "src/pages/blog/[slug].html",

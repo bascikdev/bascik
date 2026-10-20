@@ -107,7 +107,7 @@ const BUILD_ONCE_SCRIPT_RE = new RegExp(
   "gi",
 );
 
-const BUILD_ONCE_OUTSIDE_COMPONENT_RE = new RegExp(
+const BUILD_ONCE_OPEN_TAG_RE = new RegExp(
   `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
@@ -651,10 +651,13 @@ export const executeBuildScripts = async (
       "[bascik] error: a <script> tag cannot combine data-bascik-build and data-bascik-build-once. Choose one build-script mode.",
     );
   }
-  if (!options?.once && BUILD_ONCE_OUTSIDE_COMPONENT_RE.test(html)) {
-    throw new Error(
-      "[bascik] error: data-bascik-build-once is only supported in component files.",
-    );
+  // Build-once scripts run first and without page context, so a build script
+  // never sees one and their output is the same wherever the file is used.
+  if (!options?.once && BUILD_ONCE_OPEN_TAG_RE.test(html)) {
+    html = await executeBuildScripts(html, filePath, null, {
+      ...options,
+      once: true,
+    });
   }
 
   const matches = [
@@ -735,23 +738,25 @@ export const executeBuildScripts = async (
     const where = location
       ? ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})`
       : "";
-    const useCache =
-      !options?.once && isScriptCacheEnabledForPath(sourceFile || filePath);
+    const useCache = isScriptCacheEnabledForPath(sourceFile || filePath);
+    const buildDirective = options?.once
+      ? "data-bascik-build-once"
+      : "data-bascik-build";
     if (BUILD_SERVER_CONFLICT_RE.test(openTag)) {
       throw new Error(
-        `[bascik] error: <script> tag has both data-bascik-build and data-bascik-server${where}. A script can only run at build time or at request time — not both. Remove one of the attributes.`,
+        `[bascik] error: <script> tag has both ${buildDirective} and data-bascik-server${where}. A script can only run at build time or at request time — not both. Remove one of the attributes.`,
       );
     }
 
     if (BUILD_ROUTES_CONFLICT_RE.test(openTag)) {
       throw new Error(
-        `[bascik] error: <script> tag has both data-bascik-build and data-bascik-routes${where}. A script cannot be both a build script and a routes script. Remove one of the attributes.`,
+        `[bascik] error: <script> tag has both ${buildDirective} and data-bascik-routes${where}. A script cannot be both a build script and a routes script. Remove one of the attributes.`,
       );
     }
 
     if (BUILD_STREAM_CONFLICT_RE.test(openTag)) {
       throw new Error(
-        `[bascik] error: <script> tag has both data-bascik-build and data-bascik-stream${where}. A script can only run at build time or at request time — not both. Remove one of the attributes.`,
+        `[bascik] error: <script> tag has both ${buildDirective} and data-bascik-stream${where}. A script can only run at build time or at request time — not both. Remove one of the attributes.`,
       );
     }
 

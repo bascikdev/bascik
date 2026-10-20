@@ -13,6 +13,7 @@ import {
   SCRIPT_TAG_PREFIX,
   getHtmlAttributeValue,
   isBuildScriptOpenTag,
+  isDirectiveScriptOpenTag,
   scriptOpenTag,
 } from "./html-patterns.ts";
 
@@ -175,5 +176,20 @@ describe("isBuildScriptOpenTag", () => {
     ["<script data-note='a data-bascik-build b'>", false],
   ])("%s -> %s", (tag, expected) => {
     expect(isBuildScriptOpenTag(tag)).toBe(expected);
+  });
+});
+
+describe("isDirectiveScriptOpenTag", () => {
+  it.each([
+    ["<script data-bascik-build>", true],
+    ["<script data-bascik-build-once>", true],
+    ['<script DATA-BASCIK-SERVER src="./data.ts">', true],
+    ["<script data-bascik-stream>", true],
+    ["<script data-bascik-routes>", true],
+    ['<script src="./client.ts">', false],
+    ['<script data-note="data-bascik-server">', false],
+    ["<script data-bascik-server-x>", false],
+  ])("%s -> %s", (tag, expected) => {
+    expect(isDirectiveScriptOpenTag(tag)).toBe(expected);
   });
 });

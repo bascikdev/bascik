@@ -72,6 +72,8 @@ import {
   listComponents,
 } from "./components.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
+import { executeBuildScripts } from "./build-scripts.ts";
+import { BUILD_ONCE_ATTR_NAME, OPEN_TAG_ATTRS } from "./html-patterns.ts";
 
 import { stdout as colorOut, workerEnvironment } from "./colors.ts";
 import { BascikConfig } from "./config.ts";
@@ -128,7 +130,15 @@ export interface PageJob {
   route: RouteEntry | null;
   relativePagePath: string;
   preCleanedHtml?: string;
+  /** `preCleanedHtml` with its build-once scripts already run, shared by every route. */
+  onceResolvedHtml?: string;
 }
+
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const BUILD_ONCE_SCRIPT_RE = new RegExp(
+  String.raw`<script\b${OPEN_TAG_ATTRS}\s${BUILD_ONCE_ATTR_NAME}`,
+  "i",
+);
 
 /**
  * Loads every component for a batch of pages. A failure is reported to the browser and then rethrown, so
@@ -203,6 +213,13 @@ export const expandPageToJobs = async (
   const currentGenerated = new Set<string>();
   const jobs: PageJob[] = [];
   const baseRelativePath = getRelativePath(pagePath, "pages");
+  // Build-once output has no route context, so it is the same for every route:
+  // run it here, once per template, instead of once per generated page.
+  const onceResolvedHtml = BUILD_ONCE_SCRIPT_RE.test(result.cleanedHtml)
+    ? await executeBuildScripts(result.cleanedHtml, pagePath, null, {
+        once: true,
+      })
+    : undefined;
 
   for (const route of result.routes) {
     const relativePagePath = resolveRoutePath(baseRelativePath, route.params);
@@ -212,6 +229,7 @@ export const expandPageToJobs = async (
       route,
       relativePagePath,
       preCleanedHtml: result.cleanedHtml,
+      onceResolvedHtml,
     });
   }
 
@@ -501,6 +519,7 @@ export const processPageBatch = async (
       globalStylesHtml!,
       job.route,
       job.preCleanedHtml,
+      { onceResolvedHtml: job.onceResolvedHtml },
     );
     if (result && isCurrentGeneration(job.pagePath, generation)) {
       if (result.serverScripts) {

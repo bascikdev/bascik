@@ -183,14 +183,17 @@ describe("monorepo layout", () => {
     }
   });
 
-  it("reports a shared component whose @/ import only resolves in some sites", () => {
+  const brokenImportFooter = (directive: string) =>
+    `<footer>\n  <script ${directive}>\n    import { links } from "@/lib/links.ts";\n    export default () => links();\n  </script>\n</footer>\n`;
+
+  const withBrokenImport = (directive: string, run: () => void) => {
     write(
       "sites/marketing/src/lib/links.ts",
       'export const links = () => "";\n',
     );
     write(
       "shared/components/site-footer/site-footer.html",
-      '<footer>\n  <script data-bascik-build>\n    import { links } from "@/lib/links.ts";\n    export default () => links();\n  </script>\n</footer>\n',
+      brokenImportFooter(directive),
     );
     try {
       const checked = checkWorkspace();
@@ -203,10 +206,7 @@ describe("monorepo layout", () => {
       expect(errors[0].message).toContain(
         "shared/components/site-footer/site-footer.html imports @/lib/links.ts",
       );
-      // The checker's claim is real: the docs build fails even though no page uses <site-footer>.
-      const built = bascik("docs", ["--build"]);
-      expect(built.status).not.toBe(0);
-      expect(output(built)).toContain("links.ts");
+      run();
     } finally {
       rmSync(join(dir, "shared/components/site-footer"), {
         recursive: true,
@@ -217,5 +217,23 @@ describe("monorepo layout", () => {
         force: true,
       });
     }
+  };
+
+  it("reports a shared component whose @/ import only resolves in some sites", () => {
+    withBrokenImport("data-bascik-build-once", () => {
+      // The checker's claim is real: a build-once script runs at component
+      // registration, so the docs build fails even though no page uses <site-footer>.
+      const built = bascik("docs", ["--build"]);
+      expect(built.status).not.toBe(0);
+      expect(output(built)).toContain("links.ts");
+    });
+  });
+
+  it("reports the broken import for a per-use build script before a page uses it", () => {
+    withBrokenImport("data-bascik-build", () => {
+      // A per-use script runs only where the component is used, so the build
+      // passes until a page adds <site-footer>; the checker reports it first.
+      expect(bascik("docs", ["--build"]).status).toBe(0);
+    });
   });
 });

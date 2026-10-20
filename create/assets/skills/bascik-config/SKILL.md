@@ -113,7 +113,7 @@ export default defineConfig({
 1. **One site, one project:** each site has its own config, `src/pages/`, `.env`, and `dist/`. Run Bascik from the site folder.
 2. **Tag names are unique across all of a site's roots.** Roots never nest or repeat, including through symlinks.
 3. **List the site's own folder first.** `bascik add` and `add-example.mjs` write into the first root.
-4. **Shared components import shared helpers with relative paths** (`../../scripts/links.ts`) unless every site points `scripts.importRoot` at the same folder. `@/` resolves against the consuming site, and a broken import fails that site's build even when no page uses the component.
+4. **Shared components import shared helpers with relative paths** (`../../scripts/links.ts`) unless every site points `scripts.importRoot` at the same folder. `@/` resolves against the consuming site, and a broken import fails that site's build: a `data-bascik-build-once` script fails it even when no page uses the component, and a `data-bascik-build` script fails it on the first page that does.
 5. **Watch shared helper and style folders** with `pipeline.watchPaths`; only component roots are watched automatically.
 6. **Share tokens as a stylesheet:** `assets: { inlineStyles: ['../../shared/styles/tokens.css'] }`.
 7. **One Bascik version** for every site. Task runners (Turborepo, Nx) must list `shared/**` as a build input and `BASCIK_SITE_URL` as an env input.

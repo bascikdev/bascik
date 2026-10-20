@@ -167,9 +167,9 @@ export const SCRIPT_DIRECTIVES = [
   },
   {
     name: "data-bascik-build-once",
-    detail: "Bascik component build-time script",
+    detail: "Bascik build-time script, run once",
     documentation:
-      "Executes once while a component is registered, without page or route context. Its generated markup is reused for every component use and then follows normal component scoping and expansion.",
+      "Executes once, without page or route context, and reuses its markup wherever the file is used. In a component, it runs when the component is registered and every use shares the output; in a dynamic route template, every generated page shares it.",
   },
   {
     name: "data-bascik-routes",
@@ -964,20 +964,6 @@ export function createDiagnostics(
           code: "unknown-directive-value",
         });
       }
-      if (attrs.has("data-bascik-build-once") && !isComponentDocument) {
-        diagnostics.push({
-          range: {
-            start: document.positionAt(scriptMatch.index ?? 0),
-            end: document.positionAt((scriptMatch.index ?? 0) + openTag.length),
-          },
-          message:
-            "data-bascik-build-once is only supported in component files.",
-          severity: DiagnosticSeverity.Error,
-          source: "bascik",
-          code: "build-once-outside-component",
-        });
-      }
-
       const hasServerDirective =
         attrs.has("data-bascik-server") ||
         attrs.has("data-bascik-stream") ||

@@ -19,7 +19,7 @@ Type a partial opening tag to see matching project components in IntelliSense. S
 
 Components with a default slot complete as paired opening and closing tags (`<user-card>$0</user-card>`). Components without a default slot complete as self-closing void elements (`<site-nav />$0`). Inside a discovered component's opening tag, IntelliSense suggests inferred `data-bascik-prop-*` attributes and omits props already supplied. Inside its body, start an element opening tag to receive named `data-bascik-slot` suggestions from the nearest containing component.
 
-Inside a `<script>` tag, IntelliSense suggests the mutually exclusive execution directives: `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream`. Once one directive is present, competing directives are suppressed.
+Inside a `<script>` tag, IntelliSense suggests the mutually exclusive execution directives: `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream`. Once one directive is present, competing directives are suppressed.
 
 Cmd/Ctrl-click custom component tags to open their HTML definitions. Hover over a component to see the contract you need at the call site, including its description, inferred props, named and default slots, source location, and included styles or scripts. Component tag suggestions display the same contract before insertion.
 

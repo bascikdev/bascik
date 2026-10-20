@@ -457,6 +457,18 @@ describe("minifyHtml", () => {
     );
   });
 
+  it.each([
+    "data-bascik-build",
+    "data-bascik-build-once",
+    "data-bascik-routes",
+    "data-bascik-stream",
+  ])("leaves %s scripts untouched in their original location", (directive) => {
+    const html = `<div><script ${directive}>run()</script></div><script>client()</script>`;
+    expect(minifyHtml(html)).toBe(
+      `<div><script ${directive}>run()</script></div>\n<script>client()</script>`,
+    );
+  });
+
   it("preserves newlines, indentation, and single-line comments inside data-bascik-server scripts", () => {
     const htmlString = [
       "<div>",

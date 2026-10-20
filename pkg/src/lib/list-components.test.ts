@@ -417,6 +417,32 @@ describe("listComponents – companion scripts", () => {
     expect(content).toContain('data-src="demo-counter.ts"');
   });
 
+  it.each([
+    "data-bascik-build",
+    "data-bascik-server",
+    "data-bascik-stream",
+    "data-bascik-routes",
+  ])(
+    "leaves a %s script with a companion src= for its runtime to load",
+    async (directive) => {
+      mockDeepReadDirFlat.mockResolvedValue([
+        "src/components/data-card/data-card.html",
+        "src/components/data-card/card-data.ts",
+      ]);
+      const tag = `<script ${directive} src="./card-data.ts"></script>`;
+      mockReadFile
+        .mockResolvedValueOnce(Buffer.from(`<div class="card">${tag}</div>`))
+        .mockResolvedValueOnce(
+          Buffer.from("export default (): string => '<p>generated</p>';"),
+        );
+
+      const content = (await listComponents())["data-card"].fileContent;
+
+      expect(content).toContain(`${directive} src="./card-data.ts"`);
+      expect(content).not.toContain("export default");
+    },
+  );
+
   it('does not auto-inline companion scripts unless explicitly referenced with <script src="...">', async () => {
     mockDeepReadDirFlat.mockResolvedValue([
       "src/components/my-counter/my-counter.html",

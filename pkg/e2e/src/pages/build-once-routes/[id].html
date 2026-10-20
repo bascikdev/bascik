@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Build Once Routes</title>
+    <script data-bascik-routes>
+      export default () => [
+        { params: { id: "first" } },
+        { params: { id: "second" } },
+      ];
+    </script>
+  </head>
+  <body>
+    <p data-testid="route-id">
+      <script data-bascik-build>
+        export default () => JSON.parse(process.env.BASCIK_ROUTE).params.id;
+      </script>
+    </p>
+    <footer>
+      <p data-testid="once-token">
+        <script data-bascik-build-once>
+          import { randomBytes } from "node:crypto";
+          export default () =>
+            `once-${randomBytes(8).toString("hex")} ${process.env.BASCIK_ROUTE ? "route-leaked" : "no-route"}`;
+        </script>
+      </p>
+    </footer>
+  </body>
+</html>

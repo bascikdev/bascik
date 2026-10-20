@@ -507,7 +507,7 @@ ${SITE_FOOTER_CSS}</style>
   <div class="container">
     <div class="footer-inner">
       <span class="footer-copy">
-        &copy; <script data-bascik-build>export default () => String(new Date().getFullYear());</script>
+        &copy; <script data-bascik-build-once>export default () => String(new Date().getFullYear());</script>
         <span data-bascik-prop-brand>My Site</span>
       </span>
       <nav class="footer-nav" aria-label="Footer navigation">
@@ -669,10 +669,10 @@ import { join } from 'node:path';
 describe('site-footer component', () => {
   const path = join(process.cwd(), 'src/components/site-footer/site-footer.html');
 
-  it('renders brand prop placeholder and build-time year script', async () => {
+  it('renders brand prop placeholder and build-once year script', async () => {
     const html = await readFile(path, 'utf8');
     expect(html).toContain('data-bascik-prop-brand');
-    expect(html).toContain('data-bascik-build');
+    expect(html).toContain('data-bascik-build-once');
     expect(html).toContain('getFullYear');
   });
 });

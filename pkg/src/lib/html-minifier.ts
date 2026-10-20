@@ -39,6 +39,7 @@ import {
 
 const DIRECTIVE_ATTRIBUTES = new Set([
   "data-bascik-build",
+  "data-bascik-build-once",
   "data-bascik-server",
   "data-bascik-routes",
   "data-bascik-stream",

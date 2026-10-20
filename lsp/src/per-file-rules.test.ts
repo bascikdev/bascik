@@ -136,33 +136,24 @@ describe("per-file rules reported by the analyzer", () => {
     ).not.toContain("unknown-directive-value");
   });
 
-  it("accepts a bare build-once directive only in components", () => {
+  it.each([
+    "/site/src/components/site-footer.html",
+    "/site/src/pages/index.html",
+  ])("accepts a bare build-once directive in %s", (file) => {
     const body = 'export default () => "<p>shared</p>";';
-    const component = `/site/src/components/site-footer.html`;
+    expect(
+      codesFor(file, "html", `<script data-bascik-build-once>${body}</script>`),
+    ).toEqual([]);
     expect(
       codesFor(
-        component,
-        "html",
-        `<script data-bascik-build-once>${body}</script>`,
-      ),
-    ).not.toContain("build-once-outside-component");
-    expect(
-      codesFor(
-        "/site/src/pages/index.html",
-        "html",
-        `<script data-bascik-build-once>${body}</script>`,
-      ),
-    ).toContain("build-once-outside-component");
-    expect(
-      codesFor(
-        component,
+        file,
         "html",
         `<script data-bascik-build-once="yes">${body}</script>`,
       ),
     ).toContain("unknown-directive-value");
     expect(
       codesFor(
-        component,
+        file,
         "html",
         `<script data-bascik-build data-bascik-build-once>${body}</script>`,
       ),

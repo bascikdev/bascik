@@ -336,8 +336,8 @@ describe("SITE_FOOTER_HTML", () => {
     expect(SITE_FOOTER_HTML).not.toContain("${SITE_FOOTER_CSS}");
   });
 
-  it("uses a build-time script for the year", () => {
-    expect(SITE_FOOTER_HTML).toContain("data-bascik-build");
+  it("uses a build-once script for the year", () => {
+    expect(SITE_FOOTER_HTML).toContain("<script data-bascik-build-once>");
     expect(SITE_FOOTER_HTML).toContain("export default () =>");
     expect(SITE_FOOTER_HTML).toContain("getFullYear");
   });

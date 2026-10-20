@@ -91,15 +91,37 @@ export const getHtmlAttributeValue = (
 const ATTRIBUTE_VALUE_RE = /\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/g;
 const ATTRIBUTE_NAME_RE = /(?:^|[\s/])([^\s"'=<>`/]+)(?=[\s/>]|$)/g;
 
-/** True when an open tag carries `data-bascik-build` as a whole attribute name. */
-export const isBuildScriptOpenTag = (openTag: string): boolean => {
+/**
+ * True when `openTag` carries one of `names` (lowercase) as a whole attribute
+ * name. Text inside another attribute's quoted value is never an attribute.
+ */
+const hasAnyHtmlAttribute = (
+  openTag: string,
+  names: ReadonlySet<string>,
+): boolean => {
   const namesOnly = openTag.replace(ATTRIBUTE_VALUE_RE, "");
   for (const match of namesOnly.matchAll(ATTRIBUTE_NAME_RE)) {
-    if (
-      match[1].toLowerCase() === "data-bascik-build" ||
-      match[1].toLowerCase() === "data-bascik-build-once"
-    )
-      return true;
+    if (names.has(match[1].toLowerCase())) return true;
   }
   return false;
 };
+
+const BUILD_ATTRIBUTE_NAMES: ReadonlySet<string> = new Set([
+  "data-bascik-build",
+  "data-bascik-build-once",
+]);
+
+const DIRECTIVE_ATTRIBUTE_NAMES: ReadonlySet<string> = new Set([
+  ...BUILD_ATTRIBUTE_NAMES,
+  "data-bascik-server",
+  "data-bascik-routes",
+  "data-bascik-stream",
+]);
+
+/** True when an open tag carries `data-bascik-build` or `data-bascik-build-once` as a whole attribute name. */
+export const isBuildScriptOpenTag = (openTag: string): boolean =>
+  hasAnyHtmlAttribute(openTag, BUILD_ATTRIBUTE_NAMES);
+
+/** True when an open tag carries any script directive as a whole attribute name. */
+export const isDirectiveScriptOpenTag = (openTag: string): boolean =>
+  hasAnyHtmlAttribute(openTag, DIRECTIVE_ATTRIBUTE_NAMES);
