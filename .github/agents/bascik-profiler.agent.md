@@ -41,6 +41,8 @@ Keep compiler transpile times, component expansion overhead, and server response
    - `yarn workspace @bascik/bascik profile:compare`: Alternates `baseline` and `candidate` compiler snapshots on the same private fixture path and verifies `byteIdentical: true` across all emitted HTML. Supports `--fixture pipeline` (built-in 25-page, 1,000-instance pipeline stress fixture) or `--project <private-path>` (`starter-site` or `docs` copy).
    - `yarn workspace @bascik/bascik profile:compiler`: Captures cold, warm, and live dev-edit (`--edits`) timelines on a private copy of `docs/` or another project.
    - `yarn workspace @bascik/bascik profile:workload`: Captures HTTP/1.1, HTTP/2 TLS, static, dev, and build workloads.
+   - `yarn workspace @bascik/bascik profile:fuzz --baseline <built-pkg>`: Seeded differential checks against the current candidate (default `pkg/`), with exact outputs and warm-cache repeat checks.
+   - `yarn workspace @bascik/bascik profile:summary <capture.cpuprofile>`: Read-only CPU self/inclusive and hot-line summary.
    - Reference docs: `docs/content/internals/benchmarking.md` and `pkg/bench/README.md`.
 
 ## Profiling Workflow

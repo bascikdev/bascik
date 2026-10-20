@@ -41,6 +41,7 @@ import * as components from "../src/lib/components.ts";
 import * as htmlMinifier from "../src/lib/html-minifier.ts";
 import * as jsMinifier from "../src/lib/js-minifier.ts";
 import * as styles from "../src/lib/styles.ts";
+import * as shielding from "../src/lib/shielding.ts";
 
 // Vite's module runner turns every import into a getter; reading one per
 // iteration adds overhead to the measurement. Bind each function once.
@@ -48,6 +49,8 @@ const { recursivelyTranspile } = processing;
 const { replaceTag, getTag } = components;
 const { minifyHtml } = htmlMinifier;
 const { minifyJs } = jsMinifier;
+const { __segmentMemoForTests } = jsMinifier;
+const { maskElementContents } = shielding;
 const {
   convertCssElementSelectorsToClasses,
   scopeCssCustomProperties,
@@ -71,6 +74,25 @@ const SMALL_NAV_HTML = `
 `;
 
 const LARGE_HTML = SMALL_NAV_HTML.repeat(50);
+
+const MASK_TAGS = ["script", "style", "textarea"];
+const RAW_TEXT_HTML =
+  `${LARGE_HTML}<SCRIPT>const template = '<my-card>literal</my-card>';</SCRIPT><style>.card{color:red}</style><textarea><my-card>literal</my-card></textarea>`.repeat(
+    5,
+  );
+const CODE_SEGMENTS = Array.from({ length: 100 }, (_, index) =>
+  index % 2
+    ? "); root.addEventListener( event, () => { count += 1; render( count ); });"
+    : "const root = document.getElementById(",
+);
+const { normalize, normalizeUnmemoized } = __segmentMemoForTests;
+
+const maskedRawText = maskElementContents(RAW_TEXT_HTML, MASK_TAGS);
+assert.equal(maskedRawText.length, RAW_TEXT_HTML.length);
+assert(!maskedRawText.includes("<my-card>"));
+assert.equal(maskElementContents(LARGE_HTML, MASK_TAGS), LARGE_HTML);
+for (const segment of CODE_SEGMENTS)
+  assert.equal(normalize(segment), normalizeUnmemoized(segment));
 
 const COMPONENT_CSS = `
 .navigation ul { list-style-type: none; margin: unset; padding: unset; }
@@ -187,6 +209,30 @@ const SLASH_LIGHT = JS_SIZES.map(({ label, reps }) => ({
 // ── Benchmarks ────────────────────────────────────────────────────────────────────────────
 // Vitest 5: `bench` is a test-context fixture. Each group is one test; groups
 // with several sizes use `bench.compare` so the table shows them side by side.
+
+test("maskElementContents: raw-text and tag-absent workloads", async ({
+  bench,
+}) => {
+  await bench.compare(
+    bench("mask mixed-case raw-text elements", () => {
+      maskElementContents(RAW_TEXT_HTML, MASK_TAGS);
+    }),
+    bench("skip HTML without raw-text elements", () => {
+      maskElementContents(LARGE_HTML, MASK_TAGS);
+    }),
+  );
+});
+
+test("minifyJs: shared segment normalization", async ({ bench }) => {
+  await bench.compare(
+    bench("unmemoized normalization (100 segments)", () => {
+      for (const segment of CODE_SEGMENTS) normalizeUnmemoized(segment);
+    }),
+    bench("warm segment memo (100 segments)", () => {
+      for (const segment of CODE_SEGMENTS) normalize(segment);
+    }),
+  );
+});
 
 test("minifyJs: slash-heavy scaling", async ({ bench }) => {
   await bench.compare(

@@ -2,23 +2,25 @@
 name: bascik-css-scoping
 metadata:
   internal: true
-description: Build-time CSS scoping, AST transformations, and PostCSS plugins in Bascik. Use when modifying CSS scoping logic, handling nesting, keyframes, container queries, custom properties, or specificity isolation.
+description: Build-time CSS scoping and token-aware transformations in Bascik. Use when modifying class or ID scoping, CSS selector rewriting, keyframes, container queries, custom properties, or specificity isolation.
 ---
 
-# Modern CSS Scoping & PostCSS Transformations in Bascik
+# CSS Scoping in Bascik
 
-Bascik provides zero-runtime, build-time CSS scoping in `pkg/src/lib/styles.ts` using PostCSS. It encapsulates styles per component instance without requiring Shadow DOM, runtime stylesheets, or client-side JavaScript.
+Bascik scopes component CSS at build time without Shadow DOM, runtime stylesheets, or client-side scoping code. CSS work is coordinated by `pkg/src/lib/styles.ts`; do not assume the implementation uses PostCSS or a single AST walk. Follow the tokenizer, shielding, selector-rewrite, and caching helpers at the code path being changed.
 
 ---
 
 ## 1. Core Scoping Mechanics
 
-Bascik scopes styles by transforming selectors in component `<style>` blocks and matching them with scoped attribute identifiers (`data-bascik-s-*` / `data-bascik-c-*`) injected into the HTML markup:
+Bascik rewrites component names and selectors at build time so CSS selectors match the corresponding transformed component markup:
 
-1. **Class Names:** Transforms `.btn` $\rightarrow$ `.btn[data-bascik-s-xyz]` (or hashed production classes).
-2. **Element Selectors:** Transforms `p` $\rightarrow$ `p[data-bascik-s-xyz]`.
-3. **CSS Custom Properties (Variables):** Scopes `--card-bg` $\rightarrow$ `--card-bg-xyz` so variables defined in one component cannot leak across component boundaries.
-4. **Keyframe Animations:** Scopes `@keyframes fadeIn` $\rightarrow$ `@keyframes fadeIn-xyz` and rewrites corresponding `animation: fadeIn ...` declarations.
+1. **Classes and identifiers:** Component markup classes, IDs, and name references are rewritten to component/instance-scoped names; `minify.identifiers` may hash generated names.
+2. **Element selectors:** Supported element selectors are converted to generated element-class selectors, with matching classes injected into component markup. Unsupported hyphenated type selectors remain unchanged.
+3. **CSS custom properties:** Supported custom property names are scoped consistently at declarations and references.
+4. **Keyframe animations:** Keyframe declarations are scoped and supported `animation-name` and shorthand references are updated without rewriting timing or other shorthand slots.
+
+The selector transformation intentionally changes specificity when an element selector becomes a class selector. Preserve current compatibility behavior and tests when modifying the transform.
 
 ---
 
@@ -26,7 +28,7 @@ Bascik scopes styles by transforming selectors in component `<style>` blocks and
 
 ### CSS Nesting (`&`)
 
-Modern native CSS nesting rules are resolved and scoped correctly:
+Supported CSS nesting is token-aware and scoped without changing the established emitted selector shape:
 
 ```css
 /* Input */
@@ -40,14 +42,14 @@ Modern native CSS nesting rules are resolved and scoped correctly:
   }
 }
 
-/* Scoped Output */
-.card[data-bascik-s-abc] {
+/* Representative scoped output */
+.bascik__my-comp__card {
   padding: 1rem;
 }
-.card.active[data-bascik-s-abc] {
+.bascik__my-comp__card.bascik__my-comp__active {
   border-color: green;
 }
-.card[data-bascik-s-abc] > .header[data-bascik-s-abc] {
+.bascik__my-comp__card > .bascik__my-comp__header {
   font-weight: bold;
 }
 ```
@@ -61,14 +63,14 @@ When traversing complex selector lists inside pseudo-classes:
 
 ### Container Queries (`@container`) & Layer Rules (`@layer`)
 
-- Scopes selectors inside `@container` blocks and `@layer` blocks identically to root rules.
+- Scopes selectors inside `@container` blocks and `@layer` blocks consistently with root rules.
 - Scopes named container names if configured.
 
 ---
 
-## 3. Performance & AST Optimization
+## 3. Performance & Transform Design
 
-- **Single-Pass PostCSS AST Walking:** Traverse the AST using `root.walkRules` and `root.walkAtRules` rather than performing multiple complete traversals.
+- **Preserve the actual parser boundary:** Reuse the existing tokenizer and shields; do not introduce AST assumptions or merge passes without byte-parity and performance evidence.
 - **String Replacement Traps:** When substituting scoped names back into CSS declarations, use replacer functions `() => scopedName` to avoid `$` replacement bugs.
 
 ---

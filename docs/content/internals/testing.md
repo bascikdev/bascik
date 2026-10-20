@@ -14,6 +14,8 @@ The codebase distinguishes test runners from testing levels:
 
 Integration tests in Bascik follow an explicit boundary contract: they do not mock away the primary boundary being verified. When testing worker thread lifecycle, real Node.js `worker_threads` run. When testing targeted-build persistence, real child processes invoke `bascik --build` against isolated disk fixtures. When testing scaffold output, the real `scaffold()` creates directory structures and files, and the real compiler parses and builds them into emitted artifacts. Mocks are reserved for external environment control (such as clock injection or network limits) rather than internal subsystem borders.
 
+Differential fuzzing is a separate opt-in developer check: `yarn workspace @bascik/bascik profile:fuzz` compares a built baseline and candidate on generated inputs and reports shrunk, replayable mismatches. The unit suite tests the runner itself without a baseline checkout. See [Benchmarking & Profiling](/internals/benchmarking#differential-fuzzing-and-cpu-summaries) for commands and scope.
+
 ## Running Unit Tests
 
 Commands can be run per-package or across the workspace from the repository root:

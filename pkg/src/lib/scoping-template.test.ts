@@ -371,4 +371,100 @@ describe("scoping pipeline inputs and outputs", () => {
     for (const variant of variants)
       expect(internals.inputKey({ ...base, ...variant })).not.toBe(key);
   });
+
+  it("produces collision-free keys for delimiters, length aliases, null/undefined, and config mutations", () => {
+    const base = card();
+    expect(internals.inputKey({ ...base })).toBe(
+      internals.inputKey({ ...base }),
+    );
+
+    const pairs: Array<[BascikComponent, BascikComponent]> = [
+      // Boundary shifts with ':', '|', quotes, and digit length lookalikes
+      [
+        { ...base, name: "a:b|c", fileContent: '5:hello"world' },
+        { ...base, name: "a", fileContent: 'b|c|5:hello"world' },
+      ],
+      [
+        { ...base, name: "a|s5:hello", fileName: "x" },
+        { ...base, name: "a", fileName: "hello|s1:x" },
+      ],
+      [
+        { ...base, fileContent: "10:abcdefghij", cssFileContent: "kl" },
+        { ...base, fileContent: "abcdefghij", cssFileContent: "2:kl" },
+      ],
+      // undefined vs string "null" or "undefined" or empty string
+      [
+        { ...base, fileName: undefined },
+        { ...base, fileName: "null" },
+      ],
+      [
+        { ...base, fileName: undefined },
+        { ...base, fileName: "undefined" },
+      ],
+      [
+        { ...base, fileName: undefined },
+        { ...base, fileName: "" },
+      ],
+      [
+        { ...base, cssFileContent: undefined },
+        { ...base, cssFileContent: "null" },
+      ],
+      [
+        { ...base, cssFileContent: undefined },
+        { ...base, cssFileContent: "" },
+      ],
+      // scopedIdNames undefined vs empty object vs populated object
+      [
+        { ...base, scopedIdNames: undefined },
+        { ...base, scopedIdNames: {} },
+      ],
+      [
+        { ...base, scopedIdNames: { a: "b:c|d" } },
+        { ...base, scopedIdNames: { "a:b": "c|d" } },
+      ],
+      [
+        { ...base, scopedIdNames: { a: '1:"2"' } },
+        { ...base, scopedIdNames: { a: "1:2" } },
+      ],
+      // requiresPerInstanceCss undefined vs false vs true
+      [
+        { ...base, requiresPerInstanceCss: undefined },
+        { ...base, requiresPerInstanceCss: true },
+      ],
+      [
+        { ...base, requiresPerInstanceCss: false },
+        { ...base, requiresPerInstanceCss: true },
+      ],
+    ];
+
+    for (const [left, right] of pairs) {
+      expect(internals.inputKey(left)).not.toBe(internals.inputKey(right));
+    }
+
+    // In-place mutation of BascikConfig.scoping properties (preserve array, booleans, attributes)
+    const scoping = BascikConfig.scoping!;
+    const keyBefore = internals.inputKey(base);
+    scoping.deduplicateCss = false;
+    const keyAfterBool = internals.inputKey(base);
+    expect(keyAfterBool).not.toBe(keyBefore);
+    scoping.deduplicateCss = true;
+    expect(internals.inputKey(base)).toBe(keyBefore);
+
+    scoping.attributes.id = false;
+    expect(internals.inputKey(base)).not.toBe(keyBefore);
+    scoping.attributes.id = true;
+
+    scoping.preserve.push("pre");
+    expect(internals.inputKey(base)).not.toBe(keyBefore);
+    scoping.preserve.pop();
+    expect(internals.inputKey(base)).toBe(keyBefore);
+
+    // Distinct preserve array elements vs single joined string with delimiters
+    scoping.preserve = ["a|b", "c"];
+    const keySplit1 = internals.inputKey(base);
+    scoping.preserve = ["a", "b|c"];
+    const keySplit2 = internals.inputKey(base);
+    expect(keySplit1).not.toBe(keySplit2);
+    scoping.preserve = ["code"];
+  });
 });

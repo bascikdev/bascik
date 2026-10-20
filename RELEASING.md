@@ -88,6 +88,12 @@ The Marketplace rejects semver prerelease identifiers, so extension versions are
 - `ext-pre-v0.1.0` publishes with `vsce publish --pre-release` (opt-in for users).
 - `ext-v0.2.0` publishes a stable release.
 
+After updating `extensions/vscode-bascik/package.json` and pushing that commit, create and push the matching stable tag. Replace `0.2.0` with the version in the package file:
+
+```sh
+git tag ext-v0.2.0 && git push origin ext-v0.2.0
+```
+
 Pre-release and stable uploads must use different version numbers: if `0.1.0` is uploaded as a pre-release, the next stable release must be a distinct version. VS Code auto-updates every user to the highest version available, including pre-release users, so a stable version higher than the latest pre-release moves them onto stable. The Marketplace convention is to avoid surprises by using an odd minor for pre-releases and an even minor for stable (`0.1.*` pre-release, `0.2.*` stable). A version number can only be published once.
 
 Pre-release support requires `engines.vscode` of at least 1.63.0; the extension currently declares `^1.90.0`. To check packaging locally without publishing:

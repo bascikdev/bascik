@@ -209,16 +209,21 @@ export const onError = (
   error: unknown,
   res: BascikResponse,
   req?: BascikRequest,
-): void => {
+  priorStatus?: number,
+): number | void => {
   // Client disconnected mid-request: not a server bug, nothing to respond to.
-  if (isNetworkResetError(error)) return;
+  if (isNetworkResetError(error)) return STATUS_CLIENT_CLOSED;
   const secHeaders = getSecurityHeaders(req);
+
+  if (error instanceof ServerScriptError) console.error(error.message);
+  else console.error("Request/Stream error:", error);
 
   try {
     if (!res.headersSent) {
       if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
         res.respond(404, { ...secHeaders });
         res.end();
+        return 404;
       } else {
         // Try serving custom 500 page from memory store
         let custom500Page: any = undefined;
@@ -237,6 +242,7 @@ export const onError = (
           ...secHeaders,
         });
         res.end(bodyBuf);
+        return 500;
       }
     }
   } catch (respondErr) {
@@ -249,14 +255,18 @@ export const onError = (
         });
       }
       res.end(DEFAULT_500_BODY);
+      return 500;
     } catch (endErr) {
       console.error("Error ending stream/request:", endErr);
+      return 500;
     }
   }
 
-  // A server script's report is complete already; its stack would only add Bascik's frames.
-  if (error instanceof ServerScriptError) console.error(error.message);
-  else console.error("Request/Stream error:", error);
+  if (res.headersSent) {
+    if (isPeerAbort(error)) return STATUS_CLIENT_CLOSED;
+    return priorStatus ?? 500;
+  }
+  return 500;
 };
 
 /**
@@ -1070,7 +1080,10 @@ export const createRequestHandler = () => {
       res.respond(responseStatus, responseHeaders);
       return res.end(isHead ? undefined : page.content);
     } catch (error) {
-      onError(error, res, req);
+      const errStatus = onError(error, res, req, responseStatus);
+      if (typeof errStatus === "number") {
+        responseStatus = errStatus;
+      }
     } finally {
       logAccess();
     }

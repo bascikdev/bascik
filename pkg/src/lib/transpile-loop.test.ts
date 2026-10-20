@@ -99,6 +99,55 @@ describe("Prompt 34: Transpile loop performance & operation count guard", () => 
     expect(at2N / atN).toBeLessThan(2.5);
   });
 
+  it("attribute-value checks scan a linear number of bytes as instances grow", () => {
+    const componentList: ComponentList = {
+      "item-card": {
+        fileContent: `<div class="card"><p data-bascik-prop-title></p></div>`,
+      },
+      "outer-card": {
+        fileContent: `<section class="outer"><div data-bascik-slot></div></section>`,
+      },
+    };
+    const page = (n: number) =>
+      Array.from(
+        { length: n },
+        (_, i) =>
+          `<outer-card><item-card title="Item ${i}"></item-card></outer-card>`,
+      ).join("\n");
+
+    const scanned = (n: number): number => {
+      componentsModule.__componentScanStatsForTests.reset();
+      const result = recursivelyTranspile(page(n), componentList);
+      expect(result.usedComponents).toHaveLength(2 * n);
+      return componentsModule.__componentScanStatsForTests
+        .attributeValueBytesScanned;
+    };
+
+    const atN = scanned(300);
+    const at2N = scanned(600);
+    // Restarting each check at offset zero re-reads the resolved prefix: ~4x at 2N.
+    expect(at2N / atN).toBeLessThan(2.5);
+  });
+
+  it("checks each inserted template for mask closure once, not again as the next sibling's prefix", () => {
+    const componentList: ComponentList = {
+      "code-card": {
+        fileContent: `<div class="card"><script>${"run();".repeat(200)}</script><p>body</p></div>`,
+      },
+    };
+    const body = Array.from(
+      { length: 200 },
+      () => `<code-card></code-card>`,
+    ).join("\n");
+    componentsModule.__componentScanStatsForTests.reset();
+    const result = recursivelyTranspile(body, componentList);
+    expect(result.usedComponents).toHaveLength(200);
+    const checked =
+      componentsModule.__componentScanStatsForTests.closureBytesChecked;
+    // Re-verifying the previous template as the next prefix doubles this.
+    expect(checked).toBeLessThan(1.5 * result.transpiledHtmlBody.length);
+  });
+
   it("falsification check: re-masks properly when a component introduces raw text tags (<script>/<style>/comments)", () => {
     const componentList: ComponentList = {
       "code-viewer": {

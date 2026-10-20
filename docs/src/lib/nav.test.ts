@@ -138,10 +138,13 @@ describe("renderPagination", () => {
 
   it("keeps social profile links out of the nav data", () => {
     const hrefs = NAV.flatMap((s) => s.pages.map((p) => p.href));
-    // The only off-site nav entry is the Merch shop. Social profiles stay in
-    // social-links.ts and must never appear here.
+    // The only off-site nav entries are NPM and the Merch shop. Social
+    // profiles stay in social-links.ts and must never appear here.
     const external = hrefs.filter((h) => /^https?:\/\//.test(h));
-    expect(external).toEqual(["https://shop.bascik.dev"]);
+    expect(external).toEqual([
+      "https://www.npmjs.com/org/bascik",
+      "https://shop.bascik.dev",
+    ]);
     for (const social of [
       "youtube.com",
       "instagram.com",

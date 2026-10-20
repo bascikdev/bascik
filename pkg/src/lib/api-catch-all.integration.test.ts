@@ -224,6 +224,12 @@ describe("catch-all API routes over HTTP/1.1 and HTTP/2", () => {
       expect(JSON.parse(res.body).params).toEqual({
         path: ["hello world", "café", "%41"],
       });
+
+      const paramRes = await send("/api/users/100%2520");
+      expect(JSON.parse(paramRes.body)).toEqual({
+        file: "users/[id].ts",
+        params: { id: "100%20" },
+      });
     });
 
     it.each([

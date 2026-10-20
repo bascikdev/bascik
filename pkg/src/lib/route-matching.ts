@@ -316,17 +316,23 @@ const matchCatchAll = (
   return { params };
 };
 
-/** Exact and `[param]` matching against decoded path segments (unchanged pre-catch-all behavior). */
+/** Exact and `[param]` matching against decoded path segments. Dynamic params decode once from raw segments. */
 const matchExactOrParam = (
   route: ApiRouteDefinition,
   routeSegments: string[],
   pathSegments: string[],
+  rawNonEmptySegments: string[],
 ): Record<string, string> | null => {
   if (pathSegments.length !== routeSegments.length) return null;
 
   if (!route.isDynamic) {
     return routeSegments.every((seg, i) => seg === pathSegments[i]) ? {} : null;
   }
+
+  // When rawNonEmptySegments aligns with pathSegments (i.e. every non-empty raw segment
+  // corresponds to the non-empty decoded segment), extract from raw segment to decode once.
+  // Otherwise fall back to the decoded path segment.
+  const rawAligned = rawNonEmptySegments.length === pathSegments.length;
 
   const params: Record<string, string> = {};
   for (let i = 0; i < routeSegments.length; i++) {
@@ -335,10 +341,15 @@ const matchExactOrParam = (
 
     if (rSeg.startsWith("[") && rSeg.endsWith("]")) {
       const paramName = rSeg.slice(1, -1);
-      try {
-        params[paramName] = decodeURIComponent(pSeg);
-      } catch {
-        params[paramName] = pSeg;
+      if (rawAligned) {
+        const rawSeg = rawNonEmptySegments[i];
+        params[paramName] = decodeSegmentOnce(rawSeg) ?? rawSeg;
+      } else {
+        try {
+          params[paramName] = decodeURIComponent(pSeg);
+        } catch {
+          params[paramName] = pSeg;
+        }
       }
     } else if (rSeg !== pSeg) {
       return null;
@@ -352,12 +363,11 @@ const matchExactOrParam = (
  * Exact segment matching for static paths and deterministic parameter
  * extraction for `[param]` segments, with no dynamic regular expressions.
  *
- * `pathname` is what exact and `[param]` routes match against (hosts pass the
- * decoded path; `[param]` values are decoded again when possible, as before).
- * Catch-all routes instead read `rawPathname`, the undecoded request path:
- * it is split on `/` first and each segment decoded exactly once, so an
- * encoded `%2F` can never forge a segment boundary. A host that only has the
- * decoded path must not pass it as `rawPathname`.
+ * `pathname` is what exact routes match against (hosts pass the decoded path).
+ * Dynamic `[param]` and catch-all routes extract parameter values from
+ * `rawPathname` (the undecoded request path), decoding each segment exactly
+ * once, so an encoded `%2F` can never forge a segment boundary and values like
+ * `100%2520` are not decoded twice into spaces.
  *
  * Of all matching routes the most specific wins regardless of array order.
  * Throws `InvalidApiPathError` when the winner is a catch-all whose capture is
@@ -370,7 +380,7 @@ export const matchApiRoute = <R extends ApiRouteDefinition>(
   rawPathname: string = pathname,
 ): (ApiRouteMatch & { route: R }) | null => {
   const pathSegments = pathname.split("/").filter(Boolean);
-  let rawSegments: string[] | undefined;
+  const rawSegments = splitRawPathname(rawPathname);
 
   let best: {
     route: R;
@@ -398,10 +408,15 @@ export const matchApiRoute = <R extends ApiRouteDefinition>(
     let outcome:
       { params: ApiRouteParams } | { invalid: InvalidApiPathError } | null;
     if (catchAllName !== null) {
-      rawSegments ??= splitRawPathname(rawPathname);
       outcome = matchCatchAll(routeSegments, catchAllName, rawSegments);
     } else {
-      const params = matchExactOrParam(route, routeSegments, pathSegments);
+      const rawNonEmptySegments = rawSegments.filter(Boolean);
+      const params = matchExactOrParam(
+        route,
+        routeSegments,
+        pathSegments,
+        rawNonEmptySegments,
+      );
       outcome = params ? { params } : null;
     }
 

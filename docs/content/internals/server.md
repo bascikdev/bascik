@@ -276,7 +276,7 @@ Every incoming request (`req.path`) passes through a deterministic normalization
    - Strip `.html` extension if present
    - Alternate trailing-slash variant (`/blog` vs `/blog/`)
    - Fallback to full `mem.getPage()` lookup (which returns `/404` if unmapped)
-8. **Access Logging Lifecycle:** Requests log when the response completes (`close` or `finish`), capturing full transfer duration. Static asset requests and page responses log status and elapsed duration; `/_health` probes and SSE pings are excluded from access logs.
+8. **Access Logging Lifecycle:** Requests log when the response completes (`close` or `finish`), capturing full transfer duration. Static asset requests and page responses log status and elapsed duration; `/_health` probes and SSE pings are excluded from access logs. A buffered page-script failure logs the error response status, such as `500`, rather than the page's initially selected `200`. Errors after headers are committed retain the committed status; client disconnects use `499`.
 
 ### Security response headers
 

@@ -224,6 +224,7 @@ When optimizing the compiler or measuring before-and-after speed differences, us
   2. **Starter site (`create-bascik`):** Scaffold into `/private/tmp` with `node create/dist/index.js starter-site -y --no-install --no-dev`, link workspace `node_modules` entries (keeping `.cache` private and `@bascik/bascik` as a symlink), and run `profile:compare --project <starter-site> --rounds 5`.
   3. **Full `docs` site (build and live dev edits):** Run `yarn workspace @bascik/bascik profile:compiler --tools control --modes dev --edits --seed-cache --rounds 3 --compiler <compiler>/pkg --report-dir "$REPORT_DIR"` for dev live-edit latency (`diskMs`), or `profile:compare` on a private `docs` copy for cold/warm multi-worker builds.
 - **Microbenchmarks:** Run `yarn pkg:bench` (`pkg/bench/transpile.bench.ts`) for isolated throughput benchmarks, or import baseline and candidate `dist/lib/*.js` modules into a single Node process for direct interleaved function comparisons.
+- **Differential and profile inspection tools:** Use `yarn workspace @bascik/bascik profile:fuzz --baseline <built-pkg>` for seeded, shrinking baseline-versus-candidate checks, and `profile:summary <capture.cpuprofile>` for read-only CPU self/inclusive and hot-line summaries. Keep their options and limitations in `pkg/bench/README.md` rather than duplicating them here.
 - **Clean up private directories:** Always remove temporary `/private/tmp` benchmark roots and detached worktrees once measurements are recorded.
 
 ### Test Framework: Vitest 5

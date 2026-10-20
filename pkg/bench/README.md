@@ -8,6 +8,8 @@ Contributor tooling for measuring Bascik itself. Nothing in this directory ships
 | `yarn workspace @bascik/bascik profile:workload`    | `profile-workload.ts`   | Bounded runtime captures (servers, dev, builds) on a synthetic fixture |
 | `yarn workspace @bascik/bascik profile:compiler`    | `compiler-timeline.ts`  | Dev and build timelines on a copy of a real project                    |
 | `yarn workspace @bascik/bascik profile:compare`     | `compiler-compare.ts`   | Paired baseline versus candidate compiler runs on one fixture          |
+| `yarn workspace @bascik/bascik profile:fuzz`        | `compiler-fuzz.ts`      | Seeded differential checks against a built baseline compiler           |
+| `yarn workspace @bascik/bascik profile:summary`     | `profile-summary.ts`    | Read-only CPU sample and hot-line summaries                            |
 | `node pkg/bench/profile-boundaries.ts <report-dir>` | `profile-boundaries.ts` | Resource-boundary capture with optional allocation sampling            |
 
 Supporting modules: `profile-runner.ts` (bounded, process-group-owned command execution), `profile-fixture.ts` and `profile-tls.ts` (synthetic project and private TLS trust), `profile-subject.ts` and `compiler-timeline-subject.ts` (the processes being measured), `profile-load.ts` (load generator), `profile-observers.ts`, `profile-isolate.ts`, and `profile-diagnostics.ts` (worker/child observation, inspector profiling, and event journals).
@@ -37,9 +39,44 @@ test("recursivelyTranspile", async ({ bench }) => {
 
 A single bench uses `await bench("name", fn).run()`. Each `test` has the default 60 second timeout; pass `{ timeout }` as the second argument for large comparisons.
 
+The suite also measures mixed-case raw-text masking, the tag-absent masking fast path, and shared JavaScript segment normalization with and without its memo. Correctness assertions run before timing; these are throughput measurements, not wall-clock test thresholds.
+
+## Differential Compiler Fuzzing
+
+Build both compiler revisions first, using a detached worktree for the baseline rather than stashing changes. Pass absolute package directories containing `dist/lib/`:
+
+```sh
+yarn workspace @bascik/bascik profile:fuzz \
+  --baseline "$BASELINE_PKG" --candidate "$PWD/pkg" \
+  --runs 20000 --seed 31337
+```
+
+The default candidate is this workspace's package. Defaults are 2,000 cases per target and seed `31337`. Targets are `expansion`, `props`, `slots`, `tags`, `masking`, and `javascript`. Generated inputs include uppercase markers, quoted and malformed attributes, replacement tokens, nested slots, raw-text elements, and JavaScript whitespace and statement boundaries. Component definitions form an acyclic graph.
+
+Each baseline result is compared with two candidate calls to expose warm-cache drift. HTML, tag offsets, slot results, prop bindings, JavaScript, and thrown error names/messages are compared exactly. No shield-token normalization or known-difference filters are applied. The compiler runs in an empty temporary working directory, which is removed afterward; it does not load the repository's project config.
+
+The command prints JSON and exits nonzero on a mismatch. A failure includes its seed, shrunk counterexample, and replay path. Replay one target with the same compiler snapshots:
+
+```sh
+yarn workspace @bascik/bascik profile:fuzz \
+  --baseline "$BASELINE_PKG" --candidate "$PWD/pkg" \
+  --targets props --runs 20000 --seed 31337 --path '0:1:0'
+```
+
+Use the actual path from the failure report. This opt-in check complements unit tests and same-path `profile:compare` builds; it does not execute build scripts, watch files, spawn page workers, or prove browser behavior. The normal unit suite verifies runner comparison, warm-call detection, shrinking/replay, and argument validation without requiring a baseline checkout.
+
+## CPU Profile Summaries
+
+```sh
+yarn workspace @bascik/bascik profile:summary \
+  /absolute/path/to/capture.cpuprofile --filter component --limit 20
+```
+
+This reads an existing V8 profile without modifying it. Self time, inclusive time, and the hottest `positionTicks` lines are grouped by full function location, including column. Recursive frames contribute once per inclusive sample. Negative sampler deltas are clamped to zero. Totals include idle and GC samples and measure sampled time, not end-to-end build duration. Lines refer to the files recorded in the profile, often built JavaScript; no source-map remapping is performed. Profiles without samples or with invalid graph references are rejected.
+
 ## Report Directories
 
-Every profiling command writes to a report directory you pass explicitly. The same rules apply to all of them:
+Workload captures and build comparisons write to a report directory you pass explicitly. The same rules apply to all of them:
 
 - The path must be absolute and outside the repository and every served, watched, or cleaned output tree.
 - The directory must be new or empty. An existing directory must belong to the current user and have mode `0700`. Unsafe roots are rejected before anything is written.

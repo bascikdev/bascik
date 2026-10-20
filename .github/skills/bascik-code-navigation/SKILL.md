@@ -18,3 +18,9 @@ The gitignored `.code-map/pkg.json` indexes `pkg/src`, including tests. Each mod
 The map tracks module imports, including type imports. It is not a function call graph and cannot reliably capture computed dynamic imports, worker script paths, IPC, or HTML script execution. Confirm behavior in source; use symbol references or a targeted search for those boundaries. No architecture rules are enforced.
 
 The helper uses SWC because dependency-cruiser's TypeScript compiler API support currently excludes Bascik's TypeScript 7 compiler. Both mapping dependencies are development-only; neither changes package compilation or runtime behavior.
+
+## Compiler Ownership
+
+- `components.ts` owns component discovery and re-exports markup helpers. For markup behavior, inspect the owner directly: `component-attribute-scan.ts`, `component-tags.ts`, `component-masking.ts`, `component-props.ts`, `component-slots.ts`, or `component-inheritance.ts`.
+- `processing.ts` owns page scheduling, worker dispatch, generations, and publication queues. Page compilation and artifact accounting live in `page-transpile.ts`; component expansion in `component-expansion.ts`; minifier adapters in `page-minification.ts`; source locations and page errors in `page-diagnostics.ts`. Existing `processing.ts` exports are compatibility entry points.
+- For compiler timing or baseline-versus-candidate behavior, use `profile:summary`, `profile:fuzz`, and `profile:compare`; commands and limitations are documented in `pkg/bench/README.md`.

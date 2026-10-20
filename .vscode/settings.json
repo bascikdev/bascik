@@ -1,7 +1,5 @@
 {
   "html.validate.scripts": false,
-  "vitest.enable": true,
-  "vitest.nodeExecPath": "node",
   "vitest.nodeExecutable": "node",
   "bun.test.enable": false,
   "search.exclude": {
@@ -10,6 +8,18 @@
   },
   "editor.formatOnSave": true,
   "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[html]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
   "prettier.requireConfig": false,
   "files.insertFinalNewline": true
 }

@@ -6,7 +6,8 @@ Zero runtime.
 Bascik is a build tool for HTML components with automatically scoped CSS and JavaScript. You write vanilla HTML, CSS, and JavaScript. Bascik scopes and assembles reusable component files into plain static HTML pages at build time, with no framework runtime, no Shadow DOM, and no virtual DOM. The code that ships is the code you wrote.
 
 **Documentation:** [bascik.dev](https://bascik.dev)  
-**Package:** [`@bascik/bascik`](https://www.npmjs.com/package/@bascik/bascik)
+**Package:** [`@bascik/bascik`](https://www.npmjs.com/package/@bascik/bascik)  
+**npm organization:** [@bascik](https://www.npmjs.com/org/bascik)
 
 ## Get Started
 

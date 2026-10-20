@@ -6,6 +6,8 @@ Bascik transforms source HTML into deployable HTML by replacing every custom com
 
 Every time a source page or component file changes, `pageProcessing(filePath)` in `processing.ts` is called. This is the top-level entry point for the whole pipeline.
 
+`processing.ts` owns scheduling, generations, and publication queues. Page compilation and artifact accounting live in `page-transpile.ts`, component expansion in `component-expansion.ts`, minifier adapters in `page-minification.ts`, and source locations and error reporting in `page-diagnostics.ts`. The existing `processing.ts` exports remain available. Component discovery stays in `components.ts`; its markup helpers live in the `component-attribute-scan.ts`, `component-tags.ts`, `component-masking.ts`, `component-props.ts`, `component-slots.ts`, and `component-inheritance.ts` modules. Types and constants specific to each responsibility stay in that module.
+
 Build scripts (`<script data-bascik-build>`) run **first**, before component resolution, so their output can contain component tags. Body HTML minification runs _after_ component resolution so that whitespace-sensitive content from resolved components (e.g. `<pre>` blocks from `<code-block>`) is preserved intact.
 
 ## Lifecycle and Pipeline Ordering Guarantee
@@ -27,7 +29,7 @@ This guarantee ensures that `pre` scripts can reliably generate source files or 
 Artifact accounting has a **single owner**: the main-thread disk writer. Collector state is process-local, so worker-local collectors can never reach the main thread. Every emitted artifact funnels through one owner so serial and worker builds record identical manifest and CSP metadata.
 
 - `transpilePage` computes each page's inline script/style CSP hashes from its **final emitted HTML** (`computePageCspHashes`) before the bytes are transferred. It never records to a global collector itself, because the compiling agent (a worker or the main thread) is not the accounting owner.
-- The single owner is `writeTranspiledPage` (in `processing.ts`). It writes the file and, **only after a successful write**, records the page's manifest entry and CSP hashes. A failed write throws before recording, so a failed write is never accounted as emitted.
+- The single owner is `writeTranspiledPage` (in `page-transpile.ts`). It writes the file and, **only after a successful write**, records the page's manifest entry and CSP hashes. A failed write throws before recording, so a failed write is never accounted as emitted.
 - In the worker path (`processAllPages` with `pipeline.workers: true`), `page-worker.ts` passes `deferDiskWrite: true` to `transpilePage`, so the worker computes and transfers the bytes but never writes or records. The main thread writes the transferred bytes (a `Buffer` view over the transferred `ArrayBuffer`, no decode) and records manifest and CSP from them.
 - Serial builds go through the same `writeTranspiledPage` owner, so both modes produce byte-identical artifact metadata.
 - Raw-copied assets (`copyReplicatePath`) are recorded at the **destination** in `dist/` after a successful copy, including hash-equal no-op copies. Recording the source path was the raw-asset defect: the manifest collector rejects paths outside `dist/`, so those assets silently vanished from the manifest. A failed copy throws before recording.
@@ -155,7 +157,7 @@ For bracket-parameter pages, `<script data-bascik-routes>` runs before page buil
 
 ### Printed Output Guards
 
-These apply to step 1. Before a build script's stdout is spliced into the page, `removeOutputDirectives` (`pkg/src/lib/output-directives.ts`) strips every `data-bascik-build`, `data-bascik-server`, `data-bascik-stream`, and `data-bascik-routes` script from it, and the page logs one warning naming them. Without this, the multi-pass loop in `processing.ts` would execute a printed build directive and register a printed server or stream directive, so data printed from a CMS body or an API response could run code. The script cache stores the raw stdout; the removal is reapplied on every use.
+These apply to step 1. Before a build script's stdout is spliced into the page, `removeOutputDirectives` (`pkg/src/lib/output-directives.ts`) strips every `data-bascik-build`, `data-bascik-server`, `data-bascik-stream`, and `data-bascik-routes` script from it, and the page logs one warning naming them. Without this, the multi-pass loop in `page-transpile.ts` would execute a printed build directive and register a printed server or stream directive, so data printed from a CMS body or an API response could run code. The script cache stores the raw stdout; the removal is reapplied on every use.
 
 A `BASCIK_ROUTE` payload over 32 KB is written to a temporary file and restored into `process.env` by a `--import` preload before the script and its imports run (`spillLargeEnv` in `script-runner.ts`). The OS rejects large environment strings with `E2BIG`: 128 KiB per string on Linux, about 1 MiB in total on macOS.
 
