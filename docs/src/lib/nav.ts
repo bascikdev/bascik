@@ -207,6 +207,11 @@ export const NAV: NavSection[] = [
       { href: "/releases", label: "Releases" },
       { href: "/press", label: "Press Resources" },
       { href: "/sponsor", label: "Sponsor" },
+      {
+        href: "https://www.npmjs.com/org/bascik",
+        label: "NPM",
+        external: true,
+      },
       { href: "https://shop.bascik.dev", label: "Merch", external: true },
     ],
   },
