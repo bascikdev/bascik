@@ -386,7 +386,7 @@ The per-file checks, from `@bascik/language-server`:
 | --------------------------------------------------------------------------------------------------- | --------------------------- | ------------------------ |
 | Unknown `data-bascik-*` attributes                                                                  | `unknown-bascik-attribute`  | Warning                  |
 | A script tag with two directives, such as `data-bascik-build` and `data-bascik-server`              | `script-mode-conflict`      | Error                    |
-| A `data-bascik-build` value other than `page` (`data-bascik-build="pages"`)                         | `unknown-directive-value`   | Warning                  |
+| A value on `data-bascik-build` or `data-bascik-build-once` (`data-bascik-build="page"`)             | `unknown-directive-value`   | Warning                  |
 | A declared component prop passed without the `data-bascik-prop-` prefix (auto-fixable with `--fix`) | `missing-prop-prefix`       | Warning                  |
 | API route file with no recognized method export                                                     | `missing-method-handler`    | Error                    |
 | Method-like API export with wrong casing (`get`, `Post`)                                            | `invalid-method-case`       | Warning                  |

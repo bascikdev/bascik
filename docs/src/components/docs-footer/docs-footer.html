@@ -6,13 +6,13 @@
           ><docs-logo
         /></a>
         <p class="dfooter-desc">HTML components.<br />Zero runtime.</p>
-        <script data-bascik-build>
+        <script data-bascik-build-once>
           import { renderSocialLinks } from "@/lib/social-links.ts";
           export default async () => renderSocialLinks();
         </script>
       </div>
       <div class="dfooter-sitemap">
-        <script data-bascik-build>
+        <script data-bascik-build-once>
           import { NAV } from "@/lib/nav.ts";
           import { renderNavListItem } from "@/lib/nav-helpers.ts";
           export default async function () {
@@ -33,7 +33,7 @@
       <span class="dfooter-copy">Built with <a href="/">Bascik</a>.</span>
       <span class="dfooter-copy"
         >&copy;
-        <script data-bascik-build>
+        <script data-bascik-build-once>
           export default () => String(new Date().getFullYear());
         </script>
         <a

@@ -163,7 +163,13 @@ export const SCRIPT_DIRECTIVES = [
     name: "data-bascik-build",
     detail: "Bascik build-time script",
     documentation:
-      "Executes in Node.js at build time. The default exported handler function returns HTML markup that replaces this script tag in the generated HTML.",
+      "Executes in Node.js at build time. In a component, it runs for each use with that page's context. The default exported handler function returns HTML markup that replaces this script tag in the generated HTML.",
+  },
+  {
+    name: "data-bascik-build-once",
+    detail: "Bascik build-time script, run once",
+    documentation:
+      "Executes once, without page or route context, and reuses its markup wherever the file is used. In a component, it runs when the component is registered and every use shares the output; in a dynamic route template, every generated page shares it.",
   },
   {
     name: "data-bascik-routes",
@@ -426,6 +432,7 @@ export function collectLeadingSlashDiagnostics(
 ): Diagnostic[] {
   if (
     !attrs.has("data-bascik-build") &&
+    !attrs.has("data-bascik-build-once") &&
     !attrs.has("data-bascik-server") &&
     !attrs.has("data-bascik-routes") &&
     !attrs.has("data-bascik-stream")
@@ -875,6 +882,7 @@ export function createDiagnostics(
 
       const directiveAttrs = [
         "data-bascik-build",
+        "data-bascik-build-once",
         "data-bascik-server",
         "data-bascik-routes",
         "data-bascik-stream",
@@ -886,6 +894,12 @@ export function createDiagnostics(
           const d2 = presentDirectives[j];
           let message: string;
           if (
+            (d1 === "data-bascik-build" && d2 === "data-bascik-build-once") ||
+            (d1 === "data-bascik-build-once" && d2 === "data-bascik-build")
+          ) {
+            message =
+              "data-bascik-build and data-bascik-build-once cannot both appear on the same <script> tag. Choose one build-script mode.";
+          } else if (
             (d1 === "data-bascik-build" && d2 === "data-bascik-server") ||
             (d1 === "data-bascik-server" && d2 === "data-bascik-build")
           ) {
@@ -928,17 +942,33 @@ export function createDiagnostics(
             start: document.positionAt(scriptMatch.index ?? 0),
             end: document.positionAt((scriptMatch.index ?? 0) + openTag.length),
           },
-          message: unknownDirectiveValueMessage(buildValue.trim()),
+          message: unknownDirectiveValueMessage(),
           severity: DiagnosticSeverity.Warning,
           source: "bascik",
           code: "unknown-directive-value",
         });
       }
-
+      const buildOnceValue = attrs.get("data-bascik-build-once");
+      if (
+        typeof buildOnceValue === "string" &&
+        !isKnownBuildValue(buildOnceValue)
+      ) {
+        diagnostics.push({
+          range: {
+            start: document.positionAt(scriptMatch.index ?? 0),
+            end: document.positionAt((scriptMatch.index ?? 0) + openTag.length),
+          },
+          message: unknownDirectiveValueMessage("data-bascik-build-once"),
+          severity: DiagnosticSeverity.Warning,
+          source: "bascik",
+          code: "unknown-directive-value",
+        });
+      }
       const hasServerDirective =
         attrs.has("data-bascik-server") ||
         attrs.has("data-bascik-stream") ||
         attrs.has("data-bascik-build") ||
+        attrs.has("data-bascik-build-once") ||
         attrs.has("data-bascik-routes");
 
       if (hasServerDirective) {
@@ -948,7 +978,8 @@ export function createDiagnostics(
           ? "stream"
           : attrs.has("data-bascik-server")
             ? "server"
-            : attrs.has("data-bascik-build")
+            : attrs.has("data-bascik-build") ||
+                attrs.has("data-bascik-build-once")
               ? "build"
               : "routes";
         const hasSrcAttribute = /\ssrc\s*=/i.test(openTag);
@@ -1079,6 +1110,7 @@ export function createDiagnostics(
       const matchStart = elementMatch.index;
       const scriptDirectives = new Set([
         "data-bascik-build",
+        "data-bascik-build-once",
         "data-bascik-server",
         "data-bascik-routes",
         "data-bascik-stream",
@@ -1693,6 +1725,7 @@ export function createDefinition(
     const attrs = parseScriptOpenTagAttributes(openTag);
     if (
       !attrs.has("data-bascik-build") &&
+      !attrs.has("data-bascik-build-once") &&
       !attrs.has("data-bascik-server") &&
       !attrs.has("data-bascik-routes")
     ) {

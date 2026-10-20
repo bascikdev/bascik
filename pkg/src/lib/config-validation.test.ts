@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { resolve } from "node:path";
 
 // userConfig is mocked so config.ts can be imported without top-level await
 vi.mock("./userConfig.js", () => ({
@@ -570,6 +571,28 @@ describe("referenced files (fs half)", () => {
     expect(errors[0].key).toBe("pipeline.watchPaths[0]");
     expect(errors[0].value).toBe("src/missing");
     expect(errors[0].message).toContain("does not exist");
+  });
+
+  it("checks a glob watchPaths entry by the folder before its first wildcard", () => {
+    // Resolved the way the validator resolves them, so the test holds on Windows too.
+    const existing = new Set([
+      resolve("/project", "content"),
+      resolve("/project", "data"),
+    ]);
+    const fs = {
+      ...missingFs,
+      existsSync: (path: string) => existing.has(path),
+    };
+    expect(
+      validateConfigPaths(
+        {
+          pipeline: {
+            watchPaths: ["content/**/*.md", "data/*.json", "missing/**/*.md"],
+          },
+        },
+        { fs, cwd: "/project" },
+      ).map((error) => error.value),
+    ).toEqual(["missing/**/*.md"]);
   });
 
   it("rejects inlineStyles entries that do not exist", () => {

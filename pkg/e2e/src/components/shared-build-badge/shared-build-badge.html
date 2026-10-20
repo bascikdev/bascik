@@ -1,0 +1,11 @@
+<div class="shared-build-badge">
+  <script data-bascik-build-once>
+    export default () =>
+      '<span class="once-label" id="once-anchor" data-testid="build-once-output">' +
+      (process.env.BASCIK_PAGE_PATH
+        ? "page context leaked"
+        : "no page context") +
+      "</span>";
+  </script>
+  <script data-bascik-build src="./shared-build-data.js"></script>
+</div>

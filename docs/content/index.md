@@ -323,3 +323,30 @@ footer {
   order: 99;
 }
 ```
+
+<!-- demo:home-stream-output-html -->
+
+```html
+<!-- Final document after the streamed result arrives; the script itself is server-side. -->
+<div class="stream-layout">
+  <div class="skeleton" role="status">Loading live metrics...</div>
+  <div class="slot">
+    <article class="card">
+      <h3>Primary Cluster</h3>
+      <p>99.99% Uptime</p>
+    </article>
+  </div>
+</div>
+```
+
+<!-- demo:home-stream-output-css -->
+
+```css
+.stream-layout:has(.card) .skeleton {
+  display: none;
+}
+
+footer {
+  order: 99;
+}
+```

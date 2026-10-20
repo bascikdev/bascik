@@ -22,7 +22,7 @@ import { getImportRoot } from "./import-root.ts";
 import {
   ATTR,
   ROUTES_FLAG,
-  BUILD_FLAG,
+  ANY_BUILD_FLAG,
   SERVER_FLAG,
   STREAM_FLAG,
   SCRIPT_END_TAG,
@@ -72,7 +72,7 @@ const ROUTES_SCRIPT_RE = new RegExp(
 );
 
 const ROUTES_BUILD_CONFLICT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
 

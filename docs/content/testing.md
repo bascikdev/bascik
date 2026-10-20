@@ -12,7 +12,7 @@ Testing a Bascik application is structured into six core tiers:
 | --------------------------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
 | **[Unit Testing](/testing/unit-testing)**           | Vitest       | Validates pure functions, calculations, algorithms, and data transformations.                                                                   | Sub-second (~10ms)  |
 | **[Component Testing](/testing/component-testing)** | Vitest       | Validates `.html` component contracts, slot placeholders, prop substitutions, and compiled `dist/` HTML output.                                 | Sub-second (~100ms) |
-| **[Build Scripts](/testing/build-scripts)**         | Vitest       | Validates compile-time `<script data-bascik-build>` logic, page-aware helpers, and data pipelines.                                              | Sub-second (~30ms)  |
+| **[Build Scripts](/testing/build-scripts)**         | Vitest       | Validates compile-time `<script data-bascik-build>` logic, per-page helpers, and data pipelines.                                                | Sub-second (~30ms)  |
 | **[Server Scripts](/testing/server-scripts)**       | Vitest       | Validates request-time `<script data-bascik-server>` logic, database integrations, and dynamic routing.                                         | Sub-second (~20ms)  |
 | **[Exec Scripts](/testing/exec-scripts)**           | Vitest       | Validates build configuration lifecycle scripts (XML sitemaps, search indexes, RSS feeds).                                                      | Sub-second (~20ms)  |
 | **[End-to-End Testing](/testing/e2e-testing)**      | Playwright   | Validates full browser interactions, DOM event handling, CSS `:has()` rules, and multi-page routing across static, dev, and production servers. | Seconds             |
@@ -94,7 +94,7 @@ describe("Card component", () => {
 
 Build scripts run in Node.js during compilation to generate static HTML before pages are saved to `dist/`. Keep `<script data-bascik-build>` tags thin by importing pure helper functions from `src/lib/`.
 
-This allows testing Markdown parsers, navigation generators, and page-aware helpers (which read `BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`, `BASCIK_PAGES_DIR`, and `BASCIK_SITE_URL`) by mocking environment variables in Vitest:
+This allows testing Markdown parsers, navigation generators, and build helpers that read page context (`BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`, `BASCIK_PAGES_DIR`, and `BASCIK_SITE_URL`) by mocking environment variables in Vitest:
 
 ```ts
 // src/lib/canonical.test.ts
@@ -175,7 +175,7 @@ Explore specialized guides for each testing topic:
 
 - **[Unit Testing](/testing/unit-testing)**: Configure Vitest, write pure business logic tests, and generate V8 coverage reports.
 - **[Component Testing](/testing/component-testing)**: Validate source template accessibility contracts and verify compiled `dist/` HTML output.
-- **[Build Scripts](/testing/build-scripts)**: Test compile-time `<script data-bascik-build>` build modules and page-aware environment helpers.
+- **[Build Scripts](/testing/build-scripts)**: Test compile-time `<script data-bascik-build>` build modules and per-page environment helpers.
 - **[Server Scripts](/testing/server-scripts)**: Test request-time `<script data-bascik-server>` handlers, query parsers, and API integrations.
 - **[Exec Scripts](/testing/exec-scripts)**: Test build configuration lifecycle scripts (sitemaps, search indexes, RSS feeds) writing to `dist/`.
 - **[End-to-End Testing](/testing/e2e-testing)**: Author Playwright suites across static, dev, HTTP/1.1, and HTTP/2 servers using `data-testid` strategies.

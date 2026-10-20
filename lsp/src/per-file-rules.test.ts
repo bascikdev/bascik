@@ -42,16 +42,17 @@ const codesFor = (
 describe("directive-rules", () => {
   it("knows the fixed and the prefixed data-bascik attributes", () => {
     expect(isKnownBascikAttribute("data-bascik-slot")).toBe(true);
+    expect(isKnownBascikAttribute("data-bascik-build-once")).toBe(true);
     expect(isKnownBascikAttribute("data-bascik-prop-title")).toBe(true);
     expect(isKnownBascikAttribute("data-bascik-attr-href")).toBe(true);
     expect(isKnownBascikAttribute("data-bascik-slott")).toBe(false);
     expect(isKnownBascikAttribute("data-bascik-prop")).toBe(false);
   });
 
-  it("accepts only a bare or page value for data-bascik-build", () => {
+  it("accepts only an empty value for data-bascik-build", () => {
     expect(isKnownBuildValue("")).toBe(true);
-    expect(isKnownBuildValue("page")).toBe(true);
-    expect(isKnownBuildValue(" PAGE ")).toBe(true);
+    expect(isKnownBuildValue("  ")).toBe(true);
+    expect(isKnownBuildValue("page")).toBe(false);
     expect(isKnownBuildValue("pages")).toBe(false);
   });
 
@@ -69,13 +70,14 @@ describe("directive-rules", () => {
     expect(findComponentStructureProblems(masked)).toEqual([]);
   });
 
-  it("keeps the original behavior for a component with no markup: a script is flagged, a style is not", () => {
-    expect(
-      findComponentStructureProblems("<script>   </script>\n").map(
-        (problem) => problem.kind,
-      ),
-    ).toEqual(["script-before-markup"]);
-    expect(findComponentStructureProblems("<style>   </style>\n")).toEqual([]);
+  it.each([
+    "",
+    "<script>   </script>\n",
+    "<style>   </style>\n",
+    "<style>   </style>\n<script>   </script>\n",
+    "<script>   </script>\n<style>   </style>\n",
+  ])("accepts a component with no markup: %s", (masked) => {
+    expect(findComponentStructureProblems(masked)).toEqual([]);
   });
 });
 
@@ -109,7 +111,7 @@ describe("per-file rules reported by the analyzer", () => {
     ).toHaveLength(1);
   });
 
-  it('reports data-bascik-build="pages" and accepts "page"', () => {
+  it("reports values on data-bascik-build and accepts a bare directive", () => {
     const body = 'export default () => "";';
     expect(
       codesFor(
@@ -124,7 +126,7 @@ describe("per-file rules reported by the analyzer", () => {
         "html",
         `<script data-bascik-build="page">${body}</script>`,
       ),
-    ).not.toContain("unknown-directive-value");
+    ).toContain("unknown-directive-value");
     expect(
       codesFor(
         "/site/src/pages/a.html",
@@ -132,6 +134,30 @@ describe("per-file rules reported by the analyzer", () => {
         `<script data-bascik-build>${body}</script>`,
       ),
     ).not.toContain("unknown-directive-value");
+  });
+
+  it.each([
+    "/site/src/components/site-footer.html",
+    "/site/src/pages/index.html",
+  ])("accepts a bare build-once directive in %s", (file) => {
+    const body = 'export default () => "<p>shared</p>";';
+    expect(
+      codesFor(file, "html", `<script data-bascik-build-once>${body}</script>`),
+    ).toEqual([]);
+    expect(
+      codesFor(
+        file,
+        "html",
+        `<script data-bascik-build-once="yes">${body}</script>`,
+      ),
+    ).toContain("unknown-directive-value");
+    expect(
+      codesFor(
+        file,
+        "html",
+        `<script data-bascik-build data-bascik-build-once>${body}</script>`,
+      ),
+    ).toContain("script-mode-conflict");
   });
 
   it("gives conflicting script directives their rule id", () => {
@@ -154,6 +180,29 @@ describe("per-file rules reported by the analyzer", () => {
       "component-structure-order",
     );
   });
+
+  it.each(["", '="page"'])(
+    "accepts components whose markup comes entirely from a build script%s",
+    (value) => {
+      const component = [
+        "<!-- All markup is generated at build time. -->",
+        "<style>.card { color: red; }</style>",
+        `<script data-bascik-build${value}>`,
+        "export default () => '<article class=\"card\">Generated</article>';",
+        "</script>",
+      ].join("\n");
+      expect(
+        codesFor("/site/src/components/my-card.html", "html", component),
+      ).not.toContain("component-structure-order");
+      expect(
+        codesFor(
+          "/site/src/components/my-card.html",
+          "html",
+          component + "\n<p>Static markup</p>",
+        ),
+      ).toContain("component-structure-order");
+    },
+  );
 });
 
 describe("API route rules", () => {
@@ -272,7 +321,7 @@ describe("rules moved from bascik --check keep their edge cases", () => {
       expect(found[0].range.start.line).toBe(0);
     });
 
-    it("reports only a data-bascik-build value other than page", () => {
+    it("reports every nonempty data-bascik-build value", () => {
       const text = [
         '<script data-bascik-build="pages">export default () => "a"</script>',
         '<script data-bascik-build = "page">export default () => "b"</script>',
@@ -284,9 +333,8 @@ describe("rules moved from bascik --check keep their edge cases", () => {
       const found = diagnosticsFor(page, "html", text).filter(
         (d) => d.code === "unknown-directive-value",
       );
-      expect(found.map((d) => d.range.start.line)).toEqual([0, 5]);
-      expect(found.map((d) => d.message).join("\n")).toContain('"pages"');
-      expect(found.map((d) => d.message).join("\n")).toContain('"static"');
+      expect(found.map((d) => d.range.start.line)).toEqual([0, 1, 2, 5]);
+      expect(found[0].message).toContain("does not take a value");
     });
   });
 

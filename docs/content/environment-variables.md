@@ -19,9 +19,11 @@ You access these variables using standard Node.js `process.env.<VARIABLE_NAME>`.
 | `BASCIK_SERVER`      | Server scripts and worker threads                       | `"1"` when running the production server (`bascik --server`), `"0"` otherwise.                                                                                               |
 | `BASCIK_BUILD_LOG`   | CLI runtime                                             | Absolute filesystem path to the build log destination when invoked with `--log`.                                                                                             |
 
+`data-bascik-build-once` scripts do not receive page or route context, because their output is shared wherever the file is used. `BASCIK_SOURCE_FILE` names the file the script is written in; `BASCIK_PAGE_FILE` and `BASCIK_PAGE_PATH` are empty, and `BASCIK_ROUTE` is unset.
+
 ## Build-Time Scripts (`data-bascik-build`)
 
-Every `<script data-bascik-build>` block runs inside an isolated Node.js child process with access to page, file, and configuration variables. In component templates, page variables describe a specific page only when the script is deferred with `data-bascik-build="page"` or `data-bascik-page-aware`.
+Every `<script data-bascik-build>` block runs inside an isolated Node.js child process with access to page, file, and configuration variables. A build script in a component runs when that component is expanded into a page, so it receives that page's context for each use.
 
 ### `BASCIK_PAGE_PATH`
 
@@ -38,13 +40,15 @@ const currentPath = process.env.BASCIK_PAGE_PATH;
 const isCurrent = currentPath === "/components";
 ```
 
-Component scripts that read this variable through an imported helper must use an explicit page-aware marker. Indirect helper reads are not inferred from the import graph; without the marker, the script runs once during component registration and does not have page-specific context.
+Component scripts can read this variable directly or through an imported helper; they always run in the context of the page that uses the component.
+
+This applies to `data-bascik-build`. A `data-bascik-build-once` script has no page path, because one run serves every use of a component and every route of a dynamic template; use it only when its output is identical everywhere.
 
 ### `BASCIK_SOURCE_FILE` vs `BASCIK_PAGE_FILE`
 
 When a build script runs directly inside a page (`src/pages/about.html`), both `BASCIK_SOURCE_FILE` and `BASCIK_PAGE_FILE` point to `/absolute/path/to/src/pages/about.html`.
 
-When a component (`src/components/author-bio/author-bio.html`) contains a page-aware build script (`<script data-bascik-build="page">`), the variables provide distinct locations:
+When a component (`src/components/author-bio/author-bio.html`) contains a build script, the variables provide distinct locations:
 
 - `BASCIK_SOURCE_FILE`: The path to the component file `/absolute/path/to/src/components/author-bio/author-bio.html`.
 - `BASCIK_PAGE_FILE`: The path to the page shell importing the component `/absolute/path/to/src/pages/about.html`.

@@ -394,7 +394,9 @@ Choosing between inline `<style>` or `<script>` blocks and companion `.css` or `
 
 For inline component blocks, keep `<style>` above the component markup and `<script>` below the markup. This convention is checked as an advisory warning (`component-structure-order`) by the [linter](/tools/linter), in your editor and in `bascik --check`.
 
-Create a `.css` file or companion script files alongside the `.html` file if you prefer to keep your styles or JavaScript separate. Companion `.css` files in the same component directory are merged automatically. Companion script files explicitly referenced via `<script src="counter.ts"></script>` are resolved, inlined, and scoped at build time. Browsers ignore inline content in a `<script>` that has `src`, so Bascik drops any such content when it inlines the companion and prints a warning. A `.ts` or `.mts` companion has its erasable TypeScript stripped automatically before scoping, with no configuration; see [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
+Components do not need literal HTML markup. A component can consist entirely of a `<script data-bascik-build>` block that returns its markup, optionally with a `<style>` block. When there is no literal markup, the ordering warning does not apply.
+
+Create a `.css` file or companion script files alongside the `.html` file if you prefer to keep your styles or JavaScript separate. Companion `.css` files in the same component directory are merged automatically. Companion script files explicitly referenced via `<script src="counter.ts"></script>` are resolved, inlined, and scoped at build time. Browsers ignore inline content in a `<script>` that has `src`, so Bascik drops any such content when it inlines the companion and prints a warning. A directive script with `src=` (`data-bascik-build`, `data-bascik-server`, and the others) is never inlined: Bascik runs that file as a Node.js module. A `.ts` or `.mts` companion has its erasable TypeScript stripped automatically before scoping, with no configuration; see [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
 
 > **Directory Isolation Rule:** Path resolution for companion files is strictly scoped to the component's directory or base filename. A component inside `src/components/demo-counter/` can only reference script or style files located inside its own folder. It cannot access files across other component directories.
 
@@ -659,7 +661,8 @@ At build time, Bascik extracts every `<style>` block from the component file, co
 Component templates can also contain multiple `<script>` tags. Bascik handles each script according to its type and attributes:
 
 - **Client scripts:** Standard JavaScript blocks (without `data-bascik-server` or `data-bascik-build`) are each wrapped in an isolated IIFE `(function() { ... })();`. You can include multiple client scripts in a component template, and each receives its own scope so local variables do not bleed into other blocks.
-- **Build scripts (`<script data-bascik-build>`):** Executed during build or dev time in Node.js, replacing the tag with its returned HTML string. Multiple build scripts execute concurrently.
+- **Build scripts (`<script data-bascik-build>`):** Executed during build or dev time in Node.js for each component use, with that page's context. Returned HTML replaces the tag.
+- **Build-once scripts (`<script data-bascik-build-once>`):** Executed once when the component is registered, without page or route context. The same returned HTML is reused at every component use, then scoped and expanded normally. Their output is cached like other build script output. See [`data-bascik-build-once`](/build-scripts#data-bascik-build-once).
 - **Server scripts (`<script data-bascik-server>`):** Executed on the server at request time in Node.js. They are not wrapped in browser IIFEs.
 - **Data scripts (e.g., `type="application/ld+json"`):** Preserved intact without IIFE wrapping or JavaScript minification.
 

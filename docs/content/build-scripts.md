@@ -58,6 +58,55 @@ A build script defines its output through a callable default export:
 - **External scripts:** Scripts using `src="..."` follow the identical contract: the referenced file must have a callable default export returning HTML markup.
 - **Cached execution:** When a script's output is cached, neither the module initialization nor the default export runs on a cache hit, so logs do not replay.
 
+## `data-bascik-build-once`
+
+`<script data-bascik-build-once>` runs its script once and reuses the markup wherever the file is used. It has the same handler contract as `data-bascik-build`, but no page or route context, so use it for output that is identical everywhere: a copyright year, a list of social links, an inlined SVG logo.
+
+Its main use is in components. A footer appears on every page, but its year is the same on all of them:
+
+```html
+<!-- src/components/site-footer/site-footer.html -->
+<footer class="site-footer">
+  <p>
+    &copy;
+    <script data-bascik-build-once>
+      export default () => String(new Date().getFullYear());
+    </script>
+    Example Co. All rights reserved.
+  </p>
+  <nav aria-label="Footer">
+    <a href="/privacy">Privacy</a>
+    <a href="/contact">Contact</a>
+  </nav>
+</footer>
+```
+
+Bascik runs the script once, when it registers the component, and every page that uses `<site-footer />` gets the same markup:
+
+```html
+<footer class="site-footer">
+  <p>&copy; 2026 Example Co. All rights reserved.</p>
+  <nav aria-label="Footer">
+    <a href="/privacy">Privacy</a>
+    <a href="/contact">Contact</a>
+  </nav>
+</footer>
+```
+
+The generated markup then goes through the component's usual scoping and expansion, so its classes match the component's styles and its IDs are unique per use. With `data-bascik-build`, the same footer would run the script again for every page.
+
+It works in pages too. In a dynamic route template, a `data-bascik-build-once` script runs once for the template and every generated page shares its output, while `data-bascik-build` runs once per route.
+
+| Where it is written  | Runs                                   | Output shared by                  |
+| -------------------- | -------------------------------------- | --------------------------------- |
+| A component          | Once, when the component is registered | Every use of that component       |
+| A page               | Once, before the page's build scripts  | That page                         |
+| A dynamic route page | Once for the template                  | Every page the template generates |
+
+The directive takes no value. `BASCIK_SOURCE_FILE` names the file the script is written in; `BASCIK_PAGE_FILE` and `BASCIK_PAGE_PATH` are empty and `BASCIK_ROUTE` is unset. Use `data-bascik-build` when output depends on the page, the route, or component props. Its output is cached like any build script's (see [Performance: Output Caching](#performance-output-caching)), so a warm start reuses it until the script, a file it imports, or another cache input changes. A script whose output changes with no input changing, such as one that prints the current year, keeps its cached value until then; list it in `scripts.cache.exclude` to run it on every build.
+
+Imports, error handling, and dependency watching work the same as for `data-bascik-build`. Output is shared only within one file, never between different components or pages. Use a `pre` exec script for work that must run once for the whole project.
+
 ## Example Patterns
 
 ### Reading Markdown
@@ -317,9 +366,9 @@ export default {
 
 ### Directive Conflicts
 
-Directives (`data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, `data-bascik-stream`) are mutually exclusive and cannot be combined on the same `<script>` tag:
+Directives (`data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`, `data-bascik-server`, `data-bascik-stream`) are mutually exclusive and cannot be combined on the same `<script>` tag:
 
-- Combining `data-bascik-build` with `data-bascik-server` or `data-bascik-stream` is disallowed (a script runs at build time or request time, not both).
+- Combining either build directive with another directive is disallowed (a script runs at build time or request time, not both). The two build directives are also mutually exclusive.
 - Combining `data-bascik-server` and `data-bascik-stream` is disallowed (choose buffered or streaming execution).
 - Combining `data-bascik-routes` with other directives is disallowed (route scripts run independently).
 
@@ -438,7 +487,7 @@ rm -rf node_modules/.cache/bascik/script-cache
 
 - **When to use build scripts:** Use build scripts when content lives in a file or API outside HTML source (Markdown, JSON, CSV, remote endpoints), when repeating transformations across pages, or when markup should be static. Prefer vanilla hardcoded HTML when content is short, stable, and self-contained.
 - **No streaming:** The complete HTML string returned by the default export is awaited before injection. For streaming HTML chunks at request time, see [Stream Scripts](/stream-scripts).
-- **No HMR awareness:** Local files imported or read by a build script are tracked as dependencies; edits under the import root, `directory.pages`, `directory.components`, or `pipeline.watchPaths` rebuild dependent pages. Files outside all of those need a restart or a `pipeline.watchPaths` entry (see [Watch Paths](/watch-paths)).
+- **No HMR awareness:** Local files imported or read by a build script are tracked as dependencies; edits under `directory.pages`, `directory.components`, or `pipeline.watchPaths` rebuild dependent pages. Other files, including helpers under the import root (`src/lib/`), need a `pipeline.watchPaths` entry or a restart (see [Watch Paths](/watch-paths)).
 - **ESM only:** Build scripts run as ES modules with standard `import`/`export` syntax and a callable default export. Write helpers as `.ts` (preferred on Node 22.18+), `.js`, or `.mjs`.
 - **Node.js only:** Browser globals like `window` and `document` are not available in build scripts.
 - **Printed directives never run:** A directive script in a build script's output is removed with a warning. Directives only run where they are written in a source file. See [Printing HTML You Did Not Write](#printing-html-you-did-not-write).

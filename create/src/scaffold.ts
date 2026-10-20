@@ -48,10 +48,10 @@ export const PACKAGE_JSON = (name: string): string =>
         e2e: "playwright test --config e2e/playwright.config.ts",
       },
       dependencies: {
-        "@bascik/bascik": "^1.0.0-rc.8",
+        "@bascik/bascik": "^1.0.0-rc.9",
       },
       devDependencies: {
-        "@bascik/language-server": "^0.1.0-rc.4",
+        "@bascik/language-server": "^0.1.0-rc.5",
         "@playwright/test": "^1.62.0",
         "@types/node": "^24.0.0",
         "@vitest/coverage-v8": "^4.1.10",
@@ -507,7 +507,7 @@ ${SITE_FOOTER_CSS}</style>
   <div class="container">
     <div class="footer-inner">
       <span class="footer-copy">
-        &copy; <script data-bascik-build>export default () => String(new Date().getFullYear());</script>
+        &copy; <script data-bascik-build-once>export default () => String(new Date().getFullYear());</script>
         <span data-bascik-prop-brand>My Site</span>
       </span>
       <nav class="footer-nav" aria-label="Footer navigation">
@@ -669,10 +669,10 @@ import { join } from 'node:path';
 describe('site-footer component', () => {
   const path = join(process.cwd(), 'src/components/site-footer/site-footer.html');
 
-  it('renders brand prop placeholder and build-time year script', async () => {
+  it('renders brand prop placeholder and build-once year script', async () => {
     const html = await readFile(path, 'utf8');
     expect(html).toContain('data-bascik-prop-brand');
-    expect(html).toContain('data-bascik-build');
+    expect(html).toContain('data-bascik-build-once');
     expect(html).toContain('getFullYear');
   });
 });

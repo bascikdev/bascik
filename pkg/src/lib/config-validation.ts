@@ -20,6 +20,7 @@ import { existsSync, statSync, accessSync, constants } from "node:fs";
 import { resolve, sep } from "node:path";
 import { SITE_URL_ENV_VAR, validateSiteUrl } from "./environment.ts";
 import { LOG_LEVELS } from "./log-level.ts";
+import { sourceWatchRoot } from "./watch-root.ts";
 
 export interface ConfigValidationError {
   /** Dotted key path, e.g. "http.port" or "pipeline.exec[0].script". */
@@ -853,7 +854,8 @@ export const validateConfigPaths = (
         if (
           typeof entry === "string" &&
           entry.length > 0 &&
-          !fs.existsSync(resolvePath(entry))
+          // A glob is checked by the folder it starts in, the folder the watcher observes.
+          !fs.existsSync(resolvePath(sourceWatchRoot(entry)))
         ) {
           push(`pipeline.watchPaths[${index}]`, entry, "path does not exist");
         }

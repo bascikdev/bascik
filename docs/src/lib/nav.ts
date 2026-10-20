@@ -121,7 +121,10 @@ export const NAV: NavSection[] = [
     section: "How-to",
     pages: [
       { href: "/how-to/markdown", label: "Markdown" },
-      { href: "/how-to/page-aware-scripts", label: "Page-Aware Scripts" },
+      {
+        href: "/how-to/page-aware-scripts",
+        label: "Build Scripts with Page Context",
+      },
       { href: "/how-to/templating", label: "Templating" },
       { href: "/how-to/interactivity", label: "Interactivity" },
       { href: "/how-to/theming", label: "Theming" },

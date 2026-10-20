@@ -46,8 +46,7 @@ A site footer: secondary links and a copyright line. The links live in links.ts 
 <footer class="footer">
   <div class="row">
     <nav aria-label="Footer">
-      <!-- The footer is the same on every page, so this runs once for the whole site and the output is reused. -->
-      <script data-bascik-build>
+      <script data-bascik-build-once>
         import { footerLinks } from "./links.ts";
         export default () => footerLinks();
       </script>

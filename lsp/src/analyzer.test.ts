@@ -154,6 +154,7 @@ describe("Bascik Language Server Analyzer", () => {
     expect(completions).toBeDefined();
     expect(completions?.map((c) => c.label)).toEqual([
       "data-bascik-build",
+      "data-bascik-build-once",
       "data-bascik-routes",
       "data-bascik-server",
       "data-bascik-stream",

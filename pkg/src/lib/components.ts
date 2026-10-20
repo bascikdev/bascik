@@ -6,9 +6,9 @@ import {
   resolveCssImports,
 } from "./styles.ts";
 import { getComponentScripts } from "./javascript.ts";
+import { executeBuildScripts } from "./build-scripts.ts";
 import { deepReadDirFlat } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
-import { executeBuildScripts } from "./build-scripts.ts";
 import { minifyHtml } from "./html-minifier.ts";
 import { maskElementContents } from "./shielding.ts";
 import {
@@ -20,13 +20,12 @@ import { getScriptType } from "./script-types.ts";
 import { stampScriptLines, withScriptLine } from "./script-source-lines.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
 import {
-  SCRIPT_END_TAG,
-  scriptOpenTag,
   BUILD_ATTR_NAME,
+  BUILD_ONCE_ATTR_NAME,
   ROUTES_ATTR_NAME,
   SERVER_ATTR_NAME,
   STREAM_ATTR_NAME,
-  isPageAwareBuildOpenTag,
+  isDirectiveScriptOpenTag,
 } from "./html-patterns.ts";
 import { findCompatibilityMatches } from "./compatibility-checker.ts";
 import { stderr as colorErr } from "./colors.ts";
@@ -204,19 +203,14 @@ export const componentsImportingStylesheet = (filePath: string): string[] => [
 ];
 
 /** Load all component HTML and CSS files from the configured components directory. */
-const BARE_TOKEN_SPEC = String.raw`[^\s"'=<>\`]+`;
-const ATTR_VALUE_SPEC = String.raw`(?:"[^"]*"|'[^']*'|${BARE_TOKEN_SPEC})`;
-const ATTR_SPEC = String.raw`${BARE_TOKEN_SPEC}(?:\s*=\s*${ATTR_VALUE_SPEC})?`;
-const BUILD_FLAG_SPEC = String.raw`data-bascik-build(?:\s*=\s*${ATTR_VALUE_SPEC})?`;
-
-const COMPONENT_BUILD_SCRIPT_RE = new RegExp(
-  `<script\\b(?:\\s+${ATTR_SPEC})*\\s+${BUILD_FLAG_SPEC}(?:\\s+${ATTR_SPEC})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
-  "gi",
-);
-
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const BUILD_DIRECTIVE_RE = new RegExp(
-  String.raw`(?:^|\s)${BUILD_ATTR_NAME}`,
+  String.raw`(?:^|\s)(?:${BUILD_ATTR_NAME}|${BUILD_ONCE_ATTR_NAME})`,
+  "i",
+);
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const BUILD_ONCE_DIRECTIVE_RE = new RegExp(
+  String.raw`(?:^|\s)${BUILD_ONCE_ATTR_NAME}`,
   "i",
 );
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
@@ -402,21 +396,6 @@ const warnComponentCompatibility = async (
   }
 };
 
-export const isPageAwareBuildScript = (
-  openTag: string,
-  scriptContent: string,
-): boolean => {
-  if (isPageAwareBuildOpenTag(openTag)) return true;
-  if (
-    /\bprocess\.env\.(BASCIK_PAGE_PATH|BASCIK_PAGE_FILE|BASCIK_ROUTE)\b/.test(
-      scriptContent,
-    )
-  ) {
-    return true;
-  }
-  return false;
-};
-
 /**
  * Derives the component tag name from a file path.
  * Lowercases the base name without the file extension.
@@ -575,50 +554,14 @@ export const listComponents = async (
       const stampedContent = stampScriptLines(
         stampDirectiveSources(rawContent, fileName),
       );
-      // Run build scripts before minification so that generated content
-      // stays in its original position (minifyHtml moves <script> tags).
-      // Page-aware component build scripts are deferred to page transpilation time.
-      const buildMatches = [
-        ...stampedContent.matchAll(COMPONENT_BUILD_SCRIPT_RE),
-      ];
-      let resolvedContent = stampedContent;
-
-      if (buildMatches.length > 0) {
-        const deferredPlaceholders: Array<{
-          placeholder: string;
-          tag: string;
-        }> = [];
-        let hasStaticScripts = false;
-        let withPlaceholders = stampedContent;
-
-        for (let i = buildMatches.length - 1; i >= 0; i--) {
-          const match = buildMatches[i];
-          const [fullTag, scriptContent] = match;
-          const index = match.index ?? 0;
-          const openTag = scriptOpenTag(fullTag, scriptContent);
-
-          if (isPageAwareBuildScript(openTag, scriptContent)) {
-            const placeholder = `<!--__BASCIK_DEFERRED_BUILD_SCRIPT_${i}__-->`;
-            deferredPlaceholders.push({ placeholder, tag: fullTag });
-            withPlaceholders =
-              withPlaceholders.slice(0, index) +
-              placeholder +
-              withPlaceholders.slice(index + fullTag.length);
-          } else {
-            hasStaticScripts = true;
-          }
-        }
-
-        if (hasStaticScripts) {
-          resolvedContent = await executeBuildScripts(
-            withPlaceholders,
-            fileName,
-          );
-          for (const { placeholder, tag } of deferredPlaceholders) {
-            resolvedContent = resolvedContent.replace(placeholder, () => tag);
-          }
-        }
-      }
+      // Once scripts render component-wide markup before expansion. The result
+      // then follows the same scoping and expansion path as authored markup.
+      const onceResolvedContent = BUILD_ONCE_DIRECTIVE_RE.test(stampedContent)
+        ? await executeBuildScripts(stampedContent, fileName, null, {
+            once: true,
+          })
+        : stampedContent;
+      let resolvedContent = onceResolvedContent;
 
       if (companionScripts && companionScripts.scriptMap.size > 0) {
         resolvedContent = resolvedContent.replace(
@@ -627,6 +570,11 @@ export const listComponents = async (
           // is set, so a body never stops the companion from being inlined.
           /<script\b((?:[^>"']|"[^"]*"|'[^']*')*?)\ssrc=["']([^"']+)["']((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi,
           (match, preSrc, srcVal, postSrc, ignoredBody: string) => {
+            // A directive script's `src=` is a Node.js module that its own
+            // runtime resolves and executes, never browser code to inline.
+            if (isDirectiveScriptOpenTag(`<script${preSrc} ${postSrc}>`)) {
+              return match;
+            }
             const baseSrc = basename(srcVal);
             const scriptInfo =
               companionScripts!.scriptMap.get(baseSrc) ??

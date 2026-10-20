@@ -60,4 +60,19 @@ test.describe("dynamic routes", () => {
       "Second Unquoted Item",
     );
   });
+
+  test("runs a template's build-once script once for all of its routes", async ({
+    page,
+  }) => {
+    await page.goto("/build-once-routes/first");
+    await expect(page.getByTestId("route-id")).toHaveText("first");
+    const firstToken = (
+      await page.getByTestId("once-token").textContent()
+    )?.trim();
+    expect(firstToken).toMatch(/^once-[0-9a-f]{16} no-route$/);
+
+    await page.goto("/build-once-routes/second");
+    await expect(page.getByTestId("route-id")).toHaveText("second");
+    await expect(page.getByTestId("once-token")).toHaveText(firstToken!);
+  });
 });

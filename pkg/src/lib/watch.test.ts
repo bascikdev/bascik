@@ -1101,6 +1101,40 @@ describe("watchFiles – extra watch paths (watcher 3)", () => {
   });
 });
 
+describe("watchFiles – glob watch paths", () => {
+  beforeEach(async () => {
+    (BascikConfig as any).pipeline = {
+      watchPaths: ["/extra/content/**/*.md", "/extra/data/"],
+    };
+    await watchFiles();
+  });
+
+  afterEach(() => {
+    (BascikConfig as any).pipeline = { watchPaths: [] };
+  });
+
+  // Chokidar 5 does not expand globs, so a glob is watched from its folder.
+  it("watches the folder a glob starts in", () => {
+    expect(mockWatch.mock.calls[3][0]).toEqual([
+      "/extra/content",
+      "/extra/data/",
+    ]);
+  });
+
+  it.each(["add", "change", "unlink"])(
+    "processes a %s event only for files the glob matches",
+    async (event) => {
+      const handler = getHandler(3, event);
+      await handler?.("/extra/content/posts/first.md");
+      await handler?.("/extra/content/posts/draft.txt");
+      expect(
+        (selectivelyProcessPagesForWatchPath as ReturnType<typeof vi.fn>).mock
+          .calls,
+      ).toEqual([["/extra/content/posts/first.md"]]);
+    },
+  );
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Inline styles paths watcher (dev-only)
 // ─────────────────────────────────────────────────────────────────────────────

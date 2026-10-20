@@ -10,6 +10,7 @@
 export const KNOWN_BASCIK_DATA_EXACT = [
   "data-bascik-slot",
   "data-bascik-build",
+  "data-bascik-build-once",
   "data-bascik-server",
   "data-bascik-routes",
   "data-bascik-stream",
@@ -43,14 +44,15 @@ export function unknownBascikAttributeMessage(name: string): string {
   return `Unknown attribute "${name}". Bascik ignores it, so it is probably a typo. Known attributes: ${known}`;
 }
 
-export function unknownDirectiveValueMessage(value: string): string {
-  return `data-bascik-build="${value}" is not a known value, so the script runs once as a static build script. Use data-bascik-build="page" to run it for each page, or a bare data-bascik-build.`;
+export function unknownDirectiveValueMessage(
+  directive = "data-bascik-build",
+): string {
+  return `${directive} does not take a value.`;
 }
 
-/** Whether a `data-bascik-build` value is one Bascik understands. An empty value is a bare directive. */
+/** Whether a `data-bascik-build` value is empty, as with a bare directive. */
 export function isKnownBuildValue(value: string): boolean {
-  const trimmed = value.trim();
-  return trimmed === "" || trimmed.toLowerCase() === "page";
+  return value.trim() === "";
 }
 
 export interface StructureProblem {
@@ -75,7 +77,7 @@ export function findComponentStructureProblems(
   const firstScript = masked.search(/<script\b/i);
   const firstStyle = masked.search(/<style\b/i);
 
-  if (firstScript >= 0 && (firstMarkup < 0 || firstScript < firstMarkup)) {
+  if (firstScript >= 0 && firstMarkup >= 0 && firstScript < firstMarkup) {
     problems.push({
       kind: "script-before-markup",
       index: firstScript,

@@ -142,7 +142,7 @@ The page phase prepares the source HTML document and orchestrates the component 
 
 For bracket-parameter pages, `<script data-bascik-routes>` runs before page build scripts. Its genuine relative and import-root ESM specifiers are rewritten (relative against the containing page or external routes script file, `@/` against `scripts.importRoot`) before the cached temporary module executes.
 
-1. **Execute build scripts.** Any `<script data-bascik-build>` blocks are run as Node.js ESM modules. A lexical scanner resolves genuine relative ESM specifiers against the source page, component, or external script directory, and `@/` against `scripts.importRoot`, before temporary execution. A bare leading `/` is rejected. Generic quoted data paths retain `process.cwd()`. Deferred component scripts carry component source identity, so relative imports never fall back to the consuming page. The default export returns an HTML string replacing the script tag. Tags in output resolve in step 4. Output is cached on disk (see [Build Script Output Cache](#build-script-output-cache--batch-execution) below).
+1. **Execute build scripts.** Page and per-use component `<script data-bascik-build>` blocks run as Node.js ESM modules. `<script data-bascik-build-once>` runs once without page or route context: in a component during registration, before scoping and expansion, so every use shares it; in a page before its build scripts; and in a dynamic route template once in `expandPageToJobs`, so every route shares it. Relative imports resolve from the script's source, and `@/` uses `scripts.importRoot`; generic data paths use `process.cwd()`. A bare leading `/` is rejected. The default export returns replacement HTML; tags in the output resolve in step 4. Output from both directives is disk-cached (see [Build Script Output Cache](#build-script-output-cache--batch-execution) below).
 2. **Extract body and head.** The inner content of `<body>` and `<head>` are extracted separately so component injection can happen in both zones independently.
 3. **Obtain component list.** On the multi-page startup path (`processAllPages`), the list is pre-computed once and passed in. On a single-page re-transpilation, it is loaded from `src/components/` at this point.
 4. **Run component phase.** `recursivelyTranspile` is called on both the body and head HTML strings. Each call returns a `TranspileResult` containing the resolved HTML and the list of components that were used.
@@ -201,7 +201,7 @@ The key is the SHA-256 hex digest of:
 3. `"1"` or `"0"` for build vs. dev mode (`isBuild`), since the same script may produce different output in each mode via the `BASCIK_BUILD` env var.
 4. The source file path (`BASCIK_SOURCE_FILE`).
 5. The page file path (`BASCIK_PAGE_FILE`).
-6. The page route path (`BASCIK_PAGE_PATH`), which guarantees page-aware component scripts derive distinct cache keys per page.
+6. The page route path (`BASCIK_PAGE_PATH`), so component build scripts that depend on page context use distinct cache entries on different pages.
 7. The site URL (`BASCIK_SITE_URL`), since it can influence output and changes rarely.
 8. The normalized deployment base (`BASCIK_BASE`), since scripts can emit base-aware output.
 9. The dynamic route payload (`BASCIK_ROUTE`), if applicable.

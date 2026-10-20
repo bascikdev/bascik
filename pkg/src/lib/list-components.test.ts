@@ -101,62 +101,91 @@ describe("minifyHtml – script hoisting (documents build-script ordering requir
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// listComponents – executeBuildScripts runs before minifyHtml
+// listComponents – build scripts survive registration and minification
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("listComponents – build script execution order", () => {
-  it("calls executeBuildScripts with the raw file content, each directive script stamped with its source position", async () => {
+describe("listComponents – build script preservation", () => {
+  it("executes build-once scripts during component registration and preserves per-use scripts", async () => {
+    const rawHtml =
+      "<aside><script data-bascik-build-once>once()</script><script data-bascik-build>perUse()</script></aside>";
+    mockDeepReadDirFlat.mockResolvedValue(["src/components/my-sidebar.html"]);
+    mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
+    mockExecuteBuildScripts.mockImplementation(
+      async (
+        html: string,
+        _fileName: string,
+        _route: unknown,
+        options: { once?: boolean },
+      ) =>
+        options.once
+          ? html.replace(
+              /<script data-bascik-build-once\b[^>]*>once\(\)<\/script>/,
+              "<p>shared output</p>",
+            )
+          : html,
+    );
+
+    const result = await listComponents();
+
+    expect(mockExecuteBuildScripts).toHaveBeenCalledWith(
+      expect.stringContaining("data-bascik-build-once"),
+      "src/components/my-sidebar.html",
+      null,
+      { once: true },
+    );
+    expect(result["my-sidebar"].fileContent).toContain(
+      "<p>shared output</p><script data-bascik-build ",
+    );
+    expect(result["my-sidebar"].fileContent).not.toContain(
+      "data-bascik-build-once",
+    );
+  });
+
+  it("stamps directive source positions without executing the script", async () => {
     const rawHtml =
       '<aside class="sidebar"><script data-bascik-build>gen()</script></aside>';
     mockDeepReadDirFlat.mockResolvedValue(["src/components/my-sidebar.html"]);
     mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
 
-    await listComponents();
+    const result = await listComponents();
 
-    // Recorded before anything moves the script: the tag starts at column 24, its body at 50.
-    expect(mockExecuteBuildScripts).toHaveBeenCalledWith(
-      '<aside class="sidebar"><script data-bascik-build data-bascik-source-file="src%2Fcomponents%2Fmy-sidebar.html" ' +
-        'data-bascik-source-line="1" data-bascik-source-column="50" data-bascik-source-tag="1:24">gen()</script></aside>',
-      "src/components/my-sidebar.html",
+    expect(mockExecuteBuildScripts).not.toHaveBeenCalled();
+    expect(result["my-sidebar"].fileContent).toContain(
+      'data-bascik-source-column="50"',
     );
   });
 
-  it("places build script output inside the container, not after it", async () => {
+  it("keeps the build script inside its component container", async () => {
     const rawHtml = "<aside><script data-bascik-build>gen()</script></aside>";
-    // Simulate executeBuildScripts replacing the script with real content
-    const resolvedHtml = "<aside><p>Section</p><ul><li>Link</li></ul></aside>";
 
     mockDeepReadDirFlat.mockResolvedValue(["src/components/my-sidebar.html"]);
     mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
-    mockExecuteBuildScripts.mockResolvedValue(resolvedHtml);
 
     const result = await listComponents();
 
     expect(result["my-sidebar"]).toBeDefined();
     const fileContent = result["my-sidebar"].fileContent;
-    // Generated content is inside the aside
-    expect(fileContent).toContain("<aside");
-    expect(fileContent).toContain("Section");
+    expect(fileContent).toContain("<aside><script data-bascik-build");
     const asideClose = fileContent.indexOf("</aside>");
-    const sectionIndex = fileContent.indexOf("Section");
-    expect(sectionIndex).toBeLessThan(asideClose);
+    const scriptStart = fileContent.indexOf("<script");
+    expect(scriptStart).toBeLessThan(asideClose);
   });
 
-  it("still minifies the resolved HTML after build scripts run", async () => {
+  it("minifies component HTML without executing its build scripts", async () => {
     BascikConfig.minify.html = true;
-    // executeBuildScripts returns HTML with whitespace; minifyHtml collapses it
-    const rawHtml = "<nav><script data-bascik-build>gen()</script></nav>";
-    const resolvedHtml = "<nav>\n  <ul>\n    <li>Home</li>\n  </ul>\n</nav>";
+    const rawHtml =
+      "<nav>\n  <ul>\n    <li>Home</li>\n  </ul>\n  <script data-bascik-build>gen()</script>\n</nav>";
 
     mockDeepReadDirFlat.mockResolvedValue(["src/components/my-nav.html"]);
     mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
-    mockExecuteBuildScripts.mockResolvedValue(resolvedHtml);
 
     const result = await listComponents();
 
     // minifyHtml removes newlines and collapses whitespace
+    expect(mockExecuteBuildScripts).not.toHaveBeenCalled();
     expect(result["my-nav"].fileContent).not.toContain("\n");
     expect(result["my-nav"].fileContent).toContain("<li>Home</li>");
+    expect(result["my-nav"].fileContent).toContain("<script data-bascik-build");
   });
 
   it("includes the component in the result when there are no build scripts", async () => {
@@ -183,14 +212,15 @@ describe("listComponents – build script execution order", () => {
       .mockResolvedValueOnce(
         Buffer.from("<footer><script data-bascik-build>f()</script></footer>"),
       );
-    mockExecuteBuildScripts
-      .mockResolvedValueOnce("<header><h1>Title</h1></header>")
-      .mockResolvedValueOnce("<footer><p>Copyright</p></footer>");
-
     const result = await listComponents();
 
-    expect(result["my-header"].fileContent).toContain("Title");
-    expect(result["my-footer"].fileContent).toContain("Copyright");
+    expect(mockExecuteBuildScripts).not.toHaveBeenCalled();
+    expect(result["my-header"].fileContent).toContain(
+      "<script data-bascik-build",
+    );
+    expect(result["my-footer"].fileContent).toContain(
+      "<script data-bascik-build",
+    );
     // Each component's content in its own container
     expect(result["my-header"].fileContent).toContain("<header");
     expect(result["my-footer"].fileContent).toContain("<footer");
@@ -386,6 +416,32 @@ describe("listComponents – companion scripts", () => {
     expect(content).not.toContain("const x = 1;");
     expect(content).toContain('data-src="demo-counter.ts"');
   });
+
+  it.each([
+    "data-bascik-build",
+    "data-bascik-server",
+    "data-bascik-stream",
+    "data-bascik-routes",
+  ])(
+    "leaves a %s script with a companion src= for its runtime to load",
+    async (directive) => {
+      mockDeepReadDirFlat.mockResolvedValue([
+        "src/components/data-card/data-card.html",
+        "src/components/data-card/card-data.ts",
+      ]);
+      const tag = `<script ${directive} src="./card-data.ts"></script>`;
+      mockReadFile
+        .mockResolvedValueOnce(Buffer.from(`<div class="card">${tag}</div>`))
+        .mockResolvedValueOnce(
+          Buffer.from("export default (): string => '<p>generated</p>';"),
+        );
+
+      const content = (await listComponents())["data-card"].fileContent;
+
+      expect(content).toContain(`${directive} src="./card-data.ts"`);
+      expect(content).not.toContain("export default");
+    },
+  );
 
   it('does not auto-inline companion scripts unless explicitly referenced with <script src="...">', async () => {
     mockDeepReadDirFlat.mockResolvedValue([
@@ -614,32 +670,26 @@ describe("listComponents – companion scripts", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// listComponents – page-aware component script deferral
+// listComponents – component build script preservation
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("listComponents – page-aware component build script deferral", () => {
-  it("executes static component build scripts immediately during registration", async () => {
+describe("listComponents – component build script preservation", () => {
+  it("preserves component build scripts for page expansion", async () => {
     const rawHtml =
-      "<div><script data-bascik-build>console.log('static')</script></div>";
+      "<div><script data-bascik-build>console.log('build')</script></div>";
     mockDeepReadDirFlat.mockResolvedValue(["src/components/static-comp.html"]);
     mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
-    mockExecuteBuildScripts.mockResolvedValue("<div><span>static</span></div>");
 
     const result = await listComponents();
 
-    expect(mockExecuteBuildScripts).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "<div><script data-bascik-build data-bascik-source-file=",
-      ),
-      "src/components/static-comp.html",
-    );
-    expect(result["static-comp"].fileContent).toContain("<span>static</span>");
-    expect(result["static-comp"].fileContent).not.toContain(
+    expect(mockExecuteBuildScripts).not.toHaveBeenCalled();
+    expect(result["static-comp"].fileContent).toContain(
       "<script data-bascik-build",
     );
+    expect(result["static-comp"].fileContent).toContain("console.log('build')");
   });
 
-  it("defers execution of build script referencing process.env.BASCIK_PAGE_PATH", async () => {
+  it("preserves build scripts that read page context through an environment variable", async () => {
     const rawHtml =
       "<div><script data-bascik-build>console.log(process.env.BASCIK_PAGE_PATH)</script></div>";
     mockDeepReadDirFlat.mockResolvedValue(["src/components/page-badge.html"]);
@@ -647,7 +697,6 @@ describe("listComponents – page-aware component build script deferral", () => 
 
     const result = await listComponents();
 
-    // Should NOT execute executeBuildScripts for the page-aware script
     expect(mockExecuteBuildScripts).not.toHaveBeenCalled();
     expect(result["page-badge"].fileContent).toContain(
       "<script data-bascik-build",
@@ -657,55 +706,17 @@ describe("listComponents – page-aware component build script deferral", () => 
     );
   });
 
-  it("defers execution of build script with data-bascik-page-aware attribute", async () => {
+  it("preserves every build script in the same component", async () => {
     const rawHtml =
-      "<div><script data-bascik-build data-bascik-page-aware>console.log('aware')</script></div>";
-    mockDeepReadDirFlat.mockResolvedValue(["src/components/aware-comp.html"]);
-    mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
-
-    const result = await listComponents();
-
-    expect(mockExecuteBuildScripts).not.toHaveBeenCalled();
-    expect(result["aware-comp"].fileContent).toContain(
-      "data-bascik-page-aware",
-    );
-  });
-
-  it("defers execution of build script with data-bascik-build='page' attribute", async () => {
-    const rawHtml =
-      "<div><script data-bascik-build=\"page\">console.log('page-aware')</script></div>";
-    mockDeepReadDirFlat.mockResolvedValue([
-      "src/components/docs-pagination.html",
-    ]);
-    mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
-
-    const result = await listComponents();
-
-    expect(mockExecuteBuildScripts).not.toHaveBeenCalled();
-    expect(result["docs-pagination"].fileContent).toContain(
-      'data-bascik-build="page"',
-    );
-  });
-
-  it("executes static build scripts while deferring page-aware build scripts in the same component", async () => {
-    const rawHtml =
-      '<div><script data-bascik-build>staticPart()</script><script data-bascik-build="page">dynamicPart()</script></div>';
+      "<div><script data-bascik-build>first()</script><script data-bascik-build>second()</script></div>";
     mockDeepReadDirFlat.mockResolvedValue(["src/components/mixed-comp.html"]);
     mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
-    mockExecuteBuildScripts.mockImplementation(async (html: string) =>
-      html.replace(
-        /<script data-bascik-build [^>]*>staticPart\(\)<\/script>/,
-        () => "<p>Static</p>",
-      ),
-    );
 
     const result = await listComponents();
 
-    expect(mockExecuteBuildScripts).toHaveBeenCalled();
-    expect(result["mixed-comp"].fileContent).toContain("<p>Static</p>");
-    expect(result["mixed-comp"].fileContent).toContain(
-      'data-bascik-build="page"',
-    );
+    expect(mockExecuteBuildScripts).not.toHaveBeenCalled();
+    expect(result["mixed-comp"].fileContent).toContain("first()");
+    expect(result["mixed-comp"].fileContent).toContain("second()");
   });
 
   it("throws an error when two component files in subfolders define the same tag name", async () => {

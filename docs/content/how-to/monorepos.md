@@ -95,7 +95,7 @@ A build script in a shared component runs as part of whichever site uses it, so 
 </script>
 ```
 
-A component build script runs when the component is registered, even if no page in the site uses that component. An import that does not resolve for one site therefore fails that site's build, not only the sites that use the component.
+An import that does not resolve for one site fails that site's build. A `data-bascik-build-once` script runs when the component is registered, so it fails the build even if no page in the site uses the component. A `data-bascik-build` script runs only where the component is used, so the same import fails as soon as a page adds the component. The workspace checker reports the import for every site where it does not resolve, used or not.
 
 ## Shared design tokens
 

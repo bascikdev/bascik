@@ -1,15 +1,4 @@
-/**
- * Output scope for page-aware component build scripts.
- *
- * A `data-bascik-build="page"` script inside a component is deferred: it runs
- * when each page is transpiled, after the component's own scoping pass has
- * already rewritten its template. Its output would otherwise be inserted with
- * plain class and element names that the component's scoped CSS no longer
- * matches. The class scoping pass records the component's mapping on the
- * deferred script tag as `data-bascik-output-scope`, and `executeBuildScripts`
- * applies it to the script's stdout, so printed markup is scoped exactly like
- * markup written in the template.
- */
+/** Helpers for applying a component's scoped names to build-script output. */
 import { maskElementContents } from "./shielding.ts";
 
 /** Same-length copy with comments and raw-text element content blanked out. */
@@ -136,8 +125,8 @@ const scopeOpenTag = (
 };
 
 /**
- * Apply a component's output scope to HTML printed by one of its page-aware
- * build scripts. Only real open tags are touched: markup inside comments,
+ * Apply a component's output scope to HTML printed by one of its build
+ * scripts. Only real open tags are touched: markup inside comments,
  * `<script>`, `<style>`, and `<textarea>` content, and attribute values is
  * left as written. Class names the component's stylesheet does not define
  * stay global, the same rule as for template markup.

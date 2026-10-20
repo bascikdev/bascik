@@ -26,6 +26,8 @@ import { apiRouteRegistry } from "./server-api.ts";
 import { scriptRegistry } from "./script-registry.ts";
 import { getImportRoot } from "./import-root.ts";
 import { watchSourceCycles } from "./watch-source.ts";
+import { sourceWatchRoot } from "./watch-root.ts";
+import { execWatchCoversPath } from "./exec.ts";
 
 export interface WatchFilesOptions {
   bootCompile?: (compileInitialSources: () => Promise<void>) => Promise<void>;
@@ -283,40 +285,28 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
     // Compilation watches are independent of exec.watch and exec completion.
     const watchPaths = BascikConfig.pipeline?.watchPaths ?? [];
     if (!BascikConfig.isBuild && watchPaths.length) {
+      // Chokidar 5 does not expand globs: watch each glob's folder, then keep
+      // only the files a pattern matches.
+      const onWatchPathEvent = async (path: string) => {
+        if (!execWatchCoversPath(watchPaths, path)) return;
+        try {
+          clearBuildScriptCaches(path);
+          await selectivelyProcessPagesForWatchPath(path);
+          eventEmitter.emit("watch-path-processed", { path });
+        } catch (err) {
+          onWatchError(err);
+        }
+      };
       w(
         chokidar
-          .watch(watchPaths, {
+          .watch([...new Set(watchPaths.map(sourceWatchRoot))], {
             ...watchOptions,
             ignoreInitial: true,
             persistent: true,
           })
-          .on("add", async (path) => {
-            try {
-              clearBuildScriptCaches(path);
-              await selectivelyProcessPagesForWatchPath(path);
-              eventEmitter.emit("watch-path-processed", { path });
-            } catch (err) {
-              onWatchError(err);
-            }
-          })
-          .on("change", async (path) => {
-            try {
-              clearBuildScriptCaches(path);
-              await selectivelyProcessPagesForWatchPath(path);
-              eventEmitter.emit("watch-path-processed", { path });
-            } catch (err) {
-              onWatchError(err);
-            }
-          })
-          .on("unlink", async (path) => {
-            try {
-              clearBuildScriptCaches(path);
-              await selectivelyProcessPagesForWatchPath(path);
-              eventEmitter.emit("watch-path-processed", { path });
-            } catch (err) {
-              onWatchError(err);
-            }
-          }),
+          .on("add", onWatchPathEvent)
+          .on("change", onWatchPathEvent)
+          .on("unlink", onWatchPathEvent),
       );
     }
   }

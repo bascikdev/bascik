@@ -408,6 +408,7 @@ export async function runCompilerTimeline(options: TimelineOptions) {
             });
           }
           for (const path of [
+            "pkg/package.json",
             "pkg/test-coverage.json",
             "pkg/e2e-test-coverage.json",
             "create/test-coverage.json",

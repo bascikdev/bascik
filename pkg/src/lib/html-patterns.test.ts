@@ -6,13 +6,14 @@ import {
   ATTR_VALUE,
   ATTR,
   BUILD_FLAG,
+  BUILD_ONCE_FLAG,
   SERVER_FLAG,
   ROUTES_FLAG,
   SCRIPT_END_TAG,
   SCRIPT_TAG_PREFIX,
   getHtmlAttributeValue,
-  hasHtmlAttribute,
-  isPageAwareBuildOpenTag,
+  isBuildScriptOpenTag,
+  isDirectiveScriptOpenTag,
   scriptOpenTag,
 } from "./html-patterns.ts";
 
@@ -80,6 +81,7 @@ describe("html-patterns (Prompt 52)", () => {
     expect(ATTR_VALUE).toBeDefined();
     expect(ATTR).toBeDefined();
     expect(BUILD_FLAG).toBeDefined();
+    expect(BUILD_ONCE_FLAG).toBeDefined();
     expect(SERVER_FLAG).toBeDefined();
     expect(ROUTES_FLAG).toBeDefined();
     expect(SCRIPT_TAG_PREFIX).toBeDefined();
@@ -89,6 +91,11 @@ describe("html-patterns (Prompt 52)", () => {
       `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
     );
     expect(testRe.test('<script data-bascik-build type="module">')).toBe(true);
+    expect(
+      new RegExp(
+        `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>`,
+      ).test('<script data-bascik-build-once type="module">'),
+    ).toBe(true);
   });
 
   it("is imported by build-scripts.ts, routes.ts, and server-scripts.ts", () => {
@@ -157,38 +164,32 @@ describe("html-patterns (Prompt 52)", () => {
   });
 });
 
-describe("hasHtmlAttribute", () => {
+describe("isBuildScriptOpenTag", () => {
   it.each([
-    ["<script data-bascik-page-aware>", true],
-    ['<script data-bascik-page-aware = "">', true],
-    ["<script DATA-BASCIK-PAGE-AWARE=x>", true],
-    ["<script data-bascik-page-aware/>", true],
-    ["<script data-bascik-page-aware-x>", false],
-    ['<script data-note="data-bascik-page-aware">', false],
-    ["<script data-note='a data-bascik-page-aware b'>", false],
+    ["<script data-bascik-build>", true],
+    ['<script DATA-BASCIK-BUILD = "">', true],
+    ["<script data-bascik-build=page>", true],
+    ["<script data-bascik-build/>", true],
+    ["<script data-bascik-build-once>", true],
+    ['<script DATA-BASCIK-BUILD-ONCE = "">', true],
+    ['<script data-note="data-bascik-build">', false],
+    ["<script data-note='a data-bascik-build b'>", false],
   ])("%s -> %s", (tag, expected) => {
-    expect(hasHtmlAttribute(tag, "data-bascik-page-aware")).toBe(expected);
+    expect(isBuildScriptOpenTag(tag)).toBe(expected);
   });
 });
 
-describe("isPageAwareBuildOpenTag", () => {
+describe("isDirectiveScriptOpenTag", () => {
   it.each([
-    ['<script data-bascik-build="page">', true],
-    ['<script data-bascik-build = "page">', true],
-    ["<script data-bascik-build=page>", true],
-    ["<script data-bascik-build = 'PAGE' >", true],
-    ['<script data-bascik-build=" page ">', true],
-    ["<script data-bascik-build data-bascik-page-aware>", true],
-    ['<script data-bascik-build data-bascik-page-aware="">', true],
-    ["<script data-bascik-build>", false],
-    ['<script data-bascik-build="">', false],
-    ['<script data-bascik-build="pages">', false],
-    ['<script data-bascik-build="page-x">', false],
-    ["<script data-bascik-build=pager>", false],
-    ['<script data-bascik-build data-note="data-bascik-build=page">', false],
-    ["<script data-bascik-build data-bascik-page-aware-x>", false],
-    ["<script data-bascik-build data-x= data-bascik-page-aware>", false],
+    ["<script data-bascik-build>", true],
+    ["<script data-bascik-build-once>", true],
+    ['<script DATA-BASCIK-SERVER src="./data.ts">', true],
+    ["<script data-bascik-stream>", true],
+    ["<script data-bascik-routes>", true],
+    ['<script src="./client.ts">', false],
+    ['<script data-note="data-bascik-server">', false],
+    ["<script data-bascik-server-x>", false],
   ])("%s -> %s", (tag, expected) => {
-    expect(isPageAwareBuildOpenTag(tag)).toBe(expected);
+    expect(isDirectiveScriptOpenTag(tag)).toBe(expected);
   });
 });

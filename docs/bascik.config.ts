@@ -12,7 +12,12 @@ export default defineConfig({
     external: ["heading-anchors"],
   },
   pipeline: {
+    // Every file a page reads at build time must be covered here (or be a page or component), or editing it in
+    // dev never re-renders the page. docs/scripts/watch-paths.test.ts checks this.
     watchPaths: [
+      "../CHANGELOG.md",
+      "../pkg/package.json",
+      "../examples/starter-site/",
       "scripts/",
       "content/",
       "src/diagrams/",

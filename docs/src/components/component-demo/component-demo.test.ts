@@ -47,4 +47,28 @@ describe("component-demo component", () => {
       '.demo-language-pane[data-language-pane="css"]:empty',
     );
   });
+
+  it("hides the Output tab when no output slots have content", async () => {
+    const html = await readFile(componentPath, "utf8");
+
+    expect(html).toContain(
+      '.demo-pane[data-pane="output"] .demo-language-pane > *',
+    );
+    expect(html).toContain(".demo-output-fallback > *");
+    expect(html).toMatch(
+      /\.demo-box:not\([\s\S]*?:has\(\.demo-pane\[data-pane="output"\] \.demo-language-pane > \*\)[\s\S]*?\):not\(:has\(\.demo-output-fallback > \*\)\)\s+\.demo-tab\[data-testid="demo-tab-output"\]/,
+    );
+  });
+
+  it("stretches the active code pane to fill a taller demo box", async () => {
+    const html = await readFile(componentPath, "utf8");
+
+    expect(html).toContain("display: flex;\n    flex-direction: column;");
+    expect(html).toContain(
+      "display: flex;\n    flex: 1;\n    flex-direction: column;",
+    );
+    expect(html).toContain(
+      ".demo-language-pane:has(> *) > * {\n    height: 100%;",
+    );
+  });
 });

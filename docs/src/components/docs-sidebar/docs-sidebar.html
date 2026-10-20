@@ -1,6 +1,6 @@
 <div class="docs-sidebar">
   <aside class="docs-sidebar-nav" aria-label="Documentation navigation">
-    <script data-bascik-build>
+    <script data-bascik-build-once>
       import { NAV } from "@/lib/nav.ts";
       import { renderNavListItem } from "@/lib/nav-helpers.ts";
       export default async function () {
@@ -19,7 +19,7 @@
   <nav class="docs-toc" aria-label="On this page" hidden>
     <p class="docs-toc-title">On this page</p>
     <ol class="docs-toc-list">
-      <script data-bascik-build="page">
+      <script data-bascik-build>
         import { renderPageTableOfContents } from "@/lib/render-nav.ts";
         export default async function () {
           const pageContentPath = process.env.BASCIK_PAGE_FILE?.replace(

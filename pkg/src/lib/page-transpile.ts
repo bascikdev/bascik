@@ -162,7 +162,11 @@ export const transpilePage = async (
   globalStylesHtml?: string,
   route?: RouteEntry | null,
   preCleanedHtml?: string,
-  options?: { deferDiskWrite?: boolean },
+  options?: {
+    deferDiskWrite?: boolean;
+    /** `preCleanedHtml` with its build-once scripts already run (dynamic routes). */
+    onceResolvedHtml?: string;
+  },
 ): Promise<TranspilePageResult | null> => {
   let workMs = 0;
   let seg = performance.now();
@@ -214,7 +218,12 @@ export const transpilePage = async (
 
   let htmlWithBuildOutput: string;
   try {
-    const pendingBuild = executeBuildScripts(rawHtml, pagePath, route);
+    // Dependencies are still collected from `rawHtml`, the authored scripts.
+    const pendingBuild = executeBuildScripts(
+      options?.onceResolvedHtml ?? rawHtml,
+      pagePath,
+      route,
+    );
     pause();
     htmlWithBuildOutput = await pendingBuild;
     resume();

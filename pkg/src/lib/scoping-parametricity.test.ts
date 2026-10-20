@@ -138,7 +138,7 @@ const htmlFragment = fc.oneof(
   ),
   value.map(
     (a) =>
-      `<script data-bascik-build="page">export default () => "<p class='${a}'>x</p>";</script>`,
+      `<script data-bascik-build>export default () => "<p class='${a}'>x</p>";</script>`,
   ),
   fc
     .tuple(value, value)

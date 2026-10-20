@@ -196,9 +196,9 @@ Furthermore, cross-boundary selectors such as `html[data-theme="light"] .foo {}`
 <p><strong>Note:</strong> CSS custom properties defined in <code>:root</code> or at global scope are scoped by prefixing the variable name. Properties that should be intentionally global (design tokens consumed across components) should not be defined inside a component's CSS file.</p>
 </div>
 
-### Page-aware build script output
+### Component build script output
 
-A static component build script runs when the component is registered, so its output is part of the template before this pass runs. A page-aware script (`data-bascik-build="page"`) is deferred until each page is transpiled, after the pass. To keep its output consistent, the class pass records the component's mapping (defined classes and styled elements to their scoped names) on each deferred script tag as `data-bascik-output-scope`. When the script runs, `executeBuildScripts` applies that mapping to its returned HTML with `applyOutputScope` (`pkg/src/lib/output-scope.ts`), skipping comments, raw-text elements, and attribute values. The annotation is consumed with the script tag and never reaches the emitted HTML. The script cache stores the unscoped returned HTML, so scoping is reapplied on every use.
+A component build script runs when the component is expanded into a page, after this pass has scoped the template. To keep its output consistent, the class pass records the component's mapping (defined classes and styled elements to their scoped names) on each build script tag as `data-bascik-output-scope`. When the script runs, `executeBuildScripts` applies that mapping to its returned HTML with `applyOutputScope` (`pkg/src/lib/output-scope.ts`), skipping comments, raw-text elements, and attribute values. The annotation is consumed with the script tag and never reaches the emitted HTML. The script cache stores the unscoped returned HTML, so scoping is reapplied on every use.
 
 ### What is NOT scoped
 

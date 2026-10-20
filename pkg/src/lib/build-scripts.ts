@@ -83,7 +83,9 @@ import {
 import { removeOutputDirectives } from "./output-directives.ts";
 import {
   ATTR,
+  ANY_BUILD_FLAG,
   BUILD_FLAG,
+  BUILD_ONCE_FLAG,
   SERVER_FLAG,
   ROUTES_FLAG,
   STREAM_FLAG,
@@ -100,18 +102,33 @@ const BUILD_SCRIPT_RE = new RegExp(
   "gi",
 );
 
+const BUILD_ONCE_SCRIPT_RE = new RegExp(
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
+  "gi",
+);
+
+const BUILD_ONCE_OPEN_TAG_RE = new RegExp(
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  "i",
+);
+
+const BUILD_MODE_CONFLICT_RE = new RegExp(
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  "i",
+);
+
 const BUILD_SERVER_CONFLICT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
 
 const BUILD_ROUTES_CONFLICT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
 
 const BUILD_STREAM_CONFLICT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
 
@@ -143,8 +160,8 @@ const depContentCache = new Map<string, string>();
 
 /**
  * Entry cap for the in-memory build-script output memo. Each entry is one
- * script's rendered output (page-aware scripts produce one per page, and in
- * dev every edit to an inline body is a new key), so an unbounded map grows for
+ * script's rendered output (component scripts use the context of each page,
+ * and in dev every edit to an inline body is a new key), so an unbounded map grows for
  * the life of a dev session. Eviction is FIFO in insertion order, like
  * `representationCache` in `caching.ts`: the on-disk cache still hits for an
  * evicted key, so eviction costs one file read, never a child spawn.
@@ -307,13 +324,13 @@ const readCachedFile = async (
 };
 
 const ALL_PAGE_SCRIPTS_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+(?:${BUILD_FLAG}|${ROUTES_FLAG})(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+(?:${ANY_BUILD_FLAG}|${ROUTES_FLAG})(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
   "gi",
 );
 
 /**
- * Extract all local file dependencies referenced by `<script data-bascik-build>`
- * and `<script data-bascik-routes>` blocks in `html`, recursively scanning
+ * Extract all local file dependencies referenced by build, build-once, and
+ * routes script blocks in `html`, recursively scanning
  * referenced local JS/TS/MJS files.
  */
 export const collectAllScriptDeps = async (
@@ -484,7 +501,7 @@ const computeScriptCacheKey = async (
   hash.update(isBuild ? "1" : "0");
   hash.update(filePath); // BASCIK_SOURCE_FILE
   hash.update(pageFile); // BASCIK_PAGE_FILE
-  hash.update(pagePath); // BASCIK_PAGE_PATH — varies per page for page-aware scripts
+  hash.update(pagePath); // BASCIK_PAGE_PATH — varies by page
   hash.update(siteUrl); // BASCIK_SITE_URL  — can affect script output
   hash.update(base); // BASCIK_BASE      — can affect script output
   hash.update(routeStr); // BASCIK_ROUTE     — varies per dynamic route
@@ -616,6 +633,7 @@ export interface ExecuteBuildScriptOptions {
   pageFile?: string;
   pagePath?: string;
   sourceFile?: string;
+  once?: boolean;
 }
 
 /**
@@ -628,7 +646,23 @@ export const executeBuildScripts = async (
   route?: RouteEntry | null,
   options?: ExecuteBuildScriptOptions,
 ): Promise<string> => {
-  const matches = [...html.matchAll(BUILD_SCRIPT_RE)];
+  if (BUILD_MODE_CONFLICT_RE.test(html)) {
+    throw new Error(
+      "[bascik] error: a <script> tag cannot combine data-bascik-build and data-bascik-build-once. Choose one build-script mode.",
+    );
+  }
+  // Build-once scripts run first and without page context, so a build script
+  // never sees one and their output is the same wherever the file is used.
+  if (!options?.once && BUILD_ONCE_OPEN_TAG_RE.test(html)) {
+    html = await executeBuildScripts(html, filePath, null, {
+      ...options,
+      once: true,
+    });
+  }
+
+  const matches = [
+    ...html.matchAll(options?.once ? BUILD_ONCE_SCRIPT_RE : BUILD_SCRIPT_RE),
+  ];
   if (matches.length === 0) return html;
 
   let result = html;
@@ -646,20 +680,21 @@ export const executeBuildScripts = async (
   await pruneScriptCache(cacheDir);
 
   const defaultSourceFile = options?.sourceFile ?? filePath ?? "";
-  const pageFile = options?.pageFile ?? filePath ?? "";
+  const pageFile = options?.once ? "" : (options?.pageFile ?? filePath ?? "");
   const importRoot = getImportRoot();
   const resolvedSiteUrl = getSiteUrl();
   const siteUrl = resolvedSiteUrl ?? "";
   const routeStr = route ? JSON.stringify(route) : "";
-  const pagePath =
-    options?.pagePath ??
-    (pageFile
-      ? computePagePath(
-          pageFile,
-          BascikConfig.directory?.pages ?? "src/pages",
-          route,
-        )
-      : "");
+  const pagePath = options?.once
+    ? ""
+    : (options?.pagePath ??
+      (pageFile
+        ? computePagePath(
+            pageFile,
+            BascikConfig.directory?.pages ?? "src/pages",
+            route,
+          )
+        : ""));
 
   interface ScriptTask {
     fullTag: string;
@@ -704,21 +739,24 @@ export const executeBuildScripts = async (
       ? ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})`
       : "";
     const useCache = isScriptCacheEnabledForPath(sourceFile || filePath);
+    const buildDirective = options?.once
+      ? "data-bascik-build-once"
+      : "data-bascik-build";
     if (BUILD_SERVER_CONFLICT_RE.test(openTag)) {
       throw new Error(
-        `[bascik] error: <script> tag has both data-bascik-build and data-bascik-server${where}. A script can only run at build time or at request time — not both. Remove one of the attributes.`,
+        `[bascik] error: <script> tag has both ${buildDirective} and data-bascik-server${where}. A script can only run at build time or at request time — not both. Remove one of the attributes.`,
       );
     }
 
     if (BUILD_ROUTES_CONFLICT_RE.test(openTag)) {
       throw new Error(
-        `[bascik] error: <script> tag has both data-bascik-build and data-bascik-routes${where}. A script cannot be both a build script and a routes script. Remove one of the attributes.`,
+        `[bascik] error: <script> tag has both ${buildDirective} and data-bascik-routes${where}. A script cannot be both a build script and a routes script. Remove one of the attributes.`,
       );
     }
 
     if (BUILD_STREAM_CONFLICT_RE.test(openTag)) {
       throw new Error(
-        `[bascik] error: <script> tag has both data-bascik-build and data-bascik-stream${where}. A script can only run at build time or at request time — not both. Remove one of the attributes.`,
+        `[bascik] error: <script> tag has both ${buildDirective} and data-bascik-stream${where}. A script can only run at build time or at request time — not both. Remove one of the attributes.`,
       );
     }
 
@@ -992,8 +1030,8 @@ export const executeBuildScripts = async (
     // Only directives written in source files run; printed ones are dropped.
     const { html: safeOutput, removed } = removeOutputDirectives(output ?? "");
     for (const name of removed) removedDirectives.add(name);
-    // A deferred page-aware component script carries its component's scope so
-    // its page-time output matches the component's scoped CSS. Applied after
+    // A component build script carries its component's scope so its output
+    // matches the component's scoped CSS. Applied after
     // caching, so the cache stores the script's own stdout.
     const emitted = outputScope
       ? applyOutputScope(safeOutput, outputScope)

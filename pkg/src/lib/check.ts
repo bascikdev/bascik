@@ -50,7 +50,7 @@ import {
   PRESERVE_WILDCARD_PATTERN,
 } from "./config-validation.ts";
 import { stdout } from "./colors.ts";
-import { BUILD_ATTR_NAME } from "./html-patterns.ts";
+import { BUILD_ATTR_NAME, BUILD_ONCE_ATTR_NAME } from "./html-patterns.ts";
 import type { ComponentList } from "./types.ts";
 
 export type FindingSeverity = "error" | "warning";
@@ -306,7 +306,7 @@ const maskPreservedSubtrees = (html: string): string => {
 // Whole-attribute-name directive test (prompt 65 step 0).
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const BUILD_DIRECTIVE_RE = new RegExp(
-  String.raw`(?:^|\s)${BUILD_ATTR_NAME}`,
+  String.raw`(?:^|\s)(?:${BUILD_ATTR_NAME}|${BUILD_ONCE_ATTR_NAME})`,
   "i",
 );
 
