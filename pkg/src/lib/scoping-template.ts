@@ -176,18 +176,24 @@ const inputTexts = (component: BascikComponent): string[] => [
     : JSON.stringify(component.scopedIdNames),
 ];
 
+// Length-prefixed so large template and CSS strings are not JSON-escaped per instance.
+const encodeString = (value: string | undefined): string =>
+  value === undefined ? "u;" : `s${value.length}:${value};`;
+
 const inputKey = (component: BascikComponent): string =>
-  JSON.stringify([
-    BascikConfig.scoping ?? null,
-    Boolean(BascikConfig.minify?.identifiers),
-    process.cwd(),
-    component.name,
-    component.fileName ?? null,
-    component.fileContent,
-    component.cssFileContent ?? null,
-    component.scopedIdNames ?? null,
-    component.requiresPerInstanceCss ?? null,
-  ]);
+  encodeString(
+    JSON.stringify([
+      BascikConfig.scoping ?? null,
+      Boolean(BascikConfig.minify?.identifiers),
+      process.cwd(),
+      component.name,
+      component.fileName ?? null,
+      component.scopedIdNames ?? null,
+      component.requiresPerInstanceCss ?? null,
+    ]),
+  ) +
+  encodeString(component.fileContent) +
+  encodeString(component.cssFileContent);
 
 /** Split `text` at every occurrence of every token; null when occurrences overlap. */
 const segment = (text: string, tokens: string[]): Segmented | null => {

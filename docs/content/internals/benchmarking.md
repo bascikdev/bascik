@@ -8,6 +8,8 @@ Bascik ships a repeatable benchmarking and profiling harness in `pkg/bench/` for
 | --------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------- |
 | `yarn pkg:bench`                                    | `pkg/bench/*.bench.ts`            | Vitest throughput microbenchmarks on fixed in-memory inputs                           |
 | `yarn workspace @bascik/bascik profile:compare`     | `pkg/bench/compiler-compare.ts`   | Paired baseline versus candidate compiler builds with byte-identity verification      |
+| `yarn workspace @bascik/bascik profile:fuzz`        | `pkg/bench/compiler-fuzz.ts`      | Seeded differential checks against a built baseline compiler                          |
+| `yarn workspace @bascik/bascik profile:summary`     | `pkg/bench/profile-summary.ts`    | Read-only CPU sample and hot-line summaries                                           |
 | `yarn workspace @bascik/bascik profile:compiler`    | `pkg/bench/compiler-timeline.ts`  | Cold, warm, and live-edit compiler timelines on an isolated project copy              |
 | `yarn workspace @bascik/bascik profile:workload`    | `pkg/bench/profile-workload.ts`   | Bounded runtime captures (HTTP/1.1, HTTP/2 with TLS, static serving, dev, and builds) |
 | `node pkg/bench/profile-boundaries.ts <report-dir>` | `pkg/bench/profile-boundaries.ts` | Resource-boundary capture with optional heap allocation sampling                      |
@@ -20,6 +22,7 @@ Microbenchmarks use Vitest's `bench` test-context fixture (`pkg/bench/transpile.
 - **HTML minification and tag scanning**: `minifyHtml`, `getTag`, and `replaceTag` on paired and self-closing component tags.
 - **CSS scoping transforms**: `convertCssElementSelectorsToClasses`, `scopeCssCustomProperties`, and `deduplicateCss`.
 - **Component expansion scaling**: `recursivelyTranspile` across 10 to 3,200 flat and nested component instances, plus sequential multi-page simulations.
+- **Masking and segment reuse**: raw-text masking with present and absent tags, plus shared JavaScript code-segment normalization with and without its memo.
 
 Run the suite from the repository root:
 
@@ -29,9 +32,30 @@ yarn pkg:bench
 
 Before timing begins, the benchmark suite runs oracle assertions on the output (checking expansion counts and scoped class prefixes) so a broken mock or regression fails immediately rather than recording misleading numbers.
 
+## Differential Fuzzing and CPU Summaries
+
+`profile:fuzz` compares two built compilers on generated component expansion, prop, slot, tag, masking, and JavaScript inputs. Each candidate input runs twice to expose warm-cache differences. Results and error names/messages are compared exactly, without filtering known differences or normalizing shield tokens. It uses an empty temporary working directory, cleans it up afterward, and prints JSON with a seed, shrunk counterexample, and replay path on failure.
+
+```sh
+yarn workspace @bascik/bascik profile:fuzz \
+  --baseline "$BASELINE_PKG" --candidate "$PWD/pkg" \
+  --runs 20000 --seed 31337
+```
+
+Use absolute package paths with built `dist/lib/` directories. The default candidate is the current workspace package; defaults are 2,000 cases per target and seed `31337`. Use `--targets expansion,props,slots,tags,masking,javascript` to select groups. To replay a failure, select one target and pass its reported `--seed` and `--path`. A mismatch exits nonzero. This is an opt-in developer check, not a substitute for real builds, worker tests, or browser tests.
+
+`profile:summary` reads an existing V8 CPU profile and prints self time, inclusive time, and hot source lines:
+
+```sh
+yarn workspace @bascik/bascik profile:summary \
+  /absolute/path/to/capture.cpuprofile --filter component --limit 20
+```
+
+Functions are identified by full URL, line, and column. Recursive frames count once per inclusive sample, and negative sampler deltas are clamped to zero. Totals include idle and GC samples; they are not end-to-end build durations. Locations are those recorded in the profile, without source-map remapping. The command does not modify the capture. Both utilities have unit tests in the normal package suite.
+
 ## Private Report Directories
 
-Every profiling and comparison command writes to an explicit `--report-dir` path. The harness enforces strict isolation rules before running any workload:
+Workload captures and build comparisons write to an explicit `--report-dir` path. The harness enforces strict isolation rules before running any workload:
 
 - **Outside the repository**: The path must be absolute and outside the repository and any watched, served, or cleaned output tree.
 - **Private permissions**: The directory must be new or empty, owned by the current user, and created with mode `0700`.

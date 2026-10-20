@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import fc from "fast-check";
 import {
   createContentShield,
   maskElementContents,
@@ -307,5 +308,190 @@ describe("data-bascik-preserve with an empty value", () => {
       ),
     ).toBe('<div id="a"></div>');
     expect(warnings).toEqual([]);
+  });
+});
+
+describe("characterization parity against reference implementation", () => {
+  const refTagNameFragment = (entry: string): string => {
+    if (!entry.includes("*")) {
+      return entry.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+    return entry
+      .split("*")
+      .map((segment) => segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("[a-zA-Z0-9-]*");
+  };
+
+  const refMaskElementContents = (html: string, tags: string[]): string => {
+    let result = html;
+    let lower: string | null = null;
+    for (const tag of tags) {
+      const entry = tag.toLowerCase();
+      if (!entry.includes("*")) {
+        lower ??= result.toLowerCase();
+        if (!lower.includes(`<${entry}`)) continue;
+      } else {
+        const prefix = entry.slice(0, entry.indexOf("*"));
+        if (prefix !== "") {
+          lower ??= result.toLowerCase();
+          if (!lower.includes(`<${prefix}`)) continue;
+        }
+      }
+      const fragment = refTagNameFragment(tag);
+      const attributes = `(?:[^>"']|"[^"]*"|'[^']*')*`;
+      result = result.replace(
+        new RegExp(
+          `(<${fragment}(?:\\b${attributes})?>)([\\s\\S]*?)(<\\/${fragment}\\s*>)`,
+          "gi",
+        ),
+        (_match, open: string, inner: string, close: string) =>
+          `${open}${" ".repeat(inner.length)}${close}`,
+      );
+      lower = null;
+    }
+    return result;
+  };
+
+  const refShieldElementContents = (
+    html: string,
+    tags: string[],
+  ): { html: string; restore: (value: string) => string } => {
+    if (tags.length === 0) return { html, restore: (value) => value };
+    const shield = createContentShield(html);
+    let result = html;
+    let lower: string | null = null;
+    for (const tag of tags) {
+      const entry = tag.toLowerCase();
+      if (!entry.includes("*")) {
+        lower ??= result.toLowerCase();
+        if (!lower.includes(`<${entry}`)) continue;
+      } else {
+        const prefix = entry.slice(0, entry.indexOf("*"));
+        if (prefix !== "") {
+          lower ??= result.toLowerCase();
+          if (!lower.includes(`<${prefix}`)) continue;
+        }
+      }
+      const fragment = refTagNameFragment(tag);
+      const attributes = `(?:[^>"']|"[^"]*"|'[^']*')*`;
+      result = result.replace(
+        new RegExp(
+          `(<${fragment}(?:\\b${attributes})?>)([\\s\\S]*?)(<\\/${fragment}>)`,
+          "gi",
+        ),
+        (_match, open: string, inner: string, close: string) =>
+          `${open}${shield.hide(inner)}${close}`,
+      );
+      lower = null;
+    }
+    return { html: result, restore: shield.restore };
+  };
+
+  const refMayContainPreserved = (
+    html: string,
+    preservedTags: string[],
+  ): boolean => {
+    const lower = html.toLowerCase();
+    if (lower.includes("data-bascik-preserve")) return true;
+    for (const tag of preservedTags) {
+      const entry = tag.toLowerCase();
+      if (!entry.includes("*")) {
+        if (lower.includes(`<${entry}`)) return true;
+        continue;
+      }
+      const prefix = entry.slice(0, entry.indexOf("*"));
+      if (prefix === "" || lower.includes(`<${prefix}`)) return true;
+    }
+    return false;
+  };
+
+  const fragmentArb = fc.constantFrom(
+    "<script>",
+    "<SCRIPT type=module>",
+    '<script data-a="x>y">',
+    "<script a='x>y'>",
+    '<script a="unclosed',
+    "</script>",
+    "</SCRIPT >",
+    "<Style>",
+    "</style>",
+    "</STYLE >",
+    "<TEXTAREA>",
+    "</textarea>",
+    "</TextArea >",
+    "<code>",
+    "</CODE>",
+    "<pre>",
+    "</pre>",
+    "<vendor-widget id=\"a\" class='b>c'>",
+    "</vendor-widget>",
+    "<VENDOR-BOX>",
+    "</vendor-box>",
+    "<acme-widget>",
+    "</acme-widget>",
+    '<div id="x" class="y" name="z">',
+    '<div data-bascik-preserve="class">',
+    "<div DATA-BASCIK-PRESERVE>",
+    "</div>",
+    "\u0130",
+    "ß",
+    "é",
+    "<",
+    ">",
+    '"',
+    "'",
+    "plain text",
+  );
+
+  const htmlArb = fc
+    .array(fragmentArb, { maxLength: 18 })
+    .map((parts) => parts.join(""));
+
+  const tagsArb = fc.subarray(
+    [
+      "script",
+      "SCRIPT",
+      "Style",
+      "TEXTAREA",
+      "code",
+      "pre",
+      "vendor-*",
+      "VENDOR-*",
+      "*-widget",
+      "*",
+    ],
+    { minLength: 0, maxLength: 6 },
+  );
+
+  it("matches reference maskElementContents, shieldElementContents, and shieldPreservedAttribute across mixed case, attributes, non-ASCII, and preserve patterns", () => {
+    const normalizeTokens = (s: string) =>
+      s.replace(/\x00BASCIK_SHIELD_\d+\x00/g, "\x00TOKEN\x00");
+
+    fc.assert(
+      fc.property(
+        htmlArb,
+        tagsArb,
+        fc.constantFrom("id" as const, "name" as const, "class" as const),
+        (html, tags, attr) => {
+          expect(maskElementContents(html, tags)).toBe(
+            refMaskElementContents(html, tags),
+          );
+
+          const shielded = shieldElementContents(html, tags);
+          const refShielded = refShieldElementContents(html, tags);
+          expect(normalizeTokens(shielded.html)).toBe(
+            normalizeTokens(refShielded.html),
+          );
+          expect(shielded.restore(shielded.html)).toBe(html);
+
+          __shieldStatsForTests.reset();
+          const attrShielded = shieldPreservedAttribute(html, attr, tags);
+          const scanned = __shieldStatsForTests.tagScans > 0;
+          expect(scanned).toBe(refMayContainPreserved(html, tags));
+          expect(attrShielded.restore(attrShielded.html)).toBe(html);
+        },
+      ),
+      { numRuns: 500 },
+    );
   });
 });

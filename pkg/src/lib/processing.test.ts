@@ -1672,10 +1672,10 @@ describe("pageProcessing – live-reload script injection", () => {
     await pageProcessing(PAGE_PATH, {});
 
     await vi.waitFor(() => {
-      expect(writeFile).toHaveBeenCalledWith(
-        expect.stringContaining("dist"),
-        expect.stringContaining("/bascik-live-reload"),
+      const write = (writeFile as ReturnType<typeof vi.fn>).mock.calls.find(
+        ([path]) => String(path).includes("dist"),
       );
+      expect(String(write?.[1])).toContain("/bascik-live-reload");
     });
   });
 

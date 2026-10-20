@@ -128,6 +128,8 @@
     "dev": "bascik",
     "profile:workload": "node bench/profile-workload.ts",
     "profile:compiler": "node bench/compiler-timeline.ts",
-    "profile:compare": "node bench/compiler-compare.ts"
+    "profile:compare": "node bench/compiler-compare.ts",
+    "profile:fuzz": "node bench/compiler-fuzz.ts",
+    "profile:summary": "node bench/profile-summary.ts"
   }
 }

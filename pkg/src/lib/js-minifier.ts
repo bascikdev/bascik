@@ -480,6 +480,21 @@ const scanSegments = (js: string): Segment[] => {
   return segments;
 };
 
+const normalizeCodeSegment = (text: string): string => {
+  let code = text.replace(/\s+/g, " ");
+  code = code.replace(/\s*([{}();,:=?*!^~%])\s*/g, "$1");
+  code = code.replace(
+    /\s*(<|>|<=|>=|==|===|!=|!==|<<|>>|>>>|\&\&|\|\||\?\?|\+=|-=|\*=|\/=|%=)\s*/g,
+    "$1",
+  );
+  code = code.replace(/([^\s+-])\s*\+/g, "$1+");
+  code = code.replace(/\+\s*([^\s+-])/g, "+$1");
+  code = code.replace(/([^\s+-])\s*-/g, "$1-");
+  code = code.replace(/-\s*([^\s+-])/g, "-$1");
+  code = code.replace(/([^\d\s])\s*\.\s*/g, "$1.");
+  return code.replace(/([^\d])\s*\.\s*([^\d\s])/g, "$1.$2");
+};
+
 /**
  * Strip block/line comments and collapse whitespace from a JS string.
  * String literals, template literals, and regex literals are preserved verbatim
@@ -649,27 +664,7 @@ export const minifyJs = (js: string): string => {
       }
     }
 
-    // 2. Collapse remaining multi-space runs into a single space
-    let code = processedText.replace(/\s+/g, " ");
-
-    // 3. Strip spaces around safe structural punctuation
-    code = code.replace(/\s*([{}();,:=?*!^~%])\s*/g, "$1");
-
-    // 4. Strip spaces around < and >
-    code = code.replace(
-      /\s*(<|>|<=|>=|==|===|!=|!==|<<|>>|>>>|\&\&|\|\||\?\?|\+=|-=|\*=|\/=|%=)\s*/g,
-      "$1",
-    );
-
-    // 5. Strip spaces around + and - safely (avoid turning + + into ++ or - - into --)
-    code = code.replace(/([^\s+-])\s*\+/g, "$1+");
-    code = code.replace(/\+\s*([^\s+-])/g, "+$1");
-    code = code.replace(/([^\s+-])\s*-/g, "$1-");
-    code = code.replace(/-\s*([^\s+-])/g, "-$1");
-
-    // 6. Strip spaces around . except when preceded by an integer literal (e.g. 1 .toString())
-    code = code.replace(/([^\d\s])\s*\.\s*/g, "$1.");
-    code = code.replace(/([^\d])\s*\.\s*([^\d\s])/g, "$1.$2");
+    const code = codeSegmentMemo.minify(processedText);
 
     // Ensure boundary spacing with previous segment if both end/start with word chars.
     // `code` can be empty (a whitespace-only segment between two literals); the
@@ -734,6 +729,30 @@ export const createMinifyJsMemo = (
     },
     stats: () => ({ entries: entries.size, bytes }),
   };
+};
+
+const CODE_SEGMENT_MEMO_LIMITS = {
+  maxEntries: 2048,
+  maxBytes: 4 * 1024 * 1024,
+};
+let normalizationRuns = 0;
+const createCodeSegmentMemo = (limits: typeof CODE_SEGMENT_MEMO_LIMITS) =>
+  createMinifyJsMemo((text) => {
+    normalizationRuns++;
+    return normalizeCodeSegment(text);
+  }, limits);
+
+// Only post-ASI normalization is a pure function of the segment text.
+let codeSegmentMemo = createCodeSegmentMemo(CODE_SEGMENT_MEMO_LIMITS);
+
+export const __segmentMemoForTests = {
+  normalizeUnmemoized: normalizeCodeSegment,
+  normalize: (text: string): string => codeSegmentMemo.minify(text),
+  stats: () => ({ normalizationRuns, ...codeSegmentMemo.stats() }),
+  reset(limits = CODE_SEGMENT_MEMO_LIMITS): void {
+    normalizationRuns = 0;
+    codeSegmentMemo = createCodeSegmentMemo(limits);
+  },
 };
 
 const builtInMinifyJsMemo = createMinifyJsMemo(minifyJs, {

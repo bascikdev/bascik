@@ -67,31 +67,14 @@ export const shieldElementContents = (
   if (tags.length === 0) return { html, restore: (value) => value };
   const shield = createContentShield(html);
   let result = html;
-  let lower: string | null = null;
   for (const tag of tags) {
-    const entry = tag.toLowerCase();
-    if (!entry.includes("*")) {
-      lower ??= result.toLowerCase();
-      if (!lower.includes(`<${entry}`)) continue;
-    } else {
-      const prefix = entry.slice(0, entry.indexOf("*"));
-      if (prefix !== "") {
-        lower ??= result.toLowerCase();
-        if (!lower.includes(`<${prefix}`)) continue;
-      }
-    }
-    const fragment = tagNameFragment(tag);
-    const attributes = `(?:[^>"']|"[^"]*"|'[^']*')*`;
+    const patterns = getTagContentPatterns(tag);
+    if (patterns.probe && !patterns.probe.test(result)) continue;
     result = result.replace(
-      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-      new RegExp(
-        `(<${fragment}(?:\\b${attributes})?>)([\\s\\S]*?)(<\\/${fragment}>)`,
-        "gi",
-      ),
+      patterns.shield,
       (_match, open: string, inner: string, close: string) =>
         `${open}${shield.hide(inner)}${close}`,
     );
-    lower = null;
   }
   return { html: result, restore: shield.restore };
 };
@@ -99,6 +82,7 @@ export const shieldElementContents = (
 const PRESERVABLE_ATTRIBUTES = new Set(["id", "name", "class"]);
 const HTML_TAG_PATTERN =
   /<!--[\s\S]*?-->|<\/?[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g;
+const PRESERVE_DIRECTIVE_PROBE = /data-bascik-preserve/i;
 
 /**
  * Translate one preserve entry into a tag-name fragment for a RegExp. Exact
@@ -114,6 +98,43 @@ const tagNameFragment = (entry: string): string => {
     .split("*")
     .map((segment) => segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("[a-zA-Z0-9-]*");
+};
+
+type TagContentPatterns = {
+  probe: RegExp | null;
+  shield: RegExp;
+  mask: RegExp;
+};
+
+// Cached per lowercase tag/pattern entry; RegExp /i matches ASCII tag names identically to toLowerCase().
+const TAG_CONTENT_PATTERN_CACHE = new Map<string, TagContentPatterns>();
+
+const getTagContentPatterns = (tag: string): TagContentPatterns => {
+  const entry = tag.toLowerCase();
+  let cached = TAG_CONTENT_PATTERN_CACHE.get(entry);
+  if (cached) return cached;
+  const prefix = entry.includes("*")
+    ? entry.slice(0, entry.indexOf("*"))
+    : entry;
+  const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const fragment = tagNameFragment(entry);
+  const attributes = `(?:[^>"']|"[^"]*"|'[^']*')*`;
+  cached = {
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    probe: prefix === "" ? null : new RegExp(`<${escapedPrefix}`, "i"),
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    shield: new RegExp(
+      `(<${fragment}(?:\\b${attributes})?>)([\\s\\S]*?)(<\\/${fragment}>)`,
+      "gi",
+    ),
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    mask: new RegExp(
+      `(<${fragment}(?:\\b${attributes})?>)([\\s\\S]*?)(<\\/${fragment}\\s*>)`,
+      "gi",
+    ),
+  };
+  TAG_CONTENT_PATTERN_CACHE.set(entry, cached);
+  return cached;
 };
 
 /**
@@ -182,18 +203,12 @@ const mayContainPreserved = (
   html: string,
   preservedTags: string[],
 ): boolean => {
-  const lower = html.toLowerCase();
-  if (lower.includes("data-bascik-preserve")) return true;
+  if (PRESERVE_DIRECTIVE_PROBE.test(html)) return true;
   for (const tag of preservedTags) {
-    const entry = tag.toLowerCase();
-    if (!entry.includes("*")) {
-      if (lower.includes(`<${entry}`)) return true;
-      continue;
-    }
+    const { probe } = getTagContentPatterns(tag);
     // A pattern with a literal prefix can be cheaply ruled out; one without
     // (`*`, `*-widget`) cannot, so it forces the scan.
-    const prefix = entry.slice(0, entry.indexOf("*"));
-    if (prefix === "" || lower.includes(`<${prefix}`)) return true;
+    if (probe === null || probe.test(html)) return true;
   }
   return false;
 };
@@ -344,31 +359,14 @@ export const stripPreserveDirectives = (
 // Scanner masks discard content and preserve offsets; they are never restored.
 export const maskElementContents = (html: string, tags: string[]): string => {
   let result = html;
-  let lower: string | null = null;
   for (const tag of tags) {
-    const entry = tag.toLowerCase();
-    if (!entry.includes("*")) {
-      lower ??= result.toLowerCase();
-      if (!lower.includes(`<${entry}`)) continue;
-    } else {
-      const prefix = entry.slice(0, entry.indexOf("*"));
-      if (prefix !== "") {
-        lower ??= result.toLowerCase();
-        if (!lower.includes(`<${prefix}`)) continue;
-      }
-    }
-    const fragment = tagNameFragment(tag);
-    const attributes = `(?:[^>"']|"[^"]*"|'[^']*')*`;
+    const patterns = getTagContentPatterns(tag);
+    if (patterns.probe && !patterns.probe.test(result)) continue;
     result = result.replace(
-      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-      new RegExp(
-        `(<${fragment}(?:\\b${attributes})?>)([\\s\\S]*?)(<\\/${fragment}\\s*>)`,
-        "gi",
-      ),
+      patterns.mask,
       (_match, open: string, inner: string, close: string) =>
         `${open}${" ".repeat(inner.length)}${close}`,
     );
-    lower = null;
   }
   return result;
 };

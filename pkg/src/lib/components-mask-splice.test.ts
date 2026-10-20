@@ -234,4 +234,50 @@ describe("spliceRawTextMask", () => {
       ).masked,
     ).toBeNull();
   });
+
+  it("reports the end of the inserted text as closed, so a later sibling splice resumes there", () => {
+    fc.assert(
+      fc.property(
+        fc.tuple(htmlArb, htmlArb, htmlArb, htmlArb, htmlArb, htmlArb),
+        ([prefix, usageA, templateA, gap, usageB, templateB]) => {
+          const body = prefix + usageA + gap + usageB;
+          const startA = prefix.length;
+          const first = spliceRawTextMask(
+            body,
+            maskRawTextContent(body),
+            startA,
+            startA + usageA.length,
+            templateA,
+            0,
+          );
+          if (first.masked === null) return;
+          expect(first.closedEnd).toBe(startA + templateA.length);
+          const afterA = prefix + templateA + gap + usageB;
+          const startB = first.closedEnd! + gap.length;
+          const second = spliceRawTextMask(
+            afterA,
+            first.masked,
+            startB,
+            startB + usageB.length,
+            templateB,
+            first.closedEnd!,
+          );
+          const fromStart = spliceRawTextMask(
+            afterA,
+            first.masked,
+            startB,
+            startB + usageB.length,
+            templateB,
+            first.closedThrough,
+          );
+          expect(second.masked).toBe(fromStart.masked);
+          if (second.masked !== null)
+            expect(second.masked).toBe(
+              maskRawTextContent(prefix + templateA + gap + templateB),
+            );
+        },
+      ),
+      { numRuns: 5000 },
+    );
+  });
 });
