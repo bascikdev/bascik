@@ -20,15 +20,7 @@ import {
   deleteDistDir,
 } from "./file-system.ts";
 import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
-
-/** Watch glob roots, not literal globs: Chokidar 5 no longer expands globs. */
-export const sourceWatchRoot = (pattern: string): string => {
-  const parts = pattern.replace(/\\/g, "/").split("/");
-  const index = parts.findIndex((part) => /[?*[\]{}()!+@]/.test(part));
-  return index < 0
-    ? pattern
-    : parts.slice(0, index).join("/") || (pattern.startsWith("/") ? "/" : ".");
-};
+import { sourceWatchRoot } from "./watch-root.ts";
 
 /** One filesystem observer owns source/exec overlap, including page edits.
  * Outputs are ignored unconditionally. No timestamp or self-write heuristic

@@ -572,6 +572,24 @@ describe("referenced files (fs half)", () => {
     expect(errors[0].message).toContain("does not exist");
   });
 
+  it("checks a glob watchPaths entry by the folder before its first wildcard", () => {
+    const existing = new Set(["/project/content", "/project/data"]);
+    const fs = {
+      ...missingFs,
+      existsSync: (path: string) => existing.has(path),
+    };
+    expect(
+      validateConfigPaths(
+        {
+          pipeline: {
+            watchPaths: ["content/**/*.md", "data/*.json", "missing/**/*.md"],
+          },
+        },
+        { fs, cwd: "/project" },
+      ).map((error) => error.value),
+    ).toEqual(["missing/**/*.md"]);
+  });
+
   it("rejects inlineStyles entries that do not exist", () => {
     const errors = validateConfigPaths(
       { assets: { inlineStyles: ["src/css/missing.css"] } },
