@@ -98,7 +98,9 @@ describe("CSS Scoping Property Tests", () => {
 
 ---
 
-## 4. Debugging Shrinking Paths & Failures
+## 4. Differential Fuzzing and Shrinking
+
+Use `yarn workspace @bascik/bascik profile:fuzz` for an opt-in comparison between two built compiler snapshots. It generates component expansion, props, slots, tags, masking, and JavaScript inputs; compares outputs and thrown errors exactly; and calls the candidate twice to detect warm-cache drift. Failures include a shrunk counterexample, seed, and replay path. Use Vitest/`fast-check` for source-level invariants in the regular unit suite; use differential fuzzing as an additional baseline-versus-candidate check. Commands, options, and limitations are in `pkg/bench/README.md`.
 
 When `fc.assert` fails, `fast-check` shrinks the input to the minimal failing counterexample.
 
