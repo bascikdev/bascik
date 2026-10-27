@@ -348,7 +348,7 @@ Because Bascik adds no runtime scripts of its own, every `<script>` tag in your 
 
 Bascik's `minify.js` option strips comments and collapses whitespace from every inline `<script>` block and any `.js` files copied into `dist/`. It is `true` by default, so production builds are already smaller without any configuration.
 
-For maximum compression, identifier mangling, dead-code elimination, and tree-shaking, Bascik's **BYOMinifier (Bring Your Own Minifier)** lets you point `minify.js` at esbuild's `transform` API. esbuild has zero npm dependencies (it ships as a single native binary) and is typically 10–100× faster than alternatives:
+The built-in minifier never renames anything. A project that wants the smallest possible output can point `minify.js` at esbuild's `transform` API through **BYOMinifier (Bring Your Own Minifier)**. esbuild shortens local variable names and folds constant expressions on top of what the built-in already does. It does not remove unused code in this mode. Measured on this documentation site, that is about 22% less raw script text but only about 9% less after compression, which works out to roughly 3% of a Brotli-compressed page, for under a second of extra build time. esbuild has zero npm dependencies (it ships as a single native binary) and is typically 10–100× faster than alternatives:
 
 ```sh
 npm install --save-dev esbuild
@@ -369,7 +369,7 @@ export const build = defineConfig({
 });
 ```
 
-The function receives the raw JS string for each script block and must return the minified string. Async functions are fully supported, so any Promise-based minifier works. The built-in `true` mode is a safe fallback for projects that prefer to keep their toolchain dependency-free.
+The function receives the raw JS string for each script block and must return the minified string. Async functions are fully supported, so any Promise-based minifier works. The built-in `true` mode is a safe fallback for projects that prefer to keep their toolchain dependency-free. terser trims a further percent or so of compressed size by deleting unused functions and variables, at roughly fifteen times esbuild's transform time, so it is worth it only when the last few hundred bytes matter more than build time. Component scripts are wrapped in an IIFE and every scoped id and class is a string literal, so renaming by either tool is safe, and Bascik computes CSP hashes from the final output after the minifier runs.
 
 > **What gets minified.** Only inline scripts (those without a `src` attribute) and `.js` static files copied to `dist/`. External scripts loaded with `src=` and non-JS script types such as `application/ld+json` are always left untouched.
 
