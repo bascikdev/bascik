@@ -203,7 +203,7 @@ yarn workspace create-bascik npm publish --access public
 
 ## Development
 
-Requires Node.js ≥ 24. Run `yarn install` from the repo root.
+Requires Node.js ≥ 24. The published package supports Node.js 22.18 and newer, but the full test suite needs Node 24: two test helpers depend on the V8 `%StringIsFlat` intrinsic (V8 13.6) and on Node 24's TLS cleanup callback ordering, and those tests skip on Node 22. Run `yarn install` from the repo root.
 
 ```sh
 yarn pkg:build        # compile dist/

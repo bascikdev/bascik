@@ -261,7 +261,7 @@ Error [ERR_MODULE_NOT_FOUND]: Cannot find module './does-not-exist' imported fro
 
 ### VS Code Debugging (`F5`)
 
-To debug `bascik.config.ts` or custom build scripts, press `F5` in VS Code. Node 24 native TypeScript support allows VS Code to attach directly to `.ts` files:
+To debug `bascik.config.ts` or custom build scripts, press `F5` in VS Code. Node's native TypeScript support (22.18 or newer) allows VS Code to attach directly to `.ts` files:
 
 ```json
 // .vscode/launch.json

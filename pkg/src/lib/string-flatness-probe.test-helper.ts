@@ -7,15 +7,42 @@
  * the current isolate before the probe function is compiled. Never import
  * this from production code; the `.test-helper.ts` suffix keeps it out of
  * `tsconfig.build.json`.
+ *
+ * WHY the support flag: `%StringIsFlat` first shipped in V8 13.6, which Node
+ * 24.0.0 bundles. Every Node 22.x release ships V8 12.4, where compiling the
+ * probe throws. The published package floor is Node 22.18, so the probe is
+ * detected once at module load and the tests that need it skip (rather than
+ * fail) below Node 24 via `stringFlatnessProbeSupported`.
  */
 import { setFlagsFromString } from "node:v8";
 
-setFlagsFromString("--allow-natives-syntax");
+type FlatnessProbe = (value: string) => boolean;
 
-export const isFlatString: (value: string) => boolean = new Function(
-  "value",
-  "return %StringIsFlat(value);",
-) as (value: string) => boolean;
+let probe: FlatnessProbe | undefined;
+let unsupportedReason: string | undefined;
+try {
+  setFlagsFromString("--allow-natives-syntax");
+  const candidate = new Function(
+    "value",
+    "return %StringIsFlat(value);",
+  ) as FlatnessProbe;
+  if (typeof candidate("probe") !== "boolean")
+    throw new Error("%StringIsFlat did not return a boolean");
+  probe = candidate;
+} catch (error) {
+  unsupportedReason = error instanceof Error ? error.message : String(error);
+}
+
+/** True when this runtime's V8 exposes `%StringIsFlat` (Node 24.0.0+). */
+export const stringFlatnessProbeSupported = probe !== undefined;
+
+/** Human-readable skip reason for `describe.skipIf` / `it.skipIf` gates. */
+export const stringFlatnessProbeSkipReason = `V8 %StringIsFlat probe needs Node 24.0.0+ (V8 13.6); running ${process.version} (V8 ${process.versions.v8})${unsupportedReason ? `: ${unsupportedReason}` : ""}`;
+
+export const isFlatString: FlatnessProbe = (value) => {
+  if (!probe) throw new Error(stringFlatnessProbeSkipReason);
+  return probe(value);
+};
 
 /** Build a deep cons string the way an iterative splice loop does. */
 export const makeConsString = (

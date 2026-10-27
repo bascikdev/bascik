@@ -43,7 +43,7 @@ Then inspect the relevant `docs/dist/` output to confirm the pkg change has the 
 
 Docs visuals have three kinds, each with one home. Do not add a second mechanism for the same job.
 
-- **Recordings** (real editor, browser, or terminal) are WebP or animated WebP produced by the single script `docs/scripts/capture-demos.ts`, and shown as Markdown images. Run from `docs/`: `node scripts/capture-demos.ts <scene>`. Use Node 24 (`~/.nvm/versions/node/v24.17.0/bin`). Images are only for things that must be a picture of a real program.
+- **Recordings** (real editor, browser, or terminal) are WebP or animated WebP produced by the single script `docs/scripts/capture-demos.ts`, and shown as Markdown images. Run from `docs/`: `node scripts/capture-demos.ts <scene>`. Use Node 24 (`nvm use 24` first, or run `"$(nvm which 24)" scripts/capture-demos.ts <scene>`). Images are only for things that must be a picture of a real program.
 - **Diagrams** (flows, file trees, "you write / Bascik emits" comparisons) are the `diagram-*` Bascik components placed in the page shell. Their code lives in `<!-- demo:id -->` blocks in `docs/src/diagrams/<page>.md`, not in `docs/content/`.
 - **Live examples** that must run in the page are `<component-demo>` blocks.
 
@@ -128,7 +128,7 @@ Do **not** delete the root `LICENSE`: GitHub reads it for repo-level license det
 
 ## Node 24: Native TypeScript Support
 
-This project runs on **Node 24**. Node natively strips TypeScript types, with no transpiler or extra flags needed for erasable syntax.
+This project is developed and tested on **Node 24**; the published packages support Node 22.18 and newer. Node natively strips TypeScript types, with no transpiler or extra flags needed for erasable syntax.
 
 - `node example.ts` works directly (Node 22.18+ with only erasable syntax, no flags required).
 - Erasable syntax: type annotations, interfaces, type aliases, `import type`. These are stripped at runtime.

@@ -272,6 +272,62 @@ jobs:
       - name: Typecheck all workspace packages
         run: yarn typecheck:all
 
+  # The published packages declare `engines.node >=22.18.0`, and `bin/bascik.js` enforces it, so one lane proves every
+  # workspace still builds and passes its unit tests on that floor. The other jobs stay on Node 24: two pkg test helpers
+  # need a V8 13.6 intrinsic and Node 24's TLS cleanup callback ordering, and those tests skip themselves on Node 22.
+  node-floor:
+    name: Node 22.18 Floor
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 22.18
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22.18.0
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Typecheck all workspace packages
+        run: yarn typecheck:all
+
+      - name: Build package
+        run: yarn pkg:build
+
+      - name: Build language server
+        run: yarn lsp:build
+
+      - name: Build create-bascik
+        run: yarn create:build
+
+      - name: Build Cloudflare adapter
+        run: yarn adapter:cf:build
+
+      - name: Framework unit tests
+        run: yarn pkg:unit
+
+      - name: Create-Bascik unit tests
+        run: yarn create:unit
+
+      - name: Language server unit tests
+        run: yarn lsp:unit
+
+      - name: Extension unit tests
+        run: yarn ext:unit
+
+      - name: Cloudflare adapter unit tests
+        run: yarn adapter:cf:unit
+
+      - name: Docs unit tests
+        run: yarn docs:unit
+
   standards:
     name: Spelling & Web Standards
     runs-on: ubuntu-latest

@@ -10,6 +10,8 @@ import {
   assertInlinePublication,
   assertMeasuredBatchDeltas,
   runRetentionExperiment,
+  tlsCleanupRuntimeSkipReason,
+  tlsCleanupRuntimeSupported,
   type DevChurnStage,
   type DevChurnStageObservation,
   type RetentionCheckpoint,
@@ -47,9 +49,14 @@ afterEach(async ({ task }) => {
 });
 
 describe("packet R2: fixed production batches", () => {
-  it.each(["http1", "http2"] as const)(
+  it.for(["http1", "http2"] as const)(
     "production-only 102 warmup + 252 + 252 sequential requests across three routes (%s)",
-    async (mode) => {
+    { timeout: 120_000 },
+    async (mode, { skip }) => {
+      // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
+      // (assertSupportedTlsCleanupRuntime); skip the lane below Node 24.
+      if (mode === "http2" && !tlsCleanupRuntimeSupported)
+        skip(tlsCleanupRuntimeSkipReason);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
       retentionReportDirectories.push(directory);
       const checkpoints = await runRetentionExperiment(
@@ -113,14 +120,18 @@ describe("packet R2: fixed production batches", () => {
         expect(checkpoint.resources).toEqual(checkpoints[0].resources);
       }
     },
-    120_000,
   );
 });
 
 describe("packet R3 row: cancel before headers", () => {
-  it.each(["http1", "http2"] as const)(
+  it.for(["http1", "http2"] as const)(
     "cancel before headers %s: 10 smoke then 100 measured cycles",
-    async (mode) => {
+    { timeout: 180_000 },
+    async (mode, { skip }) => {
+      // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
+      // (assertSupportedTlsCleanupRuntime); skip the lane below Node 24.
+      if (mode === "http2" && !tlsCleanupRuntimeSupported)
+        skip(tlsCleanupRuntimeSkipReason);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
       retentionReportDirectories.push(directory);
       const checkpoints = await runRetentionExperiment(
@@ -174,14 +185,18 @@ describe("packet R3 row: cancel before headers", () => {
         expect(checkpoint.resources).toEqual(checkpoints[0].resources);
       }
     },
-    180_000,
   );
 });
 
 describe("packet R3 row: cancel after exact prefix", () => {
-  it.each(["http1", "http2"] as const)(
+  it.for(["http1", "http2"] as const)(
     "cancel after exact prefix %s: 10 smoke then 100 measured cycles",
-    async (mode) => {
+    { timeout: 180_000 },
+    async (mode, { skip }) => {
+      // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
+      // (assertSupportedTlsCleanupRuntime); skip the lane below Node 24.
+      if (mode === "http2" && !tlsCleanupRuntimeSupported)
+        skip(tlsCleanupRuntimeSkipReason);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
       retentionReportDirectories.push(directory);
       const checkpoints = await runRetentionExperiment(
@@ -241,14 +256,18 @@ describe("packet R3 row: cancel after exact prefix", () => {
         expect(checkpoint.resources).toEqual(checkpoints[0].resources);
       }
     },
-    180_000,
   );
 });
 
 describe("packet R3 row: reject after acknowledged abort", () => {
-  it.each(["http1", "http2"] as const)(
+  it.for(["http1", "http2"] as const)(
     "reject after acknowledged abort %s: 10 smoke then 100 measured cycles",
-    async (mode) => {
+    { timeout: 180_000 },
+    async (mode, { skip }) => {
+      // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
+      // (assertSupportedTlsCleanupRuntime); skip the lane below Node 24.
+      if (mode === "http2" && !tlsCleanupRuntimeSupported)
+        skip(tlsCleanupRuntimeSkipReason);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
       retentionReportDirectories.push(directory);
       const checkpoints = await runRetentionExperiment(
@@ -301,14 +320,18 @@ describe("packet R3 row: reject after acknowledged abort", () => {
         expect(checkpoint.resources).toEqual(checkpoints[0].resources);
       }
     },
-    180_000,
   );
 });
 
 describe("packet R3 row: fixed failed import", () => {
-  it.each(["http1", "http2"] as const)(
+  it.for(["http1", "http2"] as const)(
     "fixed failed import %s: 10 smoke then 100 measured cycles",
-    async (mode) => {
+    { timeout: 180_000 },
+    async (mode, { skip }) => {
+      // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
+      // (assertSupportedTlsCleanupRuntime); skip the lane below Node 24.
+      if (mode === "http2" && !tlsCleanupRuntimeSupported)
+        skip(tlsCleanupRuntimeSkipReason);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
       retentionReportDirectories.push(directory);
       const checkpoints = await runRetentionExperiment(
@@ -346,7 +369,6 @@ describe("packet R3 row: fixed failed import", () => {
         expect(checkpoint.resources).toEqual(checkpoints[0].resources);
       }
     },
-    180_000,
   );
 });
 

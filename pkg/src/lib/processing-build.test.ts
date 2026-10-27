@@ -21,6 +21,11 @@ import { BascikConfig } from "./config.ts";
 import { manifestCollector } from "./manifest.ts";
 import { cspHashCollector } from "./csp-hashes.ts";
 import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
+import {
+  isFlatString,
+  stringFlatnessProbeSkipReason,
+  stringFlatnessProbeSupported,
+} from "./string-flatness-probe.test-helper.ts";
 
 // Disable all scoping so tests produce predictable, readable HTML
 vi.mock("./config.js", () => ({
@@ -1243,18 +1248,22 @@ describe("recursivelyTranspile – flat string output (prompt 85)", () => {
     expect(first).toContain("<span>Row 249</span>");
   });
 
-  it("returned body is a flat V8 string after 500 splices", async () => {
-    const { isFlatString } =
-      await import("./string-flatness-probe.test-helper.ts");
-    const { transpiledHtmlBody, usedComponents } = recursivelyTranspile(
-      page,
-      componentList,
-      [],
-      "src/pages/index.html",
-    );
-    expect(usedComponents).toHaveLength(500);
-    expect(isFlatString(transpiledHtmlBody)).toBe(true);
-  });
+  // WHY: the %StringIsFlat intrinsic exists from V8 13.6 (Node 24.0.0). Node
+  // 22.x ships V8 12.4, so this probe-backed check skips there (reason in the
+  // title) rather than failing.
+  it.skipIf(!stringFlatnessProbeSupported)(
+    `returned body is a flat V8 string after 500 splices${stringFlatnessProbeSupported ? "" : ` (skipped: ${stringFlatnessProbeSkipReason})`}`,
+    () => {
+      const { transpiledHtmlBody, usedComponents } = recursivelyTranspile(
+        page,
+        componentList,
+        [],
+        "src/pages/index.html",
+      );
+      expect(usedComponents).toHaveLength(500);
+      expect(isFlatString(transpiledHtmlBody)).toBe(true);
+    },
+  );
 });
 
 describe("dynamic routes pipeline expansion", () => {
@@ -1460,6 +1469,7 @@ describe("dynamic routes pipeline expansion", () => {
       expect.any(String),
       templatePath,
       { params: { slug: "test" }, data: { id: 1 } },
+      expect.objectContaining({ stats: expect.anything() }),
     );
   });
 

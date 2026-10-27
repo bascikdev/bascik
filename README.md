@@ -93,7 +93,7 @@ Use the tag in any page or component. There is no import, export, or registratio
 
 ## Development Setup
 
-Requires **Node.js ≥ 22.18** and **Yarn ≥ 4** (pinned to `yarn@4.6.0` in `package.json`). The repo uses Yarn workspaces, one install at the root wires everything up.
+Requires **Node.js ≥ 22.18** and **Yarn ≥ 4** (pinned to `yarn@4.18.0` in `package.json`). The repo uses Yarn workspaces, one install at the root wires everything up.
 
 ```sh
 corepack enable
