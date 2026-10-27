@@ -81,6 +81,7 @@ import { findComponentRoot } from "./component-roots.ts";
 import {
   ANY_DIRECTIVE_ATTR_NAME,
   isBuildScriptOpenTag,
+  isRequestScriptOpenTag,
 } from "./html-patterns.ts";
 import {
   encodeOutputScope,
@@ -89,14 +90,20 @@ import {
 } from "./output-scope.ts";
 
 /**
- * Add the output-scope annotation to each component build script. Its output
- * is generated after component scoping, so the annotation lets that output
- * receive the same class and element names as the template.
+ * Add the output-scope annotation to each component build, server and stream
+ * script. Their output is generated after component scoping (a build script's
+ * at page time, a server or stream script's at request time, prompt 157), so
+ * the annotation lets that output receive the same class and element names
+ * as the template. Client scripts are scoped in place and never carry it.
  */
-const annotateBuildScripts = (html: string, encodedScope: string): string =>
+const annotateOutputScopedScripts = (
+  html: string,
+  encodedScope: string,
+): string =>
   html.replace(/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, (openTag) => {
     if (openTag.includes(OUTPUT_SCOPE_ATTRIBUTE)) return openTag;
-    if (!isBuildScriptOpenTag(openTag)) return openTag;
+    if (!isBuildScriptOpenTag(openTag) && !isRequestScriptOpenTag(openTag))
+      return openTag;
     return openTag.replace(
       />$/,
       ` ${OUTPUT_SCOPE_ATTRIBUTE}="${encodedScope}">`,
@@ -964,7 +971,7 @@ export const prefixElementAttribute = (
           `bascik__${scopeKey}__el__${element}`,
         );
       }
-      component.fileContent = annotateBuildScripts(
+      component.fileContent = annotateOutputScopedScripts(
         component.fileContent,
         encodeOutputScope(scope),
       );

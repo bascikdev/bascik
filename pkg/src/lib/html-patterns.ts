@@ -125,3 +125,12 @@ export const isBuildScriptOpenTag = (openTag: string): boolean =>
 /** True when an open tag carries any script directive as a whole attribute name. */
 export const isDirectiveScriptOpenTag = (openTag: string): boolean =>
   hasAnyHtmlAttribute(openTag, DIRECTIVE_ATTRIBUTE_NAMES);
+
+const REQUEST_ATTRIBUTE_NAMES: ReadonlySet<string> = new Set([
+  "data-bascik-server",
+  "data-bascik-stream",
+]);
+
+/** True when an open tag carries `data-bascik-server` or `data-bascik-stream` (the request-time directives) as a whole attribute name. */
+export const isRequestScriptOpenTag = (openTag: string): boolean =>
+  hasAnyHtmlAttribute(openTag, REQUEST_ATTRIBUTE_NAMES);

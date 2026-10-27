@@ -3,6 +3,7 @@ import { mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { mem } from "./mem.ts";
 import { startProdServer } from "./server-prod.ts";
+import { SIDECAR_SCHEMA_VERSION } from "./server-sidecar.ts";
 
 const { startServerMock } = vi.hoisted(() => ({
   startServerMock: vi.fn().mockResolvedValue(undefined),
@@ -198,7 +199,11 @@ describe("startProdServer", () => {
     // A present but entry-less sidecar means no script can back the placeholder.
     await writeFile(
       join(workDir, "dist", ".bascik", "server-scripts.json"),
-      JSON.stringify({ version: "1", schema: 2, scripts: {} }),
+      JSON.stringify({
+        version: "1",
+        schema: SIDECAR_SCHEMA_VERSION,
+        scripts: {},
+      }),
       "utf8",
     );
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -316,5 +321,142 @@ describe("startProdServer", () => {
     );
     log.mockRestore();
     error.mockRestore();
+  });
+});
+
+/**
+ * Prompt 157: `dist/.bascik/components.json` is a required runtime artifact
+ * whenever the sidecar has page-owned server or stream entries, validated at
+ * boot like the sidecar. A static release (no sidecar, or an empty one) needs
+ * no manifest and boots exactly as before.
+ */
+describe("startProdServer and the component manifest (prompt 157)", () => {
+  let workDir: string;
+  let originalCwd: string;
+  const placeholderPage =
+    '<h1>a</h1><script type="text/bascik-server" data-bascik-server-id="s1"></script>';
+  const sidecarWithPageEntry = JSON.stringify({
+    version: "1",
+    schema: SIDECAR_SCHEMA_VERSION,
+    scripts: {
+      s1: { id: "s1", mode: "server", source: "export default () => 'x';" },
+    },
+  });
+  const manifest = (schema: number) =>
+    JSON.stringify({
+      schema,
+      identifiers: true,
+      minifyHtml: true,
+      base: "/",
+      inheritAttributes: true,
+      components: {},
+    });
+
+  beforeEach(async () => {
+    startServerMock.mockClear();
+    originalCwd = process.cwd();
+    workDir = join(
+      originalCwd,
+      `.server-prod-manifest-test-${process.pid}-${Date.now()}`,
+    );
+    await mkdir(join(workDir, "dist", ".bascik"), { recursive: true });
+    await writeFile(
+      join(workDir, "dist", ".bascik", "build-state.json"),
+      JSON.stringify({ format: 1, mode: "build", version: "test" }),
+    );
+    process.chdir(workDir);
+  });
+
+  afterEach(async () => {
+    process.chdir(originalCwd);
+    await rm(workDir, { recursive: true, force: true });
+  });
+
+  it("fails startup with the rebuild message when page entries exist but components.json is missing", async () => {
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    await writeFile(join(workDir, "dist", "index.html"), placeholderPage);
+    await writeFile(
+      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      sidecarWithPageEntry,
+      "utf8",
+    );
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await expect(startProdServer()).rejects.toThrow(/components\.json/);
+    await expect(startProdServer()).rejects.toThrow(/bascik --build/);
+    expect(startServerMock).not.toHaveBeenCalled();
+    error.mockRestore();
+    log.mockRestore();
+  });
+
+  it("fails startup on an incompatible components.json schema", async () => {
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    await writeFile(join(workDir, "dist", "index.html"), placeholderPage);
+    await writeFile(
+      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      sidecarWithPageEntry,
+      "utf8",
+    );
+    await writeFile(
+      join(workDir, "dist", ".bascik", "components.json"),
+      manifest(99),
+      "utf8",
+    );
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await expect(startProdServer()).rejects.toThrow(/schema 99/);
+    await expect(startProdServer()).rejects.toThrow(/bascik --build/);
+    expect(startServerMock).not.toHaveBeenCalled();
+    error.mockRestore();
+    log.mockRestore();
+  });
+
+  it("boots when page entries exist and a compatible components.json is present", async () => {
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    await writeFile(join(workDir, "dist", "index.html"), placeholderPage);
+    await writeFile(
+      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      sidecarWithPageEntry,
+      "utf8",
+    );
+    await writeFile(
+      join(workDir, "dist", ".bascik", "components.json"),
+      manifest(1),
+      "utf8",
+    );
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await startProdServer();
+
+    expect(startServerMock).toHaveBeenCalledOnce();
+    expect(mem.getPageExact("/")?.serverScriptPlan).toBeDefined();
+    log.mockRestore();
+  });
+
+  it("boots a static release whose sidecar is present but empty, with no manifest and no behavior change", async () => {
+    await writeFile(join(workDir, "dist", "index.html"), "<h1>static</h1>");
+    await writeFile(
+      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      JSON.stringify({
+        version: "1",
+        schema: SIDECAR_SCHEMA_VERSION,
+        scripts: {},
+      }),
+      "utf8",
+    );
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await startProdServer();
+
+    expect(startServerMock).toHaveBeenCalledOnce();
+    expect(mem.getPageExact("/")?.content.toString("utf8")).toBe(
+      "<h1>static</h1>",
+    );
+    expect(warn).not.toHaveBeenCalled();
+    log.mockRestore();
+    warn.mockRestore();
   });
 });

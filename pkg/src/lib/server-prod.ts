@@ -25,8 +25,10 @@ import { mem } from "./mem.ts";
 import { BascikConfig } from "./config.ts";
 import {
   serverSidecarRegistry,
+  sidecarHasPageEntries,
   type SidecarLoadResult,
 } from "./server-sidecar.ts";
+import { readComponentManifest } from "./component-manifest.ts";
 import { setServerHealthState } from "./server-lifecycle.ts";
 import {
   LIVE_RELOAD_SCRIPT_ATTR,
@@ -97,6 +99,26 @@ const loadDistIntoMemory = async (): Promise<void> => {
   } catch (sidecarErr) {
     setServerHealthState("booting");
     throw sidecarErr;
+  }
+
+  // A release whose sidecar has page-owned server or stream entries renders
+  // component tags from their output through dist/.bascik/components.json
+  // (prompt 157), so that manifest is a required runtime artifact for it and
+  // is validated here like the sidecar. A static release has none to check.
+  if (sidecarHasPageEntries(sidecarResult.scripts)) {
+    try {
+      const manifest = await readComponentManifest(distDir);
+      if (!manifest) {
+        throw new Error(
+          `[bascik] --server: ${outDirRel}/.bascik/server-scripts.json has server-script entries ` +
+            `but ${outDirRel}/.bascik/components.json is missing. ` +
+            `Run \`bascik --build\` to regenerate matching artifacts.`,
+        );
+      }
+    } catch (manifestErr) {
+      setServerHealthState("booting");
+      throw manifestErr;
+    }
   }
 
   // Bounded concurrency during production boot to avoid EMFILE on large sites

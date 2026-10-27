@@ -83,6 +83,8 @@ vi.mock("node:fs/promises", () => ({
   writeFile: vi.fn(async () => {}),
   mkdir: vi.fn(async () => {}),
   rm: vi.fn(async () => {}),
+  // finalizeOwnedArtifacts commits each staged artifact with a rename.
+  rename: vi.fn(async () => {}),
 }));
 
 vi.mock("./build-scripts.js", () => ({
@@ -211,7 +213,7 @@ vi.mock("node:os", async (importOriginal) => {
   };
 });
 
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { cpus } from "node:os";
 import { mem } from "./mem.ts";
 import { invalidateComponentListCache } from "./components.ts";
@@ -2200,5 +2202,73 @@ describe("prompt 99: failed import dependency recovery", () => {
     );
     const result = await transpilePage(PAGE_ABS, {});
     expect(result).not.toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Prompt 157: a static-only site builds byte-identical output. The component
+// manifest exists only for sites with page-owned server or stream scripts, so
+// a build without any writes no components.json, touches no sidecar, and never
+// builds a manifest.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("static-only build emits no component manifest (prompt 157)", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    (BascikConfig as Record<string, unknown>).isBuild = true;
+    (BascikConfig as Record<string, unknown>).only = undefined;
+    const componentsModule = await import("./components.ts");
+    vi.spyOn(componentsModule, "listComponents").mockResolvedValue({
+      "my-comp": {
+        fileName: "src/components/my-comp.html",
+        fileContent: '<div class="c"><p>static component</p></div>',
+        cssFileContent: ".c { color: red }",
+      },
+    });
+  });
+
+  afterEach(() => {
+    (BascikConfig as Record<string, unknown>).isBuild = false;
+    vi.restoreAllMocks();
+  });
+
+  it("writes the page and the ownership inventory, and no components.json, sidecar or manifest build", async () => {
+    const manifestModule = await import("./component-manifest.ts");
+    const buildManifest = vi.spyOn(manifestModule, "buildComponentManifest");
+    const { finalizeOwnedArtifacts, ownershipTracker } =
+      await import("./ownership.ts");
+    ownershipTracker.clear();
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([PAGE_PATH]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      '<!DOCTYPE html><html lang="en"><head></head><body><my-comp></my-comp><p>hello</p></body></html>',
+    );
+
+    await processAllPages();
+    await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: false });
+
+    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([path]) => String(path),
+    );
+    const page = written.find((path) => path.endsWith("index.html"));
+    expect(page).toBeDefined();
+    expect(written.some((path) => path.includes("ownership.json"))).toBe(true);
+    expect(written.some((path) => path.includes("components.json"))).toBe(
+      false,
+    );
+    expect(written.some((path) => path.includes("server-scripts.json"))).toBe(
+      false,
+    );
+    expect(buildManifest).not.toHaveBeenCalled();
+    // The emitted page is the plain expansion: no manifest marker of any kind.
+    const [, pageContent] = (
+      writeFile as ReturnType<typeof vi.fn>
+    ).mock.calls.find(([path]) => String(path).endsWith("index.html"))!;
+    const html = Buffer.isBuffer(pageContent)
+      ? pageContent.toString("utf8")
+      : String(pageContent);
+    expect(html).toContain("<p>static component</p>");
+    expect(html).toContain("<p>hello</p>");
+    expect(html).not.toContain("bascik-source-file");
+    expect(html).not.toContain("text/bascik-server");
   });
 });

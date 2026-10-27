@@ -19,9 +19,11 @@ import { hasHiddenSegment } from "./route-matching.ts";
 import { getHtmlAttributeValue } from "./html-patterns.ts";
 import {
   SIDECAR_SCHEMA_VERSION,
+  sidecarHasPageEntries,
   type ServerScriptEntry,
   type ServerScriptsSidecar,
 } from "./server-sidecar.ts";
+import { readComponentManifest } from "./component-manifest.ts";
 import { DEFAULT_SCRIPT_TIMEOUT_MS } from "./server-scripts.ts";
 import { createHash } from "node:crypto";
 import type {
@@ -229,6 +231,18 @@ export const readSiteGraph = async (
   }
   const sidecarScripts: Record<string, ServerScriptEntry> =
     sidecar?.scripts ?? {};
+
+  // Page-owned entries mean the release renders component tags from script
+  // output through dist/.bascik/components.json (prompt 157); a dist without
+  // a compatible manifest is a stale build, as it is for `bascik --server`.
+  if (sidecarHasPageEntries(sidecarScripts)) {
+    const manifest = await readComponentManifest(distDir);
+    if (!manifest) {
+      throw new Error(
+        `[bascik] --target: the sidecar has server-script entries but dist/.bascik/components.json is missing. Run \`bascik --build\` again.`,
+      );
+    }
+  }
 
   const distFiles = await readDistFiles(distDir);
   const publicFiles: string[] = [];

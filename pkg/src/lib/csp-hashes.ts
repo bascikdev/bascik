@@ -7,6 +7,33 @@ import type { PageCspHashes } from "./types.ts";
 
 export type CspHashesManifest = Record<string, PageCspHashes>;
 
+const sortHashes = (hashes: Iterable<string>): string[] =>
+  Array.from(new Set(hashes)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
+/**
+ * Add `component` hashes to the entries of `routes` (prompt 157, D5). A page
+ * whose server or stream script may return a component tag can render any
+ * manifest component at request time, so its route lists every CSP-stable
+ * component style hash and first-instance script hash in its own entry; no
+ * new section. A named route without an entry gets one. Pure: returns a new
+ * manifest, deduplicated and sorted like the collector's output.
+ */
+export const widenRouteCspHashes = (
+  manifest: CspHashesManifest,
+  routes: Iterable<string>,
+  component: PageCspHashes,
+): CspHashesManifest => {
+  const widened: CspHashesManifest = { ...manifest };
+  for (const route of routes) {
+    const own = manifest[route] ?? { scripts: [], styles: [] };
+    widened[route] = {
+      scripts: sortHashes([...own.scripts, ...component.scripts]),
+      styles: sortHashes([...own.styles, ...component.styles]),
+    };
+  }
+  return widened;
+};
+
 /**
  * Pure computation of inline script/style SHA-256 hashes from a page's final
  * emitted HTML. Extracted so the SAME computation can run at the single

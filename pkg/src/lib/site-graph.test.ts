@@ -308,6 +308,20 @@ describe("readSiteGraph", () => {
       JSON.stringify(sidecar),
       "utf8",
     );
+    // A sidecar with page entries needs the component manifest a build
+    // writes beside it (prompt 157).
+    await writeFile(
+      join(bascikHiddenDir, "components.json"),
+      JSON.stringify({
+        schema: 1,
+        identifiers: true,
+        minifyHtml: true,
+        base: "/",
+        inheritAttributes: true,
+        components: {},
+      }),
+      "utf8",
+    );
 
     // helper file for src=
     await mkdir(join(testDir, "src/pages"), { recursive: true });
@@ -362,5 +376,137 @@ describe("readSiteGraph", () => {
     } finally {
       await rm(testDir, { recursive: true, force: true });
     }
+  });
+});
+
+/**
+ * Prompt 157: readSiteGraph validates `dist/.bascik/components.json` the way
+ * the production boot does. A dist with page-owned server or stream entries
+ * and no compatible manifest is a stale build; a static dist never needs one.
+ */
+describe("readSiteGraph and the component manifest (prompt 157)", () => {
+  const placeholderPage = `<p>Hi</p><script type="text/bascik-server" data-bascik-server-id="job-inline"></script>`;
+  const sidecarWithPageEntry = {
+    schema: SIDECAR_SCHEMA_VERSION,
+    scripts: {
+      "job-inline": {
+        mode: "server",
+        source: 'console.log("inline");',
+        sourceFile: "src/pages/dynamic.html",
+        sourceLine: 2,
+      },
+    },
+  };
+  const manifest = (schema: number) => ({
+    schema,
+    identifiers: true,
+    minifyHtml: true,
+    base: "/",
+    inheritAttributes: true,
+    components: {},
+  });
+
+  const withDist = async (
+    files: Record<string, string>,
+    run: (testDir: string, distDir: string) => Promise<void>,
+  ) => {
+    const testDir = join(
+      tmpdir(),
+      `bascik-site-graph-manifest-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    );
+    const distDir = join(testDir, "dist");
+    await mkdir(join(distDir, ".bascik"), { recursive: true });
+    await mkdir(join(testDir, "src/api"), { recursive: true });
+    for (const [rel, content] of Object.entries(files)) {
+      await writeFile(join(distDir, rel), content, "utf8");
+    }
+    try {
+      await run(testDir, distDir);
+    } finally {
+      await rm(testDir, { recursive: true, force: true });
+    }
+  };
+
+  it("fails with the rebuild message when page entries exist but components.json is missing", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": JSON.stringify(sidecarWithPageEntry),
+      },
+      async (testDir, distDir) => {
+        const read = () =>
+          readSiteGraph({ projectRoot: testDir, distDir, version: "1.0.0" });
+        await expect(read()).rejects.toThrow(/components\.json/);
+        await expect(read()).rejects.toThrow(/bascik --build/);
+      },
+    );
+  });
+
+  it("fails the same way on an incompatible components.json schema", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": JSON.stringify(sidecarWithPageEntry),
+        ".bascik/components.json": JSON.stringify(manifest(99)),
+      },
+      async (testDir, distDir) => {
+        const read = () =>
+          readSiteGraph({ projectRoot: testDir, distDir, version: "1.0.0" });
+        await expect(read()).rejects.toThrow(/schema 99/);
+        await expect(read()).rejects.toThrow(/bascik --build/);
+      },
+    );
+  });
+
+  it("reads a dist with page entries and a compatible manifest", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": JSON.stringify(sidecarWithPageEntry),
+        ".bascik/components.json": JSON.stringify(manifest(1)),
+      },
+      async (testDir, distDir) => {
+        const graph = await readSiteGraph({
+          projectRoot: testDir,
+          distDir,
+          version: "1.0.0",
+        });
+        expect(graph.pages["/dynamic"].jobs["job-inline"]).toBeDefined();
+        expect(graph.publicFiles).not.toContain(".bascik/components.json");
+      },
+    );
+  });
+
+  it("is a no-op for a static dist: no manifest required, no components section, with or without an empty sidecar", async () => {
+    await withDist(
+      { "index.html": "<h1>Home</h1>" },
+      async (testDir, distDir) => {
+        const graph = await readSiteGraph({
+          projectRoot: testDir,
+          distDir,
+          version: "1.0.0",
+        });
+        expect(graph.publicFiles).toEqual(["index.html"]);
+        expect((graph as { components?: unknown }).components).toBeUndefined();
+      },
+    );
+    await withDist(
+      {
+        "index.html": "<h1>Home</h1>",
+        ".bascik/server-scripts.json": JSON.stringify({
+          schema: SIDECAR_SCHEMA_VERSION,
+          scripts: {},
+        }),
+      },
+      async (testDir, distDir) => {
+        const graph = await readSiteGraph({
+          projectRoot: testDir,
+          distDir,
+          version: "1.0.0",
+        });
+        expect(graph.publicFiles).toEqual(["index.html"]);
+        expect((graph as { components?: unknown }).components).toBeUndefined();
+      },
+    );
   });
 });

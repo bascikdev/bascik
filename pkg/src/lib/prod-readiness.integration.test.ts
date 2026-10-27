@@ -34,6 +34,7 @@ vi.mock("./config.js", () => ({
 }));
 
 import { startProdServer } from "./server-prod.ts";
+import { SIDECAR_SCHEMA_VERSION } from "./server-sidecar.ts";
 import { mem } from "./mem.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import {
@@ -176,7 +177,11 @@ describe("production sidecar readiness integration", () => {
     );
     await writeFile(
       join(distDir, ".bascik", "server-scripts.json"),
-      JSON.stringify({ version: "1", schema: 2, scripts: {} }),
+      JSON.stringify({
+        version: "1",
+        schema: SIDECAR_SCHEMA_VERSION,
+        scripts: {},
+      }),
       "utf8",
     );
     const getBound = captureBoundServer();

@@ -28,12 +28,28 @@
  * Ownership is never inferred from filename prefixes or mutable traversal
  * order; it is read from the durable inventory and updated only by the
  * in-process tracker during a build.
+ *
+ * Request-time component rendering (prompt 157) adds a fourth staged
+ * artifact, `components.json`, and a synthetic owner that is not a page: the
+ * `components` owner (`COMPONENTS_OWNER`) holds the sidecar entries of the
+ * component server and stream scripts, which are a function of the
+ * component list rather than of any page. It is dropped from the prior
+ * inventory before the sidecar is reconciled and re-added only when the
+ * reconciled sidecar has page-owned entries (the point at which a site
+ * renders components at request time), so the manifest exists exactly when
+ * the last page script does and is pruned after the commit loop with the
+ * other obsolete outputs. With `generate.cspHashes` on, every route that
+ * carries a server or stream placeholder also gets the manifest's stable
+ * component hashes merged into its per-output `csp` copy. See the comments
+ * at the components-owner reconciliation, the manifest staging and the
+ * post-commit prune below for each step's reason.
  */
 
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { getHttpPath } from "./paths.ts";
+import type { PageCspHashes } from "./types.ts";
 
 /** Bumped when the on-disk ownership schema changes incompatibly. */
 export const OWNERSHIP_SCHEMA = 1;
@@ -45,6 +61,14 @@ export interface OwnershipOutput {
   file: string;
   /** HTTP route key used by csp-hashes.json, e.g. `/a`, `/blog/one`. */
   route: string;
+  /**
+   * The route's own CSP hashes, before the component hashes a server or
+   * stream placeholder route lists were added (prompt 157, D5). Kept for
+   * placeholder routes only, so a targeted build that leaves this page
+   * untouched re-widens from the page's own hashes rather than from an entry
+   * an earlier manifest already widened.
+   */
+  csp?: PageCspHashes;
 }
 
 export interface OwnershipEntry {
@@ -393,19 +417,42 @@ import {
   type BuildManifest,
   type ManifestEntry,
 } from "./manifest.ts";
-import { cspHashCollector, type CspHashesManifest } from "./csp-hashes.ts";
+import {
+  cspHashCollector,
+  widenRouteCspHashes,
+  type CspHashesManifest,
+} from "./csp-hashes.ts";
 import { emitPrecompressedSidecars } from "./precompress.ts";
 import {
   serverSidecarRegistry,
+  sidecarHasPageEntries,
   type ServerScriptEntry,
   type ServerScriptsSidecar,
   SIDECAR_SCHEMA_VERSION,
 } from "./server-sidecar.ts";
+import {
+  buildComponentManifest,
+  componentManifestPath,
+  manifestCspHashes,
+  sortedComponentManifest,
+  type ComponentManifest,
+} from "./component-manifest.ts";
+import { listComponents } from "./components.ts";
 
 const manifestPath = (): string => join(outDir(), ".bascik", "manifest.json");
 const cspPath = (): string => join(outDir(), ".bascik", "csp-hashes.json");
 const sidecarPath = (): string =>
   join(outDir(), ".bascik", "server-scripts.json");
+
+/**
+ * The synthetic owner of the component-level server and stream jobs in the
+ * sidecar (prompt 157). It is regenerated from the current component list on
+ * every build that writes a component manifest and never carried over by
+ * reconciliation: its scripts are a function of the components, not of any
+ * page, so a prior inventory's entry is dropped before the sidecar is
+ * reconciled and re-added only when a manifest is written again.
+ */
+export const COMPONENTS_OWNER = "components";
 
 async function readJsonIfPresent<T>(path: string): Promise<T | null> {
   try {
@@ -564,6 +611,9 @@ export const finalizeOwnedArtifacts = async (
   }
 
   const inv = result.inventory;
+  // The components owner is never an untouched owner to retain: it is
+  // rebuilt below from the reconciled page sidecar, or it goes away.
+  delete inv.owners[COMPONENTS_OWNER];
   validateInventory(inv);
 
   // Prompt 140: with `http.precompress`, emit verified `.br`/`.gz` sidecars
@@ -596,12 +646,73 @@ export const finalizeOwnedArtifacts = async (
     commits.push(await stageJsonArtifact(manifestPath(), { version, files }));
   }
 
+  // Page-owned sidecar entries decide whether the site renders components at
+  // request time (prompt 157, D1). The reconciled sidecar is the only reliable
+  // source: a targeted build runs in a fresh process and rebuilds only some
+  // pages, so an untouched page's server script must still count.
+  const sidecar = reconcileSidecar(inv, priorSidecar, currentSidecar);
+  let componentManifest: ComponentManifest | null = null;
+  if (sidecar && sidecarHasPageEntries(sidecar.scripts)) {
+    // Regenerated fully from the current component list on every such build;
+    // listComponents serves the list processAllPages loaded (before any --only
+    // filter), so a targeted build of one static page sees every component.
+    componentManifest = await buildComponentManifest(
+      await listComponents(),
+      BascikConfig,
+    );
+    const componentScripts = Object.values(componentManifest.components)
+      .flatMap((entry) => entry.jobs.map((job) => job.id))
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    for (const id of componentScripts) {
+      const entry = serverSidecarRegistry.getScript(id);
+      if (entry) sidecar.scripts[id] = entry;
+    }
+    inv.owners[COMPONENTS_OWNER] = {
+      source: COMPONENTS_OWNER,
+      relSource: COMPONENTS_OWNER,
+      outputs: [],
+      scripts: componentScripts,
+    };
+    commits.push(
+      await stageJsonArtifact(
+        componentManifestPath(outDir()),
+        sortedComponentManifest(componentManifest),
+      ),
+    );
+  }
+
   if (BascikConfig.generate?.cspHashes) {
-    const csp = reconcileCsp(inv, priorCsp, currentCsp, priorInventory);
+    let csp = reconcileCsp(inv, priorCsp, currentCsp, priorInventory);
+    if (componentManifest) {
+      // Every route with a server or stream placeholder, rebuilt or untouched,
+      // can render any manifest component at request time (D5). Each is
+      // widened from its own hashes: this build's for a rebuilt page, the
+      // copy its inventory output keeps for an untouched one (a prior entry
+      // was already widened by the manifest of its own build, whose hashes
+      // may since have changed), or that prior entry when an older inventory
+      // kept no copy. The copy is recorded for the next targeted build.
+      const placeholderRoutes: string[] = [];
+      for (const owner of Object.values(inv.owners)) {
+        if (owner.source === COMPONENTS_OWNER || owner.scripts.length === 0)
+          continue;
+        owner.outputs = owner.outputs.map((output) => {
+          const own =
+            currentCsp[output.route] ?? output.csp ?? csp[output.route];
+          placeholderRoutes.push(output.route);
+          if (!own) return output;
+          csp[output.route] = own;
+          return { ...output, csp: own };
+        });
+      }
+      csp = widenRouteCspHashes(
+        csp,
+        placeholderRoutes,
+        manifestCspHashes(componentManifest),
+      );
+    }
     commits.push(await stageJsonArtifact(cspPath(), csp));
   }
 
-  const sidecar = reconcileSidecar(inv, priorSidecar, currentSidecar);
   if (sidecar) {
     commits.push(await stageJsonArtifact(sidecarPath(), sidecar));
   }
@@ -619,5 +730,14 @@ export const finalizeOwnedArtifacts = async (
   // ── Prune obsolete outputs only AFTER metadata commit ────────────────────
   for (const fileKey of result.obsoleteOutputs) {
     await pruneOutputFile(fileKey);
+  }
+
+  // The component manifest goes with the last page script (prompt 157): a
+  // release with no page entries must boot without one. Ordered after the
+  // commit loop like the other prunes. Only a prior build that wrote one (its
+  // inventory carries the components owner) leaves one to remove, so a
+  // static-only site's dist is never touched.
+  if (!componentManifest && priorInventory?.owners[COMPONENTS_OWNER]) {
+    await rm(componentManifestPath(outDir()), { force: true });
   }
 };

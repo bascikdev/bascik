@@ -8,6 +8,7 @@ import {
   getHtmlAttributeValue,
 } from "./html-patterns.ts";
 import { directiveSourceColumn } from "./directive-source.ts";
+import { OUTPUT_SCOPE_ATTRIBUTE } from "./output-scope.ts";
 
 /**
  * How a request-time script participates in the response (prompt 65).
@@ -27,19 +28,54 @@ export interface ServerScriptEntry {
   sourceLine?: number;
   /** The column the body starts at on that line. Absent in sidecars written before it was recorded. */
   sourceColumn?: number;
+  /**
+   * The component's encoded `data-bascik-output-scope` value for a server or
+   * stream script written inside a component (prompt 157): its output is
+   * spliced in after scoping, so the runner applies the component's class and
+   * element names to it the way a build script's output receives them.
+   * Absent for page-level scripts.
+   */
+  outputScope?: string;
 }
 
 export interface ServerScriptsSidecar {
   version: string;
   /**
-   * Sidecar schema version. Bumped when `mode` was added; older sidecars
-   * without it are rejected with a rebuild message.
+   * Sidecar schema version. Bumped when `mode` was added (2) and again when
+   * `outputScope` and component-level `component_script_*` entries were added
+   * (3, prompt 157); older sidecars are rejected with a rebuild message.
    */
   schema?: number;
   scripts: Record<string, ServerScriptEntry>;
 }
 
-export const SIDECAR_SCHEMA_VERSION = 2;
+export const SIDECAR_SCHEMA_VERSION = 3;
+
+/**
+ * Prefix of the ids of server and stream scripts staged from a component
+ * template rather than a page (prompt 157). Each is
+ * `component_script_<hex(name::ordinal)>` and belongs to the synthetic
+ * sidecar owner `components`, regenerated on every build that writes a
+ * component manifest.
+ */
+export const COMPONENT_SCRIPT_ID_PREFIX = "component_script_";
+
+export const isComponentScriptId = (id: string): boolean =>
+  id.startsWith(COMPONENT_SCRIPT_ID_PREFIX);
+
+/**
+ * True when `scripts` holds at least one page-owned entry (a `server_script_*`
+ * id staged from a page). The component manifest exists exactly for such
+ * releases: a server or stream script that runs is what can return a
+ * component tag (prompt 157, D1).
+ */
+export const sidecarHasPageEntries = (
+  scripts: Record<string, unknown> | undefined | null,
+): boolean =>
+  Boolean(scripts) &&
+  Object.keys(scripts as Record<string, unknown>).some(
+    (id) => !isComponentScriptId(id),
+  );
 
 export interface SidecarLoadResult {
   /** Whether a sidecar file was present at the resolved path. */
@@ -74,6 +110,7 @@ class ServerSidecarRegistry {
     sourceLine?: number,
     mode: ServerScriptMode = "server",
     sourceColumn?: number,
+    outputScope?: string,
   ): void {
     this.scripts.set(id, {
       id,
@@ -83,6 +120,7 @@ class ServerSidecarRegistry {
       sourceFile,
       sourceLine,
       sourceColumn,
+      ...(outputScope !== undefined ? { outputScope } : {}),
     });
   }
 
@@ -222,18 +260,17 @@ export const serverSidecarRegistry = new ServerSidecarRegistry();
 const STREAM_ATTR_RE = new RegExp(String.raw`\s${STREAM_ATTR_NAME}`, "i");
 
 /**
- * Replace all <script data-bascik-server> and <script data-bascik-stream> tags
- * in `html` with inert placeholders and record each script's source and mode
- * in the serverSidecarRegistry (and optional outMap). Stream placeholders carry
- * a `data-bascik-stream` marker so the mode is recoverable from the HTML alone;
- * the sidecar entry remains the source of truth and the marker is a
- * consistency check.
+ * Replace every `<script data-bascik-server>` and `<script data-bascik-stream>`
+ * tag in `html` with an inert placeholder and record each script's source and
+ * mode in the serverSidecarRegistry (and the optional `outMap`). `mintId`
+ * names the entry for the N-th script found; `defaultSourceFile` names the
+ * file when the tag carries no `data-bascik-source-file` stamp.
  */
-export const extractServerScriptsToSidecar = (
+const extractScriptsToSidecar = (
   html: string,
-  pagePath: string = "page",
-  outMap?: Record<string, ServerScriptEntry>,
-  sourceFile?: string,
+  mintId: (ordinal: number) => string,
+  outMap: Record<string, ServerScriptEntry> | undefined,
+  defaultSourceFile: string | undefined,
 ): string => {
   let scriptOrdinal = 0;
   // Whole-attribute-name boundary: a placeholder's `data-bascik-server-id` must
@@ -252,7 +289,7 @@ export const extractServerScriptsToSidecar = (
       if (/type=["']text\/bascik-server["']/i.test(`<script${openAttrs}>`))
         return match;
       scriptOrdinal++;
-      const id = `server_script_${Buffer.from(`${pagePath}::${scriptOrdinal}`).toString("hex")}`;
+      const id = mintId(scriptOrdinal);
       const openTag = `<script${openAttrs}>`;
       const mode: ServerScriptMode = STREAM_ATTR_RE.test(openTag)
         ? "stream"
@@ -264,7 +301,7 @@ export const extractServerScriptsToSidecar = (
       );
       const scriptSourceFile = annotatedSourceFile
         ? decodeURIComponent(annotatedSourceFile)
-        : sourceFile;
+        : defaultSourceFile;
       const annotatedSourceLine = getHtmlAttributeValue(
         openTag,
         "data-bascik-source-line",
@@ -273,6 +310,11 @@ export const extractServerScriptsToSidecar = (
         ? Number.parseInt(annotatedSourceLine, 10)
         : undefined;
       const sourceColumn = directiveSourceColumn(openTag);
+      // The component's output scope travels with the entry, never with the
+      // placeholder: the emitted page is unchanged and the runner reads it
+      // from the sidecar when it splices the script's output in.
+      const outputScope =
+        getHtmlAttributeValue(openTag, OUTPUT_SCOPE_ATTRIBUTE) ?? undefined;
       serverSidecarRegistry.recordScript(
         id,
         scriptContent,
@@ -281,6 +323,7 @@ export const extractServerScriptsToSidecar = (
         sourceLine,
         mode,
         sourceColumn,
+        outputScope,
       );
       if (outMap) {
         outMap[id] = {
@@ -291,6 +334,7 @@ export const extractServerScriptsToSidecar = (
           sourceFile: scriptSourceFile,
           sourceLine,
           ...(sourceColumn !== undefined ? { sourceColumn } : {}),
+          ...(outputScope !== undefined ? { outputScope } : {}),
         };
       }
       const marker = mode === "stream" ? " data-bascik-stream" : "";
@@ -298,3 +342,45 @@ export const extractServerScriptsToSidecar = (
     },
   );
 };
+
+/**
+ * Replace all <script data-bascik-server> and <script data-bascik-stream> tags
+ * in `html` with inert placeholders and record each script's source and mode
+ * in the serverSidecarRegistry (and optional outMap). Stream placeholders carry
+ * a `data-bascik-stream` marker so the mode is recoverable from the HTML alone;
+ * the sidecar entry remains the source of truth and the marker is a
+ * consistency check.
+ */
+export const extractServerScriptsToSidecar = (
+  html: string,
+  pagePath: string = "page",
+  outMap?: Record<string, ServerScriptEntry>,
+  sourceFile?: string,
+): string =>
+  extractScriptsToSidecar(
+    html,
+    (ordinal) =>
+      `server_script_${Buffer.from(`${pagePath}::${ordinal}`).toString("hex")}`,
+    outMap,
+    sourceFile,
+  );
+
+/**
+ * The same extraction for a component's scoping template (prompt 157): the
+ * N-th server or stream script of component `componentName` is staged once
+ * as `component_script_<hex(name::ordinal)>`, so a request-time render of the
+ * component resolves its placeholder through the sidecar like a page does.
+ * The source file and line come from the template's directive stamps.
+ */
+export const extractComponentScriptsToSidecar = (
+  template: string,
+  componentName: string,
+  outMap?: Record<string, ServerScriptEntry>,
+): string =>
+  extractScriptsToSidecar(
+    template,
+    (ordinal) =>
+      `${COMPONENT_SCRIPT_ID_PREFIX}${Buffer.from(`${componentName}::${ordinal}`).toString("hex")}`,
+    outMap,
+    undefined,
+  );

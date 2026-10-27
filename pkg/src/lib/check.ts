@@ -51,6 +51,11 @@ import {
 } from "./config-validation.ts";
 import { stdout } from "./colors.ts";
 import { BUILD_ATTR_NAME, BUILD_ONCE_ATTR_NAME } from "./html-patterns.ts";
+import {
+  sidecarHasPageEntries,
+  type ServerScriptsSidecar,
+} from "./server-sidecar.ts";
+import { readComponentManifest } from "./component-manifest.ts";
 import type { ComponentList } from "./types.ts";
 
 export type FindingSeverity = "error" | "warning";
@@ -766,13 +771,22 @@ export const checkProject = async (
     });
   }
 
+  const distDir = resolve(process.cwd(), BascikConfig.directory?.out ?? "dist");
+
+  // ── Request-time component rendering (prompt 157, D7) ────────────────────
+  // A built site whose sidecar has page-owned server or stream entries renders
+  // component tags from their output through dist/.bascik/components.json.
+  // The components that manifest refused are left unexpanded at request time,
+  // so each is reported with its reason; with generate.cspHashes on, so are
+  // the components whose request-time output a hash-only policy cannot cover.
+  items.push(...(await requestRenderFindings(distDir)));
+
   // ── dist/ HTML spec validation (optional parse5 dep) ─────────────────────
   // When parse5 is installed, walk every compiled HTML file in dist/ and run
   // the WHATWG HTML5 parser over it. Any parse error becomes a "dist-html-spec"
   // finding so the user sees exactly where the output is malformed.
   // When parse5 is not installed, set a hint flag so the formatter can nudge
   // the user toward installing it — without failing the check.
-  const distDir = resolve(process.cwd(), BascikConfig.directory?.out ?? "dist");
   let distHtmlChecked: number | null = null;
   let distHtmlSpecHintNeeded = false;
 
@@ -850,8 +864,89 @@ export const checkProject = async (
   };
 };
 
+/**
+ * The components a server or stream script cannot return, read from the
+ * manifest the last build wrote (no build script runs during a check). Nothing
+ * when the built sidecar has no page-owned entries: such a site never renders
+ * a component at request time.
+ */
+const requestRenderFindings = async (
+  distDir: string,
+): Promise<CheckFinding[]> => {
+  const findings: CheckFinding[] = [];
+  let sidecar: ServerScriptsSidecar;
+  try {
+    sidecar = JSON.parse(
+      await readFile(join(distDir, ".bascik", "server-scripts.json"), "utf8"),
+    ) as ServerScriptsSidecar;
+  } catch {
+    return findings;
+  }
+  if (!sidecar || !sidecarHasPageEntries(sidecar.scripts)) return findings;
+  let manifest: Awaited<ReturnType<typeof readComponentManifest>>;
+  try {
+    manifest = await readComponentManifest(distDir);
+  } catch {
+    // A stale or unreadable manifest is a build problem; `bascik --build`
+    // and `bascik --server` report it with the rebuild message.
+    return findings;
+  }
+  if (!manifest) return findings;
+  const reportCsp = Boolean(BascikConfig.generate?.cspHashes);
+  for (const name of Object.keys(manifest.components).sort()) {
+    const entry = manifest.components[name];
+    // The manifest records the file project-relative; every other section
+    // displays files through toDisplay, so this one does too.
+    const filePath = toDisplay(resolve(process.cwd(), entry.filePath));
+    if (entry.unsupported) {
+      // The detail says what in the component triggered the reason (several
+      // distinct refusals share one), so the line is something to act on.
+      const { reason, detail, line } = entry.unsupported;
+      findings.push({
+        category: "request-render-unsupported",
+        severity: "warning",
+        message: `<${name}> is left unexpanded when a server or stream script returns it: ${reason}${detail ? `: ${detail}` : ""}`,
+        locations: [line !== undefined ? { filePath, line } : { filePath }],
+      });
+      continue;
+    }
+    if (!reportCsp || (entry.cspStable.style && entry.cspStable.script))
+      continue;
+    const causes: string[] = [];
+    if (!entry.cspStable.style)
+      causes.push("its stylesheet is emitted per instance");
+    if (!entry.cspStable.script)
+      causes.push("its client scripts embed the instance id");
+    findings.push({
+      category: "request-render-csp-unstable",
+      severity: "warning",
+      message: `<${name}> rendered from script output is not covered by csp-hashes.json: ${causes.join(" and ")}`,
+      locations: [{ filePath }],
+    });
+  }
+  return findings;
+};
+
 /** Category descriptive headers and explanations. */
 const CATEGORY_META: Record<string, { title: string; description: string }> = {
+  "request-render-unsupported": {
+    title: "Components a server or stream script cannot return",
+    description:
+      "A data-bascik-server or data-bascik-stream script that returns one of these\n" +
+      "tags leaves it unexpanded, for the reason listed: the component binds a\n" +
+      "prop to an attribute scoping rewrites, embeds the instance id in a server\n" +
+      "or stream script body, runs its server or stream script with per-instance\n" +
+      "class names (a stylesheet using url(#id), or scoping.deduplicateCss: false),\n" +
+      "reads the page context from a build script, binds the src of a directive\n" +
+      "script, or cannot be recorded as a scoping template.",
+  },
+  "request-render-csp-unstable": {
+    title: "Components without stable CSP hashes at request time",
+    description:
+      "generate.cspHashes is on, but these components embed the instance id in\n" +
+      "their stylesheet or client scripts, so a server or stream script that\n" +
+      "returns them cannot satisfy a hash-only Content-Security-Policy.",
+  },
   "unmatched-tag": {
     title: "Components with no matching file",
     description:
@@ -859,8 +954,10 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
   },
   "unused-component": {
     title: "Unused components",
+    // A component returned only from a server or stream script is placed on
+    // no page by design (prompt 157), so "safe to delete" names those too.
     description:
-      "Defined but never referenced. Safe to delete, or referenced only from a\nbuild script, which this check cannot always see.",
+      "Defined but never referenced. Safe to delete, or referenced only from a\nbuild, server or stream script, which this check cannot always see.",
   },
   "route-collision": {
     title: "API route collisions",

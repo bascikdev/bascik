@@ -2344,3 +2344,102 @@ describe("prefixElementAttribute – component build script output scope", () =>
     expect(component.fileContent).not.toContain("data-bascik-output-scope");
   });
 });
+
+describe("prefixElementAttribute – component server and stream script output scope (prompt 157)", () => {
+  const readScope = (openTag: string) => {
+    const match = /data-bascik-output-scope="([^"]*)"/.exec(openTag);
+    return match ? JSON.parse(decodeURIComponent(match[1])) : null;
+  };
+  const openTags = (html: string): string[] =>
+    [...html.matchAll(/<script\b[^>]*>/g)].map((m) => m[0]);
+
+  it("annotates data-bascik-server and data-bascik-stream scripts exactly like build scripts", () => {
+    // A server script's output is spliced in at request time, after scoping,
+    // so it needs the same class and element map a build script's output gets.
+    const component = prefixElementAttribute(
+      makeComponent(
+        '<div class="wrap">' +
+          "<script data-bascik-build>export default () => '<p class=\"item\">b</p>';</script>" +
+          "<script data-bascik-server>export default () => '<p class=\"item\">s</p>';</script>" +
+          "<script data-bascik-stream>export default async () => '<h2>t</h2>';</script>" +
+          "</div>",
+        ".wrap { display: flex; } .item { color: red; } h2 { color: blue; }",
+      ),
+      "class",
+      "abc12345",
+    );
+    const tags = openTags(component.fileContent);
+    expect(tags).toHaveLength(3);
+    const expected = {
+      classes: {
+        wrap: "bascik__my-comp__wrap",
+        item: "bascik__my-comp__item",
+      },
+      elements: { h2: "bascik__my-comp__el__h2" },
+    };
+    for (const tag of tags) {
+      expect(tag, tag).toContain("data-bascik-output-scope");
+      expect(readScope(tag), tag).toEqual(expected);
+    }
+    // The directive itself is untouched: still a server/stream script.
+    expect(tags[1]).toMatch(/^<script data-bascik-server\s/);
+    expect(tags[2]).toMatch(/^<script data-bascik-stream\s/);
+  });
+
+  it("does not annotate a server script in a component with no stylesheet, and never an ordinary client script", () => {
+    const bare = prefixElementAttribute(
+      makeComponent(
+        "<nav><script data-bascik-server>export default () => 'x';</script></nav>",
+      ),
+      "class",
+      "abc12345",
+    );
+    expect(bare.fileContent).not.toContain("data-bascik-output-scope");
+    const client = prefixElementAttribute(
+      makeComponent(
+        '<div class="wrap"><script>console.log("client");</script><script data-bascik-server>export default () => "s";</script></div>',
+        ".wrap { display: flex; }",
+      ),
+      "class",
+      "abc12345",
+    );
+    const tags = openTags(client.fileContent);
+    expect(tags[0]).not.toContain("data-bascik-output-scope");
+    expect(tags[1]).toContain("data-bascik-output-scope");
+  });
+
+  it("the annotation reaches the sidecar entry and never the placeholder", async () => {
+    const { extractServerScriptsToSidecar, serverSidecarRegistry } =
+      await import("./server-sidecar.ts");
+    serverSidecarRegistry.clear();
+    const component = prefixElementAttribute(
+      makeComponent(
+        '<div class="wrap"><script data-bascik-server>export default () => \'<p class="item">s</p>\';</script></div>',
+        ".wrap { display: flex; } .item { color: red; }",
+      ),
+      "class",
+      "abc12345",
+    );
+    const encoded = /data-bascik-output-scope="([^"]*)"/.exec(
+      component.fileContent,
+    )?.[1];
+    expect(encoded).toBeTruthy();
+    const outMap: Record<
+      string,
+      import("./server-sidecar.ts").ServerScriptEntry
+    > = {};
+    const extracted = extractServerScriptsToSidecar(
+      component.fileContent,
+      "src/pages/index.html",
+      outMap,
+    );
+    expect(extracted).not.toContain("data-bascik-output-scope");
+    expect(extracted).toMatch(
+      /^<div class="bascik__my-comp__wrap"><script type="text\/bascik-server" data-bascik-server-id="[^"]+"><\/script><\/div>$/,
+    );
+    const [id] = Object.keys(outMap);
+    expect(outMap[id].outputScope).toBe(encoded);
+    expect(serverSidecarRegistry.getScript(id)?.outputScope).toBe(encoded);
+    serverSidecarRegistry.clear();
+  });
+});

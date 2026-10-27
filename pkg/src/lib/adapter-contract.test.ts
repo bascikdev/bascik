@@ -4,6 +4,18 @@ import { tmpdir } from "node:os";
 import { mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import { emitServerlessArtifacts } from "./serverless-artifacts.ts";
 import { SIDECAR_SCHEMA_VERSION } from "./server-sidecar.ts";
+import { COMPONENT_MANIFEST_SCHEMA_VERSION } from "./component-manifest.ts";
+
+// A sidecar with page entries needs the component manifest a build writes
+// beside it (prompt 157); the fixtures here render no components.
+const EMPTY_COMPONENT_MANIFEST = {
+  schema: COMPONENT_MANIFEST_SCHEMA_VERSION,
+  identifiers: true,
+  minifyHtml: true,
+  base: "/",
+  inheritAttributes: true,
+  components: {},
+};
 
 describe("adapter contract and execution", () => {
   it("runs reference fixture adapter, stages inline sources, writes build-info.json and cleans staging", async () => {
@@ -33,6 +45,11 @@ describe("adapter contract and execution", () => {
     await writeFile(
       join(bascikHiddenDir, "server-scripts.json"),
       JSON.stringify(sidecar),
+      "utf8",
+    );
+    await writeFile(
+      join(bascikHiddenDir, "components.json"),
+      JSON.stringify(EMPTY_COMPONENT_MANIFEST),
       "utf8",
     );
 
@@ -99,6 +116,11 @@ describe("adapter contract and execution", () => {
     await writeFile(
       join(bascikHiddenDir, "server-scripts.json"),
       JSON.stringify(sidecar),
+      "utf8",
+    );
+    await writeFile(
+      join(bascikHiddenDir, "components.json"),
+      JSON.stringify(EMPTY_COMPONENT_MANIFEST),
       "utf8",
     );
 

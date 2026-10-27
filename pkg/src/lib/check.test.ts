@@ -10,6 +10,7 @@ import {
   type CheckFindings,
 } from "./check.ts";
 import type { LanguageServerDiagnostic } from "./check-language-server.ts";
+import type { ComponentList } from "./types.ts";
 
 const {
   listPagesMock,
@@ -56,6 +57,7 @@ vi.mock("./config.js", async (importOriginal) => {
 vi.mock("./file-system.js", () => ({
   listPages: listPagesMock,
   getRelativePath: (filePath: string) => filePath,
+  getProjectPath: (filePath: string) => filePath,
   deepReadDirFlat: deepReadDirFlatMock,
 }));
 
@@ -1525,5 +1527,319 @@ describe("formatFindingsHuman — per-file section and skipped checks", () => {
     );
     expect(skipped.perFileChecked).toBeNull();
     expect(skipped.perFileHintNeeded).toBe(true);
+  });
+});
+
+/**
+ * Prompt 157 (D7): `bascik --check` reports the components a server or
+ * stream script cannot return (left unexpanded at request time) with the
+ * reason and the file, whenever the built sidecar has page-owned entries; with
+ * `generate.cspHashes` on it also names the components whose request-time
+ * output cannot satisfy a hash-only policy. A project without server scripts
+ * gets neither.
+ */
+describe("checkProject – request-time component rendering (prompt 157)", () => {
+  let workDir: string;
+  let originalCwd: string;
+  let originalDirectory: typeof BascikConfig.directory;
+  let originalGenerate: Record<string, unknown>;
+  let originalSiteUrl: string | undefined;
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  const components = (dir: string) => ({
+    "bad-card": {
+      fileName: join(dir, "src/components/bad-card/bad-card.html"),
+      fileContent:
+        '<div class="w"><span data-bascik-attr-class="variant">x</span></div>',
+      cssFileContent: ".w { color: red }",
+    },
+    "id-script-card": {
+      fileName: join(dir, "src/components/id-script-card/id-script-card.html"),
+      fileContent:
+        '<div id="root" class="w"><script>document.getElementById("root").hidden = false;</script></div>',
+      cssFileContent: ".w { color: red }",
+    },
+    "plain-card": {
+      fileName: join(dir, "src/components/plain-card/plain-card.html"),
+      fileContent:
+        '<div class="w"><script>document.querySelector(".w").hidden = false;</script></div>',
+      cssFileContent: ".w { color: red }",
+    },
+  });
+
+  const writeDist = async (
+    files: Record<string, string>,
+    options: { pageEntries: boolean; manifest: boolean },
+    list: ComponentList = components(workDir),
+  ) => {
+    for (const [rel, content] of Object.entries(files)) {
+      const abs = join(workDir, rel);
+      await mkdir(join(abs, ".."), { recursive: true });
+      await writeFile(abs, content);
+    }
+    const distDir = join(workDir, "dist");
+    await mkdir(join(distDir, ".bascik"), { recursive: true });
+    // A doctype keeps the dist/ HTML spec check (parse5) out of the count.
+    await writeFile(
+      join(distDir, "index.html"),
+      options.pageEntries
+        ? '<!doctype html><p>a</p><script type="text/bascik-server" data-bascik-server-id="s1"></script>'
+        : "<!doctype html><p>a</p>",
+    );
+    await writeFile(
+      join(distDir, ".bascik", "server-scripts.json"),
+      JSON.stringify({
+        version: "1",
+        schema: 3,
+        scripts: options.pageEntries
+          ? {
+              s1: {
+                id: "s1",
+                mode: "server",
+                source: "export default () => 'x';",
+              },
+            }
+          : {},
+      }),
+    );
+    if (options.manifest) {
+      // The manifest a build of these components writes: the same builder
+      // and writer, so the report reads exactly what `bascik --build` leaves.
+      const { buildComponentManifest, writeComponentManifest } =
+        await import("./component-manifest.ts");
+      const manifest = await buildComponentManifest(list, BascikConfig);
+      await writeComponentManifest(distDir, manifest);
+    }
+  };
+
+  beforeEach(async () => {
+    listPagesMock.mockReset();
+    listComponentsMock.mockReset();
+    deepReadDirFlatMock.mockReset();
+    runLanguageServerCheckMock.mockReset();
+    runLanguageServerCheckMock.mockResolvedValue({ status: "missing" });
+    deepReadDirFlatMock.mockResolvedValue([]);
+    Object.keys(userConfigMock).forEach((key) => delete userConfigMock[key]);
+    Object.keys(modeOverridesMock).forEach(
+      (key) => delete modeOverridesMock[key],
+    );
+    originalCwd = process.cwd();
+    originalSiteUrl = process.env.BASCIK_SITE_URL;
+    process.env.BASCIK_SITE_URL = "https://example.com";
+    originalDirectory = { ...BascikConfig.directory };
+    originalGenerate = { ...(BascikConfig as any).generate };
+    workDir = join(originalCwd, `.check-rtc-test-${process.pid}-${Date.now()}`);
+    await mkdir(workDir, { recursive: true });
+    process.chdir(workDir);
+    const mutableConfig = BascikConfig as unknown as MutableBascikConfigForTest;
+    mutableConfig.directory = {
+      ...BascikConfig.directory,
+      pages: "src/pages",
+      // Absolute, as normalizeComponentRoots leaves them in a real run: the
+      // report's display paths (`components/...`) depend on it.
+      components: [join(workDir, "src/components")],
+      api: "src/api",
+      out: join(workDir, "dist"),
+    };
+    (BascikConfig as any).generate = { ...originalGenerate, cspHashes: false };
+    listPagesMock.mockResolvedValue([join(workDir, "src/pages/index.html")]);
+    listComponentsMock.mockResolvedValue(components(workDir));
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(async () => {
+    process.chdir(originalCwd);
+    if (originalSiteUrl === undefined) delete process.env.BASCIK_SITE_URL;
+    else process.env.BASCIK_SITE_URL = originalSiteUrl;
+    const mutableConfig = BascikConfig as unknown as MutableBascikConfigForTest;
+    mutableConfig.directory = originalDirectory;
+    (BascikConfig as any).generate = originalGenerate;
+    await rm(workDir, { recursive: true, force: true });
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  const sources = (dir: string): Record<string, string> => ({
+    "src/pages/index.html":
+      "<bad-card></bad-card><id-script-card></id-script-card><plain-card></plain-card>" +
+      "<script data-bascik-server>export default () => 'x';</script>",
+    ...Object.fromEntries(
+      Object.entries(components(dir)).map(([name, component]) => [
+        `src/components/${name}/${name}.html`,
+        component.fileContent,
+      ]),
+    ),
+  });
+
+  it("lists each unsupported component with its reason and file when the sidecar has page entries", async () => {
+    await writeDist(sources(workDir), { pageEntries: true, manifest: true });
+
+    const findings = await checkProject();
+
+    const unsupported = findings.items.filter(
+      (item) => item.category === "request-render-unsupported",
+    );
+    expect(unsupported).toHaveLength(1);
+    expect(unsupported[0].severity).toBe("warning");
+    expect(unsupported[0].message).toContain("bad-card");
+    expect(unsupported[0].message).toContain(
+      "attr-binding-to-scoped-attribute",
+    );
+    // The manifest's detail follows the reason, so the line says what to
+    // change; the location carries the binding's line and the file in the
+    // form the rest of the report uses (toDisplay; pinned against the
+    // neighboring section below, since this file mocks getRelativePath).
+    expect(unsupported[0].message).toContain(
+      "its data-bascik-attr-class binding targets an attribute scoping rewrites",
+    );
+    expect(unsupported[0].locations).toEqual([
+      { filePath: expect.stringContaining("bad-card/bad-card.html"), line: 1 },
+    ]);
+    expect(unsupported[0].locations[0].filePath).not.toMatch(/^src\//);
+    expect(findings.errors).toBe(0);
+    // With generate.cspHashes off, nothing is said about CSP stability.
+    expect(
+      findings.items.some(
+        (item) => item.category === "request-render-csp-unstable",
+      ),
+    ).toBe(false);
+    const human = formatFindingsHuman(findings);
+    expect(human).toContain("bad-card");
+    expect(human).toContain(
+      `attr-binding-to-scoped-attribute: its data-bascik-attr-class binding targets an attribute scoping rewrites (${unsupported[0].locations[0].filePath}:1)`,
+    );
+    expect(JSON.parse(formatFindingsJson(findings)).findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ category: "request-render-unsupported" }),
+      ]),
+    );
+  });
+
+  it("names the per-instance output scope, not the script body, for a component whose stylesheet uses url(#id); an unused catalog component is not called safe to delete", async () => {
+    const list: ComponentList = {
+      // The server script body references nothing scoped; the stylesheet's
+      // url(#shape) scopes the component's classes per instance.
+      "glow-srv": {
+        fileName: join(workDir, "src/components/glow-srv/glow-srv.html"),
+        fileContent:
+          '<div class="w"><svg><defs><g id="shape"></g></defs></svg><script data-bascik-server>export default () => \'<p>x</p>\';</script></div>',
+        cssFileContent: ".w { mask: url(#shape) }",
+      },
+      // Supported and placed on no page: returned only from the page's server
+      // script, which is what the design calls a catalog component.
+      "catalog-card": {
+        fileName: join(
+          workDir,
+          "src/components/catalog-card/catalog-card.html",
+        ),
+        fileContent: '<article class="w"><p>card</p></article>',
+        cssFileContent: ".w { color: red }",
+      },
+    };
+    listComponentsMock.mockResolvedValue(list);
+    await writeDist(
+      {
+        "src/pages/index.html":
+          "<script data-bascik-server>export default () => '<catalog-card></catalog-card>';</script>",
+        "src/components/glow-srv/glow-srv.html": list["glow-srv"].fileContent,
+        "src/components/catalog-card/catalog-card.html":
+          list["catalog-card"].fileContent,
+      },
+      { pageEntries: true, manifest: true },
+      list,
+    );
+
+    const findings = await checkProject();
+
+    const unsupported = findings.items.filter(
+      (item) => item.category === "request-render-unsupported",
+    );
+    expect(unsupported).toHaveLength(1);
+    expect(unsupported[0].message).toContain("glow-srv");
+    expect(unsupported[0].message).toContain("instance-scoped-server-script");
+    expect(unsupported[0].message).toContain("url(#id)");
+    // Both sections display the file the same way.
+    const unused = findings.items.filter(
+      (item) => item.category === "unused-component",
+    );
+    expect(unused.map((item) => item.message).sort()).toEqual([
+      "catalog-card",
+      "glow-srv",
+    ]);
+    expect(unsupported[0].locations[0].filePath).toBe(
+      unused.find((item) => item.message === "glow-srv")!.locations[0].filePath,
+    );
+    const human = formatFindingsHuman(findings);
+    expect(human).toContain(
+      "runs its server or stream script with per-instance\n" +
+        "  class names (a stylesheet using url(#id), or scoping.deduplicateCss: false),",
+    );
+    expect(human).toContain(
+      "Defined but never referenced. Safe to delete, or referenced only from a\n" +
+        "  build, server or stream script, which this check cannot always see.",
+    );
+  });
+
+  it("does not throw on a hand-edited manifest entry with generate.cspHashes on", async () => {
+    await writeDist(sources(workDir), { pageEntries: true, manifest: false });
+    (BascikConfig as any).generate = { ...originalGenerate, cspHashes: true };
+    await writeFile(
+      join(workDir, "dist", ".bascik", "components.json"),
+      JSON.stringify({
+        schema: 1,
+        identifiers: true,
+        minifyHtml: false,
+        base: "/",
+        inheritAttributes: true,
+        components: { "a-card": {} },
+      }),
+    );
+
+    const findings = await checkProject();
+
+    // A malformed manifest is a build problem `bascik --build` reports with
+    // the rebuild message; the check says nothing about request-time
+    // rendering rather than crashing on the entry.
+    expect(
+      findings.items.filter((item) =>
+        item.category.startsWith("request-render-"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("lists CSP-unstable components only when generate.cspHashes is on", async () => {
+    await writeDist(sources(workDir), { pageEntries: true, manifest: true });
+    (BascikConfig as any).generate = { ...originalGenerate, cspHashes: true };
+
+    const findings = await checkProject();
+
+    const unstable = findings.items.filter(
+      (item) => item.category === "request-render-csp-unstable",
+    );
+    expect(unstable).toHaveLength(1);
+    expect(unstable[0].severity).toBe("warning");
+    expect(unstable[0].message).toContain("id-script-card");
+    expect(unstable[0].locations[0].filePath).toContain("id-script-card.html");
+    expect(
+      findings.items.filter(
+        (item) => item.category === "request-render-unsupported",
+      ),
+    ).toHaveLength(1);
+    expect(formatFindingsHuman(findings)).toContain("id-script-card");
+  });
+
+  it("reports nothing about request-time rendering when the sidecar has no page entries", async () => {
+    await writeDist(sources(workDir), { pageEntries: false, manifest: false });
+    (BascikConfig as any).generate = { ...originalGenerate, cspHashes: true };
+
+    const findings = await checkProject();
+
+    expect(
+      findings.items.filter((item) =>
+        item.category.startsWith("request-render-"),
+      ),
+    ).toEqual([]);
   });
 });

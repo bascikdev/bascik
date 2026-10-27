@@ -142,7 +142,14 @@ export const runScopingPipeline = (
   return current;
 };
 
-const snapshotResult = (component: BascikComponent): ScopingResult => ({
+/**
+ * The scoping pipeline's output fields of `component`, as `buildScopingTemplate`
+ * takes them. Exported for the component manifest (prompt 157), which records
+ * a template from the same recorded run.
+ */
+export const snapshotScopingResult = (
+  component: BascikComponent,
+): ScopingResult => ({
   fileContent: component.fileContent,
   cssFileContent: component.cssFileContent,
   scopedIdNames:
@@ -152,8 +159,8 @@ const snapshotResult = (component: BascikComponent): ScopingResult => ({
   requiresPerInstanceCss: component.requiresPerInstanceCss,
 });
 
-/** The authored text a token must never occur in. */
-const inputTexts = (component: BascikComponent): string[] => [
+/** The authored text a token must never occur in. Exported for the component manifest (prompt 157). */
+export const scopingInputTexts = (component: BascikComponent): string[] => [
   component.name,
   component.fileName ?? "",
   component.fileContent ?? "",
@@ -331,8 +338,8 @@ export const instantiateScopingTemplate = (
 
 /** Test-only access to the snapshot helpers. Never read on production paths. */
 export const __scopingTemplateInternalsForTests = {
-  inputTexts,
-  snapshotResult,
+  inputTexts: scopingInputTexts,
+  snapshotResult: snapshotScopingResult,
   inputKey,
   entryCount: (): number => entries.size,
   /** The cached template for `component`, for tests that simulate a wrong prediction. */
@@ -340,13 +347,20 @@ export const __scopingTemplateInternalsForTests = {
     entries.get(inputKey(component))?.template ?? null,
 };
 
-const sameResult = (a: ScopingResult, b: ScopingResult): boolean =>
+/**
+ * Whether two scoping results are the same on every field a template
+ * reproduces. Shared with the component manifest (prompt 157), which
+ * verifies its templates the way the recorder does; a field added to
+ * `ScopingResult` is compared in one place.
+ */
+export const sameResult = (a: ScopingResult, b: ScopingResult): boolean =>
   a.fileContent === b.fileContent &&
   a.cssFileContent === b.cssFileContent &&
   a.scopedIdNames === b.scopedIdNames &&
   a.requiresPerInstanceCss === b.requiresPerInstanceCss;
 
-const differingField = (a: ScopingResult, b: ScopingResult): string =>
+/** The first field on which two results differ, for diagnostics. */
+export const differingField = (a: ScopingResult, b: ScopingResult): string =>
   (
     [
       "fileContent",
@@ -483,7 +497,7 @@ export const scopeComponentInstance = (
   const entry = entries.get(key);
 
   if (!entry) {
-    const inputs = inputTexts(component);
+    const inputs = scopingInputTexts(component);
     const recorded = recordScopingRun(component, instanceId);
     __scopingTemplateStatsForTests.recorded++;
     const template = recorded.clean
@@ -491,7 +505,7 @@ export const scopeComponentInstance = (
           inputs,
           instanceId,
           recorded.calls,
-          snapshotResult(recorded.component),
+          snapshotScopingResult(recorded.component),
         )
       : null;
     if (!template) __scopingTemplateStatsForTests.rejected++;
@@ -515,7 +529,7 @@ export const scopeComponentInstance = (
   const predicted = instantiateScopingTemplate(
     template,
     instanceId,
-    inputTexts(component),
+    scopingInputTexts(component),
   );
 
   if (entry.state === "verifying") {
@@ -525,7 +539,7 @@ export const scopeComponentInstance = (
       instanceId !== template.instanceId &&
       !entry.verifiedIds.has(instanceId)
     ) {
-      if (sameResult(predicted, snapshotResult(real))) {
+      if (sameResult(predicted, snapshotScopingResult(real))) {
         entry.verifiedIds.add(instanceId);
         __scopingTemplateStatsForTests.verified++;
         if (entry.verifiedIds.size >= REQUIRED_VERIFICATIONS)
@@ -549,7 +563,7 @@ export const scopeComponentInstance = (
           : { ...component.scopedIdNames },
     };
     if (component.scopedIdNames === undefined) delete copy.scopedIdNames;
-    const real = snapshotResult(runScopingPipeline(copy, instanceId));
+    const real = snapshotScopingResult(runScopingPipeline(copy, instanceId));
     if (!sameResult(real, predicted)) {
       throw new Error(
         `[bascik] scoping template mismatch for <${component.name}> (instance ${instanceId}, field ${differingField(real, predicted)})`,
