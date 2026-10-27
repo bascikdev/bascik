@@ -210,7 +210,8 @@ yarn pkg:build        # compile dist/
 yarn pkg:unit         # unit tests, single run
 yarn pkg:test         # unit tests in watch mode
 yarn pkg:test:ci      # unit tests + coverage summary (used in CI)
-yarn pkg:e2e          # E2E tests
+yarn pkg:e2e          # E2E tests (static lane)
+yarn pkg:e2e:all      # all four E2E lanes in parallel, each in its own dist-<lane> dir
 yarn pkg:typecheck    # JSDoc/TypeScript type check
 yarn pkg:coverage     # update unit & E2E coverage
 yarn pkg:bench        # micro-benchmarks

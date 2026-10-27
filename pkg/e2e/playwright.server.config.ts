@@ -15,6 +15,12 @@ import { join } from "node:path";
 // Recompute every reused scoping result and fail on any difference (scoping-template.ts).
 process.env.BASCIK_VERIFY_SCOPING_TEMPLATES ??= "1";
 
+// Each main lane builds into its own output directory (pkg/e2e and
+// base-fixture read it as directory.out) so the lanes can run at the same
+// time without one lane's build or dev-server cleanup erasing another's.
+// Set before the webServer commands start, so it reaches them and the workers.
+process.env.BASCIK_E2E_OUT ??= "dist-http1";
+
 const e2eDir = fileURLToPath(new URL(".", import.meta.url));
 const pkgDir = join(e2eDir, "..");
 const baseFixtureDir = join(e2eDir, "base-fixture");
@@ -35,6 +41,9 @@ const prodServerTestIgnore = [
 
 export default defineConfig({
   testDir: "./tests",
+  // Own results dir (pkg/test-results/http1): Playwright clears its outputDir at
+  // run start and keeps .last-run.json there, so lanes must not share one.
+  outputDir: "../test-results/http1",
   workers: 1,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,

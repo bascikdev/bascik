@@ -119,7 +119,7 @@ yarn docs:dev       # start docs dev server
 yarn typecheck:all  # typecheck all packages (pkg, create, docs, extension)
 yarn check:all      # spelling (codespell) and web standards (webhint)
 yarn unit:all       # unit tests across all packages
-yarn e2e:all        # E2E tests across all packages
+yarn e2e:all        # E2E tests across all packages (pkg lanes run in parallel)
 yarn coverage:all   # update coverage across all packages
 yarn test:all       # run typechecks, checks, unit tests, E2E tests, and Lighthouse CLI audits
 ```

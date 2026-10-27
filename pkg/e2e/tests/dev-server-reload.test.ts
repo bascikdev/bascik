@@ -22,6 +22,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 import { spawn } from "node:child_process";
+import { outDir } from "./helpers/out-dir.ts";
 
 const e2eDir = fileURLToPath(new URL("..", import.meta.url));
 const pkgDir = join(e2eDir, "..");
@@ -32,7 +33,7 @@ const staticCssPath = join(e2eDir, "src/pages/dev-static-test.css");
 const contentDocPath = join(e2eDir, "src/content/watch-doc.md");
 const subfolderPagePath = join(e2eDir, "src/pages/subfolder/route-test.html");
 const inlinedGlobalCssPath = join(e2eDir, "src/css/inlined-global.css");
-const scopeTestOutputPath = join(e2eDir, "dist/scope-test.html");
+const scopeTestOutputPath = join(outDir(e2eDir), "scope-test.html");
 
 const dynamicCreatedCompPath = join(
   e2eDir,
@@ -131,6 +132,17 @@ const restoreFileIfChanged = async (
 };
 
 /**
+ * Origin of the dev server this project runs against (its `baseURL`), for
+ * requests made with `fetch` outside the Playwright request fixture. Read per
+ * call so the lane config stays the only place the port is written.
+ */
+const laneOrigin = (): string => {
+  const baseURL = test.info().project.use.baseURL;
+  if (!baseURL) throw new Error("dev-server-reload needs a project baseURL");
+  return new URL(baseURL).origin;
+};
+
+/**
  * Subscribe to the dev server's SSE stream as if a tab had `httpPath` open,
  * and resolve once one `reload` event for that page arrives. Used by
  * `afterEach` so the rebuild caused by restoring a fixture is fully consumed
@@ -146,8 +158,9 @@ const subscribeToServerReload = async (
 ): Promise<{ reload: Promise<void> }> => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
-  const res = await fetch(`http://localhost:9443/bascik-live-reload`, {
-    headers: { Referer: `http://localhost:9443${httpPath}` },
+  const origin = laneOrigin();
+  const res = await fetch(`${origin}/bascik-live-reload`, {
+    headers: { Referer: `${origin}${httpPath}` },
     signal: controller.signal,
   });
   const reader = res.body!.getReader();
@@ -299,8 +312,8 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
 
   test("SSE endpoint responds with event-stream content-type and no-cache headers", async () => {
     const controller = new AbortController();
-    const res = await fetch("http://localhost:9443/bascik-live-reload", {
-      headers: { Referer: "http://localhost:9443/scope-test" },
+    const res = await fetch(`${laneOrigin()}/bascik-live-reload`, {
+      headers: { Referer: `${laneOrigin()}/scope-test` },
       signal: controller.signal,
     });
     expect(res.headers.get("content-type")).toContain("text/event-stream");
@@ -1238,7 +1251,10 @@ test.describe("Dev Server component edits used only in script output (prompt 157
 });
 
 test.describe("Dev Server API Route Module Reload (prompt 112)", () => {
-  const apiRoutePath = join(e2eDir, "src/api/health.ts");
+  // A route no other spec requests: production lanes running alongside import
+  // API handlers from this same source tree on first request, so editing a
+  // shared route such as health.ts could leak into them.
+  const apiRoutePath = join(e2eDir, "src/api/reload-probe.ts");
   let originalHealthRoute: string;
 
   test.beforeAll(async () => {
@@ -1252,7 +1268,7 @@ test.describe("Dev Server API Route Module Reload (prompt 112)", () => {
       await expect
         .poll(
           async () => {
-            const res = await fetch("http://localhost:9443/api/health");
+            const res = await fetch(`${laneOrigin()}/api/reload-probe`);
             return (await res.json()).status;
           },
           { timeout: 15000 },
@@ -1264,7 +1280,7 @@ test.describe("Dev Server API Route Module Reload (prompt 112)", () => {
   test("serves the edited API route handler on the next request without a restart", async ({
     request,
   }) => {
-    const before = await request.get("/api/health");
+    const before = await request.get("/api/reload-probe");
     expect(before.status()).toBe(200);
     expect((await before.json()).status).toBe("healthy");
 
@@ -1281,7 +1297,7 @@ test.describe("Dev Server API Route Module Reload (prompt 112)", () => {
     await expect
       .poll(
         async () => {
-          const res = await request.get("/api/health");
+          const res = await request.get("/api/reload-probe");
           return (await res.json()).status;
         },
         { timeout: 15000 },

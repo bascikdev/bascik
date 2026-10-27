@@ -36,6 +36,8 @@ Runs after all Stage 1 jobs pass. Installs Chromium via `playwright install chro
 - **Docs Site E2E**: `yarn docs:e2e`
 - **Create Scaffold E2E**: `yarn create:test-site`
 
+Each `pkg` lane runs as its own job, so CI does not use the local `yarn pkg:e2e:all` runner, which starts the same four lanes in parallel on one machine. Each lane uses its own ports and its own output directory (`BASCIK_E2E_OUT`, such as `pkg/e2e/dist-dev`), so the two setups behave the same.
+
 ### Stage 3: Semgrep Static Analysis
 
 Runs comprehensive security and vulnerability rulesets via `semgrep-action` (`p/default`) after all E2E test suites pass.

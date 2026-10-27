@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { defaultOutDir } from "./helpers/out-dir.ts";
 
 const e2eDir = fileURLToPath(new URL("..", import.meta.url));
 const entryPath = join(e2eDir, "../dist/index.js");
@@ -68,7 +69,7 @@ test("static builds rewrite root-relative URLs under a non-root base", async () 
     await runBuild(fixtureDir);
 
     const output = await readFile(
-      join(fixtureDir, "dist/nested/index.html"),
+      join(defaultOutDir(fixtureDir), "nested/index.html"),
       "utf8",
     );
     expect(output).toContain('href="/sub/styles.css"');
@@ -82,11 +83,17 @@ test("static builds rewrite root-relative URLs under a non-root base", async () 
     expect(output).toContain('href="mailto:test@example.com"');
     expect(output).toContain('src="https://cdn.example.com/app.js"');
 
-    const css = await readFile(join(fixtureDir, "dist/styles.css"), "utf8");
+    const css = await readFile(
+      join(defaultOutDir(fixtureDir), "styles.css"),
+      "utf8",
+    );
     expect(css).toContain("url(/sub/hero.png)");
     expect(css).toContain("url(#icon)");
     const manifest = JSON.parse(
-      await readFile(join(fixtureDir, "dist/site.webmanifest"), "utf8"),
+      await readFile(
+        join(defaultOutDir(fixtureDir), "site.webmanifest"),
+        "utf8",
+      ),
     );
     expect(manifest).toMatchObject({
       start_url: "/sub/",
@@ -108,7 +115,7 @@ test("an explicit root base produces byte-identical static output", async () => 
 
     await runBuild(fixtureDir);
     const defaultOutput = await readFile(
-      join(fixtureDir, "dist/index.html"),
+      join(defaultOutDir(fixtureDir), "index.html"),
       "utf8",
     );
 
@@ -118,7 +125,7 @@ test("an explicit root base produces byte-identical static output", async () => 
     );
     await runBuild(fixtureDir);
     const rootBaseOutput = await readFile(
-      join(fixtureDir, "dist/index.html"),
+      join(defaultOutDir(fixtureDir), "index.html"),
       "utf8",
     );
 

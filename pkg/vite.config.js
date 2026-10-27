@@ -20,7 +20,7 @@ export default defineConfig({
       {
         test: {
           name: "unit",
-          include: ["src/**/*.test.ts"],
+          include: ["src/**/*.test.ts", "e2e/scripts/**/*.test.ts"],
           exclude: ["src/**/*.integration.test.ts"],
           // Recompute every reused scoping result and fail on any difference (scoping-template.ts).
           env: { BASCIK_VERIFY_SCOPING_TEMPLATES: "1" },

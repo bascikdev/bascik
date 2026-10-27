@@ -11,6 +11,9 @@ export default defineConfig({
   // src/. Exercises multi-root discovery, watching, and the subfolder
   // companion-script rule for a non-first root (see multi-component-roots.test.ts).
   directory: {
+    // Each Playwright lane sets BASCIK_E2E_OUT (dist-static, dist-dev, ...) so
+    // lanes running at the same time never share an output directory.
+    out: process.env.BASCIK_E2E_OUT ?? "dist",
     components: ["src/components", "shared-components"],
   },
   scoping: {

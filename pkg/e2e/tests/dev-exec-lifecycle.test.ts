@@ -3,13 +3,15 @@ import { test, expect } from "@playwright/test";
 import { readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { defaultOutDir } from "./helpers/out-dir.ts";
 
 const fixtureDir = fileURLToPath(new URL("../exec-fixture/", import.meta.url));
+const fixtureOut = defaultOutDir(fixtureDir);
 const docPath = join(fixtureDir, "content/doc.md");
 const logPath = join(fixtureDir, ".dev-server.log");
 const readLog = () => readFile(logPath, "utf8");
 const readGeneration = async () =>
-  Number(await readFile(join(fixtureDir, "dist/.generation"), "utf8"));
+  Number(await readFile(join(fixtureOut, ".generation"), "utf8"));
 const consumerTranspiled = /transpiled: pages\/consumer\.html/;
 const unrelatedTranspiled = /transpiled: pages\/unrelated\.html/;
 
@@ -115,8 +117,7 @@ test.describe("source-owned exec lifecycle", () => {
       );
       expect(await readGeneration()).toBe(before + 1);
       expect(
-        JSON.parse(await readFile(join(fixtureDir, "dist/post.json"), "utf8"))
-          .value,
+        JSON.parse(await readFile(join(fixtureOut, "post.json"), "utf8")).value,
       ).toBe(`generation-${before + 1}`);
       expect((await readLog()).slice(offset)).toMatch(consumerTranspiled);
       expect((await readLog()).slice(offset)).not.toMatch(unrelatedTranspiled);

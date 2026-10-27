@@ -8,10 +8,12 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { defaultOutDir } from "./helpers/out-dir.ts";
 
 const fixtureDir = join(import.meta.dirname, "..", "symlink-fixture");
 const sourceAsset = join(fixtureDir, "src/pages/assets/logo.svg");
-const outputAsset = join(fixtureDir, "dist/assets/logo.svg");
+const outputAssetsDir = join(defaultOutDir(fixtureDir), "assets");
+const outputAsset = join(outputAssetsDir, "logo.svg");
 
 test.describe("Development static-asset symlinks", () => {
   test.skip(
@@ -24,7 +26,7 @@ test.describe("Development static-asset symlinks", () => {
   }) => {
     expect((await lstat(outputAsset)).isSymbolicLink()).toBe(true);
     expect(await readlink(outputAsset)).toBe(
-      relative(join(fixtureDir, "dist/assets"), sourceAsset),
+      relative(outputAssetsDir, sourceAsset),
     );
 
     const original = await readFile(sourceAsset, "utf8");
@@ -96,7 +98,7 @@ test.describe("Development static-asset symlinks", () => {
           .poll(async () => (await request.get(`/assets/${path}`)).text())
           .toBe(contents);
         expect(
-          (await lstat(join(fixtureDir, "dist/assets", path))).isSymbolicLink(),
+          (await lstat(join(outputAssetsDir, path))).isSymbolicLink(),
         ).toBe(true);
       }
     } finally {

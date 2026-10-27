@@ -10,6 +10,7 @@
 import { test, expect } from "@playwright/test";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { outDir } from "./helpers/out-dir.ts";
 
 const SECRET_MARKER = "BASCIK_E2E_ASSET_LEAK_MARKER";
 
@@ -97,7 +98,7 @@ test.describe("Static Assets & Inlined Styles handling", () => {
   });
 
   test("does not write the secret marker anywhere in build output", async () => {
-    const distDirectory = join(import.meta.dirname, "..", "dist");
+    const distDirectory = outDir(join(import.meta.dirname, ".."));
     const entries = await readdir(distDirectory, {
       recursive: true,
       withFileTypes: true,
@@ -144,7 +145,7 @@ test.describe("Static Assets & Inlined Styles handling", () => {
   test("does not leak API handler source code into build output or static assets", async () => {
     const API_MARKER =
       "SECRET_SOURCE_CODE_MARKER_API_HANDLER_DO_NOT_LEAK_12345";
-    const distDirectory = join(import.meta.dirname, "..", "dist");
+    const distDirectory = outDir(join(import.meta.dirname, ".."));
     const entries = await readdir(distDirectory, {
       recursive: true,
       withFileTypes: true,

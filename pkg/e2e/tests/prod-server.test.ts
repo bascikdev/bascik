@@ -21,9 +21,10 @@ import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { outDir } from "./helpers/out-dir.ts";
 
 const e2eDir = fileURLToPath(new URL("..", import.meta.url));
-const scopeTestOutputPath = join(e2eDir, "dist/scope-test.html");
+const scopeTestOutputPath = join(outDir(e2eDir), "scope-test.html");
 
 test.describe("Production Server (`bascik --server`) Engine", () => {
   // ── 1. Clean HTML Output ───────────────────────────────────────────────────
@@ -61,7 +62,7 @@ test.describe("Production Server (`bascik --server`) Engine", () => {
     // `/bascik-live-reload`, so a page whose prose mentioned the SSE path was
     // served with zero client scripts even though dist/ contained them.
     const distHtml = await readFile(
-      join(e2eDir, "dist/client-script-prod.html"),
+      join(outDir(e2eDir), "client-script-prod.html"),
       "utf8",
     );
     const distScriptCount = distHtml.match(/<script\b/g)?.length ?? 0;

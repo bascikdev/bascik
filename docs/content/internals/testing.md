@@ -82,6 +82,12 @@ yarn pkg:e2e:prod
 yarn pkg:e2e:prod:http1
 yarn pkg:e2e:prod:http2
 
+# All four lanes at once (static, dev, http1, http2), one summary line per lane
+yarn pkg:e2e:all
+yarn pkg:e2e:all dev http1                    # a subset
+yarn pkg:e2e:all http2 --grep scoping         # extra args go to every lane
+yarn pkg:e2e:all:serial                       # the old one-after-another chain
+
 # Cloudflare adapter suite in @bascik/adapter-cloudflare workspace (emitted Pages bundle in local workerd)
 yarn adapter:cf:e2e
 ```
@@ -91,6 +97,8 @@ This builds the fixture site (using the current `dist/`) and then runs Playwrigh
 ```sh
 yarn pkg:build && yarn pkg:e2e
 ```
+
+`yarn pkg:e2e:all` runs `pkg/e2e/scripts/run-lanes.ts`, which starts the four lanes in parallel, prefixes each output line with the lane name, and exits nonzero if any lane fails. Before starting anything it refuses to run, naming the lane and port, if a port a lane needs is already bound. The dev lane starts once the other lanes' builds are serving, because it edits the fixture sources they build from. An unknown lane name is rejected before any lane starts; to pass a bare word to Playwright, put it after `--`.
 
 To run a specific test file or use the Playwright UI, run Playwright from `pkg/`:
 
@@ -122,7 +130,9 @@ pkg/e2e/
   playwright.server.config.ts      ← HTTP/1.1 cleartext prod server runner
   playwright.server-http2.config.ts← HTTP/2 TLS prod server runner
   playwright.dev.config.ts        ← dev server runner for live-reload and open-page priority
-  server.ts                       ← minimal static HTTP server for dist/
+  server.ts                       ← minimal static HTTP server for a lane's output dir
+  scripts/run-lanes.ts            ← runs the four main lanes in parallel (yarn pkg:e2e:all)
+  tests/helpers/out-dir.ts        ← the one place specs resolve a build output directory
   src/
     pages/                        ← one HTML page per feature under test
     components/                   ← components used by those pages
@@ -131,15 +141,17 @@ pkg/e2e/
 
 The E2E suite supports four Bascik server modes plus three exec lanes and one adapter lane:
 
-1. **Static production suite (`playwright.config.ts`)**: builds the fixture site with `bascik --build` and serves static files via `server.ts` on port 4200.
-2. **HTTP/1.1 production server suite (`playwright.server.config.ts`)**: boots cleartext `bascik --server` over HTTP/1.1 on port 9443 to test `data-bascik-server` request-time script execution and cleartext server behavior.
-3. **HTTP/2 production server suite (`playwright.server-http2.config.ts`)**: boots TLS-enabled `bascik --server` over HTTP/2 on port 9444 to test `data-bascik-server` request-time script execution and encrypted server behavior.
-4. **Dev server watch suite (`playwright.dev.config.ts`)**: boots the live dev server on port 9443 (configured via `BASCIK_SERVER_PORT=9443`) to run the full test suite and live-reload watcher tests directly against the live dev server with SSE tracking and open-page priority re-transpilation.
+1. **Static production suite (`playwright.config.ts`)**: builds the fixture site with `bascik --build` and serves static files via `server.ts` on port 4200 (base fixture on 9550).
+2. **HTTP/1.1 production server suite (`playwright.server.config.ts`)**: boots cleartext `bascik --server` over HTTP/1.1 on port 9443 (base fixture on 9552) to test `data-bascik-server` request-time script execution and cleartext server behavior.
+3. **HTTP/2 production server suite (`playwright.server-http2.config.ts`)**: boots TLS-enabled `bascik --server` over HTTP/2 on port 9444 (base fixture on 9553) to test `data-bascik-server` request-time script execution and encrypted server behavior.
+4. **Dev server watch suite (`playwright.dev.config.ts`)**: boots the live dev server on port 9445 (configured via `BASCIK_SERVER_PORT=9445`; base fixture on 9551, symlink fixture on 9663) to run the full test suite and live-reload watcher tests directly against the live dev server with SSE tracking and open-page priority re-transpilation. Read-only specs run four at a time in the `dev-readonly` project; the specs that edit watched files (`devSourceEditingSpecs` in the config) then run one at a time in `dev-mutating`, which depends on it.
 5. **Exec lifecycle lanes (`playwright.dev-exec.config.ts`, `playwright.dev-exec-gated.config.ts`, `playwright.exec-build.config.ts`)**: run against a dedicated `e2e/exec-fixture/` project to prove exec producer/consumer lifecycle ownership. The dev lanes run via `yarn pkg:e2e:dev:exec`; the gated variant holds a `phase: 'parallel'` producer behind an HTTP gate to prove the dev server serves before the parallel entry finishes.
 6. **Exec failure policy lane (`playwright.exec-policy.config.ts`)**: spawns the real CLI in temporary projects and checks `pipeline.onExecError`: exit codes, output, the build-error frame an open browser receives, and that a dev session survives a failing script and recovers on the next edit. It covers the dev default (`'warn'`), the build default (`'error'`), the option set explicitly, and the `dev` and `build` config exports. It runs via `yarn pkg:e2e:exec:policy` and is excluded from the four fixture-serving configs.
 7. **Cloudflare adapter suite (`adapters/cloudflare/e2e/playwright.config.ts`)**: builds the small fixture with `--target cloudflare-pages` and serves the emitted `_worker.js` and public tree inside local workerd (Miniflare) with the asset layer in front, on port 9876. It covers static bypass, worker-side pages and APIs, and a stream paint-order test with JavaScript disabled. Request-level Node-versus-Worker parity is a Vitest integration test (`serverless-parity.integration.test.ts`), which runs one build under both `bascik --server` and workerd and compares them. This lane lives in the `@bascik/adapter-cloudflare` workspace (`yarn adapter:cf:e2e`), not in `pkg/e2e/`.
 
-Each configuration owns its mode-specific `testIgnore` list on the `default` project. Playwright project arrays replace matching top-level arrays rather than extending them, so splitting exclusions across both levels can silently run server-only tests in the wrong mode. For example, `server-scripts.test.ts` and `server-scripts-stream.test.ts` run under dev, HTTP/1.1, and HTTP/2 configs, and are ignored under the static config because the static file server cannot execute server scripts. A unit regression test imports the four Bascik-server configs and pins their project exclusions before any browser starts; the Cloudflare config selects its single test file with `testMatch` and is excluded from the other four.
+Every port across the four main lanes, the exec lanes, the docs e2e (8080) and the adapter e2e (9876) is distinct, and each main lane config sets `BASCIK_E2E_OUT` (`dist-static`, `dist-dev`, `dist-http1`, `dist-http2`), which `pkg/e2e/bascik.config.ts` and `base-fixture/bascik.config.ts` use as `directory.out`. Each lane config also sets its own Playwright `outputDir` (`pkg/test-results/<lane>`), so no lane clears another's results or `.last-run.json`. Run the main lanes together only through `yarn pkg:e2e:all`: the dev lane edits `pkg/e2e/src` and `base-fixture/src`, which the other lanes build from, and the runner holds it back until their builds are serving. Starting `yarn pkg:e2e:dev` by hand next to another lane has no such guard. Specs read build output only through `outDir()` or `defaultOutDir()` in `tests/helpers/out-dir.ts`; the symlink fixture, exec fixture, and temporary projects keep plain `dist`. `e2e/scripts/run-lanes.test.ts` (in the unit project) fails on a port collision, a hardcoded `dist/` path or server origin in a spec, a file-writing spec left in `dev-readonly`, or a `dev-mutating` edit of a module the production lanes import at request time (an API route other specs call, or a server-script dependency).
+
+Each configuration owns its mode-specific `testIgnore` list on its main project (`default`, or `dev-readonly` in the dev config). Playwright project arrays replace matching top-level arrays rather than extending them, so splitting exclusions across both levels can silently run server-only tests in the wrong mode. For example, `server-scripts.test.ts` and `server-scripts-stream.test.ts` run under dev, HTTP/1.1, and HTTP/2 configs, and are ignored under the static config because the static file server cannot execute server scripts. A unit regression test imports the four Bascik-server configs and pins their project exclusions before any browser starts; the Cloudflare config selects its single test file with `testMatch` and is excluded from the other four.
 
 Tests navigate to pages on the active server and assert against the live browser DOM.
 
@@ -208,7 +220,7 @@ test.describe("my-feature-test page", () => {
 });
 ```
 
-> **Rebuild before testing.** Playwright tests run against `e2e/dist/`, which is built from the current `pkg/dist/`. If you change `pkg/src/`, run `yarn pkg:build` before `yarn pkg:e2e` so the fixture picks up the latest transpiler.
+> **Rebuild before testing.** Playwright tests run against the lane's output directory (`e2e/dist-static/`, `e2e/dist-dev/`, and so on), which is built from the current `pkg/dist/`. If you change `pkg/src/`, run `yarn pkg:build` before `yarn pkg:e2e` so the fixture picks up the latest transpiler.
 
 ## Test Configuration
 
@@ -355,7 +367,7 @@ The root `package.json` provides aggregated tasks across all projects:
 - `yarn check:all`: runs spelling (`check:spelling`) and web standards (`check:standards`)
 - `yarn unit:all`: runs unit test suites across all packages
 - `yarn integration:all`: runs the long-running integration test suite
-- `yarn e2e:all`: runs Playwright E2E suites across the workspace
+- `yarn e2e:all`: runs Playwright E2E suites across the workspace (the four `pkg` lanes in parallel through `yarn pkg:e2e:all`, then docs and the Cloudflare adapter)
 - `yarn coverage:all`: generates and updates coverage reports across all packages
 - `yarn test:all`: runs typechecks, spelling/standards checks, unit tests, integration tests, and E2E suites in sequence (coverage excluded)
 

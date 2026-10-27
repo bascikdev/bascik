@@ -1,5 +1,7 @@
 export default {
   base: "/sub/",
+  // Per-lane output directory; see ../bascik.config.ts.
+  directory: { out: process.env.BASCIK_E2E_OUT ?? "dist" },
   pipeline: { workers: false },
   minify: { identifiers: false },
 };

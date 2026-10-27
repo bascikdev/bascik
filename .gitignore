@@ -76,6 +76,9 @@ pkg/e2e/src/pages/dev-recovery-test.html
 docs/dist
 pkg/dist
 **/dist
+# Per-lane e2e output (BASCIK_E2E_OUT, one per Playwright lane)
+pkg/e2e/dist-*
+pkg/e2e/base-fixture/dist-*
 create/dist
 extensions/vscode-bascik/dist
 pkg/test-results
