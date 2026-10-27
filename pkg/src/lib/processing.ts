@@ -77,6 +77,12 @@ import { BUILD_ONCE_ATTR_NAME, OPEN_TAG_ATTRS } from "./html-patterns.ts";
 
 import { stdout as colorOut, workerEnvironment } from "./colors.ts";
 import { BascikConfig } from "./config.ts";
+import {
+  addBuildScriptStats,
+  createBuildScriptStats,
+  formatBuildScriptSummary,
+  type BuildScriptStats,
+} from "./build-script-stats.ts";
 import { formatDuration } from "./format.ts";
 import { logInfo } from "./log.ts";
 import { mem } from "./mem.ts";
@@ -168,6 +174,7 @@ export const clearTemplateRoutesCache = (): void => {
 
 export const expandPageToJobs = async (
   pagePath: string,
+  scriptStats?: BuildScriptStats,
 ): Promise<PageJob[]> => {
   if (!isDynamicRoute(pagePath)) {
     return [
@@ -222,6 +229,7 @@ export const expandPageToJobs = async (
   const onceResolvedHtml = BUILD_ONCE_SCRIPT_RE.test(result.cleanedHtml)
     ? await executeBuildScripts(result.cleanedHtml, pagePath, null, {
         once: true,
+        stats: scriptStats,
       })
     : undefined;
 
@@ -432,6 +440,8 @@ export const processPageBatch = async (
   componentList?: ComponentList,
   globalStylesHtml?: string,
   initialPageErrors: PageProcessingError[] = [],
+  /** Receives every page's build-script counts, for the boot summary line. */
+  scriptStats?: BuildScriptStats,
 ): Promise<string[]> => {
   const pageErrors = [...initialPageErrors];
   if (pageInputs.length === 0) {
@@ -525,6 +535,8 @@ export const processPageBatch = async (
       job.preCleanedHtml,
       { onceResolvedHtml: job.onceResolvedHtml },
     );
+    if (result?.buildScripts && scriptStats)
+      addBuildScriptStats(scriptStats, result.buildScripts);
     if (result && isCurrentGeneration(job.pagePath, generation)) {
       if (result.serverScripts) {
         serverSidecarRegistry.recordScripts(result.serverScripts);
@@ -580,9 +592,37 @@ export const processPageBatch = async (
     await runJobs(homeJobs);
   }
 
-  // Transpile remaining (closed) pages afterwards
+  // The remaining pages are drained through the same pick-time queue as the
+  // worker path, not started all at once: each lane takes its next page only
+  // when it is free, so a tab that connects while this batch is running (the
+  // single-thread boot, and every component or stylesheet rebuild regardless
+  // of `pipeline.workers`) still jumps ahead of the pages that have not begun.
+  // Real parallelism is already bounded by the build-script child semaphore;
+  // two lanes per core keep every permit busy while a lane is between
+  // scripts, so throughput matches the previous all-at-once start. Results
+  // are kept in input order, not completion order, so a build's output never
+  // depends on which lane finished first.
   if (restJobs.length > 0) {
-    await runJobs(restJobs);
+    const restResults: (TranspilePageResult | null)[] = restJobs.map(
+      () => null,
+    );
+    const restIndex = new Map(restJobs.map((job, index) => [job, index]));
+    const compileQueue = createCompileQueue(restJobs);
+    const lanes = Math.min(restJobs.length, Math.max(1, cpus().length) * 2);
+    await Promise.all(
+      Array.from({ length: lanes }, async () => {
+        for (let job = compileQueue.next(); job; job = compileQueue.next()) {
+          try {
+            restResults[restIndex.get(job)!] = await runJob(job);
+          } catch (error) {
+            pageErrors.push(normalizePageError(job.pagePath, error));
+          }
+        }
+      }),
+    );
+    for (const result of restResults) {
+      if (result) results.push(result);
+    }
   }
 
   reportPageErrors(pageErrors);
@@ -665,6 +705,9 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   const useWorkers =
     options?.useWorkers ?? BascikConfig.pipeline?.workers ?? false;
   const start = performance.now();
+  // Summed from every page (and the build-once pass of every route template)
+  // so the summary can say how much of the phase was build scripts.
+  const scriptStats = createBuildScriptStats();
   // Parallel processing of pages
   const [pages, componentList, globalStylesHtml] = await Promise.all([
     listPages(),
@@ -691,7 +734,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   const jobBatches = await Promise.all(
     pageList.map(async (pagePath) => {
       try {
-        return await expandPageToJobs(pagePath);
+        return await expandPageToJobs(pagePath, scriptStats);
       } catch (error) {
         expansionErrors.push(
           normalizePageError(pagePath, error, "expand routes"),
@@ -759,6 +802,9 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
       try {
         const generation = pagesClaimed.get(job.pagePath)!;
         const result = await pool.run(job);
+        // The worker counted its own scripts; the summary is printed here.
+        if (result?.buildScripts)
+          addBuildScriptStats(scriptStats, result.buildScripts);
         if (result && isCurrentGeneration(job.pagePath, generation)) {
           if (result.serverScripts) {
             serverSidecarRegistry.recordScripts(result.serverScripts);
@@ -854,6 +900,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
       componentList,
       globalStylesHtml,
       expansionErrors,
+      scriptStats,
     );
   }
 
@@ -864,8 +911,14 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     await generateSitemapFiles(relativePaths);
   }
 
+  // The wall time covers every build-script child process, which no page line
+  // includes, so the counts after it are what explain a long phase: all ran
+  // means a cold cache (the first dev boot after a build, or a shared helper
+  // edited), all cached means the time went elsewhere. Painted only when
+  // present: `styleText` wraps even an empty string in escape codes on a TTY.
+  const scriptSummary = formatBuildScriptSummary(scriptStats);
   console.log(
-    `\n${colorOut.green(`✓ ${count} page${count !== 1 ? "s" : ""} transpiled`)} in ${colorOut.bold(formatDuration(elapsed))}`,
+    `\n${colorOut.green(`✓ ${count} page${count !== 1 ? "s" : ""} transpiled`)} in ${colorOut.bold(formatDuration(elapsed))}${scriptSummary ? colorOut.dim(scriptSummary) : ""}`,
   );
 
   if (

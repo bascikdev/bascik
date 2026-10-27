@@ -1279,9 +1279,12 @@ test.describe("Dev Server Startup Output", () => {
     const uniqueTranspiled = new Set(transpiledLines);
     expect(transpiledLines.length).toBe(uniqueTranspiled.size);
 
-    // 2. Check summary line: exactly one "✓ N pages transpiled in Xms" before server ready
+    // 2. Check summary line: exactly one "✓ N pages transpiled in Xms" before server ready.
+    // A site with build scripts appends "(N build scripts ran, M from cache)".
     const summaryLines = lines.filter((l) =>
-      /^✓ \d+ pages? transpiled in (?:[<]?[\d.]+(?:ms|s))$/.test(l),
+      /^✓ \d+ pages? transpiled in (?:[<]?[\d.]+(?:ms|s))(?: \(\d+ build scripts? ran, \d+ from cache\))?$/.test(
+        l,
+      ),
     );
     expect(summaryLines.length).toBe(1);
   });

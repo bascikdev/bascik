@@ -19,6 +19,10 @@ import {
   rewriteHtmlBasePaths,
   withBasePath,
 } from "./base-path.ts";
+import {
+  createBuildScriptStats,
+  formatPageBuildScriptStats,
+} from "./build-script-stats.ts";
 import { collectAllScriptDeps, executeBuildScripts } from "./build-scripts.ts";
 import { stdout as colorOut } from "./colors.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
@@ -176,6 +180,9 @@ export const transpilePage = async (
   const resume = () => {
     seg = performance.now();
   };
+  // Build-script children run while the clock above is paused, so their cost
+  // is counted separately and named on the page's line.
+  const scriptStats = createBuildScriptStats();
 
   const relativePagePath = route
     ? resolveRoutePath(getRelativePath(pagePath, "pages"), route.params)
@@ -223,6 +230,7 @@ export const transpilePage = async (
       options?.onceResolvedHtml ?? rawHtml,
       pagePath,
       route,
+      { stats: scriptStats },
     );
     pause();
     htmlWithBuildOutput = await pendingBuild;
@@ -290,6 +298,7 @@ export const transpilePage = async (
       route,
       {
         pageFile: pagePath,
+        stats: scriptStats,
       },
     );
     pause();
@@ -332,6 +341,7 @@ export const transpilePage = async (
       route,
       {
         pageFile: pagePath,
+        stats: scriptStats,
       },
     );
     pause();
@@ -618,8 +628,10 @@ export const transpilePage = async (
   if (BascikConfig.logging?.transpiles !== false) {
     const configLevel = BascikConfig.logging?.level ?? "info";
     if (shouldLog(configLevel, "info")) {
+      // `in <duration>` stays where it was, and the build-script parenthetical
+      // follows it, so what reads these lines keeps reading the compile time.
       console.log(
-        `${colorOut.green("transpiled:")} ${relativePagePath} ${colorOut.dim(`in ${formatDuration(workMs)}`)}`,
+        `${colorOut.green("transpiled:")} ${relativePagePath} ${colorOut.dim(`in ${formatDuration(workMs)}${formatPageBuildScriptStats(scriptStats)}`)}`,
       );
     }
   }
@@ -632,5 +644,6 @@ export const transpilePage = async (
     fileDependencies,
     serverScripts,
     cspHashes,
+    buildScripts: scriptStats,
   };
 };

@@ -4,6 +4,7 @@
 //   UserConfig          — the user-facing input type written in bascik.config (see defineConfig.ts)
 //   BascikConfigOptions — the resolved runtime type after defaults and mode overrides are merged
 //   BascikConfig        — the frozen runtime value exported from config.ts
+import type { BuildScriptStats } from "./build-script-stats.ts";
 
 export type ExecPhase = "pre" | "post" | "parallel";
 
@@ -78,6 +79,8 @@ export interface TranspilePageResult {
   distHtml: string;
   usedComponentsNames: string[];
   fileDependencies?: string[];
+  /** How many build scripts ran or came from cache for this page, and the child time. */
+  buildScripts?: BuildScriptStats;
   serverScripts?: Record<
     string,
     {

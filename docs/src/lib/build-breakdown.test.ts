@@ -160,6 +160,40 @@ describe("build-breakdown", () => {
     ).toContain("have not been measured");
   });
 
+  it("says the worker-mode per-page figures include contention when no one-worker run was measured", async () => {
+    const html = await renderBuildBreakdown({
+      timingsPath,
+      pages: 102,
+      components: 41,
+    });
+    expect(html).toContain(
+      "Median page 30ms, slowest cli.html at 613ms, warm, as printed by a build on every core",
+    );
+    expect(html).toContain("waiting for a core");
+  });
+
+  it("quotes the one-worker per-page figures when they were measured, and says why", async () => {
+    await writeFile(
+      timingsPath,
+      JSON.stringify({
+        ...timings,
+        oneWorker: {
+          pageMedianMs: 20,
+          slowestPage: { path: "pages/components.html", ms: 114 },
+        },
+      }),
+    );
+    const html = await renderBuildBreakdown({
+      timingsPath,
+      pages: 102,
+      components: 41,
+    });
+    expect(html).toContain(
+      "Median page 20ms, slowest components.html at 114ms, warm, on one worker thread",
+    );
+    expect(html).not.toContain("613ms");
+  });
+
   it("escapes the measured machine name and states how to re-measure", async () => {
     const html = await renderBuildBreakdown({
       timingsPath,

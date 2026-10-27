@@ -422,6 +422,10 @@ Bascik caches build script output in `node_modules/.cache/bascik/script-cache/`.
 
 Package identity is computed per imported package (not per page) and cached, so unrelated installed packages are never hashed on every page. Node core modules (`node:fs`, `fs`) contribute only their runtime name, never a filesystem hash.
 
+### When every script runs again
+
+The mode is part of the key: the dev server and `bascik --build` keep separate entries side by side, and an entry is pruned seven days after it was written. The first start in a mode that has no live entries, such as the first `bascik --build` on a project that has only run the dev server, or a mode whose entries have all aged out, runs every build script again; the next start in that mode is warm, and a project that alternates dev and build stays warm in both. Editing a helper that many scripts import invalidates every one of their entries at once, because each key folds in the contents of the files the script imports. Either turns a transpile that usually takes a few seconds into one many times longer, for that one run. The output says which it was. The summary counts the scripts that ran against those served from the cache: `✓ 102 pages transpiled in 13.2s (969 build scripts ran, 0 from cache)`. A page whose scripts ran shows their cost on its own line, `transpiled: pages/components.html in 114ms (+5.1s in 52 build scripts)`: the time before the parenthesis is the page's own compile work, with the child processes that ran its scripts excluded, which is why on a cold site the page lines add up to far less than the summary.
+
 ### Package resolution parity
 
 Bascik resolves bare packages the same way the executed child does (from `node_modules/.cache/bascik/`, honoring the project's hoisted `node_modules`, `import` export conditions, and subpath exports), so the cache identity matches the exact module the child loads. A shared resolver stub in the temp directory reproduces that resolution deterministically across fresh processes, worker/serial modes, and package managers.

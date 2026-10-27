@@ -137,6 +137,20 @@ function renderRun(
   );
 }
 
+/**
+ * The median and slowest page. A worker-mode build prints per-page times that include waiting for a core
+ * shared with the other workers, so the figures come from the one-worker run when the timings have one, and
+ * are otherwise labeled as contended rather than quoted as what a page costs.
+ */
+function renderPerPage(timings: BuildTimings): string {
+  const perPage = timings.oneWorker ?? timings.warm;
+  const slowest = escapeHtml(perPage.slowestPage.path.replace(/^pages\//, ""));
+  const figures = `Median page ${perPage.pageMedianMs}ms, slowest ${slowest} at ${perPage.slowestPage.ms}ms`;
+  return timings.oneWorker
+    ? `${figures}, warm, on one worker thread, so no other page competes for its core.`
+    : `${figures}, warm, as printed by a build on every core, where a page's time includes waiting for a core shared with the other workers.`;
+}
+
 function renderFact(value: string, label: string): string {
   return `<div class="bb-fact"><span class="bb-fact-value">${escapeHtml(value)}</span><span class="bb-fact-label">${escapeHtml(label)}</span></div>`;
 }
@@ -177,7 +191,6 @@ export async function renderBuildBreakdown(
   const pages = paths.pages ?? (await countSourcePages(paths.pagesDir));
   const facts = { pages, buildScripts: timings.buildScripts };
   const scale = Math.max(timings.cold.wallSeconds, timings.warm.wallSeconds);
-  const slowest = timings.warm.slowestPage;
 
   return (
     `<div class="bb">` +
@@ -209,7 +222,7 @@ export async function renderBuildBreakdown(
     ) +
     `</div>` +
     renderParallel(timings) +
-    `<p class="bb-foot">Median page ${timings.warm.pageMedianMs}ms, slowest ${escapeHtml(slowest.path.replace(/^pages\//, ""))} at ${slowest.ms}ms (warm). ` +
+    `<p class="bb-foot">${renderPerPage(timings)} ` +
     `Measured ${escapeHtml(timings.measuredOn)} on ${escapeHtml(timings.machine)} with Node ${escapeHtml(timings.nodeVersion)}. ` +
     `Re-measure with <code>yarn docs:measure-build</code>.</p>` +
     `</div>`

@@ -361,6 +361,33 @@ describe("executeBuildScripts", () => {
     expect(mockExecFile).toHaveBeenCalledTimes(2);
   });
 
+  it("counts the scripts that ran and the ones served from cache into options.stats", async () => {
+    resolveSequence([
+      { stdout: "<p>once</p>" },
+      { stdout: "<p>a</p>" },
+      { stdout: "<p>b</p>" },
+    ]);
+    const html =
+      "<script data-bascik-build-once>o()</script>" +
+      "<script data-bascik-build>a()</script><script data-bascik-build>b()</script>";
+    const file = "src/pages/stats.html";
+
+    // Cold: the build-once pass and the build pass both count into the same object.
+    const cold = { ran: 0, cached: 0, childMs: 0 };
+    await executeBuildScripts(html, file, null, { stats: cold });
+    expect(mockExecFile).toHaveBeenCalledTimes(3);
+    expect(cold.ran).toBe(3);
+    expect(cold.cached).toBe(0);
+    expect(cold.childMs).toBeGreaterThan(0);
+
+    // Warm: nothing runs, so no child time is charged.
+    mockExecFile.mockClear();
+    const warm = { ran: 0, cached: 0, childMs: 0 };
+    await executeBuildScripts(html, file, null, { stats: warm });
+    expect(mockExecFile).not.toHaveBeenCalled();
+    expect(warm).toEqual({ ran: 0, cached: 3, childMs: 0 });
+  });
+
   it("replaces a data-bascik-build script tag with handler returned markup", async () => {
     resolveWith("<h1>Generated heading</h1>\n");
     const html =

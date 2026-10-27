@@ -1,6 +1,7 @@
 import zlib from "node:zlib";
 import { relative, resolve } from "node:path";
 import { getHttpPath } from "./paths.ts";
+import { eventEmitter } from "./events.ts";
 import { htmlHasServerScripts, planServerScripts } from "./server-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { makeEtag } from "./names.ts";
@@ -252,7 +253,12 @@ class MemoryStore {
       }
     });
 
-    //console.log('stored page in memory:', httpPath)
+    // Announce that the page is now servable from memory. Unlike `transpiled`,
+    // which a boot or edit-cycle publication scope holds back until the post
+    // phase has run, this fires at once: it exists so a browser tab waiting on
+    // the boot page for THIS page can reload the moment a request would get
+    // the real page, which is what a manual refresh already shows.
+    eventEmitter.emit("page-stored", { relativePagePath });
   }
 
   getPage(httpPath: string): StoredPage | undefined {

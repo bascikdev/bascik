@@ -40,6 +40,26 @@ const storeSample = async (key = "test-page", components: string[] = []) => {
 // storePage / getPage round-trip
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe("storePage emits page-stored", () => {
+  it("fires once the page is retrievable, with the relative page path", async () => {
+    // Same fresh module graph as `mem`, so this is the emitter mem uses.
+    const { eventEmitter } = await import("./events.ts");
+    const seen: Array<{ relativePagePath: string; stored: boolean }> = [];
+    const listener = ({ relativePagePath }: { relativePagePath: string }) =>
+      seen.push({
+        relativePagePath,
+        stored: mem.getPageExact(relativePagePath) !== undefined,
+      });
+    eventEmitter.on("page-stored", listener);
+    try {
+      await storeSample("evt-test");
+    } finally {
+      eventEmitter.removeListener("page-stored", listener);
+    }
+    expect(seen).toEqual([{ relativePagePath: "evt-test", stored: true }]);
+  });
+});
+
 describe("storePage + getPage round-trip", () => {
   it("returns the stored page for the correct httpPath", async () => {
     await storeSample("rt-test");

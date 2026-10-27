@@ -44,6 +44,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { getProjectPath, getRelativePath } from "./file-system.ts";
 import { BuildScriptError, type BuildScriptLocation } from "./build-error.ts";
+import type { BuildScriptStats } from "./build-script-stats.ts";
 import {
   directiveSourcePosition,
   padToSourcePosition,
@@ -639,6 +640,12 @@ export interface ExecuteBuildScriptOptions {
   pagePath?: string;
   sourceFile?: string;
   once?: boolean;
+  /**
+   * Where to count this call's cache hits, misses, and child-process time.
+   * The caller owns the object; a page passes one through every pass (page,
+   * body, head) so the counts on its `transpiled:` line are the page's.
+   */
+  stats?: BuildScriptStats;
 }
 
 /**
@@ -954,6 +961,13 @@ export const executeBuildScripts = async (
     }
     uncachedTasks.push(task);
   }
+  // The recursive build-once call above received the same `stats`, so a
+  // page's build-once scripts are counted as the page's too.
+  const stats = options?.stats;
+  if (stats) {
+    stats.cached += tasks.length - uncachedTasks.length;
+    stats.ran += uncachedTasks.length;
+  }
 
   if (uncachedTasks.length > 0) {
     const extraEnv: Record<string, string> = {
@@ -987,6 +1001,10 @@ export const executeBuildScripts = async (
     // re-executed: partial execution may have side effects that are unsafe to
     // duplicate, so there is no blind fallback retry. Siblings keep their own
     // output; a failed script contributes an empty replacement.
+    //
+    // The loop is timed as a whole: the page's own clock is paused for this
+    // await, so this is the only place the child time is seen.
+    const childrenStarted = performance.now();
     for (const task of uncachedTasks) {
       const taskSourceUrlComment =
         task.moduleSourcePath !== "unknown"
@@ -1063,6 +1081,7 @@ export const executeBuildScripts = async (
         await unlink(task.tmpPath).catch(() => {});
       }
     }
+    if (stats) stats.childMs += performance.now() - childrenStarted;
   }
 
   // Splice each script's output in at its own match index, from right to left

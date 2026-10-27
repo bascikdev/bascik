@@ -818,18 +818,19 @@ export const createRequestHandler = () => {
           return;
         }
 
+        // Normalize trailing slashes: browsers may omit the trailing slash on index routes.
+        const strip = (p: string) => p.replace(/\/$/, "") || "/";
+        const isOpenPage = (relativePagePath: string): boolean =>
+          !openPagePath ||
+          strip(openPagePath) === strip(getHttpPath(relativePagePath));
+
         const eventHandler = ({
           relativePagePath,
         }: {
           relativePagePath: string;
         }) => {
           if (res.destroyed) return;
-          if (openPagePath) {
-            const httpPath = getHttpPath(relativePagePath);
-            // Normalize trailing slashes: browsers may omit the trailing slash on index routes.
-            const strip = (p: string) => p.replace(/\/$/, "") || "/";
-            if (strip(openPagePath) !== strip(httpPath)) return;
-          }
+          if (!isOpenPage(relativePagePath)) return;
           const gen = sseManager.getNextGeneration();
           sseManager.send(client, `data: reload ${gen}\n\n`);
         };
@@ -840,16 +841,58 @@ export const createRequestHandler = () => {
           sseManager.send(client, `data: reload ${gen}\n\n`);
         };
 
-        // Reload boot pages immediately when the initial scan finishes.
-        const bootDoneHandler = () => {
+        // A boot page reloads once, into the real page. The first signal wins
+        // and retires every other reload listener on this connection, so a
+        // boot connection that is still open is not told to reload again at
+        // boot-done or when the buffered `transpiled` events flush. The real
+        // page's own connection is a separate, non-boot client (see
+        // `pageInMemory` below for how its boot-end reload is kept to one).
+        const sendBootReload = () => {
           if (res.destroyed) return;
+          eventEmitter.removeListener("transpiled", eventHandler);
+          eventEmitter.removeListener("asset-changed", assetChangedHandler);
+          eventEmitter.removeListener("boot-done", bootDoneHandler);
+          eventEmitter.removeListener("page-stored", pageStoredHandler);
           const gen = sseManager.getNextGeneration();
           sseManager.send(client, `data: reload ${gen}\n\n`);
         };
 
+        // Reload boot pages when the initial scan finishes. This also covers a
+        // boot page whose path never compiles (it reloads into the 404 page)
+        // and a boot connection without a Referer, which cannot be matched.
+        const bootDoneHandler = () => sendBootReload();
+
+        // During boot the `transpiled` event is buffered until the post phase
+        // has run (transpile.ts), so a boot page listening for it would spin
+        // long after its page was servable. `page-stored` is never buffered:
+        // it fires the moment the page lands in memory, which is exactly when
+        // a request for it stops getting the boot page.
+        const pageStoredHandler = ({
+          relativePagePath,
+        }: {
+          relativePagePath: string;
+        }) => {
+          if (!isOpenPage(relativePagePath)) return;
+          sendBootReload();
+        };
+
+        // A page already in memory during boot is served for real, and the
+        // boot publication scope flushes its buffered `transpiled` event once
+        // the post phase has run, so its tab reloads at boot end to pick up
+        // post outputs. `boot-done` fires milliseconds later and would reload
+        // that tab a second time, so it is only wired for the boot page itself
+        // and for a connection whose page is not in memory, such as one
+        // without a Referer. Outside boot `boot-done` never fires, so the
+        // check is harmless there.
+        const pageInMemory =
+          !!openPagePath && mem.getPageExact(openPagePath) !== undefined;
+
         eventEmitter.on("transpiled", eventHandler);
         eventEmitter.on("asset-changed", assetChangedHandler);
-        eventEmitter.on("boot-done", bootDoneHandler);
+        if (isBootReloadConnection || !pageInMemory)
+          eventEmitter.on("boot-done", bootDoneHandler);
+        if (isBootReloadConnection && openPagePath)
+          eventEmitter.on("page-stored", pageStoredHandler);
 
         res.on("close", () => {
           if (openPagePath) mem.untrackOpenPage(openPagePath);
@@ -861,11 +904,14 @@ export const createRequestHandler = () => {
           eventEmitter.removeListener("transpiled", eventHandler);
           eventEmitter.removeListener("asset-changed", assetChangedHandler);
           eventEmitter.removeListener("boot-done", bootDoneHandler);
+          eventEmitter.removeListener("page-stored", pageStoredHandler);
         });
 
-        if (isBootReloadConnection && !mem.isBooting && !res.destroyed) {
-          const gen = sseManager.getNextGeneration();
-          sseManager.send(client, `data: reload ${gen}\n\n`);
+        if (isBootReloadConnection && !res.destroyed) {
+          // Boot already finished, or this page landed in memory between the
+          // boot page being served and its SSE connection arriving: nothing
+          // further will announce it, so reload now.
+          if (!mem.isBooting || pageInMemory) sendBootReload();
         }
         return;
       }

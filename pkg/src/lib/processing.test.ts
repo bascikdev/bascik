@@ -1548,6 +1548,97 @@ describe("processPageBatch – open page priority & instant reloading", () => {
     expect(callSequence).toContain("emit:pages/getting-started.html");
   });
 
+  // Gate the first `inFlight` page reads so the batch is observably mid-way,
+  // then release them. Two lanes per core, so one core keeps two pages in
+  // flight while the rest wait on the queue.
+  const startGatedBatch = async (pages: string[], inFlight = 2) => {
+    const realCpus = cpus();
+    (cpus as ReturnType<typeof vi.fn>).mockReturnValue(
+      realCpus.slice(0, inFlight / 2),
+    );
+    const readOrder: string[] = [];
+    const gates: PromiseWithResolvers<string>[] = [];
+    (readFile as ReturnType<typeof vi.fn>).mockImplementation(
+      (path: string) => {
+        readOrder.push(path);
+        if (readOrder.length > inFlight)
+          return Promise.resolve("<html><body>test</body></html>");
+        const gate = Promise.withResolvers<string>();
+        gates.push(gate);
+        return gate.promise;
+      },
+    );
+    const batch = processPageBatch(pages, {});
+    await vi.waitFor(() => expect(readOrder).toHaveLength(inFlight));
+    const release = async () => {
+      for (const gate of gates) gate.resolve("<html><body>test</body></html>");
+      try {
+        return await batch;
+      } finally {
+        (cpus as ReturnType<typeof vi.fn>).mockReturnValue(realCpus);
+      }
+    };
+    return { readOrder, release };
+  };
+
+  it("a page tracked via mem.trackOpenPage after processPageBatch started is compiled before untouched pages (workers off)", async () => {
+    const pages = [
+      "src/pages/a.html",
+      "src/pages/b.html",
+      "src/pages/c.html",
+      "src/pages/d.html",
+      "src/pages/late.html",
+    ];
+    const { readOrder, release } = await startGatedBatch(pages);
+    expect(readOrder).toEqual(["src/pages/a.html", "src/pages/b.html"]);
+
+    // A tab for /late connects while a and b are still compiling.
+    (mem as any).openPages = ["/late"];
+    const result = await release();
+
+    // The next free lane picks the open page, ahead of c and d.
+    expect(readOrder).toEqual([
+      "src/pages/a.html",
+      "src/pages/b.html",
+      "src/pages/late.html",
+      "src/pages/c.html",
+      "src/pages/d.html",
+    ]);
+    // The batch still reports its pages in input order, not pick order.
+    expect(result).toEqual([
+      "pages/a.html",
+      "pages/b.html",
+      "pages/c.html",
+      "pages/d.html",
+      "pages/late.html",
+    ]);
+  });
+
+  it("build mode keeps input order", async () => {
+    (BascikConfig as Record<string, unknown>).isBuild = true;
+    try {
+      // The home page is listed after other pages and must stay there.
+      const pages = [
+        "src/pages/about.html",
+        "src/pages/faq.html",
+        "src/pages/index.html",
+        "src/pages/zed.html",
+      ];
+      const { readOrder, release } = await startGatedBatch(pages);
+      expect(readOrder).toEqual(["src/pages/about.html", "src/pages/faq.html"]);
+      const result = await release();
+      expect(readOrder).toEqual(pages);
+      expect(result).toEqual([
+        "pages/about.html",
+        "pages/faq.html",
+        "pages/index.html",
+        "pages/zed.html",
+      ]);
+    } finally {
+      (BascikConfig as Record<string, unknown>).isBuild = false;
+    }
+  });
+
   it("reports only active per-page work time, excluding a shared batch wait", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const nowSpy = vi.spyOn(performance, "now");

@@ -29,13 +29,13 @@ This is the real output of a new project, recorded from the starter site on one 
 
 On a large site, the page you are looking at should not wait for the whole site to compile. Whenever the dev server compiles many pages at once, at startup and after a change to a shared component or stylesheet, it works through them in this order:
 
-1. **Pages open in a browser tab.** Each tab's live-reload connection tells the server which page it shows. These pages compile first and reload as soon as they are ready.
+1. **Pages open in a browser tab.** Each tab's live-reload connection tells the server which page it shows. These pages compile first and reload as soon as they are ready. (With a watched `pipeline.exec` entry, an edit's reloads wait for that cycle's `post` scripts; see [Exec Scripts](/exec-scripts).)
 2. **The home page (`/`).** It is the page most often opened next, so it compiles right after the open pages. Other directory indexes such as `blog/index.html` are ordinary pages.
 3. **Every other page,** in file order.
 
 The order is checked again each time a page finishes, not once at the start. A tab that connects after compilation began, such as a tab reconnecting after you restarted the server, moves its page to the front of the pages that have not started yet.
 
-While the first compile is still running, the browser shows a short startup page and reloads into your page as soon as it is ready. `bascik --build` does not reorder pages.
+While the first compile is still running, the browser shows a short startup page and reloads into your page the moment that page is in memory, before the rest of the site and any `post` scripts finish. Once they finish, the page reloads one more time so it picks up anything the `post` scripts produced. `bascik --build` does not reorder pages.
 
 ## Linked Static Assets
 
