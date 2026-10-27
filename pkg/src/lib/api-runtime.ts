@@ -44,6 +44,14 @@ export interface ExecuteApiRouteOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
   clock?: FrameworkClock;
+  /**
+   * Set when the request declares a `Content-Length` over the limit
+   * (`declaresBodyOverLimit`). The route answers 413 in place of the
+   * handler, but only after the method policy, so a method the route does
+   * not export still gets 405 + Allow and an auto OPTIONS still gets 204.
+   * Called just before that 413 is returned, so the transport can drain.
+   */
+  onDeclaredBodyTooLarge?: () => void;
 }
 
 export class PayloadTooLargeError extends Error {
@@ -182,15 +190,59 @@ export const requestOrigin = (
   return `${localScheme}://${fallbackAuthority}`;
 };
 
+/** The effective `http.maxBodySize`; 0 or less means unlimited. */
+export const resolveMaxBodySize = (): number =>
+  BascikConfig.http?.maxBodySize ?? 1048576;
+
+const PAYLOAD_TOO_LARGE_BODY = "Payload Too Large";
+
+/**
+ * True when a request that may carry a body declares a `Content-Length` over
+ * `http.maxBodySize`: the length alone proves it too large, before a byte is
+ * read. Only a plain decimal counts; anything malformed is left to the
+ * streaming count, which never trusts the header.
+ */
+export const declaresBodyOverLimit = (
+  method: string | undefined,
+  headers: Record<string, string | string[] | undefined>,
+): boolean => {
+  const limit = resolveMaxBodySize();
+  const upper = method?.toUpperCase();
+  if (limit <= 0 || upper === "GET" || upper === "HEAD") return false;
+  const declared = headers["content-length"];
+  if (typeof declared !== "string" || !/^\d+$/.test(declared.trim()))
+    return false;
+  return Number(declared.trim()) > limit;
+};
+
+/**
+ * The 413 for a body over `http.maxBodySize`. `Content-Length` is explicit
+ * because the HTTP/1 transport holds back the end of this response while it
+ * drains the rejected body; a length-delimited body is complete on the wire
+ * immediately, where a chunked one would wait for its terminating chunk.
+ */
+export const payloadTooLargeResponse = (): Response =>
+  new Response(PAYLOAD_TOO_LARGE_BODY, {
+    status: 413,
+    headers: {
+      Connection: "close",
+      "Content-Length": String(Buffer.byteLength(PAYLOAD_TOO_LARGE_BODY)),
+      "Content-Type": "text/plain; charset=utf-8",
+    },
+  });
+
 /**
  * Construct a WHATWG Request from a BascikRequest.
  * Excludes HTTP/2 pseudo-headers (headers starting with ':').
- * Enforces streaming byte count up to maxBodySize without buffering.
+ * Enforces streaming byte count up to maxBodySize without buffering;
+ * `onBodyLimitExceeded` runs once the limit trips, so the transport can
+ * drain the unread rest of the body (see `BascikResponse.lingerClose`).
  */
 export const createWebRequest = (
   rawReq: BascikRequest,
   origin = "http://localhost",
   maxBodySize?: number,
+  onBodyLimitExceeded?: () => void,
 ): Request => {
   const method = rawReq.method ? rawReq.method.toUpperCase() : "GET";
   const url = new URL(rawReq.path ?? "/", origin).href;
@@ -225,13 +277,15 @@ export const createWebRequest = (
         const rawWebStream = Readable.toWeb(
           nodeStream,
         ) as ReadableStream<Uint8Array>;
-        const limit = maxBodySize ?? BascikConfig.http?.maxBodySize ?? 1048576;
+        const limit = maxBodySize ?? resolveMaxBodySize();
         if (limit > 0) {
-          const limitTransform = createByteLimitTransform(limit, () => {
-            if (typeof stream.resume === "function") {
-              stream.resume();
-            }
-          });
+          // Draining the unread rest is the transport's job: resuming the
+          // raw stream here would not drain it, since the pipe above pauses
+          // it again on backpressure from a reader that has stopped.
+          const limitTransform = createByteLimitTransform(
+            limit,
+            onBodyLimitExceeded,
+          );
           body = rawWebStream.pipeThrough(limitTransform);
         } else {
           body = rawWebStream;
@@ -267,6 +321,7 @@ export const executeApiRoute = async (
     signal: userSignal,
     timeoutMs,
     clock = nativeClock,
+    onDeclaredBodyTooLarge,
   } = options;
   const method = request.method.toUpperCase() as HttpMethod;
 
@@ -359,6 +414,17 @@ export const executeApiRoute = async (
       throw abortController.signal.reason;
     }
 
+    // The method policy (405, auto OPTIONS) stays with the core below; only
+    // a handler that would run is replaced by the 413, and it never runs.
+    if (
+      onDeclaredBodyTooLarge &&
+      typeof loadedModule?.[method] === "function"
+    ) {
+      settled = true;
+      onDeclaredBodyTooLarge();
+      return payloadTooLargeResponse();
+    }
+
     const context: ApiRouteContext = {
       params,
       remoteIp,
@@ -377,13 +443,7 @@ export const executeApiRoute = async (
           err instanceof PayloadTooLargeError ||
           (err as { name?: string })?.name === "PayloadTooLargeError"
         ) {
-          return new Response("Payload Too Large", {
-            status: 413,
-            headers: {
-              Connection: "close",
-              "Content-Type": "text/plain; charset=utf-8",
-            },
-          });
+          return payloadTooLargeResponse();
         }
         if (isNetworkResetError(err))
           return new Response("Client Closed Request", { status: 499 });
@@ -421,13 +481,7 @@ export const executeApiRoute = async (
       err instanceof PayloadTooLargeError ||
       (err as any)?.name === "PayloadTooLargeError"
     ) {
-      return new Response("Payload Too Large", {
-        status: 413,
-        headers: {
-          Connection: "close",
-          "Content-Type": "text/plain; charset=utf-8",
-        },
-      });
+      return payloadTooLargeResponse();
     }
 
     if (isNetworkResetError(err)) {

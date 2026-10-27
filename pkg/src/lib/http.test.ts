@@ -40,7 +40,7 @@ vi.mock("./server.js", () => ({
   startServerInstance: vi.fn(async () => "http://localhost:8443"),
 }));
 
-import { startHttpServer, adaptHttp1 } from "./http.ts";
+import { startHttpServer, adaptHttp1, handleCheckContinue } from "./http.ts";
 
 describe("startHttpServer", () => {
   beforeEach(() => {
@@ -219,5 +219,227 @@ describe("startHttpServer", () => {
     connectionCb!(mockSocket);
     expect(() => forceCloseCb!()).not.toThrow();
     expect(mockSocket.destroy).toHaveBeenCalled();
+  });
+});
+
+describe("adaptHttp1 lingering close", () => {
+  const makeMessages = async () => {
+    const { PassThrough } = await import("node:stream");
+    const body = new PassThrough();
+    const reqMsg: any = Object.assign(body, {
+      method: "POST",
+      url: "/api/upload",
+      headers: {},
+      socket: { remoteAddress: "127.0.0.1" },
+    });
+    const resMsg: any = {
+      headersSent: false,
+      destroyed: false,
+      writeHead: vi.fn(),
+      write: vi.fn(),
+      end: vi.fn(),
+      destroy: vi.fn(),
+      on: vi.fn(),
+    };
+    return { body, reqMsg, resMsg };
+  };
+
+  it("forces Connection: close, replacing any case variant", async () => {
+    const { reqMsg, resMsg } = await makeMessages();
+    const { res } = adaptHttp1(reqMsg, resMsg);
+    res.lingerClose!();
+    res.respond(413, { Connection: "keep-alive", "content-length": 17 });
+    expect(resMsg.writeHead).toHaveBeenCalledWith(413, {
+      "content-length": 17,
+      connection: "close",
+    });
+  });
+
+  it("writes the response at once but ends it only after the body is drained", async () => {
+    const { body, reqMsg, resMsg } = await makeMessages();
+    const { res } = adaptHttp1(reqMsg, resMsg);
+    res.lingerClose!();
+    res.respond(413, { "content-length": 17 });
+    res.end("Payload Too Large");
+    // Complete on the wire (length-delimited), but the socket stays open
+    // so the client can finish its upload.
+    expect(resMsg.write).toHaveBeenCalledWith("Payload Too Large");
+    expect(resMsg.end).not.toHaveBeenCalled();
+    body.write(Buffer.alloc(1024));
+    body.end();
+    await new Promise((r) => body.once("end", r));
+    expect(resMsg.end).toHaveBeenCalledTimes(1);
+  });
+
+  it("ends normally when the body already finished before end()", async () => {
+    const { body, reqMsg, resMsg } = await makeMessages();
+    body.resume();
+    body.end();
+    await new Promise((r) => body.once("end", r));
+    const { res } = adaptHttp1(reqMsg, resMsg);
+    res.lingerClose!();
+    res.end("done");
+    expect(resMsg.end).toHaveBeenCalledWith("done");
+  });
+
+  it("does not end a response the client already destroyed by aborting", async () => {
+    const { body, reqMsg, resMsg } = await makeMessages();
+    const { res } = adaptHttp1(reqMsg, resMsg);
+    res.lingerClose!();
+    res.end("Payload Too Large");
+    resMsg.destroyed = true;
+    body.destroy();
+    await new Promise((r) => body.once("close", r));
+    expect(resMsg.end).not.toHaveBeenCalled();
+  });
+
+  it("a lingerClose after the headers went out defers close() until the drain settles", async () => {
+    // A streamed response (an echo) tripped the limit after commit: the
+    // truncating close must not RST a client that is still uploading.
+    const { body, reqMsg, resMsg } = await makeMessages();
+    const { res } = adaptHttp1(reqMsg, resMsg);
+    res.respond(200, {});
+    resMsg.headersSent = true;
+    res.lingerClose!();
+    res.close();
+    expect(resMsg.destroy).not.toHaveBeenCalled();
+    body.end(Buffer.alloc(10));
+    await new Promise((r) => body.once("end", r));
+    expect(resMsg.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("a lingerClose after keep-alive headers went out still closes the socket after the response", async () => {
+    // The headers promised keep-alive, but the connection may hold the
+    // unread rest of a body, so it can never carry another request.
+    const { body, reqMsg, resMsg } = await makeMessages();
+    reqMsg.socket.end = vi.fn();
+    resMsg.end = vi.fn((cb?: unknown) => {
+      if (typeof cb === "function") cb();
+    });
+    const { res } = adaptHttp1(reqMsg, resMsg);
+    res.respond(200, {});
+    resMsg.headersSent = true;
+    res.lingerClose!();
+    res.end();
+    expect(resMsg.end).not.toHaveBeenCalled();
+    body.end();
+    await new Promise((r) => body.once("end", r));
+    expect(resMsg.end).toHaveBeenCalledTimes(1);
+    expect(reqMsg.socket.end).toHaveBeenCalledTimes(1);
+  });
+
+  it("startHttpServer never serves a request pipelined behind a rejected body", async () => {
+    let requestCb: ((reqMsg: any, resMsg: any) => unknown) | undefined;
+    mockServer.on.mockImplementation((event: string, cb: any) => {
+      if (event === "request") requestCb = cb;
+      return mockServer;
+    });
+    const { createRequestHandler } = await import("./server.ts");
+    const handle = vi.fn(async () => {});
+    (createRequestHandler as any).mockReturnValue(handle);
+    await startHttpServer();
+
+    const { reqMsg, resMsg } = await makeMessages();
+    adaptHttp1(reqMsg, resMsg).res.lingerClose!();
+
+    const pipelined: any = {
+      method: "GET",
+      url: "/api/healthy",
+      headers: {},
+      socket: reqMsg.socket,
+      resume: vi.fn(),
+    };
+    requestCb!(pipelined, { ...resMsg, on: vi.fn() });
+    expect(handle).not.toHaveBeenCalled();
+    expect(pipelined.resume).toHaveBeenCalled();
+
+    const fresh: any = { ...pipelined, socket: { remoteAddress: "x" } };
+    await requestCb!(fresh, { ...resMsg, on: vi.fn() });
+    expect(handle).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("handleCheckContinue (Expect: 100-continue)", () => {
+  const LIMIT = 1048576; // the default, since this mock config sets none
+  const expectRequest = (headers: Record<string, string>, extra = {}) => ({
+    method: "POST",
+    url: "/api/upload",
+    httpVersion: "1.1",
+    headers: { expect: "100-continue", ...headers },
+    socket: { remoteAddress: "127.0.0.1" },
+    ...extra,
+  });
+
+  it("withholds 100 Continue for a declared length over the limit", () => {
+    const server = { emit: vi.fn(() => true) };
+    const reqMsg: any = expectRequest({ "content-length": String(LIMIT + 1) });
+    const resMsg: any = { writeContinue: vi.fn() };
+    handleCheckContinue(server)(reqMsg, resMsg);
+    expect(resMsg.writeContinue).not.toHaveBeenCalled();
+    expect(server.emit).toHaveBeenCalledWith("request", reqMsg, resMsg);
+  });
+
+  it.each([
+    ["within the limit", { "content-length": String(LIMIT) }],
+    ["with no length (chunked)", { "transfer-encoding": "chunked" }],
+    ["with a malformed length", { "content-length": "1e9" }],
+  ])("answers 100 Continue at once %s", (_name, headers) => {
+    const server = { emit: vi.fn(() => true) };
+    const resMsg: any = { writeContinue: vi.fn() };
+    handleCheckContinue(server)(expectRequest(headers) as any, resMsg);
+    expect(resMsg.writeContinue).toHaveBeenCalledTimes(1);
+    expect(server.emit).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Node's default for HTTP/2 compat requests", () => {
+    const server = { emit: vi.fn(() => true) };
+    const resMsg: any = { writeContinue: vi.fn() };
+    handleCheckContinue(server)(
+      expectRequest(
+        { "content-length": String(LIMIT * 2) },
+        { httpVersion: "2.0" },
+      ) as any,
+      resMsg,
+    );
+    expect(resMsg.writeContinue).toHaveBeenCalledTimes(1);
+  });
+
+  const withheld = async () => {
+    const { PassThrough } = await import("node:stream");
+    const body = new PassThrough();
+    const reqMsg: any = Object.assign(
+      body,
+      expectRequest({ "content-length": String(LIMIT * 2) }),
+    );
+    const resMsg: any = {
+      headersSent: false,
+      destroyed: false,
+      writeContinue: vi.fn(),
+      writeHead: vi.fn(),
+      write: vi.fn(),
+      end: vi.fn(),
+      destroy: vi.fn(),
+      on: vi.fn(),
+    };
+    handleCheckContinue({ emit: () => true })(reqMsg, resMsg);
+    return { body, reqMsg, resMsg };
+  };
+
+  it("sends the withheld 100 once something starts reading the body", async () => {
+    const { body, reqMsg, resMsg } = await withheld();
+    adaptHttp1(reqMsg, resMsg);
+    expect(resMsg.writeContinue).not.toHaveBeenCalled();
+    body.resume();
+    await new Promise((r) => setImmediate(r));
+    expect(resMsg.writeContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it("never sends the withheld 100 for the lingering drain of a rejected body", async () => {
+    const { reqMsg, resMsg } = await withheld();
+    const { res } = adaptHttp1(reqMsg, resMsg);
+    res.lingerClose!();
+    res.respond(413, { "content-length": 17 });
+    await new Promise((r) => setImmediate(r));
+    expect(resMsg.writeContinue).not.toHaveBeenCalled();
   });
 });

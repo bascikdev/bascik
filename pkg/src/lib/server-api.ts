@@ -21,6 +21,7 @@ import {
 import {
   createWebRequest,
   executeApiRoute,
+  declaresBodyOverLimit,
   requestOrigin,
 } from "./api-runtime.ts";
 import {
@@ -239,7 +240,30 @@ export class ApiRouteRegistry {
     match: ApiRouteMatch,
     secHeaders: Record<string, string>,
   ): Promise<number> {
-    const webReq = createWebRequest(req, requestOrigin(req));
+    // Tells the transport, once, that the rest of the body will never be
+    // read, so it drains it (bounded) instead of closing under a client that
+    // is still uploading. It runs the moment the body is rejected, whether
+    // that is before `respond` (the runtime's 413, or the handler's own
+    // response after catching the error) or after it (a response that
+    // streams the request body back trips the limit mid-stream).
+    let lingering = false;
+    const linger = (): void => {
+      if (lingering) return;
+      lingering = true;
+      res.lingerClose?.();
+    };
+
+    // Early path: a declared length over the limit proves the body is too
+    // large before a byte is read. The handler never runs and its request
+    // carries no body, so nothing pulls the upload (or, for an
+    // `Expect: 100-continue` client, asks for it) just to reject it.
+    const declaredTooLarge = declaresBodyOverLimit(req.method, req.headers);
+    const webReq = createWebRequest(
+      declaredTooLarge ? { ...req, rawStream: undefined } : req,
+      requestOrigin(req),
+      undefined,
+      linger,
+    );
     const abort = new AbortController();
     const sink = createResponseSink(res, abort);
 
@@ -260,6 +284,7 @@ export class ApiRouteRegistry {
           params: match.params,
           remoteIp: req.remoteIp,
           signal: abort.signal,
+          onDeclaredBodyTooLarge: declaredTooLarge ? linger : undefined,
         }),
         aborted.then(() => null),
       ]);

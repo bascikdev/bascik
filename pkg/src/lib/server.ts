@@ -183,6 +183,17 @@ export interface BascikResponse {
   close(code?: number): void;
   on(event: "close" | "drain" | "finish", cb: () => void): void;
   off(event: "close" | "drain" | "finish", cb: () => void): void;
+  /**
+   * The request body was rejected before it was read to the end (over
+   * `http.maxBodySize`). Called once, when the body is rejected: usually
+   * before `respond`, but after it when a response streams the request body
+   * back and the limit trips mid-stream. The transport keeps reading
+   * and discarding the unread body, within its caps, so the client finishes
+   * its upload and reads the response instead of hitting EPIPE/ECONNRESET;
+   * then HTTP/1.x closes the connection and HTTP/2 ends only this stream.
+   * Optional so test doubles and non-socket transports need not implement it.
+   */
+  lingerClose?(): void;
 }
 
 export const isNetworkResetError = (err: unknown): boolean => {
@@ -996,7 +1007,14 @@ export const createRequestHandler = () => {
         // unresolvable sidecar id) is this page's 500; headers are not sent yet.
         if ("error" in page.serverScriptPlan) throw page.serverScriptPlan.error;
         const plan = page.serverScriptPlan;
-        const request = createWebRequest(req, requestOrigin(req));
+        // A script that reads a body over the limit leaves the rest unread;
+        // the transport drains it so the client is not cut off mid-upload.
+        const request = createWebRequest(
+          req,
+          requestOrigin(req),
+          undefined,
+          () => res.lingerClose?.(),
+        );
         const context = { remoteIp: req.remoteIp, platform: NODE_PLATFORM };
         const timeout =
           BascikConfig.scripts.timeout ?? DEFAULT_SCRIPT_TIMEOUT_MS;

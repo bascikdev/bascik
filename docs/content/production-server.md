@@ -77,7 +77,7 @@ export default defineConfig({
 | `http.rateLimit`    | `boolean \| object`      | `false`              | In-memory sliding-window IP rate limiter                                           |
 | `http.cacheControl` | `Record<string, string>` | `{}`                 | Custom `Cache-Control` headers matched by file extension                           |
 | `http.timeouts`     | `object`                 | `{}`                 | Socket request, headers, and keep-alive timeout values                             |
-| `http.maxBodySize`  | `number`                 | `10485760` (10MB)    | Maximum payload byte size for API route requests                                   |
+| `http.maxBodySize`  | `number`                 | `1048576` (1MB)      | Maximum payload byte size for API route requests                                   |
 | `http.tls`          | `object`                 | `{ enabled: false }` | TLS / HTTPS and HTTP/2 certificate configuration                                   |
 
 ## HTTP/2 & TLS Support

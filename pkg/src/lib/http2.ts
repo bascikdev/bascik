@@ -11,7 +11,36 @@ import {
   type BascikRequest,
   type BascikResponse,
 } from "./server.ts";
-import { adaptHttp1 } from "./http.ts";
+import { adaptHttp1, handleCheckContinue } from "./http.ts";
+import { drainRequestBody, isLingeringSocket } from "./request-body-linger.ts";
+
+/**
+ * HTTP/1 connection-specific headers (RFC 9113 8.2.2). `stream.respond`
+ * throws ERR_HTTP2_INVALID_CONNECTION_HEADERS on any of them, so a response
+ * shared with the HTTP/1 path (the runtime's 413 says `Connection: close`) or
+ * a handler that sets one would otherwise never reach an HTTP/2 client.
+ */
+const CONNECTION_SPECIFIC_HEADERS = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-connection",
+  "transfer-encoding",
+  "upgrade",
+  "http2-settings",
+]);
+
+const stripConnectionHeaders = (
+  headers: Record<string, string | number | string[]>,
+): Record<string, string | number | string[]> => {
+  let out: Record<string, string | number | string[]> | undefined;
+  for (const key of Object.keys(headers)) {
+    if (CONNECTION_SPECIFIC_HEADERS.has(key.toLowerCase())) {
+      out ??= { ...headers };
+      delete out[key];
+    }
+  }
+  return out ?? headers;
+};
 
 export const adaptHttp2 = (
   stream: ServerHttp2Stream,
@@ -41,6 +70,20 @@ export const adaptHttp2 = (
     rawStream: stream,
   };
 
+  // Set when the lingering drain hit a cap before the response ended: the
+  // stream is reset (NO_ERROR) only after the response is complete.
+  let resetAfterEnd = false;
+  let ended = false;
+  let lingering = false;
+  const resetStream = (): void => {
+    if (!stream.closed && !stream.destroyed) {
+      // RFC 9113 8.1: after a complete response, RST_STREAM(NO_ERROR) asks
+      // the client to stop sending without failing the request. Node
+      // submits it only after the response's END_STREAM is flushed.
+      stream.close(http2.constants.NGHTTP2_NO_ERROR);
+    }
+  };
+
   const res: BascikResponse = {
     get headersSent() {
       return stream.headersSent;
@@ -50,17 +93,31 @@ export const adaptHttp2 = (
     },
     writable: stream,
     respond(status, headers) {
-      stream.respond({ ":status": status, ...headers });
+      stream.respond({ ":status": status, ...stripConnectionHeaders(headers) });
     },
     write(chunk) {
       return stream.write(chunk);
     },
     end(chunk) {
+      ended = true;
       if (arguments.length === 0 || chunk === undefined) {
         stream.end();
       } else {
         stream.end(chunk);
       }
+      if (resetAfterEnd) resetStream();
+    },
+    // HTTP/2 multiplexes the session, so a rejected body costs only this
+    // stream: drain it (flow control keeps the peer sending only what was
+    // granted) and, at a cap, reset the stream; the session stays usable.
+    lingerClose() {
+      if (lingering) return;
+      lingering = true;
+      drainRequestBody(stream, (outcome) => {
+        if (outcome !== "cap") return;
+        if (ended) resetStream();
+        else resetAfterEnd = true;
+      });
     },
     close(code) {
       stream.close(code);
@@ -138,8 +195,14 @@ export const startHttp2Server = async (): Promise<string> => {
   // HTTP/1.1 over TLS for clients that do not support HTTP/2 or ALPN.
   // We handle these requests using standard HTTP/1.1 adapters, but ignore
   // HTTP/2 requests here since they are already processed via the "stream" event.
+  server.on("checkContinue", handleCheckContinue(server));
   server.on("request", (reqMsg, resMsg) => {
     if (reqMsg.httpVersion === "2.0") return;
+    // Pipelined behind a rejected body on a connection that is closing.
+    if (isLingeringSocket(reqMsg.socket)) {
+      reqMsg.resume();
+      return;
+    }
     const { req, res } = adaptHttp1(reqMsg as any, resMsg as any);
     return handleRequest(req, res).catch((err) => {
       console.error(

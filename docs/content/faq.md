@@ -352,4 +352,4 @@ Bascik favors explicit, standard TypeScript composition over implicit framework 
 
 ## How big a request body can an API route accept?
 
-By default, Bascik limits API route request bodies to `1048576` bytes (1 MB). You can configure this with `http.maxBodySize` in `bascik.config.ts`. Bascik counts bytes on the fly as they stream from the client and immediately terminates oversized requests with `413 Payload Too Large` without buffering the entire body into memory.
+By default, Bascik limits API route request bodies to `1048576` bytes (1 MB). You can configure this with `http.maxBodySize` in `bascik.config.ts`. Bascik counts bytes on the fly as they stream from the client and answers oversized requests with `413 Payload Too Large` without buffering the entire body into memory. A `Content-Length` over the limit is answered before the handler runs. Bascik then reads and discards the rest of the upload, within fixed limits, before it closes the connection, so the client receives the `413` instead of a connection error.

@@ -112,8 +112,11 @@ Request bodies are exposed as standard WHATWG streams with `duplex: 'half'`. Han
 
 - **Streaming Size Enforcement (`http.maxBodySize`):** The maximum request body size defaults to `1048576` bytes (1 MB) and can be customized in `bascik.config.ts`.
 - **Stream Counting:** Bytes are counted on the fly as they stream from the client. Bascik never buffers an unbounded payload in memory to measure it.
-- **Payload Rejection:** If the payload exceeds the limit, the incoming stream is aborted and destroyed, and Bascik responds with `413 Payload Too Large` without continuing execution.
-- **Client Headers Untrusted:** Bascik does not trust `Content-Length` headers from clients; size limits are enforced strictly against actual received bytes.
+- **Payload Rejection:** If the payload exceeds the limit, the handler's body stream errors and Bascik responds with `413 Payload Too Large` and `Connection: close`.
+- **Declared Length:** A `Content-Length` above the limit is answered `413` before the handler runs, even for a handler that never reads its body. The method policy comes first: a method the route does not export still gets `405` with `Allow`, and an automatic `OPTIONS` still gets `204`. A client that sends `Expect: 100-continue` with such a length gets the `413` without a `100 Continue`, so it never uploads the body.
+- **Lingering Close:** After a body is rejected, Bascik keeps reading and discarding the rest of the upload, so the client finishes sending and reads the response instead of failing with `EPIPE` or `ECONNRESET`. It stops after 8 MiB more, after 5 seconds with no data, or after 30 seconds in all, whichever comes first. HTTP/1.1 then closes the connection. On HTTP/2 only that stream is affected: it ends normally once drained, or is reset with `NO_ERROR` at a limit, and the session stays open. One exception: an HTTP/2 client that sends more data than its own `content-length` header declared breaks the protocol, and Node closes that whole session.
+- **Streamed Echoes:** If a response streams the request body back (for example `new Response(request.body)`), its `200` headers are already sent when the limit trips. The client gets a truncated response, and the rest of its upload is still drained before the connection closes.
+- **Client Headers Untrusted:** A `Content-Length` below the limit is never trusted; size limits are enforced against the bytes actually received.
 
 ## Timeouts and Cooperative Cancellation
 
