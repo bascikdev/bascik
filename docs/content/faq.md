@@ -170,10 +170,6 @@ When you use a component multiple times on a page, each instance of that compone
 
 Each script tag is isolated in its own IIFE so variables never leak into the global scope. Having one script tag per component instance guarantees that every instance receives its behavior without requiring a runtime framework, component registry, or bundling step.
 
-## Why is my `<label for>` not working?
-
-Bascik rewrites `<label for>` automatically when the matching `id` is declared in the same component. The label and control receive the same per-instance scoped identifier, including when identifier minification is enabled. A reference to an ID in another component is left unchanged because Bascik cannot choose that component's instance at build time. Keep the label and control together or target a literal page-shell ID. See [Scoped JavaScript](/scoped-javascript#html-id-references).
-
 ## Why are my form field names hashed?
 
 Bascik scopes `name` per component instance so repeated radio groups remain independent. For a form that posts to an external service requiring literal keys, add `data-bascik-preserve="name"` to the form. This deliberately gives up radio-group isolation inside that preserved subtree, so do not disable name scoping site-wide. See [Preserve Scoping](/preserve).
@@ -181,10 +177,6 @@ Bascik scopes `name` per component instance so repeated radio groups remain inde
 ## How do I use a third-party widget that looks up an element by ID?
 
 Add a bare `data-bascik-preserve` directive to the widget mount point. Its literal ID and subtree remain unscoped, so calls such as `turnstile.render('widget-mount')` can find it. Bascik removes the directive from compiled output. See [Preserve Scoping](/preserve).
-
-## Why is my inline SVG gradient not showing?
-
-Declare the gradient ID and its CSS `url(#id)` reference in the same component. Bascik rewrites the fragment to the instance-scoped ID and automatically emits per-instance CSS for that component. Cross-document fragments such as `url(sprite.svg#icon)` are intentionally untouched. For an SVG ID graph owned by another tool, use [Preserve Scoping](/preserve). See [Scoped Styles](/scoped-styles#css-fragment-references).
 
 ## Where should I put images and fonts?
 
@@ -220,10 +212,6 @@ Use [Dynamic Routes](/dynamic-routes). Create a template file with bracket param
 
 The script runs in Node.js at build time, queries your headless CMS, database, or REST API, and exports a default callable function returning an array of `{ params, data? }` route objects. Bascik expands the single template into concrete static HTML pages in `dist/`. Inside the template, `<script data-bascik-build>` blocks read the route params and data from `process.env.BASCIK_ROUTE`.
 
-## Why did my dynamic route 404?
-
-Dynamic route parameters must be URL-safe tokens. Characters like `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows device names are disallowed. Also ensure your template's routes script returned an array containing valid `params` objects matching the bracket names in the filename.
-
 ## Should I fingerprint my assets?
 
 Probably not. Bascik inlines component CSS and JavaScript, so fingerprinting only matters for images, fonts, and other copied page assets. The production server already sends content-hash `ETag` headers, and `http.cacheControl` tunes per-extension caching with no build step. Fingerprinting is for immutable, far-future caching on a CDN, and it will not improve a Lighthouse score (`uses-long-cache-ttl` is unweighted in Lighthouse 10 and later). See [Asset Fingerprinting](/how-to/asset-fingerprinting).
@@ -248,18 +236,6 @@ Build scripts (`<script data-bascik-build>`) and dynamic route scripts (`<script
 
 Standard console methods (`console.log()`, `console.error()`) write diagnostic logs to the terminal for debugging only. By separating the result channel from standard output, diagnostic messages from user code and third-party dependencies never leak into generated HTML markup or corrupt route payloads. If you need request-time server rendering with access to the incoming request, server scripts (`<script data-bascik-server>`) export a default request handler function (`export default function(request) { return ... }`). See [Build Scripts](/build-scripts#handler-contract--console-logging).
 
-## Why is my build script returning stale data?
-
-The build script cache keys on the script body and its statically scanned local dependencies. It cannot detect runtime dependencies such as network API calls, `readdir` directory reads, or computed file paths, so a script whose output depends on a remote API is served from cache with stale data across builds. Configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that script from caching. If the stale data comes from an environment variable, declare the variable in `scripts.cache.environment` so its value becomes part of the cache key. See [Build Scripts](/build-scripts#script-caching) for the full cache key and invalidation limits.
-
-## Why is my build script output stale?
-
-Bascik caches build script executions based on statically scanned local dependencies. If your script fetches data from a remote network API, reads a directory dynamically via `readdir`, or uses computed file paths, configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that path from caching.
-
-## Why did my `parallel` exec script's output not appear?
-
-In `bascik --build`, `parallel` lifecycle scripts are spawned concurrently and joined before page transpilation begins. However, if transpilation requires generated content from a script, configure that script with `phase: 'pre'` to guarantee it finishes before page compilation starts.
-
 ## Can I rebuild only part of my site?
 
 Yes. Run `bascik --build --only "<glob>"` to selectively transpile matching pages (e.g. `bascik --build --only "blog/**"`). Targeted builds do not clean the output directory, so your other compiled pages remain intact in `dist/`. Note that sitemap and robots generation is skipped during targeted builds to prevent delisting pages that were not rebuilt; run a full build before deploying to production.
@@ -267,10 +243,6 @@ Yes. Run `bascik --build --only "<glob>"` to selectively transpile matching page
 ## Can I see the transpiled HTML during development?
 
 Yes. Dev mode stores the updated page in memory first so it can be served immediately, then writes the same transpiled HTML to `directory.out` asynchronously. You can inspect `dist/index.html` or the corresponding nested output file while the dev server runs without adding disk latency to page serving.
-
-## Why did live reload stop working?
-
-If live reload previously disconnected behind a corporate proxy or VPN, Bascik now sends automatic comment heartbeats every 20 seconds to prevent proxy idle timeouts. If you are developing with multiple tabs open or experiencing a build error, an in-browser overlay will display the exact error location until corrected.
 
 ## Why do I need to restart after changing my config?
 
@@ -323,29 +295,6 @@ The dev server is resilient to a bad page, while a production build fails rather
 - **CSS Syntax and File-Read Errors:** If a companion `.css` file or style block contains invalid syntax, Bascik's scoping engines skip the invalid patterns, scope the valid rules, and continue compiling. If a companion `.css` file cannot be read from the disk due to permissions or reference issues, Bascik handles the exception gracefully, logs a warning, and continues compilation.
 - **Source and Output I/O:** A missing or unreadable configured pages directory, failure to create an output directory, or failure to write a page is fatal in build mode. These errors are never discarded, including `ENOENT` write failures.
 - **Missing Components Directory:** A project without `src/components/` builds as a site with no components; create the directory when you add the first one, and the dev server picks it up without a restart. Any other directory listed in `directory.components` that does not exist is an error naming that path, because it is usually a typo.
-
-## Why did part of my page disappear after HTML minification?
-
-Current Bascik versions shield scripts, `<pre>`, and `<textarea>` before stripping HTML comments, so a literal `<!--` inside JavaScript or JSON-LD cannot consume the rest of the document. Scripts nested inside a container also remain in that container. If output still disappears, check for an unclosed ordinary HTML comment outside those raw-text regions and compare with `minify.html: false`, which disables page and component HTML minification.
-
-## Why did my build fail with a configuration error?
-
-Bascik validates `bascik.config.ts` at startup and refuses to run on an invalid configuration, so a mistake surfaces immediately with a clear message instead of a confusing runtime failure later. The report lists every problem at once: each entry names the key, shows the value it received, and states what was expected.
-
-Common causes:
-
-- **A typo in a key name**, such as `directroy:` or `minfy:`. Unknown keys are rejected, with a "did you mean" suggestion when the key is a near miss of a real option.
-- **A value of the wrong type or range**, such as `http.port: 70000` or `scripts.timeout: 0`.
-- **A path that does not exist**, such as a `pipeline.exec[].script`, a `pipeline.watchPaths` entry, or a TLS certificate file.
-- **An invalid `BASCIK_SITE_URL`**, which must be an absolute `http` or `https` URL.
-
-Fix each listed key and re-run. See [Configuration validation](/configuration#configuration-validation).
-
-## Why is my `bascik.config.ts` being ignored?
-
-Check for a `bascik.config.js` in the same directory. When both files exist in the project root, the `.js` file takes precedence, so a stale or accidental `.js` file shadows your `.ts` config. Delete the `.js` file, or pass `--config bascik.config.ts` to load a specific file explicitly.
-
-Two other things to rule out: only the project root is searched (a config in a subdirectory or parent directory is never picked up), and only the `.js` and `.ts` extensions are supported (`.mjs`, `.cjs`, `.mts`, and `.cts` files are not discovered). See [Config file discovery](/configuration#config-file-discovery).
 
 ## Why do two builds of the same source produce byte-identical output?
 

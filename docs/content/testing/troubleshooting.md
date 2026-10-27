@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Something is not working, and you want it fixed. This page is organized by what you saw, not by feature: scan the headings for the message in your terminal or the behavior on your screen, and each entry explains why it happens and what to do. Most entries end with a link to the page that covers the rule in depth, and the [FAQ](/faq) covers the "why does Bascik work this way" questions.
+This page is organized by what you saw, not by feature.Most entries end with a link to the page that covers the rule in depth, and the [FAQ](/faq) covers the "why does Bascik work this way" questions.
 
 Not sure where the problem is reported? Bascik tells you in one of four places:
 
@@ -41,24 +41,29 @@ The template name is misspelled or missing. The message lists the valid names. S
 
 ### `Configuration errors in bascik.config.ts`
 
-Bascik validates the config before anything reads it and lists every problem at once. Each entry names the key, the value it received, and what it expected:
+Bascik validates `bascik.config.ts` at startup and refuses to run on an invalid configuration, so a mistake surfaces immediately with a clear message instead of a confusing runtime failure later. The report lists every problem at once: each entry names the key, shows the value it received, and states what was expected.
 
 ```text
   scripts.onBuildScriptErr unknown key
                            did you mean "scripts.onBuildScriptError"?
 ```
 
-A misspelled key is rejected rather than ignored, a wrong type or range is named, and a referenced path (`directory.pages`, `pipeline.exec[].script`, `pipeline.watchPaths`, TLS files) must exist. Fix each listed key and re-run. See [Configuration Validation](/configuration#configuration-validation).
+Common causes:
+
+- **A typo in a key name**, such as `directroy:` or `minfy:`. Unknown keys are rejected, with a "did you mean" suggestion when the key is a near miss of a real option.
+- **A value of the wrong type or range**, such as `http.port: 70000` or `scripts.timeout: 0`.
+- **A path that does not exist**, such as a `pipeline.exec[].script`, a `pipeline.watchPaths` entry, or a TLS certificate file.
+- **An invalid `BASCIK_SITE_URL`**, which must be an absolute `http` or `https` URL.
+
+Fix each listed key and re-run. See [Configuration Validation](/configuration#configuration-validation).
 
 ### My config changes have no effect
 
-Three things to rule out, in order:
+Check for a `bascik.config.js` in the same directory. When both files exist in the project root, the `.js` file takes precedence, so a stale or accidental `.js` file shadows your `.ts` config. Delete the `.js` file, or pass `--config bascik.config.ts` to load a specific file explicitly.
 
-1. A `bascik.config.js` next to your `bascik.config.ts`. When both exist the `.js` file wins, so a stale or accidental `.js` file shadows every edit to the `.ts` one. Delete it or pass `--config bascik.config.ts`.
-2. The dev server is still running with the old config. It prints `[bascik] Config file changed: ... Restart the server to apply configuration changes.` and does not hot-reload configuration on purpose.
-3. The file is not in the project root, or has an unsupported extension (`.mjs`, `.cjs`, `.mts`, `.cts` are not discovered).
+Two other things to rule out: only the project root is searched (a config in a subdirectory or parent directory is never picked up), and only the `.js` and `.ts` extensions are supported (`.mjs`, `.cjs`, `.mts`, and `.cts` files are not discovered). See [Config file discovery](/configuration#config-file-discovery).
 
-See [Config File Discovery](/configuration#config-file-discovery) and [Why do I need to restart after changing my config?](/faq#why-do-i-need-to-restart-after-changing-my-config).
+If the file is found but an edit is not taking effect, the dev server is still running with the old configuration. It prints `[bascik] Config file changed: ... Restart the server to apply configuration changes.` and does not hot-reload configuration on purpose. See [Why do I need to restart after changing my config?](/faq#why-do-i-need-to-restart-after-changing-my-config).
 
 ### `` `siteUrl` is not a bascik.config option ``
 
@@ -136,7 +141,7 @@ A directive attribute landed on a `<div>` or another element, where it does noth
 
 ### `<label for>` stopped matching its input
 
-Bascik rewrites `<label for>` only when the matching `id` is declared in the same component; the linter reports `ID reference "email" is not declared in this component and will be left unscoped.` Keep the label and the control in one component, or point the label at a literal page-shell ID. See [HTML ID references](/scoped-javascript#html-id-references).
+Bascik rewrites `<label for>` automatically when the matching `id` is declared in the same component. The label and control receive the same per-instance scoped identifier, including when identifier minification is enabled. A reference to an ID in another component is left unchanged because Bascik cannot choose that component's instance at build time; the linter reports it as `ID reference "email" is not declared in this component and will be left unscoped.` Keep the label and control together or target a literal page-shell ID. See [HTML ID references](/scoped-javascript#html-id-references).
 
 ### Form field names are hashed
 
@@ -148,7 +153,7 @@ The ID was scoped. Add a bare `data-bascik-preserve` to the mount element so its
 
 ### An inline SVG gradient, mask, or filter is not showing
 
-The `url(#id)` reference and the element it points at must be declared in the same component; cross-document references like `url(sprite.svg#icon)` are left alone. See [CSS fragment references](/scoped-styles#css-fragment-references).
+Declare the gradient ID and its CSS `url(#id)` reference in the same component. Bascik rewrites the fragment to the instance-scoped ID and automatically emits per-instance CSS for that component. Cross-document fragments such as `url(sprite.svg#icon)` are intentionally untouched. For an SVG ID graph owned by another tool, use [Preserve Scoping](/preserve). See [CSS fragment references](/scoped-styles#css-fragment-references).
 
 ### The linter says my CSS or JavaScript cannot be scoped
 
@@ -174,7 +179,7 @@ The script ran longer than `scripts.timeout` (30 seconds by default). Raise the 
 
 ### Build script output is stale
 
-The script cache keys on the script body and its statically scanned local imports. It cannot see a remote API, a `readdir`, or a computed path, so such a script is answered from cache. Exclude it with `scripts.cache.exclude`, and declare environment variables it reads in `scripts.cache.environment`; the warning `build script reads process.env.X but "X" is not declared in scripts.cache.environment` names any you missed. See [Invalidation Limits & Cache Exclusions](/build-scripts#invalidation-limits-cache-exclusions).
+The build script cache keys on the script body and its statically scanned local dependencies. It cannot detect runtime dependencies such as network API calls, `readdir` directory reads, or computed file paths, so a script whose output depends on a remote API is served from cache with stale data across builds. Configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that script from caching. If the stale data comes from an environment variable, declare the variable in `scripts.cache.environment` so its value becomes part of the cache key; the warning `build script reads process.env.X but "X" is not declared in scripts.cache.environment` names any you missed. See [Invalidation Limits & Cache Exclusions](/build-scripts#invalidation-limits-cache-exclusions) for the full cache key and invalidation limits.
 
 ### `<script> tag has both data-bascik-build and data-bascik-server`
 
@@ -230,7 +235,7 @@ The routes script returned an empty array, so no pages were written. Usually the
 
 ### A generated route returns 404
 
-Parameter values must be URL-safe: no `#`, `%`, `&`, `'`, `+`, spaces, leading dots, or Windows device names, and the `params` keys must match the bracket names in the filename exactly. See [Why did my dynamic route 404?](/faq#why-did-my-dynamic-route-404).
+Dynamic route parameters must be URL-safe tokens. Characters like `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows device names are disallowed. Also ensure your template's routes script returned an array containing valid `params` objects matching the bracket names in the filename. See [Route Object Format](/dynamic-routes#route-object-format).
 
 ### `[bascik] routes script error`
 
@@ -266,7 +271,7 @@ A `pipeline.exec` script failed or overran. The script's own output is printed a
 
 ### My `parallel` exec script's output is missing from the build
 
-`parallel` scripts are joined before page transpilation, but a script whose output pages depend on must run in `phase: 'pre'`. See [Why did my `parallel` exec script's output not appear?](/faq#why-did-my-parallel-exec-scripts-output-not-appear).
+In `bascik --build`, `parallel` lifecycle scripts are spawned concurrently and joined before page transpilation begins. However, if transpilation requires generated content from a script, configure that script with `phase: 'pre'` to guarantee it finishes before page compilation starts. See [Exec Scripts](/exec-scripts).
 
 ### `exec script "..." is located inside source directories`
 
@@ -284,7 +289,7 @@ Another process holds the port. In development Bascik moves to the next free por
 
 ### Live reload stopped working
 
-Bascik sends a heartbeat every 20 seconds so proxies and VPNs do not drop the connection. If the page still does not reload: check the terminal for a page error (the overlay shows it in the tab that triggered the build), make sure the tab is on the dev server's origin and not a cached copy, and restart if the config changed. See [Live Reload via Server-Sent Events](/development-server#live-reload-via-server-sent-events-sse).
+If live reload previously disconnected behind a corporate proxy or VPN, Bascik now sends automatic comment heartbeats every 20 seconds to prevent proxy idle timeouts. If you are developing with multiple tabs open or experiencing a build error, an in-browser overlay will display the exact error location until corrected. If the page still does not reload, make sure the tab is on the dev server's origin and not a cached copy, and restart the server if the config changed. See [Live Reload via Server-Sent Events](/development-server#live-reload-via-server-sent-events-sse).
 
 ### The browser rejects the dev TLS certificate
 
@@ -344,7 +349,7 @@ A `fetch('/api/x')` in client code fails under `base` because Bascik cannot safe
 
 ### Part of the page disappeared after minification
 
-An unclosed ordinary HTML comment outside a script, `<pre>`, or `<textarea>` swallows the rest of the document. Compare with `minify.html: false`; if the output returns, find the comment. See [Why did part of my page disappear after HTML minification?](/faq#why-did-part-of-my-page-disappear-after-html-minification).
+Current Bascik versions shield scripts, `<pre>`, and `<textarea>` before stripping HTML comments, so a literal `<!--` inside JavaScript or JSON-LD cannot consume the rest of the document. Scripts nested inside a container also remain in that container. If output still disappears, check for an unclosed ordinary HTML comment outside those raw-text regions and compare with `minify.html: false`, which disables page and component HTML minification. See [`minify` (BYOMinifier)](/configuration#minify-byominifier).
 
 ### `HTML minification failed for "..."` or `CSS minification failed for ...`
 
