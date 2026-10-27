@@ -76,6 +76,7 @@ import {
 import {
   RequestRenderError,
   expandByUsage,
+  requestRoutePath,
   wrapRunner,
   type RenderHost,
 } from "./request-render.ts";
@@ -587,11 +588,8 @@ describe.each([true, false])(
 
       const staticInstance = deriveInstanceId(PAGE_PATH, "server-card", 1);
       const requestInstance = requestId("a", "server-card", 1);
-      const nestedInstance = requestId(
-        componentScriptId("srv-card", 1),
-        "server-card",
-        1,
-      );
+      // The nested output is keyed by its parent job and marker site.
+      const nestedInstance = requestId("a/0", "server-card", 1);
       expect(staticInstance).toMatch(/^[0-9a-f]{8}$/);
       expect(requestInstance).toMatch(REQUEST_ID);
       expect(nestedInstance).toMatch(REQUEST_ID);
@@ -638,6 +636,59 @@ describe.each([true, false])(
       expect(first).toContain(
         `id="${scopedId("server-card", requestId("b", "server-card", 2), "root")}"`,
       );
+    });
+
+    it("ids: components returned by sibling nested jobs keep their ids whatever order the nested jobs finish in", async () => {
+      // Every <srv-card> instance runs the same component script id, so the
+      // nested renders are told apart by the parent job and the marker site,
+      // never by which nested job settles first.
+      const manifest = await build();
+      const html = `<srv-card></srv-card><srv-card></srv-card><srv-card></srv-card>`;
+      const render = async (order: number[]) => {
+        const pending = [deferred(), deferred(), deferred()];
+        let call = 0;
+        const host = makeHost(manifest);
+        host.runComponentJob.mockImplementation(() => pending[call++].promise);
+        const wrapped = wrapRunner(
+          runnerFrom({ a: html }),
+          serverPlan("a"),
+          host,
+        );
+        const out = wrapped("a", signalOf());
+        await tick();
+        expect(host.runComponentJob).toHaveBeenCalledTimes(3);
+        for (const i of order) {
+          pending[i].resolve(
+            `<plain-card data-bascik-prop-t="deep ${i}"></plain-card><server-card></server-card>`,
+          );
+          await tick();
+        }
+        return out;
+      };
+      const forward = await render([0, 1, 2]);
+      const reverse = await render([2, 1, 0]);
+      const middle = await render([1, 2, 0]);
+      expect(reverse).toBe(forward);
+      expect(middle).toBe(forward);
+      const ids = [...forward.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
+      expect(ids).toHaveLength(3);
+      expect(new Set(ids).size).toBe(3);
+      // The n-th site's nested output is keyed by "<parent job>/<site>".
+      for (const n of [0, 1, 2])
+        expect(forward).toContain(
+          `id="${scopedId("server-card", requestId(`a/${n}`, "server-card", 1), "root")}"`,
+        );
+    });
+
+    it("requestRoutePath: the pathname, percent-decoded, so every spelling of a route salts the same ids; a malformed escape stays as written", () => {
+      expect(requestRoutePath("https://x.test/catalog?q=1")).toBe("/catalog");
+      expect(requestRoutePath("https://x.test/c%61talog")).toBe("/catalog");
+      expect(requestRoutePath("https://x.test/%63%61TALOG")).toBe("/caTALOG");
+      expect(requestRoutePath("https://x.test/sub/caf%C3%A9")).toBe(
+        "/sub/café",
+      );
+      expect(requestRoutePath("https://x.test/a%2Fb")).toBe("/a/b");
+      expect(requestRoutePath("https://x.test/c%E0talog")).toBe("/c%E0talog");
     });
 
     it("ids: concurrent jobs share one issuedIds set, so a colliding host hash is salted across jobs", async () => {
@@ -2027,6 +2078,36 @@ describe.each([true, false])(
       const out = await wrapped("a", signalOf());
       expect(host.runComponentJob).toHaveBeenCalledTimes(1);
       expect(out).toContain("  a   <!-- c -->  b  n  m</span></pre>");
+    });
+
+    // Found by the Cloudflare parity test (phase 4): catalog-stream.html's
+    // middle batch sits between two other stream scripts, so its segment's
+    // context says both neighbors are spans of the PAGE. Those flags must
+    // not leak onto the usages inside the output, where index -1 and n+1
+    // are not usages: the job threw a TypeError on both hosts and its slot
+    // stayed empty.
+    it("minify.html on: a job between two adjacent script segments renders its first and last usage", async () => {
+      config.minify.html = true;
+      const manifest = await build(list());
+      const plan = planOf(
+        staticSeg("<main>"),
+        scriptSeg("a", "stream"),
+        scriptSeg("b", "stream"),
+        scriptSeg("c", "stream"),
+        staticSeg("</main>"),
+      );
+      const output =
+        "<link-card data-bascik-prop-u='/1'></link-card><link-card data-bascik-prop-u='/2'></link-card>";
+      const wrapped = wrapRunner(
+        runnerFrom({ a: "<p>a</p>", b: output, c: "<p>c</p>" }),
+        plan,
+        makeHost(manifest),
+      );
+      const out = await wrapped("b", signalOf());
+      expect(out).not.toContain("<link-card");
+      expect(count(out, "<a ")).toBe(2);
+      expect(out).toContain('href="/1"');
+      expect(out).toContain('href="/2"');
     });
 
     it("minify.html on: an instance inside SVG or MathML is left unminified (the documented safe fallback)", async () => {

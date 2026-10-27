@@ -7,7 +7,7 @@
  * expectations, never `waitForTimeout`. JavaScript is disabled in the browser
  * for the paint test so nothing but streamed HTML can produce the result.
  */
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 test.describe("cloudflare adapter: static bypass", () => {
   test("the static home page is served by the asset layer", async ({
@@ -38,6 +38,8 @@ test.describe("cloudflare adapter: static bypass", () => {
       "/stream-append",
       "/mixed",
       "/api-demo",
+      "/catalog",
+      "/catalog-stream",
     ]) {
       await page.goto(path);
       await expect(
@@ -215,5 +217,240 @@ test.describe("cloudflare adapter: streamed paint order", () => {
 
     await expect(page.locator(".stream-resolved")).toBeVisible();
     await expect(page.getByTestId("cf-mixed-footer")).toBeVisible();
+  });
+});
+
+// ─── Components returned by scripts (prompt 157) ────────────────────────────
+//
+// catalog.html and catalog-stream.html are the live demo the docs link to.
+// No page uses <product-card> or <product-card-live> in its own markup, so
+// every tile observed here was rendered by the Worker per request.
+
+/** Markup outside HTML comments (component comments are author text). */
+const markup = (html: string): string => html.replace(/<!--[\s\S]*?-->/g, "");
+
+/** Every `<style>` block of `html` that defines `className`. */
+const styleBlocksDefining = (html: string, className: string): string[] =>
+  [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)]
+    .filter((m) => m[1].includes(`.${className}{`))
+    .map((m) => m[0]);
+
+const expectNoInternals = (html: string) => {
+  expect(html).not.toContain("text/bascik-server");
+  expect(html).not.toContain("data-bascik-server-id");
+  expect(html).not.toContain("bascik-job:");
+};
+
+const classOf = async (page: Page, testid: string): Promise<string> => {
+  await expect(page.getByTestId(testid).first()).toBeAttached();
+  return page
+    .getByTestId(testid)
+    .first()
+    .evaluate((el) => el.getAttribute("class") ?? "");
+};
+
+test.describe("cloudflare adapter: components returned by server scripts (prompt 157)", () => {
+  test("the catalog response carries rendered markup, never the literal tags, and no internal marker", async ({
+    request,
+  }) => {
+    const res = await request.get("/catalog");
+    expect(res.status()).toBe(200);
+    expect(res.headers()["cache-control"]).toBe("private, no-store");
+    const html = await res.text();
+    expect(markup(html)).not.toContain("<product-card");
+    expect(markup(html)).not.toContain("</product-card");
+    expectNoInternals(html);
+    // The escaped sample in <pre><code> is page markup and stays text.
+    expect(html).toContain("&lt;product-card data-bascik-prop-name=");
+  });
+
+  test("every product renders as a visible tile with its props, badge slot and the component's CSS", async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+    await page.goto("/catalog");
+    const results = page.getByTestId("catalog-results");
+    const tiles = results.getByTestId("product-card");
+    await expect(tiles).toHaveCount(5);
+    await expect(results.getByTestId("product-card-name")).toHaveText([
+      "Pour-over kettle",
+      "Ceramic dripper",
+      "Burr grinder",
+      "Glass carafe",
+      "Filters & holder",
+    ]);
+    await expect(results.getByTestId("product-card-price").first()).toHaveText(
+      "$48",
+    );
+    // Slot content replaces the fallback; an empty slot keeps it.
+    await expect(results.getByTestId("product-card-badge")).toHaveText([
+      "New",
+      "Standard",
+      "Best seller",
+      "Standard",
+      "Standard",
+    ]);
+    await expect(tiles.first()).toBeVisible();
+    // Computed from the component stylesheet the Worker emitted in the body.
+    await expect(results.getByTestId("product-card-name").first()).toHaveCSS(
+      "color",
+      "rgb(211, 255, 141)",
+    );
+    await expect(tiles.first()).toHaveCSS("border-top-left-radius", "10px");
+    expect(errors).toEqual([]);
+  });
+
+  test("the scoped class on each tile is the one the single emitted <style> defines", async ({
+    page,
+    request,
+  }) => {
+    await page.goto("/catalog");
+    const className = await classOf(page, "product-card");
+    expect(className).toMatch(/^\S+$/);
+    expect(className).not.toBe("tile");
+    const html = await (await request.get("/catalog")).text();
+    const blocks = styleBlocksDefining(html, className);
+    expect(blocks).toHaveLength(1);
+    expect(html.indexOf(blocks[0])).toBeGreaterThan(html.indexOf("</head>"));
+    expect(html.indexOf(blocks[0])).toBeLessThan(
+      html.indexOf('data-testid="product-card"'),
+    );
+  });
+
+  test("each tile gets its own instance id, and its client script ran once", async ({
+    page,
+  }) => {
+    await page.goto("/catalog");
+    const ids = await page
+      .locator(
+        '[data-testid="product-card"], [data-testid="product-card-live"]',
+      )
+      .evaluateAll((els) => els.map((el) => el.id));
+    expect(ids).toHaveLength(6);
+    for (const id of ids) expect(id).not.toBe("");
+    expect(new Set(ids).size).toBe(6);
+    expect(
+      await page.evaluate(
+        () =>
+          (globalThis as unknown as { __productCards?: number }).__productCards,
+      ),
+    ).toBe(6);
+  });
+
+  test("the nested server script of <product-card-live> ran with the request and is styled by the component", async ({
+    page,
+  }) => {
+    await page.goto("/catalog");
+    const live = page.getByTestId("catalog-live");
+    await expect(live.getByTestId("product-card-live")).toHaveCount(1);
+    await expect(live.getByTestId("product-card-name")).toHaveText(
+      "Burr grinder",
+    );
+    await expect(live.getByTestId("product-card-badge")).toHaveText("Live");
+    const stock = live.getByTestId("product-card-stock");
+    await expect(stock).toHaveText(
+      "In stock · checked for /catalog at request time",
+    );
+    // The output scope gave the returned <p class="stock"> the scoped class.
+    await expect(stock).toHaveCSS("color", "rgb(254, 240, 138)");
+  });
+
+  test("?q= filters the tiles on every request, and the search form drives it", async ({
+    page,
+  }) => {
+    await page.goto("/catalog?q=grinder");
+    const results = page.getByTestId("catalog-results");
+    await expect(results.getByTestId("product-card")).toHaveCount(1);
+    await expect(results.getByTestId("product-card-name")).toHaveText(
+      "Burr grinder",
+    );
+
+    await page.goto("/catalog?q=nothing-matches");
+    await expect(results.getByTestId("product-card")).toHaveCount(0);
+    await expect(page.getByTestId("catalog-empty")).toContainText(
+      'No products match "nothing-matches"',
+    );
+
+    await page.goto("/catalog");
+    await page.getByTestId("catalog-search").fill("kettle");
+    await page.getByTestId("catalog-search").press("Enter");
+    await expect(page).toHaveURL(/\/catalog\?q=kettle$/);
+    await expect(results.getByTestId("product-card-name")).toHaveText([
+      "Pour-over kettle",
+    ]);
+  });
+
+  test("misuse: a query that spells a component tag is escaped text, never rendered", async ({
+    request,
+  }) => {
+    const html = await (
+      await request.get(
+        `/catalog?q=${encodeURIComponent('<product-card data-bascik-prop-name="x">')}`,
+      )
+    ).text();
+    expect(markup(html)).not.toContain(
+      '<product-card data-bascik-prop-name="x"',
+    );
+    expect(html).toContain(
+      "&lt;product-card data-bascik-prop-name=&quot;x&quot;",
+    );
+  });
+});
+
+test.describe("cloudflare adapter: components returned by stream scripts (prompt 157)", () => {
+  test("the streamed catalog renders every batch in document order with one stylesheet ahead of the first tile", async ({
+    page,
+    request,
+  }) => {
+    const html = await (await request.get("/catalog-stream?delay=0")).text();
+    expect(markup(html)).not.toContain("<product-card");
+    expectNoInternals(html);
+    const names = [
+      "Pour-over kettle",
+      "Ceramic dripper",
+      "Burr grinder",
+      "Glass carafe",
+      "Filters &amp; holder",
+    ].map((name) => html.indexOf(`>${name}<`));
+    expect(names.every((i) => i > 0)).toBe(true);
+    expect([...names].sort((a, b) => a - b)).toEqual(names);
+
+    await page.goto("/catalog-stream?delay=0");
+    const grid = page.getByTestId("catalog-stream-grid");
+    await expect(grid.getByTestId("product-card")).toHaveCount(5);
+    await expect(grid.getByTestId("product-card-name").first()).toHaveCSS(
+      "color",
+      "rgb(211, 255, 141)",
+    );
+    const className = await classOf(page, "product-card");
+    const blocks = styleBlocksDefining(html, className);
+    expect(blocks).toHaveLength(1);
+    expect(html.indexOf(blocks[0])).toBeLessThan(
+      html.indexOf('data-testid="product-card"'),
+    );
+  });
+});
+
+test.describe("cloudflare adapter: streamed catalog paint order (prompt 157)", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("the shell paints before any tile, with JS disabled, and the tiles follow", async ({
+    page,
+  }) => {
+    const t0 = Date.now();
+    // Batch 1, first in the document, resolves after 2 x delay.
+    await page.goto("/catalog-stream?delay=800", { waitUntil: "commit" });
+    await expect(page.getByTestId("catalog-stream-footer")).toBeVisible();
+    await expect(page.getByTestId("catalog-stream-intro")).toBeVisible();
+    const tShell = Date.now() - t0;
+    expect(await page.getByTestId("product-card").count()).toBe(0);
+
+    await expect(
+      page.getByTestId("catalog-stream-grid").getByTestId("product-card"),
+    ).toHaveCount(5, { timeout: 10_000 });
+    const tTiles = Date.now() - t0;
+    expect(tShell).toBeLessThan(1200);
+    expect(tTiles).toBeGreaterThanOrEqual(1600);
   });
 });

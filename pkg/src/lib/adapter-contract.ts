@@ -11,6 +11,13 @@ export interface SiteGraphJob {
     | { kind: "module"; path: string }
     | { kind: "inline"; code: string; stagedPath: string };
   owner: string; // authored location for diagnostics
+  /**
+   * The component's element classes for this job's output (prompt 157):
+   * set on a component's server or stream script, whether placed on a page
+   * statically or named by the manifest. A host applies it with
+   * `applyOutputScope(output, decodeOutputScope(outputScope))`, as Node does.
+   */
+  outputScope?: string;
 }
 
 export interface DistPageSegment {

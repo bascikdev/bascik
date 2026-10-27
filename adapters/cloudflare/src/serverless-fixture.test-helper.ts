@@ -10,13 +10,21 @@
  *   `data-bascik-stream` jobs, one gated,
  * - a page whose stream job fails, and one whose server job fails,
  * - API routes: static, dynamic, multi-method, streaming body, cookies,
- * - an authored 404 and 500 page.
+ * - an authored 404 and 500 page,
+ * - with `components: true`, the catalog demo of the e2e fixture (prompt 157:
+ *   `<product-card>` and `<product-card-live>` returned by server and stream
+ *   scripts) plus test-only pages for the misuse lens: an unsupported
+ *   component, a bound href, a nested job that throws, a self-returning
+ *   component (depth), a component script without a default export,
+ *   instance and nested-job budgets, nested jobs that return components and
+ *   finish in random order, a job printing ANSI escapes, and a slow nested
+ *   job that records its abort for the abort and timeout cases.
  *
  * Builds run as a REAL `bascik --build --target ...` child process against an
  * isolated temp project that has its own `node_modules/esbuild` (a symlink to
  * the workspace install) because esbuild is resolved from the project.
  */
-import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -39,9 +47,23 @@ const write = async (
   await writeFile(abs, content, "utf8");
 };
 
+export interface ServerlessFixtureOptions {
+  base?: string;
+  /** Add the request-time component pages and components (prompt 157). */
+  components?: boolean;
+  /** `minify.identifiers`; off by default so scoped names stay readable. */
+  identifiers?: boolean;
+  /** `minify.html`; off by default. */
+  minifyHtml?: boolean;
+  /** `scripts.onServerScriptError`; "error" by default. */
+  onServerScriptError?: "error" | "warn" | "ignore";
+  /** `scripts.timeout` in ms; 5000 by default. */
+  scriptTimeout?: number;
+}
+
 export const createServerlessFixture = async (
   name: string,
-  options: { base?: string } = {},
+  options: ServerlessFixtureOptions = {},
 ): Promise<string> => {
   const root = join(
     tmpdir(),
@@ -71,8 +93,8 @@ export const createServerlessFixture = async (
   ${options.base ? `base: ${JSON.stringify(options.base)},` : ""}
   directory: { components: ["src/components"] },
   generate: { manifest: true, cspHashes: true, sitemap: false, robots: false },
-  minify: { identifiers: false, html: false },
-  scripts: { onServerScriptError: "error", timeout: 5000 },
+  minify: { identifiers: ${options.identifiers === true}, html: ${options.minifyHtml === true} },
+  scripts: { onServerScriptError: ${JSON.stringify(options.onServerScriptError ?? "error")}, timeout: ${options.scriptTimeout ?? 5000} },
   http: { apiTimeout: 2000 },
 };`,
   );
@@ -234,7 +256,277 @@ export const DELETE = async () => new Response(null, { status: 204 });`,
     "src/api/boom.ts",
     `export const GET = async () => { throw new Error("api SECRET_DETAIL"); };`,
   );
+  if (options.components) await addComponentPages(root);
   return root;
+};
+
+/** The e2e fixture the Cloudflare demo is deployed from. */
+const E2E_FIXTURE = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../e2e/fixture",
+);
+
+/** `component_script_<hex(name::ordinal)>`, the staged id of a component's script (server-sidecar.ts). */
+export const componentScriptId = (name: string, ordinal = 1): string =>
+  `component_script_${Buffer.from(`${name}::${ordinal}`, "utf8").toString("hex")}`;
+
+/**
+ * The catalog demo exactly as deployed (copied from the e2e fixture, so the
+ * parity test exercises the live demo's bytes), and the test-only components
+ * and pages the misuse lens needs (prompt 157).
+ */
+const addComponentPages = async (root: string): Promise<void> => {
+  for (const component of [
+    "product-card",
+    "product-card-live",
+    "demo-favicons",
+  ]) {
+    await cp(
+      join(E2E_FIXTURE, "src/components", component),
+      join(root, "src/components", component),
+      { recursive: true },
+    );
+  }
+  for (const page of ["catalog.html", "catalog-stream.html"]) {
+    await cp(
+      join(E2E_FIXTURE, "src/pages", page),
+      join(root, "src/pages", page),
+    );
+  }
+
+  // Unsupported at request time: a prop bound to `id` is value-dependent
+  // before scoping, so the tag must reach the client as the author wrote it.
+  await write(
+    root,
+    "src/components/bound-id-card/bound-id-card.html",
+    `<div class="bound" data-bascik-attr-id="anchor" data-testid="bound-id-card">bound</div>
+<style>.bound { color: rgb(1, 2, 3); }</style>`,
+  );
+  // A bound href is rewritten for the base inside the rendered instance only.
+  await write(
+    root,
+    "src/components/link-card/link-card.html",
+    `<a class="link" data-testid="link-card" data-bascik-attr-href="target">Pricing</a>
+<style>.link { color: rgb(4, 5, 6); }</style>`,
+  );
+  // A nested job that throws: the parent's policy decides what the reader sees.
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/components/boom-card/boom-card.html",
+    `<section class="boom" data-testid="boom-card"><p class="boom-title">boom card</p>
+<script data-bascik-server>
+export default function () { throw new Error("nested job failed on purpose SECRET_DETAIL"); }
+</script>
+</section>
+<style>.boom { color: rgb(7, 8, 9); }</style>`,
+  );
+  // A component whose script returns itself: the depth budget must stop it.
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/components/chain-card/chain-card.html",
+    `<div class="chain" data-testid="chain-card">
+<script data-bascik-server>
+export default function () { return "<chain-card></chain-card>"; }
+</script>
+</div>
+<style>.chain { color: rgb(10, 11, 12); }</style>`,
+  );
+  // A component script that forgot its default export.
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/components/nodefault-card/nodefault-card.html",
+    `<div class="nodefault" data-testid="nodefault-card">
+<script data-bascik-server>
+export const render = () => "never called";
+</script>
+</div>
+<style>.nodefault { color: rgb(13, 14, 15); }</style>`,
+  );
+
+  const page = (rel: string, title: string, body: string) =>
+    write(
+      root,
+      rel,
+      `<!DOCTYPE html><html><head><title>${title}</title></head><body>
+<header data-testid="shell">shell</header>
+${body}
+<footer data-testid="tail">tail</footer>
+</body></html>`,
+    );
+
+  // Misuse output: a typo'd tag, an escaped tag, a tag inside an attribute
+  // value, a guessed staged placeholder, an unsupported component, and a
+  // supported one with a bound href. Only the last is rendered.
+  await page(
+    "src/pages/components-misuse.html",
+    "Misuse",
+    `<script data-bascik-server>
+export default function () {
+  return '<product-crad data-testid="typo">typo stays</product-crad>' +
+    '<p data-testid="escaped">&lt;product-card&gt; stays text</p>' +
+    '<p data-testid="attr" title="<product-card>">attr stays</p>' +
+    '<script type="text/bascik-server" data-bascik-server-id="${componentScriptId("product-card-live")}"></' + 'script>' +
+    '<bound-id-card data-bascik-prop-anchor="x"></bound-id-card>' +
+    '<link-card data-bascik-prop-target="/pricing"></link-card>';
+}
+</script>`,
+  );
+  // Budgets: ?n= instances of <product-card>, or of <product-card-live>
+  // (one nested job each) with ?kind=live.
+  await page(
+    "src/pages/components-budget.html",
+    "Budget",
+    `<script data-bascik-server>
+export default function (request) {
+  const url = new URL(request.url);
+  const n = Number(url.searchParams.get("n") ?? 1);
+  const tag = url.searchParams.get("kind") === "live" ? "product-card-live" : "product-card";
+  let out = "";
+  for (let i = 0; i < n; i++) out += "<" + tag + ' data-bascik-prop-name="item ' + i + '"></' + tag + ">";
+  return out;
+}
+</script>`,
+  );
+  await page(
+    "src/pages/components-chain.html",
+    "Chain",
+    `<script data-bascik-server>
+export default function () { return "<chain-card></chain-card>"; }
+</script>`,
+  );
+  await page(
+    "src/pages/components-boom.html",
+    "Boom",
+    `<script data-bascik-server>
+export default function () { return '<boom-card></boom-card><p data-testid="after-boom">after</p>'; }
+</script>`,
+  );
+  await page(
+    "src/pages/components-boom-stream.html",
+    "Boom stream",
+    `<section data-testid="slot"><script data-bascik-stream>
+export default async function () { return '<boom-card></boom-card><p data-testid="after-boom">after</p>'; }
+</script></section>`,
+  );
+  await page(
+    "src/pages/components-nodefault.html",
+    "No default",
+    `<script data-bascik-server>
+export default function () { return "<nodefault-card></nodefault-card>"; }
+</script>`,
+  );
+  // Nested jobs that return a component and finish in a random order: the
+  // ids of what they return must not follow completion order.
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/components/nest-card/nest-card.html",
+    `<div class="nest" data-testid="nest-card">
+<script data-bascik-server>
+export default async function () {
+  await new Promise((resolve) => setTimeout(resolve, Math.random() * 40));
+  return '<product-card data-bascik-prop-name="inner"></product-card>';
+}
+</script>
+</div>
+<style>.nest { color: rgb(16, 17, 18); }</style>`,
+  );
+  await page(
+    "src/pages/components-nest.html",
+    "Nest",
+    `<script data-bascik-server>
+export default function () { return "<nest-card></nest-card><nest-card></nest-card><nest-card></nest-card>"; }
+</script>`,
+  );
+  // A component script printing terminal colors: stripped on both hosts.
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/components/ansi-card/ansi-card.html",
+    `<div class="ansi" data-testid="ansi-card">
+<script data-bascik-server>
+export default function () { return '<i class="esc">\\u001b[31mred\\u001b[0m</i>'; }
+</script>
+</div>
+<style>.ansi { color: rgb(19, 20, 21); } .esc { font-style: normal; }</style>`,
+  );
+  await page(
+    "src/pages/components-ansi.html",
+    "ANSI",
+    `<script data-bascik-server>
+export default function () { return '<ansi-card></ansi-card>\\u001b[1mpage\\u001b[22m'; }
+</script>`,
+  );
+  // A nested job that waits ?ms= (forever by default) and records under
+  // ?key= whether it started, finished, or saw its signal abort, for the
+  // abort and timeout cases; /api/abort-probe reads the record back. One
+  // process (Node) or one isolate (workerd) holds both modules.
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/components/slow-card/slow-card.html",
+    `<div class="slow" data-testid="slow-card">
+<script data-bascik-server>
+export default function (request, context, options) {
+  const url = new URL(request.url);
+  const key = url.searchParams.get("key") ?? "none";
+  const ms = Number(url.searchParams.get("ms") ?? 600000);
+  const probe = (globalThis.__bascikAbortProbe ??= {});
+  probe[key] = "started";
+  const signal = options && options.signal;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { probe[key] = "finished"; resolve('<p data-testid="slow-done">done</p>'); }, ms);
+    // Rejects with the reason, as an aborted fetch() does.
+    if (signal) signal.addEventListener("abort", () => { clearTimeout(timer); probe[key] = "aborted"; reject(signal.reason); }, { once: true });
+  });
+}
+</script>
+</div>
+<style>.slow { color: rgb(22, 23, 24); }</style>`,
+  );
+  await page(
+    "src/pages/components-slow.html",
+    "Slow",
+    `<script data-bascik-server>
+export default function () { return '<slow-card></slow-card><p data-testid="after-slow">after</p>'; }
+</script>`,
+  );
+  await page(
+    "src/pages/components-slow-stream.html",
+    "Slow stream",
+    `<section data-testid="slot"><script data-bascik-stream>
+export default async function () { return '<slow-card></slow-card><p data-testid="after-slow">after</p>'; }
+</script></section>`,
+  );
+  await write(
+    root,
+    "src/api/abort-probe.ts",
+    `export const GET = async (request: Request) => {
+  const key = new URL(request.url).searchParams.get("key") ?? "none";
+  const probe = (globalThis as { __bascikAbortProbe?: Record<string, string> }).__bascikAbortProbe ?? {};
+  return Response.json({ state: probe[key] ?? "unseen" });
+};`,
+  );
+};
+
+/** A component whose server script imports a builtin Workers does not provide. */
+export const addUnsupportedImportComponent = async (
+  root: string,
+): Promise<void> => {
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/components/forked-card/forked-card.html",
+    `<div class="forked">
+<script data-bascik-server>
+import { execFile } from "node:child_process";
+export default function () { return typeof execFile; }
+</script>
+</div>`,
+  );
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/pages/forked.html",
+    `<!DOCTYPE html><html><body><script data-bascik-server>
+export default function () { return "<forked-card></forked-card>"; }
+</script></body></html>`,
+  );
 };
 
 /** Add an API route that imports a builtin Workers does not provide. */

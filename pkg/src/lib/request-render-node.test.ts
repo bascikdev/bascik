@@ -252,6 +252,37 @@ describe("host dependencies", () => {
     );
   });
 
+  it("hashNameFor is one bounded hasher per manifest, never the build's process-wide cache (request ids are in the names it hashes)", async () => {
+    config.minify.identifiers = true;
+    const hashed = await build();
+    const hash = hashNameFor(hashed);
+    expect(hash).not.toBe(getAttributeNameHash);
+    expect(hashNameFor(hashed)).toBe(hash);
+    for (const name of ["bascik__srv-card__wrap", "bascik__x__r1234567__y"])
+      expect(hash(name)).toBe(getAttributeNameHash(name));
+  });
+
+  it("createNodeRenderHost salts ids with the decoded route: a percent-encoded spelling of a page is the same route", async () => {
+    const manifest = await build();
+    for (const spelling of ["/c%61talog", "/%63%61talog", "/catalog"]) {
+      const host = createNodeRenderHost(manifest, {
+        request: new Request(`http://localhost${spelling}?q=1`),
+        context,
+        timeoutMs: 1000,
+        filePath: PAGE_FILE,
+      });
+      expect(host.httpPath, spelling).toBe("/catalog");
+    }
+    // Misuse: a malformed escape is kept as written, never a throw.
+    const host = createNodeRenderHost(manifest, {
+      request: new Request("http://localhost/c%E0talog"),
+      context,
+      timeoutMs: 1000,
+      filePath: PAGE_FILE,
+    });
+    expect(host.httpPath).toBe("/c%E0talog");
+  });
+
   it("hashHex is the sha256 hex digest", () => {
     expect(hashHex("abc")).toBe(
       createHash("sha256").update("abc").digest("hex"),

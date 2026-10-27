@@ -4,10 +4,12 @@
  * The request handler that runs inside a Cloudflare Worker (prompt 134).
  * ─────────────────────────────────────────────────────────────────────────────
  *
- * Portable: no Node imports. It is bundled into the generated `_worker.js`
- * together with the site graph emitted by `serverless-artifacts.ts`, and it
- * drives the same execution core the Node server uses
- * (`lib/request-execution.ts`).
+ * Portable: no Node imports (the request-time component host,
+ * component-host.ts, uses `node:crypto` under `nodejs_compat` and is bundled
+ * only for sites with components, prompt 157). It is bundled into the
+ * generated `_worker.js` together with the site graph emitted by
+ * `serverless-artifacts.ts`, and it drives the same execution core the Node
+ * server uses (`lib/request-execution.ts`).
  *
  * Request flow inside the Worker:
  *
@@ -29,6 +31,7 @@
  * and `process.env` is never touched.
  */
 
+import { componentExecution, scopeJobOutput } from "./component-host.js";
 import {
   composeBufferedResponse,
   dispatchApiHandler,
@@ -39,6 +42,7 @@ import {
   type ExecutionPlan,
   type ExecutionSegment,
   type PlatformContext,
+  type RenderHost,
   type ScriptJobRunner,
   dynamicPageHeaders,
   errorResponse,
@@ -51,6 +55,7 @@ import {
   InvalidApiPathError,
   matchApiRoute,
   pageLookupCandidates,
+  stripAnsiEscapeCodes,
   type ApiRouteDefinition,
 } from "@bascik/bascik/runtime";
 
@@ -60,8 +65,35 @@ import {
 export interface GraphScriptJob {
   id: string;
   mode: "server" | "stream";
+  /**
+   * The component's element classes for this job's output (prompt 157):
+   * set on component scripts, and on a page job a component placed
+   * statically, so their returned markup is styled like the component's own.
+   */
+  outputScope?: string;
+  /**
+   * Where a component script is authored (`server script in
+   * src/components/x.html:12`), set on component jobs (prompt 157): the
+   * bundled stack names only the Worker file, so a failure is located from
+   * this instead.
+   */
+  owner?: string;
   /** Loader for the compiled module; `default` is the handler. */
   load: () => Promise<{ default: unknown }>;
+}
+
+/** The build's component manifest, as the portable renderer reads it. */
+export type ComponentManifest = NonNullable<RenderHost["manifest"]>;
+
+/**
+ * Request-time components (prompt 157): the manifest, emitted by build.ts
+ * only when it lists a component, and the component scripts it names, keyed
+ * by job id. They belong to no page: any page's script may return any
+ * component.
+ */
+export interface GraphComponents {
+  manifest: ComponentManifest;
+  jobs: Record<string, GraphScriptJob>;
 }
 
 export interface GraphPageSegment {
@@ -104,6 +136,8 @@ export interface SiteGraph {
   staticNotFoundPage?: boolean;
   /** Release identity for diagnostics headers. */
   release: string;
+  /** Present when the site renders component tags in script output. */
+  components?: GraphComponents;
 }
 
 // ─── Cloudflare runtime types (subset, kept local to avoid a type dependency) ─
@@ -177,11 +211,69 @@ const findPage = (
   return undefined;
 };
 
+const missingJob = (id: string): Error =>
+  new Error(
+    `[bascik] server script job "${id}" is missing from the deployment graph.`,
+  );
+
 /**
- * Build a `ScriptJobRunner` for one request. Output handling mirrors
- * `runServerScriptJob`: a string or stringifiable value is the fragment;
- * failure under `onServerScriptError: "error"` throws (500 before commit,
- * empty after), `warn` logs and yields empty, `ignore` yields empty.
+ * Run one graph job under `timeoutMs`. Output handling mirrors
+ * `runServerScriptJob`: a string or stringifiable value is the fragment,
+ * stripped of ANSI escapes, and a job carrying an output scope (a
+ * component's script, prompt 157) gets the component's element classes
+ * applied; a failing job with an owner is located by it; failure under
+ * `onServerScriptError: "error"` throws (500 before commit, empty after),
+ * `warn` logs and yields empty, `ignore` yields empty.
+ */
+const runGraphJob = async (
+  job: GraphScriptJob,
+  id: string,
+  graph: SiteGraph,
+  request: Request,
+  context: { remoteIp: string; platform: PlatformContext },
+  log: (message: string) => void,
+  signal: AbortSignal,
+  timeoutMs: number,
+): Promise<string> => {
+  const result = await invokeWithDeadline(
+    async ({ signal: jobSignal }) => {
+      const mod = await job.load();
+      const handler = mod.default;
+      if (typeof handler !== "function") {
+        throw new TypeError(
+          `Server script "${id}" does not export a default function.`,
+        );
+      }
+      return handler(request, context, { signal: jobSignal });
+    },
+    { timeoutMs, signal },
+  );
+  if (result.ok) {
+    const value = result.value;
+    const output =
+      typeof value === "string"
+        ? value
+        : value !== undefined && value !== null
+          ? String(value)
+          : "";
+    return scopeJobOutput(job, stripAnsiEscapeCodes(output));
+  }
+  if (result.aborted && !result.timedOut) return "";
+  const error = result.error ?? new Error("Server script failed");
+  // Node maps the stack to the authored file; here it names only the bundle,
+  // so a component job (a timeout, a throw or a missing default export deep
+  // inside a rendered tag) is placed by the owner the build recorded.
+  const where = job.owner ? `\n    in the ${job.owner}` : "";
+  const message = `[bascik] server script error at "${new URL(request.url).pathname}":\n${error.stack ?? error.message}${where}`;
+  if (graph.onServerScriptError === "error") throw new Error(message);
+  if (graph.onServerScriptError === "warn") log(message);
+  return "";
+};
+
+/**
+ * Build a `ScriptJobRunner` for one request: the page's own jobs, then the
+ * component scripts of `graph.components` (prompt 157), under the graph's
+ * script deadline and error policy (see `runGraphJob`).
  */
 export const createGraphJobRunner = (
   page: GraphPage,
@@ -191,39 +283,54 @@ export const createGraphJobRunner = (
   log: (message: string) => void,
 ): ScriptJobRunner => {
   return async (id, signal) => {
-    const job = page.jobs[id];
-    if (!job)
-      throw new Error(
-        `[bascik] server script job "${id}" is missing from the deployment graph.`,
-      );
-    const result = await invokeWithDeadline(
-      async ({ signal: jobSignal }) => {
-        const mod = await job.load();
-        const handler = mod.default;
-        if (typeof handler !== "function") {
-          throw new TypeError(
-            `Server script "${id}" does not export a default function.`,
-          );
-        }
-        return handler(request, context, { signal: jobSignal });
-      },
-      { timeoutMs: graph.scriptTimeoutMs, signal },
+    const job = page.jobs[id] ?? graph.components?.jobs[id];
+    if (!job) throw missingJob(id);
+    return runGraphJob(
+      job,
+      id,
+      graph,
+      request,
+      context,
+      log,
+      signal,
+      graph.scriptTimeoutMs,
     );
-    if (result.ok) {
-      const value = result.value;
-      return typeof value === "string"
-        ? value
-        : value !== undefined && value !== null
-          ? String(value)
-          : "";
-    }
-    if (result.aborted && !result.timedOut) return "";
-    const error = result.error ?? new Error("Server script failed");
-    const message = `[bascik] server script error at "${new URL(request.url).pathname}":\n${error.stack ?? error.message}`;
-    if (graph.onServerScriptError === "error") throw new Error(message);
-    if (graph.onServerScriptError === "warn") log(message);
-    return "";
   };
+};
+
+/**
+ * The page's plan and runner for one request. With a component manifest
+ * that has something to render (prompt 157), the runner is wrapped so
+ * component tags in job output are rendered (component-host.ts), and the
+ * component scripts run like page jobs with the parent's remaining budget.
+ * Without one, plan and runner are exactly what they always were.
+ */
+export const createPageExecution = (
+  page: GraphPage,
+  graph: SiteGraph,
+  request: Request,
+  context: { remoteIp: string; platform: PlatformContext },
+  log: (message: string) => void,
+): { plan: ExecutionPlan; run: ScriptJobRunner } => {
+  const run = createGraphJobRunner(page, graph, request, context, log);
+  const components = graph.components;
+  const rendered = components
+    ? componentExecution(page, graph, request, run, (id, signal, budgetMs) => {
+        const job = components.jobs[id];
+        if (!job) return Promise.reject(missingJob(id));
+        return runGraphJob(
+          job,
+          id,
+          graph,
+          request,
+          context,
+          log,
+          signal,
+          budgetMs,
+        );
+      })
+    : null;
+  return rendered ?? { plan: toExecutionPlan(page), run };
 };
 
 export interface CreateWorkerOptions {
@@ -378,8 +485,7 @@ export const createCloudflareWorker = (
     }
 
     const status = page.is404 ? 404 : 200;
-    const plan = toExecutionPlan(page);
-    const run = createGraphJobRunner(
+    const { plan, run } = createPageExecution(
       page,
       graph,
       request,

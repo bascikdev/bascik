@@ -17,7 +17,7 @@
 import { createHash } from "node:crypto";
 import { BascikConfig } from "./config.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
-import { getAttributeNameHash } from "./names.ts";
+import { createNameHasher } from "./name-hash.ts";
 import { scriptRegistry } from "./script-registry.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import {
@@ -26,7 +26,7 @@ import {
   type ServerScriptContext,
 } from "./server-scripts.ts";
 import type { ComponentManifest } from "./component-manifest.ts";
-import type { RenderHost } from "./request-render.ts";
+import { requestRoutePath, type RenderHost } from "./request-render.ts";
 
 const identity = (input: string): string => input;
 
@@ -34,15 +34,30 @@ const identity = (input: string): string => input;
 export const hashHex = (input: string): string =>
   createHash("sha256").update(input).digest("hex");
 
+const nameHashers = new WeakMap<ComponentManifest, (input: string) => string>();
+
 /**
  * The scoped-name hash for a manifest: the build's attribute-name hash when
  * it was built with `minify.identifiers`, identity otherwise. A renderer
  * that picked the wrong one would pass in dev and break only in built output.
+ * Not `getAttributeNameHash` itself: its process-wide cache is never cleared
+ * in production, and the names a request hashes embed request instance ids,
+ * so it would grow with every request. One bounded hasher per manifest
+ * (name-hash.ts, the algorithm `getAttributeNameHash` uses) instead.
  */
 export const hashNameFor = (
   manifest: ComponentManifest,
-): ((input: string) => string) =>
-  manifest.identifiers ? getAttributeNameHash : identity;
+): ((input: string) => string) => {
+  if (!manifest.identifiers) return identity;
+  let hash = nameHashers.get(manifest);
+  if (!hash) {
+    hash = createNameHasher((input) =>
+      createHash("sha256").update(input).digest(),
+    );
+    nameHashers.set(manifest, hash);
+  }
+  return hash;
+};
 
 /**
  * How a message names the manifest: under the configured output directory,
@@ -154,7 +169,7 @@ export const createNodeRenderHost = (
     manifest,
     hashName: hashNameFor(manifest),
     hashHex,
-    httpPath: new URL(request.url).pathname,
+    httpPath: requestRoutePath(request.url),
     timeoutMs,
     runComponentJob: (id, signal, budgetMs) => {
       const job = jobs[id];

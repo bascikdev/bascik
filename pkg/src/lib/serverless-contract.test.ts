@@ -105,6 +105,13 @@ describe("serverless contract: host-neutral runtime boundary", () => {
       // The request-time renderer itself (phase 3) and the runtime entry
       // adapters bundle, which re-exports it.
       resolve(here, "request-render.ts"),
+      // What a Worker host applies to component script output itself, and
+      // the scoped-name hash it computes from its own sha256 (phase 4).
+      resolve(here, "output-scope.ts"),
+      resolve(here, "name-hash.ts"),
+      // The ANSI stripping Node applies to every script's output, so a
+      // Worker sends the same bytes.
+      resolve(here, "ansi-escapes.ts"),
       resolve(here, "../runtime.ts"),
     ];
     for (const entry of entries) {
@@ -131,6 +138,12 @@ describe("serverless contract: host-neutral runtime boundary", () => {
     expect(typeof runtime.RequestRenderError).toBe("function");
     expect(typeof runtime.expandComponents).toBe("function");
     expect(typeof runtime.instantiateTemplate).toBe("function");
+    expect(typeof runtime.applyOutputScope).toBe("function");
+    expect(typeof runtime.decodeOutputScope).toBe("function");
+    expect(typeof runtime.nameHashFromDigest).toBe("function");
+    expect(typeof runtime.createNameHasher).toBe("function");
+    expect(typeof runtime.requestRoutePath).toBe("function");
+    expect(typeof runtime.stripAnsiEscapeCodes).toBe("function");
   });
 
   it("negative control: the Node runtime entrypoints still fail the boundary", async () => {

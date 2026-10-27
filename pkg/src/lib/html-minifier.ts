@@ -519,7 +519,14 @@ export const fragmentContexts = (
   spans: readonly HtmlRange[],
   outer: FragmentContext = DOCUMENT_FRAGMENT_CONTEXT,
 ): FragmentContext[] => {
-  const results: FragmentContext[] = spans.map(() => ({ ...outer }));
+  // `beforeIsSpan`/`afterIsSpan` name neighbors among THESE spans: the outer
+  // context's flags are about the spans of the page around `html` and must
+  // not be inherited by a span at its edge (prompt 157).
+  const results: FragmentContext[] = spans.map(() => ({
+    ...outer,
+    beforeIsSpan: false,
+    afterIsSpan: false,
+  }));
   if (outer.verbatim || spans.length === 0) return results;
   const prefix = openingMarkup(outer);
   const shift = prefix.length;

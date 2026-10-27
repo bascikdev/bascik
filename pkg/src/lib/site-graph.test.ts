@@ -642,11 +642,40 @@ describe("SiteGraph.components and the serverless artifacts (prompt 157)", () =>
             stagedPath: "",
           },
           owner: expect.stringContaining("src/components/srv-card.html"),
+          // The sidecar entry's scope travels with the job (phase 4), so an
+          // adapter styles the component's script output as Node does.
+          outputScope,
         });
         expect(Object.keys(graph.components?.jobs ?? {})).toEqual([SRV_JOB_ID]);
         expect(Object.keys(graph.pages["/dynamic"].jobs)).toEqual([
           "job-inline",
         ]);
+        // A page-level script has no scope, and no `outputScope` key at all.
+        expect(graph.pages["/dynamic"].jobs["job-inline"]).not.toHaveProperty(
+          "outputScope",
+        );
+      },
+    );
+  });
+
+  it("a page job from a component placed statically carries the component's output scope", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": sidecar({
+          "job-inline": { ...pageEntry, outputScope },
+        }),
+        ".bascik/components.json": manifest({}),
+      },
+      async (testDir, distDir) => {
+        const graph = await readSiteGraph({
+          projectRoot: testDir,
+          distDir,
+          version: "1.0.0",
+        });
+        expect(graph.pages["/dynamic"].jobs["job-inline"].outputScope).toBe(
+          outputScope,
+        );
       },
     );
   });

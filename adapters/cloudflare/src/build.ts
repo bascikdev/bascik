@@ -8,6 +8,7 @@ import {
   pageAliasesFor,
   type AdapterBuildContext,
   type AdapterBuildResult,
+  type SiteGraphJob,
 } from "@bascik/bascik/adapter";
 import { resolve, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +22,7 @@ import {
 } from "./compat.js";
 import { resolveWorkerName } from "./config.js";
 import { build as esbuildBuild } from "esbuild";
+import { manifestHasComponents } from "@bascik/bascik/runtime";
 
 export { pageAliasesFor };
 
@@ -84,6 +86,14 @@ export const detectControlCollisions = (
   return problems;
 };
 
+const NO_COMPONENTS = "bascik-no-components";
+
+/** component-host.ts's exports for a site without components: nothing to render. */
+const COMPONENT_HOST_STUB = [
+  "export const scopeJobOutput = (_job, output) => output;",
+  "export const componentExecution = () => null;",
+].join("\n");
+
 export const build = async (
   context: AdapterBuildContext,
 ): Promise<AdapterBuildResult> => {
@@ -126,23 +136,67 @@ export const build = async (
     `import { createCloudflareWorker } from ${JSON.stringify(runtimeFile)};`,
   );
 
+  const specifierOf = (job: SiteGraphJob): string =>
+    job.source.kind === "module" ? job.source.path : job.source.stagedPath;
+  // `outputScope` and `owner` are written only when given, so a site
+  // without component scripts emits the entry it always did. The owner goes
+  // with component jobs only: the Worker's log of a failing one names the
+  // component file from it, since the bundled stack never does.
+  const jobLiteral = (
+    id: string,
+    mode: SiteGraphJob["mode"],
+    outputScope: string | undefined,
+    specifier: string,
+    owner?: string,
+  ): string =>
+    // codeql[js/bad-code-sanitization] Emits a standalone JS module (never inline HTML), and JSON.stringify yields valid JS string literals.
+    `${JSON.stringify(id)}: { id: ${JSON.stringify(id)}, mode: ${JSON.stringify(mode)}, ${outputScope ? `outputScope: ${JSON.stringify(outputScope)}, ` : ""}${owner ? `owner: ${JSON.stringify(owner)}, ` : ""}load: () => import(${JSON.stringify(specifier)}) }`;
+
+  // Request-time components (prompt 157): the manifest and the component
+  // scripts it names, emitted only when the manifest has a component the
+  // renderer can expand (the runtime's own predicate, so the bundle never
+  // carries a renderer the Worker would never call). A static site, or one
+  // whose components are all unsupported, keeps its entry byte for byte.
+  // The scripts are owned by their component file, so an unsupported import
+  // is reported there.
+  const components = manifestHasComponents(graph.components?.manifest)
+    ? graph.components
+    : undefined;
+  let manifestLiteral: string | undefined;
+  if (components) {
+    const manifestScopes = new Map<string, string | undefined>();
+    for (const entry of Object.values(components.manifest.components))
+      for (const job of entry.jobs) manifestScopes.set(job.id, job.outputScope);
+    const componentJobLiterals: string[] = [];
+    for (const [id, job] of Object.entries(components.jobs)) {
+      const specifier = specifierOf(job);
+      addOwner(specifier, job.owner);
+      componentJobLiterals.push(
+        jobLiteral(
+          id,
+          job.mode,
+          job.outputScope ?? manifestScopes.get(id),
+          specifier,
+          job.owner,
+        ),
+      );
+    }
+    manifestLiteral = JSON.stringify(components.manifest);
+    lines.push(`const componentManifest = ${manifestLiteral};`);
+    lines.push(
+      `const componentJobs = { ${componentJobLiterals.join(",\n  ")} };`,
+    );
+  }
+
   const pageLiterals: string[] = [];
   for (const [httpPath, page] of Object.entries(graph.pages).sort(([a], [b]) =>
     a < b ? -1 : a > b ? 1 : 0,
   )) {
     const jobLiterals: string[] = [];
     for (const [id, job] of Object.entries(page.jobs)) {
-      let specifier: string;
-      if (job.source.kind === "module") {
-        specifier = job.source.path;
-      } else {
-        specifier = job.source.stagedPath;
-      }
+      const specifier = specifierOf(job);
       addOwner(specifier, job.owner);
-      jobLiterals.push(
-        // codeql[js/bad-code-sanitization] Emits a standalone JS module (never inline HTML), and JSON.stringify yields valid JS string literals.
-        `${JSON.stringify(id)}: { id: ${JSON.stringify(id)}, mode: ${JSON.stringify(job.mode)}, load: () => import(${JSON.stringify(specifier)}) }`,
-      );
+      jobLiterals.push(jobLiteral(id, job.mode, job.outputScope, specifier));
     }
     pageLiterals.push(
       `${JSON.stringify(httpPath)}: { path: ${JSON.stringify(httpPath)}, is404: ${page.is404}, segments: ${JSON.stringify(page.segments)}, jobs: { ${jobLiterals.join(", ")} } }`,
@@ -168,6 +222,10 @@ export const build = async (
   if (hasStaticNotFoundPage) lines.push(`  staticNotFoundPage: true,`);
   lines.push(`  pages: { ${pageLiterals.join(",\n    ")} },`);
   lines.push(`  apiRoutes: [ ${routeLiterals.join(",\n    ")} ],`);
+  if (components)
+    lines.push(
+      `  components: { manifest: componentManifest, jobs: componentJobs },`,
+    );
   lines.push(`};`);
   lines.push(`export default createCloudflareWorker(graph);`);
 
@@ -194,6 +252,24 @@ export const build = async (
       {
         name: "bascik-request-time-graph",
         setup(buildInstance) {
+          // A site whose manifest has nothing to render never renders a
+          // component, so its Worker gets a stub in place of the component
+          // host (prompt 157): no renderer and no `node:crypto` in its
+          // bundle. (Not byte for byte the bundle before prompt 157:
+          // runtime.ts itself changed.)
+          if (!components) {
+            buildInstance.onResolve(
+              { filter: /^\.\/component-host\.js$/ },
+              (args) =>
+                args.importer === runtimeFile
+                  ? { path: "component-host", namespace: NO_COMPONENTS }
+                  : undefined,
+            );
+            buildInstance.onLoad(
+              { filter: /.*/, namespace: NO_COMPONENTS },
+              () => ({ contents: COMPONENT_HOST_STUB, loader: "js" }),
+            );
+          }
           buildInstance.onResolve({ filter: /^@\// }, (args) => ({
             errors: [
               {
@@ -334,14 +410,25 @@ export const build = async (
   }
 
   const bundleBytes = Buffer.byteLength(workerCode, "utf8");
+  const notes = [
+    `compatibility date: ${CLOUDFLARE_COMPATIBILITY_DATE}`,
+    `compatibility flags: ${CLOUDFLARE_COMPATIBILITY_FLAGS.join(", ")}`,
+    `invocation routes: ${invocationRoutes.include.length} rules`,
+  ];
+  // The manifest is part of the bundle; its share of bundleBytes is shown so
+  // a growing component library is visible against the Worker size limit.
+  if (components && manifestLiteral !== undefined) {
+    const count = Object.keys(components.manifest.components).length;
+    notes.push(
+      `component manifest: ${Buffer.byteLength(manifestLiteral, "utf8")} bytes (${count} ${count === 1 ? "component" : "components"})`,
+    );
+  }
   return {
     workerPath,
     publicDir,
     bundleBytes,
-    notes: [
-      `compatibility date: ${CLOUDFLARE_COMPATIBILITY_DATE}`,
-      `compatibility flags: ${CLOUDFLARE_COMPATIBILITY_FLAGS.join(", ")}`,
-      `invocation routes: ${invocationRoutes.include.length} rules`,
-    ],
+    notes,
+    // The runtime renders component tags in script output (prompt 157).
+    components: true,
   };
 };

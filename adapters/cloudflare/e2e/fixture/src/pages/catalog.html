@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <demo-favicons />
+    <title>Bascik · Product Catalog (Components from Server Scripts)</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #18191b;
+        --surface: #1e2022;
+        --surface-elevated: #242628;
+        --text: #f0f1f2;
+        --text-muted: #8d929e;
+        --border: rgba(255, 255, 255, 0.08);
+        --border-hover: rgba(211, 255, 141, 0.35);
+        --accent: #d3ff8d;
+        --accent-hover: #bbf06a;
+        --accent-light: rgba(211, 255, 141, 0.12);
+        --accent-border: rgba(211, 255, 141, 0.22);
+        --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 1.5rem 1rem 1.25rem;
+        line-height: 1.5;
+        color: var(--text);
+        background: var(--bg);
+        display: flex;
+        flex-direction: column;
+        min-height: 100dvh;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      header {
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 1.25rem;
+        margin-bottom: 1.25rem;
+      }
+
+      .brand-nav {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+        font-size: 0.8rem;
+      }
+
+      .brand-pill {
+        display: inline-flex;
+        align-items: center;
+        background: var(--accent);
+        color: #18191b;
+        padding: 0.25rem 0.65rem;
+        border-radius: 9999px;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        white-space: nowrap;
+      }
+
+      .back-link {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 0.85rem;
+      }
+
+      .back-link:hover {
+        text-decoration: underline;
+      }
+
+      h1 {
+        font-size: clamp(1.35rem, 3.8vw, 1.75rem);
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        line-height: 1.2;
+        margin-bottom: 0.5rem;
+        color: var(--text);
+      }
+
+      .subtitle {
+        color: var(--text-muted);
+        font-size: 0.95rem;
+        line-height: 1.5;
+      }
+
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1.25rem;
+        background: var(--surface);
+        box-shadow: var(--card-shadow);
+        margin-bottom: 1.25rem;
+      }
+
+      .card h2 {
+        font-size: 1.1rem;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        margin-bottom: 0.75rem;
+        color: var(--text);
+      }
+
+      .next-nav {
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
+
+      .next-nav a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .next-nav a:hover {
+        text-decoration: underline;
+      }
+
+      footer {
+        margin-top: auto;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--border);
+        color: var(--text-muted);
+        font-size: 0.8rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      @media (min-width: 540px) {
+        footer {
+          flex-direction: row;
+          justify-content: space-between;
+          align-items: center;
+        }
+      }
+
+      footer a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      footer a:hover {
+        text-decoration: underline;
+      }
+
+      .catalog-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 0.75rem;
+      }
+
+      .search {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+      }
+
+      .search input {
+        flex: 1;
+        min-width: 0;
+        padding: 0.45rem 0.65rem;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--surface-elevated);
+        color: var(--text);
+        font: inherit;
+      }
+
+      .search button {
+        padding: 0.45rem 0.9rem;
+        border-radius: 6px;
+        border: 0;
+        background: var(--accent);
+        color: #18191b;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .card p.explain {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        margin-bottom: 0.85rem;
+      }
+
+      .empty {
+        color: var(--text-muted);
+        font-size: 0.9rem;
+      }
+
+      pre {
+        overflow-x: auto;
+        padding: 0.75rem;
+        border-radius: 6px;
+        background: var(--surface-elevated);
+        font-size: 0.8rem;
+      }
+    </style>
+  </head>
+
+  <body>
+    <header>
+      <div class="brand-nav">
+        <span class="brand-pill">Components from Server Scripts</span>
+        <a class="back-link" href="/">← Back to Demo Home</a>
+      </div>
+      <h1 data-testid="catalog-heading">Product Catalog</h1>
+      <p class="subtitle">
+        A <code>&lt;script data-bascik-server&gt;</code> returns one
+        <code>&lt;product-card&gt;</code> tag per product, and the Worker
+        renders each tag into the component's markup and scoped CSS at request
+        time, exactly as the build renders a tag written in a page.
+      </p>
+    </header>
+
+    <main>
+      <div class="card">
+        <h2>Search the catalog</h2>
+        <p class="explain">
+          The list below is filtered by <code>?q=</code> on every request. Try
+          <a href="/catalog?q=grinder">grinder</a> or
+          <a href="/catalog?q=nothing-matches">a query with no match</a>.
+        </p>
+        <form class="search" method="get" action="/catalog">
+          <input
+            type="search"
+            name="q"
+            placeholder="Search products"
+            aria-label="Search products"
+            data-testid="catalog-search"
+          />
+          <button type="submit">Search</button>
+        </form>
+        <div class="catalog-grid" data-testid="catalog-results">
+          <script data-bascik-server>
+            export default function (request) {
+              const escape = (s) =>
+                String(s)
+                  .replace(/&/g, "&amp;")
+                  .replace(/</g, "&lt;")
+                  .replace(/"/g, "&quot;");
+              const products = [
+                { name: "Pour-over kettle", price: "$48", badge: "New" },
+                { name: "Ceramic dripper", price: "$22" },
+                { name: "Burr grinder", price: "$129", badge: "Best seller" },
+                { name: "Glass carafe", price: "$31" },
+                { name: "Filters & holder", price: "$9" },
+              ];
+              const q = (new URL(request.url).searchParams.get("q") ?? "")
+                .trim()
+                .toLowerCase();
+              const matches = products.filter((p) =>
+                p.name.toLowerCase().includes(q),
+              );
+              if (matches.length === 0) {
+                return `<p class="empty" data-testid="catalog-empty">No products match "${escape(q)}".</p>`;
+              }
+              return matches
+                .map(
+                  (p) =>
+                    `<product-card data-bascik-prop-name="${escape(p.name)}" data-bascik-prop-price="${escape(p.price)}">` +
+                    (p.badge ? `<span>${escape(p.badge)}</span>` : "") +
+                    `</product-card>`,
+                )
+                .join("");
+            }
+          </script>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Live stock (a nested server script)</h2>
+        <p class="explain">
+          This tile is a <code>&lt;product-card-live&gt;</code>, which carries
+          its own server script. The Worker runs that script once for the
+          rendered tile with the current request and splices its stock line into
+          the tile.
+        </p>
+        <div class="catalog-grid" data-testid="catalog-live">
+          <script data-bascik-server>
+            export default function () {
+              return (
+                `<product-card-live data-bascik-prop-name="Burr grinder" data-bascik-prop-price="$129">` +
+                `<span>Live</span>` +
+                `</product-card-live>`
+              );
+            }
+          </script>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>What the script returns</h2>
+        <p class="explain">
+          This sample is page markup, not script output, so it stays text: only
+          what a server or stream script returns is rendered at request time.
+        </p>
+        <pre
+          data-testid="catalog-code"
+        ><code>&lt;product-card data-bascik-prop-name="Burr grinder" data-bascik-prop-price="$129"&gt;&lt;span&gt;Best seller&lt;/span&gt;&lt;/product-card&gt;</code></pre>
+      </div>
+
+      <p class="next-nav">
+        Next: Watch the same tiles stream in batches on the
+        <a href="/catalog-stream">streamed catalog</a>, or go back to
+        <a href="/server">Server Scripts</a>.
+      </p>
+    </main>
+
+    <footer data-testid="catalog-footer">
+      <div>Bascik · Components from Server Scripts on Cloudflare Workers</div>
+      <div>
+        <a href="https://bascik.dev/server-scripts">Server Scripts Guide →</a>
+      </div>
+    </footer>
+  </body>
+</html>

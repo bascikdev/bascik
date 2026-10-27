@@ -4,6 +4,7 @@ import { cpus, totalmem, tmpdir } from "node:os";
 import { join } from "node:path";
 import { isMainThread } from "node:worker_threads";
 import { BascikConfig } from "./config.ts";
+import { stripAnsiEscapeCodes } from "./ansi-escapes.ts";
 
 /**
  * Largest environment value passed to a child directly. Linux rejects any
@@ -67,11 +68,8 @@ export const spillLargeEnv = async (
   };
 };
 
-export const stripAnsiEscapeCodes = (value: string): string =>
-  value
-    .replace(/\u001B\[[0-9;?]*[ -/]*[@-~]/g, "")
-    .replace(/\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g, "")
-    .replace(/\u001B[@-Z\\-_]/g, "");
+// Portable, so a Worker strips the same sequences (prompt 157).
+export { stripAnsiEscapeCodes };
 
 /** Conservative memory reserved for each build-script child process. */
 export const MEM_PER_CHILD = 120 * 1024 * 1024; // 120 MB

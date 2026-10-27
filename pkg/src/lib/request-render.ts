@@ -150,6 +150,24 @@ export class RequestRenderError extends Error {
   }
 }
 
+/**
+ * The route a host gives the renderer as `httpPath`: the request URL's
+ * pathname, percent-decoded the way page lookup decodes it, so every
+ * spelling of one route (`/catalog`, `/c%61talog`) salts the same ids. A
+ * host that passed the raw pathname would mint new ids, and new names to
+ * hash, for each spelling a client invents, and Node (which sees the raw
+ * path) and workerd (which sees a normalized one) would disagree. A
+ * malformed escape is kept as written; routing refuses it anyway.
+ */
+export const requestRoutePath = (url: string): string => {
+  const pathname = new URL(url).pathname;
+  try {
+    return decodeURIComponent(pathname);
+  } catch {
+    return pathname;
+  }
+};
+
 /** The request id shape: `r` + 7 hex, disjoint from the build's 8 hex (D2). */
 export const REQUEST_INSTANCE_ID_RE = /^r[0-9a-f]{7}$/;
 
@@ -157,8 +175,9 @@ export const REQUEST_INSTANCE_ID_RE = /^r[0-9a-f]{7}$/;
  * Mint the request-time instance id for the `ordinal`-th instance of
  * `componentName` in the output of job `jobId` on `httpPath`, salted like
  * `deriveInstanceId` against the ids already issued for the request. The job
- * id and a per-job ordinal make it deterministic regardless of the order in
- * which jobs complete; the shape keeps it disjoint from every build id.
+ * id (for a nested job's output, its parent's key and marker site) and a
+ * per-job ordinal make it deterministic regardless of the order in which
+ * jobs complete; the shape keeps it disjoint from every build id.
  */
 export const requestInstanceId = (
   hashHex: (input: string) => string,
@@ -220,8 +239,13 @@ export const rewriteIdReferenceTarget = (
   return value;
 };
 
-/** The entries a renderer can expand: recorded as a template, not refused. */
-const isRenderable = (
+/**
+ * The entries a renderer can expand: recorded as a template, not refused.
+ * The one predicate for "this manifest has something to render": the
+ * renderer, the core's adapter warning and the Cloudflare build's stub
+ * decision all use it, so they cannot disagree.
+ */
+export const isRenderable = (
   entry: ManifestEntry,
 ): entry is ManifestEntry & {
   template: NonNullable<ManifestEntry["template"]>;
@@ -824,7 +848,11 @@ export const wrapRunner = (
           nested.includes("<")
             ? await renderFragment(
                 nested,
-                marker.id,
+                // Keyed by the parent job and the marker's site, never by the
+                // component script id alone: every instance of a component
+                // runs the same script, so siblings would share one base id
+                // and the salt order would follow nested completion order.
+                `${jobId}/${n}`,
                 mode,
                 depth + 1,
                 signal,

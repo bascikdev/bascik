@@ -21,6 +21,7 @@ import { resolveAdapterTarget } from "./adapter-resolution.ts";
 import { readSiteGraph, detectPublicCollisions } from "./site-graph.ts";
 import { rewriteModuleSpecifiers } from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
+import { isRenderable } from "./request-render.ts";
 import type { DeployTarget } from "./cli.ts";
 import type {
   SiteGraph,
@@ -300,7 +301,7 @@ export const emitServerlessArtifacts = async (
   // still deploys; the author hears which components that affects.
   const renderable = graph.components
     ? Object.values(graph.components.manifest.components)
-        .filter((entry) => entry.template !== null && !entry.unsupported)
+        .filter(isRenderable)
         .map((entry) => entry.name)
         .sort()
     : [];

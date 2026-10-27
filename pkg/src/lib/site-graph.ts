@@ -243,6 +243,9 @@ export const readSiteGraph = async (
     entry: ServerScriptEntry,
     owner: string,
   ): SiteGraphJob => {
+    // A component script's markup gets the component's element classes on
+    // every host (prompt 157); the key is absent for page-level scripts.
+    const scope = entry.outputScope ? { outputScope: entry.outputScope } : {};
     const containingDir = entry.sourceFile
       ? dirname(resolve(projectRoot, entry.sourceFile))
       : projectRoot;
@@ -257,6 +260,7 @@ export const readSiteGraph = async (
         mode: entry.mode,
         source: { kind: "module", path: modulePath },
         owner,
+        ...scope,
       };
     }
     const rewritten = rewriteModuleSpecifiers(entry.source, containingDir, {
@@ -267,6 +271,7 @@ export const readSiteGraph = async (
       mode: entry.mode,
       source: { kind: "inline", code: rewritten, stagedPath: "" },
       owner,
+      ...scope,
     };
   };
 
