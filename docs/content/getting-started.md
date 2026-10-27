@@ -34,6 +34,14 @@ If you omit `-y`, the CLI steps through the setup prompts interactively.
 
 It does not create `bascik.config.ts` because the starter uses Bascik's built-in defaults.
 
+To start a site that deploys to Cloudflare Workers, pass `--template cloudflare`. You get the same starter plus the [Cloudflare adapter](/deployment/cloudflare) and Wrangler as dev dependencies, a `build` script that emits the Workers bundle, `preview` and `deploy` scripts, and a demo page with a server script and an API route that run in the Worker. Without `--template`, the interactive prompts ask the same question.
+
+```sh
+npm create bascik@rc my-site -- --template cloudflare
+```
+
+The `--` matters: npm keeps flags placed before it for itself and does not pass them on, so `--template` has to follow a `--`. `-y` works on either side of it because `create-bascik` also reads npm's own `yes` setting, so `npm create bascik@rc my-site -y -- --template cloudflare` scaffolds, installs, and starts the dev server without a single prompt.
+
 ## Manual Setup
 
 To add Bascik to an existing project:

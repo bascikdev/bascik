@@ -1,13 +1,26 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline/promises";
 import { join } from "node:path";
-import { parseCliOptions } from "./cli.js";
+import { parseCliOptions, type CliOptions } from "./cli.js";
 import { runNpm } from "./npm.js";
-import { scaffold, validateProjectName } from "./scaffold.js";
+import { scaffold, validateProjectName, type Template } from "./scaffold.js";
 
 const args = process.argv.slice(2);
-const { yesFlag, noDevFlag, noInstallFlag } = parseCliOptions(args);
-const nameArg = args.find((a) => !a.startsWith("-"));
+
+let options: CliOptions;
+try {
+  options = parseCliOptions(args);
+} catch (err) {
+  console.error(`\nError: ${(err as Error).message}\n`);
+  process.exit(1);
+}
+const {
+  yesFlag,
+  noDevFlag,
+  noInstallFlag,
+  template: templateArg,
+  projectName: nameArg,
+} = options;
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 
@@ -27,8 +40,24 @@ if (error) {
   process.exit(1);
 }
 
+let template: Template;
+
+if (templateArg) {
+  template = templateArg;
+} else if (yesFlag) {
+  template = "default";
+} else {
+  const cloudflareAnswer = await rl.question(
+    "Deploy to Cloudflare Workers? (y/N) ",
+  );
+  // The other prompts default to yes, so "yes" typed in full is accepted here too.
+  template = /^y(es)?$/i.test(cloudflareAnswer.trim())
+    ? "cloudflare"
+    : "default";
+}
+
 console.log(`\nCreating Bascik project "${projectName}"…\n`);
-await scaffold(projectName);
+await scaffold(projectName, process.cwd(), { template });
 console.log(`✓ Scaffolded ${projectName}/\n`);
 
 let shouldInstall: boolean;
@@ -72,4 +101,9 @@ if (shouldDev) {
   if (!shouldInstall) console.log(`  cd ${projectName}`);
   if (!shouldInstall) console.log("  npm install");
   console.log("  npm run dev\n");
+}
+
+if (template === "cloudflare") {
+  console.log("To preview in workerd:  npm run build && npm run preview");
+  console.log("To deploy:              npm run build && npm run deploy\n");
 }

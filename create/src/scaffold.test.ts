@@ -3,11 +3,14 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseCliOptions } from "./cli.js";
 import {
+  CLOUDFLARE_E2E_APP_SPEC,
+  CLOUDFLARE_GITIGNORE,
   E2E_APP_SPEC,
   FEAT_CARD_CSS,
   FEAT_CARD_HTML,
   FEAT_CARD_TEST,
   GITIGNORE,
+  HELLO_API_ROUTE,
   MY_COUNTER_CSS,
   MY_COUNTER_HTML,
   MY_COUNTER_TEST,
@@ -27,6 +30,7 @@ import {
   VSCODE_LAUNCH_JSON,
   aboutPage,
   contactPage,
+  edgePage,
   indexPage,
   notFoundPage,
   scaffold,
@@ -66,6 +70,8 @@ describe("parseCliOptions", () => {
       yesFlag: true,
       noDevFlag: false,
       noInstallFlag: false,
+      template: undefined,
+      projectName: "my-site",
     });
   });
 
@@ -74,6 +80,8 @@ describe("parseCliOptions", () => {
       yesFlag: true,
       noDevFlag: true,
       noInstallFlag: false,
+      template: undefined,
+      projectName: "my-site",
     });
   });
 
@@ -84,7 +92,111 @@ describe("parseCliOptions", () => {
       yesFlag: true,
       noDevFlag: true,
       noInstallFlag: true,
+      template: undefined,
+      projectName: "my-site",
     });
+  });
+
+  it("leaves the project name undefined when no positional is given", () => {
+    expect(parseCliOptions(["-y"]).projectName).toBeUndefined();
+    expect(parseCliOptions([]).template).toBeUndefined();
+  });
+
+  it("reads --template as a two-token form without consuming it as the project name", () => {
+    const options = parseCliOptions(["--template", "cloudflare", "my-site"]);
+    expect(options.template).toBe("cloudflare");
+    expect(options.projectName).toBe("my-site");
+    expect(parseCliOptions(["my-site", "--template", "cloudflare"])).toEqual(
+      options,
+    );
+  });
+
+  it("reads --template=<name>", () => {
+    const options = parseCliOptions(["my-site", "--template=cloudflare", "-y"]);
+    expect(options.template).toBe("cloudflare");
+    expect(options.projectName).toBe("my-site");
+    expect(options.yesFlag).toBe(true);
+  });
+
+  it("accepts default and its static alias, ignoring case", () => {
+    expect(parseCliOptions(["--template", "default"]).template).toBe("default");
+    expect(parseCliOptions(["--template=static"]).template).toBe("default");
+    expect(parseCliOptions(["--template", "Cloudflare"]).template).toBe(
+      "cloudflare",
+    );
+  });
+
+  it("rejects an unknown template with the available choices", () => {
+    expect(() => parseCliOptions(["--template", "vercel"])).toThrow(
+      'Unknown template "vercel". Choose one of: default, cloudflare, static.',
+    );
+    expect(() => parseCliOptions(["--template=vercel"])).toThrow(
+      /Unknown template/,
+    );
+  });
+
+  it("rejects --template without a value, including when a flag follows it", () => {
+    expect(() => parseCliOptions(["--template"])).toThrow(
+      "--template needs a value. Choose one of: default, cloudflare, static.",
+    );
+    expect(() => parseCliOptions(["--template", "-y"])).toThrow(
+      /--template needs a value/,
+    );
+    expect(() => parseCliOptions(["--template="])).toThrow(
+      /--template needs a value/,
+    );
+  });
+
+  // `npm create bascik my-site --template cloudflare` (no `--`) reaches the CLI
+  // as ["my-site", "cloudflare"]: npm keeps the flag and forwards its value as a
+  // plain argument, so a second positional must be reported, not dropped.
+  it("rejects a stray second positional and points at the -- form", () => {
+    expect(() => parseCliOptions(["my-site", "cloudflare", "-y"], {})).toThrow(
+      'Unexpected argument "cloudflare". When running through npm create, put flags after "--": npm create bascik@rc my-site -- --template cloudflare',
+    );
+  });
+
+  it("honors npm's consumed -y through npm_config_yes", () => {
+    expect(parseCliOptions(["my-site"], { npm_config_yes: "true" })).toEqual({
+      yesFlag: true,
+      noDevFlag: false,
+      noInstallFlag: false,
+      template: undefined,
+      projectName: "my-site",
+    });
+    expect(parseCliOptions(["my-site"], {}).yesFlag).toBe(false);
+    expect(parseCliOptions(["my-site"], { npm_config_yes: "" }).yesFlag).toBe(
+      false,
+    );
+  });
+
+  it("honors npm's consumed --template=<name> through npm_config_template", () => {
+    expect(
+      parseCliOptions(["my-site"], { npm_config_template: "cloudflare" })
+        .template,
+    ).toBe("cloudflare");
+    expect(
+      parseCliOptions(["my-site"], { npm_config_template: "static" }).template,
+    ).toBe("default");
+    expect(() =>
+      parseCliOptions(["my-site"], { npm_config_template: "vercel" }),
+    ).toThrow(/Unknown template "vercel"/);
+  });
+
+  it("prefers an explicit --template over npm_config_template", () => {
+    expect(
+      parseCliOptions(["my-site", "--template", "default"], {
+        npm_config_template: "cloudflare",
+      }).template,
+    ).toBe("default");
+  });
+
+  it("reports the two-token form npm reduced to npm_config_template=true", () => {
+    expect(() =>
+      parseCliOptions(["my-site"], { npm_config_template: "true" }),
+    ).toThrow(
+      'npm kept --template for itself and dropped its value. Put flags after "--": npm create bascik@rc my-site -- --template cloudflare',
+    );
   });
 });
 
@@ -160,9 +272,11 @@ describe("PACKAGE_JSON", () => {
         "utf8",
       ),
     ) as {
+      version: string;
       peerDependencies: Record<string, string>;
     };
     const scaffolded = JSON.parse(PACKAGE_JSON("my-app"));
+    const cloudflare = JSON.parse(PACKAGE_JSON("my-app", "cloudflare"));
 
     expect(scaffolded.dependencies["@bascik/bascik"]).toBe(
       `^${pkgJson.version}`,
@@ -173,6 +287,9 @@ describe("PACKAGE_JSON", () => {
     expect(adapterJson.peerDependencies["@bascik/bascik"]).toBe(
       `^${pkgJson.version}`,
     );
+    expect(cloudflare.devDependencies["@bascik/adapter-cloudflare"]).toBe(
+      `^${adapterJson.version}`,
+    );
   });
 
   it("uses the supplied name", () => {
@@ -180,9 +297,56 @@ describe("PACKAGE_JSON", () => {
     expect(pkg.name).toBe("cool-site");
   });
 
-  it("declares a Node 24 engine floor matching the @types/node target", () => {
+  it("declares the same Node 22.18 engine floor as the bascik package", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
-    expect(pkg.engines.node).toBe(">=24.0.0");
+    expect(pkg.engines.node).toBe(">=22.18.0");
+  });
+
+  it("treats the default template the same as no template", () => {
+    expect(PACKAGE_JSON("my-app", "default")).toBe(PACKAGE_JSON("my-app"));
+  });
+
+  it("leaves wrangler and the adapter out of the default template", () => {
+    const pkg = JSON.parse(PACKAGE_JSON("my-app"));
+    expect(pkg.devDependencies["@bascik/adapter-cloudflare"]).toBeUndefined();
+    expect(pkg.devDependencies.wrangler).toBeUndefined();
+    expect(pkg.scripts.preview).toBeUndefined();
+    expect(pkg.scripts.deploy).toBeUndefined();
+  });
+
+  describe("cloudflare template", () => {
+    const pkg = JSON.parse(PACKAGE_JSON("my-app", "cloudflare"));
+
+    it("builds the Cloudflare bundle and keeps the Bascik dev server as the authoring loop", () => {
+      expect(pkg.scripts.dev).toBe("bascik");
+      expect(pkg.scripts.build).toBe("bascik --build --target cloudflare");
+    });
+
+    it("previews and deploys from the emitted target directory", () => {
+      expect(pkg.scripts.preview).toBe(
+        "cd dist/.bascik/cloudflare && wrangler dev",
+      );
+      expect(pkg.scripts.deploy).toBe(
+        "cd dist/.bascik/cloudflare && wrangler deploy",
+      );
+    });
+
+    it("adds the adapter and a caret range on the current wrangler major", () => {
+      expect(pkg.devDependencies["@bascik/adapter-cloudflare"]).toMatch(
+        /^\^\d/,
+      );
+      expect(pkg.devDependencies.wrangler).toMatch(/^\^4\.\d+\.\d+$/);
+    });
+
+    it("keeps every default script and dependency", () => {
+      const base = JSON.parse(PACKAGE_JSON("my-app"));
+      for (const key of Object.keys(base.scripts)) {
+        if (key !== "build") expect(pkg.scripts[key]).toBe(base.scripts[key]);
+      }
+      expect(pkg.dependencies).toEqual(base.dependencies);
+      expect(pkg.devDependencies).toMatchObject(base.devDependencies);
+      expect(pkg.engines).toEqual(base.engines);
+    });
   });
 });
 
@@ -212,6 +376,22 @@ describe("E2E_APP_SPEC", () => {
       "mobile navigation toggle expands and collapses menu",
     );
   });
+
+  it("does not mention the edge page", () => {
+    expect(E2E_APP_SPEC).not.toContain("/edge");
+    expect(E2E_APP_SPEC.endsWith("  });\n});\n")).toBe(true);
+  });
+});
+
+describe("CLOUDFLARE_E2E_APP_SPEC", () => {
+  it("extends the default spec with an edge page test", () => {
+    expect(CLOUDFLARE_E2E_APP_SPEC).toContain(
+      "mobile navigation toggle expands and collapses menu",
+    );
+    expect(CLOUDFLARE_E2E_APP_SPEC).toContain("page.goto('/edge?name=Ada')");
+    expect(CLOUDFLARE_E2E_APP_SPEC).toContain("getByTestId('edge-greeting')");
+    expect(CLOUDFLARE_E2E_APP_SPEC.endsWith("  });\n});\n")).toBe(true);
+  });
 });
 
 describe("VSCODE_LAUNCH_JSON", () => {
@@ -238,6 +418,56 @@ describe("GITIGNORE", () => {
     expect(GITIGNORE).toContain("dist/");
     expect(GITIGNORE).toContain("coverage/");
     expect(GITIGNORE).toContain(".pem");
+  });
+
+  it("does not ignore .wrangler/ in the default template", () => {
+    expect(GITIGNORE).not.toContain(".wrangler/");
+  });
+});
+
+describe("CLOUDFLARE_GITIGNORE", () => {
+  it("adds .wrangler/ after every default entry", () => {
+    expect(CLOUDFLARE_GITIGNORE.startsWith(GITIGNORE)).toBe(true);
+    expect(CLOUDFLARE_GITIGNORE).toBe(`${GITIGNORE}.wrangler/\n`);
+  });
+});
+
+describe("edgePage", () => {
+  const html = edgePage("My App");
+
+  it("uses the shared page shell with the brand", () => {
+    expect(html).toContain("<title>Edge - My App</title>");
+    expect(html).toContain("<site-meta />");
+    expect(html).toContain('<site-header data-bascik-prop-brand="My App" />');
+    expect(html).toContain('<site-footer data-bascik-prop-brand="My App" />');
+  });
+
+  it("renders the greeting from a data-bascik-server script with a default export", () => {
+    expect(html).toContain("<script data-bascik-server>");
+    expect(html).toContain("export default function (request)");
+    expect(html).toContain('searchParams.get("name")');
+    expect(html).toContain('data-testid="edge-greeting"');
+  });
+
+  it("escapes the query parameter before interpolating it", () => {
+    expect(html).toContain("escape(name)");
+    expect(html).toContain('"&": "&amp;"');
+    expect(html).toContain('"<": "&lt;"');
+  });
+
+  it("links to the API route", () => {
+    expect(html).toContain('href="/api/hello"');
+    expect(html).toContain("src/api/hello.ts");
+  });
+});
+
+describe("HELLO_API_ROUTE", () => {
+  it("exports a GET handler returning JSON that names the host platform", () => {
+    expect(HELLO_API_ROUTE).toContain("export const GET = async (");
+    expect(HELLO_API_ROUTE).toContain("request: Request");
+    expect(HELLO_API_ROUTE).toContain("Promise<Response>");
+    expect(HELLO_API_ROUTE).toContain("Response.json({");
+    expect(HELLO_API_ROUTE).toContain("context.platform?.name");
   });
 });
 
@@ -419,6 +649,20 @@ describe("page templates", () => {
     expect(html).toContain("<site-meta />");
   });
 
+  it("indexPage adds an edge feature card only for the cloudflare template", () => {
+    const plain = indexPage("My App");
+    const cloudflare = indexPage("My App", { template: "cloudflare" });
+    expect(plain).not.toContain('href="/edge"');
+    expect(plain.match(/<feat-card>/g)).toHaveLength(3);
+    expect(indexPage("My App", { template: "default" })).toBe(plain);
+    expect(cloudflare).toContain('href="/edge"');
+    expect(cloudflare.match(/<feat-card>/g)).toHaveLength(4);
+    // The extra card is an insertion: everything else on the page is unchanged.
+    const edgeCard =
+      /\n\s*<feat-card>\s*<div data-bascik-slot="header">Edge<\/div>[\s\S]*?<\/feat-card>/;
+    expect(cloudflare.replace(edgeCard, "")).toBe(plain);
+  });
+
   it("aboutPage contains two feature cards", () => {
     const html = aboutPage("My App");
     expect(html).toContain("<site-header");
@@ -596,5 +840,78 @@ describe("scaffold", () => {
       String(c[0]).endsWith("index.html"),
     );
     expect(indexCall?.[1]).toContain("hello-world");
+  });
+
+  const writtenFiles = (): Map<string, string> =>
+    new Map(
+      mockWriteFile.mock.calls.map((c) => [
+        String(c[0]).replace(/\\/g, "/"),
+        typeof c[1] === "string" ? c[1] : Buffer.from(c[1]).toString("base64"),
+      ]),
+    );
+
+  it("writes the same files for an explicit default template as for none", async () => {
+    await scaffold("my-app", "/tmp");
+    const implicit = writtenFiles();
+    vi.clearAllMocks();
+    await scaffold("my-app", "/tmp", { template: "default" });
+    expect(writtenFiles()).toEqual(implicit);
+    expect(
+      mockMkdir.mock.calls.some((c) => String(c[0]).endsWith("src/api")),
+    ).toBe(false);
+  });
+
+  it("keeps the Cloudflare pieces out of the default template", async () => {
+    await scaffold("my-app", "/tmp");
+    const files = writtenFiles();
+    expect(allWrittenPaths().some((p) => p.endsWith("edge.html"))).toBe(false);
+    expect(allWrittenPaths().some((p) => p.includes("src/api/"))).toBe(false);
+    expect(files.get("/tmp/my-app/package.json")).not.toContain("wrangler");
+    expect(files.get("/tmp/my-app/.gitignore")).not.toContain(".wrangler/");
+    expect(files.get("/tmp/my-app/src/pages/index.html")).not.toContain(
+      "/edge",
+    );
+    expect(files.get("/tmp/my-app/e2e/app.spec.ts")).not.toContain("/edge");
+  });
+
+  describe("cloudflare template", () => {
+    beforeEach(() => scaffold("my-app", "/tmp", { template: "cloudflare" }));
+
+    it("writes the 26 default files plus the edge page and API route", () => {
+      expect(mockWriteFile.mock.calls.length).toBe(28);
+      const paths = allWrittenPaths();
+      expect(paths).toContain("/tmp/my-app/src/pages/edge.html");
+      expect(paths).toContain("/tmp/my-app/src/api/hello.ts");
+    });
+
+    it("creates the src/api directory", () => {
+      expect(
+        mockMkdir.mock.calls.some((c) =>
+          String(c[0]).replace(/\\/g, "/").endsWith("/tmp/my-app/src/api"),
+        ),
+      ).toBe(true);
+    });
+
+    it("writes the Cloudflare package.json, .gitignore, index page, and E2E spec", () => {
+      const files = writtenFiles();
+      expect(files.get("/tmp/my-app/package.json")).toBe(
+        PACKAGE_JSON("my-app", "cloudflare"),
+      );
+      expect(files.get("/tmp/my-app/.gitignore")).toBe(CLOUDFLARE_GITIGNORE);
+      expect(files.get("/tmp/my-app/src/pages/index.html")).toBe(
+        indexPage("my-app", { template: "cloudflare" }),
+      );
+      expect(files.get("/tmp/my-app/src/pages/edge.html")).toBe(
+        edgePage("my-app"),
+      );
+      expect(files.get("/tmp/my-app/src/api/hello.ts")).toBe(HELLO_API_ROUTE);
+      expect(files.get("/tmp/my-app/e2e/app.spec.ts")).toBe(
+        CLOUDFLARE_E2E_APP_SPEC,
+      );
+    });
+
+    it("still copies the agent skills to both destinations", () => {
+      expect(mockCp).toHaveBeenCalledTimes(2);
+    });
   });
 });

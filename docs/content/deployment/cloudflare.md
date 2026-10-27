@@ -33,9 +33,19 @@ At request time the flow is:
 
 No client-side JavaScript is added, nothing hydrates, and there is no per-fragment HTTP endpoint. A page with stream scripts renders progressively in a browser even with JavaScript disabled.
 
+## Start from the template
+
+For a new site, let `create-bascik` set this up:
+
+```sh
+npm create bascik@rc my-site -- --template cloudflare
+```
+
+The `--` is required: npm keeps flags placed before it for itself and does not pass them on. That is the standard starter with the adapter and Wrangler installed, `npm run build` set to `bascik --build --target cloudflare`, `npm run preview` and `npm run deploy` running Wrangler from the emitted bundle, and a demo page (`src/pages/edge.html`) and API route (`src/api/hello.ts`) that run in the Worker. `npm run dev` is still the Bascik dev server. The rest of this guide applies unchanged; the manual steps below are for adding the adapter to an existing project.
+
 ## Prerequisites
 
-- Node.js 24 for the build.
+- Node.js 22.18 or newer for the build (Node.js 24 LTS recommended).
 - `@bascik/adapter-cloudflare` installed in your project:
 
 ```sh

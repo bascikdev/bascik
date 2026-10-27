@@ -7,14 +7,14 @@ Bascik features a simple, fast, and highly informative CLI for both development 
 ```sh
 npm create bascik@rc
 # or: npm create bascik@rc my-project
+# or: npm create bascik@rc my-project -- --template cloudflare
 ```
 
-Scaffolds a complete starter project in a new directory. Prompts for a project name if not passed as an argument. Creates:
+Scaffolds a complete starter project in a new directory. Prompts for a project name if not passed as an argument. `--template cloudflare` adds the [Cloudflare adapter](/deployment/cloudflare), Wrangler, and an edge demo page to the same starter; it goes after `--` because npm keeps flags placed before it for itself. Creates:
 
 ```text
 my-project/
   package.json
-  bascik.config.ts
   vite.config.js
   .gitignore
   .vscode/

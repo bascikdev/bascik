@@ -7,7 +7,8 @@ The `create/` folder is a small standalone package that scaffolds a fresh Bascik
 The package has two source files with distinct responsibilities:
 
 - `create/src/scaffold.ts`: pure data and file-writing logic. All generated file content lives here as exported string constants and functions. No I/O beyond `fs/promises`. This is what the tests cover.
-- `create/src/index.ts`: the CLI entry point. Handles prompts, the `-y` flag, and spawns `npm install` / `npm run dev`. Not unit-tested.
+- `create/src/index.ts`: the CLI entry point. Handles prompts, including the Cloudflare template question, and spawns `npm install` / `npm run dev`. Not unit-tested.
+- `create/src/cli.ts`: parses `-y`, `--no-install`, `--no-dev`, `--template <name>`, and the positional project name. Because npm keeps flags written before `--` for itself, it also honors the `npm_config_yes` and `npm_config_template` variables npm sets instead.
 
 Keeping them split means you can test every generated file without invoking the CLI or touching the filesystem.
 
@@ -61,7 +62,7 @@ Running `npx create-bascik <name>` writes this structure:
 
 The `feat-card` component demonstrates named slots. The `my-counter` component demonstrates scoped JS with two independent instances on the home page. Every component includes co-located unit tests, `package.json` includes `npm run lint` (`bascik --check`, which runs the `@bascik/language-server` linter and the project-wide checks), `.vscode/extensions.json` recommends the official Bascik VS Code extension, `vite.config.js` configures Vitest with V8 code coverage, and `e2e/` includes Playwright browser specs testing page navigation, counter interaction, and mobile menu toggling.
 
-After scaffolding, the CLI offers to run `npm install` and `npm run dev`. Both prompts can be skipped with `-y`.
+After scaffolding, the CLI offers to run `npm install` and `npm run dev`. Both prompts can be skipped with `-y`. The `cloudflare` template adds `src/pages/edge.html` (a server-script demo page), `src/api/hello.ts`, the `@bascik/adapter-cloudflare` and `wrangler` dev dependencies, and `build`, `preview`, and `deploy` scripts for Cloudflare Workers.
 
 ## Why the generated app uses npm
 
@@ -105,7 +106,7 @@ yarn create:test-site
 
 This builds `create-bascik` (copying the latest agent skills from `skills/`) and runs the scaffolding CLI to create a test project at `my-site/`. It skips the generated project's npm install, then builds the site using the `@bascik/bascik` package already linked from `pkg/` in the monorepo workspace. This lets CI test the current package changes before an RC is published.
 
-The `-y` flag selects the defaults non-interactively, while `--no-install` and `--no-dev` skip npm install and dev server startup.
+The `-y` flag selects the defaults non-interactively, while `--no-install` and `--no-dev` skip npm install and dev server startup. `--template cloudflare` selects the Cloudflare Workers template; through `npm create` it must follow a `--` separator (`npm create bascik@rc my-site -- --template cloudflare`).
 
 ```text
 Build complete

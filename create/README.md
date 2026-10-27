@@ -48,6 +48,37 @@ npm run dev
 
 Your site will be live at `http://localhost:8080`.
 
+## Templates
+
+Pick a starter with `--template <name>` (or `--template=<name>`). Without the flag, the interactive prompts ask whether the site deploys to Cloudflare Workers; with `-y` and no flag, you get the default.
+
+| Template     | What you get                                                                                                          |
+| :----------- | :-------------------------------------------------------------------------------------------------------------------- |
+| `default`    | The static starter above. `static` is accepted as an alias.                                                           |
+| `cloudflare` | The same starter plus the [Cloudflare adapter](https://bascik.dev/deployment/cloudflare), Wrangler, and an edge demo. |
+
+```sh
+npm create bascik@rc my-site -- --template cloudflare
+```
+
+The `--` matters: npm keeps flags placed before it for itself and does not pass them on, so `--template` has to follow a `--`. `-y` is the exception, since `create-bascik` also reads npm's own `yes` setting (`npm create bascik@rc my-site -y -- --template cloudflare` skips every prompt).
+
+The Cloudflare template differs from the default in these files only:
+
+- `package.json`: `@bascik/adapter-cloudflare` and `wrangler` as dev dependencies; `build` runs `bascik --build --target cloudflare`; new `preview` and `deploy` scripts run Wrangler from the emitted `dist/.bascik/cloudflare/` folder. `dev` is still the Bascik dev server.
+- `src/pages/edge.html`: a page with a `data-bascik-server` script that the Worker renders on every request, linked from a fourth feature card on the home page.
+- `src/api/hello.ts`: an API route served at `/api/hello`.
+- `e2e/app.spec.ts`: one extra test covering the edge page.
+- `.gitignore`: ignores `.wrangler/`.
+
+After scaffolding a Cloudflare project:
+
+```sh
+npm run build     # bascik --build --target cloudflare
+npm run preview   # run the bundle locally in workerd
+npm run deploy    # wrangler deploy
+```
+
 ## Development & Testing
 
 From the repository root:

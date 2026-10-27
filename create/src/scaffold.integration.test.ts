@@ -20,10 +20,20 @@
  * 6. Scaffolding copied the real agent skills (SKILL.md, references/, scripts/) into `.agents/skills/` and `.claude/skills/`.
  * 7. Negative-control sensitivity: A corrupted scaffolded page (invalid syntax / broken component) is rejected by the compiler.
  * 8. Execution mode parity: Verified across both default and worker build pipelines.
+ * 9. The Cloudflare template compiles with the plain `--build` (no adapter installed) and, with the
+ *    workspace adapter linked into `node_modules`, with `--build --target cloudflare`.
  */
 
 import { describe, it, expect, afterEach, beforeAll } from "vitest";
-import { mkdtemp, readFile, writeFile, rm, access } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  writeFile,
+  rm,
+  access,
+  symlink,
+} from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -35,14 +45,23 @@ import { SKILLS_DIR, scaffold } from "./scaffold.ts";
 const execFileAsync = promisify(execFile);
 
 // Resolve package CLI binary path and dist entry point
-const PKG_CLI = resolve(
-  fileURLToPath(import.meta.url),
-  "../../../pkg/bin/bascik.js",
-);
-const PKG_DIST_INDEX = resolve(
-  fileURLToPath(import.meta.url),
-  "../../../pkg/dist/index.js",
-);
+const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "../../..");
+const PKG_CLI = join(REPO_ROOT, "pkg/bin/bascik.js");
+const PKG_DIST_INDEX = join(REPO_ROOT, "pkg/dist/index.js");
+const ADAPTER_DIR = join(REPO_ROOT, "adapters/cloudflare");
+const ADAPTER_DIST_INDEX = join(ADAPTER_DIR, "dist/index.js");
+
+/**
+ * A scaffolded project has no node_modules, so point the two packages a Cloudflare
+ * build resolves from the project root at their workspace directories. The adapter's
+ * own dependencies (esbuild, jsonc-parser) resolve from its real path.
+ */
+async function linkWorkspacePackages(projectDir: string): Promise<void> {
+  const scope = join(projectDir, "node_modules", "@bascik");
+  await mkdir(scope, { recursive: true });
+  await symlink(join(REPO_ROOT, "pkg"), join(scope, "bascik"), "dir");
+  await symlink(ADAPTER_DIR, join(scope, "adapter-cloudflare"), "dir");
+}
 
 const tempDirs: string[] = [];
 
@@ -226,6 +245,86 @@ describe("scaffold-to-compiler integration", () => {
     const currentYear = String(new Date().getFullYear());
     expect(indexHtml).toContain("<header");
     expect(indexHtml).toContain(`&copy; ${currentYear}`);
+  }, 45_000);
+
+  it("compiles the cloudflare template with the plain --build, no adapter required", async () => {
+    const parentDir = await createTempDir("cloudflare-static");
+    const projectName = "edge-site";
+    const projectDir = join(parentDir, projectName);
+
+    await scaffold(projectName, parentDir, { template: "cloudflare" });
+
+    const buildResult = await runBascikBuild(projectDir);
+    expect(
+      buildResult.exitCode,
+      `Build failed with stderr: ${buildResult.stderr}`,
+    ).toBe(0);
+    expect(buildResult.stdout).toContain("Build complete");
+
+    const distDir = join(projectDir, "dist");
+    const indexHtml = await readFile(join(distDir, "index.html"), "utf8");
+    const edgeHtml = await readFile(join(distDir, "edge.html"), "utf8");
+
+    // The index links to the edge page; the edge page compiles with its server
+    // script kept for request time (static output never runs it).
+    expect(indexHtml).toContain('href="/edge"');
+    expect(edgeHtml).toMatch(/<!doctype html>/i);
+    expect(edgeHtml).toContain("<header");
+    expect(edgeHtml).not.toContain("Hello, visitor");
+
+    // The static build points out the API route it cannot serve rather than failing.
+    expect(`${buildResult.stdout}\n${buildResult.stderr}`).toContain(
+      "/api/hello",
+    );
+  }, 45_000);
+
+  it("builds the cloudflare template into a Workers bundle with --target cloudflare", async () => {
+    expect(
+      existsSync(ADAPTER_DIST_INDEX),
+      `Required artifact missing: ${ADAPTER_DIST_INDEX}. Run \`yarn adapter:cf:build\` first.`,
+    ).toBe(true);
+
+    const parentDir = await createTempDir("cloudflare-target");
+    const projectName = "edge-site";
+    const projectDir = join(parentDir, projectName);
+
+    await scaffold(projectName, parentDir, { template: "cloudflare" });
+    await linkWorkspacePackages(projectDir);
+
+    const buildResult = await runBascikBuild(projectDir, [
+      "--target",
+      "cloudflare",
+    ]);
+    expect(
+      buildResult.exitCode,
+      `Cloudflare build failed with stderr: ${buildResult.stderr}`,
+    ).toBe(0);
+    expect(buildResult.stdout).toContain("Build complete");
+    expect(buildResult.stdout).toContain("dynamic pages: 1, API routes: 1");
+
+    const targetDir = join(projectDir, "dist/.bascik/cloudflare");
+    await expect(access(join(targetDir, "worker.js"))).resolves.toBeUndefined();
+    await expect(
+      access(join(targetDir, "build-info.json")),
+    ).resolves.toBeUndefined();
+
+    const wranglerConfig = await readFile(
+      join(targetDir, "wrangler.jsonc"),
+      "utf8",
+    );
+    expect(wranglerConfig).toContain('"main": "worker.js"');
+    expect(wranglerConfig).toContain('"/edge"');
+    expect(wranglerConfig).toContain('"/api/*"');
+
+    // Static pages go to the CDN tree; the server-rendered page lives only in the Worker.
+    const publicDir = join(targetDir, "public");
+    await expect(
+      access(join(publicDir, "index.html")),
+    ).resolves.toBeUndefined();
+    await expect(
+      access(join(publicDir, "about.html")),
+    ).resolves.toBeUndefined();
+    expect(existsSync(join(publicDir, "edge.html"))).toBe(false);
   }, 45_000);
 
   it("negative control: rejects compilation when a required page contains invalid build-script syntax", async () => {

@@ -27,40 +27,72 @@ const copySkills = (destination: string): Promise<void> =>
     filter: (source) => resolve(source) !== resolve(SKILLS_DIR, "README.md"),
   });
 
+// ─── Templates ────────────────────────────────────────────────────────────────
+
+/**
+ * The starters create-bascik can scaffold. `default` is the plain static site;
+ * `cloudflare` is the same site plus the pieces a Cloudflare Workers deployment
+ * needs: the hosting adapter, Wrangler, and a demo page the Worker renders.
+ */
+export const TEMPLATES = ["default", "cloudflare"] as const;
+export type Template = (typeof TEMPLATES)[number];
+
 // ─── Root files ───────────────────────────────────────────────────────────────
 
-export const PACKAGE_JSON = (name: string): string =>
-  JSON.stringify(
-    {
-      name,
-      version: "0.1.0",
-      type: "module",
-      engines: {
-        node: ">=24.0.0",
+/**
+ * Wrangler is pinned to a recent minor, not just the major, because workerd
+ * rejects a compatibility date newer than itself and the adapter pins a recent one.
+ */
+const WRANGLER_VERSION = "^4.153.0";
+
+export const PACKAGE_JSON = (
+  name: string,
+  template: Template = "default",
+): string => {
+  const cloudflare = template === "cloudflare";
+  return (
+    JSON.stringify(
+      {
+        name,
+        version: "0.1.0",
+        type: "module",
+        engines: {
+          node: ">=22.18.0",
+        },
+        scripts: {
+          dev: "bascik",
+          build: cloudflare
+            ? "bascik --build --target cloudflare"
+            : "bascik --build",
+          // npm puts node_modules/.bin on PATH, so `wrangler` still resolves after the cd.
+          ...(cloudflare && {
+            preview: "cd dist/.bascik/cloudflare && wrangler dev",
+            deploy: "cd dist/.bascik/cloudflare && wrangler deploy",
+          }),
+          lint: "bascik --check",
+          test: "vitest run",
+          "test:watch": "vitest",
+          "test:coverage": "vitest run --coverage",
+          e2e: "playwright test --config e2e/playwright.config.ts",
+        },
+        dependencies: {
+          "@bascik/bascik": "^1.0.0-rc.9",
+        },
+        devDependencies: {
+          ...(cloudflare && { "@bascik/adapter-cloudflare": "^1.0.0-rc.9" }),
+          "@bascik/language-server": "^0.1.0-rc.5",
+          "@playwright/test": "^1.62.0",
+          "@types/node": "^24.0.0",
+          "@vitest/coverage-v8": "^4.1.10",
+          vitest: "^4.1.10",
+          ...(cloudflare && { wrangler: WRANGLER_VERSION }),
+        },
       },
-      scripts: {
-        dev: "bascik",
-        build: "bascik --build",
-        lint: "bascik --check",
-        test: "vitest run",
-        "test:watch": "vitest",
-        "test:coverage": "vitest run --coverage",
-        e2e: "playwright test --config e2e/playwright.config.ts",
-      },
-      dependencies: {
-        "@bascik/bascik": "^1.0.0-rc.9",
-      },
-      devDependencies: {
-        "@bascik/language-server": "^0.1.0-rc.5",
-        "@playwright/test": "^1.62.0",
-        "@types/node": "^24.0.0",
-        "@vitest/coverage-v8": "^4.1.10",
-        vitest: "^4.1.10",
-      },
-    },
-    null,
-    2,
-  ) + "\n";
+      null,
+      2,
+    ) + "\n"
+  );
+};
 
 export const VSCODE_EXTENSIONS_JSON =
   JSON.stringify(
@@ -137,7 +169,10 @@ export default defineConfig({
 });
 `;
 
-export const E2E_APP_SPEC = `import { test, expect } from '@playwright/test';
+/** The starter's Playwright spec, with room for a template to append its own tests. */
+const e2eAppSpec = (
+  extraTests = "",
+): string => `import { test, expect } from '@playwright/test';
 
 test.describe('Starter App E2E Tests', () => {
   test('navigates pages and checks titles', async ({ page }) => {
@@ -181,13 +216,28 @@ test.describe('Starter App E2E Tests', () => {
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
-});
+${extraTests}});
 `;
+
+export const E2E_APP_SPEC = e2eAppSpec();
+
+/** The E2E web server is \`bascik --server\`, which runs server scripts on Node, so the edge page is testable here. */
+export const CLOUDFLARE_E2E_APP_SPEC = e2eAppSpec(`
+  test('edge page renders the request-time greeting', async ({ page }) => {
+    await page.goto('/edge?name=Ada');
+    await expect(page).toHaveTitle(/Edge/);
+    await expect(page.getByTestId('edge-greeting')).toContainText('Ada');
+  });
+`);
 
 export const GITIGNORE = `node_modules/
 dist/
 coverage/
 *.pem
+`;
+
+/** Wrangler keeps its local state (workerd cache, dev vars) in `.wrangler/`. */
+export const CLOUDFLARE_GITIGNORE = `${GITIGNORE}.wrangler/
 `;
 
 // ─── Global CSS ───────────────────────────────────────────────────────────────
@@ -733,7 +783,19 @@ ${body}
 </html>
 `;
 
-export const indexPage = (brand: string): string =>
+/** The extra feature card the Cloudflare template adds, linking to the page the Worker renders. */
+const EDGE_FEAT_CARD = `
+          <feat-card>
+            <div data-bascik-slot="header">Edge</div>
+            <h3>Rendered per request</h3>
+            <p>Server scripts and API routes run in a Cloudflare Worker. Static pages stay on the CDN.</p>
+            <div data-bascik-slot="footer"><a href="/edge" class="btn btn-ghost">See it run →</a></div>
+          </feat-card>`;
+
+export const indexPage = (
+  brand: string,
+  options: { template?: Template } = {},
+): string =>
   pageShell(
     `Home - ${brand}`,
     brand,
@@ -772,7 +834,7 @@ export const indexPage = (brand: string): string =>
             <h3>Flexible composition</h3>
             <p>Pass header, body, and footer content into components from the usage site.</p>
             <div data-bascik-slot="footer"><a href="/about" class="btn btn-ghost">Learn more →</a></div>
-          </feat-card>
+          </feat-card>${options.template === "cloudflare" ? EDGE_FEAT_CARD : ""}
         </div>
       </div>
     </section>
@@ -862,6 +924,62 @@ export const notFoundPage = (brand: string): string =>
     </div>`,
   );
 
+// ─── Cloudflare template ──────────────────────────────────────────────────────
+
+/**
+ * A page with a `data-bascik-server` script. The Cloudflare adapter keeps it out
+ * of `public/` and renders it in the Worker on every request; `bascik --server`
+ * renders it on Node. The script concatenates strings rather than using a
+ * template literal only so this constant stays readable.
+ */
+export const edgePage = (brand: string): string =>
+  pageShell(
+    `Edge - ${brand}`,
+    brand,
+    `    <div class="container">
+      <section class="section">
+        <p class="section-label">Edge</p>
+        <h1>Rendered per request</h1>
+        <p class="page-intro">The card below is a <code>&lt;script data-bascik-server&gt;</code> block. It runs on every request, so the time changes on reload and <a href="/edge?name=Ada">?name=Ada</a> changes the greeting.</p>
+
+        <div class="card">
+          <script data-bascik-server>
+            export default function (request) {
+              // Query parameters are untrusted: escape them before they land in HTML.
+              const escape = (value) =>
+                String(value).replace(/[&<>"']/g, (c) =>
+                  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+                );
+              const name = new URL(request.url).searchParams.get("name") ?? "visitor";
+              return (
+                '<h2 data-testid="edge-greeting">Hello, ' + escape(name) + "</h2>" +
+                "<p>Rendered at <code>" + new Date().toISOString() + "</code></p>"
+              );
+            }
+          </script>
+        </div>
+
+        <div class="callout" style="margin-top:40px;">
+          <p>The same Worker answers <a href="/api/hello">/api/hello</a>, an API route in <code>src/api/hello.ts</code>.</p>
+        </div>
+      </section>
+    </div>`,
+  );
+
+/**
+ * An API route served at /api/hello. \`context.platform\` names the host, so the
+ * same handler answers "cloudflare" from the Worker and "node" from \`bascik --server\`.
+ */
+export const HELLO_API_ROUTE = `export const GET = async (
+  request: Request,
+  context: { remoteIp: string; platform?: { name: string } },
+): Promise<Response> =>
+  Response.json({
+    hello: new URL(request.url).searchParams.get("name") ?? "world",
+    platform: context.platform?.name ?? "unknown",
+  });
+`;
+
 // ─── Validation ───────────────────────────────────────────────────────────────
 
 /** Returns an error message if the name is invalid, or null if it is fine. */
@@ -880,12 +998,16 @@ export function validateProjectName(name: string): string | null {
  *
  * @param projectName  The name used for the directory and package.json name.
  * @param targetDir    Parent directory in which to create the project (defaults to cwd).
+ * @param options      `template` picks the starter (defaults to the static `default`).
  */
 export async function scaffold(
   projectName: string,
   targetDir: string = process.cwd(),
+  options: { template?: Template } = {},
 ): Promise<void> {
   const root = join(targetDir, projectName);
+  const template = options.template ?? "default";
+  const cloudflare = template === "cloudflare";
 
   // Create all directories up front
   await Promise.all([
@@ -894,6 +1016,9 @@ export async function scaffold(
       mkdir(join(root, ...dir.split("/")), { recursive: true }),
     ),
     mkdir(join(root, "e2e"), { recursive: true }),
+    ...(cloudflare
+      ? [mkdir(join(root, "src", "api"), { recursive: true })]
+      : []),
     mkdir(join(root, "src", "pages", "assets"), { recursive: true }),
     mkdir(join(root, "src", "pages", "css"), { recursive: true }),
     mkdir(join(root, "src", "components", "site-meta"), { recursive: true }),
@@ -910,9 +1035,17 @@ export async function scaffold(
     ),
 
     // Root
-    writeFile(join(root, "package.json"), PACKAGE_JSON(projectName), "utf8"),
+    writeFile(
+      join(root, "package.json"),
+      PACKAGE_JSON(projectName, template),
+      "utf8",
+    ),
     writeFile(join(root, "vite.config.js"), VITE_CONFIG, "utf8"),
-    writeFile(join(root, ".gitignore"), GITIGNORE, "utf8"),
+    writeFile(
+      join(root, ".gitignore"),
+      cloudflare ? CLOUDFLARE_GITIGNORE : GITIGNORE,
+      "utf8",
+    ),
     writeFile(join(root, ".vscode", "launch.json"), VSCODE_LAUNCH_JSON, "utf8"),
     writeFile(
       join(root, ".vscode", "extensions.json"),
@@ -926,7 +1059,11 @@ export async function scaffold(
       PLAYWRIGHT_CONFIG,
       "utf8",
     ),
-    writeFile(join(root, "e2e", "app.spec.ts"), E2E_APP_SPEC, "utf8"),
+    writeFile(
+      join(root, "e2e", "app.spec.ts"),
+      cloudflare ? CLOUDFLARE_E2E_APP_SPEC : E2E_APP_SPEC,
+      "utf8",
+    ),
 
     // Assets
     writeFile(
@@ -957,7 +1094,7 @@ export async function scaffold(
     // Pages
     writeFile(
       join(root, "src", "pages", "index.html"),
-      indexPage(projectName),
+      indexPage(projectName, { template }),
       "utf8",
     ),
     writeFile(
@@ -975,6 +1112,22 @@ export async function scaffold(
       notFoundPage(projectName),
       "utf8",
     ),
+
+    // Cloudflare template: the edge demo page and its API route
+    ...(cloudflare
+      ? [
+          writeFile(
+            join(root, "src", "pages", "edge.html"),
+            edgePage(projectName),
+            "utf8",
+          ),
+          writeFile(
+            join(root, "src", "api", "hello.ts"),
+            HELLO_API_ROUTE,
+            "utf8",
+          ),
+        ]
+      : []),
 
     // Components
     writeFile(
