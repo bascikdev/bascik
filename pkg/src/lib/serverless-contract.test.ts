@@ -102,6 +102,10 @@ describe("serverless contract: host-neutral runtime boundary", () => {
       // in `node:crypto`, `node:fs`, `process`, or the config module.
       resolve(here, "component-expansion-core.ts"),
       resolve(here, "scoping-instantiate.ts"),
+      // The request-time renderer itself (phase 3) and the runtime entry
+      // adapters bundle, which re-exports it.
+      resolve(here, "request-render.ts"),
+      resolve(here, "../runtime.ts"),
     ];
     for (const entry of entries) {
       const { errors, text } = await bundleForWeb(entry);
@@ -117,6 +121,16 @@ describe("serverless contract: host-neutral runtime boundary", () => {
         `${entry} references a free Node global`,
       ).toEqual([]);
     }
+  });
+
+  it("runtime.ts re-exports the portable renderer graph for adapters (prompt 157)", async () => {
+    // Dynamic so the other contract tests still run while the module is
+    // missing; an adapter imports these from `@bascik/bascik/runtime`.
+    const runtime = (await import("../runtime.ts")) as Record<string, unknown>;
+    expect(typeof runtime.wrapRunner).toBe("function");
+    expect(typeof runtime.RequestRenderError).toBe("function");
+    expect(typeof runtime.expandComponents).toBe("function");
+    expect(typeof runtime.instantiateTemplate).toBe("function");
   });
 
   it("negative control: the Node runtime entrypoints still fail the boundary", async () => {

@@ -28,7 +28,11 @@ import {
   sidecarHasPageEntries,
   type SidecarLoadResult,
 } from "./server-sidecar.ts";
-import { readComponentManifest } from "./component-manifest.ts";
+import {
+  readComponentManifest,
+  type ComponentManifest,
+} from "./component-manifest.ts";
+import { loadComponentJobs } from "./request-render-node.ts";
 import { setServerHealthState } from "./server-lifecycle.ts";
 import {
   LIVE_RELOAD_SCRIPT_ATTR,
@@ -104,10 +108,13 @@ const loadDistIntoMemory = async (): Promise<void> => {
   // A release whose sidecar has page-owned server or stream entries renders
   // component tags from their output through dist/.bascik/components.json
   // (prompt 157), so that manifest is a required runtime artifact for it and
-  // is validated here like the sidecar. A static release has none to check.
+  // is validated here like the sidecar: present, of this schema, and naming
+  // only component scripts the sidecar stages (the jobs are built once here
+  // and shared by every request). A static release has none to check.
+  let manifest: ComponentManifest | null = null;
   if (sidecarHasPageEntries(sidecarResult.scripts)) {
     try {
-      const manifest = await readComponentManifest(distDir);
+      manifest = await readComponentManifest(distDir);
       if (!manifest) {
         throw new Error(
           `[bascik] --server: ${outDirRel}/.bascik/server-scripts.json has server-script entries ` +
@@ -115,6 +122,7 @@ const loadDistIntoMemory = async (): Promise<void> => {
             `Run \`bascik --build\` to regenerate matching artifacts.`,
         );
       }
+      loadComponentJobs(manifest, outDirRel);
     } catch (manifestErr) {
       setServerHealthState("booting");
       throw manifestErr;
@@ -149,6 +157,9 @@ const loadDistIntoMemory = async (): Promise<void> => {
           absolutePagePath: absPath,
           pageContent: buffer,
           usedComponentsNames: [],
+          // Pages with a server-script plan render component tags from
+          // script output with this manifest (prompt 157).
+          componentManifest: manifest,
         });
       }),
     );

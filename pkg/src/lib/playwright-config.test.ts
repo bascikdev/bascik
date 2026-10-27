@@ -20,6 +20,7 @@ describe("Playwright project test selection", () => {
         "**/static-asset-symlinks.test.ts",
         "**/server-scripts.test.ts",
         "**/server-scripts-stream.test.ts",
+        "**/server-components.test.ts",
         "**/api-routes.test.ts",
         "**/dev-server-reload.test.ts",
         "**/prod-server.test.ts",

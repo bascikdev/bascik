@@ -1014,6 +1014,7 @@ export const createRequestHandler = () => {
             context,
             timeout,
             page.absolutePagePath,
+            page.componentManifest,
           );
           responseHeaders["content-length"] = htmlBuf.byteLength;
           res.respond(responseStatus, responseHeaders);
@@ -1038,6 +1039,7 @@ export const createRequestHandler = () => {
             page.absolutePagePath,
             sink,
             abort.signal,
+            page.componentManifest,
           );
           await streamer.ready;
           res.respond(responseStatus, responseHeaders);

@@ -207,10 +207,14 @@ export const emitServerlessArtifacts = async (
   const stagingDir = join(outDir, ".staging");
   await mkdir(stagingDir, { recursive: true });
 
-  // 3. Stage inline sources to outDir/.staging/*.mjs with rewritten module specifiers
+  // 3. Stage inline sources to outDir/.staging/*.mjs with rewritten module
+  // specifiers: page jobs, then the component jobs of the manifest (prompt
+  // 157), which an adapter bundles the same way.
   const importRoot = getImportRoot();
-  for (const page of Object.values(graph.pages)) {
-    for (const job of Object.values(page.jobs)) {
+  const jobSets = Object.values(graph.pages).map((page) => page.jobs);
+  if (graph.components) jobSets.push(graph.components.jobs);
+  for (const jobs of jobSets) {
+    for (const job of Object.values(jobs)) {
       if (job.source.kind === "inline") {
         const rewritten = rewriteModuleSpecifiers(
           job.source.code,
@@ -289,6 +293,24 @@ export const emitServerlessArtifacts = async (
         `[bascik] --target ${target}: HostingAdapter contract violation: notes must be an array of strings`,
       );
     }
+  }
+
+  // An adapter that predates request-time component rendering (prompt 157)
+  // serves component tags in script output as the author's text. The site
+  // still deploys; the author hears which components that affects.
+  const renderable = graph.components
+    ? Object.values(graph.components.manifest.components)
+        .filter((entry) => entry.template !== null && !entry.unsupported)
+        .map((entry) => entry.name)
+        .sort()
+    : [];
+  if (renderable.length > 0 && buildResult.components !== true) {
+    console.warn(
+      `[bascik] --target ${target}: adapter "${adapter.name}" does not declare components: true, ` +
+        `so component tags returned by server and stream scripts are not rendered on this host and reach ` +
+        `the client as written (dist/.bascik/components.json lists ${renderable.map((name) => `<${name}>`).join(", ")}). ` +
+        `Upgrade the adapter, or keep component tags out of script output for this target.`,
+    );
   }
 
   // Verify dist was not modified by the adapter

@@ -14,7 +14,15 @@
  * a component that silently becomes unsupported fails here.
  *
  * Runs with identifiers on and off and with `minify.js` off and on (the
- * built-in minifier). Each root is built from its own directory so build
+ * built-in minifier), and with `minify.html` on under base "/" and "/docs/":
+ * the build rewrites base paths in and minifies the whole page
+ * (page-transpile.ts), the request path finishes each top-level usage with
+ * `usageFinalizer` as wrapRunner does, and the two must agree apart from
+ * where client scripts are hoisted to (the page's end against the
+ * outermost instance's, D8), which the comparison factors out. Under
+ * `minify.html` the usages are also placed inside a `<pre>` and a table
+ * cell, where the build keeps whitespace and comments or leaves a comment
+ * separator. Each root is built from its own directory so build
  * scripts resolve `@/` and relative imports as the site does; the e2e site's
  * TypeScript components need its esbuild transformer.
  */
@@ -39,7 +47,8 @@ import {
   type ComponentManifest,
   type UnsupportedReason,
 } from "./component-manifest.ts";
-import { expandComponents } from "./component-expansion-core.ts";
+import { minifyHtml } from "./html-minifier.ts";
+import { expandByUsage, usageFinalizer } from "./request-render.ts";
 import {
   BUILD_EXPANSION_LIMITS,
   recursivelyTranspile,
@@ -52,7 +61,7 @@ import {
   minifyScriptTagsInHtml,
   resolveCssMinifier,
 } from "./page-minification.ts";
-import { rewriteCssBasePaths } from "./base-path.ts";
+import { rewriteCssBasePaths, rewriteHtmlBasePaths } from "./base-path.ts";
 import {
   applyScopingResult,
   instantiateTemplate,
@@ -131,8 +140,9 @@ const ROOTS: Root[] = [
 const PAGE_PATH = "src/pages/fidelity.html";
 
 type MutableConfig = {
+  base: string;
   directory: { components: string[] };
-  minify: { identifiers: boolean; js: boolean };
+  minify: { identifiers: boolean; js: boolean; html: boolean };
   scripts: Record<string, unknown>;
 };
 const config = BascikConfig as unknown as MutableConfig;
@@ -182,6 +192,25 @@ const anonymizePlaceholders = (html: string): string =>
 const placeholderIds = (html: string): string[] =>
   [...html.matchAll(/data-bascik-server-id="([^"]+)"/g)].map((m) => m[1]);
 
+/**
+ * Client scripts, which `minify.html` hoists: to the page's end at build
+ * time, to the end of the outermost instance at request time (D8). Removed
+ * with the line break the minifier puts before each, and kept in order.
+ */
+const HOISTABLE_SCRIPT_RE = /\n?<script\b([^>]*)>[\s\S]*?<\/script>/g;
+const isHoistable = (attrs: string): boolean =>
+  !/data-bascik/i.test(attrs) &&
+  !/(?:^|\s)type\s*=\s*["']?(?!module\b|text\/javascript\b)/i.test(attrs);
+const unhoisted = (html: string) => {
+  const scripts: string[] = [];
+  const rest = html.replace(HOISTABLE_SCRIPT_RE, (element, attrs: string) => {
+    if (!isHoistable(attrs)) return element;
+    scripts.push(element.replace(/^\n/, ""));
+    return "";
+  });
+  return { html: rest, scripts };
+};
+
 /** The build path, as page-transpile.ts runs it for a page body. */
 const viaBuild = async (
   usage: string,
@@ -211,13 +240,18 @@ const viaBuild = async (
       state,
     ));
   }
+  html = rewriteHtmlBasePaths(html, config.base);
+  if (config.minify.html) html = minifyHtml(html);
   const scripts: Record<string, ServerScriptEntry> = {};
   html = extractServerScriptsToSidecar(html, PAGE_PATH, scripts, PAGE_PATH);
   if (jsMinifier) html = await minifyScriptTagsInHtml(html, jsMinifier);
   return { html, usedComponents, scripts };
 };
 
-/** The request path: the loop with the manifest's templates as the scope. */
+/**
+ * The request path: the loop with the manifest's templates as the scope, one
+ * top-level usage at a time, each finished as wrapRunner finishes it.
+ */
 const viaManifest = (
   usage: string,
   list: ComponentList,
@@ -225,7 +259,8 @@ const viaManifest = (
 ) => {
   const state = freshState();
   const hashName = manifest.identifiers ? getAttributeNameHash : identity;
-  return expandComponents(
+  const usedComponents: BascikComponent[] = [];
+  const transpiledHtmlBody = expandByUsage(
     usage,
     list,
     {
@@ -253,9 +288,10 @@ const viaManifest = (
         );
       },
     },
-    [],
-    PAGE_PATH,
+    usedComponents,
+    usageFinalizer(manifest),
   );
+  return { transpiledHtmlBody, usedComponents };
 };
 
 /** Usages exercising every declared prop and slot, in every tag spelling. */
@@ -342,129 +378,168 @@ describe.each(ROOTS)("component root $dir", (root) => {
       await rm(nodeModules, { recursive: true, force: true });
   });
 
-  for (const identifiers of [true, false]) {
-    for (const minifyJs of [false, true]) {
-      describe(`identifiers ${identifiers}, minify.js ${minifyJs}`, () => {
-        let manifest: ComponentManifest;
-        const jsMinifier = minifyJs ? memoizedMinifyJs : null;
+  const variants = [
+    ...[true, false].flatMap((identifiers) =>
+      [false, true].map((minifyJs) => ({
+        identifiers,
+        minifyJs,
+        minifyHtml: false,
+        base: "/",
+      })),
+    ),
+    { identifiers: true, minifyJs: true, minifyHtml: true, base: "/docs/" },
+    { identifiers: false, minifyJs: false, minifyHtml: true, base: "/" },
+  ];
+  for (const { identifiers, minifyJs, minifyHtml, base } of variants) {
+    describe(`identifiers ${identifiers}, minify.js ${minifyJs}, minify.html ${minifyHtml}, base ${base}`, () => {
+      let manifest: ComponentManifest;
+      const jsMinifier = minifyJs ? memoizedMinifyJs : null;
+      /** Where the build keeps whitespace and comments, or leaves a separator. */
+      const placements = (usage: string): string[] =>
+        minifyHtml
+          ? [
+              usage,
+              `<pre>${usage}</pre>`,
+              `<table><tbody><tr><td>${usage}</td></tr></tbody></table>`,
+            ]
+          : [usage];
+      const comparable = (html: string) =>
+        minifyHtml ? unhoisted(html) : { html, scripts: [] };
 
-        beforeAll(async () => {
-          config.minify.identifiers = identifiers;
-          config.minify.js = minifyJs;
-          serverSidecarRegistry.clear();
-          clearScopingTemplates();
-          manifest = await buildComponentManifest(list, BascikConfig);
-        });
-
-        it("covers every component and refuses exactly the expected ones, each with its reason", () => {
-          expect(Object.keys(manifest.components).sort()).toEqual(
-            Object.keys(list).sort(),
-          );
-          const unsupported: Record<string, string> = {};
-          for (const [name, entry] of Object.entries(manifest.components)) {
-            if (entry.unsupported) unsupported[name] = entry.unsupported.reason;
-            else expect(entry.template, name).not.toBeNull();
-          }
-          expect(unsupported).toEqual(root.unsupported);
-        });
-
-        it("renders every usage of every supported component exactly as the build does", async () => {
-          const supported = Object.keys(list)
-            .filter((name) => !manifest.components[name].unsupported)
-            .sort();
-          const skipped: string[] = [];
-          for (const name of supported) {
-            for (const usage of usagesFor(name, rawOf(name))) {
-              const expected = await viaBuild(usage, list, jsMinifier);
-              // A parent whose expansion reaches an unsupported child is
-              // left with that child unexpanded at request time (D7); the
-              // build expands it, so the two cannot agree and it is listed.
-              if (
-                expected.usedComponents.some(
-                  (used) => manifest.components[used.name]?.unsupported,
-                )
-              ) {
-                skipped.push(`${name}: ${usage.slice(0, 40)}`);
-                continue;
-              }
-              // viaBuild recorded the page scripts in the registry alongside
-              // the component jobs the manifest build staged; both stay.
-              const actual = viaManifest(usage, list, manifest);
-              expect(
-                anonymizePlaceholders(unnumbered(actual.transpiledHtmlBody)),
-                `${name}: ${usage}`,
-              ).toBe(anonymizePlaceholders(unnumbered(expected.html)));
-              expect(
-                actual.usedComponents.map((c) => c.name),
-                `${name}: ${usage}`,
-              ).toEqual(expected.usedComponents.map((c) => c.name));
-            }
-          }
-          // No component in these roots nests one of the unsupported ones.
-          expect(skipped).toEqual([]);
-        });
-
-        it("stages the same server and stream script sources as the page sidecar, with the component's output scope", async () => {
-          for (const name of Object.keys(list).sort()) {
-            const entry = manifest.components[name];
-            if (entry.unsupported) continue;
-            const usage = `<${name}></${name}>`;
-            const expected = await viaBuild(usage, list, jsMinifier);
-            const pageIds = placeholderIds(expected.html);
-            const actual = viaManifest(usage, list, manifest);
-            const componentIds = placeholderIds(actual.transpiledHtmlBody);
-            expect(componentIds.length, name).toBe(pageIds.length);
-            for (let index = 0; index < pageIds.length; index++) {
-              const fromPage = expected.scripts[pageIds[index]];
-              const staged = serverSidecarRegistry.getScript(
-                componentIds[index],
-              );
-              expect(staged, `${name} job ${index}`).toBeDefined();
-              expect(componentIds[index]).toMatch(
-                /^component_script_[0-9a-f]+$/,
-              );
-              expect(staged?.source, `${name} job ${index}`).toBe(
-                fromPage.source,
-              );
-              expect(staged?.mode).toBe(fromPage.mode);
-              expect(staged?.sourceFile).toBe(fromPage.sourceFile);
-              expect(staged?.sourceLine).toBe(fromPage.sourceLine);
-              expect(staged?.outputScope).toBe(fromPage.outputScope);
-            }
-          }
-        });
-
-        it("records the page pipeline's CSS for every supported component (once per response, or segmented per instance)", async () => {
-          for (const name of Object.keys(list).sort()) {
-            const entry = manifest.components[name];
-            if (entry.unsupported) continue;
-            const expected = await viaBuild(`<${name}></${name}>`, list, null);
-            const used = expected.usedComponents[0];
-            expect(used?.name, name).toBe(name);
-            if (entry.css === null) {
-              expect(used.cssFileContent ?? "", name).toBe("");
-              continue;
-            }
-            if ("perInstance" in entry.css) {
-              expect(
-                used.requiresPerInstanceCss ?? false,
-                `${name} per-instance`,
-              ).toBe(true);
-              const predicted = instantiateTemplate(
-                entry.template!,
-                deriveInstanceId(PAGE_PATH, name, 1),
-                identifiers ? getAttributeNameHash : identity,
-              );
-              expect(predicted?.cssFileContent, name).toBe(
-                await pipelineCss(used),
-              );
-              continue;
-            }
-            expect(entry.css.text, name).toBe(await pipelineCss(used));
-            expect(entry.cspStable.style, name).toBe(true);
-          }
-        });
+      beforeAll(async () => {
+        config.minify.identifiers = identifiers;
+        config.minify.js = minifyJs;
+        config.minify.html = minifyHtml;
+        config.base = base;
+        serverSidecarRegistry.clear();
+        clearScopingTemplates();
+        manifest = await buildComponentManifest(list, BascikConfig);
       });
-    }
+
+      it("covers every component and refuses exactly the expected ones, each with its reason", () => {
+        expect(Object.keys(manifest.components).sort()).toEqual(
+          Object.keys(list).sort(),
+        );
+        const unsupported: Record<string, string> = {};
+        for (const [name, entry] of Object.entries(manifest.components)) {
+          if (entry.unsupported) unsupported[name] = entry.unsupported.reason;
+          else expect(entry.template, name).not.toBeNull();
+        }
+        expect(unsupported).toEqual(root.unsupported);
+      });
+
+      it("renders every usage of every supported component exactly as the build does", async () => {
+        const supported = Object.keys(list)
+          .filter((name) => !manifest.components[name].unsupported)
+          .sort();
+        const skipped: string[] = [];
+        for (const name of supported) {
+          for (const usage of usagesFor(name, rawOf(name)).flatMap(
+            placements,
+          )) {
+            const expected = await viaBuild(usage, list, jsMinifier);
+            // A parent whose expansion reaches an unsupported child is
+            // left with that child unexpanded at request time (D7); the
+            // build expands it, so the two cannot agree and it is listed.
+            if (
+              expected.usedComponents.some(
+                (used) => manifest.components[used.name]?.unsupported,
+              )
+            ) {
+              skipped.push(`${name}: ${usage.slice(0, 40)}`);
+              continue;
+            }
+            // viaBuild recorded the page scripts in the registry alongside
+            // the component jobs the manifest build staged; both stay.
+            const actual = viaManifest(usage, list, manifest);
+            const rendered = comparable(
+              anonymizePlaceholders(unnumbered(actual.transpiledHtmlBody)),
+            );
+            const built = comparable(
+              anonymizePlaceholders(unnumbered(expected.html)),
+            );
+            // A script hoisted out of a table leaves an empty-comment
+            // separator where it stood. The whole page leaves a script in
+            // place when one that runs in place follows it anywhere later
+            // (execution order), an instance only when one follows inside
+            // it, so with scripts the separators move with D8's hoisting.
+            if (
+              usage.startsWith("<table>") &&
+              (built.scripts.length > 0 || rendered.scripts.length > 0)
+            ) {
+              built.html = built.html.replaceAll("<!---->", "");
+              rendered.html = rendered.html.replaceAll("<!---->", "");
+            }
+            expect(rendered.html, `${name}: ${usage}`).toBe(built.html);
+            expect(rendered.scripts, `${name}: ${usage}`).toEqual(
+              built.scripts,
+            );
+            expect(
+              actual.usedComponents.map((c) => c.name),
+              `${name}: ${usage}`,
+            ).toEqual(expected.usedComponents.map((c) => c.name));
+          }
+        }
+        // No component in these roots nests one of the unsupported ones.
+        expect(skipped).toEqual([]);
+      });
+
+      it("stages the same server and stream script sources as the page sidecar, with the component's output scope", async () => {
+        for (const name of Object.keys(list).sort()) {
+          const entry = manifest.components[name];
+          if (entry.unsupported) continue;
+          const usage = `<${name}></${name}>`;
+          const expected = await viaBuild(usage, list, jsMinifier);
+          const pageIds = placeholderIds(expected.html);
+          const actual = viaManifest(usage, list, manifest);
+          const componentIds = placeholderIds(actual.transpiledHtmlBody);
+          expect(componentIds.length, name).toBe(pageIds.length);
+          for (let index = 0; index < pageIds.length; index++) {
+            const fromPage = expected.scripts[pageIds[index]];
+            const staged = serverSidecarRegistry.getScript(componentIds[index]);
+            expect(staged, `${name} job ${index}`).toBeDefined();
+            expect(componentIds[index]).toMatch(/^component_script_[0-9a-f]+$/);
+            expect(staged?.source, `${name} job ${index}`).toBe(
+              fromPage.source,
+            );
+            expect(staged?.mode).toBe(fromPage.mode);
+            expect(staged?.sourceFile).toBe(fromPage.sourceFile);
+            expect(staged?.sourceLine).toBe(fromPage.sourceLine);
+            expect(staged?.outputScope).toBe(fromPage.outputScope);
+          }
+        }
+      });
+
+      it("records the page pipeline's CSS for every supported component (once per response, or segmented per instance)", async () => {
+        for (const name of Object.keys(list).sort()) {
+          const entry = manifest.components[name];
+          if (entry.unsupported) continue;
+          const expected = await viaBuild(`<${name}></${name}>`, list, null);
+          const used = expected.usedComponents[0];
+          expect(used?.name, name).toBe(name);
+          if (entry.css === null) {
+            expect(used.cssFileContent ?? "", name).toBe("");
+            continue;
+          }
+          if ("perInstance" in entry.css) {
+            expect(
+              used.requiresPerInstanceCss ?? false,
+              `${name} per-instance`,
+            ).toBe(true);
+            const predicted = instantiateTemplate(
+              entry.template!,
+              deriveInstanceId(PAGE_PATH, name, 1),
+              identifiers ? getAttributeNameHash : identity,
+            );
+            expect(predicted?.cssFileContent, name).toBe(
+              await pipelineCss(used),
+            );
+            continue;
+          }
+          expect(entry.css.text, name).toBe(await pipelineCss(used));
+          expect(entry.cspStable.style, name).toBe(true);
+        }
+      });
+    });
   }
 });

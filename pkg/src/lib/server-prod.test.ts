@@ -459,4 +459,123 @@ describe("startProdServer and the component manifest (prompt 157)", () => {
     log.mockRestore();
     warn.mockRestore();
   });
+
+  // Phase 3: the loaded manifest is attached to the stored pages so the
+  // shared server renders component tags from script output, and a manifest
+  // whose component job the sidecar lacks is a stale dist that never boots.
+  const SRV_JOB_ID = `component_script_${Buffer.from("srv-card::1").toString("hex")}`;
+  const outputScope = encodeURIComponent(
+    JSON.stringify({
+      classes: { line: "bascik__srv-card__line" },
+      elements: {},
+    }),
+  );
+  const manifestWithComponent = JSON.stringify({
+    schema: 1,
+    identifiers: false,
+    minifyHtml: false,
+    base: "/",
+    inheritAttributes: true,
+    components: {
+      "srv-card": {
+        name: "srv-card",
+        filePath: "src/components/srv-card.html",
+        template: {
+          instanceId: "rsentinel",
+          tokenCount: 1,
+          steps: [],
+          fileContent: {
+            parts: [
+              `<div class="bascik__srv-card__wrap" data-rid="`,
+              `"><script type="text/bascik-server" data-bascik-server-id="${SRV_JOB_ID}"></script></div>`,
+            ],
+            tokens: [0],
+          },
+          size: 0,
+        },
+        css: null,
+        jobs: [
+          {
+            id: SRV_JOB_ID,
+            mode: "server",
+            ordinal: 1,
+            sourceFile: "src/components/srv-card.html",
+            sourceLine: 2,
+            outputScope,
+          },
+        ],
+        cspStable: { style: true, script: true },
+        scriptHashes: [],
+      },
+    },
+  });
+  const sidecarWithComponentJob = JSON.stringify({
+    version: "1",
+    schema: SIDECAR_SCHEMA_VERSION,
+    scripts: {
+      s1: { id: "s1", mode: "server", source: "export default () => 'x';" },
+      [SRV_JOB_ID]: {
+        id: SRV_JOB_ID,
+        mode: "server",
+        source: "export default () => '<p class=\"line\">c</p>';",
+        sourceFile: "src/components/srv-card.html",
+        sourceLine: 2,
+        outputScope,
+      },
+    },
+  });
+
+  it("attaches the loaded manifest to every stored page that has a server-script plan", async () => {
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    await writeFile(join(workDir, "dist", "index.html"), placeholderPage);
+    await writeFile(join(workDir, "dist", "about.html"), "<h1>about</h1>");
+    await writeFile(
+      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      sidecarWithComponentJob,
+      "utf8",
+    );
+    await writeFile(
+      join(workDir, "dist", ".bascik", "components.json"),
+      manifestWithComponent,
+      "utf8",
+    );
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await startProdServer();
+
+    expect(startServerMock).toHaveBeenCalledOnce();
+    const page = mem.getPageExact("/");
+    expect(page?.serverScriptPlan).toBeDefined();
+    expect(page?.componentManifest?.schema).toBe(1);
+    expect(page?.componentManifest?.components["srv-card"].jobs[0].id).toBe(
+      SRV_JOB_ID,
+    );
+    // A page without a plan never renders at request time and carries none.
+    expect(mem.getPageExact("/about")?.componentManifest).toBeUndefined();
+    log.mockRestore();
+  });
+
+  it("fails startup with a located message when components.json names a job the sidecar lacks", async () => {
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    await writeFile(join(workDir, "dist", "index.html"), placeholderPage);
+    await writeFile(
+      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      sidecarWithPageEntry,
+      "utf8",
+    );
+    await writeFile(
+      join(workDir, "dist", ".bascik", "components.json"),
+      manifestWithComponent,
+      "utf8",
+    );
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await expect(startProdServer()).rejects.toThrow(SRV_JOB_ID);
+    await expect(startProdServer()).rejects.toThrow(/srv-card/);
+    await expect(startProdServer()).rejects.toThrow(/bascik --build/);
+    expect(startServerMock).not.toHaveBeenCalled();
+    error.mockRestore();
+    log.mockRestore();
+  });
 });

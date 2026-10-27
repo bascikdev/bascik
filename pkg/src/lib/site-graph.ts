@@ -5,7 +5,7 @@
  */
 
 import { readFile, readdir } from "node:fs/promises";
-import { join, resolve, dirname, relative } from "node:path";
+import { join, resolve, dirname, relative, isAbsolute } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { getHttpPath } from "./paths.ts";
 import { getImportRoot } from "./import-root.ts";
@@ -23,11 +23,15 @@ import {
   type ServerScriptEntry,
   type ServerScriptsSidecar,
 } from "./server-sidecar.ts";
-import { readComponentManifest } from "./component-manifest.ts";
+import {
+  readComponentManifest,
+  type ComponentManifest,
+} from "./component-manifest.ts";
 import { DEFAULT_SCRIPT_TIMEOUT_MS } from "./server-scripts.ts";
 import { createHash } from "node:crypto";
 import type {
   SiteGraph,
+  SiteGraphComponents,
   SiteGraphPage,
   SiteGraphJob,
   SiteGraphApiRoute,
@@ -232,16 +236,85 @@ export const readSiteGraph = async (
   const sidecarScripts: Record<string, ServerScriptEntry> =
     sidecar?.scripts ?? {};
 
+  // One host-neutral job from a sidecar entry: a `src=` module by path, an
+  // inline script with its specifiers rewritten for staging.
+  const jobFor = (
+    id: string,
+    entry: ServerScriptEntry,
+    owner: string,
+  ): SiteGraphJob => {
+    const containingDir = entry.sourceFile
+      ? dirname(resolve(projectRoot, entry.sourceFile))
+      : projectRoot;
+    if (entry.modulePath) {
+      const modulePath = resolveScriptSrcPath(
+        entry.modulePath,
+        containingDir,
+        importRoot,
+      );
+      return {
+        id,
+        mode: entry.mode,
+        source: { kind: "module", path: modulePath },
+        owner,
+      };
+    }
+    const rewritten = rewriteModuleSpecifiers(entry.source, containingDir, {
+      importRoot,
+    });
+    return {
+      id,
+      mode: entry.mode,
+      source: { kind: "inline", code: rewritten, stagedPath: "" },
+      owner,
+    };
+  };
+
   // Page-owned entries mean the release renders component tags from script
   // output through dist/.bascik/components.json (prompt 157); a dist without
   // a compatible manifest is a stale build, as it is for `bascik --server`.
+  // The manifest and the component scripts it names form the graph's
+  // `components` section; they belong to no page, since any page's script
+  // may return any component. A job the sidecar lacks is the same stale
+  // build the production boot refuses.
+  let components: SiteGraphComponents | undefined;
   if (sidecarHasPageEntries(sidecarScripts)) {
-    const manifest = await readComponentManifest(distDir);
+    const manifest: ComponentManifest | null =
+      await readComponentManifest(distDir);
     if (!manifest) {
       throw new Error(
         `[bascik] --target: the sidecar has server-script entries but dist/.bascik/components.json is missing. Run \`bascik --build\` again.`,
       );
     }
+    const jobs: Record<string, SiteGraphJob> = {};
+    for (const component of Object.values(manifest.components)) {
+      for (const job of component.jobs) {
+        const entry = sidecarScripts[job.id];
+        if (!entry) {
+          throw new Error(
+            `[bascik] --target: component script "${job.id}" of <${component.name}> (${component.filePath}) ` +
+              `is listed in dist/.bascik/components.json but missing from the sidecar. Run \`bascik --build\` again.`,
+          );
+        }
+        // The manifest records the component file project-relative; the
+        // sidecar's path is whatever the builder listed (absolute on a real
+        // build), so the owner is shown from the manifest when it has one.
+        const sourceFile = job.sourceFile ?? entry.sourceFile;
+        const shownFile = sourceFile
+          ? (isAbsolute(sourceFile)
+              ? relative(projectRoot, sourceFile)
+              : sourceFile
+            ).replace(/\\/g, "/")
+          : component.filePath;
+        const line = job.sourceLine ?? entry.sourceLine;
+        jobs[job.id] = jobFor(
+          job.id,
+          entry,
+          `${entry.mode} script in ${shownFile}${line ? `:${line}` : ""}`,
+        );
+      }
+    }
+    components = { manifest, jobs };
   }
 
   const distFiles = await readDistFiles(distDir);
@@ -274,35 +347,7 @@ export const readSiteGraph = async (
             ? relative(projectRoot, entry.sourceFile).replace(/\\/g, "/")
             : rel
         }${entry.sourceLine ? `:${entry.sourceLine}` : ""}`;
-        const containingDir = entry.sourceFile
-          ? dirname(resolve(projectRoot, entry.sourceFile))
-          : projectRoot;
-
-        if (entry.modulePath) {
-          const modulePath = resolveScriptSrcPath(
-            entry.modulePath,
-            containingDir,
-            importRoot,
-          );
-          jobs[id] = {
-            id,
-            mode: entry.mode,
-            source: { kind: "module", path: modulePath },
-            owner,
-          };
-        } else {
-          const rewritten = rewriteModuleSpecifiers(
-            entry.source,
-            containingDir,
-            { importRoot },
-          );
-          jobs[id] = {
-            id,
-            mode: entry.mode,
-            source: { kind: "inline", code: rewritten, stagedPath: "" },
-            owner,
-          };
-        }
+        jobs[id] = jobFor(id, entry, owner);
       }
 
       pages[httpPath] = {
@@ -353,5 +398,6 @@ export const readSiteGraph = async (
     apiRoutes,
     custom500,
     importRoot,
+    ...(components ? { components } : {}),
   };
 };

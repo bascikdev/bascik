@@ -46,6 +46,10 @@ import {
   type SpecifierEdit,
 } from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
+import { applyOutputScope, decodeOutputScope } from "./output-scope.ts";
+import { createNodeRenderHost } from "./request-render-node.ts";
+import { wrapRunner } from "./request-render.ts";
+import type { ComponentManifest } from "./component-manifest.ts";
 import {
   composeBufferedResponse,
   streamComposedResponse,
@@ -133,7 +137,13 @@ export const htmlHasServerScripts = (html: string | Buffer): boolean => {
 /** Default execution timeout per server-script (ms). */
 export const DEFAULT_SCRIPT_TIMEOUT_MS = 30_000;
 
-interface ScriptJob {
+/**
+ * One script to run for a page: an inline block, a `src=` module, or a
+ * sidecar placeholder resolved to its entry. Exported so the request-time
+ * renderer's Node host (request-render-node.ts) can build one per staged
+ * component script.
+ */
+export interface ScriptJob {
   fullTag: string;
   scriptContent: string;
   openTag: string;
@@ -148,6 +158,12 @@ interface ScriptJob {
   /** The line and column the script's body starts at in `sourceFile`, recorded when the file was read. */
   sourceLine?: number;
   sourceColumn?: number;
+  /**
+   * The encoded output scope of a script written inside a component (prompt
+   * 157): its output receives the component's class and element names, as a
+   * build script's output does. Absent for page-level scripts.
+   */
+  outputScope?: string;
 }
 
 const inlineDependencies = new WeakMap<
@@ -239,6 +255,7 @@ export const planServerScripts = (
       "data-bascik-server-id",
     );
     let srcPath: string | undefined = getHtmlAttributeValue(fullTag, "src");
+    let outputScope: string | undefined;
     let sourceFile: string | undefined;
     let sourceLine: number | undefined;
     const annotatedSourceFile = getHtmlAttributeValue(
@@ -280,6 +297,7 @@ export const planServerScripts = (
       sourceFile = entry.sourceFile;
       sourceLine = entry.sourceLine;
       sourceColumn = entry.sourceColumn;
+      outputScope = entry.outputScope;
       if (entry.modulePath && !srcPath) srcPath = entry.modulePath;
     }
 
@@ -329,6 +347,7 @@ export const planServerScripts = (
         sourceFile,
         sourceLine,
         sourceColumn,
+        ...(outputScope !== undefined ? { outputScope } : {}),
       },
     });
     cursor = index + length;
@@ -464,7 +483,14 @@ export const runServerScriptJob = async (
         : val !== undefined && val !== null
           ? String(val)
           : "";
-    return stripAnsiEscapeCodes(strVal);
+    const output = stripAnsiEscapeCodes(strVal);
+    // A component's server or stream script prints markup that is spliced
+    // in after scoping, so its class and element names are applied here the
+    // way a build script's output receives them (prompt 157), whether the
+    // component was placed on the page statically or rendered at request
+    // time. Page-level scripts carry no scope and are untouched.
+    const scope = decodeOutputScope(job.outputScope);
+    return scope ? applyOutputScope(output, scope) : output;
   }
 
   const behavior = BascikConfig.scripts?.onServerScriptError ?? "error";
@@ -489,8 +515,11 @@ export const runServerScriptJob = async (
   );
   // An in-process `import()` of a module with a syntax error reports only Node's
   // own loader frames, so nothing names the file. Point at where the script starts.
+  // A timeout is raised by the registry, not the script, so its trace names no
+  // file either; a nested component script's timeout (prompt 157) would
+  // otherwise be impossible to place.
   if (
-    err instanceof SyntaxError &&
+    (err instanceof SyntaxError || result.timedOut) &&
     !cleanedMsg.includes(`${originalSourcePath}:`)
   ) {
     cleanedMsg += `\n    in the script that starts at ${originalSourcePath}:${lineOffset}:${columnOffset + 1}`;
@@ -505,7 +534,10 @@ export const runServerScriptJob = async (
 /**
  * Bridge a Node plan onto the portable core (prompt 132). Script jobs are
  * addressed by segment index; the runner closes over the request so the core
- * never sees ScriptRegistry, paths, or config.
+ * never sees ScriptRegistry, paths, or config. With a component manifest
+ * (prompt 157) the runner is wrapped so component tags in a job's output are
+ * rendered; without one, or with a manifest that has nothing to render, the
+ * runner is returned as is.
  */
 const toExecution = (
   plan: ServerScriptPlan,
@@ -514,6 +546,7 @@ const toExecution = (
   timeoutMs: number,
   filePath: string | undefined,
   signal?: AbortSignal,
+  manifest?: ComponentManifest | null,
 ): { execution: ExecutionPlan; run: ScriptJobRunner } => {
   const execution: ExecutionPlan = {
     segments: plan.segments.map((segment, i) =>
@@ -534,13 +567,23 @@ const toExecution = (
       signal,
     );
   };
-  return { execution, run };
+  if (!manifest) return { execution, run };
+  const host = createNodeRenderHost(manifest, {
+    request,
+    context,
+    timeoutMs,
+    filePath,
+  });
+  return { execution, run: wrapRunner(run, execution, host) };
 };
 
 /**
  * Buffered execution of a plan: every job runs (concurrently), then outputs are
  * joined with the static segments into one Buffer. This is the byte-for-byte
- * behavior every `data-bascik-server` page has always had.
+ * behavior every `data-bascik-server` page has always had. `manifest` is the
+ * page's component manifest (`StoredPage.componentManifest`, prompt 157):
+ * with it, component tags in job output are rendered; without it they are
+ * the author's text.
  */
 export const executeServerScriptPlan = async (
   plan: ServerScriptPlan,
@@ -548,6 +591,7 @@ export const executeServerScriptPlan = async (
   context: ServerScriptContext,
   timeoutMs: number = DEFAULT_SCRIPT_TIMEOUT_MS,
   filePath?: string,
+  manifest?: ComponentManifest | null,
 ): Promise<Buffer> => {
   const { execution, run } = toExecution(
     plan,
@@ -555,6 +599,8 @@ export const executeServerScriptPlan = async (
     context,
     timeoutMs,
     filePath,
+    undefined,
+    manifest,
   );
   const bytes = await composeBufferedResponse(execution, run);
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -615,7 +661,8 @@ export interface ServerScriptStreamer {
  *
  * The scheduler itself is the portable core in `request-execution.ts`; this
  * function only adapts the Node plan, the ScriptRegistry runner, and the
- * Buffer sink onto it.
+ * Buffer sink onto it. `manifest` is the page's component manifest, as for
+ * `executeServerScriptPlan`.
  */
 export const streamServerScripts = (
   plan: ServerScriptPlan,
@@ -625,6 +672,7 @@ export const streamServerScripts = (
   filePath: string | undefined,
   sink: ResponseSink,
   signal?: AbortSignal,
+  manifest?: ComponentManifest | null,
 ): ServerScriptStreamer => {
   const { execution, run } = toExecution(
     plan,
@@ -633,6 +681,7 @@ export const streamServerScripts = (
     timeoutMs,
     filePath,
     signal,
+    manifest,
   );
   const streamer = streamComposedResponse(
     execution,

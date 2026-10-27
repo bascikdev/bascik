@@ -10,6 +10,7 @@
  *   6. HTTP protocol, security headers, and method handling (GET, HEAD, 405, 400)
  *   7. In-memory page serving, Brotli compression, and route normalization
  *   8. Request-time script execution (`data-bascik-server`) in dev mode
+ *   9. Component edits that only reach a page through script output (prompt 157)
  *
  * Run with:
  *   npx playwright test --config e2e/playwright.dev.config.ts
@@ -1144,6 +1145,95 @@ test.describe("Dev Server Request-Time Scripts (data-bascik-server)", () => {
       "Comp Server: GET",
     );
     await expect(page.locator("#ansi-output")).toHaveText("Clean HTML");
+  });
+});
+
+test.describe("Dev Server component edits used only in script output (prompt 157)", () => {
+  // `server-card` appears in no page's markup: its only usages are the strings
+  // the server scripts on /server-components return. The page therefore has
+  // no component dependency for the watcher to follow; what links them is the
+  // request-time manifest, rebuilt on any component-list invalidation, and the
+  // reload the dev server publishes for every open page that has a
+  // server-script plan.
+  const serverCardPath = join(
+    e2eDir,
+    "src/components/server-card/server-card.html",
+  );
+  const INSTANCES = 3;
+  let originalServerCard: string;
+
+  const countOf = (html: string, marker: string): number =>
+    html.split(marker).length - 1;
+
+  test.beforeAll(async () => {
+    originalServerCard = await readFile(serverCardPath, "utf8");
+  });
+
+  test.afterEach(async () => {
+    const current = await readFile(serverCardPath, "utf8").catch(() => null);
+    if (current !== originalServerCard) {
+      const { reload } = await subscribeToServerReload("/server-components");
+      await writeFile(serverCardPath, originalServerCard, "utf8");
+      await reload.catch(() => {});
+    }
+  });
+
+  test("editing a component used only in server-script output reloads the open server page and the next response renders the new template", async ({
+    page,
+  }) => {
+    await page.goto("/server-components");
+    const versions = page.getByTestId("server-card-version");
+    await expect(versions).toHaveCount(INSTANCES);
+    await expect(versions.first()).toHaveText("server-card-v1");
+
+    const marker = `server-card-v2-${Date.now()}`;
+    const start = performance.now();
+    await writeFile(
+      serverCardPath,
+      originalServerCard.replace("server-card-v1", marker),
+      "utf8",
+    );
+
+    // The tab reloads over SSE and every instance renders the edited template.
+    await expect(page.getByTestId("server-card-version").first()).toHaveText(
+      marker,
+      { timeout: 15000 },
+    );
+    await expect(page.getByTestId("server-card-version")).toHaveText(
+      Array.from({ length: INSTANCES }, () => marker),
+    );
+    expect(performance.now() - start).toBeLessThan(5000);
+  });
+
+  test("a request during the rebuild renders a single version of the component", async ({
+    request,
+  }) => {
+    const before = await (await request.get("/server-components")).text();
+    expect(countOf(before, "server-card-v1")).toBe(INSTANCES);
+
+    const marker = `server-card-v2-${Date.now()}`;
+    await writeFile(
+      serverCardPath,
+      originalServerCard.replace("server-card-v1", marker),
+      "utf8",
+    );
+
+    // Every response between the write and the first fully new one is either
+    // all old or all new: a page always renders with the manifest it was
+    // stored with, never a mix.
+    await expect
+      .poll(
+        async () => {
+          const html = await (await request.get("/server-components")).text();
+          const oldCount = countOf(html, "server-card-v1");
+          const newCount = countOf(html, marker);
+          expect(oldCount + newCount, html).toBe(INSTANCES);
+          expect(oldCount === 0 || newCount === 0, html).toBe(true);
+          return newCount;
+        },
+        { timeout: 15000 },
+      )
+      .toBe(INSTANCES);
   });
 });
 

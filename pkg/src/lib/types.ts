@@ -442,6 +442,14 @@ export interface StoredPage {
    */
   serverScriptPlan?:
     import("./server-scripts.ts").ServerScriptPlan | { error: Error };
+  /**
+   * The component manifest the page was built against (prompt 157), kept by
+   * reference from the publication that stored it, so a request renders the
+   * component tags its server and stream scripts return with that version
+   * and never a mix. Only pages with a plan carry one: a static page never
+   * renders at request time.
+   */
+  componentManifest?: import("./component-manifest.ts").ComponentManifest;
   /** Pre-computed ETag from the page content buffer for fast response headers. */
   etag?: string;
 }

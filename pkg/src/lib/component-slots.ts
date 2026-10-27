@@ -208,10 +208,11 @@ export const replaceNamedSlots = (
   for (let i = wrappers.length - 1; i >= 0; i--) {
     const { slotName, startIndex, endIndex, content } = wrappers[i];
     // Use the element's own inner content as fallback when the slot is not provided
-    const matchedSlot =
-      slotName in slots
-        ? slots[slotName]
-        : slotsLowerMap.get(slotName.toLowerCase());
+    // Own keys only: a slot named `constructor` or `toString` that the usage
+    // did not fill keeps its fallback instead of Object.prototype's member.
+    const matchedSlot = Object.hasOwn(slots, slotName)
+      ? slots[slotName]
+      : slotsLowerMap.get(slotName.toLowerCase());
     const replacement = matchedSlot !== undefined ? matchedSlot : content;
     result = result.slice(0, startIndex) + replacement + result.slice(endIndex);
   }

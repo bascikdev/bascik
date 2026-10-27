@@ -8,6 +8,7 @@ import { getExecErrorAction, stopAfterExecFailure } from "./exec-policy.ts";
 import { withCompilationPublisher } from "./compilation-events.ts";
 import { clearBuildScriptCaches } from "./build-scripts.ts";
 import {
+  componentsHaveBuildScripts,
   componentsImportingStylesheet,
   invalidateComponentListCache,
 } from "./components.ts";
@@ -110,6 +111,24 @@ export const watchSourceCycles = async (
           }
           if (shouldInvalidateComponents || shouldClearAllBuildCaches) {
             invalidateComponentListCache();
+          }
+          // A page with a server-script plan renders component tags from its
+          // scripts' output with the manifest of the component list it was
+          // stored against (prompt 157, D6). When the list is invalidated by
+          // a component input, every such page is rebuilt with the next one,
+          // which re-stores it with the new manifest and reloads its open
+          // tabs: a component used only in script output, which no page
+          // depends on by name, still live-reloads. A cache clear (a watched
+          // input or asset) can change a component only through its build
+          // script, which may read that file and which only the manifest
+          // build ran, so it counts when some component has one; otherwise
+          // these pages stay as they are, like any page not depending on it.
+          if (
+            shouldInvalidateComponents ||
+            (shouldClearAllBuildCaches && componentsHaveBuildScripts())
+          ) {
+            for (const page of mem.pagesWithServerScriptPlan())
+              pages.add(resolve(page));
           }
           for (const path of paths) {
             const kind = batchChanges.get(path)!;

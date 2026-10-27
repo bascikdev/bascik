@@ -67,6 +67,7 @@ import { deleteDistFile, getRelativePath, listPages } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
 
 import {
+  componentsHaveBuildScripts,
   componentsImportingStylesheet,
   invalidateComponentListCache,
   listComponents,
@@ -98,6 +99,12 @@ import {
   SYSTEM_MAX_CHILD_PROCESSES,
 } from "./script-runner.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
+import { htmlHasServerScripts } from "./server-scripts.ts";
+import {
+  buildComponentManifest,
+  type ComponentManifest,
+} from "./component-manifest.ts";
+import { loadComponentJobs } from "./request-render-node.ts";
 import { generateSitemapFiles } from "./sitemap.ts";
 import { filterPagesByOnlyGlobs } from "./targeted-build.ts";
 import type {
@@ -165,6 +172,80 @@ const loadComponentList = async () => {
     throw error;
   }
 };
+
+// ─── Dev component manifest (prompt 157, D6) ─────────────────────────────────
+//
+// In dev the request-time renderer needs the same manifest `--build` writes to
+// dist/.bascik/components.json, built from the component list of the
+// publication that stored the page and attached to the page by reference, so
+// a request always renders with the manifest its page was built against and
+// never a mix of two component versions. Memoized on the ComponentList object:
+// one build per publication (every page of a batch shares the list object),
+// and a selective batch under an unchanged list reuses it. Built lazily, on
+// the first page with a server or stream script, so a site without one never
+// runs the component build scripts twice, and a static page is stored without
+// waiting for it. The build stages every component server/stream script in
+// `serverSidecarRegistry` under its `component_script_*` id as a side effect,
+// which is how a request-rendered instance's nested job resolves.
+const devComponentManifests = new WeakMap<
+  ComponentList,
+  Promise<ComponentManifest>
+>();
+
+const devComponentManifest = (
+  componentList: ComponentList,
+): Promise<ComponentManifest> => {
+  let pending = devComponentManifests.get(componentList);
+  if (!pending) {
+    // The jobs are resolved from the registry as soon as the build staged
+    // them: the ids are stable across versions (name::ordinal) and the next
+    // publication re-stages them in the same registry, so a manifest first
+    // used after that would pair this template with the next script.
+    pending = buildComponentManifest(componentList, BascikConfig).then(
+      (manifest) => {
+        loadComponentJobs(manifest);
+        return manifest;
+      },
+    );
+    devComponentManifests.set(componentList, pending);
+    // A failed build is not kept: the next publication retries and reports
+    // it again instead of serving pages against a rejection forever.
+    pending.catch(() => {
+      if (devComponentManifests.get(componentList) === pending)
+        devComponentManifests.delete(componentList);
+    });
+  }
+  return pending;
+};
+
+/**
+ * The manifest to store with a dev page: the publication's manifest when the
+ * page carries a server or stream script, nothing otherwise (a static page
+ * never renders at request time, so it never waits for the build).
+ */
+const devManifestForPage = async (
+  componentList: ComponentList,
+  html: string | Buffer,
+): Promise<ComponentManifest | undefined> =>
+  htmlHasServerScripts(html)
+    ? await devComponentManifest(componentList)
+    : undefined;
+
+/**
+ * `pages` plus every stored page with a server-script plan (prompt 157, D6).
+ * Such a page renders component tags from its scripts' output with the
+ * manifest of the component list it was stored against, and no page depends
+ * on a component it only meets in script output, so a component input change
+ * (a component file, a stylesheet a component imports) rebuilds them all
+ * (open or not: a tab opened later must not render the old component); the
+ * rebuild re-stores each with the next manifest and reloads its open tabs
+ * like any rebuilt page. So does a watched-path edit when some component has
+ * a build script: that script may read the edited file, and only the
+ * manifest build ran it for a component met in script output.
+ */
+const withRequestRenderedPages = (pages: string[]): string[] => [
+  ...new Set([...pages, ...mem.pagesWithServerScriptPlan()]),
+];
 
 export const templateToGeneratedRelativePaths = new Map<string, Set<string>>();
 
@@ -552,6 +633,10 @@ export const processPageBatch = async (
           pageContent: result.distHtml,
           usedComponentsNames: result.usedComponentsNames,
           fileDependencies: result.fileDependencies,
+          componentManifest: await devManifestForPage(
+            componentList!,
+            result.distHtml,
+          ),
         });
         void queueTranspiledPageWrite({
           relativePagePath: result.relativePagePath,
@@ -647,7 +732,12 @@ export const selectivelyProcessPagesForWatchPath = async (
   if (changedPath) {
     const dependentPages = mem.pagesDependentOnFile(changedPath);
     if (dependentPages.length > 0) {
-      pagesToProcess = dependentPages;
+      // The component list was invalidated above; a component build script
+      // may read the edited file, and for a component met only in script
+      // output only the manifest build ran it (D6, as in watch-source.ts).
+      pagesToProcess = componentsHaveBuildScripts()
+        ? withRequestRenderedPages(dependentPages)
+        : dependentPages;
     }
   }
 
@@ -674,7 +764,7 @@ export const processPagesImportingStylesheet = async (
   const pagesToTranspile = pagesImportingStylesheet(path);
   if (pagesToTranspile.length === 0) return;
   invalidateComponentListCache();
-  await processPageBatch(pagesToTranspile);
+  await processPageBatch(withRequestRenderedPages(pagesToTranspile));
 };
 
 export const selectivelyProcessPages = async (path: string): Promise<void> => {
@@ -685,12 +775,10 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
   if (!componentName) return;
   // A stylesheet that is not itself a component's companion still reaches the
   // pages of every component that imports it.
-  const pagesToTranspile = [
-    ...new Set([
-      ...mem.pagesThisComponentIsUsedOn(componentName),
-      ...pagesImportingStylesheet(path),
-    ]),
-  ];
+  const pagesToTranspile = withRequestRenderedPages([
+    ...mem.pagesThisComponentIsUsedOn(componentName),
+    ...pagesImportingStylesheet(path),
+  ]);
   // Enter the batch immediately so it claims each affected page generation at
   // the component event boundary. Loading components and global styles inside
   // processPageBatch happens only after those claims. Otherwise a newer direct
@@ -839,6 +927,10 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
               pageContent: pageBytes,
               usedComponentsNames: result.usedComponentsNames,
               fileDependencies: result.fileDependencies,
+              componentManifest: await devManifestForPage(
+                componentList,
+                pageBytes,
+              ),
             });
             void queueTranspiledPageWrite({
               relativePagePath: result.relativePagePath,
@@ -962,6 +1054,10 @@ export const pageProcessing = (
     .then(async () => {
       try {
         if (!isDynamicRoute(pagePath)) {
+          // Resolved here rather than inside transpilePage so the dev
+          // manifest (prompt 157) is built from the same list object the
+          // page is; a failure reaches the same catch below either way.
+          if (!componentList) componentList = await listComponents();
           const result = await transpilePage(
             pagePath,
             componentList,
@@ -987,6 +1083,10 @@ export const pageProcessing = (
                 pageContent: distHtml,
                 usedComponentsNames,
                 fileDependencies,
+                componentManifest: await devManifestForPage(
+                  componentList,
+                  distHtml,
+                ),
               });
               void queueTranspiledPageWrite({
                 relativePagePath,

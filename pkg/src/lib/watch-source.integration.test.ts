@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   remove: vi.fn(),
   deps: vi.fn(),
   components: vi.fn(),
+  planPages: vi.fn(),
+  buildScripts: vi.fn(),
   importers: vi.fn(),
   clear: vi.fn(),
   copy: vi.fn(),
@@ -50,11 +52,13 @@ vi.mock("./mem.ts", () => ({
   mem: {
     pagesDependentOnFile: mocks.deps,
     pagesThisComponentIsUsedOn: mocks.components,
+    pagesWithServerScriptPlan: mocks.planPages,
   },
 }));
 vi.mock("./components.ts", () => ({
   invalidateComponentListCache: mocks.invalidateComponents,
   componentsImportingStylesheet: mocks.importers,
+  componentsHaveBuildScripts: mocks.buildScripts,
 }));
 vi.mock("./build-scripts.ts", () => ({ clearBuildScriptCaches: mocks.clear }));
 vi.mock("./file-system.ts", () => ({
@@ -86,6 +90,8 @@ beforeEach(() => {
   mocks.invalidateComponents.mockReset();
   mocks.deps.mockReset().mockReturnValue(["src/pages/consumer.html"]);
   mocks.components.mockReset().mockReturnValue([]);
+  mocks.planPages.mockReset().mockReturnValue([]);
+  mocks.buildScripts.mockReset().mockReturnValue(false);
   mocks.importers.mockReset().mockReturnValue([]);
   mocks.config.pipeline.watchPaths = ["content/*.md"];
   mocks.config.pipeline.exec = [
@@ -287,5 +293,85 @@ describe("source observer and phase queue integration", () => {
     expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
       resolve("src/pages/index.html"),
     ]);
+  });
+
+  it("rebuilds every page with a server-script plan when a component input changes, or a cache clear may reach a component build script, and only then (prompt 157)", async () => {
+    // /catalog uses no component in its own markup: its server script returns
+    // a component tag at request time, rendered with the manifest of the
+    // component list the page was stored against. A component edit (any
+    // list invalidation) must re-store it with the next list, whether or
+    // not a tab has it open; a direct page edit keeps the list and does not.
+    mocks.deps.mockReturnValue([]);
+    mocks.components.mockReturnValue(["src/pages/index.html"]);
+    mocks.planPages.mockReturnValue(["src/pages/catalog.html"]);
+    await watchSourceCycles(vi.fn());
+    eventEmitter.emit("boot-done");
+    mocks.batch.mockClear();
+
+    watcher.emit("all", "change", resolve("src/components/card/card.html"));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(mocks.invalidateComponents).toHaveBeenCalledOnce();
+    expect(mocks.batch).toHaveBeenCalledOnce();
+    expect([...mocks.batch.mock.calls[0][0]].sort()).toEqual(
+      [
+        resolve("src/pages/index.html"),
+        resolve("src/pages/catalog.html"),
+      ].sort(),
+    );
+
+    mocks.batch.mockClear();
+    mocks.invalidateComponents.mockClear();
+    mocks.deps.mockReturnValue(["src/pages/about.html"]);
+    watcher.emit("all", "change", resolve("src/pages/about.html"));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(mocks.invalidateComponents).not.toHaveBeenCalled();
+    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
+      resolve("src/pages/about.html"),
+    ]);
+
+    // A watched input clears the build caches, and with them the list. No
+    // component has a build script, so nothing a plan page renders at
+    // request time can have read it: only its dependents rebuild.
+    mocks.batch.mockClear();
+    mocks.deps.mockReturnValue(["src/pages/consumer.html"]);
+    watcher.emit("all", "change", resolve("content/post.md"));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(mocks.invalidateComponents).toHaveBeenCalledOnce();
+    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
+      resolve("src/pages/consumer.html"),
+    ]);
+
+    // With a component build script, which may read the input (a menu built
+    // from content/menu.json) and which only the manifest build ran for a
+    // component met in script output, the plan pages rebuild too (D6).
+    mocks.batch.mockClear();
+    mocks.invalidateComponents.mockClear();
+    mocks.buildScripts.mockReturnValue(true);
+    watcher.emit("all", "change", resolve("content/post.md"));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(mocks.invalidateComponents).toHaveBeenCalledOnce();
+    expect(mocks.batch).toHaveBeenCalledOnce();
+    expect([...mocks.batch.mock.calls[0][0]].sort()).toEqual(
+      [
+        resolve("src/pages/consumer.html"),
+        resolve("src/pages/catalog.html"),
+      ].sort(),
+    );
+  });
+
+  it("deleting a component used only in script output rebuilds every page with a server-script plan, so the tag passes through from the next manifest (prompt 157)", async () => {
+    mocks.deps.mockReturnValue([]);
+    mocks.planPages.mockReturnValue(["src/pages/catalog.html"]);
+    await watchSourceCycles(vi.fn());
+    eventEmitter.emit("boot-done");
+    mocks.batch.mockClear();
+
+    watcher.emit("all", "unlink", resolve("src/components/card/card.html"));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(mocks.invalidateComponents).toHaveBeenCalledOnce();
+    expect(mocks.batch).toHaveBeenCalledOnce();
+    expect([...mocks.batch.mock.calls[0][0]]).toContain(
+      resolve("src/pages/catalog.html"),
+    );
   });
 });

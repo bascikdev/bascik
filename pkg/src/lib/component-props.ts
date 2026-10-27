@@ -161,8 +161,11 @@ export const injectPropAttributes = (
           continue;
         }
 
-        const propValue =
-          props[propName] ?? propsLowerMap.get(propName.toLowerCase());
+        // Own keys only, as for slots: a binding to `toString` or `valueOf`
+        // must not read Object.prototype's member.
+        const propValue = Object.hasOwn(props, propName)
+          ? props[propName]
+          : propsLowerMap.get(propName.toLowerCase());
         if (propValue === undefined) continue;
         const boundValue = rewriteValue
           ? rewriteValue(targetName, propValue)

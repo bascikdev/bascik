@@ -202,6 +202,23 @@ export const componentsImportingStylesheet = (filePath: string): string[] => [
   ...(stylesheetImporters.get(resolve(filePath)) ?? []),
 ];
 
+let anyComponentBuildScript = false;
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const COMPONENT_BUILD_SCRIPT_RE = new RegExp(
+  String.raw`<script\b(?:[^>"']|"[^"]*"|'[^']*')*\s(?:${BUILD_ATTR_NAME}|${BUILD_ONCE_ATTR_NAME})(?=[\s=/>])`,
+  "i",
+);
+
+/**
+ * Whether any component, as of the last component listing, carries a
+ * `data-bascik-build` script. Such a script may read any file, so a cache
+ * clear (a watched input or asset edit) can change what the component
+ * renders even though the component's own files did not change (prompt 157,
+ * D6: the request-time manifest ran that script).
+ */
+export const componentsHaveBuildScripts = (): boolean =>
+  anyComponentBuildScript;
+
 /** Load all component HTML and CSS files from the configured components directory. */
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const BUILD_DIRECTIVE_RE = new RegExp(
@@ -673,6 +690,12 @@ export const listComponents = async (
     }),
   );
   stylesheetImporters = nextStylesheetImporters;
+  anyComponentBuildScript = (components as BascikComponent[]).some(
+    (component) =>
+      COMPONENT_BUILD_SCRIPT_RE.test(
+        component.scriptDependenciesContent ?? component.fileContent ?? "",
+      ),
+  );
   const builtList = (components as BascikComponent[]).reduce(
     (acc: ComponentList, { name, ...rest }) => {
       if (!name) return acc;

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Server Components Test</title>
+  </head>
+
+  <body>
+    <h1 data-testid="sc-heading">Server components</h1>
+
+    <!-- Page markup, not script output: an escaped usage inside pre/code is
+         text at build time and must still be text at request time. The
+         request-time renderer only ever sees job output, never the page's
+         static segments. -->
+    <pre
+      data-testid="sc-code"
+    ><code>&lt;server-card data-bascik-prop-title="Docs"&gt;&lt;/server-card&gt;</code></pre>
+
+    <!-- One card with a prop, a named slot and default slot content. The
+         title comes from ?title= so the test can prove the prop is injected
+         per request, HTML-escaped by the author as the docs require. The
+         named-slot wrapper itself is dropped (the slot rule keeps only what
+         is inside it), so the badge's testid sits on an element within. -->
+    <section data-testid="sc-server">
+      <script data-bascik-server>
+        export default function (request) {
+          const escape = (s) =>
+            s
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/"/g, "&quot;");
+          const title =
+            new URL(request.url).searchParams.get("title") ?? "Alpha";
+          return (
+            `<server-card data-bascik-prop-title="${escape(title)}">` +
+            `<span data-bascik-slot="badge"><em data-testid="sc-badge">new</em></span>` +
+            `<p data-testid="sc-body">body from server</p>` +
+            `</server-card>`
+          );
+        }
+      </script>
+    </section>
+
+    <!-- Two more instances from one job: the component's style block must
+         still be emitted once for the whole response, and each instance gets
+         its own id and its own nested-job output. -->
+    <section data-testid="sc-list">
+      <script data-bascik-server>
+        export default function () {
+          return ["Beta", "Gamma"]
+            .map(
+              (name) =>
+                `<server-card data-bascik-prop-title="${name}">` +
+                `<p data-testid="sc-list-body">${name} body</p>` +
+                `</server-card>`,
+            )
+            .join("");
+        }
+      </script>
+    </section>
+
+    <!-- Misuse: what the renderer must leave alone. A typo'd tag has no
+         component and passes through verbatim; an escaped tag is text; a tag
+         inside an attribute value is not markup. -->
+    <section data-testid="sc-misuse">
+      <script data-bascik-server>
+        export default function () {
+          return (
+            `<server-crad data-testid="sc-typo">typo stays verbatim</server-crad>` +
+            `<p data-testid="sc-escaped">&lt;server-card&gt; stays text</p>` +
+            `<p data-testid="sc-attr" title="<server-card>">attr stays text</p>`
+          );
+        }
+      </script>
+    </section>
+
+    <footer data-testid="sc-footer">footer</footer>
+  </body>
+</html>

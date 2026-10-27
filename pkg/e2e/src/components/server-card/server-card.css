@@ -1,0 +1,10 @@
+.card {
+  border: 2px solid rgb(22, 101, 52);
+  padding: 8px;
+}
+.title {
+  color: rgb(22, 101, 52);
+}
+.stock {
+  font-style: italic;
+}

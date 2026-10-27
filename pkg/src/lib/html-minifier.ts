@@ -423,3 +423,274 @@ export const minifyHtml = (htmlString: string): string => {
   // either side from joining with them.
   return tail ? `${placed}${separator}${tail}` : placed;
 };
+
+// ─── Fragments (prompt 157) ──────────────────────────────────────────────────
+//
+// A request-time renderer minifies each rendered component instance on its
+// own, inside a page whose markup it does not minify. What `minifyHtml` keeps
+// or collapses in a fragment depends on the page around it: whitespace and
+// comments inside a `<pre>`, the separator a comment leaves in a table, the
+// space kept between tags while a formatting element is open, scripts that
+// never move out of a `<template>`, and the tokens on either side of the
+// fragment. `fragmentContexts` reads that from the page, and
+// `minifyHtmlFragment` minifies the fragment as the whole page's
+// `minifyHtml` would minify those bytes, except that hoisted scripts are
+// placed at the fragment's end instead of the page's.
+
+/** What touches a fragment's edge, as `collapseWhitespace` classifies a neighbor. */
+export type FragmentNeighbor = "none" | "text" | "inline" | "block";
+
+export interface FragmentContext {
+  /**
+   * The page around the fragment is SVG or MathML, or a part the scan could
+   * not follow: the fragment is left as written, which keeps more whitespace
+   * than the build would, never less.
+   */
+  verbatim: boolean;
+  inTemplate: boolean;
+  inTable: boolean;
+  inPre: boolean;
+  /** A formatting element (`<b>`, `<a>`, ...) may be open. */
+  formatting: boolean;
+  before: FragmentNeighbor;
+  after: FragmentNeighbor;
+  /**
+   * The neighbor is the previous (next) span itself, as written: whoever
+   * expands the spans should take the neighbor from that span's result.
+   */
+  beforeIsSpan?: boolean;
+  afterIsSpan?: boolean;
+}
+
+/** A fragment that is a whole document. */
+export const DOCUMENT_FRAGMENT_CONTEXT: FragmentContext = {
+  verbatim: false,
+  inTemplate: false,
+  inTable: false,
+  inPre: false,
+  formatting: false,
+  before: "none",
+  after: "none",
+};
+
+/**
+ * Markup that puts the scan in `context`'s state: none of it is whitespace,
+ * a comment or a script, so the minifier writes it back unchanged.
+ */
+const openingMarkup = (context: FragmentContext): string =>
+  (context.inTemplate ? "<template>" : "") +
+  (context.inTable ? "<table>" : "") +
+  (context.inPre ? "<pre>" : "") +
+  (context.formatting ? "<b>" : "");
+
+/** A stand-in neighbor of the same kind; text stands in as one non-space character. */
+const BEFORE_STAND_IN: Record<FragmentNeighbor, string> = {
+  none: "",
+  text: "x",
+  inline: "<span>",
+  block: "<div>",
+};
+/**
+ * Text after the fragment needs no stand-in: the fragment's trailing
+ * whitespace collapses to one space either way.
+ */
+const AFTER_STAND_IN: Record<FragmentNeighbor, string> = {
+  none: "",
+  text: "",
+  inline: "<span>",
+  block: "<div>",
+};
+
+const classifyNeighbor = (token: HtmlToken): FragmentNeighbor =>
+  token.kind === "text"
+    ? "text"
+    : isInlineTag(token)
+      ? "inline"
+      : isMarkupToken(token)
+        ? "block"
+        : "text";
+
+/**
+ * The context of each `span` of `html` (non-overlapping, in document order),
+ * where `html` itself sits in `outer`. One scan of `html`.
+ */
+export const fragmentContexts = (
+  html: string,
+  spans: readonly HtmlRange[],
+  outer: FragmentContext = DOCUMENT_FRAGMENT_CONTEXT,
+): FragmentContext[] => {
+  const results: FragmentContext[] = spans.map(() => ({ ...outer }));
+  if (outer.verbatim || spans.length === 0) return results;
+  const prefix = openingMarkup(outer);
+  const shift = prefix.length;
+  const document = prefix + html;
+  const isWhitespaceText = (token: HtmlToken): boolean =>
+    token.kind === "text" &&
+    TEXT_WHITESPACE_ONLY_RE.test(document.slice(token.start, token.end));
+  const formattingByName = new Map<string, number>();
+  let openFormatting = 0;
+  /** The last token of `html` seen, and the last that was not whitespace-only text. */
+  let previous: HtmlToken | undefined;
+  let previousSolid: HtmlToken | undefined;
+  let unparsedAt = Infinity;
+  let started = 0;
+  let ended = 0;
+  /** Spans whose `after` waits for the token past a whitespace-only text run. */
+  let pendingAfter: number[] = [];
+  const resolveStart = (index: number): void => {
+    const result = results[index];
+    if (previous) {
+      result.inTemplate = previous.inTemplate;
+      result.inTable = previous.inTable;
+      result.inPre = previous.inPre;
+      result.verbatim = previous.inForeign || previous.inForeignCode;
+      // Whitespace-only text between the page's markup and the fragment
+      // merges with the fragment's own edge, so that markup decides.
+      const neighbor =
+        isWhitespaceText(previous) && previousSolid ? previousSolid : previous;
+      result.before = classifyNeighbor(neighbor);
+      result.beforeIsSpan =
+        index > 0 && neighbor.end === spans[index - 1].end + shift;
+    }
+    result.formatting = openFormatting > 0;
+  };
+  const resolveAfter = (index: number, token: HtmlToken): void => {
+    results[index].after = classifyNeighbor(token);
+    results[index].afterIsSpan =
+      index + 1 < spans.length &&
+      token.start === spans[index + 1].start + shift;
+  };
+  scanHtml(document, {
+    token(token) {
+      if (pendingAfter.length > 0) {
+        for (const index of pendingAfter) resolveAfter(index, token);
+        pendingAfter = [];
+      }
+      while (
+        started < spans.length &&
+        token.start >= spans[started].start + shift
+      )
+        resolveStart(started++);
+      while (ended < started && token.start >= spans[ended].end + shift) {
+        if (isWhitespaceText(token)) pendingAfter.push(ended);
+        else resolveAfter(ended, token);
+        ended++;
+      }
+      if (token.kind === "unparsed")
+        unparsedAt = Math.min(unparsedAt, token.start);
+      if (
+        token.kind === "tag" &&
+        FORMATTING_ELEMENTS.has(token.name) &&
+        !token.inForeign
+      ) {
+        const count = formattingByName.get(token.name) ?? 0;
+        if (!token.isEndTag) {
+          formattingByName.set(token.name, count + 1);
+          openFormatting++;
+        } else if (count > 0) {
+          formattingByName.set(token.name, count - 1);
+          openFormatting--;
+        }
+      }
+      // The opening markup only sets the state; it is no neighbor.
+      if (token.end <= shift) return;
+      previous = token;
+      if (!isWhitespaceText(token)) previousSolid = token;
+    },
+  });
+  // Spans the scan never reached start at the end of `html`.
+  while (started < spans.length) resolveStart(started++);
+  for (let index = 0; index < spans.length; index++) {
+    if (unparsedAt < spans[index].end + shift) results[index].verbatim = true;
+  }
+  return results;
+};
+
+/**
+ * The first and last tokens of `html` that its minified form keeps at its
+ * edges (comments and hoisted scripts are removed, whitespace-only text is
+ * no neighbor), as a fragment next to it sees them. "none" when it is empty.
+ */
+export const fragmentEdges = (
+  html: string,
+): { first: FragmentNeighbor; last: FragmentNeighbor } => {
+  const { remainder } = planMinification(html);
+  let first: HtmlToken | undefined;
+  let last: HtmlToken | undefined;
+  scanHtml(remainder, {
+    token(token) {
+      if (
+        token.kind === "text" &&
+        TEXT_WHITESPACE_ONLY_RE.test(remainder.slice(token.start, token.end))
+      )
+        return;
+      first ??= token;
+      last = token;
+    },
+  });
+  return {
+    first: first ? classifyNeighbor(first) : "none",
+    last: last ? classifyNeighbor(last) : "none",
+  };
+};
+
+/**
+ * Minify `html`, a fragment of a page, as `minifyHtml` would minify those
+ * bytes within the whole page, given the page around it (`context`). Hoisted
+ * scripts go to the end of the fragment. Where the fragment cannot be
+ * placed back exactly (it ends inside unclosed markup), or `context` is
+ * verbatim, it is returned as written.
+ */
+export const minifyHtmlFragment = (
+  html: string,
+  context: FragmentContext,
+): string => {
+  if (context.verbatim) return html;
+  const prefix = openingMarkup(context) + BEFORE_STAND_IN[context.before];
+  const suffix = AFTER_STAND_IN[context.after];
+  if (!prefix && !suffix) return minifyHtml(html);
+  const document = prefix + html + suffix;
+  const { remainder, scripts, insertAt } = planMinification(document);
+  const end = remainder.length - suffix.length;
+  if (
+    !remainder.startsWith(prefix) ||
+    !remainder.endsWith(suffix) ||
+    (!context.inTemplate && insertAt < end)
+  )
+    return html;
+  const {
+    html: collapsed,
+    split,
+    keepWhitespaceAtSplit,
+  } = collapseWhitespace(remainder, end);
+  if (collapsed.slice(split) !== suffix || !collapsed.startsWith(prefix))
+    return html;
+  const body = collapsed.slice(0, split);
+  if (scripts.length === 0) return body.slice(prefix.length);
+  const separator = keepWhitespaceAtSplit ? "" : "\n";
+  const head = trimCollapsibleWhitespace(body, !keepWhitespaceAtSplit);
+  if (!head.startsWith(prefix)) return html;
+  // The fragment's trailing whitespace is the page's, shared with what
+  // follows (the whole page's minify never trims it), so it stays after the
+  // scripts placed at the fragment's end.
+  const trailing = body.slice(head.length);
+  return `${head}${separator}${scripts.join(separator)}${trailing}`.slice(
+    prefix.length,
+  );
+};
+
+/** Collapsible whitespace at the start of `html` (space, tab, LF, CR). */
+export const leadingCollapsibleWhitespace = (html: string): number => {
+  let index = 0;
+  while (index < html.length && isCollapsibleWhitespace(html.charCodeAt(index)))
+    index++;
+  return index;
+};
+
+/** Collapsible whitespace at the end of `html`. */
+export const trailingCollapsibleWhitespace = (html: string): number => {
+  let index = html.length;
+  while (index > 0 && isCollapsibleWhitespace(html.charCodeAt(index - 1)))
+    index--;
+  return html.length - index;
+};

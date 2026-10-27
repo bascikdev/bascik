@@ -1,0 +1,36 @@
+<!-- Request-time component fixture (prompt 157). No page uses this tag in
+     its own markup: the only usages are the strings the server and stream
+     scripts on server-components*.html return, so every instance on those
+     pages comes from the request-time renderer, never the build-time loop.
+     Identifiers are readable in this fixture (minify.identifiers: false),
+     so the tests can assert the exact scoped class `bascik__server-card__card`.
+     Keep the server script class-only: a body that embeds the instance id
+     would make the component unsupported (instance-scoped-server-script). -->
+<article id="card" class="card" data-testid="server-card">
+  <h2 class="title" data-testid="server-card-title" data-bascik-prop-title>
+    Untitled
+  </h2>
+  <span class="version" data-testid="server-card-version">server-card-v1</span>
+  <div class="badge" data-bascik-slot="badge">
+    <span class="default-badge" data-testid="server-card-default-badge"
+      >no badge</span
+    >
+  </div>
+  <div class="body" data-bascik-slot>
+    <p class="default-body" data-testid="server-card-default-body">
+      No body provided.
+    </p>
+  </div>
+  <!-- Nested job: runs once per rendered instance with the current request,
+       and its output receives this component's element classes. -->
+  <script data-bascik-server>
+    export default function (request) {
+      return `<p class="stock" data-testid="server-card-stock">stock for ${new URL(request.url).pathname}</p>`;
+    }
+  </script>
+  <!-- Client script: counts its own runs so a test can prove it ran once per
+       instance without depending on how selectors are scoped. -->
+  <script>
+    window.__serverCardScripts = (window.__serverCardScripts ?? 0) + 1;
+  </script>
+</article>

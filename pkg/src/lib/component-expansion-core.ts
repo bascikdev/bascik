@@ -112,7 +112,10 @@ export interface ExpandOptions {
   numberSourceUrls: boolean;
   /**
    * Applied to each filled instance after attribute inheritance and before it
-   * is spliced into the page, never to the author's text around it.
+   * is spliced into the page, never to the author's text around it. The
+   * request path finishes whole top-level usages instead (request-render.ts,
+   * `usageFinalizer`): an instance alone cannot tell whether a `<pre>` around
+   * it keeps its whitespace.
    */
   finalizeInstance?: (html: string) => string;
   /** Merge non-bascik usage-tag attributes onto the instance root element. */
@@ -258,6 +261,7 @@ export const expandComponents = (
       // One stable ID shared across all attribute-scoping passes for this instance.
       const props = extractProps(component.content, warn);
       if (opts.injectAttrProps === "before-scope") {
+        currentStage = "prop injection";
         component.fileContent = injectPropAttributes(
           component.fileContent,
           props,
@@ -298,6 +302,8 @@ export const expandComponents = (
       }
       component = scoped;
       if (opts.injectAttrProps === "after-scope") {
+        // A binding that fails is a prop injection failure, not scoping's.
+        currentStage = "prop injection";
         const { rewriteIdRefs } = opts;
         const scopedIdNames = component.scopedIdNames ?? {};
         component.fileContent = injectPropAttributes(
@@ -307,6 +313,7 @@ export const expandComponents = (
             ((target, value) => rewriteIdRefs(target, value, scopedIdNames)),
           warn,
         );
+        currentStage = "attribute scoping";
       }
       // After scoping, not inside it: scoping results are reused across instances by renaming
       // instance IDs, and the ordinal is not an instance ID.

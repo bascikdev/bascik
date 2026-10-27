@@ -608,3 +608,92 @@ describe("storePage precomputes serverScriptPlan", () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// storePage carries the component manifest of its publication (prompt 157)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("storePage carries the component manifest of its publication (prompt 157)", () => {
+  // A page's server and stream scripts render component tags at request time
+  // with the manifest its page was built against (D6). The store keeps the
+  // reference it was handed, so a page re-stored by a later publication
+  // carries that publication's manifest while a page the publication did not
+  // touch keeps the old one: a request never mixes two versions.
+  const manifestFor = (
+    version: string,
+  ): import("./component-manifest.ts").ComponentManifest => ({
+    schema: 1,
+    identifiers: false,
+    minifyHtml: false,
+    base: "/",
+    inheritAttributes: true,
+    components: {
+      "server-card": {
+        name: "server-card",
+        filePath: `src/components/server-card/server-card.html#${version}`,
+        template: null,
+        css: null,
+        jobs: [],
+        cspStable: { style: true, script: true },
+        scriptHashes: [],
+      },
+    },
+  });
+  const SERVER_PAGE = `<p>a</p><script data-bascik-server>export default () => '<server-card></server-card>';</script>`;
+
+  it("a StoredPage carries the manifest it was stored with, by reference", async () => {
+    const manifest = manifestFor("one");
+    await mem.storePage({
+      relativePagePath: "manifest-page",
+      absolutePagePath: "manifest-page",
+      pageContent: SERVER_PAGE,
+      usedComponentsNames: [],
+      componentManifest: manifest,
+    });
+    const page = mem.getPage("manifest-page")!;
+    expect(page.serverScriptPlan).toBeDefined();
+    expect(page.componentManifest).toBe(manifest);
+  });
+
+  it("a page stored after invalidation carries the new manifest and the old page keeps the old reference", async () => {
+    const first = manifestFor("one");
+    await mem.storePage({
+      relativePagePath: "page-a",
+      absolutePagePath: "page-a",
+      pageContent: SERVER_PAGE,
+      usedComponentsNames: [],
+      componentManifest: first,
+    });
+    await mem.storePage({
+      relativePagePath: "page-b",
+      absolutePagePath: "page-b",
+      pageContent: SERVER_PAGE,
+      usedComponentsNames: [],
+      componentManifest: first,
+    });
+
+    // The component list was invalidated and only page-b was re-stored.
+    const second = manifestFor("two");
+    await mem.storePage({
+      relativePagePath: "page-b",
+      absolutePagePath: "page-b",
+      pageContent: SERVER_PAGE,
+      usedComponentsNames: [],
+      componentManifest: second,
+    });
+
+    expect(mem.getPage("page-a")!.componentManifest).toBe(first);
+    expect(mem.getPage("page-b")!.componentManifest).toBe(second);
+    expect(mem.getPage("page-b")!.componentManifest).not.toBe(first);
+  });
+
+  it("a page stored without a manifest carries none, so a static site pays nothing", async () => {
+    await mem.storePage({
+      relativePagePath: "plain-page",
+      absolutePagePath: "plain-page",
+      pageContent: "<p>static</p>",
+      usedComponentsNames: [],
+    });
+    expect(mem.getPage("plain-page")!.componentManifest).toBeUndefined();
+  });
+});

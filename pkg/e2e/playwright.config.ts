@@ -17,6 +17,11 @@ const staticTestIgnore = [
   // placeholder is inert. Static output therefore cannot stream, and this
   // suite would only fail for the wrong reason here.
   "**/server-scripts-stream.test.ts",
+  // Request-time components (prompt 157) render server-script output, which
+  // the static harness never runs. Ignored rather than skipped from inside:
+  // detecting the lane from a response would read an unspliced marker or
+  // placeholder, the very failure that suite exists to catch, as a skip.
+  "**/server-components.test.ts",
   "**/api-routes.test.ts",
   "**/dev-server-reload.test.ts",
   "**/prod-server.test.ts",
