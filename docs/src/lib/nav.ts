@@ -104,6 +104,7 @@ export const NAV: NavSection[] = [
       { href: "/testing/exec-scripts", label: "Exec Scripts" },
       { href: "/testing/e2e-testing", label: "End-to-End Testing" },
       { href: "/testing/debugging", label: "Debugging" },
+      { href: "/testing/troubleshooting", label: "Troubleshooting" },
       { href: "/testing/source-maps", label: "Source Maps" },
       { href: "/testing/linting", label: "Linting" },
     ],

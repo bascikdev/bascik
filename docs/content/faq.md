@@ -1,6 +1,6 @@
 # FAQ
 
-Answers to common questions about Bascik.
+Answers to common questions about Bascik. For error messages and things that stopped working, see [Troubleshooting](/testing/troubleshooting).
 
 ## How do you pronounce Bascik? Where does the name come from?
 

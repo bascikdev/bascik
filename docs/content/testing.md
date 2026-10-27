@@ -180,5 +180,6 @@ Explore specialized guides for each testing topic:
 - **[Exec Scripts](/testing/exec-scripts)**: Test build configuration lifecycle scripts (sitemaps, search indexes, RSS feeds) writing to `dist/`.
 - **[End-to-End Testing](/testing/e2e-testing)**: Author Playwright suites across static, dev, HTTP/1.1, and HTTP/2 servers using `data-testid` strategies.
 - **[Debugging & VS Code](/testing/debugging)**: Configure VS Code launch profiles for stepping through dev servers, unit tests, and browser components.
+- **[Troubleshooting](/testing/troubleshooting)**: Symptom-first fixes for build, config, component, script, and server problems, with the exact messages Bascik prints.
 - **[Source Maps & Location Attribution](/testing/source-maps)**: Learn how Bascik uses `//# sourceURL` directives and remapped terminal stack traces.
 - **[Linting & Web Standards](/testing/linting)**: Configure `.hintrc` and Webhint for accessibility auditing, valid markup, and cross-browser checks.
