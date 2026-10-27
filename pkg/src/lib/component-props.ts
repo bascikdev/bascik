@@ -27,9 +27,12 @@ const escapePropValue = (value: string): string =>
 /**
  * Extract data-bascik-prop-* attributes from a component usage tag string.
  * e.g. '<my-comp data-bascik-prop-title="Hello">' → { title: "Hello" }
+ * `warn` receives the authoring diagnostics (a request host routes them to
+ * its own log, prompt 157).
  */
 export const extractProps = (
   componentContent: string | undefined,
+  warn: (message: string) => void = console.warn,
 ): Record<string, string> => {
   const props: Record<string, string> = {};
   if (!componentContent || !/data-bascik-prop-/i.test(componentContent))
@@ -59,7 +62,7 @@ export const extractProps = (
     if (isQuoted) {
       const followingCharacter = openingTag[attr.valueEnd + 1];
       if (followingCharacter && !/[\s/>]/.test(followingCharacter)) {
-        console.warn(
+        warn(
           `Ignoring malformed data-bascik-prop-${propName}: the value contains an unescaped delimiting quote. Use &quot; or &#39; for quotes inside prop values.`,
         );
         continue;
@@ -75,9 +78,17 @@ export const extractProps = (
   return props;
 };
 
+/**
+ * Fill `data-bascik-attr-<target>="<prop>"` bindings with the prop values.
+ * `rewriteValue` sees each bound value with its target attribute's name
+ * before escaping: a request-time renderer injects after scoping and maps id
+ * references per target through the scoped id names (prompt 157).
+ */
 export const injectPropAttributes = (
   fileContent: string | undefined,
   props: Record<string, string>,
+  rewriteValue?: (targetName: string, value: string) => string,
+  warn: (message: string) => void = console.warn,
 ): string => {
   if (!fileContent) return "";
   if (!fileContent.includes("data-bascik-attr-")) return fileContent;
@@ -144,7 +155,7 @@ export const injectPropAttributes = (
           !propName ||
           !/^[a-zA-Z0-9_-]+$/.test(propName)
         ) {
-          console.warn(
+          warn(
             `Ignoring malformed data-bascik-attr-${targetName}: expected a quoted prop name.`,
           );
           continue;
@@ -153,7 +164,10 @@ export const injectPropAttributes = (
         const propValue =
           props[propName] ?? propsLowerMap.get(propName.toLowerCase());
         if (propValue === undefined) continue;
-        const attribute = ` ${targetName}="${escapePropValue(propValue)}"`;
+        const boundValue = rewriteValue
+          ? rewriteValue(targetName, propValue)
+          : propValue;
+        const attribute = ` ${targetName}="${escapePropValue(boundValue)}"`;
         // Whole-name conflict check: the target may already exist, but a
         // "target-looking" token inside another attribute's quoted value is
         // text and must not count as the target.
@@ -161,7 +175,7 @@ export const injectPropAttributes = (
           (attr) => attr.name.toLowerCase() === targetName.toLowerCase(),
         );
         if (existing) {
-          console.warn(
+          warn(
             `Attribute binding conflict: attribute "${targetName}" already exists; prop "${propName}" wins.`,
           );
           result =

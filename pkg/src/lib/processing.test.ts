@@ -152,12 +152,29 @@ vi.mock("./components.js", async (importOriginal) => {
   return {
     ...actual,
     invalidateComponentListCache: vi.fn(),
+  };
+});
+
+// The expansion loop imports the leaf modules directly (prompt 157: it must
+// bundle for the Web, and the `./components.js` barrel pulls in node:fs), so
+// the simulated stage failures are injected there, not on the barrel.
+vi.mock("./component-props.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  return {
+    ...actual,
     injectProps: (fileContent: any, props: any) => {
       if (fileContent && fileContent.includes("fail-during-prop-injection")) {
         throw new Error("Simulated prop injection failure");
       }
       return actual.injectProps(fileContent, props);
     },
+  };
+});
+
+vi.mock("./component-slots.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  return {
+    ...actual,
     replaceNamedSlots: (fileContent: any, slots: any) => {
       if (fileContent && fileContent.includes("fail-during-slot-resolution")) {
         throw new Error("Simulated slot resolution failure");

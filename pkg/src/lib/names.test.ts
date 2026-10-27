@@ -130,6 +130,42 @@ describe("deriveInstanceId", () => {
     expect(id1).not.toBe(id2);
   });
 
+  // Request-time instance ids are `r` + 7 hex (prompt 157). They are minted
+  // per request without the build's issued-id set, so the two shapes must be
+  // disjoint by construction: a build id is always exactly 8 lowercase hex
+  // characters, on the natural and on the salted path.
+  it("always emits ^[0-9a-f]{8}$, never the request id shape ^r[0-9a-f]{7}$", () => {
+    const buildShape = /^[0-9a-f]{8}$/;
+    const requestShape = /^r[0-9a-f]{7}$/;
+    const issued = new Set<string>();
+    const ids: string[] = [];
+    for (let n = 0; n < 5000; n++) {
+      ids.push(
+        deriveInstanceId(
+          `src/pages/p${n % 7}.html`,
+          `c${n % 13}-box`,
+          n + 1,
+          issued,
+        ),
+      );
+    }
+    // Force the salt loop too: re-request every id a second time.
+    for (let n = 0; n < 5000; n++) {
+      ids.push(
+        deriveInstanceId(
+          `src/pages/p${n % 7}.html`,
+          `c${n % 13}-box`,
+          n + 1,
+          issued,
+        ),
+      );
+    }
+    expect(ids).toHaveLength(10_000);
+    expect(issued.size).toBe(10_000);
+    expect(ids.filter((id) => !buildShape.test(id))).toEqual([]);
+    expect(ids.filter((id) => requestShape.test(id))).toEqual([]);
+  });
+
   it("resolves forced collisions deterministically without emitting duplicates", () => {
     const issued = new Set<string>();
     // Pre-seed collision

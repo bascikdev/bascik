@@ -1,0 +1,304 @@
+{
+  "identifiers:true": {
+    "page": {
+      "html": "<section class=\"bg1KJSFeXfvb bcERVpXlLiGf user\" id=\"bkDc6h3F7bnR\" aria-label=\"L\"><h2 class=\"b7a3aWW1Nrwd\">T &amp; &lt;b&gt; &quot;q&quot;</h2><div class=\"b7C5gGKuNIY9 b8t0crNOX5Nj\" id=\"bipELf8FPbOx\"><span>from outer</span><em>T &amp; &lt;b&gt; &quot;q&quot;</em><article class=\"b2DzQBmrXW6A\">Hello <i>slot</i><script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html</script></article>outer head</div><a class=\"cta\" href=\"/x?a=1&amp;b=2\">go</a>F</section>\n<section class=\"bg1KJSFeXfvb bcERVpXlLiGf\" id=\"b4doTxDrGAa2\"><h2 class=\"b7a3aWW1Nrwd\">2nd</h2><div class=\"b7C5gGKuNIY9 b8t0crNOX5Nj\" id=\"bapwbzEY4iYG\"><span>from outer</span><em>2nd</em><article class=\"b2DzQBmrXW6A\">second<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=2</script></article>outer head</div><a class=\"cta\">go</a>no foot</section>\n<div class=\"b7C5gGKuNIY9 b8t0crNOX5Nj\" id=\"bcuHiW8KiVTc\"><span>m</span><em></em><article class=\"b2DzQBmrXW6A\">plain <article class=\"b2DzQBmrXW6A\">nested usage<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=4</script></article><script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=3</script></article>mid head</div>\n<div class=\"b6qCCcxcJuDN\" title=\"T\" data-x=\"1\"><a class=\"b1fBjWc2nWwf\" href=\"#bguYb3m7XaR7\">go</a><img src=\"/a.png\" alt=\"pic\"><label for=\"bguYb3m7XaR7\">L</label><input id=\"bguYb3m7XaR7\" name=\"bguYb3m7XaR7\"><span>T</span></div>\n<svg><filter id=\"bi7tDYPLwCOq\"></filter></svg><div class=\"beTQxmFsntk1\"></div><svg><filter id=\"b8PNEiYdVlmD\"></filter></svg><div class=\"bhPEEK26yO8f\"></div>\n<!-- <outer-box> in a comment --><textarea><outer-box></outer-box></textarea><script>var s = \"<v-card/>\";</script><script type=\"application/ld+json\">{\"t\":\"<mid-box>\"}</script><pre><code>&lt;outer-box&gt;</code></pre>\n<div class=\"b7C5gGKuNIY9 b8t0crNOX5Nj\" id=\"beLyIgAAbCtz\"><span></span><em></em><article class=\"b2DzQBmrXW6A\">upper<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=5</script></article>mid head</div><article class=\"b2DzQBmrXW6A\">inner fallback<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=6</script></article><article class=\"b2DzQBmrXW6A\">inner fallback<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=7</script></article>",
+      "instances": [
+        [
+          "outer-box",
+          ".bg1KJSFeXfvb{color:red} .b7a3aWW1Nrwd{font-weight:bold} .bcERVpXlLiGf{margin:0}",
+          false,
+          "{\"root\":\"bkDc6h3F7bnR\"}"
+        ],
+        [
+          "mid-box",
+          ".b7C5gGKuNIY9{a:b} .b8t0crNOX5Nj{c:d}",
+          false,
+          "{\"m\":\"bipELf8FPbOx\"}"
+        ],
+        ["inner-box", ".b2DzQBmrXW6A{e:f}", null, null],
+        [
+          "outer-box",
+          ".bg1KJSFeXfvb{color:red} .b7a3aWW1Nrwd{font-weight:bold} .bcERVpXlLiGf{margin:0}",
+          false,
+          "{\"root\":\"b4doTxDrGAa2\"}"
+        ],
+        [
+          "mid-box",
+          ".b7C5gGKuNIY9{a:b} .b8t0crNOX5Nj{c:d}",
+          false,
+          "{\"m\":\"bapwbzEY4iYG\"}"
+        ],
+        ["inner-box", ".b2DzQBmrXW6A{e:f}", null, null],
+        [
+          "mid-box",
+          ".b7C5gGKuNIY9{a:b} .b8t0crNOX5Nj{c:d}",
+          false,
+          "{\"m\":\"bcuHiW8KiVTc\"}"
+        ],
+        ["inner-box", ".b2DzQBmrXW6A{e:f}", null, null],
+        ["inner-box", ".b2DzQBmrXW6A{e:f}", null, null],
+        [
+          "v-card",
+          ".b6qCCcxcJuDN{color:red} .b1fBjWc2nWwf{color:blue}",
+          false,
+          "{\"x\":\"bguYb3m7XaR7\"}"
+        ],
+        [
+          "glow-card",
+          ".beTQxmFsntk1 { clip-path: url(#bi7tDYPLwCOq) }\n.beTQxmFsntk1 { filter: url(#bi7tDYPLwCOq) }",
+          true,
+          "{\"glow\":\"bi7tDYPLwCOq\"}"
+        ],
+        [
+          "glow-card",
+          ".bhPEEK26yO8f { clip-path: url(#b8PNEiYdVlmD) }\n.bhPEEK26yO8f { filter: url(#b8PNEiYdVlmD) }",
+          true,
+          "{\"glow\":\"b8PNEiYdVlmD\"}"
+        ],
+        [
+          "mid-box",
+          ".b7C5gGKuNIY9{a:b} .b8t0crNOX5Nj{c:d}",
+          false,
+          "{\"m\":\"beLyIgAAbCtz\"}"
+        ],
+        ["inner-box", ".b2DzQBmrXW6A{e:f}", null, null],
+        ["inner-box", ".b2DzQBmrXW6A{e:f}", null, null],
+        ["inner-box", ".b2DzQBmrXW6A{e:f}", null, null]
+      ]
+    },
+    "noPath": {
+      "html": "<section class=\"bg1KJSFeXfvb bcERVpXlLiGf user\" id=\"bdYnwtwFCn4m\" aria-label=\"L\"><h2 class=\"b7a3aWW1Nrwd\">T &amp; &lt;b&gt; &quot;q&quot;</h2><div class=\"b7C5gGKuNIY9 b8t0crNOX5Nj\" id=\"bbIBWnzrR6ft\"><span>from outer</span><em>T &amp; &lt;b&gt; &quot;q&quot;</em><article class=\"b2DzQBmrXW6A\">Hello <i>slot</i><script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html</script></article>outer head</div><a class=\"cta\" href=\"/x?a=1&amp;b=2\">go</a>F</section>\n<section class=\"bg1KJSFeXfvb bcERVpXlLiGf\" id=\"b4VOGO53SBMJ\"><h2 class=\"b7a3aWW1Nrwd\">2nd</h2><div class=\"b7C5gGKuNIY9 b8t0crNOX5Nj\" id=\"b8OUHSoDbrXH\"><span>from outer</span><em>2nd</em><article class=\"b2DzQBmrXW6A\">second<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=2</script></article>outer head</div><a class=\"cta\">go</a>no foot</section>\n<div class=\"b7C5gGKuNIY9 b8t0crNOX5Nj\" id=\"bl8rjjUvCVfJ\"><span>m</span><em></em><article class=\"b2DzQBmrXW6A\">plain <article class=\"b2DzQBmrXW6A\">nested usage<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=4</script></article><script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=3</script></article>mid head</div>\n<div class=\"b6qCCcxcJuDN\" title=\"T\" data-x=\"1\"><a class=\"b1fBjWc2nWwf\" href=\"#b5sGOGl4H5wy\">go</a><img src=\"/a.png\" alt=\"pic\"><label for=\"b5sGOGl4H5wy\">L</label><input id=\"b5sGOGl4H5wy\" name=\"b5sGOGl4H5wy\"><span>T</span></div>\n<svg><filter id=\"bfIFz1kEsvoh\"></filter></svg><div class=\"b9JcR8cOmQjB\"></div><svg><filter id=\"b2G3a8Whurw0\"></filter></svg><div class=\"b1e31q4ik0P6\"></div>\n<!-- <outer-box> in a comment --><textarea><outer-box></outer-box></textarea><script>var s = \"<v-card/>\";</script><script type=\"application/ld+json\">{\"t\":\"<mid-box>\"}</script><pre><code>&lt;outer-box&gt;</code></pre>\n<div class=\"b7C5gGKuNIY9 b8t0crNOX5Nj\" id=\"beO9pJcjpqyD\"><span></span><em></em><article class=\"b2DzQBmrXW6A\">upper<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=5</script></article>mid head</div><article class=\"b2DzQBmrXW6A\">inner fallback<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=6</script></article><article class=\"b2DzQBmrXW6A\">inner fallback<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=7</script></article>",
+      "instances": [
+        [
+          "outer-box",
+          ".bg1KJSFeXfvb{color:red} .b7a3aWW1Nrwd{font-weight:bold} .bcERVpXlLiGf{margin:0}",
+          false,
+          "{\"root\":\"bdYnwtwFCn4m\"}"
+        ],
+        [
+          "mid-box",
+          ".b7C5gGKuNIY9{a:b} .b8t0crNOX5Nj{c:d}",
+          false,
+          "{\"m\":\"bbIBWnzrR6ft\"}"
+        ],
+        ["inner-box", ".b2DzQBmrXW6A{e:f}", null, null],
+        [
+          "outer-box",
+          ".bg1KJSFeXfvb{color:red} .b7a3aWW1Nrwd{font-weight:bold} .bcERVpXlLiGf{margin:0}",
+          false,
+          "{\"root\":\"b4VOGO53SBMJ\"}"
+        ],
+        [
+          "mid-box",
+          ".b7C5gGKuNIY9{a:b} .b8t0crNOX5Nj{c:d}",
+          false,
+          "{\"m\":\"b8OUHSoDbrXH\"}"
+        ],
+        ["inner-box", ".b2DzQBmrXW6A{e:f}", null, null],
+        [
+          "mid-box",
+          ".b7C5gGKuNIY9{a:b} .b8t0crNOX5Nj{c:d}",
+          false,
+          "{\"m\":\"bl8rjjUvCVfJ\"}"
+        ],
+        ["inner-box", ".b2DzQBmrXW6A{e:f}", null, null],
+        ["inner-box", ".b2DzQBmrXW6A{e:f}", null, null],
+        [
+          "v-card",
+          ".b6qCCcxcJuDN{color:red} .b1fBjWc2nWwf{color:blue}",
+          false,
+          "{\"x\":\"b5sGOGl4H5wy\"}"
+        ],
+        [
+          "glow-card",
+          ".b9JcR8cOmQjB { clip-path: url(#bfIFz1kEsvoh) }\n.b9JcR8cOmQjB { filter: url(#bfIFz1kEsvoh) }",
+          true,
+          "{\"glow\":\"bfIFz1kEsvoh\"}"
+        ],
+        [
+          "glow-card",
+          ".b1e31q4ik0P6 { clip-path: url(#b2G3a8Whurw0) }\n.b1e31q4ik0P6 { filter: url(#b2G3a8Whurw0) }",
+          true,
+          "{\"glow\":\"b2G3a8Whurw0\"}"
+        ],
+        [
+          "mid-box",
+          ".b7C5gGKuNIY9{a:b} .b8t0crNOX5Nj{c:d}",
+          false,
+          "{\"m\":\"beO9pJcjpqyD\"}"
+        ],
+        ["inner-box", ".b2DzQBmrXW6A{e:f}", null, null],
+        ["inner-box", ".b2DzQBmrXW6A{e:f}", null, null],
+        ["inner-box", ".b2DzQBmrXW6A{e:f}", null, null]
+      ]
+    },
+    "idRefs": {
+      "html": "<form id=\"bc68EESv9V14\"><label for=\"baDsW9yJDAvF\" title=\"p\">L</label><input id=\"baDsW9yJDAvF\" name=\"baDsW9yJDAvF\" form=\"bc68EESv9V14\" aria-describedby=\"b3skHnxLK7M8\"><p id=\"b3skHnxLK7M8\">h</p><a href=\"#b3skHnxLK7M8\">go</a></form><form id=\"bdJM8PQgk1BQ\"><label for=\"bcCQ0TTAZ0Od\" title=\"p\">L</label><input id=\"bcCQ0TTAZ0Od\" name=\"bcCQ0TTAZ0Od\" form=\"bdJM8PQgk1BQ\" aria-describedby=\"b0Out4r2VNKt\"><p id=\"b0Out4r2VNKt\">h</p><a href=\"/docs#hint\">go</a></form>",
+      "instances": [
+        [
+          "ref-card",
+          null,
+          false,
+          "{\"f\":\"bc68EESv9V14\",\"p\":\"baDsW9yJDAvF\",\"hint\":\"b3skHnxLK7M8\"}"
+        ],
+        [
+          "ref-card",
+          null,
+          false,
+          "{\"f\":\"bdJM8PQgk1BQ\",\"p\":\"bcCQ0TTAZ0Od\",\"hint\":\"b0Out4r2VNKt\"}"
+        ]
+      ]
+    }
+  },
+  "identifiers:false": {
+    "page": {
+      "html": "<section class=\"bascik__outer-box__outer bascik__outer-box__id__root user\" id=\"bascik__outer-box__96a9e0f7__root\" aria-label=\"L\"><h2 class=\"bascik__outer-box__t\">T &amp; &lt;b&gt; &quot;q&quot;</h2><div class=\"bascik__mid-box__mid bascik__mid-box__id__m\" id=\"bascik__mid-box__b3fbf820__m\"><span>from outer</span><em>T &amp; &lt;b&gt; &quot;q&quot;</em><article class=\"bascik__inner-box__inner\">Hello <i>slot</i><script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html</script></article>outer head</div><a class=\"cta\" href=\"/x?a=1&amp;b=2\">go</a>F</section>\n<section class=\"bascik__outer-box__outer bascik__outer-box__id__root\" id=\"bascik__outer-box__85084844__root\"><h2 class=\"bascik__outer-box__t\">2nd</h2><div class=\"bascik__mid-box__mid bascik__mid-box__id__m\" id=\"bascik__mid-box__30391781__m\"><span>from outer</span><em>2nd</em><article class=\"bascik__inner-box__inner\">second<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=2</script></article>outer head</div><a class=\"cta\">go</a>no foot</section>\n<div class=\"bascik__mid-box__mid bascik__mid-box__id__m\" id=\"bascik__mid-box__03846eef__m\"><span>m</span><em></em><article class=\"bascik__inner-box__inner\">plain <article class=\"bascik__inner-box__inner\">nested usage<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=4</script></article><script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=3</script></article>mid head</div>\n<div class=\"bascik__v-card__card\" title=\"T\" data-x=\"1\"><a class=\"bascik__v-card__lnk\" href=\"#bascik__v-card__b5431e45__x\">go</a><img src=\"/a.png\" alt=\"pic\"><label for=\"bascik__v-card__b5431e45__x\">L</label><input id=\"bascik__v-card__b5431e45__x\" name=\"bascik__v-card__b5431e45__x\"><span>T</span></div>\n<svg><filter id=\"bascik__glow-card__a1992692__glow\"></filter></svg><div class=\"bascik__glow-card__a1992692__box\"></div><svg><filter id=\"bascik__glow-card__d37c6409__glow\"></filter></svg><div class=\"bascik__glow-card__d37c6409__box\"></div>\n<!-- <outer-box> in a comment --><textarea><outer-box></outer-box></textarea><script>var s = \"<v-card/>\";</script><script type=\"application/ld+json\">{\"t\":\"<mid-box>\"}</script><pre><code>&lt;outer-box&gt;</code></pre>\n<div class=\"bascik__mid-box__mid bascik__mid-box__id__m\" id=\"bascik__mid-box__e6bf6378__m\"><span></span><em></em><article class=\"bascik__inner-box__inner\">upper<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=5</script></article>mid head</div><article class=\"bascik__inner-box__inner\">inner fallback<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=6</script></article><article class=\"bascik__inner-box__inner\">inner fallback<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=7</script></article>",
+      "instances": [
+        [
+          "outer-box",
+          ".bascik__outer-box__outer{color:red} .bascik__outer-box__t{font-weight:bold} .bascik__outer-box__id__root{margin:0}",
+          false,
+          "{\"root\":\"bascik__outer-box__96a9e0f7__root\"}"
+        ],
+        [
+          "mid-box",
+          ".bascik__mid-box__mid{a:b} .bascik__mid-box__id__m{c:d}",
+          false,
+          "{\"m\":\"bascik__mid-box__b3fbf820__m\"}"
+        ],
+        ["inner-box", ".bascik__inner-box__inner{e:f}", null, null],
+        [
+          "outer-box",
+          ".bascik__outer-box__outer{color:red} .bascik__outer-box__t{font-weight:bold} .bascik__outer-box__id__root{margin:0}",
+          false,
+          "{\"root\":\"bascik__outer-box__85084844__root\"}"
+        ],
+        [
+          "mid-box",
+          ".bascik__mid-box__mid{a:b} .bascik__mid-box__id__m{c:d}",
+          false,
+          "{\"m\":\"bascik__mid-box__30391781__m\"}"
+        ],
+        ["inner-box", ".bascik__inner-box__inner{e:f}", null, null],
+        [
+          "mid-box",
+          ".bascik__mid-box__mid{a:b} .bascik__mid-box__id__m{c:d}",
+          false,
+          "{\"m\":\"bascik__mid-box__03846eef__m\"}"
+        ],
+        ["inner-box", ".bascik__inner-box__inner{e:f}", null, null],
+        ["inner-box", ".bascik__inner-box__inner{e:f}", null, null],
+        [
+          "v-card",
+          ".bascik__v-card__card{color:red} .bascik__v-card__lnk{color:blue}",
+          false,
+          "{\"x\":\"bascik__v-card__b5431e45__x\"}"
+        ],
+        [
+          "glow-card",
+          ".bascik__glow-card__a1992692__box { clip-path: url(#bascik__glow-card__a1992692__glow) }\n.bascik__glow-card__a1992692__box { filter: url(#bascik__glow-card__a1992692__glow) }",
+          true,
+          "{\"glow\":\"bascik__glow-card__a1992692__glow\"}"
+        ],
+        [
+          "glow-card",
+          ".bascik__glow-card__d37c6409__box { clip-path: url(#bascik__glow-card__d37c6409__glow) }\n.bascik__glow-card__d37c6409__box { filter: url(#bascik__glow-card__d37c6409__glow) }",
+          true,
+          "{\"glow\":\"bascik__glow-card__d37c6409__glow\"}"
+        ],
+        [
+          "mid-box",
+          ".bascik__mid-box__mid{a:b} .bascik__mid-box__id__m{c:d}",
+          false,
+          "{\"m\":\"bascik__mid-box__e6bf6378__m\"}"
+        ],
+        ["inner-box", ".bascik__inner-box__inner{e:f}", null, null],
+        ["inner-box", ".bascik__inner-box__inner{e:f}", null, null],
+        ["inner-box", ".bascik__inner-box__inner{e:f}", null, null]
+      ]
+    },
+    "noPath": {
+      "html": "<section class=\"bascik__outer-box__outer bascik__outer-box__id__root user\" id=\"bascik__outer-box__d982f58b__root\" aria-label=\"L\"><h2 class=\"bascik__outer-box__t\">T &amp; &lt;b&gt; &quot;q&quot;</h2><div class=\"bascik__mid-box__mid bascik__mid-box__id__m\" id=\"bascik__mid-box__4dbbc47c__m\"><span>from outer</span><em>T &amp; &lt;b&gt; &quot;q&quot;</em><article class=\"bascik__inner-box__inner\">Hello <i>slot</i><script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html</script></article>outer head</div><a class=\"cta\" href=\"/x?a=1&amp;b=2\">go</a>F</section>\n<section class=\"bascik__outer-box__outer bascik__outer-box__id__root\" id=\"bascik__outer-box__108e95bc__root\"><h2 class=\"bascik__outer-box__t\">2nd</h2><div class=\"bascik__mid-box__mid bascik__mid-box__id__m\" id=\"bascik__mid-box__c1d6855a__m\"><span>from outer</span><em>2nd</em><article class=\"bascik__inner-box__inner\">second<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=2</script></article>outer head</div><a class=\"cta\">go</a>no foot</section>\n<div class=\"bascik__mid-box__mid bascik__mid-box__id__m\" id=\"bascik__mid-box__184ca3c0__m\"><span>m</span><em></em><article class=\"bascik__inner-box__inner\">plain <article class=\"bascik__inner-box__inner\">nested usage<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=4</script></article><script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=3</script></article>mid head</div>\n<div class=\"bascik__v-card__card\" title=\"T\" data-x=\"1\"><a class=\"bascik__v-card__lnk\" href=\"#bascik__v-card__0908354e__x\">go</a><img src=\"/a.png\" alt=\"pic\"><label for=\"bascik__v-card__0908354e__x\">L</label><input id=\"bascik__v-card__0908354e__x\" name=\"bascik__v-card__0908354e__x\"><span>T</span></div>\n<svg><filter id=\"bascik__glow-card__880d9d4b__glow\"></filter></svg><div class=\"bascik__glow-card__880d9d4b__box\"></div><svg><filter id=\"bascik__glow-card__6c22f3e2__glow\"></filter></svg><div class=\"bascik__glow-card__6c22f3e2__box\"></div>\n<!-- <outer-box> in a comment --><textarea><outer-box></outer-box></textarea><script>var s = \"<v-card/>\";</script><script type=\"application/ld+json\">{\"t\":\"<mid-box>\"}</script><pre><code>&lt;outer-box&gt;</code></pre>\n<div class=\"bascik__mid-box__mid bascik__mid-box__id__m\" id=\"bascik__mid-box__3ddd5778__m\"><span></span><em></em><article class=\"bascik__inner-box__inner\">upper<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=5</script></article>mid head</div><article class=\"bascik__inner-box__inner\">inner fallback<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=6</script></article><article class=\"bascik__inner-box__inner\">inner fallback<script>(function() {\ndocument.getElementById(\"m\"); console.log(\"<inner-box>\");\n})();\n//# sourceURL=src/components/inner-box.html?instance=7</script></article>",
+      "instances": [
+        [
+          "outer-box",
+          ".bascik__outer-box__outer{color:red} .bascik__outer-box__t{font-weight:bold} .bascik__outer-box__id__root{margin:0}",
+          false,
+          "{\"root\":\"bascik__outer-box__d982f58b__root\"}"
+        ],
+        [
+          "mid-box",
+          ".bascik__mid-box__mid{a:b} .bascik__mid-box__id__m{c:d}",
+          false,
+          "{\"m\":\"bascik__mid-box__4dbbc47c__m\"}"
+        ],
+        ["inner-box", ".bascik__inner-box__inner{e:f}", null, null],
+        [
+          "outer-box",
+          ".bascik__outer-box__outer{color:red} .bascik__outer-box__t{font-weight:bold} .bascik__outer-box__id__root{margin:0}",
+          false,
+          "{\"root\":\"bascik__outer-box__108e95bc__root\"}"
+        ],
+        [
+          "mid-box",
+          ".bascik__mid-box__mid{a:b} .bascik__mid-box__id__m{c:d}",
+          false,
+          "{\"m\":\"bascik__mid-box__c1d6855a__m\"}"
+        ],
+        ["inner-box", ".bascik__inner-box__inner{e:f}", null, null],
+        [
+          "mid-box",
+          ".bascik__mid-box__mid{a:b} .bascik__mid-box__id__m{c:d}",
+          false,
+          "{\"m\":\"bascik__mid-box__184ca3c0__m\"}"
+        ],
+        ["inner-box", ".bascik__inner-box__inner{e:f}", null, null],
+        ["inner-box", ".bascik__inner-box__inner{e:f}", null, null],
+        [
+          "v-card",
+          ".bascik__v-card__card{color:red} .bascik__v-card__lnk{color:blue}",
+          false,
+          "{\"x\":\"bascik__v-card__0908354e__x\"}"
+        ],
+        [
+          "glow-card",
+          ".bascik__glow-card__880d9d4b__box { clip-path: url(#bascik__glow-card__880d9d4b__glow) }\n.bascik__glow-card__880d9d4b__box { filter: url(#bascik__glow-card__880d9d4b__glow) }",
+          true,
+          "{\"glow\":\"bascik__glow-card__880d9d4b__glow\"}"
+        ],
+        [
+          "glow-card",
+          ".bascik__glow-card__6c22f3e2__box { clip-path: url(#bascik__glow-card__6c22f3e2__glow) }\n.bascik__glow-card__6c22f3e2__box { filter: url(#bascik__glow-card__6c22f3e2__glow) }",
+          true,
+          "{\"glow\":\"bascik__glow-card__6c22f3e2__glow\"}"
+        ],
+        [
+          "mid-box",
+          ".bascik__mid-box__mid{a:b} .bascik__mid-box__id__m{c:d}",
+          false,
+          "{\"m\":\"bascik__mid-box__3ddd5778__m\"}"
+        ],
+        ["inner-box", ".bascik__inner-box__inner{e:f}", null, null],
+        ["inner-box", ".bascik__inner-box__inner{e:f}", null, null],
+        ["inner-box", ".bascik__inner-box__inner{e:f}", null, null]
+      ]
+    },
+    "idRefs": {
+      "html": "<form id=\"bascik__ref-card__eb76784e__f\"><label for=\"bascik__ref-card__eb76784e__p\" title=\"p\">L</label><input id=\"bascik__ref-card__eb76784e__p\" name=\"bascik__ref-card__eb76784e__p\" form=\"bascik__ref-card__eb76784e__f\" aria-describedby=\"bascik__ref-card__eb76784e__hint\"><p id=\"bascik__ref-card__eb76784e__hint\">h</p><a href=\"#bascik__ref-card__eb76784e__hint\">go</a></form><form id=\"bascik__ref-card__2c4278c6__f\"><label for=\"bascik__ref-card__2c4278c6__p\" title=\"p\">L</label><input id=\"bascik__ref-card__2c4278c6__p\" name=\"bascik__ref-card__2c4278c6__p\" form=\"bascik__ref-card__2c4278c6__f\" aria-describedby=\"bascik__ref-card__2c4278c6__hint\"><p id=\"bascik__ref-card__2c4278c6__hint\">h</p><a href=\"/docs#hint\">go</a></form>",
+      "instances": [
+        [
+          "ref-card",
+          null,
+          false,
+          "{\"f\":\"bascik__ref-card__eb76784e__f\",\"p\":\"bascik__ref-card__eb76784e__p\",\"hint\":\"bascik__ref-card__eb76784e__hint\"}"
+        ],
+        [
+          "ref-card",
+          null,
+          false,
+          "{\"f\":\"bascik__ref-card__2c4278c6__f\",\"p\":\"bascik__ref-card__2c4278c6__p\",\"hint\":\"bascik__ref-card__2c4278c6__hint\"}"
+        ]
+      ]
+    }
+  }
+}

@@ -660,6 +660,48 @@ describe("injectPropAttributes", () => {
     ).toBe('<div aria-label="Details" data-foo="bar"></div>');
   });
 
+  it("passes the target attribute name and value through `rewriteValue` before escaping (prompt 157)", () => {
+    // A request-time renderer injects bindings after scoping and maps id
+    // references per target; the same prop can land on an id-reference
+    // target and a plain one, so the rewrite sees the target.
+    const rewriteValue = vi.fn((target: string, value: string) =>
+      target === "for" ? `scoped-${value}` : value,
+    );
+    expect(
+      injectPropAttributes(
+        '<label data-bascik-attr-for="p" data-bascik-attr-title="p">L</label>',
+        { p: "x<y" },
+        rewriteValue,
+      ),
+    ).toBe('<label for="scoped-x&lt;y" title="x&lt;y">L</label>');
+    expect(rewriteValue.mock.calls).toEqual([
+      ["for", "x<y"],
+      ["title", "x<y"],
+    ]);
+  });
+
+  it("routes its warnings through `warn` when given (prompt 157)", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.fn();
+    injectPropAttributes(
+      '<div title="old" data-bascik-attr-title="t" data-bascik-attr-id></div>',
+      { t: "new" },
+      undefined,
+      warn,
+    );
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(warn.mock.calls.map(([message]) => message)).toEqual([
+      expect.stringMatching(/Attribute binding conflict: attribute "title"/),
+      expect.stringMatching(/Ignoring malformed data-bascik-attr-id/),
+    ]);
+    expect(
+      extractProps('<x-c data-bascik-prop-t="say "hello""></x-c>', warn),
+    ).toEqual({});
+    expect(warn).toHaveBeenCalledTimes(3);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it("removes a missing-prop directive without adding the target attribute", () => {
     expect(injectPropAttributes('<img data-bascik-attr-src="image">', {})).toBe(
       "<img>",

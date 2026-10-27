@@ -72,8 +72,20 @@ import {
 } from "./javascript.ts";
 import { stripScriptLines } from "./script-source-lines.ts";
 import { minifyAttributeName, observeAttributeNames } from "./names.ts";
+import {
+  applyScopingResult,
+  realizeTemplate,
+  replayTemplateTokens,
+  type ScopingResult,
+  type ScopingTemplate,
+  type Segmented,
+} from "./scoping-instantiate.ts";
 import { observeCssImportPlanning } from "./styles.ts";
 import type { BascikComponent } from "./types.ts";
+
+// The template shape and its replay are portable (prompt 157): a request-time
+// renderer instantiates the same templates on a Web host with its own hash.
+export type { ScopingResult, ScopingTemplate, Segmented };
 
 /** Every component field the scoping pipeline reads. Pinned by tests. */
 export const SCOPING_INPUT_FIELDS = [
@@ -129,31 +141,6 @@ export const runScopingPipeline = (
   }
   return current;
 };
-
-interface ScopingResult {
-  fileContent: string;
-  cssFileContent: string | undefined;
-  scopedIdNames: string | undefined;
-  requiresPerInstanceCss: boolean | undefined;
-}
-
-/** Text split at token occurrences: `parts[0] + t[tokens[0]] + parts[1] + …`. */
-interface Segmented {
-  parts: string[];
-  tokens: number[];
-}
-
-export interface ScopingTemplate {
-  instanceId: string;
-  tokenCount: number;
-  /** Hashes to recompute, in recorded order: `token = minifyAttributeName(input)`. */
-  steps: Array<{ input: Segmented; token: number }>;
-  fileContent: Segmented;
-  cssFileContent: Segmented | undefined;
-  scopedIdNames: Segmented | undefined;
-  requiresPerInstanceCss: boolean | undefined;
-  size: number;
-}
 
 const snapshotResult = (component: BascikComponent): ScopingResult => ({
   fileContent: component.fileContent,
@@ -219,14 +206,6 @@ const segment = (text: string, tokens: string[]): Segmented | null => {
   }
   parts.push(text.slice(cursor));
   return { parts, tokens: order };
-};
-
-const join = (segmented: Segmented, values: string[]): string => {
-  let text = segmented.parts[0];
-  for (let index = 0; index < segmented.tokens.length; index++) {
-    text += values[segmented.tokens[index]] + segmented.parts[index + 1];
-  }
-  return text;
 };
 
 const segmentedSize = (segmented: Segmented | undefined): number =>
@@ -339,25 +318,15 @@ export const instantiateScopingTemplate = (
   instanceId: string,
   inputs: string[],
 ): ScopingResult | null => {
-  const values = new Array<string>(template.tokenCount);
-  values[0] = instanceId;
-  for (const step of template.steps)
-    values[step.token] = minifyAttributeName(join(step.input, values));
-  if (new Set(values).size !== values.length) return null;
+  const values = replayTemplateTokens(
+    template,
+    instanceId,
+    minifyAttributeName,
+  );
+  if (!values) return null;
   for (const value of values)
     if (inputs.some((text) => text.includes(value))) return null;
-  return {
-    fileContent: join(template.fileContent, values),
-    cssFileContent:
-      template.cssFileContent === undefined
-        ? undefined
-        : join(template.cssFileContent, values),
-    scopedIdNames:
-      template.scopedIdNames === undefined
-        ? undefined
-        : join(template.scopedIdNames, values),
-    requiresPerInstanceCss: template.requiresPerInstanceCss,
-  };
+  return realizeTemplate(template, values);
 };
 
 /** Test-only access to the snapshot helpers. Never read on production paths. */
@@ -386,25 +355,6 @@ const differingField = (a: ScopingResult, b: ScopingResult): string =>
       "requiresPerInstanceCss",
     ] as const
   ).find((field) => a[field] !== b[field]) ?? "none";
-
-const applyResult = (
-  component: BascikComponent,
-  result: ScopingResult,
-): BascikComponent => {
-  component.fileContent = result.fileContent;
-  if (result.cssFileContent === undefined) delete component.cssFileContent;
-  else component.cssFileContent = result.cssFileContent;
-  if (result.scopedIdNames === undefined) delete component.scopedIdNames;
-  else
-    component.scopedIdNames = JSON.parse(result.scopedIdNames) as Record<
-      string,
-      string
-    >;
-  if (result.requiresPerInstanceCss === undefined)
-    delete component.requiresPerInstanceCss;
-  else component.requiresPerInstanceCss = result.requiresPerInstanceCss;
-  return component;
-};
 
 const CONSOLE_METHODS = [
   "log",
@@ -608,5 +558,5 @@ export const scopeComponentInstance = (
   }
 
   __scopingTemplateStatsForTests.reused++;
-  return applyResult(component, predicted);
+  return applyScopingResult(component, predicted);
 };
