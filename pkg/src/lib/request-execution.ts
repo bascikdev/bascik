@@ -336,6 +336,12 @@ export interface InvokeResult<T> {
   value?: T;
   /** Present when not `ok`. */
   error?: Error;
+  /**
+   * Present when not `ok`: the raw rejection before it was wrapped as
+   * `error`. A non-Error rejection keeps only its `String()` form in `error`,
+   * so a field such as a reset `code` is read from here.
+   */
+  thrown?: unknown;
   timedOut: boolean;
   aborted: boolean;
 }
@@ -343,18 +349,120 @@ export interface InvokeResult<T> {
 const toError = (raw: unknown): Error =>
   raw instanceof Error ? raw : new Error(String(raw));
 
+/** The message a timed-out server, stream or component script reports on every host. */
+export const scriptTimeoutError = (timeoutMs: number): Error =>
+  new Error(`Script execution timed out after ${timeoutMs}ms`);
+
+const handlerTimeoutError = (timeoutMs: number): Error =>
+  new Error(`Handler timed out after ${timeoutMs}ms`);
+
 /**
- * Invoke `handler` under a deadline and an upstream signal. Settles exactly
- * once; a late rejection after settlement is observed and discarded. A
- * pre-aborted upstream signal never invokes the handler. Mirrors the
- * settlement ordering `ScriptRegistry.invoke` and `executeApiRoute` share.
+ * The one rule every host settles a deadline-bounded call by: once the signal
+ * has aborted (a fired deadline or an upstream abort), the abort is the
+ * outcome, even when the work settles afterwards, including synchronously
+ * inside its own abort listener. Work that settled before the abort keeps its
+ * value or error, even when the abort lands in the same tick.
+ *
+ * Settlement of a native promise is only visible one microtask after it
+ * happens, so both sides are compared by microtask order: the gate's abort
+ * listener is registered before the work can add its own, and it queues the
+ * abort decision before any listener of the work can settle. A settlement
+ * that happened earlier queued its reaction earlier and wins; one that
+ * happened during or after the abort queued it later and loses. A plain
+ * `Promise.race` against an abort promise cannot do this: rejecting that
+ * promise costs an extra microtask, so a value resolved inside the listener
+ * won the race on Node.
  */
-export const invokeWithDeadline = async <T>(
-  handler: (options: { signal: AbortSignal }) => T | Promise<T>,
-  options: InvokeOptions = {},
+export interface AbortGate {
+  /**
+   * Settle with `work`, unless the signal's abort is decided first. One race
+   * is pending at a time: start the next once the previous one settled.
+   */
+  race<T>(work: Promise<T>): Promise<T>;
+  /** True once the abort was decided ahead of a settlement. */
+  readonly decided: boolean;
+  dispose(): void;
+}
+
+class SignalAbortGate implements AbortGate {
+  decided: boolean;
+  // The pending race's reject. A promise settles once, so whichever of the
+  // work's reaction and the abort decision calls first wins and the other is
+  // a no-op; no flag or waiter set is needed on this per-request path.
+  private pending: ((reason: unknown) => void) | undefined = undefined;
+  private readonly signal: AbortSignal;
+  private readonly onAbort = (): void => {
+    queueMicrotask(this.decide);
+  };
+  private readonly decide = (): void => {
+    this.decided = true;
+    const reject = this.pending;
+    this.pending = undefined;
+    reject?.(this.signal.reason);
+  };
+
+  constructor(signal: AbortSignal) {
+    this.signal = signal;
+    this.decided = signal.aborted;
+    if (!this.decided) {
+      signal.addEventListener("abort", this.onAbort, { once: true });
+    }
+  }
+
+  race<T>(work: Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      // Attached even when already decided, so a late rejection of the work
+      // is observed instead of surfacing as unhandled.
+      if (this.decided) reject(this.signal.reason);
+      else this.pending = reject;
+      work.then(resolve, reject);
+    });
+  }
+
+  dispose(): void {
+    this.signal.removeEventListener("abort", this.onAbort);
+    this.pending = undefined;
+  }
+}
+
+export const createAbortGate = (signal: AbortSignal): AbortGate =>
+  new SignalAbortGate(signal);
+
+export interface LoadedInvokeOptions extends InvokeOptions {
+  /** The error a fired deadline reports; defaults to "Handler timed out". */
+  timeoutError?: (timeoutMs: number) => Error;
+}
+
+/** Run `produce` and gate its result; a synchronous throw is a rejection. */
+const gated = <V>(
+  gate: AbortGate,
+  produce: () => V | Promise<V>,
+): Promise<V> => {
+  let work: Promise<V>;
+  try {
+    work = Promise.resolve(produce());
+  } catch (syncErr) {
+    work = Promise.reject(syncErr);
+  }
+  return gate.race(work);
+};
+
+/**
+ * `invokeWithDeadline` with a load step under the same deadline: `load` runs
+ * first, then `call` with its result. The handler's own promise is gated
+ * directly rather than through an async wrapper, whose extra microtasks
+ * would turn a value settled just before the deadline into a timeout.
+ */
+export const invokeLoadedWithDeadline = async <M, T>(
+  load: (() => M | Promise<M>) | undefined,
+  call: (loaded: M, options: { signal: AbortSignal }) => T | Promise<T>,
+  options: LoadedInvokeOptions = {},
 ): Promise<InvokeResult<T>> => {
   const { timeoutMs, signal: upstream, clock = ambientClock } = options;
   const controller = new AbortController();
+  const signal = controller.signal;
+  // First listener on the signal, ahead of any the handler adds (see AbortGate).
+  const gate = createAbortGate(signal);
   let unsubscribe: (() => void) | undefined;
   if (upstream) {
     if (upstream.aborted) controller.abort(upstream.reason);
@@ -365,54 +473,63 @@ export const invokeWithDeadline = async <T>(
     }
   }
   let timer: unknown;
-  let timedOut = false;
+  // Set only when the deadline, not an upstream abort, aborted the signal.
+  let deadlineAborted = false;
   if (timeoutMs && timeoutMs > 0) {
     timer = clock.setTimeout(() => {
-      timedOut = true;
-      controller.abort(new Error(`Handler timed out after ${timeoutMs}ms`));
+      if (signal.aborted) return;
+      deadlineAborted = true;
+      controller.abort(
+        (options.timeoutError ?? handlerTimeoutError)(timeoutMs),
+      );
     }, timeoutMs);
   }
-  let settled = false;
-  let onAbort: (() => void) | undefined;
+  // An abort seen before the handler runs needs no race to win.
+  let abortedBeforeCall = false;
   try {
-    if (controller.signal.aborted) throw controller.signal.reason;
-    let result: Promise<T>;
-    try {
-      result = Promise.resolve(handler({ signal: controller.signal }));
-    } catch (syncErr) {
-      result = Promise.reject(syncErr);
+    if (signal.aborted) {
+      abortedBeforeCall = true;
+      throw signal.reason;
     }
-    result.catch(() => {});
-    const abortPromise = new Promise<never>((_, reject) => {
-      if (controller.signal.aborted) {
-        reject(controller.signal.reason);
-        return;
-      }
-      onAbort = () => {
-        if (!settled) reject(controller.signal.reason);
-      };
-      controller.signal.addEventListener("abort", onAbort, { once: true });
-    });
-    abortPromise.catch(() => {});
-    const value = await Promise.race([result, abortPromise]);
-    settled = true;
+    const loaded = load ? await gated(gate, load) : (undefined as M);
+    if (signal.aborted) {
+      abortedBeforeCall = true;
+      throw signal.reason;
+    }
+    const value = await gated(gate, () => call(loaded, { signal }));
     return { ok: true, value, timedOut: false, aborted: false };
   } catch (raw) {
-    settled = true;
+    // Only an abort that won the race is a timeout or an abort; a handler's
+    // own failure that settled first is reported as that failure.
+    const abortWon =
+      abortedBeforeCall || (gate.decided && raw === signal.reason);
     return {
       ok: false,
       error: toError(raw),
-      timedOut,
-      aborted:
-        !timedOut && (upstream?.aborted === true || controller.signal.aborted),
+      thrown: raw,
+      timedOut: abortWon && deadlineAborted,
+      aborted: abortWon && !deadlineAborted,
     };
   } finally {
-    settled = true;
+    gate.dispose();
     if (timer !== undefined) clock.clearTimeout(timer);
-    if (onAbort) controller.signal.removeEventListener("abort", onAbort);
     unsubscribe?.();
   }
 };
+
+/**
+ * Invoke `handler` under a deadline and an upstream signal. Settles exactly
+ * once; a late rejection after settlement is observed and discarded. A
+ * pre-aborted upstream signal never invokes the handler. Once the deadline
+ * fired or the upstream aborted, the outcome is a timeout or an abort even if
+ * the handler settles afterwards (see `AbortGate`). `ScriptRegistry.invoke`,
+ * `executeApiRoute` and the Worker settle through the same rule.
+ */
+export const invokeWithDeadline = <T>(
+  handler: (options: { signal: AbortSignal }) => T | Promise<T>,
+  options: InvokeOptions = {},
+): Promise<InvokeResult<T>> =>
+  invokeLoadedWithDeadline(undefined, (_, o) => handler(o), options);
 
 // ─── API route method dispatch ───────────────────────────────────────────────
 

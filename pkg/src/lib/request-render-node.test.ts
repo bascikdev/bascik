@@ -128,9 +128,8 @@ const cards = (): ComponentList => ({
   ),
   "num-card": scripted("num-card", "p", "num", `export default () => 42;`),
   // Settles only after the abort it is told about, like the hung-script
-  // fixture in server-scripts.test.ts: the registry's timeout rejection
-  // then wins the settlement race, which a handler resolving synchronously
-  // inside its own abort listener would not let it.
+  // fixture in server-scripts.test.ts: once the deadline has fired, the
+  // timeout is the outcome however the handler settles afterwards.
   "wait-card": scripted(
     "wait-card",
     "div",
@@ -201,13 +200,14 @@ const stream = async (
   html: string,
   manifest: ComponentManifest | null | undefined,
   signal?: AbortSignal,
+  timeoutMs = 1000,
 ) => {
   const { sink, text } = makeSink();
   const streamer = streamServerScripts(
     planServerScripts(html, PAGE_FILE),
     request(),
     context,
-    1000,
+    timeoutMs,
     PAGE_FILE,
     sink,
     signal,
@@ -629,5 +629,144 @@ describe("stream parents, budgets and aborts", () => {
     await streamer.done;
     expect(globals.__bascikNestedAborted).toBe(true);
     expect(text()).toBe("<p>head</p>");
+  });
+});
+
+// A fired deadline wins on Node as it does on the Worker: a page script, a
+// stream script or a component script that resolves synchronously inside its
+// own abort listener at the deadline is a timeout under the policy, never a
+// success with what it returned ("late" must not reach the response). The
+// scripts are plain functions returning a native promise, so nothing but the
+// rule decides the outcome.
+const RESOLVES_ON_ABORT = `export default (request, context, { signal }) => new Promise((resolve) => { signal.addEventListener("abort", () => resolve("late"), { once: true }); });`;
+
+describe.each(["error", "warn", "ignore"] as const)(
+  "a fired deadline wins under onServerScriptError %s",
+  (policy) => {
+    beforeEach(() => {
+      config.scripts.onServerScriptError = policy;
+    });
+
+    const buildWithYield = async (): Promise<ComponentManifest> => {
+      clearScopingTemplates();
+      serverSidecarRegistry.clear();
+      return buildComponentManifest(
+        {
+          ...cards(),
+          "yield-card": scripted("yield-card", "div", "y", RESOLVES_ON_ABORT),
+        },
+        BascikConfig,
+      );
+    };
+
+    const expectTimeoutUnderPolicy = async (
+      pending: Promise<string>,
+      warn: ReturnType<typeof vi.spyOn>,
+      error: ReturnType<typeof vi.spyOn>,
+    ): Promise<string | undefined> => {
+      if (policy === "error") {
+        await expect(pending).rejects.toThrow(/timed out after \d+ms/);
+        return undefined;
+      }
+      const out = await pending;
+      expect(out).not.toContain("late");
+      if (policy === "warn") {
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(String(warn.mock.calls[0][0])).toMatch(/timed out after \d+ms/);
+      } else {
+        expect(warn).not.toHaveBeenCalled();
+        expect(error).not.toHaveBeenCalled();
+      }
+      return out;
+    };
+
+    it("misuse: a page server script that resolves inside its abort listener at the deadline is a timeout", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const html = `<main><script data-bascik-server>${RESOLVES_ON_ABORT}</script></main>`;
+      const out = await expectTimeoutUnderPolicy(
+        render(html, null, 50),
+        warn,
+        error,
+      );
+      if (out !== undefined) expect(out).toBe("<main></main>");
+    });
+
+    it("misuse: a component job that resolves inside its abort listener at the deadline is a timeout, located at the component", async () => {
+      const manifest = await buildWithYield();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const out = await expectTimeoutUnderPolicy(
+        render(serverPage(`<yield-card></yield-card>`), manifest, 50),
+        warn,
+        error,
+      );
+      if (out !== undefined)
+        expect(out).toContain(`<div class="bascik__yield-card__y">\n</div>`);
+      if (policy === "warn")
+        expect(String(warn.mock.calls[0][0])).toMatch(
+          /src\/components\/yield-card\.html/,
+        );
+    });
+
+    it("misuse: a stream script that resolves its chunk inside its abort listener at the deadline is an empty slot, reported as a timeout", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const { streamer, text } = await stream(
+        `<p>head</p><script data-bascik-stream>${RESOLVES_ON_ABORT}</script><p>tail</p>`,
+        null,
+        undefined,
+        50,
+      );
+      await streamer.ready;
+      streamer.commit();
+      await streamer.done;
+      expect(text()).toBe("<p>head</p><p>tail</p>");
+      // After commit an error-policy failure is logged at error severity.
+      const reported = policy === "error" ? error : warn;
+      if (policy === "ignore") {
+        expect(warn).not.toHaveBeenCalled();
+        expect(error).not.toHaveBeenCalled();
+      } else {
+        expect(reported).toHaveBeenCalledTimes(1);
+        expect(String(reported.mock.calls[0][0])).toMatch(
+          /timed out after \d+ms/,
+        );
+      }
+    });
+  },
+);
+
+describe("a client abort stays an abort", () => {
+  it("misuse: a stream script and a nested job that resolve inside their abort listener when the client goes away yield nothing and log nothing, as on the Worker", async () => {
+    const manifest = await buildComponentManifest(
+      {
+        ...cards(),
+        "yield-card": scripted(
+          "yield-card",
+          "div",
+          "y",
+          `export default (request, context, { signal }) => { globalThis.__bascikNestedStarted = true; return new Promise((resolve) => { signal.addEventListener("abort", () => resolve("late"), { once: true }); }); };`,
+        ),
+      },
+      BascikConfig,
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const abort = new AbortController();
+    const { streamer, text } = await stream(
+      streamPage(`<yield-card></yield-card>`),
+      manifest,
+      abort.signal,
+    );
+    await streamer.ready;
+    streamer.commit();
+    for (let i = 0; i < 50 && !globals.__bascikNestedStarted; i++) await tick();
+    expect(globals.__bascikNestedStarted).toBe(true);
+    abort.abort();
+    await streamer.done;
+    expect(text()).toBe("<p>head</p>");
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
   });
 });

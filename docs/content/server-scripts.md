@@ -113,6 +113,8 @@ Server script execution is bounded by `scripts.timeout` in `bascik.config.ts`. P
 </script>
 ```
 
+Once the deadline passes, the result is a timeout even if the script settles afterwards, including a script that returns a value from inside its own `abort` listener. The timeout is then handled by `scripts.onServerScriptError` like any other timeout. A script that returned before the deadline keeps its output. When the client disconnects instead, the script's output is discarded without a report.
+
 > **Event loop caveat:** Because server scripts run in-process, synchronous blocking code (such as `while(true) {}` or heavy CPU loops) blocks Node's single-threaded event loop and cannot be interrupted by timeouts. Always use asynchronous I/O and standard timers.
 
 ## Shared Helper Modules

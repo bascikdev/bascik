@@ -456,6 +456,8 @@ Because streaming begins after HTTP 200 headers are already committed, a `data-b
 
 The author's placeholder remains visible on error, keeping page layout intact.
 
+A stream script that resolves its last chunk after `scripts.timeout` has passed, even inside its own `abort` listener, is a timeout under the policy above, not a late chunk.
+
 ### HTTP Headers & Caching Consequences
 
 Pages containing streaming scripts automatically adjust HTTP transport headers:

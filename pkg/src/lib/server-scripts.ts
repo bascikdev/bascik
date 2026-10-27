@@ -496,6 +496,10 @@ export const runServerScriptJob = async (
   const behavior = BascikConfig.scripts?.onServerScriptError ?? "error";
   const err = result.error ?? new Error("Server script error");
   if (result.isNetworkReset) return "";
+  // The client went away before the script settled: nothing is delivered, so
+  // there is nothing to report, even when the script answered the abort with
+  // a value inside its listener. The Worker drops an aborted job the same way.
+  if (result.aborted) return "";
 
   // Columns after a rewritten import on the same line are put back first, in module coordinates.
   const moduleReferences = moduleFilePath

@@ -1050,6 +1050,42 @@ for (const policy of ["error", "warn", "ignore"] as const) {
       expect(stream.cf.body).not.toContain("SECRET_DETAIL");
     });
 
+    it("misuse: a page job, a stream job and a component job that resolve inside their abort listener at the deadline time out under the policy on both hosts, never delivering what they returned", async () => {
+      for (const path of [
+        "/deadline-yield",
+        "/deadline-yield-stream",
+        "/components-yield",
+        "/components-yield-stream",
+      ]) {
+        const { node: n, cf } = await both(path);
+        const stream = path.endsWith("-stream");
+        // A server job's error-policy failure is the 500 page before commit;
+        // a stream job's is an empty slot after it.
+        const status = !stream && policy === "error" ? 500 : 200;
+        expect(n.status, `node ${path}`).toBe(status);
+        expect(cf.status, `cf ${path}`).toBe(status);
+        expect(n.body, `node ${path}`).not.toContain("yielded-late");
+        expect(cf.body, `cf ${path}`).not.toContain("yielded-late");
+        expect(cf.body, path).toBe(n.body);
+        if (status === 200)
+          expect(cf.body, path).toContain('data-testid="tail"');
+        if (
+          status === 200 &&
+          path.startsWith("/components") &&
+          policy !== "error"
+        )
+          expect(cf.body, path).toContain('data-testid="yield-card"');
+      }
+    }, 20_000);
+
+    it("misuse: an API route that returns a Response inside its abort listener at the deadline is a 504 on both hosts", async () => {
+      const { node: n, cf } = await both("/api/deadline-yield");
+      expect(n.status).toBe(504);
+      expect(cf.status).toBe(504);
+      expect(n.body).not.toContain("yielded-late");
+      expect(cf.body).toBe(n.body);
+    }, 20_000);
+
     it("misuse: a client that disconnects mid nested job: Node aborts its signal at once; workerd, which reports no disconnect while a streamed slot is idle, aborts it at the deadline; neither leaves it running", async () => {
       for (const host of ["node", "cf"] as const) {
         const key = `disconnect-${host}`;

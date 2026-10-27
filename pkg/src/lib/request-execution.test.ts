@@ -532,3 +532,333 @@ describe("dispatchApiHandler", () => {
     expect(seen).toEqual({ c: { ...ctx, platform }, hasSignal: true });
   });
 });
+
+/**
+ * A fired deadline (or an upstream abort) decides the outcome on every host:
+ * a handler that settles once the signal has aborted, even synchronously
+ * inside its own abort listener, is a timeout (or an abort), never a success
+ * with whatever it returned. A handler that settled before the deadline
+ * fired keeps its value even when the timer fires in the same tick. The
+ * clock is driven by hand so the boundary is decided by ordering, not sleeps.
+ */
+describe("invokeWithDeadline: a fired deadline wins", () => {
+  const manualClock = () => {
+    let fire: (() => void) | undefined;
+    const clock = {
+      setTimeout: vi.fn((cb: () => void) => {
+        fire = cb;
+        return 1 as unknown as ReturnType<typeof setTimeout>;
+      }),
+      clearTimeout: vi.fn(),
+    };
+    return {
+      clock,
+      fire: () => {
+        if (!fire) throw new Error("no deadline was scheduled");
+        fire();
+      },
+    };
+  };
+  const resolvesOnAbort =
+    <T>(value: T) =>
+    ({ signal }: { signal: AbortSignal }) =>
+      new Promise<T>((resolve) => {
+        signal.addEventListener("abort", () => resolve(value), { once: true });
+      });
+
+  it("misuse: a handler that resolves synchronously inside its abort listener at the deadline is a timeout, not its value", async () => {
+    const { clock, fire } = manualClock();
+    const pending = invokeWithDeadline(resolvesOnAbort("late"), {
+      timeoutMs: 5,
+      clock,
+    });
+    fire();
+    const result = await pending;
+    expect(result.ok).toBe(false);
+    expect(result.value).toBeUndefined();
+    expect(result.timedOut).toBe(true);
+    expect(result.aborted).toBe(false);
+    expect(result.error?.message).toMatch(/timed out after 5ms/);
+  });
+
+  it("misuse: a handler that resolves with an empty string inside its abort listener is still a timeout", async () => {
+    const { clock, fire } = manualClock();
+    const pending = invokeWithDeadline(resolvesOnAbort(""), {
+      timeoutMs: 5,
+      clock,
+    });
+    fire();
+    const result = await pending;
+    expect(result).toMatchObject({ ok: false, timedOut: true });
+  });
+
+  it("misuse: a handler that resolves in a microtask after the abort is a timeout", async () => {
+    const { clock, fire } = manualClock();
+    const pending = invokeWithDeadline(
+      ({ signal }) =>
+        new Promise<string>((resolve) => {
+          signal.addEventListener("abort", () =>
+            queueMicrotask(() => resolve("late")),
+          );
+        }),
+      { timeoutMs: 5, clock },
+    );
+    fire();
+    const result = await pending;
+    expect(result).toMatchObject({ ok: false, timedOut: true });
+  });
+
+  it("misuse: a handler that ignores the signal and resolves after the deadline is a timeout", async () => {
+    const { clock, fire } = manualClock();
+    let resolveLate!: (v: string) => void;
+    const pending = invokeWithDeadline(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveLate = resolve;
+        }),
+      { timeoutMs: 5, clock },
+    );
+    fire();
+    resolveLate("late");
+    const result = await pending;
+    expect(result).toMatchObject({ ok: false, timedOut: true });
+  });
+
+  it("misuse: a handler that rejects with a non-Error inside its abort listener is a timeout carrying the timeout error", async () => {
+    const { clock, fire } = manualClock();
+    const pending = invokeWithDeadline(
+      ({ signal }) =>
+        new Promise<string>((_, reject) => {
+          signal.addEventListener("abort", () => reject("not an error"));
+        }),
+      { timeoutMs: 5, clock },
+    );
+    fire();
+    const result = await pending;
+    expect(result.ok).toBe(false);
+    expect(result.timedOut).toBe(true);
+    expect(result.error).toBeInstanceOf(Error);
+    expect(result.error?.message).toMatch(/timed out after 5ms/);
+  });
+
+  it("boundary: a handler that resolved before the deadline keeps its value when the timer fires in the same tick", async () => {
+    const { clock, fire } = manualClock();
+    let resolveNow!: (v: string) => void;
+    const pending = invokeWithDeadline(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveNow = resolve;
+        }),
+      { timeoutMs: 5, clock },
+    );
+    // Settled first, then the timer fires before any microtask runs.
+    resolveNow("in time");
+    fire();
+    const result = await pending;
+    expect(result).toEqual({
+      ok: true,
+      value: "in time",
+      timedOut: false,
+      aborted: false,
+    });
+  });
+
+  it("boundary: a synchronous return value is never a timeout, even when the timer fires before it is awaited", async () => {
+    const { clock, fire } = manualClock();
+    const pending = invokeWithDeadline(() => "sync", { timeoutMs: 5, clock });
+    fire();
+    const result = await pending;
+    expect(result).toMatchObject({ ok: true, value: "sync", timedOut: false });
+  });
+
+  it("misuse: an upstream abort that the handler answers by resolving inside its listener is an abort, not a timeout and not a success", async () => {
+    const { clock } = manualClock();
+    const upstream = new AbortController();
+    const pending = invokeWithDeadline(resolvesOnAbort("late"), {
+      timeoutMs: 5,
+      clock,
+      signal: upstream.signal,
+    });
+    upstream.abort(new Error("client went away"));
+    const result = await pending;
+    expect(result.ok).toBe(false);
+    expect(result.value).toBeUndefined();
+    expect(result.aborted).toBe(true);
+    expect(result.timedOut).toBe(false);
+  });
+
+  it("an upstream abort after the deadline fired stays a timeout", async () => {
+    const { clock, fire } = manualClock();
+    const upstream = new AbortController();
+    const pending = invokeWithDeadline(resolvesOnAbort("late"), {
+      timeoutMs: 5,
+      clock,
+      signal: upstream.signal,
+    });
+    fire();
+    upstream.abort();
+    const result = await pending;
+    expect(result).toMatchObject({ ok: false, timedOut: true, aborted: false });
+  });
+
+  it("misuse: an already aborted upstream signal with a deadline is an abort; the handler never runs and no timer is left", async () => {
+    const { clock } = manualClock();
+    const upstream = new AbortController();
+    upstream.abort();
+    const handler = vi.fn(resolvesOnAbort("late"));
+    const result = await invokeWithDeadline(handler, {
+      timeoutMs: 5,
+      clock,
+      signal: upstream.signal,
+    });
+    expect(handler).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ ok: false, aborted: true, timedOut: false });
+  });
+
+  it("misuse: a timeout of 0 or unset means no deadline: nothing is scheduled and a late value is a success", async () => {
+    for (const timeoutMs of [0, undefined]) {
+      const { clock } = manualClock();
+      let resolveLate!: (v: string) => void;
+      const pending = invokeWithDeadline(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveLate = resolve;
+          }),
+        { timeoutMs, clock },
+      );
+      await tick();
+      resolveLate("late but fine");
+      const result = await pending;
+      expect(clock.setTimeout, String(timeoutMs)).not.toHaveBeenCalled();
+      expect(result, String(timeoutMs)).toEqual({
+        ok: true,
+        value: "late but fine",
+        timedOut: false,
+        aborted: false,
+      });
+    }
+  });
+
+  it("misuse: a non-Error rejection is reported as an Error and kept raw as `thrown`, so a reset code survives", async () => {
+    const plain = { code: "ECONNRESET" };
+    const result = await invokeWithDeadline(() => Promise.reject(plain), {
+      timeoutMs: 5,
+      clock: manualClock().clock,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.timedOut).toBe(false);
+    expect(result.error).toBeInstanceOf(Error);
+    expect(result.thrown).toBe(plain);
+  });
+
+  // Pins current behavior, not a recommendation. A listener that throws is
+  // not a rejection: `AbortController.abort()` cannot catch it, and Node
+  // reports it as an uncaught exception, which the production server's crash
+  // handler treats as fatal, exactly like a throw in any other callback a
+  // script schedules (a timer, a stream "data" event). The request itself is
+  // still a timeout.
+  it("misuse: a handler that throws a non-Error inside its abort listener is still a timeout, and the throw surfaces as an uncaught exception", async () => {
+    const { clock, fire } = manualClock();
+    const saved = process.listeners("uncaughtException");
+    process.removeAllListeners("uncaughtException");
+    const uncaught: unknown[] = [];
+    process.on("uncaughtException", (err) => uncaught.push(err));
+    try {
+      const pending = invokeWithDeadline(
+        ({ signal }) =>
+          new Promise<string>(() => {
+            signal.addEventListener("abort", () => {
+              throw "boom";
+            });
+          }),
+        { timeoutMs: 5, clock },
+      );
+      fire();
+      const result = await pending;
+      await new Promise((r) => setImmediate(r));
+      expect(result).toMatchObject({ ok: false, timedOut: true });
+      expect(result.error?.message).toMatch(/timed out after 5ms/);
+      expect(uncaught).toEqual(["boom"]);
+    } finally {
+      process.removeAllListeners("uncaughtException");
+      for (const l of saved) process.on("uncaughtException", l);
+    }
+  });
+});
+
+describe("dispatchApiHandler: a fired deadline wins", () => {
+  const ctx = { params: {}, remoteIp: "10.0.0.1" };
+  const manualClock = () => {
+    let fire!: () => void;
+    return {
+      clock: {
+        setTimeout: vi.fn((cb: () => void) => {
+          fire = cb;
+          return 1 as unknown as ReturnType<typeof setTimeout>;
+        }),
+        clearTimeout: vi.fn(),
+      },
+      fire: () => fire(),
+    };
+  };
+  const answersOnAbort = {
+    GET: (_r: Request, _c: unknown, { signal }: { signal: AbortSignal }) =>
+      new Promise<Response>((resolve) => {
+        signal.addEventListener("abort", () => resolve(new Response("late")), {
+          once: true,
+        });
+      }),
+  };
+
+  it("misuse: a handler that returns a Response inside its abort listener at the deadline is a 504, not a 200", async () => {
+    const { clock, fire } = manualClock();
+    const onError = vi.fn();
+    const pending = dispatchApiHandler(
+      answersOnAbort,
+      new Request("http://x/api"),
+      ctx,
+      { timeoutMs: 5, clock, onError },
+    );
+    fire();
+    const res = await pending;
+    expect(res.status).toBe(504);
+    expect(await res.text()).toBe("Gateway Timeout");
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringMatching(/timed out .* after 5ms/),
+    );
+  });
+
+  it("misuse: a handler that returns a Response inside its abort listener on a client abort is a 499, not a 200 or a 504", async () => {
+    const { clock } = manualClock();
+    const upstream = new AbortController();
+    const pending = dispatchApiHandler(
+      answersOnAbort,
+      new Request("http://x/api"),
+      ctx,
+      { timeoutMs: 5, clock, signal: upstream.signal, onError: () => {} },
+    );
+    upstream.abort();
+    expect((await pending).status).toBe(499);
+  });
+
+  it("boundary: a Response returned before the deadline is delivered when the timer fires in the same tick", async () => {
+    const { clock, fire } = manualClock();
+    let respond!: (r: Response) => void;
+    const pending = dispatchApiHandler(
+      {
+        GET: () =>
+          new Promise<Response>((resolve) => {
+            respond = resolve;
+          }),
+      },
+      new Request("http://x/api"),
+      ctx,
+      { timeoutMs: 5, clock, onError: () => {} },
+    );
+    respond(new Response("in time"));
+    fire();
+    const res = await pending;
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("in time");
+  });
+});

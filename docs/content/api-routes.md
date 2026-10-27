@@ -123,7 +123,7 @@ Request bodies are exposed as standard WHATWG streams with `duplex: 'half'`. Han
 API route execution is protected by `http.apiTimeout` (defaults to `10000` ms):
 
 - **AbortSignal:** Handlers receive a cooperative `AbortSignal` in the third argument options object `{ signal }` to cancel downstream network calls or database operations.
-- **Hard Timeout:** If a handler does not resolve before `http.apiTimeout` elapses, Bascik responds with `504 Gateway Timeout` and logs the timeout on the server.
+- **Hard Timeout:** If a handler does not resolve before `http.apiTimeout` elapses, Bascik responds with `504 Gateway Timeout` and logs the timeout on the server. Once the deadline passes the response is a `504` even if the handler returns a `Response` afterwards, including from inside its own `abort` listener. A client that disconnects first stays a `499`.
 - **Synchronous Execution Limitation:** Like any JavaScript runtime, synchronous CPU-bound operations (such as infinite loops) cannot be interrupted by timers. The timeout protects asynchronous operations (promises, queries, fetch requests).
 
 ## Error Handling and Information Protection

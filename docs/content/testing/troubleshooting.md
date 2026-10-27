@@ -211,6 +211,10 @@ The handler threw during a request. Under the default `scripts.onServerScriptErr
 
 The handler exceeded `scripts.timeout`. Pass the `signal` the handler receives to `fetch()` and database clients so the work is canceled with the request, and keep synchronous CPU work out of handlers. See [Timeouts and Cancellation](/server-scripts#timeouts-and-cancellation-abortsignal).
 
+### My script returned at the deadline but the page still failed with a timeout
+
+Once `scripts.timeout` passes, the result is a timeout even if the script settles afterwards. A script that answers the `abort` event by returning a value, even synchronously inside the listener, is still a timeout, handled by `scripts.onServerScriptError`: under `'error'` a server script gives a 500 and a stream script, whose response has already started, an empty slot with a logged error (see [Error Policy](/stream-scripts#error-policy)); `'warn'` and `'ignore'` give an empty section. API routes follow the same rule with `http.apiTimeout` and a `504`. Return before the deadline, or raise the limit if the work genuinely needs it. Use the `signal` to stop work, not to produce a last-moment result. See [Timeouts and Cancellation](/server-scripts#timeouts-and-cancellation-abortsignal).
+
 ### `Server script placeholder "..." could not be resolved from sidecar`
 
 `dist/` was produced by a different build than `dist/.bascik/server-scripts.json`, usually a targeted `--only` build on top of an older full build, a hand-edited `dist/`, or a `dist/` built by an older Bascik version. The related messages are `is marked stream in the HTML but server in the sidecar (stale sidecar)`, `uses schema N, expected M`, and `production startup validation failed`. Run a full `bascik --build` with the installed version and start the server again.

@@ -432,7 +432,7 @@ describe("createGraphJobRunner: component jobs (prompt 157)", () => {
       }),
     );
     await expect(run(LIVE_ID, new AbortController().signal)).rejects.toThrow(
-      /Handler timed out after 40ms/,
+      /Script execution timed out after 40ms/,
     );
   });
 
@@ -536,7 +536,7 @@ describe("createGraphJobRunner: component jobs (prompt 157)", () => {
       [
         "timeout",
         job(LIVE_ID, () => new Promise(() => {}), { owner: OWNER }),
-        /Handler timed out after 30ms/,
+        /Script execution timed out after 30ms/,
       ],
       [
         "no default export",
@@ -611,6 +611,127 @@ describe("createGraphJobRunner: component jobs (prompt 157)", () => {
         '[bascik] server script job "component_script_typo" is missing from the deployment graph.',
       );
     }
+  });
+});
+
+/**
+ * A fired deadline wins on the Worker as on Node: a page job, a component
+ * job or an API handler that resolves synchronously inside its own abort
+ * listener at the deadline is a timeout (504 for a route), and a client abort
+ * answered the same way is an abort, never a success with what the handler
+ * returned. Today the job wrapper's own awaits happen to let the abort win;
+ * these pin that the rule, not the wrapper, decides.
+ */
+describe("createCloudflareWorker: a fired deadline wins", () => {
+  const resolvesOnAbort =
+    <T>(value: () => T) =>
+    (...args: unknown[]) => {
+      const { signal } = args[args.length - 1] as { signal: AbortSignal };
+      return new Promise<T>((resolve) => {
+        signal.addEventListener("abort", () => resolve(value()), {
+          once: true,
+        });
+      });
+    };
+  const ctx = { waitUntil: () => {} };
+
+  it("misuse: a page job and a component job that resolve inside the abort listener time out under error, and yield empty with a log under warn", async () => {
+    for (const id of ["server_script_x", LIVE_ID]) {
+      const jobs = {
+        [id]: job(
+          id,
+          resolvesOnAbort(() => "late"),
+        ),
+      };
+      const graph = (onServerScriptError: SiteGraph["onServerScriptError"]) =>
+        unitGraph({
+          scriptTimeoutMs: 30,
+          onServerScriptError,
+          ...(id === LIVE_ID ? { componentJobs: jobs } : {}),
+        });
+      const page = id === LIVE_ID ? unitPage() : unitPage(jobs);
+      await expect(
+        runnerFor(graph("error"), page)(id, new AbortController().signal),
+        id,
+      ).rejects.toThrow(/timed out after 30ms/);
+      const warned: string[] = [];
+      await expect(
+        runnerFor(graph("warn"), page, (m) => warned.push(m))(
+          id,
+          new AbortController().signal,
+        ),
+        id,
+      ).resolves.toBe("");
+      expect(warned, id).toEqual([
+        expect.stringMatching(/timed out after 30ms/),
+      ]);
+    }
+  });
+
+  it("misuse: a job that resolves inside the listener on a client abort yields empty without a log, not its value", async () => {
+    const logged: string[] = [];
+    const upstream = new AbortController();
+    const pending = runnerFor(
+      unitGraph({
+        scriptTimeoutMs: 1000,
+        componentJobs: {
+          [LIVE_ID]: job(
+            LIVE_ID,
+            resolvesOnAbort(() => "late"),
+          ),
+        },
+      }),
+      unitPage(),
+      (m) => logged.push(m),
+    )(LIVE_ID, upstream.signal);
+    await new Promise((r) => setTimeout(r, 5));
+    upstream.abort();
+    await expect(pending).resolves.toBe("");
+    expect(logged).toEqual([]);
+  });
+
+  const apiWorker = (GET: unknown, log: (m: string) => void = () => {}) =>
+    createCloudflareWorker(
+      unitGraph({
+        apiTimeoutMs: 30,
+        apiRoutes: [
+          {
+            path: "/api/deadline",
+            filePath: "src/api/deadline.ts",
+            paramNames: [],
+            isDynamic: false,
+            load: async () => ({ GET }),
+          },
+        ],
+      }),
+      { log },
+    );
+
+  it("misuse: an API handler that returns a Response inside its abort listener at the deadline is a 504, not a 200", async () => {
+    const logged: string[] = [];
+    const res = await apiWorker(
+      resolvesOnAbort(() => new Response("late")),
+      (m) => logged.push(m),
+    ).fetch(new Request("https://example.test/api/deadline"), {}, ctx);
+    expect(res.status).toBe(504);
+    expect(await res.text()).toBe("Gateway Timeout");
+    expect(logged.join("\n")).toMatch(/timed out/);
+  });
+
+  it("misuse: an API handler that returns a Response inside its abort listener on a client abort is a 499, not a 200 or a 504", async () => {
+    const upstream = new AbortController();
+    const pending = apiWorker(
+      resolvesOnAbort(() => new Response("late")),
+    ).fetch(
+      new Request("https://example.test/api/deadline", {
+        signal: upstream.signal,
+      }),
+      {},
+      ctx,
+    );
+    await new Promise((r) => setTimeout(r, 5));
+    upstream.abort();
+    expect((await pending).status).toBe(499);
   });
 });
 

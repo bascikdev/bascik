@@ -26,6 +26,7 @@ import {
 import {
   ALLOWED_METHODS,
   NODE_PLATFORM,
+  createAbortGate,
   dispatchApiHandler,
   type ApiHandlerContext,
   type HttpMethod,
@@ -327,6 +328,9 @@ export const executeApiRoute = async (
 
   const effectiveTimeout = timeoutMs ?? BascikConfig.http?.apiTimeout ?? 10000;
   const abortController = new AbortController();
+  // The module load settles by the shared rule; the handler itself runs
+  // through `dispatchApiHandler`, whose `invokeWithDeadline` applies it again.
+  const loadGate = createAbortGate(abortController.signal);
 
   let upstreamSignalUnsubscribe: (() => void) | undefined;
   if (userSignal) {
@@ -345,15 +349,14 @@ export const executeApiRoute = async (
 
   if (effectiveTimeout && effectiveTimeout > 0) {
     timer = clock.setTimeout(() => {
+      // A client that already went away stays a 499, not a late 504.
+      if (abortController.signal.aborted) return;
       didTimeout = true;
       abortController.abort(
         new Error(`API route handler timed out after ${effectiveTimeout}ms`),
       );
     }, effectiveTimeout);
   }
-
-  let settled = false;
-  let onAbortListener: (() => void) | undefined;
 
   try {
     if (abortController.signal.aborted) {
@@ -365,38 +368,7 @@ export const executeApiRoute = async (
       const loadPromise = Promise.resolve(scriptRegistry.load(filePath));
       loadPromise.catch(() => {});
 
-      const abortDuringLoadPromise = new Promise<never>((_, reject) => {
-        if (abortController.signal.aborted) {
-          reject(abortController.signal.reason);
-          return;
-        }
-        onAbortListener = () => {
-          if (!settled) {
-            if (didTimeout) {
-              reject(
-                new Error(
-                  `API route handler timed out after ${effectiveTimeout}ms`,
-                ),
-              );
-            } else {
-              reject(abortController.signal.reason);
-            }
-          }
-        };
-        abortController.signal.addEventListener("abort", onAbortListener, {
-          once: true,
-        });
-      });
-      abortDuringLoadPromise.catch(() => {});
-
-      const loaded = (await Promise.race([
-        loadPromise,
-        abortDuringLoadPromise,
-      ])) as any;
-      if (onAbortListener) {
-        abortController.signal.removeEventListener("abort", onAbortListener);
-        onAbortListener = undefined;
-      }
+      const loaded = (await loadGate.race(loadPromise)) as any;
       loadedModule = loaded.module;
     } catch (err) {
       if (abortController.signal.aborted) {
@@ -420,7 +392,6 @@ export const executeApiRoute = async (
       onDeclaredBodyTooLarge &&
       typeof loadedModule?.[method] === "function"
     ) {
-      settled = true;
       onDeclaredBodyTooLarge();
       return payloadTooLargeResponse();
     }
@@ -462,7 +433,6 @@ export const executeApiRoute = async (
         );
       },
     });
-    settled = true;
     // The core reports an upstream abort as 499. When our own deadline caused
     // that abort the truthful status is 504, matching the pre-132 behavior.
     if (response.status === 499 && didTimeout) {
@@ -476,7 +446,6 @@ export const executeApiRoute = async (
     }
     return response;
   } catch (err) {
-    settled = true;
     if (
       err instanceof PayloadTooLargeError ||
       (err as any)?.name === "PayloadTooLargeError"
@@ -516,15 +485,11 @@ export const executeApiRoute = async (
     );
     return new Response("Internal Server Error", { status: 500 });
   } finally {
-    settled = true;
     if (timer) {
       clock.clearTimeout(timer);
       timer = undefined;
     }
-    if (onAbortListener) {
-      abortController.signal.removeEventListener("abort", onAbortListener);
-      onAbortListener = undefined;
-    }
+    loadGate.dispose();
     if (upstreamSignalUnsubscribe) {
       upstreamSignalUnsubscribe();
       upstreamSignalUnsubscribe = undefined;

@@ -35,7 +35,8 @@ import { componentExecution, scopeJobOutput } from "./component-host.js";
 import {
   composeBufferedResponse,
   dispatchApiHandler,
-  invokeWithDeadline,
+  invokeLoadedWithDeadline,
+  scriptTimeoutError,
   streamComposedResponse,
   type ApiHandlerContext,
   type ApiHandlerModule,
@@ -235,9 +236,14 @@ const runGraphJob = async (
   signal: AbortSignal,
   timeoutMs: number,
 ): Promise<string> => {
-  const result = await invokeWithDeadline(
-    async ({ signal: jobSignal }) => {
-      const mod = await job.load();
+  // The load and the handler run under one deadline, and the handler's own
+  // promise is settled by the shared rule: once the deadline fires or the
+  // client aborts, that is the outcome, exactly as on Node. Calling the
+  // handler directly (not from an async wrapper) keeps a value settled just
+  // before the deadline from being mistaken for a timeout.
+  const result = await invokeLoadedWithDeadline(
+    () => job.load(),
+    (mod, { signal: jobSignal }) => {
       const handler = mod.default;
       if (typeof handler !== "function") {
         throw new TypeError(
@@ -246,7 +252,8 @@ const runGraphJob = async (
       }
       return handler(request, context, { signal: jobSignal });
     },
-    { timeoutMs, signal },
+    // Node's message, so a log reads the same on both hosts.
+    { timeoutMs, signal, timeoutError: scriptTimeoutError },
   );
   if (result.ok) {
     const value = result.value;

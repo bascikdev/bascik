@@ -504,6 +504,62 @@ export default async function () { return '<slow-card></slow-card><p data-testid
   return Response.json({ state: probe[key] ?? "unseen" });
 };`,
   );
+  // A script that resolves synchronously inside its own abort listener: a
+  // plain function returning a native promise, so nothing but the
+  // deadline-wins rule decides the outcome. Once the deadline fired it is a
+  // timeout on both hosts; "yielded-late" must never reach a response.
+  const resolvesOnAbort = (value: string) =>
+    `export default function (request, context, options) {
+  return new Promise((resolve) => {
+    options.signal.addEventListener("abort", () => resolve(${JSON.stringify(value)}), { once: true });
+  });
+}`;
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/components/yield-card/yield-card.html",
+    `<div class="yield" data-testid="yield-card">
+<script data-bascik-server>
+${resolvesOnAbort('<p data-testid="yielded">yielded-late</p>')}
+</script>
+</div>
+<style>.yield { color: rgb(25, 26, 27); }</style>`,
+  );
+  await page(
+    "src/pages/deadline-yield.html",
+    "Deadline yield",
+    `<script data-bascik-server>
+${resolvesOnAbort("yielded-late")}
+</script>`,
+  );
+  await page(
+    "src/pages/deadline-yield-stream.html",
+    "Deadline yield stream",
+    `<section data-testid="slot"><script data-bascik-stream>
+${resolvesOnAbort("yielded-late")}
+</script></section>`,
+  );
+  await page(
+    "src/pages/components-yield.html",
+    "Component yield",
+    `<script data-bascik-server>
+export default function () { return '<yield-card></yield-card><p data-testid="after-yield">after</p>'; }
+</script>`,
+  );
+  await page(
+    "src/pages/components-yield-stream.html",
+    "Component yield stream",
+    `<section data-testid="slot"><script data-bascik-stream>
+export default async function () { return '<yield-card></yield-card><p data-testid="after-yield">after</p>'; }
+</script></section>`,
+  );
+  await write(
+    root,
+    "src/api/deadline-yield.ts",
+    `export const GET = (request: Request, context: unknown, options: { signal: AbortSignal }) =>
+  new Promise<Response>((resolve) => {
+    options.signal.addEventListener("abort", () => resolve(new Response("yielded-late")), { once: true });
+  });`,
+  );
 };
 
 /** A component whose server script imports a builtin Workers does not provide. */

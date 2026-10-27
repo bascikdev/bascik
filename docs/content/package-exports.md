@@ -47,7 +47,7 @@ Key functions:
 
 - `composeBufferedResponse(plan, run, signal)` composes a fully buffered `Uint8Array` body for a page whose `data-bascik-server` jobs all resolve before the response starts.
 - `streamComposedResponse(plan, run, writer, options)` drives the two-phase streamer: `server` jobs resolve before commit, `stream` jobs run with bounded lookahead after headers are sent. Returns a `ComposedStreamer` with `ready`, `commit`, `done`, `signal`, and `toReadableStream()`.
-- `invokeWithDeadline(handler, options)` runs a handler under a timeout and an upstream `AbortSignal`, settling exactly once.
+- `invokeWithDeadline(handler, options)` runs a handler under a timeout and an upstream `AbortSignal`, settling exactly once. Once the deadline fires or the upstream aborts, the result is a timeout or an abort even if the handler settles afterwards. `invokeLoadedWithDeadline(load, call, options)` does the same with a module load under the same deadline, and `createAbortGate(signal)` is the settlement rule both use. `scriptTimeoutError(ms)` builds the `Script execution timed out after Nms` error that server, stream and component scripts report on every host.
 - `dispatchApiHandler(module, request, context, options)` dispatches a web `Request` to an API route module's exported methods, handling `HEAD`, `OPTIONS`, and the `Allow` header.
 
 The runtime also exports the shared response policy (`dynamicPageHeaders`, `mergeHandlerHeaders`, `stripRepresentationHeaders`, `errorResponse`, `internalErrorPage`, `SECURITY_HEADERS`) and pure route matching (`matchApiRoute`, `sortApiRoutes`, `pageLookupCandidates`, `isUnsafePathname`, `hasHiddenSegment`).
