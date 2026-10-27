@@ -2,8 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import {
   MAX_INLINE_ENV_BYTES,
+  MEM_PER_CHILD,
   SPILLED_ENV_FILE_VAR,
   Semaphore,
+  computeMaxChildProcesses,
   runModule,
 } from "./script-runner.ts";
 
@@ -243,5 +245,136 @@ describe("runModule permit ownership", () => {
     const result = await runModule("path", {}, [], 1000, 1024, sem);
     expect(result.stdout).toBe("out");
     expect(sem.getActiveCount()).toBe(0);
+  });
+});
+
+/**
+ * Child pool sizing. The old formula took `Math.max(freemem() * 0.6,
+ * totalmem() * 0.25)`, so total memory acted as a floor and a 16 GB machine
+ * with under 100 MB free still admitted `min(cpus, 35)` children. Available
+ * memory (`process.availableMemory()`, since `os.freemem()` under-reports on
+ * macOS) now bounds the pool, and a page worker thread gets only its share of
+ * the system maximum instead of the whole thing.
+ */
+describe("computeMaxChildProcesses", () => {
+  const GB = 1024 * 1024 * 1024;
+
+  it("caps concurrency to 1 when available memory is below MEM_PER_CHILD instead of inflating to totalMem * 0.25", () => {
+    const max = computeMaxChildProcesses({
+      cpuCount: 10,
+      availableMemBytes: 80 * 1024 * 1024,
+      totalMemBytes: 17 * GB,
+    });
+    // Pre-fix this was min(10, floor(4.25 GB / 120 MB)) = 10.
+    expect(max).toBe(1);
+  });
+
+  it("keeps a minimum of 1 even with zero available memory or zero CPUs reported", () => {
+    expect(
+      computeMaxChildProcesses({
+        cpuCount: 0,
+        availableMemBytes: 0,
+        totalMemBytes: 16 * GB,
+      }),
+    ).toBe(1);
+  });
+
+  it("caps abundant available memory by cpuCount", () => {
+    expect(
+      computeMaxChildProcesses({
+        cpuCount: 4,
+        availableMemBytes: 64 * GB,
+        totalMemBytes: 128 * GB,
+      }),
+    ).toBe(4);
+  });
+
+  it("caps abundant available memory by totalMem * 0.25 / MEM_PER_CHILD", () => {
+    // Available memory would allow 60% * 8 GB / 120 MB = 40 children; total memory
+    // allows 25% * 8 GB / 120 MB = 17, and there are enough CPUs for either.
+    const max = computeMaxChildProcesses({
+      cpuCount: 64,
+      availableMemBytes: 8 * GB,
+      totalMemBytes: 8 * GB,
+    });
+    expect(max).toBe(Math.floor((8 * GB * 0.25) / MEM_PER_CHILD));
+    expect(max).toBe(17);
+  });
+
+  it("uses availableMem * 0.6 when it is the tighter memory bound", () => {
+    // 60% * 1 GB / 120 MB = 5.12 -> 5; total memory would allow 34.
+    const max = computeMaxChildProcesses({
+      cpuCount: 64,
+      availableMemBytes: 1 * GB,
+      totalMemBytes: 16 * GB,
+    });
+    expect(max).toBe(5);
+  });
+
+  it("divides the system maximum across worker threads so the pool total stays within budget", () => {
+    const system = {
+      cpuCount: 8,
+      availableMemBytes: 16 * GB,
+      totalMemBytes: 32 * GB,
+    };
+    const systemMax = computeMaxChildProcesses(system);
+    expect(systemMax).toBe(8);
+    for (const workerCount of [1, 2, 3, 4, 8]) {
+      const perWorker = computeMaxChildProcesses({ ...system, workerCount });
+      expect(perWorker).toBe(Math.floor(systemMax / workerCount));
+      expect(perWorker).toBeGreaterThanOrEqual(1);
+      expect(perWorker * workerCount).toBeLessThanOrEqual(systemMax);
+    }
+  });
+
+  it("floors each worker's share at 1 when there are more workers than permits", () => {
+    // The helper alone would let the pool total reach workerCount here, which
+    // is why processAllPages sizes the pool to at most the system maximum;
+    // the floor only guarantees that a worker can always make progress.
+    const system = {
+      cpuCount: 8,
+      availableMemBytes: 300 * 1024 * 1024,
+      totalMemBytes: 32 * GB,
+    };
+    expect(computeMaxChildProcesses(system)).toBe(1);
+    expect(computeMaxChildProcesses({ ...system, workerCount: 8 })).toBe(1);
+  });
+
+  it("treats an undefined or zero workerCount as a single worker", () => {
+    const system = {
+      cpuCount: 8,
+      availableMemBytes: 16 * GB,
+      totalMemBytes: 32 * GB,
+    };
+    expect(
+      computeMaxChildProcesses({ ...system, workerCount: undefined }),
+    ).toBe(8);
+    expect(computeMaxChildProcesses({ ...system, workerCount: 0 })).toBe(8);
+  });
+
+  it("lets an explicit override replace the CPU and memory bounds in both directions, still divided across workers", () => {
+    const system = {
+      cpuCount: 2,
+      availableMemBytes: 80 * 1024 * 1024,
+      totalMemBytes: 16 * GB,
+    };
+    expect(computeMaxChildProcesses({ ...system, override: 6 })).toBe(6);
+    expect(
+      computeMaxChildProcesses({ ...system, override: 6, workerCount: 4 }),
+    ).toBe(1);
+    expect(
+      computeMaxChildProcesses({ ...system, override: 6, workerCount: 2 }),
+    ).toBe(3);
+    // Tightening below what the machine would allow works too.
+    const roomy = {
+      cpuCount: 8,
+      availableMemBytes: 16 * GB,
+      totalMemBytes: 32 * GB,
+    };
+    expect(computeMaxChildProcesses(roomy)).toBe(8);
+    expect(computeMaxChildProcesses({ ...roomy, override: 2 })).toBe(2);
+    expect(
+      computeMaxChildProcesses({ ...roomy, override: 2, workerCount: 2 }),
+    ).toBe(1);
   });
 });

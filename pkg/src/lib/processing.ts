@@ -87,6 +87,10 @@ import {
   isDynamicRoute,
   resolveRoutePath,
 } from "./routes.ts";
+import {
+  CHILD_WORKER_COUNT_VAR,
+  SYSTEM_MAX_CHILD_PROCESSES,
+} from "./script-runner.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import { generateSitemapFiles } from "./sitemap.ts";
 import { filterPagesByOnlyGlobs } from "./targeted-build.ts";
@@ -701,13 +705,28 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   if (useWorkers && allJobs.length > 0) {
     const workerExt = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
     const workerUrl = new URL(`./page-worker${workerExt}`, import.meta.url);
-    const poolSize = Math.min(cpus().length, allJobs.length);
+    // Every worker thread runs its own child semaphore sized to 1/poolSize of
+    // the system child budget, floored at 1 permit. Keeping the pool within
+    // that budget (memory-derived, or `BASCIK_MAX_CHILD_PROCESSES`) is what
+    // stops a low-memory machine from running cpus().length children at once:
+    // with more workers than permits the floor would give each one a child
+    // anyway.
+    const poolSize = Math.min(
+      cpus().length,
+      allJobs.length,
+      SYSTEM_MAX_CHILD_PROCESSES,
+    );
     const pool = new WorkerPool<PageJob, PageWorkerResult | null>(
       fileURLToPath(workerUrl),
       poolSize,
       { componentList, globalStylesHtml },
-      // The `transpiled:` line is printed inside the worker, which cannot tell on its own that it has a terminal.
-      { env: workerEnvironment() },
+      {
+        env: {
+          // The `transpiled:` line is printed inside the worker, which cannot tell on its own that it has a terminal.
+          ...(workerEnvironment() ?? process.env),
+          [CHILD_WORKER_COUNT_VAR]: String(poolSize),
+        },
+      },
     );
     const [openJobs, restJobs] = partitionByOpenPages(allJobs) as [
       PageJob[],

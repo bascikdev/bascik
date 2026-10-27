@@ -145,6 +145,33 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         "// bascik-ignore js-document-class-query\ndocument.querySelector('.btn');",
       ],
     },
+    "js-dynamic-id-lookup": {
+      kind: "js",
+      positive: [
+        "document.getElementById(targetId);",
+        "document.getElementById(btn.dataset.target);",
+        "document.getElementById(`item-${i}`);",
+        // javascript.ts only rewrites "/' quoted literals, so a backtick
+        // literal and a concatenation ship unscoped even without a variable.
+        "document.getElementById(`panel`);",
+        'document.getElementById("pre-" + n);',
+        'document.getElementById("a"+b);',
+        "document.getElementById( id );",
+        "document.getElementById(ids[0]);",
+        'document.getElementById(el.getAttribute("data-target"));',
+      ],
+      negative: [
+        'document.getElementById("panel");',
+        "document.getElementById('panel');",
+        'document.getElementById( "panel" );',
+        'document.getElementById("panel").focus();',
+        'document.getElementById(\n  "panel"\n);',
+        "document.getElementById();",
+        "document.getElementById( );",
+        "// document.getElementById(targetId);",
+        "// bascik-ignore js-dynamic-id-lookup\ndocument.getElementById(targetId);",
+      ],
+    },
   };
 
   it("covers every rule in compatibility-rules.json with positive and negative test vectors", () => {

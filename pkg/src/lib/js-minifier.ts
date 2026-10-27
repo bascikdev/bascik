@@ -556,7 +556,7 @@ export const minifyJs = (js: string): string => {
       if (
         resultLast &&
         firstLine &&
-        !/^(?:(?:else|catch|finally|while|instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
+        !/^(?:(?:instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
           firstLine,
         )
       ) {
@@ -646,9 +646,13 @@ export const minifyJs = (js: string): string => {
           /\b(else|do|try|finally)\s*$/.test(ptTail) ||
           /(=|,|\+|\-|\*|\/|%|\?|:|=>|\.|\&\&|\|\||\?\?)\s*$/.test(ptTail);
 
-        // Do NOT insert semicolon if next line starts with closing/continuation structures
+        // Do NOT insert semicolon if next line starts with closing/continuation structures.
+        // Only binary keyword operators (instanceof/in/of) continue an expression
+        // across a newline; after a value token `else`, `while`, `catch` and
+        // `finally` start a new statement, so they must get a semicolon
+        // (`do step()\nwhile(c)`, `if(a) step()\nelse other()`).
         const startsWithContinuation =
-          /^(else|catch|finally|while|instanceof|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
+          /^(instanceof(?![a-zA-Z0-9_$])|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
             line,
           );
 
@@ -662,7 +666,7 @@ export const minifyJs = (js: string): string => {
       } else if (lastChar === "}") {
         // After }, insert semicolon unless followed by control continuation (else, catch, finally, while, etc.)
         if (
-          !/^(else|catch|finally|while|instanceof|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
+          !/^((?:else|catch|finally|while|instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
             line,
           )
         ) {

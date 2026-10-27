@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { cpus, freemem, totalmem, tmpdir } from "node:os";
+import { cpus, totalmem, tmpdir } from "node:os";
 import { join } from "node:path";
+import { isMainThread } from "node:worker_threads";
 import { BascikConfig } from "./config.ts";
 
 /**
@@ -72,14 +73,119 @@ export const stripAnsiEscapeCodes = (value: string): string =>
     .replace(/\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g, "")
     .replace(/\u001B[@-Z\\-_]/g, "");
 
-const MEM_PER_CHILD = 120 * 1024 * 1024; // 120 MB conservative per worker
-const MAX_CHILD_PROCESSES = Math.min(
-  cpus().length,
-  Math.max(
-    1,
-    Math.floor(Math.max(freemem() * 0.6, totalmem() * 0.25) / MEM_PER_CHILD),
-  ),
-);
+/** Conservative memory reserved for each build-script child process. */
+export const MEM_PER_CHILD = 120 * 1024 * 1024; // 120 MB
+
+/**
+ * Tells a page worker thread how many workers share the child budget, so each
+ * one claims its share instead of the whole system maximum. Set by the main
+ * thread in the environment it hands to the worker pool and removed from the
+ * worker's `process.env` as soon as it is read, so no build-script child can
+ * inherit it whichever runner spawns it. Never meant to be set by users
+ * (hence `BASCIK_INTERNAL_`, like `SPILLED_ENV_FILE_VAR`).
+ */
+export const CHILD_WORKER_COUNT_VAR = "BASCIK_INTERNAL_WORKER_COUNT";
+
+/**
+ * Optional user override for the process-wide maximum number of concurrent
+ * build-script child processes (`data-bascik-build` / `data-bascik-routes`).
+ * A positive integer replaces the CPU- and memory-derived maximum in both
+ * directions. With `pipeline.workers` on, the page worker pool is sized to at
+ * most this value (see `processAllPages`) and each worker gets its share of
+ * it, so the total across all threads never exceeds the value set.
+ * A malformed value is ignored, not fatal, like `BASCIK_SERVER_PORT`.
+ */
+export const MAX_CHILD_PROCESSES_VAR = "BASCIK_MAX_CHILD_PROCESSES";
+
+/** Parse a positive integer env value; `undefined` for unset or malformed. */
+const parsePositiveInteger = (raw: string | undefined): number | undefined => {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  const parsed = Number(raw.trim());
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : undefined;
+};
+
+/**
+ * Size the child process pool for one thread.
+ *
+ * The memory budget is `availableMemBytes * 0.6` capped at
+ * `totalMemBytes * 0.25`. The earlier formula took the MAX of the two, so
+ * `totalmem() * 0.25` acted as a floor: a 16 GB machine with under 100 MB
+ * free still admitted `min(cpuCount, 35)` children and thrashed swap until
+ * they hit the execFile timeout. Available memory now bounds the pool, with a
+ * minimum of 1 so a build always makes forward progress.
+ *
+ * The caller passes `process.availableMemory()`, not `os.freemem()`. On macOS
+ * XNU keeps file pages in inactive memory, so `freemem()` counts only truly
+ * free pages and reads a few hundred MB on an idle 16 GB machine, which would
+ * serialize every build script during normal operation. `availableMemory()`
+ * counts the memory the kernel will hand out, and on Linux it also respects a
+ * cgroup limit. The `BASCIK_MAX_CHILD_PROCESSES` override replaces the
+ * computed system maximum when it still gets it wrong.
+ *
+ * `workerCount` divides the system maximum across page worker threads, since
+ * each thread instantiates its own module-scoped semaphore. The per-thread
+ * floor of 1 would let the total exceed the system maximum when there are
+ * more workers than permits, so `processAllPages` sizes the pool to at most
+ * `SYSTEM_MAX_CHILD_PROCESSES` and every worker's share is a whole permit.
+ */
+export const computeMaxChildProcesses = ({
+  cpuCount,
+  availableMemBytes,
+  totalMemBytes,
+  workerCount = 1,
+  override,
+}: {
+  cpuCount: number;
+  availableMemBytes: number;
+  totalMemBytes: number;
+  workerCount?: number;
+  override?: number;
+}): number => {
+  const systemMax =
+    override ??
+    Math.min(
+      Math.max(1, cpuCount),
+      Math.max(
+        1,
+        Math.floor(
+          Math.min(availableMemBytes * 0.6, totalMemBytes * 0.25) /
+            MEM_PER_CHILD,
+        ),
+      ),
+    );
+  return Math.max(1, Math.floor(systemMax / Math.max(1, workerCount)));
+};
+
+// A page worker thread gets the share the main thread assigned it through the
+// environment (env is the only channel available at module load, before
+// `workerData` is read). The pointer is consumed here so that every child a
+// worker spawns, through `runModule` or `runDirectiveHandler`, sees the same
+// environment the main thread would have given it.
+const childWorkerCount = isMainThread
+  ? 1
+  : parsePositiveInteger(process.env[CHILD_WORKER_COUNT_VAR]);
+delete process.env[CHILD_WORKER_COUNT_VAR];
+
+const systemResources = {
+  cpuCount: cpus().length,
+  availableMemBytes: process.availableMemory(),
+  totalMemBytes: totalmem(),
+  override: parsePositiveInteger(process.env[MAX_CHILD_PROCESSES_VAR]),
+};
+
+/**
+ * The process-wide child budget. `processAllPages` sizes the page worker pool
+ * to at most this many workers, so dividing it among them never bottoms out
+ * at the per-worker floor of 1 and the pool as a whole stays within it.
+ */
+export const SYSTEM_MAX_CHILD_PROCESSES =
+  computeMaxChildProcesses(systemResources);
+
+/** This thread's share of the budget: all of it on the main thread. */
+const MAX_CHILD_PROCESSES = computeMaxChildProcesses({
+  ...systemResources,
+  workerCount: childWorkerCount,
+});
 
 class Semaphore {
   private queue: Array<() => void> = [];
