@@ -2,16 +2,35 @@
 
 Astro and Bascik both compile component-based markup into HTML that ships no framework runtime by default. The key conceptual difference lies in authoring: Astro uses custom `.astro` templates with JS frontmatter and an islands architecture for client hydration, whereas Bascik uses standard vanilla HTML files resolved by custom tag name, running build scripts in Node.js and scoping vanilla JavaScript and CSS automatically.
 
+## Which Astro Version This Guide Assumes
+
+This guide was checked against Astro 5, 6, and 7 on October 26, 2026, when the newest release was Astro 7.4.2 (October 21, 2026), which requires Node.js 22.23.4 or newer. The Astro examples use the Content Layer API that Astro 5 introduced and that Astro 6 and 7 keep: `post.id`, `render(post)` imported from `astro:content`, and a `loader` per collection in `src/content.config.ts`. Props, slots, named slots, and scoped `<style>` have not changed across these majors, so those sections apply to any of them.
+
+A project on an older version writes some of the "before" code differently. These are the forms that matter when converting:
+
+| Feature           | Astro 4 and earlier                | Astro 5 and later                                                                                                                             |
+| ----------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Collection entry  | `post.slug`, `await post.render()` | `post.id`, `await render(post)` (the old form sits behind `legacy.collections` in 5 and only behind `legacy.collectionsBackwardsCompat` in 6) |
+| Collection config | `src/content/config.ts`            | `src/content.config.ts` with a `loader` per collection                                                                                        |
+| Listing files     | `Astro.glob()`                     | `getCollection()` or `import.meta.glob()` (`Astro.glob()` is deprecated in 5 and removed in 6)                                                |
+| Client router     | `<ViewTransitions />`              | `<ClientRouter />` (the old name is removed in 6)                                                                                             |
+| Output mode       | `output: 'hybrid'`                 | `output: 'static'` with `export const prerender = false` on individual routes                                                                 |
+| Environment       | `import.meta.env`                  | `import.meta.env` or the typed `astro:env` modules                                                                                            |
+
+Astro 7 changed the toolchain more than the API: its Rust compiler rejects unclosed tags and no longer corrects invalid nesting, `compressHTML` defaults to `'jsx'`, and the Sätteri processor renders Markdown and MDX without remark or rehype plugins. The scoped styles and MDX sections below say what each of those means for the files you convert. Astro's own upgrade guides for [v5](https://docs.astro.build/en/guides/upgrade-to/v5/), [v6](https://docs.astro.build/en/guides/upgrade-to/v6/), and [v7](https://docs.astro.build/en/guides/upgrade-to/v7/) list every change in full.
+
 ## Mental Model Comparison
 
-| Concept              | Astro                                       | Bascik                                         |
-| -------------------- | ------------------------------------------- | ---------------------------------------------- |
-| Component format     | `.astro` file with frontmatter (`---`)      | Vanilla `.html` file in `src/components/`      |
-| Style scoping        | `<style>` block in `.astro`                 | Paired `.css` file or inline `<style>`         |
-| Build-time logic     | Component frontmatter                       | `<script data-bascik-build>` block             |
-| Content passing      | `<slot />` / `<slot name="…" />`            | `data-bascik-slot` / `data-bascik-slot="name"` |
-| Component props      | `Astro.props`                               | `data-bascik-prop-*` and `data-bascik-attr-*`  |
-| Client interactivity | `client:*` directives + UI framework island | Vanilla JS in `<script>` tags (auto-scoped)    |
+| Concept                | Astro                                         | Bascik                                                                   |
+| ---------------------- | --------------------------------------------- | ------------------------------------------------------------------------ |
+| Component format       | `.astro` file with frontmatter (`---`)        | Vanilla `.html` file in `src/components/`                                |
+| Style scoping          | `<style>` block in `.astro`                   | Paired `.css` file or inline `<style>`                                   |
+| Build-time logic       | Component frontmatter                         | `<script data-bascik-build>` block                                       |
+| Content passing        | `<slot />` / `<slot name="…" />`              | `data-bascik-slot` / `data-bascik-slot="name"`                           |
+| Component props        | `Astro.props`                                 | `data-bascik-prop-*` and `data-bascik-attr-*`                            |
+| Environment variables  | `import.meta.env` / `astro:env`               | `process.env` in build scripts                                           |
+| Request-time rendering | Server islands, Actions, and on-demand routes | `<script data-bascik-server>`, `<script data-bascik-stream>`, `src/api/` |
+| Client interactivity   | `client:*` directives + UI framework island   | Vanilla JS in `<script>` tags (auto-scoped)                              |
 
 ## A Low-Risk First Step
 
@@ -93,7 +112,7 @@ const posts = await getCollection('blog');
 
 `gray-matter` is a normal npm dependency: install it with `npm install gray-matter`. Build scripts print HTML as text, so escape every value that comes from content before you interpolate it.
 
-> **No Astro content helpers:** Bascik has no equivalent of `getCollection`, `astro:content`, or the collection schema in `content.config.ts`. Read Markdown files directly with Node.js `fs`, parse front matter with `gray-matter`, and validate it yourself, for example with a `zod` schema in a shared helper under `src/lib/`.
+> **No Astro content helpers:** Bascik has no equivalent of `getCollection`, `astro:content`, or the `loader` and schema in `src/content.config.ts` (`src/content/config.ts` before Astro 5). Read Markdown files directly with Node.js `fs`, parse front matter with `gray-matter`, and validate it yourself. The `z.object({ … })` schema from `content.config.ts` can move as-is into a shared helper under `src/lib/` that imports `z` from the `zod` package; Astro 6 and later use Zod 4 (`import { z } from 'astro/zod'`) and Astro 5 uses Zod 3, so install the matching major. Frontmatter that listed files with `Astro.glob()` (deprecated in Astro 5, removed in 6) or `import.meta.glob()` becomes the same `readdir` call.
 
 ## Astro.props → data-bascik-prop-*
 
@@ -231,6 +250,8 @@ Astro scopes `<style>` blocks inside `.astro` files to that component. Bascik's 
 
 One difference: in Astro a parent's selector such as `nav a { }` can also style the root element of a child component placed inside that `nav`. In Bascik it cannot, because each component's CSS applies only to markup written in its own template. Put a class on the child's usage tag and define it in the parent's CSS instead. See [Styling a Child Component from Its Parent](/attribute-inheritance#styling-a-child-component-from-its-parent).
 
+> **Coming from Astro 7:** Astro 7's Rust compiler requires every non-void element to have a closing tag and passes invalid nesting through uncorrected, so templates that compile there are already well-formed HTML. Bascik is more lenient: an unclosed component tag is treated as self-closing, and unclosed standard HTML passes through for the browser to handle (see the [FAQ](/faq)). Astro 7 also defaults `compressHTML` to `'jsx'`, which strips whitespace between inline elements, so templates written for it may carry `{" "}` to keep a space. Replace each one with a real space: the component file is plain HTML, and a space between inline elements is a space.
+
 ### Build Script Output
 
 Markup that a component's build script prints is scoped like the rest of the template, including markup returned by an imported helper. So a helper in `src/lib/` can print a post card, and the component's `.card` and `h2 a` rules still match it. Classes the component's own stylesheet does not define are never scoped, so a global stylesheet listed in `assets.inlineStyles` can always style them.
@@ -240,21 +261,23 @@ Markup that a component's build script prints is scoped like the rest of the tem
 Astro's Content Collections provide a typed, validated interface to Markdown and MDX files. In Bascik, read the same source files directly from the filesystem in a build script using Node.js `fs` and a Markdown/front-matter parser, and generate one page per entry with a [dynamic route](/dynamic-routes).
 
 ```astro
-<!-- src/pages/blog/[slug].astro (Astro - before) -->
+<!-- src/pages/blog/[slug].astro (Astro 5 and later - before) -->
 ---
-import { getCollection, getEntry } from 'astro:content';
+import { getCollection, render } from 'astro:content';
 
 export async function getStaticPaths() {
   const posts = await getCollection('blog');
-  return posts.map(post => ({ params: { slug: post.slug }, props: { post } }));
+  return posts.map(post => ({ params: { slug: post.id }, props: { post } }));
 }
 
 const { post } = Astro.props;
-const { Content } = await post.render();
+const { Content } = await render(post);
 ---
 <h1>{post.data.title}</h1>
 <Content />
 ```
+
+> **Astro 4 and earlier:** the same page read `post.slug` and called `await post.render()` on the entry. Astro 5 kept that form working only behind the `legacy.collections` flag, and Astro 6 removed that flag, leaving the narrower `legacy.collectionsBackwardsCompat` migration helper as the only way to run it, so a project still written that way is on the pre-Content-Layer API whichever major it runs. The Bascik side below is the same either way, because both `post.slug` and `post.id` come from the file name.
 
 In Bascik, the same job is one template file. `src/pages/blog/[slug]/index.html` lists the slugs in a `<script data-bascik-routes>` block, and each generated page reads its slug from `BASCIK_ROUTE`. The directory form produces trailing-slash URLs such as `/blog/first-post/`, matching Astro; `src/pages/blog/[slug].html` would produce `/blog/first-post.html` instead.
 
@@ -298,7 +321,7 @@ In Bascik, the same job is one template file. `src/pages/blog/[slug]/index.html`
 </html>
 ```
 
-`getPosts`, `getPost`, and `renderPost` are your own helpers in `src/lib/`, imported with the `@/` alias. They read `content/blog/*.md`, validate the front matter, render the Markdown, and escape titles before returning them. Bascik adds every generated URL to `sitemap.xml`. Do not write generated page files into `src/pages/`.
+`getPosts`, `getPost`, and `renderPost` are your own helpers in `src/lib/`, imported with the `@/` alias. They read `content/blog/*.md`, validate the front matter, render the Markdown, and escape titles before returning them. Bascik converts every `params` value to a string, as Astro 5's `getStaticPaths()` did; Astro 6 and later reject a numeric id instead, so a `String()` call written for them is harmless here and simply optional. Bascik adds every generated URL to `sitemap.xml`. Do not write generated page files into `src/pages/`.
 
 Because these scripts read `content/`, which Bascik cannot see as an import, exclude them from the build-script cache and watch the folder in development:
 
@@ -314,12 +337,13 @@ export default defineConfig({
 
 ## import.meta.env → process.env
 
-Astro uses `import.meta.env` for environment variables. Inside a `<script data-bascik-build>` block, use standard Node.js `process.env` instead. Runtime client-side scripts use `window` or data attributes to access values that were baked in at build time, there is no equivalent of Astro's `import.meta.env.PUBLIC_*` exposure to the browser.
+Astro reads environment variables through `import.meta.env`, and since Astro 5 also through the typed `astro:env/client` and `astro:env/server` modules. Inside a `<script data-bascik-build>` block, use standard Node.js `process.env` instead. Values are plain strings with no schema and no coercion, which matches Astro 6 and later, where `import.meta.env` values are inlined and never coerced. Before Astro 6, `import.meta.env` turned `"true"` into a boolean, and an `astro:env` schema still does, so compare with `=== "true"` or call `Number()` yourself. Runtime client-side scripts use `window` or data attributes to access values that were baked in at build time, there is no equivalent of Astro's `import.meta.env.PUBLIC_*` exposure to the browser.
 
 ```astro
 <!-- Before (Astro frontmatter) -->
 ---
-const apiUrl = import.meta.env.API_URL;
+import { API_URL } from 'astro:env/server'; // Astro 5 and later, typed
+const apiUrl = import.meta.env.API_URL; // any version
 ---
 ```
 
@@ -335,7 +359,7 @@ const apiUrl = import.meta.env.API_URL;
 </script>
 ```
 
-This fetch runs during the build, so the build machine needs network access to `API_URL`. Bascik itself provides `BASCIK_SITE_URL`, `BASCIK_PAGE_PATH`, `BASCIK_ROUTE`, and `BASCIK_BUILD` to build scripts; see [Environment Variables](/environment-variables).
+This fetch runs during the build, so the build machine needs network access to `API_URL`. Bascik itself provides `BASCIK_SITE_URL`, `BASCIK_PAGE_PATH`, `BASCIK_ROUTE`, and `BASCIK_BUILD` to build scripts; see [Environment Variables](/environment-variables). `BASCIK_SITE_URL` is the counterpart of `import.meta.env.SITE`, which Astro 6 recommends over `Astro.site` inside `getStaticPaths()`, and it is available to `data-bascik-routes` scripts as well.
 
 ## MDX → Markdown with Component Tags
 
@@ -373,15 +397,23 @@ Welcome to our docs.
 
 The post page renders this Markdown in a build script, as in the dynamic route above. The `<code-example>` tag stays between the two paragraphs and is expanded into the component in the next pass. Props are text only, so JavaScript expressions in MDX props become literal strings. Client behavior is plain HTML and JavaScript in the component; there is no hydration step and no equivalent of `client:*` directives.
 
+Your Markdown pipeline moves with the files, and which pipeline that is depends on the Astro version. Before Astro 7, `.md` and `.mdx` went through remark and rehype, and any `remarkPlugins` or `rehypePlugins` from `astro.config.mjs` run unchanged in a Bascik build script with `unified` (see [Markdown](/how-to/markdown)). Astro 6.4 moved those options under `markdown.processor: unified({ … })`, and Astro 7 made the Rust-based Sätteri processor the default, which runs no remark or rehype plugins; any `mdastPlugins` or `hastPlugins` a site passed to `satteri({ … })` need a `unified` or `marked` equivalent instead. Two details to compare in the rendered output: Astro highlights code blocks with Shiki, and Astro 6 stopped stripping trailing hyphens from heading ids, so choose a highlighter and a slugger that produce the anchors your existing links expect.
+
 ## What Has No Built-In Equivalent
 
 These Astro integrations are not part of Bascik:
 
-| Astro                                      | Bascik replacement                                                                                                                      |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `@astrojs/rss`                             | A `pipeline.exec` script with `phase: 'post'` that writes `rss.xml` to the output directory, using a feed library such as `feed`        |
-| `@astrojs/sitemap`                         | Built in. `sitemap.xml` and `robots.txt` are generated by `bascik --build` when a site URL is set. See [Sitemap & robots.txt](/sitemap) |
-| `astro:assets` image optimization          | None. Ship images at the sizes you authored, with `width` and `height`, or resize them in your own exec script                          |
-| Shiki syntax highlighting                  | None. Highlight in your Markdown render step with a library such as `prismjs`                                                           |
-| `<Font>` and fallback metrics              | None. Declare `@font-face` in a global stylesheet and preload the files yourself                                                        |
-| `Astro.url` for canonical and active links | `BASCIK_PAGE_PATH` and `BASCIK_SITE_URL`, read in a [build script with page context](/how-to/page-aware-scripts)                        |
+| Astro                                                                       | Bascik replacement                                                                                                                                                                                                                                                                                                |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@astrojs/rss`                                                              | A `pipeline.exec` script with `phase: 'post'` that writes `rss.xml` to the output directory, using a feed library such as `feed`                                                                                                                                                                                  |
+| `@astrojs/sitemap`                                                          | Built in. `sitemap.xml` and `robots.txt` are generated by `bascik --build` when a site URL is set. See [Sitemap & robots.txt](/sitemap)                                                                                                                                                                           |
+| `astro:assets` image optimization                                           | None. Ship images at the sizes you authored, with `width` and `height`, or resize them in your own exec script                                                                                                                                                                                                    |
+| Shiki syntax highlighting                                                   | None. Highlight in your Markdown render step with a library such as `prismjs` or `shiki` itself                                                                                                                                                                                                                   |
+| `<Font />` and fallback metrics (experimental in Astro 5.7, stable since 6) | None. Declare `@font-face` in a global stylesheet and preload the files yourself                                                                                                                                                                                                                                  |
+| `security.csp` (stable since Astro 6)                                       | `generate.cspHashes: true` writes the SHA-256 hashes of each page's inline scripts and styles to `dist/.bascik/csp-hashes.json`; the policy itself is yours to serve. See [Content Security Policy](/how-to/content-security-policy)                                                                              |
+| `<ClientRouter />` (`<ViewTransitions />` before Astro 5)                   | None. Navigation is an ordinary page load; `@view-transition { navigation: auto; }` in a global stylesheet gives cross-document transitions in browsers that support them. See [Interactivity](/how-to/interactivity)                                                                                             |
+| Server islands (`server:defer`)                                             | [Stream scripts](/stream-scripts) flush the page shell first and stream the slow part into place, on the production server or a serverless adapter rather than in a static build                                                                                                                                  |
+| Actions, Sessions, middleware, live content collections, route caching      | Features that need on-demand rendering through an adapter, except middleware, which also runs at build time for prerendered pages. Form handlers map to [API Routes](/api-routes) in `src/api/` and per-request markup to [Server Scripts](/server-scripts); sessions, middleware, and caching have no equivalent |
+| `@astrojs/cloudflare`                                                       | [`@bascik/adapter-cloudflare`](/deployment/cloudflare) serves the static build from the CDN and runs server scripts, stream scripts, and API routes in a generated Worker                                                                                                                                         |
+| `@astrojs/db` (removed in Astro 7)                                          | A build script or API route can use `node:sqlite`, Drizzle ORM, or any database library directly, the same replacements Astro's v7 guide suggests                                                                                                                                                                 |
+| `Astro.url` for canonical and active links                                  | `BASCIK_PAGE_PATH` and `BASCIK_SITE_URL`, read in a [build script with page context](/how-to/page-aware-scripts)                                                                                                                                                                                                  |
