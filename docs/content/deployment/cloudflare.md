@@ -7,6 +7,7 @@ Deploy a Bascik site to Cloudflare Workers or Pages so a CDN serves your static 
 > - [Server scripts](https://cloudflare-adapter.bascik.dev/server): request context and platform bindings rendered before headers commit.
 > - [In-place skeleton swap](https://cloudflare-adapter.bascik.dev/stream) and [progressive append](https://cloudflare-adapter.bascik.dev/stream-append): stream scripts flushing chunked HTML from the edge.
 > - [Mixed server and stream page](https://cloudflare-adapter.bascik.dev/mixed): the mixed-page ordering rule in one response.
+> - [Product catalog](https://cloudflare-adapter.bascik.dev/catalog?q=grinder) and [streamed catalog](https://cloudflare-adapter.bascik.dev/catalog-stream): server and stream scripts returning `<product-card>` tags that the Worker renders with the component's markup and scoped CSS, including a card whose own server script runs per request.
 > - [Edge API client](https://cloudflare-adapter.bascik.dev/api-demo): browser `fetch()` calls to a deployed API route.
 
 ## How it works: CDN-first with Edge Workers
@@ -23,7 +24,7 @@ The Cloudflare adapter eliminates the need to run, configure, or pay for a separ
 Build once on Node with `bascik --build --target cloudflare` (or `--target cloudflare-workers`). The normal `dist/` output is unchanged; alongside it Bascik writes a deployment folder with two halves:
 
 - a **public tree** (`public/`): every static file uploaded to Cloudflare's global CDN;
-- a **generated Worker bundle** (`worker.js`) and config (`wrangler.jsonc`): each `data-bascik-server` and `data-bascik-stream` job, every API route, and the precompiled page templates those jobs render into.
+- a **generated Worker bundle** (`worker.js`) and config (`wrangler.jsonc`): each `data-bascik-server` and `data-bascik-stream` job, every API route, the precompiled page templates those jobs render into, and the component manifest (`dist/.bascik/components.json`) with the scripts inside components, so component tags the jobs return are rendered in the Worker. See [Returning component tags](/server-scripts#returning-component-tags).
 
 At request time the flow is:
 
@@ -75,6 +76,14 @@ dist/.bascik/cloudflare/
   wrangler.jsonc     Workers static assets and routing configuration
   build-info.json    release id, compatibility date, bundle size, routes
 ```
+
+The build notes, printed and kept in `build-info.json`, name the manifest's share of the bundle, so a growing component library is visible against the Worker size limit. The demo site reports:
+
+```text
+component manifest: 5781 bytes (3 components)
+```
+
+A static-only site has no manifest and its `worker.js` is unchanged. A script inside a component is bundled like a page job: one that imports a module the Workers runtime does not provide fails the build with the component's file and line.
 
 Pages with request-time scripts are **not** in `public/`. Their templates live inside `worker.js`, so a routing mistake that lets such a request reach the static layer yields a 404, never a page with inert placeholders.
 
@@ -357,6 +366,7 @@ Provider limits are deployment constraints, not Bascik defaults, and they change
 - **No persistent disk.** The runtime filesystem is per-request scratch space. Use KV, D1, R2, or Durable Objects through `context.platform.env` for durable state.
 - **Bundle and CPU budgets.** `build-info.json` reports the compiled Worker size. Long-running jobs should move to a queue or a Durable Object; the per-request `scripts.timeout` and `http.apiTimeout` deadlines still apply inside the Worker.
 - **Isolate lifecycle.** Module-level state is per isolate and can vanish between requests. Treat it as a cache, never as storage.
+- **Client disconnects during a stream.** Local workerd does not report a disconnect while a streamed slot is still waiting, so an abandoned stream job, or a component script nested in one, runs until `scripts.timeout`; `bascik --server` aborts it at once. Pass the `signal` to your I/O anyway, and keep `scripts.timeout` short.
 - **Database connections.** Use HTTP-based drivers or Cloudflare's connection products; a raw TCP pool that assumes a long-lived process does not fit the model.
 
 ## Streaming and caching behavior

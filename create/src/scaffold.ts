@@ -228,6 +228,17 @@ export const CLOUDFLARE_E2E_APP_SPEC = e2eAppSpec(`
     await expect(page).toHaveTitle(/Edge/);
     await expect(page.getByTestId('edge-greeting')).toContainText('Ada');
   });
+
+  test('edge page renders the <feat-card> its server script returns', async ({ page }) => {
+    await page.goto('/edge?name=Ada');
+    const card = page.getByTestId('edge-card');
+    await expect(card).toBeVisible();
+    await expect(card).toContainText('Hello, Ada');
+    // The component's scoped CSS reached the browser: .fcard is a flex column.
+    await expect(card).toHaveCSS('flex-direction', 'column');
+    const html = await page.content();
+    expect(html).not.toContain('<feat-card');
+  });
 `);
 
 export const GITIGNORE = `node_modules/
@@ -929,8 +940,11 @@ export const notFoundPage = (brand: string): string =>
 /**
  * A page with a `data-bascik-server` script. The Cloudflare adapter keeps it out
  * of `public/` and renders it in the Worker on every request; `bascik --server`
- * renders it on Node. The script concatenates strings rather than using a
- * template literal only so this constant stays readable.
+ * renders it on Node. The script returns the starter's `<feat-card>` around its
+ * greeting, and the host renders that tag into the component's markup and
+ * scoped CSS per request: this page does not use the card in its own markup. The
+ * script concatenates strings rather than using a template literal only so
+ * this constant stays readable.
  */
 export const edgePage = (brand: string): string =>
   pageShell(
@@ -940,9 +954,10 @@ export const edgePage = (brand: string): string =>
       <section class="section">
         <p class="section-label">Edge</p>
         <h1>Rendered per request</h1>
-        <p class="page-intro">The card below is a <code>&lt;script data-bascik-server&gt;</code> block. It runs on every request, so the time changes on reload and <a href="/edge?name=Ada">?name=Ada</a> changes the greeting.</p>
+        <p class="page-intro">The card below comes from a <code>&lt;script data-bascik-server&gt;</code> block. It runs on every request, so the time changes on reload and <a href="/edge?name=Ada">?name=Ada</a> changes the greeting. The script returns a <code>&lt;feat-card&gt;</code> tag, and the server renders it into the component, scoped CSS included.</p>
 
-        <div class="card">
+        <h2 style="margin-top:28px;">Your greeting</h2>
+        <div style="max-width:520px;margin-top:16px;">
           <script data-bascik-server>
             export default function (request) {
               // Query parameters are untrusted: escape them before they land in HTML.
@@ -952,8 +967,12 @@ export const edgePage = (brand: string): string =>
                 );
               const name = new URL(request.url).searchParams.get("name") ?? "visitor";
               return (
-                '<h2 data-testid="edge-greeting">Hello, ' + escape(name) + "</h2>" +
-                "<p>Rendered at <code>" + new Date().toISOString() + "</code></p>"
+                '<feat-card data-testid="edge-card">' +
+                '<div data-bascik-slot="header">Server script</div>' +
+                '<h3 data-testid="edge-greeting">Hello, ' + escape(name) + "</h3>" +
+                "<p>Rendered at <code>" + new Date().toISOString() + "</code></p>" +
+                '<div data-bascik-slot="footer"><a href="/edge" class="btn btn-ghost">Reload →</a></div>' +
+                "</feat-card>"
               );
             }
           </script>

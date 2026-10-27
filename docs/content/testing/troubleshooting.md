@@ -217,7 +217,49 @@ The handler exceeded `scripts.timeout`. Pass the `signal` the handler receives t
 
 ### `--server: dist/.bascik/server-scripts.json has server-script entries but dist/.bascik/components.json is missing`
 
-Same family: a build that has server or stream scripts also writes a component manifest, and this `dist/` predates it. Run `bascik --build` again. See [What is `dist/.bascik/`?](/faq#what-is-distbascik).
+Same family: a build that has server or stream scripts also writes a component manifest, used to render component tags those scripts return, and this `dist/` predates it or lost it. The related messages are `component manifest at ... uses schema N, but this runtime understands schema 1`, `component manifest at ... is malformed`, for `--target` builds, `the sidecar has server-script entries but dist/.bascik/components.json is missing`, and, at request time, `component script "<id>" is not listed in dist/.bascik/components.json` Each means `dist/` was not written by one full build of the installed version. Run `bascik --build` again. See [What is `dist/.bascik/`?](/faq#what-is-distbascik).
+
+### A component tag in script output reaches the browser as written
+
+A server or stream script returned `<product-card>`, and the HTML the browser receives still contains the tag, so its content shows as unstyled text. In the dev server the terminal names the cause once per route and tag, as long as at least one of the site's components can be rendered at request time:
+
+```terminal
+[bascik] Unresolved component tag <prodcut-card> in server-script output at "/search": no matching component file found, so it reaches the client as written.
+```
+
+```terminal
+[bascik] Component tag <bad-card> in server-script output at "/search" is left unexpanded: src/components/bad-card/bad-card.html:1 cannot be rendered at request time (attr-binding-to-scoped-attribute: its data-bascik-attr-class binding targets an attribute scoping rewrites).
+```
+
+The first is a typo or a missing component file: fix the tag name, or list a third-party element in [`components.external`](/configuration#componentsexternal) to silence it. The second is a component that cannot be rendered at request time; the next entry lists the reasons. A third message, `is left unexpanded: the scoped names computed for instance ... collide with each other`, means the instance's generated ids or names clashed; it is rare, and renaming the colliding ids in the component clears it. The production server and the Cloudflare Worker log none of these. A misspelled tag shows only in the dev server log: `bascik --check` reads the build's component manifest, so it lists unsupported components but never sees the tags a script returns at request time. A site whose components are all unsupported, or that has none, gets no dev log either; use `bascik --check` for the unsupported ones. Also make sure the tag is markup: an escaped tag (`&lt;product-card&gt;`) or one inside a comment, `<script>`, `<style>`, `<textarea>`, or attribute value is text by design. A custom deployment adapter that does not declare `components: true` serves every tag as written and says so at build time. See [Returning component tags](/server-scripts#returning-component-tags).
+
+### `Components a server or stream script cannot return`
+
+This `bascik --check` section lists the components a server or stream script cannot return, read from the last build's `dist/.bascik/components.json`, each with its reason, what triggered it, and the file and line:
+
+```terminal
+Components a server or stream script cannot return (1)
+  ...
+  <bad-card> is left unexpanded when a server or stream script returns it: attr-binding-to-scoped-attribute: its data-bascik-attr-class binding targets an attribute scoping rewrites (components/bad-card/bad-card.html:1)
+```
+
+A page that uses the component in its own markup still renders it at build time; only script output is affected. Run `bascik --build` first, because the section reads the build's output. The reasons and the usual fix:
+
+- `attr-binding-to-scoped-attribute`: a `data-bascik-attr-*` binding onto `id`, `name`, `class`, `style`, an SVG reference attribute, or an id reference on an element the build does not rewrite. Bind a `data-*` attribute and style it from a scoped class instead.
+- `instance-scoped-server-script`: the component's server or stream script names one of its scoped ids or field names, or the component has such a script and its classes are scoped per instance because of `url(#id)` or `scoping.deduplicateCss: false`. Refer to classes in the script, and move the id-dependent markup into the template. A `url(#id)` component with no server or stream script is not affected.
+- `build-script-reads-page-context`: a `data-bascik-build` script in the component reads `BASCIK_PAGE_PATH`, `BASCIK_PAGE_FILE`, or `BASCIK_ROUTE`. Use `data-bascik-build-once`, or pass the value in as a prop.
+- `attr-src-on-directive-script`: a directive script's `src` is bound with `data-bascik-attr-src`. Give it a fixed `src`.
+- `scoping-template-unavailable`: the component's scoping or build-script output cannot be recorded as a template; the detail after the reason says why (an `@import`, a split name, printed prop or slot markup). Move that part into the template or a global stylesheet.
+
+The table in [Request-Time Component Rendering](/compatibility#request-time-component-rendering) has the full trigger for each reason. A neighboring section, `Components without stable CSP hashes at request time`, appears only with `generate.cspHashes: true` and lists components whose request-time CSS or scripts a hash-only policy cannot cover; see [Content Security Policy](/how-to/content-security-policy#server-and-stream-scripts).
+
+### `server-script output at "/search" expands to more than 1000 component instances (...); the limit is 1000 instances per script output.`
+
+A request-time render budget was exceeded. The related messages are `rendered to N characters, over the 4 MiB (4194304 characters) limit per script output`, `grew past N characters while expanding components ..., over the 4 MiB (4194304 characters) limit per script output` (the usual one for a large overrun), `is N characters before rendering, over twice the 4 MiB (4194304 characters) limit per script output, and has component tags in it, so it is refused before they are expanded`, `would run more than 64 nested component scripts in one response`, and `nests component scripts deeper than 4 levels`. Each names the route, and all but the refused-before-rendering one name the component file (`RequestRenderError`). A server script that hits a budget makes the response a 500; `scripts.onServerScriptError` does not apply to these render failures in this release, so `'warn'` and `'ignore'` do not change it. A stream script leaves its slot empty. Return fewer results per request (paginate with `?page=`), or render a long list with fewer components per item. A component whose script returns itself, directly or through another component, hits the depth limit. See the budgets in [Returning component tags](/server-scripts#returning-component-tags).
+
+### `Rendering <product-card> (...) from server-script output at "/search" failed during prop injection: ...`
+
+A tag the script returned names a component that can be rendered at request time, but rendering this one instance threw. The stage is one of `prop injection`, `slot resolution`, `attribute scoping`, `attribute inheritance`, or `substitution`, and the text after the colon is the underlying error. The cause is almost always in the values the script put on the tag: a prop or slot value the component cannot accept, or markup in a slot that does not parse the way the script expected. Log the exact string the script returns for that request, then put the same tag in a page's own markup and run `bascik --build`, which renders it with the same code and reports the failing stage under that page. This is a `RequestRenderError`: a server script's response is a 500 and a stream script leaves its slot empty, the same as for the budgets above. See [Returning component tags](/server-scripts#returning-component-tags).
 
 ### One slow server script delays every request
 

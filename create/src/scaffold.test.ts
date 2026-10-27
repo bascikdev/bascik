@@ -392,6 +392,17 @@ describe("CLOUDFLARE_E2E_APP_SPEC", () => {
     expect(CLOUDFLARE_E2E_APP_SPEC).toContain("getByTestId('edge-greeting')");
     expect(CLOUDFLARE_E2E_APP_SPEC.endsWith("  });\n});\n")).toBe(true);
   });
+
+  it("asserts the <feat-card> the server script returns is rendered, not sent as a tag", () => {
+    expect(CLOUDFLARE_E2E_APP_SPEC).toContain("getByTestId('edge-card')");
+    // The component's scoped CSS reached the browser: .fcard is a flex column.
+    expect(CLOUDFLARE_E2E_APP_SPEC).toContain(
+      "toHaveCSS('flex-direction', 'column')",
+    );
+    expect(CLOUDFLARE_E2E_APP_SPEC).toContain(
+      "expect(html).not.toContain('<feat-card')",
+    );
+  });
 });
 
 describe("VSCODE_LAUNCH_JSON", () => {
@@ -447,6 +458,35 @@ describe("edgePage", () => {
     expect(html).toContain("export default function (request)");
     expect(html).toContain('searchParams.get("name")');
     expect(html).toContain('data-testid="edge-greeting"');
+  });
+
+  it("returns the starter's <feat-card> around the greeting, so the Worker renders a component per request", () => {
+    // The tag is only in the script's returned string: this page does not
+    // use <feat-card> in its own markup, so the card is rendered at request
+    // time, with the header, default, and footer slots filled.
+    const script = html.slice(
+      html.indexOf("<script data-bascik-server>"),
+      html.indexOf("</script>"),
+    );
+    expect(script).toContain('<feat-card data-testid="edge-card">');
+    expect(script).toContain('<div data-bascik-slot="header">');
+    expect(script).toContain('<div data-bascik-slot="footer">');
+    expect(script).toContain("</feat-card>");
+    expect(script.indexOf('data-testid="edge-greeting"')).toBeGreaterThan(
+      script.indexOf("<feat-card"),
+    );
+    expect(script.indexOf('data-testid="edge-greeting"')).toBeLessThan(
+      script.indexOf("</feat-card>"),
+    );
+    expect(html.replace(script, "")).not.toContain("<feat-card");
+  });
+
+  it("does not skip a heading level between the page h1 and the card's h3", () => {
+    // The card styles an h3 greeting, so an h2 sits between it and the h1.
+    const levels = [...html.matchAll(/<h([1-6])[\s>]/g)].map((m) =>
+      Number(m[1]),
+    );
+    expect(levels).toEqual([1, 2, 3]);
   });
 
   it("escapes the query parameter before interpolating it", () => {

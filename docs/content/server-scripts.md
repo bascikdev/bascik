@@ -284,6 +284,99 @@ This parallels Next.js `getServerSideProps` client hydration, but emits clean st
 
 > **Build vs. Server Hydration.** Use `<script data-bascik-build>` when hydrating static content that stays identical across all visitors. Use `<script data-bascik-server>` when the hydrated client data depends on the incoming request, cookies, headers, or real-time database state.
 
+## Returning component tags
+
+A server script can return the tags of your own components. Bascik renders each tag at request time with the component's markup, props, slots, and scoped CSS, the same way it renders a tag written in a page. There is nothing to import and nothing to configure: a site with any server or stream script gets this automatically.
+
+A common case is a search page that renders the site's shared card for each result. The card is an ordinary component:
+
+```html
+<!-- src/components/product-card/product-card.html -->
+<style>
+  .card {
+    border: 1px solid #d0d4dc;
+    border-radius: 8px;
+    padding: 1rem;
+  }
+  .price {
+    color: #2f6f3e;
+  }
+</style>
+<article class="card">
+  <h3 data-bascik-prop-name>Unnamed product</h3>
+  <p class="price" data-bascik-prop-price>Price on request</p>
+  <div data-bascik-slot></div>
+</article>
+```
+
+The search page's server script returns one `<product-card>` per match, with the product's values escaped into the props and the slot:
+
+```html
+<!-- src/pages/search.html -->
+<form method="get" action="/search">
+  <input type="search" name="q" aria-label="Search products" />
+  <button>Search</button>
+</form>
+<div class="results">
+  <script data-bascik-server>
+    import { escape } from "@/lib/server.ts";
+    import { searchProducts } from "@/lib/products.ts";
+
+    export default async function (request) {
+      const q = new URL(request.url).searchParams.get("q") ?? "";
+      const products = await searchProducts(q);
+      if (products.length === 0) {
+        return `<p>No products match "${escape(q)}".</p>`;
+      }
+      return products
+        .map(
+          (p) =>
+            `<product-card data-bascik-prop-name="${escape(p.name)}" data-bascik-prop-price="${escape(p.price)}">` +
+            (p.badge ? `<span>${escape(p.badge)}</span>` : "") +
+            `</product-card>`,
+        )
+        .join("");
+    }
+  </script>
+</div>
+```
+
+A request for `/search?q=grinder` receives the rendered card. This is `bascik --server` output with `minify.identifiers: false`, reformatted for reading; with the default `true`, the class names are short hashes:
+
+```html
+<div class="results">
+  <style>
+    .bascik__product-card__card {
+      border: 1px solid #d0d4dc;
+      border-radius: 8px;
+      padding: 1rem;
+    }
+    .bascik__product-card__price {
+      color: #2f6f3e;
+    }
+  </style>
+  <article class="bascik__product-card__card">
+    <h3>Burr grinder</h3>
+    <p class="bascik__product-card__price">$129</p>
+    <span>Best seller</span>
+  </article>
+</div>
+```
+
+The rules that come with it:
+
+- **Script output is HTML, rendered with the same power as your own markup.** Every component tag in it is expanded, and the component's own server and stream scripts run with the current request. Escape each value you put into a prop or slot, and sanitize HTML from a CMS or an API before returning it: a tag in that HTML renders your component, and an ordinary `<script>` or `on*` attribute in it reaches the browser.
+- **Scripts inside a returned component run.** A `data-bascik-server` or `data-bascik-stream` script inside the component runs once per rendered instance, with the same `request`, `context`, and `signal`, and with what is left of the page script's `scripts.timeout`. It receives no props from the usage tag; pass per-instance values as props to the component's markup instead. Its errors follow `scripts.onServerScriptError` like the page's own scripts: under `'error'` the response is a 500, and under `'warn'` or `'ignore'` that script's slot is empty and the rest of the card is kept.
+- **Budgets.** One script output may expand to 1000 component instances and 4 MiB (4,194,304 characters) of rendered HTML. One response may run 64 nested component scripts, nested at most 4 levels deep (a script returning a component whose script returns a component, and so on). Over a budget, the script fails with a message naming the route and the component file. For a server script the response is a 500: `scripts.onServerScriptError` does not apply to these render failures in this release, so `'warn'` and `'ignore'` do not turn them into an empty slot. A stream script leaves its slot empty. Output with no component tag in it is never measured.
+- **CSS is emitted in the body, before the first instance.** Each component's stylesheet is sent as one `<style>` block right before the output that holds its first instance in document order, once per response, whatever order the scripts finish in. A page with both server and stream scripts may send it once for each. A component that is also used in the page's own markup gets a second, identical block. A component whose CSS embeds the instance id (`url(#id)`, or `scoping.deduplicateCss: false`) gets one block per instance. Because the block sits in the body, unscoped rules in such a component (`body`, `*`, `@import`) restyle the whole page.
+- **Client scripts run in place.** A component's `<script>` stays inside its rendered instance, as in the dev server. With `minify.html` on it moves to the end of the outermost rendered instance, never to the end of the document, so look up elements outside the component inside an event handler. See [Where Component Scripts Run](/scoped-javascript#where-component-scripts-run).
+- **Base paths are rewritten inside rendered components.** With a non-root [`base`](/configuration#base), URLs in the component's markup, its props, and its slot content are rewritten as at build time. The rest of the script's output is sent as written, so prefix your own URLs.
+- **`components.external` names are sent as written.** A tag listed in `components.external` with no component file, such as a third-party web component, is never expanded or logged. A component file with the same name still renders, as it does at build time.
+- **Only markup is rendered.** A tag inside `<script>`, `<style>`, `<textarea>`, a comment, or an attribute value, or an escaped one (`&lt;product-card&gt;`), stays text. A `data-bascik-server` or other directive script in the output never runs on the server; it is sent as written, like the rest of the output.
+- **Unsupported components and misspelled tags are left as written.** A few component shapes cannot be rendered at request time, such as a component that binds a prop to its `class` or `id` with `data-bascik-attr-*`. Their tags, and tags with no component file, reach the browser unexpanded. When at least one component can be rendered at request time, the dev server logs each one once per route and tag. After a build, `bascik --check` lists the unsupported components with the reason; it does not see misspelled tags, which exist only in a script's output at request time. See [Request-Time Component Rendering](/compatibility#request-time-component-rendering) for each reason and how to restructure the component.
+
+Request-time rendering needs a host that runs server scripts: the [dev server](/development-server), the [production server](/production-server), or the [Cloudflare Adapter](/deployment/cloudflare). The Cloudflare demo renders the same shape live: a [product catalog](https://cloudflare-adapter.bascik.dev/catalog?q=grinder) and its [streamed version](https://cloudflare-adapter.bascik.dev/catalog-stream). [Stream scripts](/stream-scripts#returning-component-tags) return component tags under the same rules.
+
 ## Server Scripts vs API Routes
 
 Both `data-bascik-server` script blocks and [API Routes](/api-routes) run in-process through Bascik's script registry at request time, receiving the same `Request` object, but they serve different architectural purposes:

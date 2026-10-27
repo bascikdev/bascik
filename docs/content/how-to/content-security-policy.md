@@ -100,6 +100,19 @@ Scripts injected by your host after the build are not in the emitted HTML, so th
 
 Inline `<style>` blocks can be hashed the same way with a `style-src` directive. Inline `style="..."` attributes are different: a plain hash does not match them, and allowing them needs `'unsafe-hashes'` with the hash of each attribute value. Many sites leave `style-src` out of the first version of the policy and tighten scripts first, where the risk is highest.
 
+## Server and stream scripts
+
+The `post` recipe above hashes the built pages, so it never sees what a server or stream script returns per request. Use `csp-hashes.json` for those pages, and keep inline scripts out of the markup your scripts return, or list their hashes yourself.
+
+A server or stream script can also return component tags, which Bascik renders with their `<style>` block and client scripts at request time (see [Returning component tags](/server-scripts#returning-component-tags)). With `generate.cspHashes: true`, the `csp-hashes.json` entry of every route that has a server or stream script therefore also lists, in its own `styles` and `scripts` arrays, the style hash and first-instance client script hashes of every component that can be rendered at request time. Any component can be returned, so every one of them is listed. The emitted `<style>` text is exactly the hashed text. A targeted `--only` build keeps these entries.
+
+Two kinds of component cannot be covered by a hash-only policy when a script returns them, because their bytes change with each instance:
+
+- **Per-instance CSS.** A component whose stylesheet uses `url(#id)`, or any component under `scoping.deduplicateCss: false`, emits CSS that names the instance's ids.
+- **Scripts that use scoped ids or names.** A client script that calls `getElementById` on one of the component's own ids, or reads a scoped form field name, has the instance id in its text.
+
+With `generate.cspHashes` on, `bascik --check` lists these under `Components without stable CSP hashes at request time`, and their hashes are not in `csp-hashes.json`. On pages served under a strict policy, use such components only in page markup, where the build hashes each instance, or change them so their CSS and scripts do not depend on the instance.
+
 ## Check that it works
 
 Open the page with the browser console visible. A blocked script logs a Content Security Policy violation that names the directive and shows the hash it expected. To test every page, listen for the event in a browser test:

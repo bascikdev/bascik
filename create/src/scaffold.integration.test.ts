@@ -21,7 +21,8 @@
  * 7. Negative-control sensitivity: A corrupted scaffolded page (invalid syntax / broken component) is rejected by the compiler.
  * 8. Execution mode parity: Verified across both default and worker build pipelines.
  * 9. The Cloudflare template compiles with the plain `--build` (no adapter installed) and, with the
- *    workspace adapter linked into `node_modules`, with `--build --target cloudflare`.
+ *    workspace adapter linked into `node_modules`, with `--build --target cloudflare`; the emitted
+ *    Worker, run in Miniflare, renders the `<feat-card>` the edge page's server script returns.
  */
 
 import { describe, it, expect, afterEach, beforeAll } from "vitest";
@@ -32,6 +33,7 @@ import {
   writeFile,
   rm,
   access,
+  realpath,
   symlink,
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -61,6 +63,53 @@ async function linkWorkspacePackages(projectDir: string): Promise<void> {
   await mkdir(scope, { recursive: true });
   await symlink(join(REPO_ROOT, "pkg"), join(scope, "bascik"), "dir");
   await symlink(ADAPTER_DIR, join(scope, "adapter-cloudflare"), "dir");
+}
+
+/**
+ * Request `path` from the emitted Worker in Miniflare (the workerd binary
+ * Wrangler uses), configured from the emitted wrangler.jsonc, and return the
+ * body. Miniflare is the Cloudflare adapter's test dependency, resolved from
+ * the workspace root.
+ */
+async function fetchFromWorker(
+  targetDir: string,
+  path: string,
+): Promise<string> {
+  const { Miniflare } = await import("miniflare");
+  // workerd rejects a symlinked prefix such as macOS /var/folders.
+  const dir = await realpath(targetDir);
+  const wrangler = JSON.parse(
+    await readFile(join(dir, "wrangler.jsonc"), "utf8"),
+  ) as {
+    compatibility_date: string;
+    compatibility_flags: string[];
+    assets: { run_worker_first: string[] };
+  };
+  const mf = new Miniflare({
+    modules: true,
+    modulesRoot: dir,
+    scriptPath: join(dir, "worker.js"),
+    compatibilityDate: wrangler.compatibility_date,
+    compatibilityFlags: wrangler.compatibility_flags,
+    // The asset layer answers first, and the Worker runs for the routes the
+    // generated config lists, as on Cloudflare.
+    assets: {
+      directory: join(dir, "public"),
+      binding: "ASSETS",
+      routerConfig: {
+        has_user_worker: true,
+        invoke_user_worker_ahead_of_assets: false,
+        static_routing: { user_worker: wrangler.assets.run_worker_first },
+      },
+    },
+  });
+  try {
+    const response = await mf.dispatchFetch(`http://localhost${path}`);
+    expect(response.status).toBe(200);
+    return await response.text();
+  } finally {
+    await mf.dispose();
+  }
 }
 
 const tempDirs: string[] = [];
@@ -325,7 +374,38 @@ describe("scaffold-to-compiler integration", () => {
       access(join(publicDir, "about.html")),
     ).resolves.toBeUndefined();
     expect(existsSync(join(publicDir, "edge.html"))).toBe(false);
-  }, 45_000);
+
+    // The edge page's server script returns a <feat-card>, so the build
+    // records the starter's components for request-time rendering and the
+    // adapter bundles them: no "not rendered on this host" warning.
+    const output = `${buildResult.stdout}\n${buildResult.stderr}`;
+    expect(output).not.toContain("does not declare components: true");
+    expect(output).toMatch(/component manifest: \d+ bytes \(\d+ components\)/);
+    const manifest = JSON.parse(
+      await readFile(join(projectDir, "dist/.bascik/components.json"), "utf8"),
+    ) as {
+      components: Record<string, { template: unknown; unsupported?: unknown }>;
+    };
+    expect(manifest.components["feat-card"]).toBeDefined();
+    expect(manifest.components["feat-card"].unsupported).toBeUndefined();
+
+    // Run the emitted Worker in workerd and request the edge page: the card
+    // arrives rendered, with its scoped stylesheet, around the greeting.
+    const html = await fetchFromWorker(targetDir, "/edge?name=Ada");
+    expect(html).toContain("Hello, Ada");
+    expect(html).not.toContain("<feat-card");
+    expect(html).not.toContain("data-bascik-slot");
+    // The component's stylesheet is emitted once, in the body, right before
+    // the card; the card's root carries the scoped class and the usage's
+    // data-testid, with the greeting in its default slot.
+    const card =
+      /<style>([^<]*flex-direction:column[^<]*)<\/style><article class="([^"]+)" data-testid="edge-card">[^]*?Hello, Ada[^]*?<\/article>/.exec(
+        html,
+      );
+    expect(card, "the rendered card and its stylesheet").not.toBeNull();
+    expect(card![1]).toContain(`.${card![2]}{`);
+    expect(html.split(card![1]).length - 1).toBe(1);
+  }, 60_000);
 
   it("negative control: rejects compilation when a required page contains invalid build-script syntax", async () => {
     const parentDir = await createTempDir("negative-control");

@@ -34,7 +34,7 @@ Prefer build-time work. Server, stream, and API code needs `bascik --server` (or
 6. **Data paths are relative to the project root.** `readFile('./content/post.md')` resolves from `process.cwd()`, not from the page.
 7. **Watch helpers.** Add `src/lib/` and data folders such as `content/` to `pipeline.watchPaths` so edits rebuild dependent pages in dev.
 8. **Escape everything you interpolate.** Template strings do not escape. Write a small escaper in `src/lib/` or install `escape-html`; sanitize CMS or user HTML with an allowlist (for example `sanitize-html`).
-9. **Directives in output never run.** If a script prints another `data-bascik-*` script, it is removed with a warning. Printed component tags do expand.
+9. **Directives in output never run.** If a build script prints another `data-bascik-*` script, it is removed with a warning; in server and stream output it is sent as written and never runs on the server. Printed component tags do expand, in build, server, and stream output.
 
 ## Build scripts
 
@@ -97,6 +97,38 @@ Every bracket name needs a matching `params` key; a param cannot contain `/` (us
 - All `server` scripts resolve before any byte is sent. Swap to `data-bascik-stream` when the shell should paint first; a stream failure renders an empty slot instead of a 500.
 - Source is moved to `dist/.bascik/server-scripts.json`; static `dist/` keeps an inert placeholder. They never run during `--build`.
 - Never block the event loop with synchronous work; timeouts cannot interrupt it.
+
+### Server and stream scripts may return component tags
+
+```html
+<script data-bascik-server>
+  import { escapeHtml } from "@/lib/escape.ts";
+  import { searchProducts } from "@/lib/products.ts";
+  export default async function (request) {
+    const q = new URL(request.url).searchParams.get("q") ?? "";
+    const products = await searchProducts(q);
+    return products
+      .map(
+        (p) =>
+          `<product-card data-bascik-prop-name="${escapeHtml(p.name)}"></product-card>`,
+      )
+      .join("");
+  }
+</script>
+```
+
+- Each returned tag renders per request with the component's markup, props, slots, and scoped CSS, as at build time. No import, attribute, or config.
+- **Output is HTML with the same power as your markup.** Escape every value in a prop or slot; sanitize HTML from a CMS or an API before returning it.
+- Scripts inside a returned component run once per instance with the same request and the parent's remaining `scripts.timeout`, and get no props from the usage tag. A nested `stream` script resolves with its parent.
+- Budgets: 1000 component instances and 4 MiB of rendered HTML per script output; 64 nested component scripts per response, 4 levels deep. Over budget, a server script is a 500 even under `onServerScriptError: 'warn'` or `'ignore'`, and a stream slot is empty.
+- The component's CSS is a `<style>` in the body before the first instance in document order, once per response (once more if the page uses the component in its own markup). Unscoped `body`/`*` rules in it restyle the page.
+- Component client scripts stay inside the rendered instance (end of the outermost one with `minify.html`), never at the end of the document.
+- With a non-root `base`, URLs inside rendered components are rewritten; the rest of the output is sent as written.
+- Tags in `components.external` with no component file, misspelled tags, and escaped tags are sent as written. The dev server logs typos and unsupported components once per route (when any component is renderable); `bascik --check` cannot see typos.
+- **Unsupported, left unexpanded** (listed by `bascik --check` after a build): `attr-binding-to-scoped-attribute` (a `data-bascik-attr-*` binding onto `id`, `name`, `class`, `style`, or an SVG reference attribute; bind a `data-*` attribute instead), `instance-scoped-server-script` (the component's server or stream script names its scoped ids or field names, or the component has such a script and its stylesheet uses `url(#id)` or `scoping.deduplicateCss: false`; a `url(#id)` component with no script renders, with one style block per instance), `build-script-reads-page-context` (a `data-bascik-build` script reads `BASCIK_PAGE_PATH`, `BASCIK_PAGE_FILE`, or `BASCIK_ROUTE`; use `data-bascik-build-once`), `attr-src-on-directive-script`, and `scoping-template-unavailable` (the `--check` detail says why).
+- With `generate.cspHashes`, server and stream routes list every renderable component's hashes, except components with per-instance CSS or client scripts that use scoped ids.
+
+Details: `read-doc.mjs /server-scripts` (Returning component tags), `/compatibility` (Request-Time Component Rendering).
 
 ## API routes
 

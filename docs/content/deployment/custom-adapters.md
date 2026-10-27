@@ -345,7 +345,15 @@ export interface AdapterBuildResult {
   bundleBytes?: number;
   /** Informational notes or post-build instructions printed to stdout. */
   notes?: string[];
+  /** True when the runtime renders component tags in script output (graph.components). */
+  components?: boolean;
 }
+```
+
+Return `components: true` only when your runtime renders `graph.components` as described in [Rendering component tags](#rendering-component-tags-sitegraphcomponents). When the graph has components that can be rendered and the result does not declare it, the build still succeeds and prints a warning naming the adapter and the affected components:
+
+```terminal
+[bascik] --target my-platform: adapter "my-platform" does not declare components: true, so component tags returned by server and stream scripts are not rendered on this host and reach the client as written (dist/.bascik/components.json lists <product-card>). Upgrade the adapter, or keep component tags out of script output for this target.
 ```
 
 ---
@@ -366,6 +374,12 @@ export interface SiteGraph {
   apiRoutes: SiteGraphApiRoute[]; // Sorted list of API route handlers
   custom500?: string; // Content or path of custom 500.html template if present
   importRoot: string; // Absolute path to project source import root
+  components?: SiteGraphComponents; // Present when the build wrote dist/.bascik/components.json
+}
+
+export interface SiteGraphComponents {
+  manifest: ComponentManifest; // The parsed dist/.bascik/components.json
+  jobs: Record<string, SiteGraphJob>; // Server and stream scripts inside components, by job ID
 }
 ```
 
@@ -400,8 +414,33 @@ export interface SiteGraphJob {
     | { kind: "module"; path: string }
     | { kind: "inline"; code: string; stagedPath: string };
   owner: string; // Authoring source location for diagnostic traces
+  outputScope?: string; // A component's class mapping for this job's output, when the job is inside a component
 }
 ```
+
+A job with `outputScope` is a script inside a component. Apply it to the job's output with `applyOutputScope(output, decodeOutputScope(job.outputScope))` from `@bascik/bascik/runtime`, so the returned markup gets the component's scoped class names, as on Node.
+
+### Rendering component tags (`SiteGraph.components`)
+
+A server or stream script may return component tags, and the runtime renders them per request (see [Returning component tags](/server-scripts#returning-component-tags)). `graph.components` is present when the site has any server or stream script; a static-only site has none, and an adapter can ignore the field entirely for it. It holds:
+
+- `manifest`: every component recorded as a scoping template, with its CSS, its staged scripts, and, for the ones that cannot be rendered, the reason.
+- `jobs`: the server and stream scripts inside components, keyed by job ID. They belong to no page, because any page's script may return any component. Stage and bundle them like page jobs; inline sources are staged under the same rules.
+
+To render, wrap the page's job runner with `wrapRunner(run, plan, host)` from `@bascik/bascik/runtime`. It returns `run` unchanged when the manifest has nothing to render. The host supplies:
+
+| Field             | What to pass                                                                                                                                                                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `manifest`        | `graph.components.manifest`                                                                                                                                                                                                                       |
+| `hashName`        | Identity when `manifest.identifiers` is false; otherwise `createNameHasher(digest)`, the build's scoped-name hash, where `digest` returns a string's SHA-256 as a `Uint8Array`. The wrong one renders class names the stylesheet does not define. |
+| `hashHex`         | A SHA-256 hex digest of a string, used for instance IDs.                                                                                                                                                                                          |
+| `httpPath`        | `requestRoutePath(request.url)`, the percent-decoded route, so IDs match every other host.                                                                                                                                                        |
+| `timeoutMs`       | `graph.scriptTimeoutMs`. Nested jobs get what is left of it.                                                                                                                                                                                      |
+| `runComponentJob` | `(id, signal, timeoutMs) => Promise<string>`: run `graph.components.jobs[id]` with the same request, deadline handling, `onServerScriptError` policy, and `outputScope` as a page job.                                                            |
+| `externalTags`    | A matcher for `components.external`. It only silences the development log, so a production host can pass `() => false`.                                                                                                                           |
+| `warnOnce`        | Optional. Omit it in production; the renderer logs nothing per request without it.                                                                                                                                                                |
+
+Key script segments by their index in the page, as the Node server and the Cloudflare adapter do: the job key is part of every request-time instance ID, so the same keys give the same bytes on every host. The [Cloudflare adapter source](https://github.com/bascikdev/bascik/tree/main/adapters/cloudflare/src) is a complete host, and its tests compare its output with `bascik --server` byte for byte.
 
 ### `SiteGraphApiRoute`
 

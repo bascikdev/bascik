@@ -938,7 +938,9 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
       "or stream script body, runs its server or stream script with per-instance\n" +
       "class names (a stylesheet using url(#id), or scoping.deduplicateCss: false),\n" +
       "reads the page context from a build script, binds the src of a directive\n" +
-      "script, or cannot be recorded as a scoping template.",
+      "script, or cannot be recorded as a scoping template. The compatibility\n" +
+      "table documents each reason and how to restructure the component:\n" +
+      "https://bascik.dev/compatibility#request-time-component-rendering",
   },
   "request-render-csp-unstable": {
     title: "Components without stable CSP hashes at request time",

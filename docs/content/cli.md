@@ -347,7 +347,7 @@ Components with no matching file (3)
 
 Unused components (1)
   Defined but never referenced. Safe to delete, or referenced only from a
-  build script, which this check cannot always see.
+  build, server or stream script, which this check cannot always see.
 
   src/components/legacy-banner/legacy-banner.html
 
@@ -366,19 +366,21 @@ Per-file checks (2)
 
 `bascik --check` runs the following validations. The first table is the project checks, which `bascik` runs itself. The second is the per-file checks, which come from the language server:
 
-| Check                                                                             | Category                       | Severity                |
-| --------------------------------------------------------------------------------- | ------------------------------ | ----------------------- |
-| Configuration key and value validation                                            | `config-validation`            | Error or warning by key |
-| Missing `BASCIK_SITE_URL` when `generate.sitemap` or `generate.robots` is enabled | `missing-site-url`             | Error                   |
-| Pages directory unreadable or empty                                               | `pages-directory`              | Error                   |
-| Duplicate component tag names                                                     | `duplicate-component-name`     | Error                   |
-| Circular component references                                                     | `circular-component-reference` | Error                   |
-| Duplicate route resolution from page paths                                        | `duplicate-route-resolution`   | Error                   |
-| Multiple API route files resolving to one URL, or ambiguous catch-all pairs       | `route-collision`              | Error                   |
-| Malformed or non-final API catch-all (`[...]`, `x[...a]`, `[...a]/b.ts`)          | `invalid-catch-all`            | Error                   |
-| Unmatched component tag usage                                                     | `unmatched-tag`                | Warning                 |
-| Unused component file                                                             | `unused-component`             | Warning                 |
-| WHATWG HTML5 parse errors in compiled `dist/` HTML files                          | `dist-html-spec`               | Error                   |
+| Check                                                                                                  | Category                       | Severity                |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------ | ----------------------- |
+| Configuration key and value validation                                                                 | `config-validation`            | Error or warning by key |
+| Missing `BASCIK_SITE_URL` when `generate.sitemap` or `generate.robots` is enabled                      | `missing-site-url`             | Error                   |
+| Pages directory unreadable or empty                                                                    | `pages-directory`              | Error                   |
+| Duplicate component tag names                                                                          | `duplicate-component-name`     | Error                   |
+| Circular component references                                                                          | `circular-component-reference` | Error                   |
+| Duplicate route resolution from page paths                                                             | `duplicate-route-resolution`   | Error                   |
+| Multiple API route files resolving to one URL, or ambiguous catch-all pairs                            | `route-collision`              | Error                   |
+| Malformed or non-final API catch-all (`[...]`, `x[...a]`, `[...a]/b.ts`)                               | `invalid-catch-all`            | Error                   |
+| Unmatched component tag usage                                                                          | `unmatched-tag`                | Warning                 |
+| Unused component file                                                                                  | `unused-component`             | Warning                 |
+| WHATWG HTML5 parse errors in compiled `dist/` HTML files                                               | `dist-html-spec`               | Error                   |
+| Components a server or stream script cannot return (read from the last build)                          | `request-render-unsupported`   | Warning                 |
+| Components whose request-time CSS or scripts `csp-hashes.json` cannot cover, with `generate.cspHashes` | `request-render-csp-unstable`  | Warning                 |
 
 The per-file checks, from `@bascik/language-server`:
 

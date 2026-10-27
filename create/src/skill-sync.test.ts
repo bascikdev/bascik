@@ -42,4 +42,34 @@ describe("agent skills asset synchronization", () => {
       ).toBe(true);
     }
   });
+
+  // Request-time component rendering: the scripts skill carries the rule that
+  // a server or stream script may return component tags, the limits that come
+  // with it, and every reason `bascik --check` prints for a component left
+  // unexpanded, so an agent working from the bundled copy knows them too.
+  it("the bundled bascik-scripts skill carries the component-tags rule and every unsupported reason", async () => {
+    const skill = await readFile(
+      join(SKILLS_DIR, "bascik-scripts/SKILL.md"),
+      "utf8",
+    );
+    expect(skill).toMatch(
+      /Server and stream scripts may return component tags/,
+    );
+    expect(skill).toMatch(/sanitize HTML from a CMS or an API/i);
+    expect(skill).toContain("components.external");
+    for (const reason of [
+      "attr-binding-to-scoped-attribute",
+      "instance-scoped-server-script",
+      "build-script-reads-page-context",
+      "attr-src-on-directive-script",
+      "scoping-template-unavailable",
+    ])
+      expect(skill).toContain(reason);
+    // url(#id) alone does not make a component unsupported: only with its
+    // own server or stream script.
+    expect(skill).not.toContain(
+      "names its scoped ids or field names, or the stylesheet uses `url(#id)`)",
+    );
+    expect(skill).toMatch(/a `url\(#id\)` component with no script renders/);
+  });
 });

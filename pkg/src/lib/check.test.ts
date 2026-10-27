@@ -1707,6 +1707,11 @@ describe("checkProject – request-time component rendering (prompt 157)", () =>
     ).toBe(false);
     const human = formatFindingsHuman(findings);
     expect(human).toContain("bad-card");
+    // The section header sends the reader to the table that explains each
+    // reason and how to restructure the component.
+    expect(human).toContain(
+      "https://bascik.dev/compatibility#request-time-component-rendering",
+    );
     expect(human).toContain(
       `attr-binding-to-scoped-attribute: its data-bascik-attr-class binding targets an attribute scoping rewrites (${unsupported[0].locations[0].filePath}:1)`,
     );
