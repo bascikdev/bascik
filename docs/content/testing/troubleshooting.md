@@ -276,16 +276,16 @@ The table in [Request-Time Component Rendering](/compatibility#request-time-comp
 
 A request-time render budget was exceeded. The related messages are `rendered to N characters, over the 4 MiB (4194304 characters) limit per script output`, `grew past N characters while expanding components ..., over the 4 MiB (4194304 characters) limit per script output` (the usual one for a large overrun), `is N characters before rendering, over twice the 4 MiB (4194304 characters) limit per script output, and has component tags in it, so it is refused before they are expanded`, `would run more than 64 nested component scripts in one response`, and `nests component scripts deeper than 4 levels`. Each names the route, and all but the refused-before-rendering one name the component file (`RequestRenderError`). The log is the usual `[bascik] server script error at "/search":` line followed by the message. The failure follows `scripts.onServerScriptError` like a script that throws: under `'error'` (the default) a server script's response is a 500 and a stream script's slot is empty with the error logged, `'warn'` logs it and leaves the slot empty, and `'ignore'` leaves the slot empty without a log. Return fewer results per request (paginate with `?page=`), or render a long list with fewer components per item. A component whose script returns itself, directly or through another component, hits the depth limit. See the budgets in [Returning component tags](/server-scripts#returning-component-tags).
 
-### `Rendering <echo-card> (src/components/echo-card/echo-card.html) from server-script output at "/echo" failed during slot resolution: Invalid string length`
+### `Rendering <echo-card> (components/echo-card/echo-card.html) from server-script output at "/echo" failed during slot resolution: Invalid string length`
 
 Rendering one instance of a component the script returned threw. The full log line from `bascik --server` and the Cloudflare Worker:
 
 ```terminal
 [bascik] server script error at "/echo":
-Rendering <echo-card> (src/components/echo-card/echo-card.html) from server-script output at "/echo" failed during slot resolution: Invalid string length
+Rendering <echo-card> (components/echo-card/echo-card.html) from server-script output at "/echo" failed during slot resolution: Invalid string length
 ```
 
-The dev server names the file as the build and `bascik --check` do, `(components/echo-card/echo-card.html)`, in this message and in the budget messages above.
+The file is `src/components/echo-card/echo-card.html`, named the way `bascik --check` and the build's own diagnostics name it: relative to its component root. The build records that form in `dist/.bascik/components.json`, so `bascik`, `bascik --server`, and the Cloudflare Worker print the same path in this message, in the budget messages above, and in the dev log entries for returned tags.
 
 The stage is one of `prop injection`, `slot resolution`, `attribute scoping`, `attribute inheritance`, or `substitution`, and the text after the colon is the underlying error. Each stage is string work on the component's template and the values on the tag, so the error you can cause is the JavaScript engine's string limit: `Invalid string length` means the instance would be longer than a string can be (about 536 million characters in V8, which Node and Cloudflare Workers both use). Here `echo-card.html` has 80 default slot markers, and the script passed 8 MB of slot content, so the copies outgrow the limit while the instance is built, before the output budgets measure the result. Pass less content to a component that repeats a slot or prop, or repeat it fewer times. Any other error text is a Bascik bug: report it with the tag the script returned.
 
@@ -296,7 +296,7 @@ To reproduce, put the same tag in a page's own markup and run `bascik --build`. 
   Defined in component template: "components/echo-card/echo-card.html"
   Error: RangeError: Invalid string length
     at Array.join (<anonymous>)
-    at replaceDefaultSlots (file:///.../node_modules/@bascik/bascik/dist/lib/component-slots.js:222:18)
+    at replaceDefaultSlots (file:///.../node_modules/@bascik/bascik/dist/lib/component-slots.js:290:18)
     ...
 ```
 

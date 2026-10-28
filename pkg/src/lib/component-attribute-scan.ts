@@ -32,6 +32,42 @@ export interface ScannedAttribute {
 }
 
 /**
+ * What JavaScript's `\s` matches (WhiteSpace and LineTerminator), as a
+ * code-unit test: the attribute scan runs per character on every tag, and
+ * a one-character regex test per character costs a string and a match.
+ */
+const isJsSpace = (c: number): boolean =>
+  c === 32 ||
+  (c >= 9 && c <= 13) ||
+  (c > 127 &&
+    (c === 0xa0 ||
+      c === 0x1680 ||
+      (c >= 0x2000 && c <= 0x200a) ||
+      c === 0x2028 ||
+      c === 0x2029 ||
+      c === 0x202f ||
+      c === 0x205f ||
+      c === 0x3000 ||
+      c === 0xfeff));
+/** `[\s/>]` */
+const isSpaceSlashOrGt = (c: number): boolean =>
+  c === 47 || c === 62 || isJsSpace(c);
+/** `[\s/]` */
+const isSpaceOrSlash = (c: number): boolean => c === 47 || isJsSpace(c);
+/** `[\s=/>]` */
+const isNameEnd = (c: number): boolean =>
+  c === 61 || c === 47 || c === 62 || isJsSpace(c);
+/** `[\s"'=<>\`]` */
+const isUnquotedEnd = (c: number): boolean =>
+  c === 34 ||
+  c === 39 ||
+  c === 61 ||
+  c === 60 ||
+  c === 62 ||
+  c === 96 ||
+  isJsSpace(c);
+
+/**
  * Scan the attributes of one opening tag string (the text between `<` and
  * `>`).  Following the WHATWG tokenizer states, a quote delimits a value only
  * after `=`, so a token that merely looks like an attribute inside another
@@ -45,20 +81,20 @@ export const scanWholeAttributes = (openTag: string): ScannedAttribute[] => {
   let i = 0;
   const n = openTag.length;
   if (n > 0 && openTag.charCodeAt(0) === 60 /* < */) i = 1;
-  while (i < n && !/[\s/>]/.test(openTag[i])) i++;
+  while (i < n && !isSpaceSlashOrGt(openTag.charCodeAt(i))) i++;
   while (i < n) {
-    while (i < n && /[\s/]/.test(openTag[i])) i++;
+    while (i < n && isSpaceOrSlash(openTag.charCodeAt(i))) i++;
     if (i >= n || openTag[i] === ">") break;
     const nameStart = i;
-    while (i < n && !/[\s=/>]/.test(openTag[i])) i++;
+    while (i < n && !isNameEnd(openTag.charCodeAt(i))) i++;
     const nameEnd = i;
     let valueStart = -1;
     let valueEnd = -1;
     let attrEnd = nameEnd;
-    while (i < n && /[\s]/.test(openTag[i])) i++;
+    while (i < n && isJsSpace(openTag.charCodeAt(i))) i++;
     if (i < n && openTag[i] === "=") {
       i++;
-      while (i < n && /[\s]/.test(openTag[i])) i++;
+      while (i < n && isJsSpace(openTag.charCodeAt(i))) i++;
       if (i < n && (openTag[i] === '"' || openTag[i] === "'")) {
         const quote = openTag[i];
         i++;
@@ -70,7 +106,7 @@ export const scanWholeAttributes = (openTag: string): ScannedAttribute[] => {
         // Unquoted value: characters other than whitespace, quotes, `=`, `<`,
         // `>`, and backtick. `/` is allowed (e.g. `path=/about`).
         valueStart = i;
-        while (i < n && !/[\s"'=<>`]/.test(openTag[i])) i++;
+        while (i < n && !isUnquotedEnd(openTag.charCodeAt(i))) i++;
         valueEnd = i;
       }
       attrEnd = i;

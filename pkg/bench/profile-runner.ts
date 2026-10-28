@@ -17,6 +17,7 @@ import {
   cleanGeneratorEnvironment,
   descendantClinicDatasets,
   digest,
+  harnessDigests,
   mainClinicDataset,
   summarizeCpuProfile,
   summarizeAllocationProfile,
@@ -32,6 +33,12 @@ import {
 
 const repository = fileURLToPath(new URL("../../", import.meta.url));
 const subject = fileURLToPath(new URL("./profile-subject.ts", import.meta.url));
+// The `cpu` tool profiles the main subject through this preload instead of
+// native --cpu-prof: it warms the state a sampled thread can deadlock on
+// (Node 24/macOS) before sampling starts. See profile-warmup.ts.
+const mainProfilePreload = fileURLToPath(
+  new URL("./profile-main.ts", import.meta.url),
+);
 const require = createRequire(import.meta.url);
 // CPU-profiler startup can be delayed substantially when a coverage run is
 // executing other test workers. Keep captures bounded, while allowing enough
@@ -446,23 +453,7 @@ export async function runProfiles() {
       ]),
     ),
   );
-  const harnessHashes = Object.fromEntries(
-    await Promise.all(
-      [
-        "profile-workload.ts",
-        "profile-runner.ts",
-        "profile-fixture.ts",
-        "profile-load.ts",
-        "profile-subject.ts",
-        "profile-observers.ts",
-        "profile-isolate.ts",
-        "profile-diagnostics.ts",
-      ].map(async (file) => [
-        file,
-        digest(await readFile(join(repository, "pkg/bench", file))),
-      ]),
-    ),
-  );
+  const harnessHashes = await harnessDigests(join(repository, "pkg/bench"));
   const metadata = {
     seed,
     rounds,
@@ -547,9 +538,7 @@ export async function runProfiles() {
             );
           const target = [
             process.execPath,
-            ...(tool === "cpu"
-              ? ["--cpu-prof", `--cpu-prof-dir=${profiles}`]
-              : []),
+            ...(tool === "cpu" ? [`--import=${mainProfilePreload}`] : []),
             subject,
             scenario,
             directory,

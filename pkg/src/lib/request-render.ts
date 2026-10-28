@@ -52,7 +52,7 @@ import {
   type ExpandOptions,
 } from "./component-expansion-core.ts";
 import { maskRawTextContent } from "./component-masking.ts";
-import { getFirstComponent } from "./component-tags.ts";
+import { getFirstComponent, mayContainComponent } from "./component-tags.ts";
 import { getHtmlAttributeValue } from "./html-patterns.ts";
 import {
   DOCUMENT_FRAGMENT_CONTEXT,
@@ -123,14 +123,6 @@ export interface RenderHost {
   ) => Promise<string>;
   /** Dev only: log `message` the first time `key` is seen. Production hosts omit it. */
   warnOnce?: (key: string, message: string) => void;
-  /**
-   * How every message names a component file (the `warnOnce` logs, the
-   * budget and `failed during <stage>` failures; the manifest records it
-   * project-relative). The Node dev server passes the form `bascik --check`
-   * and the build's diagnostics print, so every report of one file points
-   * at the same place. Absent: the manifest's path as recorded.
-   */
-  displayFile?: (filePath: string) => string;
   /**
    * Apply `scripts.onServerScriptError` to a render failure of one job's
    * output (D4.6: a budget, the depth limit, a `failed during <stage>`
@@ -284,10 +276,19 @@ export const isRenderable = (
   template: NonNullable<ManifestEntry["template"]>;
 } => entry.template !== null && entry.unsupported === undefined;
 
+const renderableManifests = new WeakMap<ComponentManifest, boolean>();
 export const manifestHasComponents = (
   manifest: ComponentManifest | null | undefined,
-): manifest is ComponentManifest =>
-  Boolean(manifest) && Object.values(manifest!.components).some(isRenderable);
+): manifest is ComponentManifest => {
+  if (!manifest) return false;
+  // Asked on every request; a manifest is not edited once loaded.
+  let renderable = renderableManifests.get(manifest);
+  if (renderable === undefined) {
+    renderable = Object.values(manifest.components).some(isRenderable);
+    renderableManifests.set(manifest, renderable);
+  }
+  return renderable;
+};
 
 /**
  * The expansion loop's component list for a manifest: only renderable
@@ -305,6 +306,9 @@ const componentListFor = (manifest: ComponentManifest): ComponentList => {
       if (!isRenderable(entry)) continue;
       list[name] = { fileName: entry.filePath, fileContent: "<!---->" };
     }
+    // Frozen, so `getFirstComponent` keys its regex on identity alone and
+    // does not re-read the names on every search.
+    Object.freeze(list);
     componentLists.set(manifest, list);
   }
   return list;
@@ -360,6 +364,8 @@ export const expandByUsage = (
   usedComponents: BascikComponent[] = [],
   finalize?: UsageFinalizer,
 ): string => {
+  // Most outputs name no component: skip the mask and the scans.
+  if (!mayContainComponent(html, componentList)) return html;
   const masked = maskRawTextContent(html);
   const searchState: ComponentSearchState = {};
   const spans: UsageSpan[] = [];
@@ -537,10 +543,25 @@ interface RequestState {
   jobsRun: number;
   emittedCss: Set<string>;
   cssChain: Record<ScriptMode, Promise<void>>;
-  nonce: string;
+  /** The job-marker nonce, hashed on first use: most outputs mark nothing. */
+  nonce: string | undefined;
 }
 
 let nonceCounter = 0;
+
+/** Each script segment's mode, once per plan (a host keeps one per page). */
+const planModes = new WeakMap<ExecutionPlan, Map<string, ScriptMode>>();
+const planModesFor = (plan: ExecutionPlan): Map<string, ScriptMode> => {
+  let modes = planModes.get(plan);
+  if (!modes) {
+    modes = new Map();
+    for (const segment of plan.segments) {
+      if (segment.kind === "script") modes.set(segment.id, segment.mode);
+    }
+    planModes.set(plan, modes);
+  }
+  return modes;
+};
 
 /**
  * Where each script segment sits in its page, for `minify.html`: one scan of
@@ -585,30 +606,28 @@ export const wrapRunner = (
   const manifest = host.manifest;
   if (!manifestHasComponents(manifest)) return run;
   const list = componentListFor(manifest);
-  const modes = new Map<string, ScriptMode>();
-  for (const segment of plan.segments) {
-    if (segment.kind === "script") modes.set(segment.id, segment.mode);
-  }
+  const modes = planModesFor(plan);
   const state: RequestState = {
     issuedIds: new Set(),
     jobsRun: 0,
     emittedCss: new Set(),
     cssChain: { server: Promise.resolve(), stream: Promise.resolve() },
-    // Request-local, so no author text can spell a marker: the time, a
-    // counter and a random draw are hashed, never exposed.
-    nonce: host
+    nonce: undefined,
+  };
+  // Request-local, so no author text can spell a marker: the time, a
+  // counter and a random draw are hashed, never exposed.
+  const nonce = (): string =>
+    (state.nonce ??= host
       .hashHex(
         `${host.httpPath}\u0000${Date.now()}\u0000${++nonceCounter}\u0000${Math.random()}`,
       )
-      .slice(0, 32),
-  };
+      .slice(0, 32));
   const { httpPath } = host;
-  const displayFile = host.displayFile ?? ((filePath: string) => filePath);
   const limits = REQUEST_RENDER_LIMITS;
 
   const located = (entry: ManifestEntry | undefined, line?: number) =>
     entry
-      ? ` (<${entry.name}>, ${displayFile(entry.filePath)}${line !== undefined ? `:${line}` : ""})`
+      ? ` (<${entry.name}>, ${entry.filePath}${line !== undefined ? `:${line}` : ""})`
       : "";
   const lastEntry = (used: BascikComponent[]) =>
     used.length ? manifest.components[used[used.length - 1].name] : undefined;
@@ -635,7 +654,7 @@ export const wrapRunner = (
       host.warnOnce?.(
         `${httpPath}::collision:<${entry.name}>`,
         `[bascik] Component tag <${entry.name}> in ${mode}-script output at "${httpPath}" is left unexpanded: ` +
-          `the scoped names computed for instance ${instanceId} of ${displayFile(entry.filePath)} collide with each other.`,
+          `the scoped names computed for instance ${instanceId} of ${entry.filePath} collide with each other.`,
       );
       return null;
     }
@@ -657,7 +676,7 @@ export const wrapRunner = (
           if (!id || !jobIds.has(id)) return element;
           const n = markers.length;
           markers.push({ n, id, entry });
-          return jobMarker(state.nonce, n);
+          return jobMarker(nonce(), n);
         },
       );
     }
@@ -667,7 +686,8 @@ export const wrapRunner = (
   /** Where this request's markers are in `html`, in document order. */
   const findMarkerSites = (html: string): MarkerSite[] => {
     const sites: MarkerSite[] = [];
-    if (!html.includes(state.nonce)) return sites;
+    // No marker was issued yet, so none can be in `html`.
+    if (state.nonce === undefined || !html.includes(state.nonce)) return sites;
     const prefix = `${state.nonce}:`;
     const re = new RegExp(PLACEHOLDER_RE.source, PLACEHOLDER_RE.flags);
     let match: RegExpExecArray | null;
@@ -701,7 +721,7 @@ export const wrapRunner = (
         host.warnOnce!(
           key,
           `[bascik] Component tag <${tag}> in ${mode}-script output at "${httpPath}" is left unexpanded: ` +
-            `${displayFile(entry.filePath)}${line !== undefined ? `:${line}` : ""} cannot be rendered at request time ` +
+            `${entry.filePath}${line !== undefined ? `:${line}` : ""} cannot be rendered at request time ` +
             `(${reason}${detail ? `: ${detail}` : ""}).`,
         );
       } else if (!host.externalTags(tag)) {
@@ -771,13 +791,14 @@ export const wrapRunner = (
             maxOutputBytes: tripwire,
           },
           onError: (component, stage, error) => {
-            // The manifest's project-relative path, as the budget messages
-            // name it; the expanded usage may carry a resolved one.
+            // The manifest's path (the form `bascik --check` prints), as the
+            // budget messages name it; the expanded usage may carry a
+            // resolved one.
             const file =
               manifest.components[component.name]?.filePath ??
               component.fileName;
             throw new RequestRenderError(
-              `[bascik] Rendering <${component.name}> (${file ? displayFile(file) : "unknown file"}) ` +
+              `[bascik] Rendering <${component.name}> (${file || "unknown file"}) ` +
                 `from ${mode}-script output at "${httpPath}" failed during ${stage}: ` +
                 `${error instanceof Error ? error.message : String(error)}`,
               httpPath,

@@ -49,12 +49,19 @@ vi.mock("./config.js", () => ({
   shouldLog: vi.fn(() => true),
 }));
 
+// Counts the page scans `minify.html` needs; the real scan still runs.
+vi.mock("./html-minifier.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./html-minifier.ts")>();
+  return { ...actual, fragmentContexts: vi.fn(actual.fragmentContexts) };
+});
+
 import { BascikConfig } from "./config.ts";
 import { ServerScriptError } from "./build-error.ts";
 import {
   buildComponentManifest,
   type ComponentManifest,
 } from "./component-manifest.ts";
+import { fragmentContexts } from "./html-minifier.ts";
 import { getAttributeNameHash } from "./names.ts";
 import { decodeOutputScope } from "./output-scope.ts";
 import {
@@ -316,7 +323,7 @@ describe("host dependencies", () => {
     const id = componentScriptId("srv-card", 1);
     expect(() => loadComponentJobs(manifest)).toThrow(id);
     expect(() => loadComponentJobs(manifest)).toThrow(
-      /src\/components\/srv-card\.html/,
+      /\(components\/srv-card\.html/,
     );
     expect(() => loadComponentJobs(manifest)).toThrow(/bascik --build/);
     expect(() => loadComponentJobs(manifest)).toThrow(/components\.json/);
@@ -792,26 +799,26 @@ describe.each(["error", "warn", "ignore"] as const)(
         label: "the instance budget",
         expr: JSON.stringify("<plain-card></plain-card>".repeat(1001)),
         message: /expands to more than 1000 component instances/,
-        file: /src\/components\/plain-card\.html/,
+        file: /[ (]components\/plain-card\.html/,
       },
       {
         label: "the depth budget",
         expr: JSON.stringify("<self-card></self-card>"),
         message: /nests component scripts deeper than 4 levels/,
-        file: /src\/components\/self-card\.html/,
+        file: /[ (]components\/self-card\.html/,
       },
       {
         label: "the rendered size budget",
         expr: slotted("two-card", 2_500_000),
         message:
           /rendered to \d+ characters, over the 4 MiB \(4194304 characters\) limit per script output/,
-        file: /src\/components\/two-card\.html/,
+        file: /[ (]components\/two-card\.html/,
       },
       {
         label: "the expansion tripwire",
         expr: slotted("four-card", 2_500_000),
         message: /grew past \d+ characters while expanding components/,
-        file: /src\/components\/four-card\.html/,
+        file: /[ (]components\/four-card\.html/,
       },
       {
         label: "the written size refusal",
@@ -824,8 +831,8 @@ describe.each(["error", "warn", "ignore"] as const)(
         label: "a failed during <stage> render failure",
         expr: slotted("wide-card", 3_000_000),
         message:
-          /Rendering <wide-card> \((?:\S*\/)?src\/components\/wide-card\.html\) from (?:server|stream)-script output at "\/catalog" failed during slot resolution: Invalid string length/,
-        file: /src\/components\/wide-card\.html/,
+          /Rendering <wide-card> \(components\/wide-card\.html\) from (?:server|stream)-script output at "\/catalog" failed during slot resolution: Invalid string length/,
+        file: /[ (]components\/wide-card\.html/,
       },
     ];
 
@@ -925,5 +932,75 @@ describe("a client abort stays an abort", () => {
     expect(text()).toBe("<p>head</p>");
     expect(warn).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
+  });
+});
+
+describe("the page scan for minify.html", () => {
+  /** Calls that scan a whole page (no outer context), not one fragment. */
+  const pageScans = () =>
+    vi.mocked(fragmentContexts).mock.calls.filter((call) => !call[2]).length;
+
+  it("runs once per stored plan, not once per request, on the buffered and the stream path", async () => {
+    const manifest = { ...(await build()), minifyHtml: true };
+    for (const html of [
+      serverPage(`<srv-card></srv-card>`),
+      streamPage(`<srv-card></srv-card>`),
+    ]) {
+      const plan = planServerScripts(html, PAGE_FILE);
+      vi.mocked(fragmentContexts).mockClear();
+      const outputs: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        if (plan.firstStreamIndex === -1) {
+          outputs.push(
+            (
+              await executeServerScriptPlan(
+                plan,
+                request(),
+                context,
+                1000,
+                PAGE_FILE,
+                manifest,
+              )
+            ).toString("utf8"),
+          );
+        } else {
+          const { sink, text } = makeSink();
+          const streamer = streamServerScripts(
+            plan,
+            request(),
+            context,
+            1000,
+            PAGE_FILE,
+            sink,
+            undefined,
+            manifest,
+          );
+          await streamer.ready;
+          streamer.commit();
+          await streamer.done;
+          outputs.push(text());
+        }
+      }
+      expect(pageScans()).toBe(1);
+      for (const out of outputs) {
+        expect(out).toContain(`<div class="bascik__srv-card__wrap">`);
+        expect(out).not.toContain("<srv-card");
+      }
+    }
+  });
+
+  it("a different plan for the same text is scanned on its own", async () => {
+    const manifest = { ...(await build()), minifyHtml: true };
+    vi.mocked(fragmentContexts).mockClear();
+    for (let i = 0; i < 2; i++)
+      await executeServerScriptPlan(
+        planServerScripts(serverPage(`<srv-card></srv-card>`), PAGE_FILE),
+        request(),
+        context,
+        1000,
+        PAGE_FILE,
+        manifest,
+      );
+    expect(pageScans()).toBe(2);
   });
 });

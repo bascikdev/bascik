@@ -250,6 +250,44 @@ export function validateProcessCoverage(
 
 export const digest = (body: Buffer | string) =>
   createHash("sha256").update(body).digest("hex");
+/**
+ * Digests of the harness files that shape a workload capture, keyed by file
+ * name, so a captured run can be tied to the harness that produced it. The
+ * set is every bench module `profile-runner.ts` reaches through a static or
+ * dynamic import or a module URL built from import.meta.url (spawned
+ * subjects, `--import` preloads), so a new harness file is never left out.
+ */
+export async function harnessDigests(
+  benchDirectory: string,
+  entry = "profile-runner.ts",
+): Promise<Record<string, string>> {
+  const digests: Record<string, string> = {};
+  const pending = [entry];
+  while (pending.length) {
+    const file = pending.pop()!;
+    if (Object.hasOwn(digests, file)) continue;
+    let body: Buffer;
+    try {
+      body = await readFile(join(benchDirectory, file));
+    } catch (error) {
+      throw new Error(
+        `harness file ${file} is missing from ${benchDirectory}: ${error}`,
+      );
+    }
+    digests[file] = digest(body);
+    for (const [, reference] of body
+      .toString("utf8")
+      .matchAll(
+        /(?:from\s+|import\(\s*|new URL\(\s*)["']\.\/([\w.-]+\.ts)["']/g,
+      ))
+      pending.push(reference);
+  }
+  return Object.fromEntries(
+    Object.entries(digests).sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
+  );
+}
 export function validateResponses(
   expected: ExpectedResponse[],
   responses: ObservedResponse[],

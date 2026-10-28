@@ -1,6 +1,10 @@
 import { createContentShield, shieldElementContents } from "./shielding.ts";
 import { ATTR_VALUE, scanWholeAttributes } from "./component-attribute-scan.ts";
-import { findMatchingClose } from "./component-tags.ts";
+import {
+  maskRawTextContent,
+  maskRawTextContentWithClosure,
+} from "./component-masking.ts";
+import { createMatchingCloseFinder } from "./component-tags.ts";
 
 const decodePropEntities = (value: string): string =>
   value.replace(
@@ -203,6 +207,9 @@ export const injectPropAttributes = (
 // Prop injection
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Text that can start or end a region `maskRawTextContent` blanks. */
+const RAW_TEXT_OR_COMMENT = /<\/?(?:script|style|textarea)\b|<!--|-->/i;
+
 /**
  * For each prop, find elements in the component template that carry a
  * `data-bascik-prop-{name}` attribute, replace their inner content with the
@@ -245,13 +252,45 @@ export const injectProps = (
     // with a receiver.
     // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     const openTagRe = new RegExp(`<([a-zA-Z][\\w:-]*)(?:${ATTR_VALUE})>`, "gi");
+    // Filled receivers are collected and joined once per prop, not spliced
+    // into the growing string one by one (quadratic in a template that
+    // repeats a receiver). The masked text and the close finder are computed
+    // once per pass and shared: the receivers come in document order, and
+    // what precedes a receiver only changes by whole replaced elements, so
+    // they agree with a fresh scan of the spliced string. A replaced element
+    // that held raw-text or comment syntax keeps that agreement when the text
+    // before it and its removed content are both closed (every script, style,
+    // textarea and comment in them ends inside them); otherwise the pass
+    // materializes and rescans from there, as a splice per receiver did.
+    // `closedThrough` is how far the source is known closed (-1: not), so
+    // each character is checked for closure once per pass.
+    let source = result;
+    // Built on the first receiver: most templates name a prop on few tags.
+    let finder: ((tagName: string, contentStart: number) => number) | null =
+      null;
+    const findClose = (tagName: string, contentStart: number): number =>
+      (finder ??= createMatchingCloseFinder(
+        source,
+        maskRawTextContent(source),
+      ))(tagName, contentStart);
+    // A tag that does not contain the marker's text cannot carry it as an
+    // attribute name; only a tag that does is scanned attribute by attribute.
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    const mayCarryMarker = new RegExp(attrName, "i");
+    let closedThrough = 0;
+    let parts: string[] = [];
+    let cursor = 0;
     let searchIndex = 0;
-    while (searchIndex < result.length) {
+    while (searchIndex < source.length) {
       openTagRe.lastIndex = searchIndex;
-      const openMatch = openTagRe.exec(result);
+      const openMatch = openTagRe.exec(source);
       if (!openMatch) break;
       const openTag = openMatch[0];
       const tagName = openMatch[1];
+      if (!mayCarryMarker.test(openTag)) {
+        searchIndex = openMatch.index + openTag.length;
+        continue;
+      }
       const receiverAttr = scanWholeAttributes(openTag).find(
         (attr) =>
           attr.name.toLowerCase() === attrName.toLowerCase() &&
@@ -265,14 +304,15 @@ export const injectProps = (
         continue;
       }
       const contentStart = openMatch.index + openTag.length;
-      const closeIndex = findMatchingClose(result, tagName, contentStart);
+      const closeIndex = findClose(tagName, contentStart);
       if (closeIndex === -1) {
         searchIndex = contentStart;
         continue;
       }
-      const closeTag = new RegExp(`^<\\/${tagName}\\s*>`, "i").exec(
-        result.slice(closeIndex),
-      )?.[0];
+      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+      const closeRe = new RegExp(`<\\/${tagName}\\s*>`, "iy");
+      closeRe.lastIndex = closeIndex;
+      const closeTag = closeRe.exec(source)?.[0];
       if (!closeTag) {
         searchIndex = contentStart;
         continue;
@@ -283,11 +323,46 @@ export const injectProps = (
       const newOpenTag =
         openTag.slice(0, attrStart) + openTag.slice(receiverAttr.end);
       const replacement = `${newOpenTag}${escapedPropValue}${closeTag}`;
-      result =
-        result.slice(0, openMatch.index) +
-        replacement +
-        result.slice(closeIndex + closeTag.length);
-      searchIndex = openMatch.index + replacement.length;
+      const endIndex = closeIndex + closeTag.length;
+      parts.push(source.slice(cursor, openMatch.index), replacement);
+      cursor = endIndex;
+      searchIndex = endIndex;
+      if (RAW_TEXT_OR_COMMENT.test(source.slice(contentStart, closeIndex))) {
+        let prefixClosed = false;
+        let contentClosed = false;
+        if (closedThrough >= 0 && closedThrough <= contentStart) {
+          prefixClosed = maskRawTextContentWithClosure(
+            source.slice(closedThrough, contentStart),
+          ).closed;
+          contentClosed =
+            prefixClosed &&
+            maskRawTextContentWithClosure(
+              source.slice(contentStart, closeIndex),
+            ).closed;
+        }
+        if (contentClosed) {
+          closedThrough = closeIndex;
+          continue;
+        }
+        // The removed content could open or close a masked region past it:
+        // rescan the spliced string, as a splice per receiver did.
+        parts.push(source.slice(cursor));
+        const spliced = parts.join("");
+        searchIndex = spliced.length - (source.length - endIndex);
+        source = spliced;
+        finder = null;
+        // The closed text before the receiver, then its escaped value and
+        // close tag, are closed too.
+        closedThrough = prefixClosed ? searchIndex : -1;
+        parts = [];
+        cursor = 0;
+      }
+    }
+    if (cursor > 0) {
+      parts.push(source.slice(cursor));
+      result = parts.join("");
+    } else {
+      result = source;
     }
   });
   // Strip any remaining data-bascik-prop-* markers whose prop was not provided.
@@ -301,7 +376,38 @@ export const injectProps = (
   return commentShield.restore(rawShield.restore(stripped));
 };
 
+/**
+ * The spans to remove from one opening tag: its valueless
+ * `data-bascik-prop-*` markers (prop receivers nobody filled), each with the
+ * whitespace before it.
+ */
+const unfilledMarkerSpans = (
+  openTag: string,
+): Array<{ start: number; end: number }> => {
+  const removals: Array<{ start: number; end: number }> = [];
+  // Most tags carry no marker: skip the attribute scan for them.
+  if (!/data-bascik-prop-/i.test(openTag)) return removals;
+  for (const attr of scanWholeAttributes(openTag)) {
+    if (!/^data-bascik-prop-[\w-]+$/i.test(attr.name)) continue;
+    // Keep markers that carry a value: they are child component prop
+    // declarations that must reach the nested component.
+    if (attr.valueStart !== -1) continue;
+    // A marker on a self-closing tag (`data-bascik-prop-x/>`) is left as
+    // authored, matching the old receiver boundary.
+    if (
+      !/[\s>]/.test(openTag[attr.nameEnd] ?? "") &&
+      attr.nameEnd < openTag.length
+    )
+      continue;
+    let start = attr.start;
+    if (start > 0 && /\s/.test(openTag[start - 1])) start--;
+    removals.push({ start, end: attr.end });
+  }
+  return removals;
+};
+
 const stripUnfilledPropMarkers = (html: string): string => {
+  if (!/data-bascik-prop-/i.test(html)) return html;
   // Whole attribute names only: a token that merely looks like a marker inside
   // prose or another attribute's quoted value is text and is never stripped.
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
@@ -309,47 +415,43 @@ const stripUnfilledPropMarkers = (html: string): string => {
     `<([a-zA-Z][\\w:-]*)((?:${ATTR_VALUE})[\\s>])`,
     "gi",
   );
-  let result = html;
+  // Rewritten tags are collected and joined once, not spliced into the whole
+  // string one by one (quadratic in a large template with many markers).
+  // Removing whole unquoted attribute names never changes how the rest of the
+  // tag scans, so the rewritten tag rescans to itself; only if it still held
+  // a marker does the string materialize and rescan from that tag.
+  let source = html;
+  let parts: string[] = [];
+  let cursor = 0;
   let openTagMatch: RegExpExecArray | null;
-  while ((openTagMatch = openTagRe.exec(result)) !== null) {
+  while ((openTagMatch = openTagRe.exec(source)) !== null) {
     const openTag = openTagMatch[0];
     const tagStart = openTagMatch.index;
-    const removals: Array<{ start: number; end: number }> = [];
-    for (const attr of scanWholeAttributes(openTag)) {
-      if (!/^data-bascik-prop-[\w-]+$/i.test(attr.name)) continue;
-      // Keep markers that carry a value: they are child component prop
-      // declarations that must reach the nested component.
-      if (attr.valueStart !== -1) continue;
-      // A marker on a self-closing tag (`data-bascik-prop-x/>`) is left as
-      // authored, matching the old receiver boundary.
-      if (
-        !/[\s>]/.test(openTag[attr.nameEnd] ?? "") &&
-        attr.nameEnd < openTag.length
-      )
-        continue;
-      let start = attr.start;
-      if (start > 0 && /\s/.test(openTag[start - 1])) start--;
-      removals.push({ start, end: attr.end });
-    }
+    const removals = unfilledMarkerSpans(openTag);
     if (removals.length === 0) {
       openTagRe.lastIndex = tagStart + openTag.length;
       continue;
     }
     // Rebuild the tag keeping only the non-removed pieces.
     let pieces = "";
-    let cursor = 0;
+    let pieceCursor = 0;
     for (const { start, end } of removals) {
-      pieces += openTag.slice(cursor, start);
-      cursor = end;
+      pieces += openTag.slice(pieceCursor, start);
+      pieceCursor = end;
     }
-    pieces += openTag.slice(cursor);
-    result =
-      result.slice(0, tagStart) +
-      pieces +
-      result.slice(tagStart + openTag.length);
-    // Re-scan from the same document offset: the tag was rewritten but the
-    // outer regex must not skip content (positions after the tag shifted).
-    openTagRe.lastIndex = tagStart;
+    pieces += openTag.slice(pieceCursor);
+    parts.push(source.slice(cursor, tagStart), pieces);
+    cursor = tagStart + openTag.length;
+    openTagRe.lastIndex = cursor;
+    if (unfilledMarkerSpans(pieces).length > 0) {
+      parts.push(source.slice(cursor));
+      source = parts.join("");
+      parts = [];
+      cursor = 0;
+      openTagRe.lastIndex = tagStart;
+    }
   }
-  return result;
+  if (cursor === 0) return source;
+  parts.push(source.slice(cursor));
+  return parts.join("");
 };

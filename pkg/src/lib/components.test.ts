@@ -26,6 +26,13 @@ import {
   readComponentRoot,
 } from "./components.ts";
 import { minifyHtml } from "./html-minifier.ts";
+import {
+  createMatchingCloseFinder,
+  mayContainComponent,
+  findMatchingClose,
+} from "./component-tags.ts";
+import { maskRawTextContent } from "./component-masking.ts";
+import { createAttributeValueScanner } from "./component-attribute-scan.ts";
 
 describe("replaceTag", () => {
   it("replaces a single tag", () => {
@@ -134,6 +141,121 @@ describe("getTag", () => {
     const html = `<div><!-- <my-comp></my-comp> --></div>`;
     const result = getFirstComponent(html, cList);
     expect(result.name).toBeUndefined();
+  });
+});
+
+describe("getFirstComponent and getTag on the request path", () => {
+  const list = (): ComponentList => ({
+    "srv-card": { fileName: "srv-card.html", fileContent: "<div></div>" },
+    "srv-card-wide": { fileName: "wide.html", fileContent: "<div></div>" },
+    "plain-box": { fileName: "plain-box.html", fileContent: "<p></p>" },
+  });
+
+  it("keys a frozen list's tag regex on identity: its names are read once, not on every call", () => {
+    const frozen = Object.freeze(list());
+    const keys = vi.spyOn(Object, "keys");
+    try {
+      for (let i = 0; i < 5; i++)
+        expect(
+          getFirstComponent(`<p>x</p><plain-box></plain-box>`, frozen).name,
+        ).toBe("plain-box");
+      expect(keys.mock.calls.filter(([o]) => o === frozen).length).toBe(1);
+    } finally {
+      keys.mockRestore();
+    }
+  });
+
+  it("mayContainComponent is false only when no tag names a listed component", () => {
+    const frozen = Object.freeze(list());
+    expect(mayContainComponent("plain text", frozen)).toBe(false);
+    expect(mayContainComponent("<p>srv-card</p><srv-cards>", frozen)).toBe(
+      false,
+    );
+    expect(mayContainComponent("<p>x</p><SRV-CARD a=1>", frozen)).toBe(true);
+    expect(mayContainComponent("<plain-box/>", frozen)).toBe(true);
+    // Conservative: a name in raw text still says maybe; the search decides.
+    const inScript = `<script>"<plain-box></plain-box>"</script>`;
+    expect(mayContainComponent(inScript, frozen)).toBe(true);
+    expect(getFirstComponent(inScript, frozen)).toEqual({});
+    expect(mayContainComponent("<plain-box>", {})).toBe(false);
+  });
+
+  it("a list that is not frozen is still re-read, so a renamed component is found", () => {
+    const mutable = list();
+    expect(getFirstComponent("<plain-box></plain-box>", mutable).name).toBe(
+      "plain-box",
+    );
+    delete mutable["plain-box"];
+    mutable["other-box"] = { fileContent: "<p></p>" };
+    expect(getFirstComponent("<other-box></other-box>", mutable).name).toBe(
+      "other-box",
+    );
+    expect(getFirstComponent("<plain-box></plain-box>", mutable)).toEqual({});
+  });
+
+  it("repeated and resumed searches on one list agree with a fresh search, longest name first", () => {
+    const frozen = Object.freeze(list());
+    const html = `<srv-card-wide></srv-card-wide> <srv-card a="<srv-card>"></srv-card> <plain-box/>`;
+    const seen: Array<[string | undefined, number | undefined]> = [];
+    let from = 0;
+    for (let i = 0; i < 4; i++) {
+      const found = getFirstComponent(html, frozen, undefined, from) as {
+        name?: string;
+        index?: number;
+        endIndex?: number;
+      };
+      seen.push([found.name, found.index]);
+      if (found.endIndex === undefined) break;
+      from = found.endIndex;
+    }
+    expect(seen).toEqual([
+      ["srv-card-wide", 0],
+      ["srv-card", 32],
+      ["plain-box", 69],
+      [undefined, undefined],
+    ]);
+    // A second pass over the same list and string finds the same first tag.
+    expect(getFirstComponent(html, frozen, undefined, 5).index).toBe(32);
+    expect(getFirstComponent(html, frozen).index).toBe(0);
+  });
+
+  it("keeps the index fields off the enumerable result, and pairs a close tag written with case or space", () => {
+    const frozen = Object.freeze(list());
+    const html = `<i>a</i><SRV-CARD x="1">in<srv-card></srv-card></Srv-Card  ><b>after</b>`;
+    const found = getFirstComponent(html, frozen) as Record<string, unknown>;
+    expect(found).toEqual({
+      name: "srv-card",
+      index: 8,
+      content: `<SRV-CARD x="1">in<srv-card></srv-card></Srv-Card  >`,
+      innerContent: "in<srv-card></srv-card>",
+      fileName: "srv-card.html",
+      fileContent: "<div></div>",
+    });
+    expect(Object.keys(found)).not.toContain("startIndex");
+    expect([
+      found.startIndex,
+      found.contentStart,
+      found.closeIndex,
+      found.endIndex,
+    ]).toEqual([8, 24, 47, 47 + "</Srv-Card  >".length]);
+    const tag = getTag(html, "srv-card", frozen) as Record<string, unknown>;
+    expect(Object.keys(tag).sort()).toEqual([
+      "content",
+      "fileContent",
+      "fileName",
+      "innerContent",
+    ]);
+    expect(tag.endIndex).toBe(found.endIndex);
+    // An unclosed tag ends at its open tag; a self-closing one at its `/>`.
+    const open = getTag(`<srv-card a=1>tail`, "srv-card") as Record<
+      string,
+      unknown
+    >;
+    expect([open.content, open.closeIndex, open.endIndex]).toEqual([
+      "<srv-card a=1>",
+      -1,
+      14,
+    ]);
   });
 });
 
@@ -545,6 +667,96 @@ describe("extractProps", () => {
 });
 
 describe("injectProps", () => {
+  it("misuse: a template that repeats a prop receiver thousands of times is filled in linear time", () => {
+    // Splicing each receiver into the growing result, and re-masking the
+    // whole template for each close search, took seconds at 5000 receivers.
+    const count = 5000;
+    const template = `<div>${"<b data-bascik-prop-title>f</b><i data-bascik-prop-unset>u</i>".repeat(count)}</div>`;
+    const value = "y".repeat(2000);
+    const started = performance.now();
+    const out = injectProps(template, { title: value });
+    const elapsed = performance.now() - started;
+    expect(out).toBe(`<div>${`<b>${value}</b><i>u</i>`.repeat(count)}</div>`);
+    expect(elapsed).toBeLessThan(1500);
+  });
+
+  it("misuse: thousands of unfilled markers in a large template are stripped in linear time", () => {
+    const count = 5000;
+    const filler = "z".repeat(2000);
+    const template = `<div>${`<i data-bascik-prop-unset class="c">${filler}</i>`.repeat(count)}</div>`;
+    const started = performance.now();
+    const out = injectProps(template, { other: "v" });
+    const elapsed = performance.now() - started;
+    expect(out).toBe(
+      `<div>${`<i class="c">${filler}</i>`.repeat(count)}</div>`,
+    );
+    expect(elapsed).toBeLessThan(1500);
+  });
+
+  it("misuse: thousands of receivers whose fallback holds a balanced script, style or textarea are filled in linear time", () => {
+    // A balanced raw-text element cannot change how anything after it is
+    // masked, yet each one used to re-mask the whole template.
+    const count = 5000;
+    const template = `<div>${"<b data-bascik-prop-t><script>1</script></b><i data-bascik-prop-t><style>a{}</style><textarea>q</textarea></i>".repeat(count)}</div>`;
+    const started = performance.now();
+    const out = injectProps(template, { t: "x" });
+    const elapsed = performance.now() - started;
+    expect(out).toBe(`<div>${"<b>x</b><i>x</i>".repeat(count)}</div>`);
+    expect(elapsed).toBeLessThan(1500);
+  });
+
+  it("misuse: tens of thousands of unclosed receivers, or receivers closed only once at the end, cost linear time", () => {
+    const count = 40_000;
+    const started = performance.now();
+    const unclosed = "<i data-bascik-prop-t>f".repeat(count);
+    expect(injectProps(unclosed, { t: "x" })).toBe("<i>f".repeat(count));
+    const tail = 3000;
+    const closedOnce = `${"<i data-bascik-prop-t>f".repeat(tail)}</i>`;
+    // Only the last receiver pairs with the one close; the rest stay
+    // unfilled, exactly as a depth count from each of them finds.
+    expect(injectProps(closedOnce, { t: "x" })).toBe(
+      `${"<i>f".repeat(tail - 1)}<i>x</i>`,
+    );
+    expect(performance.now() - started).toBeLessThan(1500);
+  });
+
+  it.each([
+    [
+      "<b data-bascik-prop-t><script></b><b data-bascik-prop-t>in</b></script><b data-bascik-prop-t>after</b>",
+      "<b><script></b><b data-bascik-prop-t>in</b></script><b>v</b>",
+    ],
+    [
+      '<b data-bascik-prop-t><a title="<script>"></a></b><b data-bascik-prop-t>x</b></script><b data-bascik-prop-t>y</b>',
+      '<b><a title="<script>"></a></b><b data-bascik-prop-t>x</b></script><b>y</b>',
+    ],
+    [
+      "<b data-bascik-prop-t><script>s</script><style></b><b data-bascik-prop-t>z</b>",
+      "<b>v</b><b>v</b>",
+    ],
+    [
+      "<b data-bascik-prop-t>--></b><b data-bascik-prop-t>q</b>",
+      "<b>v</b><b>v</b>",
+    ],
+    [
+      "<b data-bascik-prop-t><!--</b>--><b data-bascik-prop-t>r</b>",
+      "<b><!--</b>--><b>v</b>",
+    ],
+  ])(
+    "misuse: unbalanced raw-text or comment syntax in or around a receiver is filled exactly as before: %j",
+    (template, expected) => {
+      // Outputs recorded from the splice-per-receiver implementation.
+      expect(injectProps(template, { t: "v" })).toBe(expected);
+    },
+  );
+
+  it("fills receivers around raw text, comments, self-closing markers and unclosed receivers exactly as before", () => {
+    const template =
+      '<b data-bascik-prop-t>1</b><script>"<b data-bascik-prop-t>"</script><!-- <b data-bascik-prop-t>c</b> --><br data-bascik-prop-t/><b data-bascik-prop-t><b>in</b></b><b data-bascik-prop-t>open';
+    expect(injectProps(template, { t: "<&>" })).toBe(
+      '<b>&lt;&amp;&gt;</b><script>"<b data-bascik-prop-t>"</script><!-- <b data-bascik-prop-t>c</b> --><br data-bascik-prop-t/><b>&lt;&amp;&gt;</b><b>open',
+    );
+  });
+
   it("injects a prop value as element inner content", () => {
     const template = "<p data-bascik-prop-title></p>";
     expect(injectProps(template, { title: "Hello" })).toBe("<p>Hello</p>");
@@ -858,6 +1070,65 @@ describe("extractNamedSlotContent", () => {
 });
 
 describe("replaceNamedSlots", () => {
+  it("misuse: a template that repeats named slot wrappers thousands of times is filled in linear time", () => {
+    // Splicing each wrapper into the growing result copied it once per
+    // wrapper, and each close search rescanned attribute state from the
+    // start: 5000 wrappers took seconds. Linear work takes milliseconds.
+    const count = 5000;
+    const template = `<div>${'<i data-bascik-slot="s">f</i><b data-bascik-slot="Missing">fb</b>'.repeat(count)}</div>`;
+    const content = "x".repeat(2000);
+    const started = performance.now();
+    const out = replaceNamedSlots(
+      template,
+      { S: content },
+      new Set(["my-card"]),
+    );
+    const elapsed = performance.now() - started;
+    expect(out).toBe(`<div>${`${content}fb`.repeat(count)}</div>`);
+    expect(elapsed).toBeLessThan(1500);
+  });
+
+  it("misuse: thousands of usage wrappers are extracted in linear time, and the last fill of a repeated name wins", () => {
+    const count = 5000;
+    const inner = `${'<p>body</p><div data-bascik-slot="side">n</div>'.repeat(count - 1)}<div data-bascik-slot="side">last</div>`;
+    const started = performance.now();
+    const slots = extractNamedSlotContent(inner, new Set(["my-card"]));
+    const defaults = extractDefaultSlotContent(inner, new Set(["my-card"]));
+    const elapsed = performance.now() - started;
+    expect(slots).toEqual({ side: "last" });
+    expect(defaults).toBe("<p>body</p>".repeat(count - 1));
+    expect(elapsed).toBeLessThan(1500);
+  });
+
+  it("misuse: tens of thousands of unclosed slot wrappers, or wrappers closed only once at the end, cost linear time", () => {
+    const count = 40_000;
+    const started = performance.now();
+    const unclosed = '<i data-bascik-slot="s">f'.repeat(count);
+    expect(replaceNamedSlots(unclosed, { s: "x" })).toBe(unclosed);
+    expect(extractDefaultSlotContent(unclosed)).toBe(unclosed);
+    const defaults = "<i data-bascik-slot>f".repeat(count);
+    expect(replaceDefaultSlots(defaults, "x")).toBe(defaults);
+    const tail = 3000;
+    const closedOnce = `${'<i data-bascik-slot="s">f'.repeat(tail)}</i>`;
+    // Only the last wrapper pairs with the one close.
+    expect(replaceNamedSlots(closedOnce, { s: "x" })).toBe(
+      `${'<i data-bascik-slot="s">f'.repeat(tail - 1)}x`,
+    );
+    const defaultsOnce = `${"<i data-bascik-slot>f".repeat(tail)}</i>`;
+    expect(replaceDefaultSlots(defaultsOnce, "x")).toBe(
+      `${"<i data-bascik-slot>f".repeat(tail - 1)}x`,
+    );
+    expect(performance.now() - started).toBeLessThan(1500);
+  });
+
+  it("fills wrappers in document order around text, nested same-tag fallbacks and wrappers inside a child usage", () => {
+    const template =
+      '<a>1<div data-bascik-slot="x"><div>fb</div></div>2<my-card><i data-bascik-slot="x">kept</i></my-card>3<i data-bascik-slot="y">y</i>4</a>';
+    expect(replaceNamedSlots(template, { x: "X" }, new Set(["my-card"]))).toBe(
+      '<a>1X2<my-card><i data-bascik-slot="x">kept</i></my-card>3y4</a>',
+    );
+  });
+
   it("replaces a named slot placeholder with provided content", () => {
     const template =
       '<footer><div data-bascik-slot="footer-links"></div></footer>';
@@ -2141,5 +2412,49 @@ describe("masked string caching performance helpers", () => {
     expect(getFirstComponent(html2, list).name).toBe("my-button");
     // Repeating on the same ComponentList object should return consistent results
     expect(getFirstComponent(html1, list).name).toBe("my-card");
+  });
+});
+
+describe("createMatchingCloseFinder", () => {
+  // Strings where the depth count is easy to get wrong: closes and opens
+  // inside quoted and unquoted attribute values, self-closing same-name tags,
+  // raw text, comments, mixed case, a close with whitespace, and unclosed or
+  // over-closed runs.
+  const samples = [
+    '<i a="</i>">x<i>y</i></i></i>',
+    "<i><i/><I>a</i ></I><i b='<i>'>c</i>",
+    "<i><script></i></script></i><!-- </i> --></i>",
+    "<i x=</i>>q</i><i>r<i>s</i>",
+    "<i><i><i></i>",
+    "</i></i><i>t</i></i>",
+    "<i title=\"<i>\"><i data-x='</i>'></i></i><i>",
+    "<i\n data-a='1'\n>m</i\t><textarea><i></textarea></i>",
+  ];
+  it.each(samples)(
+    "agrees with a depth count from every position of %j",
+    (html) => {
+      const masked = maskRawTextContent(html);
+      const find = createMatchingCloseFinder(html, masked);
+      for (const tag of ["i", "I", "b"])
+        for (let start = 0; start <= html.length; start++)
+          expect([tag, start, find(tag, start)]).toEqual([
+            tag,
+            start,
+            findMatchingClose(
+              html,
+              tag,
+              start,
+              masked,
+              createAttributeValueScanner(masked),
+            ),
+          ]);
+    },
+  );
+
+  it("misuse: an invalid tag name finds nothing instead of throwing", () => {
+    const html = "<i>a</i>";
+    const find = createMatchingCloseFinder(html, maskRawTextContent(html));
+    expect(find("i)(", 3)).toBe(-1);
+    expect(find("", 3)).toBe(-1);
   });
 });

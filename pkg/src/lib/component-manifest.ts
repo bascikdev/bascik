@@ -42,15 +42,17 @@
  * The manifest exists only for releases whose sidecar has page-owned server
  * or stream entries (ownership.ts); a static site never gets one.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { rewriteCssBasePaths } from "./base-path.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { scanWholeAttributes } from "./component-attribute-scan.ts";
 import { computePageCspHashes } from "./csp-hashes.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
-import { getProjectPath } from "./file-system.ts";
+import { findComponentRoot } from "./component-roots.ts";
+import { getProjectPath, getRelativePath } from "./file-system.ts";
 import {
   BUILD_ATTR_NAME,
   BUILD_ONCE_ATTR_NAME,
@@ -152,7 +154,12 @@ export const UNSUPPORTED_REASONS: ReadonlySet<string> =
 
 export interface ManifestEntry {
   name: string;
-  /** Project-relative path of the component file, for diagnostics. */
+  /**
+   * The component file as `bascik --check` and the dev server print it,
+   * relative to its component root (`components/card/card.html`; a root
+   * outside the project stays cwd-relative). Diagnostics only: every host
+   * prints it as recorded, so Node and workerd name the file the same way.
+   */
   filePath: string;
   template: ScopingTemplate | null;
   unsupported?: UnsupportedEntry;
@@ -513,12 +520,34 @@ const onAuthoredLine = async (
     : binding;
 };
 
+/**
+ * `filePath` for a component listed as `fileName`: the form `bascik --check`
+ * and the dev server print (`getDisplayPath`), relative to the component root
+ * that owns the file, so every host names it the same way. A file no
+ * configured root owns keeps the project-relative path; either way the
+ * manifest holds no absolute path and stays byte-identical across checkouts.
+ */
+const manifestFilePath = (fileName: string): string => {
+  // The configured roots may be absolute or project-relative, and the file
+  // may be listed either way: try each spelling against them.
+  const projectPath = getProjectPath(fileName);
+  for (const candidate of [
+    fileName,
+    resolve(process.cwd(), fileName),
+    projectPath,
+  ]) {
+    if (findComponentRoot(candidate) !== undefined)
+      return getRelativePath(candidate, "components");
+  }
+  return projectPath;
+};
+
 const buildEntry = async (
   name: string,
   raw: ComponentList[string],
   ctx: BuildContext,
 ): Promise<ManifestEntry> => {
-  const filePath = raw.fileName ? getProjectPath(raw.fileName) : name;
+  const filePath = raw.fileName ? manifestFilePath(raw.fileName) : name;
   const refused = (unsupported: UnsupportedEntry): ManifestEntry => ({
     name,
     filePath,
@@ -785,7 +814,7 @@ const buildEntry = async (
   // The sidecar entry's sourceFile is the source stamp's path as the builder
   // listed the component (absolute on a real build); the manifest is
   // byte-identical across builds and checkouts (D3 step 8), so the job
-  // carries the project-relative form, like `filePath`.
+  // carries the project-relative form the sidecar entries use.
   const jobs: ManifestJob[] = Object.values(staged).map((entry, index) => ({
     id: entry.id,
     mode: entry.mode,
@@ -811,6 +840,145 @@ const buildEntry = async (
 };
 
 /**
+ * How many components build at once. Their build scripts already share the
+ * process-wide child budget; this only bounds what waits on it.
+ */
+const MANIFEST_BUILD_CONCURRENCY = 8;
+
+/**
+ * One task's held output: each item writes one console call or chunk. Once
+ * the task's turn has been written it is `live`, so anything the task left
+ * running that prints later is written at once, not lost.
+ */
+interface HeldOutput {
+  writes: Array<() => void>;
+  live: boolean;
+}
+const heldOutput = new AsyncLocalStorage<HeldOutput>();
+const CONSOLE_METHODS = ["log", "info", "warn", "error", "debug"] as const;
+let holdDepth = 0;
+let releaseHold: (() => void) | null = null;
+
+/**
+ * Route console calls and stdout/stderr writes made inside a `heldOutput`
+ * context into that context's list; everything else passes straight
+ * through. Installed once however many manifest builds overlap, and put
+ * back only where nothing replaced it since.
+ */
+const holdOutput = (): (() => void) => {
+  if (holdDepth++ === 0) {
+    const restores: Array<() => void> = [];
+    for (const method of CONSOLE_METHODS) {
+      const original = console[method];
+      const held = (...args: unknown[]) => {
+        const slot = heldOutput.getStore();
+        if (slot && !slot.live)
+          slot.writes.push(() => original.apply(console, args));
+        else original.apply(console, args);
+      };
+      console[method] = held;
+      restores.push(() => {
+        if (console[method] === held) console[method] = original;
+      });
+    }
+    for (const stream of [process.stdout, process.stderr]) {
+      const original = stream.write;
+      const held = function (this: unknown, ...args: unknown[]) {
+        const slot = heldOutput.getStore();
+        if (!slot || slot.live)
+          return (original as (...a: unknown[]) => boolean).apply(this, args);
+        slot.writes.push(() => {
+          (original as (...a: unknown[]) => boolean).apply(stream, args);
+        });
+        return true;
+      } as typeof stream.write;
+      stream.write = held;
+      restores.push(() => {
+        if (stream.write === held) stream.write = original;
+      });
+    }
+    releaseHold = () => restores.forEach((restore) => restore());
+  }
+  return () => {
+    if (--holdDepth === 0) {
+      releaseHold?.();
+      releaseHold = null;
+    }
+  };
+};
+
+/**
+ * Run `task(0..count-1)` with bounded concurrency and return the results in
+ * index order, printing as a one-at-a-time loop would: each task's console
+ * output and stdout/stderr are held and written in index order, as soon as
+ * every earlier task has finished. When a task fails, no further task
+ * starts; once the running ones settle, the output up to and including the
+ * first failing task is written and its error is thrown, so what is printed
+ * and thrown is what the loop would print and throw (later tasks that were
+ * already running print nothing).
+ */
+const inOrder = async <T>(
+  count: number,
+  task: (index: number) => Promise<T>,
+): Promise<T[]> => {
+  if (count <= 1) return Promise.all(count === 1 ? [task(0)] : []);
+  const results: T[] = new Array(count);
+  const outputs: HeldOutput[] = [];
+  const settled: boolean[] = [];
+  // A holder, so the narrowing survives the workers' writes to it.
+  const state: { failed: { index: number; error: unknown } | null } = {
+    failed: null,
+  };
+  let next = 0;
+  let flushed = 0;
+  const flush = (upTo: number) => {
+    while (flushed < upTo && settled[flushed]) {
+      const output = outputs[flushed];
+      output.live = true;
+      for (const write of output.writes) write();
+      output.writes = [];
+      flushed++;
+    }
+  };
+  const release = holdOutput();
+  try {
+    const worker = async () => {
+      while (state.failed === null && next < count) {
+        const index = next++;
+        outputs[index] = { writes: [], live: false };
+        try {
+          results[index] = await heldOutput.run(outputs[index], () =>
+            task(index),
+          );
+        } catch (error) {
+          // Read afresh: another worker may have failed during the await.
+          const prior = state.failed as { index: number } | null;
+          if (prior === null || index < prior.index)
+            state.failed = { index, error };
+        }
+        settled[index] = true;
+        flush(state.failed === null ? count : state.failed.index + 1);
+      }
+    };
+    await Promise.all(
+      Array.from(
+        { length: Math.min(MANIFEST_BUILD_CONCURRENCY, count) },
+        worker,
+      ),
+    );
+  } finally {
+    release();
+  }
+  const failure = state.failed;
+  if (failure !== null) {
+    flush(failure.index + 1);
+    throw failure.error;
+  }
+  flush(count);
+  return results;
+};
+
+/**
  * Record a manifest entry for every component in `componentList` under the
  * build config `config` (the global `BascikConfig`, which the scoping
  * pipeline also reads). Component server and stream scripts are staged in
@@ -829,12 +997,14 @@ export const buildComponentManifest = async (
     jsMinifier: resolveScriptMinifier(),
     cssMinifier: resolveCssMinifier(),
   };
+  const names = Object.keys(componentList).sort();
+  const entries = await inOrder(names.length, (index) =>
+    buildEntry(names[index], componentList[names[index]], ctx),
+  );
   const components: Record<string, ManifestEntry> = {};
-  // Sequential: a component's second run is answered by the cache its first
-  // run filled, and console output stays in component order.
-  for (const name of Object.keys(componentList).sort()) {
-    components[name] = await buildEntry(name, componentList[name], ctx);
-  }
+  names.forEach((name, index) => {
+    components[name] = entries[index];
+  });
   return {
     schema: COMPONENT_MANIFEST_SCHEMA_VERSION,
     identifiers: ctx.identifiers,

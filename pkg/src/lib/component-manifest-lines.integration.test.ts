@@ -14,8 +14,13 @@
  * build's own diagnostics do (`getDisplayPath`, relative to the component
  * root), so the two reports of one problem point at the same place.
  *
+ * The manifest records that display form itself, so the production server
+ * and the Worker, which have no component roots to resolve against, name the
+ * file exactly as the dev server and `bascik --check` do.
+ *
  * Misuse lens: a binding after a style line, after a multi-line style block
- * and a comment, and under HTML minification that folds lines together.
+ * and a comment, and under HTML minification that folds lines together; a
+ * render failure on a production host that maps no paths.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
@@ -36,6 +41,7 @@ import { invalidateComponentListCache, listComponents } from "./components.ts";
 import { getDisplayPath } from "./page-diagnostics.ts";
 import { createNodeRenderHost } from "./request-render-node.ts";
 import { wrapRunner } from "./request-render.ts";
+import { scriptRegistry } from "./script-registry.ts";
 import { clearScopingTemplates } from "./scoping-template.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import type { ExecutionPlan } from "./request-execution.ts";
@@ -132,6 +138,49 @@ describe.each([false, true])(
     it("a binding after a multi-line <style> and a comment naming a binding is reported at its own line", async () => {
       const built = await manifest();
       expect(built.components["late-card"].unsupported?.line).toBe(7);
+    });
+
+    it("the manifest records each file as bascik --check displays it, never the project-relative source path", async () => {
+      const built = await manifest();
+      for (const name of ["bad-card", "late-card", "good-card"]) {
+        const display = getDisplayPath(
+          join(componentsDir, `${name}/${name}.html`),
+        );
+        expect(display).toBe(`components/${name}/${name}.html`);
+        expect(built.components[name].filePath).toBe(display);
+      }
+    });
+
+    it("misuse: a render failure on a production host names the file in the --check form too", async () => {
+      const built = await manifest();
+      const mode = vi
+        .spyOn(scriptRegistry, "mode", "get")
+        .mockReturnValue("production");
+      try {
+        const host = createNodeRenderHost(built, {
+          request: new Request("http://localhost/search"),
+          context: { remoteIp: "127.0.0.1" },
+          timeoutMs: 1000,
+          filePath: join(root, "src/pages/search.html"),
+        });
+        expect(host.warnOnce, "no dev log in production").toBeUndefined();
+        const plan: ExecutionPlan = {
+          segments: [{ kind: "script", mode: "server", id: "0" }],
+          firstStreamIndex: -1,
+        };
+        const run = wrapRunner(
+          async () => "<good-card></good-card>".repeat(1001),
+          plan,
+          host,
+        );
+        const failure = run("0", new AbortController().signal);
+        await expect(failure).rejects.toThrow(
+          /expands to more than 1000 component instances \(<good-card>, components\/good-card\/good-card\.html\)/,
+        );
+        await expect(failure).rejects.not.toThrow(/src\/components/);
+      } finally {
+        mode.mockRestore();
+      }
     });
 
     it("the dev log for a returned unsupported tag names the file and line as bascik --check does", async () => {

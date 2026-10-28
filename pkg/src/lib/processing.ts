@@ -99,7 +99,7 @@ import {
   SYSTEM_MAX_CHILD_PROCESSES,
 } from "./script-runner.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
-import { htmlHasServerScripts } from "./server-scripts.ts";
+import { pageHasServerScripts } from "./server-scripts.ts";
 import {
   buildComponentManifest,
   type ComponentManifest,
@@ -221,13 +221,15 @@ const devComponentManifest = (
 /**
  * The manifest to store with a dev page: the publication's manifest when the
  * page carries a server or stream script, nothing otherwise (a static page
- * never renders at request time, so it never waits for the build).
+ * never renders at request time, so it never waits for the build). Decided
+ * exactly, as the stored page's plan is: a page that only mentions the
+ * attribute in its text (the docs) builds no manifest.
  */
 const devManifestForPage = async (
   componentList: ComponentList,
   html: string | Buffer,
 ): Promise<ComponentManifest | undefined> =>
-  htmlHasServerScripts(html)
+  pageHasServerScripts(html)
     ? await devComponentManifest(componentList)
     : undefined;
 

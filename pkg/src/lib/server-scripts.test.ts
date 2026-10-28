@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { executeServerScripts } from "./server-scripts.ts";
+import {
+  executeServerScripts,
+  pageHasServerScripts,
+} from "./server-scripts.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import { scriptRegistry } from "./script-registry.ts";
 import { BascikConfig } from "./config.ts";
@@ -322,5 +325,30 @@ describe("executeServerScripts in-process execution", () => {
     ).rejects.toThrow(
       /must export default a function.*src\/pages\/test\.html/s,
     );
+  });
+});
+
+describe("pageHasServerScripts (the dev manifest decision)", () => {
+  const both = (html: string) => [html, Buffer.from(html)];
+
+  it("is true for a page with a server script, a stream script or a sidecar placeholder, as a string or a Buffer", () => {
+    for (const html of [
+      `<main><script data-bascik-server>export default () => "x";</script></main>`,
+      `<p>a</p><script type="text/bascik-server" data-bascik-stream data-bascik-server-id="s1"></script>`,
+      `<script type="text/bascik-server" data-bascik-server-id="abc"></script>`,
+    ])
+      for (const page of both(html))
+        expect(pageHasServerScripts(page)).toBe(true);
+  });
+
+  it("is false for a page that only mentions the attribute in its text, as docs do, Buffer or string", () => {
+    for (const html of [
+      `<p>Add <code>data-bascik-server</code> to a script.</p>`,
+      `<pre><code>&lt;script data-bascik-server&gt;export default () =&gt; "x";&lt;/script&gt;</code></pre>`,
+      `<p>The placeholder is <code>text/bascik-server</code>.</p>`,
+      `<main>no scripts</main>`,
+    ])
+      for (const page of both(html))
+        expect(pageHasServerScripts(page)).toBe(false);
   });
 });

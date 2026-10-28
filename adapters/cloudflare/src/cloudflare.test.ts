@@ -997,9 +997,12 @@ describe("createCloudflareWorker: components rendered from a built manifest (pro
         expect(message).toMatch(
           /expands to more than 1000 component instances/,
         );
+        // The file as the manifest records it, the form bascik --check and
+        // the dev server print, never the project-relative source path.
         expect(message).toContain(
-          "src/components/product-card/product-card.html",
+          "(<product-card>, components/product-card/product-card.html)",
         );
+        expect(message).not.toContain("src/components/");
         expect(message).not.toContain("RequestRenderError");
         expect(message).not.toMatch(/^\s+at /m);
       };

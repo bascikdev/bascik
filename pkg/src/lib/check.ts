@@ -895,9 +895,9 @@ const requestRenderFindings = async (
   const reportCsp = Boolean(BascikConfig.generate?.cspHashes);
   for (const name of Object.keys(manifest.components).sort()) {
     const entry = manifest.components[name];
-    // The manifest records the file project-relative; every other section
-    // displays files through toDisplay, so this one does too.
-    const filePath = toDisplay(resolve(process.cwd(), entry.filePath));
+    // The manifest records the file in the form every other section
+    // displays through toDisplay, so it is printed as recorded.
+    const filePath = entry.filePath;
     if (entry.unsupported) {
       // The detail says what in the component triggered the reason (several
       // distinct refusals share one), so the line is something to act on.

@@ -36,11 +36,8 @@ const findOpenTag = (
   scanner?: AttributeValueScanner,
 ): { openTag: string; start: number; end: number } | null => {
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return null;
-  const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // A fresh `g` instance per call so `lastIndex` is invocation-local (pages
-  // may transpile concurrently); V8 caches the compiled pattern by source.
-  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const openTagRegexp = new RegExp(`<${tn}(?![\\w-])(?:${ATTR_VALUE})>`, "gi");
+  // Shared (see tagPattern): this search is synchronous and sets lastIndex.
+  const openTagRegexp = tagPattern("open", tagName);
   openTagRegexp.lastIndex = searchFrom;
   const maskedHtml =
     masked !== undefined ? masked : maskRawTextContent(htmlString);
@@ -133,33 +130,28 @@ export const replaceTag = (
 };
 
 /**
- * Find the first component tag in `htmlString` at or after `searchFrom`.
- *
- * `searchFrom` is the cursor from prompt 63: after a replacement at index S,
- * no new component tag can appear before S in the unchanged prefix, so the
- * caller resumes the search at S (never at the replacement END, which would
- * skip components nested in the inserted template). Returned indices are
- * always in whole-document coordinates.
+ * The list's tag regex (longest name first), or null when it names nothing.
+ * The shared instance is safe to exec: its users are synchronous and set
+ * `lastIndex` before each search.
  */
-export const getFirstComponent = (
-  htmlString: string,
-  componentList: ComponentList,
-  masked?: string,
-  searchFrom = 0,
-  searchState?: ComponentSearchState,
-): Partial<BascikComponent> & { index?: number } => {
-  if (!htmlString) return {};
-
-  const rawKeys = Object.keys(componentList);
-  const keyCount = rawKeys.length;
-  const firstKey = rawKeys[0];
-  const lastKey = rawKeys[keyCount - 1];
+const componentRegexFor = (componentList: ComponentList): RegExp | null => {
   let cached = componentRegexCache.get(componentList);
+  // A frozen list (the request path's, one per manifest) cannot change, so
+  // its regex is keyed on identity alone; any other list may be edited in
+  // place between calls (the build's, in dev), so its names are re-read.
+  const rawKeys =
+    cached && Object.isFrozen(componentList)
+      ? undefined
+      : Object.keys(componentList);
+  const keyCount = rawKeys?.length;
+  const firstKey = rawKeys?.[0];
+  const lastKey = rawKeys?.[rawKeys.length - 1];
   if (
-    !cached ||
-    cached.keyCount !== keyCount ||
-    cached.firstKey !== firstKey ||
-    cached.lastKey !== lastKey
+    rawKeys &&
+    (!cached ||
+      cached.keyCount !== keyCount ||
+      cached.firstKey !== firstKey ||
+      cached.lastKey !== lastKey)
   ) {
     const componentNames = rawKeys
       .filter((name) => /^[a-zA-Z][\w:-]*$/.test(name))
@@ -178,17 +170,50 @@ export const getFirstComponent = (
             `<(${escapedComponentNames.join("|")})(?![\\w-])[\\s\\S]*?>`,
             "gi",
           );
-    cached = { keyCount, firstKey, lastKey, regex };
+    cached = { keyCount: keyCount!, firstKey, lastKey, regex };
     componentRegexCache.set(componentList, cached);
   }
 
-  if (!cached.regex) return {};
-  // Never exec the shared cached instance: `lastIndex` on a `g` regex is
-  // mutable state, and pages can transpile concurrently. Clone per call.
-  const matchComponentName = new RegExp(
-    cached.regex.source,
-    cached.regex.flags,
-  );
+  return cached!.regex;
+};
+
+/**
+ * Whether `html` may contain a usage of a component in the list: false only
+ * when no tag in it names one, so a caller can skip masking and scanning an
+ * output that has none. True is not a decision (a name inside a script or
+ * an attribute value matches here and is skipped by the real search).
+ */
+export const mayContainComponent = (
+  html: string,
+  componentList: ComponentList,
+): boolean => {
+  if (!html.includes("<")) return false;
+  const regex = componentRegexFor(componentList);
+  if (!regex) return false;
+  regex.lastIndex = 0;
+  return regex.test(html);
+};
+
+/**
+ * Find the first component tag in `htmlString` at or after `searchFrom`.
+ *
+ * `searchFrom` is the cursor from prompt 63: after a replacement at index S,
+ * no new component tag can appear before S in the unchanged prefix, so the
+ * caller resumes the search at S (never at the replacement END, which would
+ * skip components nested in the inserted template). Returned indices are
+ * always in whole-document coordinates.
+ */
+export const getFirstComponent = (
+  htmlString: string,
+  componentList: ComponentList,
+  masked?: string,
+  searchFrom = 0,
+  searchState?: ComponentSearchState,
+): Partial<BascikComponent> & { index?: number } => {
+  if (!htmlString) return {};
+
+  const matchComponentName = componentRegexFor(componentList);
+  if (!matchComponentName) return {};
   matchComponentName.lastIndex = searchFrom;
 
   // Match against the masked string so literal component-tag text inside
@@ -221,52 +246,70 @@ export const getFirstComponent = (
   }
   __componentScanStatsForTests.prefixBytesExamined += match.index - searchFrom;
   const firstComponentName = match[1].toLowerCase();
-  const tagInfo = getTag(
+  const found = findTag(
     htmlString,
     firstComponentName,
-    componentList,
     maskedHtml,
     match.index,
     attributeScan,
   );
-  const resultObj: Partial<BascikComponent> & {
-    index?: number;
-    startIndex?: number;
-    endIndex?: number;
-    contentStart?: number;
-    closeIndex?: number;
-  } = {
-    name: firstComponentName,
-    index: match.index,
-    ...tagInfo,
-  };
-  if (typeof tagInfo.startIndex === "number") {
-    Object.defineProperty(resultObj, "startIndex", {
-      value: tagInfo.startIndex,
-      enumerable: false,
-    });
-  }
-  if (typeof tagInfo.endIndex === "number") {
-    Object.defineProperty(resultObj, "endIndex", {
-      value: tagInfo.endIndex,
-      enumerable: false,
-    });
-  }
-  // Where the usage tag's inner content starts and its closing tag begins (-1 when the tag has
-  // no closing tag), so a caller can edit just the inner content.
-  if (typeof tagInfo.contentStart === "number") {
-    Object.defineProperty(resultObj, "contentStart", {
-      value: tagInfo.contentStart,
-      enumerable: false,
-    });
-  }
-  if (typeof tagInfo.closeIndex === "number") {
-    Object.defineProperty(resultObj, "closeIndex", {
-      value: tagInfo.closeIndex,
-      enumerable: false,
-    });
-  }
-  return resultObj;
+  if (!found) return { name: firstComponentName, index: match.index };
+  return tagResult(
+    found,
+    componentList[firstComponentName],
+    firstComponentName,
+    match.index,
+  );
+};
+
+/** Where a tag was found, in whole-document coordinates. */
+interface FoundTag {
+  content: string;
+  innerContent: string;
+  startIndex: number;
+  /** Where the inner content starts (the end of the open tag). */
+  contentStart: number;
+  /** Where the closing tag starts; -1 when there is none. */
+  closeIndex: number;
+  endIndex: number;
+}
+
+type TagResult = Partial<BascikComponent> & {
+  index?: number;
+  startIndex?: number;
+  contentStart?: number;
+  closeIndex?: number;
+  endIndex?: number;
+};
+
+/**
+ * The public shape of a found tag: `content` and `innerContent` (after the
+ * `name` and `index` `getFirstComponent` leads with), then the list entry's
+ * fields, with the four indices as non-enumerable properties so spreading
+ * or comparing a result sees only the component. One object, one define.
+ */
+const tagResult = (
+  found: FoundTag,
+  entry: ComponentList[string] | undefined,
+  name?: string,
+  index?: number,
+): TagResult => {
+  const res: TagResult =
+    name === undefined
+      ? { content: found.content, innerContent: found.innerContent, ...entry }
+      : {
+          name,
+          index,
+          content: found.content,
+          innerContent: found.innerContent,
+          ...entry,
+        };
+  return Object.defineProperties(res, {
+    startIndex: { value: found.startIndex, enumerable: false },
+    contentStart: { value: found.contentStart, enumerable: false },
+    closeIndex: { value: found.closeIndex, enumerable: false },
+    endIndex: { value: found.endIndex, enumerable: false },
+  });
 };
 
 export const getTag = (
@@ -283,18 +326,63 @@ export const getTag = (
   endIndex?: number;
 } => {
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return {};
-  const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // Try paired tags: <tagName ...>content</tagName>
-  // Use findMatchingClose (a depth counter) instead of a lazy regex so nested
-  // same-name elements pair with the correct (balanced) closing tag, e.g.
-  // <my-list>...<my-list></my-list>...</my-list>.
   const maskedHtml =
     masked !== undefined ? masked : maskRawTextContent(htmlString);
   // A caller's scanner is only valid for the mask it was built on.
-  const attributeScan =
-    scanner && masked !== undefined
-      ? scanner
-      : createAttributeValueScanner(maskedHtml);
+  const found = findTag(
+    htmlString,
+    tagName,
+    maskedHtml,
+    searchFrom,
+    scanner && masked !== undefined ? scanner : undefined,
+  );
+  if (!found) return {};
+  return tagResult(found, componentList?.[tagName.toLowerCase()]);
+};
+
+/**
+ * One compiled pattern per tag name and kind, shared: every user sets
+ * `lastIndex` before it executes and runs synchronously, so a shared
+ * instance never carries state from one search into another. Bounded,
+ * since `getTag` takes any tag name.
+ */
+const tagPatterns = new Map<string, RegExp>();
+const tagPattern = (kind: "open" | "close", tagName: string): RegExp => {
+  const key = `${kind}:${tagName.toLowerCase()}`;
+  let pattern = tagPatterns.get(key);
+  if (!pattern) {
+    const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (kind === "open") {
+      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+      pattern = new RegExp(`<${tn}(?![\\w-])(?:${ATTR_VALUE})>`, "gi");
+    } else {
+      // Sticky: matches only at `lastIndex`, with no copy of the rest.
+      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+      pattern = new RegExp(`<\\/${tn}\\s*>`, "iy");
+    }
+    if (tagPatterns.size >= 1024) tagPatterns.clear();
+    tagPatterns.set(key, pattern);
+  }
+  return pattern;
+};
+
+/**
+ * Find the first `tagName` element at or after `searchFrom`: paired (with
+ * its balanced close), unclosed (the open tag alone), or self-closing.
+ * Indices are whole-document coordinates. Null when there is none.
+ */
+const findTag = (
+  htmlString: string,
+  tagName: string,
+  maskedHtml: string,
+  searchFrom: number,
+  scanner?: AttributeValueScanner,
+): FoundTag | null => {
+  if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return null;
+  // Use findMatchingClose (a depth counter) instead of a lazy regex so nested
+  // same-name elements pair with the correct (balanced) closing tag, e.g.
+  // <my-list>...<my-list></my-list>...</my-list>.
+  const attributeScan = scanner ?? createAttributeValueScanner(maskedHtml);
   const openTag = findOpenTag(
     htmlString,
     tagName,
@@ -311,76 +399,37 @@ export const getTag = (
       attributeScan,
     );
     if (closeIndex !== -1) {
-      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-      const closeTagRegexp = new RegExp(`^<\\/${tn}\\s*>`, "i");
-      const closeTagMatch = closeTagRegexp.exec(htmlString.slice(closeIndex));
+      const closeTag = tagPattern("close", tagName);
+      closeTag.lastIndex = closeIndex;
+      const closeTagMatch = closeTag.exec(htmlString);
       if (closeTagMatch) {
-        const returnObj: Partial<BascikComponent> & {
-          startIndex?: number;
-          contentStart?: number;
-          closeIndex?: number;
-          endIndex?: number;
-        } = {
-          content: htmlString.slice(
-            openTag.start,
-            closeIndex + closeTagMatch[0].length,
-          ),
+        const endIndex = closeIndex + closeTagMatch[0].length;
+        return {
+          content: htmlString.slice(openTag.start, endIndex),
           innerContent: htmlString.slice(openTag.end, closeIndex),
+          startIndex: openTag.start,
+          contentStart: openTag.end,
+          closeIndex,
+          endIndex,
         };
-        Object.defineProperties(returnObj, {
-          startIndex: { value: openTag.start, enumerable: false },
-          contentStart: { value: openTag.end, enumerable: false },
-          closeIndex: { value: closeIndex, enumerable: false },
-          endIndex: {
-            value: closeIndex + closeTagMatch[0].length,
-            enumerable: false,
-          },
-        });
-        if (!componentList) return returnObj;
-        const res = { ...returnObj, ...componentList[tagName.toLowerCase()] };
-        Object.defineProperties(res, {
-          startIndex: { value: openTag.start, enumerable: false },
-          contentStart: { value: openTag.end, enumerable: false },
-          closeIndex: { value: closeIndex, enumerable: false },
-          endIndex: {
-            value: closeIndex + closeTagMatch[0].length,
-            enumerable: false,
-          },
-        });
-        return res;
       }
     }
   }
 
   if (openTag) {
-    const returnObj: Partial<BascikComponent> & {
-      startIndex?: number;
-      contentStart?: number;
-      closeIndex?: number;
-      endIndex?: number;
-    } = {
+    return {
       content: openTag.openTag,
       innerContent: "",
+      startIndex: openTag.start,
+      contentStart: openTag.end,
+      closeIndex: -1,
+      endIndex: openTag.end,
     };
-    Object.defineProperties(returnObj, {
-      startIndex: { value: openTag.start, enumerable: false },
-      contentStart: { value: openTag.end, enumerable: false },
-      closeIndex: { value: -1, enumerable: false },
-      endIndex: { value: openTag.end, enumerable: false },
-    });
-    if (!componentList) return returnObj;
-    const res = { ...returnObj, ...componentList[tagName.toLowerCase()] };
-    Object.defineProperties(res, {
-      startIndex: { value: openTag.start, enumerable: false },
-      contentStart: { value: openTag.end, enumerable: false },
-      closeIndex: { value: -1, enumerable: false },
-      endIndex: { value: openTag.end, enumerable: false },
-    });
-    return res;
   }
 
   // Try self-closing: <tagName ... /> or <tagName/>
   // Search the masked string so literal tag text inside raw-text elements is skipped.
+  const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const selfClosingPattern = new RegExp(
     `<${tn}(?![\\w-])([\\s\\S]*?)\\/?>`,
@@ -393,48 +442,18 @@ export const getTag = (
     break;
   }
   if (selfClosingMatch) {
-    const returnObj: Partial<BascikComponent> & {
-      startIndex?: number;
-      contentStart?: number;
-      closeIndex?: number;
-      endIndex?: number;
-    } = {
-      content: htmlString.slice(
-        selfClosingMatch.index,
-        selfClosingMatch.index + selfClosingMatch[0].length,
-      ),
+    const endIndex = selfClosingMatch.index + selfClosingMatch[0].length;
+    return {
+      content: htmlString.slice(selfClosingMatch.index, endIndex),
       innerContent: "",
+      startIndex: selfClosingMatch.index,
+      contentStart: endIndex,
+      closeIndex: -1,
+      endIndex,
     };
-    Object.defineProperties(returnObj, {
-      startIndex: { value: selfClosingMatch.index, enumerable: false },
-      contentStart: {
-        value: selfClosingMatch.index + selfClosingMatch[0].length,
-        enumerable: false,
-      },
-      closeIndex: { value: -1, enumerable: false },
-      endIndex: {
-        value: selfClosingMatch.index + selfClosingMatch[0].length,
-        enumerable: false,
-      },
-    });
-    if (!componentList) return returnObj;
-    const res = { ...returnObj, ...componentList[tagName.toLowerCase()] };
-    Object.defineProperties(res, {
-      startIndex: { value: selfClosingMatch.index, enumerable: false },
-      contentStart: {
-        value: selfClosingMatch.index + selfClosingMatch[0].length,
-        enumerable: false,
-      },
-      closeIndex: { value: -1, enumerable: false },
-      endIndex: {
-        value: selfClosingMatch.index + selfClosingMatch[0].length,
-        enumerable: false,
-      },
-    });
-    return res;
   }
 
-  return {};
+  return null;
 };
 
 /**
@@ -490,4 +509,143 @@ export const findMatchingClose = (
     }
   }
   return -1;
+};
+
+interface CloseTokens {
+  /** Start and end of each open or close token, in scan order. */
+  starts: number[];
+  ends: number[];
+  /** `depths[k]`: the depth change before token k, relative to the start. */
+  depths: number[];
+  /** Close index for a scan starting at token boundary k, once known. */
+  answers: number[];
+  /** Boundaries whose matching close is not found yet (depths ascending). */
+  pending: number[];
+  openRe: RegExp;
+  closeRe: RegExp;
+  nextOpen: RegExpExecArray | null | undefined;
+  nextClose: RegExpExecArray | null | undefined;
+  pos: number;
+  done: boolean;
+}
+
+/**
+ * Return a `findMatchingClose(html, tagName, contentStart, masked)` that
+ * answers many starts on one string in linear total time.
+ *
+ * Calling `findMatchingClose` per wrapper rescans from each start: an
+ * unclosed wrapper scans to the end of the template, and a run of opens
+ * closed once at the end walks every later open, so thousands of them cost
+ * quadratic time. The finder tokenizes the string once per tag name, in the
+ * same order `findMatchingClose` does (the earliest open or close at or after
+ * the cursor), and pairs each token boundary with the first later token that
+ * drops the depth below it, which is exactly where a depth count started
+ * there reaches zero. A start that falls inside a token (a scan from there
+ * would tokenize differently) falls back to `findMatchingClose`.
+ */
+export const createMatchingCloseFinder = (
+  html: string,
+  masked: string,
+): ((tagName: string, contentStart: number) => number) => {
+  const scanner = createAttributeValueScanner(masked);
+  const byTag = new Map<string, CloseTokens>();
+
+  const advance = (tokens: CloseTokens): boolean => {
+    if (tokens.done) return false;
+    const { pos } = tokens;
+    if (pos >= masked.length) return finish(tokens);
+    // A match found from an earlier cursor that still starts at or after
+    // this one is the leftmost match from here too.
+    if (
+      tokens.nextClose === undefined ||
+      (tokens.nextClose !== null && tokens.nextClose.index < pos)
+    ) {
+      tokens.closeRe.lastIndex = pos;
+      tokens.nextClose = tokens.closeRe.exec(masked);
+    }
+    const close = tokens.nextClose;
+    if (close === null) return finish(tokens);
+    if (
+      tokens.nextOpen === undefined ||
+      (tokens.nextOpen !== null && tokens.nextOpen.index < pos)
+    ) {
+      tokens.openRe.lastIndex = pos;
+      tokens.nextOpen = tokens.openRe.exec(masked);
+    }
+    const open = tokens.nextOpen;
+    let start: number;
+    let end: number;
+    let delta = 0;
+    if (open === null || close.index < open.index) {
+      start = close.index;
+      end = start + close[0].length;
+      if (!scanner.isInsideValue(start)) delta = -1;
+    } else {
+      start = open.index;
+      end = start + open[0].length;
+      if (!scanner.isInsideValue(start) && !/\/\s*>$/.test(open[0])) delta = 1;
+    }
+    const token = tokens.starts.length;
+    tokens.starts.push(start);
+    tokens.ends.push(end);
+    const depth = tokens.depths[token] + delta;
+    tokens.depths.push(depth);
+    while (
+      tokens.pending.length > 0 &&
+      tokens.depths[tokens.pending[tokens.pending.length - 1]] > depth
+    )
+      tokens.answers[tokens.pending.pop()!] = start;
+    tokens.pending.push(token + 1);
+    tokens.pos = end;
+    return true;
+  };
+
+  const finish = (tokens: CloseTokens): false => {
+    tokens.done = true;
+    for (const boundary of tokens.pending) tokens.answers[boundary] = -1;
+    tokens.pending = [];
+    return false;
+  };
+
+  return (tagName: string, contentStart: number): number => {
+    if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return -1;
+    const key = tagName.toLowerCase();
+    let tokens = byTag.get(key);
+    if (tokens === undefined) {
+      const tn = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      tokens = {
+        starts: [],
+        ends: [],
+        depths: [0],
+        answers: [],
+        pending: [0],
+        // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+        openRe: new RegExp(`<${tn}(?![\\w-])(?:${ATTR_VALUE})>`, "gi"),
+        // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+        closeRe: new RegExp(`<\\/${tn}\\s*>`, "gi"),
+        nextOpen: undefined,
+        nextClose: undefined,
+        pos: 0,
+        done: false,
+      };
+      byTag.set(key, tokens);
+    }
+    const { starts, ends } = tokens;
+    while (
+      (starts.length === 0 || starts[starts.length - 1] < contentStart) &&
+      advance(tokens)
+    );
+    // The first token at or after the start.
+    let low = 0;
+    let high = starts.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (starts[middle] < contentStart) low = middle + 1;
+      else high = middle;
+    }
+    if (low > 0 && ends[low - 1] > contentStart)
+      return findMatchingClose(html, tagName, contentStart, masked);
+    while (tokens.answers[low] === undefined && advance(tokens));
+    return tokens.answers[low] ?? -1;
+  };
 };

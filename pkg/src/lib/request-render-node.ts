@@ -15,7 +15,6 @@
  * side only calls the other inside a function, never while evaluating.
  */
 import { createHash } from "node:crypto";
-import { resolve } from "node:path";
 import { ServerScriptError } from "./build-error.ts";
 import { BascikConfig } from "./config.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
@@ -28,7 +27,6 @@ import {
   type ServerScriptContext,
 } from "./server-scripts.ts";
 import type { ComponentManifest } from "./component-manifest.ts";
-import { getDisplayPath } from "./page-diagnostics.ts";
 import {
   renderFailureMessage,
   requestRoutePath,
@@ -208,10 +206,7 @@ export const createNodeRenderHost = (
       if (behavior === "warn") console.warn(message);
     },
   };
-  if (scriptRegistry.mode === "development") {
+  if (scriptRegistry.mode === "development")
     host.warnOnce = warnOnceFor(manifest);
-    // The form `bascik --check` prints, relative to the component root.
-    host.displayFile = (path) => getDisplayPath(resolve(process.cwd(), path));
-  }
   return host;
 };

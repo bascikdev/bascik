@@ -104,6 +104,8 @@ yarn workspace @bascik/bascik profile:workload --tools bubbleprof --scenarios ht
 
 Tool choices are `control`, `doctor`, `bubbleprof`, `heapprofiler`, `0x`, and `cpu`. Rounds must be between 1 and 100.
 
+The `cpu` tool profiles the main subject through `profile-main.ts`, an `--import` preload, instead of native `--cpu-prof`. Native `--cpu-prof` samples from bootstrap, and on Node 24/macOS a sampled thread that takes OpenSSL's provider-store lock for the first time can block on it forever: `import "node:http"` reaches `crypto.getCiphers()` through undici, http2, and tls, and about 5% of 200 concurrent processes stalled there, which a loaded test run reported as `capture deadline exceeded`. The preload warms that state, the default and system CA stores, and the builtins unsampled (`profile-warmup.ts`), starts the inspector profiler at the native 1 ms interval, and writes the profile at exit under the native main-thread name (`CPU.<date>.<time>.<pid>.0.001.cpuprofile`). `profile-isolate.ts` warms the same state before it samples a page worker or script child. The profile leaves out only the warm-up.
+
 ### What makes a capture valid
 
 The fixtures check byte-identical asset delivery, API responses, complete streamed responses, source-edit publication, and serial/worker build output. Static hosting checks file delivery only. Failed commands, missing output, invalid response bytes, incomplete tasks, and missing required profiles invalidate the run; exit code zero alone is not enough. Clinic datasets must decode and render. Allocation samples must reference nodes in their captured tree. Incomplete or unattributed captures fail and stay private.
@@ -123,6 +125,10 @@ CPU captures append owner-only event journals as worker dispatch, listener entry
 ### Manifests
 
 Manifests record runtime and profiler versions, hardware, source hashes, configuration, commands, task counts, response hashes, phase timings, memory, and artifact hashes. The profiler and its target must use the same stable project working directory.
+
+### Comparing captures across commits
+
+The subject imports the code under test from `../src`, relative to the harness, so running `profile:workload` from an older checkout runs that checkout's harness too. Since the `cpu` tool moved to `profile-main.ts`, an older harness samples from bootstrap with native `--cpu-prof`, does not warm script children before sampling, and can still stall on the OpenSSL lock, so its bootstrap frames, early hot spots and script-child latency differ for reasons unrelated to the code. To compare a change against an older commit, run this commit's harness on both: in a detached worktree of the older commit, replace `pkg/bench` with a copy of the current one and capture from there. `harnessHashes` in each `manifest.json` records a digest of every bench module the runner reaches (imports, spawned subjects and `--import` preloads), and it must be identical in the two manifests being compared. If the current harness cannot drive the older source, say so next to every number instead of comparing.
 
 ### HTTP/2 and TLS
 

@@ -572,7 +572,7 @@ describe("attr-binding classification", () => {
         line: 1,
       });
       expect(entry.template).toBeNull();
-      expect(entry.filePath).toBe(`src/components/bad-${target}.html`);
+      expect(entry.filePath).toBe(`components/bad-${target}.html`);
     },
   );
 
@@ -906,7 +906,7 @@ describe.each([true, false])(
       );
     });
 
-    it("jobs[].sourceFile is project-relative and forward-slashed, like filePath, when the component was listed by its absolute path", async () => {
+    it("jobs[].sourceFile is project-relative and forward-slashed, while filePath takes the form bascik --check prints, when the component was listed by its absolute path", async () => {
       // The manifest is byte-identical across builds (D3 step 8), so it must
       // not carry the checkout directory the way the source stamp does.
       const absolute = join(process.cwd(), "src/components/abs-srv.html");
@@ -919,9 +919,24 @@ describe.each([true, false])(
       });
       const entry = entryOf(manifest, "abs-srv");
       expect(entry.unsupported).toBeUndefined();
-      expect(entry.filePath).toBe("src/components/abs-srv.html");
+      expect(entry.filePath).toBe("components/abs-srv.html");
       expect(entry.jobs).toHaveLength(1);
       expect(entry.jobs[0].sourceFile).toBe("src/components/abs-srv.html");
+      expect(JSON.stringify(manifest)).not.toContain(process.cwd());
+    });
+
+    it("misuse: a component file no configured root owns keeps its project-relative path, never an absolute one", async () => {
+      const stray = join(process.cwd(), "elsewhere/stray-card.html");
+      const manifest = await build({
+        "stray-card": {
+          fileName: stray,
+          fileContent: `<div class="s">x</div>`,
+          cssFileContent: ".s { margin: 0 }",
+        },
+      });
+      expect(entryOf(manifest, "stray-card").filePath).toBe(
+        "elsewhere/stray-card.html",
+      );
       expect(JSON.stringify(manifest)).not.toContain(process.cwd());
     });
   },
@@ -1164,6 +1179,128 @@ describe("component build scripts", () => {
       expect(warned).toContain('"src/components/failing-card.html"');
       expect(warned).toContain("boom from failing-card");
     });
+  });
+});
+
+describe("components are built concurrently, reported in order", () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  /** Components a-card..e-card, each with its own build script. */
+  const cards = (names = ["a-card", "b-card", "c-card", "d-card", "e-card"]) =>
+    Object.fromEntries(
+      names.map((name) => [
+        name,
+        {
+          fileName: `src/components/${name}.html`,
+          fileContent: `<div class="shell"><script data-bascik-build>\n// ${nonce} ${name}\nexport default () => "x";\n</script></div>`,
+          cssFileContent: ".shell { margin: 0 }",
+        },
+      ]),
+    ) as ComponentList;
+  const sourceOf = (options: { extraEnv?: Record<string, string> }) =>
+    /([a-e])-card/.exec(String(options?.extraEnv?.BASCIK_SOURCE_FILE))![1];
+  // a-card is the slowest, so a component later in sorted order finishes first.
+  const delayOf = (letter: string) => (letter === "a" ? 60 : 5);
+
+  it("more than one component's build script runs at a time", async () => {
+    let inFlight = 0;
+    let most = 0;
+    runDirectiveHandlerMock.mockImplementation(async () => {
+      most = Math.max(most, ++inFlight);
+      await sleep(20);
+      inFlight--;
+      return defaultHandler();
+    });
+    const manifest = await build(cards());
+    expect(most).toBeGreaterThan(1);
+    expect(Object.keys(manifest.components)).toEqual([
+      "a-card",
+      "b-card",
+      "c-card",
+      "d-card",
+      "e-card",
+    ]);
+  });
+
+  it("the result is the same as one at a time: sorted entries, byte-identical", async () => {
+    const first = await build(cards());
+    runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) => {
+      await sleep(delayOf(sourceOf(options)));
+      return defaultHandler();
+    });
+    clearScopingTemplates();
+    serverSidecarRegistry.clear();
+    const second = await build(cards());
+    expect(JSON.stringify(second)).toBe(JSON.stringify(first));
+  });
+
+  it("console output and script stdout come out in component order, not finish order", async () => {
+    const order: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation((message) => {
+      order.push(`warn ${message}`);
+    });
+    const write = process.stdout.write.bind(process.stdout);
+    vi.spyOn(process.stdout, "write").mockImplementation(((
+      chunk: string | Uint8Array,
+      ...rest: unknown[]
+    ) => {
+      if (String(chunk).startsWith("stdout ")) {
+        order.push(String(chunk));
+        return true;
+      }
+      return (write as (...args: unknown[]) => boolean)(chunk, ...rest);
+    }) as typeof process.stdout.write);
+    runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) => {
+      const letter = sourceOf(options);
+      await sleep(delayOf(letter));
+      console.warn(letter);
+      return { ...(await defaultHandler()), stdout: `stdout ${letter}` };
+    });
+    await build(cards(["a-card", "b-card", "c-card"]));
+    // Each component's two runs print (the second is a cache hit, silent).
+    expect(order).toEqual([
+      "warn a",
+      "stdout a",
+      "warn b",
+      "stdout b",
+      "warn c",
+      "stdout c",
+    ]);
+    // Outside a manifest build, output is not held back.
+    console.warn("after");
+    expect(order.at(-1)).toBe("warn after");
+  });
+
+  it("output a component leaves running is written when it comes, once that component's turn is out", async () => {
+    const order: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation((message) => {
+      order.push(String(message));
+    });
+    runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) => {
+      const letter = sourceOf(options);
+      if (letter === "a") setTimeout(() => console.warn("late a"), 20);
+      else await sleep(80);
+      console.warn(letter);
+      return defaultHandler();
+    });
+    await build(cards(["a-card", "b-card"]));
+    expect(order).toEqual(["a", "late a", "b"]);
+  });
+
+  it('under "error" the first failing component in sorted order is the error, even when a later one fails first, and nothing after it is printed', async () => {
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((message) => {
+      errors.push(String(message));
+    });
+    runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) => {
+      const letter = sourceOf(options);
+      await sleep(delayOf(letter));
+      if (letter === "a" || letter === "c")
+        throw new Error(`boom from ${letter}-card`);
+      return defaultHandler();
+    });
+    await expect(build(cards())).rejects.toThrow(/a-card\.html/);
+    expect(errors.join("\n")).toContain("boom from a-card");
+    expect(errors.join("\n")).not.toContain("boom from c-card");
   });
 });
 

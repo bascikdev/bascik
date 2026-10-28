@@ -1096,27 +1096,27 @@ for (const policy of ["error", "warn", "ignore"] as const) {
       {
         path: "/components-budget?n=1001",
         message:
-          /expands to more than 1000 component instances \(<product-card>, src\/components\/product-card\/product-card\.html\)/,
+          /expands to more than 1000 component instances \(<product-card>, components\/product-card\/product-card\.html\)/,
       },
       {
         path: "/components-budget?n=65&kind=live",
         message:
-          /would run more than 64 nested component scripts in one response \(<product-card-live>, src\/components\/product-card-live\/product-card-live\.html:\d+\)/,
+          /would run more than 64 nested component scripts in one response \(<product-card-live>, components\/product-card-live\/product-card-live\.html:\d+\)/,
       },
       {
         path: "/components-chain",
         message:
-          /nests component scripts deeper than 4 levels \(<chain-card>, src\/components\/chain-card\/chain-card\.html:\d+\)/,
+          /nests component scripts deeper than 4 levels \(<chain-card>, components\/chain-card\/chain-card\.html:\d+\)/,
       },
       {
         path: "/components-size?kind=rendered",
         message:
-          /rendered to \d+ characters, over the 4 MiB \(4194304 characters\) limit per script output \(<twice-card>, src\/components\/twice-card\/twice-card\.html\)/,
+          /rendered to \d+ characters, over the 4 MiB \(4194304 characters\) limit per script output \(<twice-card>, components\/twice-card\/twice-card\.html\)/,
       },
       {
         path: "/components-size?kind=grew",
         message:
-          /grew past \d+ characters while expanding components \(<four-card>, src\/components\/four-card\/four-card\.html\)/,
+          /grew past \d+ characters while expanding components \(<four-card>, components\/four-card\/four-card\.html\)/,
       },
       {
         path: "/components-size?kind=refused",
@@ -1126,7 +1126,7 @@ for (const policy of ["error", "warn", "ignore"] as const) {
       {
         path: "/components-size?kind=stage",
         message:
-          /Rendering <wide-card> \(src\/components\/wide-card\/wide-card\.html\) from (?:server|stream)-script output at "\/components-size(?:-stream)?" failed during slot resolution: Invalid string length/,
+          /Rendering <wide-card> \(components\/wide-card\/wide-card\.html\) from (?:server|stream)-script output at "\/components-size(?:-stream)?" failed during slot resolution: Invalid string length/,
       },
     ];
     const streamTwin = (path: string) =>

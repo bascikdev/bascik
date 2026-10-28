@@ -134,6 +134,20 @@ export const htmlHasServerScripts = (html: string | Buffer): boolean => {
   return createServerScriptRegex().test(html);
 };
 
+/**
+ * Whether a stored page gets a server-script plan: the decision `mem`
+ * makes (the byte pre-filter, then a plan with a script segment, or a
+ * planner error), so a page that only mentions the attribute in its text
+ * (documentation, a blog post) is false. Text is decoded only when the
+ * pre-filter matches.
+ */
+export const pageHasServerScripts = (html: string | Buffer): boolean =>
+  (html.includes("data-bascik-server") ||
+    html.includes("text/bascik-server")) &&
+  createServerScriptRegex().test(
+    typeof html === "string" ? html : html.toString("utf8"),
+  );
+
 /** Default execution timeout per server-script (ms). */
 export const DEFAULT_SCRIPT_TIMEOUT_MS = 30_000;
 
@@ -536,6 +550,29 @@ export const runServerScriptJob = async (
 };
 
 /**
+ * The portable plan for a stored plan, built once. The core never mutates
+ * it, and the renderer keys its per-page work (the `minify.html` page scan)
+ * on its identity, so a fresh copy per request would redo that work on
+ * every request.
+ */
+const executionPlans = new WeakMap<ServerScriptPlan, ExecutionPlan>();
+const executionPlanFor = (plan: ServerScriptPlan): ExecutionPlan => {
+  let execution = executionPlans.get(plan);
+  if (!execution) {
+    execution = {
+      segments: plan.segments.map((segment, i) =>
+        segment.kind === "static"
+          ? { kind: "static", bytes: segment.bytes }
+          : { kind: "script", mode: segment.mode, id: String(i) },
+      ),
+      firstStreamIndex: plan.firstStreamIndex,
+    };
+    executionPlans.set(plan, execution);
+  }
+  return execution;
+};
+
+/**
  * Bridge a Node plan onto the portable core (prompt 132). Script jobs are
  * addressed by segment index; the runner closes over the request so the core
  * never sees ScriptRegistry, paths, or config. With a component manifest
@@ -552,14 +589,7 @@ const toExecution = (
   signal?: AbortSignal,
   manifest?: ComponentManifest | null,
 ): { execution: ExecutionPlan; run: ScriptJobRunner } => {
-  const execution: ExecutionPlan = {
-    segments: plan.segments.map((segment, i) =>
-      segment.kind === "static"
-        ? { kind: "static", bytes: segment.bytes }
-        : { kind: "script", mode: segment.mode, id: String(i) },
-    ),
-    firstStreamIndex: plan.firstStreamIndex,
-  };
+  const execution = executionPlanFor(plan);
   const run: ScriptJobRunner = (id) => {
     const segment = plan.segments[Number(id)] as ScriptSegment;
     return runServerScriptJob(

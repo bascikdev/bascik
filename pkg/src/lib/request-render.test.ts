@@ -413,6 +413,22 @@ describe.each([true, false])(
       expect(host.runComponentJob).not.toHaveBeenCalled();
     });
 
+    it("a request whose output names no component does no per-request render setup: no nonce is hashed", async () => {
+      const manifest = await build();
+      const hashHex = vi.fn(sha256hex);
+      const host = makeHost(manifest, { hashHex });
+      const markup = `<p class="x">no component</p>`;
+      for (let i = 0; i < 3; i++) {
+        const wrapped = wrapRunner(
+          runnerFrom({ a: markup }),
+          serverPlan("a"),
+          host,
+        );
+        expect(await wrapped("a", signalOf())).toBe(markup);
+      }
+      expect(hashHex).not.toHaveBeenCalled();
+    });
+
     // 15
     it("absent/present semantics: an absent text prop keeps its fallback, a present empty named slot is empty, an empty default slot keeps its fallback, a forwarded default slot reaches the nested child, an absent attr binding leaves the original attribute", async () => {
       const list = cards();
@@ -790,7 +806,7 @@ describe.each([true, false])(
 
       const deep = await render(4);
       await expect(deep.out).rejects.toBeInstanceOf(RequestRenderError);
-      await expect(deep.out).rejects.toThrow(/src\/components\/srv-card\.html/);
+      await expect(deep.out).rejects.toThrow(/[ (]components\/srv-card\.html/);
       await expect(deep.out).rejects.toThrow(/\/catalog/);
       await expect(deep.out).rejects.toThrow(/depth/i);
     });
@@ -1300,7 +1316,7 @@ describe.each([true, false])(
         const [key, message] = host.warnOnce.mock.calls[0];
         expect(key).toContain("bad-id");
         expect(message).toContain("attr-binding-to-scoped-attribute");
-        expect(message).toContain("src/components/bad-id.html");
+        expect(message).toContain(": components/bad-id.html:");
       });
 
       it("an unsupported component passes through verbatim and is logged once with the manifest's reason and file", async () => {
@@ -1332,7 +1348,7 @@ describe.each([true, false])(
         expect(message).toContain(`"${HTTP_PATH}"`);
         expect(message).toContain("<bad-id>");
         expect(message).toContain("attr-binding-to-scoped-attribute");
-        expect(message).toContain("src/components/bad-id.html");
+        expect(message).toContain(": components/bad-id.html:");
         expect(message).toContain(entry.unsupported?.detail ?? "");
       });
 
@@ -1580,7 +1596,7 @@ describe("budgets (identifiers off)", () => {
     expect(signals.every((signal) => signal.aborted)).toBe(true);
   });
 
-  it("misuse: budget and stage messages name the component file through displayFile, as the dev log's other messages do", async () => {
+  it("misuse: budget and stage messages name the component file as the manifest records it, the form bascik --check prints, on every host", async () => {
     const manifest = await build({
       ...cards(),
       "wide-card": {
@@ -1588,9 +1604,10 @@ describe("budgets (identifiers off)", () => {
         fileContent: `<div class="w">${`<i data-bascik-slot></i>`.repeat(200)}</div>`,
       },
     });
-    const host = makeHost(manifest, {
-      displayFile: (path) => path.replace(/^src\//, ""),
-    });
+    expect(manifest.components["wide-card"].filePath).toBe(
+      "components/wide-card.html",
+    );
+    const host = makeHost(manifest);
     const wrapped = wrapRunner(
       runnerFrom({
         over: `<bare-card data-bascik-prop-t="n"></bare-card>`.repeat(1001),

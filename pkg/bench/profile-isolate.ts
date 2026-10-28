@@ -3,10 +3,15 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isMainThread, parentPort, threadId } from "node:worker_threads";
 import { profileJournal } from "./profile-diagnostics.ts";
+import { warmProcessWideState } from "./profile-warmup.ts";
 
 const directory = process.env.BASCIK_PROFILE_CAPTURE_DIR;
 if (directory) {
   const journal = profileJournal(directory);
+  // Unsampled, so this isolate never takes the process-wide locks a sampled
+  // thread can deadlock on for the first time under the profiler.
+  await warmProcessWideState();
+  journal("isolate-warmed");
   const session = new Session();
   journal("inspector-connect");
   session.connect();

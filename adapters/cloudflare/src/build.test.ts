@@ -145,7 +145,7 @@ const manifestFixture = (): Manifest => ({
   components: {
     "product-card": {
       name: "product-card",
-      filePath: "src/components/product-card/product-card.html",
+      filePath: "components/product-card/product-card.html",
       template: TILE_TEMPLATE,
       css: {
         text: ".bascik__product-card__tile{color:rgb(1,2,3)}",
@@ -157,7 +157,7 @@ const manifestFixture = (): Manifest => ({
     },
     "product-card-live": {
       name: "product-card-live",
-      filePath: "src/components/product-card-live/product-card-live.html",
+      filePath: "components/product-card-live/product-card-live.html",
       template: null,
       css: null,
       jobs: [

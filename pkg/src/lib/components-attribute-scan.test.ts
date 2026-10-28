@@ -167,3 +167,122 @@ describe("component search with a shared attribute scan", () => {
     expect(resumed.startIndex).toBe(fresh.startIndex);
   });
 });
+
+describe("scanWholeAttributes separators", () => {
+  it("splits on every character a JavaScript \\s matches, not only ASCII whitespace", async () => {
+    const { scanWholeAttributes } =
+      await import("./component-attribute-scan.ts");
+    const cases = [
+      `<a b=1　c="x y"\vd>`,
+      `<div/disabled data-x = 'q' e= f>`,
+      `<x a=b/c﻿g=h>`,
+      `<p\tclass=one\nid="two"\r\fz>`,
+    ];
+    expect(
+      cases.map((tag) =>
+        scanWholeAttributes(tag).map((a) => [
+          a.name,
+          a.start,
+          a.end,
+          a.valueStart,
+          a.valueEnd,
+        ]),
+      ),
+    ).toEqual([
+      [
+        ["b", 3, 6, 5, 6],
+        ["c", 7, 14, 10, 13],
+        ["d", 15, 16, -1, -1],
+      ],
+      [
+        ["disabled", 5, 13, -1, -1],
+        ["data-x", 14, 26, 24, 25],
+        ["e", 27, 31, 30, 31],
+      ],
+      [
+        ["a", 3, 8, 5, 8],
+        ["g", 9, 12, 11, 12],
+      ],
+      [
+        ["class", 3, 12, 9, 12],
+        ["id", 13, 21, 17, 20],
+        ["z", 23, 24, -1, -1],
+      ],
+    ]);
+  });
+
+  it("agrees with a regex-per-character reference on arbitrary tags", async () => {
+    const { scanWholeAttributes } =
+      await import("./component-attribute-scan.ts");
+    // The scanner as first written: one regex test per character.
+    const reference = (openTag: string) => {
+      const out: number[][] = [];
+      let i = 0;
+      const n = openTag.length;
+      if (n > 0 && openTag.charCodeAt(0) === 60) i = 1;
+      while (i < n && !/[\s/>]/.test(openTag[i])) i++;
+      while (i < n) {
+        while (i < n && /[\s/]/.test(openTag[i])) i++;
+        if (i >= n || openTag[i] === ">") break;
+        const nameStart = i;
+        while (i < n && !/[\s=/>]/.test(openTag[i])) i++;
+        const nameEnd = i;
+        let valueStart = -1;
+        let valueEnd = -1;
+        let attrEnd = nameEnd;
+        while (i < n && /[\s]/.test(openTag[i])) i++;
+        if (i < n && openTag[i] === "=") {
+          i++;
+          while (i < n && /[\s]/.test(openTag[i])) i++;
+          if (i < n && (openTag[i] === '"' || openTag[i] === "'")) {
+            const quote = openTag[i];
+            i++;
+            valueStart = i;
+            while (i < n && openTag[i] !== quote) i++;
+            valueEnd = i;
+            if (i < n) i++;
+          } else {
+            valueStart = i;
+            while (i < n && !/[\s"'=<>`]/.test(openTag[i])) i++;
+            valueEnd = i;
+          }
+          attrEnd = i;
+        }
+        out.push([nameStart, nameEnd, valueStart, valueEnd, attrEnd]);
+      }
+      return out;
+    };
+    const alphabet = [
+      ..."ab=/>\"'`< \t\n\v\f\r",
+      " ",
+      " ",
+      " ",
+      " ",
+      "​",
+      " ",
+      " ",
+      " ",
+      "　",
+      "﻿",
+      "\u0085",
+    ];
+    fc.assert(
+      fc.property(
+        fc.array(fc.constantFrom(...alphabet), { maxLength: 40 }),
+        (chars) => {
+          const tag = `<x${chars.join("")}`;
+          expect(
+            scanWholeAttributes(tag).map((a) => [
+              a.nameStart,
+              a.nameEnd,
+              a.valueStart,
+              a.valueEnd,
+              a.end,
+            ]),
+          ).toEqual(reference(tag));
+        },
+      ),
+      { numRuns: 2000 },
+    );
+  });
+});
