@@ -67,7 +67,9 @@ const runtimeImports = (file: string, content: string): RuntimeImport[] => {
     // The clause holds no quote or semicolon, so one match never spans
     // two statements.
     "\\bimport\\s+(type\\s+)?([^;\"'`]*?)\\s+from\\s+[\"']" +
-      SPECIFIER.replace(/[/.]/g, "\\$&") +
+      // Every regex metacharacter, not only the "/" and "." this specifier
+      // has today, so a renamed one cannot widen the match.
+      SPECIFIER.replace(/[\\^$.*+?()[\]{}|/-]/g, "\\$&") +
       String.raw`["']`,
     "g",
   );

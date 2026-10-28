@@ -78,6 +78,7 @@ import { basename, dirname, relative } from "node:path";
 import { getUniqueId, minifyAttributeName } from "./names.ts";
 import { BascikConfig } from "./config.ts";
 import { findComponentRoot } from "./component-roots.ts";
+import { scanHtml } from "./html-scanner.ts";
 import {
   ANY_DIRECTIVE_ATTR_NAME,
   isBuildScriptOpenTag,
@@ -89,26 +90,53 @@ import {
   type OutputScope,
 } from "./output-scope.ts";
 
+/** Cheap probe: a template naming none of these directives has nothing to annotate. */
+const OUTPUT_SCOPED_DIRECTIVE_PROBE = /data-bascik-(?:build|server|stream)/i;
+
 /**
  * Add the output-scope annotation to each component build, server and stream
  * script. Their output is generated after component scoping (a build script's
  * at page time, a server or stream script's at request time, prompt 157), so
  * the annotation lets that output receive the same class and element names
  * as the template. Client scripts are scoped in place and never carry it.
+ *
+ * Script start tags come from the HTML tokenizer scan, not a text search:
+ * `<script data-bascik-server>` written inside a client script's string, a
+ * style, textarea or comment body, or another tag's quoted attribute value is
+ * text, and splicing a double-quoted attribute into it would break that
+ * script's JavaScript (PR 113 review). Where the scan stops following the
+ * browser (see html-scanner.ts), later scripts stay unannotated: their output
+ * keeps its authored class names, which is visible, rather than corrupting
+ * text the compiler cannot classify.
  */
 const annotateOutputScopedScripts = (
   html: string,
   encodedScope: string,
-): string =>
-  html.replace(/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, (openTag) => {
-    if (openTag.includes(OUTPUT_SCOPE_ATTRIBUTE)) return openTag;
-    if (!isBuildScriptOpenTag(openTag) && !isRequestScriptOpenTag(openTag))
-      return openTag;
-    return openTag.replace(
-      />$/,
-      ` ${OUTPUT_SCOPE_ATTRIBUTE}="${encodedScope}">`,
-    );
+): string => {
+  if (!OUTPUT_SCOPED_DIRECTIVE_PROBE.test(html)) return html;
+  const insertAt: number[] = [];
+  scanHtml(html, {
+    token(token) {
+      if (token.kind !== "tag" || token.isEndTag || token.name !== "script")
+        return;
+      const openTag = html.slice(token.start, token.end);
+      if (openTag.includes(OUTPUT_SCOPE_ATTRIBUTE)) return;
+      if (!isBuildScriptOpenTag(openTag) && !isRequestScriptOpenTag(openTag))
+        return;
+      // Before the closing `>`, the same place the attribute always went.
+      insertAt.push(token.end - 1);
+    },
   });
+  if (insertAt.length === 0) return html;
+  const attribute = ` ${OUTPUT_SCOPE_ATTRIBUTE}="${encodedScope}"`;
+  let result = "";
+  let last = 0;
+  for (const index of insertAt) {
+    result += html.slice(last, index) + attribute;
+    last = index;
+  }
+  return result + html.slice(last);
+};
 
 /**
  * A `<script>` open tag carrying any Bascik directive (`build`, `server`,

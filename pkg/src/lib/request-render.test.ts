@@ -1210,7 +1210,8 @@ describe.each([true, false])(
       const positions = (text: string, re: RegExp) =>
         [...text.matchAll(re)].map((m) => m.index);
       const closes = positions(out, /<\/article>/g);
-      const scripts = positions(out, /<script>/g);
+      // Any script start tag in any case: a stray one fails the count.
+      const scripts = positions(out, /<script\b/gi);
       const opens = positions(out, /<article/g);
       expect(closes).toHaveLength(2);
       expect(scripts).toHaveLength(2);
@@ -1228,7 +1229,8 @@ describe.each([true, false])(
       );
       const plain = await inPlace("a", signalOf());
       const plainCloses = positions(plain, /<\/article>/g);
-      const plainScripts = positions(plain, /<script>/g);
+      const plainScripts = positions(plain, /<script\b/gi);
+      expect(plainScripts).toHaveLength(2);
       expect(plainScripts[0]).toBeLessThan(plainCloses[0]);
       expect(plainScripts[1]).toBeLessThan(plainCloses[1]);
       expect(plain).not.toContain("?instance=");
@@ -2090,11 +2092,17 @@ describe.each([true, false])(
         .replace(/<style>[\s\S]*?<\/style>/g, "");
     };
 
-    /** Client scripts out of the way, in order: where they go is D8's documented difference. */
+    /**
+     * Client scripts out of the way, in order: where they go is D8's
+     * documented difference. A client script is a bare <script>; the end tag
+     * is matched as the HTML tokenizer ends it, in any case.
+     */
+    const CLIENT_SCRIPT_RE =
+      /\n?<script>[\s\S]*?<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
     const unhoisted = (html: string) => ({
-      html: html.replace(/\n?<script>[\s\S]*?<\/script>/g, ""),
-      scripts: [...html.matchAll(/<script>[\s\S]*?<\/script>/g)].map(
-        (m) => m[0],
+      html: html.replace(CLIENT_SCRIPT_RE, ""),
+      scripts: [...html.matchAll(CLIENT_SCRIPT_RE)].map((m) =>
+        m[0].replace(/^\n/, ""),
       ),
     });
 

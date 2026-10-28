@@ -54,7 +54,7 @@ describe("packet R2: fixed production batches", () => {
     { timeout: 120_000 },
     async (mode, { skip }) => {
       // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
-      // (assertSupportedTlsCleanupRuntime); skip the lane below Node 24.
+      // (assertSupportedTlsCleanupRuntime); skip the lane off Node 24.
       if (mode === "http2" && !tlsCleanupRuntimeSupported)
         skip(tlsCleanupRuntimeSkipReason);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
@@ -129,7 +129,7 @@ describe("packet R3 row: cancel before headers", () => {
     { timeout: 180_000 },
     async (mode, { skip }) => {
       // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
-      // (assertSupportedTlsCleanupRuntime); skip the lane below Node 24.
+      // (assertSupportedTlsCleanupRuntime); skip the lane off Node 24.
       if (mode === "http2" && !tlsCleanupRuntimeSupported)
         skip(tlsCleanupRuntimeSkipReason);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
@@ -194,7 +194,7 @@ describe("packet R3 row: cancel after exact prefix", () => {
     { timeout: 180_000 },
     async (mode, { skip }) => {
       // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
-      // (assertSupportedTlsCleanupRuntime); skip the lane below Node 24.
+      // (assertSupportedTlsCleanupRuntime); skip the lane off Node 24.
       if (mode === "http2" && !tlsCleanupRuntimeSupported)
         skip(tlsCleanupRuntimeSkipReason);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
@@ -265,7 +265,7 @@ describe("packet R3 row: reject after acknowledged abort", () => {
     { timeout: 180_000 },
     async (mode, { skip }) => {
       // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
-      // (assertSupportedTlsCleanupRuntime); skip the lane below Node 24.
+      // (assertSupportedTlsCleanupRuntime); skip the lane off Node 24.
       if (mode === "http2" && !tlsCleanupRuntimeSupported)
         skip(tlsCleanupRuntimeSkipReason);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
@@ -329,7 +329,7 @@ describe("packet R3 row: fixed failed import", () => {
     { timeout: 180_000 },
     async (mode, { skip }) => {
       // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
-      // (assertSupportedTlsCleanupRuntime); skip the lane below Node 24.
+      // (assertSupportedTlsCleanupRuntime); skip the lane off Node 24.
       if (mode === "http2" && !tlsCleanupRuntimeSupported)
         skip(tlsCleanupRuntimeSkipReason);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));

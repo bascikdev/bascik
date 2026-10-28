@@ -114,17 +114,80 @@ export interface AnalyzeOptions {
 }
 
 // Keywords after which a `/` starts a regex literal rather than a division.
-const REGEX_AFTER_KEYWORD =
-  /(?:^|[^\w$])(?:return|typeof|case|do|else|in|of|new|delete|void|throw|instanceof|yield|await)$/;
+const REGEX_AFTER_KEYWORD = new Set([
+  "return",
+  "typeof",
+  "case",
+  "do",
+  "else",
+  "in",
+  "of",
+  "new",
+  "delete",
+  "void",
+  "throw",
+  "instanceof",
+  "yield",
+  "await",
+]);
+const LONGEST_KEYWORD = 10; // "instanceof"
+
+// Characters after which an operand, so a regex, follows.
+const OPERAND_FOLLOWS = new Set("(,=:[!&|?{};+-*%<>~^");
+
+// The same set String.prototype.trimEnd removes.
+const isSpace = (char: string): boolean => /\s/.test(char);
+const isWordChar = (char: string): boolean => /[\w$]/.test(char);
+
+// Index just past the last non-whitespace character before `end`.
+function skipSpaceBack(chars: readonly string[], end: number): number {
+  while (end > 0 && isSpace(chars[end - 1])) end--;
+  return end;
+}
+
+const isSpreadBefore = (chars: readonly string[], end: number): boolean =>
+  end >= 3 &&
+  chars[end - 1] === "." &&
+  chars[end - 2] === "." &&
+  chars[end - 3] === ".";
 
 // A `/` starts a regex literal when nothing before it can end an expression.
 // Without this, a quote inside /"/g would open a string that swallows the
 // `export default` after it.
-function regexCanStart(cleaned: string): boolean {
-  const before = cleaned.trimEnd();
-  if (before === "") return true;
-  if (/[(,=:[!&|?{};+\-*%<>~^]$/.test(before)) return true;
-  return REGEX_AFTER_KEYWORD.test(before);
+//
+// It reads only the text just before the `/`, walking back over whitespace
+// and at most one keyword. End-anchored patterns over everything scanned so
+// far cost a pass over the whole prefix for every `/` (as does indexing a
+// string built with +=, which V8 flattens on each read), which made a large
+// minified script quadratic. `cleaned` is a character array, and each walk
+// back stops at the previous token, so the whole scan stays linear.
+function regexCanStart(cleaned: readonly string[]): boolean {
+  const end = skipSpaceBack(cleaned, cleaned.length);
+  if (end === 0) return true;
+  // `...` is a spread, which an operand follows; a single `.` (or `?.`) is a
+  // property access, handled with the keyword check below.
+  if (OPERAND_FOLLOWS.has(cleaned[end - 1])) return true;
+  if (isSpreadBefore(cleaned, end)) return true;
+  let start = end;
+  while (
+    start > 0 &&
+    end - start <= LONGEST_KEYWORD &&
+    isWordChar(cleaned[start - 1])
+  )
+    start--;
+  // A longer word, or one that continues past the bound, is no keyword.
+  if (start > 0 && isWordChar(cleaned[start - 1])) return false;
+  if (!REGEX_AFTER_KEYWORD.has(cleaned.slice(start, end).join("")))
+    return false;
+  // `values.of` or `values?.in` is a property name that ends an expression,
+  // so a `/` after it is division. A spread before a keyword (`...await`) is
+  // not a property access.
+  const beforeKeyword = skipSpaceBack(cleaned, start);
+  return (
+    beforeKeyword === 0 ||
+    cleaned[beforeKeyword - 1] !== "." ||
+    isSpreadBefore(cleaned, beforeKeyword)
+  );
 }
 
 function skipRegexLiteral(source: string, start: number): number {
@@ -148,22 +211,22 @@ function skipRegexLiteral(source: string, start: number): number {
 }
 
 function hasDefaultExport(source: string): boolean {
-  let cleaned = "";
+  const chars: string[] = [];
   let i = 0;
   while (i < source.length) {
     if (source[i] === "/" && source[i + 1] === "/") {
       i += 2;
       while (i < source.length && source[i] !== "\n") i++;
-      cleaned += " ";
+      chars.push(" ");
     } else if (source[i] === "/" && source[i + 1] === "*") {
       i += 2;
       while (i < source.length && !(source[i] === "*" && source[i + 1] === "/"))
         i++;
       i = Math.min(i + 2, source.length);
-      cleaned += " ";
-    } else if (source[i] === "/" && regexCanStart(cleaned)) {
+      chars.push(" ");
+    } else if (source[i] === "/" && regexCanStart(chars)) {
       i = skipRegexLiteral(source, i);
-      cleaned += " 0 ";
+      chars.push(" ", "0", " ");
     } else if (source[i] === '"' || source[i] === "'") {
       const q = source[i];
       i++;
@@ -174,7 +237,9 @@ function hasDefaultExport(source: string): boolean {
           break;
         } else i++;
       }
-      cleaned += " ";
+      // A string is a value: a `/` after it is division, so keep a value token
+      // in its place rather than leaving the preceding `=` or `(` exposed.
+      chars.push(" ", "0", " ");
     } else if (source[i] === "`") {
       i++;
       let depth = 0;
@@ -191,13 +256,15 @@ function hasDefaultExport(source: string): boolean {
           i++;
         } else i++;
       }
-      cleaned += " ";
+      // Same as a string: a template literal is a value.
+      chars.push(" ", "0", " ");
     } else {
-      cleaned += source[i];
+      chars.push(source[i]);
       i++;
     }
   }
 
+  const cleaned = chars.join("");
   if (/\bexport\s+default\b/.test(cleaned)) return true;
   if (/\bexport\s*\*\s*as\s+default\b/.test(cleaned)) return true;
   const exportClauseMatch = /\bexport\s*\{([^}]+)\}/g;

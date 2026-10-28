@@ -36,7 +36,7 @@ import {
   realpath,
   symlink,
 } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFile } from "node:child_process";
@@ -52,6 +52,33 @@ const PKG_CLI = join(REPO_ROOT, "pkg/bin/bascik.js");
 const PKG_DIST_INDEX = join(REPO_ROOT, "pkg/dist/index.js");
 const ADAPTER_DIR = join(REPO_ROOT, "adapters/cloudflare");
 const ADAPTER_DIST_INDEX = join(ADAPTER_DIR, "dist/index.js");
+
+/**
+ * Built artifacts this file runs, and the root script that builds each. The
+ * suite's beforeAll fails up front naming every missing one, and the CI check
+ * at the end of this file requires every job that runs the suite to build
+ * them first, so CI and a local `yarn create:unit` share one explicit list.
+ */
+const PREREQUISITES = [
+  { artifact: PKG_DIST_INDEX, script: "pkg:build" },
+  { artifact: ADAPTER_DIST_INDEX, script: "adapter:cf:build" },
+] as const;
+
+/** The message for missing prerequisites, or undefined when all are built. */
+function missingPrerequisites(
+  exists: (path: string) => boolean = existsSync,
+): string | undefined {
+  const missing = PREREQUISITES.filter(({ artifact }) => !exists(artifact));
+  if (missing.length === 0) return undefined;
+  return (
+    `[scaffold.integration.test] Required artifact missing: ${missing
+      .map(({ artifact }) => artifact)
+      .join(", ")}. Run \`${missing
+      .map(({ script }) => `yarn ${script}`)
+      .join(" && ")}\` from the repository root before running ` +
+    "create-bascik tests (CI builds the same artifacts first)."
+  );
+}
 
 /**
  * A scaffolded project has no node_modules, so point the two packages a Cloudflare
@@ -204,12 +231,8 @@ async function runBascikBuild(
 
 describe("scaffold-to-compiler integration", () => {
   beforeAll(() => {
-    if (!existsSync(PKG_DIST_INDEX)) {
-      throw new Error(
-        `[scaffold.integration.test] Required artifact missing: ${PKG_DIST_INDEX}. ` +
-          "Run `yarn pkg:build` before running create-bascik integration tests.",
-      );
-    }
+    const missing = missingPrerequisites();
+    if (missing) throw new Error(missing);
   });
 
   it("scaffolds and compiles a new project with real compiler and full artifact verification", async () => {
@@ -422,11 +445,6 @@ describe("scaffold-to-compiler integration", () => {
   );
 
   it("builds the cloudflare template into a Workers bundle with --target cloudflare", async () => {
-    expect(
-      existsSync(ADAPTER_DIST_INDEX),
-      `Required artifact missing: ${ADAPTER_DIST_INDEX}. Run \`yarn adapter:cf:build\` first.`,
-    ).toBe(true);
-
     const parentDir = await createTempDir("cloudflare-target");
     const projectName = "edge-site";
     const projectDir = join(parentDir, projectName);
@@ -573,4 +591,132 @@ describe("scaffold-to-compiler integration", () => {
     const combinedOutput = `${buildResult.stdout}\n${buildResult.stderr}`;
     expect(combinedOutput).toContain("missing default export");
   }, 45_000);
+});
+
+/** The `run:` commands of each job in a workflow, in step order. */
+function jobRunCommands(workflow: string): Map<string, string[]> {
+  const jobs = new Map<string, string[]>();
+  let inJobs = false;
+  let current: string[] | undefined;
+  let blockIndent: number | undefined;
+  for (const line of workflow.replace(/\r\n/g, "\n").split("\n")) {
+    if (/^jobs:\s*$/.test(line)) {
+      inJobs = true;
+      continue;
+    }
+    if (!inJobs) continue;
+    if (/^\S/.test(line)) {
+      inJobs = false;
+      current = undefined;
+      continue;
+    }
+    const job = /^ {2}([\w-]+):\s*$/.exec(line);
+    if (job) {
+      current = [];
+      jobs.set(job[1], current);
+      blockIndent = undefined;
+      continue;
+    }
+    if (!current) continue;
+    // A `run: |` block: its lines are commands until the indent drops back.
+    if (blockIndent !== undefined) {
+      const indent = line.length - line.trimStart().length;
+      if (line.trim() === "" || indent > blockIndent) {
+        if (line.trim()) current.push(line.trim());
+        continue;
+      }
+      blockIndent = undefined;
+    }
+    const run = /^(\s*)(?:- )?run:\s*(.*)$/.exec(line);
+    if (!run) continue;
+    if (run[2] === "|" || run[2] === ">") blockIndent = run[1].length;
+    else current.push(run[2].trim());
+  }
+  return jobs;
+}
+
+/** Whether a command runs the named root script (`yarn <script>`, not a longer name). */
+const runsScript = (command: string, script: string): boolean =>
+  new RegExp(`(?:^|[;&|]\\s*)yarn ${script}(?=$|[\\s;&|])`).test(command);
+
+describe("create-bascik test prerequisites", () => {
+  const SUITE_SCRIPTS = ["create:unit", "create:test:ci", "create:coverage"];
+
+  it("misuse: a run missing any built artifact fails up front, naming each one and the command that builds it", () => {
+    expect(missingPrerequisites(() => true)).toBeUndefined();
+    const onlyPkg = missingPrerequisites((path) => path === PKG_DIST_INDEX);
+    expect(onlyPkg).toContain(ADAPTER_DIST_INDEX);
+    expect(onlyPkg).not.toContain(PKG_DIST_INDEX);
+    expect(onlyPkg).toContain("`yarn adapter:cf:build`");
+    const neither = missingPrerequisites(() => false);
+    expect(neither).toContain(PKG_DIST_INDEX);
+    expect(neither).toContain(ADAPTER_DIST_INDEX);
+    expect(neither).toContain("`yarn pkg:build && yarn adapter:cf:build`");
+  });
+
+  it("reads each job's run commands, including run blocks and chained commands", () => {
+    const jobs = jobRunCommands(
+      [
+        "name: CI",
+        "jobs:",
+        "  a:",
+        "    steps:",
+        "      - run: yarn pkg:build && yarn adapter:cf:build",
+        "      - name: block",
+        "        run: |",
+        "          corepack enable",
+        "          yarn create:unit",
+        "      - run: yarn create:test:ci",
+        "  b:",
+        "    steps:",
+        "      - run: yarn create:unit",
+        "other: x",
+        "  c:",
+      ].join("\r\n"),
+    );
+    expect([...jobs.keys()]).toEqual(["a", "b"]);
+    expect(jobs.get("a")).toEqual([
+      "yarn pkg:build && yarn adapter:cf:build",
+      "corepack enable",
+      "yarn create:unit",
+      "yarn create:test:ci",
+    ]);
+    expect(
+      runsScript("yarn pkg:build && yarn adapter:cf:build", "adapter:cf:build"),
+    ).toBe(true);
+    // A longer script that starts with the same name is a different script.
+    expect(runsScript("yarn adapter:cf:build:x", "adapter:cf:build")).toBe(
+      false,
+    );
+    expect(runsScript("yarn create:unit:watch", "create:unit")).toBe(false);
+  });
+
+  it("every CI job that runs the suite builds each prerequisite in an earlier step", () => {
+    // The Create-Bascik and Windows jobs once built only the package, so the
+    // Cloudflare test failed there while the Node 22.18 floor job, which
+    // builds the adapter for its own tests, passed.
+    const jobs = jobRunCommands(
+      readFileSync(join(REPO_ROOT, ".github/workflows/ci.yml"), "utf8"),
+    );
+    const missing: string[] = [];
+    const suiteJobs: string[] = [];
+    for (const [job, commands] of jobs) {
+      const suiteAt = commands.findIndex((command) =>
+        SUITE_SCRIPTS.some((script) => runsScript(command, script)),
+      );
+      if (suiteAt < 0) continue;
+      suiteJobs.push(job);
+      for (const { script } of PREREQUISITES) {
+        const builtAt = commands.findIndex((command) =>
+          runsScript(command, script),
+        );
+        if (builtAt < 0 || builtAt > suiteAt)
+          missing.push(`${job}: yarn ${script}`);
+      }
+    }
+    // If this drops, the parser stopped seeing the jobs and the check above
+    // proves nothing.
+    expect(suiteJobs.length, suiteJobs.join(", ")).toBeGreaterThanOrEqual(3);
+    expect(missing).toEqual([]);
+  });
 });

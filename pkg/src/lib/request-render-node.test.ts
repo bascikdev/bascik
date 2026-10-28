@@ -169,12 +169,25 @@ const build = async (): Promise<ComponentManifest> => {
   return buildComponentManifest(cards(), BascikConfig);
 };
 
+/**
+ * `text` as a JavaScript string literal that is safe inside a <script>
+ * element: JSON.stringify leaves "<" and ">" as they are, and a "</script"
+ * in the literal would end the element. A "\uXXXX" escape is the same
+ * character to the script; the line separators are escaped too, so the
+ * literal stays one line for any parser.
+ */
+const scriptString = (text: string): string =>
+  JSON.stringify(text).replace(
+    /[<>\u2028\u2029]/g,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
+
 /** A page whose one server script returns `body`. */
 const serverPage = (body: string): string =>
-  `<main><script data-bascik-server>export default () => ${JSON.stringify(body)};</script></main>`;
+  `<main><script data-bascik-server>export default () => ${scriptString(body)};</script></main>`;
 /** A page whose one stream script returns `body`, after a static head. */
 const streamPage = (body: string): string =>
-  `<p>head</p><script data-bascik-stream>export default () => ${JSON.stringify(body)};</script><p>tail</p>`;
+  `<p>head</p><script data-bascik-stream>export default () => ${scriptString(body)};</script><p>tail</p>`;
 
 const render = async (
   html: string,
@@ -407,6 +420,20 @@ describe("executeServerScriptPlan and streamServerScripts with a manifest", () =
     expect(await render(serverPage(`<srv-card></srv-card>`), null)).toBe(
       `<main><srv-card></srv-card></main>`,
     );
+  });
+
+  it("the page helpers embed any body intact, a </script> in it included", async () => {
+    // serverPage and streamPage write `body` into a <script> element, where
+    // a raw "</script>" would end the element and cut the page script short.
+    const body = `<p>x</p><script>go("</script >")</script>`;
+    expect(await render(serverPage(body), undefined)).toBe(
+      `<main>${body}</main>`,
+    );
+    const { streamer, text } = await stream(streamPage(body), undefined);
+    await expect(streamer.ready).resolves.toBeUndefined();
+    streamer.commit();
+    await streamer.done;
+    expect(text()).toBe(`<p>head</p>${body}<p>tail</p>`);
   });
 
   it("renders a component returned by a page stream script", async () => {
@@ -785,7 +812,7 @@ describe.each(["error", "warn", "ignore"] as const)(
       fileContent: `<div class="r">${"<i data-bascik-slot></i>".repeat(times)}</div>`,
     });
     const slotted = (tag: string, length: number) =>
-      `"<${tag}>" + "x".repeat(${length}) + "</${tag}>"`;
+      `${scriptString(`<${tag}>`)} + "x".repeat(${length}) + ${scriptString(`</${tag}>`)}`;
     const LIMIT = 4 * 1024 * 1024;
     const failures: Array<{
       label: string;
@@ -797,13 +824,13 @@ describe.each(["error", "warn", "ignore"] as const)(
     }> = [
       {
         label: "the instance budget",
-        expr: JSON.stringify("<plain-card></plain-card>".repeat(1001)),
+        expr: scriptString("<plain-card></plain-card>".repeat(1001)),
         message: /expands to more than 1000 component instances/,
         file: /[ (]components\/plain-card\.html/,
       },
       {
         label: "the depth budget",
-        expr: JSON.stringify("<self-card></self-card>"),
+        expr: scriptString("<self-card></self-card>"),
         message: /nests component scripts deeper than 4 levels/,
         file: /[ (]components\/self-card\.html/,
       },
@@ -822,7 +849,7 @@ describe.each(["error", "warn", "ignore"] as const)(
       },
       {
         label: "the written size refusal",
-        expr: `"x".repeat(${2 * LIMIT + 1}) + "<plain-card></plain-card>"`,
+        expr: `"x".repeat(${2 * LIMIT + 1}) + ${scriptString("<plain-card></plain-card>")}`,
         message:
           /characters before rendering, over twice the 4 MiB \(4194304 characters\) limit per script output, and has component tags in it/,
         file: null,

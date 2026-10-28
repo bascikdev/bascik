@@ -692,18 +692,26 @@ export class RetentionIpcWaiters {
 }
 
 /**
- * WHY the parent-side gate: the http2 retention child calls
+ * WHY one predicate for both sides: the http2 retention child calls
  * `assertSupportedTlsCleanupRuntime` (below) and aborts on anything but Node
  * 24, whose TLS cleanup callback ordering is the one the causal acknowledgment
- * was verified against. The published package floor is Node 22.18, so the
- * parent tests consult this flag and skip the http2 lanes on Node < 24 before
- * spawning the child, instead of failing. The child-side assertion stays as
- * the documented requirement.
+ * was verified against. The parent tests consult `tlsCleanupRuntimeSupported`
+ * and skip the http2 lanes before spawning the child. If the gate and the
+ * assertion used different checks (a `>= 24` gate once let Node 25/26 through),
+ * unsupported runtimes would spawn a child that fails instead of skipping. Both
+ * therefore call this predicate; broaden it only after re-verifying the
+ * callback ordering on the new major.
  */
-export const tlsCleanupRuntimeSupported =
-  Number(process.versions.node.split(".")[0]) >= 24;
+export function isTlsCleanupRuntimeSupported(
+  version: string = process.version,
+): boolean {
+  return /^v24\./.test(version);
+}
 
-/** Skip reason for the http2 retention lanes on runtimes below Node 24. */
+/** Parent-side gate for the http2 retention lanes (see the predicate above). */
+export const tlsCleanupRuntimeSupported = isTlsCleanupRuntimeSupported();
+
+/** Skip reason for the http2 retention lanes on runtimes other than Node 24. */
 export const tlsCleanupRuntimeSkipReason = `http2 retention evidence needs Node 24's verified TLS cleanup callback ordering; running ${process.version}`;
 
 /**
@@ -714,7 +722,7 @@ export function assertSupportedTlsCleanupRuntime(
   prototype: unknown = tls.TLSSocket.prototype,
 ): void {
   assert(
-    version.startsWith("v24."),
+    isTlsCleanupRuntimeSupported(version),
     `causal TLS transport cleanup acknowledgment requires the verified Node 24 callback ordering (got ${version})`,
   );
   const proto = prototype as { _destroySSL?: unknown } | null | undefined;

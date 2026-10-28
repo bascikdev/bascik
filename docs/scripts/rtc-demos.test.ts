@@ -321,12 +321,27 @@ const previewCards = (example: string) =>
     badge: m[2].replace(/<[^>]+>/g, "").trim() || "Standard",
   }));
 
-/** Output cards: the text of each rendered <article> in a response body. */
+/**
+ * A raw-text element, its body captured, ended where the HTML tokenizer ends it: any case, and an end tag that may
+ * carry whitespace or junk before its ">" (`</script >`), while `</scripts>` is still body text.
+ */
+const rawTextElement = (name: string) =>
+  new RegExp(
+    String.raw`<${name}\b[^>]*>([\s\S]*?)<\/${name}(?:[\t\n\f\r /][^>]*)?>`,
+    "gi",
+  );
+const SCRIPT_ELEMENT = rawTextElement("script");
+const STYLE_ELEMENT = rawTextElement("style");
+
+/**
+ * Output cards: the text of each rendered <article> in a response body. The text is compared with the preview,
+ * never rendered, so one pass over trusted build output is enough.
+ */
 const outputCards = (html: string) =>
   [...html.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/g)].map((m) =>
     m[1]
-      .replace(/<script\b[\s\S]*?<\/script>/g, "")
-      .replace(/<style\b[\s\S]*?<\/style>/g, "")
+      .replace(SCRIPT_ELEMENT, "")
+      .replace(STYLE_ELEMENT, "")
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
       .trim(),
@@ -797,9 +812,7 @@ describe("returning component tags demos: Output is the real bascik --server res
     expect(style).toContain(`.${cardClass}`);
     const ids = distinctIds(raw);
     expect(ids.size).toBe(3);
-    const scripts = [
-      ...raw.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g),
-    ].map((m) => m[1]);
+    const scripts = [...raw.matchAll(SCRIPT_ELEMENT)].map((m) => m[1]);
     expect(scripts).toHaveLength(3);
     for (const id of ids)
       expect(

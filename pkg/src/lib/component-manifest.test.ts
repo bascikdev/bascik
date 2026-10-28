@@ -933,6 +933,26 @@ describe.each([true, false])(
       expect(JSON.stringify(manifest)).not.toContain(process.cwd());
     });
 
+    it("records filePath and jobs[].sourceFile forward-slashed when the component was listed with Windows separators", async () => {
+      // On Windows the component list carries backslashes; bascik --check
+      // prints filePath as recorded, so a manifest that kept them would print
+      // a different path per platform and stop being byte-identical.
+      const manifest = await build({
+        "win-srv": {
+          fileName: "src\\components\\win-srv\\win-srv.html",
+          fileContent: `<div class="wrap"><script data-bascik-server>export default () => '<p>x</p>';</script></div>`,
+          cssFileContent: ".wrap { margin: 0 }",
+        },
+      });
+      const entry = entryOf(manifest, "win-srv");
+      expect(entry.unsupported).toBeUndefined();
+      expect(entry.filePath).toBe("components/win-srv/win-srv.html");
+      expect(entry.jobs.map((job) => job.sourceFile)).toEqual([
+        "src/components/win-srv/win-srv.html",
+      ]);
+      expect(JSON.stringify(manifest)).not.toContain("\\\\");
+    });
+
     it("misuse: a component file no configured root owns keeps its project-relative path, never an absolute one", async () => {
       const stray = join(process.cwd(), "elsewhere/stray-card.html");
       const manifest = await build({

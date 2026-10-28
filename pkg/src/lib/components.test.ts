@@ -702,6 +702,29 @@ describe("extractProps", () => {
 });
 
 describe("injectProps", () => {
+  it("fills a receiver after a comment the browser ends at --!>, <!--> or <!--->", () => {
+    // These close a comment in the browser, so the receiver after one is live
+    // markup; a later `-->` must not stretch the comment over it.
+    for (const comment of ["<!-- note --!>", "<!-->", "<!--->"])
+      expect(
+        injectProps(
+          `${comment}<p data-bascik-prop-title>f</p><!-- <b data-bascik-prop-title></b> -->`,
+          { title: "Hi" },
+        ),
+      ).toBe(`${comment}<p>Hi</p><!-- <b data-bascik-prop-title></b> -->`);
+  });
+
+  it("leaves a receiver inside an unclosed comment as written", () => {
+    expect(
+      injectProps(
+        "<p data-bascik-prop-title>f</p><!-- <b data-bascik-prop-title></b>",
+        {
+          title: "Hi",
+        },
+      ),
+    ).toBe("<p>Hi</p><!-- <b data-bascik-prop-title></b>");
+  });
+
   it("misuse: a template that repeats a prop receiver thousands of times is filled in linear time", () => {
     // Splicing each receiver into the growing result, and re-masking the
     // whole template for each close search, took seconds at 5000 receivers.
@@ -889,6 +912,18 @@ describe("injectProps", () => {
 });
 
 describe("injectPropAttributes", () => {
+  it("binds an attribute after a comment the browser ends at --!>, <!--> or <!--->", () => {
+    for (const comment of ["<!-- note --!>", "<!-->", "<!--->"])
+      expect(
+        injectPropAttributes(
+          `${comment}<a data-bascik-attr-href="link">About</a><!-- <a data-bascik-attr-href="link"> -->`,
+          { link: "/about" },
+        ),
+      ).toBe(
+        `${comment}<a href="/about">About</a><!-- <a data-bascik-attr-href="link"> -->`,
+      );
+  });
+
   it("injects a simple attribute and strips the directive", () => {
     const result = injectPropAttributes(
       '<a data-bascik-attr-href="link">About</a>',

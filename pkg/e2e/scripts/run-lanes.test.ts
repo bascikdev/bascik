@@ -27,7 +27,15 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import {
+  basename,
+  dirname,
+  join,
+  posix,
+  relative,
+  resolve,
+  win32,
+} from "node:path";
 import { fileURLToPath } from "node:url";
 
 const e2eDir = fileURLToPath(new URL("..", import.meta.url));
@@ -103,9 +111,13 @@ async function loadLane(file: string) {
     const mod = (await import(join(e2eDir, file))) as {
       default: PlaywrightConfigLike;
     };
+    const servers = mod.default.webServer;
     return {
       ports: portsOf(mod.default),
       out: process.env.BASCIK_E2E_OUT,
+      serverUrls: (Array.isArray(servers) ? servers : servers ? [servers] : [])
+        .map((server) => server.url)
+        .filter((url): url is string => url !== undefined),
     };
   } finally {
     if (saved === undefined) delete process.env.BASCIK_E2E_OUT;
@@ -187,6 +199,27 @@ describe("lane isolation", () => {
       http1: "dist-http1",
       http2: "dist-http2",
     });
+  });
+
+  it("names only loopback server URLs in every main lane, the hosts the runner's readiness probe accepts a self-signed certificate from", async () => {
+    // run-lanes.ts waits for these URLs before starting the dev lane, and
+    // skips certificate checks only for loopback hosts (the http2 lane's
+    // certificate is self-signed). A lane pointed elsewhere would be probed
+    // with verification on and never count as ready, so pin the hosts here.
+    const offenders: string[] = [];
+    for (const lane of LANE_NAMES) {
+      const { serverUrls } = await loadLane(MAIN_LANES[lane]);
+      expect(serverUrls.length, lane).toBeGreaterThan(0);
+      for (const url of serverUrls)
+        if (
+          !["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname)
+        )
+          offenders.push(`${lane}: ${url}`);
+    }
+    expect(offenders).toEqual([]);
+    expect(await readFile(runnerPath, "utf8")).toMatch(
+      /rejectUnauthorized:\s*!LOOPBACK_HOSTS\.has\(parsed\.hostname\)/,
+    );
   });
 
   it("routes both shared fixtures' directory.out through BASCIK_E2E_OUT", async () => {
@@ -469,14 +502,41 @@ describe("spec hygiene", () => {
   });
 });
 
+/**
+ * The lane a stub run belongs to, from the `--config` path the runner passes.
+ * The runner builds that path with node:path, so on Windows it is
+ * backslash-separated (D:\\a\\...\\playwright.dev.config.ts): splitting on "/"
+ * alone named no lane there, the stub ignored STUB_FAIL_LANES, and "exits
+ * nonzero when one fails" saw exit 0. Serialized into STUB below, so it must
+ * stay self-contained (no imports, no outer references).
+ */
+function stubLaneOf(configPath: string): string | undefined {
+  const file = configPath.split(/[\\/]/).pop() ?? "";
+  return (
+    {
+      "playwright.config.ts": "static",
+      "playwright.dev.config.ts": "dev",
+      "playwright.server.config.ts": "http1",
+      "playwright.server-http2.config.ts": "http2",
+    } as Record<string, string>
+  )[file];
+}
+
 const STUB = `
+const stubLaneOf = ${stubLaneOf.toString()};
 const args = process.argv.slice(2);
 const config = args[args.indexOf("--config") + 1] ?? "";
-const lane = { "playwright.config.ts": "static", "playwright.dev.config.ts": "dev",
-  "playwright.server.config.ts": "http1", "playwright.server-http2.config.ts": "http2" }[config.split("/").pop()] ?? "?";
+const lane = stubLaneOf(config);
+// A config the stub cannot place would make every lane-specific STUB_* knob
+// a silent no-op, so the run fails loudly instead of passing by accident.
+if (lane === undefined) {
+  console.error("stub: no lane for --config " + JSON.stringify(config));
+  process.exit(3);
+}
 const fail = (process.env.STUB_FAIL_LANES ?? "").split(",").includes(lane);
 const delay = Number(process.env["STUB_DELAY_" + lane] ?? 0);
 console.log("ARGS " + JSON.stringify(args));
+console.log("E2E_OUT " + (process.env.BASCIK_E2E_OUT ?? "unset"));
 setTimeout(() => {
   console.log("Running 3 tests using 1 worker");
   if (fail) { console.log("  1 failed"); console.log("  1 passed (0.2s)"); console.log("  1 skipped"); process.exit(1); }
@@ -534,6 +594,19 @@ function summaryLine(output: string, lane: string): string {
 describe("run-lanes runner", () => {
   it("exists", () => {
     expect(existsSync(runnerPath)).toBe(true);
+  });
+
+  it("the stub names the lane from a POSIX or a Windows --config path, and nothing for an unknown config", () => {
+    for (const [lane, file] of Object.entries(MAIN_LANES)) {
+      expect(stubLaneOf(posix.join("/repo/pkg/e2e", file))).toBe(lane);
+      expect(stubLaneOf(win32.join("D:\\a\\bascik\\pkg\\e2e", file))).toBe(
+        lane,
+      );
+    }
+    expect(stubLaneOf("D:\\a\\pkg\\e2e\\playwright.dev-exec.config.ts")).toBe(
+      undefined,
+    );
+    expect(stubLaneOf("")).toBe(undefined);
   });
 
   it("runs all four lanes when no lane is named, prefixing each line", async () => {
@@ -609,6 +682,24 @@ describe("run-lanes runner", () => {
     expect(code).not.toBe(0);
     expect(summaryLine(output, "dev")).toMatch(/1 failed|failed:?\s*1\b/);
     expect(summaryLine(output, "http1")).toMatch(/2 passed|passed:?\s*2\b/);
+  });
+
+  it("misuse: an exported BASCIK_E2E_OUT reaches no lane, and the notice names the variable without echoing its value", async () => {
+    // Every lane config picks its own output directory only when
+    // BASCIK_E2E_OUT is unset; a value left in the shell would put all four
+    // lanes in one directory. The notice leaves the value out because it is
+    // read from the environment, which is not this runner's to print
+    // (CodeQL js/clear-text-logging); the user can echo it themselves.
+    const { code, output } = await runRunner(["static", "http1"], {
+      BASCIK_E2E_OUT: "dist-left-in-the-shell",
+    });
+    expect(code, output).toBe(0);
+    expect(output).toMatch(/ignoring BASCIK_E2E_OUT\b.*own output directory/);
+    expect(output).not.toContain("dist-left-in-the-shell");
+    for (const lane of ["static", "http1"])
+      expect(output).toMatch(
+        new RegExp(`^\\[${lane}\\s*\\]\\s+E2E_OUT unset$`, "m"),
+      );
   });
 
   it("refuses to start when a port a selected lane needs is already bound", async () => {

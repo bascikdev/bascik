@@ -196,8 +196,14 @@ const placeholderIds = (html: string): string[] =>
  * Client scripts, which `minify.html` hoists: to the page's end at build
  * time, to the end of the outermost instance at request time (D8). Removed
  * with the line break the minifier puts before each, and kept in order.
+ *
+ * Tags are matched as the HTML tokenizer reads them: any case, a quoted
+ * attribute value may hold ">", and the end tag may carry whitespace or junk
+ * before its ">". Scripts that are not hoistable stay in place on both paths,
+ * so the replacement keeps them on purpose.
  */
-const HOISTABLE_SCRIPT_RE = /\n?<script\b([^>]*)>[\s\S]*?<\/script>/g;
+const HOISTABLE_SCRIPT_RE =
+  /\n?<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>[\s\S]*?<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
 const isHoistable = (attrs: string): boolean =>
   !/data-bascik/i.test(attrs) &&
   !/(?:^|\s)type\s*=\s*["']?(?!module\b|text\/javascript\b)/i.test(attrs);

@@ -33,6 +33,61 @@ import { scriptRegistry } from "./script-registry.ts";
 import type { BascikRequest, BascikResponse } from "./server.ts";
 
 /**
+ * The largest response body `dispatch` buffers to give it a Content-Length
+ * while the transport drains a rejected request body. An error page is far
+ * smaller; a larger body streams as before.
+ */
+export const LINGER_FRAMED_BODY_LIMIT = 64 * 1024;
+
+/**
+ * Reads `body` whole when it fits in `limit` bytes. Otherwise (too large,
+ * failed, or the client left) returns a stream that replays what was read
+ * and then continues with the rest, so `streamApiResponse` handles it
+ * exactly as it would the original.
+ */
+const readBounded = async (
+  body: ReadableStream<Uint8Array>,
+  limit: number,
+  signal: AbortSignal,
+): Promise<{ whole: Buffer } | { rest: ReadableStream<Uint8Array> }> => {
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  let failure: { error: unknown } | undefined;
+  try {
+    while (bytes <= limit && !signal.aborted) {
+      const { done, value } = await reader.read();
+      if (done) {
+        reader.releaseLock();
+        return { whole: Buffer.concat(chunks) };
+      }
+      if (value) {
+        chunks.push(value);
+        bytes += value.byteLength;
+      }
+    }
+  } catch (error) {
+    failure = { error };
+  }
+  return {
+    rest: new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(chunk);
+        if (failure) controller.error(failure.error);
+      },
+      async pull(controller) {
+        const { done, value } = await reader.read();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      },
+      cancel(reason) {
+        return reader.cancel(reason);
+      },
+    }),
+  };
+};
+
+/**
  * Stream a WHATWG Response body to a BascikResponse with backpressure and
  * disconnect ownership (prompt 110).
  *
@@ -311,13 +366,44 @@ export class ApiRouteRegistry {
 
       if (webRes.body) {
         const isHead = req.method?.toUpperCase() === "HEAD";
+        let body = webRes.body;
+        if (
+          lingering &&
+          !isHead &&
+          !webRes.headers.has("content-length") &&
+          !webRes.headers.has("transfer-encoding")
+        ) {
+          // The body was rejected before this response (the handler caught
+          // the error and answered itself). The transport holds the end of
+          // the response until the drain settles, so a chunked response
+          // would lack its terminating chunk until the client had uploaded
+          // the rest of its body or the idle cap had passed. With a
+          // Content-Length the client has the whole response the moment its
+          // bytes are written, as with the runtime's own 413.
+          const read = await readBounded(
+            body,
+            LINGER_FRAMED_BODY_LIMIT,
+            abort.signal,
+          );
+          if (abort.signal.aborted) {
+            if ("rest" in read) await read.rest.cancel().catch(() => {});
+            return 0;
+          }
+          if ("whole" in read) {
+            outHeaders["content-length"] = String(read.whole.length);
+            res.respond(webRes.status, outHeaders);
+            if (!res.destroyed) res.end(read.whole);
+            return webRes.status;
+          }
+          body = read.rest;
+        }
         if (isHead) {
           // HEAD-derived responses: commit headers with no body.
           res.respond(webRes.status, outHeaders);
           if (!res.destroyed) res.end();
         } else {
           await streamApiResponse(
-            webRes.body,
+            body,
             webRes.status,
             outHeaders,
             secHeaders,
@@ -327,6 +413,16 @@ export class ApiRouteRegistry {
           );
         }
       } else {
+        // As above: with no length the transport would frame even an empty
+        // body as chunked and hold its end until the drain settles. (204 and
+        // 304 carry no body framing at all.)
+        if (
+          lingering &&
+          webRes.status !== 204 &&
+          webRes.status !== 304 &&
+          !webRes.headers.has("content-length")
+        )
+          outHeaders["content-length"] = "0";
         res.respond(webRes.status, outHeaders);
         if (!res.destroyed) res.end();
       }

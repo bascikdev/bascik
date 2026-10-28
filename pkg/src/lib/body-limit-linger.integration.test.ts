@@ -27,7 +27,7 @@ import type httpTypes from "node:http";
 import http2 from "node:http2";
 import net from "node:net";
 import tls from "node:tls";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile as execFileCb } from "node:child_process";
@@ -157,6 +157,8 @@ interface Writer {
   /** Half-closes: the client is done sending, as curl is after a final response to its Expect. */
   end(): void;
   readonly closed: boolean;
+  /** Every byte received from the server so far. */
+  readonly received: Buffer;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -264,6 +266,9 @@ function rawExchange(
     const writer: Writer = {
       get closed() {
         return closed || socket.destroyed || !socket.writable;
+      },
+      get received() {
+        return Buffer.concat(chunks);
       },
       end() {
         if (!writer.closed) socket.end();
@@ -414,11 +419,20 @@ describe("over-limit bodies get a complete 413 (lingering close)", () => {
   const openSockets = new Set<net.Socket>();
 
   const plain = () => net.connect(httpPort, "127.0.0.1");
+  /**
+   * Trust for the certificate beforeAll generates (CN=localhost): its PEM as
+   * the only CA, and `localhost` as the name to verify, since the clients
+   * dial 127.0.0.1. Verification stays on, so the tests never teach a
+   * pattern that accepts any certificate.
+   */
+  let trustTestCert: { ca: string; servername: string };
+  const connectH2 = () =>
+    http2.connect(`https://127.0.0.1:${tlsPort}`, trustTestCert);
   const overTls = () =>
     tls.connect({
       port: tlsPort,
       host: "127.0.0.1",
-      rejectUnauthorized: false,
+      ...trustTestCert,
       ALPNProtocols: ["http/1.1"],
     });
 
@@ -457,6 +471,18 @@ describe("over-limit bodies get a complete 413 (lingering close)", () => {
         paramNames: [],
         isDynamic: false,
       },
+      {
+        path: "/api/ignore",
+        filePath: join(testDir, "api-ignore.ts"),
+        paramNames: [],
+        isDynamic: false,
+      },
+      {
+        path: "/api/catch",
+        filePath: join(testDir, "api-catch.ts"),
+        paramNames: [],
+        isDynamic: false,
+      },
     ];
     // init() would rescan the (empty) api directory and drop these routes.
     vi.spyOn(apiRouteRegistry, "init").mockResolvedValue(undefined as any);
@@ -475,6 +501,41 @@ describe("over-limit bodies get a complete 413 (lingering close)", () => {
                 status: 200,
                 headers: { "content-type": "application/octet-stream" },
               }),
+          },
+        };
+      }
+      if (filePath.includes("ignore")) {
+        // Never touches its body, as a server-script page that only reads
+        // the URL does. The runtime has already piped the raw request into
+        // the web Request, so Node will not dump the body on its own.
+        return {
+          filePath,
+          version: 0,
+          module: {
+            POST: async () =>
+              new Response("ignored", {
+                status: 200,
+                headers: { "content-length": "7" },
+              }),
+          },
+        };
+      }
+      if (filePath.includes("catch")) {
+        // Catches PayloadTooLargeError and answers with its own 413. A
+        // string Response carries no Content-Length (undici adds only
+        // content-type), so nothing but the server frames its length.
+        return {
+          filePath,
+          version: 0,
+          module: {
+            POST: async (req: Request) => {
+              try {
+                await req.text();
+              } catch {
+                return new Response("too big, sorry", { status: 413 });
+              }
+              return new Response("fits");
+            },
           },
         };
       }
@@ -535,6 +596,10 @@ describe("over-limit bodies get a complete 413 (lingering close)", () => {
     ]);
     configState.http.tls.keyFile = keyPath;
     configState.http.tls.certFile = certPath;
+    trustTestCert = {
+      ca: await readFile(certPath, "utf8"),
+      servername: "localhost",
+    };
 
     configState.http.port = await freePort();
     await startHttpServer();
@@ -572,6 +637,45 @@ describe("over-limit bodies get a complete 413 (lingering close)", () => {
   });
 
   // ── The reported bug ────────────────────────────────────────────────────
+  it("the TLS clients verify the server's certificate, so they would refuse an impostor", async () => {
+    // Every TLS client here trusts only the certificate this file generates,
+    // with verification on (CodeQL js/disabling-certificate-validation).
+    const socket = overTls();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        socket.once("secureConnect", resolve);
+        socket.once("error", reject);
+      });
+      expect(socket.authorized, String(socket.authorizationError)).toBe(true);
+    } finally {
+      socket.destroy();
+    }
+    const session = connectH2();
+    try {
+      const authorized = await new Promise<boolean>((resolve, reject) => {
+        session.once("connect", (_session, s) =>
+          resolve((s as tls.TLSSocket).authorized),
+        );
+        session.once("error", reject);
+      });
+      expect(authorized).toBe(true);
+    } finally {
+      session.destroy();
+    }
+    // A client that does not trust the test certificate is refused.
+    const stranger = tls.connect({ port: tlsPort, host: "127.0.0.1" });
+    try {
+      await expect(
+        new Promise((resolve, reject) => {
+          stranger.once("secureConnect", resolve);
+          stranger.once("error", reject);
+        }),
+      ).rejects.toThrow(/self[- ]signed|unable to verify/i);
+    } finally {
+      stranger.destroy();
+    }
+  });
+
   describe("2 MiB POST against the 1 MiB default (a declared length takes the early 413, chunked trips mid-read)", () => {
     it("HTTP/1.1 plain: complete 413, no EPIPE/ECONNRESET", async () => {
       const before = sideEffects;
@@ -610,9 +714,7 @@ describe("over-limit bodies get a complete 413 (lingering close)", () => {
       "HTTP/2: complete 413 on the stream, session stays usable",
       async () => {
         const before = sideEffects;
-        const client = http2.connect(`https://127.0.0.1:${tlsPort}`, {
-          rejectUnauthorized: false,
-        });
+        const client = connectH2();
         try {
           const result = await new Promise<{
             status: number;
@@ -670,6 +772,113 @@ describe("over-limit bodies get a complete 413 (lingering close)", () => {
         } finally {
           client.close();
         }
+      },
+      CUTOFF_BUDGET_MS * 2,
+    );
+    it(
+      "a handler that catches the error and returns its own 413 (no Content-Length) reaches the client whole while the client still holds the rest of its body",
+      async () => {
+        // A client that stops sending once it is over the limit (to read an
+        // early error response, as browsers and curl do) must not have to
+        // upload the rest, or wait out the idle cap, before the response
+        // ends. Chunked framing would hold the terminating chunk until the
+        // drain settles; the response must be framed so it is complete as
+        // soon as its bytes are written.
+        let completeAfterPauseMs: number | undefined;
+        const res = await rawExchange(plain, async (w) => {
+          await w.write(
+            uploadHead("Transfer-Encoding: chunked", "close", "/api/catch"),
+          );
+          // Over the limit, then a pause without ending the body.
+          const piece = Buffer.alloc(CHUNK, 0x61);
+          for (let sent = 0; sent < LIMIT + 2 * CHUNK; sent += CHUNK) {
+            await w.write(
+              Buffer.concat([
+                Buffer.from(`${CHUNK.toString(16)}\r\n`),
+                piece,
+                Buffer.from("\r\n"),
+              ]),
+            );
+          }
+          const paused = Date.now();
+          while (Date.now() - paused < LINGER_IDLE_MS / 2) {
+            if (parseResponses(w.received)[0]?.complete) {
+              completeAfterPauseMs = Date.now() - paused;
+              break;
+            }
+            await sleep(10);
+          }
+          // Then the rest of the body, so the drain ends cleanly.
+          await writeBody(w, MiB, { chunked: true });
+        });
+        expect(
+          completeAfterPauseMs,
+          "the whole response arrived before the client sent the rest",
+        ).toBeDefined();
+        expect(completeAfterPauseMs!).toBeLessThan(PROMPT_MS);
+        expect(res.error).toBeUndefined();
+        expect(res.responses.length).toBe(1);
+        const [first] = res.responses;
+        expect(first.status).toBe(413);
+        expect(first.complete).toBe(true);
+        expect(first.body).toBe("too big, sorry");
+        expect(first.headers["connection"]).toBe("close");
+        expectUploadFinished(res, LIMIT + 2 * CHUNK + MiB, "catching handler");
+        await assertHealthy("catching handler");
+      },
+      CUTOFF_BUDGET_MS * 2,
+    );
+  });
+
+  describe("a body under the limit that nobody reads", () => {
+    // The body was piped into the web Request, so Node no longer dumps it
+    // when the response finishes. Unread, the pipe stops on backpressure and
+    // the keep-alive connection wedges until Node resets it: the request
+    // pipelined behind it is never answered, and a larger upload sees EPIPE.
+    it.each([
+      ["512 KiB", 512 * 1024],
+      ["just under the limit", LIMIT - 1],
+    ])(
+      "%s: the body is drained and the pipelined request is answered",
+      async (_label, size) => {
+        const res = await rawExchange(plain, async (w) => {
+          await w.write(
+            uploadHead(`Content-Length: ${size}`, "keep-alive", "/api/ignore"),
+          );
+          await writeBody(w, size, { pauseMs: 0 });
+          await w.write(
+            "GET /api/healthy HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+          );
+        });
+        expect(res.error).toBeUndefined();
+        expect(res.timedOut).toBe(false);
+        expectUploadFinished(res, size, "ignored body");
+        expect(res.responses.map((r) => r.status)).toEqual([200, 200]);
+        expect(res.responses[0].body).toBe("ignored");
+        expect(res.responses[0].headers["connection"]).toBe("keep-alive");
+        expect(res.responses[1].body).toContain("healthy");
+        // Answered as soon as the body was read, not after an idle cap.
+        expect(res.elapsedMs).toBeLessThan(LINGER_IDLE_MS);
+      },
+      CUTOFF_BUDGET_MS * 2,
+    );
+
+    it(
+      "misuse: a client that declares a body it never sends is closed at the idle cap, not held open",
+      async () => {
+        const res = await rawExchange(plain, async (w) => {
+          await w.write(
+            uploadHead(
+              `Content-Length: ${LIMIT - 1}`,
+              "keep-alive",
+              "/api/ignore",
+            ),
+          );
+          await w.write(Buffer.alloc(1024, 0x61));
+        });
+        expect(res.timedOut, "server must close the connection").toBe(false);
+        expect(res.responses[0]?.status).toBe(200);
+        expect(res.elapsedMs).toBeLessThan(CUTOFF_BUDGET_MS);
       },
       CUTOFF_BUDGET_MS * 2,
     );
@@ -1001,9 +1210,7 @@ describe("over-limit bodies get a complete 413 (lingering close)", () => {
     it(
       "HTTP/2: a stream that never stops sending is cut off; the session survives",
       async () => {
-        const client = http2.connect(`https://127.0.0.1:${tlsPort}`, {
-          rejectUnauthorized: false,
-        });
+        const client = connectH2();
         try {
           const started = Date.now();
           const result = await new Promise<{ status: number; closed: boolean }>(
@@ -1061,9 +1268,7 @@ describe("over-limit bodies get a complete 413 (lingering close)", () => {
         // body longer than declared with GOAWAY(PROTOCOL_ERROR), so every
         // stream on that session fails. Only an honest or absent length
         // keeps the session (the tests above).
-        const client = http2.connect(`https://127.0.0.1:${tlsPort}`, {
-          rejectUnauthorized: false,
-        });
+        const client = connectH2();
         client.on("error", () => {});
         const sessionClosed = new Promise<void>((r) => client.once("close", r));
         const req = client.request({
@@ -1087,9 +1292,7 @@ describe("over-limit bodies get a complete 413 (lingering close)", () => {
         if (!closedInTime) client.destroy();
         expect(closedInTime, "nghttp2 ends the lying session").toBe(true);
 
-        const fresh = http2.connect(`https://127.0.0.1:${tlsPort}`, {
-          rejectUnauthorized: false,
-        });
+        const fresh = connectH2();
         try {
           const healthy = await new Promise<number>((resolve, reject) => {
             const r = fresh.request({ ":path": "/api/healthy" });

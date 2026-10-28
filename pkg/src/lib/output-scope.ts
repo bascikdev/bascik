@@ -1,12 +1,32 @@
 /** Helpers for applying a component's scoped names to build-script output. */
+import { findCommentEnd } from "./html-scanner.ts";
 import { maskElementContents } from "./shielding.ts";
+
+/**
+ * Same-length copy with comments blanked. Comments end where the browser ends
+ * them (`-->`, `--!>`, `<!-->`, `<!--->`, or the end of input), so markup the
+ * browser treats as live is never hidden. An indexOf walk, not
+ * `/<!--[\s\S]*?-->/g`: that regex rescans to the end from every unclosed
+ * opener, which is quadratic on request-time output carrying visitor text.
+ */
+const blankComments = (html: string): string => {
+  let start = html.indexOf("<!--");
+  if (start === -1) return html;
+  let result = "";
+  let cursor = 0;
+  while (start !== -1) {
+    const end = findCommentEnd(html, start);
+    const stop = end === -1 ? html.length : end;
+    result += html.slice(cursor, start) + " ".repeat(stop - start);
+    cursor = stop;
+    start = end === -1 ? -1 : html.indexOf("<!--", stop);
+  }
+  return result + html.slice(cursor);
+};
 
 /** Same-length copy with comments and raw-text element content blanked out. */
 const maskNonMarkup = (html: string): string =>
-  maskElementContents(
-    html.replace(/<!--[\s\S]*?-->/g, (comment) => " ".repeat(comment.length)),
-    ["script", "style", "textarea"],
-  );
+  maskElementContents(blankComments(html), ["script", "style", "textarea"]);
 
 export const OUTPUT_SCOPE_ATTRIBUTE = "data-bascik-output-scope";
 
@@ -51,11 +71,71 @@ const keepStringEntries = (map: unknown): Record<string, string> => {
 /** Remove the annotation from a script open tag (it never reaches emitted HTML or the script). */
 export const stripOutputScopeAttribute = (openTag: string): string =>
   openTag.replace(
-    /\s+data-bascik-output-scope\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i,
+    // The lookbehind starts a match only at the first character of a
+    // whitespace run, so a run without the annotation is scanned once, not
+    // once per position (quadratic on a long run).
+    /(?<!\s)\s+data-bascik-output-scope\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i,
     "",
   );
 
-const OPEN_TAG_RE = /<([a-zA-Z][a-zA-Z0-9-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
+const OPEN_TAG_RE = /^<([a-zA-Z][a-zA-Z0-9-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>$/;
+
+const isAsciiAlpha = (code: number): boolean =>
+  (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+
+// Scan states: outside quotes, inside "...", inside '...'.
+const OUTSIDE = 1;
+const IN_DOUBLE = 2;
+const IN_SINGLE = 4;
+
+/**
+ * Yields `[start, end)` of each open tag `OPEN_TAG_RE` would find with the
+ * `g` flag, in linear time. The regex scanned from every `<` to the end of
+ * the input whenever a tag never closed (`<a<a<a...`, or an unclosed quote),
+ * which is quadratic on request-time output carrying visitor text. The
+ * grammar is deterministic, so a scan that reaches a (position, quote state)
+ * a failed scan already passed through fails the same way; `failed` records
+ * those, and each pair is walked at most once.
+ */
+function* openTags(html: string): Generator<[number, number]> {
+  const failed = new Uint8Array(html.length + 1);
+  let start = html.indexOf("<");
+  while (start !== -1) {
+    if (!isAsciiAlpha(html.charCodeAt(start + 1))) {
+      start = html.indexOf("<", start + 1);
+      continue;
+    }
+    const visited: number[] = [];
+    let state = OUTSIDE;
+    let end = -1;
+    for (let i = start + 1; i < html.length; i++) {
+      if (failed[i] & state) break;
+      visited.push(i, state);
+      const char = html[i];
+      if (state === OUTSIDE) {
+        if (char === ">") {
+          end = i + 1;
+          break;
+        }
+        if (char === '"') state = IN_DOUBLE;
+        else if (char === "'") state = IN_SINGLE;
+      } else if (
+        (state === IN_DOUBLE && char === '"') ||
+        (state === IN_SINGLE && char === "'")
+      ) {
+        state = OUTSIDE;
+      }
+    }
+    if (end !== -1) {
+      yield [start, end];
+      start = html.indexOf("<", end);
+      continue;
+    }
+    for (let k = 0; k < visited.length; k += 2)
+      failed[visited[k]] |= visited[k + 1];
+    start = html.indexOf("<", start + 1);
+  }
+}
 // One attribute at a time, so text inside another attribute's quoted value
 // (for example `title="<a class=item>"`) is never mistaken for `class`.
 const ATTRIBUTE_RE =
@@ -142,16 +222,11 @@ export const applyOutputScope = (html: string, scope: OutputScope): string => {
   const masked = maskNonMarkup(html);
   let result = "";
   let cursor = 0;
-  OPEN_TAG_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = OPEN_TAG_RE.exec(masked)) !== null) {
-    const start = match.index;
-    const end = start + match[0].length;
+  for (const [start, end] of openTags(masked)) {
     const original = html.slice(start, end);
     // Re-match on the original text: masking blanks only raw-text content and
     // comments, so an open tag found in the mask is identical in the source.
-    const originalMatch =
-      /^<([a-zA-Z][a-zA-Z0-9-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>$/.exec(original);
+    const originalMatch = OPEN_TAG_RE.exec(original);
     if (!originalMatch) continue;
     result +=
       html.slice(cursor, start) +

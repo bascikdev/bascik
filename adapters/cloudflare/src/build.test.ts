@@ -9,6 +9,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { SiteGraph, SiteGraphJob } from "@bascik/bascik/adapter";
 import {
   build,
@@ -385,6 +386,52 @@ describe("build: request-time components in worker-entry.mjs (prompt 157)", () =
     expect(result.components).toBe(true);
   });
 
+  it("a Worker without a renderable manifest still scopes a page job's output, as Node's runServerScriptJob does", async () => {
+    // A page job keeps the output scope of a component placed statically on
+    // the page (site-graph.ts copies it from the sidecar) even when no
+    // component is renderable at request time, e.g. a <site-nav> whose build
+    // script reads BASCIK_PAGE_PATH. Node applies that scope on every
+    // request, so the stub host must too, or the Worker sends class names
+    // the component's stylesheet does not define.
+    const project = await createProject();
+    const scoped = await project.stage(
+      "scoped-page-job",
+      `export default () => '<span class="stock">in stock</span>';`,
+    );
+    const graph = await graphFor(project);
+    const page = graph.pages["/catalog"];
+    page.jobs[PAGE_JOB_ID] = {
+      ...inlineJob(
+        PAGE_JOB_ID,
+        scoped,
+        "server script in src/pages/catalog.html:3",
+      ),
+      outputScope: LIVE_SCOPE,
+    };
+    const result = await runBuild(project, graph);
+    const worker = await readFile(result.workerPath!, "utf8");
+    // The stub path: no renderer in the bundle.
+    expect(worker).not.toContain("RequestRenderError");
+    const imported = (await import(pathToFileURL(result.workerPath!).href)) as {
+      default: {
+        fetch: (
+          request: Request,
+          env: unknown,
+          ctx: unknown,
+        ) => Promise<Response>;
+      };
+    };
+    const response = await imported.default.fetch(
+      new Request("https://example.test/catalog"),
+      { ASSETS: { fetch: async () => new Response("nf", { status: 404 }) } },
+      { waitUntil() {}, passThroughOnException() {} },
+    );
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('class="bascik__product-card-live__stock"');
+    expect(html).not.toContain('class="stock"');
+  });
+
   it("emits the manifest as a JSON literal and one componentJobs entry per job, with its output scope and loader", async () => {
     const project = await createProject();
     const manifest = manifestFixture();
@@ -418,6 +465,54 @@ describe("build: request-time components in worker-entry.mjs (prompt 157)", () =
     expect(entry).toContain(
       '"/catalog": { path: "/catalog", is404: false, segments:',
     );
+  });
+
+  it("misuse: manifest and owner text with </script>, U+2028/U+2029, quotes, backslashes, ${ and */ round-trips through the emitted module", async () => {
+    // CodeQL js/bad-code-sanitization flags the JSON.stringify splices. The
+    // entry is a standalone ES module that esbuild bundles, never inline HTML,
+    // so `</script>` is inert; ES2019 made U+2028/U+2029 legal in string
+    // literals; JSON.stringify escapes quotes, backslashes and control
+    // characters. Pin that by importing the emitted literals back.
+    const hostile =
+      "</script><script>x()</script>\u2028\u2029\"'`${a}*/\\\n<!--";
+    const project = await createProject();
+    const manifest = manifestFixture();
+    manifest.components["product-card"].template!.fileContent.parts = [
+      `<article class="bascik__product-card__tile">${hostile}</article>`,
+    ];
+    manifest.components["product-card"].filePath = `components/${hostile}.html`;
+    const liveJob = await project.stage("live-job", "export default () => '';");
+    await runBuild(
+      project,
+      await graphFor(project, {
+        manifest,
+        jobs: { [LIVE_ID]: inlineJob(LIVE_ID, liveJob, `owner ${hostile}`) },
+      }),
+    );
+    const entry = await readFile(
+      join(project.outDir, ".staging", "worker-entry.mjs"),
+      "utf8",
+    );
+    const declaration = (name: string): string => {
+      const line = entry
+        .split("\n")
+        .find((candidate) => candidate.startsWith(`const ${name} = `));
+      expect(line, name).toBeDefined();
+      return line!;
+    };
+    const probe = join(project.outDir, ".staging", "probe.mjs");
+    await writeFile(
+      probe,
+      `${declaration("componentManifest")}\n${declaration("componentJobs")}\n` +
+        "export { componentManifest, componentJobs };",
+      "utf8",
+    );
+    const imported = (await import(probe)) as {
+      componentManifest: Manifest;
+      componentJobs: Record<string, { owner: string }>;
+    };
+    expect(imported.componentManifest).toEqual(manifest);
+    expect(imported.componentJobs[LIVE_ID].owner).toBe(`owner ${hostile}`);
   });
 
   it("bundles the component job's staged source and the manifest into the worker", async () => {

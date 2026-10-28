@@ -43,6 +43,7 @@ vi.mock("./config.js", async (importOriginal) => {
 import { BascikConfig } from "./config.ts";
 import {
   expandComponents,
+  stripSourceFileComments,
   type ExpandOptions,
 } from "./component-expansion-core.ts";
 import {
@@ -386,6 +387,40 @@ describe.each([true, false])(
     });
   },
 );
+
+describe("stripSourceFileComments", () => {
+  it("removes start and end markers, leaving everything else", () => {
+    expect(
+      stripSourceFileComments(
+        "<!--bascik-source-file:src/pages/a.html--><p>a</p><!-- kept -->" +
+          "<!--bascik-source-file-end:src/pages/a.html-->",
+      ),
+    ).toBe("<p>a</p><!-- kept -->");
+  });
+
+  it("leaves an unclosed marker as written", () => {
+    expect(
+      stripSourceFileComments(
+        "<p>a</p><!--bascik-source-file:x--><!--bascik-source-file:y",
+      ),
+    ).toBe("<p>a</p><!--bascik-source-file:y");
+  });
+
+  it("runs in linear time on many unclosed markers", () => {
+    // Request-time expansion runs it on server-script output, which can carry
+    // visitor text. `/<!--bascik-source-file:[\s\S]*?-->/g` rescanned to the
+    // end from every opener: 40k openers took 4 s (CodeQL js/polynomial-redos).
+    for (const opener of [
+      "<!--bascik-source-file:",
+      "<!--bascik-source-file-end:",
+    ]) {
+      const html = `<p>a</p>${opener.repeat(40_000)}`;
+      const start = performance.now();
+      expect(stripSourceFileComments(html)).toBe(html);
+      expect(performance.now() - start, opener).toBeLessThan(250);
+    }
+  });
+});
 
 describe("expandComponents limits", () => {
   beforeEach(() => {

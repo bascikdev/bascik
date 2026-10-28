@@ -66,6 +66,85 @@ describe("finding inline code", () => {
       ".press{margin:0 auto}",
     ]);
   });
+
+  // The HTML tokenizer ends a script or style at `</script` (or `</style`) followed by whitespace, `/` or `>`, then
+  // skips to the next `>`. A body cut anywhere else hashes the wrong text and the browser blocks the real script.
+  it("ends a body where the browser does: end tags with whitespace, attributes, a slash or any case", () => {
+    expect(
+      executableInlineScripts(
+        "<script>a()</script >" +
+          "<script>b()</script\t\n bar>" +
+          "<script>c()</script/>" +
+          "<SCRIPT>d()</SCRIPT>" +
+          "<script>e()</ScRiPt\f>",
+      ),
+    ).toEqual(["a()", "b()", "c()", "d()", "e()"]);
+    expect(
+      inlineStyles(
+        "<style>.a{}</style >" +
+          "<style>.b{}</style\t\n media=x>" +
+          "<style>.c{}</style/>" +
+          "<STYLE>.d{}</STYLE>",
+      ),
+    ).toEqual([".a{}", ".b{}", ".c{}", ".d{}"]);
+  });
+
+  it("misuse: a look-alike such as </scripts> or </script-x> does not end the body", () => {
+    expect(
+      executableInlineScripts(
+        '<script>log("</scripts>"); log("</script-x>")</script>',
+      ),
+    ).toEqual(['log("</scripts>"); log("</script-x>")']);
+    expect(
+      inlineStyles("<style>a::after{content:'</styles>'}</style>"),
+    ).toEqual(["a::after{content:'</styles>'}"]);
+  });
+
+  it("misuse: a quoted attribute value holding > does not end the start tag early", () => {
+    expect(
+      executableInlineScripts(
+        '<script data-note="a > b">go()</script><script type="x>y">{}</script>',
+      ),
+    ).toEqual(["go()"]);
+    expect(inlineStyles(`<style data-note='a > b'>.x{}</style>`)).toEqual([
+      ".x{}",
+    ]);
+  });
+});
+
+describe("reading script attributes by whole name", () => {
+  // `\bsrc` and `\btype` match after "-", so data-src and data-type read as src and type: the script still runs
+  // (it has no real src or type) but got no hash, and the policy blocked it.
+  it("misuse: data-src and data-type are other attributes, so the script is still hashed", () => {
+    expect(
+      executableInlineScripts(
+        '<script data-src="/x.js">boot()</script>' +
+          '<script data-type="text/plain">run()</script>' +
+          "<script data-src=/y.js data-type=json>go()</script>",
+      ),
+    ).toEqual(["boot()", "run()", "go()"]);
+  });
+
+  it("misuse: an attribute value that reads like src= or type= is part of that value", () => {
+    expect(
+      executableInlineScripts(
+        `<script data-note=" type=module src=/z.js">one()</script>` +
+          `<script title='src="/a.js"'>two()</script>`,
+      ),
+    ).toEqual(["one()", "two()"]);
+  });
+
+  it("a real src or data type is still recognised, in any case and quoting, and the first type wins as in HTML", () => {
+    expect(
+      executableInlineScripts(
+        '<script SRC="/a.js"></script>' +
+          "<script defer src=/b.js></script>" +
+          '<script TYPE="application/json">{}</script>' +
+          '<script type="text/plain" type="module">x()</script>' +
+          '<script async type="module">y()</script>',
+      ),
+    ).toEqual(["y()"]);
+  });
 });
 
 describe("sha256Base64 and buildCsp", () => {
@@ -186,17 +265,23 @@ describe("withResponsePolicy", () => {
 
   const env = { ENVIRONMENT: "production" };
   const ctx = { waitUntil: () => {} };
+  /** The opt-in that hashes each response's own body: right only for a site with no request-time output. */
+  const LIVE = { hashResponseBodies: true } as const;
   const get = (path: string) => new Request(`https://www.example.com${path}`);
 
   it("passes request, env and ctx through to the generated Worker", async () => {
     const { worker, seen } = fakeWorker(routes);
-    await withResponsePolicy(worker).fetch(get("/"), env, ctx);
+    await withResponsePolicy(worker, LIVE).fetch(get("/"), env, ctx);
     expect(seen).toEqual([{ url: "https://www.example.com/", env, ctx }]);
   });
 
   it("HTML gets a CSP built from its own inline script and style hashes", async () => {
     const { worker } = fakeWorker(routes);
-    const res = await withResponsePolicy(worker).fetch(get("/"), env, ctx);
+    const res = await withResponsePolicy(worker, LIVE).fetch(
+      get("/"),
+      env,
+      ctx,
+    );
     const csp = res.headers.get("content-security-policy")!;
     for (const body of executableInlineScripts(HTML))
       expect(csp).toContain(`'sha256-${nodeHash(body)}'`);
@@ -213,7 +298,7 @@ describe("withResponsePolicy", () => {
 
   it("non-HTML passes through unchanged; a hashed asset is immutable", async () => {
     const { worker } = fakeWorker(routes);
-    const res = await withResponsePolicy(worker).fetch(
+    const res = await withResponsePolicy(worker, LIVE).fetch(
       get("/assets/app-WRROEVBF.js"),
       env,
       ctx,
@@ -227,7 +312,7 @@ describe("withResponsePolicy", () => {
 
   it("PDFs, API responses, redirects and server errors get noindex", async () => {
     const { worker } = fakeWorker(routes);
-    const policy = withResponsePolicy(worker);
+    const policy = withResponsePolicy(worker, LIVE);
     for (const path of [
       "/press/kit.pdf",
       "/api/contact",
@@ -246,7 +331,7 @@ describe("withResponsePolicy", () => {
 
   it("an empty 404 becomes a plain HTML error page with noindex", async () => {
     const { worker } = fakeWorker(routes);
-    const res = await withResponsePolicy(worker).fetch(
+    const res = await withResponsePolicy(worker, LIVE).fetch(
       get("/missing"),
       env,
       ctx,
@@ -262,7 +347,7 @@ describe("withResponsePolicy", () => {
     const { worker } = fakeWorker({
       "/missing": () => html("<h1>Lost?</h1>", { status: 404 }),
     });
-    const res = await withResponsePolicy(worker).fetch(
+    const res = await withResponsePolicy(worker, LIVE).fetch(
       get("/missing"),
       env,
       ctx,
@@ -276,7 +361,7 @@ describe("withResponsePolicy", () => {
       "/pricing": () =>
         new Response(null, { status: 304, headers: { etag: '"abc"' } }),
     });
-    const res = await withResponsePolicy(worker).fetch(
+    const res = await withResponsePolicy(worker, LIVE).fetch(
       get("/pricing"),
       env,
       ctx,
@@ -313,7 +398,11 @@ describe("withResponsePolicy", () => {
 
   it("a streamed page is buffered by default so its hashes are complete, and says so in the docs", async () => {
     const { worker } = fakeWorker({ "/live": streamed });
-    const res = await withResponsePolicy(worker).fetch(get("/live"), env, ctx);
+    const res = await withResponsePolicy(worker, LIVE).fetch(
+      get("/live"),
+      env,
+      ctx,
+    );
     expect(res.headers.get("content-security-policy")).toContain(
       `'sha256-${nodeHash(".a{}")}'`,
     );
@@ -324,7 +413,10 @@ describe("withResponsePolicy", () => {
 
   it('streamedHtml: "pass" keeps a streamed page streaming and sends no CSP header for it', async () => {
     const { worker } = fakeWorker({ "/live": streamed, "/": routes["/"] });
-    const policy = withResponsePolicy(worker, { streamedHtml: "pass" });
+    const policy = withResponsePolicy(worker, {
+      ...LIVE,
+      streamedHtml: "pass",
+    });
     const res = await policy.fetch(get("/live"), env, ctx);
     expect(res.headers.get("content-security-policy")).toBeNull();
     expect(res.headers.get("cache-control")).toBe(
@@ -340,13 +432,16 @@ describe("withResponsePolicy", () => {
   it("misuse: an unknown streamedHtml value is rejected at wrap time", () => {
     const { worker } = fakeWorker(routes);
     expect(() =>
-      withResponsePolicy(worker, { streamedHtml: "stream" as never }),
+      withResponsePolicy(worker, {
+        ...LIVE,
+        streamedHtml: "stream" as never,
+      }),
     ).toThrow(/streamedHtml.*buffer.*pass/);
   });
 
   it("a preview environment marks every response noindex", async () => {
     const { worker } = fakeWorker(routes);
-    const res = await withResponsePolicy(worker).fetch(
+    const res = await withResponsePolicy(worker, LIVE).fetch(
       get("/"),
       { ENVIRONMENT: "preview" },
       ctx,
@@ -357,6 +452,7 @@ describe("withResponsePolicy", () => {
   it("extra CSP directives from options reach the header", async () => {
     const { worker } = fakeWorker(routes);
     const res = await withResponsePolicy(worker, {
+      ...LIVE,
       directives: { "img-src": ["'self'", "https://images.example.com"] },
     }).fetch(get("/"), env, ctx);
     expect(res.headers.get("content-security-policy")).toContain(
@@ -365,9 +461,171 @@ describe("withResponsePolicy", () => {
   });
 
   it("misuse: wrapping something without fetch fails at wrap time with the import to use", () => {
-    expect(() => withResponsePolicy({} as never)).toThrow(
+    expect(() => withResponsePolicy({} as never, LIVE)).toThrow(
       /dist\/\.bascik\/cloudflare\/worker\.js/,
     );
+  });
+});
+
+describe("withResponsePolicy with the build's csp-hashes.json", () => {
+  const sha = (text: string) => `sha256-${nodeHash(text)}`;
+  /** dist/.bascik/csp-hashes.json as `generate.cspHashes` writes it: route -> hash sources. */
+  const MANIFEST = {
+    "/": { scripts: [sha("home()")], styles: [sha(".h{}")] },
+    "/search": { scripts: [sha("app()")], styles: [] },
+    "/blog/one": { scripts: [sha("blog()")], styles: [] },
+    "/404": { scripts: [], styles: [sha(".lost{}")] },
+  };
+  const env = { ENVIRONMENT: "production" };
+  const ctx = { waitUntil: () => {} };
+  const get = (path: string) => new Request(`https://www.example.com${path}`);
+  const page = (body: string, init: ResponseInit = {}) =>
+    new Response(body, {
+      status: 200,
+      ...init,
+      headers: { "content-type": "text/html; charset=utf-8", ...init.headers },
+    });
+  /** A server-rendered search page that reflects ?q= unescaped: the bug CSP exists to contain. */
+  const reflecting = {
+    fetch: async (request: Request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/missing")
+        return page("<style>.lost{}</style>", { status: 404 });
+      const q = url.searchParams.get("q") ?? "";
+      return page(`<p>Results for ${q}</p><script>app()</script>`);
+    },
+  };
+
+  it("misuse: a script injected into server output gets no hash: the policy lists the route's build-time hashes only", async () => {
+    const res = await withResponsePolicy(reflecting, {
+      cspHashes: MANIFEST,
+    }).fetch(
+      get(`/search?q=${encodeURIComponent("<script>steal()</script>")}`),
+      env,
+      ctx,
+    );
+    const csp = res.headers.get("content-security-policy")!;
+    expect(csp).toContain(`'${sha("app()")}'`);
+    expect(csp).not.toContain(nodeHash("steal()"));
+    expect(csp).not.toContain("unsafe-inline");
+  });
+
+  it("the opt-in that hashes response bodies does allow the injected script, which is why it is opt-in", async () => {
+    const res = await withResponsePolicy(reflecting, {
+      hashResponseBodies: true,
+    }).fetch(
+      get(`/search?q=${encodeURIComponent("<script>steal()</script>")}`),
+      env,
+      ctx,
+    );
+    expect(res.headers.get("content-security-policy")).toContain(
+      nodeHash("steal()"),
+    );
+  });
+
+  it("finds the route the way the build keys it: trailing slash, .html, index.html and the base path", async () => {
+    const worker = { fetch: async () => page("<p>x</p>") };
+    const policy = withResponsePolicy(worker, { cspHashes: MANIFEST });
+    for (const [path, hash] of [
+      ["/", sha("home()")],
+      ["/index.html", sha("home()")],
+      ["/blog/one", sha("blog()")],
+      ["/blog/one/", sha("blog()")],
+      ["/blog/one.html", sha("blog()")],
+      ["/blog/one/index.html", sha("blog()")],
+    ]) {
+      const csp = (await policy.fetch(get(path), env, ctx)).headers.get(
+        "content-security-policy",
+      );
+      expect(csp, path).toContain(`'${hash}'`);
+    }
+    const based = withResponsePolicy(worker, {
+      cspHashes: MANIFEST,
+      base: "/docs/",
+    });
+    const csp = (
+      await based.fetch(get("/docs/blog/one"), env, ctx)
+    ).headers.get("content-security-policy");
+    expect(csp).toContain(`'${sha("blog()")}'`);
+  });
+
+  it("a 404 gets the 404 page's hashes", async () => {
+    const res = await withResponsePolicy(reflecting, {
+      cspHashes: MANIFEST,
+    }).fetch(get("/missing"), env, ctx);
+    expect(res.status).toBe(404);
+    expect(res.headers.get("content-security-policy")).toContain(
+      `'${sha(".lost{}")}'`,
+    );
+  });
+
+  it("misuse: a route the build never recorded fails closed, with no hashes", async () => {
+    const worker = { fetch: async () => page("<script>who()</script>") };
+    const csp = (
+      await withResponsePolicy(worker, { cspHashes: MANIFEST }).fetch(
+        get("/not-built"),
+        env,
+        ctx,
+      )
+    ).headers.get("content-security-policy")!;
+    expect(csp).toMatch(/script-src 'self';/);
+    expect(csp).not.toMatch(/sha256-/);
+  });
+
+  it("a streamed page keeps streaming and still gets its policy: the hashes are known before the body", async () => {
+    const encoder = new TextEncoder();
+    let pulls = 0;
+    const body = new ReadableStream({
+      pull(controller) {
+        pulls++;
+        controller.enqueue(
+          encoder.encode(pulls === 1 ? "<p>a</p>" : "<p>b</p>"),
+        );
+        if (pulls === 2) controller.close();
+      },
+    });
+    const worker = {
+      fetch: async () =>
+        new Response(body, {
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+            "content-encoding": "identity",
+          },
+        }),
+    };
+    const res = await withResponsePolicy(worker, {
+      cspHashes: MANIFEST,
+    }).fetch(get("/search"), env, ctx);
+    expect(res.headers.get("content-security-policy")).toContain(
+      `'${sha("app()")}'`,
+    );
+    expect(res.body).toBeInstanceOf(ReadableStream);
+    expect(pulls).toBeLessThan(2);
+    expect(await res.text()).toBe("<p>a</p><p>b</p>");
+  });
+
+  it("misuse: no hash source at all is rejected at wrap time, naming both options", () => {
+    expect(() => withResponsePolicy(reflecting)).toThrow(
+      /csp-hashes\.json[\s\S]*hashResponseBodies/,
+    );
+  });
+
+  it("misuse: a manifest that is not the parsed JSON (a path string, an array) is rejected at wrap time", () => {
+    for (const bad of ["dist/.bascik/csp-hashes.json", [], null]) {
+      expect(
+        () => withResponsePolicy(reflecting, { cspHashes: bad as never }),
+        String(bad),
+      ).toThrow(/cspHashes/);
+    }
+  });
+
+  it("misuse: both a manifest and body hashing is ambiguous and rejected", () => {
+    expect(() =>
+      withResponsePolicy(reflecting, {
+        cspHashes: MANIFEST,
+        hashResponseBodies: true,
+      }),
+    ).toThrow(/either/);
   });
 });
 
@@ -395,6 +653,13 @@ describe("the header comment a reader copies from", () => {
     expect(header).toMatch(/wrangler deploy/);
     // Streaming pages lose progressive delivery while buffered: the header says so.
     expect(header).toMatch(/stream/i);
+    // The build's hashes are the default source, imported in the wrapper.
+    expect(header).toMatch(
+      /import cspHashes from "\.\/dist\/\.bascik\/csp-hashes\.json"/,
+    );
+    expect(header).toMatch(/generate: \{ cspHashes: true \}/);
+    // Body hashing is documented as giving no protection against injected markup.
+    expect(header).toMatch(/hashResponseBodies[\s\S]*injected/);
   });
 
   it("imports nothing, so a reader can copy the one file into scripts/", async () => {

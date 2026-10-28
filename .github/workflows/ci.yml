@@ -116,8 +116,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Build package
-        run: yarn pkg:build
+      # scaffold.integration.test.ts compiles scaffolded projects with both.
+      - name: Build package and adapter
+        run: yarn pkg:build && yarn adapter:cf:build
 
       - name: Run create-bascik unit tests
         run: yarn create:test:ci
@@ -169,6 +170,11 @@ jobs:
       - name: Language server unit tests
         if: ${{ !cancelled() }}
         run: yarn lsp:unit
+
+      # scaffold.integration.test.ts builds the Cloudflare template with it.
+      - name: Build Cloudflare adapter
+        if: ${{ !cancelled() }}
+        run: yarn adapter:cf:build
 
       - name: Create-Bascik unit tests
         if: ${{ !cancelled() }}
@@ -295,9 +301,6 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Typecheck all workspace packages
-        run: yarn typecheck:all
-
       - name: Build package
         run: yarn pkg:build
 
@@ -309,6 +312,11 @@ jobs:
 
       - name: Build Cloudflare adapter
         run: yarn adapter:cf:build
+
+      # After the builds: `@bascik/bascik/*` imports (pkg/e2e/bascik.config.ts,
+      # the adapter, docs) resolve to the package's dist/ types.
+      - name: Typecheck all workspace packages
+        run: yarn typecheck:all
 
       - name: Framework unit tests
         run: yarn pkg:unit

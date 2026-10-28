@@ -188,6 +188,34 @@ describe("renderLlmsTxt", () => {
     );
   });
 
+  // A title is author text and a canonical href is author markup: either can hold Markdown link syntax, and an
+  // unescaped one cuts the link short so the list item points at the wrong place or reads as broken text.
+  it("misuse: brackets and backslashes in a title stay inside the link text", () => {
+    const line = renderLlmsTxt([
+      {
+        path: "/",
+        url: "/",
+        title: String.raw`C:\[draft] notes\ end\]`,
+        description: "",
+        group: "Pages",
+      },
+    ]).split("\n")[4];
+    expect(line).toBe(String.raw`- [C:\\\[draft\] notes\\ end\\\]](/)`);
+  });
+
+  it("misuse: parentheses and spaces in a URL stay inside the link destination", () => {
+    const line = renderLlmsTxt([
+      {
+        path: "/",
+        url: "https://example.com/a (b)/c",
+        title: "Home",
+        description: "",
+        group: "Pages",
+      },
+    ]).split("\n")[4];
+    expect(line).toBe("- [Home](https://example.com/a%20%28b%29/c)");
+  });
+
   it("without a home page the H1 falls back to a generic name", () => {
     expect(renderLlmsTxt(entries.slice(2)).split("\n")[0]).toBe("# Site");
   });

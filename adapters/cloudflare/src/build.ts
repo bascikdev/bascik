@@ -88,11 +88,12 @@ export const detectControlCollisions = (
 
 const NO_COMPONENTS = "bascik-no-components";
 
-/** component-host.ts's exports for a site without components: nothing to render. */
-const COMPONENT_HOST_STUB = [
-  "export const scopeJobOutput = (_job, output) => output;",
-  "export const componentExecution = () => null;",
-].join("\n");
+/**
+ * component-host.ts's exports for a site without components: nothing to
+ * render. Output scoping stays in runtime.ts, since page jobs carry a scope
+ * without any renderable manifest.
+ */
+const COMPONENT_HOST_STUB = "export const componentExecution = () => null;";
 
 export const build = async (
   context: AdapterBuildContext,

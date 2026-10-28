@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   ACTIONS,
@@ -13,6 +13,7 @@ import {
   contextOptions,
   loadAccepted,
   parseCliArgs,
+  reportDirName,
   pixelDiff,
   runInteraction,
   validateStep,
@@ -633,6 +634,82 @@ describe("parseCliArgs", () => {
         "-1",
       ]),
     ).toThrow(/--tolerance/);
+  });
+});
+
+describe("report folders (one per route under --out)", () => {
+  const withRoutes = (...routes: string[]) =>
+    parseCliArgs([
+      "--prod",
+      "a",
+      "--target",
+      "b",
+      ...routes.flatMap((route) => ["--route", route]),
+    ]);
+
+  it("misuse: a route that is not a site path, or has a . or .. segment, is rejected by name before any capture", () => {
+    for (const bad of [
+      "..",
+      "/..",
+      "/a/../b",
+      "/./x",
+      "/a/.",
+      "pricing",
+      "https://evil.example/x",
+      "/a/..?x=1",
+    ]) {
+      expect(() => withRoutes(bad), bad).toThrow(
+        new RegExp(`--route.*${bad.replace(/[.?/\\]/g, "\\$&")}`),
+      );
+    }
+  });
+
+  it("misuse: the same route twice is rejected rather than overwriting its own report", () => {
+    expect(() => withRoutes("/pricing", "/pricing")).toThrow(
+      /--route \/pricing.*twice/,
+    );
+  });
+
+  it("never names a folder outside --out: no separator, no dot segment", () => {
+    const out = "/tmp/compare-out";
+    for (const route of [
+      "/",
+      "/a/b",
+      "/a%2F..%2Fb",
+      "/.well-known/x",
+      "/a.b",
+    ]) {
+      const name = reportDirName(route);
+      expect(name, route).toMatch(/^[a-z0-9_-]+$/);
+      expect(relative(out, resolve(out, name)), route).toBe(name);
+    }
+  });
+
+  it("gives distinct routes distinct folders, also on a case-insensitive disk", () => {
+    const routes = [
+      "/",
+      "/index",
+      "/a/b",
+      "/a_b",
+      "/a-b",
+      "/A",
+      "/a",
+      "/a/",
+      "/search?q=1",
+      "/search?q=2",
+    ];
+    const names = routes.map((route) => reportDirName(route).toLowerCase());
+    expect(new Set(names).size).toBe(routes.length);
+  });
+
+  it("keeps the folder readable: it starts with the route's slug", () => {
+    expect(reportDirName("/")).toMatch(/^index-[0-9a-f]{8}$/);
+    expect(reportDirName("/pricing")).toMatch(/^pricing-[0-9a-f]{8}$/);
+    expect(reportDirName("/blog/first-post")).toMatch(
+      /^blog_first-post-[0-9a-f]{8}$/,
+    );
+    // The same route always lands in the same folder, so a rerun replaces its own report.
+    expect(reportDirName("/pricing")).toBe(reportDirName("/pricing"));
   });
 });
 

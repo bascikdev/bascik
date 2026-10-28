@@ -2351,7 +2351,7 @@ describe("prefixElementAttribute – component server and stream script output s
     return match ? JSON.parse(decodeURIComponent(match[1])) : null;
   };
   const openTags = (html: string): string[] =>
-    [...html.matchAll(/<script\b[^>]*>/g)].map((m) => m[0]);
+    [...html.matchAll(/<script\b[^>]*>/gi)].map((m) => m[0]);
 
   it("annotates data-bascik-server and data-bascik-stream scripts exactly like build scripts", () => {
     // A server script's output is spliced in at request time, after scoping,
@@ -2406,6 +2406,116 @@ describe("prefixElementAttribute – component server and stream script output s
     const tags = openTags(client.fileContent);
     expect(tags[0]).not.toContain("data-bascik-output-scope");
     expect(tags[1]).toContain("data-bascik-output-scope");
+  });
+
+  // Copilot review on PR 113: the annotation pass used to rewrite any
+  // `<script ...>` text it found, so directive text quoted inside a client
+  // script got an attribute with unescaped double quotes spliced in, which
+  // broke that script's JavaScript. Only start tags the HTML tokenizer would
+  // see are real scripts.
+  const scopedCss =
+    ".wrap { display: flex; } .item { color: red; } h2 { color: blue; }";
+  const countAnnotations = (html: string): number =>
+    html.split("data-bascik-output-scope=").length - 1;
+
+  it("leaves directive text inside a client script's strings untouched, for every directive", () => {
+    const clientBody =
+      'const a = "<script data-bascik-server>";' +
+      " const b = '<script data-bascik-stream>';" +
+      ' const c = "<script data-bascik-build>";' +
+      " const d = `<SCRIPT DATA-BASCIK-SERVER>`;";
+    const component = prefixElementAttribute(
+      makeComponent(
+        `<div class="wrap"><script>${clientBody}</script>` +
+          "<script data-bascik-server>export default () => 's';</script></div>",
+        scopedCss,
+      ),
+      "class",
+      "abc12345",
+    );
+    expect(component.fileContent).toContain(`<script>${clientBody}</script>`);
+    // The client body must still be valid JavaScript.
+    expect(() => new Function(clientBody)).not.toThrow();
+    expect(countAnnotations(component.fileContent)).toBe(1);
+    expect(component.fileContent).toMatch(
+      /<script data-bascik-server data-bascik-output-scope="[^"]+">export default/,
+    );
+  });
+
+  it("leaves directive text inside textarea, title and comment bodies untouched", () => {
+    // Inline <style> bodies are extracted before this pass, so the RCDATA
+    // elements and comments are the raw-text bodies still in the template.
+    const component = prefixElementAttribute(
+      makeComponent(
+        '<div class="wrap">' +
+          "<title><script data-bascik-server></title>" +
+          "<textarea><script data-bascik-stream></textarea>" +
+          "<!-- <script data-bascik-server> -->" +
+          "<!-- <script data-bascik-stream> --!>" +
+          "<script data-bascik-stream>export default async () => 't';</script>" +
+          "</div>",
+        scopedCss,
+      ),
+      "class",
+      "abc12345",
+    );
+    expect(component.fileContent).toContain(
+      "<textarea><script data-bascik-stream></textarea>",
+    );
+    expect(component.fileContent).toContain(
+      "<!-- <script data-bascik-server> -->",
+    );
+    expect(component.fileContent).toContain(
+      "<!-- <script data-bascik-stream> --!>",
+    );
+    expect(component.fileContent).toContain(
+      "<title><script data-bascik-server></title>",
+    );
+    expect(countAnnotations(component.fileContent)).toBe(1);
+    expect(component.fileContent).toMatch(
+      /<script data-bascik-stream data-bascik-output-scope="[^"]+">export default async/,
+    );
+  });
+
+  it("leaves directive text inside another element's quoted attribute values untouched", () => {
+    const component = prefixElementAttribute(
+      makeComponent(
+        "<div class=\"wrap\" title='<script data-bascik-server>'" +
+          ' data-example="<script data-bascik-stream>">' +
+          "<script data-bascik-server>export default () => 's';</script></div>",
+        scopedCss,
+      ),
+      "class",
+      "abc12345",
+    );
+    expect(component.fileContent).toContain(
+      "title='<script data-bascik-server>'",
+    );
+    expect(component.fileContent).toContain(
+      'data-example="<script data-bascik-stream>"',
+    );
+    expect(countAnnotations(component.fileContent)).toBe(1);
+  });
+
+  it("still annotates real upper-case and quote-bearing directive script tags", () => {
+    const component = prefixElementAttribute(
+      makeComponent(
+        '<div class="wrap">' +
+          "<SCRIPT DATA-BASCIK-SERVER>export default () => 's';</SCRIPT>" +
+          '<script data-note="a > b" data-bascik-stream>export default async () => "t";</script>' +
+          "</div>",
+        scopedCss,
+      ),
+      "class",
+      "abc12345",
+    );
+    expect(countAnnotations(component.fileContent)).toBe(2);
+    expect(component.fileContent).toMatch(
+      /<SCRIPT DATA-BASCIK-SERVER data-bascik-output-scope="[^"]+">export default/,
+    );
+    expect(component.fileContent).toMatch(
+      /<script data-note="a > b" data-bascik-stream data-bascik-output-scope="[^"]+">export default async/,
+    );
   });
 
   it("the annotation reaches the sidecar entry and never the placeholder", async () => {

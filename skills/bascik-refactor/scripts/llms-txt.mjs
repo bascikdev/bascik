@@ -11,17 +11,31 @@
 // src/pages/llms.txt alone. Dependency-free; Node.js 22.18+. Writes only <outDir>/llms.txt.
 // The starter-site example (add-example.mjs starter-site/scripts/llms-txt.ts in the bascik skill) does the same job
 // without groups; use whichever you prefer.
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
-import { pathToFileURL } from "node:url";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
+import { join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-/** True when the module at `metaUrl` is the script Node was asked to run (inlined so the file copies alone). */
+/**
+ * True when the module at `metaUrl` is the script Node was asked to run (inlined so the file copies alone). Real
+ * paths on both sides: Node resolves symlinks before setting import.meta.url, so argv[1] as typed would not match
+ * through a symlinked folder and the script would exit 0 without doing anything.
+ */
 function isMain(metaUrl) {
-  return (
-    Boolean(process.argv[1]) &&
-    pathToFileURL(resolve(process.argv[1])).href === metaUrl
-  );
+  if (!process.argv[1]) return false;
+  try {
+    return (
+      realpathSync(process.argv[1]) === realpathSync(fileURLToPath(metaUrl))
+    );
+  } catch {
+    return false;
+  }
 }
 
 function fail(message, code = 1) {
@@ -131,7 +145,17 @@ export function pageEntry(html, relPath, { siteUrl, base = "/" } = {}) {
   };
 }
 
-const escapeLinkText = (s) => s.replace(/([[\]])/g, "\\$1");
+// Backslashes are escaped along with the brackets: a title's own "\" before an escaped "]" would escape the escape,
+// and the "]" would end the link text early.
+const escapeLinkText = (s) => s.replace(/([\\[\]])/g, "\\$1");
+// Whitespace or a parenthesis ends an inline link destination early, so percent-encode them. "%" is left alone so an
+// already-encoded URL is not encoded twice.
+const escapeLinkUrl = (s) =>
+  s.replace(
+    /[\s()]/g,
+    // encodeURIComponent leaves "(" and ")" as they are; it gives non-ASCII spaces their UTF-8 bytes.
+    (c) => (c === "(" ? "%28" : c === ")" ? "%29" : encodeURIComponent(c)),
+  );
 
 /** llms.txt text: the home page title as H1 and its description as the summary, then one section per group. */
 export function renderLlmsTxt(entries) {
@@ -153,7 +177,7 @@ export function renderLlmsTxt(entries) {
       );
     for (const e of items)
       lines.push(
-        `- [${escapeLinkText(e.title)}](${e.url})${e.description ? `: ${e.description}` : ""}`,
+        `- [${escapeLinkText(e.title)}](${escapeLinkUrl(e.url)})${e.description ? `: ${e.description}` : ""}`,
       );
     lines.push("");
   }

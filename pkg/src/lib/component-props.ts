@@ -10,6 +10,7 @@ import {
   maskRawTextContentWithClosure,
 } from "./component-masking.ts";
 import { createMatchingCloseFinder } from "./component-tags.ts";
+import { findCommentEnd } from "./html-scanner.ts";
 
 const decodePropEntities = (value: string): string =>
   value.replace(
@@ -109,9 +110,7 @@ export const injectPropAttributes = (
 
   const commentShield = createContentShield(fileContent);
   const withoutComments = fileContent.includes("<!--")
-    ? fileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
-        commentShield.hide(comment),
-      )
+    ? hideComments(fileContent, commentShield.hide)
     : fileContent;
   const rawShield = shieldElementContents(withoutComments, [
     "script",
@@ -212,6 +211,26 @@ export const injectPropAttributes = (
 // Prop injection
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Replace each comment with `hide(comment)`. A comment ends where the browser
+ * ends it (`-->`, `--!>`, `<!-->`, `<!--->`, or the end of input), so a
+ * marker after `--!>` is live markup and is acted on; a later `-->` must not
+ * stretch the comment over it.
+ */
+const hideComments = (html: string, hide: (text: string) => string): string => {
+  let result = "";
+  let cursor = 0;
+  let start = html.indexOf("<!--");
+  while (start !== -1) {
+    const end = findCommentEnd(html, start);
+    const stop = end === -1 ? html.length : end;
+    result += html.slice(cursor, start) + hide(html.slice(start, stop));
+    cursor = stop;
+    start = end === -1 ? -1 : html.indexOf("<!--", stop);
+  }
+  return result + html.slice(cursor);
+};
+
 /** Text that can start or end a region `maskRawTextContent` blanks. */
 const RAW_TEXT_OR_COMMENT = /<\/?(?:script|style|textarea)\b|<!--|-->/i;
 
@@ -236,9 +255,7 @@ export const injectProps = (
     return fileContent;
   const commentShield = createContentShield(fileContent);
   const withoutComments = fileContent.includes("<!--")
-    ? fileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
-        commentShield.hide(comment),
-      )
+    ? hideComments(fileContent, commentShield.hide)
     : fileContent;
   const rawShield = shieldElementContents(withoutComments, [
     "script",

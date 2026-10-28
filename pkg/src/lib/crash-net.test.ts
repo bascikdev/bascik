@@ -43,6 +43,7 @@ describe("Crash Net - Bug 1 & 6: HTTP/1.1 stream error handler ignores network r
       url: "/large-file.bin",
       headers: {},
       socket: new EventEmitter() as any,
+      once: vi.fn(),
     };
     mockReqMsg.socket.remoteAddress = "127.0.0.1";
 

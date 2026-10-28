@@ -68,6 +68,23 @@ describe("stripOutputScopeAttribute", () => {
       "<script data-bascik-build>",
     );
   });
+
+  it("removes the annotation after a newline or tab run, keeping the rest of the tag", () => {
+    expect(
+      stripOutputScopeAttribute(
+        `<script\n\t\t${OUTPUT_SCOPE_ATTRIBUTE}="x"\n\tdata-bascik-build>`,
+      ),
+    ).toBe("<script\n\tdata-bascik-build>");
+  });
+
+  it("runs in linear time on a long whitespace run without the annotation", () => {
+    // `\s+data-...` retried the run from every whitespace position: 100k
+    // tabs took 17 s (CodeQL js/polynomial-redos).
+    const open = `<script${"\t".repeat(100_000)}data-bascik-build>`;
+    const start = performance.now();
+    expect(stripOutputScopeAttribute(open)).toBe(open);
+    expect(performance.now() - start).toBeLessThan(250);
+  });
 });
 
 describe("applyOutputScope", () => {
@@ -133,6 +150,65 @@ describe("applyOutputScope", () => {
     const html =
       '<script>const s = "<a class=\\"item\\">";</script><!-- <a class="item"> --><style>.item{}</style><textarea><a></a></textarea>';
     expect(applyOutputScope(html, scope)).toBe(html);
+  });
+
+  it("ends a comment where the browser does: at --!>, and at once for <!--> and <!--->", () => {
+    // Markup after these closers is live in the browser, so it is scoped; a
+    // later `-->` must not stretch the comment over it.
+    for (const comment of ["<!-- a --!>", "<!-->", "<!--->"])
+      expect(
+        applyOutputScope(`${comment}<p class="item">x</p><!-- b -->`, scope),
+      ).toBe(`${comment}<p class="bascik__c__item">x</p><!-- b -->`);
+  });
+
+  it("treats an unclosed comment as running to the end, as the browser does", () => {
+    const html = '<p class="item">a</p><!-- <p class="item">b</p>';
+    expect(applyOutputScope(html, scope)).toBe(
+      '<p class="bascik__c__item">a</p><!-- <p class="item">b</p>',
+    );
+  });
+
+  it("runs in linear time on many comment openers without a close", () => {
+    // `<!--[\s\S]*?-->` rescanned to the end from every opener: 40k
+    // openers took 2 s (CodeQL js/polynomial-redos). Request-time output can
+    // carry text a visitor typed.
+    const html = `<p class="item">a</p>${"<!--".repeat(50_000)}`;
+    const start = performance.now();
+    expect(applyOutputScope(html, scope)).toBe(
+      `<p class="bascik__c__item">a</p>${"<!--".repeat(50_000)}`,
+    );
+    expect(performance.now() - start).toBeLessThan(250);
+  });
+
+  it("runs in linear time on open-tag starts that never close", () => {
+    // Each `<a` used to be scanned to the end of the output: no `>` at all,
+    // an unclosed quote at the end, or quotes that pair differently from
+    // each start. A later real tag is still found.
+    const shapes = [
+      "<a".repeat(20_000),
+      '<a"'.repeat(20_000),
+      `${'<a""'.repeat(20_000)}'>`,
+      `<a${'"<a"'.repeat(20_000)}'>`,
+      `<a${"\"<a'".repeat(20_000)}`,
+    ];
+    for (const shape of shapes) {
+      const start = performance.now();
+      expect(applyOutputScope(`${shape}`, scope)).toBe(shape);
+      expect(performance.now() - start, shape.slice(0, 8)).toBeLessThan(250);
+    }
+  });
+
+  it("finds the tag the regex grammar finds when an earlier start never closes", () => {
+    // A failed start does not rule out a later one that pairs quotes
+    // differently: from `<i` the quote around `<p ...>` opens, so it fails at
+    // the stray `'`; from `<p` the same quotes close, and it is a tag.
+    expect(applyOutputScope(`<i "<p class=item>" '`, scope)).toBe(
+      `<i "<p class="bascik__c__item">" '`,
+    );
+    // A `<` inside a tag is attribute text, so the tag is `<i ...>`.
+    expect(applyOutputScope(`<i <p class=item>`, scope)).toBe(
+      `<i <p class="bascik__c__item">`,
+    );
   });
 
   it("leaves a tag that is neither styled nor carries a defined class untouched", () => {

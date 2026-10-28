@@ -218,14 +218,30 @@ async function preflight(
   }
 }
 
-/** True once the URL answers with any HTTP status (self-signed TLS accepted). */
+/** Hosts whose self-signed certificate the readiness probe accepts. */
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set([
+  "localhost",
+  "127.0.0.1",
+  "[::1]",
+]);
+
+/**
+ * True once the URL answers with any HTTP status. The http2 lane serves a
+ * self-signed certificate on loopback, so certificate checks are skipped for
+ * loopback hosts only; the probe reads the status line, never the body. Any
+ * other host keeps verification on.
+ */
 const answers = (url: string): Promise<boolean> =>
   new Promise((resolve) => {
     const parsed = new URL(url);
     const send = parsed.protocol === "https:" ? httpsRequest : httpRequest;
     const req = send(
       parsed,
-      { method: "GET", rejectUnauthorized: false, timeout: 2000 },
+      {
+        method: "GET",
+        rejectUnauthorized: !LOOPBACK_HOSTS.has(parsed.hostname),
+        timeout: 2000,
+      },
       (res) => {
         res.resume();
         resolve(true);
@@ -254,8 +270,10 @@ async function main(): Promise<void> {
 
   const childEnv = { ...process.env };
   if (childEnv.BASCIK_E2E_OUT !== undefined) {
+    // Names the variable, not its value: the value comes from the user's
+    // environment, which this runner does not print (they can echo it).
     console.log(
-      `[run-lanes] ignoring BASCIK_E2E_OUT=${childEnv.BASCIK_E2E_OUT}: each lane uses its own output directory when run together`,
+      "[run-lanes] ignoring BASCIK_E2E_OUT: each lane uses its own output directory when run together",
     );
     delete childEnv.BASCIK_E2E_OUT;
   }

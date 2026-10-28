@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Readable } from "node:stream";
-import { apiRouteRegistry } from "./server-api.ts";
+import { apiRouteRegistry, LINGER_FRAMED_BODY_LIMIT } from "./server-api.ts";
 import { scriptRegistry } from "./script-registry.ts";
 import {
   createRequestHandler,
@@ -589,6 +589,126 @@ describe("over-limit request bodies (lingering close)", () => {
     ]);
     expect(out.status).toBe(200);
     expect(out.calls).toEqual(["respond", "lingerClose", "close"]);
+  });
+
+  describe("a handler that catches the rejection and answers itself", () => {
+    // The transport holds the end of the response until the drain settles,
+    // so a body with no length would be missing its final chunk until the
+    // client finished uploading. A bounded body is framed with a
+    // Content-Length instead (body-limit-linger.integration.test.ts pins
+    // the wire behavior).
+    const catching = (respond: () => Response) => async (req: Request) => {
+      try {
+        await req.text();
+      } catch {
+        return respond();
+      }
+      return new Response("fits");
+    };
+    const overLimit = [Buffer.alloc(LIMIT), Buffer.alloc(LIMIT)];
+
+    it("a small string body gets a Content-Length", async () => {
+      routeModule = {
+        POST: catching(() => new Response("too big, sorry", { status: 413 })),
+      };
+      const out = await post({ "transfer-encoding": "chunked" }, overLimit);
+      expect(out.status).toBe(413);
+      expect(out.body).toBe("too big, sorry");
+      expect(out.headers["content-length"]).toBe("14");
+      expect(out.calls).toEqual(["lingerClose", "respond"]);
+    });
+
+    it("an empty body gets Content-Length 0", async () => {
+      routeModule = {
+        POST: catching(() => new Response("", { status: 413 })),
+      };
+      const out = await post({ "transfer-encoding": "chunked" }, overLimit);
+      expect(out.status).toBe(413);
+      expect(out.headers["content-length"]).toBe("0");
+    });
+
+    it("a null body gets Content-Length 0", async () => {
+      routeModule = {
+        POST: catching(() => new Response(null, { status: 413 })),
+      };
+      const out = await post({ "transfer-encoding": "chunked" }, overLimit);
+      expect(out.status).toBe(413);
+      expect(out.headers["content-length"]).toBe("0");
+    });
+
+    it("misuse: a body over the buffer bound still streams whole, unframed", async () => {
+      const big = "x".repeat(LINGER_FRAMED_BODY_LIMIT * 2);
+      routeModule = {
+        POST: catching(
+          () =>
+            new Response(
+              new ReadableStream({
+                start(controller) {
+                  const bytes = new TextEncoder().encode(big);
+                  for (let at = 0; at < bytes.length; at += 4096)
+                    controller.enqueue(bytes.subarray(at, at + 4096));
+                  controller.close();
+                },
+              }),
+              { status: 413 },
+            ),
+        ),
+      };
+      const out = await post({ "transfer-encoding": "chunked" }, overLimit);
+      expect(out.status).toBe(413);
+      expect(out.body).toBe(big);
+      expect(out.headers["content-length"]).toBeUndefined();
+    });
+
+    it("misuse: a body stream that fails before it ends still gets the 500 a streamed failure gets", async () => {
+      routeModule = {
+        POST: catching(
+          () =>
+            new Response(
+              new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new TextEncoder().encode("partial"));
+                  controller.error(new Error("producer failed"));
+                },
+              }),
+              { status: 413 },
+            ),
+        ),
+      };
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const out = await post({ "transfer-encoding": "chunked" }, overLimit);
+        // The failure surfaced before any header was committed.
+        expect(out.status).toBe(500);
+        expect(out.body).toBe("Internal Server Error");
+      } finally {
+        errors.mockRestore();
+      }
+    });
+
+    it("a Content-Length the handler set is kept as it is", async () => {
+      routeModule = {
+        POST: catching(
+          () =>
+            new Response("nope", {
+              status: 413,
+              headers: { "content-length": "4" },
+            }),
+        ),
+      };
+      const out = await post({ "transfer-encoding": "chunked" }, overLimit);
+      expect(out.headers["content-length"]).toBe("4");
+      expect(out.body).toBe("nope");
+    });
+
+    it("a body that was never rejected is not buffered", async () => {
+      routeModule = { POST: async () => new Response("fine") };
+      const out = await post({ "transfer-encoding": "chunked" }, [
+        Buffer.alloc(10),
+      ]);
+      expect(out.status).toBe(200);
+      expect(out.headers["content-length"]).toBeUndefined();
+    });
   });
 
   it("a transport without lingerClose (a test double, a non-socket host) still gets the 413", async () => {

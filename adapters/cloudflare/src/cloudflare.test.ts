@@ -802,10 +802,23 @@ describe("createCloudflareWorker: components rendered from a built manifest (pro
   const ctx = { waitUntil: () => {} };
   // Without minify.html a component's own comments (its `@bascik` usage
   // sample spells the tag) are emitted with each instance, as at build time:
-  // author text, not an unrendered tag.
-  const markup = (html: string) => html.replace(/<!--[\s\S]*?-->/g, "");
+  // author text, not an unrendered tag. A comment ends where the HTML parser
+  // ends it ("-->", "--!>", an abrupt "<!-->" or the end of input), in one
+  // pass: removing again could join text around a comment into a new one and
+  // hide a tag the browser shows.
+  const markup = (html: string) =>
+    html.replace(/<!--(?:-?>|[\s\S]*?(?:--!?>|$))/g, "");
   const LIVE_TAG =
     '<product-card-live data-bascik-prop-name="Kettle"></product-card-live>';
+
+  it("markup() drops comments where the HTML parser ends them, so it never hides a tag a browser would see", () => {
+    // A comment ends at "--!>" too, and "<!-->" is an empty comment. Ending
+    // either one at a later "-->" would swallow the tag between them and let
+    // the not.toContain checks below pass on an unrendered tag.
+    expect(markup(`<!-- a --!>${LIVE_TAG}<!-- b -->`)).toBe(LIVE_TAG);
+    expect(markup(`<!-->${LIVE_TAG}<!--->`)).toBe(LIVE_TAG);
+    expect(markup(`<p>x</p><!-- unterminated ${LIVE_TAG}`)).toBe("<p>x</p>");
+  });
 
   it("wraps the page runner: a returned tag is rendered with its nested job's scoped output", async () => {
     const worker = workerFor(

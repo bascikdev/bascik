@@ -142,8 +142,10 @@ only from `accepted.json` entries tied to ledger rows. No route passes on one sc
   prefetch after load.
 - Best Practices: strict CSP with SHA-256 hashes and no `unsafe-inline`. `generate.cspHashes` writes
   `dist/.bascik/csp-hashes.json` (written after post exec scripts finish, so a post script cannot read it). On
-  Cloudflare, `scripts/worker-response-policy.mjs` hashes each HTML response in a Worker wrapper. It buffers streamed
-  pages to hash them; `streamedHtml: "pass"` keeps them streaming without a CSP header.
+  Cloudflare, `scripts/worker-response-policy.mjs` sends each HTML response's route hashes from that file in a Worker
+  wrapper, so streamed pages keep streaming. Never hash the live response body on a site with server or stream
+  scripts: a script reflected from the request would be hashed and allowed (`hashResponseBodies` is for static
+  sites only).
 - Agentic Browsing: scored as a pass ratio (Lighthouse 13.3 or later, Chrome 150 or later). Roles and names on
   every control, CLS 0, and `llms.txt` from the copied `scripts/llms-txt.mjs` as a `post` exec script.
 - SEO: per-route canonical, Open Graph, Twitter tags, JSON-LD with `BreadcrumbList` on subpages.

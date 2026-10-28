@@ -1694,8 +1694,14 @@ describe("checkProject – request-time component rendering (prompt 157)", () =>
     expect(unsupported[0].message).toContain(
       "its data-bascik-attr-class binding targets an attribute scoping rewrites",
     );
+    // Under that identity mock the recorded form is the listed file name
+    // itself, in the platform's separators (backslashes on Windows), so the
+    // expectation is built with join rather than spelled with "/".
     expect(unsupported[0].locations).toEqual([
-      { filePath: expect.stringContaining("bad-card/bad-card.html"), line: 1 },
+      {
+        filePath: join(workDir, "src/components/bad-card/bad-card.html"),
+        line: 1,
+      },
     ]);
     expect(unsupported[0].locations[0].filePath).not.toMatch(/^src\//);
     expect(findings.errors).toBe(0);

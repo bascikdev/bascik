@@ -89,3 +89,5 @@ yarn create:typecheck  # TypeScript type check
 yarn create:unit       # run unit tests
 yarn create:coverage   # run unit tests with coverage report
 ```
+
+The integration tests compile scaffolded projects with the built framework and Cloudflare adapter, so run `yarn pkg:build && yarn adapter:cf:build` first (CI does the same).

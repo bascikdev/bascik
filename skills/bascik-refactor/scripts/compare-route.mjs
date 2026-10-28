@@ -4,6 +4,7 @@
 // sides. Writes report.json and PNGs per route under --out (keep that folder in .gitignore).
 // Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) and sharp in your project.
 // Read-only toward both sites: it never submits forms; keep submit buttons out of interactions.json.
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -275,6 +276,38 @@ export function buildReport({
   };
 }
 
+/**
+ * Rejects a route that is not a path on the site: it must start with "/", and a "." or ".." segment (which the
+ * browser would resolve to another page) is refused rather than compared under a name that is not its own.
+ */
+function validateRoute(route) {
+  const path = route.split(/[?#]/, 1)[0];
+  if (!path.startsWith("/") || path.startsWith("//"))
+    throw new Error(
+      `--route ${route}: pass a path on the site that starts with "/", such as /pricing`,
+    );
+  if (path.split("/").some((segment) => segment === "." || segment === ".."))
+    throw new Error(
+      `--route ${route}: a "." or ".." segment is not a page of its own; pass the path it resolves to`,
+    );
+}
+
+/**
+ * The report folder under --out for a route: a readable slug of the path plus a hash of the exact route. The slug
+ * keeps only lowercase letters, digits, "-" and "_", so no route names a folder outside --out, and the hash keeps
+ * distinct routes (/a/b and /a_b, /A and /a, /a and /a/) in distinct folders, also on a case-insensitive disk.
+ */
+export function reportDirName(route) {
+  const slug =
+    route
+      .replace(/^\/+|\/+$/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "_")
+      .slice(0, 60) || "index";
+  const hash = createHash("sha256").update(route).digest("hex").slice(0, 8);
+  return `${slug}-${hash}`;
+}
+
 export function parseCliArgs(argv) {
   const { values } = parseArgs({
     args: argv,
@@ -298,6 +331,15 @@ export function parseCliArgs(argv) {
   if (!values.target) throw new Error("--target <url> is required");
   if (!values.route?.length)
     throw new Error("--route <path> is required (repeatable)");
+  const seen = new Set();
+  for (const route of values.route) {
+    validateRoute(route);
+    if (seen.has(route))
+      throw new Error(
+        `--route ${route} is given twice; its second report would overwrite the first`,
+      );
+    seen.add(route);
+  }
   const tolerance =
     values.tolerance === undefined ? 10 : Number(values.tolerance);
   if (!Number.isInteger(tolerance) || tolerance < 0 || tolerance > 255)
@@ -499,10 +541,7 @@ async function main() {
   let allOk = true;
   try {
     for (const route of args.route) {
-      const dir = join(
-        args.out,
-        route.replace(/^\/+|\/+$/g, "").replace(/[^\w.-]+/g, "_") || "index",
-      );
+      const dir = join(args.out, reportDirName(route));
       mkdirSync(dir, { recursive: true });
       const reportCases = [];
       for (const c of cases) {

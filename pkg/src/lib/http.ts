@@ -91,6 +91,23 @@ export const adaptHttp1 = (
     if (isNetworkResetError(err)) return;
     console.error("[bascik] HTTP/1.1 response error:", err);
   });
+  // A body something started reading (the runtime pipes it into the web
+  // Request of every API route and server-script page) is no longer dumped
+  // by Node when the response finishes. If the handler never read it, the
+  // pipe stops on backpressure and the keep-alive connection wedges: the
+  // rest of the upload is never read, a pipelined request is never
+  // answered, and Node resets the socket. Drain it within the lingering
+  // caps instead; a client still sending past them is closed.
+  let bodyTouched = false;
+  reqMsg.once("resume", () => {
+    bodyTouched = true;
+  });
+  resMsg.on("finish", () => {
+    if (lingering || !bodyTouched || reqMsg.readableEnded) return;
+    drainRequestBody(reqMsg, (outcome) => {
+      if (outcome === "cap") reqMsg.socket.destroy();
+    });
+  });
 
   const rawIp = reqMsg.socket.remoteAddress ?? "unknown";
   const remoteIp = getClientIp(

@@ -45,12 +45,16 @@ const prettierFence = async (
     .replace(/\n$/, "");
 };
 
-/** The text a reader sees: tags, scripts and styles dropped, whitespace collapsed. */
+/**
+ * The text a reader sees: comments, tags, scripts and styles dropped, whitespace collapsed. Each is ended where the HTML
+ * tokenizer ends it: a comment at `-->` or `--!>` (or `<!-->` at once, or the end of input), a script or style at an
+ * end tag in any case that may carry whitespace or junk before its ">".
+ */
 const visibleText = (html: string) =>
   html
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<script\b[\s\S]*?<\/script>/g, " ")
-    .replace(/<style\b[\s\S]*?<\/style>/g, " ")
+    .replace(/<!--(?:-?>|[\s\S]*?(?:--!?>|$))/g, " ")
+    .replace(/<script\b[\s\S]*?<\/script(?:[\t\n\f\r /][^>]*)?>/gi, " ")
+    .replace(/<style\b[\s\S]*?<\/style(?:[\t\n\f\r /][^>]*)?>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();

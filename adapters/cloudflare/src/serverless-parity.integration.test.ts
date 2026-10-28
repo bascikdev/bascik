@@ -696,8 +696,12 @@ for (const target of ["cloudflare-pages", "cloudflare-workers"] as const) {
  * Markup outside HTML comments. Without minify.html a component's own
  * comments (its `@bascik` usage sample among them) are emitted with every
  * instance, as at build time; they are author text, not an unrendered tag.
+ * A comment ends where the HTML parser ends it ("-->", "--!>", an abrupt
+ * "<!-->" or the end of input), in one pass: removing again could join text
+ * around a comment into a new one and hide a tag the browser shows.
  */
-const markup = (html: string): string => html.replace(/<!--[\s\S]*?-->/g, "");
+const markup = (html: string): string =>
+  html.replace(/<!--(?:-?>|[\s\S]*?(?:--!?>|$))/g, "");
 
 /** Every `<style>` block of `html` that defines `className`. */
 const styleBlocksDefining = (html: string, className: string): string[] =>

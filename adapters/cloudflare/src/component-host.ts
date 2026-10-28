@@ -6,7 +6,7 @@
  * stream scripts, kept in its own module so a site without components does
  * not carry it. build.ts bundles this file only when the graph's manifest
  * has a component the renderer can expand; otherwise it substitutes a stub
- * with the same exports (output returned as is, nothing to render), so the
+ * with the same exports (nothing to render), so the
  * Worker of a static or component-free site carries no renderer and no
  * `node:crypto`.
  *
@@ -17,9 +17,7 @@
  */
 import { createHash } from "node:crypto";
 import {
-  applyOutputScope,
   createNameHasher,
-  decodeOutputScope,
   manifestHasComponents,
   renderFailureMessage,
   requestRoutePath,
@@ -29,22 +27,7 @@ import {
   type RenderHost,
   type ScriptJobRunner,
 } from "@bascik/bascik/runtime";
-import type {
-  ComponentManifest,
-  GraphPage,
-  GraphScriptJob,
-  SiteGraph,
-} from "./runtime.js";
-
-/**
- * A job's output with its component's element classes applied, when the job
- * is a component's script (it carries an output scope), as
- * `runServerScriptJob` does on Node. Page-level scripts are untouched.
- */
-export const scopeJobOutput = (job: GraphScriptJob, output: string): string => {
-  const scope = decodeOutputScope(job.outputScope);
-  return scope ? applyOutputScope(output, scope) : output;
-};
+import type { ComponentManifest, GraphPage, SiteGraph } from "./runtime.js";
 
 const encoder = new TextEncoder();
 

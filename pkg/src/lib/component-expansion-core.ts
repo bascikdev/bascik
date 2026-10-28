@@ -167,10 +167,34 @@ export class ComponentExpansionLimitError extends Error {
   }
 }
 
-const stripSourceFileComments = (html: string): string =>
-  html
-    .replace(/<!--bascik-source-file:[\s\S]*?-->/g, "")
-    .replace(/<!--bascik-source-file-end:[\s\S]*?-->/g, "");
+/**
+ * Remove every `<opener...-->` marker comment. An indexOf walk rather than
+ * `/<!--opener[\s\S]*?-->/g`, which rescans to the end from every unclosed
+ * opener: quadratic on request-time output that carries visitor text. Once
+ * one opener has no `-->` after it, no later one does either, so the walk
+ * stops and leaves the rest as written, as the regex did.
+ */
+const removeMarkerComments = (html: string, opener: string): string => {
+  let start = html.indexOf(opener);
+  if (start === -1) return html;
+  let result = "";
+  let cursor = 0;
+  while (start !== -1) {
+    const close = html.indexOf("-->", start + opener.length);
+    if (close === -1) break;
+    result += html.slice(cursor, start);
+    cursor = close + 3;
+    start = html.indexOf(opener, cursor);
+  }
+  return result + html.slice(cursor);
+};
+
+/** Strip the `bascik-source-file` markers that locate diagnostics. */
+export const stripSourceFileComments = (html: string): string =>
+  removeMarkerComments(
+    removeMarkerComments(html, "<!--bascik-source-file:"),
+    "<!--bascik-source-file-end:",
+  );
 
 /**
  * Expand every component usage in `transpiledHtmlBody`, innermost-first by

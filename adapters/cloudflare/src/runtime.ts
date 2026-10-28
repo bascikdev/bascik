@@ -31,8 +31,10 @@
  * and `process.env` is never touched.
  */
 
-import { componentExecution, scopeJobOutput } from "./component-host.js";
+import { componentExecution } from "./component-host.js";
 import {
+  applyOutputScope,
+  decodeOutputScope,
   composeBufferedResponse,
   dispatchApiHandler,
   invokeLoadedWithDeadline,
@@ -59,6 +61,19 @@ import {
   stripAnsiEscapeCodes,
   type ApiRouteDefinition,
 } from "@bascik/bascik/runtime";
+
+/**
+ * A job's output with its component's element classes applied, when the job
+ * carries an output scope, as `runServerScriptJob` does on Node. It lives
+ * here, not in component-host.ts, because page jobs carry a scope too (that
+ * of a component placed statically on the page) whether or not the manifest
+ * has anything renderable: a Worker built with the component-host stub must
+ * still scope them. Both helpers are portable (no `node:crypto`).
+ */
+const scopeJobOutput = (job: GraphScriptJob, output: string): string => {
+  const scope = decodeOutputScope(job.outputScope);
+  return scope ? applyOutputScope(output, scope) : output;
+};
 
 // ─── Site graph contract (emitted by serverless-artifacts.ts) ────────────────
 

@@ -135,7 +135,7 @@ describe("module retention lifecycle evidence", () => {
     { timeout: 60_000 },
     async (mode, { skip }) => {
       // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
-      // (assertSupportedTlsCleanupRuntime); skip the lane below Node 24.
+      // (assertSupportedTlsCleanupRuntime); skip the lane off Node 24.
       if (mode === "http2" && !tlsCleanupRuntimeSupported)
         skip(tlsCleanupRuntimeSkipReason);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));

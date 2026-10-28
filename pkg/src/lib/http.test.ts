@@ -59,6 +59,7 @@ describe("startHttpServer", () => {
       url: "/home",
       headers: { accept: "text/html" },
       socket: { remoteAddress: "192.168.1.1" },
+      once: vi.fn(),
     };
 
     const mockResMsg: any = {
@@ -95,6 +96,7 @@ describe("startHttpServer", () => {
       url: "/home",
       headers: {},
       socket: { remoteAddress: "127.0.0.1" },
+      once: vi.fn(),
     };
     const mockResMsg: any = {
       headersSent: false,
@@ -117,6 +119,7 @@ describe("startHttpServer", () => {
       url: "/",
       headers: {},
       socket: {},
+      once: vi.fn(),
     };
     const mockResMsg: any = {
       headersSent: false,
@@ -157,7 +160,13 @@ describe("startHttpServer", () => {
       destroy: vi.fn(),
     });
     const { res } = adaptHttp1(
-      { method: "GET", url: "/", headers: {}, socket: {} } as any,
+      {
+        method: "GET",
+        url: "/",
+        headers: {},
+        socket: {},
+        once: vi.fn(),
+      } as any,
       mockResMsg,
     );
     let drains = 0;
@@ -348,6 +357,7 @@ describe("adaptHttp1 lingering close", () => {
       headers: {},
       socket: reqMsg.socket,
       resume: vi.fn(),
+      once: vi.fn(),
     };
     requestCb!(pipelined, { ...resMsg, on: vi.fn() });
     expect(handle).not.toHaveBeenCalled();
