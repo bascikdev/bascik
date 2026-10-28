@@ -231,8 +231,17 @@ const hideComments = (html: string, hide: (text: string) => string): string => {
   return result + html.slice(cursor);
 };
 
-/** Text that can start or end a region `maskRawTextContent` blanks. */
-const RAW_TEXT_OR_COMMENT = /<\/?(?:script|style|textarea)\b|<!--|-->/i;
+/**
+ * Text that can start or end a region `maskRawTextContent` blanks, or a
+ * comment the way the HTML tokenizer ends one: `-->`, `--!>`, and the empty
+ * `<!-->` and `<!--->` (both start with `<!--`). A superset is safe: a match
+ * only sends a receiver down the slower, exact path.
+ */
+const RAW_TEXT_OR_COMMENT = /<\/?(?:script|style|textarea)\b|<!--|--!?>/i;
+
+/** Whether `text` holds comment or raw-text syntax (see `RAW_TEXT_OR_COMMENT`). */
+export const mayChangeMaskedRegions = (text: string): boolean =>
+  RAW_TEXT_OR_COMMENT.test(text);
 
 /**
  * For each prop, find elements in the component template that carry a
@@ -365,7 +374,7 @@ export const injectProps = (
       parts.push(source.slice(cursor, openMatch.index), replacement);
       cursor = endIndex;
       searchIndex = endIndex;
-      const rawText = RAW_TEXT_OR_COMMENT.test(
+      const rawText = mayChangeMaskedRegions(
         source.slice(contentStart, closeIndex),
       );
       let prefixClosed = false;

@@ -11,6 +11,39 @@ import { __componentScanStatsForTests } from "./component-scan-stats.ts";
  * Because lengths are preserved, indices found in the masked string are
  * valid in the original.
  */
+/**
+ * Blank every `<!--…-->` comment to `<!--` + spaces + `-->`, each ending at
+ * the first `-->` at or after the end of its `<!--` (what the lazy
+ * `/<!--[\s\S]*?-->/g` matched), and return each blanked comment's
+ * `[start, end)`. A linear scan: the regex retried from every `<!--` when no
+ * `-->` follows, which is quadratic on a run of `<!--`. Once an opener finds
+ * no `-->`, no later opener can, so the scan stops there.
+ */
+const maskComments = (
+  html: string,
+): { masked: string; starts: number[]; ends: number[] } => {
+  const starts: number[] = [];
+  const ends: number[] = [];
+  let masked = "";
+  let cursor = 0;
+  let start = html.indexOf("<!--");
+  while (start !== -1) {
+    const close = html.indexOf("-->", start + 4);
+    if (close === -1) break;
+    const end = close + 3;
+    starts.push(start);
+    ends.push(end);
+    masked += `${html.slice(cursor, start)}<!--${" ".repeat(end - start - 7)}-->`;
+    cursor = end;
+    start = html.indexOf("<!--", end);
+  }
+  return {
+    masked: cursor === 0 ? html : masked + html.slice(cursor),
+    starts,
+    ends,
+  };
+};
+
 export const maskRawTextContent = (htmlString: string): string => {
   const hasComments = htmlString.includes("<!--");
   const hasRawTags = /<(?:script|style|textarea)\b/i.test(htmlString);
@@ -19,9 +52,7 @@ export const maskRawTextContent = (htmlString: string): string => {
   }
   let masked = htmlString;
   if (hasComments) {
-    masked = masked.replace(/<!--[\s\S]*?-->/g, (m) =>
-      m.length >= 7 ? `<!--${" ".repeat(m.length - 7)}-->` : m,
-    );
+    masked = maskComments(masked).masked;
   }
   if (hasRawTags) {
     masked = maskElementContents(masked, ["script", "style", "textarea"]);
@@ -30,35 +61,45 @@ export const maskRawTextContent = (htmlString: string): string => {
 };
 
 // The passes maskRawTextContent runs, in order, each with the opener text a
-// scan could start a match at. Mirrors maskElementContents for the raw tags.
+// scan could start a match at. Each returns the masked text and the
+// `[start, end)` of every region it blanked. Mirrors maskElementContents for
+// the raw tags.
 const MASK_PASSES: Array<{
-  match: RegExp;
+  mask: (input: string) => { masked: string; starts: number[]; ends: number[] };
   opener: RegExp;
-  blank: (
-    match: string,
-    open?: string,
-    inner?: string,
-    close?: string,
-  ) => string;
 }> = [
-  {
-    match: /<!--[\s\S]*?-->/g,
-    opener: /<!--/g,
-    blank: (match) =>
-      match.length >= 7 ? `<!--${" ".repeat(match.length - 7)}-->` : match,
-  },
-  ...["script", "style", "textarea"].map((tag) => ({
+  { mask: maskComments, opener: /<!--/g },
+  ...["script", "style", "textarea"].map((tag) => {
     // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    match: new RegExp(
+    const match = new RegExp(
       `(<${tag}(?:\\b(?:[^>"']|"[^"]*"|'[^']*')*)?>)([\\s\\S]*?)(<\\/${tag}\\s*>)`,
       "gi",
-    ),
-    // `\b` after the name passes for any following character outside [A-Za-z0-9_].
-    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    opener: new RegExp(`<${tag}(?![A-Za-z0-9_])`, "gi"),
-    blank: (_match: string, open?: string, inner?: string, close?: string) =>
-      `${open}${" ".repeat(inner!.length)}${close}`,
-  })),
+    );
+    return {
+      mask: (input: string) => {
+        const starts: number[] = [];
+        const ends: number[] = [];
+        const masked = input.replace(
+          match,
+          (
+            whole: string,
+            open: string,
+            inner: string,
+            close: string,
+            offset: number,
+          ) => {
+            starts.push(offset);
+            ends.push(offset + whole.length);
+            return `${open}${" ".repeat(inner.length)}${close}`;
+          },
+        );
+        return { masked, starts, ends };
+      },
+      // `\b` after the name passes for any following character outside [A-Za-z0-9_].
+      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+      opener: new RegExp(`<${tag}(?![A-Za-z0-9_])`, "gi"),
+    };
+  }),
 ];
 
 // The end of a segment is unsafe when it could be the start of an opener that
@@ -87,22 +128,9 @@ export const maskRawTextContentWithClosure = (
   MASK_PASSES.forEach((pass, index) => {
     if (index === 0 ? !hasComments : !hasRawTags) return;
     const input = masked;
-    const starts: number[] = [];
-    const ends: number[] = [];
-    masked = input.replace(pass.match, (...args: unknown[]) => {
-      const match = args[0] as string;
-      const offset = args[index === 0 ? 1 : 4] as number;
-      starts.push(offset);
-      ends.push(offset + match.length);
-      return index === 0
-        ? pass.blank(match)
-        : pass.blank(
-            match,
-            args[1] as string,
-            args[2] as string,
-            args[3] as string,
-          );
-    });
+    const result = pass.mask(input);
+    masked = result.masked;
+    const { starts, ends } = result;
     if (!closed) return;
     // Any opener outside every match is a failed attempt that more text could complete.
     let matchIndex = 0;

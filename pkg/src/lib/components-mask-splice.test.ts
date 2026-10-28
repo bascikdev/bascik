@@ -106,6 +106,34 @@ describe("maskRawTextContentWithClosure", () => {
   });
 });
 
+describe("comment masking on a run of unclosed comment openers", () => {
+  // `<!--[\s\S]*?-->` retried from every `<!--` scans to the end each time:
+  // quadratic, about 3 s for this input. Both maskers must stay linear.
+  const html = "<!--".repeat(50_000);
+
+  it("masks in linear time in maskRawTextContent", () => {
+    const start = performance.now();
+    expect(maskRawTextContent(html)).toBe(html);
+    expect(performance.now() - start).toBeLessThan(250);
+  });
+
+  it("masks and reports open in linear time in maskRawTextContentWithClosure", () => {
+    const start = performance.now();
+    expect(maskRawTextContentWithClosure(html)).toEqual({
+      masked: html,
+      closed: false,
+    });
+    expect(performance.now() - start).toBeLessThan(250);
+  });
+
+  it("still blanks the first complete comment after the run", () => {
+    const run = "<!--".repeat(1000);
+    expect(maskRawTextContent(`${run}x--><my-card>`)).toBe(
+      `<!--${" ".repeat(run.length - 4 + 1)}--><my-card>`,
+    );
+  });
+});
+
 describe("spliceRawTextMask", () => {
   it("produces the full-page mask whenever it accepts a splice", () => {
     fc.assert(

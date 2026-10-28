@@ -32,6 +32,7 @@ import {
   findMatchingClose,
 } from "./component-tags.ts";
 import { maskRawTextContent } from "./component-masking.ts";
+import { mayChangeMaskedRegions } from "./component-props.ts";
 import { createAttributeValueScanner } from "./component-attribute-scan.ts";
 
 describe("replaceTag", () => {
@@ -701,7 +702,48 @@ describe("extractProps", () => {
   });
 });
 
+describe("mayChangeMaskedRegions", () => {
+  it("recognizes every way the HTML tokenizer starts or ends a comment", () => {
+    for (const text of [
+      "a <!-- b",
+      "a --> b",
+      "a --!> b",
+      "a <!--> b",
+      "a <!---> b",
+    ])
+      expect(mayChangeMaskedRegions(text), text).toBe(true);
+  });
+
+  it("recognizes raw-text element tags in any case", () => {
+    for (const text of ["<script>", "</STYLE >", "<textarea rows=2>"])
+      expect(mayChangeMaskedRegions(text), text).toBe(true);
+  });
+
+  it("passes text with no comment or raw-text syntax", () => {
+    for (const text of [
+      "",
+      "plain",
+      "a -- b",
+      "a --! b",
+      "<!- x ->",
+      "<scripts>",
+    ])
+      expect(mayChangeMaskedRegions(text), text).toBe(false);
+  });
+});
+
 describe("injectProps", () => {
+  it("fills every receiver when replaced content holds a --!> or <!--> comment", () => {
+    for (const content of ["a --!> b", "<!-- a --!>", "<!-->", "<!--->"])
+      expect(
+        injectProps(
+          `<p data-bascik-prop-title>${content}</p><b data-bascik-prop-title>${content}</b>`,
+          { title: "Hi" },
+        ),
+        content,
+      ).toBe("<p>Hi</p><b>Hi</b>");
+  });
+
   it("fills a receiver after a comment the browser ends at --!>, <!--> or <!--->", () => {
     // These close a comment in the browser, so the receiver after one is live
     // markup; a later `-->` must not stretch the comment over it.
