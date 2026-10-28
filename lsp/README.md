@@ -65,20 +65,6 @@ end
 lspconfig.bascik.setup{}
 ```
 
-### Helix
-
-In your `languages.toml`:
-
-```toml
-[language-server.bascik]
-command = "npx"
-args = ["@bascik/language-server", "--stdio"]
-
-[[language]]
-name = "html"
-language-servers = ["vscode-html-language-server", "bascik"]
-```
-
 ### Zed
 
 In your Zed settings:

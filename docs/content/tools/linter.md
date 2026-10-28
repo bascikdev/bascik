@@ -124,20 +124,6 @@ end
 lspconfig.bascik.setup{}
 ```
 
-### Helix
-
-Add the following to your `languages.toml`:
-
-```toml
-[language-server.bascik]
-command = "npx"
-args = ["@bascik/language-server", "--stdio"]
-
-[[language]]
-name = "html"
-language-servers = ["vscode-html-language-server", "bascik"]
-```
-
 ### Zed
 
 Add the language server binary to your Zed settings:
@@ -213,4 +199,4 @@ To configure diagnostics project-wide, create a `bascik.ext.json` or `bascik.ext
 
 ## Architecture Note (LSP)
 
-Under the hood, `@bascik/language-server` is an implementation of Microsoft's **Language Server Protocol (LSP)**. This means the exact same analysis engine powers the command-line linter, the VS Code extension, and editor plugins for Neovim, Zed, and Helix.
+Under the hood, `@bascik/language-server` is an implementation of Microsoft's **Language Server Protocol (LSP)**. This means the exact same analysis engine powers the command-line linter, the VS Code extension, and editor plugins for Neovim and Zed.

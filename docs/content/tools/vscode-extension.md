@@ -1,6 +1,6 @@
 # VS Code Extension
 
-The official Bascik extension brings component navigation, context-aware component, prop, and slot suggestions, rich hover details, syntax highlighting, and real-time diagnostics into VS Code. It is powered by the [`@bascik/language-server`](/tools/linter) engine, which also provides CLI linting and multi-editor support for Neovim, Zed, and Helix.
+The official Bascik extension brings component navigation, context-aware component, prop, and slot suggestions, rich hover details, syntax highlighting, and real-time diagnostics into VS Code. It is powered by the [`@bascik/language-server`](/tools/linter) engine, which also provides CLI linting and multi-editor support for Neovim and Zed.
 
 ## Install the Extension
 
@@ -260,4 +260,4 @@ If diagnostics ever look stale or missing, open the **Bascik** output panel to s
 
 ## Command-Line Linting and Other Editors
 
-If you need to run these diagnostics in continuous integration (CI), or you want editor support for Neovim, Zed, or Helix, see the [Linter](/tools/linter) documentation.
+If you need to run these diagnostics in continuous integration (CI), or you want editor support for Neovim or Zed, see the [Linter](/tools/linter) documentation.
