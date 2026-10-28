@@ -393,4 +393,335 @@ describe("WorkerPool", () => {
       );
     });
   });
+
+  // A build starts its pool before it knows how many pages it has (so worker
+  // startup overlaps route expansion), then trims it to the job count.
+  describe("shrink", () => {
+    it("terminates surplus idle workers and never replaces them", async () => {
+      const pool = makePool(4);
+      await pool.shrink(1);
+      expect(pool.size).toBe(1);
+      const trimmed = workers.filter((w) => w.terminate.mock.calls.length);
+      expect(trimmed).toHaveLength(3);
+      // A late exit event from a trimmed worker must not count as a crash.
+      for (const w of trimmed) w.emit("exit", 1);
+      expect(WorkerMock).toHaveBeenCalledTimes(4);
+      const result = pool.run("t1");
+      const live = workers.find((w) => w.postMessage.mock.calls.length)!;
+      completeWith(live, "r1");
+      await expect(result).resolves.toBe("r1");
+      await pool.terminate();
+    });
+
+    it("keeps the smaller size when a surviving worker later crashes", async () => {
+      const pool = makePool(3);
+      await pool.shrink(2);
+      const first = pool.run("t1");
+      const busy = workers.find((w) => w.postMessage.mock.calls.length)!;
+      completeWith(busy, "r1");
+      await first;
+      busy.emit("exit", 1);
+      // One replacement for the crashed worker, not a refill to three.
+      expect(WorkerMock).toHaveBeenCalledTimes(4);
+      expect(pool.size).toBe(2);
+      await pool.terminate();
+    });
+
+    it("is a no-op when the pool is already at or below the size", async () => {
+      const pool = makePool(2);
+      await pool.shrink(5);
+      expect(pool.size).toBe(2);
+      expect(workers.every((w) => w.terminate.mock.calls.length === 0)).toBe(
+        true,
+      );
+      await pool.terminate();
+    });
+
+    it("rejects a size below one instead of leaving queued work stranded", async () => {
+      const pool = makePool(2);
+      expect(() => pool.shrink(0)).toThrow(/at least 1/);
+      expect(() => pool.shrink(1.5)).toThrow(/at least 1/);
+      expect(pool.size).toBe(2);
+      await pool.terminate();
+    });
+
+    it("never terminates a worker that holds a task", async () => {
+      const pool = makePool(2);
+      const pending = pool.run("t1");
+      const busy = workers.find((w) => w.postMessage.mock.calls.length)!;
+      await pool.shrink(1);
+      expect(busy.terminate).not.toHaveBeenCalled();
+      completeWith(busy, "r1");
+      await expect(pending).resolves.toBe("r1");
+      await pool.terminate();
+    });
+
+    it("retires a busy surplus worker once its task finishes", async () => {
+      const pool = makePool(2);
+      const a = pool.run("t1");
+      const b = pool.run("t2");
+      await pool.shrink(1);
+      expect(pool.size).toBe(2);
+      const holder = (task: string) =>
+        workers.find((w) =>
+          w.postMessage.mock.calls.some((c) => c[0] === task),
+        )!;
+      completeWith(holder("t1"), "r1");
+      completeWith(holder("t2"), "r2");
+      await expect(Promise.all([a, b])).resolves.toEqual(["r1", "r2"]);
+      expect(pool.size).toBe(1);
+      await pool.terminate();
+    });
+
+    it("trims at once without waiting for the threads to stop", () => {
+      // The build dispatches its pages right after trimming; a thread busy
+      // loading modules can take a couple of hundred milliseconds to stop.
+      const pool = makePool(3);
+      for (const w of workers)
+        w.terminate.mockReturnValue(new Promise(() => {}));
+      void pool.shrink(1);
+      expect(pool.size).toBe(1);
+      const task = pool.run("t1");
+      const live = workers.find((w) => w.postMessage.mock.calls.length)!;
+      expect(live).toBeDefined();
+      completeWith(live, "r1");
+      return expect(task).resolves.toBe("r1");
+    });
+
+    it("waits for trimmed workers in terminate()", async () => {
+      const pool = makePool(3);
+      let release!: () => void;
+      workers[2].terminate.mockReturnValueOnce(
+        new Promise((resolve) => (release = () => resolve(0))),
+      );
+      void pool.shrink(1);
+      let done = false;
+      const terminated = pool.terminate().then(() => (done = true));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(done).toBe(false);
+      release();
+      await terminated;
+      expect(done).toBe(true);
+    });
+  });
+
+  // A build starts at most one worker per page before expansion, and grows
+  // the pool once a dynamic route turns out to have more jobs than that.
+  describe("grow", () => {
+    it("spawns workers up to the new size, each with the configured settings first", async () => {
+      const pool = makePool(1);
+      pool.configure({ kind: "init" });
+      pool.grow(3);
+      expect(pool.size).toBe(3);
+      expect(WorkerMock).toHaveBeenCalledTimes(3);
+      for (const w of workers.slice(1))
+        expect(w.postMessage.mock.calls[0]).toEqual([{ kind: "init" }]);
+      await pool.terminate();
+    });
+
+    it("hands queued tasks to the new workers", async () => {
+      const pool = makePool(1);
+      const a = pool.run("t1");
+      const b = pool.run("t2");
+      pool.grow(2);
+      const holder = (task: string) =>
+        workers.find((w) =>
+          w.postMessage.mock.calls.some((c) => c[0] === task),
+        )!;
+      expect(holder("t2")).toBe(workers[1]);
+      completeWith(holder("t1"), "r1");
+      completeWith(holder("t2"), "r2");
+      await expect(Promise.all([a, b])).resolves.toEqual(["r1", "r2"]);
+      await pool.terminate();
+    });
+
+    it("replaces a later crash up to the grown size", async () => {
+      const pool = makePool(1);
+      pool.grow(2);
+      const task = pool.run("t1");
+      const busy = workers.find((w) => w.postMessage.mock.calls.length)!;
+      completeWith(busy, "r1");
+      await task;
+      busy.emit("exit", 1);
+      expect(pool.size).toBe(2);
+      await pool.terminate();
+    });
+
+    it("is a no-op at or below the current size", async () => {
+      const pool = makePool(3);
+      pool.grow(2);
+      pool.grow(3);
+      expect(WorkerMock).toHaveBeenCalledTimes(3);
+      expect(workers.every((w) => w.terminate.mock.calls.length === 0)).toBe(
+        true,
+      );
+      await pool.terminate();
+    });
+
+    it("rejects a size that is not a positive integer", async () => {
+      const pool = makePool(1);
+      expect(() => pool.grow(0)).toThrow(/at least 1/);
+      expect(() => pool.grow(2.5)).toThrow(/at least 1/);
+      expect(pool.size).toBe(1);
+      await pool.terminate();
+    });
+
+    it("spawns nothing after terminate()", async () => {
+      const pool = makePool(1);
+      await pool.terminate();
+      pool.grow(4);
+      expect(WorkerMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("spawns nothing once worker startup has failed repeatedly", async () => {
+      const pool = makePool(1);
+      // Each crash before a first task spends one startup attempt.
+      for (let i = 0; i < 4; i++) workers[workers.length - 1].emit("exit", 1);
+      const spawned = WorkerMock.mock.calls.length;
+      pool.grow(4);
+      expect(WorkerMock).toHaveBeenCalledTimes(spawned);
+      await expect(pool.run("t1")).rejects.toThrow(/no viable workers/);
+      await pool.terminate();
+    });
+  });
+
+  // Settings that must reach every worker before its next task, including a
+  // replacement spawned later, without being mistaken for a task reply.
+  describe("configure", () => {
+    it("posts the message to every live worker and replays it to replacements before their first task", async () => {
+      const pool = makePool(2);
+      pool.configure({ kind: "settings", n: 1 });
+      for (const w of workers)
+        expect(w.postMessage).toHaveBeenCalledWith({ kind: "settings", n: 1 });
+      workers[0].emit("exit", 1);
+      expect(workers).toHaveLength(3);
+      expect(workers[2].postMessage.mock.calls[0]).toEqual([
+        { kind: "settings", n: 1 },
+      ]);
+      const task = pool.run("t1");
+      const target = workers.find((w) =>
+        w.postMessage.mock.calls.some((c) => c[0] === "t1"),
+      )!;
+      completeWith(target, "r1");
+      await expect(task).resolves.toBe("r1");
+      await pool.terminate();
+    });
+
+    it("replays every message in order, so a replacement ends with the same settings", () => {
+      // The build sends the component list first and, after trimming, the
+      // worker count; a replacement needs both, applied in the same order.
+      const pool = makePool(1);
+      pool.configure({ kind: "init" });
+      pool.configure({ n: 1 });
+      pool.configure({ n: 2 });
+      workers[0].emit("exit", 1);
+      expect(workers[1].postMessage.mock.calls).toEqual([
+        [{ kind: "init" }],
+        [{ n: 1 }],
+        [{ n: 2 }],
+      ]);
+      void pool.terminate();
+    });
+
+    it("retires a worker that cannot receive the message", async () => {
+      const pool = makePool(2);
+      workers[0].postMessage.mockImplementationOnce(() => {
+        throw new Error("closed port");
+      });
+      pool.configure({ n: 1 });
+      expect(workers[0].terminate).toHaveBeenCalled();
+      expect(pool.size).toBe(2);
+      await pool.terminate();
+    });
+  });
+
+  // Node 24 can abort the whole process ("Check failed: (location_) !=
+  // nullptr") when a worker is terminated while it is still evaluating an
+  // ES module graph with top-level await, which the page worker's is. A pool
+  // whose workers announce when they have loaded never stops one before.
+  describe("readySignal", () => {
+    const makeReadyPool = (size = 2) =>
+      new WorkerPool<string, string>(
+        "/fake/worker.js",
+        size,
+        {},
+        { readySignal: true },
+      );
+    const ready = (worker: FakeWorker) =>
+      worker.emit("message", { ready: true });
+
+    it("does not stop a trimmed worker until it has loaded", async () => {
+      const pool = makeReadyPool(3);
+      const trimmed = pool.shrink(1);
+      expect(pool.size).toBe(1);
+      expect(workers.some((w) => w.terminate.mock.calls.length)).toBe(false);
+      for (const w of workers) ready(w);
+      await trimmed;
+      expect(workers.filter((w) => w.terminate.mock.calls.length)).toHaveLength(
+        2,
+      );
+      await pool.terminate();
+    });
+
+    it("waits for every worker to load before terminate() stops it", async () => {
+      const pool = makeReadyPool(2);
+      let done = false;
+      const terminated = pool.terminate().then(() => (done = true));
+      await Promise.resolve();
+      expect(workers[0].terminate).not.toHaveBeenCalled();
+      ready(workers[0]);
+      ready(workers[1]);
+      await terminated;
+      expect(done).toBe(true);
+      expect(workers[0].terminate).toHaveBeenCalled();
+      expect(workers[1].terminate).toHaveBeenCalled();
+    });
+
+    it("does not wait for a worker that exits before it loads", async () => {
+      const pool = makeReadyPool(1);
+      const terminated = pool.terminate();
+      workers[0].emit("exit", 1);
+      await expect(terminated).resolves.toBeUndefined();
+    });
+
+    it("stops a worker that never loads after a grace period instead of hanging", async () => {
+      vi.useFakeTimers();
+      try {
+        const pool = makeReadyPool(1);
+        const terminated = pool.terminate();
+        await vi.advanceTimersByTimeAsync(9_000);
+        expect(workers[0].terminate).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(2_000);
+        expect(workers[0].terminate).toHaveBeenCalled();
+        await terminated;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("never takes the ready signal for a task result", async () => {
+      const pool = makeReadyPool(1);
+      const task = pool.run("t1");
+      // Loading finishes after the task was queued on the port.
+      ready(workers[0]);
+      let settled = false;
+      void task.then(() => (settled = true));
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      completeWith(workers[0], "r1");
+      await expect(task).resolves.toBe("r1");
+      await pool.terminate();
+    });
+
+    it("stops a loaded worker at once", async () => {
+      const pool = makeReadyPool(2);
+      for (const w of workers) ready(w);
+      await pool.shrink(1);
+      expect(workers.filter((w) => w.terminate.mock.calls.length)).toHaveLength(
+        1,
+      );
+      await pool.terminate();
+    });
+  });
 });

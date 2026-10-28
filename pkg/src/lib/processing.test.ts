@@ -135,6 +135,16 @@ vi.mock("./worker-pool.js", () => {
         };
       });
       this.terminate = vi.fn(async () => {});
+      // processAllPages starts the pool before expansion and trims it to the
+      // job count, so the stand-in tracks its size like the real one.
+      this.size = arguments[1];
+      this.shrink = vi.fn(async (n: number) => {
+        this.size = Math.min(this.size, n);
+      });
+      this.grow = vi.fn((n: number) => {
+        this.size = Math.max(this.size, n);
+      });
+      this.configure = vi.fn();
     }),
   };
 });
@@ -2768,6 +2778,16 @@ describe("processAllPages – side effects", () => {
           };
         });
         this.terminate = vi.fn(async () => {});
+        // processAllPages starts the pool before expansion and trims it to the
+        // job count, so the stand-in tracks its size like the real one.
+        this.size = arguments[1];
+        this.shrink = vi.fn(async (n: number) => {
+          this.size = Math.min(this.size, n);
+        });
+        this.grow = vi.fn((n: number) => {
+          this.size = Math.max(this.size, n);
+        });
+        this.configure = vi.fn();
       });
 
       await processAllPages({ useWorkers: true });

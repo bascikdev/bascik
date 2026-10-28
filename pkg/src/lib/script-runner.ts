@@ -209,7 +209,9 @@ class Semaphore {
 
   release(): void {
     this.current--;
-    if (this.queue.length > 0) {
+    // Checked against the cap, not just the queue: after `setMax` lowered it,
+    // a release must not admit a waiter while still at or over the new cap.
+    if (this.queue.length > 0 && this.current < this.max) {
       const next = this.queue.shift()!;
       next();
     }
@@ -222,11 +224,37 @@ class Semaphore {
   getMax(): number {
     return this.max;
   }
+
+  /**
+   * Change the cap in place. Raising it admits waiters at once; lowering it
+   * revokes nothing already held, the excess drains as holders release. A
+   * non-positive or non-integer value becomes 1, so callers always progress.
+   */
+  setMax(max: number): void {
+    this.max = Number.isInteger(max) && max >= 1 ? max : 1;
+    while (this.current < this.max && this.queue.length > 0) {
+      this.queue.shift()!();
+    }
+  }
 }
 
 export { Semaphore };
 
 export const sharedChildSemaphore = new Semaphore(MAX_CHILD_PROCESSES);
+
+/**
+ * Re-divide the child budget for a page worker after the pool it belongs to
+ * changed size. The environment only gives a worker the pool size at spawn;
+ * the build starts its pool before it knows the job count and trims it after,
+ * so the survivors are told the final count and get the share a pool sized
+ * to the job count from the start would have given them (the total across
+ * threads stays within the budget either way).
+ */
+export const setChildWorkerCount = (workerCount: number): void => {
+  sharedChildSemaphore.setMax(
+    computeMaxChildProcesses({ ...systemResources, workerCount }),
+  );
+};
 
 export {
   runDirectiveHandler,

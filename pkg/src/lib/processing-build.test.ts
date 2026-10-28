@@ -139,6 +139,16 @@ vi.mock("./worker-pool.js", () => {
         };
       });
       this.terminate = vi.fn(async () => {});
+      // processAllPages starts the pool before expansion and trims it to the
+      // job count, so the stand-in tracks its size like the real one.
+      this.size = arguments[1];
+      this.shrink = vi.fn(async (n: number) => {
+        this.size = Math.min(this.size, n);
+      });
+      this.grow = vi.fn((n: number) => {
+        this.size = Math.max(this.size, n);
+      });
+      this.configure = vi.fn();
     }),
   };
 });
@@ -370,6 +380,16 @@ describe("processAllPages – build mode sitemap", () => {
           throw new Error(`worker failed for ${job.pagePath}`);
         });
         this.terminate = terminate;
+        // processAllPages starts the pool before expansion and trims it to the
+        // job count, so the stand-in tracks its size like the real one.
+        this.size = arguments[1];
+        this.shrink = vi.fn(async (n: number) => {
+          this.size = Math.min(this.size, n);
+        });
+        this.grow = vi.fn((n: number) => {
+          this.size = Math.max(this.size, n);
+        });
+        this.configure = vi.fn();
       },
     );
 
@@ -2113,6 +2133,16 @@ describe("monotonic dev publication & concurrency overlap", () => {
         };
       });
       this.terminate = vi.fn(async () => {});
+      // processAllPages starts the pool before expansion and trims it to the
+      // job count, so the stand-in tracks its size like the real one.
+      this.size = arguments[1];
+      this.shrink = vi.fn(async (n: number) => {
+        this.size = Math.min(this.size, n);
+      });
+      this.grow = vi.fn((n: number) => {
+        this.size = Math.max(this.size, n);
+      });
+      this.configure = vi.fn();
     });
 
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(

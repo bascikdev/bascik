@@ -11,6 +11,7 @@ import {
   removePage,
   selectivelyProcessPages,
   selectivelyProcessPagesForWatchPath,
+  stopPagePools,
 } from "./processing.ts";
 import {
   copyReplicatePath,
@@ -39,7 +40,17 @@ const logInfo = (message: string): void => {
 
 export const watchFiles = async (options: WatchFilesOptions = {}) => {
   if (BascikConfig.isBuild) {
-    await Promise.all([copyStaticAssets(), processAllPages()]);
+    try {
+      await Promise.all([copyStaticAssets(), processAllPages()]);
+    } catch (error) {
+      // Promise.all rejects on the first failure, and the CLI exits right
+      // after. When the asset copy fails first, page processing is still
+      // running, and its workers may still be loading the compiler, which
+      // can abort Node 24 at exit. Stopping them first waits until they have
+      // loaded; a failure to stop must not replace the build's error.
+      await stopPagePools().catch(() => {});
+      throw error;
+    }
     return;
   }
 

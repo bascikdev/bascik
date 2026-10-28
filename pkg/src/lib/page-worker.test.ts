@@ -9,16 +9,84 @@ vi.mock("./processing.js", () => ({
   transpilePage: _mockTranspilePage,
 }));
 
+const { _mockSetChildWorkerCount } = vi.hoisted(() => ({
+  _mockSetChildWorkerCount: vi.fn(),
+}));
+
+vi.mock("./script-runner.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./script-runner.ts")>()),
+  setChildWorkerCount: _mockSetChildWorkerCount,
+}));
+
 import {
+  createPageWorkerListener,
   handlePageWorkerMessage,
   type PageWorkerMessage,
 } from "./page-worker.ts";
+import {
+  CHILD_WORKER_COUNT_MESSAGE,
+  PAGE_WORKER_INIT_MESSAGE,
+} from "./page-worker-messages.ts";
 
 const firstMessage = (port: {
   postMessage: ReturnType<typeof vi.fn>;
 }): PageWorkerMessage => port.postMessage.mock.calls[0][0] as PageWorkerMessage;
 
 describe("handlePageWorkerMessage", () => {
+  // The build trims its early-started pool to the job count and tells the
+  // survivors, so each one re-divides the build-script child budget.
+  it("applies a worker-count message without transpiling or replying", () => {
+    const port = { postMessage: vi.fn() };
+    const listener = createPageWorkerListener(port, {
+      componentList: {},
+      globalStylesHtml: "",
+    });
+    listener({ kind: CHILD_WORKER_COUNT_MESSAGE, workerCount: 3 });
+    expect(_mockSetChildWorkerCount).toHaveBeenCalledWith(3);
+    expect(_mockTranspilePage).not.toHaveBeenCalled();
+    // A reply would be taken by the pool for a task result.
+    expect(port.postMessage).not.toHaveBeenCalled();
+  });
+
+  // The pool starts before the component list is loaded; the list arrives
+  // as an init message ahead of the first page.
+  it("compiles with the component list from the init message", async () => {
+    _mockTranspilePage.mockResolvedValueOnce({
+      relativePagePath: "index.html",
+      distHtml: "<p>ok</p>",
+    });
+    const port = { postMessage: vi.fn() };
+    const listener = createPageWorkerListener(port, null);
+    const componentList = { card: { path: "src/components/card.html" } };
+    listener({
+      kind: PAGE_WORKER_INIT_MESSAGE,
+      componentList: componentList as never,
+      globalStylesHtml: "<style>x</style>",
+    });
+    expect(port.postMessage).not.toHaveBeenCalled();
+    listener("src/pages/index.html");
+    await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalled());
+    expect(_mockTranspilePage).toHaveBeenCalledWith(
+      "src/pages/index.html",
+      componentList,
+      "<style>x</style>",
+      null,
+      undefined,
+      { deferDiskWrite: true },
+    );
+    expect(firstMessage(port).ok).toBe(true);
+  });
+
+  it("fails a page that arrives before the init message instead of compiling it without components", () => {
+    const port = { postMessage: vi.fn() };
+    createPageWorkerListener(port, null)("src/pages/index.html");
+    expect(_mockTranspilePage).not.toHaveBeenCalled();
+    const msg = firstMessage(port);
+    expect(msg.ok).toBe(false);
+    if (msg.ok) throw new Error("unreachable");
+    expect(msg.error).toMatch(/before its component list/);
+  });
+
   it("posts success result when transpilePage resolves with string path", async () => {
     const mockResult = {
       relativePagePath: "index.html",

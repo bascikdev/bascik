@@ -273,7 +273,7 @@ Each step is skipped if disabled in `bascik.config.ts`.
 The recursion terminates when `getFirstComponent` no longer finds any custom tag in the HTML string, i.e., when all recognized component names have been replaced with vanilla HTML.
 
 <div class="callout">
-<p><strong>Performance note:</strong> Each call to <code>recursivelyTranspile</code> uses the same in-memory <code>ComponentList</code> built once at the start of the pipeline. In the multi-page startup path, this list is pre-computed once and passed to every worker via <code>workerData</code>, components are never re-read from disk per page or per worker.</p>
+<p><strong>Performance note:</strong> Each call to <code>recursivelyTranspile</code> uses the same in-memory <code>ComponentList</code> built once at the start of the pipeline. In the multi-page startup path, this list is pre-computed once and sent to every worker in one settings message before its first page (the pool itself starts earlier, while the list is still loading), components are never re-read from disk per page or per worker.</p>
 </div>
 
 ## Selective Re-transpilation

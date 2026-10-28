@@ -81,7 +81,14 @@ if (directory) {
         return Reflect.apply(target, receiver, [
           event,
           event === "message"
-            ? (input: string | { pagePath: string }) => {
+            ? (input: string | { pagePath: string } | { kind: string }) => {
+                // Settings, not a task (see `page-worker-messages.ts`): no
+                // reply follows, so no per-task profile is started for it.
+                if (typeof input === "object" && "kind" in input) {
+                  journal("settings", { kind: input.kind });
+                  listener(input);
+                  return;
+                }
                 journal("listener-entry", {
                   taskId: `${typeof input === "string" ? input : input.pagePath}:${taskSequence}`,
                 });
@@ -100,6 +107,9 @@ if (directory) {
     });
     const postMessage = parentPort.postMessage.bind(parentPort);
     parentPort.postMessage = (...args: Parameters<typeof postMessage>) => {
+      // The loaded signal (`WorkerPool` `readySignal`) ends no task.
+      if ((args[0] as { ready?: unknown } | null)?.ready === true)
+        return postMessage(...args);
       save();
       journal("reply-sent", { taskId });
       return postMessage(...args);

@@ -1,6 +1,12 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { transpilePage, type PageJob } from "./processing.ts";
 import type { ComponentList, TranspilePageResult } from "./types.ts";
+import { setChildWorkerCount } from "./script-runner.ts";
+import {
+  CHILD_WORKER_COUNT_MESSAGE,
+  PAGE_WORKER_INIT_MESSAGE,
+  type PageWorkerSettings,
+} from "./page-worker-messages.ts";
 
 /**
  * What a page worker posts back for one page (prompt 86). The rendered HTML
@@ -81,12 +87,68 @@ export const handlePageWorkerMessage = async (
   }
 };
 
-if (parentPort && workerData) {
-  const data = workerData as {
-    componentList: ComponentList;
-    globalStylesHtml: string;
+interface CompileInputs {
+  componentList: ComponentList;
+  globalStylesHtml: string;
+}
+
+const isSettings = (
+  message: string | PageJob | PageWorkerSettings,
+): message is PageWorkerSettings =>
+  typeof message === "object" && message !== null && "kind" in message;
+
+/**
+ * The worker's message listener. Page jobs are compiled; settings messages
+ * (`page-worker-messages.ts`) update this worker's state and get no reply,
+ * since the pool would take a reply for the result of the next job.
+ *
+ * `initial` is null when the pool was started before the component list was
+ * loaded; the init message then supplies it. A job that arrives before it is
+ * failed loudly instead of being compiled against an empty component list,
+ * which would silently emit pages with every component tag left unexpanded.
+ */
+export const createPageWorkerListener = (
+  port: PageWorkerPort,
+  initial: CompileInputs | null,
+) => {
+  let inputs = initial;
+  return (message: string | PageJob | PageWorkerSettings): void => {
+    if (isSettings(message)) {
+      if (message.kind === PAGE_WORKER_INIT_MESSAGE) {
+        inputs = {
+          componentList: message.componentList,
+          globalStylesHtml: message.globalStylesHtml,
+        };
+      } else if (message.kind === CHILD_WORKER_COUNT_MESSAGE) {
+        setChildWorkerCount(message.workerCount);
+      }
+      return;
+    }
+    if (!inputs) {
+      port.postMessage({
+        ok: false,
+        error:
+          "Page worker received a page before its component list (no init message was configured on the pool)",
+      });
+      return;
+    }
+    void handlePageWorkerMessage(port, inputs, message);
   };
-  parentPort.on("message", (input: string | PageJob) => {
-    handlePageWorkerMessage(parentPort, data, input);
-  });
+};
+
+if (parentPort && workerData) {
+  const data = workerData as Partial<CompileInputs>;
+  parentPort.on(
+    "message",
+    createPageWorkerListener(
+      parentPort,
+      data.componentList ? (data as CompileInputs) : null,
+    ),
+  );
+  // This module is the worker's entry, so it finishes evaluating after its
+  // whole import graph (top-level awaits included). Only now is it safe for
+  // the pool to terminate this worker: Node can abort the process when a
+  // worker is terminated mid-evaluation (`WorkerPool` `readySignal`). Posted
+  // after the listener is registered, and never confused with a page result.
+  parentPort.postMessage({ ready: true });
 }

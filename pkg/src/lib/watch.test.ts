@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ─── Hoisted mock factories ───────────────────────────────────────────────────
 
+const mockStopPagePools = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined),
+);
+
 const {
   mockWatch,
   getWatcher,
@@ -164,6 +168,7 @@ vi.mock("./processing.js", () => ({
   removePage: mockRemovePage,
   selectivelyProcessPages: mockSelectivelyProcessPages,
   selectivelyProcessPagesForWatchPath: mockSelectivelyProcessPagesForWatchPath,
+  stopPagePools: mockStopPagePools,
 }));
 
 vi.mock("./mem.js", () => ({
@@ -1046,6 +1051,41 @@ describe("watchFiles – isBuild = true", () => {
     expect(copyStaticAssets).toHaveBeenCalledTimes(1);
     expect(processAllPages).toHaveBeenCalledTimes(1);
     expect(mockWatch).not.toHaveBeenCalled();
+  });
+
+  // The CLI exits as soon as this rejects; page workers still loading the
+  // compiler at that moment can abort Node 24, so they are stopped first.
+  it("stops the page worker pools before reporting a static asset copy failure", async () => {
+    mockStopPagePools.mockClear();
+    let finishPages!: () => void;
+    mockProcessAllPages.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finishPages = resolve)),
+    );
+    let stopped = false;
+    mockStopPagePools.mockImplementationOnce(async () => {
+      await Promise.resolve();
+      stopped = true;
+    });
+    vi.mocked(copyStaticAssets).mockRejectedValueOnce(new Error("EACCES"));
+    const failed = watchFiles().then(
+      () => "resolved",
+      (error: Error) => ({ message: error.message, stopped }),
+    );
+    await expect(failed).resolves.toEqual({ message: "EACCES", stopped: true });
+    expect(mockStopPagePools).toHaveBeenCalledOnce();
+    finishPages();
+  });
+
+  it("still reports the copy failure when stopping the pools fails", async () => {
+    mockStopPagePools.mockRejectedValueOnce(new Error("stop failed"));
+    vi.mocked(copyStaticAssets).mockRejectedValueOnce(new Error("EACCES"));
+    await expect(watchFiles()).rejects.toThrow("EACCES");
+  });
+
+  it("does not stop the pools when the build succeeds", async () => {
+    mockStopPagePools.mockClear();
+    await watchFiles();
+    expect(mockStopPagePools).not.toHaveBeenCalled();
   });
 });
 

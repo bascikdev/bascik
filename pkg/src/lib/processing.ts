@@ -99,6 +99,12 @@ import {
   SYSTEM_MAX_CHILD_PROCESSES,
 } from "./script-runner.ts";
 import {
+  CHILD_WORKER_COUNT_MESSAGE,
+  PAGE_WORKER_INIT_MESSAGE,
+  type ChildWorkerCountMessage,
+  type PageWorkerInitMessage,
+} from "./page-worker-messages.ts";
+import {
   serverSidecarRegistry,
   sidecarHasPageEntries,
 } from "./server-sidecar.ts";
@@ -842,6 +848,130 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
   await processPageBatch(pagesToTranspile);
 };
 
+/**
+ * Start the page worker pool for `pageList` as soon as the list is known,
+ * before the component list has loaded and before routes are expanded.
+ *
+ * A worker spends its first few hundred milliseconds starting a thread and
+ * loading the compiler's modules. Component loading and expansion (every
+ * dynamic route's routes script, mostly waiting on child processes) run on
+ * the main thread meanwhile, so starting the workers first overlaps the two
+ * instead of paying for them one after the other while the other cores sit
+ * idle.
+ *
+ * The job count is not known yet, so the pool starts at one worker per page
+ * (a page yields at least one job unless its routes script finds no routes)
+ * and is fitted to the job count after expansion (`fitPagePool`). Starting
+ * at that lower bound rather than at the CPU count matters for small sites
+ * with a dynamic route: every worker loads the whole compiler, and a worker
+ * cannot be stopped until it has loaded (`readySignal`), so surplus workers
+ * would cost CPU, memory and the end of the phase for nothing. A dynamic
+ * route that expands to more jobs than there are pages grows the pool, and
+ * only those extra workers start after expansion, as every worker did before
+ * the pool was started early.
+ *
+ * Every worker thread runs its own child semaphore sized to 1/poolSize of the
+ * system child budget, floored at 1 permit. Keeping the pool within that
+ * budget (memory-derived, or `BASCIK_MAX_CHILD_PROCESSES`) is what stops a
+ * low-memory machine from running cpus().length children at once: with more
+ * workers than permits the floor would give each one a child anyway.
+ * `cpus()` can be empty on some platforms and containers; at least one
+ * worker keeps the build from waiting forever on a pool that can run nothing.
+ */
+type PagePool = WorkerPool<PageJob, PageWorkerResult | null>;
+
+const pagePoolSize = (workCount: number): number =>
+  Math.max(1, Math.min(cpus().length, workCount, SYSTEM_MAX_CHILD_PROCESSES));
+
+const startPagePool = (pageList: string[]): PagePool => {
+  const poolSize = pagePoolSize(pageList.length);
+  const workerExt = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
+  const workerUrl = new URL(`./page-worker${workerExt}`, import.meta.url);
+  return new WorkerPool<PageJob, PageWorkerResult | null>(
+    fileURLToPath(workerUrl),
+    poolSize,
+    // The compile inputs follow as an init message (`processAllPages`); the
+    // worker entry only needs truthy `workerData` to know it is a page worker.
+    {},
+    {
+      env: {
+        // The `transpiled:` line is printed inside the worker, which cannot tell on its own that it has a terminal.
+        ...(workerEnvironment() ?? process.env),
+        [CHILD_WORKER_COUNT_VAR]: String(poolSize),
+      },
+      // The pool can now be trimmed or torn down while workers are still
+      // loading the compiler; it must wait until each has loaded first.
+      readySignal: true,
+    },
+  );
+};
+
+/**
+ * Fit an early-started pool to the job count: grow it when a dynamic route
+ * expanded to more jobs than there are pages, trim it when some page yielded
+ * none, so the pool ends up the size it would have had if it had been sized
+ * to the jobs from the start. The workers are told the new count, because
+ * each worker's share of the child budget was set from the size at spawn.
+ */
+const fitPagePool = (
+  pool: PagePool,
+  pageCount: number,
+  jobCount: number,
+): number => {
+  const startSize = pagePoolSize(pageCount);
+  const size = pagePoolSize(jobCount);
+  if (size === startSize) return size;
+  if (size > startSize) pool.grow(size);
+  // Not awaited: the trimmed workers are out of the pool already, and their
+  // threads can take a couple of hundred milliseconds to stop while loading
+  // modules, which would only delay the first page. `terminate()` at the end
+  // of the phase waits for them.
+  else void pool.shrink(size);
+  pool.configure({
+    kind: CHILD_WORKER_COUNT_MESSAGE,
+    workerCount: size,
+  } satisfies ChildWorkerCountMessage);
+  return size;
+};
+
+/**
+ * One `processAllPages` call's pool, from before the page list is known
+ * (`listed` settles with the pool, or null) until the phase stops it.
+ */
+interface PagePoolPhase {
+  listed: Promise<{ pool: PagePool | null }>;
+  stopped?: Promise<void>;
+}
+
+const pagePoolPhases = new Set<PagePoolPhase>();
+
+/**
+ * Stop a phase's pool once, however many paths ask for it. Never rejects: it
+ * runs on the way out of a failed build, where a failure to stop a worker
+ * must not replace the error that failed the build.
+ */
+const releasePagePool = (phase: PagePoolPhase): Promise<void> => {
+  pagePoolPhases.delete(phase);
+  phase.stopped ??= phase.listed
+    .then(({ pool }) => pool?.terminate())
+    .catch(() => {});
+  return phase.stopped;
+};
+
+/**
+ * Stop every page worker pool a `processAllPages` call has started, or is
+ * about to start, and has not stopped yet. For a caller about to exit while
+ * a phase is still running: a build runs the phase next to the static asset
+ * copy, and when the copy fails first the CLI exits at once. Exiting while a
+ * worker is still loading the compiler can abort Node 24 (see `readySignal`
+ * in `WorkerPool`); stopping the pool first waits for each worker to load.
+ * Never rejects. The abandoned phase keeps running until the process exits,
+ * and its jobs fail on the stopped pool.
+ */
+export const stopPagePools = async (): Promise<void> => {
+  await Promise.all([...pagePoolPhases].map(releasePagePool));
+};
+
 export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   logInfo(colorOut.dim("Starting transpiling..."));
   invalidateComponentListCache();
@@ -851,25 +981,57 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   // Summed from every page (and the build-once pass of every route template)
   // so the summary can say how much of the phase was build scripts.
   const scriptStats = createBuildScriptStats();
-  // Parallel processing of pages
-  const [pages, componentList, globalStylesHtml] = await Promise.all([
-    listPages(),
-    loadComponentList(),
-    resolveInlineStylesHtml(),
-  ]);
-  let pageList = pages ?? [];
-
-  if (
-    BascikConfig.isBuild &&
-    BascikConfig.only &&
-    BascikConfig.only.length > 0
-  ) {
-    pageList = filterPagesByOnlyGlobs(
-      pageList,
-      BascikConfig.only,
-      BascikConfig.directory.pages,
-    );
+  // The page list alone sizes the worker pool, so the pool starts as soon as
+  // it is known (see `startPagePool`): its workers load the compiler while
+  // the component list and global styles are still being read, and while
+  // routes expand, instead of after all of it.
+  const listed = listPages().then((pages) => {
+    let pageList = pages ?? [];
+    if (
+      BascikConfig.isBuild &&
+      BascikConfig.only &&
+      BascikConfig.only.length > 0
+    ) {
+      pageList = filterPagesByOnlyGlobs(
+        pageList,
+        BascikConfig.only,
+        BascikConfig.directory.pages,
+      );
+    }
+    const pool =
+      useWorkers && pageList.length > 0 ? startPagePool(pageList) : null;
+    return { pageList, pool };
+  });
+  const phase: PagePoolPhase = { listed };
+  if (useWorkers) pagePoolPhases.add(phase);
+  let pageList: string[];
+  let pool: PagePool | null;
+  let componentList: ComponentList;
+  let globalStylesHtml: string;
+  try {
+    [{ pageList, pool }, componentList, globalStylesHtml] = await Promise.all([
+      listed,
+      loadComponentList(),
+      resolveInlineStylesHtml(),
+    ]);
+  } catch (error) {
+    // Promise.all rejects on the first failure, which can come before the
+    // page list (and so the pool) exists: wait for it, then stop the pool,
+    // so a failed component load never leaves worker threads behind.
+    await releasePagePool(phase);
+    throw error;
   }
+  // FIFO on each worker's port, so this arrives before any page job, and
+  // the pool replays it to any worker it spawns later. Sent now rather than
+  // after the pool is fitted: the pool starts at no more workers than pages,
+  // so a worker that receives it and is then trimmed is rare (a routes
+  // script that found no routes), while cloning the list now overlaps
+  // expansion instead of sitting right in front of the first page.
+  pool?.configure({
+    kind: PAGE_WORKER_INIT_MESSAGE,
+    componentList,
+    globalStylesHtml,
+  } satisfies PageWorkerInitMessage);
 
   // Read now, acted on once the pages are handed out: the manifest's own
   // work then fills the time the main thread waits on the page workers
@@ -888,46 +1050,30 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   let relativePaths: string[] = [];
 
   const expansionErrors: PageProcessingError[] = [];
-  const jobBatches = await Promise.all(
-    pageList.map(async (pagePath) => {
-      try {
-        return await expandPageToJobs(pagePath, scriptStats);
-      } catch (error) {
-        expansionErrors.push(
-          normalizePageError(pagePath, error, "expand routes"),
-        );
-        return [];
-      }
-    }),
-  );
+  let jobBatches: PageJob[][];
+  try {
+    jobBatches = await Promise.all(
+      pageList.map(async (pagePath) => {
+        try {
+          return await expandPageToJobs(pagePath, scriptStats);
+        } catch (error) {
+          expansionErrors.push(
+            normalizePageError(pagePath, error, "expand routes"),
+          );
+          return [];
+        }
+      }),
+    );
+  } catch (error) {
+    // Each page's failure is caught above; this covers anything that escapes
+    // (an error while recording one), so the early workers never keep the
+    // process alive after the build has failed.
+    await releasePagePool(phase);
+    throw error;
+  }
   const allJobs = jobBatches.flat();
 
-  if (useWorkers && allJobs.length > 0) {
-    const workerExt = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
-    const workerUrl = new URL(`./page-worker${workerExt}`, import.meta.url);
-    // Every worker thread runs its own child semaphore sized to 1/poolSize of
-    // the system child budget, floored at 1 permit. Keeping the pool within
-    // that budget (memory-derived, or `BASCIK_MAX_CHILD_PROCESSES`) is what
-    // stops a low-memory machine from running cpus().length children at once:
-    // with more workers than permits the floor would give each one a child
-    // anyway.
-    const poolSize = Math.min(
-      cpus().length,
-      allJobs.length,
-      SYSTEM_MAX_CHILD_PROCESSES,
-    );
-    const pool = new WorkerPool<PageJob, PageWorkerResult | null>(
-      fileURLToPath(workerUrl),
-      poolSize,
-      { componentList, globalStylesHtml },
-      {
-        env: {
-          // The `transpiled:` line is printed inside the worker, which cannot tell on its own that it has a terminal.
-          ...(workerEnvironment() ?? process.env),
-          [CHILD_WORKER_COUNT_VAR]: String(poolSize),
-        },
-      },
-    );
+  if (pool && allJobs.length > 0) {
     const [openJobs, restJobs] = partitionByOpenPages(allJobs) as [
       PageJob[],
       PageJob[],
@@ -1022,6 +1168,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     };
 
     try {
+      const poolSize = fitPagePool(pool, pageList.length, allJobs.length);
       // Pages already open in a browser finish first, so their reload is not
       // delayed by anything else.
       if (openJobs.length > 0) {
@@ -1052,13 +1199,16 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     } finally {
       // Always terminate — otherwise a rejected job leaves worker threads
       // alive and the CLI hangs on exit instead of reporting the failure.
-      await pool.terminate();
+      await releasePagePool(phase);
     }
 
     relativePaths = results
       .map((r) => r?.relativePagePath ?? null)
       .filter((p): p is string => p !== null);
   } else {
+    // No job to hand out (every expansion failed or produced no routes):
+    // release the early workers now instead of keeping them for the phase.
+    await releasePagePool(phase);
     startManifestFromSources();
     relativePaths = await processPageBatch(
       allJobs,

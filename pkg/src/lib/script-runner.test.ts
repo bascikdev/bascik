@@ -56,6 +56,49 @@ describe("Semaphore", () => {
   });
 });
 
+describe("Semaphore.setMax", () => {
+  // A page worker learns its final share of the child budget only after the
+  // build has expanded its routes (the pool starts before that and is then
+  // trimmed), so the cap must change in place.
+  it("admits waiters immediately when the cap is raised", async () => {
+    const sem = new Semaphore(1);
+    await sem.acquire();
+    let second = false;
+    const waiter = sem.acquire().then(() => (second = true));
+    await Promise.resolve();
+    expect(second).toBe(false);
+    sem.setMax(2);
+    await waiter;
+    expect(sem.getActiveCount()).toBe(2);
+    expect(sem.getMax()).toBe(2);
+  });
+
+  it("lowers the cap without revoking permits already held", async () => {
+    const sem = new Semaphore(3);
+    await sem.acquire();
+    await sem.acquire();
+    sem.setMax(1);
+    expect(sem.getActiveCount()).toBe(2);
+    let admitted = false;
+    const waiter = sem.acquire().then(() => (admitted = true));
+    sem.release();
+    await Promise.resolve();
+    // Still at the new cap of 1 after one release.
+    expect(admitted).toBe(false);
+    sem.release();
+    await waiter;
+    expect(sem.getActiveCount()).toBe(1);
+  });
+
+  it("never drops below one permit, so a build always makes progress", () => {
+    const sem = new Semaphore(4);
+    sem.setMax(0);
+    expect(sem.getMax()).toBe(1);
+    sem.setMax(Number.NaN);
+    expect(sem.getMax()).toBe(1);
+  });
+});
+
 describe("runModule permit ownership", () => {
   beforeEach(() => {
     execFileMock.mockReset();
