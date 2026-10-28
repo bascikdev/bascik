@@ -1,0 +1,301 @@
+#!/usr/bin/env node
+// Worker response policy: a thin Cloudflare Worker wrapper around the Worker Bascik generates. For every HTML
+// response it hashes the executable inline scripts and inline styles into a strict Content-Security-Policy (no
+// unsafe-inline). It sets X-Robots-Tag: noindex on preview environments, API responses, errors, redirects and PDFs,
+// sets Cache-Control per response kind, and turns an empty 404 into a plain error page. A 304 Not Modified passes
+// through untouched.
+// Dependency-free and import-free, so the one file can be copied into a project; Node.js 22.18+ for the CLI; Web
+// APIs only (crypto.subtle, Response) inside the Worker.
+//
+// Streaming: a header must be sent before the body, so hashing a page needs the whole page. Pages that stream
+// (data-bascik-stream) are therefore buffered by default, which gives up their progressive delivery. Pass
+// { streamedHtml: "pass" } to keep them streaming; they then get no CSP header from this wrapper.
+//
+// 1. Build for Cloudflare:
+//
+//      bascik --build --target cloudflare
+//
+// 2. Copy this file into your project as scripts/worker-response-policy.mjs, and add worker-wrapper.js:
+//
+//      // worker-wrapper.js
+//      import bascikWorker from "./dist/.bascik/cloudflare/worker.js";
+//      import { withResponsePolicy } from "./scripts/worker-response-policy.mjs";
+//
+//      export default withResponsePolicy(bascikWorker, {
+//        directives: { "img-src": ["'self'", "data:"] },
+//      });
+//
+// 3. Point a root wrangler.jsonc at the wrapper. The wrapper sees static pages only when every request runs the
+//    Worker first, which gives up the CDN's direct static serving:
+//
+//      {
+//        "name": "my-site",
+//        "main": "worker-wrapper.js",
+//        "compatibility_date": "2026-08-01",
+//        "compatibility_flags": ["nodejs_compat"],
+//        "assets": {
+//          "directory": "dist/.bascik/cloudflare/public",
+//          "binding": "ASSETS",
+//          "not_found_handling": "404-page",
+//          "run_worker_first": ["/*"]
+//        },
+//        "vars": { "ENVIRONMENT": "production" }
+//      }
+//
+//    Keep "not_found_handling": "404-page", or a missing page gets an empty 404 instead of your own 404.html.
+//    Run and deploy from the project root (npx wrangler dev, npx wrangler deploy). The generated "deploy" script
+//    deploys dist/.bascik/cloudflare on its own and would bypass this wrapper.
+//
+//    Set "ENVIRONMENT" to "preview" (or anything but "production") on preview deployments: every response then
+//    carries X-Robots-Tag: noindex.
+//
+// From the command line, print the policy one built page needs:
+//
+//      node worker-response-policy.mjs --html dist/index.html
+
+const HELP = `Usage: node worker-response-policy.mjs --html <built page> [--directive "<name> <value>..."]...
+
+Prints the Content-Security-Policy that withResponsePolicy() would send for a built HTML file: SHA-256 hashes of
+its executable inline scripts and inline styles, with no unsafe-inline. Import the module from a Worker wrapper to
+apply it to every response (see the comment at the top of this file).
+
+Options:
+  --html <file>         A built page, such as dist/index.html
+  --directive <text>    An extra directive, such as "img-src 'self' data:" (repeatable)
+  --help                Show this message`;
+
+function typeOf(attrs) {
+  const m = /\btype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attrs);
+  return (m?.[1] ?? m?.[2] ?? m?.[3] ?? "").trim();
+}
+
+/**
+ * Bodies of inline scripts that script-src governs: no src, and a type that is absent, a JavaScript MIME type,
+ * module, importmap or speculationrules (browsers check the last two against script-src as well). Any other type
+ * (JSON, JSON-LD, Bascik server scripts) is data, so CSP needs no hash for it.
+ */
+export function executableInlineScripts(html) {
+  const bodies = [];
+  for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
+    const attrs = m[1];
+    if (/\bsrc\s*=/i.test(attrs)) continue;
+    const type = typeOf(attrs);
+    if (
+      type === "" ||
+      /^(module|importmap|speculationrules)$/i.test(type) ||
+      /^(text|application)\/(x-)?(java|ecma)script$/i.test(type)
+    )
+      bodies.push(m[2]);
+  }
+  return bodies;
+}
+
+/** Bodies of every inline <style> element. Style attributes need 'unsafe-hashes' and are not covered. */
+export function inlineStyles(html) {
+  return [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)].map(
+    (m) => m[1],
+  );
+}
+
+/** Base64 SHA-256 of UTF-8 text, as CSP hash sources use it. */
+export async function sha256Base64(text) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(text),
+  );
+  let binary = "";
+  for (const byte of new Uint8Array(digest))
+    binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+/**
+ * A strict policy: default-src, script-src and style-src 'self' plus the hashes, object-src 'none', base-uri 'self',
+ * form-action 'self', frame-ancestors 'self'. Extra `directives` are merged in; 'unsafe-inline' is rejected.
+ */
+export function buildCsp({
+  scriptHashes = [],
+  styleHashes = [],
+  directives = {},
+} = {}) {
+  const policy = new Map([
+    ["default-src", ["'self'"]],
+    ["script-src", ["'self'", ...scriptHashes.map((h) => `'sha256-${h}'`)]],
+    ["style-src", ["'self'", ...styleHashes.map((h) => `'sha256-${h}'`)]],
+    ["object-src", ["'none'"]],
+    ["base-uri", ["'self'"]],
+    ["form-action", ["'self'"]],
+    ["frame-ancestors", ["'self'"]],
+  ]);
+  for (const [name, values] of Object.entries(directives)) {
+    const list = Array.isArray(values) ? values : String(values).split(/\s+/);
+    if (list.some((v) => /unsafe-inline/i.test(v)))
+      throw new Error(
+        `${name}: 'unsafe-inline' defeats the hashes; list the source or hash instead`,
+      );
+    policy.set(name, [...(policy.get(name) ?? []), ...list]);
+  }
+  return [...policy]
+    .map(([name, values]) => [name, ...new Set(values)].join(" "))
+    .join("; ");
+}
+
+/** "noindex" for preview environments and for API, error, redirect and PDF responses; otherwise null. */
+export function robotsHeader({ kind, environment }) {
+  if (environment && environment !== "production") return "noindex";
+  return ["api", "error", "redirect", "pdf"].includes(kind) ? "noindex" : null;
+}
+
+const CACHE = {
+  html: "public, max-age=0, must-revalidate",
+  "hashed-asset": "public, max-age=31536000, immutable",
+  api: "no-store",
+  error: "no-store",
+};
+
+/** Cache-Control for html, hashed-asset, api and error responses. */
+export function cacheControlFor(kind) {
+  const value = CACHE[kind];
+  if (!value)
+    throw new Error(
+      `cacheControlFor: unknown response kind "${kind}"; use ${Object.keys(CACHE).join(", ")}`,
+    );
+  return value;
+}
+
+/** esbuild's [hash] (8 uppercase letters or digits) or a hex content hash of 10+ characters before the extension. */
+const HASHED = /[.-](?:[A-Z0-9]{8}|[a-f0-9]{10,})\.[a-z0-9]+$/;
+
+function kindOf(url, response) {
+  const type = response.headers.get("content-type") ?? "";
+  if (response.status === 304) return "not-modified";
+  if (response.status >= 300 && response.status < 400) return "redirect";
+  if (url.pathname.startsWith("/api/")) return "api";
+  if (response.status >= 400) return "error";
+  if (/^application\/pdf\b/i.test(type)) return "pdf";
+  if (/^text\/html\b/i.test(type)) return "html";
+  if (HASHED.test(url.pathname) || /[?&]v=[\w-]{6,}/.test(url.search))
+    return "hashed-asset";
+  return "asset";
+}
+
+const NOT_FOUND_PAGE =
+  '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Page not found</title></head><body><main><h1>Page not found</h1><p><a href="/">Go to the home page</a></p></main></body></html>';
+
+/**
+ * Wraps the Worker that `bascik --build --target cloudflare` writes. Returns a Worker ({ fetch }) that passes
+ * request, env and ctx through unchanged and applies the policy to the response. env.ENVIRONMENT names the
+ * environment ("production" when unset).
+ */
+export function withResponsePolicy(
+  worker,
+  { directives = {}, streamedHtml = "buffer" } = {},
+) {
+  if (typeof worker?.fetch !== "function")
+    throw new Error(
+      'withResponsePolicy: pass the generated Worker, imported with `import bascikWorker from "./dist/.bascik/cloudflare/worker.js"`',
+    );
+  if (streamedHtml !== "buffer" && streamedHtml !== "pass")
+    throw new Error(
+      `withResponsePolicy: streamedHtml must be "buffer" (hash every page) or "pass" (keep streamed pages streaming, without a CSP header); got ${JSON.stringify(streamedHtml)}`,
+    );
+  buildCsp({ directives }); // reject a bad directive at deploy time, not on the first request
+  return {
+    async fetch(request, env, ctx) {
+      const response = await worker.fetch(request, env, ctx);
+      const url = new URL(request.url);
+      const kind = kindOf(url, response);
+      const environment = env?.ENVIRONMENT ?? "production";
+      if (kind === "not-modified") {
+        if (environment === "production") return response;
+        const headers = new Headers(response.headers);
+        headers.set("x-robots-tag", "noindex");
+        return new Response(null, { status: 304, headers });
+      }
+      // Bascik's Worker marks a streamed page with content-encoding: identity and sends it as a ReadableStream.
+      const isStreamed =
+        response.headers.get("content-encoding") === "identity" &&
+        /^text\/html\b/i.test(response.headers.get("content-type") ?? "");
+      let body = response.body;
+      let headers = new Headers(response.headers);
+      const type = headers.get("content-type") ?? "";
+      if (response.status === 404) {
+        const text = await response.text();
+        if (text.trim() === "") {
+          body = NOT_FOUND_PAGE;
+          headers.set("content-type", "text/html; charset=utf-8");
+        } else body = text;
+      }
+      if (isStreamed && streamedHtml === "pass" && response.status !== 404) {
+        // Keep the stream: no hashes are possible before the body ends.
+      } else if (/^text\/html\b/i.test(headers.get("content-type") ?? type)) {
+        if (isStreamed) headers.delete("content-encoding");
+        const html = typeof body === "string" ? body : await response.text();
+        body = html;
+        const [scriptHashes, styleHashes] = await Promise.all([
+          Promise.all(executableInlineScripts(html).map(sha256Base64)),
+          Promise.all(inlineStyles(html).map(sha256Base64)),
+        ]);
+        headers.set(
+          "content-security-policy",
+          buildCsp({ scriptHashes, styleHashes, directives }),
+        );
+        headers.delete("content-length");
+      }
+      const robots = robotsHeader({ kind, environment });
+      if (robots) headers.set("x-robots-tag", robots);
+      if (kind in CACHE) headers.set("cache-control", cacheControlFor(kind));
+      return new Response(body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    },
+  };
+}
+
+/** True when Node runs this file directly; false inside a Worker, which has no argv. */
+function isMain(metaUrl) {
+  const getBuiltin = globalThis.process?.getBuiltinModule;
+  const script = globalThis.process?.argv?.[1];
+  if (typeof getBuiltin !== "function" || !script) return false;
+  const { pathToFileURL } = getBuiltin("node:url");
+  const { resolve } = getBuiltin("node:path");
+  return pathToFileURL(resolve(script)).href === metaUrl;
+}
+
+async function main() {
+  const { parseArgs } = process.getBuiltinModule("node:util");
+  const { readFileSync } = process.getBuiltinModule("node:fs");
+  const { values } = parseArgs({
+    options: {
+      html: { type: "string" },
+      directive: { type: "string", multiple: true },
+      help: { type: "boolean", short: "h", default: false },
+    },
+  });
+  if (values.help) return console.log(HELP);
+  if (!values.html) throw new Error("--html <built page> is required");
+  const html = readFileSync(values.html, "utf8");
+  const directives = {};
+  for (const d of values.directive ?? []) {
+    const [name, ...rest] = d.trim().split(/\s+/);
+    directives[name] = rest;
+  }
+  console.log(
+    buildCsp({
+      scriptHashes: await Promise.all(
+        executableInlineScripts(html).map(sha256Base64),
+      ),
+      styleHashes: await Promise.all(inlineStyles(html).map(sha256Base64)),
+      directives,
+    }),
+  );
+}
+
+if (isMain(import.meta.url)) {
+  main().catch((error) => {
+    process.stderr.write(`worker-response-policy: ${error.message}\n`);
+    process.exit(1);
+  });
+}

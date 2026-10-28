@@ -1,0 +1,216 @@
+# Production parity with coding agents
+
+The workflow for refactoring a live site to Bascik so that every route matches production at every breakpoint and
+scores 100 in all five Lighthouse categories, mobile and desktop. It works with any coding agent that can run shell
+commands. The human-readable version, with a live demo, is `read-doc.mjs /how-to/agent-migration` in the `bascik`
+skill.
+
+## The three-source evidence model
+
+| Source                                    | Role                                                                                                        |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Live production DOM, read with Playwright | Visual and geometric truth: `getBoundingClientRect()`, `getComputedStyle()`, pseudo-elements, `currentSrc`  |
+| Legacy repository, read-only              | Intent: why an element sits where it does, grid spans and offsets, Sass media queries, state, API contracts |
+| New Bascik repository                     | Clean semantic implementation: HTML components, scoped CSS, small TypeScript islands                        |
+
+Golden rule: live production wins on geometry; the legacy source explains the responsive math; the Bascik repository
+owns clean semantic HTML and CSS. Record production defects (low contrast, missing focus outline, blurry image) as
+observations and fix them. Never copy them. Log every fix in the decisions ledger.
+
+Two failure modes this model prevents:
+
+1. Screenshot guessing: close at one width, wrong spacing, fonts and breakpoints everywhere else.
+2. Blind DOM copying: grid wrapper divs, hydration data and generated class names pasted into components.
+
+## Inventories (docs/migration/, committed)
+
+Record these before writing any page. Every later prompt reads them.
+
+- `routes.json`: every reachable route, redirect, PDF and API endpoint, each with its legacy owner and target page.
+  Shape: `{ "routes": [{ "path", "legacy", "target" }], "redirects": [{ "from", "to", "status" }], "files": [], "api": [{ "path", "method" }] }`.
+- `urls.txt`: one target URL per line (`$TARGET_URL` plus each route path), generated from `routes.json`; the
+  Lighthouse gate's `--expect-urls`.
+- `breakpoints.json`: the viewport matrix, `{ "thresholds": [], "sources": {}, "cases": [{ "width", "height" }] }`.
+  A case may add `hasTouch`, `isMobile`, `colorScheme` or `reducedMotion`. Generate it with
+  `scripts/breakpoint-matrix.mjs`, then review it.
+- `interactions.json`: every interactive surface (dropdowns, drawer, carousel, tabs, slider, modal, sticky header) as
+  an array of steps: `{ "name", "route", "testId" | "role" + "roleName" | "selector", "nth", "panel", "action",
+"key", "expect": { "ariaExpanded", "visible", "focused" }, "minWidth", "maxWidth", "legacy" }`. Actions: click,
+  press, hover, keyboard, outside-click, focus-out. Steps run in order on one page per matrix case.
+- `integrations.json`: every third-party script with its network and cookie contract:
+  `[{ "name", "loads", "origins", "cookies", "pages" }]`.
+- `decisions.md`: the differences-and-decisions ledger (template: `templates/decisions-ledger.md`).
+- `accepted.json`: one entry per ledger row that changes pixels, `[{ "id", "route", "minWidth", "maxWidth", "mask",
+"maxRatio" }]`, passed to `compare-route.mjs --accepted`. The scripts never read `decisions.md` itself.
+
+## Environment and servers
+
+Set `PROD_URL`, `TARGET_URL` (default `http://localhost:8080`), `BASCIK_SITE_URL` (the public origin; the build
+needs it for the sitemap, robots.txt and canonicals) and `REFACTOR` (the `bascik-refactor/scripts` folder of the
+installed skills). Compare and audit a production build only: `npx bascik --build && npx bascik --server`, or
+`npx wrangler dev` for the Cloudflare wrapper. Copy `llms-txt.mjs` and `worker-response-policy.mjs` into the
+project's `scripts/` folder before the config or the Worker imports them; both import nothing else.
+
+## Capture settings
+
+Identical on both sides: width and height, browser version, device scale factor 1, zoom 100 percent, light color
+scheme, reduced motion, scroll position 0, the same cookie notice state. Before measuring, wait for
+`document.fonts.ready`, complete eager images and finished finite animations. `scripts/lib/capture.mjs` does this.
+
+## The breakpoint matrix rule
+
+1. Discover the real thresholds: CSS, Sass and Less media queries, breakpoint variables and theme tokens,
+   `matchMedia()` and `useMediaQuery()` queries, `innerWidth` checks, responsive image `sizes`. A component library's
+   grid breakpoints live in its package: pass production's compiled stylesheets to `breakpoint-matrix.mjs` too, or
+   add the library's documented breakpoints with `--add`.
+2. For every threshold B, test B - 1, B and B + 1 CSS pixels.
+3. Add one width inside every interval, plus the narrowest and widest supported widths.
+4. Width and height are a pair.
+5. Add hover, orientation and reduced-motion cases where the site uses them.
+6. Sample scroll-driven states at the threshold minus 1 and plus 1, in both directions.
+
+Expect a few dozen cases.
+
+## The per-route loop
+
+1. Capture production and the target with the settings above.
+2. Find the owning production subtree from stable anchors: visible heading text, `href`, `src`, `alt`, landmarks,
+   test ids. Never generated class names. Stop at the smallest ancestor that owns one coherent section.
+3. Extract structure, geometry and computed styles. Property list: display, position, box-sizing, width, height,
+   margin, padding, gap, align-items, justify-content, overflow, color, background, border, border-radius,
+   box-shadow, font-family, font-size, font-weight, line-height, letter-spacing, text-align, white-space, transform,
+   z-index. Also `::before` and `::after`, child order, line counts, image `currentSrc`, intrinsic size,
+   `object-fit` and `object-position`.
+4. Read the legacy owner of that subtree only. Translate resolved behavior; do not copy React or Sass wholesale.
+5. Choose Bascik boundaries. The route page owns page-level composition and order. Extract a component when a
+   surface repeats, has independent behavior or a meaningful responsive layout, or has a small prop and slot
+   contract. Never wrap a whole page in one component.
+6. Write CSS from measured relationships (container widths, padding, grid tracks, aspect ratios), not pixel nudges.
+   Example: a 24-column grid, span 20 offset 2, inside a 1200 px container becomes one section with
+   `width: min(100%, 1200px); margin: 0 auto` and the offset as padding,
+   `calc(min(100%, 1200px) / 12)` on each side. Several nested wrapper divs become one element.
+7. Validate after each section: build, type check, reload, re-measure the same boxes, compare a screenshot, run the
+   section's interaction test. Fix it before the next section.
+8. Compare the route in three layers (below).
+9. Log intentional differences in the ledger.
+
+## Three-layer comparison
+
+Per route and matrix case:
+
+1. Pixels: per-channel tolerance 10, only documented dynamic regions masked.
+2. Geometry: `scripts/geometry-diff.mjs`. Flag `|dx| > 6`, `|dy| > 12`, `|dw| > 12` CSS pixels, plus nodes missing on
+   either side. It catches cumulative drift (a small margin repeated per table row), doubled offsets (a relative top
+   and a margin top from two media queries) and containers off-center at in-between widths.
+3. Content and style: text, font metrics, colors, image source and crop, link targets.
+
+`scripts/compare-route.mjs` runs all three and replays `interactions.json` on both sides. Accepted differences come
+only from `accepted.json` entries tied to ledger rows. No route passes on one screenshot or on a Lighthouse score.
+
+## Interaction parity floor
+
+- Hover never replaces the keyboard focus indicator.
+- A desktop dropdown opens from its trigger and closes when another opens, on outside click, Escape and focus exit.
+- A mobile drawer and its nested disclosures keep accurate `aria-expanded` and close by control, outside click, link
+  activation and Escape.
+- Carousels move with next and previous controls; sliders change by keyboard and pointer.
+- Record each state: trigger, precondition, action, result, focused element, before and after screenshots.
+- End-to-end locators use roles, text or `data-testid`. With `minify.identifiers` on, class and id names are hashed.
+
+## Organizing agents
+
+- Execution contract: `templates/execution-contract.md`. Every prompt reads it first.
+- Prompt pack: `templates/prompt-pack-index.md`, grouped into phases, with the representative slice gate (prove
+  5 x 100 on a few pages before scaling).
+- Repeatable prompts: `templates/one-route.md` and `templates/one-failure.md`.
+- Driver: `templates/driver-agent.md`. Never advance until every acceptance check passes on the final files. Keep
+  fixing application-owned failures. Escalate framework issues in the reproducible format and hold the queue.
+- Swarming: build the shared shell sequentially and lock it with tests; then several agents on strictly disjoint page
+  families (start with a few); split cross-cutting sweeps into folder buckets; finish with one build, check and test
+  gate.
+
+## Score techniques
+
+- LCP: no hero animation that starts at `opacity: 0` (Chromium records no LCP candidate while transparent);
+  responsive WebP with `srcset` (`scripts/responsive-webp.mjs`; its manifest's `url` fields build the srcset, and
+  `--manifest src/lib/images.json` keeps it out of the published site); a route-aware preload of the hero from a
+  `data-bascik-build` script reading `BASCIK_PAGE_PATH` (a `data-bascik-build-once` script has no page context);
+  `loading="lazy"` below the fold.
+- Render blocking and CLS: `assets.inlineStyles` with the global stylesheet path; self-hosted subset fonts, preloaded,
+  with a metric-matched fallback (`ascent-override`, `descent-override`, `size-adjust`).
+- TBT: no framework runtime; vendor code bundled by a `pre` exec script, code-split and loaded late; hover-intent
+  prefetch after load.
+- Best Practices: strict CSP with SHA-256 hashes and no `unsafe-inline`. `generate.cspHashes` writes
+  `dist/.bascik/csp-hashes.json` (written after post exec scripts finish, so a post script cannot read it). On
+  Cloudflare, `scripts/worker-response-policy.mjs` hashes each HTML response in a Worker wrapper. It buffers streamed
+  pages to hash them; `streamedHtml: "pass"` keeps them streaming without a CSP header.
+- Agentic Browsing: scored as a pass ratio (Lighthouse 13.3 or later, Chrome 150 or later). Roles and names on
+  every control, CLS 0, and `llms.txt` from the copied `scripts/llms-txt.mjs` as a `post` exec script.
+- SEO: per-route canonical, Open Graph, Twitter tags, JSON-LD with `BreadcrumbList` on subpages.
+- Collect: `npx lighthouse <url> --output=json --output-path=artifacts/lighthouse/mobile/<slug>.json`, and again with
+  `--preset=desktop` into `artifacts/lighthouse/desktop/`, from the project's Lighthouse 13.3 or later. Not
+  `@lhci/cli`: it runs a bundled Lighthouse 12 without Agentic Browsing.
+- Gate: `scripts/lighthouse-gate.mjs` requires Performance, Accessibility, Best Practices and SEO at exactly 1 and
+  every passable Agentic Browsing audit passed, for the requested form factor, on every expected URL.
+- Never game the audit: no user-agent detection, no vendor-free audit mode, no hidden content, no timers that outlast
+  the run.
+
+## Gotchas
+
+1. Scoped ids: static literals in `getElementById`, `querySelector("#id")` and similar calls are rewritten, and so are
+   `aria-controls`, `popovertarget`, `commandfor` and `href="#id"`. Dynamic lookups are not, and the
+   `js-dynamic-id-lookup` lint flags them. Use literals, DOM traversal or bubbling `CustomEvent`s.
+2. With `minify.identifiers` on, test with roles, text or `data-testid`.
+3. esbuild's `[hash]` in chunk names is uppercase. A Worker redirect to lowercase URLs breaks those chunks: exempt
+   asset paths (any path with a file extension, or the bundle folder) from the redirect. Bascik has no chunk name
+   option.
+4. JSX drops whitespace between tags; HTML keeps it. Put `white-space: pre-wrap` on the leaf only.
+5. `transform` creates a stacking context. Do not use it for spacing.
+6. Buttons have default padding. Reset `padding: 0` on icon buttons.
+7. Font subsetting must keep GSUB-reachable ligature glyphs (ff, fi, fl), or words render with gaps.
+8. Scroll-driven states need threshold sampling, not screenshots.
+9. Keep the ledger, so intentional fixes are not reported as regressions.
+10. Cloudflare: `bascik --build --target cloudflare`, then a wrapper that imports the default export of
+    `dist/.bascik/cloudflare/worker.js` and calls its `fetch(request, env, ctx)`. A root `wrangler.jsonc` points `main`
+    at the wrapper, with `assets.directory` `dist/.bascik/cloudflare/public`, binding `ASSETS`,
+    `not_found_handling: "404-page"` (or the site's 404.html is never served), and `run_worker_first: ["/*"]` so
+    static pages reach the wrapper too (at the cost of CDN bypass). Run and deploy with `npx wrangler dev` and
+    `npx wrangler deploy` from the root; the starter's `npm run deploy` skips the wrapper.
+
+## Reference configuration
+
+```ts
+// bascik.config.ts
+import { defineConfig } from "@bascik/bascik/config";
+
+export default defineConfig({
+  assets: { inlineStyles: ["src/pages/css/styles.css"] },
+  pipeline: {
+    exec: [
+      // Your vendor bundle step, once it exists: { script: "scripts/bundle-vendor.mjs", phase: "pre" },
+      { script: "scripts/llms-txt.mjs", phase: "post" },
+    ],
+  },
+  scripts: { cache: { exclude: ["src/pages/press/**"] } },
+  generate: { manifest: true, cspHashes: true },
+});
+```
+
+`http.precompress` only affects `bascik --server`; the Cloudflare target ignores it. Redirect-only pages get
+`<meta name="bascik-sitemap" content="exclude">`. Dynamic routes use `data-bascik-routes`.
+
+## Scripts
+
+All are dependency-free `.mjs` files (Node.js 22.18+). Playwright and sharp come from your project (the starter has
+`@playwright/test`; add `npm install -D sharp lighthouse`, then `npx playwright install chromium`); each script says
+so when one is missing. Run any of them with `--help`.
+
+| Script                       | What it does                                                             |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `breakpoint-matrix.mjs`      | Thresholds from CSS, Sass and scripts, expanded into `breakpoints.json`  |
+| `geometry-diff.mjs`          | collectNodes on both sides per matrix case, flagged by threshold; exit 1 |
+| `compare-route.mjs`          | Pixels, geometry, evidence, interactions, `--accepted`; report and PNGs  |
+| `lighthouse-gate.mjs`        | Five categories at 100 for a form factor and a URL list; exit 1          |
+| `llms-txt.mjs`               | Post exec script: `dist/llms.txt` from built pages                       |
+| `responsive-webp.mjs`        | WebP widths up to the source width, plus a sha256 manifest               |
+| `worker-response-policy.mjs` | Worker wrapper: CSP hashes, X-Robots-Tag and Cache-Control per response  |

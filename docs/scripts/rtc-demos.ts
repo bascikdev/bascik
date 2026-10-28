@@ -143,17 +143,20 @@ export async function demoSiteFiles(): Promise<Record<string, string>> {
   return files;
 }
 
-/** What `prettier --write` makes of an ```html fence holding `raw` in the docs Markdown file `md`. */
+/** What `prettier --write` makes of a ```html (or ```css) fence holding `raw` in the docs Markdown file `md`. */
 export async function formatAsMarkdownFence(
   raw: string,
   md: string,
+  lang: "html" | "css" = "html",
 ): Promise<string> {
   const prettier = await import("prettier");
   const options =
     (await prettier.resolveConfig(path.join(DOCS_ROOT, md))) ?? {};
-  const source = "```html\n" + raw.replace(/\n+$/, "") + "\n```\n";
+  const source = "```" + lang + "\n" + raw.replace(/\n+$/, "") + "\n```\n";
   const out = await prettier.format(source, { ...options, parser: "markdown" });
-  return /^```html\n([\s\S]*?)\n?```/m.exec(out)![1].replace(/\n$/, "");
+  return new RegExp("^```" + lang + "\\n([\\s\\S]*?)\\n?```", "m")
+    .exec(out)![1]
+    .replace(/\n$/, "");
 }
 
 /** The Output block text for a demo: formatted, or the verbatim body without its final newline. */

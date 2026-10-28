@@ -5,6 +5,12 @@ import { SKILLS_DIR } from "./scaffold.js";
 
 const sourceDir = resolve(import.meta.dirname, "../../skills");
 
+/**
+ * Skills published with the rest (`npx skills add bascikdev/bascik`, the bascik.dev index and tarball) but left
+ * out of new projects: readers install them on purpose with `--skill <name>`.
+ */
+const OPT_IN_SKILLS = ["bascik-refactor"];
+
 async function listFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { recursive: true, withFileTypes: true });
   return entries
@@ -18,14 +24,17 @@ async function listFiles(dir: string): Promise<string[]> {
 }
 
 describe("agent skills asset synchronization", () => {
-  it("create/assets/skills is a byte-identical copy of the repo-root skills/ directory", async () => {
+  it("create/assets/skills is a byte-identical copy of the repo-root skills/ directory minus the opt-in skills", async () => {
     expect(resolve(SKILLS_DIR)).toBe(
       resolve(import.meta.dirname, "../assets/skills"),
     );
-    const [sourceFiles, bundledFiles] = await Promise.all([
+    const [allSourceFiles, bundledFiles] = await Promise.all([
       listFiles(sourceDir),
       listFiles(SKILLS_DIR),
     ]);
+    const sourceFiles = allSourceFiles.filter(
+      (file) => !OPT_IN_SKILLS.includes(file.split("/")[0]),
+    );
     expect(sourceFiles).toContain("bascik/SKILL.md");
     expect(
       bundledFiles,
@@ -41,6 +50,31 @@ describe("agent skills asset synchronization", () => {
         `${file} differs; run \`yarn create:prepack\``,
       ).toBe(true);
     }
+  });
+
+  it("never bundles an opt-in skill, while skills/ still publishes it", async () => {
+    const bundled = await readdir(SKILLS_DIR);
+    for (const name of OPT_IN_SKILLS) {
+      expect(
+        (await readdir(join(sourceDir, name))).includes("SKILL.md"),
+        `skills/${name}/SKILL.md`,
+      ).toBe(true);
+      expect(
+        bundled,
+        `${name} is opt-in: create/package.json prepare and prepack must leave it out`,
+      ).not.toContain(name);
+    }
+  });
+
+  it("prepare and prepack both remove every opt-in skill from assets/skills", async () => {
+    const { scripts } = JSON.parse(
+      await readFile(resolve(import.meta.dirname, "../package.json"), "utf8"),
+    ) as { scripts: Record<string, string> };
+    for (const script of ["prepare", "prepack"])
+      for (const name of OPT_IN_SKILLS)
+        expect(scripts[script], `${script} excludes ${name}`).toContain(
+          `rm -rf assets/skills/${name}`,
+        );
   });
 
   // Request-time component rendering: the scripts skill carries the rule that

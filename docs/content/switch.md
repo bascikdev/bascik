@@ -51,7 +51,7 @@ Place static `.html` files in `src/pages/`. For parameterized routes like blogs,
 
 Write standard vanilla JavaScript in `<script>` tags inside components for client interactivity. Bascik automatically isolates instance IDs so multiple components do not clash.
 
-> **AI-Assisted Migration:** If you use LLMs or AI coding assistants to help convert component templates, see the [Agent Skills](/agent-skills) documentation for guidelines on providing context to AI tools.
+> **AI-Assisted Migration:** If you use LLMs or AI coding assistants to help convert component templates, see the [Agent Skills](/agent-skills) documentation for guidelines on providing context to AI tools. To have coding agents refactor a whole live site so every page matches production and scores 100 in Lighthouse, follow [Migrating with Coding Agents](/how-to/agent-migration).
 
 ## What Maps to What
 

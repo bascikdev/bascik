@@ -31,7 +31,7 @@ Bascik outputs static HTML, so search engines and AI crawlers read every word wi
 5. **A noindex page also needs `<meta name="bascik-sitemap" content="exclude" />` written literally in its source.** Bascik reads the source file, not script output, to decide what `sitemap.xml` lists. 404 and 500 pages are excluded automatically.
 6. **Keep authored `robots.txt` and `sitemap.xml` only for custom rules**, and turn off the matching `generate` flag. Otherwise let Bascik generate them.
 
-Copy a tested helper instead of writing one: `add-example.mjs starter-site/src/lib/seo.ts` gives `seo({ title, description, image, type, noindex, ... })`, `jsonLd()`, `breadcrumbList()`, and `article()`. `add-example.mjs starter-site/scripts/llms-txt.ts` adds a post-phase exec script that writes `llms.txt` from every indexable page's title and description.
+Copy a tested helper instead of writing one: `add-example.mjs starter-site/src/lib/seo.ts` gives `seo({ title, description, image, type, noindex, ... })`, `jsonLd()`, `breadcrumbList()`, and `article()`. `add-example.mjs starter-site/scripts/llms-txt.ts` adds a post-phase exec script that writes `llms.txt` from every indexable page's title and description; `bascik-refactor/scripts/llms-txt.mjs`, from the opt-in `bascik-refactor` skill (`npx skills add bascikdev/bascik --skill bascik-refactor`), does the same with sections per first path segment and canonical URLs.
 
 ## Audit the build
 

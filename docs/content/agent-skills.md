@@ -49,7 +49,13 @@ del skills.tar.gz
 
 ### New projects
 
-Projects created with `npm create bascik@rc` include every skill in `.agents/skills/` and `.claude/skills/`, so there is nothing to install.
+Projects created with `npm create bascik@rc` include every skill except the opt-in `bascik-refactor` in `.agents/skills/` and `.claude/skills/`, so there is nothing else to install. Add `bascik-refactor` when you want coding agents to refactor a live site, as [Migrating with Coding Agents](/how-to/agent-migration) describes:
+
+```sh
+npx skills add bascikdev/bascik --skill bascik-refactor
+# or from this site:
+npx skills add https://bascik.dev --skill bascik-refactor
+```
 
 ### Single file
 
@@ -57,40 +63,48 @@ The core skill is also available on its own at [https://bascik.dev/assets/SKILL.
 
 ## The Skills
 
-| Skill                  | The assistant loads it when                                                                                                                      |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `bascik`               | Working in any Bascik project: layout, components, slots, props, the CLI, checking output, copying examples, and building a new site. Start here |
-| `bascik-components`    | Writing component CSS or `<script>` code, adding interactivity, setting up theming, or compiled class and ID names look wrong                    |
-| `bascik-compatibility` | Deciding whether an HTML, CSS, or JavaScript feature is safe to use, in browsers and inside a component                                          |
-| `bascik-scripts`       | Using build, routes, server, or stream scripts, API routes, Markdown, or a blog                                                                  |
-| `bascik-seo`           | Writing titles, descriptions, canonical URLs, social cards, JSON-LD, or `llms.txt`                                                               |
-| `bascik-config`        | Creating or editing `bascik.config.ts`, adding exec scripts, deploying, or setting up a monorepo                                                 |
-| `bascik-testing`       | Writing unit or E2E tests, debugging, validating `dist/`, or tuning Lighthouse scores                                                            |
-| `bascik-migrate`       | Moving a site from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress                                                              |
+| Skill                  | The assistant loads it when                                                                                                                              |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bascik`               | Working in any Bascik project: layout, components, slots, props, the CLI, checking output, copying examples, and building a new site. Start here         |
+| `bascik-components`    | Writing component CSS or `<script>` code, adding interactivity, setting up theming, or compiled class and ID names look wrong                            |
+| `bascik-compatibility` | Deciding whether an HTML, CSS, or JavaScript feature is safe to use, in browsers and inside a component                                                  |
+| `bascik-scripts`       | Using build, routes, server, or stream scripts, API routes, Markdown, or a blog                                                                          |
+| `bascik-seo`           | Writing titles, descriptions, canonical URLs, social cards, JSON-LD, or `llms.txt`                                                                       |
+| `bascik-config`        | Creating or editing `bascik.config.ts`, adding exec scripts, deploying, or setting up a monorepo                                                         |
+| `bascik-testing`       | Writing unit or E2E tests, debugging, validating `dist/`, or tuning Lighthouse scores                                                                    |
+| `bascik-migrate`       | Moving a site from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress                                                                      |
+| `bascik-refactor`      | Opt-in. Having coding agents refactor a live site so every route matches production at every breakpoint and scores 100 in all five Lighthouse categories |
 
 The skills hold only what an assistant must not get wrong: target per-instance elements with `id` and `getElementById`, keep props to text and use slots for markup, do not create a config file without a reason, and never write generated files into `src/`. For everything else they point to the page on this site that explains it, and `read-doc.mjs` prints that page, so the skills and the docs never disagree.
 
 ## Scripts the Assistant Runs
 
-The skills include dependency-free Node.js scripts (Node 22.18 or newer). The assistant runs them from the project root, and they use the project's own installed Bascik.
+The skills include dependency-free Node.js scripts (Node 22.18 or newer). The assistant runs them from the project root, and they use the project's own installed Bascik. The `bascik-refactor` scripts also load Playwright and sharp from your project, so install them as dev dependencies when you use those scripts. [Migrating with Coding Agents](/how-to/agent-migration) shows the scripts in order.
 
-| Script                                       | What it does                                                                                                                                                                                                   |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bascik/scripts/verify.mjs`                  | Runs `bascik --check` and the [linter](/tools/linter) (including component folders outside the project, such as a monorepo's shared components), and with `--build` a production build, then reports each step |
-| `bascik/scripts/preview.mjs`                 | Compiles a snippet or an existing page with your components and config in a scratch directory, and prints readable output                                                                                      |
-| `bascik/scripts/list-components.mjs`         | Lists every component with its props, slots, companion files, and `@bascik` description                                                                                                                        |
-| `bascik/scripts/new-component.mjs`           | Creates a component folder that follows the naming and ordering rules                                                                                                                                          |
-| `bascik/scripts/search-docs.mjs`             | Searches this documentation site                                                                                                                                                                               |
-| `bascik/scripts/read-doc.mjs`                | Prints a docs page as text, such as `/scoped-javascript`                                                                                                                                                       |
-| `bascik/scripts/add-example.mjs`             | Copies an [example](/example-components) into the right folders of your project, and refuses to overwrite your files                                                                                           |
-| `bascik/scripts/check-links.mjs`             | Finds broken internal links, missing assets, and dead `#fragment` targets in `dist/`, honoring `base`                                                                                                          |
-| `bascik-components/scripts/check-tokens.mjs` | Reports CSS custom properties that components read but no global stylesheet declares                                                                                                                           |
-| `bascik-compatibility/scripts/lookup.mjs`    | Searches the [compatibility matrix](/compatibility) for a pattern, such as `container` or `setAttribute`                                                                                                       |
-| `bascik-compatibility/scripts/baseline.mjs`  | Reports a web feature's Baseline status and browser versions from the [Web Platform Status](https://webstatus.dev) API                                                                                         |
-| `bascik-scripts/scripts/new-post.mjs`        | Creates a Markdown post with front matter the starter site's blog helper accepts                                                                                                                               |
-| `bascik-seo/scripts/audit-seo.mjs`           | Checks every built page for a title, description, canonical URL, social tags, one `<h1>`, image `alt`, and valid JSON-LD                                                                                       |
-| `bascik-config/scripts/audit-config.mjs`     | Flags config values that restate defaults, `siteUrl` in config, missing exec scripts, and watched output paths                                                                                                 |
-| `bascik-config/scripts/check-workspace.mjs`  | Lists every site in a repository with its shared folders and reports duplicate tags, broken `@/` imports in shared components, unwatched helpers, and mismatched Bascik versions                               |
+| Script                                               | What it does                                                                                                                                                                                                   |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bascik/scripts/verify.mjs`                          | Runs `bascik --check` and the [linter](/tools/linter) (including component folders outside the project, such as a monorepo's shared components), and with `--build` a production build, then reports each step |
+| `bascik/scripts/preview.mjs`                         | Compiles a snippet or an existing page with your components and config in a scratch directory, and prints readable output                                                                                      |
+| `bascik/scripts/list-components.mjs`                 | Lists every component with its props, slots, companion files, and `@bascik` description                                                                                                                        |
+| `bascik/scripts/new-component.mjs`                   | Creates a component folder that follows the naming and ordering rules                                                                                                                                          |
+| `bascik/scripts/search-docs.mjs`                     | Searches this documentation site                                                                                                                                                                               |
+| `bascik/scripts/read-doc.mjs`                        | Prints a docs page as text, such as `/scoped-javascript`                                                                                                                                                       |
+| `bascik/scripts/add-example.mjs`                     | Copies an [example](/example-components) into the right folders of your project, and refuses to overwrite your files                                                                                           |
+| `bascik/scripts/check-links.mjs`                     | Finds broken internal links, missing assets, and dead `#fragment` targets in `dist/`, honoring `base`                                                                                                          |
+| `bascik-components/scripts/check-tokens.mjs`         | Reports CSS custom properties that components read but no global stylesheet declares                                                                                                                           |
+| `bascik-compatibility/scripts/lookup.mjs`            | Searches the [compatibility matrix](/compatibility) for a pattern, such as `container` or `setAttribute`                                                                                                       |
+| `bascik-compatibility/scripts/baseline.mjs`          | Reports a web feature's Baseline status and browser versions from the [Web Platform Status](https://webstatus.dev) API                                                                                         |
+| `bascik-scripts/scripts/new-post.mjs`                | Creates a Markdown post with front matter the starter site's blog helper accepts                                                                                                                               |
+| `bascik-seo/scripts/audit-seo.mjs`                   | Checks every built page for a title, description, canonical URL, social tags, one `<h1>`, image `alt`, and valid JSON-LD                                                                                       |
+| `bascik-config/scripts/audit-config.mjs`             | Flags config values that restate defaults, `siteUrl` in config, missing exec scripts, and watched output paths                                                                                                 |
+| `bascik-config/scripts/check-workspace.mjs`          | Lists every site in a repository with its shared folders and reports duplicate tags, broken `@/` imports in shared components, unwatched helpers, and mismatched Bascik versions                               |
+| `bascik-refactor/scripts/breakpoint-matrix.mjs`      | Finds the legacy site's breakpoints in CSS, Sass and scripts and writes the B - 1, B, B + 1 viewport matrix                                                                                                    |
+| `bascik-refactor/scripts/geometry-diff.mjs`          | Compares the boxes of headings, paragraphs, buttons and links between production and Bascik at every matrix width                                                                                              |
+| `bascik-refactor/scripts/compare-route.mjs`          | Compares a route with production in pixels, geometry and interactions, and writes a JSON report with screenshots                                                                                               |
+| `bascik-refactor/scripts/lighthouse-gate.mjs`        | Fails unless every Lighthouse report scores 100 in all five categories for the requested form factor                                                                                                           |
+| `bascik-refactor/scripts/llms-txt.mjs`               | Writes `dist/llms.txt` from the built pages as a post exec script                                                                                                                                              |
+| `bascik-refactor/scripts/responsive-webp.mjs`        | Writes WebP variants up to each image's width and a manifest for `srcset`                                                                                                                                      |
+| `bascik-refactor/scripts/worker-response-policy.mjs` | Wraps the Cloudflare Worker to send a hash-based CSP, robots and cache headers                                                                                                                                 |
 
 For example, after writing a component the assistant can confirm that two instances get separate IDs:
 
@@ -98,7 +112,7 @@ For example, after writing a component the assistant can confirm that two instan
 node .agents/skills/bascik/scripts/preview.mjs '<like-button data-bascik-prop-label="Like" />' --count 2 --body
 ```
 
-Only `new-component.mjs`, `add-example.mjs`, and `new-post.mjs` write to your project. `preview.mjs` builds into a temporary folder under `node_modules/.cache/bascik/` and deletes it afterward, so your `dist/` is never touched. The docs scripts read the public search index at `https://bascik.dev/assets/search-index.json`.
+`new-component.mjs`, `add-example.mjs`, and `new-post.mjs` write to your project, and so do the `bascik-refactor` scripts that produce files: `breakpoint-matrix.mjs --out`, `geometry-diff.mjs --out`, `compare-route.mjs` (reports and screenshots under `artifacts/`), `responsive-webp.mjs` (into `--out`) and `llms-txt.mjs` (`dist/llms.txt` only). The other scripts only read. `preview.mjs` builds into a temporary folder under `node_modules/.cache/bascik/` and deletes it afterward, so your `dist/` is never touched. The docs scripts read the public search index at `https://bascik.dev/assets/search-index.json`.
 
 ## Example Components
 

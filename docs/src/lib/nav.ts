@@ -142,6 +142,10 @@ export const NAV: NavSection[] = [
       { href: "/how-to/sharing-components", label: "Sharing Components" },
       { href: "/how-to/publishing-components", label: "Publishing Components" },
       { href: "/how-to/monorepos", label: "Monorepos" },
+      {
+        href: "/how-to/agent-migration",
+        label: "Migrating with Coding Agents",
+      },
       { href: "/libraries", label: "JavaScript Libraries" },
     ],
   },

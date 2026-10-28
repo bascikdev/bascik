@@ -13,17 +13,21 @@ import { DEMOS, runRtcDemos } from "./rtc-demos.ts";
 
 const DOCS_ROOT = path.resolve(import.meta.dirname, "..");
 
-/** Replaces the fence after `<!-- demo:marker -->` (and an optional prettier-ignore line) with `code`. */
+/**
+ * Replaces the fence after `<!-- demo:marker -->` (and an optional prettier-ignore line) with `code`. `lang` is the
+ * fence's language: html for the request-time demos, css too for the migration demo's stylesheet Output.
+ */
 export function replaceDemoFence(
   md: string,
   marker: string,
   code: string,
+  lang: "html" | "css" = "html",
 ): string {
   const re = new RegExp(
-    `(<!--\\s*demo:${marker}\\s*-->\\s*\\n(?:\\s*<!--\\s*prettier-ignore\\s*-->\\s*\\n)?\\s*\`\`\`html\\n)([\\s\\S]*?)(^\`\`\`)`,
+    `(<!--\\s*demo:${marker}\\s*-->\\s*\\n(?:\\s*<!--\\s*prettier-ignore\\s*-->\\s*\\n)?\\s*\`\`\`${lang}\\n)([\\s\\S]*?)(^\`\`\`)`,
     "m",
   );
-  if (!re.test(md)) throw new Error(`no html fence after demo:${marker}`);
+  if (!re.test(md)) throw new Error(`no ${lang} fence after demo:${marker}`);
   return md.replace(re, (_, open: string, _old: string, close: string) => {
     return `${open}${code}\n${close}`;
   });

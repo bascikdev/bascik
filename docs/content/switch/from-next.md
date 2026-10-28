@@ -13,6 +13,8 @@ To evaluate Bascik on an existing Next.js codebase, migrate a single static mark
 3. Create `src/pages/about.html` containing your page structure and `<site-nav></site-nav>`.
 4. Run `npm run dev` to view your rendered page.
 
+To migrate a whole production site with coding agents, matching it at every breakpoint while reaching 100 in all five Lighthouse categories, follow [Migrating with Coding Agents](/how-to/agent-migration).
+
 ## Pages Router vs Bascik Routing
 
 The Next.js Pages Router maps cleanly to Bascik's `src/pages/` directory. Each `.js` / `.tsx` page file becomes a plain `.html` file at the same relative path:

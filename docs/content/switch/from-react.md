@@ -30,6 +30,8 @@ Migrate a simple static component (such as a card or navigation bar) to get fami
 4. Use `<site-nav></site-nav>` inside `src/pages/index.html` without import statements.
 5. Run `npm run dev` to inspect the scoped output.
 
+To migrate a whole production site with coding agents, matching it at every breakpoint while reaching 100 in all five Lighthouse categories, follow [Migrating with Coding Agents](/how-to/agent-migration).
+
 ## Component Syntax
 
 A Bascik component is a vanilla HTML file. There are no imports, no function declarations, and no JSX. The file name (minus the extension) is the tag name.

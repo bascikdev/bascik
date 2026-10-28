@@ -11,6 +11,8 @@ metadata:
 
 Requires the `bascik` skill for component rules and the `bascik-scripts` skill for build-time data.
 
+To have coding agents refactor a live site to production parity at every breakpoint and 100 in all five Lighthouse categories, install the opt-in `bascik-refactor` skill (`npx skills add bascikdev/bascik --skill bascik-refactor`) and read `node <skills-dir>/bascik/scripts/read-doc.mjs /how-to/agent-migration`.
+
 ## Procedure
 
 1. **Inventory.** List every URL, shared layout region (`<head>` tags, header, footer, nav), repeated widget, data source, and client behavior. Run `node <skills-dir>/bascik/scripts/list-components.mjs` if Bascik components already exist.

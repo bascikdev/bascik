@@ -213,6 +213,9 @@ The script downloads from bascik.dev, maps files to the project's configured fol
 | `bascik-config`        | Creating or editing `bascik.config.ts`, monorepos, deploying, or running `bascik --server`                         |
 | `bascik-testing`       | Writing tests, debugging, validating output, or tuning Lighthouse scores                                           |
 | `bascik-migrate`       | Moving a site from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress                                |
+| `bascik-refactor`      | Opt-in: having coding agents refactor a live site to production parity and 100 in all five Lighthouse categories   |
+
+New projects do not include `bascik-refactor`. Install it with `npx skills add bascikdev/bascik --skill bascik-refactor`.
 
 If the companions or this skill's `scripts/` folder are missing, the skill was installed as a single file. Reinstall the full set:
 

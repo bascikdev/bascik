@@ -74,7 +74,7 @@ VS Code launch configurations and step-by-step flows: `read-doc.mjs /testing/deb
 
 ## Lighthouse
 
-Bascik output starts near 100 because it adds no runtime. The remaining points come from ordinary HTML practice: explicit image `width` and `height`, `loading="lazy"` below the fold only, preload of the hero image and critical fonts, `defer` scripts, a unique `<title>`, description, and canonical per page, landmarks, labeled controls, and `lang` on `<html>`. Checklists: `read-doc.mjs /lighthouse/performance`, `/lighthouse/accessibility`, `/lighthouse/best-practices`, `/lighthouse/seo`, and `/lighthouse/agentic-browsing`.
+Bascik output starts near 100 because it adds no runtime. The remaining points come from ordinary HTML practice: explicit image `width` and `height`, `loading="lazy"` below the fold only, preload of the hero image and critical fonts, `defer` scripts, a unique `<title>`, description, and canonical per page, landmarks, labeled controls, and `lang` on `<html>`. Checklists: `read-doc.mjs /lighthouse/performance`, `/lighthouse/accessibility`, `/lighthouse/best-practices`, `/lighthouse/seo`, and `/lighthouse/agentic-browsing`. To fail a build unless every page scores 100 in all five categories, run `bascik-refactor/scripts/lighthouse-gate.mjs` from the opt-in `bascik-refactor` skill (`npx skills add bascikdev/bascik --skill bascik-refactor`) over the Lighthouse JSON reports.
 
 ## Look it up
 
