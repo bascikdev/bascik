@@ -1,3 +1,7 @@
+import {
+  scanElementContents,
+  scanOpeningTags,
+} from "./element-content-scan.ts";
 import { createContentShield, shieldElementContents } from "./shielding.ts";
 import { trimTrailingSlashes } from "./slashes.ts";
 
@@ -12,9 +16,6 @@ const URL_ATTRIBUTES = new Set([
 
 const SRCSET_ATTRIBUTES = new Set(["imagesrcset", "srcset"]);
 const URL_META_PROPERTIES = new Set(["og:image", "og:url", "twitter:image"]);
-const HTML_OPENING_TAG_PATTERN =
-  /<[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g;
-
 const joinBasePath = (value: string, base: string): string =>
   `${base}${value.slice(1)}`;
 
@@ -186,6 +187,8 @@ const rewriteTagAttributes = (tag: string, base: string): string => {
         )?.toLowerCase()
       : undefined;
 
+  // In document order, so the attribute matches below (also in order) check
+  // them with one forward pointer instead of a search per match.
   const stringRanges: Array<{ start: number; end: number }> = [];
   let scanIdx = 0;
   let strChar: string | null = null;
@@ -203,6 +206,7 @@ const rewriteTagAttributes = (tag: string, base: string): string => {
     scanIdx++;
   }
 
+  let range = 0;
   return tag.replace(
     /\s([a-zA-Z_:][\w:.-]*)\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'=<>`]+?))(?=\s|\/>|>|$)/g,
     (
@@ -214,9 +218,10 @@ const rewriteTagAttributes = (tag: string, base: string): string => {
       unquotedValue: string | undefined,
       offset: number,
     ) => {
-      if (stringRanges.some((r) => offset > r.start && offset < r.end)) {
+      while (range < stringRanges.length && stringRanges[range].end <= offset)
+        range++;
+      if (range < stringRanges.length && offset > stringRanges[range].start)
         return match;
-      }
       const name = rawName.toLowerCase();
       const value = doubleValue ?? singleValue ?? unquotedValue ?? "";
       let rewritten = value;
@@ -250,20 +255,46 @@ export const rewriteHtmlBasePaths = (html: string, base: string): string => {
   const withoutComments = html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
     commentShield.hide(comment),
   );
-  const withCss = withoutComments.replace(
-    /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
-    (_match, open: string, css: string, close: string) =>
-      `${rewriteTagAttributes(open, base)}${rewriteCssBasePaths(css, base)}${close}`,
-  );
+  // Since request-time rendering, each expanded usage is rebased on every
+  // request and can carry visitor text, so the stylesheet and opening-tag
+  // searches are linear scans. They find what
+  // /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi
+  // and /<[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g
+  // found; those regexes were quadratic on openers that cannot reach a `>`.
+  let withCss = "";
+  let cursor = 0;
+  for (const style of scanElementContents(withoutComments, "style", {
+    opener: "tag-space",
+    closer: "attributes",
+  })) {
+    withCss +=
+      withoutComments.slice(cursor, style.start) +
+      rewriteTagAttributes(
+        withoutComments.slice(style.start, style.contentStart),
+        base,
+      ) +
+      rewriteCssBasePaths(
+        withoutComments.slice(style.contentStart, style.contentEnd),
+        base,
+      );
+    cursor = style.contentEnd;
+  }
+  withCss += withoutComments.slice(cursor);
   const shielded = shieldElementContents(withCss, [
     "script",
     "style",
     "textarea",
     "title",
   ]);
-  const rewritten = shielded.html.replace(HTML_OPENING_TAG_PATTERN, (tag) =>
-    rewriteTagAttributes(tag, base),
-  );
+  let rewritten = "";
+  cursor = 0;
+  for (const [start, end] of scanOpeningTags(shielded.html)) {
+    rewritten +=
+      shielded.html.slice(cursor, start) +
+      rewriteTagAttributes(shielded.html.slice(start, end), base);
+    cursor = end;
+  }
+  rewritten += shielded.html.slice(cursor);
   return commentShield.restore(shielded.restore(rewritten));
 };
 

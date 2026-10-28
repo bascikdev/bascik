@@ -1990,6 +1990,76 @@ describe("scaling (identifiers off)", () => {
   });
 });
 
+describe("hostile echoed output stays linear (identifiers off)", () => {
+  // Script output can echo visitor text (`?q=`), and every request renders
+  // it, so a pass that is quadratic in the output is a per-request denial of
+  // service. Measured before the fix at 100k characters: rebasing a slot of
+  // `<a x` repeated with one quote after it took about 6 s, `<style '` about
+  // 1.8 s, and finding nested-job markers in `<script '` repeated about 1.6 s.
+  const SIZE = 200_000;
+  const BOUND_MS = 1000;
+  const repeatTo = (unit: string): string =>
+    unit.repeat(Math.ceil(SIZE / unit.length));
+
+  beforeEach(() => {
+    config.minify.identifiers = false;
+  });
+
+  it.each([
+    ["<a x", "'"],
+    ["<style '", ""],
+    ["<STYLE a='>' ", ""],
+    ['<a href="/x" ', ""],
+  ])(
+    'base "/docs/": a slot of %j repeated (then %j) renders in linear time',
+    async (unit, tail) => {
+      config.base = "/docs/";
+      const manifest = await build();
+      config.base = "/";
+      const host = makeHost(manifest);
+      const html = `<server-card data-bascik-prop-name="n">${repeatTo(unit)}${tail}</server-card>`;
+      const wrapped = wrapRunner(
+        runnerFrom({ a: html }),
+        serverPlan("a"),
+        host,
+      );
+      const started = performance.now();
+      const out = await wrapped("a", signalOf());
+      expect(performance.now() - started).toBeLessThan(BOUND_MS);
+      expect(out).not.toContain("<server-card");
+      expect(out).toContain('href="/docs/default"');
+    },
+  );
+
+  it.each([
+    ["<script '", ""],
+    ["<script x", ""],
+    ["<SCRIPT a='>' ", ""],
+    // Every opener's attributes run to the one `>`; what follows it is read once.
+    ["<script x", `>${" ".repeat(SIZE)}`],
+  ])(
+    "nested-job markers are found in linear time next to %j repeated (then %j)",
+    async (unit, tail) => {
+      const manifest = await build();
+      const host = makeHost(manifest, {
+        runComponentJob: vi.fn(async () => "<b>nested</b>"),
+      });
+      const html = `<srv-card></srv-card>${repeatTo(unit)}${tail}`;
+      const wrapped = wrapRunner(
+        runnerFrom({ a: html }),
+        serverPlan("a"),
+        host,
+      );
+      const started = performance.now();
+      const out = await wrapped("a", signalOf());
+      expect(performance.now() - started).toBeLessThan(BOUND_MS);
+      expect(host.runComponentJob).toHaveBeenCalledTimes(1);
+      expect(out).toContain("<b>nested</b>");
+      expect(out).not.toContain("bascik-job");
+    },
+  );
+});
+
 /**
  * `minify.html` and `base` at request time (items 28 and 29, and the misuse
  * lens): the build rewrites base paths and minifies the whole page once

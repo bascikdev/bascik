@@ -1,3 +1,8 @@
+import {
+  isScannableElementName,
+  scanElementContents,
+} from "./element-content-scan.ts";
+
 // A global counter plus source collision checks keep generated tokens outside user input.
 const SHIELD_TOKEN_PATTERN = /\x00BASCIK_SHIELD_(\d+)\x00/g;
 let nextShieldToken = 0;
@@ -67,15 +72,8 @@ export const shieldElementContents = (
   if (tags.length === 0) return { html, restore: (value) => value };
   const shield = createContentShield(html);
   let result = html;
-  for (const tag of tags) {
-    const patterns = getTagContentPatterns(tag);
-    if (patterns.probe && !patterns.probe.test(result)) continue;
-    result = result.replace(
-      patterns.shield,
-      (_match, open: string, inner: string, close: string) =>
-        `${open}${shield.hide(inner)}${close}`,
-    );
-  }
+  for (const tag of tags)
+    result = replaceElementContents(result, tag, false, shield.hide);
   return { html: result, restore: shield.restore };
 };
 
@@ -356,17 +354,48 @@ export const stripPreserveDirectives = (
   );
 };
 
+/**
+ * Replace the content of every `tag` element in `html` with
+ * `replace(content)`, finding elements as `getTagContentPatterns(tag).mask`
+ * (`closerWhitespace`) or `.shield` does. Exact tag names use the linear scan
+ * in element-content-scan.ts, since the regex is quadratic on openers with no
+ * closer or with an unclosed quote, and request-time output can carry
+ * visitor text. `*` patterns (from `scoping.preserve`, applied only to
+ * authored files at build time) still use the regex.
+ */
+const replaceElementContents = (
+  html: string,
+  tag: string,
+  closerWhitespace: boolean,
+  replace: (content: string) => string,
+): string => {
+  const patterns = getTagContentPatterns(tag);
+  if (patterns.probe && !patterns.probe.test(html)) return html;
+  const entry = tag.toLowerCase();
+  if (!isScannableElementName(entry))
+    return html.replace(
+      closerWhitespace ? patterns.mask : patterns.shield,
+      (_match, open: string, inner: string, close: string) =>
+        `${open}${replace(inner)}${close}`,
+    );
+  let result = "";
+  let cursor = 0;
+  for (const match of scanElementContents(html, entry, {
+    opener: "word-boundary",
+    closer: closerWhitespace ? "regex-space" : "exact",
+  })) {
+    result += `${html.slice(cursor, match.contentStart)}${replace(html.slice(match.contentStart, match.contentEnd))}`;
+    cursor = match.contentEnd;
+  }
+  return cursor === 0 ? html : result + html.slice(cursor);
+};
+
+const blank = (content: string): string => " ".repeat(content.length);
+
 // Scanner masks discard content and preserve offsets; they are never restored.
 export const maskElementContents = (html: string, tags: string[]): string => {
   let result = html;
-  for (const tag of tags) {
-    const patterns = getTagContentPatterns(tag);
-    if (patterns.probe && !patterns.probe.test(result)) continue;
-    result = result.replace(
-      patterns.mask,
-      (_match, open: string, inner: string, close: string) =>
-        `${open}${" ".repeat(inner.length)}${close}`,
-    );
-  }
+  for (const tag of tags)
+    result = replaceElementContents(result, tag, true, blank);
   return result;
 };

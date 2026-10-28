@@ -185,6 +185,59 @@ describe("rewriteHtmlBasePaths", () => {
   });
 });
 
+describe("rewriteHtmlBasePaths time on hostile input", () => {
+  // Since request-time component rendering, every expanded usage is rebased
+  // on each request when base is not "/", and slot content can carry
+  // visitor text. The old opening-tag and <style> regexes scanned to the end
+  // of the input from every opener that could not reach a `>`: about 6 s for
+  // `<a x` repeated with one quote after it at 100k characters, and 1.8 s
+  // for `<style '` repeated.
+  const SIZE = 200_000;
+  const BOUND_MS = 250;
+  const repeatTo = (unit: string): string =>
+    unit.repeat(Math.ceil(SIZE / unit.length));
+
+  it.each([
+    ["<a x", "'"],
+    ['<a "x" ', "'"],
+    ['<a href="/x" ', ""],
+    ["<a x", ""],
+    ["<style '", ""],
+    ["<style x", ""],
+    ["<style>", ""],
+    ["<STYLE a='>' ", ""],
+    ["<style></style x", ""],
+    ["<style></style ", ""],
+  ])("rebases %j repeated (then %j) in linear time", (unit, tail) => {
+    const html = `${repeatTo(unit)}${tail}<a href="/end">e</a>`;
+    const started = performance.now();
+    const out = rewriteHtmlBasePaths(html, "/sub/");
+    expect(performance.now() - started).toBeLessThan(BOUND_MS);
+    // The link after the run is found and rewritten, on its own or as part
+    // of the one long tag an opener's attributes run into.
+    expect(out.endsWith('<a href="/sub/end">e</a>')).toBe(true);
+  });
+
+  it("ends a stylesheet at </style> with attributes or a slash, as before", () => {
+    for (const close of ["</style>", "</style/>", "</style x>", "</STYLE\n>"]) {
+      const html = `<style>a{background:url(/a.png)}${close}<img src="/b.png">`;
+      expect(rewriteHtmlBasePaths(html, "/sub/"), close).toBe(
+        `<style>a{background:url(/sub/a.png)}${close}<img src="/sub/b.png">`,
+      );
+    }
+  });
+
+  it("still rewrites a complete tag and stylesheet after a long run of unclosed openers", () => {
+    const run = repeatTo("<style '").slice(0, 50_000);
+    const html = `<p>${run.replaceAll("'", "")}</p><style>a{background:url(/i.png)}</style><img src="/i.png">`;
+    expect(rewriteHtmlBasePaths(html, "/sub/")).toBe(
+      html
+        .replace("url(/i.png)", "url(/sub/i.png)")
+        .replace('src="/i.png"', 'src="/sub/i.png"'),
+    );
+  });
+});
+
 describe("rewriteCssBasePaths", () => {
   it("rewrites url, import, and image-set strings", () => {
     const css = `@import "/theme.css"; a{background:url(/a.png)} b{background-image:image-set('/b.png' 1x, url("/c.png") 2x)}`;

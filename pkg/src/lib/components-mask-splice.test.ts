@@ -13,7 +13,10 @@ const fragment = fc.constantFrom(
   "<!--",
   "-->",
   "<!-->",
+  "<!--->",
   "<!---->",
+  "--!>",
+  "--",
   "<script>",
   "<SCRIPT type=module>",
   '<script data-a="x>y">',
@@ -83,6 +86,10 @@ describe("maskRawTextContentWithClosure", () => {
       "<script>const a = '<p>';</script><p>after</p>",
       "<style>.a{}</style><textarea>t</textarea>",
       "<!--bascik-source-file:a.html--><script>run()</script><!--bascik-source-file-end:a.html-->",
+      // A `<!--` inside a script is script text, as the tokenizer reads it,
+      // so no later `-->` can reach back into it.
+      "<script>const a = '<!--';</script><p>after</p>",
+      "<!-- a --!><p>b</p><!--><!--->",
     ]) {
       expect(maskRawTextContentWithClosure(html).closed, html).toBe(true);
     }
@@ -98,8 +105,9 @@ describe("maskRawTextContentWithClosure", () => {
       "<p>x</p><!-",
       "<p>x</p><",
       "<p>x</p><textarea",
-      // Comments are masked before scripts, so a later `-->` would end this one.
-      "<script>const a = '<!--';</script><p>after</p>",
+      // `<!--` then `<script` in a script is double-escaped script data,
+      // where `</script>` does not end it.
+      "<script>a('<!--<script></script>');",
     ]) {
       expect(maskRawTextContentWithClosure(html).closed, html).toBe(false);
     }

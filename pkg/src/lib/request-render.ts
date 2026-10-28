@@ -52,6 +52,7 @@ import {
   type ExpandOptions,
 } from "./component-expansion-core.ts";
 import { maskRawTextContent } from "./component-masking.ts";
+import { scanEmptyScriptElements } from "./element-content-scan.ts";
 import { getFirstComponent, mayContainComponent } from "./component-tags.ts";
 import { getHtmlAttributeValue } from "./html-patterns.ts";
 import {
@@ -501,14 +502,15 @@ export const usageFinalizer = (
       }
     : undefined;
 
-/**
- * The staged placeholder of a component job inside an instantiated template,
- * as server-sidecar.ts writes it. The optional stream marker and the attribute
- * order are fixed by the writer; quotes are matched loosely in case a later
- * sidecar writer changes them.
- */
-const PLACEHOLDER_RE =
-  /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>\s*<\/script\s*>/gi;
+// The staged placeholders of component jobs inside an instantiated template,
+// as server-sidecar.ts writes them, and this request's markers, are empty
+// script elements. `scanEmptyScriptElements` finds them exactly as
+// `/<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>\s*<\/script\s*>/gi` did.
+// The optional stream marker and the attribute order are fixed by the
+// writer; quotes are matched loosely in case a later sidecar writer changes
+// them. A linear scan: markers are looked for in the whole output, which can
+// echo visitor text, and the regex was quadratic on script openers that
+// cannot reach a `>`.
 
 const JOB_ATTRIBUTE = "data-bascik-job";
 
@@ -691,22 +693,26 @@ export const wrapRunner = (
     const scoped = applyScopingResult(component, result);
     if (entry.jobs.length > 0) {
       const jobIds = new Map(entry.jobs.map((job) => [job.id, job]));
-      scoped.fileContent = scoped.fileContent.replace(
-        PLACEHOLDER_RE,
-        (element: string, attrs: string) => {
-          const openTag = `<script${attrs}>`;
-          if (
-            getHtmlAttributeValue(openTag, "type")?.toLowerCase() !==
-            "text/bascik-server"
-          )
-            return element;
-          const id = getHtmlAttributeValue(openTag, "data-bascik-server-id");
-          if (!id || !jobIds.has(id)) return element;
-          const n = markers.length;
-          markers.push({ n, id, entry });
-          return jobMarker(nonce(), n);
-        },
-      );
+      const content = scoped.fileContent;
+      let replaced = "";
+      let cursor = 0;
+      for (const { start, end, attributes } of scanEmptyScriptElements(
+        content,
+      )) {
+        const openTag = `<script${attributes}>`;
+        if (
+          getHtmlAttributeValue(openTag, "type")?.toLowerCase() !==
+          "text/bascik-server"
+        )
+          continue;
+        const id = getHtmlAttributeValue(openTag, "data-bascik-server-id");
+        if (!id || !jobIds.has(id)) continue;
+        const n = markers.length;
+        markers.push({ n, id, entry });
+        replaced += content.slice(cursor, start) + jobMarker(nonce(), n);
+        cursor = end;
+      }
+      if (cursor > 0) scoped.fileContent = replaced + content.slice(cursor);
     }
     return scoped;
   };
@@ -717,14 +723,15 @@ export const wrapRunner = (
     // No marker was issued yet, so none can be in `html`.
     if (state.nonce === undefined || !html.includes(state.nonce)) return sites;
     const prefix = `${state.nonce}:`;
-    const re = new RegExp(PLACEHOLDER_RE.source, PLACEHOLDER_RE.flags);
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(html)) !== null) {
-      const value = getHtmlAttributeValue(`<script${match[1]}>`, JOB_ATTRIBUTE);
+    for (const { start, end, attributes } of scanEmptyScriptElements(html)) {
+      const value = getHtmlAttributeValue(
+        `<script${attributes}>`,
+        JOB_ATTRIBUTE,
+      );
       if (!value || !value.startsWith(prefix)) continue;
       const n = Number(value.slice(prefix.length));
       if (!Number.isInteger(n)) continue;
-      sites.push({ start: match.index, end: match.index + match[0].length, n });
+      sites.push({ start, end, n });
     }
     return sites;
   };
