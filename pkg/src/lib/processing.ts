@@ -126,6 +126,7 @@ import type {
   TranspilePageResult,
 } from "./types.ts";
 import { WorkerPool } from "./worker-pool.ts";
+import { registerExitStopper } from "./exit-stoppers.ts";
 
 import {
   PageProcessingError,
@@ -945,16 +946,27 @@ interface PagePoolPhase {
 
 const pagePoolPhases = new Set<PagePoolPhase>();
 
+/** Phases released but whose pool has not finished stopping. */
+const stoppingPagePools = new Set<Promise<void>>();
+
 /**
  * Stop a phase's pool once, however many paths ask for it. Never rejects: it
  * runs on the way out of a failed build, where a failure to stop a worker
  * must not replace the error that failed the build.
  */
-const releasePagePool = (phase: PagePoolPhase): Promise<void> => {
+const releasePagePool = (
+  phase: PagePoolPhase,
+  options: { abandon?: boolean } = {},
+): Promise<void> => {
   pagePoolPhases.delete(phase);
-  phase.stopped ??= phase.listed
-    .then(({ pool }) => pool?.terminate())
-    .catch(() => {});
+  if (!phase.stopped) {
+    const stopped = phase.listed
+      .then(({ pool }) => pool?.terminate(options))
+      .catch(() => {})
+      .finally(() => stoppingPagePools.delete(stopped));
+    stoppingPagePools.add(stopped);
+    phase.stopped = stopped;
+  }
   return phase.stopped;
 };
 
@@ -966,11 +978,30 @@ const releasePagePool = (phase: PagePoolPhase): Promise<void> => {
  * worker is still loading the compiler can abort Node 24 (see `readySignal`
  * in `WorkerPool`); stopping the pool first waits for each worker to load.
  * Never rejects. The abandoned phase keeps running until the process exits,
- * and its jobs fail on the stopped pool.
+ * and its jobs fail on the stopped pool, or, with `abandon`, never finish.
  */
-export const stopPagePools = async (): Promise<void> => {
-  await Promise.all([...pagePoolPhases].map(releasePagePool));
+export const stopPagePools = async (
+  options: { abandon?: boolean } = {},
+): Promise<void> => {
+  await Promise.all(
+    [...pagePoolPhases].map((phase) => releasePagePool(phase, options)),
+  );
 };
+
+// Every exit path (the crash net, the dev server's signal shutdown, the
+// CLI's own exits) stops the page pools first, including one a phase has
+// already released but is still stopping: its workers may still be loading.
+// The running phase's jobs are abandoned, not failed: the process is exiting
+// for its own reason (a crash, a Ctrl-C), and a block of "terminated" page
+// errors reported while it waits would bury that reason and blame the pages.
+registerExitStopper(() =>
+  pagePoolPhases.size === 0 && stoppingPagePools.size === 0
+    ? null
+    : Promise.all([
+        stopPagePools({ abandon: true }),
+        ...stoppingPagePools,
+      ]).then(() => {}),
+);
 
 export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   logInfo(colorOut.dim("Starting transpiling..."));

@@ -62,6 +62,8 @@ export class WorkerPool<Task, Result> {
   #idleSlots: Slot<Task, Result>[] = [];
   #queue: QueuedTask<Task, Result>[] = [];
   #terminated = false;
+  /** Terminated with `abandon`: tasks are dropped, never settled. */
+  #abandoned = false;
   #capacityExhausted = false;
   #consecutiveStartupFailures: number;
   /** Most workers the pool keeps, set by `shrink` and `grow`. A replacement
@@ -372,6 +374,7 @@ export class WorkerPool<Task, Result> {
 
   run(task: Task): Promise<Result> {
     return new Promise<Result>((resolve, reject) => {
+      if (this.#abandoned) return;
       if (this.#terminated) {
         reject(new Error("WorkerPool has been terminated"));
         return;
@@ -409,20 +412,32 @@ export class WorkerPool<Task, Result> {
     }
   }
 
-  async terminate(): Promise<void> {
+  /**
+   * Stop every worker (each only once it has loaded, with `readySignal`).
+   * Queued and in-flight tasks are rejected, so no caller is left hanging.
+   *
+   * `abandon`: for a process that is about to exit. The tasks are dropped
+   * without settling, and so is every later `run`, so the caller does not
+   * report its own work as failed while the exit waits for the workers: the
+   * reason for the exit (a crash, a Ctrl-C) stays the only thing reported.
+   */
+  async terminate(options: { abandon?: boolean } = {}): Promise<void> {
     this.#terminated = true;
-    // Reject everything still queued so no caller is left hanging.
-    for (const job of this.#queue.splice(0)) {
-      job.reject(new Error("WorkerPool terminated before task ran"));
-    }
-    // Reject every in-flight task exactly once.
+    if (options.abandon) this.#abandoned = true;
+    const queued = this.#queue.splice(0);
     const inFlight: QueuedTask<Task, Result>[] = [];
     for (const slot of this.#slots) {
       if (slot.pending) inFlight.push(slot.pending);
       slot.pending = null;
     }
-    for (const job of inFlight) {
-      job.reject(new Error("WorkerPool terminated while task was in flight"));
+    if (!this.#abandoned) {
+      for (const job of queued) {
+        job.reject(new Error("WorkerPool terminated before task ran"));
+      }
+      // Each in-flight task exactly once.
+      for (const job of inFlight) {
+        job.reject(new Error("WorkerPool terminated while task was in flight"));
+      }
     }
     await Promise.all([
       ...this.#slots.map((s) => this.#stopForTerminate(s)),

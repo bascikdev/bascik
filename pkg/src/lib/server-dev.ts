@@ -27,6 +27,7 @@ import { startServer } from "./server.ts";
 import { BascikConfig } from "./config.ts";
 import { installModuleGraphHook } from "./module-graph.ts";
 import { getImportRoot } from "./import-root.ts";
+import { exitAfterStopping } from "./exit-stoppers.ts";
 
 export interface DevServerOptions {
   exitOnError?: boolean;
@@ -73,7 +74,7 @@ export const startDevServer = (
   const url = startServer().catch((err) => {
     console.error("Server startup failed:", err);
     if (options.exitOnError !== false) {
-      process.exit(1);
+      exitAfterStopping(1);
     }
     throw err;
   });

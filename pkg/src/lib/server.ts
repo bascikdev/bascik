@@ -1231,18 +1231,33 @@ export const startServerInstance = async (
   });
 
   process.setMaxListeners(process.getMaxListeners() + 2);
+  // Each handler runs once, so a repeat of the same signal takes the
+  // default action and ends the process at once. In dev the first signal
+  // also removes the other handler: any further Ctrl-C or SIGTERM ends the
+  // process at once while the shutdown waits (for connections to drain, or
+  // for page workers to finish loading). The production server keeps the
+  // other handler (a no-op once shutting down), so a process manager's
+  // SIGTERM after a Ctrl-C cannot cut the connection drain short.
+  const releaseShutdownSignals = () => {
+    process.removeListener("SIGTERM", sigtermHandler);
+    process.removeListener("SIGINT", sigintHandler);
+  };
+  const onFirstSignal = () => {
+    if (!BascikConfig.isProdServer) releaseShutdownSignals();
+  };
   const sigtermHandler = () => {
+    onFirstSignal();
     void gracefulShutdown("SIGTERM");
   };
   const sigintHandler = () => {
+    onFirstSignal();
     void gracefulShutdown("SIGINT");
   };
   process.once("SIGTERM", sigtermHandler);
   process.once("SIGINT", sigintHandler);
 
   server.once("close", () => {
-    process.removeListener("SIGTERM", sigtermHandler);
-    process.removeListener("SIGINT", sigintHandler);
+    releaseShutdownSignals();
     process.setMaxListeners(Math.max(0, process.getMaxListeners() - 2));
   });
 

@@ -8,6 +8,26 @@
  * 1. No single page reports > 5x the median duration (preventing queue-wait staircase inflation).
  * 2. Sum of per-page durations is bounded against the batch wall time (catches staircase stretch).
  * 3. Diagnostic tip is conditionally asserted if boot wall time meets the >=2000ms boundary on 4+ cores.
+ *
+ * The contract under test is which time a page's figure counts: only its own
+ * synchronous work segments (`transpilePage` pauses its clock at every await),
+ * never the time it spent waiting while other pages ran. On a busy machine
+ * the OS also deschedules the process in the middle of a segment, and a wall
+ * clock counts that against whichever page was running: with a median page of
+ * about 7 ms, one 30 ms preemption pushed an ordinary page past 5x the median
+ * and failed this test under full-suite load, though nothing waited on a
+ * queue. So the dev server runs with a preloaded clock (`work-clock.mjs`):
+ * its `performance.now()` reads the main thread's CPU time plus the time the
+ * event loop has spent idle, waiting for I/O or timers. That is wall time
+ * minus only the time the process was runnable but descheduled, the one
+ * thing load adds. A synchronous segment never contains idle time, so each
+ * page's own work reads as its CPU time, which load does not change. A wait
+ * wrongly counted as work still shows up in full either way: if other pages
+ * run during it, as their CPU time; if the main thread sleeps through it
+ * (I/O, a timer, a native thread doing the work), as idle time. So the
+ * bounds below catch it as they did with a wall clock. Every page here runs
+ * on the main thread (`pipeline.workers: false`), so the main thread's CPU
+ * time is all of the work.
  */
 
 import { describe, it, expect } from "vitest";
@@ -30,9 +50,28 @@ interface DevServer {
 let portCounter = 9800 + (process.pid % 100);
 const nextPort = (): number => portCounter++;
 
+// Main-thread CPU time plus event-loop idle time, in milliseconds, as
+// `performance.now()` (see the header). Only the dev server's figures are
+// read from it; its other uses of `performance.now()` are reports, never
+// deadlines. `process.threadCpuUsage` needs Node 23.9 or later; without it
+// the preload fails loudly instead of falling back to the wall clock.
+const WORK_CLOCK_PRELOAD = `
+if (typeof process.threadCpuUsage !== "function")
+  throw new Error("work-clock.mjs needs process.threadCpuUsage (Node 23.9+)");
+const loop = performance.eventLoopUtilization.bind(performance);
+const workNow = () => {
+  const { user, system } = process.threadCpuUsage();
+  return (user + system) / 1000 + loop().idle;
+};
+performance.now = workNow;
+console.log("[test] performance.now() reads thread CPU plus loop idle time");
+`;
+
 const startDevServer = async (root: string): Promise<DevServer> => {
   const port = nextPort();
-  const child = spawn(process.execPath, [PKG_ENTRY], {
+  const preload = join(root, "work-clock.mjs");
+  await writeFile(preload, WORK_CLOCK_PRELOAD, "utf8");
+  const child = spawn(process.execPath, ["--import", preload, PKG_ENTRY], {
     cwd: root,
     env: {
       ...process.env,
@@ -242,6 +281,10 @@ describe("dev boot transpile timing and worker diagnostic", () => {
 
       server = await startDevServer(root);
       const logs = server.logs();
+      // The figures below leave out preemption only if the clock was replaced.
+      expect(logs).toContain(
+        "[test] performance.now() reads thread CPU plus loop idle time",
+      );
 
       // Extract all per-page transpile durations in ms
       const transpiledLines = logs

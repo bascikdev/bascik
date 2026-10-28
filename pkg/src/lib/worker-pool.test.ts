@@ -392,6 +392,44 @@ describe("WorkerPool", () => {
         "WorkerPool has been terminated",
       );
     });
+
+    // For a process on its way out: the caller's tasks must not fail (a
+    // failure would be reported as theirs), they simply never finish.
+    it("with `abandon`, leaves queued, in-flight and later tasks unsettled, and still stops every worker", async () => {
+      const pool = makePool(1);
+      const settled: string[] = [];
+      const track = (name: string, promise: Promise<string>) =>
+        promise.then(
+          () => settled.push(`${name} resolved`),
+          () => settled.push(`${name} rejected`),
+        );
+      track("running", pool.run("task-1"));
+      track("queued", pool.run("task-2"));
+      await pool.terminate({ abandon: true });
+      expect(workers[0].terminate).toHaveBeenCalled();
+      // A late result or exit from the stopped worker settles nothing.
+      completeWith(workers[0], "late");
+      workers[0].emit("exit", 1);
+      track("later", pool.run("task-3"));
+      await new Promise((r) => setImmediate(r));
+      expect(settled).toEqual([]);
+      expect(WorkerMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("a plain terminate after an abandoning one rejects nothing", async () => {
+      const pool = makePool(1);
+      const running = pool.run("task-1");
+      const first = pool.terminate({ abandon: true });
+      const second = pool.terminate();
+      await Promise.all([first, second]);
+      let settled = false;
+      void running.then(
+        () => (settled = true),
+        () => (settled = true),
+      );
+      await new Promise((r) => setImmediate(r));
+      expect(settled).toBe(false);
+    });
   });
 
   // A build starts its pool before it knows how many pages it has (so worker

@@ -691,6 +691,47 @@ describe("startHttp2Server – graceful shutdown", () => {
     mockExit.mockRestore();
   });
 
+  // Dev: once a shutdown has started, any further Ctrl-C or SIGTERM ends the
+  // process at once (it may be waiting for page workers to load). The
+  // production server keeps the other signal's handler, so a SIGTERM from a
+  // process manager after a Ctrl-C cannot cut the connection drain short.
+  for (const [label, prod, released] of [
+    ["dev removes both signal handlers", false, ["SIGINT", "SIGTERM"]],
+    ["the production server removes only the one that fired", true, []],
+  ] as const) {
+    it(`on the first signal, ${label}`, async () => {
+      (BascikConfig as any).isProdServer = prod;
+      const removeSpy = vi.spyOn(process, "removeListener");
+      const mockExit = vi
+        .spyOn(process, "exit")
+        .mockImplementation(
+          (_code?: string | number | null) => undefined as never,
+        );
+      try {
+        await startHttp2Server();
+        const [, sigIntHandler] = (
+          process.once as ReturnType<typeof vi.spyOn>
+        ).mock.calls.find((c: any[]) => c[0] === "SIGINT") as [
+          string,
+          () => void,
+        ];
+        removeSpy.mockClear();
+        sigIntHandler();
+        const removed = removeSpy.mock.calls
+          .map((c: any[]) => String(c[0]))
+          .filter((event) => event === "SIGINT" || event === "SIGTERM")
+          .sort();
+        expect(removed).toEqual([...released]);
+        // Let the shutdown reach its exit while exit is still mocked.
+        for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+      } finally {
+        (BascikConfig as any).isProdServer = false;
+        removeSpy.mockRestore();
+        mockExit.mockRestore();
+      }
+    });
+  }
+
   it("closes open sessions on SIGINT so long-lived SSE streams do not block shutdown", async () => {
     await startHttp2Server();
 
