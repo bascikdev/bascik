@@ -42,7 +42,7 @@ const isCurrent = currentPath === "/components";
 
 Component scripts can read this variable directly or through an imported helper; they always run in the context of the page that uses the component.
 
-This applies to `data-bascik-build`. A `data-bascik-build-once` script has no page path, because one run serves every use of a component and every route of a dynamic template; use it only when its output is identical everywhere.
+This applies to `data-bascik-build`. A `data-bascik-build-once` script has no page path, because one run serves every use of a component and every route of a dynamic template; use it only when its output is identical everywhere. [Why there is no page path](/build-scripts#why-there-is-no-page-path) shows what would go wrong otherwise.
 
 ### `BASCIK_SOURCE_FILE` vs `BASCIK_PAGE_FILE`
 

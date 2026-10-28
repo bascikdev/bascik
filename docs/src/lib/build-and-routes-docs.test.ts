@@ -280,3 +280,28 @@ describe("request-time component rendering docs", () => {
     expect(markdown).toContain("createNameHasher");
   });
 });
+
+describe("data-bascik-build-once explains why it has no page context", () => {
+  const read = (rel: string) =>
+    readFile(path.join(DOCS_ROOT, "content", rel), "utf8");
+
+  it("build-scripts.md shows what a page path would do to a run shared by every page", async () => {
+    const md = await read("build-scripts.md");
+    const section = md.slice(
+      md.indexOf("## `data-bascik-build-once`"),
+      md.indexOf("## Example Patterns"),
+    );
+    expect(section).toContain("### Why There Is No Page Path");
+    // The failure mode: one run, many pages, so the path would be whichever
+    // page happened to be built first, and that varies between builds.
+    expect(section).toMatch(/whichever page/i);
+    expect(section).toMatch(/in parallel/i);
+    expect(section).toMatch(/preload/i);
+    expect(section).toContain("data-bascik-build");
+  });
+
+  it("environment-variables.md links to the explanation", async () => {
+    const md = await read("environment-variables.md");
+    expect(md).toContain("/build-scripts#why-there-is-no-page-path");
+  });
+});

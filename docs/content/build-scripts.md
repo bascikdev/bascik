@@ -105,6 +105,10 @@ It works in pages too. In a dynamic route template, a `data-bascik-build-once` s
 
 The directive takes no value. `BASCIK_SOURCE_FILE` names the file the script is written in; `BASCIK_PAGE_FILE` and `BASCIK_PAGE_PATH` are empty and `BASCIK_ROUTE` is unset. Use `data-bascik-build` when output depends on the page, the route, or component props. Its output is cached like any build script's (see [Performance: Output Caching](#performance-output-caching)), so a warm start reuses it until the script, a file it imports, or another cache input changes. A script whose output changes with no input changing, such as one that prints the current year, keeps its cached value until then; list it in `scripts.cache.exclude` to run it on every build.
 
+### Why There Is No Page Path
+
+One run serves every page, so there is no single page to describe. Suppose a `site-head` component used on every page had a `data-bascik-build-once` script that read `BASCIK_PAGE_PATH` to pick the hero image to preload. The script would see whichever page the compiler reached first, and every page would get that page's preload. Pages build in parallel, so the page that comes first can change from one build to the next, and the wrong preload would move around too. Leaving the page variables empty makes this mistake show up as an obvious empty value instead of output that is quietly wrong on most pages. When output depends on the page, use `data-bascik-build`, which runs once per page with that page's context.
+
 Imports, error handling, and dependency watching work the same as for `data-bascik-build`. Output is shared only within one file, never between different components or pages. Use a `pre` exec script for work that must run once for the whole project.
 
 ## Example Patterns
