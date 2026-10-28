@@ -112,6 +112,46 @@ async function fetchFromWorker(
   }
 }
 
+/**
+ * The scoped class names of <feat-card>'s header and footer wrappers, read
+ * from the stylesheet the page carries (the build hashes them under
+ * minify.identifiers), and whether `slotText` sits directly inside an element
+ * that carries each one. The template's wrappers are the elements its CSS
+ * styles (.fcard-header: uppercase accent label; .fcard-footer: a top
+ * border), so a card whose slot content lost them is unstyled.
+ */
+function featCardWrappers(html: string): { header: string; footer: string } {
+  const header =
+    /\.([\w-]+)\{[^}]*text-transform:uppercase;letter-spacing:\.1em;color:var\(--accent\)/.exec(
+      html,
+    )?.[1];
+  const footer =
+    /\.([\w-]+)\{padding-top:12px;border-top:1px solid var\(--border\)/.exec(
+      html,
+    )?.[1];
+  expect(
+    header,
+    "the .fcard-header rule in the page's stylesheet",
+  ).toBeDefined();
+  expect(
+    footer,
+    "the .fcard-footer rule in the page's stylesheet",
+  ).toBeDefined();
+  return { header: header!, footer: footer! };
+}
+
+/** `html` has an element with class `className` whose content starts with `content`. */
+function wrapsContent(
+  html: string,
+  className: string,
+  content: string,
+): boolean {
+  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(
+    `<[a-z][\\w-]*[^>]*\\sclass="(?:[^"]*\\s)?${escape(className)}(?:\\s[^"]*)?"[^>]*>\\s*${escape(content)}`,
+  ).test(html);
+}
+
 const tempDirs: string[] = [];
 
 afterEach(async () => {
@@ -327,6 +367,60 @@ describe("scaffold-to-compiler integration", () => {
     );
   }, 45_000);
 
+  it.each(["default", "cloudflare"] as const)(
+    "misuse: the %s template's <feat-card> header and footer slot content is wrapped in the styled .fcard-header and .fcard-footer elements after --build",
+    async (template) => {
+      const parentDir = await createTempDir(`feat-card-${template}`);
+      const projectName = "slot-site";
+      const projectDir = join(parentDir, projectName);
+      await scaffold(projectName, parentDir, { template });
+
+      const buildResult = await runBascikBuild(projectDir);
+      expect(
+        buildResult.exitCode,
+        `Build failed with stderr: ${buildResult.stderr}`,
+      ).toBe(0);
+      const html = await readFile(join(projectDir, "dist/index.html"), "utf8");
+      const { header, footer } = featCardWrappers(html);
+      // A named slot's content replaces its marker element, so a class on
+      // the marker never reaches the page; the styled wrapper must survive.
+      expect(
+        wrapsContent(html, header, "Zero runtime"),
+        `"Zero runtime" inside an element with the header class ${header}`,
+      ).toBe(true);
+      expect(
+        wrapsContent(
+          html,
+          footer,
+          '<a href="/about" class="btn btn-ghost">Learn more',
+        ),
+        `the footer link inside an element with the footer class ${footer}`,
+      ).toBe(true);
+      // The body's title and text rules match the slot content: the h3 and
+      // p arrive as plain tags inside the body wrapper, so each rule is the
+      // wrapper class followed by an element name the build left as written.
+      const body =
+        /\.([\w-]+) :is\(h3\)\{margin:0 0 6px;font-size:1rem;color:var\(--text\)/.exec(
+          html,
+        )?.[1];
+      expect(
+        body,
+        "the .fcard-body :is(h3) rule in the page's stylesheet",
+      ).toBeDefined();
+      expect(html).toMatch(
+        new RegExp(`\\.${body} :is\\(p\\)\\{margin:0;font-size:0\\.88rem`),
+      );
+      expect(
+        wrapsContent(html, body!, "<h3>No framework overhead</h3>"),
+        `the slot's <h3>, without a class, inside the body class ${body}`,
+      ).toBe(true);
+      expect(html).toContain(
+        "<p>Components compile at build time. Nothing extra ships to the browser.</p>",
+      );
+    },
+    45_000,
+  );
+
   it("builds the cloudflare template into a Workers bundle with --target cloudflare", async () => {
     expect(
       existsSync(ADAPTER_DIST_INDEX),
@@ -405,6 +499,20 @@ describe("scaffold-to-compiler integration", () => {
     expect(card, "the rendered card and its stylesheet").not.toBeNull();
     expect(card![1]).toContain(`.${card![2]}{`);
     expect(html.split(card![1]).length - 1).toBe(1);
+    // The slot wrappers are styled at request time exactly as at build time.
+    const { header, footer } = featCardWrappers(html);
+    expect(
+      wrapsContent(html, header, "Server script"),
+      `"Server script" inside an element with the header class ${header}`,
+    ).toBe(true);
+    expect(
+      wrapsContent(
+        html,
+        footer,
+        '<a href="/edge" class="btn btn-ghost">Reload',
+      ),
+      `the reload link inside an element with the footer class ${footer}`,
+    ).toBe(true);
   }, 60_000);
 
   it("negative control: rejects compilation when a required page contains invalid build-script syntax", async () => {

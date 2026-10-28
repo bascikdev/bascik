@@ -162,6 +162,8 @@ export default defineConfig({
     headless: true,
   },
   webServer: {
+    // Playwright runs the command beside this config; the site is one up.
+    cwd: '..',
     command: 'npx bascik --build && npx bascik --server --port 8080',
     url: 'http://localhost:8080',
     reuseExistingServer: !process.env.CI,
@@ -207,14 +209,26 @@ test.describe('Starter App E2E Tests', () => {
     const toggle = page.getByTestId('nav-toggle').first();
     const menu = page.getByTestId('nav-menu').first();
 
+    // Assert what the reader sees, not the class name: the build scopes
+    // .is-open (hashed under minify.identifiers), so the element never
+    // carries the literal class.
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(menu).toBeHidden();
 
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(menu).toHaveClass(/is-open/);
+    await expect(menu).toBeVisible();
 
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(menu).toBeHidden();
+  });
+
+  test('feature card styles the title and text passed through its slot', async ({ page }) => {
+    await page.goto('/');
+    // The card's own sizes (1rem, 0.88rem), not the page's h3 and p.
+    await expect(page.getByRole('heading', { name: 'No framework overhead' })).toHaveCSS('font-size', '16px');
+    await expect(page.getByText('Components compile at build time.')).toHaveCSS('font-size', '14.08px');
   });
 ${extraTests}});
 `;
@@ -236,6 +250,8 @@ export const CLOUDFLARE_E2E_APP_SPEC = e2eAppSpec(`
     await expect(card).toContainText('Hello, Ada');
     // The component's scoped CSS reached the browser: .fcard is a flex column.
     await expect(card).toHaveCSS('flex-direction', 'column');
+    // The card's title rule reaches the <h3> the script passes through the slot.
+    await expect(page.getByTestId('edge-greeting')).toHaveCSS('font-size', '16px');
     const html = await page.content();
     expect(html).not.toContain('<feat-card');
   });
@@ -607,8 +623,11 @@ export const FEAT_CARD_CSS = `.fcard {
 .fcard-header:empty { display: none; }
 
 .fcard-body { flex: 1; }
-.fcard-body h3 { margin: 0 0 6px; font-size: 1rem; color: var(--text); }
-.fcard-body p  { margin: 0; font-size: 0.88rem; color: var(--text-muted); }
+/* The h3 and p arrive through the slot from the usage site. Scoping turns a
+   bare element selector into a class only this template's own elements get;
+   an element name inside :is() is left as written, so these match. */
+.fcard-body :is(h3) { margin: 0 0 6px; font-size: 1rem; color: var(--text); }
+.fcard-body :is(p) { margin: 0; font-size: 0.88rem; color: var(--text-muted); }
 
 .fcard-footer {
   padding-top: 12px;
@@ -621,13 +640,16 @@ export const FEAT_CARD_CSS = `.fcard {
 /**
  * Card component demonstrating named slots.
  * Slots: header (label/icon area), default (title + body), footer (actions).
+ * A slot marker is replaced by the slot content, its own tag and classes
+ * included, so each styled zone wraps its marker instead of carrying it.
+ * An unfilled slot leaves its zone empty, and `:empty` hides it.
  */
 export const FEAT_CARD_HTML = `<style>
 ${FEAT_CARD_CSS}</style>
 <article class="fcard">
-  <div class="fcard-header" data-bascik-slot="header"></div>
-  <div class="fcard-body" data-bascik-slot></div>
-  <div class="fcard-footer" data-bascik-slot="footer"></div>
+  <div class="fcard-header"><div data-bascik-slot="header"></div></div>
+  <div class="fcard-body"><div data-bascik-slot></div></div>
+  <div class="fcard-footer"><div data-bascik-slot="footer"></div></div>
 </article>
 `;
 

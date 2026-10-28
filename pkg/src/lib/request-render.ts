@@ -124,6 +124,24 @@ export interface RenderHost {
   /** Dev only: log `message` the first time `key` is seen. Production hosts omit it. */
   warnOnce?: (key: string, message: string) => void;
   /**
+   * How every message names a component file (the `warnOnce` logs, the
+   * budget and `failed during <stage>` failures; the manifest records it
+   * project-relative). The Node dev server passes the form `bascik --check`
+   * and the build's diagnostics print, so every report of one file points
+   * at the same place. Absent: the manifest's path as recorded.
+   */
+  displayFile?: (filePath: string) => string;
+  /**
+   * Apply `scripts.onServerScriptError` to a render failure of one job's
+   * output (D4.6: a budget, the depth limit, a `failed during <stage>`
+   * failure), as the host does for a script that throws, with the located
+   * report `renderFailureMessage(error, request.url)`. Throw to fail the job ("error":
+   * a 500 for a `server` job before commit, the stream error report for a
+   * `stream` job); return, logging under "warn", and the job's slot is
+   * empty. Absent: the `RequestRenderError` itself is thrown.
+   */
+  onRenderError?: (error: RequestRenderError) => void;
+  /**
    * `createExternalTagMatcher(components.external)`: silences the dev log
    * for a tag no component defines. A real component with the same name
    * still expands, and an unsupported one is still logged, as at build time
@@ -149,6 +167,21 @@ export class RequestRenderError extends Error {
     this.componentFile = componentFile;
   }
 }
+
+/**
+ * The report a host logs or throws for a render failure under
+ * `onServerScriptError` (D4.6): the frame every server-script error uses on
+ * both hosts (`server script error at "<pathname>"`, the request URL's raw
+ * pathname, as `runServerScriptJob` and the Worker's job runner name it),
+ * then the renderer's located message (route, component file and line).
+ * No stack: the failure is in the script's output, not in Bascik's frames.
+ */
+export const renderFailureMessage = (
+  error: RequestRenderError,
+  requestUrl: string,
+): string =>
+  `[bascik] server script error at "${new URL(requestUrl).pathname}":\n` +
+  error.message.replace(/^\[bascik\] /, "");
 
 /**
  * The route a host gives the renderer as `httpPath`: the request URL's
@@ -570,11 +603,12 @@ export const wrapRunner = (
       .slice(0, 32),
   };
   const { httpPath } = host;
+  const displayFile = host.displayFile ?? ((filePath: string) => filePath);
   const limits = REQUEST_RENDER_LIMITS;
 
   const located = (entry: ManifestEntry | undefined, line?: number) =>
     entry
-      ? ` (<${entry.name}>, ${entry.filePath}${line !== undefined ? `:${line}` : ""})`
+      ? ` (<${entry.name}>, ${displayFile(entry.filePath)}${line !== undefined ? `:${line}` : ""})`
       : "";
   const lastEntry = (used: BascikComponent[]) =>
     used.length ? manifest.components[used[used.length - 1].name] : undefined;
@@ -601,7 +635,7 @@ export const wrapRunner = (
       host.warnOnce?.(
         `${httpPath}::collision:<${entry.name}>`,
         `[bascik] Component tag <${entry.name}> in ${mode}-script output at "${httpPath}" is left unexpanded: ` +
-          `the scoped names computed for instance ${instanceId} of ${entry.filePath} collide with each other.`,
+          `the scoped names computed for instance ${instanceId} of ${displayFile(entry.filePath)} collide with each other.`,
       );
       return null;
     }
@@ -667,7 +701,7 @@ export const wrapRunner = (
         host.warnOnce!(
           key,
           `[bascik] Component tag <${tag}> in ${mode}-script output at "${httpPath}" is left unexpanded: ` +
-            `${entry.filePath}${line !== undefined ? `:${line}` : ""} cannot be rendered at request time ` +
+            `${displayFile(entry.filePath)}${line !== undefined ? `:${line}` : ""} cannot be rendered at request time ` +
             `(${reason}${detail ? `: ${detail}` : ""}).`,
         );
       } else if (!host.externalTags(tag)) {
@@ -737,12 +771,17 @@ export const wrapRunner = (
             maxOutputBytes: tripwire,
           },
           onError: (component, stage, error) => {
+            // The manifest's project-relative path, as the budget messages
+            // name it; the expanded usage may carry a resolved one.
+            const file =
+              manifest.components[component.name]?.filePath ??
+              component.fileName;
             throw new RequestRenderError(
-              `[bascik] Rendering <${component.name}> (${component.fileName ?? "unknown file"}) ` +
+              `[bascik] Rendering <${component.name}> (${file ? displayFile(file) : "unknown file"}) ` +
                 `from ${mode}-script output at "${httpPath}" failed during ${stage}: ` +
                 `${error instanceof Error ? error.message : String(error)}`,
               httpPath,
-              component.fileName,
+              file,
             );
           },
           warn,
@@ -913,24 +952,47 @@ export const wrapRunner = (
       release = resolve;
     });
     const started = Date.now();
+    // The render's own signal for this job's nested scripts: the request's
+    // abort reaches them through it, and a failure aborts the siblings
+    // still running, since the job's slot is decided without them.
+    const render = new AbortController();
+    const forwardAbort = () => render.abort(signal.reason);
     try {
       const output = await run(id, signal);
       if (!output.includes("<")) return output;
-      const fragment = await renderFragment(
-        output,
-        id,
-        mode,
-        0,
-        signal,
-        started,
-        manifest.minifyHtml
-          ? (segmentContextsFor(plan).get(id) ?? DOCUMENT_FRAGMENT_CONTEXT)
-          : DOCUMENT_FRAGMENT_CONTEXT,
-      );
+      if (signal.aborted) render.abort(signal.reason);
+      else signal.addEventListener("abort", forwardAbort, { once: true });
+      let fragment: RenderedFragment;
+      try {
+        fragment = await renderFragment(
+          output,
+          id,
+          mode,
+          0,
+          render.signal,
+          started,
+          manifest.minifyHtml
+            ? (segmentContextsFor(plan).get(id) ?? DOCUMENT_FRAGMENT_CONTEXT)
+            : DOCUMENT_FRAGMENT_CONTEXT,
+        );
+      } catch (error) {
+        render.abort();
+        // D4.6: a render failure is a failure of this job's output, so the
+        // host's onServerScriptError policy decides it, as for a script that
+        // throws. Under warn and ignore the whole job's slot is empty: a
+        // partial render (a nested job's output without its parent) is
+        // never sent. A nested job's own failure already went through the
+        // policy in runComponentJob and reaches here only as its throw.
+        if (!(error instanceof RequestRenderError) || !host.onRenderError)
+          throw error;
+        host.onRenderError(error);
+        return "";
+      }
       if (fragment.used.length === 0) return fragment.html;
       await previous;
       return decideCss(mode, fragment.used) + fragment.html;
     } finally {
+      signal.removeEventListener("abort", forwardAbort);
       release();
     }
   };

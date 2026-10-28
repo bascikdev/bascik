@@ -173,9 +173,16 @@ The script threw. The stack below the message is remapped to your source file, s
 
 The script printed with `console.log()` instead of returning. Build scripts export a default function whose return value becomes the HTML; console output goes to the terminal only. See [Handler Contract & Console Logging](/build-scripts#handler-contract-console-logging).
 
-### `Script execution timed out after 30000ms`
+### `Directive script (data-bascik-build) timed out after 60000ms`
 
-The script ran longer than `scripts.timeout` (30 seconds by default). Raise the limit, or move slow work such as a remote fetch into a `pipeline.exec` step that writes a file the script reads. See [`scripts`](/configuration#scripts).
+The build script ran for 60 seconds and was stopped. The message follows the script's location:
+
+```terminal
+[bascik] build script error in "src/pages/index.html" at (line 3, column 13):
+Directive script (data-bascik-build) timed out after 60000ms
+```
+
+The limit is fixed at 60 seconds for build and routes scripts (a routes script reports `data-bascik-routes`). `scripts.timeout` does not change it: that setting bounds server and stream scripts at request time. The failure follows `scripts.onBuildScriptError`, like a script that throws. Move slow work such as a remote fetch into a `pipeline.exec` step, which has its own `timeout`, and have it write a file the script reads. See [Exec Scripts](/exec-scripts).
 
 ### Build script output is stale
 
@@ -232,7 +239,15 @@ A server or stream script returned `<product-card>`, and the HTML the browser re
 ```
 
 ```terminal
-[bascik] Component tag <bad-card> in server-script output at "/search" is left unexpanded: src/components/bad-card/bad-card.html:1 cannot be rendered at request time (attr-binding-to-scoped-attribute: its data-bascik-attr-class binding targets an attribute scoping rewrites).
+[bascik] Component tag <bad-card> in server-script output at "/search" is left unexpanded: components/bad-card/bad-card.html:2 cannot be rendered at request time (attr-binding-to-scoped-attribute: its data-bascik-attr-class binding targets an attribute scoping rewrites).
+```
+
+Here `src/components/bad-card/bad-card.html` binds a prop onto `class` on line 2, below its style:
+
+<!-- prettier-ignore -->
+```html
+<style>.w { color: red; }</style>
+<div class="w"><span data-bascik-attr-class="variant">x</span></div>
 ```
 
 The first is a typo or a missing component file: fix the tag name, or list a third-party element in [`components.external`](/configuration#componentsexternal) to silence it. The second is a component that cannot be rendered at request time; the next entry lists the reasons. A third message, `is left unexpanded: the scoped names computed for instance ... collide with each other`, means the instance's generated ids or names clashed; it is rare, and renaming the colliding ids in the component clears it. The production server and the Cloudflare Worker log none of these. A misspelled tag shows only in the dev server log: `bascik --check` reads the build's component manifest, so it lists unsupported components but never sees the tags a script returns at request time. A site whose components are all unsupported, or that has none, gets no dev log either; use `bascik --check` for the unsupported ones. Also make sure the tag is markup: an escaped tag (`&lt;product-card&gt;`) or one inside a comment, `<script>`, `<style>`, `<textarea>`, or attribute value is text by design. A custom deployment adapter that does not declare `components: true` serves every tag as written and says so at build time. See [Returning component tags](/server-scripts#returning-component-tags).
@@ -244,7 +259,7 @@ This `bascik --check` section lists the components a server or stream script can
 ```terminal
 Components a server or stream script cannot return (1)
   ...
-  <bad-card> is left unexpanded when a server or stream script returns it: attr-binding-to-scoped-attribute: its data-bascik-attr-class binding targets an attribute scoping rewrites (components/bad-card/bad-card.html:1)
+  <bad-card> is left unexpanded when a server or stream script returns it: attr-binding-to-scoped-attribute: its data-bascik-attr-class binding targets an attribute scoping rewrites (components/bad-card/bad-card.html:2)
 ```
 
 A page that uses the component in its own markup still renders it at build time; only script output is affected. Run `bascik --build` first, because the section reads the build's output. The reasons and the usual fix:
@@ -259,11 +274,33 @@ The table in [Request-Time Component Rendering](/compatibility#request-time-comp
 
 ### `server-script output at "/search" expands to more than 1000 component instances (...); the limit is 1000 instances per script output.`
 
-A request-time render budget was exceeded. The related messages are `rendered to N characters, over the 4 MiB (4194304 characters) limit per script output`, `grew past N characters while expanding components ..., over the 4 MiB (4194304 characters) limit per script output` (the usual one for a large overrun), `is N characters before rendering, over twice the 4 MiB (4194304 characters) limit per script output, and has component tags in it, so it is refused before they are expanded`, `would run more than 64 nested component scripts in one response`, and `nests component scripts deeper than 4 levels`. Each names the route, and all but the refused-before-rendering one name the component file (`RequestRenderError`). A server script that hits a budget makes the response a 500; `scripts.onServerScriptError` does not apply to these render failures in this release, so `'warn'` and `'ignore'` do not change it. A stream script leaves its slot empty. Return fewer results per request (paginate with `?page=`), or render a long list with fewer components per item. A component whose script returns itself, directly or through another component, hits the depth limit. See the budgets in [Returning component tags](/server-scripts#returning-component-tags).
+A request-time render budget was exceeded. The related messages are `rendered to N characters, over the 4 MiB (4194304 characters) limit per script output`, `grew past N characters while expanding components ..., over the 4 MiB (4194304 characters) limit per script output` (the usual one for a large overrun), `is N characters before rendering, over twice the 4 MiB (4194304 characters) limit per script output, and has component tags in it, so it is refused before they are expanded`, `would run more than 64 nested component scripts in one response`, and `nests component scripts deeper than 4 levels`. Each names the route, and all but the refused-before-rendering one name the component file (`RequestRenderError`). The log is the usual `[bascik] server script error at "/search":` line followed by the message. The failure follows `scripts.onServerScriptError` like a script that throws: under `'error'` (the default) a server script's response is a 500 and a stream script's slot is empty with the error logged, `'warn'` logs it and leaves the slot empty, and `'ignore'` leaves the slot empty without a log. Return fewer results per request (paginate with `?page=`), or render a long list with fewer components per item. A component whose script returns itself, directly or through another component, hits the depth limit. See the budgets in [Returning component tags](/server-scripts#returning-component-tags).
 
-### `Rendering <product-card> (...) from server-script output at "/search" failed during prop injection: ...`
+### `Rendering <echo-card> (src/components/echo-card/echo-card.html) from server-script output at "/echo" failed during slot resolution: Invalid string length`
 
-A tag the script returned names a component that can be rendered at request time, but rendering this one instance threw. The stage is one of `prop injection`, `slot resolution`, `attribute scoping`, `attribute inheritance`, or `substitution`, and the text after the colon is the underlying error. The cause is almost always in the values the script put on the tag: a prop or slot value the component cannot accept, or markup in a slot that does not parse the way the script expected. Log the exact string the script returns for that request, then put the same tag in a page's own markup and run `bascik --build`, which renders it with the same code and reports the failing stage under that page. This is a `RequestRenderError`: a server script's response is a 500 and a stream script leaves its slot empty, the same as for the budgets above. See [Returning component tags](/server-scripts#returning-component-tags).
+Rendering one instance of a component the script returned threw. The full log line from `bascik --server` and the Cloudflare Worker:
+
+```terminal
+[bascik] server script error at "/echo":
+Rendering <echo-card> (src/components/echo-card/echo-card.html) from server-script output at "/echo" failed during slot resolution: Invalid string length
+```
+
+The dev server names the file as the build and `bascik --check` do, `(components/echo-card/echo-card.html)`, in this message and in the budget messages above.
+
+The stage is one of `prop injection`, `slot resolution`, `attribute scoping`, `attribute inheritance`, or `substitution`, and the text after the colon is the underlying error. Each stage is string work on the component's template and the values on the tag, so the error you can cause is the JavaScript engine's string limit: `Invalid string length` means the instance would be longer than a string can be (about 536 million characters in V8, which Node and Cloudflare Workers both use). Here `echo-card.html` has 80 default slot markers, and the script passed 8 MB of slot content, so the copies outgrow the limit while the instance is built, before the output budgets measure the result. Pass less content to a component that repeats a slot or prop, or repeat it fewer times. Any other error text is a Bascik bug: report it with the tag the script returned.
+
+To reproduce, put the same tag in a page's own markup and run `bascik --build`. The build reports the same stage, followed by the engine's stack trace (shortened here), leaves that instance out of the page and finishes:
+
+```terminal
+[bascik] Transpilation failed for component <echo-card> during slot resolution in "pages/echo.html" at (line 1, column 60)
+  Defined in component template: "components/echo-card/echo-card.html"
+  Error: RangeError: Invalid string length
+    at Array.join (<anonymous>)
+    at replaceDefaultSlots (file:///.../node_modules/@bascik/bascik/dist/lib/component-slots.js:222:18)
+    ...
+```
+
+Slot resolution, attribute inheritance, and substitution run the same code in both places. Prop injection does not: the build applies `data-bascik-attr-*` props before scoping and the request renderer after it, so a `prop injection` failure can appear at request time only. Like the budgets above, the failure follows `scripts.onServerScriptError`. See [Returning component tags](/server-scripts#returning-component-tags).
 
 ### One slow server script delays every request
 

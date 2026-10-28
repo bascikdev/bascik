@@ -284,7 +284,7 @@ const lineAt = (text: string, index: number): number =>
  * build's `injectPropAttributes` would see it: whole attribute names on real
  * open tags, never text inside comments, raw-text content or quoted values.
  * The masks keep every offset, so the open tag's index in the masked text is
- * its line in the authored file.
+ * its line in `html` (see `onAuthoredLine` for the line in the source).
  */
 const classifyBindings = (html: string): UnsupportedEntry | null => {
   if (!/data-bascik-attr-/i.test(html)) return null;
@@ -483,6 +483,36 @@ interface BuildContext {
   cssMinifier: ((code: string) => Promise<string>) | null;
 }
 
+/**
+ * `binding` with its line counted on the file as the author wrote it. The
+ * text listComponents hands over has its inline `<style>` blocks extracted
+ * and, under `minify.html`, is minified, so a line counted there is wrong
+ * whenever anything precedes the trigger (a style line before a binding on
+ * line 2 read as line 1). The source is classified the same way; when it
+ * finds the same binding, its line is the one `bascik --check` and the dev
+ * log report. Without a readable source (an in-memory component) the
+ * processed text's line is kept.
+ */
+const onAuthoredLine = async (
+  binding: UnsupportedEntry,
+  fileName: string | undefined,
+): Promise<UnsupportedEntry> => {
+  if (!fileName) return binding;
+  let source: string;
+  try {
+    source = await readFile(fileName, "utf8");
+  } catch {
+    return binding;
+  }
+  const authored = classifyBindings(source);
+  return authored &&
+    authored.reason === binding.reason &&
+    authored.detail === binding.detail &&
+    authored.line !== undefined
+    ? { ...binding, line: authored.line }
+    : binding;
+};
+
 const buildEntry = async (
   name: string,
   raw: ComponentList[string],
@@ -504,10 +534,10 @@ const buildEntry = async (
     detail: string,
   ): ManifestEntry => refused({ reason, detail });
 
-  // Decided on the authored text, before anything runs: a refused component
+  // Decided on the component text, before anything runs: a refused component
   // runs no build script and stages nothing.
   const binding = classifyBindings(raw.fileContent);
-  if (binding) return refused(binding);
+  if (binding) return refused(await onAuthoredLine(binding, raw.fileName));
 
   // The component as the expansion loop hands it to the scope: a fresh copy
   // with its directive scripts stamped (components read by listComponents

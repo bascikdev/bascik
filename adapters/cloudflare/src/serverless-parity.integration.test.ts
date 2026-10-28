@@ -67,6 +67,8 @@ const freePort = (): Promise<number> =>
 
 interface NodeOracle {
   url: URL;
+  /** What the server has written to stdout and stderr so far. */
+  output(): string;
   stop(): Promise<void>;
 }
 
@@ -86,7 +88,12 @@ const startNodeServer = async (projectRoot: string): Promise<NodeOracle> => {
     },
   );
   const stderr: string[] = [];
-  child.stderr?.on("data", (d) => stderr.push(String(d)));
+  const output: string[] = [];
+  child.stderr?.on("data", (d) => {
+    stderr.push(String(d));
+    output.push(String(d));
+  });
+  child.stdout?.on("data", (d) => output.push(String(d)));
   const url = new URL(`http://127.0.0.1:${port}/`);
   // Readiness is the health endpoint, never a sleep.
   const deadline = Date.now() + 20_000;
@@ -103,6 +110,7 @@ const startNodeServer = async (projectRoot: string): Promise<NodeOracle> => {
   }
   return {
     url,
+    output: () => output.join(""),
     stop: () =>
       new Promise((resolveStop) => {
         child.once("exit", () => resolveStop());
@@ -1015,6 +1023,7 @@ for (const policy of ["error", "warn", "ignore"] as const) {
       cloudflare = await startHarness({
         projectRoot: root,
         target: "cloudflare-pages",
+        collectLogs: true,
       });
     }, 180_000);
 
@@ -1030,6 +1039,35 @@ for (const policy of ["error", "warn", "ignore"] as const) {
       node: await observe(await fetch(new URL(path, node.url))),
       cf: await observe(await cloudflare.fetch(path)),
     });
+
+    /**
+     * `both(path)`, plus the `[bascik]` report each host logged for it. A
+     * log is written as the response is settled, so each host's log is
+     * awaited until it holds `expected`; with nothing expected, both are
+     * read after a grace period in which a stray log would have arrived.
+     */
+    const bothWithLogs = async (path: string, expected: RegExp | null) => {
+      const nodeFrom = node.output().length;
+      const cfFrom = cloudflare.logs.length;
+      const observed = await both(path);
+      const nodeLog = () => node.output().slice(nodeFrom);
+      const cfLog = () => cloudflare.logs.slice(cfFrom).join("\n");
+      const deadline = Date.now() + 5000;
+      if (expected) {
+        while (
+          Date.now() < deadline &&
+          !(expected.test(nodeLog()) && expected.test(cfLog()))
+        )
+          await new Promise((r) => setTimeout(r, 25));
+      } else {
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      return {
+        ...observed,
+        nodeLog: nodeLog().trim(),
+        cfLog: cfLog().trim(),
+      };
+    };
 
     it("a nested job that throws: the 500 page under error, else the card with an empty slot, under a server parent; an empty slot under a stream parent", async () => {
       const server = await both("/components-boom");
@@ -1049,6 +1087,101 @@ for (const policy of ["error", "warn", "ignore"] as const) {
       expect(stream.cf.body).toContain('data-testid="tail"');
       expect(stream.cf.body).not.toContain("SECRET_DETAIL");
     });
+
+    // D4.6: every kind of request-time render failure (the instance,
+    // nested-job, depth and size budgets, and a "failed during <stage>")
+    // follows the policy like any other script failure, with the same bytes
+    // and the same located log line on both hosts.
+    const renderFailures: Array<{ path: string; message: RegExp }> = [
+      {
+        path: "/components-budget?n=1001",
+        message:
+          /expands to more than 1000 component instances \(<product-card>, src\/components\/product-card\/product-card\.html\)/,
+      },
+      {
+        path: "/components-budget?n=65&kind=live",
+        message:
+          /would run more than 64 nested component scripts in one response \(<product-card-live>, src\/components\/product-card-live\/product-card-live\.html:\d+\)/,
+      },
+      {
+        path: "/components-chain",
+        message:
+          /nests component scripts deeper than 4 levels \(<chain-card>, src\/components\/chain-card\/chain-card\.html:\d+\)/,
+      },
+      {
+        path: "/components-size?kind=rendered",
+        message:
+          /rendered to \d+ characters, over the 4 MiB \(4194304 characters\) limit per script output \(<twice-card>, src\/components\/twice-card\/twice-card\.html\)/,
+      },
+      {
+        path: "/components-size?kind=grew",
+        message:
+          /grew past \d+ characters while expanding components \(<four-card>, src\/components\/four-card\/four-card\.html\)/,
+      },
+      {
+        path: "/components-size?kind=refused",
+        message:
+          /is \d+ characters before rendering, over twice the 4 MiB \(4194304 characters\) limit per script output, and has component tags in it, so it is refused before they are expanded\./,
+      },
+      {
+        path: "/components-size?kind=stage",
+        message:
+          /Rendering <wide-card> \(src\/components\/wide-card\/wide-card\.html\) from (?:server|stream)-script output at "\/components-size(?:-stream)?" failed during slot resolution: Invalid string length/,
+      },
+    ];
+    const streamTwin = (path: string) =>
+      path.replace(
+        /^\/components-(budget|chain|size)/,
+        (_, page: string) => `/components-${page}-stream`,
+      );
+
+    for (const failure of renderFailures) {
+      it(`misuse: ${failure.path} (server and stream) is the 500 page under error and an empty slot under warn and ignore for a server script, an empty slot for a stream script; the same bytes and the same located log on both hosts`, async () => {
+        for (const path of [failure.path, streamTwin(failure.path)]) {
+          const stream = path.includes("-stream");
+          const logged = policy !== "ignore";
+          const r = await bothWithLogs(path, logged ? failure.message : null);
+          const status = !stream && policy === "error" ? 500 : 200;
+          expect(r.node.status, `node ${path}`).toBe(status);
+          expect(r.cf.status, `cf ${path}`).toBe(status);
+          expect(r.cf.body, path).toBe(r.node.body);
+          for (const tag of [
+            "<product-card",
+            "<chain-card",
+            "<twice-card",
+            "<four-card",
+            "<wide-card",
+          ])
+            expect(markup(r.cf.body), path).not.toContain(tag);
+          if (status === 200) {
+            expect(r.cf.body, path).toContain('data-testid="shell"');
+            expect(r.cf.body, path).toContain('data-testid="tail"');
+            // The slot is empty: nothing of the failed output is sent.
+            expect(r.cf.body, path).not.toContain('data-testid="product-card"');
+            expect(r.cf.body, path).not.toContain('data-testid="chain-card"');
+            expect(r.cf.body, path).not.toContain("xxxxxxxx");
+          }
+          if (!logged) {
+            expect(r.nodeLog, `node log ${path}`).toBe("");
+            expect(r.cfLog, `cf log ${path}`).toBe("");
+            continue;
+          }
+          // The located message every server-script error logs: the route
+          // and the component file, never a stack of Bascik internals.
+          const route = new URL(path, "http://x").pathname;
+          expect(r.cfLog, `cf log ${path}`).toBe(r.nodeLog);
+          expect(r.nodeLog, path).toMatch(failure.message);
+          expect(r.nodeLog, path).toContain(
+            `[bascik] server script error at "${route}":\n`,
+          );
+          expect(r.nodeLog, path).not.toContain("RequestRenderError");
+          expect(r.nodeLog, path).not.toMatch(/^\s+at /m);
+          expect(r.nodeLog, path).not.toMatch(
+            /request-render|component-host|_worker\.js/,
+          );
+        }
+      }, 60_000);
+    }
 
     it("misuse: a page job, a stream job and a component job that resolve inside their abort listener at the deadline time out under the policy on both hosts, never delivering what they returned", async () => {
       for (const path of [

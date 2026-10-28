@@ -733,7 +733,8 @@ describe.each([true, false])(
       expect(host.runComponentJob).toHaveBeenCalledTimes(1);
       expect(host.runComponentJob).toHaveBeenCalledWith(
         componentScriptId("srv-card", 1),
-        signal,
+        // The render's own signal, linked to the runner's (pinned below).
+        expect.any(AbortSignal),
         expect.any(Number),
       );
       expect(out).toContain(`<div class="${scopedClass("srv-card", "wrap")}">`);
@@ -1504,6 +1505,113 @@ describe("budgets (identifiers off)", () => {
     config.minify.identifiers = false;
   });
 
+  // D4.6: once one nested fragment fails, the job's slot is decided (a
+  // throw, or an empty slot under warn and ignore), so its other nested
+  // scripts must not keep running, or log, for output already thrown away.
+  for (const outcome of [
+    "returns (warn, ignore)",
+    "throws (error)",
+    "is absent",
+  ] as const) {
+    it(`misuse: a render failure while sibling nested scripts still run aborts them, and only them, when onRenderError ${outcome}`, async () => {
+      const manifest = await build();
+      const onRenderError =
+        outcome === "returns (warn, ignore)"
+          ? vi.fn()
+          : outcome === "throws (error)"
+            ? vi.fn((error: RequestRenderError) => {
+                throw error;
+              })
+            : undefined;
+      const host = makeHost(manifest, onRenderError ? { onRenderError } : {});
+      const signals: AbortSignal[] = [];
+      host.runComponentJob.mockImplementation(async (_id, signal) => {
+        signals.push(signal);
+        // The first sibling's output is over the instance budget; the
+        // second settles only when it is told to stop.
+        if (signals.length === 1)
+          return `<bare-card data-bascik-prop-t="n"></bare-card>`.repeat(1001);
+        return new Promise<string>((resolve) => {
+          signal.addEventListener("abort", () => resolve("late"));
+        });
+      });
+      const wrapped = wrapRunner(
+        runnerFrom({ a: `<srv-card></srv-card><srv-card></srv-card>` }),
+        serverPlan("a"),
+        host,
+      );
+      const request = new AbortController();
+      const pending = wrapped("a", request.signal);
+      if (outcome === "returns (warn, ignore)") {
+        expect(await pending).toBe("");
+        expect(onRenderError).toHaveBeenCalledTimes(1);
+      } else {
+        await expect(pending).rejects.toBeInstanceOf(RequestRenderError);
+      }
+      expect(signals).toHaveLength(2);
+      expect(signals[1].aborted).toBe(true);
+      // The request itself is not aborted: other page jobs still run.
+      expect(request.signal.aborted).toBe(false);
+    });
+  }
+
+  it("a request abort still reaches every nested script through the render's own signal", async () => {
+    const manifest = await build();
+    const host = makeHost(manifest);
+    const signals: AbortSignal[] = [];
+    host.runComponentJob.mockImplementation(
+      (_id, signal) =>
+        new Promise<string>((resolve) => {
+          signals.push(signal);
+          signal.addEventListener("abort", () => resolve(""));
+        }),
+    );
+    const wrapped = wrapRunner(
+      runnerFrom({ a: `<srv-card></srv-card><srv-card></srv-card>` }),
+      serverPlan("a"),
+      host,
+    );
+    const request = new AbortController();
+    const pending = wrapped("a", request.signal);
+    await tick();
+    expect(signals).toHaveLength(2);
+    request.abort();
+    await pending;
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+  });
+
+  it("misuse: budget and stage messages name the component file through displayFile, as the dev log's other messages do", async () => {
+    const manifest = await build({
+      ...cards(),
+      "wide-card": {
+        fileName: "src/components/wide-card.html",
+        fileContent: `<div class="w">${`<i data-bascik-slot></i>`.repeat(200)}</div>`,
+      },
+    });
+    const host = makeHost(manifest, {
+      displayFile: (path) => path.replace(/^src\//, ""),
+    });
+    const wrapped = wrapRunner(
+      runnerFrom({
+        over: `<bare-card data-bascik-prop-t="n"></bare-card>`.repeat(1001),
+        // 200 copies of 3 million characters is past the engine's string
+        // limit, so slot resolution throws.
+        stage: `<wide-card>${"x".repeat(3_000_000)}</wide-card>`,
+      }),
+      serverPlan("over", "stage"),
+      host,
+    );
+    const over = wrapped("over", signalOf());
+    await expect(over).rejects.toThrow(
+      /\(<bare-card>, components\/bare-card\.html\)/,
+    );
+    await expect(over).rejects.not.toThrow(/src\/components/);
+    const stage = wrapped("stage", signalOf());
+    await expect(stage).rejects.toThrow(
+      /Rendering <wide-card> \(components\/wide-card\.html\) from server-script output at "\/catalog" failed during slot resolution: Invalid string length/,
+    );
+  });
+
   // 21
   it("1000 instances in one job pass; 1001 fail with a RequestRenderError naming the route and the component", async () => {
     const manifest = await build();
@@ -1792,7 +1900,7 @@ describe("budgets (identifiers off)", () => {
   });
 
   // 23
-  it("nested jobs receive the runner's own AbortSignal, and an abort in flight aborts them", async () => {
+  it("nested jobs receive a signal linked to the runner's own, and an abort in flight aborts them", async () => {
     const manifest = await build();
     const host = makeHost(manifest);
     host.runComponentJob.mockImplementation(
@@ -1813,8 +1921,10 @@ describe("budgets (identifiers off)", () => {
     await tick();
     await tick();
     expect(host.runComponentJob).toHaveBeenCalledTimes(1);
-    expect(host.runComponentJob.mock.calls[0][1]).toBe(abort.signal);
+    const nestedSignal = host.runComponentJob.mock.calls[0][1];
+    expect(nestedSignal.aborted).toBe(false);
     abort.abort();
+    expect(nestedSignal.aborted).toBe(true);
     await expect(pending).rejects.toThrow("nested aborted");
   });
 });

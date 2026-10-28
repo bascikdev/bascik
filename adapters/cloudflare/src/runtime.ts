@@ -322,20 +322,27 @@ export const createPageExecution = (
   const run = createGraphJobRunner(page, graph, request, context, log);
   const components = graph.components;
   const rendered = components
-    ? componentExecution(page, graph, request, run, (id, signal, budgetMs) => {
-        const job = components.jobs[id];
-        if (!job) return Promise.reject(missingJob(id));
-        return runGraphJob(
-          job,
-          id,
-          graph,
-          request,
-          context,
-          log,
-          signal,
-          budgetMs,
-        );
-      })
+    ? componentExecution(
+        page,
+        graph,
+        request,
+        run,
+        (id, signal, budgetMs) => {
+          const job = components.jobs[id];
+          if (!job) return Promise.reject(missingJob(id));
+          return runGraphJob(
+            job,
+            id,
+            graph,
+            request,
+            context,
+            log,
+            signal,
+            budgetMs,
+          );
+        },
+        log,
+      )
     : null;
   return rendered ?? { plan: toExecutionPlan(page), run };
 };

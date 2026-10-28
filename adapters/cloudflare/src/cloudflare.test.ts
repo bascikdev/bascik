@@ -959,6 +959,79 @@ describe("createCloudflareWorker: components rendered from a built manifest (pro
     expect(res.status).toBe(500);
     expect(await res.text()).not.toContain("SECRET_DETAIL");
   });
+
+  // D4.6: a request-time render failure (here the instance budget) is a
+  // script failure like any other, so onServerScriptError decides it, and
+  // what is logged is the located server-script message (route, component
+  // file), not a stack of Bascik internals. Node does the same
+  // (request-render-node.test.ts).
+  describe.each(["error", "warn", "ignore"] as const)(
+    "a request-time render failure under onServerScriptError %s",
+    (policy) => {
+      const overBudget = () =>
+        '<product-card data-bascik-prop-name="item"></product-card>'.repeat(
+          1001,
+        );
+      const pageWorker = (mode: "server" | "stream", logged: string[]) =>
+        createCloudflareWorker(
+          {
+            ...unitGraph({ onServerScriptError: policy }),
+            pages: {
+              "/catalog": {
+                path: "/catalog",
+                is404: false,
+                segments: [
+                  { kind: "static", text: "<main>" },
+                  { kind: "script", id: "page_job" },
+                  { kind: "static", text: "</main>" },
+                ],
+                jobs: { page_job: job("page_job", overBudget, { mode }) },
+              },
+            },
+            components: { manifest, jobs: {} },
+          },
+          { log: (m) => logged.push(m) },
+        );
+      const expectLocated = (message: string) => {
+        expect(message).toContain(`server script error at "/catalog"`);
+        expect(message).toMatch(
+          /expands to more than 1000 component instances/,
+        );
+        expect(message).toContain(
+          "src/components/product-card/product-card.html",
+        );
+        expect(message).not.toContain("RequestRenderError");
+        expect(message).not.toMatch(/^\s+at /m);
+      };
+
+      it("misuse: a server script over the instance budget is the 500 page under error, an empty slot under warn and ignore", async () => {
+        const logged: string[] = [];
+        const res = await pageWorker("server", logged).fetch(
+          new Request("https://example.test/catalog"),
+          {},
+          ctx,
+        );
+        const html = await res.text();
+        expect(res.status).toBe(policy === "error" ? 500 : 200);
+        if (policy !== "error") expect(html).toBe("<main></main>");
+        expect(logged).toHaveLength(policy === "ignore" ? 0 : 1);
+        if (logged.length) expectLocated(logged[0]);
+      });
+
+      it("misuse: a stream script over the instance budget leaves its slot empty, reported under the policy", async () => {
+        const logged: string[] = [];
+        const res = await pageWorker("stream", logged).fetch(
+          new Request("https://example.test/catalog"),
+          {},
+          ctx,
+        );
+        expect(res.status).toBe(200);
+        expect(await res.text()).toBe("<main></main>");
+        expect(logged).toHaveLength(policy === "ignore" ? 0 : 1);
+        if (logged.length) expectLocated(logged[0]);
+      });
+    },
+  );
 });
 
 // The same nested-failure policies end to end in workerd: the bundle carries

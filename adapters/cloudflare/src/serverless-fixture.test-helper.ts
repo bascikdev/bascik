@@ -331,6 +331,22 @@ export default function () { return "<chain-card></chain-card>"; }
 </div>
 <style>.chain { color: rgb(10, 11, 12); }</style>`,
   );
+  // Components that repeat their default slot, to multiply the slot content
+  // a script passes: twice renders over the 4 MiB budget, four times grows
+  // past the expansion tripwire, 200 times passes the engine's string limit
+  // while the instance is built (a "failed during slot resolution").
+  for (const [name, times] of [
+    ["twice-card", 2],
+    ["four-card", 4],
+    ["wide-card", 200],
+  ] as const) {
+    await write(
+      root,
+      `src/components/${name}/${name}.html`,
+      `<div class="rep">${"<i data-bascik-slot></i>".repeat(times)}</div>
+<style>.rep { color: rgb(16, 17, 18); }</style>`,
+    );
+  }
   // A component script that forgot its default export.
   await write(
     root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
@@ -386,6 +402,48 @@ export default function (request) {
   return out;
 }
 </script>`,
+  );
+  // The same budgets from a stream script, for the stream side of the policy.
+  await page(
+    "src/pages/components-budget-stream.html",
+    "Budget stream",
+    `<section data-testid="slot"><script data-bascik-stream>
+export default async function (request) {
+  const url = new URL(request.url);
+  const n = Number(url.searchParams.get("n") ?? 1);
+  const tag = url.searchParams.get("kind") === "live" ? "product-card-live" : "product-card";
+  let out = "";
+  for (let i = 0; i < n; i++) out += "<" + tag + ' data-bascik-prop-name="item ' + i + '"></' + tag + ">";
+  return out;
+}
+</script></section>`,
+  );
+  // The size budgets and a stage failure, by ?kind=: "rendered" renders
+  // over 4 MiB, "grew" passes the tripwire, "refused" is over twice the
+  // limit as written, "stage" fails during slot resolution.
+  const sizeScript = (directive: string) => `<script data-bascik-${directive}>
+export default async function (request) {
+  const kind = new URL(request.url).searchParams.get("kind");
+  const slotted = (tag, length) => "<" + tag + ">" + "x".repeat(length) + "</" + tag + ">";
+  if (kind === "rendered") return slotted("twice-card", 2500000);
+  if (kind === "grew") return slotted("four-card", 2500000);
+  if (kind === "refused") return "x".repeat(${2 * 4 * 1024 * 1024 + 1}) + "<product-card></product-card>";
+  if (kind === "stage") return slotted("wide-card", 3000000);
+  return "<product-card></product-card>";
+}
+</script>`;
+  await page("src/pages/components-size.html", "Size", sizeScript("server"));
+  await page(
+    "src/pages/components-size-stream.html",
+    "Size stream",
+    `<section data-testid="slot">${sizeScript("stream")}</section>`,
+  );
+  await page(
+    "src/pages/components-chain-stream.html",
+    "Chain stream",
+    `<section data-testid="slot"><script data-bascik-stream>
+export default async function () { return "<chain-card></chain-card>"; }
+</script></section>`,
   );
   await page(
     "src/pages/components-chain.html",

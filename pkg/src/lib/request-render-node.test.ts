@@ -50,6 +50,7 @@ vi.mock("./config.js", () => ({
 }));
 
 import { BascikConfig } from "./config.ts";
+import { ServerScriptError } from "./build-error.ts";
 import {
   buildComponentManifest,
   type ComponentManifest,
@@ -734,6 +735,162 @@ describe.each(["error", "warn", "ignore"] as const)(
         );
       }
     });
+  },
+);
+
+// D4.6: a request-time render failure (an instance, size, depth or nested-job
+// budget, or a "failed during <stage>" render failure) is a script failure
+// like any other, so `scripts.onServerScriptError` decides it: "error" is a
+// 500 for a server script and the stream error behavior for a stream script,
+// "warn" and "ignore" are an empty slot, and "warn" logs. The report is the
+// located message every server-script error uses (route, component file),
+// never a stack of Bascik internals.
+describe.each(["error", "warn", "ignore"] as const)(
+  "a request-time render failure under onServerScriptError %s",
+  (policy) => {
+    beforeEach(() => {
+      config.scripts.onServerScriptError = policy;
+    });
+
+    const withSelfCard = () =>
+      buildComponentManifest(
+        {
+          ...cards(),
+          // A component whose script returns itself: the depth budget stops it.
+          "self-card": scripted(
+            "self-card",
+            "div",
+            "self",
+            `export default () => "<self-card></self-card>";`,
+          ),
+          "two-card": repeatsSlot("two-card", 2),
+          "four-card": repeatsSlot("four-card", 4),
+          "wide-card": repeatsSlot("wide-card", 200),
+        },
+        BascikConfig,
+      );
+    // Components whose default slot repeats, to multiply the slot content
+    // the script passes: twice renders over the 4 MiB limit, four times
+    // grows past the loop's tripwire, 200 times passes the engine's string
+    // limit while the instance is built (a "failed during" stage failure).
+    const repeatsSlot = (name: string, times: number) => ({
+      fileName: `src/components/${name}.html`,
+      fileContent: `<div class="r">${"<i data-bascik-slot></i>".repeat(times)}</div>`,
+    });
+    const slotted = (tag: string, length: number) =>
+      `"<${tag}>" + "x".repeat(${length}) + "</${tag}>"`;
+    const LIMIT = 4 * 1024 * 1024;
+    const failures: Array<{
+      label: string;
+      /** The page script's return expression. */
+      expr: string;
+      message: RegExp;
+      /** The component file named, or null when the message names none. */
+      file: RegExp | null;
+    }> = [
+      {
+        label: "the instance budget",
+        expr: JSON.stringify("<plain-card></plain-card>".repeat(1001)),
+        message: /expands to more than 1000 component instances/,
+        file: /src\/components\/plain-card\.html/,
+      },
+      {
+        label: "the depth budget",
+        expr: JSON.stringify("<self-card></self-card>"),
+        message: /nests component scripts deeper than 4 levels/,
+        file: /src\/components\/self-card\.html/,
+      },
+      {
+        label: "the rendered size budget",
+        expr: slotted("two-card", 2_500_000),
+        message:
+          /rendered to \d+ characters, over the 4 MiB \(4194304 characters\) limit per script output/,
+        file: /src\/components\/two-card\.html/,
+      },
+      {
+        label: "the expansion tripwire",
+        expr: slotted("four-card", 2_500_000),
+        message: /grew past \d+ characters while expanding components/,
+        file: /src\/components\/four-card\.html/,
+      },
+      {
+        label: "the written size refusal",
+        expr: `"x".repeat(${2 * LIMIT + 1}) + "<plain-card></plain-card>"`,
+        message:
+          /characters before rendering, over twice the 4 MiB \(4194304 characters\) limit per script output, and has component tags in it/,
+        file: null,
+      },
+      {
+        label: "a failed during <stage> render failure",
+        expr: slotted("wide-card", 3_000_000),
+        message:
+          /Rendering <wide-card> \((?:\S*\/)?src\/components\/wide-card\.html\) from (?:server|stream)-script output at "\/catalog" failed during slot resolution: Invalid string length/,
+        file: /src\/components\/wide-card\.html/,
+      },
+    ];
+
+    /** The report is located and carries no Bascik-internal stack frames. */
+    const expectLocated = (message: string, failure: (typeof failures)[0]) => {
+      expect(message).toContain(`server script error at "/catalog"`);
+      expect(message).toMatch(failure.message);
+      if (failure.file) expect(message).toMatch(failure.file);
+      else expect(message).not.toMatch(/\(<[a-z-]+>, /);
+      expect(message).not.toContain("RequestRenderError");
+      expect(message).not.toMatch(/request-render\.(?:ts|js)/);
+      expect(message).not.toMatch(/^\s+at /m);
+    };
+
+    for (const failure of failures) {
+      it(`misuse: a server script output over ${failure.label} follows the policy (500 under error, an empty slot under warn and ignore)`, async () => {
+        const manifest = await withSelfCard();
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        const error = vi.spyOn(console, "error").mockImplementation(() => {});
+        const pending = render(
+          `<main><script data-bascik-server>export default () => ${failure.expr};</script></main>`,
+          manifest,
+        );
+        if (policy === "error") {
+          const thrown = await pending.then(
+            () => undefined,
+            (reason: unknown) => reason,
+          );
+          expect(thrown).toBeInstanceOf(ServerScriptError);
+          expectLocated((thrown as Error).message, failure);
+          return;
+        }
+        const out = await pending;
+        expect(out).toBe("<main></main>");
+        if (policy === "warn") {
+          expect(warn).toHaveBeenCalledTimes(1);
+          expectLocated(String(warn.mock.calls[0][0]), failure);
+        } else {
+          expect(warn).not.toHaveBeenCalled();
+        }
+        expect(error).not.toHaveBeenCalled();
+      });
+
+      it(`misuse: a stream script output over ${failure.label} leaves its slot empty and reports under the policy like any stream failure`, async () => {
+        const manifest = await withSelfCard();
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        const error = vi.spyOn(console, "error").mockImplementation(() => {});
+        const { streamer, text } = await stream(
+          `<p>head</p><script data-bascik-stream>export default () => ${failure.expr};</script><p>tail</p>`,
+          manifest,
+        );
+        await expect(streamer.ready).resolves.toBeUndefined();
+        streamer.commit();
+        await streamer.done;
+        expect(text()).toBe("<p>head</p><p>tail</p>");
+        const reported =
+          policy === "error" ? error : policy === "warn" ? warn : undefined;
+        if (reported) {
+          expect(reported).toHaveBeenCalledTimes(1);
+          expectLocated(String(reported.mock.calls[0][0]), failure);
+        }
+        if (policy !== "error") expect(error).not.toHaveBeenCalled();
+        if (policy !== "warn") expect(warn).not.toHaveBeenCalled();
+      });
+    }
   },
 );
 

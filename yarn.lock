@@ -3987,6 +3987,7 @@ __metadata:
   dependencies:
     "@types/node": "npm:^24.19.1"
     "@vitest/coverage-v8": "npm:^5.0.3"
+    miniflare: "npm:4.20260730.0"
     typescript: "npm:^7.0.2"
     vite: "npm:^8.3.4"
     vitest: "npm:^5.0.3"

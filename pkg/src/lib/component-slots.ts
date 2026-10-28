@@ -268,11 +268,18 @@ export const replaceDefaultSlots = (
     });
     openTagRe.lastIndex = endIndex;
   }
-  let result = fileContent;
-  for (let i = wrappers.length - 1; i >= 0; i--) {
-    const { startIndex, endIndex, content } = wrappers[i];
-    const replacement = defaultSlotContent || content;
-    result = result.slice(0, startIndex) + replacement + result.slice(endIndex);
+  // One join, not a splice per marker: slicing the growing result copied it
+  // once per marker, quadratic in a template that repeats the slot. The
+  // wrappers are in document order and never overlap.
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const { startIndex, endIndex, content } of wrappers) {
+    parts.push(
+      fileContent.slice(cursor, startIndex),
+      defaultSlotContent || content,
+    );
+    cursor = endIndex;
   }
-  return result;
+  parts.push(fileContent.slice(cursor));
+  return parts.join("");
 };

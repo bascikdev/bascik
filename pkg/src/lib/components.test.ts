@@ -918,6 +918,26 @@ describe("replaceNamedSlots", () => {
 });
 
 describe("replaceDefaultSlots", () => {
+  it("misuse: a template that repeats its default slot is replaced in linear time, and past the engine's string limit fails at once", () => {
+    // Splicing into the growing result copied it once per marker: 2000
+    // markers of 20000 characters took tens of seconds.
+    const template = `<div>${"<i data-bascik-slot>f</i>".repeat(2000)}</div>`;
+    const content = "x".repeat(20_000);
+    const started = performance.now();
+    const out = replaceDefaultSlots(template, content);
+    expect(out).toBe(`<div>${content.repeat(2000)}</div>`);
+    expect(() => replaceDefaultSlots(template, "x".repeat(300_000))).toThrow(
+      /Invalid string length/,
+    );
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it("replaces every repeated marker with the content and keeps the text between them in order", () => {
+    const template = `<a><b data-bascik-slot>1</b>-<c data-bascik-slot>2</c>-<d data-bascik-slot></d></a>`;
+    expect(replaceDefaultSlots(template, "X")).toBe("<a>X-X-X</a>");
+    expect(replaceDefaultSlots(template, "")).toBe("<a>1-2-</a>");
+  });
+
   it("replaces a default slot marker with provided content", () => {
     const template = "<div><div data-bascik-slot></div></div>";
     expect(replaceDefaultSlots(template, "<p>content</p>")).toBe(

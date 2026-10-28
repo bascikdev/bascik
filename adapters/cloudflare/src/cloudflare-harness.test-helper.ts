@@ -53,11 +53,18 @@ export interface HarnessOptions {
   invocationRoutes?: string[];
   /** Override the compatibility date (fault injection). */
   compatibilityDate?: string;
+  /**
+   * Collect what the Worker logs into `logs` instead of printing it, for
+   * tests that compare a host's log with the Node server's.
+   */
+  collectLogs?: boolean;
 }
 
 export interface Harness {
   url: URL;
   mf: Miniflare;
+  /** The Worker's log messages, in order, with `collectLogs`; else empty. */
+  logs: string[];
   dispose(): Promise<void>;
   /** Plain fetch through undici; fine for status/headers/full-body checks. */
   fetch(path: string, init?: RequestInit): Promise<Response>;
@@ -114,7 +121,15 @@ export const startHarness = async (
   }
 
   const gate = options.gate;
+  const logs: string[] = [];
   const mf = new Miniflare({
+    ...(options.collectLogs
+      ? {
+          handleStructuredLogs: ({ message }: { message: string }) => {
+            logs.push(message);
+          },
+        }
+      : {}),
     modules: true,
     // Module names are computed relative to this root; without it, a script
     // outside cwd gets a `../..`-prefixed name that workerd rejects.
@@ -272,6 +287,7 @@ export const startHarness = async (
   return {
     url,
     mf,
+    logs,
     dispose: () => mf.dispose(),
     fetch: (path, init) => fetch(new URL(path, url), init),
     streamed,

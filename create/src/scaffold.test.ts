@@ -364,6 +364,15 @@ describe("PLAYWRIGHT_CONFIG", () => {
       "npx bascik --build && npx bascik --server --port 8080",
     );
   });
+
+  it("misuse: the webServer runs from the project root, not from e2e/ where Playwright starts it beside the config", () => {
+    // Playwright runs webServer.command in the config file's directory, and
+    // `npm run e2e` points it at e2e/playwright.config.ts: without a cwd the
+    // build looks for e2e/src/pages and the run fails before any test.
+    expect(PLAYWRIGHT_CONFIG).toMatch(
+      /webServer:\s*\{[^}]*\bcwd:\s*(['"])\.\.\1/,
+    );
+  });
 });
 
 describe("E2E_APP_SPEC", () => {
@@ -377,8 +386,25 @@ describe("E2E_APP_SPEC", () => {
     );
   });
 
+  it("misuse: the mobile navigation test asserts the menu's visibility, never the literal is-open class the build scopes away", () => {
+    for (const spec of [E2E_APP_SPEC, CLOUDFLARE_E2E_APP_SPEC]) {
+      expect(spec).not.toMatch(/toHaveClass\(\s*\/is-open\//);
+      expect(spec).not.toContain("'is-open'");
+      expect(spec).toContain("await expect(menu).toBeVisible();");
+      expect(spec).toContain("await expect(menu).toBeHidden();");
+    }
+  });
+
   it("does not mention the edge page", () => {
     expect(E2E_APP_SPEC).not.toContain("/edge");
+    // The feature cards' body rules reach the slot content in the browser.
+    for (const spec of [E2E_APP_SPEC, CLOUDFLARE_E2E_APP_SPEC])
+      expect(spec).toContain(
+        "feature card styles the title and text passed through its slot",
+      );
+    expect(CLOUDFLARE_E2E_APP_SPEC).toContain(
+      "await expect(page.getByTestId('edge-greeting')).toHaveCSS('font-size', '16px');",
+    );
     expect(E2E_APP_SPEC.endsWith("  });\n});\n")).toBe(true);
   });
 });
@@ -663,6 +689,18 @@ describe("FEAT_CARD_CSS", () => {
 
   it("has hover lift effect", () => {
     expect(FEAT_CARD_CSS).toContain("translateY");
+  });
+
+  it("misuse: styles the slot content's h3 and p through :is(), since scoping turns a bare element selector into a class the usage site's elements never carry", () => {
+    // `.fcard-body h3` scopes to `.<fcard-body> .<h3>`, a class only the
+    // component's own <h3> elements get; slot content keeps plain tags.
+    expect(FEAT_CARD_CSS).not.toMatch(/\.fcard-[a-z]+ +[a-z][a-z0-9]* *[{,]/);
+    expect(FEAT_CARD_CSS).toMatch(
+      /\.fcard-body :is\(h3\) \{[^}]*font-size: 1rem/,
+    );
+    expect(FEAT_CARD_CSS).toMatch(
+      /\.fcard-body :is\(p\) \{[^}]*font-size: 0\.88rem/,
+    );
   });
 });
 

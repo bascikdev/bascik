@@ -21,6 +21,7 @@ import {
   createNameHasher,
   decodeOutputScope,
   manifestHasComponents,
+  renderFailureMessage,
   requestRoutePath,
   wrapRunner,
   type ExecutionPlan,
@@ -132,6 +133,7 @@ export const componentExecution = (
   request: Request,
   run: ScriptJobRunner,
   runComponentJob: RenderHost["runComponentJob"],
+  log: (message: string) => void,
 ): { plan: ExecutionPlan; run: ScriptJobRunner } | null => {
   const manifest = graph.components?.manifest;
   if (!manifest || !manifestHasComponents(manifest)) return null;
@@ -150,6 +152,15 @@ export const componentExecution = (
       timeoutMs: graph.scriptTimeoutMs,
       runComponentJob,
       externalTags: () => false,
+      // D4.6, as on Node and as runGraphJob treats a failing script: the
+      // located message fails the job under "error" (a 500 before commit,
+      // the stream error log after), is logged under "warn", and the slot
+      // is empty under "warn" and "ignore".
+      onRenderError: (error) => {
+        const message = renderFailureMessage(error, request.url);
+        if (graph.onServerScriptError === "error") throw new Error(message);
+        if (graph.onServerScriptError === "warn") log(message);
+      },
     }),
   };
 };

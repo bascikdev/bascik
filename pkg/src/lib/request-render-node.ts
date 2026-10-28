@@ -15,6 +15,8 @@
  * side only calls the other inside a function, never while evaluating.
  */
 import { createHash } from "node:crypto";
+import { resolve } from "node:path";
+import { ServerScriptError } from "./build-error.ts";
 import { BascikConfig } from "./config.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
 import { createNameHasher } from "./name-hash.ts";
@@ -26,7 +28,12 @@ import {
   type ServerScriptContext,
 } from "./server-scripts.ts";
 import type { ComponentManifest } from "./component-manifest.ts";
-import { requestRoutePath, type RenderHost } from "./request-render.ts";
+import { getDisplayPath } from "./page-diagnostics.ts";
+import {
+  renderFailureMessage,
+  requestRoutePath,
+  type RenderHost,
+} from "./request-render.ts";
 
 const identity = (input: string): string => input;
 
@@ -190,8 +197,21 @@ export const createNodeRenderHost = (
       );
     },
     externalTags: createExternalTagMatcher(BascikConfig.components?.external),
+    // D4.6: a render failure follows the policy exactly as a failing script
+    // does in runServerScriptJob: the located message is thrown as a
+    // ServerScriptError (server.ts logs its message, never a stack) or
+    // logged as a warning.
+    onRenderError: (error) => {
+      const message = renderFailureMessage(error, request.url);
+      const behavior = BascikConfig.scripts?.onServerScriptError ?? "error";
+      if (behavior === "error") throw new ServerScriptError(message);
+      if (behavior === "warn") console.warn(message);
+    },
   };
-  if (scriptRegistry.mode === "development")
+  if (scriptRegistry.mode === "development") {
     host.warnOnce = warnOnceFor(manifest);
+    // The form `bascik --check` prints, relative to the component root.
+    host.displayFile = (path) => getDisplayPath(resolve(process.cwd(), path));
+  }
   return host;
 };
