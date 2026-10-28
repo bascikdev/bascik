@@ -241,7 +241,7 @@
         <h2>Search the catalog</h2>
         <p class="explain">
           The list below is filtered by <code>?q=</code> on every request. Try
-          <a href="/catalog?q=grinder">grinder</a> or
+          <a href="/catalog?q=frother">frother</a> or
           <a href="/catalog?q=nothing-matches">a query with no match</a>.
         </p>
         <form class="search" method="get" action="/catalog">
@@ -265,7 +265,7 @@
               const products = [
                 { name: "Pour-over kettle", price: "$48", badge: "New" },
                 { name: "Ceramic dripper", price: "$22" },
-                { name: "Burr grinder", price: "$129", badge: "Best seller" },
+                { name: "Milk frother", price: "$129", badge: "Best seller" },
                 { name: "Glass carafe", price: "$31" },
                 { name: "Filters & holder", price: "$9" },
               ];
@@ -303,7 +303,7 @@
           <script data-bascik-server>
             export default function () {
               return (
-                `<product-card-live data-bascik-prop-name="Burr grinder" data-bascik-prop-price="$129">` +
+                `<product-card-live data-bascik-prop-name="Milk frother" data-bascik-prop-price="$129">` +
                 `<span>Live</span>` +
                 `</product-card-live>`
               );
@@ -320,7 +320,7 @@
         </p>
         <pre
           data-testid="catalog-code"
-        ><code>&lt;product-card data-bascik-prop-name="Burr grinder" data-bascik-prop-price="$129"&gt;&lt;span&gt;Best seller&lt;/span&gt;&lt;/product-card&gt;</code></pre>
+        ><code>&lt;product-card data-bascik-prop-name="Milk frother" data-bascik-prop-price="$129"&gt;&lt;span&gt;Best seller&lt;/span&gt;&lt;/product-card&gt;</code></pre>
       </div>
 
       <p class="next-nav">

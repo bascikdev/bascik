@@ -252,6 +252,51 @@ Here `src/components/bad-card/bad-card.html` binds a prop onto `class` on line 2
 
 The first is a typo or a missing component file: fix the tag name, or list a third-party element in [`components.external`](/configuration#componentsexternal) to silence it. The second is a component that cannot be rendered at request time; the next entry lists the reasons. A third message, `is left unexpanded: the scoped names computed for instance ... collide with each other`, means the instance's generated ids or names clashed; it is rare, and renaming the colliding ids in the component clears it. The production server and the Cloudflare Worker log none of these. A misspelled tag shows only in the dev server log: `bascik --check` reads the build's component manifest, so it lists unsupported components but never sees the tags a script returns at request time. A site whose components are all unsupported, or that has none, gets no dev log either; use `bascik --check` for the unsupported ones. Also make sure the tag is markup: an escaped tag (`&lt;product-card&gt;`) or one inside a comment, `<script>`, `<style>`, `<textarea>`, or attribute value is text by design. A custom deployment adapter that does not declare `components: true` serves every tag as written and says so at build time. See [Returning component tags](/server-scripts#returning-component-tags).
 
+The demo below is the safe fallback in action. The help page's server script returns a misspelled `<prodcut-card>` and a code sample that shows a `<product-card>` tag. The sample tag is escaped (`&lt;product-card ...&gt;`), so it is text; a raw `<product-card>` inside `<pre>` would be markup and would render. The Output is the body `bascik --server` sent for `GET /help`, byte for byte: both tags arrive as written, with no `<style>` and no request-time ids, in the same site where the [search page](/server-scripts#render-a-card-per-search-result) renders `<product-card>`.
+
+<!-- demo:rtc-passthrough-source-usage -->
+
+```html
+<!-- src/pages/help.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Help</title>
+  </head>
+  <body>
+    <div class="help">
+      <script data-bascik-server>
+        export default function () {
+          return `<p>A misspelled tag, then a tag shown as code:</p>
+    <prodcut-card data-bascik-prop-name="Milk frother"></prodcut-card>
+    <pre><code>&lt;product-card data-bascik-prop-name="Milk frother"&gt;&lt;/product-card&gt;</code></pre>`;
+        }
+      </script>
+    </div>
+  </body>
+</html>
+```
+
+<!-- demo:rtc-passthrough-output-html -->
+
+<!-- prettier-ignore -->
+```html
+<!-- src/pages/help.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Help</title>
+  </head>
+  <body>
+    <div class="help">
+      <p>A misspelled tag, then a tag shown as code:</p>
+    <prodcut-card data-bascik-prop-name="Milk frother"></prodcut-card>
+    <pre><code>&lt;product-card data-bascik-prop-name="Milk frother"&gt;&lt;/product-card&gt;</code></pre>
+    </div>
+  </body>
+</html>
+```
+
 ### `Components a server or stream script cannot return`
 
 This `bascik --check` section lists the components a server or stream script cannot return, read from the last build's `dist/.bascik/components.json`, each with its reason, what triggered it, and the file and line:

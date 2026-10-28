@@ -424,6 +424,32 @@ Third content.
     expect(html).not.toContain("demo only");
   });
 
+  it.each([
+    ["directly under the marker", "\n", "\n"],
+    ["with blank lines, as Prettier writes it", "\n\n", "\n\n"],
+  ])(
+    "stripDemoBlocks removes a demo block whose fence follows a prettier-ignore line %s",
+    async (_, before, after) => {
+      // A verbatim Output block (the request-time pass-through demo) keeps its bytes by telling Prettier to skip
+      // the fence. The marker, the prettier-ignore line, and the fence must all leave the page HTML together.
+      const mdFile = join(tempDir, "strip-demo-ignore.md");
+      await writeFile(
+        mdFile,
+        `Intro.\n\n<!-- demo:rtc-out -->${before}<!-- prettier-ignore -->${after}\`\`\`html\n<p>verbatim only</p>\n\`\`\`\n\nOutro.\n`,
+      );
+
+      const html = await renderMd(mdFile, { stripDemoBlocks: true });
+      expect(html).toContain("Intro.");
+      expect(html).toContain("Outro.");
+      expect(html).not.toContain("verbatim only");
+      expect(html).not.toContain("prettier-ignore");
+      // readDemoBlock still finds the fence past the prettier-ignore line.
+      expect(await extractDemoBlock(mdFile, "rtc-out")).toBe(
+        "&lt;p&gt;verbatim only&lt;/p&gt;",
+      );
+    },
+  );
+
   it("extractDemoBlock finds a block separated from its marker by a blank line", async () => {
     const mdFile = join(tempDir, "demo-gap.md");
     await writeFile(mdFile, "<!-- demo:usage -->\n\n```html\n<p>x</p>\n```\n");

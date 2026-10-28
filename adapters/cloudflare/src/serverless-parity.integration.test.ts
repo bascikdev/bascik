@@ -722,7 +722,7 @@ const instancesOf = (
 const PRODUCT_NAMES = [
   "Pour-over kettle",
   "Ceramic dripper",
-  "Burr grinder",
+  "Milk frother",
   "Glass carafe",
   "Filters &amp; holder",
 ];
@@ -766,7 +766,7 @@ for (const config of [
     });
 
     it("catalog.html: identical bytes on both hosts, every <product-card> rendered, with and without ?q=", async () => {
-      for (const query of ["", "?q=grinder", "?q=FILTERS", "?q=nothing"]) {
+      for (const query of ["", "?q=frother", "?q=FILTERS", "?q=nothing"]) {
         const { node: n, cf } = await both(`/catalog${query}`);
         expect(n.status, `node ${query}`).toBe(200);
         expect(cf.status, `cf ${query}`).toBe(200);
@@ -777,7 +777,7 @@ for (const config of [
       }
       const all = (await both("/catalog")).cf.body;
       for (const name of PRODUCT_NAMES) expect(all).toContain(`>${name}<`);
-      const one = (await both("/catalog?q=grinder")).cf.body;
+      const one = (await both("/catalog?q=frother")).cf.body;
       expect(instancesOf(one, "product-card")).toHaveLength(1);
       expect(one).toContain(">Best seller<");
       expect((await both("/catalog?q=nothing")).cf.body).toContain(

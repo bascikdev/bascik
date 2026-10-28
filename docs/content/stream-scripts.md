@@ -403,36 +403,195 @@ If you want content to append progressively as it streams in without showing pla
 
 A stream script can return the tags of your own components, exactly like a [server script](/server-scripts#returning-component-tags). Each tag is rendered at request time with the component's markup, props, slots, and scoped CSS, and the result is streamed into its slot. Nothing is imported or configured.
 
-The search page from the server script guide, with a slow search API, paints the form and a placeholder first and streams the shared `<product-card>` results when the search finishes:
+> **See it live on Cloudflare Workers.** The [streamed catalog](https://cloudflare-adapter.bascik.dev/catalog-stream) on the Cloudflare demo site streams `<product-card>` tiles in batches, and the [product catalog](https://cloudflare-adapter.bascik.dev/catalog?q=frother) renders the same cards from a server script.
+
+### Stream cards in batches
+
+This page streams the `<product-card>` from the [server script guide](/server-scripts#render-a-card-per-search-result) in two batches, one per `data-bascik-stream` script. Bascik flushes the slots in source order. The card's stylesheet is sent once, as one `<style>` at the start of the first slot in document order that renders a card, so the second batch carries none. Cards in different slots still get distinct request-time ids. Here each batch returns at once so the Output is the same on every run; a real batch arrives when its data resolves, such as a search API that takes a moment.
+
+<!-- demo:rtc-stream-source-usage -->
 
 ```html
-<!-- src/pages/search.html -->
-<section class="results" aria-busy="true">
-  <p class="pending" role="status">Searching…</p>
-  <script data-bascik-stream>
-    import { escape } from "@/lib/server.ts";
-    import { searchProducts } from "@/lib/products.ts";
-
-    export default async function (request, context, { signal }) {
-      const q = new URL(request.url).searchParams.get("q") ?? "";
-      const products = await searchProducts(q, { signal });
-      if (products.length === 0) {
-        return `<p class="result">No products match "${escape(q)}".</p>`;
-      }
-      return (
-        `<div class="result">` +
-        products
-          .map(
-            (p) =>
-              `<product-card data-bascik-prop-name="${escape(p.name)}" data-bascik-prop-price="${escape(p.price)}"></product-card>`,
-          )
-          .join("") +
-        `</div>`
-      );
-    }
-  </script>
-</section>
+<!-- src/pages/new-arrivals.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>New arrivals</title>
+  </head>
+  <body>
+    <div class="results">
+      <script data-bascik-stream>
+        export default async function () {
+          return (
+            `<product-card data-bascik-prop-name="Milk frother" data-bascik-prop-price="$129">Best seller</product-card>` +
+            `<product-card data-bascik-prop-name="Pour-over kettle" data-bascik-prop-price="$48">New</product-card>`
+          );
+        }
+      </script>
+      <script data-bascik-stream>
+        export default async function () {
+          return `<product-card data-bascik-prop-name="Glass carafe" data-bascik-prop-price="$31"></product-card>`;
+        }
+      </script>
+    </div>
+  </body>
+</html>
 ```
+
+The Source tabs show the page and the card's files. The Output is the whole body `bascik --server` streamed for `GET /new-arrivals`, built with minification off as in the server script guide and reformatted for reading. The Preview is drawn by this docs site's static build from the same three tags, because the docs site has no server to run a stream script.
+
+<!-- demo:rtc-stream-output-html -->
+
+```html
+<!-- src/pages/new-arrivals.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>New arrivals</title>
+  </head>
+  <body>
+    <div class="results">
+      <style>
+        .bascik__product-card__card {
+          display: grid;
+          gap: 6px;
+          padding: 16px;
+          border: 1px solid #3a3d40;
+          border-radius: 12px;
+          background: #242628;
+          color: #f0f1f2;
+        }
+
+        .bascik__product-card__name {
+          margin: 0;
+          font-size: 1rem;
+        }
+
+        .bascik__product-card__price {
+          margin: 0;
+          color: #8d929e;
+        }
+
+        .bascik__product-card__badge {
+          justify-self: start;
+          padding: 2px 10px;
+          border-radius: 999px;
+          background: rgba(211, 255, 141, 0.15);
+          color: #d3ff8d;
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
+
+        .bascik__product-card__save {
+          justify-self: start;
+          padding: 4px 12px;
+          border: 1px solid #3a3d40;
+          border-radius: 8px;
+          background: transparent;
+          color: #f0f1f2;
+          cursor: pointer;
+        }
+
+        .bascik__product-card__save[aria-pressed="true"] {
+          border-color: rgba(211, 255, 141, 0.6);
+          color: #d3ff8d;
+        }</style
+      ><!-- src/components/product-card/product-card.html -->
+      <article class="bascik__product-card__card" data-testid="product-card">
+        <h3 class="bascik__product-card__name">Milk frother</h3>
+        <p class="bascik__product-card__price">$129</p>
+        <span class="bascik__product-card__badge">Best seller</span>
+        <button
+          id="bascik__product-card__r778b9a6__save"
+          class="bascik__product-card__save"
+          type="button"
+          aria-pressed="false"
+          data-testid="product-card-save"
+        >
+          Save
+        </button>
+      </article>
+      <script>
+        (function () {
+          // src/components/product-card/product-card.js
+          const save = document.getElementById(
+            "bascik__product-card__r778b9a6__save",
+          );
+          save.addEventListener("click", () => {
+            const saved = save.getAttribute("aria-pressed") !== "true";
+            save.setAttribute("aria-pressed", String(saved));
+            save.textContent = saved ? "Saved" : "Save";
+          });
+        })();
+        //# sourceURL=src/components/product-card/product-card.js
+      </script>
+      <!-- src/components/product-card/product-card.html -->
+      <article class="bascik__product-card__card" data-testid="product-card">
+        <h3 class="bascik__product-card__name">Pour-over kettle</h3>
+        <p class="bascik__product-card__price">$48</p>
+        <span class="bascik__product-card__badge">New</span>
+        <button
+          id="bascik__product-card__r83a1dbc__save"
+          class="bascik__product-card__save"
+          type="button"
+          aria-pressed="false"
+          data-testid="product-card-save"
+        >
+          Save
+        </button>
+      </article>
+      <script>
+        (function () {
+          // src/components/product-card/product-card.js
+          const save = document.getElementById(
+            "bascik__product-card__r83a1dbc__save",
+          );
+          save.addEventListener("click", () => {
+            const saved = save.getAttribute("aria-pressed") !== "true";
+            save.setAttribute("aria-pressed", String(saved));
+            save.textContent = saved ? "Saved" : "Save";
+          });
+        })();
+        //# sourceURL=src/components/product-card/product-card.js
+      </script>
+
+      <!-- src/components/product-card/product-card.html -->
+      <article class="bascik__product-card__card" data-testid="product-card">
+        <h3 class="bascik__product-card__name">Glass carafe</h3>
+        <p class="bascik__product-card__price">$31</p>
+        <span class="bascik__product-card__badge">Standard</span>
+        <button
+          id="bascik__product-card__rd83e356__save"
+          class="bascik__product-card__save"
+          type="button"
+          aria-pressed="false"
+          data-testid="product-card-save"
+        >
+          Save
+        </button>
+      </article>
+      <script>
+        (function () {
+          // src/components/product-card/product-card.js
+          const save = document.getElementById(
+            "bascik__product-card__rd83e356__save",
+          );
+          save.addEventListener("click", () => {
+            const saved = save.getAttribute("aria-pressed") !== "true";
+            save.setAttribute("aria-pressed", String(saved));
+            save.textContent = saved ? "Saved" : "Save";
+          });
+        })();
+        //# sourceURL=src/components/product-card/product-card.js
+      </script>
+    </div>
+  </body>
+</html>
+```
+
+Run this on Cloudflare Workers: [/catalog-stream](https://cloudflare-adapter.bascik.dev/catalog-stream).
+
+### Rules when streaming
 
 The rules are the ones for server scripts. These are the ones that matter most when streaming:
 

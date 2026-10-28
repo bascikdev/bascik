@@ -1,0 +1,24 @@
+<!-- @bascik
+A product card for search results and listings. The "Returning component tags"
+demos on the server-scripts and stream-scripts pages render it: the Preview
+expands the tags at build time, and the Output shows what a server script that
+returns the same tags sends at request time.
+@prop name - Product name, shown as the card heading.
+@prop price - Price text, such as "$129".
+@slot - Badge text, such as "Best seller". Defaults to "Standard".
+-->
+<article class="card" data-testid="product-card">
+  <h3 class="name" data-bascik-prop-name>Unnamed product</h3>
+  <p class="price" data-bascik-prop-price>Price on request</p>
+  <span class="badge"><span data-bascik-slot>Standard</span></span>
+  <button
+    id="save"
+    class="save"
+    type="button"
+    aria-pressed="false"
+    data-testid="product-card-save"
+  >
+    Save
+  </button>
+</article>
+<script src="product-card.js"></script>

@@ -18,6 +18,7 @@
     "generate:llms": "node scripts/generate-llms-txt.ts",
     "generate:og": "node scripts/generate-og-images.ts",
     "generate:search": "node scripts/generate-search-index.ts",
+    "generate:rtc-demos": "node scripts/generate-rtc-demos.ts",
     "lhci": "lhci",
     "lighthouse": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik --build && lhci autorun --config=./lighthouse/lighthouserc.json && lhci autorun --config=./lighthouse/lighthouserc.light.json",
     "lighthouse:all": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik --build && node lighthouse/generate-config.ts && lhci autorun --config=./lighthouse/lighthouserc.all.json && lhci autorun --config=./lighthouse/lighthouserc.all-light.json",

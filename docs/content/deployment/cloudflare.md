@@ -7,7 +7,7 @@ Deploy a Bascik site to Cloudflare Workers or Pages so a CDN serves your static 
 > - [Server scripts](https://cloudflare-adapter.bascik.dev/server): request context and platform bindings rendered before headers commit.
 > - [In-place skeleton swap](https://cloudflare-adapter.bascik.dev/stream) and [progressive append](https://cloudflare-adapter.bascik.dev/stream-append): stream scripts flushing chunked HTML from the edge.
 > - [Mixed server and stream page](https://cloudflare-adapter.bascik.dev/mixed): the mixed-page ordering rule in one response.
-> - [Product catalog](https://cloudflare-adapter.bascik.dev/catalog?q=grinder) and [streamed catalog](https://cloudflare-adapter.bascik.dev/catalog-stream): server and stream scripts returning `<product-card>` tags that the Worker renders with the component's markup and scoped CSS, including a card whose own server script runs per request.
+> - [Product catalog](https://cloudflare-adapter.bascik.dev/catalog?q=frother) and [streamed catalog](https://cloudflare-adapter.bascik.dev/catalog-stream): server and stream scripts returning `<product-card>` tags that the Worker renders with the component's markup and scoped CSS, including a card whose own server script runs per request.
 > - [Edge API client](https://cloudflare-adapter.bascik.dev/api-demo): browser `fetch()` calls to a deployed API route.
 
 ## How it works: CDN-first with Edge Workers

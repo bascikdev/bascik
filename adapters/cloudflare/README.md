@@ -11,6 +11,8 @@ This adapter compiles Bascik request-time scripts and API routes into a Cloudfla
 
 See the [Cloudflare deployment guide](https://bascik.dev/deployment/cloudflare) for setup instructions, recipes, and limits.
 
+See it live: [cloudflare-adapter.bascik.dev](https://cloudflare-adapter.bascik.dev/) is a Bascik site deployed with this adapter. Its [product catalog](https://cloudflare-adapter.bascik.dev/catalog?q=frother) renders the `<product-card>` tags a server script returns, and the [streamed catalog](https://cloudflare-adapter.bascik.dev/catalog-stream) streams them in batches from the Worker.
+
 ## Targets and Variants
 
 - `cloudflare` / `cloudflare-workers` (Default): Outputs `worker.js`, `wrangler.jsonc`, and `public/` for Cloudflare Workers with Static Assets.

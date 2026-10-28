@@ -23,6 +23,14 @@
       content="Progressively stream HTML chunks with data-bascik-stream scripts. Paint the page shell immediately while async backend data resolves."
     />
     <title>Stream HTML Progressively from Node.js - Bascik</title>
+    <style>
+      .rtc-preview-grid {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+      }
+    </style>
   </head>
 
   <body>
@@ -263,7 +271,112 @@
             export default async () =>
               await renderMdRange(
                 "./content/stream-scripts.md",
-                { from: "Placeholders That Do Not Shift Layout" },
+                {
+                  from: "Placeholders That Do Not Shift Layout",
+                  to: "Stream cards in batches",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/stream-scripts.md",
+                {
+                  from: "Stream cards in batches",
+                  to: "Rules when streaming",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+          <!-- The Preview is the docs site's own static build of the tags the stream scripts return. -->
+          <component-demo data-bascik-prop-file="src/pages/new-arrivals.html">
+            <div data-bascik-slot="example">
+              <div class="rtc-preview-grid">
+                <product-card
+                  data-bascik-prop-name="Milk frother"
+                  data-bascik-prop-price="$129"
+                  >Best seller</product-card
+                >
+                <product-card
+                  data-bascik-prop-name="Pour-over kettle"
+                  data-bascik-prop-price="$48"
+                  >New</product-card
+                >
+                <product-card
+                  data-bascik-prop-name="Glass carafe"
+                  data-bascik-prop-price="$31"
+                ></product-card>
+              </div>
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/stream-scripts.md",
+                      "rtc-stream-source-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/server-scripts.md",
+                      "rtc-search-source-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/server-scripts.md",
+                      "rtc-search-source-css",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-js">
+              <code-block data-bascik-prop-lang="js">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/server-scripts.md",
+                      "rtc-search-source-js",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/stream-scripts.md",
+                      "rtc-stream-output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/stream-scripts.md",
+                { from: "Rules when streaming" },
                 { stripDemoBlocks: true },
               );
           </script>

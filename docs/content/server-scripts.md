@@ -290,82 +290,473 @@ This parallels Next.js `getServerSideProps` client hydration, but emits clean st
 
 A server script can return the tags of your own components. Bascik renders each tag at request time with the component's markup, props, slots, and scoped CSS, the same way it renders a tag written in a page. There is nothing to import and nothing to configure: a site with any server or stream script gets this automatically.
 
-A common case is a search page that renders the site's shared card for each result. The card is an ordinary component:
+> **See it live on Cloudflare Workers.** The [product catalog](https://cloudflare-adapter.bascik.dev/catalog?q=frother) on the Cloudflare demo site searches with `?q=` and renders one `<product-card>` per match, next to a card with its own server script. The [streamed catalog](https://cloudflare-adapter.bascik.dev/catalog-stream) streams the same cards in batches.
 
-```html
-<!-- src/components/product-card/product-card.html -->
-<style>
-  .card {
-    border: 1px solid #d0d4dc;
-    border-radius: 8px;
-    padding: 1rem;
-  }
-  .price {
-    color: #2f6f3e;
-  }
-</style>
-<article class="card">
-  <h3 data-bascik-prop-name>Unnamed product</h3>
-  <p class="price" data-bascik-prop-price>Price on request</p>
-  <div data-bascik-slot></div>
-</article>
-```
+### Render a card per search result
 
-The search page's server script returns one `<product-card>` per match, with the product's values escaped into the props and the slot:
+A common case is a search page that renders the site's shared card for each result. The card is an ordinary component: two props, a default slot for its badge, a companion stylesheet, and a client script for its Save button.
+
+The search page's server script returns one `<product-card>` per match, with the product's values escaped into the props and the slot. A product with no badge leaves the slot empty, so its card keeps the `Standard` fallback. A real site would read the products from a database or an API; here they are inline so the page works as pasted. The first line of each block names the file's path. The page, HTML, and JS path comments are ordinary comments, so they also appear in the Output; the CSS comment is dropped.
+
+<!-- demo:rtc-search-source-usage -->
 
 ```html
 <!-- src/pages/search.html -->
-<form method="get" action="/search">
-  <input type="search" name="q" aria-label="Search products" />
-  <button>Search</button>
-</form>
-<div class="results">
-  <script data-bascik-server>
-    import { escape } from "@/lib/server.ts";
-    import { searchProducts } from "@/lib/products.ts";
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Search</title>
+  </head>
+  <body>
+    <form method="get" action="/search">
+      <input type="search" name="q" aria-label="Search products" />
+      <button>Search</button>
+    </form>
+    <div class="results">
+      <script data-bascik-server>
+        // Escape every value you put into a prop or a slot: /server-scripts#escaping-and-injection
+        const escape = (s) =>
+          String(s)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll('"', "&quot;");
 
-    export default async function (request) {
-      const q = new URL(request.url).searchParams.get("q") ?? "";
-      const products = await searchProducts(q);
-      if (products.length === 0) {
-        return `<p>No products match "${escape(q)}".</p>`;
-      }
-      return products
-        .map(
-          (p) =>
-            `<product-card data-bascik-prop-name="${escape(p.name)}" data-bascik-prop-price="${escape(p.price)}">` +
-            (p.badge ? `<span>${escape(p.badge)}</span>` : "") +
-            `</product-card>`,
-        )
-        .join("");
-    }
-  </script>
-</div>
+        const catalog = [
+          { name: "Milk frother", price: "$129", badge: "Best seller" },
+          { name: "Pour-over kettle", price: "$48", badge: "New" },
+          { name: "Glass carafe", price: "$31" },
+        ];
+
+        export default function (request) {
+          const q = (new URL(request.url).searchParams.get("q") ?? "")
+            .trim()
+            .toLowerCase();
+          const products = catalog.filter((p) =>
+            p.name.toLowerCase().includes(q),
+          );
+          if (products.length === 0) {
+            return `<p>No products match "${escape(q)}".</p>`;
+          }
+          const cards = products.map(
+            (p) =>
+              `<product-card data-bascik-prop-name="${escape(p.name)}" data-bascik-prop-price="${escape(p.price)}">` +
+              (p.badge ? escape(p.badge) : "") +
+              `</product-card>`,
+          );
+          return cards.join("");
+        }
+      </script>
+    </div>
+  </body>
+</html>
 ```
 
-A request for `/search?q=grinder` receives the rendered card. This is `bascik --server` output with `minify.identifiers: false`, reformatted for reading; with the default `true`, the class names are short hashes:
+<!-- demo:rtc-search-source-html -->
 
 ```html
-<div class="results">
-  <style>
-    .bascik__product-card__card {
-      border: 1px solid #d0d4dc;
-      border-radius: 8px;
-      padding: 1rem;
-    }
-    .bascik__product-card__price {
-      color: #2f6f3e;
-    }
-  </style>
-  <article class="bascik__product-card__card">
-    <h3>Burr grinder</h3>
-    <p class="bascik__product-card__price">$129</p>
-    <span>Best seller</span>
-  </article>
-</div>
+<!-- src/components/product-card/product-card.html -->
+<article class="card" data-testid="product-card">
+  <h3 class="name" data-bascik-prop-name>Unnamed product</h3>
+  <p class="price" data-bascik-prop-price>Price on request</p>
+  <span class="badge"><span data-bascik-slot>Standard</span></span>
+  <button
+    id="save"
+    class="save"
+    type="button"
+    aria-pressed="false"
+    data-testid="product-card-save"
+  >
+    Save
+  </button>
+</article>
+<script src="product-card.js"></script>
 ```
 
-The rules that come with it:
+<!-- demo:rtc-search-source-css -->
+
+```css
+/* src/components/product-card/product-card.css */
+.card {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid #3a3d40;
+  border-radius: 12px;
+  background: #242628;
+  color: #f0f1f2;
+}
+
+.name {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.price {
+  margin: 0;
+  color: #8d929e;
+}
+
+.badge {
+  justify-self: start;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(211, 255, 141, 0.15);
+  color: #d3ff8d;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.save {
+  justify-self: start;
+  padding: 4px 12px;
+  border: 1px solid #3a3d40;
+  border-radius: 8px;
+  background: transparent;
+  color: #f0f1f2;
+  cursor: pointer;
+}
+
+.save[aria-pressed="true"] {
+  border-color: rgba(211, 255, 141, 0.6);
+  color: #d3ff8d;
+}
+```
+
+<!-- demo:rtc-search-source-js -->
+
+```js
+// src/components/product-card/product-card.js
+const save = document.getElementById("save");
+save.addEventListener("click", () => {
+  const saved = save.getAttribute("aria-pressed") !== "true";
+  save.setAttribute("aria-pressed", String(saved));
+  save.textContent = saved ? "Saved" : "Save";
+});
+```
+
+A request for `/search` with no query matches all three products. The Output is the body `bascik --server` sent for `GET /search`, reformatted for reading. It was built with minification off, as every output example in these docs is; with the defaults, the markup is minified and the class names are short hashes. The card's stylesheet arrives once, as one `<style>` right before the first card, and each card gets its own request-time id (`r` followed by 7 hex digits), so each Save button toggles only its own card. A request for `/search?q=frother` gets the Milk frother card alone.
+
+```ts
+// bascik.config.ts
+import { defineConfig } from "@bascik/bascik/config";
+
+export default defineConfig({
+  minify: { html: false, css: false, js: false, identifiers: false },
+});
+```
+
+<!-- demo:rtc-search-output-html -->
+
+```html
+<!-- src/pages/search.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Search</title>
+  </head>
+  <body>
+    <form method="get" action="/search">
+      <input type="search" name="q" aria-label="Search products" />
+      <button>Search</button>
+    </form>
+    <div class="results">
+      <style>
+        .bascik__product-card__card {
+          display: grid;
+          gap: 6px;
+          padding: 16px;
+          border: 1px solid #3a3d40;
+          border-radius: 12px;
+          background: #242628;
+          color: #f0f1f2;
+        }
+
+        .bascik__product-card__name {
+          margin: 0;
+          font-size: 1rem;
+        }
+
+        .bascik__product-card__price {
+          margin: 0;
+          color: #8d929e;
+        }
+
+        .bascik__product-card__badge {
+          justify-self: start;
+          padding: 2px 10px;
+          border-radius: 999px;
+          background: rgba(211, 255, 141, 0.15);
+          color: #d3ff8d;
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
+
+        .bascik__product-card__save {
+          justify-self: start;
+          padding: 4px 12px;
+          border: 1px solid #3a3d40;
+          border-radius: 8px;
+          background: transparent;
+          color: #f0f1f2;
+          cursor: pointer;
+        }
+
+        .bascik__product-card__save[aria-pressed="true"] {
+          border-color: rgba(211, 255, 141, 0.6);
+          color: #d3ff8d;
+        }</style
+      ><!-- src/components/product-card/product-card.html -->
+      <article class="bascik__product-card__card" data-testid="product-card">
+        <h3 class="bascik__product-card__name">Milk frother</h3>
+        <p class="bascik__product-card__price">$129</p>
+        <span class="bascik__product-card__badge">Best seller</span>
+        <button
+          id="bascik__product-card__r5600b02__save"
+          class="bascik__product-card__save"
+          type="button"
+          aria-pressed="false"
+          data-testid="product-card-save"
+        >
+          Save
+        </button>
+      </article>
+      <script>
+        (function () {
+          // src/components/product-card/product-card.js
+          const save = document.getElementById(
+            "bascik__product-card__r5600b02__save",
+          );
+          save.addEventListener("click", () => {
+            const saved = save.getAttribute("aria-pressed") !== "true";
+            save.setAttribute("aria-pressed", String(saved));
+            save.textContent = saved ? "Saved" : "Save";
+          });
+        })();
+        //# sourceURL=src/components/product-card/product-card.js
+      </script>
+      <!-- src/components/product-card/product-card.html -->
+      <article class="bascik__product-card__card" data-testid="product-card">
+        <h3 class="bascik__product-card__name">Pour-over kettle</h3>
+        <p class="bascik__product-card__price">$48</p>
+        <span class="bascik__product-card__badge">New</span>
+        <button
+          id="bascik__product-card__r71d5801__save"
+          class="bascik__product-card__save"
+          type="button"
+          aria-pressed="false"
+          data-testid="product-card-save"
+        >
+          Save
+        </button>
+      </article>
+      <script>
+        (function () {
+          // src/components/product-card/product-card.js
+          const save = document.getElementById(
+            "bascik__product-card__r71d5801__save",
+          );
+          save.addEventListener("click", () => {
+            const saved = save.getAttribute("aria-pressed") !== "true";
+            save.setAttribute("aria-pressed", String(saved));
+            save.textContent = saved ? "Saved" : "Save";
+          });
+        })();
+        //# sourceURL=src/components/product-card/product-card.js
+      </script>
+      <!-- src/components/product-card/product-card.html -->
+      <article class="bascik__product-card__card" data-testid="product-card">
+        <h3 class="bascik__product-card__name">Glass carafe</h3>
+        <p class="bascik__product-card__price">$31</p>
+        <span class="bascik__product-card__badge">Standard</span>
+        <button
+          id="bascik__product-card__r6a8ea90__save"
+          class="bascik__product-card__save"
+          type="button"
+          aria-pressed="false"
+          data-testid="product-card-save"
+        >
+          Save
+        </button>
+      </article>
+      <script>
+        (function () {
+          // src/components/product-card/product-card.js
+          const save = document.getElementById(
+            "bascik__product-card__r6a8ea90__save",
+          );
+          save.addEventListener("click", () => {
+            const saved = save.getAttribute("aria-pressed") !== "true";
+            save.setAttribute("aria-pressed", String(saved));
+            save.textContent = saved ? "Saved" : "Save";
+          });
+        })();
+        //# sourceURL=src/components/product-card/product-card.js
+      </script>
+    </div>
+  </body>
+</html>
+```
+
+The Preview is drawn by this docs site's static build from the same three `<product-card>` tags, because the docs site has no server to run the script. A tag renders the same way at build time and at request time.
+
+Run this on Cloudflare Workers: [/catalog?q=frother](https://cloudflare-adapter.bascik.dev/catalog?q=frother).
+
+### A card with its own server script
+
+A returned component can carry its own `data-bascik-server` script. Here the featured page returns one `<product-card>` whose badge slot holds a `<stock-line>`, a component made of a server script and a stylesheet. Bascik runs the stock line's script once per rendered instance at request time, with the same `request`, `context`, and `signal` as the page script and with what is left of the page script's `scripts.timeout`. The script receives no props from the usage tag, so it reads only the request; pass per-instance values as props to a component's markup instead. Its output is spliced into the card before the response is sent, and its `stock` class is scoped like the card's.
+
+Keep such a script class-only: a script body that names one of the component's ids cannot serve every instance, so the component is left unexpanded (see [Request-Time Component Rendering](/compatibility#request-time-component-rendering)).
+
+<!-- demo:rtc-live-source-usage -->
+
+```html
+<!-- src/pages/featured.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Featured</title>
+  </head>
+  <body>
+    <div class="featured">
+      <script data-bascik-server>
+        export default function () {
+          return `<product-card data-bascik-prop-name="Milk frother" data-bascik-prop-price="$129"><stock-line></stock-line></product-card>`;
+        }
+      </script>
+    </div>
+  </body>
+</html>
+```
+
+<!-- demo:rtc-live-source-html -->
+
+```html
+<!-- src/components/stock-line/stock-line.html -->
+<script data-bascik-server>
+  export default function (request) {
+    const path = new URL(request.url).pathname;
+    return `<span class="stock">In stock · checked for ${path} at request time</span>`;
+  }
+</script>
+```
+
+<!-- demo:rtc-live-source-css -->
+
+```css
+/* src/components/stock-line/stock-line.css */
+.stock {
+  color: #d3ff8d;
+  font-weight: 600;
+}
+```
+
+The Output is the body `bascik --server` sent for `GET /featured`, built with the same config. There is no Preview: the stock line exists only per request, and this docs site cannot run a server script.
+
+<!-- demo:rtc-live-output-html -->
+
+```html
+<!-- src/pages/featured.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Featured</title>
+  </head>
+  <body>
+    <div class="featured">
+      <style>
+        .bascik__product-card__card {
+          display: grid;
+          gap: 6px;
+          padding: 16px;
+          border: 1px solid #3a3d40;
+          border-radius: 12px;
+          background: #242628;
+          color: #f0f1f2;
+        }
+
+        .bascik__product-card__name {
+          margin: 0;
+          font-size: 1rem;
+        }
+
+        .bascik__product-card__price {
+          margin: 0;
+          color: #8d929e;
+        }
+
+        .bascik__product-card__badge {
+          justify-self: start;
+          padding: 2px 10px;
+          border-radius: 999px;
+          background: rgba(211, 255, 141, 0.15);
+          color: #d3ff8d;
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
+
+        .bascik__product-card__save {
+          justify-self: start;
+          padding: 4px 12px;
+          border: 1px solid #3a3d40;
+          border-radius: 8px;
+          background: transparent;
+          color: #f0f1f2;
+          cursor: pointer;
+        }
+
+        .bascik__product-card__save[aria-pressed="true"] {
+          border-color: rgba(211, 255, 141, 0.6);
+          color: #d3ff8d;
+        }</style
+      ><style>
+        .bascik__stock-line__stock {
+          color: #d3ff8d;
+          font-weight: 600;
+        }</style
+      ><!-- src/components/product-card/product-card.html -->
+      <article class="bascik__product-card__card" data-testid="product-card">
+        <h3 class="bascik__product-card__name">Milk frother</h3>
+        <p class="bascik__product-card__price">$129</p>
+        <span class="bascik__product-card__badge"
+          ><!-- src/components/stock-line/stock-line.html -->
+          <span class="bascik__stock-line__stock"
+            >In stock · checked for /featured at request time</span
+          >
+        </span>
+        <button
+          id="bascik__product-card__raa54050__save"
+          class="bascik__product-card__save"
+          type="button"
+          aria-pressed="false"
+          data-testid="product-card-save"
+        >
+          Save
+        </button>
+      </article>
+      <script>
+        (function () {
+          // src/components/product-card/product-card.js
+          const save = document.getElementById(
+            "bascik__product-card__raa54050__save",
+          );
+          save.addEventListener("click", () => {
+            const saved = save.getAttribute("aria-pressed") !== "true";
+            save.setAttribute("aria-pressed", String(saved));
+            save.textContent = saved ? "Saved" : "Save";
+          });
+        })();
+        //# sourceURL=src/components/product-card/product-card.js
+      </script>
+    </div>
+  </body>
+</html>
+```
+
+Run this on Cloudflare Workers: the [live card on /catalog](https://cloudflare-adapter.bascik.dev/catalog).
+
+### Rules for returned tags
+
+These rules apply to every tag a server script returns:
 
 - **Script output is HTML, rendered with the same power as your own markup.** Every component tag in it is expanded, and the component's own server and stream scripts run with the current request. Escape each value you put into a prop or slot, and sanitize HTML from a CMS or an API before returning it: a tag in that HTML renders your component, and an ordinary `<script>` or `on*` attribute in it reaches the browser.
 - **Scripts inside a returned component run.** A `data-bascik-server` or `data-bascik-stream` script inside the component runs once per rendered instance, with the same `request`, `context`, and `signal`, and with what is left of the page script's `scripts.timeout`. It receives no props from the usage tag; pass per-instance values as props to the component's markup instead. Its errors follow `scripts.onServerScriptError` like the page's own scripts: under `'error'` the response is a 500, and under `'warn'` or `'ignore'` that script's slot is empty and the rest of the card is kept.
@@ -377,7 +768,7 @@ The rules that come with it:
 - **Only markup is rendered.** A tag inside `<script>`, `<style>`, `<textarea>`, a comment, or an attribute value, or an escaped one (`&lt;product-card&gt;`), stays text. A `data-bascik-server` or other directive script in the output never runs on the server; it is sent as written, like the rest of the output.
 - **Unsupported components and misspelled tags are left as written.** A few component shapes cannot be rendered at request time, such as a component that binds a prop to its `class` or `id` with `data-bascik-attr-*`. Their tags, and tags with no component file, reach the browser unexpanded. When at least one component can be rendered at request time, the dev server logs each one once per route and tag. After a build, `bascik --check` lists the unsupported components with the reason; it does not see misspelled tags, which exist only in a script's output at request time. See [Request-Time Component Rendering](/compatibility#request-time-component-rendering) for each reason and how to restructure the component.
 
-Request-time rendering needs a host that runs server scripts: the [dev server](/development-server), the [production server](/production-server), or the [Cloudflare Adapter](/deployment/cloudflare). The Cloudflare demo renders the same shape live: a [product catalog](https://cloudflare-adapter.bascik.dev/catalog?q=grinder) and its [streamed version](https://cloudflare-adapter.bascik.dev/catalog-stream). [Stream scripts](/stream-scripts#returning-component-tags) return component tags under the same rules.
+Request-time rendering needs a host that runs server scripts: the [dev server](/development-server), the [production server](/production-server), or the [Cloudflare Adapter](/deployment/cloudflare). The Cloudflare demo renders the same shape live: a [product catalog](https://cloudflare-adapter.bascik.dev/catalog?q=frother) and its [streamed version](https://cloudflare-adapter.bascik.dev/catalog-stream). [Stream scripts](/stream-scripts#returning-component-tags) return component tags under the same rules.
 
 ## Server Scripts vs API Routes
 

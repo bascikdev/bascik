@@ -335,7 +335,7 @@ Configure your orchestrator or reverse proxy to use `GET /_health` as the readin
 
 ## Can a server script return a component?
 
-Yes. A `data-bascik-server` or `data-bascik-stream` script can return the tags of your own components, such as one `<product-card>` per search result, and Bascik renders each tag at request time with the component's markup, props, slots, and scoped CSS. There is no import and no setting. Escape the values you put into props, and sanitize HTML from a CMS or an API before returning it, because every tag in the output renders. A few component shapes cannot be rendered this way and are left as written; `bascik --check` lists them. See [Returning component tags](/server-scripts#returning-component-tags) for a worked example and the rules.
+Yes. A `data-bascik-server` or `data-bascik-stream` script can return the tags of your own components, such as one `<product-card>` per search result, and Bascik renders each tag at request time with the component's markup, props, slots, and scoped CSS. There is no import and no setting. Escape the values you put into props, and sanitize HTML from a CMS or an API before returning it, because every tag in the output renders. A few component shapes cannot be rendered this way and are left as written; `bascik --check` lists them. See [Returning component tags](/server-scripts#returning-component-tags) for a worked example and the rules, or see it live on Cloudflare Workers in the [product catalog demo](https://cloudflare-adapter.bascik.dev/catalog?q=frother).
 
 ## Can a server script slow down other requests?
 

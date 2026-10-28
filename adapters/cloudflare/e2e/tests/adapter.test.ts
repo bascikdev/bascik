@@ -276,7 +276,7 @@ test.describe("cloudflare adapter: components returned by server scripts (prompt
     await expect(results.getByTestId("product-card-name")).toHaveText([
       "Pour-over kettle",
       "Ceramic dripper",
-      "Burr grinder",
+      "Milk frother",
       "Glass carafe",
       "Filters & holder",
     ]);
@@ -345,7 +345,7 @@ test.describe("cloudflare adapter: components returned by server scripts (prompt
     const live = page.getByTestId("catalog-live");
     await expect(live.getByTestId("product-card-live")).toHaveCount(1);
     await expect(live.getByTestId("product-card-name")).toHaveText(
-      "Burr grinder",
+      "Milk frother",
     );
     await expect(live.getByTestId("product-card-badge")).toHaveText("Live");
     const stock = live.getByTestId("product-card-stock");
@@ -359,11 +359,11 @@ test.describe("cloudflare adapter: components returned by server scripts (prompt
   test("?q= filters the tiles on every request, and the search form drives it", async ({
     page,
   }) => {
-    await page.goto("/catalog?q=grinder");
+    await page.goto("/catalog?q=frother");
     const results = page.getByTestId("catalog-results");
     await expect(results.getByTestId("product-card")).toHaveCount(1);
     await expect(results.getByTestId("product-card-name")).toHaveText(
-      "Burr grinder",
+      "Milk frother",
     );
 
     await page.goto("/catalog?q=nothing-matches");
@@ -409,7 +409,7 @@ test.describe("cloudflare adapter: components returned by stream scripts (prompt
     const names = [
       "Pour-over kettle",
       "Ceramic dripper",
-      "Burr grinder",
+      "Milk frother",
       "Glass carafe",
       "Filters &amp; holder",
     ].map((name) => html.indexOf(`>${name}<`));

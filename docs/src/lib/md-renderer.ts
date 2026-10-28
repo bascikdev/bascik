@@ -403,8 +403,12 @@ function _transformMd(
 ): string {
   if (stripDemoBlocks) {
     md = md
-      // Formatters put a blank line between the marker and its fence, so any whitespace may separate them.
-      .replace(/<!--\s*demo:[\w-]+\s*-->\s*\n```[\w-]*\n[\s\S]*?\n```/g, "")
+      // Formatters put a blank line between the marker and its fence, so any whitespace may separate them. A
+      // verbatim block may carry a `<!-- prettier-ignore -->` line between the two; it goes with the block.
+      .replace(
+        /<!--\s*demo:[\w-]+\s*-->\s*\n(?:\s*<!--\s*prettier-ignore\s*-->\s*\n)?\s*```[\w-]*\n[\s\S]*?\n```/g,
+        "",
+      )
       .trim();
   }
 
