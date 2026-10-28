@@ -76,11 +76,11 @@ export const PACKAGE_JSON = (
           e2e: "playwright test --config e2e/playwright.config.ts",
         },
         dependencies: {
-          "@bascik/bascik": "^1.0.0-rc.9",
+          "@bascik/bascik": "^1.0.0-rc.10",
         },
         devDependencies: {
-          ...(cloudflare && { "@bascik/adapter-cloudflare": "^1.0.0-rc.9" }),
-          "@bascik/language-server": "^0.1.0-rc.5",
+          ...(cloudflare && { "@bascik/adapter-cloudflare": "^1.0.0-rc.10" }),
+          "@bascik/language-server": "^0.1.0-rc.6",
           "@playwright/test": "^1.62.0",
           "@types/node": "^24.0.0",
           "@vitest/coverage-v8": "^4.1.10",
