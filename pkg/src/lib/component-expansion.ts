@@ -121,6 +121,17 @@ export const recursivelyTranspile = (
           );
         },
         flatten: flattenString,
+        // The loop names the component file a prop or binding diagnostic is
+        // about as it was given (absolute at build time); print it the way
+        // every other build diagnostic does.
+        warn: (message) =>
+          console.warn(
+            message.replace(
+              /^(<[^>\s]+> \()([^)]+)(\): )/,
+              (_match, open: string, path: string, close: string) =>
+                `${open}${getDisplayPath(path)}${close}`,
+            ),
+          ),
       },
       usedComponents,
       filePath,

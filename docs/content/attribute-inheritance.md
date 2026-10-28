@@ -20,6 +20,8 @@ In the demo output, the scoped `inherit-card` class and usage-site `featured-car
 
 When both the component root and usage tag define `style`, Bascik appends the usage declarations after the root declarations. Normal CSS cascade rules therefore let the usage declaration win when both set the same property.
 
+An inherited value keeps its meaning whatever quotes the usage tag and the root use. HTML allows a raw `"` inside a single-quoted value and a raw `'` inside a double-quoted one, so when Bascik moves a value onto the root it encodes the quote the value is written in: `"` as `&quot;` in a double-quoted value, `'` as `&#39;` in a single-quoted one. Every other character, the other quote included, is copied byte for byte.
+
 ## What Gets Inherited
 
 All attributes on the usage tag are inherited **except** `data-bascik-*` attributes, which are consumed by Bascik for slots, props, and build instructions.

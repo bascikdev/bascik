@@ -29,6 +29,7 @@ import {
   replaceDefaultSlots,
   replaceNamedSlots,
 } from "./component-slots.ts";
+import { checkScanBudget, chargeScan } from "./component-scan-budget.ts";
 import { getFirstComponent, replaceTag } from "./component-tags.ts";
 import type { ComponentSearchState } from "./component-attribute-scan.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
@@ -237,7 +238,14 @@ export const expandComponents = (
   // Valid while the mask before the checkpoint is unchanged: the splice path only.
   const searchState: ComponentSearchState = {};
   let componentNames: Set<string> | undefined;
+  // Whether the next search re-reads the attribute state from the start
+  // (after a whole re-mask), for the request-time scan budget.
+  let rescanFromStart = false;
+  let lastTag = "(unknown)";
   while (true) {
+    // Request time only (component-scan-budget.ts): the rescans charged
+    // below are bounded per script output, before the next search.
+    checkScanBudget(lastTag);
     if (
       substitutions >= opts.limits.maxSubstitutions ||
       transpiledHtmlBody.length > opts.limits.maxOutputBytes
@@ -268,6 +276,34 @@ export const expandComponents = (
     }
     // Cast: getFirstComponent merges component list data so all required fields are present
     let component = partial as BascikComponent;
+    lastTag = `<${component.name}>`;
+    {
+      // The rescans this search made, and the instance's own reads: the
+      // attribute state from the start after a re-mask; a close looked for
+      // to the end for a usage without one; and for one with a close, its
+      // whole span, which the close search walks and slot resolution copies
+      // (each nesting level reads its slot again).
+      const found = component as {
+        startIndex?: number;
+        endIndex?: number;
+        closeIndex?: number;
+        contentStart?: number;
+      };
+      if (rescanFromStart)
+        chargeScan(found.startIndex ?? transpiledHtmlBody.length);
+      rescanFromStart = false;
+      if (
+        found.closeIndex === -1 &&
+        typeof found.contentStart === "number" &&
+        !/\/\s*>$/.test(component.content ?? "")
+      )
+        chargeScan(transpiledHtmlBody.length - found.contentStart);
+      else if (
+        typeof found.startIndex === "number" &&
+        typeof found.endIndex === "number"
+      )
+        chargeScan(found.endIndex - found.startIndex);
+    }
 
     if (!component.fileContent) {
       return {
@@ -281,6 +317,10 @@ export const expandComponents = (
     }
 
     let currentStage: ExpansionStage = "";
+    // Prop and binding diagnostics name the component file they are about.
+    const usage = component;
+    const propWarn = (message: string): void =>
+      warn(`<${usage.name}> (${usage.fileName || "unknown file"}): ${message}`);
     try {
       // One stable ID shared across all attribute-scoping passes for this instance.
       const props = extractProps(component.content, warn);
@@ -290,7 +330,7 @@ export const expandComponents = (
           component.fileContent,
           props,
           undefined,
-          warn,
+          propWarn,
         );
       }
       if (component.fileName) {
@@ -335,7 +375,7 @@ export const expandComponents = (
           props,
           rewriteIdRefs &&
             ((target, value) => rewriteIdRefs(target, value, scopedIdNames)),
-          warn,
+          propWarn,
         );
         currentStage = "attribute scoping";
       }
@@ -354,7 +394,11 @@ export const expandComponents = (
 
       currentStage = "prop injection";
       // Inject props — always call so unused data-bascik-prop-* markers are stripped.
-      component.fileContent = injectProps(component.fileContent, props);
+      component.fileContent = injectProps(
+        component.fileContent,
+        props,
+        propWarn,
+      );
 
       currentStage = "slot resolution";
       let transpiledTag: string;
@@ -512,6 +556,8 @@ export const expandComponents = (
         searchFrom = offsets.startIndex;
       } else {
         masked = maskRawTextContent(transpiledHtmlBody);
+        chargeScan(transpiledHtmlBody.length);
+        rescanFromStart = true;
         searchState.attributeCheckpoint = undefined;
         // A comment or raw-text element opened inside the new content could
         // extend a mask region across the splice boundary only forward, never
@@ -537,6 +583,8 @@ export const expandComponents = (
           masked,
         );
         masked = maskRawTextContent(transpiledHtmlBody);
+        chargeScan(transpiledHtmlBody.length);
+        rescanFromStart = true;
         // replaceTag without offsets re-searches from the document start and
         // may have edited text before the cursor; reset conservatively.
         searchFrom = 0;

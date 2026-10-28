@@ -31,6 +31,7 @@
  * ({"<lane>": [port, ...]}), so the tests pass while real lanes are running.
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync, rmSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { createRequire } from "node:module";
@@ -38,6 +39,7 @@ import { connect, createServer } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { stripVTControlCharacters } from "node:util";
+import { BOOT_GATE_PAGE } from "../tests/helpers/boot-gate-page.ts";
 
 const LANES = {
   static: "playwright.config.ts",
@@ -262,11 +264,28 @@ const formatMs = (ms: number): string => {
 const COUNT_LINE =
   /^\s*(\d+) (passed|failed|flaky|skipped|did not run|interrupted)\b/;
 
+/**
+ * The cold-start test's gate page (tests/helpers/boot-gate-page.ts) holds a
+ * build until that test releases it. A run killed mid-test can leave it in
+ * src/pages, where every lane would build and ship it, so it is removed
+ * before any lane starts. Not under the stub, which runs no build.
+ */
+function removeStaleBootGatePage(stub: string | undefined): void {
+  if (stub) return;
+  const page = join(e2eDir, "src/pages", BOOT_GATE_PAGE);
+  if (!existsSync(page)) return;
+  rmSync(page, { force: true });
+  console.log(
+    `[run-lanes] removed src/pages/${BOOT_GATE_PAGE}, left by an interrupted cold-start test`,
+  );
+}
+
 async function main(): Promise<void> {
   const { lanes, passthrough } = parseArgs(process.argv.slice(2));
   const plans = await Promise.all(lanes.map(loadPlan));
   const stub = process.env.BASCIK_RUN_LANES_STUB;
   await preflight(plans, stub);
+  removeStaleBootGatePage(stub);
 
   const childEnv = { ...process.env };
   if (childEnv.BASCIK_E2E_OUT !== undefined) {

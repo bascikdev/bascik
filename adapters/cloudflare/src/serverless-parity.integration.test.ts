@@ -1128,6 +1128,11 @@ for (const policy of ["error", "warn", "ignore"] as const) {
           /is \d+ characters before rendering, over twice the 4 MiB \(4194304 characters\) limit per script output, and has component tags in it, so it is refused before they are expanded\./,
       },
       {
+        path: "/components-size?kind=scan",
+        message:
+          /made the renderer rescan more than \d+ characters while expanding components \(<(?:product-card|twice-card)>, components\/(?:product-card\/product-card|twice-card\/twice-card)\.html\), over the limit of 16 times the output's \d+ characters plus 33554432\./,
+      },
+      {
         path: "/components-size?kind=stage",
         message:
           /Rendering <wide-card> \(components\/wide-card\/wide-card\.html\) from (?:server|stream)-script output at "\/components-size(?:-stream)?" failed during slot resolution: Invalid string length/,
@@ -1310,3 +1315,166 @@ for (const policy of ["error", "warn", "ignore"] as const) {
     });
   });
 }
+
+// ─── Request-time components: attacker lens (prompt 157 security audit) ────
+//
+// A visitor controls `?q=`, which the page script escapes (the docs' search
+// escaper, or the docs' full escaper with `esc=full`) into props, slots and
+// inherited attributes of returned component tags. Every case asserts the
+// SAFE outcome and byte equality on both hosts; a failure here is a finding
+// a correctly escaping author cannot stop, on that host.
+describe("serverless parity: escaped visitor input in returned component tags (prompt 157 security)", () => {
+  let root: string;
+  let node: NodeOracle;
+  let cloudflare: Harness;
+
+  beforeAll(async () => {
+    root = await createServerlessFixture("components-security", {
+      components: true,
+      security: true,
+    });
+    await buildServerlessFixture(root, "cloudflare-pages");
+    node = await startNodeServer(root);
+    cloudflare = await startHarness({
+      projectRoot: root,
+      target: "cloudflare-pages",
+    });
+  }, 180_000);
+
+  afterAll(async () => {
+    await cloudflare?.dispose();
+    await node?.stop();
+    if (root) await cleanupServerlessFixture(root);
+  });
+
+  const page = (q: string, extra = ""): string =>
+    `/components-security?q=${encodeURIComponent(q)}${extra}`;
+  const both = async (
+    path: string,
+  ): Promise<{ node: Observed; cf: Observed }> => ({
+    node: await observe(await fetch(new URL(path, node.url))),
+    cf: await observe(await cloudflare.fetch(path)),
+  });
+  /** The opening tag of the element carrying `data-testid="<id>"`. */
+  const openTagOf = (html: string, id: string): string =>
+    html.match(
+      new RegExp(
+        `<[a-z]+(?:[^>"']|"[^"]*"|'[^']*')*data-testid=["']?${id}["']?(?:[^>"']|"[^"]*"|'[^']*')*>`,
+      ),
+    )?.[0] ?? "";
+
+  it("A. text and attribute payloads escaped into the catalog card's props, slot and inherited title never become markup, on both hosts", async () => {
+    const payloads = [
+      `<script>alert(1)</script>`,
+      `"><img src=x onerror=alert(1)>`,
+      `</textarea><img src=x onerror=alert(1)>`,
+      `--><img src=x onerror=alert(1)>`,
+      `&lt;img src=x onerror=alert(1)&gt;`,
+      `<product-card-live></product-card-live>`,
+      `<script type="text/bascik-server" data-bascik-job="${"0".repeat(32)}:0"></script>`,
+    ];
+    for (const q of payloads) {
+      for (const esc of ["", "&esc=full"]) {
+        const { node: n, cf } = await both(page(q, `${esc}&only=card`));
+        expect(n.status, q).toBe(200);
+        expect(cf.status, q).toBe(200);
+        expect(cf.body, q).toBe(n.body);
+        const body = markup(cf.body);
+        // Visitor text is only ever text: no element it spelled, no job it named.
+        expect(body, q).not.toMatch(
+          /<img|<script>alert|<script type="text\/bascik-server"|<product-card-live|product-card-stock/,
+        );
+      }
+    }
+  });
+
+  it("D. a nested job started by a returned card sees none of the usage's props or slot, and one instance runs one job, on both hosts", async () => {
+    const q = "http://169.254.169.254/latest/meta-data/";
+    const { node: n, cf } = await both(page(q, "&only=live"));
+    expect(cf.status).toBe(200);
+    expect(cf.body).toBe(n.body);
+    const stock = [
+      ...cf.body.matchAll(/In stock · checked for ([^<]*) at request time/g),
+    ];
+    expect(stock).toHaveLength(1);
+    expect(stock[0][1]).toBe("/components-security");
+  });
+
+  it("F. CR/LF and header-shaped visitor text stay in the body: no Set-Cookie, the dynamic cache policy and Vary unchanged, on both hosts", async () => {
+    const q = "x\r\nSet-Cookie: pwned=1\r\nVary: *\r\n\r\n<h1>split</h1>";
+    const { node: n, cf } = await both(page(q, "&only=card"));
+    for (const [host, r] of [
+      ["node", n],
+      ["cf", cf],
+    ] as const) {
+      expect(r.status, host).toBe(200);
+      expect(r.headers["set-cookie"], host).toBeUndefined();
+      expect(r.headers["cache-control"], host).toBe("private, no-store");
+      expect(r.headers["vary"] ?? "", host).not.toContain("*");
+      expect(markup(r.body), host).not.toContain("<h1>split");
+    }
+    expect(cf.body).toBe(n.body);
+  });
+
+  it("B. a prop bound to href never carries a script URL a visitor typed, on both hosts", async () => {
+    const findings: string[] = [];
+    for (const q of [
+      "javascript:alert(document.domain)",
+      "JaVaScRiPt:alert(1)",
+      "java\tscript:alert(1)",
+      " \u0001javascript:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+    ]) {
+      const { node: n, cf } = await both(page(q, "&only=link"));
+      expect(cf.body, q).toBe(n.body);
+      const href =
+        /href="([^"]*)"/.exec(openTagOf(cf.body, "sec-link"))?.[1] ?? "";
+      const scheme = href
+        .replace(/&#9;|\t|\n/g, "")
+        .replace(/^[\u0000- ]+/, "")
+        .toLowerCase();
+      if (/^(?:javascript|vbscript|data):/.test(scheme))
+        findings.push(`${JSON.stringify(q)} -> href="${href}"`);
+    }
+    expect(findings, findings.join("\n")).toEqual([]);
+  });
+
+  it("B. a prop bound to srcdoc never carries visitor markup into the frame, on both hosts", async () => {
+    const q = "<script>alert(document.domain)</script>";
+    const { node: n, cf } = await both(page(q, "&only=srcdoc"));
+    expect(cf.body).toBe(n.body);
+    const srcdoc =
+      /srcdoc="([^"]*)"/.exec(openTagOf(cf.body, "sec-srcdoc"))?.[1] ?? "";
+    // The browser decodes the attribute once and parses the result as a document.
+    const decoded = srcdoc
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, "&");
+    expect(decoded).not.toContain("<script>");
+  });
+
+  it("A. a prop received by a component's client <script> never becomes script text, on both hosts", async () => {
+    const q = "alert(document.domain)";
+    const { node: n, cf } = await both(page(q, "&esc=full&only=script"));
+    expect(cf.body).toBe(n.body);
+    expect(cf.body).not.toMatch(
+      /<script>\s*alert\(document\.domain\)\s*<\/script>/,
+    );
+  });
+
+  it("A. an inherited class escaped with the docs' search escaper never adds an attribute to a single-quoted root, on both hosts", async () => {
+    const q = "x' onmouseover='alert(document.domain)";
+    const { node: n, cf } = await both(page(q, "&only=inherit"));
+    expect(cf.body).toBe(n.body);
+    // Attribute names as the tokenizer reads them: text inside a quoted
+    // value (the visitor's `onmouseover=`, now `&#39;`-encoded) is not one.
+    const names = [
+      ...openTagOf(cf.body, "sec-inherit").matchAll(
+        /\s([^\s"'>/=]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/g,
+      ),
+    ].map((match) => match[1].toLowerCase());
+    expect(names).toEqual(["class", "data-testid", "title"]);
+  });
+});

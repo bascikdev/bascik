@@ -53,6 +53,331 @@ const escapePropValue = (value: string): string =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Binding sinks (prompt 157 security audit)
+//
+// A prop value is whatever the usage tag carries: at request time, a value a
+// server script escaped from visitor input. Entity escaping keeps it inside
+// its attribute, but a few attributes give the browser a meaning to run:
+// a URL with a script scheme, an event handler, an `srcdoc` document, or CSS
+// that fetches. The same rules apply at build time, so a page and a script
+// that write the same usage get the same markup.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The value a refused URL binding gets, as in Closure's safe-URL convention. */
+export const BLOCKED_URL = "about:invalid";
+
+/**
+ * Schemes a bound URL may never use: each runs script where a browser
+ * follows it (`data:` documents too). Every other scheme (http, mailto, tel,
+ * sms, webcal, geo, an app's own, ...) and a relative URL are kept.
+ */
+const SCRIPT_URL_SCHEMES = new Set([
+  "javascript",
+  "vbscript",
+  "livescript",
+  "mocha",
+  "data",
+]);
+
+/** Targets whose whole value is one URL the browser follows or fetches. */
+const URL_TARGETS = new Set([
+  "href",
+  "xlink:href",
+  "src",
+  "action",
+  "formaction",
+  "poster",
+  "background",
+  "cite",
+  "codebase",
+  "longdesc",
+  "lowsrc",
+  "dynsrc",
+  "manifest",
+  "icon",
+]);
+
+/**
+ * `<tag target>` pairs that only ever show a picture, where a raster or SVG
+ * `data:image/*` URL (a placeholder, a blur-up) cannot run anything.
+ */
+const IMAGE_TARGETS = new Set([
+  "img src",
+  "img srcset",
+  "source srcset",
+  "video poster",
+  "input src",
+  "link imagesrcset",
+]);
+
+/**
+ * `<tag target>` pairs whose content runs in, or styles, the page itself:
+ * a bound value must be a path on this site, never another origin's URL.
+ */
+const SAME_ORIGIN_TARGETS = new Set([
+  "script src",
+  "script href",
+  "script xlink:href",
+  "object data",
+  "embed src",
+  "base href",
+]);
+
+/** `<link rel>` keywords whose `href` the page runs or applies. */
+const RUN_LINK_RELS = new Set([
+  "stylesheet",
+  "modulepreload",
+  "preload",
+  "prefetch",
+  "import",
+]);
+
+/** SVG elements that write `to`, `from`, `by` or `values` into another attribute. */
+const SVG_ANIMATIONS = new Set([
+  "set",
+  "animate",
+  "animatemotion",
+  "animatetransform",
+  "animatecolor",
+]);
+const ANIMATION_VALUES = new Set(["to", "from", "by", "values"]);
+
+/**
+ * A URL the way the URL parser reads it: leading and trailing C0 controls
+ * and spaces dropped, and every tab, line feed and carriage return removed,
+ * so `" java\tscript:"` reads `javascript:`.
+ */
+const normalizeUrl = (url: string): string =>
+  url.replace(/^[\u0000- ]+|[\u0000- ]+$/g, "").replace(/[\t\n\r]/g, "");
+
+/** The scheme the URL parser reads from `url`, lowercased, or null for a relative URL. */
+const urlScheme = (url: string): string | null =>
+  /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(normalizeUrl(url))?.[1].toLowerCase() ??
+  null;
+
+/** A `data:` URL whose type is an image, which only an image slot may keep. */
+const isImageDataUrl = (url: string): boolean =>
+  /^data:image\/[a-z0-9.+-]+[;,]/i.test(normalizeUrl(url));
+
+/** Whether `url` cannot run script where it lands (`image`: an image slot). */
+const isSafeUrl = (url: string, image = false): boolean => {
+  const scheme = urlScheme(url);
+  if (scheme === null || !SCRIPT_URL_SCHEMES.has(scheme)) return true;
+  return image && scheme === "data" && isImageDataUrl(url);
+};
+
+/**
+ * Whether `url` is a path on this site: no scheme, and not `//host` (a
+ * backslash counts as a slash, as the URL parser reads it).
+ */
+const isSameOriginPath = (url: string): boolean => {
+  const normalized = normalizeUrl(url);
+  return urlScheme(normalized) === null && !/^[\\/]{2}/.test(normalized);
+};
+
+/**
+ * The URLs of a `srcset` value, split the way the browser splits one: a
+ * URL is a run of non-whitespace (commas inside it belong to it, a trailing
+ * comma ends the candidate), then descriptors up to a comma outside
+ * parentheses.
+ */
+const srcsetUrls = (value: string): string[] => {
+  const urls: string[] = [];
+  let index = 0;
+  const isSpace = (c: string): boolean => /[\t\n\f\r ]/.test(c);
+  while (index < value.length) {
+    while (
+      index < value.length &&
+      (isSpace(value[index]) || value[index] === ",")
+    )
+      index++;
+    if (index >= value.length) break;
+    const start = index;
+    while (index < value.length && !isSpace(value[index])) index++;
+    let url = value.slice(start, index);
+    if (url.endsWith(",")) {
+      urls.push(url.replace(/,+$/, ""));
+      continue;
+    }
+    urls.push(url);
+    let depth = 0;
+    while (index < value.length) {
+      const c = value[index];
+      if (c === "(") depth++;
+      else if (c === ")" && depth > 0) depth--;
+      else if (c === "," && depth === 0) break;
+      index++;
+    }
+    url = "";
+  }
+  return urls;
+};
+
+/**
+ * CSS with its escapes decoded (`\\75 rl` is `url`) and tabs and newlines
+ * removed (the URL parser drops them), so a check sees what the browser
+ * runs.
+ */
+const decodeCss = (css: string): string =>
+  css
+    .replace(
+      /\\(?:([0-9a-fA-F]{1,6})[ \t\n\r\f]?|([\s\S]))/g,
+      (_m, hex?: string, char?: string) => {
+        if (hex === undefined) return char === "\n" ? "" : (char ?? "");
+        const code = Number.parseInt(hex, 16);
+        return code === 0 ||
+          code > 0x10ffff ||
+          (code >= 0xd800 && code <= 0xdfff)
+          ? "\ufffd"
+          : String.fromCodePoint(code);
+      },
+    )
+    .replace(/[\t\n\r\f]/g, "");
+
+/**
+ * CSS that runs script or pulls in more CSS, in a style value after
+ * `decodeCss`: `expression()`, legacy `behavior` and `-moz-binding`,
+ * `@import`, and a script URL anywhere (in `url()`, `image-set()` or a
+ * string). A `url()` to an image on any site is kept: CSP `img-src`
+ * governs where pictures load from.
+ */
+const UNSAFE_CSS =
+  /expression\s*\(|behavior\s*:|-moz-binding|@import|(?:java|vb|live)script\s*:|mocha\s*:/i;
+
+/** Every `url()` argument and quoted string in decoded CSS. */
+const cssUrls = (css: string): string[] => {
+  const urls: string[] = [];
+  const pattern =
+    /url\s*\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))|"([^"]*)"|'([^']*)'/gi;
+  for (const match of css.matchAll(pattern))
+    urls.push(match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5] ?? "");
+  return urls;
+};
+
+/** What `injectPropAttributes` does with one bound value. */
+type BindingVerdict =
+  | { kind: "bind"; value: string; blocked?: "script" | "origin" }
+  | { kind: "refuse"; reason: string };
+
+/** The context of a binding: the element and the attributes it already has. */
+interface BindingContext {
+  tagName: string;
+  /** Lowercased name to raw value, for the authored attributes. */
+  attrs: ReadonlyMap<string, string>;
+}
+
+/** An event handler's name: `on` and letters only (`onboarding-step` is not one). */
+const isEventHandlerName = (target: string): boolean =>
+  /^on[a-z]+$/.test(target);
+
+const EVENT_HANDLER_REASON =
+  "an event handler's value is code, so a prop is never bound to one. Bind a data-* attribute and read it from a component script";
+
+/**
+ * Decide how a bound value may reach `targetName` on its element:
+ *
+ * - an event handler (`on` and letters) or `srcdoc` is never bound: its
+ *   value is code or a document, which no escaping makes safe; nor is a
+ *   `<meta http-equiv>` value, or which attribute an SVG animation sets;
+ * - a URL target keeps any URL but a script one (`javascript:`,
+ *   `vbscript:`, `data:`), which becomes `about:invalid`; an image slot
+ *   also keeps a `data:image/*` URL; a list (`srcset`, `ping`) or an SVG
+ *   animation's values are checked entry by entry;
+ * - a URL the page runs or applies (`<script src>`, `<object data>`,
+ *   `<embed src>`, `<base href>`, a stylesheet or preload `<link href>`)
+ *   must be a path on this site;
+ * - a `style` value that runs script or imports CSS is not bound.
+ *
+ * Every other target binds the value as it is. The value is escaped by the
+ * caller either way, so the attribute never ends early.
+ */
+const bindingVerdict = (
+  context: BindingContext,
+  targetName: string,
+  value: string,
+): BindingVerdict => {
+  const tag = context.tagName.toLowerCase();
+  const target = targetName.toLowerCase();
+  const pair = `${tag} ${target}`;
+  if (isEventHandlerName(target))
+    return { kind: "refuse", reason: EVENT_HANDLER_REASON };
+  if (target === "srcdoc")
+    return {
+      kind: "refuse",
+      reason:
+        "an srcdoc value is an HTML document that runs with the page's origin, so a prop is never bound to one. Bind src to a URL instead",
+    };
+  if (
+    tag === "meta" &&
+    (target === "http-equiv" ||
+      (target === "content" && context.attrs.has("http-equiv")))
+  )
+    return {
+      kind: "refuse",
+      reason:
+        "a <meta http-equiv> value acts on the page (a redirect, a policy), so a prop is never bound to one",
+    };
+  if (SVG_ANIMATIONS.has(tag)) {
+    if (target === "attributename" || target === "attributetype")
+      return {
+        kind: "refuse",
+        reason:
+          "a prop never chooses which attribute an SVG animation sets. Write attributeName in the template",
+      };
+    if (ANIMATION_VALUES.has(target)) {
+      const animated = (context.attrs.get("attributename") ?? "").toLowerCase();
+      if (isEventHandlerName(animated.trim()))
+        return { kind: "refuse", reason: EVENT_HANDLER_REASON };
+      return value.split(";").every((entry) => isSafeUrl(entry))
+        ? { kind: "bind", value }
+        : { kind: "bind", value: BLOCKED_URL, blocked: "script" };
+    }
+  }
+  const runsWhatItLoads =
+    SAME_ORIGIN_TARGETS.has(pair) ||
+    (pair === "link href" &&
+      (context.attrs.get("rel") ?? "")
+        .toLowerCase()
+        .split(/[\t\n\f\r ]+/)
+        .some((rel) => RUN_LINK_RELS.has(rel)));
+  if (runsWhatItLoads)
+    return isSameOriginPath(value)
+      ? { kind: "bind", value }
+      : { kind: "bind", value: BLOCKED_URL, blocked: "origin" };
+  const image = IMAGE_TARGETS.has(pair);
+  if (URL_TARGETS.has(target))
+    return isSafeUrl(value, image)
+      ? { kind: "bind", value }
+      : { kind: "bind", value: BLOCKED_URL, blocked: "script" };
+  if (target === "srcset" || target === "imagesrcset")
+    return srcsetUrls(value).every((url) => isSafeUrl(url, image))
+      ? { kind: "bind", value }
+      : { kind: "bind", value: BLOCKED_URL, blocked: "script" };
+  if (target === "ping")
+    return value
+      .split(/[\t\n\f\r ]+/)
+      .every((url) => url === "" || isSafeUrl(url))
+      ? { kind: "bind", value }
+      : { kind: "bind", value: BLOCKED_URL, blocked: "script" };
+  if (target === "style") {
+    const css = decodeCss(value);
+    if (
+      UNSAFE_CSS.test(css) ||
+      !cssUrls(css).every((url) => isSafeUrl(url, true))
+    )
+      return {
+        kind: "refuse",
+        reason:
+          "the value runs script or imports CSS (expression(), behavior, -moz-binding, @import, or a javascript:, vbscript: or non-image data: URL), which a prop bound to style may not do. Bind a data-* attribute and style it from a scoped class",
+      };
+  }
+  return { kind: "bind", value };
+};
+
+/** Raw-text elements whose content a prop receiver never replaces. */
+const UNFILLABLE_RECEIVERS = new Set(["script", "style"]);
+
 /**
  * Extract data-bascik-prop-* attributes from a component usage tag string.
  * e.g. '<my-comp data-bascik-prop-title="Hello">' → { title: "Hello" }
@@ -165,6 +490,43 @@ export const injectPropAttributes = (
       });
     }
 
+    // Own keys only, as for slots: a binding to `toString` or `valueOf`
+    // must not read Object.prototype's member.
+    const lookupProp = (propName: string): string | undefined =>
+      Object.hasOwn(props, propName)
+        ? props[propName]
+        : propsLowerMap.get(propName.toLowerCase());
+
+    // The element and its authored attributes, read once and only when a
+    // bound prop is present.
+    let context: BindingContext | undefined;
+    const bindingContext = (): BindingContext => {
+      if (context) return context;
+      const attrs = new Map<string, string>();
+      for (const attr of scanWholeAttributes(openingTag)) {
+        const name = attr.name.toLowerCase();
+        if (name.startsWith("data-bascik-") || attrs.has(name)) continue;
+        attrs.set(
+          name,
+          attr.valueStart === -1
+            ? ""
+            : openingTag.slice(attr.valueStart, attr.valueEnd),
+        );
+      }
+      // A value another binding on this tag gives (`rel`, `attributeName`,
+      // `http-equiv`) counts as written: the checks must see it.
+      for (const { targetName, rawPropName } of directives) {
+        const name = rawPropName?.slice(1, -1);
+        const value = name === undefined ? undefined : lookupProp(name);
+        if (value !== undefined) attrs.set(targetName.toLowerCase(), value);
+      }
+      context = {
+        tagName: /^<([a-zA-Z][\w:-]*)/.exec(openingTag)?.[1] ?? "",
+        attrs,
+      };
+      return context;
+    };
+
     let result = openingTag;
     for (let index = directives.length - 1; index >= 0; index--) {
       const directive = directives[index];
@@ -186,16 +548,28 @@ export const injectPropAttributes = (
         continue;
       }
 
-      // Own keys only, as for slots: a binding to `toString` or `valueOf`
-      // must not read Object.prototype's member.
-      const propValue = Object.hasOwn(props, propName)
-        ? props[propName]
-        : propsLowerMap.get(propName.toLowerCase());
+      const propValue = lookupProp(propName);
       if (propValue === undefined) continue;
-      const boundValue = rewriteValue
-        ? rewriteValue(targetName, propValue)
-        : propValue;
-      const attribute = ` ${targetName}="${escapePropValue(boundValue)}"`;
+      const verdict = bindingVerdict(
+        bindingContext(),
+        targetName,
+        rewriteValue ? rewriteValue(targetName, propValue) : propValue,
+      );
+      if (verdict.kind === "refuse") {
+        warn(
+          `Ignoring data-bascik-attr-${targetName}="${propName}": ${verdict.reason}.`,
+        );
+        continue;
+      }
+      if (verdict.blocked === "script")
+        warn(
+          `data-bascik-attr-${targetName}="${propName}" received a URL that can run script (a javascript:, vbscript: or data: URL), so ${targetName} is set to ${BLOCKED_URL}.`,
+        );
+      else if (verdict.blocked === "origin")
+        warn(
+          `data-bascik-attr-${targetName}="${propName}" received a URL outside this site, and <${bindingContext().tagName}> would run or apply what it loads, so ${targetName} is set to ${BLOCKED_URL}. Bind a same-origin path, or write the URL in the template.`,
+        );
+      const attribute = ` ${targetName}="${escapePropValue(verdict.value)}"`;
       // Whole-name conflict check: the target may already exist, but a
       // "target-looking" token inside another attribute's quoted value is
       // text and must not count as the target.
@@ -270,6 +644,7 @@ export const mayChangeMaskedRegions = (text: string): boolean =>
 export const injectProps = (
   fileContent: string | undefined,
   props: Record<string, string>,
+  warn: (message: string) => void = console.warn,
 ): string => {
   if (!fileContent) return "";
   // With no lowercase marker, an empty props object returns early, and without any marker nothing changes.
@@ -363,6 +738,17 @@ export const injectProps = (
             attr.nameEnd >= openTag.length),
       );
       if (!receiverAttr) {
+        searchIndex = openMatch.index + openTag.length;
+        continue;
+      }
+      // A script or style body is code: entity escaping cannot keep a value
+      // from running there. The receiver stays unfilled (its marker is
+      // stripped below) and the element keeps the template's own text.
+      if (UNFILLABLE_RECEIVERS.has(tagName.toLowerCase())) {
+        warn(
+          `Ignoring data-bascik-prop-${propName} on a <${tagName.toLowerCase()}>: a prop is never written into script or style text. ` +
+            `Bind it to a data-* attribute instead (data-bascik-attr-data-${propName}="${propName}") and read it from the element's dataset.`,
+        );
         searchIndex = openMatch.index + openTag.length;
         continue;
       }

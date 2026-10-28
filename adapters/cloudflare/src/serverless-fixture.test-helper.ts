@@ -51,6 +51,12 @@ export interface ServerlessFixtureOptions {
   base?: string;
   /** Add the request-time component pages and components (prompt 157). */
   components?: boolean;
+  /**
+   * Add the attacker-lens components and the `/components-security` page
+   * (prompt 157 security audit): a visitor's `?q=` escaped into props, slots
+   * and inherited attributes of returned component tags.
+   */
+  security?: boolean;
   /** `minify.identifiers`; off by default so scoped names stay readable. */
   identifiers?: boolean;
   /** `minify.html`; off by default. */
@@ -257,6 +263,7 @@ export const DELETE = async () => new Response(null, { status: 204 });`,
     `export const GET = async () => { throw new Error("api SECRET_DETAIL"); };`,
   );
   if (options.components) await addComponentPages(root);
+  if (options.security) await addSecurityPages(root);
   return root;
 };
 
@@ -420,7 +427,9 @@ export default async function (request) {
   );
   // The size budgets and a stage failure, by ?kind=: "rendered" renders
   // over 4 MiB, "grew" passes the tripwire, "refused" is over twice the
-  // limit as written, "stage" fails during slot resolution.
+  // limit as written, "stage" fails during slot resolution, and "scan"
+  // cuts every nested usage mid-tag (a visitor's unescaped "<"), which the
+  // scan budget refuses (prompt 157 security audit).
   const sizeScript = (directive: string) => `<script data-bascik-${directive}>
 export default async function (request) {
   const kind = new URL(request.url).searchParams.get("kind");
@@ -429,6 +438,7 @@ export default async function (request) {
   if (kind === "grew") return slotted("four-card", 2500000);
   if (kind === "refused") return "x".repeat(${2 * 4 * 1024 * 1024 + 1}) + "<product-card></product-card>";
   if (kind === "stage") return slotted("wide-card", 3000000);
+  if (kind === "scan") return "<twice-card>" + ("<product-card><a " + "x".repeat(800)).repeat(499) + "</twice-card>";
   return "<product-card></product-card>";
 }
 </script>`;
@@ -685,4 +695,64 @@ export const buildServerlessFixture = async (
 
 export const cleanupServerlessFixture = async (root: string): Promise<void> => {
   await rm(root, { recursive: true, force: true });
+};
+
+/**
+ * The attacker lens (prompt 157 security audit). One page echoes the
+ * visitor's `?q=` through the escaper the docs' search example uses
+ * (`&`, `<` and `"`), or the docs' full escaper with `?esc=full`, into:
+ * a prop bound to an `href`, a `srcdoc` and a client `<script>` receiver,
+ * an inherited `class` on a root whose class is single-quoted, and the
+ * props and slot of the catalog's own cards (one with a nested job).
+ */
+export const addSecurityPages = async (root: string): Promise<void> => {
+  await write(
+    root,
+    "src/components/sec-link/sec-link.html",
+    `<a class="sec-link" data-testid="sec-link" href="/default" data-bascik-attr-href="u">go</a>`,
+  );
+  await write(
+    root,
+    "src/components/sec-srcdoc/sec-srcdoc.html",
+    `<iframe class="sec-frame" data-testid="sec-srcdoc" data-bascik-attr-srcdoc="u"></iframe>`,
+  );
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/components/sec-script/sec-script.html",
+    `<div class="sec-script" data-testid="sec-script"><script data-bascik-prop-v>void 0;</script></div>`,
+  );
+  await write(
+    root,
+    "src/components/sec-inherit/sec-inherit.html",
+    `<div class='sec-inherit' data-testid='sec-inherit'>inherit</div>`,
+  );
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/pages/components-security.html",
+    `<!DOCTYPE html><html><head><title>Security</title></head><body>
+<header data-testid="shell">shell</header>
+<script data-bascik-server>
+const catalogEscape = (s) =>
+  String(s).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;");
+const fullEscape = (s) =>
+  String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+export default function (request) {
+  const url = new URL(request.url);
+  const q = url.searchParams.get("q") ?? "ok";
+  const e = url.searchParams.get("esc") === "full" ? fullEscape : catalogEscape;
+  const only = url.searchParams.get("only");
+  const parts = {
+    link: '<sec-link data-bascik-prop-u="' + e(q) + '"></sec-link>',
+    srcdoc: '<sec-srcdoc data-bascik-prop-u="' + e(q) + '"></sec-srcdoc>',
+    script: '<sec-script data-bascik-prop-v="' + e(q) + '"></sec-script>',
+    inherit: '<sec-inherit class="' + e(q) + '" title="' + e(q) + '"></sec-inherit>',
+    card: '<product-card data-bascik-prop-name="' + e(q) + '" data-bascik-prop-price="' + e(q) + '" title="' + e(q) + '">' + e(q) + '</product-card>',
+    live: '<product-card-live data-bascik-prop-name="' + e(q) + '" data-bascik-prop-price="' + e(q) + '"><span>' + e(q) + '</span></product-card-live>',
+  };
+  return only ? parts[only] : Object.values(parts).join("");
+}
+</script>
+<footer data-testid="tail">tail</footer>
+</body></html>`,
+  );
 };

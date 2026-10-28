@@ -56,9 +56,23 @@ export const extractInheritableAttributes = (
 };
 
 /**
+ * An inherited value as written on the usage tag (entities kept), made safe
+ * for the quote it is written in: HTML allows a raw `"` inside a
+ * single-quoted value and a raw `'` inside a double-quoted one, and the root
+ * element may quote the attribute the other way. Only the destination's own
+ * quote is encoded, which leaves the value the browser decodes unchanged and
+ * every other byte as written.
+ */
+const inDoubleQuotes = (value: string): string => value.replace(/"/g, "&quot;");
+const inSingleQuotes = (value: string): string => value.replace(/'/g, "&#39;");
+
+/**
  * Merge inheritable attributes onto the first (root) element of transpiled HTML.
  *  - class: appended to existing classes, or added if absent.
  *  - Other attributes: added only if the root element does not already have them.
+ * Each value has the quote it is written in encoded (`inDoubleQuotes`,
+ * `inSingleQuotes`), whatever quote the usage used, so no value can end its
+ * attribute early.
  */
 export const mergeAttributesOntoRoot = (
   html: string,
@@ -111,47 +125,47 @@ export const mergeAttributesOntoRoot = (
         attrStr = attrStr.replace(
           /\s(class)\s*=\s*"([^"]*)"/i,
           (_, attrName: string, classes: string) =>
-            ` ${attrName}="${classes ? `${classes} ` : ""}${value}"`,
+            ` ${attrName}="${classes ? `${classes} ` : ""}${inDoubleQuotes(value)}"`,
         );
       } else if (/\sclass\s*=\s*'/i.test(attrStr)) {
         attrStr = attrStr.replace(
           /\s(class)\s*=\s*'([^']*)'/i,
           (_, attrName: string, classes: string) =>
-            ` ${attrName}='${classes ? `${classes} ` : ""}${value}'`,
+            ` ${attrName}='${classes ? `${classes} ` : ""}${inSingleQuotes(value)}'`,
         );
       } else if (/\sclass\s*=\s*[^\s"'=<>`/>]+/i.test(attrStr)) {
         attrStr = attrStr.replace(
           /\s(class)\s*=\s*([^\s"'=<>`/>]+)/i,
           (_, attrName: string, classes: string) =>
-            ` ${attrName}="${classes} ${value}"`,
+            ` ${attrName}="${classes} ${inDoubleQuotes(value)}"`,
         );
       } else {
-        attrStr += ` class="${value}"`;
+        attrStr += ` class="${inDoubleQuotes(value)}"`;
       }
     } else if (lowerName === "style" && value) {
       if (/\sstyle\s*=\s*"/i.test(attrStr)) {
         attrStr = attrStr.replace(
           /\s(style)\s*=\s*"([^"]*)"/i,
           (_, attrName: string, style: string) =>
-            ` ${attrName}="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
+            ` ${attrName}="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${inDoubleQuotes(value)}"`,
         );
       } else if (/\sstyle\s*=\s*'/i.test(attrStr)) {
         attrStr = attrStr.replace(
           /\s(style)\s*=\s*'([^']*)'/i,
           (_, attrName: string, style: string) =>
-            ` ${attrName}='${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}'`,
+            ` ${attrName}='${style}${style.trimEnd().endsWith(";") ? " " : "; "}${inSingleQuotes(value)}'`,
         );
       } else if (/\sstyle\s*=\s*[^\s"'=<>`/>]+/i.test(attrStr)) {
         attrStr = attrStr.replace(
           /\s(style)\s*=\s*([^\s"'=<>`/>]+)/i,
           (_, attrName: string, style: string) =>
-            ` ${attrName}="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
+            ` ${attrName}="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${inDoubleQuotes(value)}"`,
         );
       } else {
-        attrStr += ` style="${value}"`;
+        attrStr += ` style="${inDoubleQuotes(value)}"`;
       }
     } else if (value !== undefined && !existingNames.has(lowerName)) {
-      attrStr += ` ${name}="${value}"`;
+      attrStr += ` ${name}="${inDoubleQuotes(value)}"`;
     }
   }
 

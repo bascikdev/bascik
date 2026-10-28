@@ -106,6 +106,8 @@ The `post` recipe above hashes the built pages, so it never sees what a server o
 
 A server or stream script can also return component tags, which Bascik renders with their `<style>` block and client scripts at request time (see [Returning component tags](/server-scripts#returning-component-tags)). With `generate.cspHashes: true`, the `csp-hashes.json` entry of every route that has a server or stream script therefore also lists, in its own `styles` and `scripts` arrays, the style hash and first-instance client script hashes of every component that can be rendered at request time. Any component can be returned, so every one of them is listed. The emitted `<style>` text is exactly the hashed text. A targeted `--only` build keeps these entries.
 
+The policy still blocks a `<script>` or `<style>` a visitor manages to write, because its hash is not listed. It cannot block a component tag injected through an escaping bug: that component's client script and stylesheet are listed, so they run, with their usual text, on elements whose props, classes, and inherited attributes the visitor chose. Escape every value your scripts return, and write component scripts that treat their own markup as data. See [Security](/server-scripts#security).
+
 Two kinds of component cannot be covered by a hash-only policy when a script returns them, because their bytes change with each instance:
 
 - **Per-instance CSS.** A component whose stylesheet uses `url(#id)`, or any component under `scoping.deduplicateCss: false`, emits CSS that names the instance's ids.

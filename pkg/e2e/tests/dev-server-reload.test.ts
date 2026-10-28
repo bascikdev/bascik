@@ -22,6 +22,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 import { spawn } from "node:child_process";
+import { BOOT_GATE_PAGE } from "./helpers/boot-gate-page.ts";
 import { outDir } from "./helpers/out-dir.ts";
 
 const e2eDir = fileURLToPath(new URL("..", import.meta.url));
@@ -1488,56 +1489,122 @@ test.describe("Dev Server Cold Start & Boot Loading Screen", () => {
     }
   });
 
+  // The boot page answers only while the initial transpile is still running
+  // and only for a page not yet in memory: alone that window is under a
+  // second for /index.html, and under load it may pass before the first
+  // request lands. So the test holds the transpile open itself: a gate page
+  // whose build script waits for a file the test writes only after it has
+  // seen the boot page, which makes the boot page's assertion unconditional.
+  // The server is polled until it binds (the child's output is shown if it
+  // exits first), never for a fixed number of attempts.
   test("serves boot loading screen during cold start before initial transpile completes and resolves pages afterwards", async () => {
+    test.setTimeout(150_000);
     const entryPath = join(pkgDir, "bin/bascik.js");
     const cacheDir = join(e2eDir, "node_modules/.cache/bascik");
     await rm(cacheDir, { recursive: true, force: true });
 
+    const gateDir = await mkdtemp(join(tmpdir(), "bascik-boot-gate-"));
+    const gateFile = join(gateDir, "release");
+    const gatePagePath = join(e2eDir, `src/pages/${BOOT_GATE_PAGE}`);
+    // Released by the test's file, by the test's cleanup removing the gate
+    // directory, or when this Playwright worker is gone (killed on a
+    // timeout, Ctrl-C), so an interrupted run never holds a later build.
+    // run-lanes.ts also removes a gate page a killed run left behind.
+    const gatePage = `<!doctype html><html><head><title>Boot gate</title></head><body>
+<script data-bascik-build>
+import { existsSync } from "node:fs";
+export default async function () {
+  // Held until the test has seen the boot page (dev-server-reload.test.ts).
+  const owner = ${process.pid};
+  const alive = () => {
+    try {
+      process.kill(owner, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const deadline = Date.now() + 50000;
+  while (
+    existsSync(${JSON.stringify(gateDir)}) &&
+    !existsSync(${JSON.stringify(gateFile)}) &&
+    alive() &&
+    Date.now() < deadline
+  )
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  return '<p data-testid="boot-gate">gate released</p>';
+}
+</script>
+</body></html>
+`;
     const port = "9992";
     const baseUrl = `http://localhost:${port}`;
-    const child = spawn(process.execPath, [entryPath], {
-      cwd: e2eDir,
-      env: { ...process.env, BASCIK_SERVER_PORT: port },
-    });
-
+    let child: ReturnType<typeof spawn> | undefined;
     let bootFinished = false;
     let output = "";
-    const captureOutput = (data: Buffer): void => {
-      output += stripVTControlCharacters(data.toString("utf8"));
-      bootFinished = output.includes("All tasks completed in");
-    };
-    child.stdout?.on("data", captureOutput);
-    child.stderr?.on("data", captureOutput);
+    const exited = (): boolean =>
+      child !== undefined &&
+      (child.exitCode !== null || child.signalCode !== null);
 
     try {
-      // 1. Poll until server binds port and responds to requests
-      let bootPageRes: Response | null = null;
-      for (let i = 0; i < 150; i++) {
-        try {
-          const res = await fetch(`${baseUrl}/index.html`);
-          if (res.status === 200) {
-            bootPageRes = res;
-            break;
-          }
-        } catch {
-          // Connection refused while starting server
-        }
-        await new Promise((r) => setTimeout(r, 100));
-      }
+      await writeFile(gatePagePath, gatePage, "utf8");
+      child = spawn(process.execPath, [entryPath], {
+        cwd: e2eDir,
+        env: { ...process.env, BASCIK_SERVER_PORT: port },
+      });
+      const captureOutput = (data: Buffer): void => {
+        output += stripVTControlCharacters(data.toString("utf8"));
+        bootFinished = output.includes("All tasks completed in");
+      };
+      child.stdout?.on("data", captureOutput);
+      child.stderr?.on("data", captureOutput);
 
-      expect(bootPageRes).not.toBeNull();
-      expect(bootPageRes?.status).toBe(200);
+      // 1. Poll until the server binds and answers. The gate page cannot be
+      //    in memory yet, so it gets the boot page.
+      let bootPage: { status: number; html: string } | null = null;
+      await expect
+        .poll(
+          async () => {
+            if (exited())
+              throw new Error(`dev server exited during boot:\n${output}`);
+            try {
+              const res = await fetch(`${baseUrl}/${BOOT_GATE_PAGE}`);
+              bootPage = { status: res.status, html: await res.text() };
+              return true;
+            } catch {
+              return false; // connection refused while the server starts
+            }
+          },
+          { timeout: 60000, intervals: [50] },
+        )
+        .toBe(true);
 
-      // If caught while still booting, verify boot loading screen HTML
-      if (!bootFinished) {
-        const html = await bootPageRes!.text();
-        expect(html).toContain("Building site");
-      }
+      // 2. The boot loading screen, while the initial transpile is held.
+      expect(bootPage!.status).toBe(200);
+      expect(bootPage!.html).toContain("Building site");
+      expect(bootFinished).toBe(false);
 
-      // 2. Wait for initial transpile / boot phase to complete
-      await expect.poll(() => bootFinished, { timeout: 20000 }).toBe(true);
+      // 3. Release the transpile and wait for boot to complete.
+      await writeFile(gateFile, "go", "utf8");
+      await expect
+        .poll(
+          () => {
+            if (exited() && !bootFinished)
+              throw new Error(`dev server exited during boot:\n${output}`);
+            return bootFinished;
+          },
+          { timeout: 60000 },
+        )
+        .toBe(true);
 
-      // 3. Verify requesting /index.html, /, and /scope-test.html after boot return status 200 with transpiled content
+      // 4. Every page resolves with its transpiled content, the gate page
+      //    included, and none of them is the boot page.
+      const gateRes = await fetch(`${baseUrl}/${BOOT_GATE_PAGE}`);
+      expect(gateRes.status).toBe(200);
+      const gateText = await gateRes.text();
+      expect(gateText).not.toContain("Building site");
+      expect(gateText).toContain("gate released");
+
       const indexHtmlRes = await fetch(`${baseUrl}/index.html`);
       expect(indexHtmlRes.status).toBe(200);
       const indexText = await indexHtmlRes.text();
@@ -1555,7 +1622,11 @@ test.describe("Dev Server Cold Start & Boot Loading Screen", () => {
       expect(scopeText).not.toContain("Building site");
       expect(scopeText).toContain("JS Scope Rewriting");
     } finally {
-      await stopChildServer(child);
+      // Release the main dev server's compile of the gate page too.
+      await writeFile(gateFile, "go", "utf8").catch(() => {});
+      if (child) await stopChildServer(child);
+      await rm(gatePagePath, { force: true });
+      await rm(gateDir, { recursive: true, force: true });
     }
   });
 

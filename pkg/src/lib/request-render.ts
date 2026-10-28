@@ -52,6 +52,11 @@ import {
   type ExpandOptions,
 } from "./component-expansion-core.ts";
 import { maskRawTextContent } from "./component-masking.ts";
+import {
+  SCAN_BUDGET,
+  ScanBudgetExceededError,
+  withScanBudget,
+} from "./component-scan-budget.ts";
 import { scanEmptyScriptElements } from "./element-content-scan.ts";
 import {
   createMatchingCloseFinder,
@@ -806,55 +811,75 @@ export const wrapRunner = (
       limits.maxOutputChars + output.length,
     );
     let html: string;
+    // The rescans a nested usage cut mid-tag or left unclosed costs the loop
+    // (component-scan-budget.ts), bounded in proportion to this output.
+    const scanBudget =
+      SCAN_BUDGET.perOutputChar * output.length + SCAN_BUDGET.base;
     try {
-      html = expandByUsage(
-        output,
-        list,
-        {
-          scope: (component, instanceId) =>
-            manifestScope(component, instanceId, markers, mode),
-          mintId: (name, ordinal) =>
-            requestInstanceId(
-              host.hashHex,
-              httpPath,
-              jobId,
-              name,
-              ordinal,
-              state.issuedIds,
-            ),
-          injectAttrProps: "after-scope",
-          rewriteIdRefs: rewriteIdReferenceTarget,
-          numberSourceUrls: false,
-          inheritAttributes: manifest.inheritAttributes,
-          instanceState: { ordinalMap: new Map(), issuedIds: state.issuedIds },
-          // The loop trips at the limit before it searches again, so one
-          // more substitution is allowed than instances; the size tripwire
-          // is a runaway guard, the exact size is checked on the result.
-          limits: {
-            maxSubstitutions: limits.maxInstances + 1,
-            maxOutputBytes: tripwire,
+      html = withScanBudget(scanBudget, () =>
+        expandByUsage(
+          output,
+          list,
+          {
+            scope: (component, instanceId) =>
+              manifestScope(component, instanceId, markers, mode),
+            mintId: (name, ordinal) =>
+              requestInstanceId(
+                host.hashHex,
+                httpPath,
+                jobId,
+                name,
+                ordinal,
+                state.issuedIds,
+              ),
+            injectAttrProps: "after-scope",
+            rewriteIdRefs: rewriteIdReferenceTarget,
+            numberSourceUrls: false,
+            inheritAttributes: manifest.inheritAttributes,
+            instanceState: {
+              ordinalMap: new Map(),
+              issuedIds: state.issuedIds,
+            },
+            // The loop trips at the limit before it searches again, so one
+            // more substitution is allowed than instances; the size tripwire
+            // is a runaway guard, the exact size is checked on the result.
+            limits: {
+              maxSubstitutions: limits.maxInstances + 1,
+              maxOutputBytes: tripwire,
+            },
+            onError: (component, stage, error) => {
+              // The manifest's path (the form `bascik --check` prints), as the
+              // budget messages name it; the expanded usage may carry a
+              // resolved one.
+              const file =
+                manifest.components[component.name]?.filePath ??
+                component.fileName;
+              throw new RequestRenderError(
+                `[bascik] Rendering <${component.name}> (${file || "unknown file"}) ` +
+                  `from ${mode}-script output at "${httpPath}" failed during ${stage}: ` +
+                  `${error instanceof Error ? error.message : String(error)}`,
+                httpPath,
+                file,
+              );
+            },
+            warn,
           },
-          onError: (component, stage, error) => {
-            // The manifest's path (the form `bascik --check` prints), as the
-            // budget messages name it; the expanded usage may carry a
-            // resolved one.
-            const file =
-              manifest.components[component.name]?.filePath ??
-              component.fileName;
-            throw new RequestRenderError(
-              `[bascik] Rendering <${component.name}> (${file || "unknown file"}) ` +
-                `from ${mode}-script output at "${httpPath}" failed during ${stage}: ` +
-                `${error instanceof Error ? error.message : String(error)}`,
-              httpPath,
-              file,
-            );
-          },
-          warn,
-        },
-        used,
-        usageFinalizer(manifest, outer),
+          used,
+          usageFinalizer(manifest, outer),
+        ),
       );
     } catch (error) {
+      if (error instanceof ScanBudgetExceededError) {
+        const entry = manifest.components[error.tag.slice(1, -1)];
+        throw new RequestRenderError(
+          `[bascik] ${mode}-script output at "${httpPath}" made the renderer rescan more than ${scanBudget} characters ` +
+            `while expanding components${located(entry)}, over the limit of ${SCAN_BUDGET.perOutputChar} times the output's ` +
+            `${output.length} characters plus ${SCAN_BUDGET.base}. Component tags in it are cut off mid-tag, left unclosed, or nested many levels deep around long content, ` +
+            `which usually means text reached the output unescaped.`,
+          httpPath,
+          entry?.filePath,
+        );
+      }
       if (!(error instanceof ComponentExpansionLimitError)) throw error;
       const limit = `4 MiB (${limits.maxOutputChars} characters) limit per script output`;
       if (output.length > tripwire) {
