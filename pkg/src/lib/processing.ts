@@ -74,7 +74,7 @@ import {
 } from "./components.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
-import { BUILD_ONCE_ATTR_NAME, OPEN_TAG_ATTRS } from "./html-patterns.ts";
+import { scriptDirectiveFinder } from "./html-patterns.ts";
 
 import { stdout as colorOut, workerEnvironment } from "./colors.ts";
 import { BascikConfig } from "./config.ts";
@@ -165,11 +165,10 @@ export interface PageJob {
   onceResolvedHtml?: string;
 }
 
-// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const BUILD_ONCE_SCRIPT_RE = new RegExp(
-  String.raw`<script\b${OPEN_TAG_ATTRS}\s${BUILD_ONCE_ATTR_NAME}`,
-  "i",
-);
+// `<script\b${OPEN_TAG_ATTRS}\s${BUILD_ONCE_ATTR_NAME}` (flag `i`), in linear time.
+const findBuildOnceScript = scriptDirectiveFinder(["data-bascik-build-once"]);
+const hasBuildOnceScript = (html: string): boolean =>
+  findBuildOnceScript(html) !== -1;
 
 /**
  * Loads every component for a batch of pages. A failure is reported to the browser and then rethrown, so
@@ -368,7 +367,7 @@ export const expandPageToJobs = async (
   const baseRelativePath = getRelativePath(pagePath, "pages");
   // Build-once output has no route context, so it is the same for every route:
   // run it here, once per template, instead of once per generated page.
-  const onceResolvedHtml = BUILD_ONCE_SCRIPT_RE.test(result.cleanedHtml)
+  const onceResolvedHtml = hasBuildOnceScript(result.cleanedHtml)
     ? await executeBuildScripts(result.cleanedHtml, pagePath, null, {
         once: true,
         stats: scriptStats,

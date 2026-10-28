@@ -184,6 +184,51 @@ import {
   rewriteUsemapReferencesInHtml,
 } from "./id-references.ts";
 import type { BascikComponent } from "./types.ts";
+import {
+  createNamedOpenTagScanner,
+  createOpenTagScanner,
+  isRegexWhitespace,
+  openTagsOf,
+  replaceScannedElements,
+  replaceSpans,
+  scanElementContents,
+  type ElementScanOptions,
+  type OpenTagScanner,
+} from "./element-content-scan.ts";
+
+/** `<script\b...>` elements closed the way browsers close them (see `ElementScanOptions`). */
+const SCRIPT_ELEMENT_SCAN: ElementScanOptions = {
+  opener: "word-boundary",
+  closer: "attributes",
+};
+
+/**
+ * `html.replace(/(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi, replace)`
+ * in linear time.
+ */
+const replaceScriptElements = (
+  html: string,
+  replace: (match: string, open: string, body: string, close: string) => string,
+): string =>
+  replaceScannedElements(
+    html,
+    "script",
+    SCRIPT_ELEMENT_SCAN,
+    (open, body, close) => replace(open + body + close, open, body, close),
+  );
+
+/** `html` with each open tag `tags` finds replaced by `replace(tag)`. */
+const replaceOpenTags = (
+  html: string,
+  tags: OpenTagScanner,
+  replace: (tag: string) => string,
+): string => replaceSpans(html, openTagsOf(tags), replace);
+
+/** `[a-zA-Z0-9-]` */
+const isTagNameCode = (code: number): boolean =>
+  (code >= 0x30 && code <= 0x39) ||
+  ((code | 0x20) >= 0x61 && (code | 0x20) <= 0x7a) ||
+  code === 0x2d;
 
 interface ScopedCssCacheEntry {
   css: string;
@@ -234,9 +279,13 @@ const rewriteIdReferencesInStyleTags = (
     "textarea",
   ]);
   let changed = false;
-  const rewrittenHtml = shielded.html.replace(
-    /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
-    (_match, openTag: string, css: string, closeTag: string) => {
+  // `(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)`
+  // (flags `gi`), in linear time.
+  const rewrittenHtml = replaceScannedElements(
+    shielded.html,
+    "style",
+    { opener: "tag-space", closer: "attributes" },
+    (openTag: string, css: string, closeTag: string) => {
       const rewrittenCss = rewriteIdReferencesInCss(css, resolve);
       changed ||= rewrittenCss !== css;
       return `${openTag}${rewrittenCss}${closeTag}`;
@@ -346,8 +395,17 @@ const replaceSafeAttr = (
 
   // This simple regex identifies tags loosely. It handles nested attributes
   // because we only process the attributes inside the matched tag brackets.
-  return html.replace(
-    /<[a-zA-Z0-9-]+(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?>/g,
+  // `/<[a-zA-Z0-9-]+(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?>/g`, in linear time.
+  return replaceOpenTags(
+    html,
+    createOpenTagScanner(html, (start) => {
+      let index = start + 1;
+      while (isTagNameCode(html.charCodeAt(index))) index++;
+      if (index === start + 1) return -1;
+      const code = html.charCodeAt(index);
+      if (code === 0x3e) return index;
+      return isRegexWhitespace(code) ? index + 1 : -1;
+    }),
     (tagMatch) => {
       if (!attrQuickCheck.test(tagMatch)) return tagMatch;
       // First, find all proper string boundaries in this tag to ignore false matches.
@@ -496,8 +554,11 @@ export const prefixElementAttribute = (
   const metaShield =
     attribute === "name" ? createContentShield(component.fileContent) : null;
   if (metaShield) {
-    component.fileContent = component.fileContent.replace(
-      /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*(?:\/>|>)/gi,
+    // `/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*(?:\/>|>)/gi`, in linear time.
+    const html = component.fileContent;
+    component.fileContent = replaceOpenTags(
+      html,
+      createNamedOpenTagScanner(html, "meta", "word-boundary"),
       (tag) => metaShield.hide(tag),
     );
   }
@@ -635,12 +696,22 @@ export const prefixElementAttribute = (
       }
     };
 
-    for (const scriptMatch of scopedAttrsHtml.matchAll(
-      /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi,
+    // `/<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`,
+    // in linear time.
+    for (const scriptMatch of scanElementContents(
+      scopedAttrsHtml,
+      "script",
+      SCRIPT_ELEMENT_SCAN,
     )) {
-      const openTag = scriptMatch[1];
+      const openTag = scopedAttrsHtml.slice(
+        scriptMatch.start + 7,
+        scriptMatch.contentStart - 1,
+      );
       if (DIRECTIVE_SCRIPT_RE.test(openTag)) continue;
-      const src = scriptMatch[2];
+      const src = scopedAttrsHtml.slice(
+        scriptMatch.contentStart,
+        scriptMatch.contentEnd,
+      );
 
       // classList.add/remove/toggle/contains/replace — extract every quoted token
       replaceBalancedCall(
@@ -710,8 +781,8 @@ export const prefixElementAttribute = (
   const scopedHtml =
     seenAttrMap.size === 0
       ? scopedAttrsHtml
-      : scopedAttrsHtml.replace(
-          /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
+      : replaceScriptElements(
+          scopedAttrsHtml,
           (match, open: string, body: string, close: string) => {
             if (DIRECTIVE_SCRIPT_RE.test(open)) return match;
             let updatedBody = body;
@@ -1129,9 +1200,9 @@ export const namespaceScriptTags = (
 
   // Only wrap <script> tags with no type or type="text/javascript"
   component.fileContent = commentShield.restore(
-    commentMaskedContent.replace(
-      /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
-      (match, stampedOpen, code, close, _offset) => {
+    replaceScriptElements(
+      commentMaskedContent,
+      (match, stampedOpen, code, close) => {
         // Server, stream, build, and routes scripts run in Node.js, never wrap in browser IIFE
         if (DIRECTIVE_SCRIPT_RE.test(stampedOpen)) return match;
 

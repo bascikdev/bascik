@@ -257,6 +257,61 @@ describe("spliceRawTextMask", () => {
     ).toEqual({ masked: null, closedThrough: 0 });
   });
 
+  // A prefix that ends in a lone `<` is closed for a continuation that does
+  // not complete a tag or an opener with it. Rejecting every such prefix
+  // re-masked the whole page after each instance: a slot holding
+  // `<bare-card><` repeated cost a full mask per nested instance. (`<scr` or
+  // `<!-` at the end is a tag already, inside which a `<!--` is no comment.)
+  it("accepts a prefix ending in a lone < that the text after it does not complete", () => {
+    for (const tail of ["<", "x <", "<p>x</p><", "<<"]) {
+      const prefix = `<p>a</p>${tail}`;
+      const usage = "<my-card></my-card>";
+      const template =
+        "<!--bascik-source-file:c.html--><div><script>x()</script></div><!--bascik-source-file-end:c.html-->";
+      const suffix = "<p>after</p>";
+      const body = prefix + usage + suffix;
+      const spliced = spliceRawTextMask(
+        body,
+        maskRawTextContent(body),
+        prefix.length,
+        prefix.length + usage.length,
+        template,
+        0,
+      );
+      expect(spliced.masked, tail).toBe(
+        maskRawTextContent(prefix + template + suffix),
+      );
+      expect(spliced.closedThrough, tail).toBe(prefix.length);
+    }
+  });
+
+  it("falls back when the text after a partial opener completes it", () => {
+    for (const [tail, usage, template] of [
+      ["<", "<my-card></my-card>", "!-- c --><p>x</p>"],
+      ["<scr", "<my-card></my-card>", "ipt>a</script>"],
+      ["<!-", "<my-card></my-card>", "- c -->"],
+      ["<", "<my-card></my-card>", "/p>"],
+      ["<", "<my-card></my-card>", "?x>"],
+      // `<` before a letter opens a tag, where a `<!--` is not a comment.
+      ["<", "<my-card></my-card>", "b><!-- c -->"],
+      // The usage completed it before: the old mask was not the prefix's.
+      ["<scr", "ipt>a</script>", "<p>x</p>"],
+      ["<", "a title='<!--'>", "<p>x</p>"],
+    ]) {
+      const prefix = `<p>a</p>${tail}`;
+      const body = prefix + usage;
+      const spliced = spliceRawTextMask(
+        body,
+        maskRawTextContent(body),
+        prefix.length,
+        body.length,
+        template,
+        0,
+      );
+      expect(spliced.masked, tail + template).toBeNull();
+    }
+  });
+
   it("falls back when the verified position is past the splice start", () => {
     const body = "<p>a</p><my-card></my-card>";
     expect(

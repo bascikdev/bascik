@@ -64,11 +64,9 @@ import {
   ROUTES_FLAG,
   SERVER_FLAG,
   STREAM_FLAG,
-  SCRIPT_END_TAG,
   SCRIPT_TAG_PREFIX,
-  SERVER_ATTR_NAME,
-  STREAM_ATTR_NAME,
   getHtmlAttributeValue,
+  scanRequestScripts,
   scriptOpenTag,
 } from "./html-patterns.ts";
 import type { ServerScriptMode } from "./server-sidecar.ts";
@@ -86,13 +84,12 @@ export { STREAM_LOOKAHEAD };
 // Match <script data-bascik-server …> … </script> or <script type="text/bascik-server" …> … </script>.
 // The attribute is matched as a whole name (SERVER_ATTR_NAME) so
 // `data-bascik-server-id` alone is never a script; the placeholder form is
-// matched by the `type=` alternative only.
-// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const createServerScriptRegex = (): RegExp =>
-  new RegExp(
-    String.raw`<script\b(?:[^>"']|"[^"]*"|'[^']*')*\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)${SCRIPT_END_TAG}|<script\b(?:[^>"']|"[^"]*"|'[^']*')*type=["']text\/bascik-server["'](?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)${SCRIPT_END_TAG}`,
-    "gi",
-  );
+// matched by the `type=` alternative only. `scanRequestScripts` finds what
+// the regex
+// `<script\b${OPEN_TAG_ATTRS}\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})${OPEN_TAG_ATTRS}>([\s\S]*?)${SCRIPT_END_TAG}|<script\b${OPEN_TAG_ATTRS}type=["']text\/bascik-server["']${OPEN_TAG_ATTRS}>([\s\S]*?)${SCRIPT_END_TAG}`
+// (flags `gi`) did, in linear time; the regex took cubic time.
+const hasServerScriptElement = (html: string): boolean =>
+  scanRequestScripts(html, true).length > 0;
 
 // ─── Directive presence and conflict detection ─────────────────────────────────────────
 const tagHas = (flag: string): RegExp =>
@@ -131,7 +128,7 @@ export const htmlHasServerScripts = (html: string | Buffer): boolean => {
       html.includes("data-bascik-server") || html.includes("text/bascik-server")
     );
   }
-  return createServerScriptRegex().test(html);
+  return hasServerScriptElement(html);
 };
 
 /**
@@ -144,7 +141,7 @@ export const htmlHasServerScripts = (html: string | Buffer): boolean => {
 export const pageHasServerScripts = (html: string | Buffer): boolean =>
   (html.includes("data-bascik-server") ||
     html.includes("text/bascik-server")) &&
-  createServerScriptRegex().test(
+  hasServerScriptElement(
     typeof html === "string" ? html : html.toString("utf8"),
   );
 
@@ -154,7 +151,7 @@ export const pageHasServerScripts = (html: string | Buffer): boolean =>
  */
 export const sourceHasServerScripts = (source: string): boolean =>
   /data-bascik-(?:server|stream)/i.test(source) &&
-  createServerScriptRegex().test(source);
+  hasServerScriptElement(source);
 
 /** Default execution timeout per server-script (ms). */
 export const DEFAULT_SCRIPT_TIMEOUT_MS = 30_000;
@@ -246,15 +243,15 @@ export const planServerScripts = (
   html: string,
   filePath?: string,
 ): ServerScriptPlan => {
-  const matches = [...html.matchAll(createServerScriptRegex())];
+  const matches = scanRequestScripts(html, true);
   const segments: Array<StaticSegment | ScriptSegment> = [];
   let firstStreamIndex = -1;
   let cursor = 0;
 
   for (const match of matches) {
-    const fullTag = match[0];
-    let scriptContent = match[1] ?? match[2] ?? "";
-    const index = match.index!;
+    const fullTag = html.slice(match.start, match.end);
+    let scriptContent = html.slice(match.contentStart, match.contentEnd);
+    const index = match.start;
     const length = fullTag.length;
     const openTag = scriptOpenTag(fullTag, scriptContent);
 

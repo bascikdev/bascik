@@ -1518,6 +1518,102 @@ describe.each([true, false])(
         html,
       );
     });
+
+    // A script output can echo visitor text, so locating its usages and
+    // masking it must stay linear in its size. Before: the span loop paired
+    // each unclosed opener by walking to the end of the output (about 29 s
+    // at 160k characters), and a quoted value holding many `<!--` rescanned
+    // to its far closing quote from every one of them (about 3.5 s at 400k
+    // and 14 s at 800k). The bound is generous for a linear pass and far below
+    // the old times.
+    const HOSTILE_SIZE = 200_000;
+    const HOSTILE_BOUND_MS = 1_500;
+    const fill = (unit: string): string =>
+      unit.repeat(Math.ceil(HOSTILE_SIZE / unit.length));
+    const requestLimits = {
+      maxSubstitutions: 1000,
+      maxOutputBytes: 64 * 1024 * 1024,
+    };
+    const timedExpand = (html: string): { result: string; ms: number } => {
+      clearScopingTemplates();
+      const opts = { ...buildOptions(freshState()), limits: requestLimits };
+      const start = performance.now();
+      let result: string;
+      try {
+        result = expandByUsage(html, cards(), opts);
+      } catch (error) {
+        if (!(error instanceof ComponentExpansionLimitError)) throw error;
+        result = "limit";
+      }
+      return { result, ms: performance.now() - start };
+    };
+
+    it.each([
+      [
+        "unclosed openers, one closer at the end",
+        `${fill("<bare-card>")}</bare-card>`,
+      ],
+      [
+        "an opener, unclosed openers, one closer",
+        `<bare-card>${fill("<bare-card>")}</bare-card>`,
+      ],
+      [
+        "unclosed openers of another name",
+        `${fill("<plain-card>")}</plain-card>`,
+      ],
+      [
+        "closers only inside attribute values",
+        fill(`<bare-card a="</bare-card>">`),
+      ],
+    ])("locates the usages of %s in linear time", (_name, html) => {
+      const { result, ms } = timedExpand(html);
+      expect(result).toBe("limit");
+      expect(ms).toBeLessThan(HOSTILE_BOUND_MS);
+    });
+
+    // A usage whose slot opens many nested usages, each after a lone `<`:
+    // the loop re-masked the whole instance after every one of up to 1000
+    // nested instances (about 10 s at 200k characters, 48 s at 1M).
+    it.each([
+      ["after a lone <", `<server-card>${fill("<bare-card><")}</server-card>`],
+      ["after <<", `<server-card>${fill("<bare-card><<")}</server-card>`],
+    ])(
+      "expands nested usages %s without re-masking the instance each time",
+      (_name, html) => {
+        const { result, ms } = timedExpand(html);
+        expect(result).toBe("limit");
+        expect(ms).toBeLessThan(HOSTILE_BOUND_MS);
+      },
+    );
+
+    // At 1M characters: V8 searches for the far quote fast enough that the
+    // quadratic scan stays under the bound at 200k.
+    const comments = "<!--".repeat(250_000);
+    it.each([
+      [
+        "a prop value",
+        `<bare-card data-bascik-prop-t="${comments}">x</bare-card>`,
+        // A prop value is text in the instance.
+        `>${comments.replaceAll("<", "&lt;")}</p>`,
+      ],
+      [
+        "slot content",
+        `<server-card><b title="${comments}">x</b></server-card>`,
+        `"${comments}"`,
+      ],
+      [
+        "text after a usage",
+        `<bare-card></bare-card><b title="${comments}">`,
+        `"${comments}"`,
+      ],
+    ])(
+      "masks a quoted value full of comment openers in %s in linear time",
+      (_name, html, kept) => {
+        const { result, ms } = timedExpand(html);
+        expect(result).toContain(kept);
+        expect(ms).toBeLessThan(HOSTILE_BOUND_MS);
+      },
+    );
   },
 );
 

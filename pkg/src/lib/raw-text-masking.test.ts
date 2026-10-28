@@ -83,6 +83,24 @@ describe("raw-text masking time on hostile input", () => {
     },
   );
 
+  it.each(['"', "'"])(
+    "reads a %s-quoted value full of comment openers in linear time",
+    (quote) => {
+      // Each `<!--` asks whether it is inside a tag; the scan used to search
+      // again for the far closing quote from every one of them (about 0.55 s
+      // at 400k characters and 2.3 s at 800k).
+      const run = repeatTo("<!--", 1_000_000);
+      const html = `<p title=${quote}${run}${quote}><!-- c --></p>`;
+      const { value, ms } = timed(() => maskRawTextContent(html));
+      expect(value).toBe(html.replace("<!-- c -->", "<!--   -->"));
+      expect(ms).toBeLessThan(BOUND_MS);
+      const open = `<p title=${quote}${run}`;
+      const closure = timed(() => maskRawTextContentWithClosure(open));
+      expect(closure.value).toEqual({ masked: open, closed: false });
+      expect(closure.ms).toBeLessThan(BOUND_MS);
+    },
+  );
+
   it("still masks a complete element after a long run of openers with no closer", () => {
     const run = repeatTo("<script '", 50_000);
     const html = `${run}'><my-card></my-card></script><my-card>`;

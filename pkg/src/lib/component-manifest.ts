@@ -53,13 +53,14 @@ import { stampDirectiveSources } from "./directive-source.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import { getProjectPath, getRelativePath } from "./file-system.ts";
 import {
-  BUILD_ATTR_NAME,
-  BUILD_ONCE_ATTR_NAME,
+  createWordNameOpenTagScanner,
+  openTagsOf,
+  scanElementContents,
+} from "./element-content-scan.ts";
+import {
   isDirectiveScriptOpenTag,
-  OPEN_TAG_ATTRS,
-  SCRIPT_END_TAG,
-  SERVER_ATTR_NAME,
-  STREAM_ATTR_NAME,
+  scanRequestScripts,
+  scriptDirectiveFinder,
 } from "./html-patterns.ts";
 import { getAttributeNameHash } from "./names.ts";
 import {
@@ -153,13 +154,27 @@ const TAG_CONDITIONAL_TARGETS: Record<string, ReadonlySet<string>> = {
   "xlink:href": new Set(["use"]),
 };
 
-const OPEN_TAG_RE = /<([a-zA-Z][\w:-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
+/**
+ * The open tags `/<([a-zA-Z][\w:-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g` finds,
+ * in linear time: each with its text, its name and its start.
+ */
+function* openTags(
+  html: string,
+): Generator<{ text: string; name: string; index: number }> {
+  for (const tag of openTagsOf(createWordNameOpenTagScanner(html)))
+    yield {
+      text: html.slice(tag.start, tag.end),
+      name: html.slice(tag.start + 1, tag.chainStart),
+      index: tag.start,
+    };
+}
 
-// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const HAS_BUILD_SCRIPT_RE = new RegExp(
-  String.raw`<script\b${OPEN_TAG_ATTRS}\s(?:${BUILD_ATTR_NAME}|${BUILD_ONCE_ATTR_NAME})`,
-  "i",
-);
+// `<script\b${OPEN_TAG_ATTRS}\s(?:${BUILD_ATTR_NAME}|${BUILD_ONCE_ATTR_NAME})`
+// (flag `i`), in linear time: the index of its first match, or -1.
+const findBuildScript = scriptDirectiveFinder([
+  "data-bascik-build",
+  "data-bascik-build-once",
+]);
 
 const METADATA_TAGS = new Set(["link", "meta", "script", "style"]);
 
@@ -169,10 +184,8 @@ const METADATA_TAGS = new Set(["link", "meta", "script", "style"]);
  */
 const inheritanceRootIndex = (html: string): number => {
   const masked = maskRawTextContent(html);
-  OPEN_TAG_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = OPEN_TAG_RE.exec(masked)) !== null) {
-    if (!METADATA_TAGS.has(match[1].toLowerCase())) return match.index;
+  for (const match of openTags(masked)) {
+    if (!METADATA_TAGS.has(match.name.toLowerCase())) return match.index;
   }
   return -1;
 };
@@ -189,26 +202,14 @@ const inheritanceRootShifted = (before: string, after: string): boolean => {
   const rootBefore = inheritanceRootIndex(before);
   const rootAfter = inheritanceRootIndex(after);
   if (rootBefore === -1 && rootAfter === -1) return false;
-  const firstBuildScript = HAS_BUILD_SCRIPT_RE.exec(
-    maskRawTextContent(before),
-  )?.index;
+  const buildScriptIndex = findBuildScript(maskRawTextContent(before));
+  const firstBuildScript =
+    buildScriptIndex === -1 ? undefined : buildScriptIndex;
   return !(
     rootBefore !== -1 &&
     (firstBuildScript === undefined || rootBefore < firstBuildScript)
   );
 };
-
-// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const REQUEST_SCRIPT_RE = new RegExp(
-  String.raw`<script\b(${OPEN_TAG_ATTRS}\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})${OPEN_TAG_ATTRS})>([\s\S]*?)${SCRIPT_END_TAG}`,
-  "gi",
-);
-
-// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const SCRIPT_BODY_RE = new RegExp(
-  String.raw`<script\b${OPEN_TAG_ATTRS}>([\s\S]*?)(${SCRIPT_END_TAG})`,
-  "gi",
-);
 
 /** The 1-based line `index` falls on in `text`. */
 const lineAt = (text: string, index: number): number =>
@@ -229,12 +230,10 @@ const classifyBindings = (html: string): UnsupportedEntry | null => {
     ),
     ["script", "style", "textarea"],
   );
-  OPEN_TAG_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = OPEN_TAG_RE.exec(masked)) !== null) {
-    const openTag = match[0];
+  for (const match of openTags(masked)) {
+    const openTag = match.text;
     if (!/data-bascik-attr-/i.test(openTag)) continue;
-    const tag = match[1].toLowerCase();
+    const tag = match.name.toLowerCase();
     const line = lineAt(html, match.index);
     const directiveScript =
       tag === "script" && isDirectiveScriptOpenTag(openTag);
@@ -284,11 +283,9 @@ const countInjectionMarkers = (html: string): Map<string, number> => {
     ),
     ["script", "style", "textarea"],
   );
-  OPEN_TAG_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = OPEN_TAG_RE.exec(masked)) !== null) {
-    if (!/data-bascik-/i.test(match[0])) continue;
-    for (const attr of scanWholeAttributes(match[0])) {
+  for (const match of openTags(masked)) {
+    if (!/data-bascik-/i.test(match.text)) continue;
+    for (const attr of scanWholeAttributes(match.text)) {
       const name = attr.name.toLowerCase();
       if (!INJECTION_MARKER_RE.test(name)) continue;
       if (name.startsWith("data-bascik-prop-") && attr.valueStart !== -1)
@@ -323,7 +320,9 @@ const printedInjectionMarker = (
  * instance (per-instance CSS, `scoping.deduplicateCss: false`).
  */
 const requestScriptElements = (html: string): string[] =>
-  [...html.matchAll(REQUEST_SCRIPT_RE)].map((match) => match[0]);
+  scanRequestScripts(html, false).map(({ start, end }) =>
+    html.slice(start, end),
+  );
 
 const SCRIPT_OPEN_TAG_RE = /^<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/i;
 
@@ -361,13 +360,16 @@ const tokenOffsets = (
   return offsets;
 };
 
-/** The `[start, end)` ranges of every `<script>` body in `html`. */
+/**
+ * The `[start, end)` ranges of every `<script>` body in `html`: the matches
+ * of `<script\b${OPEN_TAG_ATTRS}>([\s\S]*?)(${SCRIPT_END_TAG})` (flags
+ * `gi`), in linear time.
+ */
 const scriptBodyRanges = (html: string): Array<[number, number]> =>
-  [...html.matchAll(SCRIPT_BODY_RE)].map((match) => {
-    // Measured from the end: a quoted attribute value may contain `>`.
-    const end = match.index + match[0].length - match[2].length;
-    return [end - match[1].length, end];
-  });
+  scanElementContents(html, "script", {
+    opener: "word-boundary",
+    closer: "attributes",
+  }).map((match) => [match.contentStart, match.contentEnd]);
 
 const countOccurrences = (text: string, token: string): number => {
   let count = 0;
@@ -558,7 +560,7 @@ const buildEntry = async (
   // page would get, so the template is what the pages are.
   let readsPageContext = false;
   const runBuildScripts = (html: string): Promise<string> =>
-    HAS_BUILD_SCRIPT_RE.test(html)
+    findBuildScript(html) !== -1
       ? executeBuildScripts(html, raw.fileName, null, {
           pageFile: "",
           pagePath: "",
@@ -895,4 +897,13 @@ export const takeComponentManifest = (
   // Started for another list (the components changed since): its output is
   // never written, and the current list is built from scratch.
   return buildComponentManifest(componentList, config);
+};
+
+/** The manifest's open-tag scans, for the linear-time tests. */
+export const __manifestScansForTests = {
+  inheritanceRootShifted,
+  classifyBindings,
+  countInjectionMarkers,
+  requestScriptElements,
+  scriptBodyRanges,
 };

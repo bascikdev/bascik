@@ -52,6 +52,14 @@ import {
 import { stdout } from "./colors.ts";
 import { BUILD_ATTR_NAME, BUILD_ONCE_ATTR_NAME } from "./html-patterns.ts";
 import {
+  createAttributeScanner,
+  createMarkerWalk,
+  findMarkerAnchors,
+  isTagSpace,
+  isWordCode,
+  scanElementContents,
+} from "./element-content-scan.ts";
+import {
   sidecarHasPageEntries,
   type ServerScriptsSidecar,
 } from "./server-sidecar.ts";
@@ -278,12 +286,14 @@ const toDisplay = (filePath: string): string => {
  */
 const extractBuildScripts = (html: string): string[] => {
   const scripts: string[] = [];
-  const scriptRegex =
-    /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = scriptRegex.exec(html)) !== null) {
-    const attrs = match[1];
-    const content = match[2];
+  // `/<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`,
+  // in linear time.
+  for (const match of scanElementContents(html, "script", {
+    opener: "word-boundary",
+    closer: "attributes",
+  })) {
+    const attrs = html.slice(match.start + 7, match.contentStart - 1);
+    const content = html.slice(match.contentStart, match.contentEnd);
     if (BUILD_DIRECTIVE_RE.test(attrs)) {
       scripts.push(content);
     }
@@ -291,19 +301,143 @@ const extractBuildScripts = (html: string): string[] => {
   return scripts;
 };
 
+/** `[a-zA-Z0-9:-]` */
+const isPreserveNameCode = (code: number): boolean =>
+  (code >= 0x30 && code <= 0x3a) || // digits and `:`
+  ((code | 0x20) >= 0x61 && (code | 0x20) <= 0x7a) ||
+  code === 0x2d;
+
+/** A trie node of closer names: children by lowercase code, and the closers of the name ending here. */
+interface CloserTrieNode {
+  children: Map<number, CloserTrieNode>;
+  starts: number[];
+  ends: number[];
+}
+
+const newCloserTrieNode = (): CloserTrieNode => ({
+  children: new Map(),
+  starts: [],
+  ends: [],
+});
+
+/**
+ * Every closer `<\/NAME(?:[\t\n\f\r /][^>]*)?>` in `html` (ASCII case
+ * folded), filed under its name: the whole `[a-zA-Z0-9:-]` run after `</`,
+ * since a shorter name is followed by a name character.
+ */
+const indexClosersByName = (html: string): CloserTrieNode => {
+  const root = newCloserTrieNode();
+  for (
+    let at = html.indexOf("</");
+    at !== -1;
+    at = html.indexOf("</", at + 2)
+  ) {
+    let index = at + 2;
+    let node = root;
+    while (isPreserveNameCode(html.charCodeAt(index))) {
+      const key = html.charCodeAt(index) | 0x20;
+      let child = node.children.get(key);
+      if (child === undefined) {
+        child = newCloserTrieNode();
+        node.children.set(key, child);
+      }
+      node = child;
+      index++;
+    }
+    if (index === at + 2) continue;
+    const code = html.charCodeAt(index);
+    let end = -1;
+    if (code === 0x3e) end = index + 1;
+    else if (isTagSpace(code) || code === 0x2f) {
+      const gt = html.indexOf(">", index + 1);
+      if (gt !== -1) end = gt + 1;
+    }
+    if (end === -1) continue;
+    node.starts.push(at);
+    node.ends.push(end);
+  }
+  return root;
+};
+
+/**
+ * One pass of
+ * `(<([a-z][a-z0-9:-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*\bdata-bascik-preserve\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)`
+ * (flags `gi`) replaced by the opener, spaces for the content, and the
+ * closer, in linear time; the regex took cubic time.
+ *
+ * At each `<` the regex tries the longest name first, then each shorter one
+ * ending at a word boundary: a shorter name leaves its rest to the attribute
+ * chain, which still reaches the same `>` (name characters are not special),
+ * but the closer it needs is its own. So the name is the longest prefix of
+ * the name run that ends at a word boundary, has a marker where the chain
+ * after it can stop, and has a closer after the `>`. Only prefixes that name
+ * some closer are tried, by walking the run down a trie of closer names.
+ */
+const maskPreservedSubtreesOnce = (html: string): string => {
+  const anchors = findMarkerAnchors(html, /data-bascik-preserve/gi, (at) =>
+    (at === 0 || !isWordCode(html.charCodeAt(at - 1))) &&
+    !isWordCode(html.charCodeAt(at + 20))
+      ? at
+      : -1,
+  );
+  if (anchors.length === 0) return html;
+  const markerAt = createMarkerWalk(html, anchors, "first");
+  const attributeEnd = createAttributeScanner(html);
+  const closers = indexClosersByName(html);
+  const isBoundary = (at: number): boolean =>
+    isWordCode(html.charCodeAt(at - 1)) !== isWordCode(html.charCodeAt(at));
+  let result = "";
+  let cursor = 0;
+  let start = html.indexOf("<");
+  while (start !== -1) {
+    let matched = false;
+    const first = html.charCodeAt(start + 1) | 0x20;
+    if (first >= 0x61 && first <= 0x7a) {
+      // Prefixes of the name run that name a closer, shortest first.
+      const ends: number[] = [];
+      const nodes: CloserTrieNode[] = [];
+      let node: CloserTrieNode | undefined = closers;
+      for (
+        let index = start + 1;
+        isPreserveNameCode(html.charCodeAt(index));
+        index++
+      ) {
+        node = node.children.get(html.charCodeAt(index) | 0x20);
+        if (node === undefined) break;
+        if (node.starts.length > 0) {
+          ends.push(index + 1);
+          nodes.push(node);
+        }
+      }
+      const gt = ends.length === 0 ? -1 : attributeEnd(start + 1);
+      for (let k = ends.length - 1; k >= 0 && gt !== -1 && !matched; k--) {
+        const nameEnd = ends[k];
+        if (!isBoundary(nameEnd) || markerAt(nameEnd) === -1) continue;
+        const { starts, ends: closerEnds } = nodes[k];
+        let low = 0;
+        let high = starts.length;
+        while (low < high) {
+          const middle = (low + high) >>> 1;
+          if (starts[middle] <= gt) low = middle + 1;
+          else high = middle;
+        }
+        if (low === starts.length) continue;
+        result += `${html.slice(cursor, gt + 1)}${" ".repeat(starts[low] - gt - 1)}${html.slice(starts[low], closerEnds[low])}`;
+        cursor = closerEnds[low];
+        matched = true;
+      }
+    }
+    start = html.indexOf("<", matched ? cursor : start + 1);
+  }
+  return cursor === 0 ? html : result + html.slice(cursor);
+};
+
 const maskPreservedSubtrees = (html: string): string => {
   let result = html;
-  const re =
-    /(<([a-z][a-z0-9:-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*\bdata-bascik-preserve\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi;
   let previous = "";
   while (previous !== result) {
     previous = result;
-    result = result.replace(
-      re,
-      (_m, open: string, _tag: string, inner: string, close: string) => {
-        return `${open}${" ".repeat(inner.length)}${close}`;
-      },
-    );
+    result = maskPreservedSubtreesOnce(result);
   }
   return result;
 };
@@ -1219,4 +1353,10 @@ export const formatFindingsJson = (findings: CheckFindings): string => {
     })),
   };
   return JSON.stringify(output, null, 2);
+};
+
+/** The open-tag scans `bascik --check` runs, for the linear-time tests. */
+export const __checkScansForTests = {
+  extractBuildScripts,
+  maskPreservedSubtrees,
 };

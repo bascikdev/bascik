@@ -2,6 +2,14 @@
  * Shared regular expression fragments for quote-aware HTML open-tag and script tag matching.
  */
 
+import {
+  findMarkerAnchors,
+  findScriptOpenerWithMarker,
+  findWhitespaceMarkerAnchors,
+  scanMarkedScripts,
+  type MarkedScriptMatch,
+} from "./element-content-scan.ts";
+
 export const BARE_TOKEN = String.raw`[^\s"'=<>\`]+`;
 export const ATTR_VALUE = String.raw`(?:"[^"]*"|'[^']*'|${BARE_TOKEN})`;
 export const ATTR = String.raw`${BARE_TOKEN}(?:\s*=\s*${ATTR_VALUE})?`;
@@ -134,3 +142,68 @@ const REQUEST_ATTRIBUTE_NAMES: ReadonlySet<string> = new Set([
 /** True when an open tag carries `data-bascik-server` or `data-bascik-stream` (the request-time directives) as a whole attribute name. */
 export const isRequestScriptOpenTag = (openTag: string): boolean =>
   hasAnyHtmlAttribute(openTag, REQUEST_ATTRIBUTE_NAMES);
+
+const REQUEST_DIRECTIVE_LITERAL_RE = /data-bascik-s(?:erver|tream)/gi;
+const REQUEST_DIRECTIVE_MARKER_RE =
+  /\sdata-bascik-(?:server|stream)(?=[\s=/>]|$)/iy;
+const PLACEHOLDER_TYPE_RE = /type=["']text\/bascik-server["']/gi;
+
+/**
+ * The server and stream script elements in `html`, in order: every match of
+ *
+ * `<script\b${OPEN_TAG_ATTRS}\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})${OPEN_TAG_ATTRS}>([\s\S]*?)${SCRIPT_END_TAG}`
+ *
+ * and, with `placeholders`, of a second alternative
+ * `|<script\b${OPEN_TAG_ATTRS}type=["']text\/bascik-server["']${OPEN_TAG_ATTRS}>([\s\S]*?)${SCRIPT_END_TAG}`
+ * (flags `gi`; alternative 1 is the placeholder). Linear, where the regexes
+ * took cubic time (`scanMarkedScripts`).
+ */
+export const scanRequestScripts = (
+  html: string,
+  placeholders: boolean,
+): MarkedScriptMatch[] =>
+  scanMarkedScripts(html, [
+    {
+      anchors: findWhitespaceMarkerAnchors(
+        html,
+        REQUEST_DIRECTIVE_LITERAL_RE,
+        REQUEST_DIRECTIVE_MARKER_RE,
+      ),
+      markerEnd: (anchor) => anchor + 19,
+      pick: "last",
+    },
+    ...(placeholders
+      ? [
+          {
+            anchors: findMarkerAnchors(html, PLACEHOLDER_TYPE_RE, (at) => at),
+            markerEnd: (anchor: number) => anchor + 25,
+            pick: "last" as const,
+          },
+        ]
+      : []),
+  ]);
+
+/**
+ * A search for the first match of `<script\b${OPEN_TAG_ATTRS}\s(?:names)`
+ * (flags `i`), where each name is followed by `ATTR_NAME_END`, and the
+ * alternation by `(?=[\s=/>])` too with `strictEnd`: the search returns the
+ * match's index, or -1. Linear, where the regex retried the chain from every
+ * opener (`findScriptOpenerWithMarker`). Names are plain attribute names.
+ */
+export const scriptDirectiveFinder = (
+  names: readonly string[],
+  strictEnd = false,
+): ((html: string) => number) => {
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+  const literal = new RegExp(names.join("|"), "gi");
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+  const marker = new RegExp(
+    String.raw`\s(?:${names.map((name) => name + ATTR_NAME_END).join("|")})${strictEnd ? String.raw`(?=[\s=/>])` : ""}`,
+    "iy",
+  );
+  return (html) =>
+    findScriptOpenerWithMarker(
+      html,
+      findWhitespaceMarkerAnchors(html, literal, marker),
+    );
+};

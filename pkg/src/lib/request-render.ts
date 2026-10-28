@@ -53,7 +53,11 @@ import {
 } from "./component-expansion-core.ts";
 import { maskRawTextContent } from "./component-masking.ts";
 import { scanEmptyScriptElements } from "./element-content-scan.ts";
-import { getFirstComponent, mayContainComponent } from "./component-tags.ts";
+import {
+  createMatchingCloseFinder,
+  getFirstComponent,
+  mayContainComponent,
+} from "./component-tags.ts";
 import { getHtmlAttributeValue } from "./html-patterns.ts";
 import {
   DOCUMENT_FRAGMENT_CONTEXT,
@@ -371,7 +375,12 @@ export const expandByUsage = (
   // Most outputs name no component: skip the mask and the scans.
   if (!mayContainComponent(html, componentList)) return html;
   const masked = maskRawTextContent(html);
-  const searchState: ComponentSearchState = {};
+  // The output does not change while its usages are located, so one close
+  // finder pairs every opener: a run of unclosed openers would otherwise
+  // each walk to the end of the output.
+  const searchState: ComponentSearchState = {
+    closeFinder: createMatchingCloseFinder(html, masked),
+  };
   const spans: UsageSpan[] = [];
   let cursor = 0;
   while (true) {

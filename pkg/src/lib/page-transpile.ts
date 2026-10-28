@@ -10,7 +10,8 @@ import {
   getRelativePath,
 } from "./file-system.ts";
 import { minifyHtml } from "./html-minifier.ts";
-import { BUILD_ATTR_NAME, OPEN_TAG_ATTRS } from "./html-patterns.ts";
+import { scriptDirectiveFinder } from "./html-patterns.ts";
+import { scanElementContents } from "./element-content-scan.ts";
 import { getLiveReloadScript } from "./live-reload.ts";
 import { getHttpPath } from "./paths.ts";
 
@@ -77,11 +78,10 @@ export type PageWriteInput = Pick<
   generation?: number;
 };
 
-// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const PENDING_BUILD_SCRIPT_RE = new RegExp(
-  String.raw`<script\b${OPEN_TAG_ATTRS}\s${BUILD_ATTR_NAME}`,
-  "i",
-);
+// `<script\b${OPEN_TAG_ATTRS}\s${BUILD_ATTR_NAME}` (flag `i`), in linear time.
+const findPendingBuildScript = scriptDirectiveFinder(["data-bascik-build"]);
+const hasPendingBuildScript = (html: string): boolean =>
+  findPendingBuildScript(html) !== -1;
 
 // Records missing imports so creating a helper can trigger a page rebuild.
 const recordMissingScriptDeps = async (
@@ -290,7 +290,7 @@ export const transpilePage = async (
   );
 
   let bodyPasses = 0;
-  while (PENDING_BUILD_SCRIPT_RE.test(transpiledHtmlBody) && bodyPasses < 10) {
+  while (hasPendingBuildScript(transpiledHtmlBody) && bodyPasses < 10) {
     bodyPasses++;
     const pendingBodyBuild = executeBuildScripts(
       transpiledHtmlBody,
@@ -330,10 +330,7 @@ export const transpilePage = async (
   );
 
   let headPasses = 0;
-  while (
-    PENDING_BUILD_SCRIPT_RE.test(transpiledHeadContent) &&
-    headPasses < 10
-  ) {
+  while (hasPendingBuildScript(transpiledHeadContent) && headPasses < 10) {
     headPasses++;
     const pendingHeadBuild = executeBuildScripts(
       transpiledHeadContent,
@@ -437,25 +434,18 @@ export const transpilePage = async (
   if (cssMinifier) {
     // Also minify any inline <style> blocks that came from the page source,
     // preserving their opening and closing tags (such as media="..." attributes).
-    const styleBlockRegex =
-      /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi;
-    const matches: Array<{
-      full: string;
-      open: string;
-      css: string;
-      close: string;
-      index: number;
-    }> = [];
-    let match: RegExpExecArray | null;
-    while ((match = styleBlockRegex.exec(transpiledHead)) !== null) {
-      matches.push({
-        full: match[0],
-        open: match[1],
-        css: match[2],
-        close: match[3],
-        index: match.index,
-      });
-    }
+    // `(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)`
+    // (flags `gi`), in linear time.
+    const matches = scanElementContents(transpiledHead, "style", {
+      opener: "tag-space",
+      closer: "attributes",
+    }).map((match) => ({
+      full: transpiledHead.slice(match.start, match.end),
+      open: transpiledHead.slice(match.start, match.contentStart),
+      css: transpiledHead.slice(match.contentStart, match.contentEnd),
+      close: transpiledHead.slice(match.contentEnd, match.end),
+      index: match.start,
+    }));
     if (matches.length > 0) {
       let newHead = "";
       let lastIndex = 0;

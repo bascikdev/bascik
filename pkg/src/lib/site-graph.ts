@@ -17,6 +17,7 @@ import { scanApiRouteFiles, buildApiRouteTree } from "./api-routes.ts";
 import { withBasePath } from "./base-path.ts";
 import { hasHiddenSegment } from "./route-matching.ts";
 import { getHtmlAttributeValue } from "./html-patterns.ts";
+import { createNamedOpenTagScanner } from "./element-content-scan.ts";
 import {
   SIDECAR_SCHEMA_VERSION,
   sidecarHasPageEntries,
@@ -80,23 +81,29 @@ export const splitDistPageIntoSegments = (
   const segments: DistPageSegment[] = [];
   const scriptIds: string[] = [];
   let cursor = 0;
-  // Fresh stateful regex per call: it is driven through `lastIndex`.
-  const openTagRe = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
-  let open: RegExpExecArray | null;
-  while ((open = openTagRe.exec(html)) !== null) {
-    const openTag = open[0];
+  // The script open tags `/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi`
+  // finds, in linear time.
+  const openTags = createNamedOpenTagScanner(html, "script", "word-boundary");
+  let searchFrom = 0;
+  for (
+    let open = openTags.next(searchFrom);
+    open !== null;
+    open = openTags.next(searchFrom)
+  ) {
+    searchFrom = open.end;
+    const openTag = html.slice(open.start, open.end);
     if (!isPlaceholderOpenTag(openTag)) continue;
-    const end = matchPlaceholderEndTag(html, openTagRe.lastIndex);
+    const end = matchPlaceholderEndTag(html, open.end);
     if (end === -1) continue;
     const id = getHtmlAttributeValue(openTag, "data-bascik-server-id");
     if (!id) continue;
-    const index = open.index;
+    const index = open.start;
     if (index > cursor)
       segments.push({ kind: "static", text: html.slice(cursor, index) });
     segments.push({ kind: "script", id });
     scriptIds.push(id);
     cursor = end;
-    openTagRe.lastIndex = cursor;
+    searchFrom = cursor;
   }
   if (cursor < html.length || segments.length === 0)
     segments.push({ kind: "static", text: html.slice(cursor) });

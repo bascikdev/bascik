@@ -3,6 +3,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { readStartTagAttributes, scanHtml } from "./html-scanner.ts";
+import {
+  scanAlternatives,
+  scanElementContents,
+  type ElementScanOptions,
+} from "./element-content-scan.ts";
 import type { PageCspHashes } from "./types.ts";
 
 export type CspHashesManifest = Record<string, PageCspHashes>;
@@ -93,6 +98,12 @@ export const computePageCspHashes = (emittedHtml: string): PageCspHashes => {
   };
 };
 
+/** `<name\b...>` elements closed the way browsers close them (see `ElementScanOptions`). */
+const RAW_ELEMENT_SCAN: ElementScanOptions = {
+  opener: "word-boundary",
+  closer: "attributes",
+};
+
 const sha256Source = (body: string): string =>
   `sha256-${createHash("sha256").update(Buffer.from(body, "utf8")).digest("base64")}`;
 
@@ -106,25 +117,41 @@ const scanWithRegexFallback = (
 ): { scripts: Set<string>; styles: Set<string> } => {
   const scripts = new Set<string>();
   const styles = new Set<string>();
-  const scannable = emittedHtml
-    .replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => " ".repeat(comment.length))
-    .replace(
-      /<(textarea|title|noscript|xmp)\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)(<\/\1(?:[\t\n\f\r /][^>]*)?>)/gi,
-      (_match, tag: string, attrs: string, inner: string, close: string) =>
-        `<${tag}${attrs}>${" ".repeat(inner.length)}${close}`,
-    );
+  const uncommented = emittedHtml.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
+    " ".repeat(comment.length),
+  );
+  // `/<(textarea|title|noscript|xmp)\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)(<\/\1(?:[\t\n\f\r /][^>]*)?>)/gi`
+  // with each element's content blanked, in linear time.
+  let scannable = "";
+  let cursor = 0;
+  for (const match of scanAlternatives(
+    uncommented,
+    ["textarea", "title", "noscript", "xmp"].map((name) => ({
+      kind: "element" as const,
+      name,
+      options: RAW_ELEMENT_SCAN,
+    })),
+  )) {
+    scannable += `${uncommented.slice(cursor, match.contentStart)}${" ".repeat(match.contentEnd - match.contentStart)}`;
+    cursor = match.contentEnd;
+  }
+  scannable += uncommented.slice(cursor);
 
   // Collect inline script hashes
   // End tags follow the HTML raw-text rules (`</script\n>` and `</script/>`
   // close the element), so the hashed body is exactly what the browser hashes.
   // A quoted attribute value may contain `>`, so the open tag is matched
   // quote-aware and the body starts where the browser's does.
-  const scriptRegex =
-    /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = scriptRegex.exec(scannable)) !== null) {
-    const openTag = match[1];
-    const body = match[2];
+  // `/<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`,
+  // in linear time.
+  const scriptMatches = scanElementContents(
+    scannable,
+    "script",
+    RAW_ELEMENT_SCAN,
+  );
+  for (const match of scriptMatches) {
+    const openTag = scannable.slice(match.start + 7, match.contentStart - 1);
+    const body = scannable.slice(match.contentStart, match.contentEnd);
 
     // Exclude external scripts (<script src="...">). `src` must be a whole
     // attribute name: `data-src` does not make a script external.
@@ -147,17 +174,23 @@ const scanWithRegexFallback = (
 
   // Blank script bodies before scanning for <style> so a literal `<style>` inside
   // a JavaScript string literal is never hashed as a stylesheet.
-  const styleScannable = scannable.replace(
-    scriptRegex,
-    (_match, openTag: string, body: string) =>
-      `<script${openTag}>${" ".repeat(body.length)}</script>`,
-  );
+  let styleScannable = "";
+  cursor = 0;
+  for (const match of scriptMatches) {
+    styleScannable += `${scannable.slice(cursor, match.start)}<script${scannable.slice(match.start + 7, match.contentStart)}${" ".repeat(match.contentEnd - match.contentStart)}</script>`;
+    cursor = match.end;
+  }
+  styleScannable += scannable.slice(cursor);
 
   // Collect inline style hashes
-  const styleRegex =
-    /<style\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
-  while ((match = styleRegex.exec(styleScannable)) !== null) {
-    const body = match[2];
+  // `/<style\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi`,
+  // in linear time.
+  for (const match of scanElementContents(
+    styleScannable,
+    "style",
+    RAW_ELEMENT_SCAN,
+  )) {
+    const body = styleScannable.slice(match.contentStart, match.contentEnd);
     const hash = `sha256-${createHash("sha256").update(Buffer.from(body, "utf8")).digest("base64")}`;
     styles.add(hash);
   }
@@ -233,3 +266,6 @@ class CspHashCollector {
 }
 
 export const cspHashCollector = new CspHashCollector();
+
+/** The regex fallback scan, for the linear-time tests. */
+export const __cspRegexFallbackForTests = scanWithRegexFallback;

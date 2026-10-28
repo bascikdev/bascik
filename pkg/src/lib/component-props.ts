@@ -10,7 +10,26 @@ import {
   maskRawTextContentWithClosure,
 } from "./component-masking.ts";
 import { createMatchingCloseFinder } from "./component-tags.ts";
+import {
+  createAttributeScanner,
+  createMarkerWalk,
+  createWordNameOpenTagScanner,
+  isRegexWhitespace,
+  openTagsOf,
+  replaceSpans,
+  wordTagNameEnd as tagNameEnd,
+} from "./element-content-scan.ts";
 import { findCommentEnd } from "./html-scanner.ts";
+
+/**
+ * `html.replace(/<([a-zA-Z][\w:-]*)(?:[^>"']|"[^"]*"|'[^']*')*>/gi, replace)`
+ * in linear time (`createWordNameOpenTagScanner`).
+ */
+const replaceOpenTags = (
+  html: string,
+  replace: (openingTag: string) => string,
+): string =>
+  replaceSpans(html, openTagsOf(createWordNameOpenTagScanner(html)), replace);
 
 const decodePropEntities = (value: string): string =>
   value.replace(
@@ -118,92 +137,89 @@ export const injectPropAttributes = (
     "textarea",
   ]);
 
-  const rewritten = rawShield.html.replace(
-    new RegExp(`<([a-zA-Z][\\w:-]*)(?:${ATTR_VALUE})>`, "gi"),
-    (openingTag: string) => {
-      if (!openingTag.includes("data-bascik-attr-")) return openingTag;
-      // Whole attribute names only: a token that looks like a directive inside
-      // another attribute's quoted value is text, never a directive.
-      const directives: Array<{
-        start: number;
-        end: number;
-        targetName: string;
-        rawPropName?: string;
-      }> = [];
-      for (const attr of scanWholeAttributes(openingTag)) {
-        const match = /^data-bascik-attr-(.*)$/i.exec(attr.name);
-        if (!match) continue;
-        const targetName = match[1];
-        const rawPropName =
-          attr.valueStart !== -1
-            ? openingTag.slice(attr.valueStart - 1, attr.valueEnd + 1)
-            : undefined;
-        let start = attr.start;
-        if (start > 0 && /\s/.test(openingTag[start - 1])) start--;
-        directives.push({
-          start,
-          end: attr.end,
-          targetName,
-          rawPropName,
-        });
-      }
+  const rewritten = replaceOpenTags(rawShield.html, (openingTag: string) => {
+    if (!openingTag.includes("data-bascik-attr-")) return openingTag;
+    // Whole attribute names only: a token that looks like a directive inside
+    // another attribute's quoted value is text, never a directive.
+    const directives: Array<{
+      start: number;
+      end: number;
+      targetName: string;
+      rawPropName?: string;
+    }> = [];
+    for (const attr of scanWholeAttributes(openingTag)) {
+      const match = /^data-bascik-attr-(.*)$/i.exec(attr.name);
+      if (!match) continue;
+      const targetName = match[1];
+      const rawPropName =
+        attr.valueStart !== -1
+          ? openingTag.slice(attr.valueStart - 1, attr.valueEnd + 1)
+          : undefined;
+      let start = attr.start;
+      if (start > 0 && /\s/.test(openingTag[start - 1])) start--;
+      directives.push({
+        start,
+        end: attr.end,
+        targetName,
+        rawPropName,
+      });
+    }
 
-      let result = openingTag;
-      for (let index = directives.length - 1; index >= 0; index--) {
-        const directive = directives[index];
-        result = result.slice(0, directive.start) + result.slice(directive.end);
-      }
+    let result = openingTag;
+    for (let index = directives.length - 1; index >= 0; index--) {
+      const directive = directives[index];
+      result = result.slice(0, directive.start) + result.slice(directive.end);
+    }
 
-      for (const { targetName, rawPropName } of directives) {
-        const isQuoted =
-          rawPropName?.startsWith('"') || rawPropName?.startsWith("'");
-        const propName = isQuoted ? rawPropName?.slice(1, -1) : undefined;
-        if (
-          !/^[a-zA-Z_:][\w:.-]*$/.test(targetName) ||
-          !propName ||
-          !/^[a-zA-Z0-9_-]+$/.test(propName)
-        ) {
-          warn(
-            `Ignoring malformed data-bascik-attr-${targetName}: expected a quoted prop name.`,
-          );
-          continue;
-        }
-
-        // Own keys only, as for slots: a binding to `toString` or `valueOf`
-        // must not read Object.prototype's member.
-        const propValue = Object.hasOwn(props, propName)
-          ? props[propName]
-          : propsLowerMap.get(propName.toLowerCase());
-        if (propValue === undefined) continue;
-        const boundValue = rewriteValue
-          ? rewriteValue(targetName, propValue)
-          : propValue;
-        const attribute = ` ${targetName}="${escapePropValue(boundValue)}"`;
-        // Whole-name conflict check: the target may already exist, but a
-        // "target-looking" token inside another attribute's quoted value is
-        // text and must not count as the target.
-        const existing = scanWholeAttributes(result).find(
-          (attr) => attr.name.toLowerCase() === targetName.toLowerCase(),
+    for (const { targetName, rawPropName } of directives) {
+      const isQuoted =
+        rawPropName?.startsWith('"') || rawPropName?.startsWith("'");
+      const propName = isQuoted ? rawPropName?.slice(1, -1) : undefined;
+      if (
+        !/^[a-zA-Z_:][\w:.-]*$/.test(targetName) ||
+        !propName ||
+        !/^[a-zA-Z0-9_-]+$/.test(propName)
+      ) {
+        warn(
+          `Ignoring malformed data-bascik-attr-${targetName}: expected a quoted prop name.`,
         );
-        if (existing) {
-          warn(
-            `Attribute binding conflict: attribute "${targetName}" already exists; prop "${propName}" wins.`,
-          );
-          result =
-            result.slice(0, existing.start) +
-            attribute.slice(1) +
-            result.slice(existing.end);
-        } else {
-          result = result.replace(
-            /(\s*\/?>)$/,
-            (_match, close: string) => `${attribute}${close}`,
-          );
-        }
+        continue;
       }
 
-      return result;
-    },
-  );
+      // Own keys only, as for slots: a binding to `toString` or `valueOf`
+      // must not read Object.prototype's member.
+      const propValue = Object.hasOwn(props, propName)
+        ? props[propName]
+        : propsLowerMap.get(propName.toLowerCase());
+      if (propValue === undefined) continue;
+      const boundValue = rewriteValue
+        ? rewriteValue(targetName, propValue)
+        : propValue;
+      const attribute = ` ${targetName}="${escapePropValue(boundValue)}"`;
+      // Whole-name conflict check: the target may already exist, but a
+      // "target-looking" token inside another attribute's quoted value is
+      // text and must not count as the target.
+      const existing = scanWholeAttributes(result).find(
+        (attr) => attr.name.toLowerCase() === targetName.toLowerCase(),
+      );
+      if (existing) {
+        warn(
+          `Attribute binding conflict: attribute "${targetName}" already exists; prop "${propName}" wins.`,
+        );
+        result =
+          result.slice(0, existing.start) +
+          attribute.slice(1) +
+          result.slice(existing.end);
+      } else {
+        result = result.replace(
+          /(\s*\/?>)$/,
+          (_match, close: string) => `${attribute}${close}`,
+        );
+      }
+    }
+
+    return result;
+  });
   return commentShield.restore(rawShield.restore(rewritten));
 };
 
@@ -281,8 +297,6 @@ export const injectProps = (
     // Scan whole opening tags and act only on whole attribute names, so a
     // marker token inside another attribute's quoted value is never confused
     // with a receiver.
-    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    const openTagRe = new RegExp(`<([a-zA-Z][\\w:-]*)(?:${ATTR_VALUE})>`, "gi");
     // Filled receivers are collected and joined once per prop, not spliced
     // into the growing string one by one (quadratic in a template that
     // repeats a receiver). The masked text and the close finder are computed
@@ -296,6 +310,8 @@ export const injectProps = (
     // `closedThrough` is how far the source is known closed (-1: not), so
     // each character is checked for closure once per pass.
     let source = result;
+    // Rebuilt whenever `source` is.
+    let openTags = createWordNameOpenTagScanner(source);
     // Built on the first receiver: most templates name a prop on few tags.
     let masked: string | null = null;
     let finder: ((tagName: string, contentStart: number) => number) | null =
@@ -329,11 +345,11 @@ export const injectProps = (
     let cursor = 0;
     let searchIndex = 0;
     while (searchIndex < source.length) {
-      openTagRe.lastIndex = searchIndex;
-      const openMatch = openTagRe.exec(source);
-      if (!openMatch) break;
-      const openTag = openMatch[0];
-      const tagName = openMatch[1];
+      const openFound = openTags.next(searchIndex);
+      if (!openFound) break;
+      const openMatch = { index: openFound.start };
+      const openTag = source.slice(openFound.start, openFound.end);
+      const tagName = source.slice(openFound.start + 1, openFound.chainStart);
       if (!mayCarryMarker.test(openTag)) {
         searchIndex = openMatch.index + openTag.length;
         continue;
@@ -418,6 +434,7 @@ export const injectProps = (
       const spliced = parts.join("");
       searchIndex = spliced.length - (source.length - endIndex);
       source = spliced;
+      openTags = createWordNameOpenTagScanner(source);
       masked = null;
       finder = null;
       stateScan = null;
@@ -476,15 +493,47 @@ const unfilledMarkerSpans = (
   return removals;
 };
 
+/**
+ * Each call returns the first match at or after `from` (calls in increasing
+ * order) of `<([a-zA-Z][\w:-]*)((?:[^>"']|"[^"]*"|'[^']*')*[\s>])` (flags
+ * `gi`), in linear time. The greedy attribute chain backs off to the last
+ * position it can stop at that holds whitespace or `>`: the `>` it reaches,
+ * or else the last whitespace outside the quoted strings it walked
+ * (`createMarkerWalk` over the whitespace positions, found once).
+ */
+const createUnfilledMarkerTagScanner = (
+  html: string,
+): ((from: number) => { start: number; end: number } | null) => {
+  const attributeEnd = createAttributeScanner(html);
+  let lastSpace: ((from: number) => number) | null = null;
+  return (from) => {
+    for (
+      let start = html.indexOf("<", from);
+      start !== -1;
+      start = html.indexOf("<", start + 1)
+    ) {
+      const chainStart = tagNameEnd(html, start);
+      if (chainStart === -1) continue;
+      const gt = attributeEnd(chainStart);
+      if (gt !== -1) return { start, end: gt + 1 };
+      if (lastSpace === null) {
+        const spaces: number[] = [];
+        for (let index = 0; index < html.length; index++)
+          if (isRegexWhitespace(html.charCodeAt(index))) spaces.push(index);
+        lastSpace = createMarkerWalk(html, spaces, "last");
+      }
+      const space = lastSpace(chainStart);
+      if (space !== -1) return { start, end: space + 1 };
+    }
+    return null;
+  };
+};
+
 const stripUnfilledPropMarkers = (html: string): string => {
   if (!/data-bascik-prop-/i.test(html)) return html;
   // Whole attribute names only: a token that merely looks like a marker inside
   // prose or another attribute's quoted value is text and is never stripped.
-  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const openTagRe = new RegExp(
-    `<([a-zA-Z][\\w:-]*)((?:${ATTR_VALUE})[\\s>])`,
-    "gi",
-  );
+  let tags = createUnfilledMarkerTagScanner(html);
   // Rewritten tags are collected and joined once, not spliced into the whole
   // string one by one (quadratic in a large template with many markers).
   // Removing whole unquoted attribute names never changes how the rest of the
@@ -493,13 +542,13 @@ const stripUnfilledPropMarkers = (html: string): string => {
   let source = html;
   let parts: string[] = [];
   let cursor = 0;
-  let openTagMatch: RegExpExecArray | null;
-  while ((openTagMatch = openTagRe.exec(source)) !== null) {
-    const openTag = openTagMatch[0];
-    const tagStart = openTagMatch.index;
+  let searchIndex = 0;
+  for (let tag = tags(searchIndex); tag !== null; tag = tags(searchIndex)) {
+    const openTag = source.slice(tag.start, tag.end);
+    const tagStart = tag.start;
     const removals = unfilledMarkerSpans(openTag);
     if (removals.length === 0) {
-      openTagRe.lastIndex = tagStart + openTag.length;
+      searchIndex = tagStart + openTag.length;
       continue;
     }
     // Rebuild the tag keeping only the non-removed pieces.
@@ -512,13 +561,14 @@ const stripUnfilledPropMarkers = (html: string): string => {
     pieces += openTag.slice(pieceCursor);
     parts.push(source.slice(cursor, tagStart), pieces);
     cursor = tagStart + openTag.length;
-    openTagRe.lastIndex = cursor;
+    searchIndex = cursor;
     if (unfilledMarkerSpans(pieces).length > 0) {
       parts.push(source.slice(cursor));
       source = parts.join("");
+      tags = createUnfilledMarkerTagScanner(source);
       parts = [];
       cursor = 0;
-      openTagRe.lastIndex = tagStart;
+      searchIndex = tagStart;
     }
   }
   if (cursor === 0) return source;

@@ -144,6 +144,14 @@ export interface AttributeValueCheckpoint {
  */
 export interface ComponentSearchState {
   attributeCheckpoint?: AttributeValueCheckpoint;
+  /**
+   * `findMatchingClose` for the searched text and its mask, answering every
+   * search in linear total time (`createMatchingCloseFinder`). Only for a
+   * caller that never changes the text between searches: a search for each
+   * of many unclosed openers otherwise walks to the end of the text from
+   * every one of them.
+   */
+  closeFinder?: (tagName: string, contentStart: number) => number;
 }
 
 const SCAN_START: AttributeValueCheckpoint = {
@@ -166,6 +174,9 @@ const isTagStartCode = (code: number): boolean =>
   code === 33 ||
   code === 63;
 
+/** `ahead` before the text or quoted state has looked for its end. */
+const NOT_SEARCHED = -2;
+
 /**
  * Answers whether a position in masked HTML falls inside an attribute value.
  * Queries in increasing order cost one pass in total; an earlier query
@@ -176,27 +187,27 @@ export const createAttributeValueScanner = (
   origin: AttributeValueCheckpoint = SCAN_START,
 ) => {
   let { cursor, state, quote } = origin;
+  // In the text or quoted state, where that state ends (the next `<`, or
+  // the closing quote; -1 for none), once searched. A query that stops
+  // short of it leaves the state as it is, and the next query reuses it:
+  // searching again from every query (a `<!--` each, in a long quoted
+  // value) rescanned the same stretch each time, quadratic in total.
+  let ahead = NOT_SEARCHED;
   const advance = (index: number): void => {
     __componentScanStatsForTests.attributeValueBytesScanned += index - cursor;
     while (cursor < index) {
-      if (state === "text") {
-        const open = html.indexOf("<", cursor);
-        if (open === -1 || open >= index) {
+      if (state === "text" || state === "quoted") {
+        if (ahead === NOT_SEARCHED)
+          ahead = html.indexOf(state === "text" ? "<" : quote, cursor);
+        const end = ahead;
+        if (end === -1 || end >= index) {
           cursor = index;
           return;
         }
-        if (isTagStartCode(html.charCodeAt(open + 1))) state = "tag";
-        cursor = open + 1;
-        continue;
-      }
-      if (state === "quoted") {
-        const close = html.indexOf(quote, cursor);
-        if (close === -1 || close >= index) {
-          cursor = index;
-          return;
-        }
-        state = "tag";
-        cursor = close + 1;
+        ahead = NOT_SEARCHED;
+        if (state === "quoted") state = "tag";
+        else if (isTagStartCode(html.charCodeAt(end + 1))) state = "tag";
+        cursor = end + 1;
         continue;
       }
       const code = html.charCodeAt(cursor);
@@ -216,9 +227,11 @@ export const createAttributeValueScanner = (
   };
   return {
     isInsideValue(index: number): boolean {
-      if (index < cursor)
+      if (index < cursor) {
         ({ cursor, state, quote } =
           index >= origin.cursor ? origin : SCAN_START);
+        ahead = NOT_SEARCHED;
+      }
       if (cursor < index) advance(index);
       return (
         state === "quoted" || state === "unquoted" || state === "before-value"

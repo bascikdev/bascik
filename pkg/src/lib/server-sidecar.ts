@@ -2,12 +2,12 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
 import {
-  SCRIPT_END_TAG,
-  SERVER_ATTR_NAME,
   STREAM_ATTR_NAME,
   getHtmlAttributeValue,
+  scanRequestScripts,
 } from "./html-patterns.ts";
 import { directiveSourceColumn } from "./directive-source.ts";
+import { replaceSpans } from "./element-content-scan.ts";
 import { OUTPUT_SCOPE_ATTRIBUTE } from "./output-scope.ts";
 
 /**
@@ -277,71 +277,77 @@ const extractScriptsToSidecar = (
   // Whole-attribute-name boundary: a placeholder's `data-bascik-server-id` must
   // never re-match, or re-running this over placeholdered HTML would record the
   // empty placeholder body over the real source.
-  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const serverScriptRe = new RegExp(
-    String.raw`<script\b((?:[^>"']|"[^"]*"|'[^']*')*\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})(?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)${SCRIPT_END_TAG}`,
-    "gi",
-  );
-  return html.replace(
-    serverScriptRe,
-    (match: string, openAttrs: string, scriptContent: string) => {
-      // A stream placeholder legitimately carries `data-bascik-stream` as a
-      // mode marker. It is already extracted; leave it alone.
-      if (/type=["']text\/bascik-server["']/i.test(`<script${openAttrs}>`))
-        return match;
-      scriptOrdinal++;
-      const id = mintId(scriptOrdinal);
-      const openTag = `<script${openAttrs}>`;
-      const mode: ServerScriptMode = STREAM_ATTR_RE.test(openTag)
-        ? "stream"
-        : "server";
-      const srcPath = getHtmlAttributeValue(openTag, "src");
-      const annotatedSourceFile = getHtmlAttributeValue(
-        openTag,
-        "data-bascik-source-file",
+  // `scanRequestScripts` finds the matches of
+  // `<script\b((?:[^>"']|"[^"]*"|'[^']*')*\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})(?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)${SCRIPT_END_TAG}`
+  // (flags `gi`) in linear time; the regex took cubic time.
+  const replace = (
+    match: string,
+    openAttrs: string,
+    scriptContent: string,
+  ): string => {
+    // A stream placeholder legitimately carries `data-bascik-stream` as a
+    // mode marker. It is already extracted; leave it alone.
+    if (/type=["']text\/bascik-server["']/i.test(`<script${openAttrs}>`))
+      return match;
+    scriptOrdinal++;
+    const id = mintId(scriptOrdinal);
+    const openTag = `<script${openAttrs}>`;
+    const mode: ServerScriptMode = STREAM_ATTR_RE.test(openTag)
+      ? "stream"
+      : "server";
+    const srcPath = getHtmlAttributeValue(openTag, "src");
+    const annotatedSourceFile = getHtmlAttributeValue(
+      openTag,
+      "data-bascik-source-file",
+    );
+    const scriptSourceFile = annotatedSourceFile
+      ? decodeURIComponent(annotatedSourceFile)
+      : defaultSourceFile;
+    const annotatedSourceLine = getHtmlAttributeValue(
+      openTag,
+      "data-bascik-source-line",
+    );
+    const sourceLine = annotatedSourceLine
+      ? Number.parseInt(annotatedSourceLine, 10)
+      : undefined;
+    const sourceColumn = directiveSourceColumn(openTag);
+    // The component's output scope travels with the entry, never with the
+    // placeholder: the emitted page is unchanged and the runner reads it
+    // from the sidecar when it splices the script's output in.
+    const outputScope =
+      getHtmlAttributeValue(openTag, OUTPUT_SCOPE_ATTRIBUTE) ?? undefined;
+    if (recordInRegistry)
+      serverSidecarRegistry.recordScript(
+        id,
+        scriptContent,
+        srcPath,
+        scriptSourceFile,
+        sourceLine,
+        mode,
+        sourceColumn,
+        outputScope,
       );
-      const scriptSourceFile = annotatedSourceFile
-        ? decodeURIComponent(annotatedSourceFile)
-        : defaultSourceFile;
-      const annotatedSourceLine = getHtmlAttributeValue(
-        openTag,
-        "data-bascik-source-line",
-      );
-      const sourceLine = annotatedSourceLine
-        ? Number.parseInt(annotatedSourceLine, 10)
-        : undefined;
-      const sourceColumn = directiveSourceColumn(openTag);
-      // The component's output scope travels with the entry, never with the
-      // placeholder: the emitted page is unchanged and the runner reads it
-      // from the sidecar when it splices the script's output in.
-      const outputScope =
-        getHtmlAttributeValue(openTag, OUTPUT_SCOPE_ATTRIBUTE) ?? undefined;
-      if (recordInRegistry)
-        serverSidecarRegistry.recordScript(
-          id,
-          scriptContent,
-          srcPath,
-          scriptSourceFile,
-          sourceLine,
-          mode,
-          sourceColumn,
-          outputScope,
-        );
-      if (outMap) {
-        outMap[id] = {
-          id,
-          mode,
-          source: scriptContent,
-          modulePath: srcPath,
-          sourceFile: scriptSourceFile,
-          sourceLine,
-          ...(sourceColumn !== undefined ? { sourceColumn } : {}),
-          ...(outputScope !== undefined ? { outputScope } : {}),
-        };
-      }
-      const marker = mode === "stream" ? " data-bascik-stream" : "";
-      return `<script type="text/bascik-server" data-bascik-server-id="${id}"${marker}></script>`;
-    },
+    if (outMap) {
+      outMap[id] = {
+        id,
+        mode,
+        source: scriptContent,
+        modulePath: srcPath,
+        sourceFile: scriptSourceFile,
+        sourceLine,
+        ...(sourceColumn !== undefined ? { sourceColumn } : {}),
+        ...(outputScope !== undefined ? { outputScope } : {}),
+      };
+    }
+    const marker = mode === "stream" ? " data-bascik-stream" : "";
+    return `<script type="text/bascik-server" data-bascik-server-id="${id}"${marker}></script>`;
+  };
+  return replaceSpans(html, scanRequestScripts(html, false), (match, found) =>
+    replace(
+      match,
+      html.slice(found.start + 7, found.contentStart - 1),
+      html.slice(found.contentStart, found.contentEnd),
+    ),
   );
 };
 

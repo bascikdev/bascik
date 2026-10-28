@@ -1,5 +1,20 @@
 import { ATTR_VALUE } from "./component-attribute-scan.ts";
 import { maskRawTextContent } from "./component-masking.ts";
+import {
+  createOpenTagScanner,
+  isWordOrHyphenCode,
+} from "./element-content-scan.ts";
+
+/**
+ * One attribute after whitespace: name and optional value. The lookbehind
+ * starts a match only at the first character of a whitespace run (a match
+ * never ends in whitespace, so the run before the next one is never cut),
+ * which finds the same matches as `\s+...` but scans a run that holds no
+ * attribute once instead of once per position: quadratic on a long run of
+ * spaces in visitor slot content or a usage tag.
+ */
+const ATTRIBUTE_RE =
+  /(?<!\s)\s+([\w:-]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`/>]+))?/g;
 
 /**
  * Extract attributes from a component usage tag that should be inherited by
@@ -23,7 +38,8 @@ export const extractInheritableAttributes = (
   if (!openTagMatch || !openTagMatch[1]) return attrs;
   const attrStr = openTagMatch[1];
   // Accept double-quoted, single-quoted, whitespace-spaced, and unquoted attribute values.
-  const attrRegex = /\s+([\w:-]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`/>]+))?/g;
+  const attrRegex = ATTRIBUTE_RE;
+  attrRegex.lastIndex = 0;
   let match;
   while ((match = attrRegex.exec(attrStr)) !== null) {
     const [, name, rawValue] = match;
@@ -50,29 +66,39 @@ export const mergeAttributesOntoRoot = (
 ): string => {
   if (!Object.keys(attrs).length) return html;
   const masked = maskRawTextContent(html);
-  const tagRegex = new RegExp(`<([a-zA-Z][\\w-]*)(?:${ATTR_VALUE})>`, "gi");
+  // `<([a-zA-Z][\w-]*)(?:[^>"']|"[^"]*"|'[^']*')*>` (flags `gi`) in linear
+  // time: the attribute part starts after the whole name (it would take any
+  // name characters a shorter name left), so the name is the whole run.
+  const tags = createOpenTagScanner(masked, (start) => {
+    const first = masked.charCodeAt(start + 1) | 0x20;
+    if (first < 0x61 || first > 0x7a) return -1;
+    let index = start + 2;
+    while (isWordOrHyphenCode(masked.charCodeAt(index))) index++;
+    return index;
+  });
   const metadataTags = new Set(["link", "meta", "script", "style"]);
-  let rootMatch: RegExpExecArray | null = null;
-  let candidate: RegExpExecArray | null;
-  while ((candidate = tagRegex.exec(masked)) !== null) {
-    if (!metadataTags.has(candidate[1].toLowerCase())) {
-      rootMatch = candidate;
+  let rootMatch: { index: number; end: number } | null = null;
+  for (let tag = tags.next(0); tag !== null; tag = tags.next(tag.end)) {
+    if (
+      !metadataTags.has(
+        masked.slice(tag.start + 1, tag.chainStart).toLowerCase(),
+      )
+    ) {
+      rootMatch = { index: tag.start, end: tag.end };
       break;
     }
   }
   if (!rootMatch) return html;
 
-  const rootTag = html.slice(
-    rootMatch.index,
-    rootMatch.index + rootMatch[0].length,
-  );
+  const rootTag = html.slice(rootMatch.index, rootMatch.end);
   const rootParts =
     /^<([a-zA-Z][\w-]*)((?:[^>"']|"[^"]*"|'[^']*')*)(\s*\/?>)$/i.exec(rootTag);
   if (!rootParts) return html;
   const [, tagName, existing, close] = rootParts;
   let attrStr = existing || "";
   const existingNames = new Set<string>();
-  const attrRegex = /\s+([\w:-]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`/>]+))?/g;
+  const attrRegex = ATTRIBUTE_RE;
+  attrRegex.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = attrRegex.exec(attrStr)) !== null) {
     existingNames.add(match[1].toLowerCase());

@@ -183,6 +183,18 @@ const PARTIAL_OPENER_AT_END =
 export const maskRawTextContentWithClosure = (
   htmlString: string,
 ): { masked: string; closed: boolean } => {
+  const { masked, closed } = maskWithClosure(htmlString);
+  return { masked, closed };
+};
+
+/**
+ * `maskRawTextContentWithClosure`, and also whether the string is closed but
+ * for a partial opener at its end (`closedBeforeTail`): closed for any
+ * continuation that does not complete that opener (see `completesOpener`).
+ */
+const maskWithClosure = (
+  htmlString: string,
+): { masked: string; closed: boolean; closedBeforeTail: boolean } => {
   __componentScanStatsForTests.closureBytesChecked += htmlString.length;
   const { masked, starts, ends, openComment, endsInTag } = maskInDocumentOrder(
     htmlString,
@@ -190,12 +202,8 @@ export const maskRawTextContentWithClosure = (
   );
   // A string that ends inside a tag decides whether a following `<!--` is a
   // comment, so it is open too.
-  if (
-    openComment ||
-    endsInTag ||
-    PARTIAL_OPENER_AT_END.test(htmlString.slice(-9))
-  )
-    return { masked, closed: false };
+  if (openComment || endsInTag)
+    return { masked, closed: false, closedBeforeTail: false };
   let region = 0;
   OPENER.lastIndex = 0;
   for (
@@ -205,11 +213,60 @@ export const maskRawTextContentWithClosure = (
   ) {
     while (region < ends.length && ends[region] <= opener.index) region++;
     if (region >= starts.length || opener.index < starts[region])
-      return { masked, closed: false };
+      return { masked, closed: false, closedBeforeTail: false };
     // Openers inside a region are its text; skip to the region's end.
     OPENER.lastIndex = Math.max(opener.index + 1, ends[region]);
   }
-  return { masked, closed: true };
+  return {
+    masked,
+    closed: !PARTIAL_OPENER_AT_END.test(htmlString.slice(-9)),
+    closedBeforeTail: true,
+  };
+};
+
+const PARTIAL_OPENER_LENGTH = 9; // `<textarea`
+const RAW_TEXT_NAME_AT = /^<(?:script|style|textarea)/i;
+
+// `[a-zA-Z/!?]`: a `<` before one of these starts a tag (or a comment).
+const isTagStartCode = (code: number): boolean =>
+  (code >= 65 && code <= 90) ||
+  (code >= 97 && code <= 122) ||
+  code === 47 ||
+  code === 33 ||
+  code === 63;
+
+/**
+ * Whether `head`, the text that follows `body[0, at)`, completes a token a
+ * `<` in the last few characters before `at` starts: a `<!--`, a raw-text
+ * opener's name (or the character after it, which decides whether it is
+ * one), or, for a `<` right before `at`, a tag (the tokenizer reads `<`
+ * before `[a-zA-Z/!?]` as one, and a `<!--` inside it is not a comment).
+ * Conservative: true whenever such a token reaches `at`. When false, a
+ * prefix that is closed but for a partial opener at its end masks the same
+ * followed by `head` as on its own.
+ */
+const completesOpener = (body: string, at: number, head: string): boolean => {
+  if (head.length === 0) return false;
+  const from = Math.max(0, at - PARTIAL_OPENER_LENGTH);
+  const joint = at - from;
+  const joined =
+    body.slice(from, at) + head.slice(0, PARTIAL_OPENER_LENGTH + 1);
+  for (
+    let index = joined.indexOf("<");
+    index !== -1 && index < joint;
+    index = joined.indexOf("<", index + 1)
+  ) {
+    if (index === joint - 1) return isTagStartCode(joined.charCodeAt(joint));
+    const rest = joined.slice(index);
+    if (rest.startsWith("<!--")) {
+      if (index + 4 > joint) return true;
+      continue;
+    }
+    const name = RAW_TEXT_NAME_AT.exec(rest);
+    // The opener's name, or the character after it, is in `head`.
+    if (name && index + name[0].length >= joint) return true;
+  }
+  return false;
 };
 
 /**
@@ -236,7 +293,17 @@ export const spliceRawTextMask = (
 ): { masked: string | null; closedThrough: number; closedEnd?: number } => {
   if (closedThrough < 0 || closedThrough > start)
     return { masked: null, closedThrough: -1 };
-  if (!maskRawTextContentWithClosure(body.slice(closedThrough, start)).closed)
+  // The prefix may end in a partial opener that the text after it does not
+  // complete, before the splice (so the old mask is the prefix's own) and
+  // after it. In practice a lone `<`: a longer one (`<scr`, `<!-`) is a tag
+  // already, so the prefix ends inside a tag. Rejecting it re-masked the
+  // whole page after every instance placed right after a `<`. Checked on the
+  // page, not the slice: the partial opener can start before `closedThrough`.
+  if (
+    !maskWithClosure(body.slice(closedThrough, start)).closedBeforeTail ||
+    completesOpener(body, start, body.slice(start, start + 10)) ||
+    completesOpener(body, start, replacement)
+  )
     return { masked: null, closedThrough: -1 };
   if (!maskRawTextContentWithClosure(body.slice(start, end)).closed)
     return { masked: null, closedThrough: start };

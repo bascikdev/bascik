@@ -1,6 +1,90 @@
-import { ATTR_VALUE } from "./component-attribute-scan.ts";
 import { maskRawTextContent } from "./component-masking.ts";
 import { createMatchingCloseFinder, getTag } from "./component-tags.ts";
+import {
+  createMarkerWalk,
+  createOpenTagScanner,
+  findMarkerAnchors,
+  isRegexWhitespace,
+  isWordCode,
+} from "./element-content-scan.ts";
+
+interface SlotWrapperTag {
+  start: number;
+  end: number;
+  tagName: string;
+  /** Where the marker's regex starts: the whitespace before its name. */
+  marker: number;
+}
+
+const NAMED_SLOT_MARKER_RE =
+  /\sdata-bascik-slot\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>`/>]+))/iy;
+const DEFAULT_SLOT_MARKER_RE = /\sdata-bascik-slot(?!\s*=)/iy;
+
+/**
+ * The slot wrapper opening tags in `masked`, in linear time: each call
+ * returns the first match at or after `from` (calls in increasing order) of
+ *
+ * `<(\w+(?:-\w+)*)(?=[\s>])(?:ATTR_VALUE?)\s+data-bascik-slot` + marker +
+ * `(?:ATTR_VALUE)>` (flags `gi`; ATTR_VALUE is the attribute chain
+ * `(?:[^>"']|"[^"]*"|'[^']*')*`, so `ATTR_VALUE?` is its lazy form), where the
+ * marker is `\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>\`/>]+))` for a named
+ * wrapper (`valued`) and `(?!\s*=)` for a default slot.
+ *
+ * Those regexes took cubic time: both chains retried from every opener. The
+ * marker's characters are walked by the chain the same way (a quoted value
+ * ends at its first same quote, and nothing in it is a `>`), so a tag
+ * matches exactly when its attribute chain reaches a `>` and can stop before
+ * a marker; the lazy first chain stops before the first such marker, which
+ * the named wrapper's captures come from.
+ */
+const createSlotWrapperScanner = (
+  masked: string,
+  valued: boolean,
+): ((from: number) => SlotWrapperTag | null) => {
+  const markerRe = valued ? NAMED_SLOT_MARKER_RE : DEFAULT_SLOT_MARKER_RE;
+  const anchors = findMarkerAnchors(masked, /data-bascik-slot/gi, (index) => {
+    if (index === 0 || !isRegexWhitespace(masked.charCodeAt(index - 1)))
+      return -1;
+    markerRe.lastIndex = index - 1;
+    return markerRe.test(masked) ? index - 1 : -1;
+  });
+  if (anchors.length === 0) return () => null;
+  const markerAt = createMarkerWalk(masked, anchors, "first");
+  const tags = createOpenTagScanner(masked, (start) => {
+    // `\w+(?:-\w+)*` followed by whitespace or `>`. Backtracking the name
+    // cannot help: a shorter form is followed by a word character or `-`.
+    let index = start + 1;
+    if (!isWordCode(masked.charCodeAt(index))) return -1;
+    for (;;) {
+      while (isWordCode(masked.charCodeAt(index))) index++;
+      if (
+        masked.charCodeAt(index) === 0x2d &&
+        isWordCode(masked.charCodeAt(index + 1))
+      )
+        index++;
+      else break;
+    }
+    const code = masked.charCodeAt(index);
+    return code === 0x3e || isRegexWhitespace(code) ? index : -1;
+  });
+  return (from: number): SlotWrapperTag | null => {
+    for (
+      let tag = tags.next(from);
+      tag !== null;
+      tag = tags.next(tag.start + 1)
+    ) {
+      const marker = markerAt(tag.chainStart);
+      if (marker === -1) continue;
+      return {
+        start: tag.start,
+        end: tag.end,
+        tagName: masked.slice(tag.start + 1, tag.chainStart),
+        marker,
+      };
+    }
+    return null;
+  };
+};
 
 interface NamedSlot {
   slotName: string;
@@ -27,16 +111,10 @@ const parseNamedSlots = (
   if (!innerContent.includes("data-bascik-slot")) return [];
   const results: NamedSlot[] = [];
   const masked = maskRawTextContent(innerContent);
-  // Quote-aware attribute scan (ATTR_VALUE) so the marker may appear after
-  // other attributes, and `data-bascik-slot` inside a quoted attribute value
-  // never false-positives.
-  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const openTagRe = new RegExp(
-    `<(\\w+(?:-\\w+)*)(?=[\\s>])(?:${ATTR_VALUE}?)\\s+data-bascik-slot\\s*=\\s*(?:"([^"]+)"|'([^']+)'|([^\\s"'=<>` +
-      "`" +
-      `/>]+))(?:${ATTR_VALUE})>`,
-    "gi",
-  );
+  // Quote-aware attribute scan so the marker may appear after other
+  // attributes, and `data-bascik-slot` inside a quoted attribute value never
+  // false-positives.
+  const nextWrapper = createSlotWrapperScanner(masked, true);
   // One close finder and one nested-component index for the whole scan:
   // wrappers come in document order, so each advances monotonically instead
   // of rescanning from each wrapper (quadratic in a template that repeats a
@@ -47,12 +125,19 @@ const parseNamedSlots = (
     componentNames,
     masked,
   );
-  let match: RegExpExecArray | null;
-  while ((match = openTagRe.exec(masked)) !== null) {
-    const [fullOpen, tagName, doubleName, singleName, unquotedName] = match;
+  let from = 0;
+  for (
+    let wrapper = nextWrapper(from);
+    wrapper !== null;
+    wrapper = nextWrapper(from)
+  ) {
+    const { start, end: contentStart, tagName } = wrapper;
+    from = contentStart;
+    NAMED_SLOT_MARKER_RE.lastIndex = wrapper.marker;
+    const [, doubleName, singleName, unquotedName] =
+      NAMED_SLOT_MARKER_RE.exec(masked)!;
     const slotName = doubleName ?? singleName ?? unquotedName;
-    if (isInsideNestedComponent(match.index)) continue;
-    const contentStart = match.index + fullOpen.length;
+    if (isInsideNestedComponent(start)) continue;
     const closeIndex = findClose(tagName, contentStart);
     if (closeIndex === -1) continue;
     const closeTagMatch = closeTagAt(innerContent, tagName, closeIndex);
@@ -62,12 +147,12 @@ const parseNamedSlots = (
     const endIndex = closeIndex + closeTagLen;
     results.push({
       slotName,
-      startIndex: match.index,
+      startIndex: start,
       endIndex,
       content: innerContent.slice(contentStart, closeIndex),
     });
     // Advance past the entire wrapper element so we don't re-process it
-    openTagRe.lastIndex = endIndex;
+    from = endIndex;
   }
   return results;
 };
@@ -335,21 +420,21 @@ export const replaceDefaultSlots = (
 ): string => {
   if (!fileContent.includes("data-bascik-slot")) return fileContent;
   const masked = maskRawTextContent(fileContent);
-  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const openTagRe = new RegExp(
-    `<(\\w+(?:-\\w+)*)(?=[\\s>])(?:${ATTR_VALUE}?)\\s+data-bascik-slot(?!\\s*=)(?:${ATTR_VALUE})>`,
-    "gi",
-  );
+  const nextWrapper = createSlotWrapperScanner(masked, false);
   const wrappers: Array<{
     startIndex: number;
     endIndex: number;
     content: string;
   }> = [];
   const findClose = createMatchingCloseFinder(fileContent, masked);
-  let match: RegExpExecArray | null;
-  while ((match = openTagRe.exec(masked)) !== null) {
-    const [fullOpen, tagName] = match;
-    const contentStart = match.index + fullOpen.length;
+  let from = 0;
+  for (
+    let wrapper = nextWrapper(from);
+    wrapper !== null;
+    wrapper = nextWrapper(from)
+  ) {
+    const { start, end: contentStart, tagName } = wrapper;
+    from = contentStart;
     const closeIndex = findClose(tagName, contentStart);
     if (closeIndex === -1) continue;
     const closeTagMatch = closeTagAt(fileContent, tagName, closeIndex);
@@ -358,11 +443,11 @@ export const replaceDefaultSlots = (
       : `</${tagName}>`.length;
     const endIndex = closeIndex + closeTagLen;
     wrappers.push({
-      startIndex: match.index,
+      startIndex: start,
       endIndex,
       content: fileContent.slice(contentStart, closeIndex),
     });
-    openTagRe.lastIndex = endIndex;
+    from = endIndex;
   }
   // One join, not a splice per marker: slicing the growing result copied it
   // once per marker, quadratic in a template that repeats the slot. The

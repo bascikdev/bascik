@@ -1,6 +1,9 @@
 import {
   isScannableElementName,
+  replaceSpans,
   scanElementContents,
+  scanOpeningTags,
+  scanPatternElementContents,
 } from "./element-content-scan.ts";
 
 // A global counter plus source collision checks keep generated tokens outside user input.
@@ -78,8 +81,16 @@ export const shieldElementContents = (
 };
 
 const PRESERVABLE_ATTRIBUTES = new Set(["id", "name", "class"]);
-const HTML_TAG_PATTERN =
-  /<!--[\s\S]*?-->|<\/?[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g;
+
+/**
+ * Each comment and opening or closing tag, as
+ * `/<!--[\s\S]*?-->|<\/?[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g`
+ * finds them, in linear time (`scanOpeningTags`).
+ */
+const htmlTags = (html: string): Array<{ start: number; end: number }> =>
+  scanOpeningTags(html, { closingTags: true, comments: true }).map(
+    ([start, end]) => ({ start, end }),
+  );
 const PRESERVE_DIRECTIVE_PROBE = /data-bascik-preserve/i;
 
 /**
@@ -102,6 +113,14 @@ type TagContentPatterns = {
   probe: RegExp | null;
   shield: RegExp;
   mask: RegExp;
+  /**
+   * For `scanPatternElementContents`: the name followed by a boundary, and
+   * the two closers. Null when the entry holds `>` or a quote, which the
+   * attribute scan would read as part of the tag.
+   */
+  name: RegExp | null;
+  shieldCloser: RegExp;
+  maskCloser: RegExp;
 };
 
 // Cached per lowercase tag/pattern entry; RegExp /i matches ASCII tag names identically to toLowerCase().
@@ -130,6 +149,14 @@ const getTagContentPatterns = (tag: string): TagContentPatterns => {
       `(<${fragment}(?:\\b${attributes})?>)([\\s\\S]*?)(<\\/${fragment}\\s*>)`,
       "gi",
     ),
+    name: /[>"']/.test(entry)
+      ? null
+      : // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+        new RegExp(`${fragment}(?:\\b|(?=>))`, "iy"),
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    shieldCloser: new RegExp(`<\\/${fragment}>`, "iy"),
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    maskCloser: new RegExp(`<\\/${fragment}\\s*>`, "iy"),
   };
   TAG_CONTENT_PATTERN_CACHE.set(entry, cached);
   return cached;
@@ -227,12 +254,11 @@ export const shieldPreservedAttribute = (
   const compiled = compilePreservedTags(preservedTags);
   const frames: PreserveFrame[] = [];
   const contentRanges: Array<{ start: number; end: number }> = [];
-  let match: RegExpExecArray | null;
 
   __shieldStatsForTests.tagScans++;
-  HTML_TAG_PATTERN.lastIndex = 0;
-  while ((match = HTML_TAG_PATTERN.exec(html)) !== null) {
-    const tag = match[0];
+  for (const { start: tagStart, end: tagEnd } of htmlTags(html)) {
+    const tag = html.slice(tagStart, tagEnd);
+    const match = { index: tagStart };
     if (tag.startsWith("<!--")) continue;
     const closingMatch = tag.match(/^<\/\s*([a-zA-Z][a-zA-Z0-9:-]*)/);
     if (closingMatch) {
@@ -288,7 +314,7 @@ export const shieldPreservedAttribute = (
 
   const activeFrames: Array<{ tagName: string; attributes: Set<string> }> = [];
   __shieldStatsForTests.tagScans++;
-  result = result.replace(HTML_TAG_PATTERN, (tag) => {
+  result = replaceSpans(result, htmlTags(result), (tag) => {
     if (tag.startsWith("<!--")) return tag;
     const closingMatch = tag.match(/^<\/\s*([a-zA-Z][a-zA-Z0-9:-]*)/);
     if (closingMatch) {
@@ -360,8 +386,9 @@ export const stripPreserveDirectives = (
  * (`closerWhitespace`) or `.shield` does. Exact tag names use the linear scan
  * in element-content-scan.ts, since the regex is quadratic on openers with no
  * closer or with an unclosed quote, and request-time output can carry
- * visitor text. `*` patterns (from `scoping.preserve`, applied only to
- * authored files at build time) still use the regex.
+ * visitor text. `*` patterns (from `scoping.preserve`) and other names use
+ * its pattern scan; only an entry holding `>` or a quote, which no tag name
+ * does, still uses the regex.
  */
 const replaceElementContents = (
   html: string,
@@ -372,7 +399,7 @@ const replaceElementContents = (
   const patterns = getTagContentPatterns(tag);
   if (patterns.probe && !patterns.probe.test(html)) return html;
   const entry = tag.toLowerCase();
-  if (!isScannableElementName(entry))
+  if (!isScannableElementName(entry) && patterns.name === null)
     return html.replace(
       closerWhitespace ? patterns.mask : patterns.shield,
       (_match, open: string, inner: string, close: string) =>
@@ -380,10 +407,16 @@ const replaceElementContents = (
     );
   let result = "";
   let cursor = 0;
-  for (const match of scanElementContents(html, entry, {
-    opener: "word-boundary",
-    closer: closerWhitespace ? "regex-space" : "exact",
-  })) {
+  for (const match of isScannableElementName(entry)
+    ? scanElementContents(html, entry, {
+        opener: "word-boundary",
+        closer: closerWhitespace ? "regex-space" : "exact",
+      })
+    : scanPatternElementContents(
+        html,
+        patterns.name!,
+        closerWhitespace ? patterns.maskCloser : patterns.shieldCloser,
+      )) {
     result += `${html.slice(cursor, match.contentStart)}${replace(html.slice(match.contentStart, match.contentEnd))}`;
     cursor = match.contentEnd;
   }

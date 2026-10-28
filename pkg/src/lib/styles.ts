@@ -5,6 +5,43 @@ import { minifyAttributeName } from "./names.ts";
 import { maskCssSyntax } from "./css-tokenizer.ts";
 import { createContentShield, shieldElementContents } from "./shielding.ts";
 import { readStartTagAttributes } from "./html-scanner.ts";
+import {
+  createMarkerWalk,
+  createOpenTagScanner,
+  findWhitespaceMarkerAnchors,
+  openTagsOf,
+  replaceScannedElements,
+  replaceSpans,
+  type OpenTagMatch,
+  type OpenTagScanner,
+} from "./element-content-scan.ts";
+
+/** `[\w.:-]` */
+const isElementSelectorNameCode = (code: number): boolean =>
+  (code >= 0x61 && code <= 0x7a) ||
+  (code >= 0x41 && code <= 0x5a) ||
+  (code >= 0x30 && code <= 0x3a) || // digits and `:`
+  code === 0x5f ||
+  code === 0x2d ||
+  code === 0x2e;
+
+/**
+ * `<(names)(?![\w.:-])(?:[^>"']|"[^"]*"|'[^']*')*>` (flags `gis`) for
+ * lowercase names made of `[\w:-]`, in linear time: such a name matches
+ * only where it is the whole `[\w.:-]` run after the `<`.
+ */
+const elementOpenTags = (
+  html: string,
+  names: ReadonlySet<string>,
+): OpenTagScanner =>
+  createOpenTagScanner(html, (start) => {
+    let index = start + 1;
+    while (isElementSelectorNameCode(html.charCodeAt(index))) index++;
+    return index > start + 1 &&
+      names.has(html.slice(start + 1, index).toLowerCase())
+      ? index
+      : -1;
+  });
 import type { BascikComponent } from "./types.ts";
 
 // CSS unit keywords that are not valid HTML element names.  A CSS syntax
@@ -292,20 +329,31 @@ export const addElementClassesInHtml = (
       escapedElements.push(element.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     }
   }
+  const replaceTag = (openTag: string, tagName: string): string => {
+    const bascikClassName = elementClassMap.get(tagName.toLowerCase());
+    return bascikClassName
+      ? injectClassIntoTag(openTag, bascikClassName)
+      : openTag;
+  };
+  // Element names from CSS selectors are `[a-z][a-z1-6]*`; any other name
+  // keeps the regex, which is quadratic on openers that never reach `>`.
+  if ([...elementClassMap.keys()].every((name) => /^[\w:-]+$/.test(name))) {
+    const html = shielded.html;
+    return shielded.restore(
+      replaceSpans(
+        html,
+        openTagsOf(elementOpenTags(html, new Set(elementClassMap.keys()))),
+        (openTag, { start, chainStart }) =>
+          replaceTag(openTag, html.slice(start + 1, chainStart)),
+      ),
+    );
+  }
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const combinedPattern = new RegExp(
     `<(${escapedElements.join("|")})(?![\\w.:-])(?:[^>"']|"[^"]*"|'[^']*')*>`,
     "gis",
   );
-  const result = shielded.html.replace(
-    combinedPattern,
-    (openTag, tagName: string) => {
-      const bascikClassName = elementClassMap.get(tagName.toLowerCase());
-      return bascikClassName
-        ? injectClassIntoTag(openTag, bascikClassName)
-        : openTag;
-    },
-  );
+  const result = shielded.html.replace(combinedPattern, replaceTag);
   return shielded.restore(result);
 };
 
@@ -638,6 +686,44 @@ export const convertCssIdSelectorsToClasses = (
  * matches. Works for unscoped (`id="idName"`), already-scoped
  * (`id="bascik__comp__instanceId__idName"`), and minified (`id="b..."`) forms.
  */
+/**
+ * `html.replace(new RegExp(`<[a-zA-Z0-9-]+${CHAIN}${idMarker}${CHAIN}>`, "gi"), replace)`
+ * (CHAIN the attribute chain `(?:[^>"']|"[^"]*"|'[^']*')*`) in linear time;
+ * the regex took cubic time. The marker holds no `>` and its quoted value
+ * ends at the first same quote, so the chain walks it the same way: a tag
+ * matches when its chain reaches a `>` and can stop before a marker.
+ */
+const replaceIdTags = (
+  html: string,
+  idMarker: string,
+  replace: (openTag: string) => string,
+): string => {
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+  const marker = new RegExp(idMarker, "iy");
+  const anchors = findWhitespaceMarkerAnchors(html, /id/gi, marker);
+  if (anchors.length === 0) return html;
+  const markerAt = createMarkerWalk(html, anchors, "first");
+  // `[a-zA-Z0-9-]+`: the chain takes any name characters after the first.
+  const tags = createOpenTagScanner(html, (start) => {
+    const code = html.charCodeAt(start + 1);
+    return (code >= 0x30 && code <= 0x39) ||
+      ((code | 0x20) >= 0x61 && (code | 0x20) <= 0x7a) ||
+      code === 0x2d
+      ? start + 2
+      : -1;
+  });
+  function* matching(): Generator<OpenTagMatch> {
+    for (let tag = tags.next(0); tag !== null;) {
+      if (markerAt(tag.chainStart) === -1) tag = tags.next(tag.start + 1);
+      else {
+        yield tag;
+        tag = tags.next(tag.end);
+      }
+    }
+  }
+  return replaceSpans(html, matching(), replace);
+};
+
 export const addIdClassesInHtml = (
   html: string,
   idsConverted: { idName: string; className: string }[],
@@ -663,12 +749,20 @@ export const addIdClassesInHtml = (
     const idGroupUnquoted = escapedScoped
       ? `(?:(?:[^\\s"'=<>` + "`" + `]*__)?${escaped}|${escapedScoped})`
       : `(?:[^\\s"'=<>` + "`" + `]*__)?${escaped}`;
-    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    const idPattern = new RegExp(
-      `<[a-zA-Z0-9-]+(?:[^>"']|"[^"]*"|'[^']*')*\\sid\\s*=\\s*(?:"${idGroup}"|'${idGroupSingle}'|${idGroupUnquoted}(?=\\s|\\/>|>))(?:[^>"']|"[^"]*"|'[^']*')*>`,
-      "gi",
-    );
-    result = result.replace(idPattern, (openTag) =>
+    const idMarker = `\\sid\\s*=\\s*(?:"${idGroup}"|'${idGroupSingle}'|${idGroupUnquoted}(?=\\s|\\/>|>))`;
+    if (/["'>\s]/.test(idName + (scopedId ?? ""))) {
+      // Not a CSS id (those are `[a-zA-Z][\w-]*`): keep the regex.
+      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+      const idPattern = new RegExp(
+        `<[a-zA-Z0-9-]+(?:[^>"']|"[^"]*"|'[^']*')*${idMarker}(?:[^>"']|"[^"]*"|'[^']*')*>`,
+        "gi",
+      );
+      result = result.replace(idPattern, (openTag) =>
+        injectClassIntoTag(openTag, className),
+      );
+      return;
+    }
+    result = replaceIdTags(result, idMarker, (openTag) =>
       injectClassIntoTag(openTag, className),
     );
   });
@@ -1538,15 +1632,18 @@ export const extractInlineStyles = (
   // Removing a block can join the text around it into a new `<style>` block
   // (for example `<sty<style>a{}</style>le>b{}</style>`), so repeat until the
   // HTML stops changing. Every pass that changes the HTML shortens it, so the
-  // loop always ends. The `replace` call stays inline, with its result fed
-  // back into its own receiver, so static analysis can see the fixpoint loop.
+  // loop always ends.
   let cleanedHtml = shielded.html;
   let previousHtml: string;
   do {
     previousHtml = cleanedHtml;
-    cleanedHtml = cleanedHtml.replace(
-      /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
-      collectStyleBlock,
+    // `(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)`
+    // (flags `gi`), in linear time.
+    cleanedHtml = replaceScannedElements(
+      cleanedHtml,
+      "style",
+      { opener: "tag-space", closer: "attributes" },
+      (openTag, styleContent) => collectStyleBlock("", openTag, styleContent),
     );
   } while (cleanedHtml !== previousHtml);
 
@@ -1584,9 +1681,13 @@ export const scopeInlineStyleTags = (
   }
   const allElementClasses: string[] = [];
   const allIdsConverted: { idName: string; className: string }[] = [];
-  const processedHtml = html.replace(
-    /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
-    (_match, open: string, styleContent: string, close: string) => {
+  // `(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)`
+  // (flags `gi`), in linear time.
+  const processedHtml = replaceScannedElements(
+    html,
+    "style",
+    { opener: "tag-space", closer: "attributes" },
+    (open: string, styleContent: string, close: string) => {
       let css = resolveCssImportsSync(
         removeCommentsFromCss(styleContent),
         baseFilePath,
