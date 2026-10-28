@@ -5,16 +5,16 @@
  *
  * The expansion loop is linear in its input except where it must read
  * again text it has read before: when an instance is spliced where the mask
- * cannot be patched in place (a usage cut mid-tag, or a template or usage
- * that leaves a comment, tag or raw-text element open), it re-masks the
- * whole text and its next search re-reads the attribute state from the
- * start; a usage with no closing tag has its close looked for to the end;
- * and a usage with one is read to its close and its slot copied, so each
- * level of nested usages reads everything inside it again. Once per nested
- * instance, that is quadratic: up to 1000 instances times the output's
- * length, about 40 s for a 1 MB output a visitor's text shaped (3 s for
- * 1000 nested usages around 1 MB of slot text, 13 s at 4 MiB). Every such
- * read is charged here, by its characters.
+ * cannot be resumed (a comment or raw-text element that text after the
+ * splice point closes, or one cut by the splice), it re-masks the whole text
+ * and its next search re-reads the attribute state from the start; a usage
+ * with no closing tag, when a close of its name follows, has its close
+ * looked for to the end; and a usage with one is read to its close and its
+ * slot copied, so each level of nested usages reads everything inside it
+ * again. Once per nested instance, that is quadratic: up to 1000 instances
+ * times the output's length (3 s for 1000 nested usages around 1 MB of slot
+ * text, 13 s at 4 MiB). Every such read is charged here, by its characters.
+ * (Usages cut mid-tag, about 40 s at 1 MB before, are now spliced in place.)
  *
  * A request renderer runs each script output's expansion inside
  * `withScanBudget(SCAN_BUDGET.perOutputChar * output.length +

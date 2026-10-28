@@ -5,6 +5,8 @@ import {
   maskRawTextContentWithClosure,
   spliceRawTextMask,
 } from "./components.ts";
+import type { MaskCheckpoint, MaskFacts } from "./component-masking.ts";
+import { __componentScanStatsForTests } from "./component-scan-stats.ts";
 
 // Fragments chosen to stress every boundary the masker cares about: comment
 // and raw-text openers and closers in mixed case, quotes inside opener
@@ -213,21 +215,25 @@ describe("spliceRawTextMask", () => {
     expect(spliced.masked).toBe(maskRawTextContent(first + second + template));
   });
 
-  it("falls back and stops trying when the prefix leaves a raw-text element open", () => {
+  it("falls back when the template closes a raw-text element the prefix leaves open, keeping only a checkpoint before it", () => {
     const prefix = "<script>unclosed ";
     const usage = "<my-card></my-card>";
     const template = "<div></script></div>";
     const body = prefix + usage;
-    expect(
-      spliceRawTextMask(
-        body,
-        maskRawTextContent(body),
-        prefix.length,
-        body.length,
-        template,
-        0,
-      ),
-    ).toEqual({ masked: null, closedThrough: -1 });
+    const spliced = spliceRawTextMask(
+      body,
+      maskRawTextContent(body),
+      prefix.length,
+      body.length,
+      template,
+      0,
+    );
+    expect(spliced.masked).toBeNull();
+    // The opener now has an element. The state at the splice still records
+    // it as open: a later splice resumes there, finds a closer after it, and
+    // falls back again, without reading the page from the start.
+    expect(spliced.closedThrough).toBe(prefix.length);
+    expect(spliced.checkpoint?.pending).toEqual({ script: 0 });
     expect(
       spliceRawTextMask(
         body,
@@ -254,7 +260,7 @@ describe("spliceRawTextMask", () => {
         template,
         0,
       ),
-    ).toEqual({ masked: null, closedThrough: 0 });
+    ).toMatchObject({ masked: null, closedThrough: 0 });
   });
 
   // A prefix that ends in a lone `<` is closed for a continuation that does
@@ -326,7 +332,7 @@ describe("spliceRawTextMask", () => {
     ).toBeNull();
   });
 
-  it("reports the end of the inserted text as closed, so a later sibling splice resumes there", () => {
+  it("reports the state after the inserted text, so a later sibling splice resumes there", () => {
     fc.assert(
       fc.property(
         fc.tuple(htmlArb, htmlArb, htmlArb, htmlArb, htmlArb, htmlArb),
@@ -351,7 +357,7 @@ describe("spliceRawTextMask", () => {
             startB,
             startB + usageB.length,
             templateB,
-            first.closedEnd!,
+            first.endCheckpoint!,
           );
           const fromStart = spliceRawTextMask(
             afterA,
@@ -359,7 +365,7 @@ describe("spliceRawTextMask", () => {
             startB,
             startB + usageB.length,
             templateB,
-            first.closedThrough,
+            first.checkpoint,
           );
           expect(second.masked).toBe(fromStart.masked);
           if (second.masked !== null)
@@ -369,6 +375,349 @@ describe("spliceRawTextMask", () => {
         },
       ),
       { numRuns: 5000 },
+    );
+  });
+});
+
+// Fragments that leave the masker in every state at a splice: inside a tag
+// (name, before a value, unquoted, single or double quoted), after a partial
+// opener, after a raw-text opener with no element, after a comment that never
+// ends, and the closers that end each.
+const stateFragment = fc.constantFrom(
+  "<a ",
+  "<a b",
+  "<a b=",
+  "<a b=1 ",
+  '<a b="',
+  "<a b='",
+  '"',
+  "'",
+  "=",
+  ">",
+  " ",
+  "<",
+  "<s",
+  "<scr",
+  "<!-",
+  "<!--",
+  "-->",
+  "--!>",
+  "--",
+  "<script>",
+  "</script>",
+  "</scr",
+  "ipt>",
+  "<style>",
+  "</style>",
+  "<textarea>",
+  "</textarea>",
+  "<!--<script>",
+  "<b title='<!--'>",
+  '<i title="<script>">',
+  "<x-p>",
+  "<p>",
+  "</p>",
+  "x",
+  // Look-alikes of raw-text openers and closers, closers with white space
+  // (`\u00a0` is white space to the closer rule), and runs of it.
+  "<style-box>",
+  "</style-box>",
+  "<script-x>",
+  "</scriptx>",
+  "</textareax",
+  "</style ",
+  "</STYLE\u00a0>",
+  "</textarea\n",
+  "</script",
+  " ".repeat(40),
+  "\t\n ".repeat(20),
+  '<textarea a"b>',
+);
+const stateHtml = fc
+  .array(stateFragment, { maxLength: 16 })
+  .map((parts) => parts.join(""));
+
+describe("spliceRawTextMask resumes the masker's state at the splice", () => {
+  const splice = (
+    prefix: string,
+    usage: string,
+    template: string,
+    suffix: string,
+    from: Parameters<typeof spliceRawTextMask>[5] = 0,
+    facts: MaskFacts = {},
+  ) => {
+    const body = prefix + usage + suffix;
+    return spliceRawTextMask(
+      body,
+      maskRawTextContent(body),
+      prefix.length,
+      prefix.length + usage.length,
+      template,
+      from,
+      facts,
+    );
+  };
+  const template =
+    '<!--bascik-source-file:x-p.html--><p class="p">v</p><!--bascik-source-file-end:x-p.html-->';
+
+  // A usage cut mid-tag by a visitor's text (`<a ` before it): the prefix
+  // ends inside a tag, where a `<!--` is not a comment. Re-masking the whole
+  // page after each such splice was quadratic in the instance count.
+  it.each([
+    ["inside a tag name", "<s", "tag"],
+    ["after a partial raw-text opener", "<scr", "tag"],
+    ["after a partial comment opener", "<!-", "tag"],
+    ["between attributes", "<a ", "tag"],
+    ["after an attribute name", "<a b", "tag"],
+    ["after an unquoted value", "<a b=1 ", "tag"],
+    ["after a `<` inside a tag", "<a <", "tag"],
+  ])(
+    "accepts a prefix that ends %s, and masks exactly as the whole page",
+    (_where, cut, state) => {
+      const prefix = `<p>a</p><!-- c -->${cut}`;
+      const suffix = `xx<x-p>${cut}<b title='<!--'>t</b><!-- d --><script>s()</script>`;
+      const spliced = splice(prefix, "<x-p>", template, suffix);
+      expect(spliced.masked).toBe(
+        maskRawTextContent(prefix + template + suffix),
+      );
+      expect(spliced.checkpoint).toMatchObject({
+        at: prefix.length,
+        tag: state,
+      });
+      expect(spliced.endCheckpoint).toMatchObject({
+        at: prefix.length + template.length,
+        tag: "text",
+      });
+    },
+  );
+
+  it("follows the text after the splice until the old and new tag states agree", () => {
+    // The usage left the page in text, the template leaves a quoted value
+    // open: the old mask after it holds from the closing quote on.
+    const prefix = "<p>a</p>";
+    const suffix = 'more"><!-- c --><p>b</p>';
+    const spliced = splice(prefix, "<x-p>", '<b title="x', suffix);
+    expect(spliced.masked).toBe(
+      maskRawTextContent(prefix + '<b title="x' + suffix),
+    );
+    expect(spliced.endCheckpoint).toMatchObject({ tag: "quoted", quote: '"' });
+  });
+
+  it("falls back when a comment opener comes before the tag states agree", () => {
+    // In the old page `<!-- c -->` is a comment; in the new one it is inside
+    // a quoted value.
+    const prefix = "<p>a</p>";
+    const suffix = '<!-- c -->"><p>b</p>';
+    const spliced = splice(prefix, "<x-p>", '<b title="x', suffix);
+    expect(spliced.masked).toBeNull();
+    expect(spliced.closedThrough).toBe(prefix.length);
+  });
+
+  it("falls back when a raw-text element starts before the tag states agree", () => {
+    // Both readings agree right after `<script>`, but the old page reads
+    // the element inside a tag and goes on reading the tag through it (into
+    // the quoted value, where `<!-- c -->` is text), while the new one starts
+    // over in text after the element (where it is a comment).
+    const suffix = '<script><a b="</script><!-- c -->';
+    const spliced = splice("", "<b ", "", suffix);
+    expect(maskRawTextContent("<b " + suffix)).toContain("<!-- c -->");
+    expect(maskRawTextContent(suffix)).not.toContain("<!-- c -->");
+    expect(spliced.masked).toBeNull();
+  });
+
+  it.each([
+    ["a script", "<script>"],
+    ["a style", "<style type=x>"],
+    ["a textarea", "<TEXTAREA>"],
+    ["a comment", "<!--"],
+  ])(
+    "accepts splices after %s that never ends, and falls back once a template ends it",
+    (_kind, opener) => {
+      const prefix = `<p>a</p>${opener} text `;
+      const suffix = "<x-p> more <x-p>";
+      // The source-file comments around a template would end the comment.
+      const plain = '<p class="p">v</p>';
+      const spliced = splice(prefix, "<x-p>", plain, suffix);
+      expect(spliced.masked).toBe(maskRawTextContent(prefix + plain + suffix));
+      expect(Object.keys(spliced.checkpoint!.pending)).not.toHaveLength(0);
+      const closer =
+        opener === "<!--" ? "-->" : `</${/<(\w+)/.exec(opener)![1]}>`;
+      const closing = splice(
+        prefix,
+        "<x-p>",
+        `<p>${closer}x</p>`,
+        suffix,
+        0,
+        {},
+      );
+      expect(closing.masked).toBeNull();
+    },
+  );
+
+  // The closer rule the masker uses (`</style\s*>`, as element-content-scan
+  // reads it) decides whether an opener with no element stays open. A
+  // longer name only looks like a closer: `<style-box>` is a style opener to
+  // the masker, and `</style-box>` ends nothing. Taking every `</style` for
+  // a closer made every later splice fall back to a whole re-mask.
+  it.each([
+    ["<style-box>hi", " </style-box>"],
+    ["<script-x>hi", " </script-x>"],
+    ["<textarea-field>hi", " </textarea-field>"],
+    ["<textarea>hi", " </textareax>"],
+    ["<script>hi", " </scriptx> </script-x>"],
+    ["<!--hi", " -- > -!>"],
+  ])(
+    "accepts a splice after %s when the closer that follows is only a look-alike (%s)",
+    (opener, lookalike) => {
+      const prefix = `<p>a</p>${opener} `;
+      const suffix = `<x-p>${lookalike}<p>b</p>`;
+      const plain = '<p class="p">v</p>';
+      const spliced = splice(prefix, "<x-p>", plain, suffix);
+      expect(spliced.masked).toBe(maskRawTextContent(prefix + plain + suffix));
+    },
+  );
+
+  it.each([
+    ["</style >"],
+    ["</STYLE\n>"],
+    ["</style\u00a0>"],
+    ["</style\t\f\r >"],
+  ])(
+    "falls back when a real closer (%j) follows an opener with no element before it",
+    (closer) => {
+      // `<style a"b>` is no element in the old page: no `"` ends its value.
+      const prefix = '<p>a</p><style a"b> ';
+      const suffix = `<x-p> ${closer}<p>b</p>`;
+      expect(
+        splice(prefix, "<x-p>", '<p class="p">v</p>', suffix).masked,
+      ).toBeNull();
+    },
+  );
+
+  // A closer is `</style`, any run of white space, and `>`: a splice can
+  // complete one whose name is far before it, or whose `>` is far after it.
+  it.each([10, 3000, 5000])(
+    "sees a closer the splice completes across %i characters of white space",
+    (spaces) => {
+      const run = " ".repeat(spaces);
+      const cases: Array<[string, string, string, string]> = [
+        // The `>` comes in at the splice, after `</style` and the run.
+        ["<p><style>a </style" + run, "<x-p>", ">b", "<p>c</p>"],
+        // The template ends in `</style`, the run and `>` follow it.
+        ["<p><style>a ", "<x-p>", "</style", run + ">b<p>c</p>"],
+        // The template is part of the run.
+        ["<p><style>a </style ", "<x-p>", run, " >b"],
+      ];
+      for (const [prefix, usage, inserted, suffix] of cases) {
+        const spliced = splice(prefix, usage, inserted, suffix);
+        if (spliced.masked !== null)
+          expect(spliced.masked).toBe(
+            maskRawTextContent(prefix + inserted + suffix),
+          );
+        expect(maskRawTextContent(prefix + inserted + suffix)).not.toBe(
+          prefix + inserted + suffix,
+        );
+      }
+    },
+  );
+
+  it("after falling back on an opener a later closer ends, keeps the state at the splice, so the next splice reads only the text since", () => {
+    const prefix = `<p>a</p><textarea a"b>${"t".repeat(10_000)}`;
+    const suffix = "<x-q> more <x-q></textarea>";
+    const body = prefix + "<x-q>" + suffix;
+    const facts: MaskFacts = {};
+    const first = spliceRawTextMask(
+      body,
+      maskRawTextContent(body),
+      prefix.length,
+      prefix.length + 5,
+      "<i>v</i>",
+      0,
+      facts,
+    );
+    expect(first.masked).toBeNull();
+    expect(first.checkpoint).toMatchObject({
+      at: prefix.length,
+      pending: { textarea: 8 },
+    });
+    const next = prefix + "<i>v</i>" + suffix;
+    const start = next.indexOf("<x-q>", prefix.length);
+    __componentScanStatsForTests.reset();
+    const second = spliceRawTextMask(
+      next,
+      maskRawTextContent(next),
+      start,
+      start + 5,
+      "<i>v</i>",
+      first.checkpoint,
+      facts,
+    );
+    expect(second.masked).toBeNull();
+    expect(second.checkpoint?.at).toBe(start);
+    expect(__componentScanStatsForTests.closureBytesChecked).toBeLessThan(100);
+  });
+
+  it("misuse: a checkpoint past the splice, or none, falls back without reading the page", () => {
+    expect(splice("<p>a</p>", "<x-p>", template, "", 9).masked).toBeNull();
+    expect(splice("<p>a</p>", "<x-p>", template, "", null).masked).toBeNull();
+  });
+
+  it("produces the full-page mask whenever it accepts a splice, from any state", () => {
+    fc.assert(
+      fc.property(
+        stateHtml,
+        stateHtml,
+        stateHtml,
+        stateHtml,
+        (prefix, usage, inserted, suffix) => {
+          const spliced = splice(prefix, usage, inserted, suffix);
+          if (spliced.masked === null) return;
+          expect(spliced.masked).toBe(
+            maskRawTextContent(prefix + inserted + suffix),
+          );
+        },
+      ),
+      { numRuns: 5000 },
+    );
+  });
+
+  it("keeps every checkpoint it returns valid through a chain of splices, like the expansion loop", () => {
+    fc.assert(
+      fc.property(
+        stateHtml,
+        fc.array(fc.tuple(fc.nat(), fc.nat({ max: 12 }), stateHtml), {
+          minLength: 1,
+          maxLength: 6,
+        }),
+        (initial, steps) => {
+          let body = initial;
+          let masked = maskRawTextContent(body);
+          let from: MaskCheckpoint | null = null;
+          let fromEnd: MaskCheckpoint | null = null;
+          const facts: MaskFacts = {};
+          let last = 0;
+          for (const [offset, length, inserted] of steps) {
+            const start = last + (offset % (body.length - last + 1));
+            const end = Math.min(body.length, start + length);
+            const spliced = spliceRawTextMask(
+              body,
+              masked,
+              start,
+              end,
+              inserted,
+              fromEnd && start >= fromEnd.at ? fromEnd : (from ?? 0),
+              facts,
+            );
+            body = body.slice(0, start) + inserted + body.slice(end);
+            masked = maskRawTextContent(body);
+            if (spliced.masked !== null) expect(spliced.masked).toBe(masked);
+            from = spliced.checkpoint;
+            fromEnd = spliced.endCheckpoint ?? null;
+            last = start;
+          }
+        },
+      ),
+      { numRuns: 3000 },
     );
   });
 });

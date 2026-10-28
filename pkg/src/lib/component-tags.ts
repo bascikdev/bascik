@@ -352,6 +352,7 @@ export const getFirstComponent = (
     match.index,
     attributeScan,
     searchState?.closeFinder,
+    searchState?.lastCloseAt,
   );
   if (!found) return { name: firstComponentName, index: match.index };
   return tagResult(
@@ -473,6 +474,7 @@ const findTag = (
   searchFrom: number,
   scanner?: AttributeValueScanner,
   closeFinder?: ComponentSearchState["closeFinder"],
+  lastCloseAt?: ComponentSearchState["lastCloseAt"],
 ): FoundTag | null => {
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return null;
   // Use findMatchingClose (a depth counter) instead of a lazy regex so nested
@@ -487,15 +489,18 @@ const findTag = (
     attributeScan,
   );
   if (openTag && !/\/\s*>$/.test(openTag.openTag)) {
-    const closeIndex = closeFinder
-      ? closeFinder(tagName, openTag.end)
-      : findMatchingClose(
-          htmlString,
-          tagName,
-          openTag.end,
-          maskedHtml,
-          attributeScan,
-        );
+    const closeIndex =
+      lastCloseAt && lastCloseAt(tagName) < openTag.end
+        ? -1
+        : closeFinder
+          ? closeFinder(tagName, openTag.end)
+          : findMatchingClose(
+              htmlString,
+              tagName,
+              openTag.end,
+              maskedHtml,
+              attributeScan,
+            );
     if (closeIndex !== -1) {
       const closeTag = closeTagPattern(tagName);
       closeTag.lastIndex = closeIndex;

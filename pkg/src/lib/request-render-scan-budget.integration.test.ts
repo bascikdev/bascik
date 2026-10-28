@@ -314,6 +314,133 @@ describe("the scan budget leaves legitimate pages far under it", () => {
   });
 });
 
+// A visitor's text that cuts every nested usage mid-tag, or leaves a raw-text
+// element open before them. Each splice re-masked the whole instance, and
+// each unclosed usage looked for its close to the end, up to 1000 times
+// (about 7 s at 200k characters and 40 s at 1 MB, stopped only by the scan
+// budget). The mask now resumes from the masker's state at the splice, and a
+// usage after the last close of its name has none, so these render far
+// under the budget. The bounds are generous for that work and far below the
+// old times.
+describe("usages cut mid-tag render without re-masking the instance", () => {
+  const list: ComponentList = {
+    "my-card": {
+      fileName: "src/components/my-card.html",
+      fileContent: `<div class="c"><div data-bascik-slot>s</div></div>`,
+    },
+    "x-p": {
+      fileName: "src/components/x-p.html",
+      fileContent: `<p class="p" data-bascik-prop-v>v</p>`,
+    },
+  };
+  /** 999 copies of `unit`, padded with text to `size` characters in all. */
+  const fill = (unit: string, size: number): string =>
+    (
+      unit + "x".repeat(Math.max(0, Math.ceil(size / 999) - unit.length))
+    ).repeat(999);
+  /** `unit` filled to `size` characters in all inside a `<my-card>` slot. */
+  const wrapped =
+    (head: string, unit: string) =>
+    (size: number): string =>
+      `<my-card>${head}${fill(unit, size - 19 - head.length)}</my-card>`;
+  const shapes: Array<[string, (size: number) => string]> = [
+    ["fill('<x-p><a ') (each usage its own)", (size) => fill("<x-p><a ", size)],
+    ["<my-card> + fill('<x-p><a ') + </my-card>", wrapped("", "<x-p><a ")],
+    ["<my-card> + fill('<x-p><s') + </my-card>", wrapped("", "<x-p><s")],
+    ["<my-card> + fill('<x-p><scr') + </my-card>", wrapped("", "<x-p><scr")],
+    ["<my-card> + fill('<x-p><!-') + </my-card>", wrapped("", "<x-p><!-")],
+    [
+      "<my-card> + fill('<x-p><a b=1 c ') + </my-card>",
+      wrapped("", "<x-p><a b=1 c "),
+    ],
+    ["<my-card> + fill('<x-p><a <') + </my-card>", wrapped("", "<x-p><a <")],
+    [
+      "<my-card><script> + fill('<x-p>') + </my-card> (a script never closed)",
+      wrapped("<script>", "<x-p>"),
+    ],
+    [
+      "<my-card><style> + fill('<x-p><a ') + </my-card> (a style never closed)",
+      wrapped("<style>", "<x-p><a "),
+    ],
+    [
+      "<my-card><textarea> + fill('<x-p><s') + </my-card> (a textarea never closed)",
+      wrapped("<textarea>", "<x-p><s"),
+    ],
+  ];
+  it.each(
+    shapes.flatMap(([label, make]) => [
+      [label, "200k", make(200_000), 1500],
+      [label, "1M", make(1_000_000), 3000],
+    ]),
+  )("%s at %s characters", async (_label, _size, output, bound) => {
+    const manifest = await build(list);
+    const started = performance.now();
+    const { html, share } = await render(manifest, output as string);
+    const elapsed = performance.now() - started;
+    expect(html.split(">v</p>").length - 1).toBe(999);
+    expect(share).toBeLessThan(0.25);
+    expect(elapsed).toBeLessThan(bound as number);
+  });
+
+  // Text that only looks like a close of the usages, or like the closer of a
+  // raw-text element opened before them: a longer name (`</x-pa>`,
+  // `</x-p-list>`), a close the mask blanks (in a comment or a script), a
+  // custom element named like a raw-text one (`<style-box>`), or a closer
+  // with a longer name (`</textareax>`). None ends anything, so none may
+  // bring back the walk to the end of the page for each unclosed usage, or a
+  // whole re-mask after each splice.
+  const lookalikes: Array<[string, (size: number) => string]> = [
+    [
+      "<my-card> + fill('<x-p><a ') + </x-pa></my-card>",
+      (size) => `<my-card>${fill("<x-p><a ", size - 26)}</x-pa></my-card>`,
+    ],
+    [
+      "fill('<x-p>') + </x-p-list>",
+      (size) => `${fill("<x-p>", size - 11)}</x-p-list>`,
+    ],
+    [
+      "fill('<x-p>') + <!-- </x-p> -->",
+      (size) => `${fill("<x-p>", size - 15)}<!-- </x-p> -->`,
+    ],
+    [
+      "fill('<x-p>') + <script></x-p></script>",
+      (size) => `${fill("<x-p>", size - 23)}<script></x-p></script>`,
+    ],
+    [
+      "<style-box>hi</style-box> + fill('<x-p v=\"a\"></x-p>')",
+      (size) =>
+        `<style-box>hi</style-box>${fill('<x-p v="a"></x-p>', size - 25)}`,
+    ],
+    [
+      "<script-x></script-x> + fill('<x-p></x-p>')",
+      (size) => `<script-x></script-x>${fill("<x-p></x-p>", size - 21)}`,
+    ],
+    [
+      "<textarea-field></textarea-field> + fill('<x-p>')",
+      (size) => `<textarea-field></textarea-field>${fill("<x-p>", size - 33)}`,
+    ],
+    [
+      "<my-card><textarea> + fill('<x-p>') + </textareax></my-card>",
+      (size) =>
+        `<my-card><textarea>${fill("<x-p>", size - 41)}</textareax></my-card>`,
+    ],
+  ];
+  it.each(
+    lookalikes.flatMap(([label, make]) => [
+      [label, "200k", make(200_000), 1500],
+      [label, "1M", make(1_000_000), 3000],
+    ]),
+  )("%s at %s characters", async (_label, _size, output, bound) => {
+    const manifest = await build(list);
+    const started = performance.now();
+    const { html, share } = await render(manifest, output as string);
+    const elapsed = performance.now() - started;
+    expect(html.split(">v</p>").length - 1).toBe(999);
+    expect(share).toBeLessThan(0.25);
+    expect(elapsed).toBeLessThan(bound as number);
+  });
+});
+
 describe("the scan budget stops hostile outputs fast", () => {
   const list: ComponentList = {
     "my-card": {
@@ -331,44 +458,7 @@ describe("the scan budget stops hostile outputs fast", () => {
       unit + "x".repeat(Math.max(0, Math.ceil(size / count) - unit.length))
     ).repeat(count);
 
-  // Without the budget these shapes take about 6 s at 400 KB and 40 s at
-  // 1 MB, and minutes at 4 MiB; with it, well under a second each alone.
-  // The wall-clock bounds leave room for a loaded machine; the work bound is
-  // exact: the charged rescans stop within one iteration past the budget.
-  it.each([
-    ["400 KB", 400_000, 2000],
-    ["1 MB", 1_000_000, 3000],
-    ["4 MiB", REQUEST_RENDER_LIMITS.maxOutputChars - 32, 6000],
-  ])(
-    "<my-card> + fill('<x-p><a ') + </my-card> at %s fails with the located budget error, its rescans bounded by the budget",
-    async (_label, size, bound) => {
-      const manifest = await build(list);
-      const output = `<my-card>${fill("<x-p><a ", size - 19)}</my-card>`;
-      const started = performance.now();
-      const error = await render(manifest, output).then(
-        () => null,
-        (thrown: unknown) => thrown,
-      );
-      const elapsed = performance.now() - started;
-      expect(error).toBeInstanceOf(RequestRenderError);
-      expect((error as RequestRenderError).message).toMatch(
-        /server-script output at "\/budget" made the renderer rescan more than \d+ characters while expanding components \(<(?:x-p|my-card)>, components\/(?:x-p|my-card)\.html\), over the limit of 16 times the output's \d+ characters plus 33554432\./,
-      );
-      expect((error as RequestRenderError).httpPath).toBe("/budget");
-      const budget =
-        SCAN_BUDGET.perOutputChar * output.length + SCAN_BUDGET.base;
-      // One iteration reads the text at most four times over (a re-mask,
-      // the attribute state, an unclosed usage's close search or a closed
-      // one's span); the text at most doubles its slot content here.
-      expect(__scanBudgetStatsForTests.lastSpent).toBeGreaterThan(budget);
-      expect(__scanBudgetStatsForTests.lastSpent).toBeLessThan(
-        budget + 4 * 2 * output.length,
-      );
-      expect(elapsed).toBeLessThan(bound);
-    },
-  );
-
-  it("fill('<x-p><s') of 1 MB is refused within 3 s (the instance budget or the scan budget)", async () => {
+  it("misuse: fill('<x-p><s') of 1 MB with more usages than the instance budget is refused within 3 s", async () => {
     const manifest = await build(list);
     const output = fill("<x-p><s", 1_000_000, 1200);
     const started = performance.now();
@@ -408,9 +498,15 @@ describe("the scan budget stops hostile outputs fast", () => {
     const elapsed = performance.now() - started;
     expect(error).toBeInstanceOf(RequestRenderError);
     expect((error as RequestRenderError).message).toMatch(
-      /made the renderer rescan more than \d+ characters while expanding components \(<my-card>, components\/my-card\.html\)/,
+      /server-script output at "\/budget" made the renderer rescan more than \d+ characters while expanding components \(<my-card>, components\/my-card\.html\), over the limit of 16 times the output's \d+ characters plus 33554432\./,
     );
+    expect((error as RequestRenderError).httpPath).toBe("/budget");
     const budget = SCAN_BUDGET.perOutputChar * output.length + SCAN_BUDGET.base;
+    // The work bound is exact: the charged rescans stop within one
+    // iteration past the budget, which reads the text at most four times
+    // over (a re-mask, the attribute state, an unclosed usage's close
+    // search or a closed one's span), and the text at most doubles.
+    expect(__scanBudgetStatsForTests.lastSpent).toBeGreaterThan(budget);
     expect(__scanBudgetStatsForTests.lastSpent).toBeLessThan(
       budget + 4 * 2 * output.length,
     );

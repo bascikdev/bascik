@@ -17,7 +17,13 @@ import {
   extractInheritableAttributes,
   mergeAttributesOntoRoot,
 } from "./component-inheritance.ts";
-import { maskRawTextContent, spliceRawTextMask } from "./component-masking.ts";
+import {
+  maskRawTextContent,
+  spliceRawTextMask,
+  spliceWindow,
+  type MaskCheckpoint,
+  type MaskFacts,
+} from "./component-masking.ts";
 import {
   extractProps,
   injectPropAttributes,
@@ -30,6 +36,7 @@ import {
   replaceNamedSlots,
 } from "./component-slots.ts";
 import { checkScanBudget, chargeScan } from "./component-scan-budget.ts";
+import { __componentScanStatsForTests } from "./component-scan-stats.ts";
 import { getFirstComponent, replaceTag } from "./component-tags.ts";
 import type { ComponentSearchState } from "./component-attribute-scan.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
@@ -198,6 +205,89 @@ export const stripSourceFileComments = (html: string): string =>
   );
 
 /**
+ * A close of any component name: `</name\s*>`, the rule `findMatchingClose`
+ * pairs usages with (a greedy name that stops where `\s*>` follows, so a
+ * close of `x-p` never reads as one of `x-pa` or `x-p-list`).
+ */
+const ANY_CLOSE = /<\/([a-zA-Z][\w:-]*)\s*>/g;
+
+/**
+ * Where the last close (`ANY_CLOSE`) of each component name starts in a
+ * page's mask, or -1, so an unclosed usage after it is known to have none
+ * without walking to the end (`ComponentSearchState.lastCloseAt`). A close
+ * the mask blanks (in a comment or a script) is none; one in an attribute
+ * value still counts, so each entry is an upper bound.
+ */
+class CloseFacts {
+  /** Each tracked name (lowercase) and its entry in `last`. */
+  private readonly slot = new Map<string, number>();
+  private readonly last: Float64Array;
+  private readonly reach: number;
+
+  /** Every close in `masked`, read once for every name in `names`. */
+  constructor(masked: string, names: Iterable<string>) {
+    let longest = 0;
+    for (const name of names) {
+      const key = name.toLowerCase();
+      if (!this.slot.has(key)) this.slot.set(key, this.slot.size);
+      longest = Math.max(longest, name.length);
+    }
+    this.last = new Float64Array(this.slot.size).fill(-1);
+    this.reach = longest + 2;
+    this.record(masked, 0);
+  }
+
+  /** The upper bound for `tagName`; past any page for a name not tracked. */
+  at(tagName: string): number {
+    const slot = this.slot.get(tagName.toLowerCase());
+    return slot === undefined ? Number.MAX_SAFE_INTEGER : this.last[slot];
+  }
+
+  /**
+   * Move the facts from the mask `masked` to the one with `masked[start,
+   * end)` replaced by `replacement`: a close after the replaced text moves
+   * with it, one inside it or cut by it stays as an upper bound, and the
+   * closes the window around the replacement holds are added, read once for
+   * every name (`spliceWindow`).
+   */
+  splice(
+    masked: string,
+    start: number,
+    end: number,
+    replacement: string,
+  ): void {
+    const { last } = this;
+    const delta = replacement.length - (end - start);
+    for (let slot = 0; slot < last.length; slot++) {
+      const at = last[slot];
+      if (at >= end) last[slot] = at + delta;
+      else if (at >= start) last[slot] = start - 1;
+    }
+    const window = spliceWindow(masked, start, end, replacement, this.reach);
+    if (window === null) {
+      const assumed = start + replacement.length;
+      for (let slot = 0; slot < last.length; slot++)
+        last[slot] = Math.max(last[slot], assumed);
+    } else this.record(window.text, window.from);
+  }
+
+  /** Raise each name's entry to its last close in `text`, plus `offset`. */
+  private record(text: string, offset: number): void {
+    __componentScanStatsForTests.closeFactBytesScanned += text.length;
+    ANY_CLOSE.lastIndex = 0;
+    for (
+      let match = ANY_CLOSE.exec(text);
+      match;
+      match = ANY_CLOSE.exec(text)
+    ) {
+      const slot = this.slot.get(match[1].toLowerCase());
+      if (slot !== undefined)
+        this.last[slot] = Math.max(this.last[slot], match.index + offset);
+    }
+  }
+}
+
+/**
  * Expand every component usage in `transpiledHtmlBody`, innermost-first by
  * document position, until none remains. `usedComponents` receives each
  * expanded instance in expansion order; `filePath` names the page for the
@@ -229,14 +319,34 @@ export const expandComponents = (
   // components nested inside the inserted template are still found first).
   // Any operation that edits text outside the known splice resets it to 0.
   let searchFrom = 0;
-  // `transpiledHtmlBody.slice(0, maskClosedThrough)` is known to be closed for
-  // masking, so a substitution after it can splice the template's own mask in
-  // instead of re-masking the page (see spliceRawTextMask). Reset with the cursor.
-  let maskClosedThrough = 0;
-  // End of the last spliced-in template; the text before it is closed. -1 when unknown.
-  let maskClosedEnd = -1;
+  // The masker's state at a position before the next substitution, so the
+  // mask can be resumed there and the template's own mask spliced in instead
+  // of re-masking the page (see spliceRawTextMask). Null when none is known:
+  // the next substitution then reads from the start. Reset with the cursor.
+  let maskFrom: MaskCheckpoint | null = null;
+  // The state after the last spliced-in template, for a substitution at or
+  // after it. Null when unknown.
+  let maskFromEnd: MaskCheckpoint | null = null;
+  // Where closers for a comment or raw-text element left open last occur
+  // (found when first needed, then kept current by each splice).
+  let maskFacts: MaskFacts = {};
   // Valid while the mask before the checkpoint is unchanged: the splice path only.
   const searchState: ComponentSearchState = {};
+  // Where the last close of each component name starts in the mask (an
+  // upper bound), found for every name in one pass when first needed and
+  // moved with each splice, so an unclosed usage is known to have no close
+  // without walking to the end. Found again after a whole re-mask, which
+  // that pass is charged with.
+  let closeFacts: CloseFacts | undefined;
+  let closeFactsFound = false;
+  searchState.lastCloseAt = (tagName: string): number => {
+    if (closeFacts === undefined) {
+      if (closeFactsFound) chargeScan(masked.length);
+      closeFacts = new CloseFacts(masked, Object.keys(componentList));
+      closeFactsFound = true;
+    }
+    return closeFacts.at(tagName);
+  };
   let componentNames: Set<string> | undefined;
   // Whether the next search re-reads the attribute state from the start
   // (after a whole re-mask), for the request-time scan budget.
@@ -296,9 +406,11 @@ export const expandComponents = (
         found.closeIndex === -1 &&
         typeof found.contentStart === "number" &&
         !/\/\s*>$/.test(component.content ?? "")
-      )
-        chargeScan(transpiledHtmlBody.length - found.contentStart);
-      else if (
+      ) {
+        // Unless no close follows at all, which is known without a search.
+        if (searchState.lastCloseAt(component.name) >= found.contentStart)
+          chargeScan(transpiledHtmlBody.length - found.contentStart);
+      } else if (
         typeof found.startIndex === "number" &&
         typeof found.endIndex === "number"
       )
@@ -525,16 +637,17 @@ export const expandComponents = (
         typeof sIdx === "number" && typeof eIdx === "number"
           ? { startIndex: sIdx, endIndex: eIdx }
           : undefined;
-      const splicedMask = offsets
+      const splicedMask: ReturnType<typeof spliceRawTextMask> | null = offsets
         ? spliceRawTextMask(
             transpiledHtmlBody,
             masked,
             offsets.startIndex,
             offsets.endIndex,
             transpiledTag,
-            maskClosedEnd >= 0 && offsets.startIndex >= maskClosedEnd
-              ? maskClosedEnd
-              : maskClosedThrough,
+            maskFromEnd && offsets.startIndex >= maskFromEnd.at
+              ? maskFromEnd
+              : (maskFrom ?? 0),
+            maskFacts,
           )
         : null;
       transpiledHtmlBody = replaceTag(
@@ -552,9 +665,19 @@ export const expandComponents = (
       // mask is spliced in; otherwise a comment or raw-text element could cross the
       // splice boundary, so the whole page is re-masked.
       if (splicedMask?.masked != null && offsets) {
+        closeFacts?.splice(
+          masked,
+          offsets.startIndex,
+          offsets.endIndex,
+          splicedMask.masked.slice(
+            offsets.startIndex,
+            offsets.startIndex + transpiledTag.length,
+          ),
+        );
         masked = splicedMask.masked;
         searchFrom = offsets.startIndex;
       } else {
+        closeFacts = undefined;
         masked = maskRawTextContent(transpiledHtmlBody);
         chargeScan(transpiledHtmlBody.length);
         rescanFromStart = true;
@@ -566,8 +689,9 @@ export const expandComponents = (
         searchFrom = offsets ? offsets.startIndex : 0;
       }
       // Without offsets the edit position is unknown, so verify from the start again.
-      maskClosedThrough = splicedMask ? splicedMask.closedThrough : 0;
-      maskClosedEnd = splicedMask?.closedEnd ?? -1;
+      maskFrom = splicedMask ? splicedMask.checkpoint : null;
+      maskFromEnd = splicedMask?.endCheckpoint ?? null;
+      if (!splicedMask) maskFacts = {};
 
       usedComponents.push(component);
       substitutions++;
@@ -588,8 +712,10 @@ export const expandComponents = (
         // replaceTag without offsets re-searches from the document start and
         // may have edited text before the cursor; reset conservatively.
         searchFrom = 0;
-        maskClosedThrough = 0;
-        maskClosedEnd = -1;
+        maskFrom = null;
+        maskFromEnd = null;
+        maskFacts = {};
+        closeFacts = undefined;
         searchState.attributeCheckpoint = undefined;
         substitutions++;
       } else {

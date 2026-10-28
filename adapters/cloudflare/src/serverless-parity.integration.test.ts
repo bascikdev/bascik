@@ -1130,7 +1130,7 @@ for (const policy of ["error", "warn", "ignore"] as const) {
       {
         path: "/components-size?kind=scan",
         message:
-          /made the renderer rescan more than \d+ characters while expanding components \(<(?:product-card|twice-card)>, components\/(?:product-card\/product-card|twice-card\/twice-card)\.html\), over the limit of 16 times the output's \d+ characters plus 33554432\./,
+          /made the renderer rescan more than \d+ characters while expanding components \(<once-card>, components\/once-card\/once-card\.html\), over the limit of 16 times the output's \d+ characters plus 33554432\./,
       },
       {
         path: "/components-size?kind=stage",
@@ -1157,6 +1157,7 @@ for (const policy of ["error", "warn", "ignore"] as const) {
           for (const tag of [
             "<product-card",
             "<chain-card",
+            "<once-card",
             "<twice-card",
             "<four-card",
             "<wide-card",

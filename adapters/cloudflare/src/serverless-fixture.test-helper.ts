@@ -341,8 +341,10 @@ export default function () { return "<chain-card></chain-card>"; }
   // Components that repeat their default slot, to multiply the slot content
   // a script passes: twice renders over the 4 MiB budget, four times grows
   // past the expansion tripwire, 200 times passes the engine's string limit
-  // while the instance is built (a "failed during slot resolution").
+  // while the instance is built (a "failed during slot resolution"). Once
+  // nests: each level reads its slot again (the scan budget).
   for (const [name, times] of [
+    ["once-card", 1],
     ["twice-card", 2],
     ["four-card", 4],
     ["wide-card", 200],
@@ -428,8 +430,8 @@ export default async function (request) {
   // The size budgets and a stage failure, by ?kind=: "rendered" renders
   // over 4 MiB, "grew" passes the tripwire, "refused" is over twice the
   // limit as written, "stage" fails during slot resolution, and "scan"
-  // cuts every nested usage mid-tag (a visitor's unescaped "<"), which the
-  // scan budget refuses (prompt 157 security audit).
+  // nests 999 usages around 1 MB of slot text, each level read again, which
+  // the scan budget refuses (prompt 157 security audit).
   const sizeScript = (directive: string) => `<script data-bascik-${directive}>
 export default async function (request) {
   const kind = new URL(request.url).searchParams.get("kind");
@@ -438,7 +440,7 @@ export default async function (request) {
   if (kind === "grew") return slotted("four-card", 2500000);
   if (kind === "refused") return "x".repeat(${2 * 4 * 1024 * 1024 + 1}) + "<product-card></product-card>";
   if (kind === "stage") return slotted("wide-card", 3000000);
-  if (kind === "scan") return "<twice-card>" + ("<product-card><a " + "x".repeat(800)).repeat(499) + "</twice-card>";
+  if (kind === "scan") return "<once-card>".repeat(999) + "x".repeat(1000000) + "</once-card>".repeat(999);
   return "<product-card></product-card>";
 }
 </script>`;

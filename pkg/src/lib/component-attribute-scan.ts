@@ -124,7 +124,7 @@ export const scanWholeAttributes = (openTag: string): ScannedAttribute[] => {
   return attrs;
 };
 
-type AttributeScanState =
+export type AttributeScanState =
   "text" | "tag" | "before-value" | "quoted" | "unquoted";
 
 /**
@@ -152,6 +152,14 @@ export interface ComponentSearchState {
    * every one of them.
    */
   closeFinder?: (tagName: string, contentStart: number) => number;
+  /**
+   * Where the last close of `tagName` (`</tagName\s*>`, any case) starts in
+   * the searched mask, or -1; a later position is allowed (an upper bound).
+   * A usage whose content starts after it has no close, so its close is not
+   * looked for: an unclosed usage otherwise walks to the end of the text,
+   * once per usage.
+   */
+  lastCloseAt?: (tagName: string) => number;
 }
 
 const SCAN_START: AttributeValueCheckpoint = {
@@ -239,6 +247,43 @@ export const createAttributeValueScanner = (
     },
     checkpoint: (): AttributeValueCheckpoint => ({ cursor, state, quote }),
   };
+};
+
+/**
+ * The scanner's state after one more character, `html[index]`, read in
+ * `state` (with `quote` in the quoted state): the transitions `advance`
+ * makes, one character at a time, for a caller that follows two readings of
+ * the same text until they agree. The peek after a `<` in text is
+ * `html[index + 1]`.
+ */
+export const stepAttributeValueState = (
+  html: string,
+  index: number,
+  state: AttributeScanState,
+  quote: string,
+): { state: AttributeScanState; quote: string } => {
+  const code = html.charCodeAt(index);
+  switch (state) {
+    case "text":
+      return code === 60 && isTagStartCode(html.charCodeAt(index + 1))
+        ? { state: "tag", quote }
+        : { state, quote };
+    case "quoted":
+      return html[index] === quote ? { state: "tag", quote } : { state, quote };
+    case "unquoted":
+      if (code === 62) return { state: "text", quote };
+      return isScanSpace(code) ? { state: "tag", quote } : { state, quote };
+    case "before-value":
+      if (code === 34 || code === 39)
+        return { state: "quoted", quote: html[index] };
+      if (code === 62) return { state: "text", quote };
+      return isScanSpace(code)
+        ? { state, quote }
+        : { state: "unquoted", quote };
+    default:
+      if (code === 61) return { state: "before-value", quote };
+      return code === 62 ? { state: "text", quote } : { state, quote };
+  }
 };
 
 export type AttributeValueScanner = ReturnType<
