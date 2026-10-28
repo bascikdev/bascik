@@ -2053,13 +2053,11 @@ describe("scaling (identifiers off)", () => {
     config.minify.identifiers = false;
   });
 
-  it("a 2 MiB output with 4000 named-slot wrappers, 16000 unclosed opens and 1000 instances renders in under 500 ms", async () => {
+  it("a 2 MiB output with 4000 named-slot wrappers, 16000 unclosed opens and 1000 instances renders in linear time", async () => {
     const manifest = await build();
     const host = makeHost(manifest);
-    const instances = 1000;
-    const target = 2 * 1024 * 1024;
     // Four named-slot wrappers per usage, each holding four unclosed <i>
-    // opens, padded so the whole output is 2 MiB.
+    // opens, padded so the whole output is `target` characters.
     const skeleton = (pad: string) =>
       `<slots-card>` +
       ["a", "b", "c", "d"]
@@ -2068,21 +2066,43 @@ describe("scaling (identifiers off)", () => {
         )
         .join("") +
       `</slots-card>`;
-    const bare = skeleton("").length;
-    const padPerSlot = Math.ceil((target / instances - bare) / 4);
-    const html = skeleton("p".repeat(padPerSlot)).repeat(instances);
-    expect(html.length).toBeGreaterThanOrEqual(target);
-    expect(count(html, "data-bascik-slot=")).toBe(4000);
-    expect(count(html, "<i>")).toBe(16000);
+    const outputOf = (instances: number, target: number) => {
+      const bare = skeleton("").length;
+      const padPerSlot = Math.ceil((target / instances - bare) / 4);
+      return skeleton("p".repeat(padPerSlot)).repeat(instances);
+    };
+    const render = async (html: string) => {
+      const wrapped = wrapRunner(
+        runnerFrom({ a: html }),
+        serverPlan("a"),
+        host,
+      );
+      const started = performance.now();
+      const out = await wrapped("a", signalOf());
+      return { out, elapsed: performance.now() - started };
+    };
 
-    const wrapped = wrapRunner(runnerFrom({ a: html }), serverPlan("a"), host);
-    const started = performance.now();
-    const out = await wrapped("a", signalOf());
-    const elapsed = performance.now() - started;
-    expect(count(out, `class="bascik__slots-card__s"`)).toBe(instances);
-    expect(out).not.toContain("<slots-card");
-    expect(count(out, "<style>")).toBe(1);
-    expect(elapsed).toBeLessThan(500);
+    const full = outputOf(1000, 2 * 1024 * 1024);
+    expect(full.length).toBeGreaterThanOrEqual(2 * 1024 * 1024);
+    expect(count(full, "data-bascik-slot=")).toBe(4000);
+    expect(count(full, "<i>")).toBe(16000);
+    const quarter = outputOf(250, (2 * 1024 * 1024) / 4);
+
+    // A wall-clock bound alone flakes on shared CI runners (591 ms against a
+    // 500 ms bound once), so the test measures how time grows instead: a
+    // quarter-size render, then the full one. Linear work roughly quadruples
+    // (ratio about 4); the quadratic passes this guards against grew about 16
+    // times. Warm up first so JIT compilation is not charged to the small run.
+    await render(quarter);
+    const small = await render(quarter);
+    const large = await render(full);
+
+    expect(count(large.out, `class="bascik__slots-card__s"`)).toBe(1000);
+    expect(large.out).not.toContain("<slots-card");
+    expect(count(large.out, "<style>")).toBe(1);
+    expect(large.elapsed / Math.max(small.elapsed, 1)).toBeLessThan(8);
+    // Catastrophic regressions (seconds per request) still fail outright.
+    expect(large.elapsed).toBeLessThan(5000);
   });
 });
 
