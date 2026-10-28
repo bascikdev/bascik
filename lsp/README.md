@@ -65,23 +65,6 @@ end
 lspconfig.bascik.setup{}
 ```
 
-### Zed
-
-In your Zed settings:
-
-```json
-{
-  "lsp": {
-    "bascik": {
-      "binary": {
-        "path": "npx",
-        "arguments": ["@bascik/language-server", "--stdio"]
-      }
-    }
-  }
-}
-```
-
 ### Claude Code / AI Agents
 
 Claude Code, Cursor, and AI agents supporting the Model Context Protocol (MCP) or standard language server communication can launch `bascik-language-server --stdio` as an external language server process to query component contracts, props, and diagnostics programmatically.

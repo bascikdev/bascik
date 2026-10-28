@@ -124,25 +124,6 @@ end
 lspconfig.bascik.setup{}
 ```
 
-### Zed
-
-Add the language server binary to your Zed settings:
-
-```json
-{
-  "lsp": {
-    "bascik": {
-      "binary": {
-        "path": "npx",
-        "arguments": ["@bascik/language-server", "--stdio"]
-      }
-    }
-  }
-}
-```
-
----
-
 ## Suppressing Warnings
 
 ### In-File Comments
@@ -199,4 +180,4 @@ To configure diagnostics project-wide, create a `bascik.ext.json` or `bascik.ext
 
 ## Architecture Note (LSP)
 
-Under the hood, `@bascik/language-server` is an implementation of Microsoft's **Language Server Protocol (LSP)**. This means the exact same analysis engine powers the command-line linter, the VS Code extension, and editor plugins for Neovim and Zed.
+Under the hood, `@bascik/language-server` is an implementation of Microsoft's **Language Server Protocol (LSP)**. This means the exact same analysis engine powers the command-line linter, the VS Code extension, and editor plugins for Neovim.
