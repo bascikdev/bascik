@@ -113,6 +113,40 @@ export interface AnalyzeOptions {
   directive: "server" | "stream" | "build" | "routes";
 }
 
+// Keywords after which a `/` starts a regex literal rather than a division.
+const REGEX_AFTER_KEYWORD =
+  /(?:^|[^\w$])(?:return|typeof|case|do|else|in|of|new|delete|void|throw|instanceof|yield|await)$/;
+
+// A `/` starts a regex literal when nothing before it can end an expression.
+// Without this, a quote inside /"/g would open a string that swallows the
+// `export default` after it.
+function regexCanStart(cleaned: string): boolean {
+  const before = cleaned.trimEnd();
+  if (before === "") return true;
+  if (/[(,=:[!&|?{};+\-*%<>~^]$/.test(before)) return true;
+  return REGEX_AFTER_KEYWORD.test(before);
+}
+
+function skipRegexLiteral(source: string, start: number): number {
+  let i = start + 1;
+  let inClass = false;
+  while (i < source.length && source[i] !== "\n") {
+    if (source[i] === "\\") i += 2;
+    else if (inClass) {
+      if (source[i] === "]") inClass = false;
+      i++;
+    } else if (source[i] === "[") {
+      inClass = true;
+      i++;
+    } else if (source[i] === "/") {
+      i++;
+      while (i < source.length && /[a-z]/i.test(source[i])) i++;
+      return i;
+    } else i++;
+  }
+  return i;
+}
+
 function hasDefaultExport(source: string): boolean {
   let cleaned = "";
   let i = 0;
@@ -127,6 +161,9 @@ function hasDefaultExport(source: string): boolean {
         i++;
       i = Math.min(i + 2, source.length);
       cleaned += " ";
+    } else if (source[i] === "/" && regexCanStart(cleaned)) {
+      i = skipRegexLiteral(source, i);
+      cleaned += " 0 ";
     } else if (source[i] === '"' || source[i] === "'") {
       const q = source[i];
       i++;

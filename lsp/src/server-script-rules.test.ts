@@ -17,6 +17,50 @@ describe("Server Script Diagnostics", () => {
       );
     });
 
+    // A quote, backtick or slash pair inside a regex literal must not start a
+    // string or comment that swallows the export after it.
+    it.each([
+      [
+        "a quote in a regex literal",
+        `const escape = (s) => s.replace(/"/g, "&quot;");\nexport default () => escape("x");`,
+      ],
+      [
+        "an apostrophe in a regex literal",
+        `const t = (s) => s.replace(/'/g, "&#39;");\nexport default () => t("x");`,
+      ],
+      [
+        "a backtick in a regex literal",
+        "const t = (s) => s.replace(/`/g, '');\nexport default () => t('x');",
+      ],
+      [
+        "an escaped slash and a class with a slash",
+        `const parts = (u) => u.split(/\\//).filter((p) => /[/"]/.test(p));\nexport default () => parts("a/b");`,
+      ],
+      [
+        "a regex after return",
+        `function q(s) { return /"/.test(s); }\nexport default () => String(q("x"));`,
+      ],
+    ])("finds export default after %s", (_name, body) => {
+      const diags = analyzeServerScriptSource(body, {
+        hasSrcAttribute: false,
+        directive: "server",
+      });
+      expect(
+        diags.filter((d) => d.code === "server-script-missing-default-export"),
+      ).toEqual([]);
+    });
+
+    it("still reports a missing export when division is not a regex", () => {
+      const body = `const half = 10 / 2; const q = half / 5; // "export default" in a comment\n`;
+      const diags = analyzeServerScriptSource(body, {
+        hasSrcAttribute: false,
+        directive: "server",
+      });
+      expect(diags.map((d) => d.code)).toContain(
+        "server-script-missing-default-export",
+      );
+    });
+
     it("does not fail when hasSrcAttribute is true or export default exists", () => {
       const withExport = `export default async (request) => "<p>ok</p>";`;
       const diags1 = analyzeServerScriptSource(withExport, {
