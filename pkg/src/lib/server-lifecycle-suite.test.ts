@@ -604,7 +604,50 @@ describe("startHttp2Server – port auto-increment", () => {
   });
 });
 
+// A signal handler reaches `exit` a few ticks after it runs: the shutdown
+// handlers and server.close() settle first. A test that restored its
+// process.exit mock straight after calling the handler let that exit reach
+// the real process.exit after the test ended (Vitest refuses it with "process.exit
+// unexpectedly called", which the shutdown then logged as a handler error). In
+// a plain worker that would have ended the worker. Every shutdown test waits
+// for its exit with `untilExited`, and `guardRealExit` fails a test whose
+// shutdown still reaches the real process.exit once it has finished.
+const settleTicks = async (ticks = 20): Promise<void> => {
+  for (let i = 0; i < ticks; i++) await new Promise((r) => setImmediate(r));
+};
+
+const untilExited = async (
+  mockExit: ReturnType<typeof vi.spyOn>,
+): Promise<void> => {
+  for (let i = 0; i < 50 && mockExit.mock.calls.length === 0; i++)
+    await new Promise((r) => setImmediate(r));
+  expect(mockExit).toHaveBeenCalled();
+};
+
+const guardRealExit = (): void => {
+  const realExitErrors: string[] = [];
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    realExitErrors.length = 0;
+    const original = console.error.bind(console);
+    errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation((...args: unknown[]) => {
+        const text = args.map(String).join(" ");
+        if (text.includes("process.exit unexpectedly called"))
+          realExitErrors.push(text);
+        else original(...args);
+      });
+  });
+  afterEach(async () => {
+    await settleTicks();
+    errorSpy.mockRestore();
+    expect(realExitErrors).toEqual([]);
+  });
+};
+
 describe("startHttp2Server – graceful shutdown", () => {
+  guardRealExit();
   const registeredHandlers: Map<string, (() => void)[]> = new Map();
   let processOnceSpy: ReturnType<typeof vi.spyOn>;
 
@@ -650,6 +693,7 @@ describe("startHttp2Server – graceful shutdown", () => {
     sigTermHandler();
     expect(mockServer.close).toHaveBeenCalled();
     expect(runShutdownHandlers).toHaveBeenCalled();
+    await untilExited(mockExit);
     mockExit.mockRestore();
   });
 
@@ -668,6 +712,7 @@ describe("startHttp2Server – graceful shutdown", () => {
     sigIntHandler();
     expect(mockServer.close).toHaveBeenCalled();
     expect(runShutdownHandlers).toHaveBeenCalled();
+    await untilExited(mockExit);
     mockExit.mockRestore();
   });
 
@@ -688,6 +733,7 @@ describe("startHttp2Server – graceful shutdown", () => {
     sigIntHandler();
     sigTermHandler(); // second signal during shutdown: must be a no-op
     expect(mockServer.close).toHaveBeenCalledTimes(1);
+    await untilExited(mockExit);
     mockExit.mockRestore();
   });
 
@@ -765,6 +811,7 @@ describe("startHttp2Server – graceful shutdown", () => {
       );
     sigIntHandler();
     expect(mockSession.close).toHaveBeenCalled();
+    await untilExited(mockExit);
     mockExit.mockRestore();
   });
 
@@ -782,6 +829,7 @@ describe("startHttp2Server – graceful shutdown", () => {
     sigIntHandler();
     await Promise.resolve();
     expect(mockExit).toHaveBeenCalledWith(0);
+    await untilExited(mockExit);
     mockExit.mockRestore();
   });
 });
@@ -957,6 +1005,7 @@ describe("startHttp2Server – custom cert config error", () => {
 });
 
 describe("startServerInstance signal handler cleanup", () => {
+  guardRealExit();
   it("attaches process signal handlers on start and removes them when server closes", async () => {
     const processOnceSpy = vi.spyOn(process, "once");
     const processRemoveListenerSpy = vi.spyOn(process, "removeListener");
@@ -1034,6 +1083,7 @@ describe("startServerInstance signal handler cleanup", () => {
     sigIntHandler!();
 
     expect(mockServerWithCloseAll.closeIdleConnections).toHaveBeenCalled();
+    await untilExited(mockExit);
     mockExit.mockRestore();
   });
 

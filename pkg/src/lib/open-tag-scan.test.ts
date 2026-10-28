@@ -73,19 +73,79 @@ import type { BascikComponent, ComponentList } from "./types.ts";
 // the cubic ones. Build-time scans of authored files went the same way.
 //
 // Each case below runs a hostile input of at least 200k characters (1M for
-// the lazy `[\s\S]*?>` scans, which V8 runs fast per opener) against a bound
-// that is generous for a linear scan and far below the old times.
+// the lazy `[\s\S]*?>` scans, which V8 runs fast per opener) and a quarter of
+// that, and requires the time to grow linearly. A fixed wall-clock bound
+// (250 ms) flaked on shared CI runners under coverage (251, 257 and 300 ms),
+// and locally under CPU load, on scans that take about 100 ms when the
+// machine is idle. Growth does not depend on the machine's speed: quadrupling
+// the input roughly quadruples linear work, while the quadratic scans grew
+// about 16 times and the cubic ones about 64. Each size is timed several
+// times, interleaved, and the fastest run counts, so a run that loses the CPU
+// to another process does not decide the ratio.
 
 const SIZE = 200_000;
-const BOUND_MS = 250;
+/** Linear work grows about 4 times when the input quadruples. */
+const MAX_GROWTH = 8;
+/**
+ * Below this, a quarter-size run is timer and scheduling noise, not work:
+ * ratios are taken against at least this many milliseconds.
+ */
+const NOISE_FLOOR_MS = 5;
+/**
+ * Catastrophic regressions fail outright: the old quadratic scans took
+ * seconds at a quarter of this size, the cubic ones minutes.
+ */
+const CEILING_MS = 2_000;
+const SAMPLES = 3;
 
-const repeatTo = (unit: string, size = SIZE): string =>
+const repeatTo = (unit: string, size: number): string =>
   unit.repeat(Math.ceil(size / unit.length));
 
-const timed = <T>(run: () => T): { value: T; ms: number } => {
-  const start = performance.now();
-  const value = run();
-  return { value, ms: performance.now() - start };
+/**
+ * The CPU time `run` takes, in milliseconds. Wall-clock time also counts the
+ * time the process waits for a CPU: under load a 100 ms run is preempted
+ * about as often as the machine is oversubscribed, while a 10 ms run often
+ * fits in one scheduler slice, which doubled the measured growth of linear
+ * scans with eight busy processes on eight cores.
+ */
+const cpuMs = (run: () => unknown): number => {
+  const start = process.cpuUsage();
+  run();
+  const { user, system } = process.cpuUsage(start);
+  return (user + system) / 1000;
+};
+
+/**
+ * Times `run` on a quarter-size and a full-size input: one warm-up run of
+ * the small one so JIT compilation is not charged to it, then `SAMPLES`
+ * interleaved runs of each, keeping the fastest.
+ */
+const measureGrowth = (
+  input: (size: number) => string,
+  size: number,
+  run: (html: string) => unknown,
+  clock: (run: () => unknown) => number = cpuMs,
+): { smallMs: number; largeMs: number; growth: number } => {
+  const small = input(size / 4);
+  const large = input(size);
+  clock(() => run(small));
+  let smallMs = Infinity;
+  let largeMs = Infinity;
+  for (let i = 0; i < SAMPLES; i++) {
+    smallMs = Math.min(
+      smallMs,
+      clock(() => run(small)),
+    );
+    largeMs = Math.min(
+      largeMs,
+      clock(() => run(large)),
+    );
+  }
+  return {
+    smallMs,
+    largeMs,
+    growth: largeMs / Math.max(smallMs, NOISE_FLOOR_MS),
+  };
 };
 
 const components: ComponentList = Object.freeze({
@@ -104,19 +164,22 @@ const quiet = (): void => {};
 interface HostileCase {
   /** The site, as `file: what`. */
   site: string;
-  input: string;
+  /** The hostile input at `size` characters or more. */
+  input: (size: number) => string;
+  /** Defaults to `SIZE`. */
+  size?: number;
   run: (html: string) => unknown;
 }
 
 const requestTimeCases: HostileCase[] = [
   {
     site: "component-slots: named slot wrapper (cubic)",
-    input: repeatTo("<a data-bascik-slot=a "),
+    input: (size) => repeatTo("<a data-bascik-slot=a ", size),
     run: (html) => extractNamedSlotContent(html),
   },
   {
     site: "component-slots: named slot wrapper with a quoted marker",
-    input: repeatTo(`<a data-bascik-slot="s" x='`),
+    input: (size) => repeatTo(`<a data-bascik-slot="s" x='`, size),
     run: (html) => [
       extractDefaultSlotContent(html),
       replaceNamedSlots(html, { s: "S" }),
@@ -124,12 +187,13 @@ const requestTimeCases: HostileCase[] = [
   },
   {
     site: "component-slots: default slot marker (cubic)",
-    input: `<b data-bascik-slot="side">${repeatTo("<a data-bascik-slot ")}'</b>`,
+    input: (size) =>
+      `<b data-bascik-slot="side">${repeatTo("<a data-bascik-slot ", size)}'</b>`,
     run: (html) => replaceDefaultSlots(html, "x"),
   },
   {
     site: "component-tags: matching close finder",
-    input: `<b data-bascik-slot="side">${repeatTo("<b ")}'</b>`,
+    input: (size) => `<b data-bascik-slot="side">${repeatTo("<b ", size)}'</b>`,
     run: (html) => [
       extractNamedSlotContent(html),
       createMatchingCloseFinder(html, html)("b", 0),
@@ -137,7 +201,7 @@ const requestTimeCases: HostileCase[] = [
   },
   {
     site: "component-tags: findMatchingClose",
-    input: `<my-card>${repeatTo("<my-card ")}'</my-card>`,
+    input: (size) => `<my-card>${repeatTo("<my-card ", size)}'</my-card>`,
     run: (html) => [
       getFirstComponent(html, components),
       findMatchingClose(html, "my-card", 9),
@@ -145,12 +209,13 @@ const requestTimeCases: HostileCase[] = [
   },
   {
     site: "component-tags: open tag search",
-    input: `${repeatTo("<my-card ")}'>`,
+    input: (size) => `${repeatTo("<my-card ", size)}'>`,
     run: (html) => getFirstComponent(html, components),
   },
   {
     site: "component-tags: component list search (lazy)",
-    input: repeatTo("<my-card x", 1_000_000),
+    size: 1_000_000,
+    input: (size) => repeatTo("<my-card x", size),
     run: (html) => [
       mayContainComponent(html, components),
       getFirstComponent(html, components),
@@ -158,22 +223,23 @@ const requestTimeCases: HostileCase[] = [
   },
   {
     site: "component-tags: self-closing fallback (lazy)",
-    input: repeatTo("<my-card x", 1_000_000),
+    size: 1_000_000,
+    input: (size) => repeatTo("<my-card x", size),
     run: (html) => getTag(html, "my-card"),
   },
   {
     site: "component-tags: replaceTag self-closing fallback",
-    input: repeatTo("<my-card x"),
+    input: (size) => repeatTo("<my-card x", size),
     run: (html) => replaceTag(html, "my-card", "T"),
   },
   {
     site: "component-inheritance: root tag of slot content",
-    input: repeatTo("<a x"),
+    input: (size) => repeatTo("<a x", size),
     run: (html) => mergeAttributesOntoRoot(html, { class: "k" }),
   },
   {
     site: "component-inheritance: a root tag holding a run of spaces",
-    input: `<div${" ".repeat(SIZE)}>`,
+    input: (size) => `<div${" ".repeat(size)}>`,
     run: (html) => [
       mergeAttributesOntoRoot(html, { class: "k", title: "t" }),
       extractInheritableAttributes(html),
@@ -181,27 +247,27 @@ const requestTimeCases: HostileCase[] = [
   },
   {
     site: "component-props: injectProps receivers",
-    input: `${repeatTo("<a x")} data-bascik-prop-t`,
+    input: (size) => `${repeatTo("<a x", size)} data-bascik-prop-t`,
     run: (html) => injectProps(html, { t: "v" }),
   },
   {
     site: "component-props: unfilled markers, no whitespace and no >",
-    input: `${repeatTo("<a/")}data-bascik-prop-`,
+    input: (size) => `${repeatTo("<a/", size)}data-bascik-prop-`,
     run: (html) => injectProps(html, {}),
   },
   {
     site: "component-props: unfilled markers, quoted and no whitespace",
-    input: `${repeatTo("<a'x'")}data-bascik-prop-`,
+    input: (size) => `${repeatTo("<a'x'", size)}data-bascik-prop-`,
     run: (html) => injectProps(html, {}),
   },
   {
     site: "component-props: injectPropAttributes",
-    input: `${repeatTo("<a '")}data-bascik-attr-`,
+    input: (size) => `${repeatTo("<a '", size)}data-bascik-attr-`,
     run: (html) => injectPropAttributes(html, { t: "v" }, undefined, quiet),
   },
   {
     site: "component-props: extractProps (anchored, linear before too)",
-    input: `${repeatTo("<a '")} data-bascik-prop-`,
+    input: (size) => `${repeatTo("<a '", size)} data-bascik-prop-`,
     run: (html) => extractProps(html, quiet),
   },
 ];
@@ -210,23 +276,23 @@ const buildTimeCases: HostileCase[] = [
   ...["<style x", "<textarea x", "<script x", "<!--", "<script>"].map(
     (unit): HostileCase => ({
       site: `directive-source: ${JSON.stringify(unit)}`,
-      input: `${repeatTo(unit)} data-bascik-server`,
+      input: (size) => `${repeatTo(unit, size)} data-bascik-server`,
       run: (html) => stampDirectiveSources(html, "page.html"),
     }),
   ),
   {
     site: "script-source-lines: stamp and strip",
-    input: `${repeatTo("<script x")} data-bascik-script-line`,
+    input: (size) => `${repeatTo("<script x", size)} data-bascik-script-line`,
     run: (html) => [stampScriptLines(html), stripScriptLines(html)],
   },
   {
     site: "shielding: preserved attribute tag scan",
-    input: `${repeatTo("<a '")} data-bascik-preserve`,
+    input: (size) => `${repeatTo("<a '", size)} data-bascik-preserve`,
     run: (html) => shieldPreservedAttribute(html, "id"),
   },
   {
     site: "shielding: wildcard preserve entry",
-    input: repeatTo("<vendor-a x"),
+    input: (size) => repeatTo("<vendor-a x", size),
     run: (html) => [
       shieldElementContents(html, ["vendor-*"]),
       maskElementContents(html, ["*-a"]),
@@ -234,7 +300,7 @@ const buildTimeCases: HostileCase[] = [
   },
   {
     site: "id-references: opening tags",
-    input: `${repeatTo("<a x")} id="i"`,
+    input: (size) => `${repeatTo("<a x", size)} id="i"`,
     run: (html) => [
       collectDeclaredIds(html),
       rewriteIdReferencesInHtml(html, () => "z"),
@@ -246,7 +312,7 @@ const buildTimeCases: HostileCase[] = [
     "<script data-bascik-stream>",
   ].map((unit): HostileCase => ({
     site: `server-scripts and server-sidecar: ${JSON.stringify(unit)} (cubic)`,
-    input: repeatTo(unit),
+    input: (size) => repeatTo(unit, size),
     run: (html) => [
       htmlHasServerScripts(html),
       sourceHasServerScripts(html),
@@ -257,7 +323,8 @@ const buildTimeCases: HostileCase[] = [
   })),
   {
     site: "component-manifest: open tags, build and request scripts",
-    input: repeatTo("<script data-bascik-server data-bascik-build x"),
+    input: (size) =>
+      repeatTo("<script data-bascik-server data-bascik-build x", size),
     run: (html) => [
       __manifestScansForTests.inheritanceRootShifted(html, html),
       __manifestScansForTests.classifyBindings(`${html} data-bascik-attr-`),
@@ -272,7 +339,7 @@ const buildTimeCases: HostileCase[] = [
     ["data-bascik-build", "data-bascik-build-once"],
   ].map((names): HostileCase => ({
     site: `page-transpile, processing, components: ${names.join(" or ")} script`,
-    input: repeatTo("<script x"),
+    input: (size) => repeatTo("<script x", size),
     run: (html) => [
       scriptDirectiveFinder(names)(html),
       scriptDirectiveFinder(names, true)(html),
@@ -280,28 +347,28 @@ const buildTimeCases: HostileCase[] = [
   })),
   {
     site: "styles: id class injection (cubic)",
-    input: repeatTo("<a id=main "),
+    input: (size) => repeatTo("<a id=main ", size),
     run: (html) =>
       addIdClassesInHtml(html, [{ idName: "main", className: "k" }]),
   },
   {
     site: "styles: element class injection",
-    input: repeatTo("<div x"),
+    input: (size) => repeatTo("<div x", size),
     run: (html) => addElementClassesInHtml(html, "cmp", ["div"]),
   },
   {
     site: "styles: style blocks",
-    input: repeatTo("<style x"),
+    input: (size) => repeatTo("<style x", size),
     run: (html) => [extractInlineStyles(html), scopeInlineStyleTags(html, "c")],
   },
   {
     site: "components: companion script inlining (cubic)",
-    input: repeatTo("<script src='a' "),
+    input: (size) => repeatTo("<script src='a' ", size),
     run: (html) => __companionScriptTagsForTests(html, () => ""),
   },
   ...["<a x", "<meta x", "<script x", "<style x"].map((unit): HostileCase => ({
     site: `javascript: attribute scoping on ${JSON.stringify(unit)}`,
-    input: `${repeatTo(unit)} id="i" name="n"`,
+    input: (size) => `${repeatTo(unit, size)} id="i" name="n"`,
     run: (html) => [
       prefixElementAttribute(component(html), "id", "i1"),
       prefixElementAttribute(component(html), "name", "i1"),
@@ -310,12 +377,12 @@ const buildTimeCases: HostileCase[] = [
   })),
   {
     site: "site-graph: placeholder script tags",
-    input: repeatTo("<script '"),
+    input: (size) => repeatTo("<script '", size),
     run: (html) => splitDistPageIntoSegments(html),
   },
   {
     site: "check: build scripts and preserved subtrees (cubic)",
-    input: repeatTo("<a data-bascik-preserve "),
+    input: (size) => repeatTo("<a data-bascik-preserve ", size),
     run: (html) => [
       __checkScansForTests.extractBuildScripts(html),
       __checkScansForTests.maskPreservedSubtrees(html),
@@ -323,7 +390,7 @@ const buildTimeCases: HostileCase[] = [
   },
   ...["<title x", "<script x", "<style x"].map((unit): HostileCase => ({
     site: `csp-hashes: regex fallback on ${JSON.stringify(unit)}`,
-    input: repeatTo(unit),
+    input: (size) => repeatTo(unit, size),
     run: (html) => [
       __cspRegexFallbackForTests(html),
       computePageCspHashes(html),
@@ -331,24 +398,73 @@ const buildTimeCases: HostileCase[] = [
   })),
 ];
 
+const expectLinear = ({ input, size = SIZE, run }: HostileCase): void => {
+  expect(input(size).length).toBeGreaterThanOrEqual(size);
+  const { largeMs, growth } = measureGrowth(input, size, run);
+  expect(growth).toBeLessThan(MAX_GROWTH);
+  expect(largeMs).toBeLessThan(CEILING_MS);
+};
+
 describe("open-tag scans take linear time on hostile input", () => {
   it.each(requestTimeCases.map((c) => [c.site, c] as const))(
     "request time: %s",
-    (_site, { input, run }) => {
-      expect(input.length).toBeGreaterThanOrEqual(SIZE);
-      const { ms } = timed(() => run(input));
-      expect(ms).toBeLessThan(BOUND_MS);
-    },
+    (_site, hostile) => expectLinear(hostile),
   );
 
   it.each(buildTimeCases.map((c) => [c.site, c] as const))(
     "build time: %s",
-    (_site, { input, run }) => {
-      expect(input.length).toBeGreaterThanOrEqual(SIZE);
-      const { ms } = timed(() => run(input));
-      expect(ms).toBeLessThan(BOUND_MS);
-    },
+    (_site, hostile) => expectLinear(hostile),
   );
+});
+
+describe("measureGrowth", () => {
+  // A fake clock charges each run a cost of its input length, and adds a
+  // stall of 300 ms to every other full-size run, the way a CPU-starved
+  // runner loses the CPU to another process now and then.
+  const fakeClock = (cost: (n: number) => number) => {
+    let stalled = false;
+    let length = 0;
+    const clock = (fn: () => unknown): number => {
+      fn();
+      let ms = cost(length);
+      if (length === SIZE && !stalled) {
+        stalled = true;
+      } else if (length === SIZE && stalled) {
+        stalled = false;
+        ms += 300;
+      }
+      return ms;
+    };
+    const run = (html: string) => {
+      length = html.length;
+    };
+    return { clock, run };
+  };
+  const input = (size: number) => "x".repeat(size);
+
+  it("passes linear work even when a CPU-starved run stalls for 300 ms", () => {
+    const { clock, run } = fakeClock((n) => n / 2_000);
+    const { growth, largeMs } = measureGrowth(input, SIZE, run, clock);
+    expect(largeMs).toBe(100);
+    expect(growth).toBe(4);
+  });
+
+  it("the old fixed 250 ms bound failed that same stalled run", () => {
+    // Without repeated samples the stalled run is the measurement.
+    const { clock, run } = fakeClock((n) => n / 2_000);
+    clock(() => run(input(SIZE)));
+    expect(clock(() => run(input(SIZE)))).toBeGreaterThan(250);
+  });
+
+  it("fails quadratic work, whose time grows 16 times", () => {
+    const { clock, run } = fakeClock((n) => (n / 2_000) ** 2 / 100);
+    expect(measureGrowth(input, SIZE, run, clock).growth).toBe(16);
+  });
+
+  it("does not divide by a quarter-size time that is only timer noise", () => {
+    const { clock, run } = fakeClock((n) => (n === SIZE ? 20 : 0.01));
+    expect(measureGrowth(input, SIZE, run, clock).growth).toBe(4);
+  });
 });
 
 // The scans find exactly what the regexes found (differential fuzzing against

@@ -1397,6 +1397,23 @@ test.describe("Dev Server Startup Output", () => {
   });
 });
 
+/**
+ * The environment for a dev server a test starts itself in this fixture.
+ * The Playwright worker carries the lane's BASCIK_E2E_OUT (dist-dev), which
+ * is the lane's own dev server's output directory: a child booting into it
+ * cleared it while that server was writing there, failed with "ENOTEMPTY:
+ * directory not empty, rmdir", and exited during boot (seen as a 20 s wait
+ * for "Server running at" under yarn pkg:e2e:all). Each child gets its own.
+ */
+const childServerEnv = (port: string): NodeJS.ProcessEnv => ({
+  ...process.env,
+  BASCIK_SERVER_PORT: port,
+  BASCIK_E2E_OUT: childServerOut(port),
+});
+const childServerOut = (port: string): string => `dist-dev-child-${port}`;
+const removeChildServerOut = (port: string): Promise<void> =>
+  rm(join(e2eDir, childServerOut(port)), { recursive: true, force: true });
+
 const stopChildServer = async (
   child: ReturnType<typeof spawn>,
 ): Promise<void> => {
@@ -1432,7 +1449,7 @@ test.describe("Dev Server Cold Start & Boot Loading Screen", () => {
 
     const child = spawn(process.execPath, [entryPath], {
       cwd: e2eDir,
-      env: { ...process.env, BASCIK_SERVER_PORT: port },
+      env: childServerEnv(port),
     });
     let output = "";
     let exited = false;
@@ -1486,6 +1503,7 @@ test.describe("Dev Server Cold Start & Boot Loading Screen", () => {
     } finally {
       await stopChildServer(child);
       await rm(brokenPagePath, { force: true });
+      await removeChildServerOut(port);
     }
   });
 
@@ -1550,7 +1568,7 @@ export default async function () {
       await writeFile(gatePagePath, gatePage, "utf8");
       child = spawn(process.execPath, [entryPath], {
         cwd: e2eDir,
-        env: { ...process.env, BASCIK_SERVER_PORT: port },
+        env: childServerEnv(port),
       });
       const captureOutput = (data: Buffer): void => {
         output += stripVTControlCharacters(data.toString("utf8"));
@@ -1627,6 +1645,7 @@ export default async function () {
       if (child) await stopChildServer(child);
       await rm(gatePagePath, { force: true });
       await rm(gateDir, { recursive: true, force: true });
+      await removeChildServerOut(port);
     }
   });
 
@@ -1643,24 +1662,30 @@ export default async function () {
     const baseUrl = `http://localhost:${port}`;
     const child = spawn(process.execPath, [entryPath], {
       cwd: e2eDir,
-      env: { ...process.env, BASCIK_SERVER_PORT: port },
+      env: childServerEnv(port),
     });
 
-    let serverReady = false;
+    let output = "";
     const captureOutput = (data: Buffer): void => {
-      if (
-        stripVTControlCharacters(data.toString("utf8")).includes(
-          "Server running at",
-        )
-      ) {
-        serverReady = true;
-      }
+      output += stripVTControlCharacters(data.toString("utf8"));
     };
     child.stdout?.on("data", captureOutput);
     child.stderr?.on("data", captureOutput);
 
     try {
-      await expect.poll(() => serverReady, { timeout: 20000 }).toBe(true);
+      // Boot here is a few seconds even under load. A child that exits
+      // first fails at once with its output, not after the poll's timeout.
+      await expect
+        .poll(
+          () => {
+            if (child.exitCode !== null || child.signalCode !== null)
+              throw new Error(`dev server exited during boot:\n${output}`);
+            return output.includes("Server running at");
+          },
+          { timeout: 20000, message: "dev server did not finish booting" },
+        )
+        .toBe(true);
+      expect(output).toContain(`Server running at ${baseUrl}`);
 
       // Open a real page in the browser that connects the injected live-reload EventSource
       await page.goto(`${baseUrl}/server-scripts-resilience-test.html`);
@@ -1685,6 +1710,7 @@ export default async function () {
       expect(durationMs).toBeLessThan(1500);
     } finally {
       await stopChildServer(child);
+      await removeChildServerOut(port);
     }
   });
 });

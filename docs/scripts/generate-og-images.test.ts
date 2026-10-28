@@ -2,6 +2,9 @@ import { describe, it, expect, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
+import sharp from "sharp";
+import { NAV } from "../src/lib/nav.ts";
 import {
   generateOgImages,
   renderOgJpeg,
@@ -29,6 +32,17 @@ afterEach(async () => {
       .splice(0)
       .map((dir) => fs.rm(dir, { recursive: true, force: true })),
   );
+});
+
+// A fake card whose bytes differ for every SVG (fakeJpeg keeps only the
+// SVG's first characters, which every card shares).
+const uniqueRenderer = () => ({
+  render: async (svg: string) =>
+    Buffer.concat([
+      Buffer.from([0xff, 0xd8, 0xff]),
+      createHash("sha256").update(svg).digest(),
+      Buffer.from([0xff, 0xd9]),
+    ]),
 });
 
 const countingRenderer = () => {
@@ -114,6 +128,28 @@ describe("generate-og-images cache", () => {
     expect(second.rendered.length).toBe(first.rendered.length);
   });
 
+  // The cards render in chunks with Promise.all, which is parallel only if
+  // the rasterising happens off the calling thread. A synchronous
+  // `new Resvg(svg).render()` held the main thread for every card in turn:
+  // about 5 s for the site's cards on an idle machine, and past the 30 s
+  // test timeout while four e2e lanes shared the machine. The share of a
+  // render spent before the call returns is a ratio, so load does not move
+  // it: almost all of it while rasterising ran in the call, almost none now.
+  it("rasterises off the calling thread, so the chunked cards render in parallel", async () => {
+    const svg = renderOgSvg("Title", "Overview", "Description.");
+    await renderOgJpeg(svg); // load the fonts and the native module once
+    let syncMs = 0;
+    let totalMs = 0;
+    for (let i = 0; i < 3; i++) {
+      const started = performance.now();
+      const pending = renderOgJpeg(svg);
+      syncMs += performance.now() - started;
+      await pending;
+      totalMs += performance.now() - started;
+    }
+    expect(syncMs / totalMs).toBeLessThan(0.1);
+  });
+
   it("renders a real JPEG for one card", async () => {
     const jpeg = await renderOgJpeg(
       renderOgSvg("Title", "Overview", "Description."),
@@ -138,29 +174,76 @@ describe("generate-og-images", () => {
     expect(svg).toContain("bascik.dev");
   });
 
-  it("generates assets/og/*.jpg files for all pages", async () => {
-    const ogDir = await makeTemporaryDir();
+  // Every page gets a card. Rendering them all for real took about 5 s on
+  // an idle machine and up to 30 s (the test's timeout) while four e2e lanes
+  // built at once, so the fake renderer covers the full set and only the
+  // cards checked below go through the real, default renderer.
+  it("writes a card for every page, named after its path", async () => {
+    const outDir = await makeTemporaryDir();
     await generateOgImages({
-      outDir: ogDir,
-      cacheDir: await makeTemporaryDir(),
+      outDir,
+      cacheDir: false,
+      render: uniqueRenderer().render,
     });
+    const expected = [
+      "home.jpg",
+      ...NAV.flatMap((section) =>
+        section.pages
+          .filter((navPage) => !navPage.external)
+          .map(
+            (navPage) =>
+              `${navPage.href.replace(/^\//, "").replace(/\//g, "-")}.jpg`,
+          ),
+      ),
+    ].sort();
+    expect((await fs.readdir(outDir)).sort()).toEqual(expected);
+    for (const name of [
+      "home.jpg",
+      "getting-started.jpg",
+      "how-to-markdown.jpg",
+    ])
+      expect(expected).toContain(name);
+  });
 
-    const homeJpg = await fs.readFile(path.join(ogDir, "home.jpg"));
-    expect(homeJpg.length).toBeGreaterThan(0);
-    expect(homeJpg.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
+  it("renders real 1200x630 JPEGs with the default renderer", async () => {
+    // Fill the cache with a fake card per page, each with distinct bytes so
+    // a card can be traced back to its cache entry, then remove the entries
+    // of the cards checked here: the default renderer renders exactly those.
+    const cacheDir = await makeTemporaryDir();
+    const seededOut = await makeTemporaryDir();
+    await generateOgImages({
+      outDir: seededOut,
+      cacheDir,
+      render: uniqueRenderer().render,
+    });
+    const seeded = await readCards(seededOut);
+    const cacheEntries = await readCards(cacheDir);
+    const checked = ["home.jpg", "getting-started.jpg", "how-to-markdown.jpg"];
+    for (const name of checked) {
+      const entry = [...cacheEntries].find(([, bytes]) =>
+        bytes.equals(seeded.get(name)!),
+      );
+      expect(entry, name).toBeDefined();
+      await fs.rm(path.join(cacheDir, entry![0]));
+    }
 
-    const gettingStartedJpg = await fs.readFile(
-      path.join(ogDir, "getting-started.jpg"),
-    );
-    expect(gettingStartedJpg.length).toBeGreaterThan(0);
-    expect(gettingStartedJpg.subarray(0, 3)).toEqual(
-      Buffer.from([0xff, 0xd8, 0xff]),
-    );
+    const ogDir = await makeTemporaryDir();
+    await generateOgImages({ outDir: ogDir, cacheDir });
+    const cards = await readCards(ogDir);
 
-    const markdownJpg = await fs.readFile(
-      path.join(ogDir, "how-to-markdown.jpg"),
-    );
-    expect(markdownJpg.length).toBeGreaterThan(0);
-    expect(markdownJpg.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
-  }, 30000);
+    for (const name of checked) {
+      const jpeg = cards.get(name)!;
+      expect(jpeg.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
+      expect(jpeg.equals(seeded.get(name)!)).toBe(false);
+      const { format, width, height } = await sharp(jpeg).metadata();
+      expect({ format, width, height }).toEqual({
+        format: "jpeg",
+        width: 1200,
+        height: 630,
+      });
+    }
+    // Every other card came from the cache untouched.
+    for (const [name, bytes] of seeded)
+      if (!checked.includes(name)) expect(cards.get(name)).toEqual(bytes);
+  });
 });

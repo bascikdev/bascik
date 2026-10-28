@@ -51,7 +51,24 @@ export const runTranspile = async (
     await assertProductionBuildState("targeted-build");
   }
   if (!isTargetedBuild) {
-    await rm(outputDirectory, { recursive: true, force: true });
+    // Another process writing this directory (a second dev server in the
+    // project, a build beside a running dev server) adds files while the
+    // removal walks it, and rmdir fails with ENOTEMPTY. Do not retry: a retry
+    // usually wins the race and deletes the other process's output under it,
+    // leaving it to serve or ship a partial tree with no error. Fail loudly
+    // and say what is in the way instead of a bare ENOTEMPTY.
+    try {
+      await rm(outputDirectory, { recursive: true, force: true });
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException)?.code;
+      throw new Error(
+        `Could not clear the output directory ${outputDirectory}` +
+          `${code ? ` (${code})` : ""}: another bascik dev server or build ` +
+          `may be writing to it. Stop it, or give this one its own ` +
+          `directory.out.`,
+        { cause: err },
+      );
+    }
   }
 
   const overallStart = performance.now();

@@ -26,7 +26,7 @@ import { createRequire } from "node:module";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { availableParallelism } from "node:os";
-import { Resvg, type ResvgRenderOptions } from "@resvg/resvg-js";
+import { renderAsync, type ResvgRenderOptions } from "@resvg/resvg-js";
 import sharp from "sharp";
 import { NAV } from "../src/lib/nav.ts";
 
@@ -73,9 +73,14 @@ const JPEG_OPTIONS = {
   chromaSubsampling: "4:4:4",
 } as const;
 
-/** Render one card SVG to JPEG bytes. */
+/**
+ * Render one card SVG to JPEG bytes. Both steps run off the main thread
+ * (resvg's `renderAsync` and sharp on the libuv pool), so the chunks in
+ * `generateOgImages` really render in parallel; `new Resvg().render()` would
+ * rasterise each card on the main thread in turn. The bytes are identical.
+ */
 export async function renderOgJpeg(svg: string): Promise<Buffer> {
-  const pngBuffer = new Resvg(svg, RESVG_OPTIONS).render().asPng();
+  const pngBuffer = (await renderAsync(svg, RESVG_OPTIONS)).asPng();
   return sharp(pngBuffer).jpeg(JPEG_OPTIONS).toBuffer();
 }
 

@@ -324,6 +324,50 @@ describe("runTranspile", () => {
     expect(_mockRm).not.toHaveBeenCalled();
   });
 
+  // A dev server or build already writing the same output directory (a
+  // second `bascik` in the project, `bascik --build` beside `bascik`) adds
+  // files while the clean removes them: rmdir fails with ENOTEMPTY. The
+  // clean must not retry through that, because a retry usually wins and
+  // deletes the other process's output under it with no error anywhere.
+  it("cleans the output once and never retries through another process writing it", async () => {
+    (BascikConfig as any).isBuild = true;
+    _parallel.release();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await runTranspile();
+    } finally {
+      logSpy.mockRestore();
+    }
+    expect(_mockRm).toHaveBeenCalledTimes(1);
+    const [, options] = _mockRm.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(options).toEqual({ recursive: true, force: true });
+  });
+
+  it("names the output directory and the likely cause when the clean still fails", async () => {
+    (BascikConfig as any).isBuild = true;
+    _parallel.release();
+    const busy = Object.assign(
+      new Error("ENOTEMPTY: directory not empty, rmdir '/project/dist'"),
+      { code: "ENOTEMPTY" },
+    );
+    _mockRm.mockRejectedValueOnce(busy);
+
+    const failure = await runTranspile().then(
+      () => null,
+      (err: unknown) => err as Error & { cause?: unknown },
+    );
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure!.message).toMatch(/Could not clear the output directory/);
+    expect(failure!.message).toMatch(/[\\/]dist\b/);
+    expect(failure!.message).toMatch(/another bascik dev server or build/);
+    expect(failure!.message).toContain("ENOTEMPTY");
+    expect(failure!.cause).toBe(busy);
+    expect(_mockRunExecPhase).not.toHaveBeenCalled();
+  });
+
   it("handles server startup error gracefully when exitOnError is false", async () => {
     (BascikConfig as any).isBuild = false;
     _parallel.release();
