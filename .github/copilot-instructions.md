@@ -82,9 +82,9 @@ Five coverage files feed the testing page (`docs/src/pages/internals/testing.htm
 
 ### Public Agent Skills (`skills/`)
 
-The repo-root `skills/` folder is the source of truth for the user-facing agent skills (`bascik`, `bascik-components`, `bascik-compatibility`, `bascik-scripts`, `bascik-seo`, `bascik-config`, `bascik-testing`, `bascik-migrate`) and their `scripts/`. Skills hold rules and route to docs pages; they hold no reference copies of the docs. Example code lives once, in the repo-root `examples/` folder, rendered on `/example-components/*` docs pages and published as `/assets/examples.json` for `skills/bascik/scripts/add-example.mjs` (see `.github/instructions/docs.instructions.md`, "Examples"). It is distributed these ways: `npx skills add bascikdev/bascik` (reads GitHub), `npx skills add https://bascik.dev` (reads `/.well-known/agent-skills/index.json`), `https://bascik.dev/assets/skills.tar.gz` and `https://bascik.dev/assets/SKILL.md` (all three published by `docs/scripts/publish-agent-skill.ts`), and the `create-bascik` scaffold.
+The repo-root `skills/` folder is the source of truth for the user-facing agent skills (`bascik`, `bascik-components`, `bascik-compatibility`, `bascik-scripts`, `bascik-seo`, `bascik-config`, `bascik-testing`, `bascik-migrate`, and the opt-in `bascik-refactor`) and their `scripts/`. Skills hold rules and route to docs pages; they hold no reference copies of the docs. Example code lives once, in the repo-root `examples/` folder, rendered on `/example-components/*` docs pages and published as `/assets/examples.json` for `skills/bascik/scripts/add-example.mjs` (see `.github/instructions/docs.instructions.md`, "Examples"). It is distributed these ways: `npx skills add bascikdev/bascik` (reads GitHub), `npx skills add https://bascik.dev` (reads `/.well-known/agent-skills/index.json`), `https://bascik.dev/assets/skills.tar.gz` and `https://bascik.dev/assets/SKILL.md` (all three published by `docs/scripts/publish-agent-skill.ts`), and the `create-bascik` scaffold.
 
-- `create/assets/skills/` is a byte-identical copy enforced by `create/src/skill-sync.test.ts`. After editing `skills/`, run `yarn create:prepack` in the same task or `yarn unit:all` fails.
+- `create/assets/skills/` is a byte-identical copy of `skills/` minus the opt-in `bascik-refactor`, enforced by `create/src/skill-sync.test.ts`. New projects do not include `bascik-refactor`; readers install it with `npx skills add bascikdev/bascik --skill bascik-refactor`. After editing `skills/`, run `yarn create:prepack` in the same task or `yarn unit:all` fails.
 - `pkg/src/lib/agent-skill-config-defaults.test.ts` checks the defaults table in `skills/bascik-config/scripts/audit-config.mjs` against `pkg/src/lib/config.ts`. When a config default changes, update that table.
 - When a `pkg/src/` change alters user-facing behavior that a skill describes, update the skill in the same task. Authoring rules are in `.github/instructions/docs.instructions.md` under "Updating the Agent Skills".
 
@@ -152,9 +152,9 @@ This repo ships its own agent customizations. Know which is which before editing
 - `.github/skills/<name>/SKILL.md`: 12 project skills (Bascik-specific domain knowledge such as `bascik-css-scoping`, `bascik-server-architecture`, `bascik-playwright-e2e`). These are authored in-repo and safe to edit.
 - `.github/agents/*.agent.md`: 8 agent definitions (developer, docs, planner, PR reviewer, pre-push, profiler, regression, supervisor).
 - `.agents/skills/<name>/SKILL.md`: 3 externally sourced skills (`playwright-cli`, `specmap`, `vitest`) tracked by `skills-lock.json` with a `computedHash`. Do not hand-edit these; the lock file records their upstream source and hash.
-- `skills/<name>/SKILL.md`: 8 public, user-facing skills for people building with Bascik (not for working on this repo). See "Public Agent Skills" above.
+- `skills/<name>/SKILL.md`: 9 public, user-facing skills (8 bundled by `create-bascik`, plus the opt-in `bascik-refactor`) for people building with Bascik (not for working on this repo). See "Public Agent Skills" above.
 - Contributor skills in `.github/skills/` carry `metadata: internal: true` so `npx skills add bascikdev/bascik` does not offer them. Keep that on any new contributor skill.
-- `create/` copies the public skills into a new project at `.agents/skills/` and `.claude/skills/`.
+- `create/` copies the public skills, except `bascik-refactor`, into a new project at `.agents/skills/` and `.claude/skills/`.
 
 When a skill's guidance conflicts with this file, this file wins. When you change a skill, check whether the corresponding `docs/content/*.md` page needs the same change.
 

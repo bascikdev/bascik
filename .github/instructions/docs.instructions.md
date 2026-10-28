@@ -134,19 +134,19 @@ For a comparison, use a `diagram-row` per pair of panels. Add `data-bascik-prop-
 
 Note: `llms.txt` and search index are generated automatically when running `yarn docs:build` (or during dev server via `exec` in `docs/bascik.config.ts`). **Lifecycle/generation scripts executed by `exec` must write their generated output files directly to the output directory (`dist/`), never to the source directories (`src/`), to avoid polluting the source tree with build-time artifacts.**
 
-The public skills live in the repo-root `skills/` folder, one directory per skill (`bascik`, `bascik-components`, `bascik-compatibility`, `bascik-scripts`, `bascik-seo`, `bascik-config`, `bascik-testing`, `bascik-migrate`). That folder is the source of truth for every distribution channel:
+The public skills live in the repo-root `skills/` folder, one directory per skill (`bascik`, `bascik-components`, `bascik-compatibility`, `bascik-scripts`, `bascik-seo`, `bascik-config`, `bascik-testing`, `bascik-migrate`, and the opt-in `bascik-refactor`). That folder is the source of truth for every distribution channel:
 
 - `npx skills add bascikdev/bascik` reads it straight from GitHub.
 - `docs/scripts/publish-agent-skill.ts` (an `exec` producer) writes `/assets/skills.tar.gz`, the RFC 8615 discovery index `/.well-known/agent-skills/index.json` with one `<name>.tar.gz` per skill (so `npx skills add https://bascik.dev` works), and copies `skills/bascik/SKILL.md` to `/assets/SKILL.md`.
-- `create-bascik` bundles a copy in `create/assets/skills/`, which the scaffold copies into `.agents/skills/` and `.claude/skills/`. Refresh it with `yarn create:prepack`; `create/src/skill-sync.test.ts` fails when the copy drifts.
+- `create-bascik` bundles a copy of every skill except the opt-in `bascik-refactor` in `create/assets/skills/`, which the scaffold copies into `.agents/skills/` and `.claude/skills/`. Refresh it with `yarn create:prepack` (the `prepare` and `prepack` scripts remove `bascik-refactor` after copying); `create/src/skill-sync.test.ts` fails when the copy drifts or an opt-in skill is bundled. Readers install `bascik-refactor` with `npx skills add bascikdev/bascik --skill bascik-refactor`.
 
-**The docs are the reference; the skills are a router.** A skill holds only the must-follow rules an assistant gets wrong without them, short decision tables, and "How do I..." tables that point to docs pages (`read-doc.mjs /path`). Explanations, option lists, and code examples belong in `docs/content/`, never in a skill. There are no `references/` folders. When a docs change alters a rule, default, API, or pitfall that a skill states, update that rule in the same task. When a skill needs guidance the docs do not have, add it to the docs and link to it.
+**The docs are the reference; the skills are a router.** A skill holds only the must-follow rules an assistant gets wrong without them, short decision tables, and "How do I..." tables that point to docs pages (`read-doc.mjs /path`). Explanations, option lists, and code examples belong in `docs/content/`, never in a skill. There are no `references/` folders, except in `bascik-refactor`: its `references/` hold the prompt templates and the production-parity contract that the `/how-to/agent-migration` page hands to coding agents. When a docs change alters a rule, default, API, or pitfall that a skill states, update that rule in the same task. When a skill needs guidance the docs do not have, add it to the docs and link to it.
 
 Structure rules:
 
 - Each `SKILL.md` stays short (well under 500 lines) with prescriptive rules up front. `name` must match the directory name.
 - Every docs path a skill names (`read-doc.mjs /path`, a backticked `/path` in a "Read" column, or `https://bascik.dev/path`), including `#fragments`, must exist; `docs/scripts/skill-links.test.ts` fails otherwise. Every example a skill names must exist in `examples/`.
-- Scripts are dependency-free Node.js (22.18+) `.mjs` files that run from the user's project root. Shared helpers live in `skills/bascik/scripts/lib/`; other skills refer to `<skills-dir>/bascik/scripts/...` rather than copying them. A script that belongs to another skill stays self-contained (no imports from `bascik/scripts/lib/`), because that skill can be installed on its own.
+- Scripts are dependency-free Node.js (22.18+) `.mjs` files that run from the user's project root. The exception is `bascik-refactor`, whose scripts load Playwright and sharp from the reader's own project through `scripts/lib/project-deps.mjs` and fail with an install command when either is missing. Shared helpers live in `skills/bascik/scripts/lib/`; other skills refer to `<skills-dir>/bascik/scripts/...` rather than copying them. A script that belongs to another skill stays self-contained (no imports from `bascik/scripts/lib/`), because that skill can be installed on its own.
 
 ## Examples (`examples/`)
 
@@ -161,7 +161,7 @@ The repo-root `examples/` folder is the only copy of every example: `examples/co
 - `skills/bascik-config/scripts/audit-config.mjs` hard-codes config defaults. `pkg/src/lib/agent-skill-config-defaults.test.ts` fails when they drift from `pkg/src/lib/config.ts`; update the table when a default changes.
 - After changing a script, run it against a real project (for example `pkg/e2e/` or `docs/`) before finishing.
 - Contributor-only skills in `.github/skills/` must carry `metadata: internal: true` so `npx skills add` does not offer them. Check with `npx skills add . --list` from the repo root.
-- `docs/scripts/skill-bundle.test.ts` checks frontmatter, line counts, and relative links; the docs hygiene tests scan `skills/**/*.md` for outdated script patterns.
+- `docs/scripts/skill-bundle.test.ts` checks frontmatter (an unquoted value must not contain `: ` or ` #`, or `npx skills add` skips the skill), line counts, and relative links; the docs hygiene tests scan `skills/**/*.md` for outdated script patterns.
 
 ### Skill Authoring & Best Practices (agentskills.io)
 
