@@ -98,10 +98,17 @@ import {
   CHILD_WORKER_COUNT_VAR,
   SYSTEM_MAX_CHILD_PROCESSES,
 } from "./script-runner.ts";
-import { serverSidecarRegistry } from "./server-sidecar.ts";
-import { pageHasServerScripts } from "./server-scripts.ts";
+import {
+  serverSidecarRegistry,
+  sidecarHasPageEntries,
+} from "./server-sidecar.ts";
+import {
+  pageHasServerScripts,
+  sourceHasServerScripts,
+} from "./server-scripts.ts";
 import {
   buildComponentManifest,
+  startComponentManifest,
   type ComponentManifest,
 } from "./component-manifest.ts";
 import { loadComponentJobs } from "./request-render-node.ts";
@@ -173,6 +180,39 @@ const loadComponentList = async () => {
   }
 };
 
+/**
+ * Whether any page's own source has a server or stream script element, so
+ * the build can start the manifest before any page has compiled. A page
+ * whose server script comes from a component or a build script is caught by
+ * {@link startManifestForServerPage} when its result lands. A false positive
+ * (an element inside a comment) costs a manifest that is never taken, so it
+ * never prints. Never rejects.
+ */
+const pageSourcesHaveServerScripts = async (
+  pagePaths: string[],
+): Promise<boolean> => {
+  const found = await Promise.all(
+    pagePaths.map(async (pagePath) =>
+      sourceHasServerScripts(await readFile(pagePath, "utf8").catch(() => "")),
+    ),
+  );
+  return found.includes(true);
+};
+
+/**
+ * A build page with a server or stream script makes the site need a
+ * component manifest (prompt 157, D1): start it now, beside the pages still
+ * compiling, rather than after them. The build collects it when it writes
+ * its metadata, and its output is held until then.
+ */
+const startManifestForServerPage = (
+  scripts: Record<string, unknown> | undefined,
+  componentList: ComponentList,
+): void => {
+  if (BascikConfig.isBuild && sidecarHasPageEntries(scripts))
+    startComponentManifest(componentList, BascikConfig);
+};
+
 // ─── Dev component manifest (prompt 157, D6) ─────────────────────────────────
 //
 // In dev the request-time renderer needs the same manifest `--build` writes to
@@ -194,8 +234,18 @@ const devComponentManifests = new WeakMap<
 
 const devComponentManifest = (
   componentList: ComponentList,
+  { early = false }: { early?: boolean } = {},
 ): Promise<ComponentManifest> => {
   let pending = devComponentManifests.get(componentList);
+  if (pending && !early) {
+    // Started early, before any page asked: a failure is reported to the
+    // first page that does, then retried, as a build started by it would be.
+    const started = pending;
+    started.catch(() => {
+      if (devComponentManifests.get(componentList) === started)
+        devComponentManifests.delete(componentList);
+    });
+  }
   if (!pending) {
     // The jobs are resolved from the registry as soon as the build staged
     // them: the ids are stable across versions (name::ordinal) and the next
@@ -209,9 +259,11 @@ const devComponentManifest = (
     );
     devComponentManifests.set(componentList, pending);
     // A failed build is not kept: the next publication retries and reports
-    // it again instead of serving pages against a rejection forever.
-    pending.catch(() => {
-      if (devComponentManifests.get(componentList) === pending)
+    // it again instead of serving pages against a rejection forever. One
+    // started early is kept until a page has been told (above).
+    const started = pending;
+    started.catch(() => {
+      if (!early && devComponentManifests.get(componentList) === started)
         devComponentManifests.delete(componentList);
     });
   }
@@ -623,6 +675,7 @@ export const processPageBatch = async (
     if (result && isCurrentGeneration(job.pagePath, generation)) {
       if (result.serverScripts) {
         serverSidecarRegistry.recordScripts(result.serverScripts);
+        startManifestForServerPage(result.serverScripts, componentList!);
         const relSource = getRelativePath(job.pagePath, "pages");
         for (const id of Object.keys(result.serverScripts)) {
           ownershipTracker.recordScript(job.pagePath, relSource, id);
@@ -818,6 +871,20 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     );
   }
 
+  // Read now, acted on once the pages are handed out: the manifest's own
+  // work then fills the time the main thread waits on the page workers
+  // instead of delaying them.
+  const sourcesNeedManifest = pageSourcesHaveServerScripts(pageList);
+  const startManifestFromSources = () =>
+    void sourcesNeedManifest.then((needed) => {
+      if (!needed) return;
+      if (BascikConfig.isBuild)
+        startComponentManifest(componentList, BascikConfig);
+      // Dev: the publication's manifest, which the first server page stored
+      // would otherwise start; its failure is reported to that page.
+      else devComponentManifest(componentList, { early: true }).catch(() => {});
+    });
+
   let relativePaths: string[] = [];
 
   const expansionErrors: PageProcessingError[] = [];
@@ -898,6 +965,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
         if (result && isCurrentGeneration(job.pagePath, generation)) {
           if (result.serverScripts) {
             serverSidecarRegistry.recordScripts(result.serverScripts);
+            startManifestForServerPage(result.serverScripts, componentList);
             // Prompt 101: attribute each transferred server/stream script to its
             // owning source page so the ownership transaction can prune scripts
             // removed from a rebuilt owner while retaining untouched owners'.
@@ -969,7 +1037,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
       // previous result.
       const compileQueue = createCompileQueue(restJobs);
       const lanes = Math.min(restJobs.length, poolSize * 2);
-      await Promise.all(
+      const compiled = Promise.all(
         Array.from({ length: lanes }, async () => {
           for (let job = compileQueue.next(); job; job = compileQueue.next()) {
             const result = await runWorkerJob(job);
@@ -977,6 +1045,8 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
           }
         }),
       );
+      startManifestFromSources();
+      await compiled;
 
       reportPageErrors(pageErrors);
     } finally {
@@ -989,6 +1059,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
       .map((r) => r?.relativePagePath ?? null)
       .filter((p): p is string => p !== null);
   } else {
+    startManifestFromSources();
     relativePaths = await processPageBatch(
       allJobs,
       componentList,

@@ -193,6 +193,41 @@ describe("getFirstComponent and getTag on the request path", () => {
     expect(getFirstComponent("<plain-box></plain-box>", mutable)).toEqual({});
   });
 
+  it("misuse: a list searched, edited, then frozen is matched against its names after the edit", () => {
+    // The identity shortcut holds only for a regex built while the list was
+    // already frozen; one cached before the freeze may predate an edit.
+    const late = list();
+    expect(getFirstComponent("<srv-card></srv-card>", late).name).toBe(
+      "srv-card",
+    );
+    delete late["plain-box"];
+    late["late-box"] = { fileContent: "<p></p>" };
+    Object.freeze(late);
+    expect(getFirstComponent("<late-box></late-box>", late).name).toBe(
+      "late-box",
+    );
+    expect(mayContainComponent("<late-box></late-box>", late)).toBe(true);
+    expect(getFirstComponent("<plain-box></plain-box>", late)).toEqual({});
+  });
+
+  it("misuse: an in-place edit that keeps the key count, first and last key still re-reads the names", () => {
+    const edited: ComponentList = {
+      "a-x": { fileContent: "<i></i>" },
+      "b-x": { fileContent: "<i></i>" },
+      "c-x": { fileContent: "<i></i>" },
+    };
+    expect(getFirstComponent("<a-x></a-x>", edited).name).toBe("a-x");
+    delete edited["b-x"];
+    delete edited["c-x"];
+    edited["z-x"] = { fileContent: "<i></i>" };
+    edited["c-x"] = { fileContent: "<i></i>" };
+    expect(getFirstComponent("<p><z-x></z-x></p>", edited).name).toBe("z-x");
+    expect(mayContainComponent("<z-x></z-x>", edited)).toBe(true);
+    // A removed name never matches with no list entry behind it.
+    expect(getFirstComponent("<p><b-x></b-x></p>", edited)).toEqual({});
+    expect(mayContainComponent("<b-x></b-x>", edited)).toBe(false);
+  });
+
   it("repeated and resumed searches on one list agree with a fresh search, longest name first", () => {
     const frozen = Object.freeze(list());
     const html = `<srv-card-wide></srv-card-wide> <srv-card a="<srv-card>"></srv-card> <plain-box/>`;
@@ -2046,6 +2081,49 @@ describe("injectProps – quote-aware scanning", () => {
   it("preserves a child component prop declaration and its content", () => {
     const template = "<p data-bascik-prop-title='featured'></p>";
     expect(injectProps(template, { title: "Hi" })).toBe(template);
+  });
+
+  // Misuse lens: unbalanced quotes around a receiver. The fallback content a
+  // receiver loses can hold the quote that closes an attribute value the
+  // close finder reads the rest of the template through, so the result is
+  // the one a fresh scan of each spliced string gives (pinned against the
+  // splice-per-receiver implementation).
+  it("misuse: removed fallback content that closes a quoted value leaves the next receiver as a fresh scan does", () => {
+    expect(
+      injectProps(
+        `<x="<b data-bascik-prop-t>""</B><b data-bascik-prop-t></b>`,
+        { t: "v" },
+      ),
+    ).toBe(`<x="<b>v</B><b></b>`);
+    expect(
+      injectProps(
+        `<i' data-bascik-prop-t x='>'</i><my-card data-bascik-prop-t></my-card>`,
+        { t: "v" },
+      ),
+    ).toBe(`<i' x='>v</i><my-card></my-card>`);
+  });
+
+  it("still fills every receiver when the removed fallback holds balanced quotes in text", () => {
+    expect(
+      injectProps(
+        `<p data-bascik-prop-t>it's "quoted"</p><b data-bascik-prop-t>'</b>`,
+        { t: "v" },
+      ),
+    ).toBe(`<p>v</p><b>v</b>`);
+  });
+
+  // Misuse lens: a marker spelled with U+212A KELVIN SIGN, which
+  // toLowerCase folds to "k". The receiver test lowercases names, so the
+  // tag prefilter must never skip a tag that test accepts.
+  it("misuse: a receiver whose name has a Kelvin sign is filled, as its lowercased name matches", () => {
+    expect(injectProps(`<p data-bascik-prop-K></p>`, { k: "V" })).toBe(
+      `<p>V</p>`,
+    );
+    expect(
+      injectProps(`<p data-bascik-prop-t></p><b data-basciK-prop-t></b>`, {
+        t: "V",
+      }),
+    ).toBe(`<p>V</p><b>V</b>`);
   });
 });
 

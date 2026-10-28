@@ -948,8 +948,17 @@ export const executeBuildScripts = async (
         pageFile !== "" &&
         resolve(process.cwd(), sourceFile) !==
           resolve(process.cwd(), pageFile));
+    // A file's script run with no page at all (a component's request-time
+    // template, prompt 157) prints what a run on any page that never read its
+    // page context printed, so that page's shared record answers it too.
+    const withoutPage =
+      !options?.once &&
+      sourceFile !== "" &&
+      routeStr === "" &&
+      pageFile === "" &&
+      pagePath === "";
     const sharedKey =
-      cacheKey !== null && pageContextVaries
+      cacheKey !== null && (pageContextVaries || withoutPage)
         ? await computeScriptCacheKey(
             trimmedScript,
             scriptBaseDir,

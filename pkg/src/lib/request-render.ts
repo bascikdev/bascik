@@ -67,7 +67,10 @@ import {
   applyScopingResult,
   instantiateTemplate,
 } from "./scoping-instantiate.ts";
-import type { ComponentManifest, ManifestEntry } from "./component-manifest.ts";
+import type {
+  ComponentManifest,
+  ManifestEntry,
+} from "./component-manifest-file.ts";
 import type {
   ExecutionPlan,
   ScriptJobRunner,
@@ -585,11 +588,36 @@ const segmentContextsFor = (
         ids.push(segment.id);
       }
     }
+    __requestRenderStatsForTests.pageScans++;
     const found = fragmentContexts(page, spans);
     contexts = new Map(ids.map((id, index) => [id, found[index]]));
     planContexts.set(plan, contexts);
   }
   return contexts;
+};
+
+/** Test-only instrumentation: `minify.html` page scans made (one per plan). */
+export const __requestRenderStatsForTests = { pageScans: 0 };
+
+/**
+ * Do the renderer's per-page work for `plan` now: the component list and
+ * its compiled tag search for `manifest`, the plan's script modes, and under
+ * `minify.html` the page scan. Each is cached on its plan or manifest object
+ * and depends on nothing else, so a host calls this when it stores a page
+ * and the page's first request does not pay for it. Nothing is done for a
+ * null manifest or one with nothing to render, which `wrapRunner` returns
+ * the plain runner for anyway.
+ */
+export const prepareRenderer = (
+  plan: ExecutionPlan,
+  manifest: ComponentManifest | null | undefined,
+): void => {
+  if (!manifestHasComponents(manifest)) return;
+  // One search over a lone "<" builds the list's tag regex and has V8
+  // compile it, which it otherwise does on its first match attempt.
+  mayContainComponent("<", componentListFor(manifest));
+  planModesFor(plan);
+  if (manifest.minifyHtml) segmentContextsFor(plan);
 };
 
 /**

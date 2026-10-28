@@ -42,10 +42,9 @@
  * The manifest exists only for releases whose sidecar has page-owned server
  * or stream entries (ownership.ts); a static site never gets one.
  */
-import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { rewriteCssBasePaths } from "./base-path.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { scanWholeAttributes } from "./component-attribute-scan.ts";
@@ -86,11 +85,12 @@ import {
 } from "./scoping-template.ts";
 import {
   extractComponentScriptsToSidecar,
+  serverSidecarRegistry,
   type ServerScriptEntry,
-  type ServerScriptMode,
 } from "./server-sidecar.ts";
 import { maskElementContents } from "./shielding.ts";
 import { maskRawTextContent } from "./component-masking.ts";
+import { inOrder } from "./ordered-output.ts";
 import { deduplicateCss } from "./styles.ts";
 import type {
   BascikComponent,
@@ -98,91 +98,19 @@ import type {
   MinifyOptions,
   ScopingOptions,
 } from "./types.ts";
+import {
+  COMPONENT_MANIFEST_SCHEMA_VERSION,
+  type ComponentManifest,
+  type ManifestCss,
+  type ManifestEntry,
+  type ManifestJob,
+  type UnsupportedEntry,
+  type UnsupportedReason,
+} from "./component-manifest-file.ts";
 
-export const COMPONENT_MANIFEST_SCHEMA_VERSION = 1;
-
-export type UnsupportedReason =
-  | "attr-binding-to-scoped-attribute"
-  | "instance-scoped-server-script"
-  | "build-script-reads-page-context"
-  | "attr-src-on-directive-script"
-  | "scoping-template-unavailable";
-
-/** A server or stream script of a component, staged once in the sidecar. */
-export interface ManifestJob {
-  id: string;
-  mode: ServerScriptMode;
-  /** 1-based position among the component's server and stream scripts. */
-  ordinal: number;
-  sourceFile?: string;
-  sourceLine?: number;
-  /** The encoded `data-bascik-output-scope` the runner applies to the job's output. */
-  outputScope?: string;
-}
-
-/**
- * The component's stylesheet as the page pipeline emits it: `text` is the
- * exact bytes (dedupe -> base rewrite -> `minify.css`) and `hash` the CSP
- * hash of `<style>text</style>`. `perInstance` when the CSS embeds the
- * instance id (`url(#id)`, or `scoping.deduplicateCss: false`), in which case
- * it stays segmented in `template.cssFileContent`. Null without a stylesheet.
- */
-export type ManifestCss =
-  { text: string; hash: string } | { perInstance: true } | null;
-
-/**
- * Why a component is left unexpanded at request time. `reason` is the D7
- * category a renderer and `bascik --check` key on; `detail` says what in
- * this component triggered it (several distinct refusals share a reason, and
- * the reason alone gives the author nothing to change); `line` is the
- * 1-based line of the offending open tag in `filePath` when one is known.
- */
-export interface UnsupportedEntry {
-  reason: UnsupportedReason;
-  detail?: string;
-  line?: number;
-}
-
-export const UNSUPPORTED_REASONS: ReadonlySet<string> =
-  new Set<UnsupportedReason>([
-    "attr-binding-to-scoped-attribute",
-    "instance-scoped-server-script",
-    "build-script-reads-page-context",
-    "attr-src-on-directive-script",
-    "scoping-template-unavailable",
-  ]);
-
-export interface ManifestEntry {
-  name: string;
-  /**
-   * The component file as `bascik --check` and the dev server print it,
-   * relative to its component root (`components/card/card.html`; a root
-   * outside the project stays cwd-relative). Diagnostics only: every host
-   * prints it as recorded, so Node and workerd name the file the same way.
-   */
-  filePath: string;
-  template: ScopingTemplate | null;
-  unsupported?: UnsupportedEntry;
-  css: ManifestCss;
-  jobs: ManifestJob[];
-  /**
-   * Whether every instance emits the same style block and the same client
-   * script bodies, so one set of CSP hashes covers all of them (D5).
-   */
-  cspStable: { style: boolean; script: boolean };
-  /** The first instance's client script hashes when `cspStable.script`. */
-  scriptHashes: string[];
-}
-
-export interface ComponentManifest {
-  schema: number;
-  /** `minify.identifiers` at build time: picks the name hash at request time. */
-  identifiers: boolean;
-  minifyHtml: boolean;
-  base: string;
-  inheritAttributes: boolean;
-  components: Record<string, ManifestEntry>;
-}
+// The manifest as a file lives in component-manifest-file.ts, which serving
+// a release imports without this builder; re-exported for the build side.
+export * from "./component-manifest-file.ts";
 
 /** The config the manifest records; the build passes `BascikConfig`. */
 export interface ManifestBuildConfig {
@@ -542,26 +470,36 @@ const manifestFilePath = (fileName: string): string => {
   return projectPath;
 };
 
+/**
+ * A built entry and the sidecar entries of its server and stream scripts,
+ * which the caller records once the whole manifest is built.
+ */
+interface BuiltEntry {
+  entry: ManifestEntry;
+  staged: Record<string, ServerScriptEntry>;
+}
+
 const buildEntry = async (
   name: string,
   raw: ComponentList[string],
   ctx: BuildContext,
-): Promise<ManifestEntry> => {
+): Promise<BuiltEntry> => {
   const filePath = raw.fileName ? manifestFilePath(raw.fileName) : name;
-  const refused = (unsupported: UnsupportedEntry): ManifestEntry => ({
-    name,
-    filePath,
-    template: null,
-    unsupported,
-    css: null,
-    jobs: [],
-    cspStable: { style: false, script: false },
-    scriptHashes: [],
+  const refused = (unsupported: UnsupportedEntry): BuiltEntry => ({
+    entry: {
+      name,
+      filePath,
+      template: null,
+      unsupported,
+      css: null,
+      jobs: [],
+      cspStable: { style: false, script: false },
+      scriptHashes: [],
+    },
+    staged: {},
   });
-  const unsupported = (
-    reason: UnsupportedReason,
-    detail: string,
-  ): ManifestEntry => refused({ reason, detail });
+  const unsupported = (reason: UnsupportedReason, detail: string): BuiltEntry =>
+    refused({ reason, detail });
 
   // Decided on the component text, before anything runs: a refused component
   // runs no build script and stages nothing.
@@ -664,11 +602,14 @@ const buildEntry = async (
 
   // Server and stream scripts leave the template as placeholders; the sidecar
   // holds their source (never the manifest). The script elements are the
-  // same in both texts (checked above), so both extractions record the same
-  // entries; the sentinel's is recorded last and is what the registry keeps.
+  // same in both texts (checked above), so both extractions stage the same
+  // entries; the sentinel's are kept. Nothing is recorded in the registry
+  // here: buildComponentManifest records them once every entry is built.
   const staged: Record<string, ServerScriptEntry> = {};
-  textB = extractComponentScriptsToSidecar(textB, name, {});
-  textA = extractComponentScriptsToSidecar(textA, name, staged);
+  textB = extractComponentScriptsToSidecar(textB, name, {}, { record: false });
+  textA = extractComponentScriptsToSidecar(textA, name, staged, {
+    record: false,
+  });
 
   // The stylesheet as the page pipeline emits it (page-transpile.ts): dedupe
   // -> base rewrite -> `minify.css`, applied to the sentinel CSS before
@@ -829,13 +770,16 @@ const buildEntry = async (
   }));
 
   return {
-    name,
-    filePath,
-    template: finalTemplate,
-    css,
-    jobs,
-    cspStable: { style: styleStable, script: scriptStable },
-    scriptHashes,
+    entry: {
+      name,
+      filePath,
+      template: finalTemplate,
+      css,
+      jobs,
+      cspStable: { style: styleStable, script: scriptStable },
+      scriptHashes,
+    },
+    staged,
   };
 };
 
@@ -845,149 +789,28 @@ const buildEntry = async (
  */
 const MANIFEST_BUILD_CONCURRENCY = 8;
 
-/**
- * One task's held output: each item writes one console call or chunk. Once
- * the task's turn has been written it is `live`, so anything the task left
- * running that prints later is written at once, not lost.
- */
-interface HeldOutput {
-  writes: Array<() => void>;
-  live: boolean;
+/** Options for {@link buildComponentManifest}. */
+export interface ManifestBuildOptions {
+  /**
+   * Output is held until this settles: a build starts the manifest while
+   * pages are still compiling, and its warnings come out where a manifest
+   * built after the pages would print them (see ordered-output.ts).
+   */
+  gate?: Promise<unknown>;
 }
-const heldOutput = new AsyncLocalStorage<HeldOutput>();
-const CONSOLE_METHODS = ["log", "info", "warn", "error", "debug"] as const;
-let holdDepth = 0;
-let releaseHold: (() => void) | null = null;
-
-/**
- * Route console calls and stdout/stderr writes made inside a `heldOutput`
- * context into that context's list; everything else passes straight
- * through. Installed once however many manifest builds overlap, and put
- * back only where nothing replaced it since.
- */
-const holdOutput = (): (() => void) => {
-  if (holdDepth++ === 0) {
-    const restores: Array<() => void> = [];
-    for (const method of CONSOLE_METHODS) {
-      const original = console[method];
-      const held = (...args: unknown[]) => {
-        const slot = heldOutput.getStore();
-        if (slot && !slot.live)
-          slot.writes.push(() => original.apply(console, args));
-        else original.apply(console, args);
-      };
-      console[method] = held;
-      restores.push(() => {
-        if (console[method] === held) console[method] = original;
-      });
-    }
-    for (const stream of [process.stdout, process.stderr]) {
-      const original = stream.write;
-      const held = function (this: unknown, ...args: unknown[]) {
-        const slot = heldOutput.getStore();
-        if (!slot || slot.live)
-          return (original as (...a: unknown[]) => boolean).apply(this, args);
-        slot.writes.push(() => {
-          (original as (...a: unknown[]) => boolean).apply(stream, args);
-        });
-        return true;
-      } as typeof stream.write;
-      stream.write = held;
-      restores.push(() => {
-        if (stream.write === held) stream.write = original;
-      });
-    }
-    releaseHold = () => restores.forEach((restore) => restore());
-  }
-  return () => {
-    if (--holdDepth === 0) {
-      releaseHold?.();
-      releaseHold = null;
-    }
-  };
-};
-
-/**
- * Run `task(0..count-1)` with bounded concurrency and return the results in
- * index order, printing as a one-at-a-time loop would: each task's console
- * output and stdout/stderr are held and written in index order, as soon as
- * every earlier task has finished. When a task fails, no further task
- * starts; once the running ones settle, the output up to and including the
- * first failing task is written and its error is thrown, so what is printed
- * and thrown is what the loop would print and throw (later tasks that were
- * already running print nothing).
- */
-const inOrder = async <T>(
-  count: number,
-  task: (index: number) => Promise<T>,
-): Promise<T[]> => {
-  if (count <= 1) return Promise.all(count === 1 ? [task(0)] : []);
-  const results: T[] = new Array(count);
-  const outputs: HeldOutput[] = [];
-  const settled: boolean[] = [];
-  // A holder, so the narrowing survives the workers' writes to it.
-  const state: { failed: { index: number; error: unknown } | null } = {
-    failed: null,
-  };
-  let next = 0;
-  let flushed = 0;
-  const flush = (upTo: number) => {
-    while (flushed < upTo && settled[flushed]) {
-      const output = outputs[flushed];
-      output.live = true;
-      for (const write of output.writes) write();
-      output.writes = [];
-      flushed++;
-    }
-  };
-  const release = holdOutput();
-  try {
-    const worker = async () => {
-      while (state.failed === null && next < count) {
-        const index = next++;
-        outputs[index] = { writes: [], live: false };
-        try {
-          results[index] = await heldOutput.run(outputs[index], () =>
-            task(index),
-          );
-        } catch (error) {
-          // Read afresh: another worker may have failed during the await.
-          const prior = state.failed as { index: number } | null;
-          if (prior === null || index < prior.index)
-            state.failed = { index, error };
-        }
-        settled[index] = true;
-        flush(state.failed === null ? count : state.failed.index + 1);
-      }
-    };
-    await Promise.all(
-      Array.from(
-        { length: Math.min(MANIFEST_BUILD_CONCURRENCY, count) },
-        worker,
-      ),
-    );
-  } finally {
-    release();
-  }
-  const failure = state.failed;
-  if (failure !== null) {
-    flush(failure.index + 1);
-    throw failure.error;
-  }
-  flush(count);
-  return results;
-};
 
 /**
  * Record a manifest entry for every component in `componentList` under the
  * build config `config` (the global `BascikConfig`, which the scoping
  * pipeline also reads). Component server and stream scripts are staged in
- * `serverSidecarRegistry` as a side effect, so the caller can write them to
- * the sidecar under the `components` owner.
+ * `serverSidecarRegistry` once every entry is built, so the caller can write
+ * them to the sidecar under the `components` owner; a build that fails
+ * stages none.
  */
 export const buildComponentManifest = async (
   componentList: ComponentList,
   config: ManifestBuildConfig,
+  { gate }: ManifestBuildOptions = {},
 ): Promise<ComponentManifest> => {
   const ctx: BuildContext = {
     identifiers: Boolean(config.minify?.identifiers),
@@ -998,12 +821,15 @@ export const buildComponentManifest = async (
     cssMinifier: resolveCssMinifier(),
   };
   const names = Object.keys(componentList).sort();
-  const entries = await inOrder(names.length, (index) =>
-    buildEntry(names[index], componentList[names[index]], ctx),
+  const built = await inOrder(
+    names.length,
+    (index) => buildEntry(names[index], componentList[names[index]], ctx),
+    { concurrency: MANIFEST_BUILD_CONCURRENCY, gate },
   );
   const components: Record<string, ManifestEntry> = {};
   names.forEach((name, index) => {
-    components[name] = entries[index];
+    components[name] = built[index].entry;
+    serverSidecarRegistry.recordScripts(built[index].staged);
   });
   return {
     schema: COMPONENT_MANIFEST_SCHEMA_VERSION,
@@ -1016,166 +842,57 @@ export const buildComponentManifest = async (
 };
 
 /**
- * The CSP hashes any request-rendered instance of a manifest component can
- * contribute to a page (D5): the style hash of every component whose block
- * is the same for every instance, and the first-instance script hashes of
- * every component whose scripts are. Deduplicated and sorted.
+ * A build's manifest started while its pages are still compiling. The
+ * manifest depends only on the component list and the config, so it can
+ * run beside the page workers instead of after them; its output is held
+ * until the build takes it, so it prints where it always did.
  */
-export const manifestCspHashes = (
-  manifest: ComponentManifest,
-): { scripts: string[]; styles: string[] } => {
-  const scripts = new Set<string>();
-  const styles = new Set<string>();
-  for (const entry of Object.values(manifest.components)) {
-    if (entry.unsupported) continue;
-    if (entry.cspStable.style && entry.css && "hash" in entry.css)
-      styles.add(entry.css.hash);
-    if (entry.cspStable.script)
-      for (const hash of entry.scriptHashes) scripts.add(hash);
-  }
-  const sorted = (hashes: Set<string>) =>
-    [...hashes].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  return { scripts: sorted(scripts), styles: sorted(styles) };
-};
+let earlyManifest: {
+  componentList: ComponentList;
+  config: ManifestBuildConfig;
+  open: () => void;
+  manifest: Promise<ComponentManifest>;
+} | null = null;
 
-const sortKeysDeep = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(sortKeysDeep);
-  if (value && typeof value === "object") {
-    const sorted: Record<string, unknown> = {};
-    for (const key of Object.keys(value as Record<string, unknown>).sort())
-      sorted[key] = sortKeysDeep((value as Record<string, unknown>)[key]);
-    return sorted;
-  }
-  return value;
+/**
+ * Start building the manifest for `componentList` now, once: the build
+ * calls this as soon as a page has a server or stream script, which is what
+ * makes a manifest necessary (D1). {@link takeComponentManifest} collects it.
+ */
+export const startComponentManifest = (
+  componentList: ComponentList,
+  config: ManifestBuildConfig,
+): void => {
+  if (earlyManifest) return;
+  const gate = Promise.withResolvers<void>();
+  const manifest = buildComponentManifest(componentList, config, {
+    gate: gate.promise,
+  });
+  // Reported by takeComponentManifest; a build that fails before taking it
+  // never reports it, as a build that never built it would not.
+  manifest.catch(() => {});
+  earlyManifest = { componentList, config, open: gate.resolve, manifest };
 };
 
 /**
- * The manifest with every object's keys sorted, so `JSON.stringify` of it is
- * byte-identical across builds (D3 step 8). The ownership transaction stages
- * this through `stageJsonArtifact`; `writeComponentManifest` writes the same
- * bytes directly.
+ * The manifest for `componentList`: the one started early for this list
+ * and config, its held output written now, or one built here.
  */
-export const sortedComponentManifest = (
-  manifest: ComponentManifest,
-): ComponentManifest => sortKeysDeep(manifest) as ComponentManifest;
-
-export const componentManifestPath = (distDir: string): string =>
-  join(distDir, ".bascik", "components.json");
-
-export const writeComponentManifest = async (
-  distDir: string,
-  manifest: ComponentManifest,
-): Promise<string> => {
-  const path = componentManifestPath(distDir);
-  await mkdir(join(distDir, ".bascik"), { recursive: true });
-  await writeFile(
-    path,
-    JSON.stringify(sortedComponentManifest(manifest), null, 2),
-    "utf8",
-  );
-  return path;
-};
-
-const rebuildHint =
-  "Run `bascik --build` to regenerate dist/.bascik/components.json.";
-
-/**
- * Read `dist/.bascik/components.json`. Null when absent (a static release
- * has none); a manifest of another schema or one that does not parse is a
- * stale build and throws the rebuild message, like the sidecar.
- */
-export const readComponentManifest = async (
-  distDir: string,
-): Promise<ComponentManifest | null> => {
-  const path = componentManifestPath(distDir);
-  let raw: string;
-  try {
-    raw = await readFile(path, "utf8");
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw new Error(
-      `[bascik] component manifest at ${path} could not be read: ${(err as Error).message}. ${rebuildHint}`,
-    );
-  }
-  let parsed: Partial<ComponentManifest>;
-  try {
-    parsed = JSON.parse(raw) as Partial<ComponentManifest>;
-  } catch (err) {
-    throw new Error(
-      `[bascik] component manifest at ${path} is malformed (${(err as Error).message}). ${rebuildHint}`,
-    );
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(
-      `[bascik] component manifest at ${path} is malformed (not an object). ${rebuildHint}`,
-    );
-  }
-  if (parsed.schema !== COMPONENT_MANIFEST_SCHEMA_VERSION) {
-    // JSON.stringify keeps a string "1" distinguishable from the number 1.
-    throw new Error(
-      `[bascik] component manifest at ${path} uses schema ${JSON.stringify(parsed.schema)}, ` +
-        `but this runtime understands schema ${COMPONENT_MANIFEST_SCHEMA_VERSION}. ${rebuildHint}`,
-    );
-  }
+export const takeComponentManifest = (
+  componentList: ComponentList,
+  config: ManifestBuildConfig,
+): Promise<ComponentManifest> => {
+  const early = earlyManifest;
+  earlyManifest = null;
   if (
-    !parsed.components ||
-    typeof parsed.components !== "object" ||
-    Array.isArray(parsed.components)
+    early &&
+    early.componentList === componentList &&
+    early.config === config
   ) {
-    throw new Error(
-      `[bascik] component manifest at ${path} is malformed (no "components" member). ${rebuildHint}`,
-    );
+    early.open();
+    return early.manifest;
   }
-  // Each entry is validated here, like the sidecar loader validates its
-  // entries, so a hand-edited or truncated entry is a located rebuild message
-  // and never a TypeError in whoever dereferences it (check.ts, phase 3's
-  // renderer).
-  for (const [name, entry] of Object.entries(parsed.components)) {
-    const problem = manifestEntryProblem(entry);
-    if (problem) {
-      throw new Error(
-        `[bascik] component manifest at ${path} is malformed (entry "${name}" ${problem}). ${rebuildHint}`,
-      );
-    }
-  }
-  return parsed as ComponentManifest;
-};
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-/** What makes `entry` not a `ManifestEntry`, or null when it is one. */
-const manifestEntryProblem = (entry: unknown): string | null => {
-  if (!isPlainObject(entry)) return "is not an object";
-  if (typeof entry.name !== "string") return 'has no "name"';
-  if (typeof entry.filePath !== "string") return 'has no "filePath"';
-  if (entry.template !== null && !isPlainObject(entry.template))
-    return 'has a "template" that is neither an object nor null';
-  if (entry.unsupported !== undefined) {
-    if (!isPlainObject(entry.unsupported))
-      return 'has a malformed "unsupported"';
-    if (!UNSUPPORTED_REASONS.has(String(entry.unsupported.reason)))
-      return `has an unknown unsupported reason ${JSON.stringify(entry.unsupported.reason)}`;
-    if (
-      entry.unsupported.detail !== undefined &&
-      typeof entry.unsupported.detail !== "string"
-    )
-      return 'has a non-string "unsupported.detail"';
-    if (
-      entry.unsupported.line !== undefined &&
-      typeof entry.unsupported.line !== "number"
-    )
-      return 'has a non-numeric "unsupported.line"';
-  }
-  if (entry.css !== null && !isPlainObject(entry.css))
-    return 'has a "css" that is neither an object nor null';
-  if (!Array.isArray(entry.jobs)) return 'has no "jobs" array';
-  if (
-    !isPlainObject(entry.cspStable) ||
-    typeof entry.cspStable.style !== "boolean" ||
-    typeof entry.cspStable.script !== "boolean"
-  )
-    return 'has no "cspStable" with boolean "style" and "script"';
-  if (!Array.isArray(entry.scriptHashes)) return 'has no "scriptHashes" array';
-  return null;
+  // Started for another list (the components changed since): its output is
+  // never written, and the current list is built from scratch.
+  return buildComponentManifest(componentList, config);
 };

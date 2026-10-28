@@ -26,7 +26,7 @@ import {
   type ScriptJob,
   type ServerScriptContext,
 } from "./server-scripts.ts";
-import type { ComponentManifest } from "./component-manifest.ts";
+import type { ComponentManifest } from "./component-manifest-file.ts";
 import {
   renderFailureMessage,
   requestRoutePath,

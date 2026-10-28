@@ -116,7 +116,7 @@ Cold and warm phases describe application-cache state, not physical disk-cache s
 
 Every capture command has a 150-second deadline, which leaves cleanup time before the worker profiling test's 180-second limit. At 120 seconds the runner records its own resource state. On macOS it also writes `sample` stack reports for up to four processes in the capture's process group, so a stalled capture keeps evidence of where its threads were waiting.
 
-On POSIX systems, every command (successful, failed, interrupted, or past its deadline) settles its own process group before reporting an outcome. Remaining descendants receive termination, get 500 ms to exit, and are then force-killed, and group absence is checked within one second. The command's exit code or error is preserved, and a settlement failure is reported alongside it. Windows has no process groups, so only the leader is owned there. Cancellation stops the capture loop. This does not cover uncatchable parent termination or descendants that deliberately leave the process group.
+On POSIX systems, every command (successful, failed, interrupted, or past its deadline) settles its own process group before reporting an outcome. Remaining descendants receive termination, get 500 ms to exit, and are then force-killed, and group absence is checked within one second. On macOS a group whose remaining members have exited but are not yet reaped answers `EPERM`: it still counts as present, a signal to it is a no-op, and the check waits for the members to be reaped. The command's exit code or error is preserved, and a settlement failure is reported alongside it. Windows has no process groups, so only the leader is owned there. Cancellation stops the capture loop. This does not cover uncatchable parent termination or descendants that deliberately leave the process group.
 
 ### Event journals
 
@@ -252,6 +252,6 @@ Interruption cancels the capture and terminates its owned POSIX process group wi
 
 ## Known Platform Limitations
 
-- **Worker CPU profiling on macOS with Node 24.** Sampled page workers can block indefinitely on a process-wide native loader lock. `profile:workload` rejects worker CPU recording there, and `profile:compiler` refuses `--worker-cpu all` and `first`. `inspector` usually completes but can still stall, in which case the capture deadline stops it. Unprofiled worker execution and timelines remain available.
+- **Worker CPU profiling on macOS with Node 24.** Sampled page workers can block indefinitely on a process-wide native loader lock. `profile:workload` skips the `cpu-workers` capture there and records it under `skipped` in the manifest with the reason (a run that asks for nothing else fails), and `profile:compiler` refuses `--worker-cpu all` and `first`. `inspector` usually completes but can still stall, in which case the capture deadline stops it. Unprofiled worker execution and timelines remain available.
 - **Clinic trace joins on Node 24.** See [Clinic integration](#clinic-integration) for the `premature close` recovery.
 - **Windows.** Process-group ownership and the `sample` stack reports are POSIX and macOS features. Only the leader process is owned on Windows.

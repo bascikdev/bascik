@@ -73,6 +73,32 @@ const parseNamedSlots = (
 };
 
 /**
+ * The last parse, so the two reads of one usage's inner content (its default
+ * slot, then its named slots) scan it once. Keyed on the text and the name
+ * set; the result is only read, never changed, by the callers below.
+ */
+let lastParse: {
+  innerContent: string;
+  componentNames: ReadonlySet<string>;
+  slots: NamedSlot[];
+} | null = null;
+
+const parseNamedSlotsOnce = (
+  innerContent: string,
+  componentNames: ReadonlySet<string>,
+): NamedSlot[] => {
+  if (
+    lastParse !== null &&
+    lastParse.componentNames === componentNames &&
+    lastParse.innerContent === innerContent
+  )
+    return lastParse.slots;
+  const slots = parseNamedSlots(innerContent, componentNames);
+  lastParse = { innerContent, componentNames, slots };
+  return slots;
+};
+
+/**
  * The close tag `</tagName>` (any case, optional whitespace before `>`) that
  * starts exactly at `closeIndex`, matched in place instead of on a copy of the
  * rest of the template.
@@ -216,7 +242,7 @@ export const extractDefaultSlotContent = (
   componentNames: ReadonlySet<string> = new Set(),
 ): string => {
   if (!innerContent) return "";
-  const named = parseNamedSlots(innerContent, componentNames);
+  const named = parseNamedSlotsOnce(innerContent, componentNames);
   if (named.length === 0) return innerContent.trim();
   // Keep the text between the wrappers (document order, never overlapping)
   // and join once instead of splicing each wrapper out of the whole string.
@@ -243,7 +269,7 @@ export const extractNamedSlotContent = (
 ): Record<string, string> => {
   if (!innerContent) return {};
   const slots: Record<string, string> = {};
-  for (const { slotName, content } of parseNamedSlots(
+  for (const { slotName, content } of parseNamedSlotsOnce(
     innerContent,
     componentNames,
   )) {

@@ -48,8 +48,8 @@ import {
 import { getImportRoot } from "./import-root.ts";
 import { applyOutputScope, decodeOutputScope } from "./output-scope.ts";
 import { createNodeRenderHost } from "./request-render-node.ts";
-import { wrapRunner } from "./request-render.ts";
-import type { ComponentManifest } from "./component-manifest.ts";
+import { prepareRenderer, wrapRunner } from "./request-render.ts";
+import type { ComponentManifest } from "./component-manifest-file.ts";
 import {
   composeBufferedResponse,
   streamComposedResponse,
@@ -147,6 +147,14 @@ export const pageHasServerScripts = (html: string | Buffer): boolean =>
   createServerScriptRegex().test(
     typeof html === "string" ? html : html.toString("utf8"),
   );
+
+/**
+ * Whether a page's source text has a server or stream script element, as
+ * the build will extract it. Raw text, so a tag inside a comment counts.
+ */
+export const sourceHasServerScripts = (source: string): boolean =>
+  /data-bascik-(?:server|stream)/i.test(source) &&
+  createServerScriptRegex().test(source);
 
 /** Default execution timeout per server-script (ms). */
 export const DEFAULT_SCRIPT_TIMEOUT_MS = 30_000;
@@ -570,6 +578,19 @@ const executionPlanFor = (plan: ServerScriptPlan): ExecutionPlan => {
     executionPlans.set(plan, execution);
   }
   return execution;
+};
+
+/**
+ * Build what a request to a page with `plan` would otherwise build on its
+ * first request: the portable plan and, with a component manifest, the
+ * renderer's per-page work (prompt 157). The store calls this when it
+ * stores a page; each piece is cached on the plan or the manifest.
+ */
+export const prepareServerScriptPlan = (
+  plan: ServerScriptPlan,
+  manifest?: ComponentManifest | null,
+): void => {
+  prepareRenderer(executionPlanFor(plan), manifest);
 };
 
 /**

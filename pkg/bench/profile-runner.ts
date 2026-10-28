@@ -175,6 +175,105 @@ async function pollUntil(condition: () => boolean, milliseconds: number) {
   }
   return true;
 }
+const PROFILE_TOOLS = [
+  "control",
+  "doctor",
+  "bubbleprof",
+  "heapprofiler",
+  "0x",
+  "cpu",
+];
+const PROFILE_SCENARIOS = [
+  "http1",
+  "http2",
+  "static",
+  "dev",
+  "serial",
+  "workers",
+];
+
+/**
+ * The captures a run takes, in order. A tool or scenario name that does not exist is `invalid` (a failure: the
+ * request is wrong). A capture this platform is known not to support (native page-worker CPU on Node 24/macOS)
+ * is `skipped` with the reason, which the manifest records as a limitation instead of failing the whole run.
+ */
+export function planCaptures(
+  tools: string[],
+  scenarios: string[],
+  limitations: { workerCpu?: string },
+) {
+  const captures: Array<{
+    tool: string;
+    scenario: string;
+    encoding: string;
+    label: string;
+  }> = [];
+  const skipped: Array<{ label: string; reason: string }> = [];
+  const invalid: Array<{ label: string; error: string }> = [];
+  for (const tool of tools)
+    for (const scenario of scenarios)
+      for (const encoding of ["identity", "br"]) {
+        if (
+          ["serial", "workers", "static", "dev"].includes(scenario) &&
+          encoding === "br"
+        )
+          continue;
+        const label = `${tool}-${scenario}-${encoding}`;
+        if (!PROFILE_TOOLS.includes(tool))
+          invalid.push({ label, error: "unsupported profiler" });
+        else if (!PROFILE_SCENARIOS.includes(scenario))
+          invalid.push({ label, error: "unsupported scenario" });
+        else if (
+          tool === "cpu" &&
+          scenario === "workers" &&
+          limitations.workerCpu
+        )
+          skipped.push({ label, reason: limitations.workerCpu });
+        else captures.push({ tool, scenario, encoding, label });
+      }
+  return { captures, skipped, invalid };
+}
+
+/**
+ * Probe and signal the process group `pid` leads (or the process alone without groups).
+ *
+ * ESRCH means the group is gone. EPERM means it still has members but none this process may signal: on macOS
+ * that is a group whose remaining members have exited and wait to be reaped (a subject's children that exit with
+ * it), so the group still counts as alive, a signal to it is a no-op rather than an error, and settlement waits
+ * for the members to be reaped within its bounded poll. A member that never goes still fails the settlement
+ * there. Any other error is thrown.
+ */
+export function createGroupControl(
+  pid: number | undefined,
+  groups: boolean,
+  kill: typeof process.kill = process.kill.bind(process),
+) {
+  const target = () => (groups ? -pid! : pid!);
+  return {
+    alive(): boolean {
+      if (!pid) return false;
+      try {
+        kill(target(), 0);
+        return true;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "ESRCH") return false;
+        if (code === "EPERM") return true;
+        throw error;
+      }
+    },
+    signal(signal: NodeJS.Signals): void {
+      if (!pid) return;
+      try {
+        kill(target(), signal);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "ESRCH" && code !== "EPERM") throw error;
+      }
+    },
+  };
+}
+
 /**
  * Runs one owned command and settles its whole process group before reporting any outcome.
  *
@@ -227,28 +326,17 @@ export async function execute(
     exited.resolve({ code, signal });
   });
   child.once("close", () => closed.resolve());
+  const control = createGroupControl(child.pid, groups);
   const groupAlive = () => {
     if (!child.pid) return false;
     // Windows: no process group; Node sets exitCode/signalCode synchronously with the leader's `exit` event.
     if (!groups) return child.exitCode === null && child.signalCode === null;
-    try {
-      process.kill(-child.pid, 0);
-      return true;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === "ESRCH") return false;
-      if (code === "EPERM") return true;
-      throw error;
-    }
+    return control.alive();
   };
   const signalGroup = (signal: NodeJS.Signals) => {
     if (!child.pid) return;
     journal("group-signal", { childPid: child.pid, signal });
-    try {
-      process.kill(groups ? -child.pid : child.pid, signal);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-    }
+    control.signal(signal);
   };
   let settlement: Promise<void> | undefined;
   const settle = () =>
@@ -485,316 +573,284 @@ export async function runProfiles() {
       "Fresh and warm script/application caches do not establish OS disk-cold measurements",
     ],
   };
-  for (const tool of values.tools!.split(","))
-    for (const scenario of values.scenarios!.split(","))
-      for (const encoding of ["identity", "br"]) {
-        if (
-          ["serial", "workers", "static", "dev"].includes(scenario) &&
-          encoding === "br"
-        )
-          continue;
-        const label = `${tool}-${scenario}-${encoding}`;
-        const directory = join(root, label);
-        const project = join(directory, "project");
-        try {
-          assert(
-            [
-              "control",
-              "doctor",
-              "bubbleprof",
-              "heapprofiler",
-              "0x",
-              "cpu",
-            ].includes(tool),
-            "unsupported profiler",
-          );
-          assert(
-            ["http1", "http2", "static", "dev", "serial", "workers"].includes(
-              scenario,
-            ),
-            "unsupported scenario",
-          );
-          assert(
-            !(
-              tool === "cpu" &&
-              scenario === "workers" &&
-              workerCpuLimitation()
-            ),
-            workerCpuLimitation(),
-          );
-          await createFixture(
-            project,
-            scenario === "workers",
-            await freePort(),
-            scenario === "http2",
-          );
-          const profiles = join(directory, "profiles");
-          await mkdir(profiles, { recursive: true, mode: 0o700 });
-          if (!["dev", "serial", "workers"].includes(scenario))
-            await execute(
-              [process.execPath, subject, "prepare"],
-              project,
-              join(directory, "prepare"),
-            );
-          const target = [
+  const plan = planCaptures(
+    values.tools!.split(","),
+    values.scenarios!.split(","),
+    { workerCpu: workerCpuLimitation() },
+  );
+  failures.push(...plan.invalid);
+  for (const { label, error } of plan.invalid)
+    console.error(`${label}: ${error}`);
+  for (const { label, reason } of plan.skipped)
+    console.error(`${label}: skipped: ${reason}`);
+  if (plan.captures.length === 0 && plan.invalid.length === 0)
+    failures.push({
+      label: "(plan)",
+      error: "no requested capture can be taken on this platform; see skipped",
+    });
+  for (const { tool, scenario, encoding, label } of plan.captures) {
+    const directory = join(root, label);
+    const project = join(directory, "project");
+    try {
+      await createFixture(
+        project,
+        scenario === "workers",
+        await freePort(),
+        scenario === "http2",
+      );
+      const profiles = join(directory, "profiles");
+      await mkdir(profiles, { recursive: true, mode: 0o700 });
+      if (!["dev", "serial", "workers"].includes(scenario))
+        await execute(
+          [process.execPath, subject, "prepare"],
+          project,
+          join(directory, "prepare"),
+        );
+      const target = [
+        process.execPath,
+        ...(tool === "cpu" ? [`--import=${mainProfilePreload}`] : []),
+        subject,
+        scenario,
+        directory,
+        encoding,
+        String(rounds),
+        String(values["inject-failure"]),
+      ];
+      const clinicTool = ["doctor", "bubbleprof", "heapprofiler"].includes(
+        tool,
+      );
+      const command = clinicTool
+        ? [
             process.execPath,
-            ...(tool === "cpu" ? [`--import=${mainProfilePreload}`] : []),
-            subject,
-            scenario,
-            directory,
-            encoding,
-            String(rounds),
-            String(values["inject-failure"]),
-          ];
-          const clinicTool = ["doctor", "bubbleprof", "heapprofiler"].includes(
+            clinicCli,
             tool,
+            "--collect-only",
+            "--open=false",
+            "--dest",
+            profiles,
+            "--",
+            ...target,
+          ]
+        : tool === "0x"
+          ? [
+              process.execPath,
+              zeroCli,
+              "--tree-debug",
+              "--output-dir",
+              profiles,
+              "--",
+              ...target,
+            ]
+          : target;
+      const environment = clinicTool
+        ? clinicEnvironment()
+        : {
+            ...cleanGeneratorEnvironment(process.env),
+            ...(tool === "cpu" ? { BASCIK_PROFILE_CAPTURE_DIR: profiles } : {}),
+          };
+      await execute(command, project, join(directory, "capture"), environment);
+      let decoded;
+      const mainDataset = clinicTool
+        ? mainClinicDataset(
+            await readFile(join(directory, "capture/process.log"), "utf8"),
+            profiles,
+            tool,
+          )
+        : undefined;
+      const descendantDatasets = mainDataset
+        ? await descendantClinicDatasets(profiles, tool, mainDataset)
+        : [];
+      if (tool === "bubbleprof" || tool === "heapprofiler") {
+        assert.equal(
+          descendantDatasets.length,
+          0,
+          `descendant ${tool} datasets: ${descendantDatasets.join(", ")}`,
+        );
+        const dataset = mainDataset!;
+        decoded = await decodeClinicDataset(tool, dataset);
+        await execute(
+          [
+            process.execPath,
+            clinicCli,
+            tool,
+            "--visualize-only",
+            dataset,
+            "--open=false",
+            "--dest",
+            profiles,
+          ],
+          project,
+          join(directory, "visualize"),
+          clinicEnvironment(),
+        );
+      }
+      if (tool === "doctor") {
+        const dataset = mainDataset!;
+        for (const suffix of ["systeminfo", "traceevent", "processstat"]) {
+          const matches: string[] = (await filesUnder(dataset)).filter((path) =>
+            path.endsWith(suffix),
           );
-          const command = clinicTool
-            ? [
-                process.execPath,
-                clinicCli,
-                tool,
-                "--collect-only",
-                "--open=false",
-                "--dest",
-                profiles,
-                "--",
-                ...target,
-              ]
-            : tool === "0x"
-              ? [
-                  process.execPath,
-                  zeroCli,
-                  "--tree-debug",
-                  "--output-dir",
-                  profiles,
-                  "--",
-                  ...target,
-                ]
-              : target;
-          const environment = clinicTool
-            ? clinicEnvironment()
-            : {
-                ...cleanGeneratorEnvironment(process.env),
-                ...(tool === "cpu"
-                  ? { BASCIK_PROFILE_CAPTURE_DIR: profiles }
-                  : {}),
-              };
-          await execute(
-            command,
-            project,
-            join(directory, "capture"),
-            environment,
+          assert.equal(matches.length, 1, `missing Doctor ${suffix}`);
+          await validateArtifact(matches[0], "binary");
+          if (suffix === "processstat")
+            validateDoctorProcessStat(await readFile(matches[0]), matches[0]);
+        }
+        await execute(
+          [
+            process.execPath,
+            clinicCli,
+            "doctor",
+            "--visualize-only",
+            dataset,
+            "--open=false",
+            "--dest",
+            profiles,
+          ],
+          project,
+          join(directory, "visualize"),
+          clinicEnvironment(),
+        );
+      }
+      const artifact = await validateArtifact(
+        join(directory, "result.json"),
+        "json",
+      );
+      const result = JSON.parse(await readFile(artifact.path, "utf8"));
+      if (result.compression) {
+        validateCompression(result.compression, encoding === "br" ? 9 : 0);
+        for (const phase of result.phaseMetrics) {
+          validateCompression(
+            phase.compression,
+            encoding === "br" ? (phase.phase === "distinct-assets" ? 9 : 1) : 0,
           );
-          let decoded;
-          const mainDataset = clinicTool
-            ? mainClinicDataset(
-                await readFile(join(directory, "capture/process.log"), "utf8"),
-                profiles,
-                tool,
-              )
-            : undefined;
-          const descendantDatasets = mainDataset
-            ? await descendantClinicDatasets(profiles, tool, mainDataset)
-            : [];
-          if (tool === "bubbleprof" || tool === "heapprofiler") {
-            assert.equal(
-              descendantDatasets.length,
-              0,
-              `descendant ${tool} datasets: ${descendantDatasets.join(", ")}`,
-            );
-            const dataset = mainDataset!;
-            decoded = await decodeClinicDataset(tool, dataset);
-            await execute(
-              [
-                process.execPath,
-                clinicCli,
-                tool,
-                "--visualize-only",
-                dataset,
-                "--open=false",
-                "--dest",
-                profiles,
-              ],
-              project,
-              join(directory, "visualize"),
-              clinicEnvironment(),
-            );
-          }
-          if (tool === "doctor") {
-            const dataset = mainDataset!;
-            for (const suffix of ["systeminfo", "traceevent", "processstat"]) {
-              const matches: string[] = (await filesUnder(dataset)).filter(
-                (path) => path.endsWith(suffix),
-              );
-              assert.equal(matches.length, 1, `missing Doctor ${suffix}`);
-              await validateArtifact(matches[0], "binary");
-              if (suffix === "processstat")
-                validateDoctorProcessStat(
-                  await readFile(matches[0]),
-                  matches[0],
-                );
-            }
-            await execute(
-              [
-                process.execPath,
-                clinicCli,
-                "doctor",
-                "--visualize-only",
-                dataset,
-                "--open=false",
-                "--dest",
-                profiles,
-              ],
-              project,
-              join(directory, "visualize"),
-              clinicEnvironment(),
-            );
-          }
-          const artifact = await validateArtifact(
-            join(directory, "result.json"),
-            "json",
-          );
-          const result = JSON.parse(await readFile(artifact.path, "utf8"));
-          if (result.compression) {
-            validateCompression(result.compression, encoding === "br" ? 9 : 0);
-            for (const phase of result.phaseMetrics) {
-              validateCompression(
-                phase.compression,
-                encoding === "br"
-                  ? phase.phase === "distinct-assets"
-                    ? 9
-                    : 1
-                  : 0,
-              );
-              if (phase.phase === "distinct-assets")
-                assert(
-                  phase.filesystemProbe.completed > 0 &&
-                    phase.filesystemProbe.active === 0,
-                  "filesystem pressure probe must complete and settle",
-                );
-            }
-          }
-          const artifacts = [artifact];
-          const coverage: (ProcessCoverage & Record<string, unknown>)[] = [
-            {
-              role: "main",
-              pid: result.pid,
-              tool,
-              startup: true,
-              steadyState: true,
-            },
-          ];
-          const cpuAttribution: object[] = [];
-          for (const path of await filesUnder(profiles)) {
-            artifacts.push(
-              await validateArtifact(
-                path,
-                path.endsWith(".cpuprofile")
-                  ? "cpu"
-                  : path.endsWith(".json")
-                    ? "json"
-                    : path.endsWith(".html")
-                      ? "html"
-                      : "binary",
-              ),
-            );
-            if (path.endsWith(".metadata.json")) {
-              const entry = JSON.parse(await readFile(path, "utf8"));
-              if (entry.role === "script-child") delete entry.threadId;
-              coverage.push({
-                ...entry,
-                tool: "node-inspector",
-                artifact: path.replace(
-                  /\.metadata\.json$/,
-                  () => ".cpuprofile",
-                ),
-              });
-            }
-            if (path.endsWith(".cpuprofile")) {
-              const profile = JSON.parse(await readFile(path, "utf8"));
-              cpuAttribution.push({
-                path,
-                startTime: profile.startTime,
-                endTime: profile.endTime,
-                samples: profile.samples.length,
-                hotspots: Object.fromEntries(
-                  [
-                    "processChunkSync",
-                    "brotli",
-                    "recursivelyTranspile",
-                    "transpilePage",
-                    "compileSourceTextModule",
-                  ].map((name) => [name, summarizeCpuProfile(profile, name)]),
-                ),
-              });
-            }
-          }
-          if (tool === "cpu") {
-            await validateCpuCaptureArtifacts(
-              artifacts.map((artifact) => artifact.path),
-              result.pid,
-              (result.subjectEvents ?? []).filter(
-                (event: ProcessCoverage) => event.role !== "native-child",
-              ),
-            );
-            validateProcessCoverage(
-              (result.subjectEvents ?? []).filter(
-                (event: ProcessCoverage) => event.role !== "native-child",
-              ),
-              coverage,
-            );
-            for (const event of result.subjectEvents ?? [])
-              if (event.role === "native-child")
-                coverage.push({
-                  ...event,
-                  captured: false,
-                  tool: "none",
-                  limitation:
-                    "native child requires separately authorized kernel profiling",
-                });
-          } else
-            for (const event of result.subjectEvents ?? [])
-              coverage.push({
-                ...event,
-                tool: "none",
-                captured: false,
-                limitation: "separate Node CPU capture required",
-              });
-          if (clinicTool || tool === "0x")
+          if (phase.phase === "distinct-assets")
             assert(
-              artifacts.some((item) => item.path.endsWith(".html")),
-              "missing rendered capture",
+              phase.filesystemProbe.completed > 0 &&
+                phase.filesystemProbe.active === 0,
+              "filesystem pressure probe must complete and settle",
             );
-          const config = await readFile(
-            join(project, "bascik.config.ts"),
-            "utf8",
-          );
-          captures.push({
-            label,
-            tool,
-            scenario,
-            encoding,
-            config,
-            configSha256: digest(config),
-            result,
-            artifacts,
-            coverage,
-            cpuAttribution,
-            decoded,
-            mainDataset,
-            descendantDatasets,
-          });
-        } catch (error) {
-          if (error instanceof CaptureCanceled) throw error;
-          failures.push({ label, error: String(error) });
-          console.error(`${label}: ${error}`);
         }
       }
+      const artifacts = [artifact];
+      const coverage: (ProcessCoverage & Record<string, unknown>)[] = [
+        {
+          role: "main",
+          pid: result.pid,
+          tool,
+          startup: true,
+          steadyState: true,
+        },
+      ];
+      const cpuAttribution: object[] = [];
+      for (const path of await filesUnder(profiles)) {
+        artifacts.push(
+          await validateArtifact(
+            path,
+            path.endsWith(".cpuprofile")
+              ? "cpu"
+              : path.endsWith(".json")
+                ? "json"
+                : path.endsWith(".html")
+                  ? "html"
+                  : "binary",
+          ),
+        );
+        if (path.endsWith(".metadata.json")) {
+          const entry = JSON.parse(await readFile(path, "utf8"));
+          if (entry.role === "script-child") delete entry.threadId;
+          coverage.push({
+            ...entry,
+            tool: "node-inspector",
+            artifact: path.replace(/\.metadata\.json$/, () => ".cpuprofile"),
+          });
+        }
+        if (path.endsWith(".cpuprofile")) {
+          const profile = JSON.parse(await readFile(path, "utf8"));
+          cpuAttribution.push({
+            path,
+            startTime: profile.startTime,
+            endTime: profile.endTime,
+            samples: profile.samples.length,
+            hotspots: Object.fromEntries(
+              [
+                "processChunkSync",
+                "brotli",
+                "recursivelyTranspile",
+                "transpilePage",
+                "compileSourceTextModule",
+              ].map((name) => [name, summarizeCpuProfile(profile, name)]),
+            ),
+          });
+        }
+      }
+      if (tool === "cpu") {
+        await validateCpuCaptureArtifacts(
+          artifacts.map((artifact) => artifact.path),
+          result.pid,
+          (result.subjectEvents ?? []).filter(
+            (event: ProcessCoverage) => event.role !== "native-child",
+          ),
+        );
+        validateProcessCoverage(
+          (result.subjectEvents ?? []).filter(
+            (event: ProcessCoverage) => event.role !== "native-child",
+          ),
+          coverage,
+        );
+        for (const event of result.subjectEvents ?? [])
+          if (event.role === "native-child")
+            coverage.push({
+              ...event,
+              captured: false,
+              tool: "none",
+              limitation:
+                "native child requires separately authorized kernel profiling",
+            });
+      } else
+        for (const event of result.subjectEvents ?? [])
+          coverage.push({
+            ...event,
+            tool: "none",
+            captured: false,
+            limitation: "separate Node CPU capture required",
+          });
+      if (clinicTool || tool === "0x")
+        assert(
+          artifacts.some((item) => item.path.endsWith(".html")),
+          "missing rendered capture",
+        );
+      const config = await readFile(join(project, "bascik.config.ts"), "utf8");
+      captures.push({
+        label,
+        tool,
+        scenario,
+        encoding,
+        config,
+        configSha256: digest(config),
+        result,
+        artifacts,
+        coverage,
+        cpuAttribution,
+        decoded,
+        mainDataset,
+        descendantDatasets,
+      });
+    } catch (error) {
+      if (error instanceof CaptureCanceled) throw error;
+      failures.push({ label, error: String(error) });
+      console.error(`${label}: ${error}`);
+    }
+  }
   await writeFile(
     join(root, "manifest.json"),
     JSON.stringify(
-      { ...metadata, success: failures.length === 0, captures, failures },
+      {
+        ...metadata,
+        success: failures.length === 0,
+        captures,
+        skipped: plan.skipped,
+        failures,
+      },
       null,
       2,
     ),

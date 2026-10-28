@@ -2,10 +2,14 @@ import zlib from "node:zlib";
 import { relative, resolve } from "node:path";
 import { getHttpPath } from "./paths.ts";
 import { eventEmitter } from "./events.ts";
-import { htmlHasServerScripts, planServerScripts } from "./server-scripts.ts";
+import {
+  htmlHasServerScripts,
+  planServerScripts,
+  prepareServerScriptPlan,
+} from "./server-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { makeEtag } from "./names.ts";
-import type { ComponentManifest } from "./component-manifest.ts";
+import type { ComponentManifest } from "./component-manifest-file.ts";
 import type { StoredPage } from "./types.ts";
 
 export const getBrotliQuality = (
@@ -161,6 +165,12 @@ class MemoryStore {
         serverScriptPlan = { error };
       }
     }
+
+    // Off the request path too: the renderer's per-page work, so the first
+    // request to this route does not pay for it (prompt 157). Outside the
+    // planner's catch: a failure here is not a plan error of the page.
+    if (serverScriptPlan && !("error" in serverScriptPlan) && componentManifest)
+      prepareServerScriptPlan(serverScriptPlan, componentManifest);
 
     const storedPage: StoredPage = {
       relativePagePath,

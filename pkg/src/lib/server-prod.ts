@@ -31,7 +31,7 @@ import {
 import {
   readComponentManifest,
   type ComponentManifest,
-} from "./component-manifest.ts";
+} from "./component-manifest-file.ts";
 import { loadComponentJobs } from "./request-render-node.ts";
 import { setServerHealthState } from "./server-lifecycle.ts";
 import {

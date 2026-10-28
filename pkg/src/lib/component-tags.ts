@@ -10,11 +10,20 @@ import { __componentScanStatsForTests } from "./component-scan-stats.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
 
 interface ComponentRegexCacheEntry {
-  keyCount: number;
-  firstKey: string | undefined;
-  lastKey: string | undefined;
+  /** The list's names, in key order, when the regex was built. */
+  keys: string[];
+  /** Whether the list was already frozen then, so it cannot have changed since. */
+  frozen: boolean;
   regex: RegExp | null;
 }
+
+/** Whether `keys` names exactly `cached` in the same order (property keys are interned). */
+const sameKeys = (keys: string[], cached: string[]): boolean => {
+  if (keys.length !== cached.length) return false;
+  for (let index = 0; index < keys.length; index++)
+    if (keys[index] !== cached[index]) return false;
+  return true;
+};
 
 const componentRegexCache = new WeakMap<
   ComponentList,
@@ -136,23 +145,15 @@ export const replaceTag = (
  */
 const componentRegexFor = (componentList: ComponentList): RegExp | null => {
   let cached = componentRegexCache.get(componentList);
-  // A frozen list (the request path's, one per manifest) cannot change, so
-  // its regex is keyed on identity alone; any other list may be edited in
-  // place between calls (the build's, in dev), so its names are re-read.
-  const rawKeys =
-    cached && Object.isFrozen(componentList)
-      ? undefined
-      : Object.keys(componentList);
-  const keyCount = rawKeys?.length;
-  const firstKey = rawKeys?.[0];
-  const lastKey = rawKeys?.[rawKeys.length - 1];
-  if (
-    rawKeys &&
-    (!cached ||
-      cached.keyCount !== keyCount ||
-      cached.firstKey !== firstKey ||
-      cached.lastKey !== lastKey)
-  ) {
+  // A list that was frozen when its regex was built (the request path's, one
+  // per manifest) cannot have changed, so it is keyed on identity alone. Any
+  // other list may have been edited in place since (the build's, in dev, or
+  // one frozen only after it was searched), so its names are re-read and
+  // compared whole: a count/first/last signature misses an edit that keeps
+  // all three.
+  if (cached?.frozen) return cached.regex;
+  const rawKeys = Object.keys(componentList);
+  if (!cached || !sameKeys(rawKeys, cached.keys)) {
     const componentNames = rawKeys
       .filter((name) => /^[a-zA-Z][\w:-]*$/.test(name))
       .sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0));
@@ -170,11 +171,16 @@ const componentRegexFor = (componentList: ComponentList): RegExp | null => {
             `<(${escapedComponentNames.join("|")})(?![\\w-])[\\s\\S]*?>`,
             "gi",
           );
-    cached = { keyCount: keyCount!, firstKey, lastKey, regex };
+    if (regex) __componentScanStatsForTests.searchesCompiled++;
+    cached = { keys: rawKeys, frozen: Object.isFrozen(componentList), regex };
     componentRegexCache.set(componentList, cached);
+  } else if (!cached.frozen && Object.isFrozen(componentList)) {
+    // Frozen since the regex was built, and its names are the ones it was
+    // built from: from here on identity is enough.
+    cached.frozen = true;
   }
 
-  return cached!.regex;
+  return cached.regex;
 };
 
 /**

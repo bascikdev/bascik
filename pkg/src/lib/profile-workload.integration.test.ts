@@ -31,6 +31,10 @@ import {
   parseCpuProfileFilename,
   harnessDigests,
 } from "../../bench/profile-workload.ts";
+import {
+  createGroupControl,
+  planCaptures,
+} from "../../bench/profile-runner.ts";
 
 const roots: string[] = [];
 async function temporaryRoot() {
@@ -485,6 +489,109 @@ describe("capture artifact integrity", () => {
     await expect(validatePrivateDirectory(outside, [repository])).resolves.toBe(
       await realpath(outside),
     );
+  });
+});
+
+describe("process group settlement and capture planning", () => {
+  const errno = (code: string) =>
+    Object.assign(new Error(`kill ${code}`), { code });
+
+  // On macOS, kill(-pgid) answers EPERM while the only members left in the
+  // group have exited and wait to be reaped (a subject's children that exit
+  // with it). Nothing is left to signal; the settlement waits for them to go.
+  it("misuse: EPERM from a group whose members have all exited is not a settlement failure", () => {
+    let probes = 0;
+    const signals: string[] = [];
+    const control = createGroupControl(4242, true, ((
+      pid: number,
+      signal: string | number,
+    ) => {
+      expect(pid).toBe(-4242);
+      if (signal === 0) {
+        if (probes++ < 2) throw errno("EPERM");
+        throw errno("ESRCH");
+      }
+      signals.push(String(signal));
+      throw errno("EPERM");
+    }) as typeof process.kill);
+    expect(control.alive()).toBe(true);
+    expect(() => control.signal("SIGTERM")).not.toThrow();
+    expect(signals).toEqual(["SIGTERM"]);
+    expect(control.alive()).toBe(true);
+    expect(control.alive()).toBe(false);
+  });
+
+  it("an error other than ESRCH or EPERM still fails the settlement", () => {
+    const control = createGroupControl(4242, true, (() => {
+      throw errno("EINVAL");
+    }) as typeof process.kill);
+    expect(() => control.alive()).toThrow(/EINVAL/);
+    expect(() => control.signal("SIGTERM")).toThrow(/EINVAL/);
+  });
+
+  it("skips a capture this platform cannot take, as a limitation, not a failure", () => {
+    const limitation = "Unsupported worker CPU capture on Node v24.21.0/macOS";
+    const plan = planCaptures(["control", "cpu"], ["static", "workers"], {
+      workerCpu: limitation,
+    });
+    expect(plan.captures.map((capture) => capture.label)).toEqual([
+      "control-static-identity",
+      "control-workers-identity",
+      "cpu-static-identity",
+    ]);
+    expect(plan.skipped).toEqual([
+      { label: "cpu-workers-identity", reason: limitation },
+    ]);
+    // Without the limitation every lane is planned.
+    expect(
+      planCaptures(["cpu"], ["workers"], {}).captures.map((c) => c.label),
+    ).toEqual(["cpu-workers-identity"]);
+  });
+
+  it.runIf(Boolean(workerCpuLimitation()))(
+    "misuse: a run that asks only for a capture this platform cannot take fails, naming the skip",
+    async () => {
+      const root = await temporaryRoot();
+      const runner = fileURLToPath(
+        new URL("../../bench/profile-workload.ts", import.meta.url),
+      );
+      await expect(
+        promisify(execFile)(
+          process.execPath,
+          [
+            runner,
+            "--tools",
+            "cpu",
+            "--scenarios",
+            "workers",
+            "--rounds",
+            "1",
+            "--report-dir",
+            root,
+          ],
+          { timeout: 60_000, env: cleanGeneratorEnvironment(process.env) },
+        ),
+      ).rejects.toThrow();
+      const manifest = JSON.parse(
+        await readFile(join(root, "manifest.json"), "utf8"),
+      );
+      expect(manifest.success).toBe(false);
+      expect(manifest.captures).toEqual([]);
+      expect(manifest.skipped).toEqual([
+        { label: "cpu-workers-identity", reason: workerCpuLimitation() },
+      ]);
+    },
+    60_000,
+  );
+
+  it("misuse: a typo'd tool or scenario is still a failure, not a skip", () => {
+    const plan = planCaptures(["cpuu"], ["http1"], {});
+    expect(plan.captures).toEqual([]);
+    expect(plan.skipped).toEqual([]);
+    expect(plan.invalid).toEqual([
+      { label: "cpuu-http1-identity", error: "unsupported profiler" },
+      { label: "cpuu-http1-br", error: "unsupported profiler" },
+    ]);
   });
 });
 

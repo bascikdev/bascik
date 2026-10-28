@@ -55,7 +55,7 @@ import {
   sidecarHasPageEntries,
   type ServerScriptsSidecar,
 } from "./server-sidecar.ts";
-import { readComponentManifest } from "./component-manifest.ts";
+import { readComponentManifest } from "./component-manifest-file.ts";
 import type { ComponentList } from "./types.ts";
 
 export type FindingSeverity = "error" | "warning";

@@ -75,11 +75,14 @@ import {
 } from "./request-execution.ts";
 import {
   RequestRenderError,
+  __requestRenderStatsForTests,
   expandByUsage,
+  prepareRenderer,
   requestRoutePath,
   wrapRunner,
   type RenderHost,
 } from "./request-render.ts";
+import { __componentScanStatsForTests } from "./component-scan-stats.ts";
 import {
   clearScopingTemplates,
   scopeComponentInstance,
@@ -2250,3 +2253,97 @@ describe.each([true, false])(
     });
   },
 );
+
+// Prompt 157 remeasure: the first request to a server or stream route paid
+// for work that depends only on the stored page and the manifest (the
+// component search's regex, the plan's script modes, the minify.html page
+// scan). prepareRenderer does it once when the page is stored.
+describe("request-time renderer: prepared at store time", () => {
+  beforeEach(() => {
+    config.minify.identifiers = false;
+    config.minify.html = false;
+  });
+
+  const pagePlan = () =>
+    planOf(
+      staticSeg("<main><p>before</p>"),
+      scriptSeg("s", "stream"),
+      staticSeg("</main>"),
+    );
+
+  it("control: without preparation, the first request compiles the component search", async () => {
+    const manifest = await build();
+    const plan = pagePlan();
+    const before = __componentScanStatsForTests.searchesCompiled;
+    const out = await wrapRunner(
+      runnerFrom({ s: "<p>plain</p>" }),
+      plan,
+      makeHost(manifest),
+    )("s", signalOf());
+    expect(out).toBe("<p>plain</p>");
+    expect(__componentScanStatsForTests.searchesCompiled).toBe(before + 1);
+  });
+
+  it("a prepared page's first request compiles no component search and renders the same bytes", async () => {
+    const manifest = await build();
+    const plan = pagePlan();
+    prepareRenderer(plan, manifest);
+    const before = __componentScanStatsForTests.searchesCompiled;
+    const run = wrapRunner(
+      runnerFrom({
+        s: '<p>plain</p><server-card data-bascik-prop-name="N"></server-card>',
+      }),
+      plan,
+      makeHost(manifest),
+    );
+    const out = await run("s", signalOf());
+    expect(__componentScanStatsForTests.searchesCompiled).toBe(before);
+    expect(out).toContain(">N</h2>");
+    expect(out).not.toContain("<server-card");
+  });
+
+  it("under minify.html the page scan runs when the page is prepared, not on its first request", async () => {
+    config.minify.html = true;
+    const manifest = await build();
+    const plan = pagePlan();
+    const scans = __requestRenderStatsForTests.pageScans;
+    prepareRenderer(plan, manifest);
+    expect(__requestRenderStatsForTests.pageScans).toBe(scans + 1);
+    await wrapRunner(
+      runnerFrom({ s: "<server-card></server-card>" }),
+      plan,
+      makeHost(manifest),
+    )("s", signalOf());
+    expect(__requestRenderStatsForTests.pageScans).toBe(scans + 1);
+  });
+
+  it("without minify.html no page scan is made", async () => {
+    const manifest = await build();
+    const scans = __requestRenderStatsForTests.pageScans;
+    prepareRenderer(pagePlan(), manifest);
+    expect(__requestRenderStatsForTests.pageScans).toBe(scans);
+  });
+
+  it("misuse: preparing the same page twice does the work once", async () => {
+    config.minify.html = true;
+    const manifest = await build();
+    const plan = pagePlan();
+    prepareRenderer(plan, manifest);
+    const searches = __componentScanStatsForTests.searchesCompiled;
+    const scans = __requestRenderStatsForTests.pageScans;
+    prepareRenderer(plan, manifest);
+    expect(__componentScanStatsForTests.searchesCompiled).toBe(searches);
+    expect(__requestRenderStatsForTests.pageScans).toBe(scans);
+  });
+
+  it("misuse: a null manifest, or one with nothing renderable, prepares nothing and does not throw", async () => {
+    const searches = __componentScanStatsForTests.searchesCompiled;
+    const scans = __requestRenderStatsForTests.pageScans;
+    expect(() => prepareRenderer(pagePlan(), null)).not.toThrow();
+    expect(() => prepareRenderer(pagePlan(), undefined)).not.toThrow();
+    const empty = await build({});
+    expect(() => prepareRenderer(pagePlan(), empty)).not.toThrow();
+    expect(__componentScanStatsForTests.searchesCompiled).toBe(searches);
+    expect(__requestRenderStatsForTests.pageScans).toBe(scans);
+  });
+});

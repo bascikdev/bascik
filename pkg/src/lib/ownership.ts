@@ -431,7 +431,7 @@ import {
   SIDECAR_SCHEMA_VERSION,
 } from "./server-sidecar.ts";
 import {
-  buildComponentManifest,
+  takeComponentManifest,
   componentManifestPath,
   manifestCspHashes,
   sortedComponentManifest,
@@ -656,7 +656,8 @@ export const finalizeOwnedArtifacts = async (
     // Regenerated fully from the current component list on every such build;
     // listComponents serves the list processAllPages loaded (before any --only
     // filter), so a targeted build of one static page sees every component.
-    componentManifest = await buildComponentManifest(
+    // Usually started while the pages compiled (startComponentManifest).
+    componentManifest = await takeComponentManifest(
       await listComponents(),
       BascikConfig,
     );

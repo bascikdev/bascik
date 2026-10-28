@@ -271,6 +271,7 @@ const extractScriptsToSidecar = (
   mintId: (ordinal: number) => string,
   outMap: Record<string, ServerScriptEntry> | undefined,
   defaultSourceFile: string | undefined,
+  recordInRegistry = true,
 ): string => {
   let scriptOrdinal = 0;
   // Whole-attribute-name boundary: a placeholder's `data-bascik-server-id` must
@@ -315,16 +316,17 @@ const extractScriptsToSidecar = (
       // from the sidecar when it splices the script's output in.
       const outputScope =
         getHtmlAttributeValue(openTag, OUTPUT_SCOPE_ATTRIBUTE) ?? undefined;
-      serverSidecarRegistry.recordScript(
-        id,
-        scriptContent,
-        srcPath,
-        scriptSourceFile,
-        sourceLine,
-        mode,
-        sourceColumn,
-        outputScope,
-      );
+      if (recordInRegistry)
+        serverSidecarRegistry.recordScript(
+          id,
+          scriptContent,
+          srcPath,
+          scriptSourceFile,
+          sourceLine,
+          mode,
+          sourceColumn,
+          outputScope,
+        );
       if (outMap) {
         outMap[id] = {
           id,
@@ -371,11 +373,14 @@ export const extractServerScriptsToSidecar = (
  * as `component_script_<hex(name::ordinal)>`, so a request-time render of the
  * component resolves its placeholder through the sidecar like a page does.
  * The source file and line come from the template's directive stamps.
+ * With `record: false` the entries go into `outMap` only, for a caller that
+ * records them once it knows they are wanted.
  */
 export const extractComponentScriptsToSidecar = (
   template: string,
   componentName: string,
   outMap?: Record<string, ServerScriptEntry>,
+  { record = true }: { record?: boolean } = {},
 ): string =>
   extractScriptsToSidecar(
     template,
@@ -383,4 +388,5 @@ export const extractComponentScriptsToSidecar = (
       `${COMPONENT_SCRIPT_ID_PREFIX}${Buffer.from(`${componentName}::${ordinal}`).toString("hex")}`,
     outMap,
     undefined,
+    record,
   );

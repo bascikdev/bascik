@@ -1,5 +1,10 @@
 import { createContentShield, shieldElementContents } from "./shielding.ts";
-import { ATTR_VALUE, scanWholeAttributes } from "./component-attribute-scan.ts";
+import {
+  ATTR_VALUE,
+  createAttributeValueScanner,
+  scanWholeAttributes,
+  type AttributeValueScanner,
+} from "./component-attribute-scan.ts";
 import {
   maskRawTextContent,
   maskRawTextContentWithClosure,
@@ -266,17 +271,33 @@ export const injectProps = (
     // each character is checked for closure once per pass.
     let source = result;
     // Built on the first receiver: most templates name a prop on few tags.
+    let masked: string | null = null;
     let finder: ((tagName: string, contentStart: number) => number) | null =
       null;
+    // The close finder decides what is inside an attribute value from the
+    // whole text before a close tag, removed content included. `stateScan`
+    // reads the same masked text, so a receiver whose removed content leaves
+    // the scanner in another state than its escaped value would (a quote
+    // that closes a value opened before it, in malformed markup) is caught
+    // and rescanned, as a fresh scan of the spliced string would see it.
+    let stateScan: AttributeValueScanner | null = null;
+    const maskedSource = (): string => (masked ??= maskRawTextContent(source));
     const findClose = (tagName: string, contentStart: number): number =>
-      (finder ??= createMatchingCloseFinder(
-        source,
-        maskRawTextContent(source),
-      ))(tagName, contentStart);
+      (finder ??= createMatchingCloseFinder(source, maskedSource()))(
+        tagName,
+        contentStart,
+      );
+    const scanStateAt = (index: number) => {
+      stateScan ??= createAttributeValueScanner(maskedSource());
+      stateScan.isInsideValue(index);
+      return stateScan.checkpoint();
+    };
     // A tag that does not contain the marker's text cannot carry it as an
     // attribute name; only a tag that does is scanned attribute by attribute.
+    // Unicode folding, so the prefilter passes every tag the lowercased
+    // name test below accepts (U+212A KELVIN SIGN lowercases to "k").
     // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    const mayCarryMarker = new RegExp(attrName, "i");
+    const mayCarryMarker = new RegExp(attrName, "iu");
     let closedThrough = 0;
     let parts: string[] = [];
     let cursor = 0;
@@ -327,36 +348,59 @@ export const injectProps = (
       parts.push(source.slice(cursor, openMatch.index), replacement);
       cursor = endIndex;
       searchIndex = endIndex;
-      if (RAW_TEXT_OR_COMMENT.test(source.slice(contentStart, closeIndex))) {
-        let prefixClosed = false;
-        let contentClosed = false;
-        if (closedThrough >= 0 && closedThrough <= contentStart) {
-          prefixClosed = maskRawTextContentWithClosure(
-            source.slice(closedThrough, contentStart),
-          ).closed;
-          contentClosed =
-            prefixClosed &&
-            maskRawTextContentWithClosure(
-              source.slice(contentStart, closeIndex),
-            ).closed;
+      const rawText = RAW_TEXT_OR_COMMENT.test(
+        source.slice(contentStart, closeIndex),
+      );
+      let prefixClosed = false;
+      let contentClosed = !rawText;
+      if (rawText && closedThrough >= 0 && closedThrough <= contentStart) {
+        prefixClosed = maskRawTextContentWithClosure(
+          source.slice(closedThrough, contentStart),
+        ).closed;
+        contentClosed =
+          prefixClosed &&
+          maskRawTextContentWithClosure(source.slice(contentStart, closeIndex))
+            .closed;
+      }
+      if (contentClosed) {
+        // The escaped value holds no `<`, quote or `>`, so in text state it
+        // leaves the scanner where it found it; in any other state, or when
+        // the removed content ends in another state, compare exactly.
+        const before = scanStateAt(contentStart);
+        const after = scanStateAt(closeIndex);
+        let agrees = before.state === "text" && after.state === "text";
+        if (!agrees) {
+          const valueScan = createAttributeValueScanner(escapedPropValue, {
+            cursor: 0,
+            state: before.state,
+            quote: before.quote,
+          });
+          valueScan.isInsideValue(escapedPropValue.length);
+          const spliced = valueScan.checkpoint();
+          agrees =
+            spliced.state === after.state && spliced.quote === after.quote;
         }
-        if (contentClosed) {
-          closedThrough = closeIndex;
+        if (agrees) {
+          if (rawText) closedThrough = closeIndex;
           continue;
         }
-        // The removed content could open or close a masked region past it:
-        // rescan the spliced string, as a splice per receiver did.
-        parts.push(source.slice(cursor));
-        const spliced = parts.join("");
-        searchIndex = spliced.length - (source.length - endIndex);
-        source = spliced;
-        finder = null;
-        // The closed text before the receiver, then its escaped value and
-        // close tag, are closed too.
-        closedThrough = prefixClosed ? searchIndex : -1;
-        parts = [];
-        cursor = 0;
       }
+      // The removed content could open or close a masked region, or change
+      // what is inside an attribute value, past it: rescan the spliced
+      // string, as a splice per receiver did.
+      parts.push(source.slice(cursor));
+      const spliced = parts.join("");
+      searchIndex = spliced.length - (source.length - endIndex);
+      source = spliced;
+      masked = null;
+      finder = null;
+      stateScan = null;
+      // The text before the receiver is unchanged. When it was checked
+      // closed here, its escaped value and close tag are closed too; without
+      // raw-text syntax in the removed content, what was known closed stays.
+      if (rawText) closedThrough = prefixClosed ? searchIndex : -1;
+      parts = [];
+      cursor = 0;
     }
     if (cursor > 0) {
       parts.push(source.slice(cursor));

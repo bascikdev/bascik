@@ -35,6 +35,7 @@ import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { format } from "node:util";
 import { transform } from "esbuild";
 
 vi.mock("./config.js", () => ({
@@ -72,10 +73,16 @@ vi.mock("./handler-runner.js", async (importOriginal) => ({
 }));
 
 import { BascikConfig } from "./config.ts";
-import { clearBuildScriptCaches } from "./build-scripts.ts";
+import {
+  clearBuildScriptCaches,
+  executeBuildScripts,
+} from "./build-scripts.ts";
+import { stampDirectiveSources } from "./directive-source.ts";
 import {
   buildComponentManifest,
   readComponentManifest,
+  startComponentManifest,
+  takeComponentManifest,
   writeComponentManifest,
   COMPONENT_MANIFEST_SCHEMA_VERSION,
   type ComponentManifest,
@@ -90,6 +97,7 @@ import {
   recursivelyTranspile,
 } from "./component-expansion.ts";
 import { computePageCspHashes } from "./csp-hashes.ts";
+import { installProcessCrashHandlers } from "./crash-net.ts";
 import { minifyCss } from "./css-minifier.ts";
 import { deriveInstanceId, getAttributeNameHash } from "./names.ts";
 import { decodeOutputScope } from "./output-scope.ts";
@@ -977,6 +985,82 @@ describe("component build scripts", () => {
     expect(html).not.toContain("data-bascik-build-once");
   });
 
+  it("a script a page already ran without reading its page context is answered from that run's cache record, not run again", async () => {
+    // The page build runs the component's script with the page's context
+    // first; its output, proven page-independent, is what the template's
+    // empty-context run would print.
+    const list = buildScriptCards();
+    const built = list["built-card"];
+    // The component as a page instance has it: scoped (with a build id).
+    const onPage = await executeBuildScripts(
+      runScopingPipeline(
+        {
+          name: "built-card",
+          ...built,
+          fileContent: stampDirectiveSources(
+            built.fileContent,
+            built.fileName!,
+          ),
+        },
+        "1a2b3c4d",
+      ).fileContent,
+      built.fileName,
+      null,
+      {
+        pageFile: "src/pages/index.html",
+        pagePath: "/",
+        sourceFile: built.fileName,
+      },
+    );
+    expect(onPage).toContain(">built</p>");
+    const runsOf = () =>
+      runDirectiveHandlerMock.mock.calls.filter(([, , options]) =>
+        String(options?.extraEnv?.BASCIK_SOURCE_FILE).includes("built-card"),
+      ).length;
+    expect(runsOf()).toBe(1);
+    // A fresh process (the dev server after a restart) has only the disk.
+    clearBuildScriptCaches();
+    const manifest = await build({ "built-card": built });
+    expect(runsOf()).toBe(1);
+    expect(entryOf(manifest, "built-card").unsupported).toBeUndefined();
+    expect(render(manifest, "built-card", REQUEST_IDS[0])).toContain(
+      `<p class="${scopedClass("built-card", "built", true)}">built</p>`,
+    );
+  });
+
+  it("misuse: a script that read its page context on a page still runs for the template, and is refused", async () => {
+    const list = buildScriptCards();
+    const ctx = list["ctx-card"];
+    runDirectiveHandlerMock.mockImplementation(async () => ({
+      result: "/",
+      stdout: "",
+      stderr: "",
+      readsPageContext: true,
+    }));
+    await executeBuildScripts(
+      runScopingPipeline(
+        {
+          name: "ctx-card",
+          ...ctx,
+          fileContent: stampDirectiveSources(ctx.fileContent, ctx.fileName!),
+        },
+        "1a2b3c4d",
+      ).fileContent,
+      ctx.fileName,
+      null,
+      {
+        pageFile: "src/pages/index.html",
+        pagePath: "/",
+        sourceFile: ctx.fileName,
+      },
+    );
+    const manifest = await build({ "ctx-card": ctx });
+    expect(runDirectiveHandlerMock).toHaveBeenCalledTimes(2);
+    expect(entryOf(manifest, "ctx-card").unsupported?.reason).toBe(
+      "build-script-reads-page-context",
+    );
+  });
+
   it("a second build is answered by the script cache (sharedKey hit): no further runs", async () => {
     await build(buildScriptCards());
     const after = runDirectiveHandlerMock.mock.calls.length;
@@ -1301,6 +1385,332 @@ describe("components are built concurrently, reported in order", () => {
     await expect(build(cards())).rejects.toThrow(/a-card\.html/);
     expect(errors.join("\n")).toContain("boom from a-card");
     expect(errors.join("\n")).not.toContain("boom from c-card");
+  });
+
+  // Misuse lens: code in a component's build (a build script handler here,
+  // a custom minifier in a project) that uses the console and streams in
+  // ways a one-at-a-time build never noticed.
+  const settlesWithin = <T>(promise: Promise<T>, ms: number) =>
+    Promise.race([
+      promise.then(
+        (value) => ({ settled: true as const, value }),
+        (error: unknown) => ({ settled: true as const, error }),
+      ),
+      sleep(ms).then(() => ({ settled: false as const })),
+    ]);
+
+  it("misuse: a component that waits for its stdout write callback finishes, while an earlier one is still running", async () => {
+    const written: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation(((
+      chunk: string | Uint8Array,
+      encoding?: unknown,
+      callback?: unknown,
+    ) => {
+      written.push(String(chunk));
+      const done = typeof encoding === "function" ? encoding : callback;
+      if (typeof done === "function") done();
+      return true;
+    }) as typeof process.stdout.write);
+    runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) => {
+      const letter = sourceOf(options);
+      await sleep(delayOf(letter));
+      await new Promise((resolve) =>
+        process.stdout.write(`cb ${letter}\n`, resolve),
+      );
+      return defaultHandler();
+    });
+    const outcome = await settlesWithin(
+      build(cards(["a-card", "b-card", "c-card"])),
+      3000,
+    );
+    expect(outcome).toMatchObject({ settled: true });
+    expect("error" in outcome ? outcome.error : undefined).toBeUndefined();
+    expect(written.filter((chunk) => chunk.startsWith("cb "))).toEqual([
+      "cb a\n",
+      "cb b\n",
+      "cb c\n",
+    ]);
+  });
+
+  it("misuse: a write the stream refuses fails inside the component that made it, naming its file, and nothing later is printed", async () => {
+    const printed: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation((message) => {
+      printed.push(String(message));
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) => {
+      const letter = sourceOf(options);
+      if (letter === "b") {
+        await sleep(5);
+        (process.stdout.write as (chunk: unknown) => boolean)(123);
+      } else {
+        await sleep(letter === "a" ? 30 : 60);
+        console.warn(`late ${letter}`);
+      }
+      return defaultHandler();
+    });
+    await expect(build(cards())).rejects.toThrow(/b-card\.html/);
+    // Components after b were already running; a loop would never have
+    // started them, so their output never comes, even once they finish.
+    await sleep(250);
+    expect(printed).toEqual(["late a"]);
+  });
+
+  it('misuse: under "error" the first failure is thrown once the components before it are done, without waiting for later ones', async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) => {
+      const letter = sourceOf(options);
+      if (letter === "b") throw new Error("boom from b-card");
+      if (letter === "c") await sleep(2000);
+      return defaultHandler();
+    });
+    const started = performance.now();
+    await expect(build(cards(["a-card", "b-card", "c-card"]))).rejects.toThrow(
+      /b-card\.html/,
+    );
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("misuse: the first component prints as it runs, so a long one shows its progress before it finishes", async () => {
+    const printed: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation((message) => {
+      printed.push(String(message));
+    });
+    runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) => {
+      const letter = sourceOf(options);
+      console.warn(`start ${letter}`);
+      await sleep(letter === "a" ? 300 : 5);
+      console.warn(`end ${letter}`);
+      return defaultHandler();
+    });
+    const pending = build(cards(["a-card", "b-card"]));
+    await sleep(100);
+    expect(printed).toEqual(["start a"]);
+    await pending;
+    expect(printed).toEqual([
+      "start a",
+      "end a",
+      "start b",
+      "end b",
+      // The second (cached) run of each prints nothing.
+    ]);
+  });
+
+  it("misuse: an object logged and then changed prints as it was when it was logged", async () => {
+    const printed: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+      printed.push(format(...args));
+    });
+    runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) => {
+      const letter = sourceOf(options);
+      await sleep(delayOf(letter));
+      const state = { n: 1 };
+      console.warn(letter, state);
+      state.n = 2;
+      return defaultHandler();
+    });
+    await build(cards(["a-card", "b-card", "c-card"]));
+    expect(printed).toEqual(["a { n: 1 }", "b { n: 1 }", "c { n: 1 }"]);
+  });
+
+  it("misuse: a crash inside a held component prints its fatal message before the process exits", async () => {
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      errors.push(format(...args));
+    });
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as typeof process.exit);
+    const before = process.listeners("uncaughtException");
+    const uninstall = installProcessCrashHandlers();
+    const handler = process
+      .listeners("uncaughtException")
+      .find((listener) => !before.includes(listener))!;
+    let seenAtExit: string[] | undefined;
+    exit.mockImplementation((() => {
+      seenAtExit = [...errors];
+    }) as unknown as typeof process.exit);
+    try {
+      runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) => {
+        const letter = sourceOf(options);
+        await sleep(delayOf(letter));
+        if (letter === "b" && seenAtExit === undefined)
+          // What Node does with a throw from a timer the component started:
+          // the handler runs in the component's context.
+          handler(new Error("crash from b-card"), "uncaughtException");
+        return defaultHandler();
+      });
+      await build(cards(["a-card", "b-card"]));
+    } finally {
+      uninstall();
+    }
+    expect(seenAtExit?.join("\n")).toContain(
+      "[bascik] Fatal uncaught exception: Error: crash from b-card",
+    );
+  });
+
+  it("misuse: a component still running after an earlier one failed prints its own fatal message, though its other output is dropped", async () => {
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      errors.push(format(...args));
+    });
+    vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+      errors.push(format(...args));
+    });
+    vi.spyOn(process, "exit").mockImplementation(
+      (() => undefined) as typeof process.exit,
+    );
+    const before = process.listeners("uncaughtException");
+    const uninstall = installProcessCrashHandlers();
+    const handler = process
+      .listeners("uncaughtException")
+      .find((listener) => !before.includes(listener))!;
+    const crashed = Promise.withResolvers<void>();
+    try {
+      runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) => {
+        const letter = sourceOf(options);
+        if (letter === "b") throw new Error("boom from b-card");
+        if (letter === "c") {
+          console.warn("dropped c");
+          await sleep(100);
+          handler(new Error("crash from c-card"), "uncaughtException");
+          crashed.resolve();
+        }
+        return defaultHandler();
+      });
+      await expect(
+        build(cards(["a-card", "b-card", "c-card"])),
+      ).rejects.toThrow(/b-card\.html/);
+      await crashed.promise;
+    } finally {
+      uninstall();
+    }
+    const printed = errors.join("\n");
+    expect(printed).toContain(
+      "[bascik] Fatal uncaught exception: Error: crash from c-card",
+    );
+    expect(printed).not.toContain("dropped c");
+  });
+
+  it("output is held until the gate opens, and the result waits for it", async () => {
+    const printed: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation((message) => {
+      printed.push(String(message));
+    });
+    runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) => {
+      console.warn(sourceOf(options));
+      return defaultHandler();
+    });
+    const gate = Promise.withResolvers<void>();
+    const pending = buildComponentManifest(
+      cards(["a-card", "b-card"]),
+      BascikConfig,
+      { gate: gate.promise },
+    );
+    const early = await settlesWithin(pending, 200);
+    expect(early.settled).toBe(false);
+    expect(printed).toEqual([]);
+    gate.resolve();
+    const manifest = await pending;
+    expect(printed).toEqual(["a", "b"]);
+    expect(Object.keys(manifest.components)).toEqual(["a-card", "b-card"]);
+  });
+
+  it("a manifest started early is the one taken, its output written only when it is taken", async () => {
+    const printed: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation((message) => {
+      printed.push(String(message));
+    });
+    let runs = 0;
+    runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) => {
+      runs++;
+      console.warn(sourceOf(options));
+      return defaultHandler();
+    });
+    const list = cards(["a-card", "b-card"]);
+    startComponentManifest(list, BascikConfig);
+    // A second start (another server page) changes nothing.
+    startComponentManifest(list, BascikConfig);
+    await sleep(150);
+    expect(runs).toBe(2);
+    expect(printed).toEqual([]);
+    const manifest = await takeComponentManifest(list, BascikConfig);
+    expect(printed).toEqual(["a", "b"]);
+    expect(runs).toBe(2);
+    expect(JSON.stringify(manifest)).toBe(
+      JSON.stringify(await build(cards(["a-card", "b-card"]))),
+    );
+  });
+
+  it("misuse: a manifest started for another list is not taken: the current list is built, and the stale one never prints", async () => {
+    const printed: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation((message) => {
+      printed.push(String(message));
+    });
+    runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) => {
+      console.warn(sourceOf(options));
+      return defaultHandler();
+    });
+    startComponentManifest(cards(["a-card", "b-card"]), BascikConfig);
+    await sleep(100);
+    const manifest = await takeComponentManifest(
+      cards(["c-card"]),
+      BascikConfig,
+    );
+    expect(Object.keys(manifest.components)).toEqual(["c-card"]);
+    await sleep(100);
+    expect(printed).toEqual(["c"]);
+  });
+
+  it("misuse: an early manifest that fails reports its error when it is taken, not before", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) => {
+      if (sourceOf(options) === "b") throw new Error("boom from b-card");
+      return defaultHandler();
+    });
+    const list = cards(["a-card", "b-card"]);
+    startComponentManifest(list, BascikConfig);
+    await sleep(100);
+    await expect(takeComponentManifest(list, BascikConfig)).rejects.toThrow(
+      /b-card\.html/,
+    );
+  });
+
+  it("takeComponentManifest builds the manifest when none was started", async () => {
+    const manifest = await takeComponentManifest(
+      cards(["a-card"]),
+      BascikConfig,
+    );
+    expect(Object.keys(manifest.components)).toEqual(["a-card"]);
+  });
+
+  it("stages component scripts in the registry only once the whole manifest is built", async () => {
+    const serverCards = (names: string[]) =>
+      Object.fromEntries(
+        names.map((name) => [
+          name,
+          {
+            fileName: `src/components/${name}.html`,
+            fileContent: `<div class="shell"><script data-bascik-server>\n// ${nonce} ${name}\nexport default () => "x";\n</script></div>`,
+          },
+        ]),
+      ) as ComponentList;
+    const gate = Promise.withResolvers<void>();
+    const pending = buildComponentManifest(
+      serverCards(["a-card", "b-card"]),
+      BascikConfig,
+      { gate: gate.promise },
+    );
+    await sleep(100);
+    expect(Object.keys(serverSidecarRegistry.getAllScripts())).toEqual([]);
+    gate.resolve();
+    const manifest = await pending;
+    const ids = Object.values(manifest.components).flatMap((entry) =>
+      entry.jobs.map((job) => job.id),
+    );
+    expect(ids).toHaveLength(2);
+    for (const id of ids)
+      expect(serverSidecarRegistry.getScript(id)?.source).toContain(nonce);
   });
 });
 

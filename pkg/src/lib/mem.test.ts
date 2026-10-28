@@ -687,6 +687,45 @@ describe("storePage carries the component manifest of its publication (prompt 15
     expect(mem.getPage("page-b")!.componentManifest).not.toBe(first);
   });
 
+  // Prompt 157 remeasure: the renderer's per-page work (the component tag
+  // search, the plan's modes) is done when the page is stored, so the first
+  // request to a server or stream route does not pay for it.
+  const renderable = () => {
+    const manifest = manifestFor("one");
+    manifest.components["server-card"].template = {
+      fileContent: ["<p>card</p>"],
+    } as never;
+    return manifest;
+  };
+
+  it("storing a server page with a renderable manifest compiles its component search then", async () => {
+    const { __componentScanStatsForTests: stats } =
+      await import("./component-scan-stats.ts");
+    const before = stats.searchesCompiled;
+    await mem.storePage({
+      relativePagePath: "prepared-page",
+      absolutePagePath: "prepared-page",
+      pageContent: SERVER_PAGE,
+      usedComponentsNames: [],
+      componentManifest: renderable(),
+    });
+    expect(stats.searchesCompiled).toBe(before + 1);
+  });
+
+  it("misuse: a static page stored with a manifest prepares nothing", async () => {
+    const { __componentScanStatsForTests: stats } =
+      await import("./component-scan-stats.ts");
+    const before = stats.searchesCompiled;
+    await mem.storePage({
+      relativePagePath: "static-with-manifest",
+      absolutePagePath: "static-with-manifest",
+      pageContent: "<p>static</p>",
+      usedComponentsNames: [],
+      componentManifest: renderable(),
+    });
+    expect(stats.searchesCompiled).toBe(before);
+  });
+
   it("a page stored without a manifest carries none, so a static site pays nothing", async () => {
     await mem.storePage({
       relativePagePath: "plain-page",
