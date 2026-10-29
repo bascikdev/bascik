@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Look up the Baseline browser support status of web platform features from the Web Platform Status API
 // (https://webstatus.dev), which is built on the web-features data that MDN and caniuse also use.
-// Dependency-free; Node.js 22.18+.
+// Dependency-free; Node.js 22.22+.
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";

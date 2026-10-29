@@ -79,7 +79,7 @@ The skills hold only what an assistant must not get wrong: target per-instance e
 
 ## Scripts the Assistant Runs
 
-The skills include dependency-free Node.js scripts (Node 22.18 or newer). The assistant runs them from the project root, and they use the project's own installed Bascik. The `bascik-refactor` scripts also load Playwright and sharp from your project, so install them as dev dependencies when you use those scripts. [Migrating with Coding Agents](/how-to/agent-migration) shows the scripts in order.
+The skills include dependency-free Node.js scripts (Node 22.22 or newer). The assistant runs them from the project root, and they use the project's own installed Bascik. The `bascik-refactor` scripts also load Playwright and sharp from your project, so install them as dev dependencies when you use those scripts. [Migrating with Coding Agents](/how-to/agent-migration) shows the scripts in order.
 
 | Script                                               | What it does                                                                                                                                                                                                   |
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

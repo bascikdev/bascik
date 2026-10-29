@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Audit a project's bascik.config for values that restate defaults and for common mistakes.
-// Dependency-free; Node.js 22.18+ (loads bascik.config.ts natively). Run from the project root.
+// Dependency-free; Node.js 22.22+ (loads bascik.config.ts natively). Run from the project root.
 import { existsSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";

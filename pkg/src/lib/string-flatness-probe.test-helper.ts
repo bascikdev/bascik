@@ -10,7 +10,7 @@
  *
  * WHY the support flag: `%StringIsFlat` first shipped in V8 13.6, which Node
  * 24.0.0 bundles. Every Node 22.x release ships V8 12.4, where compiling the
- * probe throws. The published package floor is Node 22.18, so the probe is
+ * probe throws. The published package floor is Node 22.22, so the probe is
  * detected once at module load and the tests that need it skip (rather than
  * fail) below Node 24 via `stringFlatnessProbeSupported`.
  */

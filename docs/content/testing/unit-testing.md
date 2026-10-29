@@ -1,6 +1,6 @@
 # Unit Testing
 
-Unit testing in Bascik focuses on verifying pure functions, utility modules, data transformers, and business logic in isolation. Because Node 24 and Node 22.18+ natively execute TypeScript files by erasing type annotations, Vitest executes unit tests directly against `.ts` files with zero build delay.
+Unit testing in Bascik focuses on verifying pure functions, utility modules, data transformers, and business logic in isolation. Because Node 24 and Node 22.22+ natively execute TypeScript files by erasing type annotations, Vitest executes unit tests directly against `.ts` files with zero build delay.
 
 ## Setting Up Vitest
 

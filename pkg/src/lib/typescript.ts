@@ -20,7 +20,7 @@
  * receives already-valid JavaScript.
  *
  * Compiler selection is `scripts.typescript` (see `TypeScriptCompilerOption`):
- * `true` (default) uses Node's `stripTypeScriptTypes` (22.18+) in strip-only
+ * `true` (default) uses Node's `stripTypeScriptTypes` (22.22+) in strip-only
  * mode, which is line-preserving so `//# sourceURL` line numbers stay
  * accurate; `false` leaves both paths untouched for projects that compile
  * elsewhere; a function is a bring-your-own compiler (esbuild, swc, tsc).

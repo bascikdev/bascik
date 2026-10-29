@@ -15,7 +15,7 @@
 // never guesses safe.
 //
 // Portable: the only import is ./url-safety.ts (no imports of its own), so
-// the module runs on Node 22.18+, in a Cloudflare Worker and in a browser.
+// the module runs on Node 22.22+, in a Cloudflare Worker and in a browser.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {

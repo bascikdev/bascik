@@ -3,7 +3,7 @@
  * `@bascik/bascik/config` the way a user's config does. That specifier
  * resolves through the package's `exports` to dist/lib/defineConfig.d.ts, so
  * the typecheck needs a built package (the adapter and docs typechecks import
- * `@bascik/bascik/*` the same way). The Node 22.18 floor job ran
+ * `@bascik/bascik/*` the same way). The Node 22.22 floor job ran
  * `yarn typecheck:all` before `yarn pkg:build` and failed with TS2307 on that
  * import; this pins the order in every CI job.
  */
@@ -79,7 +79,7 @@ describe("CI typechecks after the package is built", () => {
       const built = firstRun(body, "pkg:build");
       if (built < 0 || built >= Math.min(...checks)) misordered.push(job);
     }
-    // Workspace Typechecks and the Node 22.18 floor: if this drops, the
+    // Workspace Typechecks and the Node 22.22 floor: if this drops, the
     // parser stopped seeing them and the order check proves nothing.
     expect(typecheckJobs.length, typecheckJobs.join(", ")).toBeGreaterThan(1);
     expect(misordered).toEqual([]);

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Audit built pages in dist/ for the head tags and structure that search engines, social cards, and Lighthouse
-// SEO check. Dependency-free; Node.js 22.18+. Run from the project root after `bascik --build`.
+// SEO check. Dependency-free; Node.js 22.22+. Run from the project root after `bascik --build`.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";

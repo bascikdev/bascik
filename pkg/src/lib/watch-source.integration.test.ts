@@ -375,3 +375,35 @@ describe("source observer and phase queue integration", () => {
     );
   });
 });
+
+// WHY: chokidar 6 reports initial-scan failures (EACCES on a watched folder)
+// as `error` events, and an `error` event with no listener throws. A `once`
+// listener left the watcher bare after the first failure, so a second
+// failure crashed `bascik dev` instead of reporting.
+describe("source observer errors (chokidar 6)", () => {
+  it("rejects boot on the first scan error and survives a second one", async () => {
+    const first = Object.assign(new Error("EACCES: permission denied"), {
+      code: "EACCES",
+    });
+    mocks.watch.mockReset().mockImplementation(() => {
+      queueMicrotask(() => {
+        watcher.emit("error", first);
+        watcher.emit("error", new Error("EACCES again"));
+      });
+      return watcher;
+    });
+    await expect(watchSourceCycles(vi.fn())).rejects.toBe(first);
+    expect(watcher.listenerCount("error")).toBeGreaterThan(0);
+    expect(() => watcher.emit("error", new Error("later"))).not.toThrow();
+  });
+
+  it("reports a watcher error after boot as a build error", async () => {
+    const reported: unknown[] = [];
+    eventEmitter.on("build-error", (payload) => reported.push(payload));
+    await watchSourceCycles(vi.fn());
+    expect(() =>
+      watcher.emit("error", new Error("EMFILE: too many open files")),
+    ).not.toThrow();
+    expect(reported).toEqual([{ message: "EMFILE: too many open files" }]);
+  });
+});

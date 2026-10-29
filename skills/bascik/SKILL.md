@@ -18,7 +18,7 @@ Code in this skill is illustrative. Adapt tag names, paths, and values to the pr
 ## Recognize a Bascik project
 
 - `package.json` depends on `@bascik/bascik`, or the root has `bascik.config.ts` / `bascik.config.js`, or there are `.html` files under `src/components/`.
-- Node.js 22.18 or newer (24 LTS recommended). Node runs `.ts` helpers natively, so no TypeScript build step exists.
+- Node.js 22.22 or newer (24 LTS recommended). Node runs `.ts` helpers natively, so no TypeScript build step exists.
 - Standard scripts: `npm run dev` (`bascik`), `npm run build` (`bascik --build`), `npm run lint` (`bascik --check`).
 
 ## Project layout
@@ -147,7 +147,7 @@ Do not stop at "the file looks right". Run these from the project root:
 
 ## Bundled scripts
 
-All scripts are dependency-free Node.js (22.18+) and run from the project root. Each prints `--help`.
+All scripts are dependency-free Node.js (22.22+) and run from the project root. Each prints `--help`.
 
 | Script                                                       | Purpose                                                                                                            |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |

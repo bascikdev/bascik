@@ -58,7 +58,7 @@ export const PACKAGE_JSON = (
         version: "0.1.0",
         type: "module",
         engines: {
-          node: ">=22.18.0",
+          node: ">=22.22.0",
         },
         scripts: {
           dev: "bascik",

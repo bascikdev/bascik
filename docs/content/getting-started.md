@@ -1,6 +1,6 @@
 # Getting Started
 
-Node.js 24 LTS is recommended. The minimum supported version is Node.js 22.18.
+Node.js 24 LTS is recommended. The minimum supported version is Node.js 22.22.
 
 ## Quick Start
 

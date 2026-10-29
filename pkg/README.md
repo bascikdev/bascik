@@ -32,7 +32,7 @@ Bascik acts as a build-time find-and-replace: it resolves custom HTML tags to th
 
 ## Getting Started
 
-Requires **Node.js ≥ 22.18**.
+Requires **Node.js ≥ 22.22**.
 
 ```sh
 yarn add @bascik/bascik
@@ -203,7 +203,7 @@ yarn workspace create-bascik npm publish --access public
 
 ## Development
 
-Requires Node.js ≥ 24. The published package supports Node.js 22.18 and newer, but the full test suite needs Node 24: two test helpers depend on the V8 `%StringIsFlat` intrinsic (V8 13.6) and on Node 24's TLS cleanup callback ordering, and those tests skip on Node 22. Run `yarn install` from the repo root.
+Requires Node.js ≥ 24. The published package supports Node.js 22.22 and newer, but the full test suite needs Node 24: two test helpers depend on the V8 `%StringIsFlat` intrinsic (V8 13.6) and on Node 24's TLS cleanup callback ordering, and those tests skip on Node 22. Run `yarn install` from the repo root.
 
 ```sh
 yarn pkg:build        # compile dist/

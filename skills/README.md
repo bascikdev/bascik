@@ -42,7 +42,7 @@ The skills hold the rules an assistant must follow and point to the docs at http
 
 ## Scripts
 
-The skills ship dependency-free Node.js scripts (Node 22.18+) that agents run from the project root. The opt-in `bascik-refactor` scripts load Playwright and sharp from the project:
+The skills ship dependency-free Node.js scripts (Node 22.22+) that agents run from the project root. The opt-in `bascik-refactor` scripts load Playwright and sharp from the project:
 
 | Script                                               | Purpose                                                                                                                |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |

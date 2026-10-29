@@ -123,6 +123,10 @@ On startup (and whenever a component is added), the watch system calls `processA
 5. **Write HTML without delaying dev serving.** Build mode awaits each write to `dist/`. In dev mode, Bascik first commits the page to `MemoryStore`, then starts the `dist/` write asynchronously. The server can return the updated page while that disk write is still pending.
 6. **Publish artifacts from the single owner.** In build mode, the main thread is the single owner of disk publication and artifact accounting. A worker transfers the page bytes (UTF-8 `ArrayBuffer`, no structured-clone copy) and the main thread writes them and records the manifest and CSP. See [Artifact Accounting Ownership](#artifact-accounting-ownership).
 
+### Coalesced full rebuilds in dev
+
+In dev mode, several watcher events rebuild every page: a page added or deleted, a component added, and an inlined stylesheet added, changed or deleted. A burst of such events (a `git checkout`, an unzip, a script writing many pages) fires one event per file. `watch.ts` sends all of them through one `coalesceRuns()` helper (`coalesced-run.ts`): the first event starts `processAllPages()`, and every event that arrives while it runs shares one trailing rebuild that starts when it ends. So a burst costs at most two full rebuilds, not one per file, and the trailing rebuild still sees every file the burst wrote. A failed rebuild is logged once as a `[bascik] watch error:`, not once per event. Before this, 300 pages written at once into a 2,000-page site started about 300 overlapping rebuilds; the dev server ran out of file handles (`EMFILE`) and then memory.
+
 ## Generation Ownership: Monotonic Dev Publication
 
 Concurrent invalidation entrypoints (`processPageBatch`, `pageProcessing`, and the worker path in `processAllPages`) can race for the same page. Without coordination, an older, slower batch could finish _after_ a newer direct edit and overwrite the newer state in memory, on disk, in the dependency indexes, or in the reload stream.

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Map every Bascik site in a repository and the shared component and helper folders they read, then report the
-// problems that only show up across sites. Dependency-free; Node.js 22.18+. Run from the repository root.
+// problems that only show up across sites. Dependency-free; Node.js 22.22+. Run from the repository root.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import {
   basename,

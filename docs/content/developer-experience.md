@@ -261,7 +261,7 @@ Error [ERR_MODULE_NOT_FOUND]: Cannot find module './does-not-exist' imported fro
 
 ### VS Code Debugging (`F5`)
 
-To debug `bascik.config.ts` or custom build scripts, press `F5` in VS Code. Node's native TypeScript support (22.18 or newer) allows VS Code to attach directly to `.ts` files:
+To debug `bascik.config.ts` or custom build scripts, press `F5` in VS Code. Node's native TypeScript support (22.22 or newer) allows VS Code to attach directly to `.ts` files:
 
 ```json
 // .vscode/launch.json
@@ -321,7 +321,7 @@ Node.js runs each `<script data-bascik-build>`, `data-bascik-routes`, `data-basc
 
 ### TypeScript and Custom Minifier Source Maps
 
-- **Native TypeScript Support:** Node 24 and Node 22.18+ strip TypeScript types without an intermediate compilation step, preserving source line numbers in imported `.ts` modules.
+- **Native TypeScript Support:** Node 24 and Node 22.22+ strip TypeScript types without an intermediate compilation step, preserving source line numbers in imported `.ts` modules.
 - **External Source Maps (`sourceMap: true`):** Set `"sourceMap": true` in `tsconfig.json` so external tools, debuggers, and language servers generate and resolve `.map` files across external libraries and helper scripts.
 - **BYOMinifier Integration:** When using custom minifiers via `minify.js` or `minify.css` in `bascik.config.ts` (such as Terser, esbuild, or LightningCSS), you can configure inline or external source maps according to your production requirements.
 

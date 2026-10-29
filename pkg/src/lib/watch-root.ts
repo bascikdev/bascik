@@ -1,7 +1,7 @@
 /**
  * The folder a watch pattern starts in: the pattern itself when it has no
  * wildcard, otherwise the path before its first wildcard segment. Watch glob
- * roots, not literal globs: Chokidar 5 no longer expands globs.
+ * roots, not literal globs: chokidar (since 4) does not expand globs.
  */
 export const sourceWatchRoot = (pattern: string): string => {
   const parts = pattern.replace(/\\/g, "/").split("/");

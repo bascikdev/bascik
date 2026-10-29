@@ -46,7 +46,7 @@ The `--` is required: npm keeps flags placed before it for itself and does not p
 
 ## Prerequisites
 
-- Node.js 22.18 or newer for the build (Node.js 24 LTS recommended).
+- Node.js 22.22 or newer for the build (Node.js 24 LTS recommended).
 - `@bascik/adapter-cloudflare` installed in your project:
 
 ```sh

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Search Bascik's live compatibility matrix (https://bascik.dev/compatibility) for an HTML, CSS, JavaScript, server,
-// or HTTP pattern and print whether Bascik supports it. Dependency-free; Node.js 22.18+.
+// or HTTP pattern and print whether Bascik supports it. Dependency-free; Node.js 22.22+.
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";

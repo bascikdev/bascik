@@ -14,7 +14,7 @@ on:
     branches: [main]
 ```
 
-It executes across three structured stages on Node 24, plus one Node 22.18 lane (`node-floor`) that builds and runs every workspace's unit tests on the published engine floor to prove the packages still work there:
+It executes across three structured stages on Node 24, plus one Node 22.22 lane (`node-floor`) that builds and runs every workspace's unit tests on the published engine floor to prove the packages still work there:
 
 ### Stage 1: Static Analysis, Typechecks, Standards & Unit Tests (Parallel)
 

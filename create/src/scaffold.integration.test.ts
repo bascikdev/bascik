@@ -693,7 +693,7 @@ describe("create-bascik test prerequisites", () => {
 
   it("every CI job that runs the suite builds each prerequisite in an earlier step", () => {
     // The Create-Bascik and Windows jobs once built only the package, so the
-    // Cloudflare test failed there while the Node 22.18 floor job, which
+    // Cloudflare test failed there while the Node 22.22 floor job, which
     // builds the adapter for its own tests, passed.
     const jobs = jobRunCommands(
       readFileSync(join(REPO_ROOT, ".github/workflows/ci.yml"), "utf8"),

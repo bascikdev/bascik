@@ -304,9 +304,9 @@ describe("PACKAGE_JSON", () => {
     expect(pkg.name).toBe("cool-site");
   });
 
-  it("declares the same Node 22.18 engine floor as the bascik package", () => {
+  it("declares the same Node 22.22 engine floor as the bascik package", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
-    expect(pkg.engines.node).toBe(">=22.18.0");
+    expect(pkg.engines.node).toBe(">=22.22.0");
   });
 
   it("treats the default template the same as no template", () => {

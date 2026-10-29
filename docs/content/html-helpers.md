@@ -231,7 +231,7 @@ Refused when a value arrives:
 
 ## Compatibility
 
-- Node.js 22.18 and later, and Cloudflare Workers: the module uses only `String`, `RegExp`, `URL`, `JSON`, `WeakMap` and `Symbol.for`, with no Node builtins.
+- Node.js 22.22 and later, and Cloudflare Workers: the module uses only `String`, `RegExp`, `URL`, `JSON`, `WeakMap` and `Symbol.for`, with no Node builtins.
 - On Cloudflare the adapter bundles the import into the Worker; on Node it resolves through the package's `./html` export.
 - About 21 KB minified and under 9 KB gzipped, most of it the error messages and the readings for parser differences.
 - Build scripts may return an `html` value too, so a card helper can be shared between build-time and request-time pages.

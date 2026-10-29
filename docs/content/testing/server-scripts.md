@@ -76,7 +76,7 @@ Inside the component template, import the helper module and execute request-time
 </script>
 ```
 
-> **ESM Import Convention:** Node 24 and Node 22.18+ support runtime `.js` specifiers pointing to local `.ts` source files, allowing seamless execution in both production dev servers and test runners.
+> **ESM Import Convention:** Node 24 and Node 22.22+ support runtime `.js` specifiers pointing to local `.ts` source files, allowing seamless execution in both production dev servers and test runners.
 
 ## Writing Server Logic Unit Tests
 

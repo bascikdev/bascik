@@ -13,7 +13,7 @@ const destroySslPrototype = { _destroySSL() {} };
 
 describe("TLS cleanup runtime gate", () => {
   it.each([
-    ["v22.18.0", false],
+    ["v22.22.0", false],
     ["v23.11.1", false],
     ["v24.0.0", true],
     ["v24.21.0", true],
@@ -28,7 +28,7 @@ describe("TLS cleanup runtime gate", () => {
     expect(isTlsCleanupRuntimeSupported(version)).toBe(supported);
   });
 
-  it.each(["v22.18.0", "v24.21.0", "v25.0.0", "v26.1.0"])(
+  it.each(["v22.22.0", "v24.21.0", "v25.0.0", "v26.1.0"])(
     "assertion agrees with the skip predicate for %s",
     (version) => {
       const run = () =>

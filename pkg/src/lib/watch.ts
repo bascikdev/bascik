@@ -29,6 +29,7 @@ import { getImportRoot } from "./import-root.ts";
 import { watchSourceCycles } from "./watch-source.ts";
 import { sourceWatchRoot } from "./watch-root.ts";
 import { execWatchCoversPath } from "./exec.ts";
+import { coalesceRuns } from "./coalesced-run.ts";
 
 export interface WatchFilesOptions {
   bootCompile?: (compileInitialSources: () => Promise<void>) => Promise<void>;
@@ -56,6 +57,12 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
 
   const onWatchError = (err: unknown) =>
     console.error("[bascik] watch error:", err);
+  // Adding, deleting or renaming many files at once (a git checkout, an
+  // unzip, a script writing pages) fires one watcher event per file, and
+  // each of these events rebuilds every page. Run one rebuild at a time and
+  // fold the events that arrive meanwhile into one more rebuild after it;
+  // overlapping rebuilds of a large site ran out of file handles and memory.
+  const rebuildAllPages = coalesceRuns(() => processAllPages(), onWatchError);
   // Request-time modules (`src=` server scripts, their helpers, API routes)
   // are imported by the runtime registry, not by the build, so the page
   // dependency graph knows nothing about them. Any file event under a watched
@@ -90,8 +97,15 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
   };
   const chokidar = await loadChokidar();
   const watchers: FSWatcher[] = [];
-  const w = <T extends FSWatcher>(watcher: T) => {
+  // Chokidar 6 reports scan and watch failures (an unreadable folder, EMFILE)
+  // as `error` events, and an `error` event without a listener throws, which
+  // would end the dev server. Every watcher logs them unless it brings its own.
+  const w = <T extends FSWatcher>(
+    watcher: T,
+    onError: (error: unknown) => void = onWatchError,
+  ) => {
     watchers.push(watcher);
+    watcher.on("error", onError);
     return watcher;
   };
   registerShutdownHandler(() =>
@@ -148,7 +162,7 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
           try {
             if (isInlineStylesheet(path)) {
               if (!BascikConfig.isBuild) {
-                await processAllPages();
+                await rebuildAllPages();
               }
             } else {
               await copyReplicatePath(path, BascikConfig.directory.out);
@@ -165,7 +179,7 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
           try {
             if (isInlineStylesheet(path)) {
               if (!BascikConfig.isBuild) {
-                await processAllPages();
+                await rebuildAllPages();
               }
             } else {
               await copyReplicatePath(path, BascikConfig.directory.out);
@@ -182,7 +196,7 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
         })
         .on("unlink", (path) => {
           const operation = isInlineStylesheet(path)
-            ? processAllPages()
+            ? rebuildAllPages()
             : deleteDistFile(path).then(() =>
                 processPagesImportingStylesheet(path),
               );
@@ -206,6 +220,8 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
       initialScanDone = true;
     };
     await new Promise<void>((resolve, reject) => {
+      // A failure before `ready` rejects boot; later ones are logged.
+      let ready = false;
       w(
         chokidar
           .watch([BascikConfig.directory.pages], {
@@ -216,19 +232,28 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
             persistent: !BascikConfig.isBuild,
           })
           .on("add", (_path) => {
-            if (initialScanDone) processAllPages().catch(onWatchError);
+            if (initialScanDone) void rebuildAllPages();
           })
           .on("change", (path) => pageProcessing(path).catch(onWatchError))
           .on("unlink", (path: string, _stats?: Stats) => {
             removePage(path)
-              .then(() => processAllPages())
+              .then(() => rebuildAllPages())
               .catch(onWatchError);
           })
           .on("unlinkDir", (path: string, _stats?: Stats) =>
             handleUnlinkDir(path),
           )
-          .on("ready", () => resolve())
-          .on("error", reject),
+          .on("ready", () => {
+            ready = true;
+            resolve();
+          }),
+        (error) => {
+          if (ready) onWatchError(error);
+          else {
+            ready = true;
+            reject(error);
+          }
+        },
       );
     });
 
@@ -267,7 +292,7 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
           invalidateRuntimeModule(path);
           try {
             clearBuildScriptCaches(path);
-            await processAllPages();
+            await rebuildAllPages();
           } catch (err) {
             onWatchError(err);
           }
@@ -296,7 +321,7 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
     // Compilation watches are independent of exec.watch and exec completion.
     const watchPaths = BascikConfig.pipeline?.watchPaths ?? [];
     if (!BascikConfig.isBuild && watchPaths.length) {
-      // Chokidar 5 does not expand globs: watch each glob's folder, then keep
+      // Chokidar (since 4) does not expand globs: watch each glob's folder, then keep
       // only the files a pattern matches.
       const onWatchPathEvent = async (path: string) => {
         if (!execWatchCoversPath(watchPaths, path)) return;

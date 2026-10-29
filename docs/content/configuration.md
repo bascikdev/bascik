@@ -511,7 +511,7 @@ scripts: {
 
 Selects the compiler for browser TypeScript on the two supported paths: referenced `.ts`/`.mts` companion scripts and inline `<script type="text/typescript">` blocks. It runs before scoping and before `minify.js`, in dev and build alike, on the main thread and in worker threads.
 
-- `true` (default): Node's built-in strip-only mode (Node 22.18+). Erasable syntax only; line structure is preserved so `//# sourceURL` line numbers match the source. No dependencies.
+- `true` (default): Node's built-in strip-only mode (Node 22.22+). Erasable syntax only; line structure is preserved so `//# sourceURL` line numbers match the source. No dependencies.
 - `false`: Bascik does not transform browser TypeScript. Marked blocks and `.ts` companions are emitted exactly as authored, `type` attribute included. Use this when another tool has already compiled the output that Bascik reads.
 - A function `(code, { sourcePath, kind }) => string | Promise<string>`: bring your own compiler. `kind` is `'companion'` (then `sourcePath` is the `.ts` file) or `'inline'` (then `sourcePath` is the `.html` file containing the block). The function must return plain JavaScript; a throw or non-JavaScript result fails the build with the source path. Use this for non-erasable syntax (`enum`, parameter properties, decorators), for downleveling to an older browser target, or to run the same compiler you use elsewhere.
 

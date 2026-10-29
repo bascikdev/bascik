@@ -158,7 +158,7 @@ Instead, Bascik uses high-performance, raw-string manipulation powered by target
 
 ### Native TypeScript and ESM Compilation
 
-Bascik embraces Node.js's native TypeScript support (Node 22.18 or newer). At runtime, Node natively strips types to execute `.ts` files (such as `bascik.config.ts`, user scripts, and tests) without a separate transpilation step.
+Bascik embraces Node.js's native TypeScript support (Node 22.22 or newer). At runtime, Node natively strips types to execute `.ts` files (such as `bascik.config.ts`, user scripts, and tests) without a separate transpilation step.
 
 For package distribution, the source code in `pkg/src/` is compiled by `tsc` using `tsconfig.build.json` to emit optimized, pure ESM into `pkg/dist/`. This pre-compilation ensures that consumers can run the CLI with minimal startup overhead, while local tests and TypeScript features are supported via `tsconfig.json` and Vitest.
 

@@ -60,13 +60,13 @@
     }
   },
   "engines": {
-    "node": ">=22.18.0"
+    "node": ">=22.22.0"
   },
   "publishConfig": {
     "access": "public"
   },
   "optionalDependencies": {
-    "chokidar": "^5.0.0",
+    "chokidar": "^6.0.0",
     "parse5": "^8.0.1"
   },
   "peerDependencies": {

@@ -450,7 +450,7 @@ What each part does:
 
 ### Step 5: Run the build with your custom adapter
 
-You can point the `--target` flag directly to your local TypeScript file. Bascik runs on Node.js 22.18 or newer, which natively executes the TypeScript adapter without extra build configuration:
+You can point the `--target` flag directly to your local TypeScript file. Bascik runs on Node.js 22.22 or newer, which natively executes the TypeScript adapter without extra build configuration:
 
 ```sh
 bascik --build --target ./adapters/custom-node.ts

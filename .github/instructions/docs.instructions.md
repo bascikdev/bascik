@@ -146,7 +146,7 @@ Structure rules:
 
 - Each `SKILL.md` stays short (well under 500 lines) with prescriptive rules up front. `name` must match the directory name.
 - Every docs path a skill names (`read-doc.mjs /path`, a backticked `/path` in a "Read" column, or `https://bascik.dev/path`), including `#fragments`, must exist; `docs/scripts/skill-links.test.ts` fails otherwise. Every example a skill names must exist in `examples/`.
-- Scripts are dependency-free Node.js (22.18+) `.mjs` files that run from the user's project root. The exception is `bascik-refactor`, whose scripts load Playwright and sharp from the reader's own project through `scripts/lib/project-deps.mjs` and fail with an install command when either is missing. Shared helpers live in `skills/bascik/scripts/lib/`; other skills refer to `<skills-dir>/bascik/scripts/...` rather than copying them. A script that belongs to another skill stays self-contained (no imports from `bascik/scripts/lib/`), because that skill can be installed on its own.
+- Scripts are dependency-free Node.js (22.22+) `.mjs` files that run from the user's project root. The exception is `bascik-refactor`, whose scripts load Playwright and sharp from the reader's own project through `scripts/lib/project-deps.mjs` and fail with an install command when either is missing. Shared helpers live in `skills/bascik/scripts/lib/`; other skills refer to `<skills-dir>/bascik/scripts/...` rather than copying them. A script that belongs to another skill stays self-contained (no imports from `bascik/scripts/lib/`), because that skill can be installed on its own.
 
 ## Examples (`examples/`)
 

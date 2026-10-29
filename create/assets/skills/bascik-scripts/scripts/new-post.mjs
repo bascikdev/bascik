@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Create content/posts/<slug>.md with valid front matter. Dependency-free; Node 22.18+. Run from the project root.
+// Create content/posts/<slug>.md with valid front matter. Dependency-free; Node 22.22+. Run from the project root.
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";

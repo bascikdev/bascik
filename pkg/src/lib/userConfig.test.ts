@@ -110,7 +110,7 @@ describe("loadUserConfig", () => {
     expect(mod.default).toEqual({ cacheHttp: true });
   });
 
-  it("loads a bascik.config.ts file (Node 22.18+ strips types natively)", async () => {
+  it("loads a bascik.config.ts file (Node 22.22+ strips types natively)", async () => {
     const { loadUserConfig } = await import("./userConfig.ts");
     const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
     dirs.push(dir);

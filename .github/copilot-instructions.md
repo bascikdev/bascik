@@ -128,9 +128,9 @@ Do **not** delete the root `LICENSE`: GitHub reads it for repo-level license det
 
 ## Node 24: Native TypeScript Support
 
-This project is developed and tested on **Node 24**; the published packages support Node 22.18 and newer. Node natively strips TypeScript types, with no transpiler or extra flags needed for erasable syntax.
+This project is developed and tested on **Node 24**; the published packages support Node 22.22 and newer. Node natively strips TypeScript types, with no transpiler or extra flags needed for erasable syntax.
 
-- `node example.ts` works directly (Node 22.18+ with only erasable syntax, no flags required).
+- `node example.ts` works directly (Node 22.22+ with only erasable syntax, no flags required).
 - Erasable syntax: type annotations, interfaces, type aliases, `import type`. These are stripped at runtime.
 - Non-erasable syntax (`enum`, parameter properties, namespaces with runtime code) is **not** supported: a separate transpile step is required for those.
 - Node does **not** type-check. Run `npx tsc --noEmit` separately for type checking.

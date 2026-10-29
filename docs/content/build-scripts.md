@@ -500,7 +500,7 @@ rm -rf node_modules/.cache/bascik/script-cache
 - **When to use build scripts:** Use build scripts when content lives in a file or API outside HTML source (Markdown, JSON, CSV, remote endpoints), when repeating transformations across pages, or when markup should be static. Prefer vanilla hardcoded HTML when content is short, stable, and self-contained.
 - **No streaming:** The complete HTML string returned by the default export is awaited before injection. For streaming HTML chunks at request time, see [Stream Scripts](/stream-scripts).
 - **No HMR awareness:** Local files imported or read by a build script are tracked as dependencies; edits under `directory.pages`, `directory.components`, or `pipeline.watchPaths` rebuild dependent pages. Other files, including helpers under the import root (`src/lib/`), need a `pipeline.watchPaths` entry or a restart (see [Watch Paths](/watch-paths)).
-- **ESM only:** Build scripts run as ES modules with standard `import`/`export` syntax and a callable default export. Write helpers as `.ts` (preferred on Node 22.18+), `.js`, or `.mjs`.
+- **ESM only:** Build scripts run as ES modules with standard `import`/`export` syntax and a callable default export. Write helpers as `.ts` (preferred on Node 22.22+), `.js`, or `.mjs`.
 - **Node.js only:** Browser globals like `window` and `document` are not available in build scripts.
 - **Printed directives never run:** A directive script in a build script's output is removed with a warning. Directives only run where they are written in a source file. See [Printing HTML You Did Not Write](#printing-html-you-did-not-write).
 

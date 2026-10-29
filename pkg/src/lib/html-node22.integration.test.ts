@@ -1,8 +1,8 @@
 /**
- * @bascik/bascik/html runs on the published Node floor (22.18) as well as on
+ * @bascik/bascik/html runs on the published Node floor (22.22) as well as on
  * Node 24 and in workerd. The module is bundled from source (no type
  * stripping needed) and a smoke script exercising every export runs under a
- * Node 22.18 binary: BASCIK_NODE22_BIN, or nvm's v22.18.0 when installed.
+ * Node 22.22 binary: BASCIK_NODE22_BIN, or nvm's v22.22.0 when installed.
  * Without one the case is skipped with the reason in its name.
  */
 import { describe, expect, it } from "vitest";
@@ -14,7 +14,7 @@ import { build } from "esbuild";
 
 const NODE22 = [
   process.env.BASCIK_NODE22_BIN,
-  join(homedir(), ".nvm/versions/node/v22.18.0/bin/node"),
+  join(homedir(), ".nvm/versions/node/v22.22.0/bin/node"),
 ].find((p): p is string => typeof p === "string" && existsSync(p));
 
 const SMOKE = `
@@ -30,9 +30,9 @@ try { html\`<button onclick="\${1}">\`; } catch (e) { out.push(e instanceof Html
 console.log(JSON.stringify(out));
 `;
 
-describe("@bascik/bascik/html on Node 22.18", () => {
+describe("@bascik/bascik/html on Node 22.22", () => {
   it.skipIf(!NODE22)(
-    `renders every context and refuses a handler (${NODE22 ?? "no Node 22.18 binary found: set BASCIK_NODE22_BIN"})`,
+    `renders every context and refuses a handler (${NODE22 ?? "no Node 22.22 binary found: set BASCIK_NODE22_BIN"})`,
     async () => {
       const dir = mkdtempSync(join(tmpdir(), "bascik-html-node22-"));
       try {
@@ -53,7 +53,7 @@ describe("@bascik/bascik/html on Node 22.18", () => {
         expect(result.stderr).toBe("");
         expect(
           spawnSync(NODE22!, ["--version"], { encoding: "utf8" }).stdout.trim(),
-        ).toBe("v22.18.0");
+        ).toBe("v22.22.0");
         expect(JSON.parse(result.stdout)).toEqual([
           `<p title="&quot;">&lt;b&gt;</p>`,
           "<ul><li>a</li><li>b</li></ul>",

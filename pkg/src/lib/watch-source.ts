@@ -244,15 +244,26 @@ export const watchSourceCycles = async (
     await watcher.close();
     await cycle.idle();
   });
+  // Chokidar 6 reports scan failures as `error` events, and an `error` event
+  // without a listener throws, so one listener stays for the watcher's life:
+  // the first failure before `ready` rejects boot, every other one is reported.
   await new Promise<void>((resolveReady, reject) => {
-    watcher.once("ready", resolveReady);
-    watcher.once("error", reject);
+    let settled = false;
+    watcher.once("ready", () => {
+      settled = true;
+      resolveReady();
+    });
+    watcher.on("error", (error) => {
+      if (!settled) {
+        settled = true;
+        reject(error);
+        return;
+      }
+      eventEmitter.emit("build-error", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
   });
-  watcher.on("error", (error) =>
-    eventEmitter.emit("build-error", {
-      message: error instanceof Error ? error.message : String(error),
-    }),
-  );
   const compileInitialSources = async (): Promise<void> => {
     await Promise.all([copyStaticAssets(), processAllPages()]);
   };

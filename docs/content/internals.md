@@ -22,7 +22,7 @@ The `pkg/` directory is a self-contained TypeScript project with its own `packag
 
 ## Quick Start for Contributors
 
-Use Node.js 24 LTS and Yarn 4. The published packages support Node.js 22.18 and newer, but the full pkg test suite needs Node 24: two test helpers depend on a V8 13.6 intrinsic and on Node 24's TLS cleanup callback ordering, and those tests skip on older versions. Clone the repo and install dependencies from the root, Yarn workspaces wires everything up in one step:
+Use Node.js 24 LTS and Yarn 4. The published packages support Node.js 22.22 and newer, but the full pkg test suite needs Node 24: two test helpers depend on a V8 13.6 intrinsic and on Node 24's TLS cleanup callback ordering, and those tests skip on older versions. Clone the repo and install dependencies from the root, Yarn workspaces wires everything up in one step:
 
 ```sh
 git clone https://github.com/bascikdev/bascik.git
