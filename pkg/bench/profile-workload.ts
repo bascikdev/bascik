@@ -814,6 +814,24 @@ export function summarizeCpuProfile(value: unknown, name: string) {
   }
   return { samples: profile.samples.length, inclusive, self };
 }
+/**
+ * How to check a file a capture left behind. 0x streams the V8 isolate log
+ * into isolate-*-v8.json and exits without waiting for that stream, so under
+ * load the file can stay cut short: it is 0x's intermediate log, not the
+ * capture, and is kept as a non-empty artifact rather than parsed.
+ */
+export function capturedArtifactKind(
+  tool: string,
+  path: string,
+): "cpu" | "json" | "html" | "binary" {
+  if (path.endsWith(".cpuprofile")) return "cpu";
+  if (path.endsWith(".html")) return "html";
+  if (!path.endsWith(".json")) return "binary";
+  if (tool === "0x" && /(^|[\\/])isolate-[^\\/]*\.json$/.test(path))
+    return "binary";
+  return "json";
+}
+
 export async function validateArtifact(
   path: string,
   kind: "cpu" | "json" | "html" | "binary",
@@ -821,8 +839,17 @@ export async function validateArtifact(
   assert((await stat(path)).isFile(), `not an artifact file: ${path}`);
   const content = await readFile(path);
   assert(content.length > 0, `empty artifact: ${path}`);
-  if (kind === "cpu") decodeCpuProfile(JSON.parse(content.toString("utf8")));
-  if (kind === "json") JSON.parse(content.toString("utf8"));
+  try {
+    if (kind === "cpu") decodeCpuProfile(JSON.parse(content.toString("utf8")));
+    if (kind === "json") JSON.parse(content.toString("utf8"));
+  } catch (error) {
+    throw new Error(
+      `invalid ${kind} artifact ${path} (${content.length} bytes)`,
+      {
+        cause: error,
+      },
+    );
+  }
   if (kind === "html")
     assert(
       /<html[\s>]/i.test(content.toString("utf8")),

@@ -20,6 +20,7 @@ import { brotliCompressSync, gzipSync } from "node:zlib";
 import {
   validateResponses,
   validateArtifact,
+  capturedArtifactKind,
   validatePrivateDirectory,
   cleanGeneratorEnvironment,
   summarizeCpuProfile,
@@ -411,6 +412,38 @@ describe("capture artifact integrity", () => {
         .every(([, command]) => !String(command).includes("docs")),
     ).toBe(true);
   });
+  // 0x streams the V8 isolate log into isolate-*-v8.json and exits without
+  // waiting for that stream: under load the file is left cut short for good
+  // (a full run failed 0x-http1-br on "Unterminated string in JSON at
+  // position 65548"). It is 0x's intermediate log, not the capture, so it is
+  // kept as a non-empty artifact; 0x's synchronous meta.json and stacks are
+  // still parsed.
+  it("parses every captured JSON artifact except 0x's streamed isolate log", () => {
+    expect(
+      capturedArtifactKind("0x", "/p/123.0x/isolate-0x7f-123-v8.json"),
+    ).toBe("binary");
+    expect(capturedArtifactKind("0x", "/p/123.0x/meta.json")).toBe("json");
+    expect(capturedArtifactKind("0x", "/p/123.0x/stacks.123.json")).toBe(
+      "json",
+    );
+    expect(capturedArtifactKind("0x", "/p/flamegraph.html")).toBe("html");
+    expect(capturedArtifactKind("cpu", "/p/isolate-0x7f-1-v8.json")).toBe(
+      "json",
+    );
+    expect(capturedArtifactKind("cpu", "/p/CPU.1.cpuprofile")).toBe("cpu");
+    expect(
+      capturedArtifactKind("doctor", "/p/x.clinic-doctor-systeminfo"),
+    ).toBe("binary");
+  });
+
+  it("names the file and its size when an artifact does not parse", async () => {
+    const path = join(await temporaryRoot(), "cut.json");
+    await writeFile(path, '{"a":"unterminated');
+    await expect(validateArtifact(path, "json")).rejects.toThrow(
+      `invalid json artifact ${path} (18 bytes)`,
+    );
+  });
+
   it("rejects missing, empty, undecodable and structurally invalid CPU artifacts", async () => {
     const path = join(await temporaryRoot(), "capture.cpuprofile");
     await expect(validateArtifact(path, "cpu")).rejects.toThrow();

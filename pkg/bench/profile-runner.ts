@@ -24,6 +24,7 @@ import {
   workerCpuLimitation,
   validatePrivateDirectory,
   validateArtifact,
+  capturedArtifactKind,
   validateProcessCoverage,
   validateCpuCaptureArtifacts,
   validateCompression,
@@ -744,16 +745,7 @@ export async function runProfiles() {
       const cpuAttribution: object[] = [];
       for (const path of await filesUnder(profiles)) {
         artifacts.push(
-          await validateArtifact(
-            path,
-            path.endsWith(".cpuprofile")
-              ? "cpu"
-              : path.endsWith(".json")
-                ? "json"
-                : path.endsWith(".html")
-                  ? "html"
-                  : "binary",
-          ),
+          await validateArtifact(path, capturedArtifactKind(tool, path)),
         );
         if (path.endsWith(".metadata.json")) {
           const entry = JSON.parse(await readFile(path, "utf8"));
