@@ -5,7 +5,10 @@ import {
   findCompatibilityMatches,
   maskComments,
 } from "./compatibility-checker.ts";
-import { expectLinearTime } from "./linear-time.test-helper.ts";
+import {
+  expectLinearTime,
+  LINEAR_TIME_TIMEOUT_MS,
+} from "./linear-time.test-helper.ts";
 
 describe("compatibility-rules contract & positive/negative probes", () => {
   const ruleVectors: Record<
@@ -299,5 +302,6 @@ describe("maskComments", () => {
       expect(maskComments(text(count), kind)).toBe(text(count));
       expectLinearTime(text, count, (t) => maskComments(t, kind));
     },
+    LINEAR_TIME_TIMEOUT_MS,
   );
 });

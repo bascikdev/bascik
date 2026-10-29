@@ -9,7 +9,10 @@ import {
 import { BOOT_PAGE_HTML } from "./boot-page.ts";
 import { domSnapshot } from "./html-parse-oracle.test-helper.ts";
 import { scanHtml } from "./html-scanner.ts";
-import { expectLinearTime } from "./linear-time.test-helper.ts";
+import {
+  expectLinearTime,
+  LINEAR_TIME_TIMEOUT_MS,
+} from "./linear-time.test-helper.ts";
 
 const isLiveReloadScript = (script: { attrs: Array<{ name: string }> }) =>
   script.attrs.some((attribute) => attribute.name === LIVE_RELOAD_SCRIPT_ATTR);
@@ -298,15 +301,19 @@ describe("stripLiveReloadScript", () => {
     expect(expectOnlyLiveReloadRemoved(html)).toBe("<p>a</p><p>b</p>");
   });
 
-  it("stays linear on deeply nested look-alikes", () => {
-    const nested = (depth: number) => {
-      let html = getLiveReloadScript().trim();
-      for (let i = 0; i < depth; i++)
-        html = `<scr${html}ipt ${LIVE_RELOAD_SCRIPT_ATTR}>x${i}()</script>`;
-      return html;
-    };
-    expectLinearTime(nested, 1000, stripLiveReloadScript);
-  });
+  it(
+    "stays linear on deeply nested look-alikes",
+    () => {
+      const nested = (depth: number) => {
+        let html = getLiveReloadScript().trim();
+        for (let i = 0; i < depth; i++)
+          html = `<scr${html}ipt ${LIVE_RELOAD_SCRIPT_ATTR}>x${i}()</script>`;
+        return html;
+      };
+      expectLinearTime(nested, 1000, stripLiveReloadScript);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 
   it("removes exactly the live-reload scripts and nothing else, on random malformed markup", () => {
     const fragment = fc.constantFrom(

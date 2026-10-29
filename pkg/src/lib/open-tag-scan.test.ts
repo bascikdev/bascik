@@ -59,7 +59,11 @@ import {
   computePageCspHashes,
 } from "./csp-hashes.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
-import { expectLinearTime, repeatTo } from "./linear-time.test-helper.ts";
+import {
+  expectLinearTime,
+  LINEAR_TIME_TIMEOUT_MS,
+  repeatTo,
+} from "./linear-time.test-helper.ts";
 
 // Since request-time component rendering, a server or stream script's output
 // (which can echo visitor input such as `?q=`) reaches the component
@@ -347,11 +351,13 @@ describe("open-tag scans take linear time on hostile input", () => {
   it.each(requestTimeCases.map((c) => [c.site, c] as const))(
     "request time: %s",
     (_site, hostile) => expectLinear(hostile),
+    LINEAR_TIME_TIMEOUT_MS,
   );
 
   it.each(buildTimeCases.map((c) => [c.site, c] as const))(
     "build time: %s",
     (_site, hostile) => expectLinear(hostile),
+    LINEAR_TIME_TIMEOUT_MS,
   );
 });
 

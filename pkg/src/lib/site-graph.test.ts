@@ -165,28 +165,37 @@ describe("splitDistPageIntoSegments", () => {
     expect(splitDistPageIntoSegments(html).scriptIds).toEqual(expected);
   });
 
-  it("stays linear on long whitespace runs and repeated unterminated end tags", () => {
-    const open = '<script type="text/bascik-server" data-bascik-server-id="s">';
-    const cases = [
-      [(n: number) => `${open}${" ".repeat(n)}x`, 200_000, []],
-      [(n: number) => `${open}${"</script\t".repeat(n)}`, 50_000, []],
-      [(n: number) => `${open}${" ".repeat(n)}</script>`, 200_000, ["s"]],
-    ] as const;
-    for (const [input, size, ids] of cases) {
-      const label = input(2).slice(open.length);
-      expect(splitDistPageIntoSegments(input(size)).scriptIds, label).toEqual(
-        ids,
-      );
-      expectLinearTime(input, size, splitDistPageIntoSegments, { label });
-    }
-  });
+  it(
+    "stays linear on long whitespace runs and repeated unterminated end tags",
+    () => {
+      const open =
+        '<script type="text/bascik-server" data-bascik-server-id="s">';
+      const cases = [
+        [(n: number) => `${open}${" ".repeat(n)}x`, 200_000, []],
+        [(n: number) => `${open}${"</script\t".repeat(n)}`, 50_000, []],
+        [(n: number) => `${open}${" ".repeat(n)}</script>`, 200_000, ["s"]],
+      ] as const;
+      for (const [input, size, ids] of cases) {
+        const label = input(2).slice(open.length);
+        expect(splitDistPageIntoSegments(input(size)).scriptIds, label).toEqual(
+          ids,
+        );
+        expectLinearTime(input, size, splitDistPageIntoSegments, { label });
+      }
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 
-  it("stays fast on many repeated type attributes in an unterminated tag", () => {
-    const html = (n: number) =>
-      `<script ${'type="text/bascik-server"'.repeat(n)}`;
-    expect(splitDistPageIntoSegments(html(20_000)).scriptIds).toEqual([]);
-    expectLinearTime(html, 20_000, splitDistPageIntoSegments);
-  });
+  it(
+    "stays fast on many repeated type attributes in an unterminated tag",
+    () => {
+      const html = (n: number) =>
+        `<script ${'type="text/bascik-server"'.repeat(n)}`;
+      expect(splitDistPageIntoSegments(html(20_000)).scriptIds).toEqual([]);
+      expectLinearTime(html, 20_000, splitDistPageIntoSegments);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 
   it("preserves multi-byte text exactly", () => {
     const html = `日本 🚀<script type="text/bascik-server" data-bascik-server-id="x"></script>ünï`;

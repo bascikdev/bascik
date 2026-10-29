@@ -333,9 +333,41 @@ describe("expectLinearTime", () => {
   const linearAbove = countFor(linear, ABOVE);
   const BELOW = 1_000; // a quarter of 250 items: microseconds
 
-  it("passes linear work", () => {
-    expectLinearTime(items, linearAbove, linear);
-    expectLinearTime(items, BELOW, linear);
+  it(
+    "passes linear work",
+    () => {
+      expectLinearTime(items, linearAbove, linear);
+      expectLinearTime(items, BELOW, linear);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  // On Windows a sample spans eight scheduler ticks, and a check takes
+  // seconds: under Vitest's default 5 s, 18 checks timed out on CI.
+  it("refuses to measure in a test without LINEAR_TIME_TIMEOUT_MS, and says what to add", async () => {
+    const message =
+      /measures CPU time, which takes seconds on Windows: give this test LINEAR_TIME_TIMEOUT_MS \(it has 5000 ms\)/;
+    expect(() => expectLinearTime(items, BELOW, linear)).toThrow(message);
+    await expect(
+      expectLinearTimeAsync(items, BELOW, async (list) => linear(list)),
+    ).rejects.toThrow(message);
+    expect(() =>
+      measureCostRatio(
+        () => linear(items(BELOW)),
+        () => linear(items(BELOW)),
+      ),
+    ).toThrow(message);
+    // A fake clock measures nothing real, so it needs no long timeout.
+    let spent = 0;
+    const clock = (fn: () => unknown) => {
+      spent = 0;
+      fn();
+      return spent;
+    };
+    expect(
+      measureGrowth(items, 1_000, (list) => (spent += list.length), clock)
+        .growth,
+    ).toBeCloseTo(4, 9);
   });
 
   it(
@@ -351,11 +383,15 @@ describe("expectLinearTime", () => {
     LINEAR_TIME_TIMEOUT_MS,
   );
 
-  it("fails work that is linear in the input but over the ceiling", () => {
-    expect(() =>
-      expectLinearTime(items, linearAbove, linear, { ceilingMs: 1 }),
-    ).toThrow(/\(ceiling\)/);
-  });
+  it(
+    "fails work that is linear in the input but over the ceiling",
+    () => {
+      expect(() =>
+        expectLinearTime(items, linearAbove, linear, { ceilingMs: 1 }),
+      ).toThrow(/\(ceiling\)/);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 
   it(
     "names the label, both times and the runs per sample in the failure",
@@ -391,18 +427,22 @@ describe("coverageEnabled", () => {
 });
 
 describe("cost ratios", () => {
-  it("measures a run against reference work in the same process", () => {
-    const text = "x".repeat(200_000);
-    const once = () => spliceCopies(text, 100);
-    const twice = () => {
-      spliceCopies(text, 100);
-      spliceCopies(text, 100);
-    };
-    const { ratio, runs, referenceMs } = measureCostRatio(twice, once);
-    expect(referenceMs * runs).toBeGreaterThanOrEqual(COST_MIN_SAMPLE_MS / 2);
-    expect(ratio).toBeGreaterThan(1.5);
-    expect(ratio).toBeLessThan(2.7);
-  });
+  it(
+    "measures a run against reference work in the same process",
+    () => {
+      const text = "x".repeat(200_000);
+      const once = () => spliceCopies(text, 100);
+      const twice = () => {
+        spliceCopies(text, 100);
+        spliceCopies(text, 100);
+      };
+      const { ratio, runs, referenceMs } = measureCostRatio(twice, once);
+      expect(referenceMs * runs).toBeGreaterThanOrEqual(COST_MIN_SAMPLE_MS / 2);
+      expect(ratio).toBeGreaterThan(1.5);
+      expect(ratio).toBeLessThan(2.7);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 
   it(`fails at ${COST_RATIO_HEADROOM} times the calibration for this run's coverage mode, and names the check and both times`, () => {
     const calibrated = coverageEnabled()

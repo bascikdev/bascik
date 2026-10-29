@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { trimSlashes, trimTrailingSlashes } from "./slashes.ts";
-import { expectLinearTime } from "./linear-time.test-helper.ts";
+import {
+  expectLinearTime,
+  LINEAR_TIME_TIMEOUT_MS,
+} from "./linear-time.test-helper.ts";
 
 // A long run of "/" that does not end the string is the worst case for the
 // anchored regex `/\/+$/`: V8 retries the run from every start position, so the
@@ -34,9 +37,13 @@ describe("trimTrailingSlashes", () => {
     );
   });
 
-  it("runs in linear time on a long slash run that does not end the string", () => {
-    expectLinearTime(slashRun, SLASH_RUN, trimTrailingSlashes);
-  });
+  it(
+    "runs in linear time on a long slash run that does not end the string",
+    () => {
+      expectLinearTime(slashRun, SLASH_RUN, trimTrailingSlashes);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 });
 
 describe("trimSlashes", () => {
@@ -61,7 +68,11 @@ describe("trimSlashes", () => {
     );
   });
 
-  it("runs in linear time on a long slash run that does not end the string", () => {
-    expectLinearTime(slashRun, SLASH_RUN, trimSlashes);
-  });
+  it(
+    "runs in linear time on a long slash run that does not end the string",
+    () => {
+      expectLinearTime(slashRun, SLASH_RUN, trimSlashes);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 });

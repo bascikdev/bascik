@@ -420,25 +420,29 @@ describe("getFirstComponent", () => {
       expect(getFirstComponent(html, auditLabel).content).toBe(html);
     });
 
-    it("handles many tag-like attribute tokens without recursive rescanning", () => {
-      const mentions = (n: number) =>
-        "<span><audit-label></audit-label>".repeat(n);
-      const input = (n: number) =>
-        `<p title="${mentions(n)}">text</p><audit-label/>`;
-      const html = input(1000);
-      expect(getFirstComponent(html, auditLabel).content).toBe(
-        "<audit-label/>",
-      );
-      expect(getTag(html, "audit-label").content).toBe("<audit-label/>");
-      expect(replaceTag(html, "audit-label", "replacement")).toBe(
-        `<p title="${mentions(1000)}">text</p>replacement`,
-      );
-      expectLinearTime(input, 1000, (h) => [
-        getFirstComponent(h, auditLabel),
-        getTag(h, "audit-label"),
-        replaceTag(h, "audit-label", "replacement"),
-      ]);
-    });
+    it(
+      "handles many tag-like attribute tokens without recursive rescanning",
+      () => {
+        const mentions = (n: number) =>
+          "<span><audit-label></audit-label>".repeat(n);
+        const input = (n: number) =>
+          `<p title="${mentions(n)}">text</p><audit-label/>`;
+        const html = input(1000);
+        expect(getFirstComponent(html, auditLabel).content).toBe(
+          "<audit-label/>",
+        );
+        expect(getTag(html, "audit-label").content).toBe("<audit-label/>");
+        expect(replaceTag(html, "audit-label", "replacement")).toBe(
+          `<p title="${mentions(1000)}">text</p>replacement`,
+        );
+        expectLinearTime(input, 1000, (h) => [
+          getFirstComponent(h, auditLabel),
+          getTag(h, "audit-label"),
+          replaceTag(h, "audit-label", "replacement"),
+        ]);
+      },
+      LINEAR_TIME_TIMEOUT_MS,
+    );
 
     it("does not match a component tag inside a single-quoted attribute value", () => {
       const html = "<p title='Use <audit-label> exactly'>Visible text</p>";
@@ -797,17 +801,21 @@ describe("injectProps", () => {
     LINEAR_TIME_TIMEOUT_MS,
   );
 
-  it("misuse: thousands of unfilled markers in a large template are stripped in linear time", () => {
-    const count = 5000;
-    const filler = "z".repeat(2000);
-    const template = (n: number) =>
-      `<div>${`<i data-bascik-prop-unset class="c">${filler}</i>`.repeat(n)}</div>`;
-    const out = injectProps(template(count), { other: "v" });
-    expect(out).toBe(
-      `<div>${`<i class="c">${filler}</i>`.repeat(count)}</div>`,
-    );
-    expectLinearTime(template, count, (t) => injectProps(t, { other: "v" }));
-  });
+  it(
+    "misuse: thousands of unfilled markers in a large template are stripped in linear time",
+    () => {
+      const count = 5000;
+      const filler = "z".repeat(2000);
+      const template = (n: number) =>
+        `<div>${`<i data-bascik-prop-unset class="c">${filler}</i>`.repeat(n)}</div>`;
+      const out = injectProps(template(count), { other: "v" });
+      expect(out).toBe(
+        `<div>${`<i class="c">${filler}</i>`.repeat(count)}</div>`,
+      );
+      expectLinearTime(template, count, (t) => injectProps(t, { other: "v" }));
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 
   it(
     "misuse: thousands of receivers whose fallback holds a balanced script, style or textarea are filled in linear time",
@@ -1236,27 +1244,31 @@ describe("replaceNamedSlots", () => {
     LINEAR_TIME_TIMEOUT_MS,
   );
 
-  it("misuse: thousands of usage wrappers are extracted in linear time, and the last fill of a repeated name wins", () => {
-    const count = 5000;
-    const inner = (n: number) =>
-      `${'<p>body</p><div data-bascik-slot="side">n</div>'.repeat(n - 1)}<div data-bascik-slot="side">last</div>`;
-    const usages = new Set(["my-card"]);
-    expect(extractNamedSlotContent(inner(count), usages)).toEqual({
-      side: "last",
-    });
-    expect(extractDefaultSlotContent(inner(count), usages)).toBe(
-      "<p>body</p>".repeat(count - 1),
-    );
-    // A fresh set per run, as each usage has: the parse of the last inner
-    // content and set is reused, so a repeated set would time a lookup.
-    expectLinearTime(inner, count, (i) => {
-      const names = new Set(["my-card"]);
-      return [
-        extractNamedSlotContent(i, names),
-        extractDefaultSlotContent(i, names),
-      ];
-    });
-  });
+  it(
+    "misuse: thousands of usage wrappers are extracted in linear time, and the last fill of a repeated name wins",
+    () => {
+      const count = 5000;
+      const inner = (n: number) =>
+        `${'<p>body</p><div data-bascik-slot="side">n</div>'.repeat(n - 1)}<div data-bascik-slot="side">last</div>`;
+      const usages = new Set(["my-card"]);
+      expect(extractNamedSlotContent(inner(count), usages)).toEqual({
+        side: "last",
+      });
+      expect(extractDefaultSlotContent(inner(count), usages)).toBe(
+        "<p>body</p>".repeat(count - 1),
+      );
+      // A fresh set per run, as each usage has: the parse of the last inner
+      // content and set is reused, so a repeated set would time a lookup.
+      expectLinearTime(inner, count, (i) => {
+        const names = new Set(["my-card"]);
+        return [
+          extractNamedSlotContent(i, names),
+          extractDefaultSlotContent(i, names),
+        ];
+      });
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 
   it(
     "misuse: tens of thousands of unclosed slot wrappers, or wrappers closed only once at the end, cost linear time",

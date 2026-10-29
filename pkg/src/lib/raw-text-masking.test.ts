@@ -56,6 +56,7 @@ describe("raw-text masking time on hostile input", () => {
         maskRawTextContent,
       );
     },
+    LINEAR_TIME_TIMEOUT_MS,
   );
 
   it.each(worstCases)(
@@ -70,6 +71,7 @@ describe("raw-text masking time on hostile input", () => {
         maskRawTextContentWithClosure,
       );
     },
+    LINEAR_TIME_TIMEOUT_MS,
   );
 
   it.each(worstCases)(
@@ -88,6 +90,7 @@ describe("raw-text masking time on hostile input", () => {
         label: "shield",
       });
     },
+    LINEAR_TIME_TIMEOUT_MS,
   );
 
   it.each(['"', "'"])(
@@ -113,23 +116,28 @@ describe("raw-text masking time on hostile input", () => {
         label: "open",
       });
     },
+    LINEAR_TIME_TIMEOUT_MS,
   );
 
-  it("still masks a complete element after a long run of openers with no closer", () => {
-    const run = repeatTo("<script '", 50_000);
-    const html = (size: number) =>
-      `${repeatTo("<script '", size)}'><my-card></my-card></script><my-card>`;
-    // Quotes pair up in order, so the first or second opener's attributes
-    // run to the `>` after the last quote and its content to the `</script>`.
-    expect(maskRawTextContent(html(50_000))).toBe(
-      `${run}'>${" ".repeat("<my-card></my-card>".length)}</script><my-card>`,
-    );
-    // The time per character settles only past a few hundred thousand
-    // characters: at 50k (a quarter of 12.5k, 0.2 ms a run) this read 5.2
-    // to 6.7 with nothing else running, at 200k 2.8 to 3.3, and at 800k it
-    // reads 3.9 to 4.1.
-    expectLinearTime(html, 800_000, maskRawTextContent);
-  });
+  it(
+    "still masks a complete element after a long run of openers with no closer",
+    () => {
+      const run = repeatTo("<script '", 50_000);
+      const html = (size: number) =>
+        `${repeatTo("<script '", size)}'><my-card></my-card></script><my-card>`;
+      // Quotes pair up in order, so the first or second opener's attributes
+      // run to the `>` after the last quote and its content to the `</script>`.
+      expect(maskRawTextContent(html(50_000))).toBe(
+        `${run}'>${" ".repeat("<my-card></my-card>".length)}</script><my-card>`,
+      );
+      // The time per character settles only past a few hundred thousand
+      // characters: at 50k (a quarter of 12.5k, 0.2 ms a run) this read 5.2
+      // to 6.7 with nothing else running, at 200k 2.8 to 3.3, and at 800k it
+      // reads 3.9 to 4.1.
+      expectLinearTime(html, 800_000, maskRawTextContent);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 });
 
 type Node = DefaultTreeAdapterTypes.ChildNode;

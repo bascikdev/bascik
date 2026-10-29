@@ -24,7 +24,7 @@
  * (`expectCostRatio`).
  */
 import { appendFileSync } from "node:fs";
-import { expect, inject } from "vitest";
+import { TestRunner, expect, inject } from "vitest";
 
 /** Linear work grows about 4 times when the input quadruples. */
 export const MAX_GROWTH = 8;
@@ -78,6 +78,22 @@ const inResampleBand = (growth: number): boolean =>
  * slow shared runner under coverage takes longer than Vitest's default 5 s.
  */
 export const LINEAR_TIME_TIMEOUT_MS = 60_000;
+
+/**
+ * Throws in a test whose timeout is under `LINEAR_TIME_TIMEOUT_MS`. Windows
+ * counts CPU time in ticks of about 15.6 ms, so a sample spans eight of them
+ * and a check takes seconds there, while it takes milliseconds on macOS and
+ * Linux: without this, a missing timeout only showed on Windows CI, where 18
+ * checks timed out at Vitest's default 5 s. Only real measurements need it,
+ * so a fake clock skips the check. Outside a test (a hook) it does nothing.
+ */
+const requireLinearTimeTimeout = (): void => {
+  const timeout = TestRunner.getCurrentTest()?.timeout;
+  if (timeout !== undefined && timeout < LINEAR_TIME_TIMEOUT_MS)
+    throw new Error(
+      `measures CPU time, which takes seconds on Windows: give this test LINEAR_TIME_TIMEOUT_MS (it has ${timeout} ms)`,
+    );
+};
 
 /** This thread's CPU time (Node 23.9 and later), else the process's. */
 const threadCpuUsage: (previous?: NodeJS.CpuUsage) => NodeJS.CpuUsage =
@@ -383,6 +399,7 @@ export const measureGrowth = <T>(
   baseline?: T,
   resolutionMs: number = clock === cpuMs ? cpuMsResolution() : 0,
 ): Growth => {
+  if (clock === cpuMs) requireLinearTimeTimeout();
   const steps = samplesOf(input(size / 4), input(size), baseline, resolutionMs);
   const sample = ({ subject, runs }: Step<T>): number =>
     clock(() => {
@@ -402,6 +419,7 @@ export const measureGrowthAsync = async <T>(
   baseline?: T,
   resolutionMs: number = clock === cpuMsAsync ? cpuMsAsyncResolution() : 0,
 ): Promise<Growth> => {
+  if (clock === cpuMsAsync) requireLinearTimeTimeout();
   const steps = samplesOf(input(size / 4), input(size), baseline, resolutionMs);
   const sample = ({ subject, runs }: Step<T>): Promise<number> =>
     clock(async () => {
@@ -586,6 +604,7 @@ export const measureCostRatioAsync = async (
   clock: (run: () => Promise<unknown>) => Promise<number> = cpuMsAsync,
   resolutionMs: number = clock === cpuMsAsync ? cpuMsAsyncResolution() : 0,
 ): Promise<CostRatio> => {
+  if (clock === cpuMsAsync) requireLinearTimeTimeout();
   const steps = costSamplesOf(resolutionMs);
   let step = steps.next();
   while (!step.done) {
@@ -608,6 +627,7 @@ export const measureCostRatio = (
   clock: (run: () => unknown) => number = cpuMs,
   resolutionMs: number = clock === cpuMs ? cpuMsResolution() : 0,
 ): CostRatio => {
+  if (clock === cpuMs) requireLinearTimeTimeout();
   const steps = costSamplesOf(resolutionMs);
   let step = steps.next();
   while (!step.done) {
