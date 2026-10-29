@@ -1562,8 +1562,11 @@ describe.each([true, false])(
     // characters more of the same, and the growth is taken over the first
     // part alone (the baseline): it is the growth of the part that varies.
     const BASE_USAGES = requestLimits.maxSubstitutions + 1;
-    // The part that varies, as large as the fixed cost at a quarter of it.
-    const VARYING_SIZE = 800_000;
+    // The part that varies, about twice the fixed cost at a quarter of it.
+    // At 800k it was only as large, and under coverage on CI the fixed cost
+    // was three times the part that varies: noise on that small part read
+    // as a growth of 16.
+    const VARYING_SIZE = 1_600_000;
     it.each([
       [
         "unclosed openers, one closer at the end",
@@ -1595,7 +1598,7 @@ describe.each([true, false])(
         expect(expand(baseline)).toBe("limit");
         expectLinearTime(html, VARYING_SIZE, expand, { baseline });
       },
-      LINEAR_TIME_TIMEOUT_MS,
+      2 * LINEAR_TIME_TIMEOUT_MS,
     );
 
     // A usage whose slot opens many nested usages, each after a lone `<`:

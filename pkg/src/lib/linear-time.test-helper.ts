@@ -480,8 +480,8 @@ export const expectGrowth = (
     // Under the baseline's noise, the part that varies is not measured.
     expect(
       growth.smallMs - growth.baseMs,
-      `${what}: the baseline is most of the quarter-size run; raise the size until the part that varies is at least a quarter of it (baseline)`,
-    ).toBeGreaterThanOrEqual(growth.baseMs / 4);
+      `${what}: the baseline is most of the quarter-size run; raise the size until the part that varies is at least half of it (baseline)`,
+    ).toBeGreaterThanOrEqual(growth.baseMs / 2);
   expect(growth.growth, `${what} (growth)`).toBeLessThan(MAX_GROWTH);
   expect(growth.largeMs, `${what} (ceiling)`).toBeLessThan(ceilingMs);
 };
