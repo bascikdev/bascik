@@ -50,6 +50,10 @@ import {
   BUILD_EXPANSION_LIMITS,
   recursivelyTranspile,
 } from "./component-expansion.ts";
+import {
+  LINEAR_TIME_TIMEOUT_MS,
+  expectLinearTime,
+} from "./linear-time.test-helper.ts";
 import { deriveInstanceId } from "./names.ts";
 import { PageProcessingError } from "./page-diagnostics.ts";
 import { applyScopingResult } from "./scoping-instantiate.ts";
@@ -406,20 +410,26 @@ describe("stripSourceFileComments", () => {
     ).toBe("<p>a</p><!--bascik-source-file:y");
   });
 
-  it("runs in linear time on many unclosed markers", () => {
-    // Request-time expansion runs it on server-script output, which can carry
-    // visitor text. `/<!--bascik-source-file:[\s\S]*?-->/g` rescanned to the
-    // end from every opener: 40k openers took 4 s (CodeQL js/polynomial-redos).
-    for (const opener of [
-      "<!--bascik-source-file:",
-      "<!--bascik-source-file-end:",
-    ]) {
-      const html = `<p>a</p>${opener.repeat(40_000)}`;
-      const start = performance.now();
-      expect(stripSourceFileComments(html)).toBe(html);
-      expect(performance.now() - start, opener).toBeLessThan(250);
-    }
-  });
+  it(
+    "runs in linear time on many unclosed markers",
+    () => {
+      // Request-time expansion runs it on server-script output, which can
+      // carry visitor text. `/<!--bascik-source-file:[\s\S]*?-->/g` rescanned
+      // to the end from every opener: 40k openers took 4 s (CodeQL
+      // js/polynomial-redos).
+      for (const opener of [
+        "<!--bascik-source-file:",
+        "<!--bascik-source-file-end:",
+      ]) {
+        const html = (count: number) => `<p>a</p>${opener.repeat(count)}`;
+        expect(stripSourceFileComments(html(40_000))).toBe(html(40_000));
+        expectLinearTime(html, 40_000, stripSourceFileComments, {
+          label: opener,
+        });
+      }
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 });
 
 describe("expandComponents limits", () => {

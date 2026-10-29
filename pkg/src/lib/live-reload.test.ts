@@ -9,6 +9,7 @@ import {
 import { BOOT_PAGE_HTML } from "./boot-page.ts";
 import { domSnapshot } from "./html-parse-oracle.test-helper.ts";
 import { scanHtml } from "./html-scanner.ts";
+import { expectLinearTime } from "./linear-time.test-helper.ts";
 
 const isLiveReloadScript = (script: { attrs: Array<{ name: string }> }) =>
   script.attrs.some((attribute) => attribute.name === LIVE_RELOAD_SCRIPT_ATTR);
@@ -298,12 +299,13 @@ describe("stripLiveReloadScript", () => {
   });
 
   it("stays linear on deeply nested look-alikes", () => {
-    let html = getLiveReloadScript().trim();
-    for (let i = 0; i < 1000; i++)
-      html = `<scr${html}ipt ${LIVE_RELOAD_SCRIPT_ATTR}>x${i}()</script>`;
-    const started = performance.now();
-    stripLiveReloadScript(html);
-    expect(performance.now() - started).toBeLessThan(1000);
+    const nested = (depth: number) => {
+      let html = getLiveReloadScript().trim();
+      for (let i = 0; i < depth; i++)
+        html = `<scr${html}ipt ${LIVE_RELOAD_SCRIPT_ATTR}>x${i}()</script>`;
+      return html;
+    };
+    expectLinearTime(nested, 1000, stripLiveReloadScript);
   });
 
   it("removes exactly the live-reload scripts and nothing else, on random malformed markup", () => {

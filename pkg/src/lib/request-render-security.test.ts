@@ -78,6 +78,11 @@ import {
   scopeComponentInstance,
 } from "./scoping-template.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
+import {
+  LINEAR_TIME_TIMEOUT_MS,
+  cpuMsAsync,
+  expectLinearTimeAsync,
+} from "./linear-time.test-helper.ts";
 import type { ComponentList } from "./types.ts";
 
 type MutableConfig = {
@@ -893,28 +898,105 @@ describe("G. a hostile output settles in time proportional to its size", () => {
   // 999 nested usages (under the instance budget), each opener cut mid-tag
   // at the splice, padded to 400 KB: before a scanning budget this re-masks
   // the whole instance once per nested instance (about 4 s here, about 40 s
-  // at 1 MB).
+  // at 1 MB). Both sizes hold 999 usages, so that cost is linear in the
+  // output too: the scanning budget bounds the work per usage, and the
+  // ceiling, not the growth, is what fails a loop without it
+  // (linear-time.test-helper.ts).
+  const SIZE = 400_000;
+  // `costs at most twice its calibrated share at the instance cap`: the
+  // request at the cap over the splices it is made of, the most of four runs
+  // on an M-series Mac (1.31 to 1.36, and 2.28 to 2.38 under coverage, which
+  // slows the renderer and not the copying). Measure again after a change
+  // that makes the request cheaper.
+  const coverage = (
+    globalThis as {
+      __vitest_worker__?: { config?: { coverage?: { enabled?: boolean } } };
+    }
+  ).__vitest_worker__?.config?.coverage?.enabled;
+  const CAP_COST_RATIO = coverage === false ? 1.4 : 2.4;
   const padded = (unit: string, size: number): string =>
     (unit + "x".repeat(Math.ceil(size / 999) - unit.length)).repeat(999);
   it.each([
     [
       "<my-card> + fill('<x-p><a ') + </my-card>",
-      `<my-card>${padded("<x-p><a ", 400_000)}</my-card>`,
+      (size: number) => `<my-card>${padded("<x-p><a ", size)}</my-card>`,
     ],
-    ["fill('<x-p><s')", padded("<x-p><s", 400_000)],
+    ["fill('<x-p><s')", (size: number) => padded("<x-p><s", size)],
   ])(
-    "%s settles (rendered or a RequestRenderError) within 1 s",
+    "%s settles (rendered or a RequestRenderError) in linear time",
     async (_label, output) => {
       const manifest = await build(list);
       config.minify.identifiers = false;
       const host = makeHost(manifest);
-      const wrapped = wrapRunner(runnerOf(output), serverPlan("a"), host);
-      const started = performance.now();
-      await wrapped("a", new AbortController().signal).catch((error) => {
-        expect(error).toBeInstanceOf(RequestRenderError);
-      });
-      expect(performance.now() - started).toBeLessThan(1000);
+      const settle = (html: string) =>
+        wrapRunner(
+          runnerOf(html),
+          serverPlan("a"),
+          host,
+        )("a", new AbortController().signal).catch((error) => {
+          expect(error).toBeInstanceOf(RequestRenderError);
+        });
+      await expectLinearTimeAsync(output, SIZE, settle);
     },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  // The nested case is linear in the output at a fixed usage count, but not
+  // in the usage count. `<my-card>` holds every usage, so it expands as one
+  // fragment (expandByUsage), and each substitution splices the whole
+  // fragment and its mask: V8 joins the pieces lazily and copies the whole
+  // string the next time it is read (`body.slice` in spliceRawTextMask, the
+  // mask's in expandComponents). The cost is usages times fragment length:
+  // at 400 bytes per usage, 7 ms for 100 usages, 60 ms for 500, 186 ms for
+  // 1000. Only the instance cap (`REQUEST_RENDER_LIMITS.maxInstances`)
+  // bounds the usage count, and `maxOutputChars` the length: 998 usages in a
+  // 4 MB output took 1.4 s of CPU. So the cost at the cap is pinned, as a
+  // ratio to the work it is made of, timed in the same process: one splice
+  // of a page and of its mask per substitution, each then read. CPU time on
+  // both sides keeps load out of the ratio, and the splices slow down with the
+  // machine as the request does; a regression that makes the request twice as
+  // costly fails it.
+  it(
+    "costs at most twice its calibrated share at the instance cap",
+    async () => {
+      expect(REQUEST_RENDER_LIMITS.maxInstances).toBe(1000);
+      const output = `<my-card>${padded("<x-p><a ", SIZE)}</my-card>`;
+      const manifest = await build(list);
+      config.minify.identifiers = false;
+      const host = makeHost(manifest);
+      const settle = () =>
+        wrapRunner(
+          runnerOf(output),
+          serverPlan("a"),
+          host,
+        )("a", new AbortController().signal);
+      expect(await settle()).not.toContain("<x-p");
+      const splices = async () => {
+        const tag = `<p class="p">v</p>`;
+        let page = output;
+        let mask = output.replaceAll("x", " ");
+        for (let i = 0; i < 999; i++) {
+          const at = 9 + i * 400;
+          page = page.slice(0, at) + tag + page.slice(at + 8);
+          mask = mask.slice(0, at) + tag + mask.slice(at + 8);
+          if (page.slice(at, at + 1) !== mask.slice(at, at + 1))
+            throw new Error(`splice ${i}`);
+        }
+      };
+      await settle();
+      await splices();
+      let atCapMs = Infinity;
+      let splicesMs = Infinity;
+      for (let i = 0; i < 3; i++) {
+        atCapMs = Math.min(atCapMs, await cpuMsAsync(settle));
+        splicesMs = Math.min(splicesMs, await cpuMsAsync(splices));
+      }
+      expect(
+        atCapMs / splicesMs,
+        `${atCapMs.toFixed(1)} ms at the cap, ${splicesMs.toFixed(1)} ms of splices`,
+      ).toBeLessThan(2 * CAP_COST_RATIO);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
   );
 });
 

@@ -84,6 +84,12 @@ import {
 } from "./request-render.ts";
 import { __componentScanStatsForTests } from "./component-scan-stats.ts";
 import {
+  LINEAR_TIME_TIMEOUT_MS,
+  expectLinearTime,
+  expectLinearTimeAsync,
+  repeatTo,
+} from "./linear-time.test-helper.ts";
+import {
   clearScopingTemplates,
   scopeComponentInstance,
 } from "./scoping-template.ts";
@@ -1524,95 +1530,111 @@ describe.each([true, false])(
     // each unclosed opener by walking to the end of the output (about 29 s
     // at 160k characters), and a quoted value holding many `<!--` rescanned
     // to its far closing quote from every one of them (about 3.5 s at 400k
-    // and 14 s at 800k). The bound is generous for a linear pass and far below
-    // the old times.
+    // and 14 s at 800k). Each check times the output and a quarter of it and
+    // requires the time to grow linearly (linear-time.test-helper.ts); its
+    // ceiling is far below the old times.
     const HOSTILE_SIZE = 200_000;
-    const HOSTILE_BOUND_MS = 1_500;
-    const fill = (unit: string): string =>
-      unit.repeat(Math.ceil(HOSTILE_SIZE / unit.length));
+    const fill = (unit: string, size = HOSTILE_SIZE): string =>
+      repeatTo(unit, size);
     const requestLimits = {
       maxSubstitutions: 1000,
       maxOutputBytes: 64 * 1024 * 1024,
     };
-    const timedExpand = (html: string): { result: string; ms: number } => {
+    const expand = (html: string): string => {
       clearScopingTemplates();
       const opts = { ...buildOptions(freshState()), limits: requestLimits };
-      const start = performance.now();
-      let result: string;
       try {
-        result = expandByUsage(html, cards(), opts);
+        return expandByUsage(html, cards(), opts);
       } catch (error) {
         if (!(error instanceof ComponentExpansionLimitError)) throw error;
-        result = "limit";
+        return "limit";
       }
-      return { result, ms: performance.now() - start };
     };
 
     it.each([
       [
         "unclosed openers, one closer at the end",
-        `${fill("<bare-card>")}</bare-card>`,
+        (size: number) => `${fill("<bare-card>", size)}</bare-card>`,
       ],
       [
         "an opener, unclosed openers, one closer",
-        `<bare-card>${fill("<bare-card>")}</bare-card>`,
+        (size: number) => `<bare-card>${fill("<bare-card>", size)}</bare-card>`,
       ],
       [
         "unclosed openers of another name",
-        `${fill("<plain-card>")}</plain-card>`,
+        (size: number) => `${fill("<plain-card>", size)}</plain-card>`,
       ],
       [
         "closers only inside attribute values",
-        fill(`<bare-card a="</bare-card>">`),
+        (size: number) => fill(`<bare-card a="</bare-card>">`, size),
       ],
-    ])("locates the usages of %s in linear time", (_name, html) => {
-      const { result, ms } = timedExpand(html);
-      expect(result).toBe("limit");
-      expect(ms).toBeLessThan(HOSTILE_BOUND_MS);
-    });
+    ])(
+      "locates the usages of %s in linear time",
+      (_name, html) => {
+        expect(expand(html(HOSTILE_SIZE))).toBe("limit");
+        expectLinearTime(html, HOSTILE_SIZE, expand);
+      },
+      LINEAR_TIME_TIMEOUT_MS,
+    );
 
     // A usage whose slot opens many nested usages, each after a lone `<`:
     // the loop re-masked the whole instance after every one of up to 1000
-    // nested instances (about 10 s at 200k characters, 48 s at 1M).
+    // nested instances (about 10 s at 200k characters, 48 s at 1M). Both
+    // sizes reach the instance limit, so that cost is linear in the output
+    // too: the ceiling, not the growth, is what fails it.
     it.each([
-      ["after a lone <", `<server-card>${fill("<bare-card><")}</server-card>`],
-      ["after <<", `<server-card>${fill("<bare-card><<")}</server-card>`],
+      [
+        "after a lone <",
+        (size: number) =>
+          `<server-card>${fill("<bare-card><", size)}</server-card>`,
+      ],
+      [
+        "after <<",
+        (size: number) =>
+          `<server-card>${fill("<bare-card><<", size)}</server-card>`,
+      ],
     ])(
       "expands nested usages %s without re-masking the instance each time",
       (_name, html) => {
-        const { result, ms } = timedExpand(html);
-        expect(result).toBe("limit");
-        expect(ms).toBeLessThan(HOSTILE_BOUND_MS);
+        expect(expand(html(HOSTILE_SIZE))).toBe("limit");
+        expectLinearTime(html, HOSTILE_SIZE, expand);
       },
+      LINEAR_TIME_TIMEOUT_MS,
     );
 
     // At 1M characters: V8 searches for the far quote fast enough that the
-    // quadratic scan stays under the bound at 200k.
-    const comments = "<!--".repeat(250_000);
+    // quadratic scan is only a few times slower than a linear one at 200k.
+    const COMMENT_OPENERS = 250_000;
+    const comments = (count: number) => "<!--".repeat(count);
     it.each([
       [
         "a prop value",
-        `<bare-card data-bascik-prop-t="${comments}">x</bare-card>`,
+        (count: number) =>
+          `<bare-card data-bascik-prop-t="${comments(count)}">x</bare-card>`,
         // A prop value is text in the instance.
-        `>${comments.replaceAll("<", "&lt;")}</p>`,
+        `>${comments(COMMENT_OPENERS).replaceAll("<", "&lt;")}</p>`,
       ],
       [
         "slot content",
-        `<server-card><b title="${comments}">x</b></server-card>`,
-        `"${comments}"`,
+        (count: number) =>
+          `<server-card><b title="${comments(count)}">x</b></server-card>`,
+        `"${comments(COMMENT_OPENERS)}"`,
       ],
       [
         "text after a usage",
-        `<bare-card></bare-card><b title="${comments}">`,
-        `"${comments}"`,
+        (count: number) =>
+          `<bare-card></bare-card><b title="${comments(count)}">`,
+        `"${comments(COMMENT_OPENERS)}"`,
       ],
     ])(
       "masks a quoted value full of comment openers in %s in linear time",
       (_name, html, kept) => {
-        const { result, ms } = timedExpand(html);
-        expect(result).toContain(kept);
-        expect(ms).toBeLessThan(HOSTILE_BOUND_MS);
+        expect(expand(html(COMMENT_OPENERS))).toContain(kept);
+        // About 0.7 s of CPU under coverage at 1M characters: growth guards
+        // this one, the ceiling only catches what takes seconds.
+        expectLinearTime(html, COMMENT_OPENERS, expand, { ceilingMs: 5000 });
       },
+      LINEAR_TIME_TIMEOUT_MS,
     );
   },
 );
@@ -2053,57 +2075,57 @@ describe("scaling (identifiers off)", () => {
     config.minify.identifiers = false;
   });
 
-  it("a 2 MiB output with 4000 named-slot wrappers, 16000 unclosed opens and 1000 instances renders in linear time", async () => {
-    const manifest = await build();
-    const host = makeHost(manifest);
-    // Four named-slot wrappers per usage, each holding four unclosed <i>
-    // opens, padded so the whole output is `target` characters.
-    const skeleton = (pad: string) =>
-      `<slots-card>` +
-      ["a", "b", "c", "d"]
-        .map(
-          (slot) => `<div data-bascik-slot="${slot}"><i><i><i><i>${pad}</div>`,
-        )
-        .join("") +
-      `</slots-card>`;
-    const outputOf = (instances: number, target: number) => {
-      const bare = skeleton("").length;
-      const padPerSlot = Math.ceil((target / instances - bare) / 4);
-      return skeleton("p".repeat(padPerSlot)).repeat(instances);
-    };
-    const render = async (html: string) => {
-      const wrapped = wrapRunner(
-        runnerFrom({ a: html }),
-        serverPlan("a"),
-        host,
-      );
-      const started = performance.now();
-      const out = await wrapped("a", signalOf());
-      return { out, elapsed: performance.now() - started };
-    };
+  it(
+    "a 2 MiB output with 4000 named-slot wrappers, 16000 unclosed opens and 1000 instances renders in linear time",
+    async () => {
+      const manifest = await build();
+      const host = makeHost(manifest);
+      // Four named-slot wrappers per usage, each holding four unclosed <i>
+      // opens, padded so the whole output is `target` characters.
+      const skeleton = (pad: string) =>
+        `<slots-card>` +
+        ["a", "b", "c", "d"]
+          .map(
+            (slot) =>
+              `<div data-bascik-slot="${slot}"><i><i><i><i>${pad}</div>`,
+          )
+          .join("") +
+        `</slots-card>`;
+      const outputOf = (instances: number, target: number) => {
+        const bare = skeleton("").length;
+        const padPerSlot = Math.ceil((target / instances - bare) / 4);
+        return skeleton("p".repeat(padPerSlot)).repeat(instances);
+      };
+      const render = (html: string) =>
+        wrapRunner(
+          runnerFrom({ a: html }),
+          serverPlan("a"),
+          host,
+        )("a", signalOf());
 
-    const full = outputOf(1000, 2 * 1024 * 1024);
-    expect(full.length).toBeGreaterThanOrEqual(2 * 1024 * 1024);
-    expect(count(full, "data-bascik-slot=")).toBe(4000);
-    expect(count(full, "<i>")).toBe(16000);
-    const quarter = outputOf(250, (2 * 1024 * 1024) / 4);
+      const MiB2 = 2 * 1024 * 1024;
+      // 1000 instances at 2 MiB, 250 at a quarter of it.
+      const output = (size: number) => outputOf(1000 * (size / MiB2), size);
+      const full = output(MiB2);
+      expect(full.length).toBeGreaterThanOrEqual(MiB2);
+      expect(count(full, "data-bascik-slot=")).toBe(4000);
+      expect(count(full, "<i>")).toBe(16000);
 
-    // A wall-clock bound alone flakes on shared CI runners (591 ms against a
-    // 500 ms bound once), so the test measures how time grows instead: a
-    // quarter-size render, then the full one. Linear work roughly quadruples
-    // (ratio about 4); the quadratic passes this guards against grew about 16
-    // times. Warm up first so JIT compilation is not charged to the small run.
-    await render(quarter);
-    const small = await render(quarter);
-    const large = await render(full);
+      const out = await render(full);
+      expect(count(out, `class="bascik__slots-card__s"`)).toBe(1000);
+      expect(out).not.toContain("<slots-card");
+      expect(count(out, "<style>")).toBe(1);
 
-    expect(count(large.out, `class="bascik__slots-card__s"`)).toBe(1000);
-    expect(large.out).not.toContain("<slots-card");
-    expect(count(large.out, "<style>")).toBe(1);
-    expect(large.elapsed / Math.max(small.elapsed, 1)).toBeLessThan(8);
-    // Catastrophic regressions (seconds per request) still fail outright.
-    expect(large.elapsed).toBeLessThan(5000);
-  });
+      // A wall-clock bound alone flakes on shared CI runners (591 ms against a
+      // 500 ms bound once), so the test measures how time grows instead
+      // (linear-time.test-helper.ts): linear work roughly quadruples from the
+      // quarter-size render to the full one, while the quadratic passes this
+      // guards against grew about 16 times. Catastrophic regressions (seconds
+      // per request) still fail outright on the ceiling.
+      await expectLinearTimeAsync(output, MiB2, render, { ceilingMs: 5000 });
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 });
 
 describe("hostile echoed output stays linear (identifiers off)", () => {
@@ -2113,9 +2135,6 @@ describe("hostile echoed output stays linear (identifiers off)", () => {
   // `<a x` repeated with one quote after it took about 6 s, `<style '` about
   // 1.8 s, and finding nested-job markers in `<script '` repeated about 1.6 s.
   const SIZE = 200_000;
-  const BOUND_MS = 1000;
-  const repeatTo = (unit: string): string =>
-    unit.repeat(Math.ceil(SIZE / unit.length));
 
   beforeEach(() => {
     config.minify.identifiers = false;
@@ -2133,18 +2152,20 @@ describe("hostile echoed output stays linear (identifiers off)", () => {
       const manifest = await build();
       config.base = "/";
       const host = makeHost(manifest);
-      const html = `<server-card data-bascik-prop-name="n">${repeatTo(unit)}${tail}</server-card>`;
-      const wrapped = wrapRunner(
-        runnerFrom({ a: html }),
-        serverPlan("a"),
-        host,
-      );
-      const started = performance.now();
-      const out = await wrapped("a", signalOf());
-      expect(performance.now() - started).toBeLessThan(BOUND_MS);
+      const html = (size: number) =>
+        `<server-card data-bascik-prop-name="n">${repeatTo(unit, size)}${tail}</server-card>`;
+      const render = (output: string) =>
+        wrapRunner(
+          runnerFrom({ a: output }),
+          serverPlan("a"),
+          host,
+        )("a", signalOf());
+      const out = await render(html(SIZE));
+      await expectLinearTimeAsync(html, SIZE, render);
       expect(out).not.toContain("<server-card");
       expect(out).toContain('href="/docs/default"');
     },
+    LINEAR_TIME_TIMEOUT_MS,
   );
 
   it.each([
@@ -2152,7 +2173,7 @@ describe("hostile echoed output stays linear (identifiers off)", () => {
     ["<script x", ""],
     ["<SCRIPT a='>' ", ""],
     // Every opener's attributes run to the one `>`; what follows it is read once.
-    ["<script x", `>${" ".repeat(SIZE)}`],
+    ["<script x", ">"],
   ])(
     "nested-job markers are found in linear time next to %j repeated (then %j)",
     async (unit, tail) => {
@@ -2160,19 +2181,24 @@ describe("hostile echoed output stays linear (identifiers off)", () => {
       const host = makeHost(manifest, {
         runComponentJob: vi.fn(async () => "<b>nested</b>"),
       });
-      const html = `<srv-card></srv-card>${repeatTo(unit)}${tail}`;
-      const wrapped = wrapRunner(
-        runnerFrom({ a: html }),
-        serverPlan("a"),
-        host,
-      );
-      const started = performance.now();
-      const out = await wrapped("a", signalOf());
-      expect(performance.now() - started).toBeLessThan(BOUND_MS);
+      // With a `>` tail, as many spaces after it as there are characters of
+      // openers before it.
+      const html = (size: number) =>
+        `<srv-card></srv-card>${repeatTo(unit, size)}${tail}${tail ? " ".repeat(size) : ""}`;
+      const render = (output: string) =>
+        wrapRunner(
+          runnerFrom({ a: output }),
+          serverPlan("a"),
+          host,
+        )("a", signalOf());
+      await expectLinearTimeAsync(html, SIZE, render);
+      host.runComponentJob.mockClear();
+      const out = await render(html(SIZE));
       expect(host.runComponentJob).toHaveBeenCalledTimes(1);
       expect(out).toContain("<b>nested</b>");
       expect(out).not.toContain("bascik-job");
     },
+    LINEAR_TIME_TIMEOUT_MS,
   );
 });
 

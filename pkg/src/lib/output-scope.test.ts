@@ -7,6 +7,7 @@ import {
   stripOutputScopeAttribute,
   type OutputScope,
 } from "./output-scope.ts";
+import { expectLinearTime } from "./linear-time.test-helper.ts";
 
 const scope: OutputScope = {
   classes: { item: "bascik__c__item", wrap: "bascik__c__wrap" },
@@ -80,10 +81,10 @@ describe("stripOutputScopeAttribute", () => {
   it("runs in linear time on a long whitespace run without the annotation", () => {
     // `\s+data-...` retried the run from every whitespace position: 100k
     // tabs took 17 s (CodeQL js/polynomial-redos).
-    const open = `<script${"\t".repeat(100_000)}data-bascik-build>`;
-    const start = performance.now();
-    expect(stripOutputScopeAttribute(open)).toBe(open);
-    expect(performance.now() - start).toBeLessThan(250);
+    const open = (tabs: number) =>
+      `<script${"\t".repeat(tabs)}data-bascik-build>`;
+    expect(stripOutputScopeAttribute(open(100_000))).toBe(open(100_000));
+    expectLinearTime(open, 100_000, stripOutputScopeAttribute);
   });
 });
 
@@ -172,12 +173,12 @@ describe("applyOutputScope", () => {
     // `<!--[\s\S]*?-->` rescanned to the end from every opener: 40k
     // openers took 2 s (CodeQL js/polynomial-redos). Request-time output can
     // carry text a visitor typed.
-    const html = `<p class="item">a</p>${"<!--".repeat(50_000)}`;
-    const start = performance.now();
-    expect(applyOutputScope(html, scope)).toBe(
+    const html = (openers: number) =>
+      `<p class="item">a</p>${"<!--".repeat(openers)}`;
+    expect(applyOutputScope(html(50_000), scope)).toBe(
       `<p class="bascik__c__item">a</p>${"<!--".repeat(50_000)}`,
     );
-    expect(performance.now() - start).toBeLessThan(250);
+    expectLinearTime(html, 50_000, (h) => applyOutputScope(h, scope));
   });
 
   it("runs in linear time on open-tag starts that never close", () => {
@@ -185,16 +186,18 @@ describe("applyOutputScope", () => {
     // an unclosed quote at the end, or quotes that pair differently from
     // each start. A later real tag is still found.
     const shapes = [
-      "<a".repeat(20_000),
-      '<a"'.repeat(20_000),
-      `${'<a""'.repeat(20_000)}'>`,
-      `<a${'"<a"'.repeat(20_000)}'>`,
-      `<a${"\"<a'".repeat(20_000)}`,
+      (n: number) => "<a".repeat(n),
+      (n: number) => '<a"'.repeat(n),
+      (n: number) => `${'<a""'.repeat(n)}'>`,
+      (n: number) => `<a${'"<a"'.repeat(n)}'>`,
+      (n: number) => `<a${"\"<a'".repeat(n)}`,
     ];
     for (const shape of shapes) {
-      const start = performance.now();
-      expect(applyOutputScope(`${shape}`, scope)).toBe(shape);
-      expect(performance.now() - start, shape.slice(0, 8)).toBeLessThan(250);
+      const label = shape(2).slice(0, 8);
+      expect(applyOutputScope(shape(20_000), scope), label).toBe(shape(20_000));
+      expectLinearTime(shape, 20_000, (h) => applyOutputScope(h, scope), {
+        label,
+      });
     }
   });
 

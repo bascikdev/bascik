@@ -8,6 +8,7 @@ import {
   rewriteSrcsetBasePaths,
   shouldRewriteBasePath,
 } from "./base-path.ts";
+import { expectLinearTime, repeatTo } from "./linear-time.test-helper.ts";
 
 describe("base path normalization", () => {
   it.each([
@@ -38,10 +39,12 @@ describe("composeSiteUrl", () => {
 
   it("runs in linear time when the site URL holds a long slash run", () => {
     // `/\/+$/` is quadratic on a slash run that does not end the string.
-    const siteUrl = `https://bascik.dev${"/".repeat(50_000)}x`;
-    const start = performance.now();
-    expect(composeSiteUrl(siteUrl, "/", "/a")).toBe(`${siteUrl}/a`);
-    expect(performance.now() - start).toBeLessThan(250);
+    const siteUrl = (slashes: number) =>
+      `https://bascik.dev${"/".repeat(slashes)}x`;
+    expect(composeSiteUrl(siteUrl(50_000), "/", "/a")).toBe(
+      `${siteUrl(50_000)}/a`,
+    );
+    expectLinearTime(siteUrl, 50_000, (url) => composeSiteUrl(url, "/", "/a"));
   });
 });
 
@@ -193,9 +196,6 @@ describe("rewriteHtmlBasePaths time on hostile input", () => {
   // `<a x` repeated with one quote after it at 100k characters, and 1.8 s
   // for `<style '` repeated.
   const SIZE = 200_000;
-  const BOUND_MS = 250;
-  const repeatTo = (unit: string): string =>
-    unit.repeat(Math.ceil(SIZE / unit.length));
 
   it.each([
     ["<a x", "'"],
@@ -209,10 +209,10 @@ describe("rewriteHtmlBasePaths time on hostile input", () => {
     ["<style></style x", ""],
     ["<style></style ", ""],
   ])("rebases %j repeated (then %j) in linear time", (unit, tail) => {
-    const html = `${repeatTo(unit)}${tail}<a href="/end">e</a>`;
-    const started = performance.now();
-    const out = rewriteHtmlBasePaths(html, "/sub/");
-    expect(performance.now() - started).toBeLessThan(BOUND_MS);
+    const html = (size: number) =>
+      `${repeatTo(unit, size)}${tail}<a href="/end">e</a>`;
+    const out = rewriteHtmlBasePaths(html(SIZE), "/sub/");
+    expectLinearTime(html, SIZE, (h) => rewriteHtmlBasePaths(h, "/sub/"));
     // The link after the run is found and rewritten, on its own or as part
     // of the one long tag an opener's attributes run into.
     expect(out.endsWith('<a href="/sub/end">e</a>')).toBe(true);
@@ -228,7 +228,7 @@ describe("rewriteHtmlBasePaths time on hostile input", () => {
   });
 
   it("still rewrites a complete tag and stylesheet after a long run of unclosed openers", () => {
-    const run = repeatTo("<style '").slice(0, 50_000);
+    const run = repeatTo("<style '", SIZE).slice(0, 50_000);
     const html = `<p>${run.replaceAll("'", "")}</p><style>a{background:url(/i.png)}</style><img src="/i.png">`;
     expect(rewriteHtmlBasePaths(html, "/sub/")).toBe(
       html

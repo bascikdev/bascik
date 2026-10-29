@@ -7,6 +7,10 @@ import {
   readSiteGraph,
 } from "./site-graph.ts";
 import { emitServerlessArtifacts } from "./serverless-artifacts.ts";
+import {
+  LINEAR_TIME_TIMEOUT_MS,
+  expectLinearTime,
+} from "./linear-time.test-helper.ts";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdir, writeFile, rm, readFile } from "node:fs/promises";
@@ -120,22 +124,31 @@ describe("splitDistPageIntoSegments", () => {
     expect(rebuilt).toBe(html);
   });
 
-  it("stays linear on many placeholders and many unterminated placeholder open tags", () => {
-    const started = performance.now();
-    const many =
-      '<p>a</p><script type="text/bascik-server" data-bascik-server-id="s"></script>'.repeat(
+  it(
+    "stays linear on many placeholders and many unterminated placeholder open tags",
+    () => {
+      const many = (n: number) =>
+        '<p>a</p><script type="text/bascik-server" data-bascik-server-id="s"></script>'.repeat(
+          n,
+        );
+      const unterminated = (n: number) =>
+        '<script type="text/bascik-server" data-bascik-server-id="s">'.repeat(
+          n,
+        );
+      expect(splitDistPageIntoSegments(many(50_000)).scriptIds).toHaveLength(
         50_000,
       );
-    expect(splitDistPageIntoSegments(many).scriptIds).toHaveLength(50_000);
-    expect(
-      splitDistPageIntoSegments(
-        '<script type="text/bascik-server" data-bascik-server-id="s">'.repeat(
-          50_000,
-        ),
-      ).scriptIds,
-    ).toEqual([]);
-    expect(performance.now() - started).toBeLessThan(2000);
-  });
+      expect(splitDistPageIntoSegments(unterminated(50_000)).scriptIds).toEqual(
+        [],
+      );
+      for (const [label, input] of [
+        ["placeholders", many],
+        ["unterminated open tags", unterminated],
+      ] as const)
+        expectLinearTime(input, 50_000, splitDistPageIntoSegments, { label });
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 
   it.each([
     ["a bare end tag", "</script>", ["p"]],
@@ -154,27 +167,25 @@ describe("splitDistPageIntoSegments", () => {
 
   it("stays linear on long whitespace runs and repeated unterminated end tags", () => {
     const open = '<script type="text/bascik-server" data-bascik-server-id="s">';
-    const started = performance.now();
-    expect(
-      splitDistPageIntoSegments(`${open}${" ".repeat(200_000)}x`).scriptIds,
-    ).toEqual([]);
-    expect(
-      splitDistPageIntoSegments(`${open}${"</script\t".repeat(50_000)}`)
-        .scriptIds,
-    ).toEqual([]);
-    expect(
-      splitDistPageIntoSegments(`${open}${" ".repeat(200_000)}</script>`)
-        .scriptIds,
-    ).toEqual(["s"]);
-    expect(performance.now() - started).toBeLessThan(1000);
+    const cases = [
+      [(n: number) => `${open}${" ".repeat(n)}x`, 200_000, []],
+      [(n: number) => `${open}${"</script\t".repeat(n)}`, 50_000, []],
+      [(n: number) => `${open}${" ".repeat(n)}</script>`, 200_000, ["s"]],
+    ] as const;
+    for (const [input, size, ids] of cases) {
+      const label = input(2).slice(open.length);
+      expect(splitDistPageIntoSegments(input(size)).scriptIds, label).toEqual(
+        ids,
+      );
+      expectLinearTime(input, size, splitDistPageIntoSegments, { label });
+    }
   });
 
   it("stays fast on many repeated type attributes in an unterminated tag", () => {
-    const html = `<script ${'type="text/bascik-server"'.repeat(20_000)}`;
-    const started = performance.now();
-    const { scriptIds } = splitDistPageIntoSegments(html);
-    expect(performance.now() - started).toBeLessThan(1000);
-    expect(scriptIds).toEqual([]);
+    const html = (n: number) =>
+      `<script ${'type="text/bascik-server"'.repeat(n)}`;
+    expect(splitDistPageIntoSegments(html(20_000)).scriptIds).toEqual([]);
+    expectLinearTime(html, 20_000, splitDistPageIntoSegments);
   });
 
   it("preserves multi-byte text exactly", () => {

@@ -1,18 +1,13 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { trimSlashes, trimTrailingSlashes } from "./slashes.ts";
+import { expectLinearTime } from "./linear-time.test-helper.ts";
 
 // A long run of "/" that does not end the string is the worst case for the
 // anchored regex `/\/+$/`: V8 retries the run from every start position, so the
 // cost grows with the square of its length (about 4 s for 50,000 slashes).
-const LONG_SLASH_RUN = `${"/".repeat(50_000)}x`;
-const LINEAR_BUDGET_MS = 250;
-
-const timed = (run: () => void): number => {
-  const start = performance.now();
-  run();
-  return performance.now() - start;
-};
+const SLASH_RUN = 50_000;
+const slashRun = (length: number): string => `${"/".repeat(length)}x`;
 
 describe("trimTrailingSlashes", () => {
   it.each([
@@ -40,9 +35,7 @@ describe("trimTrailingSlashes", () => {
   });
 
   it("runs in linear time on a long slash run that does not end the string", () => {
-    expect(timed(() => trimTrailingSlashes(LONG_SLASH_RUN))).toBeLessThan(
-      LINEAR_BUDGET_MS,
-    );
+    expectLinearTime(slashRun, SLASH_RUN, trimTrailingSlashes);
   });
 });
 
@@ -69,8 +62,6 @@ describe("trimSlashes", () => {
   });
 
   it("runs in linear time on a long slash run that does not end the string", () => {
-    expect(timed(() => trimSlashes(LONG_SLASH_RUN))).toBeLessThan(
-      LINEAR_BUDGET_MS,
-    );
+    expectLinearTime(slashRun, SLASH_RUN, trimSlashes);
   });
 });

@@ -46,6 +46,7 @@ import {
   validateDoctorProcessStat,
 } from "../../bench/profile-workload.ts";
 import { readdir } from "node:fs/promises";
+import { expectLinearTime } from "./linear-time.test-helper.ts";
 
 async function withRoot(run: (root: string) => Promise<void>) {
   const root = await realpath(
@@ -773,13 +774,10 @@ describe("rotated Node trace log join", () => {
       ),
     ).toBe(true);
     // Many frame-like repetitions on one line with a non-matching tail must not backtrack exponentially.
-    const started = performance.now();
-    expect(
-      isClinicTraceJoinFailure(
-        `Analysing data\nError: premature close\n\tat ${"\tat ".repeat(5000)}\nnot a frame`,
-      ),
-    ).toBe(false);
-    expect(performance.now() - started).toBeLessThan(1000);
+    const log = (frames: number) =>
+      `Analysing data\nError: premature close\n\tat ${"\tat ".repeat(frames)}\nnot a frame`;
+    expect(isClinicTraceJoinFailure(log(5000))).toBe(false);
+    expectLinearTime(log, 5000, isClinicTraceJoinFailure);
   });
 });
 

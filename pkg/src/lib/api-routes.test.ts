@@ -6,6 +6,7 @@ import {
   formatApiRouteWarning,
   type ApiRouteDefinition,
 } from "./api-routes.ts";
+import { expectLinearTime } from "./linear-time.test-helper.ts";
 
 describe("fileToApiRoutePath", () => {
   it.each([
@@ -19,10 +20,11 @@ describe("fileToApiRoutePath", () => {
 
   it("runs in linear time on a long slash run inside the path", () => {
     // `/\/+$/` is quadratic on a slash run that does not end the string.
-    const relPath = `a${"/".repeat(50_000)}b.ts`;
-    const start = performance.now();
-    expect(fileToApiRoutePath(relPath)).toBe(`/api/a${"/".repeat(50_000)}b`);
-    expect(performance.now() - start).toBeLessThan(250);
+    const relPath = (slashes: number) => `a${"/".repeat(slashes)}b.ts`;
+    expect(fileToApiRoutePath(relPath(50_000))).toBe(
+      `/api/a${"/".repeat(50_000)}b`,
+    );
+    expectLinearTime(relPath, 50_000, fileToApiRoutePath);
   });
 });
 

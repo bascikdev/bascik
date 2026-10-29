@@ -13,6 +13,7 @@ import {
   domSnapshot,
   parsedLocations,
 } from "./html-parse-oracle.test-helper.ts";
+import { expectLinearTime } from "./linear-time.test-helper.ts";
 
 const scan = (html: string) => {
   const scripts: ScannedScript[] = [];
@@ -311,16 +312,19 @@ describe("scanHtml", () => {
   });
 
   it("stays linear on hostile input", () => {
-    const started = performance.now();
-    scanHtml(`<svg>${"<g>".repeat(20_000)}${"</x>".repeat(20_000)}`);
-    scanHtml(
-      `<svg><foreignObject>${"<div>".repeat(20_000)}${"</g>".repeat(20_000)}`,
-    );
-    scanHtml(`<p ${'a="b" '.repeat(50_000)}`);
-    scanHtml(`<script>${"</scripts".repeat(50_000)}`);
-    scanHtml("<!--".repeat(50_000));
-    scanHtml("<".repeat(100_000));
-    expect(performance.now() - started).toBeLessThan(2000);
+    const cases = [
+      (n: number) => `<svg>${"<g>".repeat(n)}${"</x>".repeat(n)}`,
+      (n: number) =>
+        `<svg><foreignObject>${"<div>".repeat(n)}${"</g>".repeat(n)}`,
+      (n: number) => `<p ${'a="b" '.repeat(n * 2.5)}`,
+      (n: number) => `<script>${"</scripts".repeat(n * 2.5)}`,
+      (n: number) => "<!--".repeat(n * 2.5),
+      (n: number) => "<".repeat(n * 5),
+    ];
+    for (const input of cases)
+      expectLinearTime(input, 20_000, scanHtml, {
+        label: input(2).slice(0, 24),
+      });
   });
 });
 

@@ -5,6 +5,7 @@ import {
   findCompatibilityMatches,
   maskComments,
 } from "./compatibility-checker.ts";
+import { expectLinearTime } from "./linear-time.test-helper.ts";
 
 describe("compatibility-rules contract & positive/negative probes", () => {
   const ruleVectors: Record<
@@ -283,18 +284,20 @@ describe("maskComments", () => {
   );
 
   it.each([
-    ["css", '"' + '\\"'.repeat(100_000)],
-    ["css", "'" + "\\'".repeat(100_000)],
-    ["css", "url( ".repeat(60_000)],
-    ["css", 'url("'.repeat(60_000)],
-    ["css", "/*a".repeat(60_000)],
-    ["js", "`" + "\\`".repeat(100_000)],
-    ["js", "/*a".repeat(60_000)],
-  ] as const)("stays linear on unclosed %s input (%#)", (kind, text) => {
-    // The replaced regex took tens of seconds on each of these. A linear scan takes milliseconds, so the bound
-    // only has to tell the two apart.
-    const start = performance.now();
-    expect(maskComments(text, kind)).toBe(text);
-    expect(performance.now() - start).toBeLessThan(1000);
-  });
+    ["css", '"', '\\"', 100_000],
+    ["css", "'", "\\'", 100_000],
+    ["css", "", "url( ", 60_000],
+    ["css", "", 'url("', 60_000],
+    ["css", "", "/*a", 60_000],
+    ["js", "`", "\\`", 100_000],
+    ["js", "", "/*a", 60_000],
+  ] as const)(
+    "stays linear on unclosed %s input %j + %j repeated",
+    (kind, head, unit, count) => {
+      // The replaced regex took tens of seconds on each of these.
+      const text = (n: number) => head + unit.repeat(n);
+      expect(maskComments(text(count), kind)).toBe(text(count));
+      expectLinearTime(text, count, (t) => maskComments(t, kind));
+    },
+  );
 });

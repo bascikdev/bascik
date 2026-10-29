@@ -59,6 +59,12 @@ import {
   computePageCspHashes,
 } from "./csp-hashes.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
+import {
+  CEILING_MS,
+  MAX_GROWTH,
+  measureGrowth,
+  repeatTo,
+} from "./linear-time.test-helper.ts";
 
 // Since request-time component rendering, a server or stream script's output
 // (which can echo visitor input such as `?q=`) reaches the component
@@ -81,72 +87,9 @@ import type { BascikComponent, ComponentList } from "./types.ts";
 // the input roughly quadruples linear work, while the quadratic scans grew
 // about 16 times and the cubic ones about 64. Each size is timed several
 // times, interleaved, and the fastest run counts, so a run that loses the CPU
-// to another process does not decide the ratio.
+// to another process does not decide the ratio (linear-time.test-helper.ts).
 
 const SIZE = 200_000;
-/** Linear work grows about 4 times when the input quadruples. */
-const MAX_GROWTH = 8;
-/**
- * Below this, a quarter-size run is timer and scheduling noise, not work:
- * ratios are taken against at least this many milliseconds.
- */
-const NOISE_FLOOR_MS = 5;
-/**
- * Catastrophic regressions fail outright: the old quadratic scans took
- * seconds at a quarter of this size, the cubic ones minutes.
- */
-const CEILING_MS = 2_000;
-const SAMPLES = 3;
-
-const repeatTo = (unit: string, size: number): string =>
-  unit.repeat(Math.ceil(size / unit.length));
-
-/**
- * The CPU time `run` takes, in milliseconds. Wall-clock time also counts the
- * time the process waits for a CPU: under load a 100 ms run is preempted
- * about as often as the machine is oversubscribed, while a 10 ms run often
- * fits in one scheduler slice, which doubled the measured growth of linear
- * scans with eight busy processes on eight cores.
- */
-const cpuMs = (run: () => unknown): number => {
-  const start = process.cpuUsage();
-  run();
-  const { user, system } = process.cpuUsage(start);
-  return (user + system) / 1000;
-};
-
-/**
- * Times `run` on a quarter-size and a full-size input: one warm-up run of
- * the small one so JIT compilation is not charged to it, then `SAMPLES`
- * interleaved runs of each, keeping the fastest.
- */
-const measureGrowth = (
-  input: (size: number) => string,
-  size: number,
-  run: (html: string) => unknown,
-  clock: (run: () => unknown) => number = cpuMs,
-): { smallMs: number; largeMs: number; growth: number } => {
-  const small = input(size / 4);
-  const large = input(size);
-  clock(() => run(small));
-  let smallMs = Infinity;
-  let largeMs = Infinity;
-  for (let i = 0; i < SAMPLES; i++) {
-    smallMs = Math.min(
-      smallMs,
-      clock(() => run(small)),
-    );
-    largeMs = Math.min(
-      largeMs,
-      clock(() => run(large)),
-    );
-  }
-  return {
-    smallMs,
-    largeMs,
-    growth: largeMs / Math.max(smallMs, NOISE_FLOOR_MS),
-  };
-};
 
 const components: ComponentList = Object.freeze({
   "my-card": { fileContent: "<div></div>" } as BascikComponent,
@@ -415,56 +358,6 @@ describe("open-tag scans take linear time on hostile input", () => {
     "build time: %s",
     (_site, hostile) => expectLinear(hostile),
   );
-});
-
-describe("measureGrowth", () => {
-  // A fake clock charges each run a cost of its input length, and adds a
-  // stall of 300 ms to every other full-size run, the way a CPU-starved
-  // runner loses the CPU to another process now and then.
-  const fakeClock = (cost: (n: number) => number) => {
-    let stalled = false;
-    let length = 0;
-    const clock = (fn: () => unknown): number => {
-      fn();
-      let ms = cost(length);
-      if (length === SIZE && !stalled) {
-        stalled = true;
-      } else if (length === SIZE && stalled) {
-        stalled = false;
-        ms += 300;
-      }
-      return ms;
-    };
-    const run = (html: string) => {
-      length = html.length;
-    };
-    return { clock, run };
-  };
-  const input = (size: number) => "x".repeat(size);
-
-  it("passes linear work even when a CPU-starved run stalls for 300 ms", () => {
-    const { clock, run } = fakeClock((n) => n / 2_000);
-    const { growth, largeMs } = measureGrowth(input, SIZE, run, clock);
-    expect(largeMs).toBe(100);
-    expect(growth).toBe(4);
-  });
-
-  it("the old fixed 250 ms bound failed that same stalled run", () => {
-    // Without repeated samples the stalled run is the measurement.
-    const { clock, run } = fakeClock((n) => n / 2_000);
-    clock(() => run(input(SIZE)));
-    expect(clock(() => run(input(SIZE)))).toBeGreaterThan(250);
-  });
-
-  it("fails quadratic work, whose time grows 16 times", () => {
-    const { clock, run } = fakeClock((n) => (n / 2_000) ** 2 / 100);
-    expect(measureGrowth(input, SIZE, run, clock).growth).toBe(16);
-  });
-
-  it("does not divide by a quarter-size time that is only timer noise", () => {
-    const { clock, run } = fakeClock((n) => (n === SIZE ? 20 : 0.01));
-    expect(measureGrowth(input, SIZE, run, clock).growth).toBe(4);
-  });
 });
 
 // The scans find exactly what the regexes found (differential fuzzing against
