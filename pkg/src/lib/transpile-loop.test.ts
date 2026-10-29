@@ -7,6 +7,10 @@ import {
   withScanBudget,
 } from "./component-scan-budget.ts";
 import { __componentScanStatsForTests } from "./component-scan-stats.ts";
+import {
+  expectLinearTime,
+  LINEAR_TIME_TIMEOUT_MS,
+} from "./linear-time.test-helper.ts";
 import * as componentsModule from "./components.ts";
 import type { ComponentList } from "./types.ts";
 import {
@@ -310,21 +314,32 @@ describe("close and closer look-alikes keep unclosed usages linear", () => {
         `<my-card><textarea>${fill("<x-p>", size)}</textareax></my-card>`,
     ],
   ];
-  it.each(
-    shapes.flatMap(([label, make]) => [
-      [label, "200k", make(200_000), 1500],
-      [label, "1M", make(1_000_000), 3000],
-    ]),
-  )("%s at %s characters", (_label, _size, html, bound) => {
-    const budget =
-      SCAN_BUDGET.perOutputChar * (html as string).length + SCAN_BUDGET.base;
-    const started = performance.now();
-    const out = withScanBudget(budget, () => expand(html as string));
-    const elapsed = performance.now() - started;
-    expect(out.split(">v</p>").length - 1).toBe(999);
-    expect(__scanBudgetStatsForTests.lastSpent / budget).toBeLessThan(0.25);
-    expect(elapsed).toBeLessThan(bound as number);
-  });
+  const budgetFor = (html: string): number =>
+    SCAN_BUDGET.perOutputChar * html.length + SCAN_BUDGET.base;
+  const expandWithin = (html: string): string =>
+    withScanBudget(budgetFor(html), () => expand(html));
+
+  it.each(shapes)(
+    "%s renders every usage within a quarter of the scan budget, in linear time",
+    (label, make) => {
+      const html = make(1_000_000);
+      const out = expandWithin(html);
+      expect(out.split(">v</p>").length - 1).toBe(999);
+      expect(
+        __scanBudgetStatsForTests.lastSpent / budgetFor(html),
+      ).toBeLessThan(0.25);
+      // Fixed millisecond bounds here (1500 ms at 200k, 3000 ms at 1M) flaked
+      // on shared CI runners under coverage. Every size renders the same 999
+      // usages, so their cost is measured as a baseline (no padding) and the
+      // growth is taken over it: the re-mask per usage this guards against
+      // grows with the padding and reads about 16.
+      expectLinearTime(make, 1_000_000, expandWithin, {
+        label,
+        baseline: make(0),
+      });
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 
   it("a raw-text opener that a later closer ends falls back, but each splice re-reads only the text since the last one", () => {
     // `<textarea a"b>` is no element while no `"` follows to end what its
