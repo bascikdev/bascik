@@ -28,6 +28,12 @@ focus ring that only shows on keyboard focus, needs no entry.
 | D-02 | {{ROUTE}} | 767x1024    | Focus outline removed on buttons | Visible focus ring             | Keyboard users           | interaction trace "open menu"   | {{OWNER}}   |
 | D-03 | {{ROUTE}} | all         | Hero fades in from opacity 0     | Hero visible on first paint    | LCP candidate            | Lighthouse LCP before and after | {{OWNER}}   |
 
+`production-defects.mjs` appends a row for each defect it finds on production (a squished image, an icon off its
+heading, overflowing text, sideways scroll) with "production defect: fix in target" as the new behavior, its route,
+width and selector. Those rows need no `accepted.json` entry: run-checks.mjs compares the target with the corrected
+expectation at that route and width and lists them for the reviewer. Fill in the approved by column when you accept
+the fix.
+
 Columns:
 
 - **id:** stable, never reused.

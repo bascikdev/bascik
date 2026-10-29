@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Northwind Tasks pricing</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 40px;
+        font:
+          16px/1.5 Helvetica,
+          Arial,
+          sans-serif;
+        color: #1d2433;
+      }
+      h2 {
+        font-size: 32px;
+        line-height: 40px;
+        letter-spacing: -0.5px;
+      }
+      .e_q2 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      .l_q1 {
+        color: #2457d6;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .l_q1:hover {
+        color: #173a8f;
+        text-decoration: underline;
+      }
+      .l_q1:focus-visible {
+        color: #0b2a6b;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="e_q2">Pricing</p>
+      <h2>Plans for every team</h2>
+      <p>
+        Start free, then pay per seat.
+        <a class="l_q1" href="/guide">Read the guide</a> before you pick a plan.
+      </p>
+      <p><a class="l_q1" href="/contact">Contact us</a> for a custom quote.</p>
+      <p><a class="l_q1" href="/pricing/details">Pricing details</a></p>
+      <p data-testid="ticker">Teams online: 120</p>
+    </main>
+    <script>
+      let n = 120;
+      setInterval(() => {
+        n += 1;
+        document.querySelector('[data-testid="ticker"]').textContent =
+          `Teams online: ${n}`;
+      }, 150);
+    </script>
+  </body>
+</html>

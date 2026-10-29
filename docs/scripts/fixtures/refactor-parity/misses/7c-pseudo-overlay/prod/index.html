@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Milk frother</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 Helvetica,
+          Arial,
+          sans-serif;
+        color: #1d2433;
+      }
+      .timeline {
+        position: relative;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .timeline li {
+        position: relative;
+        padding: 0 0 32px 40px;
+      }
+      .dot {
+        position: absolute;
+        left: 0;
+        top: 2px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #2457d6;
+      }
+      .check {
+        position: absolute;
+        left: 6px;
+        top: 8px;
+        width: 12px;
+        height: 12px;
+      }
+      .dot::after {
+        content: "";
+        position: absolute;
+        left: 6px;
+        top: 6px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <main style="padding: 40px">
+      <h2>Roadmap</h2>
+      <ol class="timeline">
+        <li><span class="dot"></span>Research</li>
+        <li><span class="dot"></span>Launch</li>
+      </ol>
+    </main>
+  </body>
+</html>

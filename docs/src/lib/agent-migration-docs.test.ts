@@ -41,6 +41,7 @@ const REFERENCES = [
   "references/templates/one-failure.md",
   "references/templates/driver-agent.md",
   "references/templates/decisions-ledger.md",
+  "references/templates/visual-review.md",
 ];
 
 const SCRIPTS = [
@@ -51,9 +52,52 @@ const SCRIPTS = [
   "scripts/llms-txt.mjs",
   "scripts/responsive-webp.mjs",
   "scripts/worker-response-policy.mjs",
+  "scripts/interaction-crawl.mjs",
+  "scripts/state-capture.mjs",
+  "scripts/repeated-sections.mjs",
+  "scripts/text-style-diff.mjs",
+  "scripts/spacing-diff.mjs",
+  "scripts/alignment-diff.mjs",
+  "scripts/overlap-diff.mjs",
+  "scripts/testid-carryover.mjs",
+  "scripts/testid-coverage.mjs",
+  "scripts/presence-by-route.mjs",
+  "scripts/production-defects.mjs",
+  "scripts/run-checks.mjs",
+  "scripts/review-page.mjs",
 ];
 
-const LIBS = ["scripts/lib/project-deps.mjs", "scripts/lib/matrix.mjs"];
+/** The parity checks run-checks.mjs runs, one per issue type a human caught after the automated loop passed. */
+const CHECK_SCRIPTS = SCRIPTS.slice(7, 18).map((s) => path.basename(s, ".mjs"));
+
+/**
+ * The seven issue types, as a reader would name them. The how-to section, the visual review template and the review
+ * page all carry this checklist.
+ */
+const ISSUE_TYPES: Array<[string, RegExp[]]> = [
+  ["missing interactions", [/interaction/i, /scroll/i]],
+  ["dropdown style and icons", [/dropdown/i, /icon/i]],
+  ["repeated section as one component", [/repeated/i, /component/i]],
+  ["link color and font weight", [/link/i, /colou?r/i, /weight/i]],
+  ["vertical spacing", [/vertical spacing|spacing between/i]],
+  ["alignment at breakpoints", [/align/i, /breakpoint/i]],
+  ["overlapping elements", [/overlap/i]],
+];
+
+/** A list's lines that mention each issue type: every regex of the type must match one numbered or bulleted line. */
+const coversIssueTypes = (text: string) => {
+  const lines = text.split("\n").filter((l) => /^\s*(\d+\.|-)\s/.test(l));
+  return ISSUE_TYPES.filter(
+    ([, res]) => !lines.some((l) => res.every((re) => re.test(l))),
+  ).map(([name]) => name);
+};
+
+const LIBS = [
+  "scripts/lib/project-deps.mjs",
+  "scripts/lib/matrix.mjs",
+  "scripts/lib/capture.mjs",
+  "scripts/lib/cli.mjs",
+];
 
 const DEMO_MARKERS = [
   "migration-grid-legacy",
@@ -337,12 +381,13 @@ describe("agent migration page: a newcomer can follow it on day one", () => {
     [
       ...md().matchAll(new RegExp("```" + lang + "\\n([\\s\\S]*?)```", "g")),
     ].map((m) => m[1]);
-  const TEMPLATES = REFERENCES.map((rel) =>
-    readRepo(`skills/bascik-refactor/${rel}`),
-  );
-  const SCRIPT_SOURCES = SCRIPTS.map((rel) =>
-    readRepo(`skills/bascik-refactor/${rel}`),
-  );
+  // A missing file reads as empty here; "every reference, template, script and helper exists" reports it.
+  const readIfExists = (rel: string) =>
+    existsSync(path.join(SKILL_DIR, rel))
+      ? readRepo(`skills/bascik-refactor/${rel}`)
+      : "";
+  const TEMPLATES = REFERENCES.map(readIfExists);
+  const SCRIPT_SOURCES = SCRIPTS.map(readIfExists);
 
   it("points every script at Bascik's port and a production server, never port 3000", () => {
     for (const text of [md(), ...TEMPLATES, ...SCRIPT_SOURCES])
@@ -690,5 +735,182 @@ describe("bascik-refactor is an opt-in skill", () => {
     expect(step3).toContain("install the `bascik-refactor` skill");
     expect(step3).not.toMatch(/copy/);
     expect(step4).toMatch(/copy the two site scripts/);
+  });
+});
+
+/**
+ * The parity checks, the visual reviewer and the human sign-off.
+ *
+ * Why: in an agent-driven refactor the automated loop passed pages that a human then caught side by side with
+ * production: a hero button that scrolled nowhere, dropdowns with the wrong style and no icons, a repeated section
+ * pasted instead of made a component, links in the wrong color or weight, spacing off by tens of pixels, text
+ * misaligned at some breakpoints and a timeline icon off its circle. The scripts compared absolute geometry with loose
+ * thresholds, and agents read "no flags" as PASS.
+ *
+ * Misuse lens: a template that runs some checks but not all, a gate that accepts the agent's own word, a review file
+ * with a typo'd verdict, a how-to section that grows into a second manual.
+ */
+describe("parity checks and review gates", () => {
+  const template = (name: string) =>
+    readRepo(`skills/bascik-refactor/references/templates/${name}`);
+  /** The text under the first heading matching `re`, up to the next heading of the same or a higher level. */
+  const section = (md: string, re: RegExp) => {
+    const lines = md.split("\n");
+    const start = lines.findIndex((l) => /^#{2,3} /.test(l) && re.test(l));
+    if (start < 0) return undefined;
+    const level = /^#+/.exec(lines[start])![0].length;
+    const end = lines.findIndex(
+      (l, i) =>
+        i > start && /^#+ /.test(l) && /^#+/.exec(l)![0].length <= level,
+    );
+    return lines.slice(start + 1, end < 0 ? undefined : end).join("\n");
+  };
+
+  it("the production-parity reference describes every check, its tolerance and the CDP calls it needs", () => {
+    const text = readRepo(
+      "skills/bascik-refactor/references/production-parity.md",
+    );
+    for (const name of [...CHECK_SCRIPTS, "run-checks", "review-page"])
+      expect(text, name).toContain(`${name}.mjs`);
+    expect(text).toContain("DOMDebugger.getEventListeners");
+    expect(text).toContain("CSS.forcePseudoState");
+    expect(text).toMatch(/\b2 px\b/);
+    expect(text).toMatch(/\b1 px\b/);
+    expect(text).toContain("templates/visual-review.md");
+    expect(text).toContain("docs/migration/review/");
+    expect(coversIssueTypes(text)).toEqual([]);
+  });
+
+  it("SKILL.md names run-checks, the review page and the visual review, and stays short", () => {
+    const skill = readRepo("skills/bascik-refactor/SKILL.md");
+    expect(skill).toContain("run-checks.mjs");
+    expect(skill).toContain("review-page.mjs");
+    expect(skill).toContain("references/templates/visual-review.md");
+    expect(skill).toMatch(/docs\/migration\/review\//);
+    // Detail lives in the references.
+    expect(skill.split("\n").length).toBeLessThan(70);
+  });
+
+  it("the visual review template sends an agent with image input to find differences, and blocks the route on any", () => {
+    const text = template("visual-review.md");
+    expect(text).toContain("{{ROUTE}}");
+    expect(text).toMatch(/image input|reads? (the )?(images|screenshots)/i);
+    expect(text).toMatch(/\brest\b/i);
+    expect(text).toMatch(/\bopen states?\b/i);
+    expect(text).toMatch(/side by side/i);
+    expect(text).toMatch(/(job|task) is to find differences/i);
+    expect(text).toMatch(/cannot pass while[^.]*any/i);
+    expect(coversIssueTypes(text), "checklist items missing").toEqual([]);
+  });
+
+  it("the one-route template runs every check in one command and carries the test hooks over", () => {
+    const text = template("one-route.md");
+    expect(text).toMatch(
+      /node "\$REFACTOR\/run-checks\.mjs" --prod "\$PROD_URL" --target "\$TARGET_URL" --route "\{\{ROUTE\}\}"/,
+    );
+    expect(text).toMatch(/--legacy-src/);
+    // The hooks the old end-to-end suite uses, on the same elements, with the same attribute names.
+    for (const attr of [
+      "data-testid",
+      "data-test",
+      "data-test-id",
+      "data-cy",
+      "data-qa",
+    ])
+      expect(text, attr).toContain(attr);
+    expect(text).toMatch(/testid-carryover/);
+    expect(text).toMatch(/testid-coverage/);
+    expect(text).toMatch(/<component>-<part>/);
+    expect(text).toContain("visual-review.md");
+    expect(text).toMatch(
+      /node "\$REFACTOR\/review-page\.mjs" --route "\{\{ROUTE\}\}"/,
+    );
+    expect(text).toMatch(
+      /node "\$REFACTOR\/review-page\.mjs" --verify --route "\{\{ROUTE\}\}"/,
+    );
+  });
+
+  it("the driver's PASS gate needs run-checks, a visual review with no differences and a human pass verdict", () => {
+    const text = template("driver-agent.md");
+    const gate = /\*\*PASS gate:\*\*([\s\S]*?)\n\d+\. /.exec(text)?.[1] ?? "";
+    expect(gate, "the PASS gate item").not.toBe("");
+    expect(gate).toContain("run-checks.mjs");
+    expect(gate).toMatch(/visual review/i);
+    expect(gate).toMatch(/review-page\.mjs --verify/);
+    expect(gate).toMatch(/docs\/migration\/review\//);
+    expect(gate).toMatch(/verdict[^.]*pass/i);
+    // The root cause, stated where the driver decides.
+    expect(text).toMatch(/no (findings|flags)[^.]*not (a )?PASS/i);
+    // Only a human writes the verdict file.
+    expect(text).toMatch(
+      /never (write|sign|create)[^.]*(verdict|review file|sign-off)/i,
+    );
+  });
+
+  it("the how-to explains in one short section why a human signs off every route, with the checklist", () => {
+    const md = readDocs(MD);
+    const body = section(md, /human/i);
+    expect(body, "a ## or ### heading about the human review").toBeDefined();
+    const lines = body!.split("\n").filter((l) => l.trim() !== "");
+    expect(lines.length, "one short section").toBeLessThanOrEqual(24);
+    expect(body).toMatch(/caught|catches/i);
+    expect(body).toMatch(/\bpass(ed)?\b/i);
+    expect(coversIssueTypes(body!), "checklist items missing").toEqual([]);
+    expect(body).toContain("review-page.mjs");
+    expect(body).toContain("docs/migration/review/");
+  });
+
+  it("production defects are found on production first, logged in the ledger and fixed, never copied", () => {
+    const reference = readRepo(
+      "skills/bascik-refactor/references/production-parity.md",
+    );
+    const oneRoute = template("one-route.md");
+    const ledger = template("decisions-ledger.md");
+    for (const [name, text] of [
+      ["production-parity.md", reference],
+      ["one-route.md", oneRoute],
+      ["decisions-ledger.md", ledger],
+    ])
+      expect(text, name).toContain("production defect: fix in target");
+    expect(reference).toMatch(/squish/i);
+    expect(reference).toMatch(/icon[^.]*heading/i);
+    expect(reference).toMatch(/horizontal (page )?scroll/i);
+    expect(reference).toMatch(/corrected expectation/i);
+    // Run on production before the route is written, so the agent never copies a defect in the first place.
+    const defectsAt = oneRoute.indexOf("production-defects");
+    expect(defectsAt, "one-route.md names production-defects").toBeGreaterThan(
+      -1,
+    );
+    expect(defectsAt).toBeLessThan(oneRoute.indexOf("run-checks.mjs"));
+  });
+
+  it("presence is inventoried per route in a fresh context and after dismissal", () => {
+    const reference = readRepo(
+      "skills/bascik-refactor/references/production-parity.md",
+    );
+    expect(reference).toContain("presence-by-route.mjs");
+    expect(reference).toMatch(/fresh (browser )?context/i);
+    expect(reference).toMatch(/dismiss/i);
+    expect(reference).toMatch(/cookie (banner|notice)/i);
+    expect(template("one-route.md")).toMatch(/presence-by-route/);
+  });
+
+  it("the how-to runs every check with one command", () => {
+    const md = readDocs(MD);
+    expect(md).toMatch(/node "\$REFACTOR\/run-checks\.mjs"/);
+  });
+
+  it("the parity fixtures are generic: every link and image stays on the fixture server", () => {
+    const root = path.join(DOCS_ROOT, "scripts/fixtures/refactor-parity");
+    const files = readdirSync(root, { recursive: true, withFileTypes: true })
+      .filter((e) => e.isFile())
+      .map((e) => path.join(e.parentPath, e.name));
+    expect(files.length).toBeGreaterThan(20);
+    for (const file of files) {
+      const text = readFileSync(file, "utf8");
+      for (const m of text.matchAll(/\b(?:href|src)=["']([^"']+)["']/g))
+        expect(m[1], `${file}: ${m[1]}`).not.toMatch(/^(https?:)?\/\//);
+      expect(text, file).not.toMatch(/url\(\s*["']?(https?:)?\/\//);
+    }
   });
 });

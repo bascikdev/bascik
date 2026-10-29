@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>About</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 Helvetica,
+          Arial,
+          sans-serif;
+        color: #1d2433;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      .header {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: #fff;
+        display: flex;
+        gap: 24px;
+        align-items: center;
+        padding: 16px 40px;
+      }
+      .trigger {
+        font: inherit;
+        padding: 8px 12px;
+        border: 0;
+        background: none;
+        cursor: pointer;
+      }
+      .menu {
+        position: absolute;
+        top: 56px;
+        left: 40px;
+        width: 240px;
+        margin: 0;
+        padding: 12px;
+        list-style: none;
+        background: #fff;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+      }
+      .menu[hidden] {
+        display: none;
+      }
+      .menu a {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 8px;
+        color: #1d2433;
+        text-decoration: none;
+      }
+      .menu svg {
+        width: 16px;
+        height: 16px;
+      }
+      .link {
+        color: #2457d6;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .link:hover {
+        color: #173a8f;
+        text-decoration: underline;
+      }
+      .hero {
+        padding: 64px 40px;
+      }
+      .hero h1 {
+        margin: 0 0 16px;
+        font-size: 40px;
+        line-height: 48px;
+      }
+      .hero p {
+        max-width: 520px;
+        margin: 0 0 24px;
+      }
+      .cta {
+        padding: 12px 20px;
+        border: 0;
+        background: #2457d6;
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+      }
+      .carousel {
+        position: relative;
+        padding: 0 40px;
+      }
+      .slides {
+        position: relative;
+        height: 200px;
+        overflow: hidden;
+      }
+      .slide {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        transition: opacity 0.6s;
+        background: #dde4f2;
+      }
+      .slide.active {
+        opacity: 1;
+      }
+      .slide h3 {
+        position: absolute;
+        left: 24px;
+        bottom: 16px;
+        margin: 0;
+        font-size: 24px;
+      }
+      .dots {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        padding: 12px;
+      }
+      .dots button {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 0;
+        background: #ccd;
+        padding: 0;
+      }
+      .dots button[aria-current="true"] {
+        background: #2457d6;
+      }
+      .ticker {
+        padding: 8px 40px;
+        font-weight: 600;
+      }
+      .features {
+        padding: 48px 40px;
+        background: #f5f7fb;
+      }
+      .features h2 {
+        margin: 0 0 24px;
+        font-size: 28px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 24px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .grid h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+      .grid p {
+        margin: 0;
+      }
+      .roadmap {
+        padding: 48px 40px;
+      }
+      .timeline {
+        position: relative;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .timeline li {
+        position: relative;
+        padding: 0 0 32px 40px;
+      }
+      .dot {
+        position: absolute;
+        left: 0;
+        top: 2px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #2457d6;
+      }
+      .check {
+        position: absolute;
+        left: 6px;
+        top: 8px;
+        width: 12px;
+        height: 12px;
+      }
+      .cookie {
+        position: fixed;
+        left: 16px;
+        right: 16px;
+        bottom: 16px;
+        z-index: 9;
+        padding: 16px;
+        background: #1d2433;
+        color: #fff;
+        display: flex;
+        gap: 16px;
+        align-items: center;
+      }
+      .cookie[hidden] {
+        display: none;
+      }
+      .cookie p {
+        margin: 0;
+      }
+      .cookie button {
+        padding: 8px 12px;
+        border: 0;
+        background: #fff;
+      }
+      .footer {
+        padding: 32px 40px;
+        background: #1d2433;
+        color: #fff;
+      }
+      .footer a {
+        color: #fff;
+      }
+      @media (max-width: 767px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        .header {
+          flex-wrap: wrap;
+          padding: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="header" data-testid="site-header">
+      <a class="link" href="/" data-testid="site-header-logo">Milk frother</a>
+      <nav aria-label="Main" data-testid="site-header-nav">
+        <button
+          class="trigger"
+          type="button"
+          aria-expanded="false"
+          aria-controls="menu-products"
+          data-testid="site-header-products"
+        >
+          Products
+        </button>
+        <ul class="menu" id="menu-products" hidden>
+          <li>
+            <a href="/about"
+              ><svg viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="8" cy="8" r="6" fill="#2457d6" /></svg
+              >Handheld</a
+            >
+          </li>
+          <li>
+            <a href="/about"
+              ><svg viewBox="0 0 16 16" aria-hidden="true">
+                <rect x="2" y="2" width="12" height="12" fill="#2457d6" /></svg
+              >Countertop</a
+            >
+          </li>
+        </ul>
+      </nav>
+      <a class="link" href="/about" data-testid="site-header-about">About</a>
+    </header>
+    <main data-testid="main">
+      <section class="hero" data-testid="hero">
+        <h1>About us</h1>
+        <p>We make frothers.</p>
+      </section>
+      <section class="features" id="features" data-testid="feature-grid">
+        <h2>Why it works</h2>
+        <ul class="grid">
+          <li>
+            <h3>Fast</h3>
+            <p>Froths in thirty seconds.</p>
+          </li>
+          <li>
+            <h3>Quiet</h3>
+            <p>Runs below forty decibels.</p>
+          </li>
+          <li>
+            <h3>Clean</h3>
+            <p>Rinses under the tap.</p>
+          </li>
+        </ul>
+      </section>
+      <section class="roadmap" data-testid="roadmap">
+        <h2>Roadmap</h2>
+        <ol class="timeline">
+          <li>
+            <span class="dot"></span
+            ><svg class="check" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="M2 6l3 3 5-6"
+                stroke="#fff"
+                stroke-width="2"
+                fill="none"
+              /></svg
+            >Research
+          </li>
+          <li>
+            <span class="dot"></span
+            ><svg class="check" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="M2 6l3 3 5-6"
+                stroke="#fff"
+                stroke-width="2"
+                fill="none"
+              /></svg
+            >Design review
+          </li>
+          <li>
+            <span class="dot"></span
+            ><svg class="check" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="M2 6l3 3 5-6"
+                stroke="#fff"
+                stroke-width="2"
+                fill="none"
+              /></svg
+            >Launch
+          </li>
+        </ol>
+      </section>
+    </main>
+    <footer class="footer" data-testid="site-footer">
+      <p>Made for coffee people. <a href="/about">About</a></p>
+    </footer>
+    <script>
+      const t = document.querySelector(".trigger"),
+        m = document.getElementById("menu-products");
+      t.addEventListener("click", () => {
+        const o = t.getAttribute("aria-expanded") === "true";
+        t.setAttribute("aria-expanded", String(!o));
+        m.hidden = o;
+      });
+      const cta = document.querySelector(".cta");
+      if (cta)
+        cta.addEventListener("click", () =>
+          document.getElementById("features").scrollIntoView(),
+        );
+    </script>
+  </body>
+</html>

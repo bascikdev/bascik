@@ -1,0 +1,20 @@
+<style>
+  .features {
+    padding: 48px 40px;
+    background: #f5f7fb;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+</style>
+<section class="features" data-testid="feature-grid">
+  <div data-bascik-slot="heading"><h2>Features</h2></div>
+  <ul class="grid">
+    <div data-bascik-slot></div>
+  </ul>
+</section>

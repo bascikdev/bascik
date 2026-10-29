@@ -8,8 +8,20 @@ You run the migration queue in `docs/migration/prompts/`, in the order of the pr
 1. Take the next prompt whose status is not PASS.
 2. Do the work, or hand it to a worker agent with the prompt text unchanged.
 3. Run every acceptance check in the prompt on the final files, yourself, from a clean build.
-4. **PASS gate:** mark the prompt PASS only when every acceptance check passes. Never advance to the next prompt
-   while any check fails. A handoff that says "should pass" is a FAIL.
+4. **PASS gate:** mark the prompt PASS only when all of these hold on the final files:
+   - every acceptance check passes, including `run-checks.mjs` with no finding for the route;
+   - a visual review (`templates/visual-review.md`), by an agent with image input that did not write the route,
+     reports no differences between production and the target, at rest and in every open state, in this route's own
+     report (`artifacts/review/<route>.visual.md`, starting `Route: <route>`), written after the last fix;
+   - `review-page.mjs --verify` exits 0: a person reviewed the side-by-side page and signed
+     `docs/migration/review/<route>.json` with the verdict pass, for the screenshots and findings in the reports now.
+     Any fix after the sign-off changes them, and the route goes back to the person for a new review.
+
+   Never advance to the next prompt while any of them fails. A handoff that says "should pass" is a FAIL. No findings
+   from the scripts is not a PASS on its own: the scripts measure what they were written to measure, and a human caught
+   what they passed. Never write, sign or create the sign-off file yourself; only the person who reviewed the page
+   does, and a verdict of issues sends the route back with their notes as the failure evidence.
+
 5. For each application-owned failure, write a one-failure prompt (`templates/one-failure.md`) with the evidence and
    the owner files, run it, and run the gate again. Keep going until the gate passes.
 6. Update the index status and continue.

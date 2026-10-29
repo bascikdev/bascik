@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Northwind Tasks</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 Helvetica,
+          Arial,
+          sans-serif;
+        color: #1d2433;
+      }
+      .bascik__site-header__header {
+        position: relative;
+        display: flex;
+        gap: 24px;
+        align-items: center;
+        padding: 16px 40px;
+      }
+      .trigger {
+        font: inherit;
+        padding: 8px 12px;
+        border: 0;
+        background: none;
+        cursor: pointer;
+      }
+      .menu {
+        position: absolute;
+        top: 56px;
+        left: 40px;
+        width: 240px;
+        margin: 0;
+        padding: 12px;
+        list-style: none;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+      }
+      .menu[hidden] {
+        display: none;
+      }
+      .menu a {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 8px;
+        color: #1d2433;
+        text-decoration: none;
+      }
+      .menu svg {
+        width: 16px;
+        height: 16px;
+      }
+      .link {
+        color: #2457d6;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .link:hover {
+        color: #173a8f;
+        text-decoration: underline;
+      }
+      .hero {
+        min-height: 640px;
+        padding: 64px 40px;
+      }
+      .hero h1,
+      .intro h1 {
+        margin: 0 0 16px;
+        font-size: 40px;
+        line-height: 48px;
+      }
+      .hero p {
+        max-width: 520px;
+        margin: 0 0 24px;
+      }
+      .cta {
+        padding: 12px 20px;
+        border: 0;
+        background: #2457d6;
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+      }
+      .intro {
+        padding: 64px 40px;
+      }
+      .bascik__feature-grid__features {
+        padding: 48px 40px;
+        background: #f5f7fb;
+      }
+      .bascik__feature-grid__features h2 {
+        margin: 0 0 24px;
+        font-size: 28px;
+      }
+      .bascik__feature-grid__grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 24px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .bascik__feature-grid__grid h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+      .bascik__feature-grid__grid p {
+        margin: 0;
+      }
+      .roadmap {
+        padding: 48px 40px;
+      }
+      .timeline {
+        position: relative;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .timeline li {
+        position: relative;
+        padding: 0 0 32px 40px;
+      }
+      .dot {
+        position: absolute;
+        left: 0;
+        top: 2px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #2457d6;
+      }
+      .check {
+        position: absolute;
+        left: 6px;
+        top: 8px;
+        width: 12px;
+        height: 12px;
+      }
+      .bascik__site-footer__footer {
+        padding: 32px 40px;
+        background: #1d2433;
+        color: #fff;
+      }
+      .bascik__site-footer__footer a {
+        color: #fff;
+      }
+      @media (max-width: 767px) {
+        .bascik__feature-grid__grid {
+          grid-template-columns: 1fr;
+        }
+        .hero h1,
+        .intro h1 {
+          font-size: 32px;
+          line-height: 40px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="bascik__site-header__header" data-testid="site-header">
+      <nav aria-label="Main" data-testid="site-header-nav">
+        <button
+          type="button"
+          class="trigger"
+          aria-expanded="false"
+          aria-controls="products-menu"
+          data-testid="site-header-products"
+        >
+          Products
+        </button>
+        <ul
+          class="menu"
+          id="products-menu"
+          hidden
+          data-testid="site-header-menu"
+        >
+          <li>
+            <a href="/boards" data-testid="site-header-boards"
+              ><svg viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="8" cy="8" r="6" fill="#d6455d" /></svg
+              >Boards</a
+            >
+          </li>
+          <li>
+            <a href="/timelines" data-testid="site-header-timelines"
+              ><svg viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="8" cy="8" r="6" fill="#2a7d4f" /></svg
+              >Timelines</a
+            >
+          </li>
+        </ul>
+        <a class="link" href="/about" data-testid="site-header-about">About</a>
+      </nav>
+    </header>
+    <main data-testid="main">
+      <section class="hero" data-testid="hero">
+        <h1>Plan work your team can see</h1>
+        <p>Boards, timelines and reports for small teams, in one place.</p>
+        <button type="button" class="cta" data-testid="hero-cta">
+          See features
+        </button>
+      </section>
+      <section
+        class="bascik__feature-grid__features"
+        data-testid="feature-grid"
+      >
+        <h2>Features</h2>
+        <ul class="bascik__feature-grid__grid">
+          <li>
+            <h3>Boards</h3>
+            <p>Move cards from idea to done.</p>
+          </li>
+          <li>
+            <h3>Timelines</h3>
+            <p>See every deadline on one line.</p>
+          </li>
+          <li>
+            <h3>Reports</h3>
+            <p>Share progress every Friday.</p>
+          </li>
+        </ul>
+      </section>
+      <section class="roadmap" data-testid="roadmap">
+        <h2>Roadmap</h2>
+        <ol class="timeline">
+          <li>
+            <span class="dot"></span>
+            <svg class="check" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="M2 6l3 3 5-6"
+                stroke="#fff"
+                stroke-width="2"
+                fill="none"
+              />
+            </svg>
+            Research
+          </li>
+          <li>
+            <span class="dot"></span>
+            <svg class="check" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="M2 6l3 3 5-6"
+                stroke="#fff"
+                stroke-width="2"
+                fill="none"
+              />
+            </svg>
+            Design review
+          </li>
+          <li>
+            <span class="dot"></span>
+            <svg class="check" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="M2 6l3 3 5-6"
+                stroke="#fff"
+                stroke-width="2"
+                fill="none"
+              />
+            </svg>
+            Launch
+          </li>
+        </ol>
+      </section>
+    </main>
+    <footer class="bascik__site-footer__footer" data-testid="site-footer">
+      <p>
+        Northwind Tasks
+        <a href="/contact" data-testid="site-footer-contact">Contact</a>
+      </p>
+    </footer>
+    <script>
+      const trigger = document.querySelector(
+        '[data-testid="site-header-products"]',
+      );
+      trigger.addEventListener("click", () => {
+        const open = trigger.getAttribute("aria-expanded") === "true";
+        trigger.setAttribute("aria-expanded", String(!open));
+        document.querySelector('[data-testid="site-header-menu"]').hidden =
+          open;
+      });
+      document
+        .querySelector('[data-testid="hero-cta"]')
+        .addEventListener("click", () => {
+          document
+            .querySelector('[data-testid="feature-grid"]')
+            .scrollIntoView();
+        });
+    </script>
+  </body>
+</html>

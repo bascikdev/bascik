@@ -17,9 +17,10 @@ Read `node <skills-dir>/bascik/scripts/read-doc.mjs /how-to/agent-migration` fir
 
 1. Record the inventories in `docs/migration/` and generate the breakpoint matrix with `scripts/breakpoint-matrix.mjs`. Copy `scripts/llms-txt.mjs` and `scripts/worker-response-policy.mjs` into the project's `scripts/` before the config or Worker uses them. Compare and audit a production build (`bascik --build`, then `bascik --server` on port 8080), never the dev server.
 2. Fill in [references/templates/execution-contract.md](references/templates/execution-contract.md) and the [references/templates/prompt-pack-index.md](references/templates/prompt-pack-index.md); every prompt reads the contract first.
-3. Migrate route by route with [references/templates/one-route.md](references/templates/one-route.md) and repair with [references/templates/one-failure.md](references/templates/one-failure.md).
-4. Run the queue with [references/templates/driver-agent.md](references/templates/driver-agent.md): never advance until every acceptance check passes on the final files; escalate framework issues in its reproducible format.
-5. Log every intentional difference in [references/templates/decisions-ledger.md](references/templates/decisions-ledger.md); a row that changes pixels also gets an `accepted.json` entry for `compare-route.mjs --accepted`.
+3. Migrate route by route with [references/templates/one-route.md](references/templates/one-route.md) and repair with [references/templates/one-failure.md](references/templates/one-failure.md). Run `scripts/production-defects.mjs` on production first, then `scripts/run-checks.mjs` for every parity check in one command.
+4. Review each route side by side: an agent with image input follows [references/templates/visual-review.md](references/templates/visual-review.md), then a person reviews the `scripts/review-page.mjs` page and signs `docs/migration/review/<route>.json`.
+5. Run the queue with [references/templates/driver-agent.md](references/templates/driver-agent.md): PASS needs every check, a visual review with no differences and a human pass verdict (`review-page.mjs --verify`). No findings is not a PASS on its own. Escalate framework issues in its reproducible format.
+6. Log every intentional difference in [references/templates/decisions-ledger.md](references/templates/decisions-ledger.md); a row that changes pixels also gets an `accepted.json` entry for `compare-route.mjs --accepted`.
 
 ## Scripts
 
@@ -32,5 +33,18 @@ Read `node <skills-dir>/bascik/scripts/read-doc.mjs /how-to/agent-migration` fir
 | [`scripts/llms-txt.mjs`](scripts/llms-txt.mjs)                             | Post exec script that writes `dist/llms.txt`                          |
 | [`scripts/responsive-webp.mjs`](scripts/responsive-webp.mjs)               | WebP widths and a sha256 manifest for `srcset`                        |
 | [`scripts/worker-response-policy.mjs`](scripts/worker-response-policy.mjs) | Cloudflare Worker wrapper: CSP hashes, robots and cache headers       |
+| [`scripts/interaction-crawl.mjs`](scripts/interaction-crawl.mjs)           | Activates every interactive element; compares effects (CDP listeners) |
+| [`scripts/state-capture.mjs`](scripts/state-capture.mjs)                   | Open dropdowns and disclosures: styles, icons, crops                  |
+| [`scripts/repeated-sections.mjs`](scripts/repeated-sections.mjs)           | Sections on 2+ routes must be one component, styled alike             |
+| [`scripts/text-style-diff.mjs`](scripts/text-style-diff.mjs)               | Text styles at rest, `:hover`, `:focus-visible` (CDP)                 |
+| [`scripts/spacing-diff.mjs`](scripts/spacing-diff.mjs)                     | Vertical gaps inside each section, 2 px                               |
+| [`scripts/alignment-diff.mjs`](scripts/alignment-diff.mjs)                 | text-align, line count and offsets per width                          |
+| [`scripts/overlap-diff.mjs`](scripts/overlap-diff.mjs)                     | Overlapping pairs within 1 px, pixel exact                            |
+| [`scripts/testid-carryover.mjs`](scripts/testid-carryover.mjs)             | Production and legacy test hooks on the same elements                 |
+| [`scripts/testid-coverage.mjs`](scripts/testid-coverage.mjs)               | `data-testid` on controls, landmarks, component roots                 |
+| [`scripts/presence-by-route.mjs`](scripts/presence-by-route.mjs)           | Banners, dialogs, sticky layers per route, fresh and dismissed        |
+| [`scripts/production-defects.mjs`](scripts/production-defects.mjs)         | Production's own bugs, logged as fixes before parity                  |
+| [`scripts/run-checks.mjs`](scripts/run-checks.mjs)                         | Every parity check per route; one report; exit 1 on any finding       |
+| [`scripts/review-page.mjs`](scripts/review-page.mjs)                       | Side-by-side page per route; `--sign` and `--verify` the sign-off     |
 
-The scripts load Playwright and sharp from the project (`npm install -D playwright sharp`, `npx playwright install chromium`). Run each with `--help`. Set `REFACTOR` to this skill's `scripts/` folder (for example `.agents/skills/bascik-refactor/scripts`) so prompts call `node "$REFACTOR/compare-route.mjs"`.
+The scripts load Playwright and sharp from the project (`npm install -D playwright sharp`, `npx playwright install chromium`). Run each with `--help`. Set `REFACTOR` to this skill's `scripts/` folder (for example `.agents/skills/bascik-refactor/scripts`) so prompts call `node "$REFACTOR/run-checks.mjs"`. Each check, its tolerance and its misuse cases are in [references/production-parity.md](references/production-parity.md).

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Northwind Tasks</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 Helvetica,
+          Arial,
+          sans-serif;
+        color: #1d2433;
+      }
+      .f_8a1 {
+        max-width: 900px;
+        padding: 48px 24px;
+      }
+      .r_0d {
+        margin: 0 0 32px;
+        padding: 0;
+        list-style: none;
+      }
+      .w_4e {
+        display: flex;
+        gap: 12px;
+        /* The production defect: the icon sits at the top of a heading that wraps at small widths. */
+        align-items: flex-start;
+        margin-bottom: 16px;
+      }
+      .w_4e h3 {
+        margin: 0;
+        font-size: 20px;
+        line-height: 28px;
+      }
+      .i_c2 {
+        flex: none;
+      }
+      .s_19 {
+        margin: 0;
+      }
+      .s_19 img {
+        display: block;
+        width: 100%;
+        height: 240px;
+        /* The production defect: a fixed height on a fluid width squishes the 4:3 image below 900 px. */
+        object-fit: fill;
+      }
+      @media (min-width: 900px) {
+        .s_19 {
+          max-width: 320px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="f_8a1" aria-labelledby="why">
+        <h2 id="why">Why teams switch</h2>
+        <ul class="r_0d">
+          <li class="w_4e">
+            <svg
+              class="i_c2"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10" fill="#2457d6" />
+            </svg>
+            <h3>Boards that update themselves the moment work moves</h3>
+          </li>
+          <li class="w_4e">
+            <svg
+              class="i_c2"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10" fill="#2457d6" />
+            </svg>
+            <h3>Reports</h3>
+          </li>
+        </ul>
+        <figure class="s_19">
+          <img
+            src="board.png"
+            width="400"
+            height="300"
+            alt="A board with three columns of cards"
+          />
+        </figure>
+      </section>
+    </main>
+  </body>
+</html>

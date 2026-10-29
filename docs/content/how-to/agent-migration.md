@@ -11,14 +11,15 @@ This page is the recipe. The skill, the prompt templates and the scripts are MIT
 Everything ships in the opt-in `bascik-refactor` agent skill:
 
 - [`references/production-parity.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/production-parity.md): the whole workflow, written for any coding agent.
-- Six prompt templates:
+- Seven prompt templates:
   - [`execution-contract.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/execution-contract.md): the rules every prompt reads first.
   - [`prompt-pack-index.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/prompt-pack-index.md): the numbered phases, with the representative slice gate.
   - [`one-route.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/one-route.md): migrate one route.
   - [`one-failure.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/one-failure.md): repair one failing check.
   - [`driver-agent.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/driver-agent.md): the agent that runs the queue behind a PASS gate.
   - [`decisions-ledger.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/decisions-ledger.md): every intentional difference from the old site.
-- Seven scripts:
+  - [`visual-review.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/visual-review.md): an agent with image input that looks for differences side by side.
+- Twenty scripts:
   - [`breakpoint-matrix.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/breakpoint-matrix.mjs): finds the legacy breakpoints and writes the viewport matrix.
   - [`geometry-diff.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/geometry-diff.mjs): compares element boxes between production and Bascik.
   - [`compare-route.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/compare-route.mjs): pixel diff, geometry, evidence and interaction traces per route.
@@ -26,6 +27,19 @@ Everything ships in the opt-in `bascik-refactor` agent skill:
   - [`llms-txt.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/llms-txt.mjs): writes `llms.txt` after the build.
   - [`responsive-webp.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/responsive-webp.mjs): WebP variants and a manifest for `srcset`.
   - [`worker-response-policy.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/worker-response-policy.mjs): a Cloudflare Worker wrapper for a strict CSP, robots and cache headers.
+  - [`run-checks.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/run-checks.mjs): runs every parity check below per route and matrix case, and exits 1 on any finding.
+  - [`production-defects.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/production-defects.mjs): finds production's own layout bugs first, so the target fixes them instead of copying them.
+  - [`interaction-crawl.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/interaction-crawl.mjs): activates every control on both sides and compares what each one does.
+  - [`state-capture.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/state-capture.mjs): opens every dropdown and disclosure and compares styles and icons.
+  - [`repeated-sections.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/repeated-sections.mjs): requires one component for a section repeated across routes.
+  - [`text-style-diff.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/text-style-diff.mjs): compares text styles at rest, on hover and on keyboard focus.
+  - [`spacing-diff.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/spacing-diff.mjs): compares vertical gaps inside each section within 2 px.
+  - [`alignment-diff.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/alignment-diff.mjs): compares text alignment and line count at every width.
+  - [`overlap-diff.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/overlap-diff.mjs): checks overlapping elements, such as an icon on a dot, within 1 px.
+  - [`testid-carryover.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/testid-carryover.mjs): keeps every existing test hook on the same element.
+  - [`testid-coverage.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/testid-coverage.mjs): finds controls, landmarks and component roots without a `data-testid`.
+  - [`presence-by-route.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/presence-by-route.mjs): compares banners, dialogs and sticky bars per route, fresh and after dismissal.
+  - [`review-page.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/review-page.mjs): writes the side-by-side page a person signs off on, and checks the sign-off.
 
 The scripts are plain Node.js modules with unit tests in the Bascik repository. None of them installs anything, and every one prints its options with `--help`.
 
@@ -399,6 +413,46 @@ Each route gets `report.json` and a pair of PNGs per case under `artifacts/compa
 
 Mask only documented dynamic regions, such as a rotating review carousel. No route passes on one screenshot, and no route passes on a Lighthouse score.
 
+### Parity Checks
+
+Pixels and boxes miss what a reviewer notices first: a button that does nothing, a menu that opens unstyled, a link in the wrong weight. `run-checks.mjs` runs one check per issue type on every route and matrix case, after `production-defects.mjs` has logged what production itself gets wrong. Each check matches elements by test id, role, name or text, never by class, and a check that crashes is a finding:
+
+```sh
+node "$REFACTOR/production-defects.mjs" --prod "$PROD_URL" --route / --route /pricing
+node "$REFACTOR/run-checks.mjs" \
+  --prod "$PROD_URL" --target "$TARGET_URL" \
+  --route / --route /pricing \
+  --legacy-src ../legacy-site --target-src . \
+  --mask '[data-testid="review-carousel"]'
+```
+
+Each route gets `artifacts/checks/<route>/report.json`. A finding on an element production gets wrong, at the width where it is wrong, is listed as corrected instead of failing, because the ledger row says "production defect: fix in target". `node "$REFACTOR/run-checks.mjs" --help` lists every check and its tolerance. Every check leaves out the `--mask` regions, so mask a carousel that advances on a timer or a ticker that rotates its text, and log each mask in the ledger. Expect about a minute per route per width; skipping a check to save time skips what it would catch.
+
+The review page reads the `compare-route.mjs` and `run-checks.mjs` reports, so run both first. The sign-off records which screenshots and findings it covers:
+
+```sh
+node "$REFACTOR/review-page.mjs" --route / --route /pricing
+# Run by the person who reviewed the page, or use the form on it:
+node "$REFACTOR/review-page.mjs" --sign --route / --reviewer "Your name" --verdict pass
+node "$REFACTOR/review-page.mjs" --verify --route / --route /pricing
+```
+
+`--verify` fails while `run-checks.mjs` reports findings for a route, and after any change to the target's screenshots or findings since its sign-off.
+
+### Why a Human Signs Off Every Route
+
+In a real agent-driven refactor, the automated loop passed pages that a person then caught side by side with production. The scripts had compared absolute geometry with loose thresholds, and the agents read "no flags" as a pass. What the person caught:
+
+1. Missing interactions: a hero button that should scroll to its section did nothing.
+2. Dropdown menus with the wrong style and missing icons.
+3. A repeated section pasted per page instead of one component, one copy styled wrong.
+4. Links with the wrong color or the wrong font weight.
+5. Vertical spacing between elements off by tens of pixels.
+6. Text misaligned at certain breakpoints only.
+7. An icon overlapping a timeline circle, a little off.
+
+Every one now has a check, and the checks still do not decide alone. `review-page.mjs` writes `artifacts/review/<route>.html` with production and Bascik side by side at every width, a difference overlay, the open menus, and the findings. A visual reviewer agent with image input reads it first, and its only job is to find differences. Then a person reviews the page and signs `docs/migration/review/<route>.json` with a pass or issues verdict. The driver marks a route PASS only when `review-page.mjs --verify` accepts that file.
+
 ## Interaction Parity
 
 Visual parity is half the job. The floor for every site:
@@ -456,7 +510,7 @@ Both end in acceptance checks that run the scripts on this page. The one-route c
 
 ### The Driver and the PASS Gate
 
-A [driver agent](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/driver-agent.md) works through the queue. Its one rule: never advance to the next prompt until every acceptance check passes on the final files. It keeps fixing application-owned failures itself, writing a one-failure prompt for each.
+A [driver agent](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/driver-agent.md) works through the queue. Its one rule: never advance to the next prompt until every acceptance check passes on the final files, a visual review finds no differences, and a person has signed a pass verdict for the route. No findings from the scripts is not a PASS on its own. It keeps fixing application-owned failures itself, writing a one-failure prompt for each.
 
 ### Swarm with Disjoint Ownership
 
@@ -689,7 +743,7 @@ Run `npx wrangler dev` and `npx wrangler deploy` from the project root. The star
 8. Write the prompt pack index and start `decisions.md` and `accepted.json`.
 9. Build the shared shell and the home page, and lock them with tests.
 10. Serve a production build with `bascik --server`.
-11. Run `compare-route.mjs` and `geometry-diff.mjs` on the home page across the matrix.
+11. Run `production-defects.mjs`, `compare-route.mjs`, `geometry-diff.mjs` and `run-checks.mjs` on the home page across the matrix, then review it with `review-page.mjs` and sign it off.
 12. Gate the home page with `lighthouse-gate.mjs`, mobile and desktop, and let the driver take over.
 
 > **Next.** The framework guides map each feature to Bascik: [Switch to Bascik](/switch), [From Next.js](/switch/from-next) and [From React](/switch/from-react). [Agent Skills](/agent-skills) explains how to install and update the skills.

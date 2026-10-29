@@ -68,6 +68,19 @@ The skills ship dependency-free Node.js scripts (Node 22.18+) that agents run fr
 | `bascik-refactor/scripts/llms-txt.mjs`               | Post exec script that writes `dist/llms.txt`                                                                           |
 | `bascik-refactor/scripts/responsive-webp.mjs`        | WebP variants and a sha256 manifest (sharp)                                                                            |
 | `bascik-refactor/scripts/worker-response-policy.mjs` | Cloudflare Worker wrapper with CSP hashes, robots and cache headers                                                    |
+| `bascik-refactor/scripts/interaction-crawl.mjs`      | Activate every interactive element on both sides and compare what each one does                                        |
+| `bascik-refactor/scripts/state-capture.mjs`          | Open every dropdown and disclosure on both sides: styles, icons and crops                                              |
+| `bascik-refactor/scripts/repeated-sections.mjs`      | A section repeated across routes must be one component, styled the same                                                |
+| `bascik-refactor/scripts/text-style-diff.mjs`        | Text color, weight and font at rest, `:hover` and `:focus-visible`                                                     |
+| `bascik-refactor/scripts/spacing-diff.mjs`           | Vertical gaps inside each section, 2 px tolerance                                                                      |
+| `bascik-refactor/scripts/alignment-diff.mjs`         | Text alignment, line count and offsets at every breakpoint                                                             |
+| `bascik-refactor/scripts/overlap-diff.mjs`           | Overlapping elements within 1 px, and their pixels exactly                                                             |
+| `bascik-refactor/scripts/testid-carryover.mjs`       | Production and legacy test hooks kept on the same elements                                                             |
+| `bascik-refactor/scripts/testid-coverage.mjs`        | A `data-testid` on every control, form, landmark and component root                                                    |
+| `bascik-refactor/scripts/presence-by-route.mjs`      | Banners, dialogs and sticky layers per route, fresh and after dismissal                                                |
+| `bascik-refactor/scripts/production-defects.mjs`     | Production's own layout bugs, logged as fixes before parity runs                                                       |
+| `bascik-refactor/scripts/run-checks.mjs`             | Every parity check per route in one command (Playwright and sharp)                                                     |
+| `bascik-refactor/scripts/review-page.mjs`            | Side-by-side review page per route and the human sign-off gate                                                         |
 
 The example components and the starter site live in the repository's [`examples/`](https://github.com/bascikdev/bascik/tree/main/examples) folder, not in the skills. The docs build publishes them at `https://bascik.dev/assets/examples.json`, which `add-example.mjs` downloads.
 

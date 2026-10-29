@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Pricing | Northwind Tasks</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 Helvetica,
+          Arial,
+          sans-serif;
+        color: #1d2433;
+      }
+      .h_51d {
+        position: sticky;
+        top: 0;
+        display: flex;
+        gap: 24px;
+        padding: 16px 40px;
+        background: #fff;
+        border-bottom: 1px solid #e3e7ef;
+      }
+      .h_51d a {
+        color: #1d2433;
+        text-decoration: none;
+      }
+      main {
+        min-height: 1400px;
+        padding: 64px 40px;
+      }
+      .c_9f2a {
+        position: fixed;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        padding: 16px 40px;
+        background: #1d2433;
+        color: #fff;
+        transform: translateY(100%);
+        transition: transform 0.3s ease-out;
+      }
+      .c_9f2a.i_3b {
+        transform: none;
+      }
+      .c_9f2a[hidden] {
+        display: none;
+      }
+      .c_9f2a p {
+        flex: 1;
+        margin: 0;
+      }
+      .chat {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        width: 48px;
+        height: 48px;
+        border: 0;
+        border-radius: 50%;
+        background: #2457d6;
+        color: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="h_51d">
+      <nav aria-label="Main">
+        <a href="./">Home</a>
+        <a href="about">About</a>
+        <a href="pricing">Pricing</a>
+      </nav>
+    </header>
+    <main>
+      <h1>Plans for every team</h1>
+      <p>Start free, upgrade when the board gets busy.</p>
+    </main>
+    <section
+      class="c_9f2a"
+      role="dialog"
+      aria-label="Cookie preferences"
+      hidden
+    >
+      <p>We use cookies to remember your preferences and to count visits.</p>
+      <button type="button" class="b_77e1">Manage preferences</button>
+      <button type="button" class="b_41c0" data-consent="accept">
+        Accept all
+      </button>
+    </section>
+    <script>
+      (() => {
+        const banner = document.querySelector(
+          '[aria-label="Cookie preferences"]',
+        );
+        if (/(^|; )consent=1/.test(document.cookie)) return;
+        // Shown a moment after load and slid in, like a consent script: the check must wait for a stable render.
+        setTimeout(() => {
+          banner.hidden = false;
+          requestAnimationFrame(() => banner.classList.add("i_3b"));
+        }, 150);
+        banner
+          .querySelector('[data-consent="accept"]')
+          .addEventListener("click", () => {
+            document.cookie = "consent=1; path=/";
+            banner.hidden = true;
+          });
+      })();
+    </script>
+  </body>
+</html>

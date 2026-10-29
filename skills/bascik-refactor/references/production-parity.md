@@ -14,8 +14,9 @@ skill.
 | New Bascik repository                     | Clean semantic implementation: HTML components, scoped CSS, small TypeScript islands                        |
 
 Golden rule: live production wins on geometry; the legacy source explains the responsive math; the Bascik repository
-owns clean semantic HTML and CSS. Record production defects (low contrast, missing focus outline, blurry image) as
-observations and fix them. Never copy them. Log every fix in the decisions ledger.
+owns clean semantic HTML and CSS. Record production defects (low contrast, missing focus outline, blurry image, the
+layout bugs `production-defects.mjs` finds) as observations and fix them. Never copy them. Log every fix in the
+decisions ledger.
 
 Two failure modes this model prevents:
 
@@ -107,6 +108,82 @@ Per route and matrix case:
 `scripts/compare-route.mjs` runs all three and replays `interactions.json` on both sides. Accepted differences come
 only from `accepted.json` entries tied to ledger rows. No route passes on one screenshot or on a Lighthouse score.
 
+## Parity checks
+
+Why they exist: in a real agent-driven refactor the automated loop passed pages that a human then caught side by side
+with production. The old scripts compared absolute geometry of text nodes with loose thresholds and only open and
+closed booleans for interactions, and agents read "no flags" as PASS. The issue types the human caught:
+
+1. Missing interactions: a hero button that should scroll to its section did nothing.
+2. Main-nav dropdown menus with the wrong style and missing icons.
+3. A repeated section that any human would make a component, pasted per page, one copy styled wrong.
+4. Some links with the wrong color, or the wrong font weight.
+5. Vertical spacing between elements off by tens of pixels.
+6. Text misaligned at certain breakpoints only.
+7. A timeline with an SVG over one of its circles, overlapping it a little off.
+
+`scripts/run-checks.mjs` runs one check per type, plus test hooks, presence and production defects, on every route at
+every matrix case, and exits 1 on any finding; a check that crashed is a finding. It writes
+`artifacts/checks/<route>/report.json`. Each check is also its own script with `--help`.
+
+| Script                   | Compares                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Tolerance                                  |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `production-defects.mjs` | Runs first, on production: squished or stretched images (aspect ratio off with `object-fit` fill or none), an icon off its heading's center or wrapped away from it, text overflowing or clipped, overlapping text (not text in a fixed, sticky or dialog layer, which covers the page by design), horizontal page scroll                                                                                                                                                   | 2 percent; 4 px for icon centers           |
+| `interaction-crawl.mjs`  | Every element matching the interactive selector, any element with a click or hover listener (CDP `DOMDebugger.getEventListeners`), with a delegated click listener on document or window the pointer-cursor elements, and the triggers of CSS `:hover` menus; each clicked or hovered from a fresh load. Effects: scroll distance and target, hash, URL, `aria-expanded`, open, hidden, newly visible and focused elements, minus what the page changes on its own in 2.5 s | 8 px of scroll                             |
+| `state-capture.mjs`      | Every disclosure the crawl finds, clicked or hovered open on both sides after its animation: the panel's computed styles and size, its place relative to its trigger, the styles of its items, its icons (kind and file; an inline svg's drawing and fill and stroke colors; a `::before` or `::after` glyph), and a pixel crop of the panel                                                                                                                                | 1 px for place; 8 of 255 per pixel channel |
+| `repeated-sections.mjs`  | Structural fingerprints (tag tree with landmarks and heading levels, no text) of landmarks and of divs that hold a heading, on two or more routes, must render from one component in `src/components` (a page source that holds the section's heading text pastes it), and every instance must match production's style signature, every part included                                                                                                                      | exact                                      |
+| `text-style-diff.mjs`    | Color, weight, family, size, line height, letter spacing, decoration and transform of every text element, each copy of a repeated text on its own, at rest, `:hover` and `:focus-visible` (CDP `CSS.forcePseudoState` on the element and its ancestors, so a link's or a card's `:hover` counts)                                                                                                                                                                            | exact                                      |
+| `spacing-diff.mjs`       | Inside each landmark (or the body, for content outside them), every block of content at any depth: the gap to the block above it and its offset from the section top. Wrappers do not matter; fixed layers do not count                                                                                                                                                                                                                                                     | 2 px                                       |
+| `alignment-diff.mjs`     | Per matrix case, text-align, rendered line count and the text's left and right offset from its container and from the page edges, for headings, paragraphs, buttons, links, list items, labels, captions and cells, each copy of a repeated text on its own                                                                                                                                                                                                                 | 2 px                                       |
+| `overlap-diff.mjs`       | Pairs that overlap in production (one positioned or an svg or img, a positioned `::before` or `::after`, the parts of a large inline svg), paired in document order: center offset and size ratio on the target, then the pixels both cover. Fixed and sticky layers pair only with their own parts                                                                                                                                                                         | 1 px; zero pixels                          |
+| `testid-carryover.mjs`   | Every `data-testid`, `data-test`, `data-test-id`, `data-cy` and `data-qa` in production's DOM and the legacy source, on the same element of the target with the same name and value                                                                                                                                                                                                                                                                                         | exact                                      |
+| `testid-coverage.mjs`    | A `data-testid` on every control, form, dialog, landmark and component root of the target: the root is the component name, parts are `<component>-<part>`. A gap names a file and line only when a source tag matches it                                                                                                                                                                                                                                                    | exact                                      |
+| `presence-by-route.mjs`  | Fixed, sticky and overlay layers per route, each route in a fresh browser context and again after dismissal. A live region without a name is named by its test id, id or place, never by its rotating text                                                                                                                                                                                                                                                                  | exact                                      |
+
+Rules every check follows: elements are matched by stable anchors (test id, role and accessible name, in-page `href`,
+tag and text), never by class names; each page is captured with the settings above and the waits in
+`scripts/lib/capture.mjs`, then waits until the page has had no DOM change outside the masks for 0.75 s (at most 4 s),
+so a banner or content that arrives late is on both sides before anything is measured; the scroll and animation an
+activation starts are waited for too; hidden elements do not count. Masks are only for documented dynamic regions,
+such as an autoplay carousel or a rotating ticker: pass each with `--mask` (every check and `run-checks.mjs` take it),
+log it in the ledger, and keep it as narrow as the region. Expect about a minute per route per matrix case; run every
+check anyway.
+
+### Production defects
+
+Production is the truth for geometry, not for bugs. `production-defects.mjs` runs on production before a route is
+written, at every matrix case. Each defect (a squished image, an icon misaligned with its heading, text overflow,
+horizontal scroll) is appended to `docs/migration/decisions.md` as "production defect: fix in target" with its route,
+width and selector. The parity checks then compare the target with the corrected expectation for that element at that
+case: their findings there move to `corrected` in the report instead of failing, and the review page lists the
+defects apart from the findings, so the reviewer sees every intentional difference. A target that copies a defect
+fails with `copied-defect`.
+
+### Presence by route
+
+`presence-by-route.mjs` opens every route in a fresh context (no cookies, no storage) and waits for a stable render, so
+a cookie banner that slides in after load is seen. It inventories fixed and sticky elements, dialogs, alert dialogs,
+live regions and layers along a viewport edge, by role and accessible name. Then it dismisses each layer once (Accept,
+Close, Got it and the like, or a `--dismiss` selector) across all routes and inventories again: a dismissal that
+persists in production must persist on the target. A cookie notice present on only some routes must be on exactly
+those routes.
+
+### The review gate
+
+No route passes on findings alone. After `run-checks.mjs` passes:
+
+1. `review-page.mjs --route <path>` writes `artifacts/review/<route>.html`: production and the target side by side per
+   matrix case, a diff overlay toggle, the open states, the findings beside the images, production's defects, the
+   checklist above and a sign-off form.
+2. A visual reviewer agent with image input runs `templates/visual-review.md`. Its job is to find differences; the
+   route cannot pass while it reports any.
+3. A person reviews the page and signs `docs/migration/review/<route>.json` (`{ route, reviewer, verdict, notes, date,
+reviewed }`, verdict pass or issues), from the form or with `review-page.mjs --sign`. `reviewed` is a hash of the
+   target's screenshots and the findings the page showed.
+4. `review-page.mjs --verify --route <path>` is the last item of the driver's PASS gate. It fails when the route's
+   run-checks report fails, and when the target's screenshots or findings changed after the sign-off: a fix after the
+   review needs a new review.
+
 ## Interaction parity floor
 
 - Hover never replaces the keyboard focus indicator.
@@ -123,6 +200,7 @@ only from `accepted.json` entries tied to ledger rows. No route passes on one sc
 - Prompt pack: `templates/prompt-pack-index.md`, grouped into phases, with the representative slice gate (prove
   5 x 100 on a few pages before scaling).
 - Repeatable prompts: `templates/one-route.md` and `templates/one-failure.md`.
+- Visual review: `templates/visual-review.md`, an agent with image input that looks for differences only.
 - Driver: `templates/driver-agent.md`. Never advance until every acceptance check passes on the final files. Keep
   fixing application-owned failures. Escalate framework issues in the reproducible format and hold the queue.
 - Swarming: build the shared shell sequentially and lock it with tests; then several agents on strictly disjoint page
@@ -216,3 +294,16 @@ so when one is missing. Run any of them with `--help`.
 | `llms-txt.mjs`               | Post exec script: `dist/llms.txt` from built pages                       |
 | `responsive-webp.mjs`        | WebP widths up to the source width, plus a sha256 manifest               |
 | `worker-response-policy.mjs` | Worker wrapper: CSP hashes, X-Robots-Tag and Cache-Control per response  |
+| `production-defects.mjs`     | Production's own layout bugs as ledger rows, before parity               |
+| `interaction-crawl.mjs`      | Every control activated on both sides; missing or different effects      |
+| `state-capture.mjs`          | Every disclosure opened: styles, icons, crops                            |
+| `repeated-sections.mjs`      | Cross-route sections as one component with one style signature           |
+| `text-style-diff.mjs`        | Text styles at rest, hover and focus-visible                             |
+| `spacing-diff.mjs`           | Gaps and offsets inside each section, 2 px                               |
+| `alignment-diff.mjs`         | text-align, line count and offsets per matrix case                       |
+| `overlap-diff.mjs`           | Overlapping pairs within 1 px, pixel exact                               |
+| `testid-carryover.mjs`       | Production and legacy test hooks on the same elements                    |
+| `testid-coverage.mjs`        | `data-testid` coverage with the source file to edit                      |
+| `presence-by-route.mjs`      | Banners, dialogs and sticky layers per route, fresh and dismissed        |
+| `run-checks.mjs`             | All of the above per route; one report; exit 1 on any finding            |
+| `review-page.mjs`            | Side-by-side review page, `--sign` and `--verify` for the human sign-off |

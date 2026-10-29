@@ -1,0 +1,34 @@
+<!-- @bascik
+A section heading over a three-column list of features.
+-->
+<style>
+  .features {
+    padding: 48px 40px;
+    background: #f5f7fb;
+  }
+  .features h2 {
+    margin: 0 0 24px;
+    font-size: 28px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .grid h3 {
+    margin: 0 0 8px;
+    font-size: 18px;
+  }
+  .grid p {
+    margin: 0;
+  }
+</style>
+<section class="features">
+  <div data-bascik-slot="heading"><h2>Features</h2></div>
+  <ul class="grid">
+    <div data-bascik-slot></div>
+  </ul>
+</section>

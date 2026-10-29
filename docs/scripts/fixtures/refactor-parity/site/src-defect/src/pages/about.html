@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>About Northwind Tasks</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 Helvetica,
+          Arial,
+          sans-serif;
+        color: #1d2433;
+      }
+      .link {
+        color: #2457d6;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .link:hover {
+        color: #173a8f;
+        text-decoration: underline;
+      }
+      .hero {
+        min-height: 640px;
+        padding: 64px 40px;
+      }
+      .hero h1,
+      .intro h1 {
+        margin: 0 0 16px;
+        font-size: 40px;
+        line-height: 48px;
+      }
+      .hero p {
+        max-width: 520px;
+        margin: 0 0 24px;
+      }
+      .cta {
+        padding: 12px 20px;
+        border: 0;
+        background: #2457d6;
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+      }
+      .intro {
+        padding: 64px 40px;
+      }
+      .roadmap {
+        padding: 48px 40px;
+      }
+      .timeline {
+        position: relative;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .timeline li {
+        position: relative;
+        padding: 0 0 32px 40px;
+      }
+      .dot {
+        position: absolute;
+        left: 0;
+        top: 2px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #2457d6;
+      }
+      .check {
+        position: absolute;
+        left: 6px;
+        top: 8px;
+        width: 12px;
+        height: 12px;
+      }
+      @media (max-width: 767px) {
+        .hero h1,
+        .intro h1 {
+          font-size: 32px;
+          line-height: 40px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <site-header />
+    <main data-testid="main">
+      <section class="intro" data-testid="intro">
+        <h1>About Northwind Tasks</h1>
+        <p>We build planning tools for small teams.</p>
+      </section>
+      <feature-grid>
+        <div data-bascik-slot="heading"><h2>Why teams switch</h2></div>
+        <li>
+          <h3>One place</h3>
+          <p>Plans, files and notes together.</p>
+        </li>
+        <li>
+          <h3>Fast setup</h3>
+          <p>Invite the team in a minute.</p>
+        </li>
+        <li>
+          <h3>Clear owners</h3>
+          <p>Every task has one person.</p>
+        </li>
+      </feature-grid>
+    </main>
+    <site-footer />
+    <script></script>
+  </body>
+</html>
