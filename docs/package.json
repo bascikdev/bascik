@@ -20,6 +20,7 @@
     "generate:search": "node scripts/generate-search-index.ts",
     "generate:rtc-demos": "node scripts/generate-rtc-demos.ts",
     "generate:migration-demos": "node scripts/generate-migration-demos.ts",
+    "generate:url-root-demos": "node scripts/generate-url-root-demos.ts",
     "lhci": "lhci",
     "lighthouse": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik --build && lhci autorun --config=./lighthouse/lighthouserc.json && lhci autorun --config=./lighthouse/lighthouserc.light.json",
     "lighthouse:all": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik --build && node lighthouse/generate-config.ts && lhci autorun --config=./lighthouse/lighthouserc.all.json && lhci autorun --config=./lighthouse/lighthouserc.all-light.json",
