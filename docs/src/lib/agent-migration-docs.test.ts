@@ -551,7 +551,7 @@ describe("bascik-refactor skill: files the page hands out", () => {
     for (const rel of SCRIPTS) {
       const src = readFileSync(path.join(SKILL_DIR, rel), "utf8");
       expect(src.startsWith("#!/usr/bin/env node\n"), rel).toBe(true);
-      expect(src, rel).toMatch(/Node\.js 22\.18\+/);
+      expect(src, rel).toMatch(/Node\.js 22\.22\+/);
       expect(src, rel).toMatch(/\bconst HELP = /);
       expect(src, rel).toMatch(/parseArgs/);
       expect(src, rel).toMatch(/isMain\(import\.meta\.url\)/);
