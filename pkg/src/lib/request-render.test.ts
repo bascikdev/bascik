@@ -85,8 +85,12 @@ import {
 import { __componentScanStatsForTests } from "./component-scan-stats.ts";
 import {
   LINEAR_TIME_TIMEOUT_MS,
+  expectCostRatio,
   expectLinearTime,
   expectLinearTimeAsync,
+  measureCostRatio,
+  spliceCopies,
+  type CalibratedRatio,
   repeatTo,
 } from "./linear-time.test-helper.ts";
 import {
@@ -1551,28 +1555,45 @@ describe.each([true, false])(
       }
     };
 
+    // Both sizes reach the substitution limit, and its 1000 substitutions
+    // cost more than locating the rest of the usages: read alone, the
+    // growth of a quadratic locate hid under that fixed cost (1.3 to 1.9).
+    // So each output is the usages that reach the limit, then `size`
+    // characters more of the same, and the growth is taken over the first
+    // part alone (the baseline): it is the growth of the part that varies.
+    const BASE_USAGES = requestLimits.maxSubstitutions + 1;
+    // The part that varies, as large as the fixed cost at a quarter of it.
+    const VARYING_SIZE = 800_000;
     it.each([
       [
         "unclosed openers, one closer at the end",
-        (size: number) => `${fill("<bare-card>", size)}</bare-card>`,
+        "<bare-card>",
+        (text: string) => `${text}</bare-card>`,
       ],
       [
         "an opener, unclosed openers, one closer",
-        (size: number) => `<bare-card>${fill("<bare-card>", size)}</bare-card>`,
+        "<bare-card>",
+        (text: string) => `<bare-card>${text}</bare-card>`,
       ],
       [
         "unclosed openers of another name",
-        (size: number) => `${fill("<plain-card>", size)}</plain-card>`,
+        "<plain-card>",
+        (text: string) => `${text}</plain-card>`,
       ],
       [
         "closers only inside attribute values",
-        (size: number) => fill(`<bare-card a="</bare-card>">`, size),
+        `<bare-card a="</bare-card>">`,
+        (text: string) => text,
       ],
     ])(
       "locates the usages of %s in linear time",
-      (_name, html) => {
-        expect(expand(html(HOSTILE_SIZE))).toBe("limit");
-        expectLinearTime(html, HOSTILE_SIZE, expand);
+      (_name, unit, around) => {
+        const html = (size: number) =>
+          around(unit.repeat(BASE_USAGES) + fill(unit, size));
+        const baseline = html(0);
+        expect(expand(html(VARYING_SIZE))).toBe("limit");
+        expect(expand(baseline)).toBe("limit");
+        expectLinearTime(html, VARYING_SIZE, expand, { baseline });
       },
       LINEAR_TIME_TIMEOUT_MS,
     );
@@ -1581,23 +1602,32 @@ describe.each([true, false])(
     // the loop re-masked the whole instance after every one of up to 1000
     // nested instances (about 10 s at 200k characters, 48 s at 1M). Both
     // sizes reach the instance limit, so that cost is linear in the output
-    // too: the ceiling, not the growth, is what fails it.
+    // too, and growth cannot see it. What fails it is the cost against the
+    // copying the substitutions do anyway, one splice of the fragment each
+    // (`spliceCopies`): the highest of four runs on an M-series Mac, with and
+    // without coverage, is the calibration; a re-mask per instance costs
+    // tens of times it. The growth, over the usages that reach the limit
+    // (as above), still fails a pass quadratic in the output.
+    const NESTED_COST: CalibratedRatio = { plain: 2.06, coverage: 3.58 };
     it.each([
-      [
-        "after a lone <",
-        (size: number) =>
-          `<server-card>${fill("<bare-card><", size)}</server-card>`,
-      ],
-      [
-        "after <<",
-        (size: number) =>
-          `<server-card>${fill("<bare-card><<", size)}</server-card>`,
-      ],
+      ["after a lone <", "<bare-card><"],
+      ["after <<", "<bare-card><<"],
     ])(
       "expands nested usages %s without re-masking the instance each time",
-      (_name, html) => {
-        expect(expand(html(HOSTILE_SIZE))).toBe("limit");
-        expectLinearTime(html, HOSTILE_SIZE, expand);
+      (name, unit) => {
+        const html = (size: number) =>
+          `<server-card>${unit.repeat(BASE_USAGES)}${fill(unit, size)}</server-card>`;
+        const full = html(HOSTILE_SIZE);
+        expect(expand(full)).toBe("limit");
+        expectLinearTime(html, HOSTILE_SIZE, expand, { baseline: html(0) });
+        expectCostRatio(
+          measureCostRatio(
+            () => expand(full),
+            () => spliceCopies(full, requestLimits.maxSubstitutions),
+          ),
+          NESTED_COST,
+          name,
+        );
       },
       LINEAR_TIME_TIMEOUT_MS,
     );

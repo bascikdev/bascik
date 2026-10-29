@@ -124,7 +124,11 @@ describe("raw-text masking time on hostile input", () => {
     expect(maskRawTextContent(html(50_000))).toBe(
       `${run}'>${" ".repeat("<my-card></my-card>".length)}</script><my-card>`,
     );
-    expectLinearTime(html, 50_000, maskRawTextContent);
+    // The time per character settles only past a few hundred thousand
+    // characters: at 50k (a quarter of 12.5k, 0.2 ms a run) this read 5.2
+    // to 6.7 with nothing else running, at 200k 2.8 to 3.3, and at 800k it
+    // reads 3.9 to 4.1.
+    expectLinearTime(html, 800_000, maskRawTextContent);
   });
 });
 

@@ -14,7 +14,10 @@ export default defineConfig({
       reporter: ["text", "json-summary", "lcov"],
       reportsDirectory: "./coverage",
       include: ["src/**/*.ts"],
-      exclude: ["src/**/*.test.ts"],
+      // Test helpers too: a calibrated cost ratio's reference work
+      // (linear-time.test-helper.ts) must run at the same speed with and
+      // without coverage.
+      exclude: ["src/**/*.test.ts", "src/**/*.test-helper.ts"],
     },
     projects: [
       {
@@ -24,6 +27,8 @@ export default defineConfig({
           exclude: ["src/**/*.integration.test.ts"],
           // Recompute every reused scoping result and fail on any difference (scoping-template.ts).
           env: { BASCIK_VERIFY_SCOPING_TEMPLATES: "1" },
+          // Whether the run collects coverage, for calibrated cost ratios.
+          globalSetup: ["./vitest.coverage-setup.ts"],
         },
       },
       {
@@ -34,6 +39,7 @@ export default defineConfig({
           // without this `vitest bench` runs every benchmark twice.
           benchmark: { exclude: ["bench/**"] },
           env: { BASCIK_VERIFY_SCOPING_TEMPLATES: "1" },
+          globalSetup: ["./vitest.coverage-setup.ts"],
         },
       },
     ],

@@ -80,8 +80,11 @@ import {
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import {
   LINEAR_TIME_TIMEOUT_MS,
-  cpuMsAsync,
+  expectCostRatio,
   expectLinearTimeAsync,
+  measureCostRatioAsync,
+  spliceCopies,
+  type CalibratedRatio,
 } from "./linear-time.test-helper.ts";
 import type { ComponentList } from "./types.ts";
 
@@ -899,44 +902,58 @@ describe("G. a hostile output settles in time proportional to its size", () => {
   // at the splice, padded to 400 KB: before a scanning budget this re-masks
   // the whole instance once per nested instance (about 4 s here, about 40 s
   // at 1 MB). Both sizes hold 999 usages, so that cost is linear in the
-  // output too: the scanning budget bounds the work per usage, and the
-  // ceiling, not the growth, is what fails a loop without it
-  // (linear-time.test-helper.ts).
+  // output too, and only the calibrated cost at the cap below fails it. The
+  // growth is taken over the same 999 usages with no padding (the
+  // baseline), whose fixed cost otherwise held it at 2.7 and hid a quadratic
+  // term: it fails a pass quadratic in the padding.
   const SIZE = 400_000;
-  // `costs at most twice its calibrated share at the instance cap`: the
-  // request at the cap over the splices it is made of, the most of four runs
-  // on an M-series Mac (1.31 to 1.36, and 2.28 to 2.38 under coverage, which
-  // slows the renderer and not the copying). Measure again after a change
-  // that makes the request cheaper.
-  const coverage = (
-    globalThis as {
-      __vitest_worker__?: { config?: { coverage?: { enabled?: boolean } } };
-    }
-  ).__vitest_worker__?.config?.coverage?.enabled;
-  const CAP_COST_RATIO = coverage === false ? 1.4 : 2.4;
+  const USAGES = 999;
+  /** `USAGES` copies of `unit`, padded with text to `size` characters in all. */
   const padded = (unit: string, size: number): string =>
-    (unit + "x".repeat(Math.ceil(size / 999) - unit.length)).repeat(999);
-  it.each([
-    [
-      "<my-card> + fill('<x-p><a ') + </my-card>",
-      (size: number) => `<my-card>${padded("<x-p><a ", size)}</my-card>`,
-    ],
-    ["fill('<x-p><s')", (size: number) => padded("<x-p><s", size)],
-  ])(
-    "%s settles (rendered or a RequestRenderError) in linear time",
-    async (_label, output) => {
-      const manifest = await build(list);
-      config.minify.identifiers = false;
-      const host = makeHost(manifest);
-      const settle = (html: string) =>
-        wrapRunner(
-          runnerOf(html),
-          serverPlan("a"),
-          host,
-        )("a", new AbortController().signal).catch((error) => {
-          expect(error).toBeInstanceOf(RequestRenderError);
-        });
-      await expectLinearTimeAsync(output, SIZE, settle);
+    (
+      unit + "x".repeat(Math.max(0, Math.ceil(size / USAGES) - unit.length))
+    ).repeat(USAGES);
+  const nested = (size: number) =>
+    `<my-card>${padded("<x-p><a ", size)}</my-card>`;
+  /** One request for `html`: rendered, or a RequestRenderError. */
+  const settlerOf = async () => {
+    const manifest = await build(list);
+    config.minify.identifiers = false;
+    const host = makeHost(manifest);
+    return (html: string) =>
+      wrapRunner(
+        runnerOf(html),
+        serverPlan("a"),
+        host,
+      )("a", new AbortController().signal).catch((error) => {
+        expect(error).toBeInstanceOf(RequestRenderError);
+      });
+  };
+
+  it(
+    "<my-card> + fill('<x-p><a ') + </my-card> settles (rendered or a RequestRenderError) in linear time",
+    async () => {
+      const settle = await settlerOf();
+      await expectLinearTimeAsync(nested, SIZE, settle, {
+        baseline: nested(0),
+      });
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  // Each usage its own fragment: the request's fixed cost is per usage, so
+  // the padding hardly moves it (12 ms at 50 KB, 19 ms at 800 KB) and a
+  // growth in the padding read 0.8. A pass over the rest of the output per
+  // usage is what to fail, and it is quadratic in the usage count: so the
+  // count is what grows, from a quarter of `USAGES` to all of them, each
+  // padded to 400 characters as above.
+  it(
+    "fill('<x-p><s') settles (rendered or a RequestRenderError) in linear time in its usage count",
+    async () => {
+      const settle = await settlerOf();
+      const unit = padded("<x-p><s", SIZE).slice(0, Math.ceil(SIZE / USAGES));
+      // 996 usages, 249 at a quarter: under the instance budget.
+      await expectLinearTimeAsync((count) => unit.repeat(count), 996, settle);
     },
     LINEAR_TIME_TIMEOUT_MS,
   );
@@ -952,15 +969,20 @@ describe("G. a hostile output settles in time proportional to its size", () => {
   // bounds the usage count, and `maxOutputChars` the length: 998 usages in a
   // 4 MB output took 1.4 s of CPU. So the cost at the cap is pinned, as a
   // ratio to the work it is made of, timed in the same process: one splice
-  // of a page and of its mask per substitution, each then read. CPU time on
-  // both sides keeps load out of the ratio, and the splices slow down with the
-  // machine as the request does; a regression that makes the request twice as
-  // costly fails it.
+  // of the page and of its mask per substitution, each then read
+  // (`spliceCopies`). CPU time on both sides keeps load out of the ratio,
+  // and the splices slow down with the machine as the request does; a
+  // regression that makes the request more than twice as costly fails it
+  // (four runs read 1.24 to 1.25 plain, 2.31 to 2.32 with coverage). The
+  // calibration is the highest of four runs on an M-series Mac, with and
+  // without coverage (which slows the renderer and not the copying); measure
+  // again after a change that makes the request cheaper.
+  const CAP_COST: CalibratedRatio = { plain: 1.25, coverage: 2.32 };
   it(
     "costs at most twice its calibrated share at the instance cap",
     async () => {
       expect(REQUEST_RENDER_LIMITS.maxInstances).toBe(1000);
-      const output = `<my-card>${padded("<x-p><a ", SIZE)}</my-card>`;
+      const output = nested(SIZE);
       const manifest = await build(list);
       config.minify.identifiers = false;
       const host = makeHost(manifest);
@@ -971,30 +993,10 @@ describe("G. a hostile output settles in time proportional to its size", () => {
           host,
         )("a", new AbortController().signal);
       expect(await settle()).not.toContain("<x-p");
-      const splices = async () => {
-        const tag = `<p class="p">v</p>`;
-        let page = output;
-        let mask = output.replaceAll("x", " ");
-        for (let i = 0; i < 999; i++) {
-          const at = 9 + i * 400;
-          page = page.slice(0, at) + tag + page.slice(at + 8);
-          mask = mask.slice(0, at) + tag + mask.slice(at + 8);
-          if (page.slice(at, at + 1) !== mask.slice(at, at + 1))
-            throw new Error(`splice ${i}`);
-        }
-      };
-      await settle();
-      await splices();
-      let atCapMs = Infinity;
-      let splicesMs = Infinity;
-      for (let i = 0; i < 3; i++) {
-        atCapMs = Math.min(atCapMs, await cpuMsAsync(settle));
-        splicesMs = Math.min(splicesMs, await cpuMsAsync(splices));
-      }
-      expect(
-        atCapMs / splicesMs,
-        `${atCapMs.toFixed(1)} ms at the cap, ${splicesMs.toFixed(1)} ms of splices`,
-      ).toBeLessThan(2 * CAP_COST_RATIO);
+      expectCostRatio(
+        await measureCostRatioAsync(settle, () => spliceCopies(output, USAGES)),
+        CAP_COST,
+      );
     },
     LINEAR_TIME_TIMEOUT_MS,
   );

@@ -224,79 +224,93 @@ describe("runTranspile", () => {
     logSpy.mockRestore();
   });
 
-  it("runs dev pipeline awaiting pre exec BEFORE watchFiles, then post after watchFiles", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const emitSpy = vi.spyOn(eventEmitter, "emit");
-    (BascikConfig as any).isBuild = false;
-    // The parallel handle stays pending until the server has bound. An
-    // implementation that awaits the join before `startServer` never gets
-    // there, so a bounded fallback releases the handle and lets the ordering
-    // assertion below report the defect instead of hanging the test.
-    const fallback = setTimeout(() => _parallel.release(), 1000);
-    _mockStartServer.mockImplementationOnce(async () => {
-      _callOrder.push("startServer");
-      _parallel.release();
-      return "http://localhost:8080";
-    });
-    await runTranspile();
-    await _parallel.settled;
-    clearTimeout(fallback);
+  // The fallback below waits this long, and the test allows for it.
+  const JOIN_FALLBACK_MS = 15_000;
+  it(
+    "runs dev pipeline awaiting pre exec BEFORE watchFiles, then post after watchFiles",
+    async () => {
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const emitSpy = vi.spyOn(eventEmitter, "emit");
+      (BascikConfig as any).isBuild = false;
+      // The parallel handle stays pending until the server has bound. An
+      // implementation that awaits the join before `startServer` never gets
+      // there, so a fallback releases the handle and lets the ordering
+      // assertion below report the defect instead of hanging the test. It
+      // must fire only on that defect. With 1 s it once fired in a correct
+      // run, during a loaded full-suite run: the steps before `startServer`
+      // (the mocked pre phase, importing server-dev.ts) took longer, the
+      // parallel work settled first, and the ordering check failed
+      // ('expected 3 to be greater than 4'). Alone they take about 10 ms;
+      // 15 s is far past any load, and only the join waits that long.
+      const fallback = setTimeout(() => _parallel.release(), JOIN_FALLBACK_MS);
+      _mockStartServer.mockImplementationOnce(async () => {
+        _callOrder.push("startServer");
+        _parallel.release();
+        return "http://localhost:8080";
+      });
+      await runTranspile();
+      await _parallel.settled;
+      clearTimeout(fallback);
 
-    expect(_mockRunExecPhase).toHaveBeenCalledWith("pre");
-    expect(_mockStartExecParallel).toHaveBeenCalled();
-    expect(_mockStartExecDev).toHaveBeenCalled();
-    expect(_mockStartServer).toHaveBeenCalled();
-    expect(_mockWatchFiles).toHaveBeenCalled();
-    expect(_mockRunExecPhase).toHaveBeenCalledWith("post");
-    expect(mem.setBootingDone).toHaveBeenCalledOnce();
-    expect(emitSpy).toHaveBeenCalledWith("boot-done");
-    emitSpy.mockRestore();
+      expect(_mockRunExecPhase).toHaveBeenCalledWith("pre");
+      expect(_mockStartExecParallel).toHaveBeenCalled();
+      expect(_mockStartExecDev).toHaveBeenCalled();
+      expect(_mockStartServer).toHaveBeenCalled();
+      expect(_mockWatchFiles).toHaveBeenCalled();
+      expect(_mockRunExecPhase).toHaveBeenCalledWith("post");
+      expect(mem.setBootingDone).toHaveBeenCalledOnce();
+      expect(emitSpy).toHaveBeenCalledWith("boot-done");
+      emitSpy.mockRestore();
 
-    // Regression check: pre exec is awaited BEFORE watchFiles in dev mode
-    const preIndex = _callOrder.indexOf("runExecPhase:pre");
-    const watchIndex = _callOrder.indexOf("watchFiles");
-    const postIndex = _callOrder.indexOf("runExecPhase:post");
+      // Regression check: pre exec is awaited BEFORE watchFiles in dev mode
+      const preIndex = _callOrder.indexOf("runExecPhase:pre");
+      const watchIndex = _callOrder.indexOf("watchFiles");
+      const postIndex = _callOrder.indexOf("runExecPhase:post");
 
-    expect(preIndex).toBeGreaterThanOrEqual(0);
-    expect(watchIndex).toBeGreaterThan(preIndex);
-    expect(postIndex).toBeGreaterThan(watchIndex);
+      expect(preIndex).toBeGreaterThanOrEqual(0);
+      expect(watchIndex).toBeGreaterThan(preIndex);
+      expect(postIndex).toBeGreaterThan(watchIndex);
 
-    // Dev does NOT join the parallel phase before binding the server: the
-    // parallel work settles only after `startServer` was reached.
-    const serverIndex = _callOrder.indexOf("startServer");
-    const parallelSettledIndex = _callOrder.indexOf(
-      "startExecParallel:settled",
-    );
-    expect(serverIndex).toBeGreaterThanOrEqual(0);
-    expect(parallelSettledIndex).toBeGreaterThan(serverIndex);
-    expect(
-      _callOrder.filter((step) => step !== "startExecParallel:settled"),
-    ).toEqual([
-      "cleanOutput",
-      "runExecPhase:pre",
-      "startExecParallel",
-      "startServer",
-      "startExecDev",
-      "watchFiles",
-      "runExecPhase:post",
-    ]);
+      // Dev does NOT join the parallel phase before binding the server: the
+      // parallel work settles only after `startServer` was reached.
+      const serverIndex = _callOrder.indexOf("startServer");
+      const parallelSettledIndex = _callOrder.indexOf(
+        "startExecParallel:settled",
+      );
+      expect(serverIndex).toBeGreaterThanOrEqual(0);
+      expect(parallelSettledIndex).toBeGreaterThan(serverIndex);
+      expect(
+        _callOrder.filter((step) => step !== "startExecParallel:settled"),
+      ).toEqual([
+        "cleanOutput",
+        "runExecPhase:pre",
+        "startExecParallel",
+        "startServer",
+        "startExecDev",
+        "watchFiles",
+        "runExecPhase:post",
+      ]);
 
-    // The retained handle is handed to the dev lifecycle owner so each
-    // parallel outcome is observed without scheduling compilation.
-    expect(_mockStartExecDev).toHaveBeenCalledWith(
-      expect.objectContaining({ parallel: _parallel.handle }),
-    );
+      // The retained handle is handed to the dev lifecycle owner so each
+      // parallel outcome is observed without scheduling compilation.
+      expect(_mockStartExecDev).toHaveBeenCalledWith(
+        expect.objectContaining({ parallel: _parallel.handle }),
+      );
 
-    expect(logSpy).toHaveBeenNthCalledWith(
-      1,
-      expect.stringMatching(/✓ All tasks completed in (?:[<]?[\d.]+(?:ms|s))/),
-    );
-    expect(logSpy).toHaveBeenNthCalledWith(
-      2,
-      "Server running at http://localhost:8080",
-    );
-    logSpy.mockRestore();
-  });
+      expect(logSpy).toHaveBeenNthCalledWith(
+        1,
+        expect.stringMatching(
+          /✓ All tasks completed in (?:[<]?[\d.]+(?:ms|s))/,
+        ),
+      );
+      expect(logSpy).toHaveBeenNthCalledWith(
+        2,
+        "Server running at http://localhost:8080",
+      );
+      logSpy.mockRestore();
+    },
+    JOIN_FALLBACK_MS + 15_000,
+  );
 
   it("cleans the output directory before pre exec in dev and build modes", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});

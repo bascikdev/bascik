@@ -59,12 +59,7 @@ import {
   computePageCspHashes,
 } from "./csp-hashes.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
-import {
-  CEILING_MS,
-  MAX_GROWTH,
-  measureGrowth,
-  repeatTo,
-} from "./linear-time.test-helper.ts";
+import { expectLinearTime, repeatTo } from "./linear-time.test-helper.ts";
 
 // Since request-time component rendering, a server or stream script's output
 // (which can echo visitor input such as `?q=`) reaches the component
@@ -341,11 +336,11 @@ const buildTimeCases: HostileCase[] = [
   })),
 ];
 
-const expectLinear = ({ input, size = SIZE, run }: HostileCase): void => {
+const expectLinear = ({ site, input, size = SIZE, run }: HostileCase): void => {
   expect(input(size).length).toBeGreaterThanOrEqual(size);
-  const { largeMs, growth } = measureGrowth(input, size, run);
-  expect(growth).toBeLessThan(MAX_GROWTH);
-  expect(largeMs).toBeLessThan(CEILING_MS);
+  // The helper's assertion: a failure names the site, both times and the
+  // runs per sample, and whether the growth or the ceiling failed.
+  expectLinearTime(input, size, run, { label: site });
 };
 
 describe("open-tag scans take linear time on hostile input", () => {
