@@ -986,10 +986,19 @@ describe("B. a usage attribute that becomes a URL only on the root's real tag ge
   it(
     "many inherited attributes on one usage are judged in linear time",
     () => {
+      // Names of one width (three letters name 17,576 handlers): names that
+      // grow with the count made the input itself grow about 8 times for 4
+      // times the count, and CI read that as a growth of 8.3.
+      const letters = (i: number): string =>
+        [676, 26, 1]
+          .map((place) =>
+            String.fromCharCode(97 + (Math.floor(i / place) % 26)),
+          )
+          .join("");
       const usage = (count: number): string => {
         let attrs = "";
         for (let i = 0; i < count; i++)
-          attrs += ` on${String.fromCharCode(97 + (i % 26)).repeat(1 + Math.floor(i / 26))}="x" data-u${i}="javascript:${i}" data-k${i}="v"`;
+          attrs += ` on${letters(i)}="x" data-u${i}="javascript:${i}" data-k${i}="v"`;
         return `<inh-object${attrs} data="${" ".repeat(count)}javascript:x" style="${"background:url(javascript:x);".repeat(count)}"></inh-object>`;
       };
       expectLinearTime(usage, 4000, (input) => renderAtBuild(list, input));

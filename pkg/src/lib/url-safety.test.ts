@@ -339,18 +339,22 @@ describe("URL checks take linear time on hostile values", () => {
   it(
     "the request-time binding check on a bound URL or style prop",
     () => {
+      // These run at memory speed: at 200k characters the quarter size fit a
+      // CI runner's L2 cache and the full size did not, which read as a
+      // growth of 9.3. Both sizes here are past L2.
+      const BINDING_SIZE = 4_000_000;
       const bind = (template: string) => (value: string) =>
         injectPropAttributes(template, { next: value }, undefined, () => {});
       const link = bind('<a data-bascik-attr-href="next">x</a>');
       const styled = bind('<div data-bascik-attr-style="next"></div>');
       expect(link(spaceRun(3))).toBe(`<a href="${spaceRun(3)}">x</a>`);
-      expectLinearTime(spaceRun, URL_SIZE, link);
-      expectLinearTime(controlRun, URL_SIZE, link);
+      expectLinearTime(spaceRun, BINDING_SIZE, link);
+      expectLinearTime(controlRun, BINDING_SIZE, link);
       const cssUrl = (n: number): string => `background:url(${spaceRun(n)})`;
-      expectLinearTime(cssUrl, URL_SIZE, styled);
+      expectLinearTime(cssUrl, BINDING_SIZE, styled);
       expectLinearTime(
         (n) => `background:url("${controlRun(n)}")`,
-        URL_SIZE,
+        BINDING_SIZE,
         styled,
       );
     },

@@ -386,16 +386,58 @@ describe("server-script-bascik-import allows exactly @bascik/bascik/html", () =>
 });
 
 describe("server-script-unescaped-markup: linear time", () => {
-  /** CPU ms for one analysis of `body`, best of three. */
-  const cpu = (body: string): number => {
-    let best = Infinity;
-    for (let i = 0; i < 3; i++) {
-      const before = process.cpuUsage();
-      analyze(body);
-      const used = process.cpuUsage(before);
-      best = Math.min(best, (used.user + used.system) / 1000);
+  // After pkg/src/lib/linear-time.test-helper.ts (lsp tests build from lsp/src
+  // only): this thread's CPU time, samples spanning eight steps of the clock
+  // (Windows counts CPU time in ticks of about 15.6 ms), the fastest of
+  // interleaved samples, and more pairs while the growth is in the band load
+  // reaches on linear work. Process CPU time, best of three and no warm-up
+  // read 8.3 on CI.
+  const threadCpuUsage: (previous?: NodeJS.CpuUsage) => NodeJS.CpuUsage =
+    process.threadCpuUsage?.bind(process) ?? process.cpuUsage.bind(process);
+  const msOf = ({ user, system }: NodeJS.CpuUsage) => (user + system) / 1000;
+  const cpuMs = (run: () => unknown): number => {
+    const start = threadCpuUsage();
+    run();
+    return msOf(threadCpuUsage(start));
+  };
+  const clockStepMs = (): number => {
+    const deadline = performance.now() + 250;
+    let smallest = Infinity;
+    let last = msOf(threadCpuUsage());
+    for (let steps = 0; steps < 5 && performance.now() < deadline;) {
+      const now = msOf(threadCpuUsage());
+      if (now === last) continue;
+      smallest = Math.min(smallest, now - last);
+      last = now;
+      steps++;
     }
-    return best;
+    return Number.isFinite(smallest) ? smallest : 0;
+  };
+  const growthOf = (small: string, large: string): number => {
+    const targetMs = Math.max(25, 8 * clockStepMs());
+    analyze(small);
+    analyze(large);
+    let runs = 1;
+    const sample = (body: string, count: number) =>
+      cpuMs(() => {
+        for (let i = 0; i < count; i++) analyze(body);
+      });
+    let smallMs = sample(small, runs);
+    while (smallMs < targetMs && runs < 64) {
+      runs =
+        smallMs <= 0
+          ? runs * 2
+          : Math.max(runs * 2, Math.ceil((runs * targetMs * 1.5) / smallMs));
+      smallMs = sample(small, runs);
+    }
+    let largeMs = Infinity;
+    const growth = () => largeMs / Math.max(smallMs, 5);
+    for (let i = 0; i < 9; i++) {
+      if (i >= 3 && !(growth() > 5 && growth() < 12)) break;
+      if (i > 0) smallMs = Math.min(smallMs, sample(small, runs));
+      largeMs = Math.min(largeMs, sample(large, runs));
+    }
+    return growth();
   };
 
   it("a 10k-line script of markup templates lints in linear time (CPU growth under 8x for 4x the lines)", () => {
@@ -407,9 +449,8 @@ describe("server-script-unescaped-markup: linear time", () => {
     const large = script(10_000);
     const diags = analyze(large).filter((d) => d.code === RULE);
     expect(diags).toHaveLength(10_000 * 2);
-    const growth = cpu(large) / Math.max(cpu(small), 1);
-    expect(growth).toBeLessThan(8);
-  });
+    expect(growthOf(small, large)).toBeLessThan(8);
+  }, 60_000);
 });
 
 describe("non-markup templates (SQL, URLs, plain text) get no sink warnings", () => {
