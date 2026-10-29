@@ -19,6 +19,7 @@
  * on every request, exactly as in dev mode.
  */
 
+import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join, extname, relative, resolve } from "node:path";
 import { mem } from "./mem.ts";
@@ -42,8 +43,43 @@ import {
   assertProductionBuildState,
   hashPage,
   pageDifferenceWarning,
+  type UnhashedInlineCode,
 } from "./build-state.ts";
 import { privateDirFor, privateDirLabel } from "./private-dir.ts";
+import { computePageCspHashes, type CspHashesManifest } from "./csp-hashes.ts";
+import { cspHashRestrictedKinds } from "./content-security-policy.ts";
+import { getHttpPath } from "./paths.ts";
+import {
+  lostPlaceholderError,
+  lostPlaceholderMessages,
+} from "./lost-placeholders.ts";
+
+/**
+ * The served page's inline scripts and styles whose hashes the build did not
+ * record, of the kinds the sent policy restricts to those hashes (`restricted`).
+ */
+const unhashedInlineCode = (
+  page: string,
+  html: string,
+  manifest: CspHashesManifest | null,
+  restricted: { scripts: boolean; styles: boolean },
+): UnhashedInlineCode | undefined => {
+  const route = getHttpPath(`pages/${page}`);
+  const own = manifest?.[route];
+  const scripts = new Set(own?.scripts ?? []);
+  const styles = new Set(own?.styles ?? []);
+  const hashes = computePageCspHashes(html);
+  const unhashed = {
+    page,
+    scripts: restricted.scripts
+      ? hashes.scripts.filter((hash) => !scripts.has(hash)).length
+      : 0,
+    styles: restricted.styles
+      ? hashes.styles.filter((hash) => !styles.has(hash)).length
+      : 0,
+  };
+  return unhashed.scripts + unhashed.styles > 0 ? unhashed : undefined;
+};
 
 /**
  * Recursively collect every `.html` file path under `dir`.
@@ -73,6 +109,16 @@ const loadDistIntoMemory = async (): Promise<void> => {
   const recordedPages = await assertProductionBuildState("server");
   /** Each page's hash, by path relative to dist/, to compare with the build's record. */
   const foundPages: Record<string, string> = {};
+  /**
+   * With a CSP, the served HTML of each page that is not the recorded one,
+   * by path relative to dist/: its inline code may no longer match the
+   * build's hashes.
+   */
+  const changedHtml = new Map<string, string>();
+  const policy = BascikConfig.contentSecurityPolicy;
+  const restricted = policy
+    ? cspHashRestrictedKinds(policy)
+    : { scripts: false, styles: false };
   let htmlFiles: string[];
   try {
     htmlFiles = await collectHtmlFiles(distDir);
@@ -161,6 +207,13 @@ const loadDistIntoMemory = async (): Promise<void> => {
           rawString = stripLiveReloadScript(rawString);
         }
         const buffer = Buffer.from(rawString, "utf8");
+        const rel = distRelative.slice(1);
+        if (
+          recordedPages &&
+          (restricted.scripts || restricted.styles) &&
+          recordedPages[rel] !== foundPages[rel]
+        )
+          changedHtml.set(rel, rawString);
 
         await mem.storePage({
           relativePagePath,
@@ -199,7 +252,44 @@ const loadDistIntoMemory = async (): Promise<void> => {
       `[bascik] --server: production startup validation failed. ` +
         `${failedPages.length} stored page(s) reference an unresolvable or stale server-script ` +
         `placeholder ${sidecarState}. First failure (${failedPages[0].relativePagePath}): ` +
-        `${first.error.message}. Run \`bascik --build\` to regenerate matching artifacts.`,
+        `${first.error.message.replace(/\.$/, "")}` +
+        `${/bascik --build/.test(first.error.message) ? "." : ". Run `bascik --build` to regenerate matching artifacts."}`,
+    );
+  }
+
+  // Every page whose server-script placeholder the sidecar holds but the
+  // stored page no longer has: a deploy step removed the placeholder, or
+  // rewrote it into something a browser does not read as
+  // `<script type="text/bascik-server">` (dropped its type, renamed its id).
+  // Its script cannot run, and the page would be served with it missing, so
+  // startup refuses and names the page. `bascik --build` runs the same check
+  // after its `post` phase; this one catches a dist/ edited after the build.
+  // A page that is gone from dist/ entirely is not served at all; the
+  // page-difference warning names it.
+  const placeholders = new Map<string, Set<string>>();
+  for (const page of mem.pages()) {
+    const ids = new Set<string>();
+    const plan = page.serverScriptPlan;
+    if (plan && !("error" in plan))
+      for (const segment of plan.segments)
+        if (segment.kind === "script" && segment.job.placeholderId)
+          ids.add(segment.job.placeholderId);
+    placeholders.set(page.relativePagePath.replace(/\\/g, "/"), ids);
+  }
+  const lost = lostPlaceholderMessages(
+    placeholders,
+    sidecarResult.scripts,
+    outDirRel,
+    privateRel,
+  );
+  if (lost.length > 0) {
+    setServerHealthState("booting");
+    throw new Error(
+      lostPlaceholderError(
+        "--server: production startup validation failed.",
+        lost,
+        "A deploy step",
+      ),
     );
   }
 
@@ -210,7 +300,33 @@ const loadDistIntoMemory = async (): Promise<void> => {
   // server scripts cannot run. A changed page is served as it is, with the
   // server scripts and CSP hashes the private folder holds.
   if (recordedPages) {
-    const warning = pageDifferenceWarning(recordedPages, foundPages);
+    const unhashed: UnhashedInlineCode[] = [];
+    if (changedHtml.size > 0) {
+      let manifest: CspHashesManifest | null = null;
+      try {
+        manifest = JSON.parse(
+          await readFile(
+            join(privateDirFor(distDir), "csp-hashes.json"),
+            "utf8",
+          ),
+        ) as CspHashesManifest;
+      } catch {
+        // No hashes recorded: every inline block of a changed page is unhashed.
+      }
+      for (const [rel, html] of [...changedHtml].sort(([a], [b]) =>
+        a < b ? -1 : a > b ? 1 : 0,
+      )) {
+        const entry = unhashedInlineCode(rel, html, manifest, restricted);
+        if (entry) unhashed.push(entry);
+      }
+    }
+    const warning = pageDifferenceWarning(recordedPages, foundPages, unhashed, {
+      reportOnly: Boolean(policy?.reportOnly),
+      serverScripts: sidecarResult.present,
+      cspHashes:
+        Boolean(policy) ||
+        existsSync(join(privateDirFor(distDir), "csp-hashes.json")),
+    });
     if (warning) console.warn(warning);
   }
 

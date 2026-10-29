@@ -12,7 +12,7 @@ Three ways to use the hashes:
 
 - **`contentSecurityPolicy`** in `bascik.config.ts` sends a header with your directives plus each route's hashes, on the Node servers and on Cloudflare. This is the simplest path; see [Send the header with contentSecurityPolicy](#send-the-header-with-contentsecuritypolicy).
 - **`generate.cspHashes: true`** writes `.bascik/dist/csp-hashes.json`, mapping each page to the hashes of its inline scripts and styles. Read it from a step that runs after the build finishes, such as a deploy command or a CI step.
-- **Hash the built HTML yourself** in a `post` exec script. Use this when you want to change the pages themselves, as in the recipe below. A `post` script cannot read `csp-hashes.json`, because Bascik finalizes that file after `post` scripts settle. See [Exec Scripts](/exec-scripts).
+- **Hash the built HTML yourself** in a `post` exec script. Use this when you want to change the pages themselves, as in the recipe below. A `post` script cannot read `csp-hashes.json`, because Bascik finalizes that file after `post` scripts settle, from the pages as they left them. See [Exec Scripts](/exec-scripts).
 
 ## Send the header with contentSecurityPolicy
 
@@ -60,6 +60,10 @@ curl -I http://localhost:8080/
 ```
 
 The response carries `content-security-policy: default-src 'self'; script-src 'self' https://cdn.example.com 'sha256-...'`. Static pages, pages with server and stream scripts (streamed ones too, since the header comes from the build before the body), `HEAD` requests and `304` responses all get it. The server reads `.bascik/dist/csp-hashes.json` once when it starts.
+
+The hashes describe the pages the build finished with. Once `post` exec scripts settle, the build takes them again from `dist/`, so a `post` script that adds, removes or rewrites an inline `<script>` or `<style>` ships with a header that allows the result. A deploy step that makes the same change to `dist/` after the build makes those blocks fail their hashes. This covers a minifier and an inline analytics snippet, and one dropped semicolon is enough. Browsers block that code, or report it when `reportOnly` is set. The startup warning about changed pages names each one whose inline code is no longer all in `csp-hashes.json`, for example `dist/index.html (1 inline script)`, counting only the kinds your policy restricts with hashes. Move such a step into a `post` exec script, or make the change in the source.
+
+The warning checks inline hashes only. A step that points an external `<script src>` or stylesheet at another host, such as a CDN rewrite or an analytics tag, leaves the hashes as they are, but browsers block the file unless its host is in `script-src` or `style-src`. Add the host to those directives.
 
 ### Development server
 

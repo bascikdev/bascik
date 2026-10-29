@@ -14,6 +14,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -326,6 +327,11 @@ describe("a static deploy never publishes the private build folder", () => {
           expect(warnings[0]).toContain(
             "if you copied .bascik/dist/ from another build, rebuild",
           );
+          expect(warnings[0]).toContain(
+            "To start without this warning, make the change in a `post` exec script",
+          );
+          // An external script needs no hash: nothing is blocked.
+          expect(warnings[0]).not.toContain("Content-Security-Policy");
         } finally {
           await server.close();
         }
@@ -362,6 +368,331 @@ describe("a static deploy never publishes the private build folder", () => {
           const warnings = differenceWarnings(server.output());
           expect(warnings, server.output()).toHaveLength(1);
           expect(warnings[0]).toContain("dist/live.html");
+        } finally {
+          await server.close();
+        }
+      } finally {
+        await cleanupFixture(root);
+      }
+    }, 180_000);
+
+    it("a minifier that removes attribute quotes and collapses whitespace keeps the server script running", async () => {
+      const root = fixtureRoot("private-folder-minified");
+      try {
+        await writeRelease(root, "v1");
+        await runRealBuild({ projectRoot: root, cliPath: PKG_ENTRY });
+        const page = join(root, "dist", "live.html");
+        const built = await readFile(page, "utf8");
+        // What html-minifier-terser 7.2.0 writes with --remove-attribute-quotes
+        // --remove-script-type-attributes --collapse-whitespace --minify-js.
+        const minified = built
+          .replace(/>\s+</g, "><")
+          .replace(
+            /<script type="text\/bascik-server" data-bascik-server-id="([^"]+)">/,
+            "<script type=text/bascik-server data-bascik-server-id=$1>",
+          );
+        expect(minified).toContain("<script type=text/bascik-server ");
+        await writeFile(page, minified);
+
+        const server = await startServer(root, 19300 + (process.pid % 80));
+        try {
+          expect(server.up, server.output()).toBe(true);
+          const live = await (await fetch(`${server.base}/live`)).text();
+          expect(live).toContain("server-v1");
+          expect(live).not.toContain("bascik-server");
+          expect(differenceWarnings(server.output())[0]).toContain(
+            "dist/live.html",
+          );
+        } finally {
+          await server.close();
+        }
+      } finally {
+        await cleanupFixture(root);
+      }
+    }, 180_000);
+
+    it("misuse: a deploy step that removes or breaks a page's placeholder stops bascik --server, naming the page", async () => {
+      const root = fixtureRoot("private-folder-lost-placeholder");
+      try {
+        await writeRelease(root, "v1");
+        await runRealBuild({ projectRoot: root, cliPath: PKG_ENTRY });
+        const page = join(root, "dist", "live.html");
+        const built = await readFile(page, "utf8");
+        const placeholder =
+          /<script type="text\/bascik-server"[^>]*><\/script>/;
+        expect(built).toMatch(placeholder);
+        for (const [n, rewritten] of [
+          // A rewrite that dropped the type: an empty script, not a placeholder.
+          built.replace(/ type="text\/bascik-server"/, ""),
+          // A rewrite that dropped the element.
+          built.replace(placeholder, ""),
+        ].entries()) {
+          await writeFile(page, rewritten);
+          const server = await startServer(
+            root,
+            19200 + (process.pid % 40) * 2 + n,
+          );
+          if (server.up) await server.close();
+          expect(server.up, server.output()).toBe(false);
+          expect(await server.exited).not.toBe(0);
+          expect(server.output()).toContain(
+            "dist/live.html: .bascik/dist/server-scripts.json holds 1 server script for this page",
+          );
+          expect(server.output()).toContain(
+            '<script type="text/bascik-server" data-bascik-server-id=',
+          );
+        }
+      } finally {
+        await cleanupFixture(root);
+      }
+    }, 240_000);
+
+    it("with contentSecurityPolicy, the warning names a changed page whose own inline script no longer matches its hash", async () => {
+      const root = fixtureRoot("private-folder-csp-rewrite");
+      try {
+        await writeRelease(root, "v1");
+        await runRealBuild({ projectRoot: root, cliPath: PKG_ENTRY });
+        const page = join(root, "dist", "index.html");
+        const built = await readFile(page, "utf8");
+        expect(built).toContain('document.title="v1"');
+        // A minifier's rewrite of the page's own inline script.
+        await writeFile(
+          page,
+          built.replace('document.title="v1"', 'document.title="v1";'),
+        );
+        const server = await startServer(root, 19100 + (process.pid % 80));
+        try {
+          expect(server.up, server.output()).toBe(true);
+          const warnings = differenceWarnings(server.output());
+          expect(warnings, server.output()).toHaveLength(1);
+          expect(warnings[0]).toContain(
+            "browsers will block the inline code in these changed pages that is not in .bascik/dist/csp-hashes.json: dist/index.html (1 inline script).",
+          );
+          // A post script that made the same rewrite would ship with
+          // matching hashes: the build hashes the post-phase pages.
+          expect(warnings[0]).toContain(
+            "make the change in a `post` exec script, which runs before the build records its pages and hashes their inline code.",
+          );
+        } finally {
+          await server.close();
+        }
+      } finally {
+        await cleanupFixture(root);
+      }
+    }, 180_000);
+
+    /** A release whose config runs `scripts/post-edit.mjs` (`source`) in the post phase. */
+    const writePostRelease = async (
+      root: string,
+      source: string,
+      csp = `{ directives: { "script-src": ["'self'"] } }`,
+    ) => {
+      await writeRelease(root, "v1");
+      await writeFixtureFile(
+        root,
+        "bascik.config.js",
+        `module.exports = {
+  generate: { sitemap: false, robots: false },
+  contentSecurityPolicy: ${csp},
+  pipeline: { exec: [{ script: "scripts/post-edit.mjs", phase: "post" }] },
+};`,
+      );
+      await writeFixtureFile(root, "scripts/post-edit.mjs", source);
+    };
+
+    const sha = (body: string) =>
+      `sha256-${createHash("sha256").update(body, "utf8").digest("base64")}`;
+
+    it("a post exec script that rewrites an inline script ships with hashes and a CSP header that allow it, and no warning", async () => {
+      const root = fixtureRoot("private-folder-post-csp");
+      try {
+        await writePostRelease(
+          root,
+          `import { readFile, writeFile } from "node:fs/promises";
+const page = "dist/index.html";
+const html = await readFile(page, "utf8");
+await writeFile(page, html.replace('document.title="v1"', 'document.title="post"'));
+`,
+        );
+        await runRealBuild({ projectRoot: root, cliPath: PKG_ENTRY });
+        expect(
+          await readFile(join(root, "dist", "index.html"), "utf8"),
+        ).toContain('document.title="post"');
+        const hashes = JSON.parse(
+          await readFile(
+            join(root, ".bascik", "dist", "csp-hashes.json"),
+            "utf8",
+          ),
+        ) as Record<string, { scripts: string[] }>;
+        expect(hashes["/"].scripts).toEqual([sha('document.title="post"')]);
+
+        const server = await startServer(root, 19050 + (process.pid % 40));
+        try {
+          expect(server.up, server.output()).toBe(true);
+          const res = await fetch(`${server.base}/`);
+          expect(await res.text()).toContain('document.title="post"');
+          const csp = res.headers.get("content-security-policy") ?? "";
+          expect(csp).toContain(`'${sha('document.title="post"')}'`);
+          expect(csp).not.toContain(`'${sha('document.title="v1"')}'`);
+          expect(differenceWarnings(server.output())).toEqual([]);
+        } finally {
+          await server.close();
+        }
+
+        // A targeted build runs the post script again over the rebuilt
+        // page and records the final hashes too.
+        await writeFixtureFile(
+          root,
+          "src/pages/index.html",
+          `<!DOCTYPE html><html><head><title>Home</title></head><body><script>document.title="v1"</script><p>again</p></body></html>`,
+        );
+        await runRealBuild({
+          projectRoot: root,
+          cliPath: PKG_ENTRY,
+          args: ["--only", "index.html"],
+        });
+        const after = JSON.parse(
+          await readFile(
+            join(root, ".bascik", "dist", "csp-hashes.json"),
+            "utf8",
+          ),
+        ) as Record<string, { scripts: string[] }>;
+        expect(after["/"].scripts).toEqual([sha('document.title="post"')]);
+        expect(Object.keys(after)).toContain("/live");
+      } finally {
+        await cleanupFixture(root);
+      }
+    }, 240_000);
+
+    it("misuse: a post exec script that drops a stream placeholder fails bascik --build, naming the page and the tag to paste back", async () => {
+      const root = fixtureRoot("private-folder-post-lost-stream");
+      try {
+        await writePostRelease(
+          root,
+          `import { readFile, writeFile } from "node:fs/promises";
+const page = "dist/live.html";
+const html = await readFile(page, "utf8");
+await writeFile(page, html.replace(/<script type="text\\/bascik-server"[^>]*data-bascik-stream[^>]*><\\/script>/, ""));
+`,
+        );
+        await writeFixtureFile(
+          root,
+          "src/pages/live.html",
+          `<!DOCTYPE html><html><head><title>Live</title></head><body>
+<script data-bascik-server>export default () => 'server-v1';</script>
+<script data-bascik-stream>export default () => 'stream-v1';</script>
+</body></html>`,
+        );
+        let output = "";
+        await expect(
+          runRealBuild({ projectRoot: root, cliPath: PKG_ENTRY }).catch(
+            (err: { stdout?: string; stderr?: string }) => {
+              output = `${err.stdout ?? ""}${err.stderr ?? ""}`;
+              throw err;
+            },
+          ),
+        ).rejects.toThrow();
+        expect(output).toContain(
+          "[bascik] --build: a page lost a server-script placeholder after the build wrote it. " +
+            "dist/live.html: .bascik/dist/server-scripts.json holds 2 server scripts for this page, but 1 of their placeholders is gone",
+        );
+        expect(output).toContain(
+          "A `post` exec script removed or rewrote the placeholder",
+        );
+        expect(output).toContain("does not remove empty elements");
+        expect(output).not.toContain("Build complete");
+        // The build failed before it recorded its pages.
+        expect(
+          existsSync(join(root, ".bascik", "dist", "build-state.json")),
+        ).toBe(false);
+        const tag = output.match(
+          /`(<script type="text\/bascik-server" data-bascik-server-id="[^"]+" data-bascik-stream><\/script>)`/,
+        )?.[1];
+        expect(tag, output).toBeDefined();
+
+        // A post script that puts the tag back where it likes (here, at the
+        // end of the body) keeps every placeholder, and the build passes.
+        await writeFixtureFile(
+          root,
+          "scripts/post-edit.mjs",
+          `import { readFile, writeFile } from "node:fs/promises";
+const page = "dist/live.html";
+const html = await readFile(page, "utf8");
+await writeFile(page, html
+  .replace(/<script type="text\\/bascik-server"[^>]*data-bascik-stream[^>]*><\\/script>/, "")
+  .replace("</body>", ${JSON.stringify(tag)} + "</body>"));
+`,
+        );
+        await runRealBuild({ projectRoot: root, cliPath: PKG_ENTRY });
+        const port = 19000 + (process.pid % 20) * 2;
+        const server = await startServer(root, port);
+        try {
+          expect(server.up, server.output()).toBe(true);
+          const live = await (await fetch(`${server.base}/live`)).text();
+          expect(live).toContain("server-v1");
+          expect(live).toContain("stream-v1");
+          expect(differenceWarnings(server.output())).toEqual([]);
+        } finally {
+          await server.close();
+        }
+      } finally {
+        await cleanupFixture(root);
+      }
+    }, 240_000);
+
+    it("misuse: a post exec script that drops a server placeholder fails a plain bascik --build", async () => {
+      const root = fixtureRoot("private-folder-post-lost-server");
+      try {
+        await writePostRelease(
+          root,
+          `import { readFile, writeFile } from "node:fs/promises";
+const page = "dist/live.html";
+const html = await readFile(page, "utf8");
+await writeFile(page, html.replace(/<script type="text\\/bascik-server"[^>]*><\\/script>/, "<p>gone</p>"));
+`,
+        );
+        await expect(
+          runRealBuild({ projectRoot: root, cliPath: PKG_ENTRY }),
+        ).rejects.toThrow(
+          /dist\/live\.html: \.bascik\/dist\/server-scripts\.json holds 1 server script for this page, but the page has no placeholder for it \(`<script type="text\/bascik-server" data-bascik-server-id="server_script_[0-9a-f]+"><\/script>`\)/,
+        );
+      } finally {
+        await cleanupFixture(root);
+      }
+    }, 240_000);
+
+    it("the CSP part of the warning counts only kinds the sent policy restricts, and says report for reportOnly", async () => {
+      const root = fixtureRoot("private-folder-csp-kinds");
+      try {
+        await writeRelease(root, "v1");
+        await writeFixtureFile(
+          root,
+          "bascik.config.js",
+          `module.exports = {
+  generate: { sitemap: false, robots: false },
+  contentSecurityPolicy: { reportOnly: true, directives: { "script-src": ["'self'"], "style-src": ["'self'", "'unsafe-inline'"] } },
+};`,
+        );
+        await runRealBuild({ projectRoot: root, cliPath: PKG_ENTRY });
+        const page = join(root, "dist", "index.html");
+        const built = await readFile(page, "utf8");
+        await writeFile(
+          page,
+          built
+            .replace('document.title="v1"', 'document.title="v1";')
+            .replace("</head>", "<style>h1{color:red}</style></head>"),
+        );
+        const server = await startServer(root, 19040 + (process.pid % 10));
+        try {
+          expect(server.up, server.output()).toBe(true);
+          const warnings = differenceWarnings(server.output());
+          expect(warnings, server.output()).toHaveLength(1);
+          expect(warnings[0]).toContain(
+            "The site sends a Content-Security-Policy-Report-Only, and browsers will report the inline code in " +
+              "these changed pages that is not in .bascik/dist/csp-hashes.json: dist/index.html (1 inline script).",
+          );
+          expect(warnings[0]).not.toContain("inline style");
+          expect(warnings[0]).not.toContain("will block");
         } finally {
           await server.close();
         }
@@ -471,7 +802,9 @@ describe("a static deploy never publishes the private build folder", () => {
             cliPath: PKG_ENTRY,
             args: ["--only", "index.html"],
           }),
-        ).rejects.toThrow(/different builds/);
+        ).rejects.toThrow(
+          /--only: dist\/index\.html is not the page that build wrote[\s\S]*if you copied \.bascik\/dist\/ from another build/,
+        );
       } finally {
         await cleanupFixture(root);
       }

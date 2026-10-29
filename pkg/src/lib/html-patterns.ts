@@ -167,7 +167,48 @@ export const isRequestScriptOpenTag = (openTag: string): boolean =>
 const REQUEST_DIRECTIVE_LITERAL_RE = /data-bascik-s(?:erver|tream)/gi;
 const REQUEST_DIRECTIVE_MARKER_RE =
   /\sdata-bascik-(?:server|stream)(?=[\s=/>]|$)/iy;
-const PLACEHOLDER_TYPE_RE = /type=["']text\/bascik-server["']/gi;
+/**
+ * A sidecar placeholder's `type` attribute in every spelling a browser reads
+ * as `type="text/bascik-server"`: a whole attribute name after tag
+ * whitespace (or `/`), any case, whitespace around `=`, the value double-,
+ * single- or unquoted (an unquoted value ends at tag whitespace or `>`), and
+ * whitespace inside quotes, which the browser trims from a script's type. A
+ * minifier that removes attribute quotes writes
+ * `<script type=text/bascik-server data-bascik-server-id=…>`. Matches start
+ * at the separator and never overlap; each is bounded by its own literal.
+ */
+const PLACEHOLDER_TYPE_RE =
+  /[\t\n\f\r /]type[\t\n\f\r ]*=[\t\n\f\r ]*(?:"[\t\n\f\r ]*text\/bascik-server[\t\n\f\r ]*"|'[\t\n\f\r ]*text\/bascik-server[\t\n\f\r ]*'|text\/bascik-server(?=[\t\n\f\r >]))/gi;
+
+/** Where each placeholder `type` marker starts, and where it ends. */
+const findPlaceholderTypeMarkers = (
+  html: string,
+): { anchors: number[]; ends: Map<number, number> } => {
+  const ends = new Map<number, number>();
+  const anchors = findMarkerAnchors(html, PLACEHOLDER_TYPE_RE, (at) => {
+    ends.set(at, PLACEHOLDER_TYPE_RE.lastIndex);
+    return at;
+  });
+  return { anchors, ends };
+};
+
+/** The placeholder alternative of `scanRequestScripts`. */
+const placeholderAlternative = (html: string) => {
+  const { anchors, ends } = findPlaceholderTypeMarkers(html);
+  return {
+    anchors,
+    markerEnd: (anchor: number) => ends.get(anchor)!,
+    pick: "last" as const,
+  };
+};
+
+/**
+ * True when a script open tag is a sidecar placeholder: its `type` is
+ * `text/bascik-server` in any spelling a browser reads the same way.
+ */
+export const isServerPlaceholderOpenTag = (openTag: string): boolean =>
+  getHtmlAttributeValue(openTag, "type")?.trim().toLowerCase() ===
+  "text/bascik-server";
 
 /**
  * The server and stream script elements in `html`, in order: every match of
@@ -175,7 +216,7 @@ const PLACEHOLDER_TYPE_RE = /type=["']text\/bascik-server["']/gi;
  * `<script(?=[\t\n\f\r />])${OPEN_TAG_ATTRS}\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})${OPEN_TAG_ATTRS}>([\s\S]*?)${SCRIPT_END_TAG}`
  *
  * and, with `placeholders`, of a second alternative
- * `|<script(?=[\t\n\f\r />])${OPEN_TAG_ATTRS}type=["']text\/bascik-server["']${OPEN_TAG_ATTRS}>([\s\S]*?)${SCRIPT_END_TAG}`
+ * `|<script(?=[\t\n\f\r />])${OPEN_TAG_ATTRS}${PLACEHOLDER_TYPE_RE}${OPEN_TAG_ATTRS}>([\s\S]*?)${SCRIPT_END_TAG}`
  * (flags `gi`; alternative 1 is the placeholder). Linear, where the regexes
  * took cubic time (`scanMarkedScripts`).
  */
@@ -193,15 +234,7 @@ export const scanRequestScripts = (
       markerEnd: (anchor) => anchor + 19,
       pick: "last",
     },
-    ...(placeholders
-      ? [
-          {
-            anchors: findMarkerAnchors(html, PLACEHOLDER_TYPE_RE, (at) => at),
-            markerEnd: (anchor: number) => anchor + 25,
-            pick: "last" as const,
-          },
-        ]
-      : []),
+    ...(placeholders ? [placeholderAlternative(html)] : []),
   ]);
 
 /**

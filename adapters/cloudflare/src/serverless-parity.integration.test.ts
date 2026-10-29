@@ -15,9 +15,11 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createServer } from "node:net";
 import http from "node:http";
 import {
+  access,
   mkdir as mkdirAsync,
   readFile as readTextFile,
   writeFile as writeTextFile,
@@ -1818,6 +1820,208 @@ describe("serverless parity: opt-in contentSecurityPolicy", () => {
     expect(headers).toMatch(/^\/\n {2}Content-Security-Policy: /m);
     expect(headers).toContain(`  Content-Security-Policy: ${nodeCsp}`);
   });
+});
+
+// ─── a post exec script that edits inline code after the build hashed it ─────
+//
+// Post-build edits are legitimate ("the code you wrote is the code that
+// ships"). The build takes the CSP hashes again from dist/ once the post
+// phase finishes, so a post script that rewrites a static page's inline
+// script, and one that adds an inline script to a page the Worker renders,
+// ship with headers that allow them on both hosts.
+describe("serverless parity: a post exec script rewrites inline scripts after the pages are written", () => {
+  let root: string;
+  let node: NodeOracle;
+  let cloudflare: Harness;
+  const sha = (body: string) =>
+    `'sha256-${createHash("sha256").update(body, "utf8").digest("base64")}'`;
+  // The build minifies the page's script to this body.
+  const WRITTEN = 'document.body.dataset.ran="yes";';
+  const REWRITTEN = 'document.body.dataset.ran="post";';
+  const ADDED = "window.__postAdded = 1;";
+
+  beforeAll(async () => {
+    root = await createServerlessFixture("csp-post", {
+      csp: { "default-src": ["'self'"], "script-src": ["'self'"] },
+      postExec: `import { readFile, writeFile } from "node:fs/promises";
+const edit = async (file, change) =>
+  writeFile(file, change(await readFile(file, "utf8")));
+await edit("dist/csp-inline.html", (html) =>
+  html.replace(${JSON.stringify(WRITTEN)}, ${JSON.stringify(REWRITTEN)}));
+await edit("dist/account.html", (html) =>
+  html.replace("</body>", "<script>${ADDED}</script></body>"));
+`,
+    });
+    await buildServerlessFixture(root, "cloudflare-pages");
+    node = await startNodeServer(root);
+    cloudflare = await startHarness({
+      projectRoot: root,
+      target: "cloudflare-pages",
+    });
+  }, 180_000);
+
+  afterAll(async () => {
+    await cloudflare?.dispose();
+    await node?.stop();
+    if (root) await cleanupServerlessFixture(root);
+  });
+
+  it("csp-hashes.json holds the rewritten script's hash, not the one the page was written with", async () => {
+    const hashes = JSON.parse(
+      await readTextFile(join(root, ".bascik/dist/csp-hashes.json"), "utf8"),
+    ) as Record<string, { scripts: string[] }>;
+    expect(hashes["/csp-inline"].scripts.map((h) => `'${h}'`)).toEqual([
+      sha(REWRITTEN),
+    ]);
+    expect(hashes["/account"].scripts.map((h) => `'${h}'`)).toContain(
+      sha(ADDED),
+    );
+  });
+
+  it("the static page's _headers rule and the Node header allow the rewritten script, and agree", async () => {
+    const n = await observe(await fetch(new URL("/csp-inline", node.url)));
+    expect(n.body).toContain(REWRITTEN);
+    const nodeCsp = n.headers["content-security-policy"];
+    expect(nodeCsp).toContain(sha(REWRITTEN));
+    expect(nodeCsp).not.toContain(sha(WRITTEN));
+    const headers = await readTextFile(
+      join(root, "dist/.bascik/cloudflare-pages/public/_headers"),
+      "utf8",
+    );
+    const lines = headers.split("\n");
+    const at = lines.indexOf("/csp-inline");
+    expect(at, headers).toBeGreaterThanOrEqual(0);
+    expect(lines[at + 1]).toBe(`  Content-Security-Policy: ${nodeCsp}`);
+  });
+
+  it("a page the Worker renders sends the added script's hash, as Node does", async () => {
+    const n = await observe(await fetch(new URL("/account", node.url)));
+    const cf = await observe(await cloudflare.fetch("/account"));
+    expect(cf.body).toContain(ADDED);
+    const csp = cf.headers["content-security-policy"];
+    expect(csp).toContain(sha(ADDED));
+    expect(csp).toBe(n.headers["content-security-policy"]);
+  });
+
+  it("bascik --server starts without the changed-page warning: the build recorded the post-phase pages", () => {
+    expect(node.output()).not.toMatch(/differs? from the pages/);
+  });
+});
+
+// ─── a post exec script that removes a server-script placeholder ────────────
+//
+// A server or stream script lives in the sidecar; the page keeps only its
+// placeholder. A post script that removes one would ship a page whose script
+// never runs: on Node, `bascik --server` refuses to start, and a Worker
+// would serve the page without it and say nothing. So every build fails
+// after its post phase, with the message the server gives, before a bundle
+// is made.
+describe("serverless parity: a post exec script that removes a placeholder fails the build", () => {
+  const POST_DROP = `import { readFile, writeFile } from "node:fs/promises";
+const edit = async (file, change) =>
+  writeFile(file, change(await readFile(file, "utf8")));
+await edit("dist/account.html", (html) =>
+  html.replace(/<script type="text\\/bascik-server" data-bascik-server-id="[^"]+"><\\/script>/, ""));
+await edit("dist/dashboard.html", (html) =>
+  html.replace(/<script type="text\\/bascik-server" data-bascik-server-id="[^"]+" data-bascik-stream><\\/script>/, ""));
+`;
+  const roots: string[] = [];
+  afterAll(async () => {
+    for (const root of roots) await cleanupServerlessFixture(root);
+  });
+
+  /** The located lines `bascik --server` gives for the same dist/. */
+  const located = async (root: string) => {
+    const sidecar = JSON.parse(
+      await readTextFile(
+        join(root, ".bascik/dist/server-scripts.json"),
+        "utf8",
+      ),
+    ) as { scripts: Record<string, { mode: string }> };
+    const ids = Object.keys(sidecar.scripts).sort();
+    const pageOf = (id: string) =>
+      Buffer.from(id.slice("server_script_".length), "hex")
+        .toString("utf8")
+        .replace(/::\d+$/, "");
+    const account = ids.filter(
+      (id) =>
+        id.startsWith("server_script_") && pageOf(id) === "pages/account.html",
+    );
+    const dashboard = ids.filter(
+      (id) =>
+        id.startsWith("server_script_") &&
+        pageOf(id) === "pages/dashboard.html",
+    );
+    const html = await readTextFile(join(root, "dist/dashboard.html"), "utf8");
+    const lostStream = dashboard.find((id) => !html.includes(id))!;
+    expect(account).toHaveLength(1);
+    expect(dashboard).toHaveLength(4);
+    expect(sidecar.scripts[lostStream].mode).toBe("stream");
+    return [
+      `dist/account.html: .bascik/dist/server-scripts.json holds 1 server script for this page, but the page has no placeholder for it ` +
+        `(\`<script type="text/bascik-server" data-bascik-server-id="${account[0]}"></script>\`)`,
+      `dist/dashboard.html: .bascik/dist/server-scripts.json holds 4 server scripts for this page, but 1 of their placeholders is gone ` +
+        `(\`<script type="text/bascik-server" data-bascik-server-id="${lostStream}" data-bascik-stream></script>\`)`,
+    ];
+  };
+
+  for (const target of ["cloudflare-pages", "cloudflare-workers"] as const) {
+    it(`--target ${target} fails with the page, the count and the tag to paste back, and makes no bundle`, async () => {
+      const root = await createServerlessFixture(`lost-${target}`, {
+        postExec: POST_DROP,
+      });
+      roots.push(root);
+      const { stdout, stderr } = await buildServerlessFixture(root, target);
+      const lines = await located(root);
+      expect(stderr).toContain(
+        "[bascik] --build: a page lost a server-script placeholder after the build wrote it.",
+      );
+      for (const line of lines) expect(stderr).toContain(line);
+      expect(stderr).toContain(
+        "A `post` exec script removed or rewrote the placeholder",
+      );
+      expect(stdout).not.toContain("Build complete");
+      await expect(
+        access(join(root, `dist/.bascik/${target}`)),
+      ).rejects.toThrow();
+
+      // A post script that keeps every placeholder builds, and the bundle
+      // is made.
+      await writeTextFile(
+        join(root, "scripts/post-edit.mjs"),
+        "// keeps every placeholder\n",
+        "utf8",
+      );
+      const kept = await buildServerlessFixture(root, target);
+      expect(kept.stdout, kept.stderr).toContain("Build complete");
+      await access(join(root, `dist/.bascik/${target}`));
+
+      // The same edit made to dist/ after the build: bascik --server, the
+      // second line, refuses with the same located text.
+      await writeTextFile(join(root, "scripts/drop.mjs"), POST_DROP, "utf8");
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      await promisify(execFile)(process.execPath, ["scripts/drop.mjs"], {
+        cwd: root,
+      });
+      let started: NodeOracle | undefined;
+      let refusal = "";
+      try {
+        started = await startNodeServer(root);
+      } catch (err) {
+        refusal = (err as Error).message;
+      }
+      await started?.stop();
+      expect(
+        started,
+        "bascik --server started on a page with a lost placeholder",
+      ).toBeUndefined();
+      expect(refusal).toContain(
+        "--server: production startup validation failed.",
+      );
+      for (const line of lines) expect(refusal).toContain(line);
+    }, 180_000);
+  }
 });
 
 // ─── security toggles, scripts.stripAnsi, scripts.renderLimits ──────────────

@@ -46,6 +46,7 @@
  * post-commit prune below for each step's reason.
  */
 
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
@@ -420,6 +421,7 @@ import {
   type ManifestEntry,
 } from "./manifest.ts";
 import {
+  computePageCspHashes,
   cspHashCollector,
   widenRouteCspHashes,
   type CspHashesManifest,
@@ -441,6 +443,7 @@ import {
 } from "./component-manifest.ts";
 import { listComponents } from "./components.ts";
 import { privateDirFor } from "./private-dir.ts";
+import { collectHtmlPaths } from "./build-state.ts";
 
 const manifestPath = (): string =>
   join(privateDirFor(outDir()), "manifest.json");
@@ -571,6 +574,50 @@ const reconcileSidecar = (
 };
 
 /**
+ * Record the CSP hashes of every page as it is in dist/ now (prompt 157
+ * follow-up: post-build edits are legitimate). A page's hashes are taken
+ * while it is written, before `post` exec scripts run, so a script that
+ * rewrites, adds or removes an inline script or style would leave the
+ * recorded hashes describing HTML that does not ship, and the browser would
+ * block that code. Each page the inventory owns, and any other page a script
+ * added, is read once; a page whose bytes are the ones this process wrote
+ * keeps the hashes it was written with, so only edited pages are scanned.
+ * The HTML is never changed.
+ */
+const rehashEditedPages = async (inv: OwnershipInventory): Promise<void> => {
+  const written = manifestCollector.getFiles();
+  const routes = new Map<string, string>();
+  for (const owner of Object.values(inv.owners))
+    for (const output of owner.outputs) routes.set(output.file, output.route);
+  let onDisk: string[] = [];
+  try {
+    onDisk = await collectHtmlPaths(outDir());
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  const files = [...new Set([...routes.keys(), ...onDisk])].sort();
+  for (let i = 0; i < files.length; i += 32)
+    await Promise.all(
+      files.slice(i, i + 32).map(async (file) => {
+        let bytes: Buffer;
+        try {
+          bytes = await readFile(join(outDir(), file));
+        } catch (err) {
+          // A script removed the page: there is nothing to hash.
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+          throw err;
+        }
+        const hash = createHash("sha256").update(bytes).digest("hex");
+        if (written[file]?.hash === hash) return;
+        cspHashCollector.recordComputed(
+          routes.get(file) ?? outputRouteForKey(file),
+          computePageCspHashes(bytes.toString("utf8")),
+        );
+      }),
+    );
+};
+
+/**
  * Finalize all build artifacts from a single ownership transaction.
  *
  * Full build: dist/ was cleaned at startup, so `prior` is empty; the inventory
@@ -591,7 +638,15 @@ const reconcileSidecar = (
  */
 export const finalizeOwnedArtifacts = async (
   version: string,
-  options: { forTargetedBuild: boolean },
+  options: {
+    forTargetedBuild: boolean;
+    /**
+     * An exec script ran after the pages were written (`post`, or
+     * `parallel`, which a build joins before this): re-hash the pages from
+     * dist/ so csp-hashes.json describes the HTML that ships.
+     */
+    rehashPagesFromDisk?: boolean;
+  },
 ): Promise<void> => {
   const currentEntries = ownershipTracker.getEntries();
   const priorInventory = await readOwnershipInventory();
@@ -627,6 +682,9 @@ export const finalizeOwnedArtifacts = async (
   // then rename); a failure here aborts before any metadata commit, so the
   // previous valid artifact set is untouched.
   await emitPrecompressedSidecars();
+
+  if (options.rehashPagesFromDisk && BascikConfig.generate?.cspHashes)
+    await rehashEditedPages(inv);
 
   const currentManifest = manifestCollector.getFiles();
   const currentCsp = cspHashCollector.getManifest();

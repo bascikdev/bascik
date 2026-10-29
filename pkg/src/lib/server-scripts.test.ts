@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   executeServerScripts,
   pageHasServerScripts,
+  planServerScripts,
 } from "./server-scripts.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import { scriptRegistry } from "./script-registry.ts";
@@ -364,5 +365,59 @@ describe("pageHasServerScripts (the dev manifest decision)", () => {
     ])
       for (const page of both(html))
         expect(pageHasServerScripts(page)).toBe(false);
+  });
+});
+
+describe("sidecar placeholders in every spelling a browser reads as the same attributes", () => {
+  const SOURCE = "export default () => '<b>ran</b>';";
+  const spellings = [
+    // html-minifier-terser --remove-attribute-quotes
+    `<script type=text/bascik-server data-bascik-server-id=ph_1></script>`,
+    `<script type='text/bascik-server' data-bascik-server-id='ph_1'></script>`,
+    `<script data-bascik-server-id="ph_1" type="text/bascik-server"></script>`,
+    `<script  type = "text/bascik-server"\n\tdata-bascik-server-id = "ph_1" ></script>`,
+    `<SCRIPT TYPE="TEXT/BASCIK-SERVER" DATA-BASCIK-SERVER-ID="ph_1"></SCRIPT>`,
+    `<script type=" text/bascik-server " data-bascik-server-id=ph_1></script>`,
+    `<script data-note="a > b" type=text/bascik-server data-bascik-server-id=ph_1></script>`,
+  ];
+
+  for (const tag of spellings)
+    it(`runs the script for ${JSON.stringify(tag)}, as a string or a Buffer page`, async () => {
+      serverSidecarRegistry.recordScript("ph_1", SOURCE);
+      const html = `<main>${tag}</main>`;
+      expect(pageHasServerScripts(html)).toBe(true);
+      expect(pageHasServerScripts(Buffer.from(html))).toBe(true);
+      expect(await executeServerScripts(html, baseRequest, baseContext)).toBe(
+        "<main><b>ran</b></main>",
+      );
+    });
+
+  it("keeps an unquoted stream marker", async () => {
+    serverSidecarRegistry.recordScript(
+      "ph_s",
+      SOURCE,
+      undefined,
+      undefined,
+      undefined,
+      "stream",
+    );
+    const html = `<script type=text/bascik-server data-bascik-server-id=ph_s data-bascik-stream></script>`;
+    const plan = planServerScripts(html);
+    const scripts = plan.segments.filter((s) => s.kind === "script");
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0].kind === "script" && scripts[0].mode).toBe("stream");
+  });
+
+  it("misuse: a type that only looks like the placeholder's is not one", () => {
+    for (const html of [
+      `<script data-type="text/bascik-server" data-bascik-server-id="ph_1"></script>`,
+      `<script type="text/bascik-server-x" data-bascik-server-id="ph_1"></script>`,
+      `<script type=text/bascik-serverx data-bascik-server-id=ph_1></script>`,
+      `<script data-x='type=text/bascik-server' data-bascik-server-id="ph_1"></script>`,
+      `<script data-x="a type=text/bascik-server" data-bascik-server-id="ph_1"></script>`,
+    ]) {
+      expect(pageHasServerScripts(html), html).toBe(false);
+      expect(pageHasServerScripts(Buffer.from(html)), html).toBe(false);
+    }
   });
 });

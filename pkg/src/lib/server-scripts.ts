@@ -117,18 +117,30 @@ const findDirectiveConflict = (
 };
 
 /**
+ * The pre-filter's words, in any case: a placeholder's attributes may be
+ * spelled in capitals, which a browser reads the same way.
+ */
+const SERVER_SCRIPT_WORDS_RE = /data-bascik-server|text\/bascik-server/i;
+
+/**
+ * Whether `html` mentions a server script or placeholder at all. A Buffer is
+ * read as latin1, which keeps every ASCII byte and costs no UTF-8 decoding;
+ * with the case-insensitive regex that is faster than two byte searches.
+ */
+const mentionsServerScripts = (html: string | Buffer): boolean =>
+  SERVER_SCRIPT_WORDS_RE.test(
+    typeof html === "string" ? html : html.toString("latin1"),
+  );
+
+/**
  * Return `true` if `html` contains at least one `data-bascik-server` block or placeholder.
  *
- * The Buffer path is a deliberately loose PRE-FILTER (`includes`), not a
+ * The Buffer path is a deliberately loose PRE-FILTER (a word search), not a
  * decision: a false positive only costs one regex run downstream. The string
  * path is exact.
  */
 export const htmlHasServerScripts = (html: string | Buffer): boolean => {
-  if (Buffer.isBuffer(html)) {
-    return (
-      html.includes("data-bascik-server") || html.includes("text/bascik-server")
-    );
-  }
+  if (Buffer.isBuffer(html)) return mentionsServerScripts(html);
   return hasServerScriptElement(html);
 };
 
@@ -140,8 +152,7 @@ export const htmlHasServerScripts = (html: string | Buffer): boolean => {
  * pre-filter matches.
  */
 export const pageHasServerScripts = (html: string | Buffer): boolean =>
-  (html.includes("data-bascik-server") ||
-    html.includes("text/bascik-server")) &&
+  mentionsServerScripts(html) &&
   hasServerScriptElement(
     typeof html === "string" ? html : html.toString("utf8"),
   );

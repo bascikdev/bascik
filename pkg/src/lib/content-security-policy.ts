@@ -35,6 +35,46 @@ export interface CspRouteHashes {
 const quote = (source: string): string =>
   source.startsWith("'") ? source : `'${source}'`;
 
+const wantsHashes = (
+  kinds: ContentSecurityPolicyConfig["hashes"],
+  kind: "scripts" | "styles",
+): boolean =>
+  kinds === undefined ||
+  kinds === true ||
+  (typeof kinds === "object" && kinds[kind] !== false);
+
+const hasUnsafeInline = (sources: readonly string[]): boolean =>
+  sources.some((s) => s.toLowerCase() === "'unsafe-inline'");
+
+/**
+ * Which kinds of inline code the header `policy` sends restricts to the
+ * build's hashes: a kind whose hashes are on and whose governing directive
+ * (`script-src-elem`, `script-src` or `default-src` for scripts, the `style-`
+ * ones for styles) is written without 'unsafe-inline'. Inline code of any
+ * other kind runs whatever the hashes say, so an unhashed block of it is
+ * never blocked.
+ */
+export const cspHashRestrictedKinds = (
+  policy: ContentSecurityPolicyConfig,
+): { scripts: boolean; styles: boolean } => {
+  const directives = new Map<string, readonly string[]>();
+  for (const [name, sources] of Object.entries(policy.directives))
+    directives.set(name.toLowerCase(), sources);
+  const restricts = (kind: "scripts" | "styles", prefix: string): boolean => {
+    if (policy.hashes === false || !wantsHashes(policy.hashes, kind))
+      return false;
+    const governing =
+      directives.get(`${prefix}-src-elem`) ??
+      directives.get(`${prefix}-src`) ??
+      directives.get("default-src");
+    return governing !== undefined && !hasUnsafeInline(governing);
+  };
+  return {
+    scripts: restricts("scripts", "script"),
+    styles: restricts("styles", "style"),
+  };
+};
+
 /** The header name and value for one HTML response. */
 export const contentSecurityPolicyHeader = (
   policy: ContentSecurityPolicyConfig,
@@ -45,12 +85,9 @@ export const contentSecurityPolicyHeader = (
     directives.set(name.toLowerCase(), [...sources]);
   const kinds = policy.hashes;
   const wants = (kind: "scripts" | "styles"): boolean =>
-    kinds === undefined ||
-    kinds === true ||
-    (typeof kinds === "object" && kinds[kind] !== false);
+    wantsHashes(kinds, kind);
   if (kinds !== false && hashes !== undefined) {
-    const unsafeInline = (sources: readonly string[]): boolean =>
-      sources.some((s) => s.toLowerCase() === "'unsafe-inline'");
+    const unsafeInline = hasUnsafeInline;
     const isNone = (source: string): boolean =>
       source.toLowerCase() === "'none'";
     /**

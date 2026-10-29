@@ -13,6 +13,7 @@ import {
   extractServerScriptsToSidecar,
   extractComponentScriptsToSidecar,
   SIDECAR_SCHEMA_VERSION,
+  serverScriptPagePath,
   type ServerScriptEntry,
 } from "./server-sidecar.ts";
 import { encodeOutputScope } from "./output-scope.ts";
@@ -584,5 +585,32 @@ describe("component scripts and output scope (prompt 157, schema 3)", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("serverScriptPagePath", () => {
+  it("names the page a page-owned id was staged from", () => {
+    const outMap: Record<string, ServerScriptEntry> = {};
+    extractServerScriptsToSidecar(
+      `<script data-bascik-server>export default () => "a";</script>`,
+      "pages/blog/a::b.html",
+      outMap,
+    );
+    const [id] = Object.keys(outMap);
+    expect(serverScriptPagePath(id)).toBe("pages/blog/a::b.html");
+  });
+
+  it("misuse: a component id, a foreign id or a malformed id names no page", () => {
+    const outMap: Record<string, ServerScriptEntry> = {};
+    extractComponentScriptsToSidecar(
+      `<script data-bascik-server>export default () => "a";</script>`,
+      "note-card",
+      outMap,
+      { record: false },
+    );
+    expect(serverScriptPagePath(Object.keys(outMap)[0])).toBeUndefined();
+    expect(serverScriptPagePath("placeholder_123")).toBeUndefined();
+    expect(serverScriptPagePath("server_script_zz")).toBeUndefined();
+    expect(serverScriptPagePath("server_script_")).toBeUndefined();
   });
 });

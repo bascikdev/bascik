@@ -86,6 +86,11 @@ export interface ServerlessFixtureOptions {
   stripAnsi?: boolean;
   /** `scripts.renderLimits`; unset by default (today's limits). */
   renderLimits?: Record<string, number>;
+  /**
+   * The source of a `post` exec script (`scripts/post-edit.mjs`), run in the
+   * project root after the pages are written: a deploy step that edits dist/.
+   */
+  postExec?: string;
 }
 
 export const createServerlessFixture = async (
@@ -134,6 +139,11 @@ export const createServerlessFixture = async (
       : ""
   }
   http: { apiTimeout: 2000 },${
+    options.postExec
+      ? `
+  pipeline: { exec: [{ script: "scripts/post-edit.mjs", phase: "post" }] },`
+      : ""
+  }${
     options.csp
       ? `
   contentSecurityPolicy: {
@@ -150,6 +160,8 @@ export const createServerlessFixture = async (
   }
 };`,
   );
+  if (options.postExec)
+    await write(root, "scripts/post-edit.mjs", options.postExec);
   await write(
     root,
     "package.json",

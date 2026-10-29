@@ -279,6 +279,9 @@ const buildTimeCases: HostileCase[] = [
   ...[
     "<script data-bascik-server ",
     "<script type='text/bascik-server' ",
+    "<script type=text/bascik-server ",
+    '<script TYPE = " \t text/bascik-server',
+    " type \t = \t ",
     "<script data-bascik-stream>",
   ].map((unit): HostileCase => ({
     site: `server-scripts and server-sidecar: ${JSON.stringify(unit)} (cubic)`,
@@ -433,9 +436,11 @@ describe("open-tag scans keep the regexes' answers on malformed markup", () => {
     expect(injectProps(`<a data-bascik-prop-t x='`, {})).toBe(`<a x='`);
   });
 
-  it("reads a server script whose placeholder type has mismatched quotes", () => {
+  it("reads no placeholder whose type has mismatched quotes, as a browser reads none", () => {
+    // The double quote never closes, so a browser's type value runs on past
+    // `>` and the tag never ends: there is no placeholder to resolve.
     const html = `<script type="text/bascik-server' x>body</script>`;
-    expect(scanRequestScripts(html, true)).toHaveLength(1);
+    expect(scanRequestScripts(html, true)).toHaveLength(0);
     expect(
       htmlHasServerScripts(`<script data-bascik-server-id="1"></script>`),
     ).toBe(false);

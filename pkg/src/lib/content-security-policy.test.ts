@@ -13,7 +13,10 @@ vi.mock("./userConfig.js", () => ({
   buildConfig: {},
 }));
 
-import { contentSecurityPolicyHeader } from "./content-security-policy.ts";
+import {
+  contentSecurityPolicyHeader,
+  cspHashRestrictedKinds,
+} from "./content-security-policy.ts";
 import {
   collectConfigWarnings,
   validateConfigShape,
@@ -526,5 +529,71 @@ describe("config validation: contentSecurityPolicy", () => {
   it("no contentSecurityPolicy, no findings (default unchanged)", () => {
     expect(validateConfigShape({})).toEqual([]);
     expect(collectConfigWarnings({})).toEqual([]);
+  });
+});
+
+describe("cspHashRestrictedKinds: which inline code the sent policy limits to the build's hashes", () => {
+  it("script-src only: scripts are restricted, styles run", () => {
+    expect(
+      cspHashRestrictedKinds({ directives: { "script-src": ["'self'"] } }),
+    ).toEqual({ scripts: true, styles: false });
+  });
+
+  it("default-src governs both kinds when neither is written", () => {
+    expect(
+      cspHashRestrictedKinds({ directives: { "default-src": ["'self'"] } }),
+    ).toEqual({ scripts: true, styles: true });
+  });
+
+  it("'unsafe-inline' styles are not restricted, in any case", () => {
+    expect(
+      cspHashRestrictedKinds({
+        directives: {
+          "script-src": ["'self'"],
+          "style-src": ["'self'", "'UNSAFE-INLINE'"],
+        },
+        reportOnly: true,
+      }),
+    ).toEqual({ scripts: true, styles: false });
+  });
+
+  it("the -elem directive governs over script-src, as in a browser", () => {
+    expect(
+      cspHashRestrictedKinds({
+        directives: {
+          "script-src": ["'self'"],
+          "script-src-elem": ["'self'", "'unsafe-inline'"],
+          "Style-Src-Elem": ["'self'"],
+        },
+      }),
+    ).toEqual({ scripts: false, styles: true });
+  });
+
+  it("a kind whose hashes are off is not counted", () => {
+    const directives = { "default-src": ["'self'"] };
+    expect(
+      cspHashRestrictedKinds({ directives, hashes: { styles: false } }),
+    ).toEqual({ scripts: true, styles: false });
+    expect(cspHashRestrictedKinds({ directives, hashes: false })).toEqual({
+      scripts: false,
+      styles: false,
+    });
+  });
+
+  it("agrees with the header: a restricted kind is one the header adds hashes to", () => {
+    const hashes = { scripts: ["sha256-S"], styles: ["sha256-T"] };
+    const cases: Record<string, readonly string[]>[] = [
+      { "script-src": ["'self'"] },
+      { "style-src": ["'self'"] },
+      { "default-src": ["'self'"], "style-src": ["'unsafe-inline'"] },
+      { "img-src": ["'self'"] },
+    ];
+    for (const directives of cases) {
+      const { value } = contentSecurityPolicyHeader({ directives }, hashes);
+      expect(cspHashRestrictedKinds({ directives })).toEqual({
+        scripts: value.includes("'sha256-S'"),
+        styles: value.includes("'sha256-T'"),
+      });
+    }
   });
 });

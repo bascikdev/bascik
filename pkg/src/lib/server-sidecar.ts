@@ -4,6 +4,7 @@ import { BascikConfig } from "./config.ts";
 import {
   STREAM_ATTR_NAME,
   getHtmlAttributeValue,
+  isServerPlaceholderOpenTag,
   scanRequestScripts,
 } from "./html-patterns.ts";
 import { directiveSourceColumn } from "./directive-source.ts";
@@ -290,8 +291,7 @@ const extractScriptsToSidecar = (
   ): string => {
     // A stream placeholder legitimately carries `data-bascik-stream` as a
     // mode marker. It is already extracted; leave it alone.
-    if (/type=["']text\/bascik-server["']/i.test(`<script${openAttrs}>`))
-      return match;
+    if (isServerPlaceholderOpenTag(`<script${openAttrs}>`)) return match;
     scriptOrdinal++;
     const id = mintId(scriptOrdinal);
     const openTag = `<script${openAttrs}>`;
@@ -375,6 +375,21 @@ export const extractServerScriptsToSidecar = (
     outMap,
     sourceFile,
   );
+
+/**
+ * The page a `server_script_*` id was staged from (its `pagePath`, such as
+ * `pages/live.html`), or undefined for a component script or an id this
+ * build did not mint.
+ */
+export const serverScriptPagePath = (id: string): string | undefined => {
+  const prefix = "server_script_";
+  if (!id.startsWith(prefix)) return undefined;
+  const hex = id.slice(prefix.length);
+  if (!/^(?:[0-9a-f]{2})+$/.test(hex)) return undefined;
+  const decoded = Buffer.from(hex, "hex").toString("utf8");
+  const ordinal = decoded.lastIndexOf("::");
+  return ordinal > 0 ? decoded.slice(0, ordinal) : undefined;
+};
 
 /**
  * The same extraction for a component's scoping template (prompt 157): the

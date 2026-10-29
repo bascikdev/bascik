@@ -25,6 +25,7 @@ import { toleratingExecFailure } from "./lib/exec-policy.ts";
 import { stdout as colorOut } from "./lib/colors.ts";
 import { pinServerUrl } from "./lib/pinned-banner.ts";
 import { privateDirFor } from "./lib/private-dir.ts";
+import { assertPlaceholdersKept } from "./lib/lost-placeholders.ts";
 
 export const runTranspile = async (
   options: { exitOnError?: boolean } = {},
@@ -110,11 +111,28 @@ export const runTranspile = async (
     // build the coordinator reconciles rebuilt/untouched owners and prunes
     // obsolete outputs; for a full build dist/ was cleaned, so it publishes
     // the current process's state fresh with no merge.
+    // A `post` script (or a `parallel` one, joined above) may have edited the
+    // pages after they were written and hashed: the CSP hashes are taken
+    // again from dist/ as it now is, so the header matches the HTML that
+    // ships, on this host and in the serverless bundle built from it below.
+    const editsAfterWrite = (BascikConfig.pipeline?.exec ?? []).some(
+      (entry) => entry.phase === "post" || entry.phase === "parallel",
+    );
     await finalizeOwnedArtifacts(version, {
       forTargetedBuild: Boolean(
         BascikConfig.only && BascikConfig.only.length > 0,
       ),
+      rehashPagesFromDisk: editsAfterWrite,
     });
+    // The same script may have removed a server or stream script's
+    // placeholder, so the script would never run: fail every build here, on
+    // dist/ as it ships and before a serverless bundle is made from it, with
+    // the message `bascik --server` gives at startup.
+    if (editsAfterWrite)
+      await assertPlaceholdersKept(
+        outputDirectory,
+        relativeOutputDirectory.replace(/\\/g, "/"),
+      );
 
     if (BascikConfig.target) {
       // Prompt 133: the deployment bundle is assembled from the finalized
