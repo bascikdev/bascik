@@ -46,6 +46,7 @@ import type {
   SiteGraphApiRoute,
   DistPageSegment,
 } from "./adapter-contract.ts";
+import { privateDirFor } from "./private-dir.ts";
 
 export type { DistPageSegment };
 
@@ -258,7 +259,7 @@ export const readSiteGraph = async (
   };
 
   // Read server sidecar
-  const sidecarPath = join(distDir, ".bascik", "server-scripts.json");
+  const sidecarPath = join(privateDirFor(distDir), "server-scripts.json");
   let sidecar: ServerScriptsSidecar | undefined;
   try {
     const raw = await readFile(sidecarPath, "utf8");
@@ -318,7 +319,7 @@ export const readSiteGraph = async (
   };
 
   // Page-owned entries mean the release renders component tags from script
-  // output through dist/.bascik/components.json (prompt 157); a dist without
+  // output through .bascik/dist/components.json (prompt 157); a dist without
   // a compatible manifest is a stale build, as it is for `bascik --server`.
   // The manifest and the component scripts it names form the graph's
   // `components` section; they belong to no page, since any page's script
@@ -330,7 +331,7 @@ export const readSiteGraph = async (
       await readComponentManifest(distDir);
     if (!manifest) {
       throw new Error(
-        `[bascik] --target: the sidecar has server-script entries but dist/.bascik/components.json is missing. Run \`bascik --build\` again.`,
+        `[bascik] --target: the sidecar has server-script entries but .bascik/dist/components.json is missing. Run \`bascik --build\` again.`,
       );
     }
     const jobs: Record<string, SiteGraphJob> = {};
@@ -340,7 +341,7 @@ export const readSiteGraph = async (
         if (!entry) {
           throw new Error(
             `[bascik] --target: component script "${job.id}" of <${component.name}> (${component.filePath}) ` +
-              `is listed in dist/.bascik/components.json but missing from the sidecar. Run \`bascik --build\` again.`,
+              `is listed in .bascik/dist/components.json but missing from the sidecar. Run \`bascik --build\` again.`,
           );
         }
         // The manifest records the component file project-relative; the
@@ -443,7 +444,7 @@ export const readSiteGraph = async (
     let hashes: Record<string, CspRouteHashes> = {};
     try {
       hashes = JSON.parse(
-        await readFile(join(distDir, ".bascik", "csp-hashes.json"), "utf8"),
+        await readFile(join(privateDirFor(distDir), "csp-hashes.json"), "utf8"),
       ) as Record<string, CspRouteHashes>;
     } catch {
       hashes = {};

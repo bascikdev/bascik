@@ -115,9 +115,11 @@ export const startHarness = async (
     const wrangler = JSON.parse(
       await readFile(join(targetDir, "wrangler.jsonc"), "utf8"),
     ) as {
-      assets?: { run_worker_first?: string[] };
+      assets?: { run_worker_first?: string[] | boolean };
     };
-    userWorkerRoutes = wrangler.assets?.run_worker_first ?? ["/*"];
+    const first = wrangler.assets?.run_worker_first;
+    // `true` runs the Worker before every asset, as Cloudflare does.
+    userWorkerRoutes = first === true ? ["/*"] : first || ["/*"];
   }
 
   const gate = options.gate;

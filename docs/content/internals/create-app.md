@@ -24,6 +24,7 @@ Running `npx create-bascik <name>` writes this structure:
   .vscode/
     launch.json
     extensions.json
+    settings.json
   .agents/skills/        Bascik agent skills (bascik, bascik-components, ...) with scripts
   .claude/skills/        the same skills for Claude Code
   e2e/
@@ -60,7 +61,7 @@ Running `npx create-bascik <name>` writes this structure:
         my-counter.test.ts
 ```
 
-The `feat-card` component demonstrates named slots. The `my-counter` component demonstrates scoped JS with two independent instances on the home page. Every component includes co-located unit tests, `package.json` includes `npm run lint` (`bascik --check`, which runs the `@bascik/language-server` linter and the project-wide checks), `.vscode/extensions.json` recommends the official Bascik VS Code extension, `vite.config.js` configures Vitest with V8 code coverage, and `e2e/` includes Playwright browser specs testing page navigation, counter interaction, and mobile menu toggling.
+The `feat-card` component demonstrates named slots. The `my-counter` component demonstrates scoped JS with two independent instances on the home page. Every component includes co-located unit tests, `package.json` includes `npm run lint` (`bascik --check`, which runs the `@bascik/language-server` linter and the project-wide checks), `.vscode/extensions.json` recommends the official Bascik VS Code extension, `.vscode/settings.json` sets `"html.validate.scripts": false` so VS Code does not join a page's separate `<script>` blocks into one file and report false errors, `vite.config.js` configures Vitest with V8 code coverage, and `e2e/` includes Playwright browser specs testing page navigation, counter interaction, and mobile menu toggling.
 
 After scaffolding, the CLI offers to run `npm install` and `npm run dev`. Both prompts can be skipped with `-y`. The `cloudflare` template adds `src/pages/edge.html` (a server-script demo page), `src/api/hello.ts`, the `@bascik/adapter-cloudflare` and `wrangler` dev dependencies, and `build`, `preview`, and `deploy` scripts for Cloudflare Workers.
 
@@ -70,7 +71,7 @@ The scaffold runs `npm install` and `npm run dev` so users do not need Yarn or p
 
 ## Modifying the scaffold
 
-All generated file content is defined as string constants in `scaffold.ts`. To change what a new project looks like, edit the relevant constant there. After any change, rebuild before testing:
+All generated file content is defined as string constants in `scaffold.ts`. To change what a new project looks like, edit the relevant constant there. The `.vscode/settings.json` and `.vscode/extensions.json` content lives in `vscode-settings.ts` instead, which has an identical copy at `pkg/src/lib/vscode-settings.ts` for `bascik init`; a unit test fails when the two differ. Both commands merge into `.vscode` files a folder already has: they add the missing setting or recommendation, keep comments and other entries, keep a value the user already set, and leave a file that is not valid JSON alone with a printed note saying what to add. An existing `launch.json` is never replaced. After any change, rebuild before testing:
 
 ```sh
 cd create

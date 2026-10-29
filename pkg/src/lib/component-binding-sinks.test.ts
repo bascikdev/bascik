@@ -71,8 +71,23 @@ describe("a prop bound to a URL attribute", () => {
   ])("replaces %j with about:invalid and says so", (url) => {
     const { html, warnings } = bind(`<a data-bascik-attr-href="u">x</a>`, url);
     expect(html).toBe(`<a href="${BLOCKED_URL}">x</a>`);
+    // A data: URL is named as one; every other scheme is a script URL.
+    const what = /data:/i.test(url)
+      ? "a data: URL"
+      : "a script URL such as javascript:";
     expect(warnings).toEqual([
-      `data-bascik-attr-href="u" received a URL that can run script (such as javascript:), so href is set to about:invalid.`,
+      `data-bascik-attr-href="u" received ${what}, so href is set to about:invalid.`,
+    ]);
+  });
+
+  it("names a data: URL as the reason only when no entry is a script URL", () => {
+    const srcset = (value: string) =>
+      bind(`<img data-bascik-attr-srcset="u">`, value).warnings;
+    expect(srcset("data:text/html,x 1x, /b.png 2x")).toEqual([
+      `data-bascik-attr-srcset="u" received a data: URL, so srcset is set to about:invalid.`,
+    ]);
+    expect(srcset("data:text/html,x 1x, javascript:x 2x")).toEqual([
+      `data-bascik-attr-srcset="u" received a script URL such as javascript:, so srcset is set to about:invalid.`,
     ]);
   });
 
@@ -262,7 +277,9 @@ describe("a prop bound to a URL whose content runs or styles the page", () => {
         expect(html, url).toBe(`<${tag}${extra} ${target}="${BLOCKED_URL}">`);
         expect(warnings, url).toHaveLength(1);
         expect(warnings[0], url).toContain(
-          "received a URL that can run script",
+          url.startsWith("data:")
+            ? "received a data: URL"
+            : "received a script URL such as javascript:",
         );
         expect(warnings[0], url).not.toContain("outside this site");
       }
@@ -627,8 +644,11 @@ describe("an inherited attribute that is a URL only on the root's real tag gets 
     const { html, warnings } = inherit(root, { [attr]: value }, "x-embed");
     expect(html).toContain(` ${attr}="${BLOCKED_URL}"`);
     expect(html).not.toContain(value);
+    const what = /^(&#100;|d)ata/i.test(value)
+      ? "a data: URL"
+      : "a script URL such as javascript:";
     expect(warnings).toEqual([
-      `inherited attribute ${attr} received a URL that can run script (such as javascript:), so ${attr} on the root <${tag}> is set to about:invalid.`,
+      `inherited attribute ${attr} received ${what}, so ${attr} on the root <${tag}> is set to about:invalid.`,
     ]);
   });
 

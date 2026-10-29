@@ -123,7 +123,7 @@ Bascik operates as a zero-runtime build-time compiler and HTTP delivery server. 
 | Development Static Assets   | Node.js filesystem            | N/A                                | Optional relative symlinks for unchanged page assets; builds always emit regular files                                                                 |
 | Live Reload & Events        | WHATWG EventSource            | Baseline: Widely Available         | Server-Sent Events (SSE) `/bascik-live-reload` endpoint                                                                                                |
 | Sitemaps & Robots           | Sitemaps 0.9 / IETF RFC 9309  | Standard Protocols                 | Canonical XML sitemap and robots exclusion directives                                                                                                  |
-| Content Security Policy     | W3C CSP Level 3               | Baseline: Widely Available         | SHA-256 hash manifests (`dist/.bascik/csp-hashes.json`) for inline scripts and styles; per-request nonces intentionally unsupported for static caching |
+| Content Security Policy     | W3C CSP Level 3               | Baseline: Widely Available         | SHA-256 hash manifests (`.bascik/dist/csp-hashes.json`) for inline scripts and styles; per-request nonces intentionally unsupported for static caching |
 
 ---
 
@@ -222,7 +222,7 @@ When an `id` declaration is scoped, Bascik rewrites references that resolve to t
 
 ## Request-Time Component Rendering
 
-A `data-bascik-server` or `data-bascik-stream` script can return component tags, and Bascik renders them per request with the compiler's own expansion loop. The build records every component in `dist/.bascik/components.json` when the site has any server or stream script; a static-only site gets no manifest and no change. The worked example is in [Returning component tags](/server-scripts#returning-component-tags), and the [pass-through demo](/testing/troubleshooting#a-component-tag-in-script-output-reaches-the-browser-as-written) shows a misspelled tag and an escaped tag sent as written. The `Unsupported` rows are the reasons `bascik --check` prints under "Components a server or stream script cannot return"; a component with one of them is left unexpanded, never rendered wrong.
+A `data-bascik-server` or `data-bascik-stream` script can return component tags, and Bascik renders them per request with the compiler's own expansion loop. The build records every component in `.bascik/dist/components.json` when the site has any server or stream script; a static-only site gets no manifest and no change. The worked example is in [Returning component tags](/server-scripts#returning-component-tags), and the [pass-through demo](/testing/troubleshooting#a-component-tag-in-script-output-reaches-the-browser-as-written) shows a misspelled tag and an escaped tag sent as written. The `Unsupported` rows are the reasons `bascik --check` prints under "Components a server or stream script cannot return"; a component with one of them is left unexpanded, never rendered wrong.
 
 > **See it live on Cloudflare Workers.** The [product catalog](https://cloudflare-adapter.bascik.dev/catalog) renders the `<product-card>` tags a server script returns, including a card with its own server script, and the [streamed catalog](https://cloudflare-adapter.bascik.dev/catalog-stream) streams them in batches.
 

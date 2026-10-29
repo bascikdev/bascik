@@ -85,6 +85,7 @@ import {
 import { computePageCspHashes } from "./csp-hashes.ts";
 import { access } from "node:fs/promises";
 import { BascikConfig } from "./config.ts";
+import { privateDirFor } from "./private-dir.ts";
 
 const entry = (
   source: string,
@@ -166,7 +167,7 @@ describe("ownership inventory persistence & integrity", () => {
 
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "bascik-ownership-"));
-    await mkdir(join(tempDir, ".bascik"), { recursive: true });
+    await mkdir(privateDirFor(tempDir), { recursive: true });
     ownershipTracker.clear();
     manifestCollector.clear();
     cspHashCollector.clear();
@@ -189,11 +190,12 @@ describe("ownership inventory persistence & integrity", () => {
 
   afterEach(async () => {
     await rm(tempDir, { recursive: true, force: true });
+    await rm(privateDirFor(tempDir), { recursive: true, force: true });
   });
 
   it("rejects corrupt ownership metadata by falling back to a safe additive build and warns", async () => {
     await writeFile(
-      join(tempDir, ".bascik", "ownership.json"),
+      join(privateDirFor(tempDir), "ownership.json"),
       "{ not json",
       "utf8",
     );
@@ -219,7 +221,7 @@ describe("ownership inventory persistence & integrity", () => {
 
   it("fails honestly on an incompatible on-disk schema (treated as no reliable ownership)", async () => {
     await writeFile(
-      join(tempDir, ".bascik", "ownership.json"),
+      join(privateDirFor(tempDir), "ownership.json"),
       JSON.stringify({ ...emptyInventory(), schema: 999 }),
       "utf8",
     );
@@ -279,7 +281,7 @@ describe("ownership inventory persistence & integrity", () => {
       // Make the .bascik dir read-only so atomicWriteJson's rename fails.
       await (
         await import("node:fs/promises")
-      ).chmod(join(tempDir, ".bascik"), 0o500);
+      ).chmod(privateDirFor(tempDir), 0o500);
       let threw = false;
       try {
         await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true });
@@ -288,7 +290,7 @@ describe("ownership inventory persistence & integrity", () => {
       } finally {
         await (
           await import("node:fs/promises")
-        ).chmod(join(tempDir, ".bascik"), 0o700);
+        ).chmod(privateDirFor(tempDir), 0o700);
       }
       // The previous ownership file must still exist and be valid.
       const after = await readOwnershipInventory();
@@ -322,7 +324,7 @@ describe("ownership inventory persistence & integrity", () => {
     });
     // Prior sidecar on disk holds both scripts.
     await writeFile(
-      join(tempDir, ".bascik", "server-scripts.json"),
+      join(privateDirFor(tempDir), "server-scripts.json"),
       JSON.stringify({
         version: "1.0.0",
         schema: SIDECAR_SCHEMA_VERSION,
@@ -348,7 +350,10 @@ describe("ownership inventory persistence & integrity", () => {
     await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true });
 
     const sidecar = JSON.parse(
-      await readFile(join(tempDir, ".bascik", "server-scripts.json"), "utf8"),
+      await readFile(
+        join(privateDirFor(tempDir), "server-scripts.json"),
+        "utf8",
+      ),
     );
     // A's removed script pruned; B's untouched script retained from prior.
     expect(sidecar.scripts["scriptA"]).toBeUndefined();
@@ -357,7 +362,7 @@ describe("ownership inventory persistence & integrity", () => {
 });
 
 /**
- * Prompt 157: `dist/.bascik/components.json` joins the artifact transaction.
+ * Prompt 157: `.bascik/dist/components.json` joins the artifact transaction.
  * It exists iff the RECONCILED sidecar has page-owned server or stream
  * entries, is regenerated fully on every such build (full and targeted, so a
  * `--only` build of a static page still writes a fresh one), and goes away
@@ -368,9 +373,9 @@ describe("ownership inventory persistence & integrity", () => {
  */
 describe("component manifest in the artifact transaction (prompt 157)", () => {
   let tempDir = "";
-  const componentsPath = () => join(tempDir, ".bascik", "components.json");
-  const sidecarPath = () => join(tempDir, ".bascik", "server-scripts.json");
-  const cspPath = () => join(tempDir, ".bascik", "csp-hashes.json");
+  const componentsPath = () => join(privateDirFor(tempDir), "components.json");
+  const sidecarPath = () => join(privateDirFor(tempDir), "server-scripts.json");
+  const cspPath = () => join(privateDirFor(tempDir), "csp-hashes.json");
   const exists = (path: string) =>
     access(path).then(
       () => true,
@@ -412,7 +417,7 @@ describe("component manifest in the artifact transaction (prompt 157)", () => {
 
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "bascik-ownership-manifest-"));
-    await mkdir(join(tempDir, ".bascik"), { recursive: true });
+    await mkdir(privateDirFor(tempDir), { recursive: true });
     ownershipTracker.clear();
     manifestCollector.clear();
     cspHashCollector.clear();
@@ -436,6 +441,7 @@ describe("component manifest in the artifact transaction (prompt 157)", () => {
 
   afterEach(async () => {
     await rm(tempDir, { recursive: true, force: true });
+    await rm(privateDirFor(tempDir), { recursive: true, force: true });
   });
 
   it('a full build with a page-owned server script writes components.json and the component jobs under owner "components"', async () => {

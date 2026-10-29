@@ -222,7 +222,7 @@ const startManifestForServerPage = (
 // ─── Dev component manifest (prompt 157, D6) ─────────────────────────────────
 //
 // In dev the request-time renderer needs the same manifest `--build` writes to
-// dist/.bascik/components.json, built from the component list of the
+// .bascik/dist/components.json, built from the component list of the
 // publication that stored the page and attached to the page by reference, so
 // a request always renders with the manifest its page was built against and
 // never a mix of two component versions. Memoized on the ComponentList object:

@@ -375,7 +375,7 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
         // (b) The zero-route owner's pair of sidecar script entries is dropped
         // from the sidecar exactly once. Bascik stores server-script bodies
         // inline in server-scripts.json (no separate .js files under
-        // dist/.bascik/server-scripts/), so the sidecar entry removal is the
+        // .bascik/dist/server-scripts/), so the sidecar entry removal is the
         // only cleanup the (now inert, unreachable) bodies require.
         const blogScriptEntries = Object.values(inv.sidecar).filter((s) =>
           s.includes("Blog server"),
@@ -398,11 +398,11 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
         const full = await runBuild(root);
         expect(full.stdout).toContain("Build complete");
         const beforeSidecar = await readFile(
-          join(root, "dist", ".bascik", "server-scripts.json"),
+          join(root, ".bascik", "dist", "server-scripts.json"),
           "utf8",
         );
         const beforeOwnership = await readFile(
-          join(root, "dist", ".bascik", "ownership.json"),
+          join(root, ".bascik", "dist", "ownership.json"),
           "utf8",
         );
 
@@ -421,7 +421,7 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
         // on-disk page outputs survive a failed targeted build.
         const afterSidecar = JSON.parse(
           await readFile(
-            join(root, "dist", ".bascik", "server-scripts.json"),
+            join(root, ".bascik", "dist", "server-scripts.json"),
             "utf8",
           ),
         ) as {
@@ -433,7 +433,7 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
           ),
         ).toBe(true);
         const afterOwnership = await readFile(
-          join(root, "dist", ".bascik", "ownership.json"),
+          join(root, ".bascik", "dist", "ownership.json"),
           "utf8",
         );
         expect(afterOwnership).toBe(beforeOwnership);

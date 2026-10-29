@@ -19,6 +19,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
+import { privateDirFor } from "./private-dir.ts";
 
 describe("computePageCspHashes end tags", () => {
   const sha = (body: string) =>
@@ -120,7 +121,7 @@ describe("csp-hashes manifest", () => {
     expect(res).toBeNull();
   });
 
-  it("generate.cspHashes: true writes dist/.bascik/csp-hashes.json with correct format and post-minification hashes", async () => {
+  it("generate.cspHashes: true writes .bascik/dist/csp-hashes.json with correct format and post-minification hashes", async () => {
     const outDir = join(tmpdir(), `bascik-csp-test-${Date.now()}`);
     (BascikConfig as any).directory.out = outDir;
 
@@ -143,6 +144,7 @@ describe("csp-hashes manifest", () => {
     expect(manifest["/index"].scripts).toContain(expectedScriptHash);
 
     await rm(outDir, { recursive: true, force: true });
+    await rm(privateDirFor(outDir), { recursive: true, force: true });
   });
 
   it("deduplicates identical inline script/style blocks within a page", () => {
@@ -181,18 +183,19 @@ describe("csp-hashes manifest", () => {
 
     await cspHashCollector.writeCspHashes();
     const run1 = await readFile(
-      join(outDir, ".bascik", "csp-hashes.json"),
+      join(privateDirFor(outDir), "csp-hashes.json"),
       "utf8",
     );
 
     await cspHashCollector.writeCspHashes();
     const run2 = await readFile(
-      join(outDir, ".bascik", "csp-hashes.json"),
+      join(privateDirFor(outDir), "csp-hashes.json"),
       "utf8",
     );
 
     expect(run1).toBe(run2);
     await rm(outDir, { recursive: true, force: true });
+    await rm(privateDirFor(outDir), { recursive: true, force: true });
   });
 });
 

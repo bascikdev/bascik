@@ -454,6 +454,65 @@ describe("cloudflare adapter definition and execution", () => {
     }
   });
 
+  // dist/ is read before the private build folder moved beside it, by a
+  // custom graph, or on a case-insensitive filesystem: a path whose first
+  // segment opens a .bascik folder is never staged into what Cloudflare
+  // deploys, whatever the graph lists.
+  it.each(["pages", "workers"] as const)(
+    "%s: never stages a .bascik path into public/, in any spelling",
+    async (variant) => {
+      const testDir = join(
+        tmpdir(),
+        `bascik-cf-private-${variant}-${Date.now()}`,
+      );
+      const distDir = join(testDir, "dist");
+      const outDir = join(distDir, `.bascik/cloudflare-${variant}`);
+      await mkdir(join(distDir, ".bascik"), { recursive: true });
+      await mkdir(join(distDir, ".Bascik"), { recursive: true });
+      await mkdir(outDir, { recursive: true });
+      await writeFile(join(distDir, "index.html"), "<p>home</p>");
+      await writeFile(join(distDir, ".bascik/ownership.json"), "{}");
+      await writeFile(join(distDir, ".Bascik/server-scripts.json"), "{}");
+      const graph: SiteGraph = {
+        base: "/",
+        release: "test-rel",
+        scriptTimeoutMs: 1000,
+        apiTimeoutMs: 1000,
+        onServerScriptError: "error",
+        publicFiles: [
+          "index.html",
+          ".bascik/ownership.json",
+          ".Bascik/server-scripts.json",
+        ],
+        pages: {},
+        apiRoutes: [],
+        importRoot: testDir,
+      };
+      try {
+        await adapter.build({
+          graph,
+          distDir,
+          outDir,
+          projectRoot: testDir,
+          variant,
+          log: () => {},
+          runtimeEntry: "",
+        });
+        expect(await readFile(join(outDir, "public/index.html"), "utf8")).toBe(
+          "<p>home</p>",
+        );
+        await expect(
+          readFile(join(outDir, "public/.bascik/ownership.json")),
+        ).rejects.toThrow();
+        await expect(
+          readFile(join(outDir, "public/.Bascik/server-scripts.json")),
+        ).rejects.toThrow();
+      } finally {
+        await rm(testDir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("throws on unknown variant naming both valid ones", async () => {
     const testDir = join(tmpdir(), `bascik-cf-invalid-${Date.now()}`);
     const distDir = join(testDir, "dist");

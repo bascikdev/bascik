@@ -84,7 +84,7 @@ stream.on("error", (err: NodeJS.ErrnoException) => {
 
 `<script data-bascik-server>` blocks execute in-process as Node.js ESM modules using `ScriptRegistry` without spawning child processes.
 
-- **Sidecar loading:** In production (`bascik --server`), script sources are loaded from `dist/.bascik/server-scripts.json` at startup.
+- **Sidecar loading:** In production (`bascik --server`), script sources are loaded from `.bascik/dist/server-scripts.json` at startup.
 - **Context delivery:** Handlers receive `(request: Request, context: { remoteIp }, { signal })`, identical to API routes.
 - **Output:** The handler's return value replaces the script tag in the page response.
 - **Escaping:** Output is raw HTML. Bascik ships no escaper; authors write one or import one.

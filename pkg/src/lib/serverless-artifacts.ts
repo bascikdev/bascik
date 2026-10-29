@@ -309,7 +309,7 @@ export const emitServerlessArtifacts = async (
     console.warn(
       `[bascik] --target ${target}: adapter "${adapter.name}" does not declare components: true, ` +
         `so component tags returned by server and stream scripts are not rendered on this host and reach ` +
-        `the client as written (dist/.bascik/components.json lists ${renderable.map((name) => `<${name}>`).join(", ")}). ` +
+        `the client as written (.bascik/dist/components.json lists ${renderable.map((name) => `<${name}>`).join(", ")}). ` +
         `Upgrade the adapter, or keep component tags out of script output for this target.`,
     );
   }
@@ -392,5 +392,13 @@ export const formatServerlessSummary = (
       lines.push(`  note: ${note}`);
     }
   }
+  // The deploy folder sits inside the output directory, so after a --target
+  // build that directory holds the Worker (with every server script's
+  // source) and its config: it is no longer a folder to publish as is.
+  const outputDir = dirname(dirname(result.outDir));
+  lines.push(
+    `  note: ${rel(outputDir)}/ now also holds ${rel(result.outDir)}/ (the Worker and its config). ` +
+      `Deploy that folder; do not publish ${rel(outputDir)}/ to a static host.`,
+  );
   return lines.join("\n");
 };

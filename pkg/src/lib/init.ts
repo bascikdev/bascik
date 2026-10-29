@@ -8,6 +8,8 @@
  *  - src/pages/index.html   — starter HTML page
  *  - src/components/        — empty components directory
  *  - .gitignore additions    — dist/ and node_modules/.cache/bascik/
+ *  - .vscode/settings.json   — "html.validate.scripts": false (merged, never replaced)
+ *  - .vscode/extensions.json — recommends the Bascik extension (merged, never replaced)
  *
  * Updates package.json (if present):
  *  - Adds "type": "module" only when absent (never rewrites "commonjs")
@@ -17,6 +19,13 @@
 
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  HTML_VALIDATE_SCRIPTS,
+  BASCIK_EXTENSION_ID,
+  vscodeReportLines,
+  writeVscodeFiles,
+  type VscodeFileStatus,
+} from "./vscode-settings.ts";
 
 const INDEX_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -69,13 +78,17 @@ export async function initProject(): Promise<void> {
   await ensureGitignoreEntries(gitignorePath, REQUIRED_GITIGNORE_ENTRIES);
   console.log("  updated: .gitignore (dist/, node_modules/.cache/bascik/)");
 
-  // Update package.json
+  await updatePackageJson(pkgPath);
+  await setUpVscode(cwd);
+  printDone();
+}
+
+async function updatePackageJson(pkgPath: string): Promise<void> {
   let pkgRaw: string;
   try {
     pkgRaw = await readFile(pkgPath, "utf8");
   } catch {
     console.log("  skipped: package.json (not found — run `npm init` first)");
-    printDone();
     return;
   }
 
@@ -84,7 +97,6 @@ export async function initProject(): Promise<void> {
     pkg = JSON.parse(pkgRaw) as Record<string, unknown>;
   } catch {
     console.log("  skipped: package.json (could not parse — edit manually)");
-    printDone();
     return;
   }
 
@@ -133,8 +145,39 @@ export async function initProject(): Promise<void> {
   } else {
     console.log("  skipped: package.json (already configured)");
   }
+}
 
-  printDone();
+/**
+ * Write or merge .vscode/settings.json and .vscode/extensions.json. VS Code's
+ * HTML checker joins a page's <script> blocks into one file, so two Bascik
+ * scripts that each `export default` show a false error without the setting.
+ */
+async function setUpVscode(cwd: string): Promise<void> {
+  const report = await writeVscodeFiles(cwd);
+  const added: Record<keyof typeof report, string> = {
+    settings: `"${HTML_VALIDATE_SCRIPTS}": false`,
+    extensions: BASCIK_EXTENSION_ID,
+  };
+  const problems = vscodeReportLines({
+    settings: keepProblem(report.settings),
+    extensions: keepProblem(report.extensions),
+  });
+  for (const key of ["settings", "extensions"] as const) {
+    const file = `.vscode/${key}.json`;
+    const status = report[key];
+    if (status === "created") console.log(`  created: ${file}`);
+    else if (status === "updated") {
+      console.log(`  updated: ${file} (added ${added[key]})`);
+    } else if (status === "unchanged") {
+      console.log(`  skipped: ${file} (already set)`);
+    }
+  }
+  for (const line of problems) console.log(`  ${line}`);
+}
+
+/** Only the statuses that need the user to act, for vscodeReportLines. */
+function keepProblem(status: VscodeFileStatus): VscodeFileStatus {
+  return status === "invalid" || status === "failed" ? status : "unchanged";
 }
 
 function printDone(): void {

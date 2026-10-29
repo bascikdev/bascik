@@ -305,9 +305,11 @@ The dev server is resilient to a bad page, while a production build fails rather
 
 Bascik builds are fully deterministic. Component instance IDs (used for scoped `id` and `name` DOM attributes) are derived deterministically from the page path, component name, and ordinal index of each instance on the page. Under the default configuration, class names omit instance IDs entirely and were already deterministic. This design guarantees that identical source input produces byte-identical output across repeated runs, worker threads, and different machines.
 
-## What is `dist/.bascik/`?
+## What is the `.bascik/` folder?
 
-`dist/.bascik/` is a build-internal directory that holds artifacts generated for deployment tools and runtime servers. For example, `generate.manifest: true` writes `dist/.bascik/manifest.json`, `generate.cspHashes: true` writes `dist/.bascik/csp-hashes.json`, and static builds with server scripts write `dist/.bascik/server-scripts.json` and `dist/.bascik/components.json`, the component templates used to render component tags that server and stream scripts return. Because the directory starts with a dot, Bascik's built-in servers and request guards 404 all requests to `/.bascik/*` to prevent exposing build inventory.
+`.bascik/dist/` is Bascik's private build folder: it sits beside `dist/`, never inside it, so a static host that serves every file of `dist/` never publishes it. It holds the build state and the ownership inventory that `bascik --server` and `--only` builds read, and the artifacts generated for deployment tools and runtime servers: `generate.manifest: true` writes `.bascik/dist/manifest.json`, `generate.cspHashes: true` writes `.bascik/dist/csp-hashes.json`, and builds with server scripts write `.bascik/dist/server-scripts.json` (the source of every server script) and `.bascik/dist/components.json`, the component templates used to render component tags that server and stream scripts return. The folder is named after `directory.out`, so `build/www` gets `build/.bascik/www/`. Bascik writes a `.gitignore` into `.bascik/` so none of it is committed, and a full build clears `.bascik/dist/` along with `dist/`. A server deploy that runs `bascik --server` copies both `dist/` and `.bascik/dist/` from the same build (it warns about pages that differ from the build's record, and refuses to start when a page names a server script `.bascik/dist/` does not hold); a static deploy copies `dist/` only, from a plain `bascik --build`. After a `--target` build, `dist/` also holds the deployment folder `dist/.bascik/<target>/`, with the Worker and its config, so do not publish `dist/` to a static host then. See [Deployment Overview](/deployment#whats-in-dist).
+
+`dist/.bascik/<target>/` is something else: the deployment folder a `--target` build writes, such as `dist/.bascik/cloudflare/`. Bascik's built-in servers and the Cloudflare Worker answer 404 for `/.bascik/*` in any letter case.
 
 ## Why is `siteUrl` an environment variable and not a config option?
 
@@ -321,7 +323,7 @@ Set `base: '/docs/'` in `bascik.config.ts`. Bascik prefixes root-relative HTML a
 
 ## How do I use a strict Content Security Policy with Bascik?
 
-List the hash of each inline script in the policy. Enable `generate.cspHashes: true` in `bascik.config.ts` and Bascik writes the SHA-256 hashes of all inlined component scripts and stylesheets to `dist/.bascik/csp-hashes.json`, or hash the built pages yourself in a `post` exec script. See [Content Security Policy](/how-to/content-security-policy) for a worked recipe.
+List the hash of each inline script in the policy. Enable `generate.cspHashes: true` in `bascik.config.ts` and Bascik writes the SHA-256 hashes of all inlined component scripts and stylesheets to `.bascik/dist/csp-hashes.json`, or hash the built pages yourself in a `post` exec script. See [Content Security Policy](/how-to/content-security-policy) for a worked recipe.
 
 ## Does Bascik set a Content Security Policy header?
 

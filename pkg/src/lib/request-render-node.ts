@@ -32,6 +32,7 @@ import {
   requestRoutePath,
   type RenderHost,
 } from "./request-render.ts";
+import { privateDirLabel } from "./private-dir.ts";
 
 const identity = (input: string): string => input;
 
@@ -65,12 +66,12 @@ export const hashNameFor = (
 };
 
 /**
- * How a message names the manifest: under the configured output directory,
- * or as the caller names that directory (production boot names it relative
- * to the working directory in its own messages).
+ * How a message names the manifest: in the private folder of the configured
+ * output directory, or of the directory the caller names (production boot
+ * names it relative to the working directory in its own messages).
  */
 const componentsJsonPath = (outDir?: string): string =>
-  `${outDir ?? BascikConfig.directory?.out ?? "dist"}/.bascik/components.json`;
+  `${privateDirLabel(outDir ?? BascikConfig.directory?.out ?? "dist")}/components.json`;
 
 const componentJobs = new WeakMap<
   ComponentManifest,

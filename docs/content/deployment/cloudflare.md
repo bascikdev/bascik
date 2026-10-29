@@ -24,7 +24,7 @@ The Cloudflare adapter eliminates the need to run, configure, or pay for a separ
 Build once on Node with `bascik --build --target cloudflare` (or `--target cloudflare-workers`). The normal `dist/` output is unchanged; alongside it Bascik writes a deployment folder with two halves:
 
 - a **public tree** (`public/`): every static file uploaded to Cloudflare's global CDN;
-- a **generated Worker bundle** (`worker.js`) and config (`wrangler.jsonc`): each `data-bascik-server` and `data-bascik-stream` job, every API route, the precompiled page templates those jobs render into, and the component manifest (`dist/.bascik/components.json`) with the scripts inside components, so component tags the jobs return are rendered in the Worker. See [Returning component tags](/server-scripts#returning-component-tags).
+- a **generated Worker bundle** (`worker.js`) and config (`wrangler.jsonc`): each `data-bascik-server` and `data-bascik-stream` job, every API route, the precompiled page templates those jobs render into, and the component manifest (`.bascik/dist/components.json`) with the scripts inside components, so component tags the jobs return are rendered in the Worker. See [Returning component tags](/server-scripts#returning-component-tags).
 
 At request time the flow is:
 
@@ -86,6 +86,8 @@ component manifest: 5781 bytes (3 components)
 A static-only site has no manifest and its `worker.js` is unchanged. A script inside a component is bundled like a page job: one that imports a module the Workers runtime does not provide fails the build with the component's file and line.
 
 Pages with request-time scripts are **not** in `public/`. Their templates live inside `worker.js`, so a routing mistake that lets such a request reach the static layer yields a 404, never a page with inert placeholders.
+
+`public/` is all the asset layer serves. It never holds Bascik's private build folder (`.bascik/dist/`, beside `dist/`) or any other `.bascik` path, and the Worker answers 404 for `/.bascik/` in any letter case.
 
 With a non-root [`base`](/configuration#base) such as `/docs/`, static files are staged below it (`public/docs/index.html`, `public/docs/assets/...`), so the asset layer serves them at the same `/docs/...` URLs that `bascik --server` uses. Nothing is served outside the prefix. The generated control files (`_worker.js`, `_routes.json`) stay at the root of `public/`, where the platform reads them.
 
@@ -322,7 +324,7 @@ The runtime request handling is identical between both variants; only the packag
 
 ## Content-Security-Policy
 
-Set [`contentSecurityPolicy`](/configuration#contentsecuritypolicy) and the generated Worker sends the header, with the build's hashes, on every page it renders, while the build writes exact-path `public/_headers` rules for static pages. No wrapper and no `run_worker_first` are needed. A site over Cloudflare's 100-rule `_headers` limit fails the build with a message that names the count. See [Content Security Policy](/how-to/content-security-policy#cloudflare).
+Set [`contentSecurityPolicy`](/configuration#contentsecuritypolicy) and the generated Worker sends the header, with the build's hashes, on every page it renders, while the build writes exact-path `public/_headers` rules for static pages. No wrapper and no `run_worker_first` are needed. Cloudflare reads at most 100 rules from `_headers` and skips any line over 2000 characters with no error, so a site whose rules would not fit, or a static page whose policy line is too long (one hash for each inline script and style), fails the build with a message that names the count or the page. See [Content Security Policy](/how-to/content-security-policy#cloudflare) and [Sending every header from the Worker](#sending-every-header-from-the-worker).
 
 ## Security settings on Cloudflare
 
@@ -330,39 +332,44 @@ The Worker has no config file of its own at request time. The build resolves the
 
 - **Binding checks** (`blockScriptUrls`, `blockCodeBindings`) and `stripDirectiveScripts` act at build time, and the component manifest carries the binding settings, so components rendered by the Worker follow the same rules as `bascik --server`.
 - **Headers** (`headers`, `hsts`, `privateDynamicPages`) go on every response the Worker answers: pages with server or stream scripts, API routes, and its own 404, 405 and 500 responses. HSTS is sent on `https://` requests.
-- **Static files** (pages without server scripts, images, CSS) are served by Cloudflare's asset layer without the Worker, so they get none of these headers from Bascik. To send them there too, add a `/*` rule to a `_headers` file in the output. Bascik does not copy extensionless files from `src/pages`, so write `dist/_headers` from a `pipeline.exec` script that runs after the pages are built (`phase: "post"`). The Cloudflare build then copies it into the deployment and appends its own CSP rules after yours:
+- **Static files** (pages without server scripts, images, CSS) are served by Cloudflare's asset layer without the Worker, so the build writes the same headers into the generated `public/_headers`, as one site-wide rule at the top of the file. With the defaults it is:
 
-  ```ts
-  // bascik.config.ts
-  import { defineConfig } from "@bascik/bascik/config";
-
-  export default defineConfig({
-    pipeline: {
-      exec: [{ script: "scripts/write-headers.mjs", phase: "post" }],
-    },
-  });
-  ```
-
-  ```js
-  // scripts/write-headers.mjs: the same headers the Worker sends, for every path
-  import { writeFile } from "node:fs/promises";
-
-  await writeFile(
-    "dist/_headers",
-    `/*
+  ```text
+  /*
     X-Content-Type-Options: nosniff
     X-Frame-Options: SAMEORIGIN
     Referrer-Policy: strict-origin-when-cross-origin
     Cross-Origin-Opener-Policy: same-origin-allow-popups
     Cross-Origin-Resource-Policy: cross-origin
     Strict-Transport-Security: max-age=31536000
-  `,
-  );
   ```
 
-  Keep the values in step with your `security` settings: drop a line you turned off, and change one you overrode.
+  The rule follows your settings: an overridden header carries your value, a removed one is left out, and `headers: false` with `hsts: false` writes no rule. Unlike the Worker, the asset layer cannot tell `https://` from `http://`, so static files get HSTS on every response; a browser ignores it over plain HTTP. `_headers` rules never apply to responses the Worker makes itself, and an asset the Worker passes through gets them once, from the asset layer, so no header is sent twice.
 
-  Each rule counts toward Cloudflare's 100-rule `_headers` limit. Alternatively, `run_worker_first` sends every request through the Worker (see [When `run_worker_first` Applies](#when-run_worker_first-applies)), at the cost of a Worker invocation per static file.
+  Your own `_headers` rules still work, and they win on the static files they match. Write `dist/_headers` from a `pipeline.exec` script with `phase: "post"` (Bascik does not copy extensionless files from `src/pages`), and the Cloudflare build merges it into the generated file. Cloudflare joins the values when two matching rules set the same header, with a comma, so the build adds a `! Name` line to a rule of yours that sets one of these headers, and your value replaces Bascik's on the static files that rule matches:
+
+  ```text
+  /embed/*
+    ! X-Frame-Options
+    X-Frame-Options: ALLOWALL
+  ```
+
+  `_headers` rules apply only to static files. A page with server or stream scripts under `/embed/` is rendered by the Worker and keeps the value from `security.headers`, so the build prints a warning that names your rule and the page. A value meant for every page belongs in [`security.headers`](/configuration#security), which both the Worker and the static rule follow.
+
+  A `/*` rule of your own takes the headers it does not set and becomes the site-wide rule, moved to the top; a header it removes with `! Name` stays removed. Your later rules that set one of the security headers, or a header your `/*` rule sets, get the same `! Name` line, so a more specific rule replaces the earlier value instead of being joined to it, whatever the `security` settings are. When Bascik writes nothing into the file (`headers: false`, `hsts: false` and no `contentSecurityPolicy`), your `_headers` ships exactly as written.
+
+  The site-wide rule counts toward Cloudflare's 100-rule `_headers` limit, together with your rules and the [Content-Security-Policy](#content-security-policy) rules. Cloudflare counts path lines, so a path you write twice counts twice. A build over the limit fails with a message that names the count.
+
+### Sending every header from the Worker
+
+With `"assets": { "run_worker_first": true }` (or `["/*"]`) in your root `wrangler.jsonc`, `wrangler.json` or `wrangler.toml`, every request reaches the Worker first, and `bascik --build --target cloudflare` keeps that setting in the generated config. The build then writes no `_headers` rules of its own: the Worker adds the security headers, and each static page's Content-Security-Policy, to what the asset layer returns, so the 100-rule and 2000-character limits no longer apply. A header your own `_headers` already set on that file is kept. The cost is a Worker invocation for every static file. Cloudflare Pages cannot run the Worker before static files, so this needs the Workers variant.
+
+```jsonc
+// wrangler.jsonc
+{
+  "assets": { "run_worker_first": true },
+}
+```
 
 - **Dotfiles** (`hideDotfiles`): the Worker answers 404 for dot paths, and with `hideDotfiles: false` the build deploys dotfiles from `src/pages` and the Worker passes their requests to the asset layer. `/.bascik/` is never deployed.
 

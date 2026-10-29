@@ -47,7 +47,7 @@ durable source-to-output ownership inventory a targeted build used to silently:
   knowledge lived only in the in-memory `templateToGeneratedRelativePaths` map).
 
 Bascik persists a **versioned source-to-output ownership inventory** at
-`dist/.bascik/ownership.json` (see `lib/ownership.ts`). Every output file and
+`.bascik/dist/ownership.json` (see `lib/ownership.ts`). Every output file and
 server-sidecar script is owned by exactly one source page. The inventory is the
 single source of ownership truth; it is never inferred from filename prefixes or
 mutable traversal order.

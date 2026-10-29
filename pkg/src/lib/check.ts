@@ -65,6 +65,7 @@ import {
 } from "./server-sidecar.ts";
 import { readComponentManifest } from "./component-manifest-file.ts";
 import type { ComponentList } from "./types.ts";
+import { privateDirFor } from "./private-dir.ts";
 
 export type FindingSeverity = "error" | "warning";
 
@@ -967,7 +968,7 @@ export const checkProject = async (
 
   // ── Request-time component rendering (prompt 157, D7) ────────────────────
   // A built site whose sidecar has page-owned server or stream entries renders
-  // component tags from their output through dist/.bascik/components.json.
+  // component tags from their output through .bascik/dist/components.json.
   // The components that manifest refused are left unexpanded at request time,
   // so each is reported with its reason; with generate.cspHashes on, so are
   // the components whose request-time output a hash-only policy cannot cover.
@@ -1069,7 +1070,10 @@ const requestRenderFindings = async (
   let sidecar: ServerScriptsSidecar;
   try {
     sidecar = JSON.parse(
-      await readFile(join(distDir, ".bascik", "server-scripts.json"), "utf8"),
+      await readFile(
+        join(privateDirFor(distDir), "server-scripts.json"),
+        "utf8",
+      ),
     ) as ServerScriptsSidecar;
   } catch {
     return findings;

@@ -30,7 +30,7 @@ Pass a different name to use it as both the directory name and the site title.
 
 If you omit `-y`, the CLI steps through the setup prompts interactively.
 
-`npm create bascik@rc` scaffolds a complete starter site: pages, components with unit tests, Playwright E2E browser tests, global CSS, `vite.config.js`, `.vscode/extensions.json` recommending the official Bascik extension, and a `.gitignore` with Vitest, `npm run lint` (`bascik --check`, with the `@bascik/language-server` linter installed), E2E testing, and code coverage pre-configured.
+`npm create bascik@rc` scaffolds a complete starter site: pages, components with unit tests, Playwright E2E browser tests, global CSS, `vite.config.js`, `.vscode/extensions.json` recommending the official Bascik extension, `.vscode/settings.json` that turns off a VS Code check which gives false errors on Bascik pages, and a `.gitignore` with Vitest, `npm run lint` (`bascik --check`, with the `@bascik/language-server` linter installed), E2E testing, and code coverage pre-configured.
 
 It does not create `bascik.config.ts` because the starter uses Bascik's built-in defaults.
 
@@ -51,6 +51,18 @@ npm install @bascik/bascik
 ```
 
 Run `bascik init` to create the starter directory structure, or add `"dev": "bascik"` and `"build": "bascik --build"` to your `package.json` scripts.
+
+### Editor Setup
+
+`bascik init` also sets up VS Code: it adds a `.vscode/settings.json` with the setting below and recommends the [Bascik extension](/tools/vscode-extension) in `.vscode/extensions.json`. It adds to files you already have and keeps what is in them. If you set up the project by hand, add this to `.vscode/settings.json`:
+
+```json
+{
+  "html.validate.scripts": false
+}
+```
+
+VS Code's built-in HTML checker joins every classic `<script>` (one without `type="module"`) in a file into one JavaScript file, so a page with two Bascik scripts that each `export default` shows the false error "A module cannot have multiple default exports." Bascik runs each script on its own. The setting turns off only VS Code's check of code inside `<script>` tags in `.html` files. The Bascik extension offers to add the setting to a Bascik workspace the first time it starts there, and changes nothing unless you click. See [Several Scripts in One File](/tools/vscode-extension#several-scripts-in-one-file) for what the setting changes.
 
 <!-- demo:component-html -->
 

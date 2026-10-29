@@ -57,8 +57,9 @@ if (templateArg) {
 }
 
 console.log(`\nCreating Bascik project "${projectName}"…\n`);
-await scaffold(projectName, process.cwd(), { template });
+const { notes } = await scaffold(projectName, process.cwd(), { template });
 console.log(`✓ Scaffolded ${projectName}/\n`);
+for (const note of notes) console.log(`  ${note}`);
 
 let shouldInstall: boolean;
 let shouldDev: boolean;

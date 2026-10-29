@@ -94,17 +94,33 @@ The output uses root-relative paths (e.g. `/css/styles.css`). Files must be serv
 
 Builds are reproducible and deterministic: identical source inputs always produce byte-identical output across repeated runs and machines. This makes it straightforward to diff `dist/` between builds or verify deployed artifacts against the exact commit that produced them.
 
-Every full dev or build run cleans `directory.out` before pre-phase lifecycle scripts run. The output therefore reflects the current source tree, without pages or assets left behind by earlier runs. Pre-phase scripts can still generate files in the output directory because cleaning finishes before those scripts start. `bascik --server` only reads an existing build and never cleans it. Targeted builds (`bascik --build --only <glob>`) also skip cleaning so existing pages survive when rebuilding a small subset.
+Every full dev or build run cleans `directory.out` and its private build folder before pre-phase lifecycle scripts run. The output therefore reflects the current source tree, without pages or assets left behind by earlier runs. Pre-phase scripts can still generate files in the output directory because cleaning finishes before those scripts start. `bascik --server` only reads an existing build and never cleans it. Targeted builds (`bascik --build --only <glob>`) also skip cleaning so existing pages survive when rebuilding a small subset.
+
+### What a static host receives
+
+A static host serves every file of the folder you point it at, dotfiles included, so after a plain `bascik --build`, `dist/` holds only the site: pages, CSS, scripts and assets. Bascik's private build files live in `.bascik/dist/`, beside `dist/` and never inside it: the build state, the ownership inventory (`ownership.json`, which names your source files), and, when the site has them, the server-script sidecar (`server-scripts.json`, the source of every server and stream script), the component manifest, the CSP hashes and the file manifest. The folder is named after [`directory.out`](/configuration#directory), so `build/www` gets `build/.bascik/www/`, and Bascik writes a `.gitignore` into `.bascik/` so it is never committed.
+
+| Deploy                                       | What it copies                                                                                                           |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Static host (Pages, Netlify, S3, a web root) | `dist/` from a plain `bascik --build`, never after a `--target` build                                                    |
+| `bascik --server` on your own machine        | both `dist/` and `.bascik/dist/` from the same build, with the project's `bascik.config.ts`, `src/api/` and dependencies |
+| `--target cloudflare`                        | `dist/.bascik/cloudflare/` (its `public/` folder and the Worker); see [Cloudflare](/deployment/cloudflare)               |
+
+`.bascik/dist/` holds the server scripts and CSP hashes for the pages of its own build, so a `bascik --server` deploy copies both folders from the same `bascik --build`. The build records every page it wrote. When a page in `dist/` differs from that record, `bascik --server` starts and prints one warning that names the pages: a deploy step that edits `dist/` after the build (adding analytics, a minifier, a CDN rewrite) is expected to cause it, and a `.bascik/dist/` copied from another build is the other cause, which a fresh `bascik --build` of both folders fixes. The server serves each page as it is in `dist/`, with the server scripts and CSP hashes `.bascik/dist/` holds: a server script runs from the sidecar, matched to its placeholder in the page by page and position, and an inline script a deploy step adds is not in the CSP hashes, so add it in the source or in an [exec script](/exec-scripts) instead when the site sends a CSP. A deploy step must keep the `<script type="text/bascik-server">` placeholders as they are.
+
+`bascik --server` refuses to start only when it cannot run the release: `dist/` copied without `.bascik/dist/` (it names both folders), or a page whose server-script placeholder the sidecar does not hold or holds in another mode (a `.bascik/dist/` from an older build that lacks a script the new `dist/` names); that refusal names the page and asks for `bascik --build`. A `--only` build refuses a `dist/` whose pages differ from the record, because it keeps the other pages' server scripts and CSP hashes; run a full `bascik --build` after editing `dist/`.
+
+A `--target` build writes its deployment folder inside `dist/`, to `dist/.bascik/<target>/`: the Worker, with the source of every server script and API route, and its config. Deploy that folder, not `dist/`, and do not point a static host at `dist/` after a `--target` build, or it publishes the Worker; the build prints the same note. The deployment folder's own `public/` folder never holds a `.bascik` path. See [What is the `.bascik/` folder?](/faq#what-is-the-bascik-folder).
 
 ### Consuming the build manifest
 
-When `generate.manifest: true` is configured, Bascik outputs `dist/.bascik/manifest.json`. Deployment workflows and CDN synchronization scripts can consume this manifest to upload only modified files or verify build outputs:
+When `generate.manifest: true` is configured, Bascik outputs `.bascik/dist/manifest.json`. Deployment workflows and CDN synchronization scripts can consume this manifest to upload only modified files or verify build outputs:
 
 ```js
-// Example deploy-layer script reading dist/.bascik/manifest.json
+// Example deploy-layer script reading .bascik/dist/manifest.json
 import { readFileSync } from "node:fs";
 
-const manifest = JSON.parse(readFileSync("dist/.bascik/manifest.json", "utf8"));
+const manifest = JSON.parse(readFileSync(".bascik/dist/manifest.json", "utf8"));
 for (const [relPath, info] of Object.entries(manifest.files)) {
   console.log(
     `Deploying ${relPath} (${info.size} bytes, SHA-256: ${info.hash})`,
@@ -114,7 +130,7 @@ for (const [relPath, info] of Object.entries(manifest.files)) {
 
 ### Content Security Policy
 
-Bascik inlines component `<style>` blocks and wraps component `<script>` blocks in isolated IIFEs. To support a strict policy without `'unsafe-inline'`, enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik emits `dist/.bascik/csp-hashes.json` mapping each page to its exact post-minification inline script and style SHA-256 hashes (`sha256-<base64>`).
+Bascik inlines component `<style>` blocks and wraps component `<script>` blocks in isolated IIFEs. To support a strict policy without `'unsafe-inline'`, enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik emits `.bascik/dist/csp-hashes.json` mapping each page to its exact post-minification inline script and style SHA-256 hashes (`sha256-<base64>`).
 
 Bascik emits hashes rather than setting a policy because the policy depends on your site and your host. Setting a generic one inside the framework would provide false assurance. [Content Security Policy](/how-to/content-security-policy) shows how to turn the hashes into a policy.
 

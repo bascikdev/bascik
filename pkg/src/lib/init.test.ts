@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { initProject } from "./init.ts";
+import { VSCODE_SETTINGS_JSON, parseJsonc } from "./vscode-settings.ts";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -158,5 +159,83 @@ describe("initProject", () => {
 
     const pkgWrite = writtenTo("package.json");
     expect(pkgWrite).toBeUndefined();
+  });
+
+  describe("VS Code files", () => {
+    const enoent = () => Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+
+    /** Serve package.json and the given .vscode files; everything else is absent. */
+    function files(vscode: Record<string, string> = {}): void {
+      mockReadFile.mockImplementation(async (path: unknown) => {
+        const p = String(path).replace(/\\/g, "/");
+        if (p.endsWith("/package.json")) return '{"name":"my-app"}';
+        for (const [name, text] of Object.entries(vscode)) {
+          if (p.endsWith(`/.vscode/${name}`)) return text;
+        }
+        throw enoent();
+      });
+    }
+
+    const logged = (): string =>
+      (console.log as unknown as ReturnType<typeof vi.fn>).mock.calls
+        .map((c) => String(c[0]))
+        .join("\n");
+
+    it("writes settings.json with the inline-script check off, and extensions.json", async () => {
+      files();
+      await initProject();
+      expect(writtenTo(".vscode/settings.json")).toBe(VSCODE_SETTINGS_JSON);
+      expect(JSON.parse(writtenTo(".vscode/extensions.json")!)).toEqual({
+        recommendations: ["bascik.bascik-vscode"],
+      });
+      expect(
+        mockMkdir.mock.calls.some((c) =>
+          String(c[0]).replace(/\\/g, "/").endsWith("/.vscode"),
+        ),
+      ).toBe(true);
+      expect(logged()).toContain("created: .vscode/settings.json");
+    });
+
+    it("misuse: merges into existing files instead of overwriting them", async () => {
+      files({
+        "settings.json": '{\n  // mine\n  "editor.tabSize": 2\n}\n',
+        "extensions.json": '{ "recommendations": ["dbaeumer.vscode-eslint"] }',
+      });
+      await initProject();
+      const settings = writtenTo(".vscode/settings.json")!;
+      expect(settings).toContain("// mine");
+      expect(parseJsonc(settings)).toEqual({
+        "html.validate.scripts": false,
+        "editor.tabSize": 2,
+      });
+      expect(parseJsonc(writtenTo(".vscode/extensions.json")!)).toEqual({
+        recommendations: ["bascik.bascik-vscode", "dbaeumer.vscode-eslint"],
+      });
+      expect(logged()).toContain(
+        'updated: .vscode/settings.json (added "html.validate.scripts": false)',
+      );
+    });
+
+    it("keeps a value the user already chose, even true", async () => {
+      files({ "settings.json": '{ "html.validate.scripts": true }' });
+      await initProject();
+      expect(writtenTo(".vscode/settings.json")).toBeUndefined();
+      expect(logged()).toContain("skipped: .vscode/settings.json");
+    });
+
+    it("misuse: leaves a broken settings file alone and prints the line to add", async () => {
+      files({ "settings.json": "{ oops" });
+      await initProject();
+      expect(writtenTo(".vscode/settings.json")).toBeUndefined();
+      expect(logged()).toContain(
+        '.vscode/settings.json: left as is because it is not valid JSON. Add "html.validate.scripts": false',
+      );
+    });
+
+    it("still sets up VS Code when package.json is missing", async () => {
+      mockReadFile.mockRejectedValue(enoent());
+      await initProject();
+      expect(writtenTo(".vscode/settings.json")).toBe(VSCODE_SETTINGS_JSON);
+    });
   });
 });

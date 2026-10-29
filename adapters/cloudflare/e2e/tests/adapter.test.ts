@@ -20,6 +20,31 @@ test.describe("cloudflare adapter: static bypass", () => {
     expect(res?.headers()["cache-control"]).not.toBe("private, no-store");
   });
 
+  test("the static home page sends the same security headers as a Worker-rendered page, each once", async ({
+    request,
+  }) => {
+    // Static files get them from the generated public/_headers; the Worker
+    // sets them on what it renders. A header both set would be joined with
+    // a comma.
+    const names = [
+      "x-content-type-options",
+      "x-frame-options",
+      "referrer-policy",
+      "cross-origin-opener-policy",
+      "cross-origin-resource-policy",
+    ];
+    const staticHeaders = (await request.get("/")).headers();
+    const workerHeaders = (await request.get("/server?user=Alice")).headers();
+    for (const name of names) {
+      expect(staticHeaders[name], name).toBeDefined();
+      expect(staticHeaders[name], name).toBe(workerHeaders[name]);
+      expect(staticHeaders[name], name).not.toContain(",");
+    }
+    // The asset layer sends HSTS on every response, as the _headers rule
+    // says (a browser ignores it over http); the Worker sends it over https.
+    expect(staticHeaders["strict-transport-security"]).toBe("max-age=31536000");
+  });
+
   test("an unknown path is a 404 without any placeholder markup", async ({
     page,
   }) => {

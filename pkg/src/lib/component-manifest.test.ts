@@ -123,6 +123,7 @@ import {
   PAGE,
   PAGE_PATH,
 } from "./__fixtures__/component-expansion-core.fixture.ts";
+import { privateDirFor } from "./private-dir.ts";
 
 type MutableConfig = {
   base: string;
@@ -2081,6 +2082,7 @@ describe("manifest file", () => {
 
   afterEach(async () => {
     await rm(distDir, { recursive: true, force: true });
+    await rm(privateDirFor(distDir), { recursive: true, force: true });
   });
 
   it("records the build config it was made under", async () => {
@@ -2106,7 +2108,7 @@ describe("manifest file", () => {
     const list = { ...cards(), ...scriptCards(), ...bindingCards() };
     const first = await build(list);
     const path = await writeComponentManifest(distDir, first);
-    expect(path).toBe(join(distDir, ".bascik", "components.json"));
+    expect(path).toBe(join(privateDirFor(distDir), "components.json"));
     const bytes1 = await readFile(path, "utf8");
     serverSidecarRegistry.clear();
     clearScopingTemplates();
@@ -2130,9 +2132,9 @@ describe("manifest file", () => {
   });
 
   it("refuses another schema with the rebuild message", async () => {
-    await mkdir(join(distDir, ".bascik"), { recursive: true });
+    await mkdir(privateDirFor(distDir), { recursive: true });
     await writeFile(
-      join(distDir, ".bascik", "components.json"),
+      join(privateDirFor(distDir), "components.json"),
       JSON.stringify({ schema: 99, components: {} }),
       "utf8",
     );
@@ -2165,9 +2167,9 @@ describe("manifest file", () => {
   ])(
     "refuses a manifest with %s with the rebuild message",
     async (_label, manifest, expected) => {
-      await mkdir(join(distDir, ".bascik"), { recursive: true });
+      await mkdir(privateDirFor(distDir), { recursive: true });
       await writeFile(
-        join(distDir, ".bascik", "components.json"),
+        join(privateDirFor(distDir), "components.json"),
         JSON.stringify(manifest),
         "utf8",
       );
@@ -2211,9 +2213,9 @@ describe("manifest file", () => {
     async (_label, entry) => {
       // A hand-edited or truncated entry must be a located message from the
       // reader, never a TypeError from whoever dereferences it (check.ts).
-      await mkdir(join(distDir, ".bascik"), { recursive: true });
+      await mkdir(privateDirFor(distDir), { recursive: true });
       await writeFile(
-        join(distDir, ".bascik", "components.json"),
+        join(privateDirFor(distDir), "components.json"),
         JSON.stringify({
           schema: COMPONENT_MANIFEST_SCHEMA_VERSION,
           identifiers: true,
@@ -2234,9 +2236,9 @@ describe("manifest file", () => {
   );
 
   it("refuses a malformed manifest with the rebuild message", async () => {
-    await mkdir(join(distDir, ".bascik"), { recursive: true });
+    await mkdir(privateDirFor(distDir), { recursive: true });
     await writeFile(
-      join(distDir, ".bascik", "components.json"),
+      join(privateDirFor(distDir), "components.json"),
       "{nope",
       "utf8",
     );

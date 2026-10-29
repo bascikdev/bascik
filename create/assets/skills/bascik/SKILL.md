@@ -133,7 +133,7 @@ npx @bascik/language-server --check   # the per-file checks on their own (bascik
 
 `bascik --check` and the linter are not two overlapping tools. `bascik --check` answers project questions (duplicate routes, unused components, config), and the linter answers per-file questions (attribute typos, CSS that cannot be scoped). `bascik --check` runs the linter too, so use it, and reach for the linter alone only on a folder outside the project.
 
-New project: `npm create bascik@rc my-site -y`. Production builds need a site URL for `sitemap.xml` and `robots.txt`: `BASCIK_SITE_URL=https://example.com bascik --build` (or `--site-url`, or `.env`). Full CLI and error output: `read-doc.mjs /cli`.
+New project: `npm create bascik@rc my-site -y`. It and `bascik init` both write `.vscode/settings.json` with `"html.validate.scripts": false` and recommend the Bascik extension in `.vscode/extensions.json`, merging into files the folder already has. A project set up any other way (a migration, or files copied in with `add-example.mjs`) needs that setting added by hand, or VS Code joins a page's `<script>` blocks into one file and reports false errors such as "A module cannot have multiple default exports". The setting turns off only VS Code's own check of inline scripts, not Bascik's checks. Production builds need a site URL for `sitemap.xml` and `robots.txt`: `BASCIK_SITE_URL=https://example.com bascik --build` (or `--site-url`, or `.env`). Full CLI and error output: `read-doc.mjs /cli`.
 
 ## Verify every change
 

@@ -23,7 +23,9 @@ import { findCommentEnd } from "./html-scanner.ts";
 import {
   ANIMATION_VALUES,
   BLOCKED_URL,
+  BLOCKED_URL_REASONS,
   SVG_ANIMATIONS,
+  blockedUrlKind,
   escapeHtml,
   isEventHandlerName,
   isSafeUrl,
@@ -157,7 +159,7 @@ export const DEFAULT_BINDING_POLICY: Readonly<BindingPolicy> = Object.freeze({
 
 /** What `injectPropAttributes` does with one bound value. */
 type BindingVerdict =
-  | { kind: "bind"; value: string; blocked?: "script" }
+  | { kind: "bind"; value: string; blocked?: keyof typeof BLOCKED_URL_REASONS }
   | { kind: "refuse"; reason: string };
 
 /** The context of a binding: the element and the attributes it already has. */
@@ -176,8 +178,8 @@ const EVENT_HANDLER_REASON =
  * - an event handler (`on` and letters) or `srcdoc` is never bound: its
  *   value is code or a document, which no escaping makes safe; nor is a
  *   `<meta http-equiv>` value, or which attribute an SVG animation sets;
- * - a URL target keeps any URL but a script one (`javascript:`,
- *   `vbscript:`, `data:`), which becomes `about:invalid`; an image slot
+ * - a URL target keeps any URL but a script URL such as `javascript:` or
+ *   a `data:` URL, which becomes `about:invalid`; an image slot
  *   also keeps a `data:image/*` URL; a list (`srcset`, `ping`) or an SVG
  *   animation's values are checked entry by entry;
  * - a URL the page runs or applies (`<script src>`, `<base href>`, a
@@ -199,7 +201,11 @@ const bindingVerdict = (
   if (!policy.blockCodeBindings) {
     if (!policy.blockScriptUrls) return { kind: "bind", value };
     return urlVerdict(tag, target, value) === "blocked"
-      ? { kind: "bind", value: BLOCKED_URL, blocked: "script" }
+      ? {
+          kind: "bind",
+          value: BLOCKED_URL,
+          blocked: blockedUrlKind(tag, target, value),
+        }
       : { kind: "bind", value };
   }
   if (isEventHandlerName(target))
@@ -234,7 +240,11 @@ const bindingVerdict = (
     }
   }
   if (policy.blockScriptUrls && urlVerdict(tag, target, value) === "blocked")
-    return { kind: "bind", value: BLOCKED_URL, blocked: "script" };
+    return {
+      kind: "bind",
+      value: BLOCKED_URL,
+      blocked: blockedUrlKind(tag, target, value),
+    };
   if (target === "style") {
     const css = decodeCss(value);
     if (
@@ -466,9 +476,9 @@ export const injectPropAttributes = (
         );
         continue;
       }
-      if (verdict.blocked === "script")
+      if (verdict.blocked)
         warn(
-          `data-bascik-attr-${targetName}="${propName}" received a URL that can run script (such as javascript:), so ${targetName} is set to ${BLOCKED_URL}.`,
+          `data-bascik-attr-${targetName}="${propName}" received ${BLOCKED_URL_REASONS[verdict.blocked]}, so ${targetName} is set to ${BLOCKED_URL}.`,
         );
       const attribute = ` ${targetName}="${escapeHtml(verdict.value)}"`;
       // Whole-name conflict check: the target may already exist, but a

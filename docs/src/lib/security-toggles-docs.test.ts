@@ -354,17 +354,17 @@ describe("bascik-config skill", () => {
 
 // ─── review fixes: anchors, Cloudflare static files, plain words ────────────
 
-describe("links into /configuration land on their section", () => {
-  const listMd = (dir: string): string[] =>
-    readdirSync(dir).flatMap((name) => {
-      const full = path.join(dir, name);
-      return statSync(full).isDirectory()
-        ? listMd(full)
-        : name.endsWith(".md")
-          ? [full]
-          : [];
-    });
+const listMd = (dir: string): string[] =>
+  readdirSync(dir).flatMap((name) => {
+    const full = path.join(dir, name);
+    return statSync(full).isDirectory()
+      ? listMd(full)
+      : name.endsWith(".md")
+        ? [full]
+        : [];
+  });
 
+describe("links into /configuration land on their section", () => {
   it("every /configuration#anchor in the docs and every #anchor on the page is a heading id", async () => {
     const { renderMd } = await import("./md-renderer.ts");
     const html = await renderMd(path.join(DOCS, "content/configuration.md"));
@@ -385,9 +385,17 @@ describe("links into /configuration land on their section", () => {
   });
 });
 
-describe("static files on Cloudflare get none of the response headers", () => {
-  const caveat = /static files[^.]*Cloudflare[^.]*(none of|no )/i;
+describe("static files on Cloudflare get the response headers from the generated _headers", () => {
+  const stale = /static files[^.]*Cloudflare[^.]*(none of|no )/i;
+  const says = /static files[^.]*Cloudflare[^.]*_headers/i;
   const link = "/deployment/cloudflare#security-settings-on-cloudflare";
+
+  it("no page says static files on Cloudflare go without them", () => {
+    const offenders = listMd(path.join(DOCS, "content")).filter((file) =>
+      stale.test(plain(readFileSync(file, "utf8"))),
+    );
+    expect(offenders.map((f) => path.relative(DOCS, f))).toEqual([]);
+  });
 
   it("the Security page's guarantee about headers says so, with a link", () => {
     const guarantees = sectionOf(
@@ -397,7 +405,7 @@ describe("static files on Cloudflare get none of the response headers", () => {
     const bullet = guarantees
       .split("\n")
       .find((l) => l.includes("Responses carry security headers"))!;
-    expect(plain(bullet)).toMatch(caveat);
+    expect(plain(bullet)).toMatch(says);
     expect(bullet).toContain(link);
   });
 
@@ -405,19 +413,24 @@ describe("static files on Cloudflare get none of the response headers", () => {
     "configuration.md %s says so, with a link",
     (heading) => {
       const section = sectionOf(read("content/configuration.md"), heading);
-      expect(plain(section)).toMatch(caveat);
+      expect(plain(section)).toMatch(says);
       expect(section).toContain(link);
     },
   );
 
-  it("cloudflare.md shows the pipeline.exec script that writes the _headers rule", () => {
+  it("cloudflare.md shows the generated rule, says the author's own rules win, and counts it toward the 100-rule limit", () => {
     const settings = sectionOf(
       read("content/deployment/cloudflare.md"),
       /^Security settings on Cloudflare$/,
     );
-    expect(settings).toMatch(/phase: "post"/);
-    expect(settings).toMatch(/writeFile\([^)]*dist\/_headers/);
+    // The workaround the build now does itself is gone.
+    expect(settings).not.toMatch(/write-headers/);
+    expect(settings).toMatch(/^ *\/\*$/m);
     expect(settings).toContain("Strict-Transport-Security: max-age=31536000");
+    expect(plain(settings)).toMatch(/! X-Frame-Options/);
+    expect(plain(settings)).toMatch(/join(s|ed)?[^.]*comma/i);
+    expect(plain(settings)).toMatch(/100-rule/);
+    expect(plain(settings)).toMatch(/headers: false[^.]*hsts: false/);
   });
 });
 

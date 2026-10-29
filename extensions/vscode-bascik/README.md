@@ -23,6 +23,14 @@ Inside a `<script>` tag, IntelliSense suggests the mutually exclusive execution 
 
 Cmd/Ctrl-click custom component tags to open their HTML definitions. Hover over a component to see the contract you need at the call site, including its description, inferred props, named and default slots, source location, and included styles or scripts. Component tag suggestions display the same contract before insertion.
 
+### Several Scripts in One File
+
+VS Code's built-in HTML checker joins every classic `<script>` (one without `type="module"`) in a file into one JavaScript file, so a Bascik page with two scripts that each `export default` shows the false error "A module cannot have multiple default exports." Bascik runs each script on its own. Setting `"html.validate.scripts": false` in a project's `.vscode/settings.json` turns off only VS Code's check of code inside `<script>` tags in `.html` files.
+
+A project gets the setting from `npm create bascik`, from `bascik init`, or from this extension. When the extension starts in a workspace with a `bascik.config.ts` (or `.js`, `.mjs`) and nobody has set `html.validate.scripts` in the user, workspace, or folder settings, it asks once: **Add to workspace settings** writes the setting to `.vscode/settings.json` in each Bascik folder, keeping what is there, and **Don't ask again** stops the message for that workspace. The extension never changes the setting without that click, never touches user settings, and never asks in a folder that is not a Bascik project. You can also paste the setting into `.vscode/settings.json` yourself.
+
+With the setting off, VS Code no longer reports JavaScript syntax or semantic errors inside `<script>` tags in `.html` files. A syntax error in a build or server script still fails when Bascik loads it, with the file and line, and one in a script for the browser shows in the browser console.
+
 ### Filtering Generic Word Suggestions
 
 VS Code by default provides word-based completions harvested from other words in the active document. Because VS Code merges those suggestions independently of language extensions, generic words from neighboring elements may appear alongside Bascik completions. To restrict HTML completions to semantic language and Bascik completions only, add the following to your VS Code settings:

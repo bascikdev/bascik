@@ -625,7 +625,7 @@ export interface AdapterBuildResult {
 Return `components: true` only when your runtime renders `graph.components` as described in [Rendering component tags](#rendering-component-tags-sitegraphcomponents). When the graph has components that can be rendered and the result does not declare it, the build still succeeds and prints a warning naming the adapter and the affected components:
 
 ```terminal
-[bascik] --target my-platform: adapter "my-platform" does not declare components: true, so component tags returned by server and stream scripts are not rendered on this host and reach the client as written (dist/.bascik/components.json lists <product-card>). Upgrade the adapter, or keep component tags out of script output for this target.
+[bascik] --target my-platform: adapter "my-platform" does not declare components: true, so component tags returned by server and stream scripts are not rendered on this host and reach the client as written (.bascik/dist/components.json lists <product-card>). Upgrade the adapter, or keep component tags out of script output for this target.
 ```
 
 ---
@@ -646,7 +646,7 @@ export interface SiteGraph {
   apiRoutes: SiteGraphApiRoute[]; // Sorted list of API route handlers
   custom500?: string; // Content or path of custom 500.html template if present
   importRoot: string; // Absolute path to project source import root
-  components?: SiteGraphComponents; // Present when the build wrote dist/.bascik/components.json
+  components?: SiteGraphComponents; // Present when the build wrote .bascik/dist/components.json
   responseSecurity?: ResponseSecurity; // security.headers, hsts and privateDynamicPages, resolved
   hideDotfiles?: boolean; // security.hideDotfiles (absent: true)
   stripAnsi?: boolean; // scripts.stripAnsi (absent: true)
@@ -654,7 +654,7 @@ export interface SiteGraph {
 }
 
 export interface SiteGraphComponents {
-  manifest: ComponentManifest; // The parsed dist/.bascik/components.json
+  manifest: ComponentManifest; // The parsed .bascik/dist/components.json
   jobs: Record<string, SiteGraphJob>; // Server and stream scripts inside components, by job ID
 }
 ```

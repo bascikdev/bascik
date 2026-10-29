@@ -95,7 +95,7 @@ Every bracket name needs a matching `params` key; a param cannot contain `/` (us
 
 - `request` is a standard WHATWG `Request`; `context` is `{ remoteIp }`; `signal` aborts on timeout or disconnect.
 - All `server` scripts resolve before any byte is sent. Swap to `data-bascik-stream` when the shell should paint first; a stream failure renders an empty slot instead of a 500.
-- Source is moved to `dist/.bascik/server-scripts.json`; static `dist/` keeps an inert placeholder. They never run during `--build`.
+- Source is moved to `.bascik/dist/server-scripts.json`; static `dist/` keeps an inert placeholder. They never run during `--build`.
 - Never block the event loop with synchronous work; timeouts cannot interrupt it.
 
 ### Server and stream scripts may return component tags

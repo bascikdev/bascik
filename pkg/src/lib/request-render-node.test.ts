@@ -342,17 +342,17 @@ describe("host dependencies", () => {
     expect(() => loadComponentJobs(manifest)).toThrow(/components\.json/);
   });
 
-  it("the stale-artifact messages name the configured output directory, not dist/", async () => {
+  it("the stale-artifact messages name the configured output directory's private folder, not dist/", async () => {
     config.directory.out = "public-out";
     const manifest = await build();
     serverSidecarRegistry.clear();
     expect(() => loadComponentJobs(manifest)).toThrow(
-      "public-out/.bascik/components.json",
+      ".bascik/public-out/components.json",
     );
     expect(() => loadComponentJobs(manifest)).not.toThrow(/\bdist\//);
     // Production boot passes the directory as it names it in its own messages.
     expect(() => loadComponentJobs(manifest, "build/site")).toThrow(
-      "build/site/.bascik/components.json",
+      "build/.bascik/site/components.json",
     );
   });
 

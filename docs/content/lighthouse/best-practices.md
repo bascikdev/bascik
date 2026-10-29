@@ -66,6 +66,6 @@ export default defineConfig({
 });
 ```
 
-The build writes `dist/.bascik/csp-hashes.json`, mapping each page to the hashes of its inline scripts and styles. See [Content Security Policy](/how-to/content-security-policy) for a worked recipe, and the [FAQ](/faq) for why Bascik emits hashes instead of setting the policy itself.
+The build writes `.bascik/dist/csp-hashes.json`, mapping each page to the hashes of its inline scripts and styles. See [Content Security Policy](/how-to/content-security-policy) for a worked recipe, and the [FAQ](/faq) for why Bascik emits hashes instead of setting the policy itself.
 
 > **Treat the header audits as informational.** They report what your host sends, so a perfect score may require platform-specific configuration. Check them against the production URL, not `localhost`.

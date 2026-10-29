@@ -668,3 +668,26 @@ describe("build: request-time components in worker-entry.mjs (prompt 157)", () =
     expect(worker).toMatch(/createHash\d*\("sha256"\)\.update\("x"\)/);
   });
 });
+
+describe("runsWorkerFirst: the authored run_worker_first that sends every request to the Worker", () => {
+  it("true, or a list with /* (or the base's /shop/*) and no exclusion", async () => {
+    const { runsWorkerFirst } = await import("./build.ts");
+    expect(runsWorkerFirst({ run_worker_first: true }, "/")).toBe(true);
+    expect(runsWorkerFirst({ run_worker_first: ["/*"] }, "/")).toBe(true);
+    expect(runsWorkerFirst({ run_worker_first: ["/shop/*"] }, "/shop/")).toBe(
+      true,
+    );
+  });
+
+  it("anything narrower, absent or malformed leaves the static headers to _headers", async () => {
+    const { runsWorkerFirst } = await import("./build.ts");
+    expect(runsWorkerFirst(undefined, "/")).toBe(false);
+    expect(runsWorkerFirst({}, "/")).toBe(false);
+    expect(runsWorkerFirst({ run_worker_first: false }, "/")).toBe(false);
+    expect(runsWorkerFirst({ run_worker_first: "true" }, "/")).toBe(false);
+    expect(runsWorkerFirst({ run_worker_first: ["/api/*"] }, "/")).toBe(false);
+    expect(
+      runsWorkerFirst({ run_worker_first: ["/*", "!/assets/*"] }, "/"),
+    ).toBe(false);
+  });
+});

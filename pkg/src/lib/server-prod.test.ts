@@ -65,9 +65,9 @@ describe("startProdServer", () => {
       `.server-prod-test-${process.pid}-${Date.now()}`,
     );
     await mkdir(join(workDir, "dist"), { recursive: true });
-    await mkdir(join(workDir, "dist", ".bascik"), { recursive: true });
+    await mkdir(join(workDir, ".bascik", "dist"), { recursive: true });
     await writeFile(
-      join(workDir, "dist", ".bascik", "build-state.json"),
+      join(workDir, ".bascik", "dist", "build-state.json"),
       JSON.stringify({ format: 1, mode: "build", version: "test" }),
     );
     process.chdir(workDir);
@@ -81,14 +81,14 @@ describe("startProdServer", () => {
   it("throws a helpful error when dist/ does not exist", async () => {
     await rm(join(workDir, "dist"), { recursive: true, force: true });
     await expect(startProdServer()).rejects.toThrow(
-      /requires a completed production build/,
+      /could not read dist\/ directory[\s\S]*Run `bascik --build` first/,
     );
     expect(startServerMock).not.toHaveBeenCalled();
   });
 
   it("rejects development output before binding a server", async () => {
     await writeFile(
-      join(workDir, "dist", ".bascik", "build-state.json"),
+      join(workDir, ".bascik", "dist", "build-state.json"),
       JSON.stringify({ format: 1, mode: "development", version: "test" }),
     );
 
@@ -172,10 +172,10 @@ describe("startProdServer", () => {
   });
 
   it("fails startup with an actionable diagnostic when the sidecar is malformed", async () => {
-    await mkdir(join(workDir, "dist", ".bascik"), { recursive: true });
+    await mkdir(join(workDir, ".bascik", "dist"), { recursive: true });
     await writeFile(join(workDir, "dist", "index.html"), "<h1>home</h1>");
     await writeFile(
-      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      join(workDir, ".bascik", "dist", "server-scripts.json"),
       "{corrupt",
       "utf8",
     );
@@ -190,7 +190,7 @@ describe("startProdServer", () => {
   });
 
   it("fails startup when a present sidecar cannot resolve a placeholder reference", async () => {
-    await mkdir(join(workDir, "dist", ".bascik"), { recursive: true });
+    await mkdir(join(workDir, ".bascik", "dist"), { recursive: true });
     // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
     await writeFile(
       join(workDir, "dist", "index.html"),
@@ -198,7 +198,7 @@ describe("startProdServer", () => {
     );
     // A present but entry-less sidecar means no script can back the placeholder.
     await writeFile(
-      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      join(workDir, ".bascik", "dist", "server-scripts.json"),
       JSON.stringify({
         version: "1",
         schema: SIDECAR_SCHEMA_VERSION,
@@ -237,10 +237,10 @@ describe("startProdServer", () => {
   });
 
   it("fails startup on an incompatible sidecar schema", async () => {
-    await mkdir(join(workDir, "dist", ".bascik"), { recursive: true });
+    await mkdir(join(workDir, ".bascik", "dist"), { recursive: true });
     await writeFile(join(workDir, "dist", "index.html"), "<h1>home</h1>");
     await writeFile(
-      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      join(workDir, ".bascik", "dist", "server-scripts.json"),
       JSON.stringify({ version: "1", schema: 99, scripts: {} }),
       "utf8",
     );
@@ -325,7 +325,7 @@ describe("startProdServer", () => {
 });
 
 /**
- * Prompt 157: `dist/.bascik/components.json` is a required runtime artifact
+ * Prompt 157: `.bascik/dist/components.json` is a required runtime artifact
  * whenever the sidecar has page-owned server or stream entries, validated at
  * boot like the sidecar. A static release (no sidecar, or an empty one) needs
  * no manifest and boots exactly as before.
@@ -359,9 +359,10 @@ describe("startProdServer and the component manifest (prompt 157)", () => {
       originalCwd,
       `.server-prod-manifest-test-${process.pid}-${Date.now()}`,
     );
-    await mkdir(join(workDir, "dist", ".bascik"), { recursive: true });
+    await mkdir(join(workDir, "dist"), { recursive: true });
+    await mkdir(join(workDir, ".bascik", "dist"), { recursive: true });
     await writeFile(
-      join(workDir, "dist", ".bascik", "build-state.json"),
+      join(workDir, ".bascik", "dist", "build-state.json"),
       JSON.stringify({ format: 1, mode: "build", version: "test" }),
     );
     process.chdir(workDir);
@@ -376,7 +377,7 @@ describe("startProdServer and the component manifest (prompt 157)", () => {
     // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
     await writeFile(join(workDir, "dist", "index.html"), placeholderPage);
     await writeFile(
-      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      join(workDir, ".bascik", "dist", "server-scripts.json"),
       sidecarWithPageEntry,
       "utf8",
     );
@@ -394,12 +395,12 @@ describe("startProdServer and the component manifest (prompt 157)", () => {
     // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
     await writeFile(join(workDir, "dist", "index.html"), placeholderPage);
     await writeFile(
-      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      join(workDir, ".bascik", "dist", "server-scripts.json"),
       sidecarWithPageEntry,
       "utf8",
     );
     await writeFile(
-      join(workDir, "dist", ".bascik", "components.json"),
+      join(workDir, ".bascik", "dist", "components.json"),
       manifest(99),
       "utf8",
     );
@@ -417,12 +418,12 @@ describe("startProdServer and the component manifest (prompt 157)", () => {
     // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
     await writeFile(join(workDir, "dist", "index.html"), placeholderPage);
     await writeFile(
-      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      join(workDir, ".bascik", "dist", "server-scripts.json"),
       sidecarWithPageEntry,
       "utf8",
     );
     await writeFile(
-      join(workDir, "dist", ".bascik", "components.json"),
+      join(workDir, ".bascik", "dist", "components.json"),
       manifest(1),
       "utf8",
     );
@@ -438,7 +439,7 @@ describe("startProdServer and the component manifest (prompt 157)", () => {
   it("boots a static release whose sidecar is present but empty, with no manifest and no behavior change", async () => {
     await writeFile(join(workDir, "dist", "index.html"), "<h1>static</h1>");
     await writeFile(
-      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      join(workDir, ".bascik", "dist", "server-scripts.json"),
       JSON.stringify({
         version: "1",
         schema: SIDECAR_SCHEMA_VERSION,
@@ -530,12 +531,12 @@ describe("startProdServer and the component manifest (prompt 157)", () => {
     await writeFile(join(workDir, "dist", "index.html"), placeholderPage);
     await writeFile(join(workDir, "dist", "about.html"), "<h1>about</h1>");
     await writeFile(
-      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      join(workDir, ".bascik", "dist", "server-scripts.json"),
       sidecarWithComponentJob,
       "utf8",
     );
     await writeFile(
-      join(workDir, "dist", ".bascik", "components.json"),
+      join(workDir, ".bascik", "dist", "components.json"),
       manifestWithComponent,
       "utf8",
     );
@@ -559,12 +560,12 @@ describe("startProdServer and the component manifest (prompt 157)", () => {
     // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
     await writeFile(join(workDir, "dist", "index.html"), placeholderPage);
     await writeFile(
-      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      join(workDir, ".bascik", "dist", "server-scripts.json"),
       sidecarWithPageEntry,
       "utf8",
     );
     await writeFile(
-      join(workDir, "dist", ".bascik", "components.json"),
+      join(workDir, ".bascik", "dist", "components.json"),
       manifestWithComponent,
       "utf8",
     );

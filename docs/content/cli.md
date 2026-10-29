@@ -138,7 +138,7 @@ bascik add @acme/ui --force
 
 ### The `bascik-lock.json` lockfile
 
-`bascik add` maintains a `bascik-lock.json` file in your project root. Unlike build artifacts in `dist/.bascik/`, `bascik-lock.json` is committed project state that tracks:
+`bascik add` maintains a `bascik-lock.json` file in your project root. Unlike build artifacts in `.bascik/dist/`, `bascik-lock.json` is committed project state that tracks:
 
 - Installed component packages and versions
 - The list of copied files
@@ -203,7 +203,7 @@ Important rules for targeted builds:
 - **Pages only:** `--only` scopes page transpilation, not static assets. Static assets are still copied and verified.
 - **Production base:** targeted builds require an existing successful full production build. Run `bascik --build` before the first targeted build.
 - **Sitemap and robots:** `sitemap.xml` and `robots.txt` generation is skipped with a warning during targeted builds to prevent delisting pages that were not rebuilt. Run a full `bascik --build` to regenerate whole-site sitemaps.
-- **Owned artifact transactions:** `manifest.json`, `csp-hashes.json`, and `server-scripts.json` are reconciled from a durable source-to-output ownership inventory (`dist/.bascik/ownership.json`). Pages you rebuild are exactly replaced; pages you do not rebuild are retained untouched (for example, an untouched page's server script keeps resolving); outputs a rebuilt page no longer produces (such as a removed dynamic route) are pruned. All of this happens in one staged transaction, so a failed targeted build never corrupts the previous valid artifact set. Rebuilt-only pruning means a source page deleted without a later targeted build is pruned by a full build.
+- **Owned artifact transactions:** `manifest.json`, `csp-hashes.json`, and `server-scripts.json` are reconciled from a durable source-to-output ownership inventory (`.bascik/dist/ownership.json`). Pages you rebuild are exactly replaced; pages you do not rebuild are retained untouched (for example, an untouched page's server script keeps resolving); outputs a rebuilt page no longer produces (such as a removed dynamic route) are pruned. All of this happens in one staged transaction, so a failed targeted build never corrupts the previous valid artifact set. Rebuilt-only pruning means a source page deleted without a later targeted build is pruned by a full build.
 
 ## Serverless bundles (`--target`)
 
@@ -589,7 +589,7 @@ Then open the URL printed by `http-server` (default: `http://127.0.0.1:8080`).
 
 ## Editor setup and output inspection
 
-**VS Code false positives.** Editors validate multiple `<script>` blocks in an HTML file as if they shared one scope. Bascik wraps each component script block in an IIFE at build time, so those editor warnings can be misleading. In VS Code, disable the project-level script validation:
+**VS Code false positives.** VS Code's built-in HTML checker joins every classic `<script>` (one without `type="module"`) in a file into one JavaScript file, so two Bascik scripts that each `export default` show "A module cannot have multiple default exports." Bascik runs each build and server script on its own, and wraps each component script in its own scope, so that error is false. Plain `<script>` blocks in a page still share the browser's global scope, so the same top-level `const` in two page scripts is a real error. `npm create bascik` and `bascik init` turn this check off in `.vscode/settings.json`, and the [Bascik extension](/tools/vscode-extension#several-scripts-in-one-file) offers to add it in a Bascik workspace that has no value set. For other projects, add this to `.vscode/settings.json`:
 
 ```json
 {

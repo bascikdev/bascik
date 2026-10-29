@@ -180,7 +180,7 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       )?.[1];
       expect(h2Class).toBeDefined();
       expect(synthHtml).toContain(`> .${h2Class}`);
-      expect(existsSync(join(dir, "dist/.bascik/server-scripts.json"))).toBe(
+      expect(existsSync(join(dir, ".bascik/dist/server-scripts.json"))).toBe(
         true,
       );
     } finally {
@@ -700,8 +700,8 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       expect(html).toContain(
         '<bandcamp-player id="literal-player" class="literal-cls"><span id="inner-id">Audio</span></bandcamp-player>',
       );
-      expect(existsSync(join(dir, "dist/.bascik/csp-hashes.json"))).toBe(true);
-      expect(existsSync(join(dir, "dist/.bascik/manifest.json"))).toBe(true);
+      expect(existsSync(join(dir, ".bascik/dist/csp-hashes.json"))).toBe(true);
+      expect(existsSync(join(dir, ".bascik/dist/manifest.json"))).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

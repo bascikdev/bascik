@@ -27,6 +27,7 @@ import { BascikConfig } from "./config.ts";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { privateDirFor } from "./private-dir.ts";
 
 describe("manifestCollector", () => {
   beforeEach(() => {
@@ -48,12 +49,13 @@ describe("manifestCollector", () => {
 
     await manifestCollector.writeManifest("1.0.0");
     await expect(
-      readFile(join(outDir, ".bascik", "manifest.json")),
+      readFile(join(privateDirFor(outDir), "manifest.json")),
     ).rejects.toThrow();
     await rm(outDir, { recursive: true, force: true });
+    await rm(privateDirFor(outDir), { recursive: true, force: true });
   });
 
-  it("generate.manifest: true writes dist/.bascik/manifest.json", async () => {
+  it("generate.manifest: true writes .bascik/dist/manifest.json", async () => {
     const outDir = join(tmpdir(), `bascik-manifest-test-${Date.now()}`);
     BascikConfig.directory.out = outDir;
 
@@ -66,7 +68,7 @@ describe("manifestCollector", () => {
     await manifestCollector.writeManifest("1.0.0");
 
     const manifestContent = await readFile(
-      join(outDir, ".bascik", "manifest.json"),
+      join(privateDirFor(outDir), "manifest.json"),
       "utf8",
     );
     const parsed = JSON.parse(manifestContent);
@@ -80,6 +82,7 @@ describe("manifestCollector", () => {
     expect(parsed.files["styles.css"]).toBeDefined();
 
     await rm(outDir, { recursive: true, force: true });
+    await rm(privateDirFor(outDir), { recursive: true, force: true });
   });
 
   it("excludes the manifest file itself from manifest entries", async () => {
@@ -87,7 +90,7 @@ describe("manifestCollector", () => {
     BascikConfig.directory.out = outDir;
 
     manifestCollector.recordFile(
-      join(outDir, ".bascik", "manifest.json"),
+      join(privateDirFor(outDir), "manifest.json"),
       "{}",
     );
     manifestCollector.recordFile(
@@ -100,6 +103,7 @@ describe("manifestCollector", () => {
     expect(files["page.html"]).toBeDefined();
 
     await rm(outDir, { recursive: true, force: true });
+    await rm(privateDirFor(outDir), { recursive: true, force: true });
   });
 
   it("normalizes paths relative to outDir with forward slashes on every platform", () => {
@@ -135,7 +139,7 @@ describe("manifestCollector", () => {
     manifestCollector.recordFile(join(outDir, "index.html"), "<h1>Home</h1>");
     await manifestCollector.writeManifest("1.0.0");
     const run1 = await readFile(
-      join(outDir, ".bascik", "manifest.json"),
+      join(privateDirFor(outDir), "manifest.json"),
       "utf8",
     );
 
@@ -143,7 +147,7 @@ describe("manifestCollector", () => {
     await new Promise((r) => setTimeout(r, 10));
     await manifestCollector.writeManifest("1.0.0");
     const run2 = await readFile(
-      join(outDir, ".bascik", "manifest.json"),
+      join(privateDirFor(outDir), "manifest.json"),
       "utf8",
     );
 
@@ -153,5 +157,6 @@ describe("manifestCollector", () => {
     expect(run1).not.toContain("buildTime");
 
     await rm(outDir, { recursive: true, force: true });
+    await rm(privateDirFor(outDir), { recursive: true, force: true });
   });
 });

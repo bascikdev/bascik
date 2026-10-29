@@ -450,11 +450,11 @@ generate: {
   robots: true,          // write robots.txt
   sitemapLastmod: false, // include lastmod timestamps
   cspHashes: false,      // generate CSP hash manifest (contentSecurityPolicy turns it on)
-  manifest: false,       // write dist/.bascik/manifest.json build manifest
+  manifest: false,       // write .bascik/dist/manifest.json build manifest
 }
 ```
 
-When `generate.manifest` is enabled (default `false`), Bascik records every emitted file in `directory.out` and writes `dist/.bascik/manifest.json`. The manifest contains the Bascik version and an inventory of all emitted files with forward-slash output-relative paths, SHA-256 content hashes, and byte sizes, sorted byte-wise by path. Because `dist/.bascik/` is dot-prefixed, it is protected by Bascik's dot-segment request guard and is never served over HTTP.
+When `generate.manifest` is enabled (default `false`), Bascik records every emitted file in `directory.out` and writes `.bascik/dist/manifest.json`. The manifest contains the Bascik version and an inventory of all emitted files with forward-slash output-relative paths, SHA-256 content hashes, and byte sizes, sorted byte-wise by path. The manifest lists the files in `dist/`, what a deploy publishes; it lives in the private build folder beside `dist/`, so it is never deployed or served (see [What is the `.bascik/` folder?](/faq#what-is-the-bascik-folder)).
 
 ### `pipeline`
 
@@ -659,7 +659,7 @@ contentSecurityPolicy: {
 }
 ```
 
-`directives` maps each directive to its sources, written as in a header, with keywords such as `'self'` and `'none'` in single quotes. With `hashes` on, Bascik appends each route's inline script hashes to `script-src` and style hashes to `style-src` from `dist/.bascik/csp-hashes.json`, so setting the option turns on `generate.cspHashes`. A directive you wrote is only extended (a lone `'none'` is replaced by the hashes), and `script-src-elem` and `style-src-elem` get the hashes too when you write them. A missing `script-src` or `style-src` is created from your `default-src` sources plus the hashes, so `default-src 'none'` yields a directive with only the hashes; with no `default-src` either, none is created. Bascik never adds a source you did not write. `hashes: { scripts: true, styles: false }` hashes one kind only, and a directive that lists `'unsafe-inline'` gets no hashes, because a hash would turn `'unsafe-inline'` off; either keeps inline `style="..."` attributes working under `style-src 'self' 'unsafe-inline'`. The hashes come from the build, never from a response body. The dev server, `bascik --server` and the Cloudflare Worker send the header; on Cloudflare, static pages get exact-path rules in the generated `public/_headers`. See [Content Security Policy](/how-to/content-security-policy) for a recipe per host.
+`directives` maps each directive to its sources, written as in a header, with keywords such as `'self'` and `'none'` in single quotes. With `hashes` on, Bascik appends each route's inline script hashes to `script-src` and style hashes to `style-src` from `.bascik/dist/csp-hashes.json`, so setting the option turns on `generate.cspHashes`. A directive you wrote is only extended (a lone `'none'` is replaced by the hashes), and `script-src-elem` and `style-src-elem` get the hashes too when you write them. A missing `script-src` or `style-src` is created from your `default-src` sources plus the hashes, so `default-src 'none'` yields a directive with only the hashes; with no `default-src` either, none is created. Bascik never adds a source you did not write. `hashes: { scripts: true, styles: false }` hashes one kind only, and a directive that lists `'unsafe-inline'` gets no hashes, because a hash would turn `'unsafe-inline'` off; either keeps inline `style="..."` attributes working under `style-src 'self' 'unsafe-inline'`. The hashes come from the build, never from a response body. The dev server, `bascik --server` and the Cloudflare Worker send the header; on Cloudflare, static pages get exact-path rules in the generated `public/_headers`. See [Content Security Policy](/how-to/content-security-policy) for a recipe per host.
 
 The option is validated at startup with the location of each problem:
 
@@ -687,14 +687,14 @@ Bascik changes what you wrote only to protect it, and every such change has a sw
 Which keys apply when:
 
 - `blockScriptUrls`, `blockCodeBindings` and `stripDirectiveScripts` act on pages and components at build time. The build records the two binding settings in the component manifest, so the components your server scripts return at request time follow the same rules on every host. Set them in the default or `build` export; in the `server` export they have no effect and Bascik warns.
-- `headers`, `hsts` and `privateDynamicPages` act on responses. The dev server and `bascik --server` read their own config, so the `server` export can change them. The Cloudflare Worker has no config at request time: it uses the values from the build (the default export plus `build`), as it does for `scripts.timeout`. On Cloudflare, static files are served by the platform, not the Worker; see [Security settings on Cloudflare](/deployment/cloudflare#security-settings-on-cloudflare).
+- `headers`, `hsts` and `privateDynamicPages` act on responses. The dev server and `bascik --server` read their own config, so the `server` export can change them. The Cloudflare Worker has no config at request time: it uses the values from the build (the default export plus `build`), as it does for `scripts.timeout`. On Cloudflare, static files are served by the platform, not the Worker, so the build writes `headers` and `hsts` into the generated `public/_headers` for them; see [Security settings on Cloudflare](/deployment/cloudflare#security-settings-on-cloudflare).
 - `hideDotfiles` acts twice: the build decides whether dotfiles in `src/pages` are published, and the server whether it answers them. Set it in the default export so both agree; when the `build` and `server` exports give it different values, Bascik warns, because dotfiles are then either left out of the build or published but answered with 404.
 
 See [Turning protections off](/security#turning-protections-off) for when turning one off is reasonable.
 
 ### `security.headers`
 
-`true` (the default) sends these five headers on every response from the dev server and `bascik --server`, and on every response the Cloudflare Worker answers. Static files on Cloudflare (pages without server scripts, images, CSS) are served by the platform without the Worker, so they get none of these headers unless you add them; see [Security settings on Cloudflare](/deployment/cloudflare#security-settings-on-cloudflare).
+`true` (the default) sends these five headers on every response from the dev server and `bascik --server`, and on every response the Cloudflare Worker answers. Static files on Cloudflare (pages without server scripts, images, CSS) are served by the platform without the Worker, so the build writes the same headers into one site-wide rule in the generated `public/_headers`; see [Security settings on Cloudflare](/deployment/cloudflare#security-settings-on-cloudflare).
 
 | Header                         | Value                             | What it does                                                                                                                                                            |
 | ------------------------------ | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -724,7 +724,7 @@ Only these five names are accepted. `strict-transport-security` is set with [`se
 
 **Changed default.** Bascik used to send `max-age=31536000; includeSubDomains`. It now sends `max-age=31536000` without `includeSubDomains`, because `includeSubDomains` forces every subdomain of your site onto HTTPS for a year, including ones Bascik does not serve and that may not have a certificate. Browsers that already received the old header keep it until it expires.
 
-The header is sent only over HTTPS: on a TLS server (`http.tls.enabled` with `bascik --server`), on a request whose scheme is `https`, or under `http.trustProxy` when the proxy says `x-forwarded-proto: https`. The Cloudflare Worker sends it on `https://` requests it answers; static files on Cloudflare are served by the platform without the Worker and get no HSTS from Bascik, so set it there as described in [Security settings on Cloudflare](/deployment/cloudflare#security-settings-on-cloudflare).
+The header is sent only over HTTPS: on a TLS server (`http.tls.enabled` with `bascik --server`), on a request whose scheme is `https`, or under `http.trustProxy` when the proxy says `x-forwarded-proto: https`. The Cloudflare Worker sends it on `https://` requests it answers. Static files on Cloudflare are served by the platform without the Worker, so the build writes the header into the site-wide rule of the generated `public/_headers`, which sends it on every response; a browser ignores HSTS over plain HTTP. See [Security settings on Cloudflare](/deployment/cloudflare#security-settings-on-cloudflare).
 
 ```ts
 security: {

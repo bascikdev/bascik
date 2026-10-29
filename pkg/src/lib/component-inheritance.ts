@@ -2,6 +2,8 @@ import { ATTR_VALUE, scanWholeAttributes } from "./component-attribute-scan.ts";
 import { maskRawTextContent } from "./component-masking.ts";
 import {
   BLOCKED_URL,
+  BLOCKED_URL_REASONS,
+  blockedUrlKind,
   decodeAttributeEntities,
   urlSlot,
   urlVerdict,
@@ -196,16 +198,19 @@ export const mergeAttributesOntoRoot = (
     if (!merges && (written === undefined || existingAttrs.has(lowerName)))
       continue;
     let value = written;
-    if (
+    const decoded =
       !merges &&
       policy.blockScriptUrls &&
       urlSlot(rootName, lowerName) !== null &&
-      urlSlot(usageName, lowerName) === null &&
-      urlVerdict(rootName, lowerName, decodeAttributeEntities(written)) ===
-        "blocked"
+      urlSlot(usageName, lowerName) === null
+        ? decodeAttributeEntities(written)
+        : undefined;
+    if (
+      decoded !== undefined &&
+      urlVerdict(rootName, lowerName, decoded) === "blocked"
     ) {
       warn(
-        `inherited attribute ${name} received a URL that can run script (such as javascript:), so ${name} on the root <${rootName}> is set to ${BLOCKED_URL}.`,
+        `inherited attribute ${name} received ${BLOCKED_URL_REASONS[blockedUrlKind(rootName, lowerName, decoded)]}, so ${name} on the root <${rootName}> is set to ${BLOCKED_URL}.`,
       );
       value = BLOCKED_URL;
     }

@@ -11,6 +11,7 @@ import {
 } from "./check.ts";
 import type { LanguageServerDiagnostic } from "./check-language-server.ts";
 import type { ComponentList } from "./types.ts";
+import { privateDirFor } from "./private-dir.ts";
 
 const {
   listPagesMock,
@@ -1611,7 +1612,8 @@ describe("checkProject – request-time component rendering (prompt 157)", () =>
       await writeFile(abs, content);
     }
     const distDir = join(workDir, "dist");
-    await mkdir(join(distDir, ".bascik"), { recursive: true });
+    await mkdir(privateDirFor(distDir), { recursive: true });
+    await mkdir(distDir, { recursive: true });
     // A doctype keeps the dist/ HTML spec check (parse5) out of the count.
     await writeFile(
       join(distDir, "index.html"),
@@ -1620,7 +1622,7 @@ describe("checkProject – request-time component rendering (prompt 157)", () =>
         : "<!doctype html><p>a</p>",
     );
     await writeFile(
-      join(distDir, ".bascik", "server-scripts.json"),
+      join(privateDirFor(distDir), "server-scripts.json"),
       JSON.stringify({
         version: "1",
         schema: 3,
@@ -1827,7 +1829,7 @@ describe("checkProject – request-time component rendering (prompt 157)", () =>
     await writeDist(sources(workDir), { pageEntries: true, manifest: false });
     (BascikConfig as any).generate = { ...originalGenerate, cspHashes: true };
     await writeFile(
-      join(workDir, "dist", ".bascik", "components.json"),
+      join(workDir, ".bascik", "dist", "components.json"),
       JSON.stringify({
         schema: 1,
         identifiers: true,

@@ -583,7 +583,7 @@ describe("serverless parity: failed deployment assembly", () => {
     try {
       await buildServerlessFixture(root, "cloudflare-pages");
       const { readFile, writeFile, stat } = await import("node:fs/promises");
-      const sidecarPath = join(root, "dist/.bascik/server-scripts.json");
+      const sidecarPath = join(root, ".bascik/dist/server-scripts.json");
       const sidecar = JSON.parse(await readFile(sidecarPath, "utf8")) as {
         scripts: Record<string, unknown>;
       };
@@ -1983,6 +1983,47 @@ describe.each(Object.keys(TOGGLE_CASES) as (keyof typeof TOGGLE_CASES)[])(
       }
     });
 
+    // Static files on Cloudflare are served by the asset layer, which takes
+    // the headers from the generated public/_headers; the Worker sets them on
+    // what it renders. Node sends HSTS over https only, and the asset layer
+    // sends it on every response (a browser ignores it over http), so HSTS
+    // is compared between the two Cloudflare responses over https.
+    it("a static page and a Worker-rendered page from the same build send Node's security headers, each once", async () => {
+      const names = [
+        "x-content-type-options",
+        "x-frame-options",
+        "referrer-policy",
+        "cross-origin-opener-policy",
+        "cross-origin-resource-policy",
+      ];
+      const pick = (o: Observed, list = names) =>
+        Object.fromEntries(
+          list.filter((n) => n in o.headers).map((n) => [n, o.headers[n]]),
+        );
+      const https = async (path: string) =>
+        observe(
+          await cloudflare.mf.dispatchFetch(`https://example.test${path}`),
+        );
+      const nodeStatic = await observe(await fetch(new URL("/", node.url)));
+      const nodeDynamic = await observe(
+        await fetch(new URL("/toggles", node.url)),
+      );
+      const cfStatic = await https("/");
+      const cfDynamic = await https("/toggles");
+      expect(cfStatic.status).toBe(200);
+      expect(cfDynamic.status).toBe(200);
+      expect(pick(nodeStatic)).toEqual(pick(nodeDynamic));
+      expect(pick(cfStatic)).toEqual(pick(nodeStatic));
+      expect(pick(cfDynamic)).toEqual(pick(nodeStatic));
+      const withHsts = [...names, "strict-transport-security"];
+      expect(pick(cfStatic, withHsts)).toEqual(pick(cfDynamic, withHsts));
+      expect(cfStatic.headers["strict-transport-security"]).toBe(
+        off ? undefined : "max-age=31536000",
+      );
+      for (const value of Object.values(pick(cfStatic, withHsts)))
+        expect(value).not.toContain(",");
+    });
+
     it("dynamic-page cache-control", async () => {
       const r = await both("/toggles");
       for (const o of [r.node, r.cf])
@@ -2004,7 +2045,8 @@ describe.each(Object.keys(TOGGLE_CASES) as (keyof typeof TOGGLE_CASES)[])(
     });
 
     // On a case-insensitive filesystem (macOS, Windows) these open
-    // dist/.bascik, which holds every server script's source.
+    // dist/.bascik, which holds the deployment folder (a Worker bundle
+    // carries server script source).
     it.each([
       "/.BASCIK/server-scripts.json",
       "/.Bascik/components.json",

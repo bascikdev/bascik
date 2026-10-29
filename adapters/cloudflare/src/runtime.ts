@@ -60,6 +60,7 @@ import {
   pageLookupCandidates,
   stripAnsiEscapeCodes,
   contentSecurityPolicyHeader,
+  DEFAULT_RESPONSE_SECURITY,
   type ApiRouteDefinition,
   type ContentSecurityPolicyConfig,
   type CspRouteHashes,
@@ -172,6 +173,17 @@ export interface SiteGraph {
    * `security.privateDynamicPages`, resolved. Absent: the defaults.
    */
   responseSecurity?: ResponseSecurity;
+  /**
+   * Set when the Worker runs before every static file (`run_worker_first:
+   * true` in the authored wrangler config): the build writes no `_headers`
+   * rules, and the Worker adds the security headers, and each listed static
+   * page's CSP, to what the asset layer returns. A header the response
+   * already has (from the author's own `_headers`) is kept.
+   */
+  assetHeaders?: {
+    /** Static pages (paths without the base) whose CSP the Worker sends. */
+    cspRoutes: string[];
+  };
   /** The build's `security.hideDotfiles`. Absent: true. */
   hideDotfiles?: boolean;
   /** The build's `scripts.stripAnsi`. Absent: true. */
@@ -408,6 +420,7 @@ export const createCloudflareWorker = (
   // response builder so pages, API responses and errors agree with Node.
   const security = graph.responseSecurity;
   const hideDotfiles = graph.hideDotfiles !== false;
+  const assetCspRoutes = new Set(graph.assetHeaders?.cspRoutes ?? []);
 
   /** The opt-in CSP header, from the build's hashes for this page (never its body). */
   const setPageCsp = (headers: Headers, path: string): void => {
@@ -433,7 +446,44 @@ export const createCloudflareWorker = (
         security,
       });
     }
-    return env.ASSETS.fetch(request);
+    const response = await env.ASSETS.fetch(request);
+    return graph.assetHeaders ? withAssetHeaders(request, response) : response;
+  };
+
+  /** The headers _headers would have given a static file, sent by the Worker instead. */
+  const withAssetHeaders = (request: Request, response: Response): Response => {
+    const headers = new Headers(response.headers);
+    const resolved = security ?? DEFAULT_RESPONSE_SECURITY;
+    for (const [name, value] of Object.entries(resolved.headers))
+      if (!headers.has(name)) headers.set(name, value);
+    if (
+      isHttps(request) &&
+      resolved.hsts !== null &&
+      !headers.has("strict-transport-security")
+    )
+      headers.set("strict-transport-security", resolved.hsts);
+    const csp = graph.contentSecurityPolicy;
+    let path: string | null = null;
+    try {
+      path = stripBase(
+        decodeURIComponent(new URL(request.url).pathname),
+        graph.base,
+      );
+    } catch {
+      path = null;
+    }
+    if (csp && path !== null && assetCspRoutes.has(path)) {
+      const { name, value } = contentSecurityPolicyHeader(
+        csp.policy,
+        csp.hashes[path],
+      );
+      if (!headers.has(name)) headers.set(name, value);
+    }
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
   };
 
   const fetchHandler = async (

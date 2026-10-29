@@ -176,6 +176,7 @@ import {
   PageProcessingAggregateError,
   PageProcessingError,
 } from "./lib/processing.ts";
+import { privateDirFor } from "./lib/private-dir.ts";
 
 describe("runTranspile", () => {
   beforeEach(() => {
@@ -211,6 +212,7 @@ describe("runTranspile", () => {
     // Post follows compilation, not the parallel join.
     expect(_callOrder).toEqual([
       "cleanOutput",
+      "cleanOutput", // the private folder, then the output
       "runExecPhase:pre",
       "startExecParallel",
       "watchFiles",
@@ -283,6 +285,7 @@ describe("runTranspile", () => {
         _callOrder.filter((step) => step !== "startExecParallel:settled"),
       ).toEqual([
         "cleanOutput",
+        "cleanOutput", // the private folder, then the output
         "runExecPhase:pre",
         "startExecParallel",
         "startServer",
@@ -352,12 +355,35 @@ describe("runTranspile", () => {
     } finally {
       logSpy.mockRestore();
     }
-    expect(_mockRm).toHaveBeenCalledTimes(1);
-    const [, options] = _mockRm.mock.calls[0] as [
+    // The private folder beside the output directory (private-dir.ts),
+    // then the output directory, each once and without retries.
+    expect(_mockRm).toHaveBeenCalledTimes(2);
+    const [[priv, privOptions], [out, options]] = _mockRm.mock.calls as [
       string,
       Record<string, unknown>,
-    ];
+    ][];
     expect(options).toEqual({ recursive: true, force: true });
+    expect(privOptions).toEqual({ recursive: true, force: true });
+    expect(priv).toBe(privateDirFor(out));
+    expect(priv.startsWith(`${out}/`)).toBe(false);
+  });
+
+  it("names the private build folder when it cannot be cleared, before touching the output", async () => {
+    (BascikConfig as any).isBuild = true;
+    _parallel.release();
+    const busy = Object.assign(new Error("EACCES: permission denied"), {
+      code: "EACCES",
+    });
+    _mockRm.mockRejectedValueOnce(busy);
+    const failure = await runTranspile().then(
+      () => null,
+      (err: unknown) => err as Error,
+    );
+    expect(failure!.message).toMatch(
+      /Could not clear the private build folder \S*[\\/]\.bascik[\\/]dist \(EACCES\)/,
+    );
+    // The output directory is left as it was.
+    expect(_mockRm).toHaveBeenCalledTimes(1);
   });
 
   it("names the output directory and the likely cause when the clean still fails", async () => {
@@ -367,7 +393,8 @@ describe("runTranspile", () => {
       new Error("ENOTEMPTY: directory not empty, rmdir '/project/dist'"),
       { code: "ENOTEMPTY" },
     );
-    _mockRm.mockRejectedValueOnce(busy);
+    // The private folder clears; the output directory does not.
+    _mockRm.mockResolvedValueOnce(undefined).mockRejectedValueOnce(busy);
 
     const failure = await runTranspile().then(
       () => null,

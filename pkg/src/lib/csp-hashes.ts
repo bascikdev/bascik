@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { readStartTagAttributes, scanHtml } from "./html-scanner.ts";
 import {
@@ -9,6 +9,7 @@ import {
   type ElementScanOptions,
 } from "./element-content-scan.ts";
 import type { PageCspHashes } from "./types.ts";
+import { ensurePrivateDir } from "./private-dir.ts";
 
 export type CspHashesManifest = Record<string, PageCspHashes>;
 
@@ -258,9 +259,10 @@ class CspHashCollector {
       return null;
     }
 
-    const outDir = resolve(process.cwd(), BascikConfig.directory.out);
-    const cspPath = join(outDir, ".bascik", "csp-hashes.json");
-    await mkdir(dirname(cspPath), { recursive: true });
+    const cspPath = join(
+      await ensurePrivateDir(BascikConfig.directory.out),
+      "csp-hashes.json",
+    );
 
     // Prompt 101: the collector writes exactly what THIS process recorded. The
     // ownership reconciliation (preserve-and-prune in fresh targeted builds)

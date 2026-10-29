@@ -11,7 +11,7 @@ Bascik sends no policy by default. Which origins to trust, whether a library nee
 Three ways to use the hashes:
 
 - **`contentSecurityPolicy`** in `bascik.config.ts` sends a header with your directives plus each route's hashes, on the Node servers and on Cloudflare. This is the simplest path; see [Send the header with contentSecurityPolicy](#send-the-header-with-contentsecuritypolicy).
-- **`generate.cspHashes: true`** writes `dist/.bascik/csp-hashes.json`, mapping each page to the hashes of its inline scripts and styles. Read it from a step that runs after the build finishes, such as a deploy command or a CI step.
+- **`generate.cspHashes: true`** writes `.bascik/dist/csp-hashes.json`, mapping each page to the hashes of its inline scripts and styles. Read it from a step that runs after the build finishes, such as a deploy command or a CI step.
 - **Hash the built HTML yourself** in a `post` exec script. Use this when you want to change the pages themselves, as in the recipe below. A `post` script cannot read `csp-hashes.json`, because Bascik finalizes that file after `post` scripts settle. See [Exec Scripts](/exec-scripts).
 
 ## Send the header with contentSecurityPolicy
@@ -59,7 +59,7 @@ bascik --build && bascik --server
 curl -I http://localhost:8080/
 ```
 
-The response carries `content-security-policy: default-src 'self'; script-src 'self' https://cdn.example.com 'sha256-...'`. Static pages, pages with server and stream scripts (streamed ones too, since the header comes from the build before the body), `HEAD` requests and `304` responses all get it. The server reads `dist/.bascik/csp-hashes.json` once when it starts.
+The response carries `content-security-policy: default-src 'self'; script-src 'self' https://cdn.example.com 'sha256-...'`. Static pages, pages with server and stream scripts (streamed ones too, since the header comes from the build before the body), `HEAD` requests and `304` responses all get it. The server reads `.bascik/dist/csp-hashes.json` once when it starts.
 
 ### Development server
 
@@ -67,7 +67,7 @@ The same option works on `bascik`: the dev server sends the header with the hash
 
 ### Cloudflare
 
-With `bascik --build --target cloudflare`, the Worker sends the header on every page it renders (pages with server or stream scripts). Static pages are served by Cloudflare's asset layer without the Worker, so the build writes one exact-path rule per static page into the generated `public/_headers`, after any rules in your own `_headers`. Cloudflare reads at most 100 rules from `_headers`; a site whose static pages and own rules would need more fails the build with a message that names the count. Such a site can send every page through the Worker by setting `"assets": { "run_worker_first": true }` in its Wrangler config, so the Worker sends the header on every page; the [custom Worker wrapper](/deployment/cloudflare#composition-and-custom-worker-wrappers) does the same and adds other headers.
+With `bascik --build --target cloudflare`, the Worker sends the header on every page it renders (pages with server or stream scripts). Static pages are served by Cloudflare's asset layer without the Worker, so the build writes one exact-path rule per static page into the generated `public/_headers`, right after the site-wide [security headers rule](/deployment/cloudflare#security-settings-on-cloudflare) and before your own rules. A page you already have a rule for gets the header in your rule. A `Content-Security-Policy` you set or remove with any rule that matches the page, `/blog/*` or `/*` as well as the exact path, wins there: Bascik writes no rule for that page, so it never sends two policies. Cloudflare reads at most 100 rules from `_headers` and skips any line over 2000 characters; a site whose static pages, own rules and the site-wide rule would need more rules, or a static page with so many inline scripts and styles that its policy line is over 2000 characters, fails the build with a message that names the count or the page. Such a site can send every page through the Worker by setting `"assets": { "run_worker_first": true }` in its Wrangler config: the build keeps that setting, writes no rules, and the Worker sends the header on every page, static ones included (Workers variant only; see [Sending every header from the Worker](/deployment/cloudflare#sending-every-header-from-the-worker)).
 
 Check a deployed preview with `curl -I https://your-preview.pages.dev/`.
 

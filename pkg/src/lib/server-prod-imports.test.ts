@@ -1,7 +1,7 @@
 /**
  * Prompt 157 remeasure: `bascik --server` loads only what serving needs.
  *
- * The prod server reads `dist/.bascik/components.json` and renders component
+ * The prod server reads `.bascik/dist/components.json` and renders component
  * tags at request time, but it never builds a manifest. Reaching the
  * manifest builder from the server pulled the whole build pipeline (build
  * scripts, the scoping recorder, the minifiers, the stylesheet pipeline) into

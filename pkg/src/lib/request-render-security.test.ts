@@ -821,7 +821,11 @@ describe("B. a usage attribute that becomes a URL only on the root's real tag ge
           message.includes(`<${c.name}> (`) &&
           message.includes(`components/${c.name}.html): `) &&
           message.includes(
-            `inherited attribute ${c.attr} received a URL that can run script`,
+            `inherited attribute ${c.attr} received ${
+              /^(&#100;|d)ata/i.test(c.value)
+                ? "a data: URL"
+                : "a script URL such as javascript:"
+            }, so ${c.attr} on the root <`,
           ),
       );
       if (!located)
@@ -846,7 +850,7 @@ describe("B. a usage attribute that becomes a URL only on the root's real tag ge
     const { html, host } = await renderAtRequest(manifest, usage);
     expect(rootAttrs(html, "inh-object").data).toBe("about:invalid");
     expect(host.warnOnce.mock.calls.map((call) => call[1])).toContain(
-      `[bascik] <inh-object> (components/inh-object.html): inherited attribute data received a URL that can run script (such as javascript:), so data on the root <object> is set to about:invalid. (in server-script output at "${HTTP_PATH}")`,
+      `[bascik] <inh-object> (components/inh-object.html): inherited attribute data received a data: URL, so data on the root <object> is set to about:invalid. (in server-script output at "${HTTP_PATH}")`,
     );
   });
 

@@ -48,7 +48,7 @@ Everything else is yours and is inherited as written, including your own `onclic
 In the demo below, the `https:` URL is kept and the `javascript:` URL becomes `about:invalid`. The first line of each code block names the file; it is an ordinary comment, so it also appears in the Output. The docs site blocks `<object>` embeds, so the Preview shows each embed's fallback text, and the difference is in the `data` attribute in the Output. The build prints this warning for the second usage:
 
 ```text
-<my-embed> (components/my-embed/my-embed.html): inherited attribute data received a URL that can run script (such as javascript:), so data on the root <object> is set to about:invalid.
+<my-embed> (components/my-embed/my-embed.html): inherited attribute data received a script URL such as javascript:, so data on the root <object> is set to about:invalid.
 ```
 
 <!-- demo:url-root-usage -->

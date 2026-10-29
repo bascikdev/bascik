@@ -63,9 +63,18 @@ const prose = (text: string): string =>
 /** The warning Bascik prints, rebuilt from the implementation's own template literals. */
 const implementationWarning = (): string => {
   const inheritance = readRepo("pkg/src/lib/component-inheritance.ts");
-  const message = /`(inherited attribute \$\{name\} received a URL[^`]*)`/.exec(
-    inheritance,
+  const message =
+    /`(inherited attribute \$\{name\} received \$\{BLOCKED_URL_REASONS\[[^\]]+\]\}[^`]*)`/.exec(
+      inheritance,
+    )?.[1];
+  // The demo's value is a javascript: URL, so the reason is the script one,
+  // spelled in url-safety.ts.
+  const script = /\bscript: "([^"]+)"/.exec(
+    readRepo("pkg/src/lib/url-safety.ts"),
   )?.[1];
+  expect(script, "BLOCKED_URL_REASONS.script in url-safety.ts").toBe(
+    "a script URL such as javascript:",
+  );
   expect(
     message,
     "the warning template in component-inheritance.ts",
@@ -85,6 +94,7 @@ const implementationWarning = (): string => {
       '${usage.fileName || "unknown file"}',
       "components/my-embed/my-embed.html",
     )
+    .replace(/\$\{BLOCKED_URL_REASONS\[[^\]]+\]\}/, script!)
     .replaceAll("${name}", "data")
     .replaceAll("${rootName}", "object")
     .replaceAll("${BLOCKED_URL}", "about:invalid");
@@ -131,7 +141,7 @@ describe("/attribute-inheritance: Attributes That Become URLs on the Root", () =
   it("quotes the exact warning Bascik prints, naming the component file", () => {
     const warning = implementationWarning();
     expect(warning).toBe(
-      "<my-embed> (components/my-embed/my-embed.html): inherited attribute data received a URL that can run script (such as javascript:), so data on the root <object> is set to about:invalid.",
+      "<my-embed> (components/my-embed/my-embed.html): inherited attribute data received a script URL such as javascript:, so data on the root <object> is set to about:invalid.",
     );
     const fence = /```text\n([\s\S]*?)\n```/.exec(sub)?.[1];
     expect(fence, "a ```text fence with the warning").toBe(warning);

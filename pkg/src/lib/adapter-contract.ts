@@ -70,7 +70,7 @@ export interface SiteGraph {
   apiRoutes: SiteGraphApiRoute[]; // sorted, with absolute filePath
   custom500?: string;
   importRoot: string; // absolute; for adapters that bundle
-  /** Present exactly when the build wrote dist/.bascik/components.json (sites with server or stream scripts). */
+  /** Present exactly when the build wrote .bascik/dist/components.json (sites with server or stream scripts). */
   components?: SiteGraphComponents;
   /**
    * Present exactly when `contentSecurityPolicy` is set: the policy, each

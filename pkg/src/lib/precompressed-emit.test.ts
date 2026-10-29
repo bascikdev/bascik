@@ -73,6 +73,7 @@ import {
   clearStaticRepresentationCache,
   getOnTheFlyCompressionCount,
 } from "./caching.ts";
+import { privateDirFor } from "./private-dir.ts";
 
 const exists = async (p: string): Promise<boolean> => {
   try {
@@ -120,6 +121,9 @@ describe("Prompt 140 - precompressed sidecar producer (http.precompress)", () =>
 
   afterEach(async () => {
     await rm(dist, { recursive: true, force: true }).catch(() => {});
+    await rm(privateDirFor(dist), { recursive: true, force: true }).catch(
+      () => {},
+    );
   });
 
   it("emits .br/.gz sidecars with .bmeta provenance for compressible assets above COMPRESSION_MIN_BYTES only", async () => {
@@ -163,7 +167,7 @@ describe("Prompt 140 - precompressed sidecar producer (http.precompress)", () =>
   it("records the sidecars in the manifest so the build inventory accounts for them", async () => {
     await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: false });
     const manifest = JSON.parse(
-      await readFile(join(dist, ".bascik", "manifest.json"), "utf8"),
+      await readFile(join(privateDirFor(dist), "manifest.json"), "utf8"),
     ) as {
       files: Record<string, { hash: string; size: number }>;
     };

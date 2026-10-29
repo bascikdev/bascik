@@ -24,6 +24,7 @@ import {
 import { toleratingExecFailure } from "./lib/exec-policy.ts";
 import { stdout as colorOut } from "./lib/colors.ts";
 import { pinServerUrl } from "./lib/pinned-banner.ts";
+import { privateDirFor } from "./lib/private-dir.ts";
 
 export const runTranspile = async (
   options: { exitOnError?: boolean } = {},
@@ -57,17 +58,26 @@ export const runTranspile = async (
     // usually wins the race and deletes the other process's output under it,
     // leaving it to serve or ship a partial tree with no error. Fail loudly
     // and say what is in the way instead of a bare ENOTEMPTY.
-    try {
-      await rm(outputDirectory, { recursive: true, force: true });
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException)?.code;
-      throw new Error(
-        `Could not clear the output directory ${outputDirectory}` +
-          `${code ? ` (${code})` : ""}: another bascik dev server or build ` +
-          `may be writing to it. Stop it, or give this one its own ` +
-          `directory.out.`,
-        { cause: err },
-      );
+    // The private folder beside it (private-dir.ts) belongs to the same
+    // build: a sidecar or manifest the new build does not write must not
+    // survive into it. It goes first, so a folder that cannot be cleared
+    // leaves the previous release's pages and artifacts in place together.
+    for (const [dir, what] of [
+      [privateDirFor(outputDirectory), "the private build folder"],
+      [outputDirectory, "the output directory"],
+    ] as const) {
+      try {
+        await rm(dir, { recursive: true, force: true });
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException)?.code;
+        throw new Error(
+          `Could not clear ${what} ${dir}` +
+            `${code ? ` (${code})` : ""}: another bascik dev server or build ` +
+            `may be writing to it. Stop it, or give this one its own ` +
+            `directory.out.`,
+          { cause: err },
+        );
+      }
     }
   }
 

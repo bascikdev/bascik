@@ -8,6 +8,7 @@
 import { cp, mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { vscodeReportLines, writeVscodeFiles } from "./vscode-settings.js";
 
 /** The agent skills bundled from the repo-root skills/ directory (copied in by prepare/prepack). */
 export const SKILLS_DIR = fileURLToPath(
@@ -94,14 +95,10 @@ export const PACKAGE_JSON = (
   );
 };
 
-export const VSCODE_EXTENSIONS_JSON =
-  JSON.stringify(
-    {
-      recommendations: ["bascik.bascik-vscode"],
-    },
-    null,
-    2,
-  ) + "\n";
+export {
+  VSCODE_EXTENSIONS_JSON,
+  VSCODE_SETTINGS_JSON,
+} from "./vscode-settings.js";
 
 export const VSCODE_LAUNCH_JSON =
   JSON.stringify(
@@ -1041,14 +1038,14 @@ export async function scaffold(
   projectName: string,
   targetDir: string = process.cwd(),
   options: { template?: Template } = {},
-): Promise<void> {
+): Promise<ScaffoldResult> {
   const root = join(targetDir, projectName);
   const template = options.template ?? "default";
   const cloudflare = template === "cloudflare";
+  const notes: string[] = [];
 
   // Create all directories up front
   await Promise.all([
-    mkdir(join(root, ".vscode"), { recursive: true }),
     ...SKILL_DESTINATIONS.map((dir) =>
       mkdir(join(root, ...dir.split("/")), { recursive: true }),
     ),
@@ -1083,12 +1080,14 @@ export async function scaffold(
       cloudflare ? CLOUDFLARE_GITIGNORE : GITIGNORE,
       "utf8",
     ),
-    writeFile(join(root, ".vscode", "launch.json"), VSCODE_LAUNCH_JSON, "utf8"),
-    writeFile(
-      join(root, ".vscode", "extensions.json"),
-      VSCODE_EXTENSIONS_JSON,
-      "utf8",
-    ),
+
+    // Editor: merged into any .vscode files the folder already has, never replaced
+    writeVscodeFiles(root).then(async (report) => {
+      notes.push(...vscodeReportLines(report));
+      if (!(await writeLaunchJsonIfAbsent(root))) {
+        notes.push(".vscode/launch.json: could not be written.");
+      }
+    }),
 
     // E2E
     writeFile(
@@ -1218,4 +1217,27 @@ export async function scaffold(
       "utf8",
     ),
   ]);
+
+  return { notes };
+}
+
+/** What `scaffold` wants the user to know, such as a file it could not merge. */
+export interface ScaffoldResult {
+  notes: string[];
+}
+
+/**
+ * Write launch.json unless the folder already has one, which stays as it is.
+ * Returns false when it could not be written, such as when `.vscode` is a file.
+ */
+async function writeLaunchJsonIfAbsent(root: string): Promise<boolean> {
+  try {
+    await writeFile(join(root, ".vscode", "launch.json"), VSCODE_LAUNCH_JSON, {
+      encoding: "utf8",
+      flag: "wx",
+    });
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EEXIST";
+  }
 }

@@ -5,6 +5,10 @@
       "path": "sample-workspace"
     },
     {
+      "name": "plain",
+      "path": "plain-workspace"
+    },
+    {
       "name": "secondary",
       "path": "secondary-workspace"
     }

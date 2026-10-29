@@ -131,9 +131,9 @@ The dev server watches component `.html` files, companion `.css` and script file
 
 Props are text. Bascik HTML-escapes them so markup from a CMS or an API cannot become an element or a script. Pass markup through a [slot](/slots) instead. See [Why is my prop value showing as escaped text?](/faq#why-is-my-prop-value-showing-as-escaped-text).
 
-### `<link-card> (components/link-card/link-card.html): data-bascik-attr-href="url" received a URL that can run script (such as javascript:), so href is set to about:invalid.`
+### `<link-card> (components/link-card/link-card.html): data-bascik-attr-href="url" received a script URL such as javascript:, so href is set to about:invalid.`
 
-A prop bound to a URL attribute (`href`, `src`, `srcset`, `action`, `formaction`, `poster`, SVG animation values, and the like) carried one of the script URLs such as `javascript:`, or a non-image `data:` URL, so the link points nowhere. An image slot such as `<img src>` keeps a `data:image/...` URL. Any `http:` or `https:` URL, another site's included, is kept. The value comes from the usage tag: a page at build time, or a server or stream script at request time, where it is often a visitor's input. Pass a relative or `https:` URL, or check it in the script with `safeUrl(value)` from `@bascik/bascik/html` before returning the tag. See [Put a Prop in an Attribute](/props#put-a-prop-in-an-attribute).
+A prop bound to a URL attribute (`href`, `src`, `srcset`, `action`, `formaction`, `poster`, SVG animation values, and the like) carried a script URL such as `javascript:`, so the link points nowhere. The same message says `received a data: URL` when the value was a `data:` URL that is not an image, and `inherited attribute data received ...` when the value reached the root through [attribute inheritance](/attribute-inheritance#attributes-that-become-urls-on-the-root). [Security](/security#what-bascik-guarantees) lists every scheme the check blocks. An image slot such as `<img src>` keeps a `data:image/...` URL. Any `http:` or `https:` URL, another site's included, is kept. The value comes from the usage tag: a page at build time, or a server or stream script at request time, where it is often a visitor's input. Pass a relative or `https:` URL, or check it in the script with `safeUrl(value)` from `@bascik/bascik/html` before returning the tag. See [Put a Prop in an Attribute](/props#put-a-prop-in-an-attribute).
 
 ### `<my-card> (components/my-card/my-card.html): Ignoring data-bascik-attr-onclick="action": an event handler's value is code, so a prop is never bound to one.`
 
@@ -236,11 +236,11 @@ Once `scripts.timeout` passes, the result is a timeout even if the script settle
 
 ### `Server script placeholder "..." could not be resolved from sidecar`
 
-`dist/` was produced by a different build than `dist/.bascik/server-scripts.json`, usually a targeted `--only` build on top of an older full build, a hand-edited `dist/`, or a `dist/` built by an older Bascik version. The related messages are `is marked stream in the HTML but server in the sidecar (stale sidecar)`, `uses schema N, expected M`, and `production startup validation failed`. Run a full `bascik --build` with the installed version and start the server again.
+`dist/` was produced by a different build than `.bascik/dist/server-scripts.json`, usually a targeted `--only` build on top of an older full build, a hand-edited `dist/`, or a `dist/` built by an older Bascik version. The related messages are `is marked stream in the HTML but server in the sidecar (stale sidecar)`, `uses schema N, expected M`, and `production startup validation failed`. Run a full `bascik --build` with the installed version and start the server again.
 
-### `--server: dist/.bascik/server-scripts.json has server-script entries but dist/.bascik/components.json is missing`
+### `--server: .bascik/dist/server-scripts.json has server-script entries but .bascik/dist/components.json is missing`
 
-Same family: a build that has server or stream scripts also writes a component manifest, used to render component tags those scripts return, and this `dist/` predates it or lost it. The related messages are `component manifest at ... uses schema N, but this runtime understands schema 1`, `component manifest at ... is malformed`, for `--target` builds, `the sidecar has server-script entries but dist/.bascik/components.json is missing`, and, at request time, `component script "<id>" is not listed in dist/.bascik/components.json` Each means `dist/` was not written by one full build of the installed version. Run `bascik --build` again. See [What is `dist/.bascik/`?](/faq#what-is-distbascik).
+Same family: a build that has server or stream scripts also writes a component manifest, used to render component tags those scripts return, and this `dist/` predates it or lost it. The related messages are `component manifest at ... uses schema N, but this runtime understands schema 1`, `component manifest at ... is malformed`, for `--target` builds, `the sidecar has server-script entries but .bascik/dist/components.json is missing`, and, at request time, `component script "<id>" is not listed in .bascik/dist/components.json` Each means `dist/` and `.bascik/dist/` were not written by one full build of the installed version. Run `bascik --build` again. See [What is the `.bascik/` folder?](/faq#what-is-the-bascik-folder).
 
 ### A component tag in script output reaches the browser as written
 
@@ -311,7 +311,7 @@ The demo below is the safe fallback in action. The help page's server script ret
 
 ### `Components a server or stream script cannot return`
 
-This `bascik --check` section lists the components a server or stream script cannot return, read from the last build's `dist/.bascik/components.json`, each with its reason, what triggered it, and the file and line:
+This `bascik --check` section lists the components a server or stream script cannot return, read from the last build's `.bascik/dist/components.json`, each with its reason, what triggered it, and the file and line:
 
 ```terminal
 Components a server or stream script cannot return (1)
@@ -346,7 +346,7 @@ Rendering one instance of a component the script returned threw. The full log li
 Rendering <echo-card> (components/echo-card/echo-card.html) from server-script output at "/echo" failed during slot resolution: Invalid string length
 ```
 
-The file is `src/components/echo-card/echo-card.html`, named the way `bascik --check` and the build's own diagnostics name it: relative to its component root. The build records that form in `dist/.bascik/components.json`, so `bascik`, `bascik --server`, and the Cloudflare Worker print the same path in this message, in the budget messages above, and in the dev log entries for returned tags.
+The file is `src/components/echo-card/echo-card.html`, named the way `bascik --check` and the build's own diagnostics name it: relative to its component root. The build records that form in `.bascik/dist/components.json`, so `bascik`, `bascik --server`, and the Cloudflare Worker print the same path in this message, in the budget messages above, and in the dev log entries for returned tags.
 
 The stage is one of `prop injection`, `slot resolution`, `attribute scoping`, `attribute inheritance`, or `substitution`, and the text after the colon is the underlying error. Each stage is string work on the component's template and the values on the tag, so the error you can cause is the JavaScript engine's string limit: `Invalid string length` means the instance would be longer than a string can be (about 536 million characters in V8, which Node and Cloudflare Workers both use). Here `echo-card.html` has 80 default slot markers, and the script passed 8 MB of slot content, so the copies outgrow the limit while the instance is built, before the output budgets measure the result. Pass less content to a component that repeats a slot or prop, or repeat it fewer times. Any other error text is a Bascik bug: report it with the tag the script returned.
 
@@ -672,7 +672,7 @@ In earlier versions, static asset ETags were derived from file modification time
 
 ### Inline scripts are blocked by my Content Security Policy
 
-Bascik inlines component scripts and styles and sets no CSP header itself. Turn on `generate.cspHashes: true` and feed `dist/.bascik/csp-hashes.json` to the host or CDN that sets the header. See [Content Security Policy](/how-to/content-security-policy).
+Bascik inlines component scripts and styles and sets no CSP header itself. Turn on `generate.cspHashes: true` and feed `.bascik/dist/csp-hashes.json` to the host or CDN that sets the header. See [Content Security Policy](/how-to/content-security-policy).
 
 ### Cloudflare: `"node:fs" (imported by ...) is not available in the Cloudflare Workers runtime`
 

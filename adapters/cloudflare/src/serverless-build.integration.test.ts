@@ -46,12 +46,16 @@ describe("serverless build artifacts (real build, cloudflare-pages)", () => {
     if (root) await cleanupServerlessFixture(root);
   });
 
-  it("leaves the default dist/ output unchanged (static tree with placeholders and sidecar)", async () => {
+  it("leaves the default dist/ output unchanged (static tree with placeholders; the sidecar beside it)", async () => {
     const account = await readFile(join(root, "dist", "account.html"), "utf8");
     expect(account).toContain('type="text/bascik-server"');
     await expect(
-      stat(join(root, "dist", ".bascik", "server-scripts.json")),
+      stat(join(root, ".bascik", "dist", "server-scripts.json")),
     ).resolves.toBeTruthy();
+    // dist/.bascik holds the deployment folder only, never a private file.
+    expect(await readdir(join(root, "dist", ".bascik"))).toEqual([
+      "cloudflare-pages",
+    ]);
   });
 
   it("emits a public tree with static files, the worker, and routing, and no dynamic templates", async () => {
@@ -153,11 +157,47 @@ describe("serverless build artifacts (real build, cloudflare-pages)", () => {
 
 describe("serverless build artifacts (real build, cloudflare-workers)", () => {
   let root: string;
+  let output: string;
 
   beforeAll(async () => {
     root = await createServerlessFixture("workers-build", { base: "/docs/" });
-    await buildServerlessFixture(root, "cloudflare-workers");
+    const { stdout, stderr } = await buildServerlessFixture(
+      root,
+      "cloudflare-workers",
+    );
+    output = `${stdout}${stderr}`;
   }, 120_000);
+
+  it("dist/ after a --target build is the site plus .bascik/cloudflare-workers/ (the Worker and its config), as the docs say, and the build says not to publish dist/", async () => {
+    const files = await listFiles(join(root, "dist"));
+    const bascik = files.filter((f) => f.startsWith(".bascik/"));
+    // Everything Bascik adds sits in the deploy folder.
+    expect(
+      bascik.every((f) => f.startsWith(".bascik/cloudflare-workers/")),
+    ).toBe(true);
+    expect(bascik).toContain(".bascik/cloudflare-workers/worker.js");
+    expect(bascik).toContain(".bascik/cloudflare-workers/wrangler.jsonc");
+    // The private build files are never in dist/.
+    expect(
+      files.some((f) =>
+        /(^|\/)(server-scripts|csp-hashes|ownership|build-state|components)\.json$/.test(
+          f,
+        ),
+      ),
+    ).toBe(false);
+    expect(output).toMatch(
+      /dist\/ now also holds dist\/\.bascik\/cloudflare-workers\/ \(the Worker and its config\)\. Deploy that folder; do not publish dist\/ to a static host\./,
+    );
+    // The deployment docs say the same.
+    const docs = await readFile(
+      resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        "../../../docs/content/deployment/static-hosting.md",
+      ),
+      "utf8",
+    );
+    expect(docs).toMatch(/--target[\s\S]{0,300}\.bascik\/<target>\//);
+  });
 
   afterAll(async () => {
     if (root) await cleanupServerlessFixture(root);
@@ -273,7 +313,7 @@ describe("serverless build artifacts: request-time components (prompt 157)", () 
 
       it("the bundle carries the manifest and the component scripts it names", async () => {
         const manifest = JSON.parse(
-          await readFile(join(root, "dist/.bascik/components.json"), "utf8"),
+          await readFile(join(root, ".bascik/dist/components.json"), "utf8"),
         ) as {
           components: Record<
             string,
@@ -287,6 +327,34 @@ describe("serverless build artifacts: request-time components (prompt 157)", () 
         expect(worker).toContain(liveJob.id);
         // The nested job's own source, not just its id.
         expect(worker).toContain("at request time");
+      });
+
+      // What the target deploys: Pages uploads public/; Workers uploads
+      // worker.js and the assets directory wrangler.jsonc names. A static
+      // host serves every file there, dotfiles included, so Bascik's
+      // private build folder must never be in it (Collin 2026-10-29).
+      it("the deployable output holds no .bascik folder at any depth", async () => {
+        const targetDir = join(root, "dist", ".bascik", target);
+        const isBascik = (rel: string) =>
+          rel
+            .split("/")
+            .some(
+              (seg) => seg.replace(/[. ]+$/, "").toLowerCase() === ".bascik",
+            );
+        const publicFiles = await listFiles(join(targetDir, "public"));
+        expect(publicFiles).toContain("index.html");
+        expect(publicFiles.filter(isBascik)).toEqual([]);
+        expect(publicFiles.some((f) => f.includes("server-scripts"))).toBe(
+          false,
+        );
+        expect(publicFiles).not.toContain("ownership.json");
+        if (target === "cloudflare-workers") {
+          const wrangler = JSON.parse(
+            await readFile(join(targetDir, "wrangler.jsonc"), "utf8"),
+          ) as { main: string; assets: { directory: string } };
+          expect(wrangler.main).toBe("worker.js");
+          expect(wrangler.assets.directory).toBe("./public");
+        }
       });
 
       it("the build notes report the manifest's size", () => {
@@ -339,7 +407,7 @@ export default {
     });
     try {
       await buildServerlessFixture(root, "cloudflare-pages");
-      await rm(join(root, "dist/.bascik/components.json"));
+      await rm(join(root, ".bascik/dist/components.json"));
       const script = `
         import { emitServerlessArtifacts } from ${JSON.stringify(resolve(dirname(fileURLToPath(import.meta.url)), "../../../pkg/dist/lib/serverless-artifacts.js"))};
         await emitServerlessArtifacts("cloudflare-pages", { version: "test" });
@@ -350,7 +418,7 @@ export default {
         { cwd: root, env: { ...process.env, BASCIK_BUILD: "1" } },
       ).catch((e: { stderr: string }) => e);
       expect(outcome.stderr).toContain(
-        "[bascik] --target: the sidecar has server-script entries but dist/.bascik/components.json is missing. Run `bascik --build` again.",
+        "[bascik] --target: the sidecar has server-script entries but .bascik/dist/components.json is missing. Run `bascik --build` again.",
       );
       await expect(
         stat(join(root, "dist/.bascik/cloudflare-pages/public/_worker.js")),

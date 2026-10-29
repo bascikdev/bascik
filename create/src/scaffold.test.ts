@@ -28,6 +28,7 @@ import {
   STYLES_CSS,
   VITE_CONFIG,
   VSCODE_LAUNCH_JSON,
+  VSCODE_SETTINGS_JSON,
   aboutPage,
   contactPage,
   edgePage,
@@ -36,19 +37,25 @@ import {
   scaffold,
   validateProjectName,
 } from "./scaffold.js";
+import { parseJsonc } from "./vscode-settings.js";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
 vi.mock("node:fs/promises", () => ({
   cp: vi.fn(async () => undefined),
   mkdir: vi.fn(async () => undefined),
+  // A new project folder has no files yet, so every read finds nothing.
+  readFile: vi.fn(async () => {
+    throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  }),
   writeFile: vi.fn(async () => undefined),
 }));
 
-import { cp, mkdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 
 const mockCp = cp as ReturnType<typeof vi.fn>;
 const mockMkdir = mkdir as ReturnType<typeof vi.fn>;
+const mockReadFile = readFile as ReturnType<typeof vi.fn>;
 const mockWriteFile = writeFile as ReturnType<typeof vi.fn>;
 
 vi.spyOn(console, "log").mockImplementation(() => {});
@@ -786,7 +793,12 @@ describe("page templates", () => {
 // ─── scaffold ─────────────────────────────────────────────────────────────────
 
 describe("scaffold", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockReadFile.mockImplementation(async () => {
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+  });
 
   it("creates all component, page, and e2e directories", async () => {
     await scaffold("my-app", "/tmp");
@@ -804,9 +816,9 @@ describe("scaffold", () => {
     expect(dirs.some((d) => d.includes("site-meta"))).toBe(true);
   });
 
-  it("writes all 26 expected files", async () => {
+  it("writes all 27 expected files", async () => {
     await scaffold("my-app", "/tmp");
-    expect(mockWriteFile.mock.calls.length).toBe(26);
+    expect(mockWriteFile.mock.calls.length).toBe(27);
   });
 
   it("writes E2E config and spec files", async () => {
@@ -868,6 +880,77 @@ describe("scaffold", () => {
     expect(JSON.parse(extensionsJson!).recommendations).toContain(
       "bascik.bascik-vscode",
     );
+    expect(writtenTo(".vscode/settings.json")).toBe(VSCODE_SETTINGS_JSON);
+  });
+
+  for (const template of ["default", "cloudflare"] as const) {
+    it(`turns off VS Code's inline-script check in the ${template} template`, async () => {
+      await scaffold("my-app", "/tmp", { template });
+      const settings = writtenTo(".vscode/settings.json");
+      expect(parseJsonc(settings!)).toEqual({
+        "html.validate.scripts": false,
+      });
+      expect(JSON.parse(writtenTo(".vscode/extensions.json")!)).toEqual({
+        recommendations: ["bascik.bascik-vscode"],
+      });
+    });
+  }
+
+  it("misuse: merges into .vscode files the target folder already has", async () => {
+    const existing: Record<string, string> = {
+      "settings.json": '{\n  // mine\n  "editor.tabSize": 4\n}\n',
+      "extensions.json": '{ "recommendations": ["esbenp.prettier-vscode"] }',
+    };
+    mockReadFile.mockImplementation(async (path: unknown) => {
+      const name = String(path).replace(/\\/g, "/").split("/").pop()!;
+      if (String(path).includes(".vscode") && name in existing) {
+        return existing[name];
+      }
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+    const result = await scaffold("my-app", "/tmp");
+    const settings = writtenTo(".vscode/settings.json")!;
+    expect(settings).toContain("// mine");
+    expect(parseJsonc(settings)).toEqual({
+      "html.validate.scripts": false,
+      "editor.tabSize": 4,
+    });
+    expect(parseJsonc(writtenTo(".vscode/extensions.json")!)).toEqual({
+      recommendations: ["bascik.bascik-vscode", "esbenp.prettier-vscode"],
+    });
+    expect(result.notes.join("\n")).toContain(
+      '.vscode/settings.json: added "html.validate.scripts": false',
+    );
+  });
+
+  it("misuse: leaves an unreadable settings file alone and says what to add", async () => {
+    mockReadFile.mockImplementation(async (path: unknown) => {
+      if (String(path).replace(/\\/g, "/").endsWith(".vscode/settings.json")) {
+        return "{ broken";
+      }
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+    const result = await scaffold("my-app", "/tmp");
+    expect(writtenTo(".vscode/settings.json")).toBeUndefined();
+    expect(result.notes.join("\n")).toContain('"html.validate.scripts": false');
+  });
+
+  it("misuse: keeps a launch.json the target folder already has", async () => {
+    mockWriteFile.mockImplementation(async (path: unknown, _data, options) => {
+      if (
+        String(path).replace(/\\/g, "/").endsWith(".vscode/launch.json") &&
+        (options as { flag?: string } | undefined)?.flag === "wx"
+      ) {
+        throw Object.assign(new Error("EEXIST"), { code: "EEXIST" });
+      }
+    });
+    const result = await scaffold("my-app", "/tmp");
+    mockWriteFile.mockImplementation(async () => undefined);
+    const launchCall = mockWriteFile.mock.calls.find((c) =>
+      String(c[0]).replace(/\\/g, "/").endsWith(".vscode/launch.json"),
+    );
+    expect(launchCall?.[2]).toMatchObject({ flag: "wx" });
+    expect(result.notes).toEqual([]);
   });
 
   it("writes all four pages", async () => {
@@ -963,8 +1046,8 @@ describe("scaffold", () => {
   describe("cloudflare template", () => {
     beforeEach(() => scaffold("my-app", "/tmp", { template: "cloudflare" }));
 
-    it("writes the 26 default files plus the edge page and API route", () => {
-      expect(mockWriteFile.mock.calls.length).toBe(28);
+    it("writes the 27 default files plus the edge page and API route", () => {
+      expect(mockWriteFile.mock.calls.length).toBe(29);
       const paths = allWrittenPaths();
       expect(paths).toContain("/tmp/my-app/src/pages/edge.html");
       expect(paths).toContain("/tmp/my-app/src/api/hello.ts");

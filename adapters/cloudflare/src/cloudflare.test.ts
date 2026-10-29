@@ -750,7 +750,7 @@ describe("createCloudflareWorker: components rendered from a built manifest (pro
     });
     await buildServerlessFixture(root, "cloudflare-pages");
     manifest = JSON.parse(
-      await readFile(join(root, "dist/.bascik/components.json"), "utf8"),
+      await readFile(join(root, ".bascik/dist/components.json"), "utf8"),
     ) as ComponentManifest;
   }, 120_000);
 

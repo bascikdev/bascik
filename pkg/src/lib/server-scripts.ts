@@ -298,7 +298,7 @@ export const planServerScripts = (
       if (!entry) {
         throw new Error(
           `[bascik] Server script placeholder "${placeholderId}" could not be resolved from sidecar. ` +
-            `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+            `Run \`bascik --build\` to regenerate .bascik/dist/server-scripts.json.`,
         );
       }
       // The sidecar entry is the source of truth for the mode; the marker on

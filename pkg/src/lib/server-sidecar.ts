@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { BascikConfig } from "./config.ts";
 import {
   STREAM_ATTR_NAME,
@@ -9,6 +9,7 @@ import {
 import { directiveSourceColumn } from "./directive-source.ts";
 import { replaceSpans } from "./element-content-scan.ts";
 import { OUTPUT_SCOPE_ATTRIBUTE } from "./output-scope.ts";
+import { ensurePrivateDir, privateDirFor } from "./private-dir.ts";
 
 /**
  * How a request-time script participates in the response (prompt 65).
@@ -152,9 +153,9 @@ class ServerSidecarRegistry {
   }
 
   async loadSidecar(sidecarPath?: string): Promise<SidecarLoadResult> {
-    const outDir = resolve(process.cwd(), BascikConfig.directory.out);
     const targetPath =
-      sidecarPath ?? join(outDir, ".bascik", "server-scripts.json");
+      sidecarPath ??
+      join(privateDirFor(BascikConfig.directory.out), "server-scripts.json");
     let parsed: ServerScriptsSidecar;
     try {
       const content = await readFile(targetPath, "utf8");
@@ -180,7 +181,7 @@ class ServerSidecarRegistry {
       this.sidecarPresent = false;
       throw new Error(
         `[bascik] --server: server scripts sidecar at ${targetPath} has a malformed "scripts" member. ` +
-          `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+          `Run \`bascik --build\` to regenerate .bascik/dist/server-scripts.json.`,
       );
     }
     // Schema incompatibility: an unknown version means the runtime and the
@@ -194,7 +195,7 @@ class ServerSidecarRegistry {
       throw new Error(
         `[bascik] --server: server scripts sidecar at ${targetPath} uses schema ${parsed.schema}, ` +
           `but this runtime understands schema ${SIDECAR_SCHEMA_VERSION}. ` +
-          `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+          `Run \`bascik --build\` to regenerate .bascik/dist/server-scripts.json.`,
       );
     }
     const scripts = scriptsRaw as Record<string, ServerScriptEntry>;
@@ -206,7 +207,7 @@ class ServerSidecarRegistry {
         this.sidecarPresent = false;
         throw new Error(
           `[bascik] --server: server scripts sidecar at ${targetPath} has a null or malformed entry "${id}". ` +
-            `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+            `Run \`bascik --build\` to regenerate .bascik/dist/server-scripts.json.`,
         );
       }
       if (entry.mode !== "server" && entry.mode !== "stream") {
@@ -214,7 +215,7 @@ class ServerSidecarRegistry {
         this.sidecarPresent = false;
         throw new Error(
           `[bascik] --server: server scripts sidecar at ${targetPath} is stale (entry "${id}" has no mode). ` +
-            `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+            `Run \`bascik --build\` to regenerate .bascik/dist/server-scripts.json.`,
         );
       }
     }
@@ -224,15 +225,17 @@ class ServerSidecarRegistry {
   }
 
   async writeSidecar(version: string = "unknown"): Promise<string | null> {
-    const outDir = resolve(process.cwd(), BascikConfig.directory.out);
-    const sidecarPath = join(outDir, ".bascik", "server-scripts.json");
+    const sidecarPath = join(
+      privateDirFor(BascikConfig.directory.out),
+      "server-scripts.json",
+    );
 
     // Even if no scripts were registered, if server-scripts.json exists or is requested, we write the sidecar
     if (this.scripts.size === 0) {
       return null;
     }
 
-    await mkdir(dirname(sidecarPath), { recursive: true });
+    await ensurePrivateDir(BascikConfig.directory.out);
 
     const sortedKeys = Array.from(this.scripts.keys()).sort((a, b) =>
       a < b ? -1 : a > b ? 1 : 0,

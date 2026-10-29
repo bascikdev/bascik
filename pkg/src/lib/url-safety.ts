@@ -210,6 +210,42 @@ export const urlVerdict = (
 };
 
 /**
+ * How a warning names what was blocked: a `data:` URL by its scheme, every
+ * other blocked URL as a script URL. The full scheme list lives on one docs
+ * page (/security), not in messages.
+ */
+export const BLOCKED_URL_REASONS = {
+  script: "a script URL such as javascript:",
+  data: "a data: URL",
+} as const;
+
+/** Why `urlVerdict` blocked `value`: `data` only when no blocked URL in it is another scheme. */
+export const blockedUrlKind = (
+  tag: string,
+  target: string,
+  value: string,
+): keyof typeof BLOCKED_URL_REASONS => {
+  const t = tag.toLowerCase();
+  const a = target.toLowerCase();
+  const slot = urlSlot(t, a);
+  const image = IMAGE_TARGETS.has(`${t} ${a}`);
+  const urls =
+    slot === "srcset"
+      ? srcsetUrls(value)
+      : slot === "ping"
+        ? value.split(/[\t\n\f\r ]+/)
+        : slot === "animation"
+          ? value.split(";")
+          : [value];
+  const blocked = urls.filter(
+    (url) => url !== "" && !isSafeUrl(url, image && slot !== "animation"),
+  );
+  return blocked.length > 0 && blocked.every((url) => urlScheme(url) === "data")
+    ? "data"
+    : "script";
+};
+
+/**
  * The named character references whose character is ASCII: the only ones
  * that can spell a scheme, a colon, or CSS syntax. Any other reference is
  * left as written, which a URL or CSS check reads as harmless text.

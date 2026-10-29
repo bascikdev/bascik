@@ -15,6 +15,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import { SIDECAR_SCHEMA_VERSION } from "./server-sidecar.ts";
+import { privateDirFor } from "./private-dir.ts";
 
 describe("splitDistPageIntoSegments", () => {
   it("splits placeholder HTML into static text and script ids in document order", () => {
@@ -288,9 +289,10 @@ describe("readSiteGraph", () => {
   it("reads dist/ and sidecar, builds host-neutral SiteGraph", async () => {
     const testDir = join(tmpdir(), `bascik-site-graph-test-${Date.now()}`);
     const distDir = join(testDir, "dist");
-    const bascikHiddenDir = join(distDir, ".bascik");
+    const bascikHiddenDir = privateDirFor(distDir);
     const srcApiDir = join(testDir, "src/api");
     await mkdir(bascikHiddenDir, { recursive: true });
+    await mkdir(distDir, { recursive: true });
     await mkdir(srcApiDir, { recursive: true });
 
     // 1. static page
@@ -401,7 +403,7 @@ describe("readSiteGraph", () => {
 });
 
 /**
- * Prompt 157: readSiteGraph validates `dist/.bascik/components.json` the way
+ * Prompt 157: readSiteGraph validates `.bascik/dist/components.json` the way
  * the production boot does. A dist with page-owned server or stream entries
  * and no compatible manifest is a stale build; a static dist never needs one.
  */
@@ -436,10 +438,17 @@ describe("readSiteGraph and the component manifest (prompt 157)", () => {
       `bascik-site-graph-manifest-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     );
     const distDir = join(testDir, "dist");
-    await mkdir(join(distDir, ".bascik"), { recursive: true });
+    await mkdir(privateDirFor(distDir), { recursive: true });
+    await mkdir(distDir, { recursive: true });
     await mkdir(join(testDir, "src/api"), { recursive: true });
     for (const [rel, content] of Object.entries(files)) {
-      await writeFile(join(distDir, rel), content, "utf8");
+      await writeFile(
+        rel.startsWith(".bascik/")
+          ? join(privateDirFor(distDir), rel.slice(".bascik/".length))
+          : join(distDir, rel),
+        content,
+        "utf8",
+      );
     }
     try {
       await run(testDir, distDir);
@@ -614,10 +623,17 @@ describe("SiteGraph.components and the serverless artifacts (prompt 157)", () =>
       `bascik-site-graph-components-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     );
     const distDir = join(testDir, "dist");
-    await mkdir(join(distDir, ".bascik"), { recursive: true });
+    await mkdir(privateDirFor(distDir), { recursive: true });
+    await mkdir(distDir, { recursive: true });
     await mkdir(join(testDir, "src/api"), { recursive: true });
     for (const [rel, content] of Object.entries(files)) {
-      await writeFile(join(distDir, rel), content, "utf8");
+      await writeFile(
+        rel.startsWith(".bascik/")
+          ? join(privateDirFor(distDir), rel.slice(".bascik/".length))
+          : join(distDir, rel),
+        content,
+        "utf8",
+      );
     }
     try {
       await run(testDir, distDir);
@@ -857,10 +873,11 @@ describe("readSiteGraph: security settings for the host", () => {
       `bascik-site-graph-security-${process.pid}-${Date.now()}`,
     );
     const distDir = join(testDir, "dist");
-    await mkdir(join(distDir, ".bascik"), { recursive: true });
+    await mkdir(privateDirFor(distDir), { recursive: true });
+    await mkdir(distDir, { recursive: true });
     await writeFile(join(distDir, "index.html"), "<h1>Home</h1>", "utf8");
     await writeFile(join(distDir, ".nojekyll"), "", "utf8");
-    await writeFile(join(distDir, ".bascik", "server-scripts.json"), "{}");
+    await writeFile(join(privateDirFor(distDir), "server-scripts.json"), "{}");
     await mkdir(join(testDir, "src/api"), { recursive: true });
     return { testDir, distDir };
   };

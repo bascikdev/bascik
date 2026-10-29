@@ -7,7 +7,7 @@ The official Bascik extension brings component navigation, context-aware compone
 1. Open the Extensions view in VS Code and search for `bascik`, or run **Extensions: Install Extensions** from the Command Palette.
 2. Install the official **Bascik** extension.
 
-That is all the setup there is. The extension activates for HTML, CSS, JavaScript, and TypeScript files in a workspace and uses Bascik's standard project layout, so no editor settings are required.
+That is all the setup there is. The extension activates for HTML, CSS, JavaScript, and TypeScript files in a workspace and uses Bascik's standard project layout, so no editor settings are required. In a Bascik project it also offers, once, to turn off one VS Code check that gives false errors on Bascik pages, as [Several Scripts in One File](#several-scripts-in-one-file) explains.
 
 ## What You Get
 
@@ -200,6 +200,37 @@ The extension also ships snippets for scaffolding route handlers in TypeScript a
 | `bascik-api`  | A route handler with an HTTP method picker and pre-typed `request: Request` and `context: { params: Record<string, string>; remoteIp: string }` arguments |
 | `bascik-get`  | A typed `GET` handler                                                                                                                                     |
 | `bascik-post` | A typed `POST` handler with JSON request body parsing                                                                                                     |
+
+## Several Scripts in One File
+
+A Bascik page or component often has more than one `<script>`: a build script, a server script, and a script for the browser. VS Code's built-in HTML checker joins every classic `<script>` (one without `type="module"`) in a file into one JavaScript file before it checks them. Two Bascik scripts that each `export default` then look like one file with two default exports, and VS Code underlines both with:
+
+```text
+A module cannot have multiple default exports.
+```
+
+Bascik runs each script on its own, so the page builds fine. The fix is to turn off VS Code's inline script check with the `html.validate.scripts` setting:
+
+```json
+{
+  "html.validate.scripts": false
+}
+```
+
+A project gets this setting in one of three ways. None of them touches your user settings or any folder that is not a Bascik project:
+
+- **`npm create bascik`** writes it to the new project's `.vscode/settings.json`, so it works for teammates before they install the extension.
+- **`bascik init`** adds it to `.vscode/settings.json` in the current folder, and keeps any settings that file already has.
+- **The extension's prompt, or pasting it yourself.** When the extension starts in a workspace that holds a `bascik.config.ts` (or `.js`, `.mjs`) and nobody has set `html.validate.scripts` in the user, workspace, or folder settings, it shows one message that explains the false error, with two buttons. **Add to workspace settings** writes the setting to `.vscode/settings.json` in each Bascik folder and keeps what that file already has. **Don't ask again** stops the message for that workspace. The message shows at most once per window. Or paste the JSON above into `.vscode/settings.json` at the project root; if the file already has settings, add the `"html.validate.scripts": false` line inside its braces.
+
+The extension never changes the setting without your click, and it never asks when the value is already set either way. A project that wants VS Code's check can set it to `true`.
+
+Here is what you give up. With the setting off, VS Code no longer reports JavaScript syntax errors or type and semantic errors for code inside `<script>` tags in `.html` files: no red underlines and no Problems entries for it. Completions, hover, `<style>` checks, and checks in `.js` and `.ts` files work as before. The Bascik language server still checks Bascik's own rules inside scripts, such as conflicting directives and unsafe server output, in the editor and under `bascik --check`, but it does not check general JavaScript syntax in an inline script either. Script errors are still caught when the code loads:
+
+- **A build script or server script** with a syntax error fails at load, with the file and line. The dev server prints the error and leaves that page out (it returns 404), and `bascik --build` fails.
+- **A script for the browser** with a syntax error shows the error in the browser console when the page loads.
+
+VS Code forks such as Cursor and Windsurf read the same `.vscode` folder and settings, so all of this applies to them too.
 
 ## Configure the Extension
 

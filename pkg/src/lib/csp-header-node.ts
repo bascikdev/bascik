@@ -4,7 +4,7 @@
  * The opt-in `contentSecurityPolicy` header on the Node servers. The hashes
  * come from the build, never from a response body:
  *
- * - `bascik --server` reads dist/.bascik/csp-hashes.json (already widened
+ * - `bascik --server` reads .bascik/dist/csp-hashes.json (already widened
  *   for routes that render components at request time) once.
  * - The dev server reads the hashes it recorded for the route as it compiled
  *   the page, and widens a page with server or stream scripts with its
@@ -27,6 +27,7 @@ import {
 } from "./content-security-policy.ts";
 import { getHttpPath } from "./paths.ts";
 import type { StoredPage } from "./types.ts";
+import { privateDirFor } from "./private-dir.ts";
 
 let prodManifest: CspHashesManifest | null | undefined;
 
@@ -35,7 +36,7 @@ const readProdManifest = (): CspHashesManifest | null => {
   try {
     prodManifest = JSON.parse(
       readFileSync(
-        join(BascikConfig.directory.out, ".bascik", "csp-hashes.json"),
+        join(privateDirFor(BascikConfig.directory.out), "csp-hashes.json"),
         "utf8",
       ),
     ) as CspHashesManifest;

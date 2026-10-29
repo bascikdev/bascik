@@ -21,9 +21,12 @@ import {
   formatUnsupportedImport,
 } from "./compat.js";
 import { resolveWorkerName } from "./config.js";
-import { buildCspHeadersRules, countHeadersRules } from "./csp-headers.js";
+import { buildHeadersFile, workerPageHeaderOverrides } from "./headers-file.js";
 import { build as esbuildBuild } from "esbuild";
-import { manifestHasComponents } from "@bascik/bascik/runtime";
+import {
+  isBascikFolderName,
+  manifestHasComponents,
+} from "@bascik/bascik/runtime";
 
 export { pageAliasesFor };
 
@@ -87,6 +90,21 @@ export const detectControlCollisions = (
   return problems;
 };
 
+/**
+ * Whether the authored `assets.run_worker_first` sends every request of the
+ * site to the Worker first: `true`, or a list with `/*` (or the base's
+ * `/shop/*`) and no `!` exclusion.
+ */
+export const runsWorkerFirst = (assets: unknown, base: string): boolean => {
+  if (typeof assets !== "object" || assets === null) return false;
+  const value = (assets as { run_worker_first?: unknown }).run_worker_first;
+  if (value === true) return true;
+  if (!Array.isArray(value)) return false;
+  if (value.some((p) => typeof p !== "string" || p.startsWith("!")))
+    return false;
+  return value.includes("/*") || value.includes(withBasePath("/*", base));
+};
+
 const NO_COMPONENTS = "bascik-no-components";
 
 /**
@@ -108,6 +126,20 @@ export const build = async (
 
   const publicDir = join(outDir, "public");
   await mkdir(publicDir, { recursive: true });
+
+  // Discover authored user config and resolve worker name in priority order:
+  // 1. Environment variables (CLOUDFLARE_WORKER_NAME, WORKER_NAME, CF_PAGES_PROJECT_NAME)
+  // 2. Authored wrangler.jsonc / wrangler.json / wrangler.toml in project root
+  // 3. Project package.json "name"
+  // 4. Fallback to "bascik-site"
+  const workerConfig =
+    variant === "workers" ? await resolveWorkerName(projectRoot) : undefined;
+  // The author asked for the Worker before every static file: it sends the
+  // static files' headers itself, so nothing is written into _headers for
+  // them (Cloudflare's rule and line limits no longer apply).
+  const workerFirst =
+    variant === "workers" &&
+    runsWorkerFirst(workerConfig?.discoveredConfig?.values?.assets, graph.base);
 
   const collisions = detectControlCollisions(graph.publicFiles, variant);
   if (collisions.length) throw new Error(collisions.join("\n"));
@@ -229,16 +261,25 @@ export const build = async (
       `  components: { manifest: componentManifest, jobs: componentJobs },`,
     );
   // Opt-in contentSecurityPolicy: the policy and the hashes of the pages
-  // the Worker renders (static pages get _headers rules below).
+  // the Worker renders (static pages get _headers rules below, or, when the
+  // Worker runs first, theirs too).
   const csp = graph.contentSecurityPolicy;
   if (csp) {
     const workerHashes: Record<string, unknown> = {};
-    for (const path of Object.keys(graph.pages))
+    const paths = [
+      ...Object.keys(graph.pages),
+      ...(workerFirst ? csp.staticRoutes : []),
+    ];
+    for (const path of paths)
       if (csp.hashes[path]) workerHashes[path] = csp.hashes[path];
     lines.push(
       `  contentSecurityPolicy: { policy: ${JSON.stringify(csp.policy)}, hashes: ${JSON.stringify(workerHashes)} },`,
     );
   }
+  if (workerFirst)
+    lines.push(
+      `  assetHeaders: { cspRoutes: ${JSON.stringify(csp ? csp.staticRoutes : [])} },`,
+    );
   // The build's security headers, dotfile rule, ANSI handling and render
   // limits (Collin 2026-10-29): the Worker has no config of its own, so it
   // applies what the build resolved. A graph without them is today's Worker.
@@ -363,6 +404,9 @@ export const build = async (
       ? join(publicDir, ...graph.base.split("/").filter(Boolean))
       : publicDir;
   for (const rel of graph.publicFiles) {
+    // Bascik's private build folder is never deployed, whatever the graph
+    // lists and however a case-insensitive filesystem spells it.
+    if (isBascikFolderName(rel.split("/")[0] ?? "")) continue;
     const from = join(distDir, rel);
     const to = join(ASSET_CONTROL_FILES.has(rel) ? publicDir : assetRoot, rel);
     if (!resolve(to).startsWith(publicDir + sep)) continue;
@@ -370,9 +414,11 @@ export const build = async (
     await copyFile(from, to);
   }
 
-  // Static pages are served without the Worker: their CSP header goes into
-  // public/_headers, after the author's own rules.
-  if (csp) {
+  // Static files are served without the Worker: the security headers (one
+  // site-wide rule) and each static page's CSP header go into
+  // public/_headers, merged with the author's own rules (headers-file.ts).
+  // When the Worker runs first it sends them, and the file stays the author's.
+  {
     const headersPath = join(publicDir, "_headers");
     let authored = "";
     try {
@@ -380,18 +426,32 @@ export const build = async (
     } catch {
       authored = "";
     }
-    const rules = buildCspHeadersRules({
-      policy: csp.policy,
-      hashes: csp.hashes,
-      staticRoutes: csp.staticRoutes,
+    if (!workerFirst) {
+      const text = buildHeadersFile({
+        authored,
+        security: graph.responseSecurity,
+        base: graph.base,
+        csp: csp
+          ? {
+              policy: csp.policy,
+              hashes: csp.hashes,
+              staticRoutes: csp.staticRoutes,
+            }
+          : undefined,
+        variant,
+      });
+      if (text !== "" && text !== authored)
+        await writeFile(headersPath, text, "utf8");
+    }
+    // _headers reaches static files only: say so where an author's rule
+    // would change a security header on a page the Worker renders.
+    for (const warning of workerPageHeaderOverrides({
+      authored,
+      security: graph.responseSecurity,
       base: graph.base,
-      authoredRules: countHeadersRules(authored),
-    });
-    await writeFile(
-      headersPath,
-      authored === "" ? rules : `${authored.replace(/\s*$/, "")}\n\n${rules}`,
-      "utf8",
-    );
+      workerPages: Object.keys(graph.pages),
+    }))
+      context.log(warning);
   }
 
   const invocationRoutes = buildInvocationRoutes({
@@ -422,13 +482,8 @@ export const build = async (
     workerPath = join(outDir, "worker.js");
     await writeFile(workerPath, workerCode, "utf8");
 
-    // Discover authored user config and resolve worker name in priority order:
-    // 1. Environment variables (CLOUDFLARE_WORKER_NAME, WORKER_NAME, CF_PAGES_PROJECT_NAME)
-    // 2. Authored wrangler.jsonc / wrangler.json / wrangler.toml in project root
-    // 3. Project package.json "name"
-    // 4. Fallback to "bascik-site"
     const { workerName, discoveredConfig } =
-      await resolveWorkerName(projectRoot);
+      workerConfig ?? (await resolveWorkerName(projectRoot));
 
     const authoredFlags = Array.isArray(
       discoveredConfig?.values?.compatibility_flags,
@@ -452,7 +507,7 @@ export const build = async (
         directory: "./public",
         binding: "ASSETS",
         not_found_handling: "404-page",
-        run_worker_first: invocationRoutes.include,
+        run_worker_first: workerFirst ? true : invocationRoutes.include,
       },
     };
     await writeFile(
@@ -466,7 +521,9 @@ export const build = async (
   const notes = [
     `compatibility date: ${CLOUDFLARE_COMPATIBILITY_DATE}`,
     `compatibility flags: ${CLOUDFLARE_COMPATIBILITY_FLAGS.join(", ")}`,
-    `invocation routes: ${invocationRoutes.include.length} rules`,
+    workerFirst
+      ? "invocation routes: every request (run_worker_first: true); the Worker sends the static files' headers"
+      : `invocation routes: ${invocationRoutes.include.length} rules`,
   ];
   // The manifest is part of the bundle; its share of bundleBytes is shown so
   // a growing component library is visible against the Worker size limit.

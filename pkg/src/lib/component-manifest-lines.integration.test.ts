@@ -1,6 +1,6 @@
 /**
  * The line an unsupported component is reported at (`unsupported.line` in
- * dist/.bascik/components.json, which `bascik --check` prints, and the dev
+ * .bascik/dist/components.json, which `bascik --check` prints, and the dev
  * log for a tag a server script returns) is the line in the authored file.
  *
  * The components here are read by the real `listComponents`, which extracts

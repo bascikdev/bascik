@@ -3,7 +3,7 @@
  *
  * The build-time component manifest (prompt 157, D3): everything a request-time
  * renderer needs to expand a component tag that a server or stream script
- * returned, recorded once per build into `dist/.bascik/components.json`.
+ * returned, recorded once per build into `.bascik/dist/components.json`.
  *
  * Per component the manifest holds a `ScopingTemplate`: the real scoping
  * pipeline recorded on a sentinel instance id (scoping-template.ts), with the

@@ -494,7 +494,7 @@ describe("scaffold-to-compiler integration", () => {
     expect(output).not.toContain("does not declare components: true");
     expect(output).toMatch(/component manifest: \d+ bytes \(\d+ components\)/);
     const manifest = JSON.parse(
-      await readFile(join(projectDir, "dist/.bascik/components.json"), "utf8"),
+      await readFile(join(projectDir, ".bascik/dist/components.json"), "utf8"),
     ) as {
       components: Record<string, { template: unknown; unsupported?: unknown }>;
     };

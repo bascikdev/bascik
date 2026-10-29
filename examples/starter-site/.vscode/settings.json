@@ -1,0 +1,8 @@
+{
+  // Bascik pages can hold several <script> blocks. VS Code's HTML checker
+  // joins them into one file and reports errors Bascik never hits, such as
+  // "A module cannot have multiple default exports". Bascik compiles each
+  // script on its own. This turns off only VS Code's inline script check.
+  // https://bascik.dev/tools/vscode-extension#several-scripts-in-one-file
+  "html.validate.scripts": false
+}

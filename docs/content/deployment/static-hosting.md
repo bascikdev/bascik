@@ -10,6 +10,8 @@ Every static deployment boils down to three simple steps:
 2. **Preview (optional):** Inspect the production output locally with `npx http-server dist` or `npx bascik --server`.
 3. **Deploy:** Point your hosting provider to the `dist/` folder.
 
+After a plain `bascik --build`, `dist/` holds only the site. Bascik keeps its private build files in `.bascik/dist/`, beside it, so a host that serves every file of `dist/`, dotfiles included, never publishes them. A `--target` build (such as `bascik --build --target cloudflare`, the `npm run build` of a `create-bascik` project set up for Cloudflare) also writes its deployment folder into `dist/.bascik/<target>/`: the Worker, with the source of every server script, and its config. Do not point a static host at `dist/` after a `--target` build; build with plain `bascik --build` for a static host, or deploy the target's own folder. See [What a static host receives](/deployment#what-a-static-host-receives).
+
 That is all there is to it. There are no runtime servers to manage, no container images to maintain, and no backend hosting bills.
 
 ## Deploy to Cloudflare Pages (Recommended)

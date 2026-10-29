@@ -22,6 +22,7 @@ import {
 } from "./file-system.ts";
 import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 import { sourceWatchRoot } from "./watch-root.ts";
+import { privateDirFor } from "./private-dir.ts";
 
 /** One filesystem observer owns source/exec overlap, including page edits.
  * Outputs are ignored unconditionally. No timestamp or self-write heuristic
@@ -45,6 +46,9 @@ export const watchSourceCycles = async (
     resolve(root),
   );
   const outRoot = resolve(BascikConfig.directory.out);
+  // Bascik's private build folder beside the output (private-dir.ts) is
+  // output too: a watch path over the project root must not see its writes.
+  const privateRoot = privateDirFor(outRoot);
   const inside = (path: string, root: string) =>
     path === root || path.startsWith(root + sep);
   const changes = new Map<string, string>();
@@ -217,7 +221,8 @@ export const watchSourceCycles = async (
       followSymlinks: true,
       atomic: true,
       awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 20 },
-      ignored: (path) => inside(resolve(path), outRoot),
+      ignored: (path) =>
+        inside(resolve(path), outRoot) || inside(resolve(path), privateRoot),
     },
   );
   watcher.on("all", (kind, changed) => {

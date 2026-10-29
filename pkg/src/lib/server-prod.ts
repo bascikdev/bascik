@@ -38,7 +38,12 @@ import {
   LIVE_RELOAD_SCRIPT_ATTR,
   stripLiveReloadScript,
 } from "./live-reload.ts";
-import { assertProductionBuildState } from "./build-state.ts";
+import {
+  assertProductionBuildState,
+  hashPage,
+  pageDifferenceWarning,
+} from "./build-state.ts";
+import { privateDirFor, privateDirLabel } from "./private-dir.ts";
 
 /**
  * Recursively collect every `.html` file path under `dir`.
@@ -65,7 +70,9 @@ const collectHtmlFiles = async (dir: string): Promise<string[]> => {
 const loadDistIntoMemory = async (): Promise<void> => {
   const distDir = resolve(BascikConfig.directory.out);
   const outDirRel = relative(process.cwd(), distDir) || "dist";
-  await assertProductionBuildState("server");
+  const recordedPages = await assertProductionBuildState("server");
+  /** Each page's hash, by path relative to dist/, to compare with the build's record. */
+  const foundPages: Record<string, string> = {};
   let htmlFiles: string[];
   try {
     htmlFiles = await collectHtmlFiles(distDir);
@@ -90,7 +97,8 @@ const loadDistIntoMemory = async (): Promise<void> => {
   // against serverSidecarRegistry while doing so. Reordering these two steps
   // would record an "unresolvable placeholder" error on every server-script
   // page.
-  const sidecarPath = join(distDir, ".bascik", "server-scripts.json");
+  const privateRel = privateDirLabel(distDir);
+  const sidecarPath = join(privateDirFor(distDir), "server-scripts.json");
   // Three distinct sidecar states. A missing file is an optional sidecar: a
   // genuinely static release with no server scripts is valid, so it does NOT
   // fail startup and does not trigger placeholder validation. A present but
@@ -106,7 +114,7 @@ const loadDistIntoMemory = async (): Promise<void> => {
   }
 
   // A release whose sidecar has page-owned server or stream entries renders
-  // component tags from their output through dist/.bascik/components.json
+  // component tags from their output through .bascik/dist/components.json
   // (prompt 157), so that manifest is a required runtime artifact for it and
   // is validated here like the sidecar: present, of this schema, and naming
   // only component scripts the sidecar stages (the jobs are built once here
@@ -117,8 +125,8 @@ const loadDistIntoMemory = async (): Promise<void> => {
       manifest = await readComponentManifest(distDir);
       if (!manifest) {
         throw new Error(
-          `[bascik] --server: ${outDirRel}/.bascik/server-scripts.json has server-script entries ` +
-            `but ${outDirRel}/.bascik/components.json is missing. ` +
+          `[bascik] --server: ${privateRel}/server-scripts.json has server-script entries ` +
+            `but ${privateRel}/components.json is missing. ` +
             `Run \`bascik --build\` to regenerate matching artifacts.`,
         );
       }
@@ -139,7 +147,9 @@ const loadDistIntoMemory = async (): Promise<void> => {
         const distRelative = absPath.slice(distDir.length).replace(/\\/g, "/"); // normalize Windows separators
         const relativePagePath = `pages${distRelative}`;
 
-        let rawString = await readFile(absPath, "utf8");
+        const raw = await readFile(absPath);
+        if (recordedPages) foundPages[distRelative.slice(1)] = hashPage(raw);
+        let rawString = raw.toString("utf8");
         // Defense in depth: a `bascik --build` never injects the dev
         // live-reload client, but a dist/ produced by a dev session could.
         // Identify that script ONLY by its own `data-bascik-live-reload` open
@@ -182,8 +192,8 @@ const loadDistIntoMemory = async (): Promise<void> => {
   if (failedPages.length > 0) {
     const first = failedPages[0].serverScriptPlan as { error: Error };
     const sidecarState = sidecarResult.present
-      ? `while ${outDirRel}/.bascik/server-scripts.json is present`
-      : `and the sidecar ${outDirRel}/.bascik/server-scripts.json is missing`;
+      ? `while ${privateRel}/server-scripts.json is present`
+      : `and the sidecar ${privateRel}/server-scripts.json is missing`;
     setServerHealthState("booting");
     throw new Error(
       `[bascik] --server: production startup validation failed. ` +
@@ -191,6 +201,17 @@ const loadDistIntoMemory = async (): Promise<void> => {
         `placeholder ${sidecarState}. First failure (${failedPages[0].relativePagePath}): ` +
         `${first.error.message}. Run \`bascik --build\` to regenerate matching artifacts.`,
     );
+  }
+
+  // The private folder describes the pages of its own build. A page that
+  // differs from its record is a warning, never a refusal: a deploy step
+  // that edits dist/ after the build (analytics, a minifier, a CDN rewrite)
+  // is legitimate, and the check above already refused every page whose
+  // server scripts cannot run. A changed page is served as it is, with the
+  // server scripts and CSP hashes the private folder holds.
+  if (recordedPages) {
+    const warning = pageDifferenceWarning(recordedPages, foundPages);
+    if (warning) console.warn(warning);
   }
 
   console.log(

@@ -222,7 +222,7 @@ describe("request-time component rendering docs", () => {
       "would run more than 64 nested component scripts",
       "nests component scripts deeper than 4 levels",
       "collide with each other",
-      "is not listed in dist/.bascik/components.json",
+      "is not listed in .bascik/dist/components.json",
     ])
       expect(markdown).toContain(message);
     expect(markdown).toMatch(/### `Rendering <[a-z-]+> .*failed during /);

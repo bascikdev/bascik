@@ -15,6 +15,7 @@ The production server is read-only and designed for deployment:
 
 - It requires the completed output marker written by `bascik --build`; development output is rejected.
 - It loads pre-compiled output from `dist/` and never recompiles source files or deletes output.
+- It reads the build state, the server-script sidecar and the component manifest from the private build folder `.bascik/dist/`, beside `dist/`. A deploy copies both folders from the same build. A page in `dist/` that differs from the build's record (a deploy step that edited it, or a `.bascik/dist/` from another build) is served as it is, with one startup warning that names the pages; the server refuses to start only when a page names a server script the sidecar does not hold. See [What a static host receives](/deployment#what-a-static-host-receives).
 - It executes `data-bascik-server` and `data-bascik-stream` scripts in-process per request.
 - It bypasses disk I/O for HTML pages by serving directly from memory.
 - For local development with file watching and live reload, run the [Development Server](/development-server) with `bascik` instead.
@@ -140,6 +141,7 @@ On boot, `bascik --server` reads all compiled HTML documents from `dist/` into a
 
 - Page lookups, routing, and header computation take place in memory with zero filesystem access.
 - SHA-256 content hashes generate deterministic `ETag` headers, responding with `304 Not Modified` for unchanged client caches.
+- Pages are sent with `cache-control: public, max-age=0, must-revalidate`, on the `200` and the `304` alike: the browser keeps the page but asks before each use, so a new deploy shows at once and an unchanged page costs only a `304`. Pages with server or stream scripts get `private, no-store` instead (see `security.privateDynamicPages`). `http.cacheControl` sets the policy for static files, not pages.
 - Standalone static assets (images, fonts, downloads) stream from disk using high-speed non-blocking streams.
 
 ## Graceful Shutdown & Health Checks

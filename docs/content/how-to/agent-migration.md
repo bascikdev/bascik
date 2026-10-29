@@ -426,7 +426,7 @@ node "$REFACTOR/run-checks.mjs" \
   --mask '[data-testid="review-carousel"]'
 ```
 
-Each route gets `artifacts/checks/<route>/report.json`. A finding on an element production gets wrong, at the width where it is wrong, is listed as corrected instead of failing, because the ledger row says "production defect: fix in target". `node "$REFACTOR/run-checks.mjs" --help` lists every check and its tolerance. Every check leaves out the `--mask` regions, so mask a carousel that advances on a timer or a ticker that rotates its text, and log each mask in the ledger. Expect about a minute per route per width; skipping a check to save time skips what it would catch.
+Each route gets `artifacts/checks/<route>/report.json`. A finding on an element production gets wrong, at the width where it is wrong, is listed as corrected instead of failing, because the ledger row says "production defect: fix in target". `node "$REFACTOR/run-checks.mjs" --help` lists every check and its tolerance. Every check leaves out the `--mask` regions, so mask a carousel that advances on a timer, an autoplay video, a ticker that rotates its text or a relative time such as "5 minutes ago", and log each mask in the ledger. Mask the element itself, such as the `<video>` and not the hero around it: what is drawn over a masked region, such as the headline, is still compared. Do not mask a newsletter modal or a banner that opens on a timer. Every page waits 5 seconds after it starts loading before it is measured, so such a layer is on both sides; pass `--settle-ms` with a longer time for a later timer. Expect about two minutes per route per width; skipping a check to save time skips what it would catch.
 
 The review page reads the `compare-route.mjs` and `run-checks.mjs` reports, so run both first. The sign-off records which screenshots and findings it covers:
 
@@ -614,7 +614,7 @@ The scripts do not read the ledger. When a row changes pixels, such as a footer 
 
 ### Best Practices
 
-Serve a strict Content Security Policy with a SHA-256 hash for every inline script and style and no `unsafe-inline`. `generate.cspHashes` writes the hashes per page to `dist/.bascik/csp-hashes.json`, and [Content Security Policy](/how-to/content-security-policy) shows the meta tag approach. On Cloudflare, `worker-response-policy.mjs` computes the hashes per response in a Worker wrapper instead. Hashing needs the whole page, so the wrapper buffers pages that stream unless you pass `streamedHtml: "pass"`.
+Serve a strict Content Security Policy with a SHA-256 hash for every inline script and style and no `unsafe-inline`. `generate.cspHashes` writes the hashes per page to `.bascik/dist/csp-hashes.json`, and [Content Security Policy](/how-to/content-security-policy) shows the meta tag approach. On Cloudflare, `worker-response-policy.mjs` computes the hashes per response in a Worker wrapper instead. Hashing needs the whole page, so the wrapper buffers pages that stream unless you pass `streamedHtml: "pass"`.
 
 ### Agentic Browsing
 

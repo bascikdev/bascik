@@ -29,7 +29,8 @@ my-site/
 ├── .claude/skills/                 ← The same skills for Claude Code
 ├── .vscode/
 │   ├── launch.json                 ← Debug launchers for dev server and tests
-│   └── extensions.json             ← Recommends official Bascik extension
+│   ├── extensions.json             ← Recommends official Bascik extension
+│   └── settings.json               ← Stops false VS Code errors on pages with several scripts
 ├── src/
 │   ├── components/                 ← site-meta, site-header, site-footer, feat-card, my-counter
 │   └── pages/                      ← index.html, about.html, contact.html, 404.html, css/styles.css

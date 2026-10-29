@@ -2,17 +2,18 @@
  * @module component-manifest-file
  *
  * The component manifest as a file (prompt 157, D3): its types, its schema,
- * and how `dist/.bascik/components.json` is written, read and validated.
+ * and how `.bascik/dist/components.json` is written, read and validated.
  * component-manifest.ts builds it during a build and re-exports all of this;
  * the prod server, `bascik --check` and the request-time renderer import
  * this module instead, so serving a release never loads the manifest
  * builder or the build pipeline behind it (build scripts, the scoping
  * recorder, the minifiers).
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ScopingTemplate } from "./scoping-instantiate.ts";
 import type { ServerScriptMode } from "./server-sidecar.ts";
+import { ensurePrivateDir, privateDirFor } from "./private-dir.ts";
 export const COMPONENT_MANIFEST_SCHEMA_VERSION = 1;
 
 export type UnsupportedReason =
@@ -150,14 +151,14 @@ export const sortedComponentManifest = (
 ): ComponentManifest => sortKeysDeep(manifest) as ComponentManifest;
 
 export const componentManifestPath = (distDir: string): string =>
-  join(distDir, ".bascik", "components.json");
+  join(privateDirFor(distDir), "components.json");
 
 export const writeComponentManifest = async (
   distDir: string,
   manifest: ComponentManifest,
 ): Promise<string> => {
   const path = componentManifestPath(distDir);
-  await mkdir(join(distDir, ".bascik"), { recursive: true });
+  await ensurePrivateDir(distDir);
   await writeFile(
     path,
     JSON.stringify(sortedComponentManifest(manifest), null, 2),
@@ -167,10 +168,10 @@ export const writeComponentManifest = async (
 };
 
 const rebuildHint =
-  "Run `bascik --build` to regenerate dist/.bascik/components.json.";
+  "Run `bascik --build` to regenerate .bascik/dist/components.json.";
 
 /**
- * Read `dist/.bascik/components.json`. Null when absent (a static release
+ * Read `.bascik/dist/components.json` (the private folder beside dist/). Null when absent (a static release
  * has none); a manifest of another schema or one that does not parse is a
  * stale build and throws the rebuild message, like the sidecar.
  */

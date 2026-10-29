@@ -14,7 +14,8 @@
  *     and CSP entry behind in a fresh process.
  *
  * This module persists a **versioned source-to-output ownership inventory** at
- * `dist/.bascik/ownership.json`. Every output file and sidecar script is owned
+ * `.bascik/dist/ownership.json` (beside dist/, never in it: see
+ * private-dir.ts). Every output file and sidecar script is owned
  * by exactly one source page. For a targeted build the inventory lets us:
  *   - **exactly replace rebuilt owners** (a page rebuilt now owns exactly the
  *     outputs and scripts it produced this process),
@@ -95,7 +96,8 @@ export const isTargetedBuild = (): boolean =>
   );
 
 const outDir = (): string => resolve(process.cwd(), BascikConfig.directory.out);
-const ownershipPath = (): string => join(outDir(), ".bascik", "ownership.json");
+const ownershipPath = (): string =>
+  join(privateDirFor(outDir()), "ownership.json");
 
 /** dist-relative key for a page's output file (mirrors the manifest key). */
 export const toOutputFileKey = (distRelPath: string): string => {
@@ -438,11 +440,13 @@ import {
   type ComponentManifest,
 } from "./component-manifest.ts";
 import { listComponents } from "./components.ts";
+import { privateDirFor } from "./private-dir.ts";
 
-const manifestPath = (): string => join(outDir(), ".bascik", "manifest.json");
-const cspPath = (): string => join(outDir(), ".bascik", "csp-hashes.json");
+const manifestPath = (): string =>
+  join(privateDirFor(outDir()), "manifest.json");
+const cspPath = (): string => join(privateDirFor(outDir()), "csp-hashes.json");
 const sidecarPath = (): string =>
-  join(outDir(), ".bascik", "server-scripts.json");
+  join(privateDirFor(outDir()), "server-scripts.json");
 
 /**
  * The synthetic owner of the component-level server and stream jobs in the
@@ -472,7 +476,7 @@ const pageOutputSet = (inv: OwnershipInventory): Set<string> =>
  * transaction. Page files follow ownership: a page output survives only when a
  * current owner still produces it (rebuilt owner exact replacement / untouched
  * owner retained), so a removed route is pruned. Non-page files (raw-copied
- * assets, sitemap, robots, and the `.bascik/*` metadata files) are retained
+ * assets, sitemap and robots) are retained
  * from prior and overlaid with anything re-produced this process.
  */
 const reconcileManifest = (
