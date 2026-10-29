@@ -374,25 +374,51 @@ describe("scanning for inline code without regular-expression backtracking", () 
 });
 
 /**
- * Linear-time check, after pkg/src/lib/linear-time.test-helper.ts (skill tests cannot import pkg internals): times a
- * quarter-size and a full-size input in CPU time, repeated until a sample takes `MIN_SAMPLE_MS`, keeps the fastest of
- * `SAMPLES` interleaved samples of each, and requires the growth to stay under `MAX_GROWTH`. Linear work grows about
- * 4 times; quadratic about 16. Growth does not depend on the machine's speed, so a loaded runner does not flake it.
+ * Linear-time check, after pkg/src/lib/linear-time.test-helper.ts (the docs typecheck cannot take files outside docs/):
+ * times a quarter-size and a full-size input in this thread's CPU time, repeated until a sample takes `MIN_SAMPLE_MS`
+ * or `TICKS_PER_SAMPLE` steps of the clock (Windows counts CPU time in ticks of about 15.6 ms, and a sample one tick
+ * long reads 0), keeps the fastest of `SAMPLES` interleaved samples of each, plus up to `EXTRA_SAMPLES` more while the
+ * growth is in the band load reaches on linear work, and requires the growth to stay under `MAX_GROWTH`. Linear work
+ * grows about 4 times; quadratic about 16. Growth does not depend on the machine's speed, so a loaded runner does not
+ * flake it.
  */
 const MAX_GROWTH = 8;
 const MIN_SAMPLE_MS = 25;
+const TICKS_PER_SAMPLE = 8;
 const MAX_RUNS = 2_000;
 const NOISE_FLOOR_MS = 5;
 const CEILING_MS = 2_000;
 const SAMPLES = 3;
+const EXTRA_SAMPLES = 6;
+const RESAMPLE_ABOVE = 5;
+const RESAMPLE_BELOW = 12;
 const LINEAR_TIME_TIMEOUT_MS = 60_000;
 
+// This thread's CPU time (Node 23.9 and later), else the process's: the process's also counts V8's GC threads.
+const threadCpuUsage: (previous?: NodeJS.CpuUsage) => NodeJS.CpuUsage =
+  process.threadCpuUsage?.bind(process) ?? process.cpuUsage.bind(process);
+const msOf = ({ user, system }: NodeJS.CpuUsage) => (user + system) / 1000;
 const cpuMs = (run: () => unknown) => {
-  const start = process.cpuUsage();
+  const start = threadCpuUsage();
   run();
-  const { user, system } = process.cpuUsage(start);
-  return (user + system) / 1000;
+  return msOf(threadCpuUsage(start));
 };
+// The smallest step the clock moves by: microseconds on macOS and Linux, a scheduler tick on Windows.
+const clockResolutionMs = (() => {
+  const deadline = performance.now() + 250;
+  let smallest = Infinity;
+  let last = msOf(threadCpuUsage());
+  for (let steps = 0; steps < 5 && performance.now() < deadline;) {
+    const now = msOf(threadCpuUsage());
+    if (now === last) continue;
+    smallest = Math.min(smallest, now - last);
+    last = now;
+    steps++;
+  }
+  return Number.isFinite(smallest) ? smallest : 0;
+})();
+const TARGET_MS = Math.max(MIN_SAMPLE_MS, TICKS_PER_SAMPLE * clockResolutionMs);
+const FLOOR_MS = Math.max(NOISE_FLOOR_MS, clockResolutionMs);
 
 const expectLinearTime = (
   input: (size: number) => string,
@@ -406,27 +432,33 @@ const expectLinearTime = (
     cpuMs(() => {
       for (let i = 0; i < runs; i++) run(html);
     });
+  sample(small, 1);
   let runs = 1;
   let ms = sample(small, runs);
-  while (ms < MIN_SAMPLE_MS && runs < MAX_RUNS) {
+  while (ms < TARGET_MS && runs < MAX_RUNS) {
     runs = Math.min(
       MAX_RUNS,
-      Math.max(
-        runs * 2,
-        Math.ceil((runs * MIN_SAMPLE_MS * 1.5) / Math.max(ms, 0.001)),
-      ),
+      // A step that read nothing says nothing about how short the run is: double rather than jump to MAX_RUNS.
+      ms <= 0
+        ? runs * 2
+        : Math.max(runs * 2, Math.ceil((runs * TARGET_MS * 1.5) / ms)),
     );
     ms = sample(small, runs);
   }
-  let smallMs = Infinity;
+  let smallMs = ms;
   let largeMs = Infinity;
-  for (let i = 0; i < SAMPLES; i++) {
-    smallMs = Math.min(smallMs, sample(small, runs));
+  const growth = () => largeMs / Math.max(smallMs, FLOOR_MS);
+  for (let i = 0; i < SAMPLES + EXTRA_SAMPLES; i++) {
+    if (
+      i >= SAMPLES &&
+      !(growth() > RESAMPLE_ABOVE && growth() < RESAMPLE_BELOW)
+    )
+      break;
+    if (i > 0) smallMs = Math.min(smallMs, sample(small, runs));
     largeMs = Math.min(largeMs, sample(large, runs));
   }
-  const growth = largeMs / Math.max(smallMs, NOISE_FLOOR_MS);
   const what = `${label}: ${(smallMs / runs).toFixed(2)} ms at a quarter size, ${(largeMs / runs).toFixed(2)} ms at full size, ${runs} runs per sample`;
-  expect(growth, `${what} (growth)`).toBeLessThan(MAX_GROWTH);
+  expect(growth(), `${what} (growth)`).toBeLessThan(MAX_GROWTH);
   expect(largeMs / runs, `${what} (ceiling)`).toBeLessThan(CEILING_MS);
 };
 

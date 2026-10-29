@@ -135,6 +135,52 @@ export const cpuMsAsync = async (
   return (user + system) / 1000;
 };
 
+/**
+ * Samples span at least this many steps of the clock. Windows counts CPU
+ * time in scheduler ticks of about 15.6 ms: a sample one tick long reads 0
+ * or a whole tick depending on where the ticks fall, and the fastest of
+ * several then read 0, which made linear checks read a growth of 12 to 25.
+ * Across eight ticks a sample is off by an eighth at most.
+ */
+export const TICKS_PER_SAMPLE = 8;
+
+/**
+ * The smallest step `read` moves by, in milliseconds, from a few steps of
+ * spinning (at most a quarter of a second): microseconds on macOS and Linux,
+ * a scheduler tick on Windows. 0 when it never moves.
+ */
+export const resolutionOf = (read: () => number): number => {
+  const deadline = performance.now() + 250;
+  let smallest = Infinity;
+  let last = read();
+  for (let steps = 0; steps < 5 && performance.now() < deadline;) {
+    const now = read();
+    if (now === last) continue;
+    smallest = Math.min(smallest, now - last);
+    last = now;
+    steps++;
+  }
+  return Number.isFinite(smallest) ? smallest : 0;
+};
+
+const msOf = ({ user, system }: NodeJS.CpuUsage): number =>
+  (user + system) / 1000;
+let threadResolution: number | undefined;
+let processResolution: number | undefined;
+/** The step of the clock `cpuMs` reads. */
+export const cpuMsResolution = (): number =>
+  (threadResolution ??= resolutionOf(() => msOf(threadCpuUsage())));
+/** The step of the clock `cpuMsAsync` reads. */
+export const cpuMsAsyncResolution = (): number =>
+  (processResolution ??= resolutionOf(() => msOf(process.cpuUsage())));
+
+/** The shortest sample on a clock of this resolution. */
+export const minSampleMs = (resolutionMs: number): number =>
+  Math.max(MIN_SAMPLE_MS, TICKS_PER_SAMPLE * resolutionMs);
+/** The noise floor on a clock of this resolution. */
+const noiseFloorMs = (resolutionMs: number): number =>
+  Math.max(NOISE_FLOOR_MS, resolutionMs);
+
 export interface Growth {
   /** CPU time of one run at a quarter size, fastest sample. */
   smallMs: number;
@@ -177,6 +223,7 @@ const growthOf = (
   runs: number,
   largeRuns: number,
   baseSampleMs: number | undefined,
+  floorMs: number,
 ): Growth => {
   const smallMs = smallSampleMs / runs;
   const largeMs = largeSampleMs / largeRuns;
@@ -184,7 +231,7 @@ const growthOf = (
     return {
       smallMs,
       largeMs,
-      growth: largeMs / (Math.max(smallSampleMs, NOISE_FLOOR_MS) / runs),
+      growth: largeMs / (Math.max(smallSampleMs, floorMs) / runs),
       runs,
       largeRuns,
     };
@@ -195,7 +242,7 @@ const growthOf = (
     baseMs,
     growth:
       (largeMs - baseMs) /
-      (Math.max(smallSampleMs - baseSampleMs, NOISE_FLOOR_MS) / runs),
+      (Math.max(smallSampleMs - baseSampleMs, floorMs) / runs),
     runs,
     largeRuns,
   };
@@ -212,11 +259,16 @@ const growRuns = (runs: number): number => Math.min(MAX_RUNS, runs * 2);
 
 /**
  * Runs for the next calibration step, after `runs` runs took `ms`, of which
- * `varyingMs` over the baseline: enough for `MIN_SAMPLE_MS` of it with room
+ * `varyingMs` over the baseline: enough for `targetMs` of it with room
  * for a run that gets faster once compiled, at least twice as many, at most
  * `MAX_RUNS`, and no more than fit in `MAX_SAMPLE_MS`.
  */
-const nextRuns = (runs: number, ms: number, varyingMs: number): number =>
+const nextRuns = (
+  runs: number,
+  ms: number,
+  varyingMs: number,
+  targetMs: number,
+): number =>
   ms <= 0
     ? growRuns(runs)
     : Math.max(
@@ -226,9 +278,7 @@ const nextRuns = (runs: number, ms: number, varyingMs: number): number =>
           Math.floor((runs * MAX_SAMPLE_MS) / Math.max(ms, 0.001)),
           Math.max(
             runs * 2,
-            Math.ceil(
-              (runs * MIN_SAMPLE_MS * 1.5) / Math.max(varyingMs, 0.001),
-            ),
+            Math.ceil((runs * targetMs * 1.5) / Math.max(varyingMs, 0.001)),
           ),
         ),
       );
@@ -257,8 +307,10 @@ function* samplesOf<T>(
   small: T,
   large: T,
   baseline: T | undefined,
+  resolutionMs: number,
 ): Generator<Step<T>, Growth, number> {
   const based = baseline !== undefined;
+  const targetMs = minSampleMs(resolutionMs);
   const base = (runs: number) => ({ subject: baseline as T, runs });
   // A first run compiles the code it calls, and can take the minimum on
   // its own.
@@ -269,8 +321,8 @@ function* samplesOf<T>(
   let baseMs = based ? yield base(runs) : 0;
   let calibrated = false;
   for (;;) {
-    while (ms - baseMs < MIN_SAMPLE_MS) {
-      const more = nextRuns(runs, ms, ms - baseMs);
+    while (ms - baseMs < targetMs) {
+      const more = nextRuns(runs, ms, ms - baseMs, targetMs);
       if (more === runs) break;
       runs = more;
       ms = yield { subject: small, runs };
@@ -281,7 +333,14 @@ function* samplesOf<T>(
     let smallMs = ms;
     let largeMs = Infinity;
     const growth = () =>
-      growthOf(smallMs, largeMs, runs, largeRuns, based ? baseMs : undefined);
+      growthOf(
+        smallMs,
+        largeMs,
+        runs,
+        largeRuns,
+        based ? baseMs : undefined,
+        noiseFloorMs(resolutionMs),
+      );
     for (let i = 0; i < SAMPLES + EXTRA_SAMPLES; i++) {
       // Past `SAMPLES`, only a growth in the band noise reaches goes on.
       if (i >= SAMPLES && !inResampleBand(growth().growth)) break;
@@ -294,7 +353,7 @@ function* samplesOf<T>(
     // A calibration step slowed by a collection or a deoptimization can set
     // too few runs, leaving the fastest sample under the noise floor: once,
     // calibrate again from the fastest sample.
-    if (calibrated || smallMs - baseMs >= MIN_SAMPLE_MS / 2) return growth();
+    if (calibrated || smallMs - baseMs >= targetMs / 2) return growth();
     calibrated = true;
     ms = smallMs;
   }
@@ -303,7 +362,8 @@ function* samplesOf<T>(
 /**
  * Times `run` on `input(size / 4)` and `input(size)`. After one run to warm
  * the JIT up, it runs the quarter-size input more times each step until one
- * step takes `MIN_SAMPLE_MS`, which sets the runs per sample (a quarter as
+ * step takes `MIN_SAMPLE_MS` (or `TICKS_PER_SAMPLE` steps of a coarser
+ * clock, `resolutionMs`), which sets the runs per sample (a quarter as
  * many at full size). Then it takes `SAMPLES` interleaved samples of each
  * size, the last step counting as the first quarter-size one, and keeps the
  * fastest of each. `size` is whatever `input` scales by: characters,
@@ -321,8 +381,9 @@ export const measureGrowth = <T>(
   run: (input: T) => unknown,
   clock: (run: () => unknown) => number = cpuMs,
   baseline?: T,
+  resolutionMs: number = clock === cpuMs ? cpuMsResolution() : 0,
 ): Growth => {
-  const steps = samplesOf(input(size / 4), input(size), baseline);
+  const steps = samplesOf(input(size / 4), input(size), baseline, resolutionMs);
   const sample = ({ subject, runs }: Step<T>): number =>
     clock(() => {
       for (let i = 0; i < runs; i++) run(subject);
@@ -339,8 +400,9 @@ export const measureGrowthAsync = async <T>(
   run: (input: T) => Promise<unknown>,
   clock: (run: () => Promise<unknown>) => Promise<number> = cpuMsAsync,
   baseline?: T,
+  resolutionMs: number = clock === cpuMsAsync ? cpuMsAsyncResolution() : 0,
 ): Promise<Growth> => {
-  const steps = samplesOf(input(size / 4), input(size), baseline);
+  const steps = samplesOf(input(size / 4), input(size), baseline, resolutionMs);
   const sample = ({ subject, runs }: Step<T>): Promise<number> =>
     clock(async () => {
       for (let i = 0; i < runs; i++) await run(subject);
@@ -467,16 +529,18 @@ export interface CostRatio {
 export const COST_MIN_SAMPLE_MS = 30;
 
 /** The samples of a cost ratio, each answered with its CPU time. */
-function* costSamplesOf(): Generator<
-  { reference: boolean; runs: number },
-  CostRatio,
-  number
-> {
+function* costSamplesOf(
+  resolutionMs: number,
+): Generator<{ reference: boolean; runs: number }, CostRatio, number> {
   // A first run of each compiles the code it calls.
   yield { reference: false, runs: 1 };
   let runs = 1;
   let referenceMs = yield { reference: true, runs };
-  while (referenceMs < COST_MIN_SAMPLE_MS && runs < MAX_RUNS) {
+  const targetMs = Math.max(
+    COST_MIN_SAMPLE_MS,
+    TICKS_PER_SAMPLE * resolutionMs,
+  );
+  while (referenceMs < targetMs && runs < MAX_RUNS) {
     runs =
       referenceMs <= 0
         ? growRuns(runs)
@@ -484,10 +548,7 @@ function* costSamplesOf(): Generator<
             MAX_RUNS,
             Math.max(
               runs * 2,
-              Math.ceil(
-                (runs * COST_MIN_SAMPLE_MS * 1.5) /
-                  Math.max(referenceMs, 0.001),
-              ),
+              Math.ceil((runs * targetMs * 1.5) / Math.max(referenceMs, 0.001)),
             ),
           );
     referenceMs = yield { reference: true, runs };
@@ -523,8 +584,9 @@ export const measureCostRatioAsync = async (
   run: () => Promise<unknown>,
   reference: () => unknown,
   clock: (run: () => Promise<unknown>) => Promise<number> = cpuMsAsync,
+  resolutionMs: number = clock === cpuMsAsync ? cpuMsAsyncResolution() : 0,
 ): Promise<CostRatio> => {
-  const steps = costSamplesOf();
+  const steps = costSamplesOf(resolutionMs);
   let step = steps.next();
   while (!step.done) {
     const { reference: isReference, runs } = step.value;
@@ -544,8 +606,9 @@ export const measureCostRatio = (
   run: () => unknown,
   reference: () => unknown,
   clock: (run: () => unknown) => number = cpuMs,
+  resolutionMs: number = clock === cpuMs ? cpuMsResolution() : 0,
 ): CostRatio => {
-  const steps = costSamplesOf();
+  const steps = costSamplesOf(resolutionMs);
   let step = steps.next();
   while (!step.done) {
     const { reference: isReference, runs } = step.value;

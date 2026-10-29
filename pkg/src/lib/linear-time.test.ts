@@ -20,6 +20,9 @@ import {
   measureGrowth,
   measureGrowthAsync,
   spliceCopies,
+  minSampleMs,
+  resolutionOf,
+  cpuMsResolution,
 } from "./linear-time.test-helper.ts";
 
 const SIZE = 200_000;
@@ -221,6 +224,65 @@ describe("measureGrowth", () => {
     expect(
       measureGrowth(input, SIZE, quadratic.run, quadratic.clock).growth,
     ).toBeGreaterThan(MAX_GROWTH);
+  });
+
+  // Real ticks fall wherever they fall: time outside the samples moves the
+  // phase, so a sample about one tick long reads 0 or a whole tick. Windows
+  // CI read 0.00 ms at a quarter size and a growth of 12 to 25 for linear
+  // checks; here, depending on the phase, a quarter or a full size reads 0.
+  const phasedTickClock = (cost: (n: number) => number, gapMs: number) => {
+    let now = 0;
+    let spent = 0;
+    const clock = (fn: () => unknown): number => {
+      now += gapMs; // unmeasured time between samples
+      spent = 0;
+      fn();
+      const start = now;
+      now += spent;
+      return (
+        (Math.floor(now / TICK_MS) - Math.floor(start / TICK_MS)) * TICK_MS
+      );
+    };
+    const run = (html: string) => {
+      spent += cost(html.length);
+    };
+    return { clock, run };
+  };
+  const GAPS_MS = [0.3, 1.1, 3.7, 7.9, 11.3];
+  const growthOnTicks = (
+    cost: (n: number) => number,
+    gapMs: number,
+    resolutionMs: number,
+  ) => {
+    const { clock, run } = phasedTickClock(cost, gapMs);
+    return measureGrowth(input, SIZE, run, clock, undefined, resolutionMs);
+  };
+
+  it("spans several ticks per sample on a clock that counts in ticks", () => {
+    const linear = (n: number) => n / 40_000;
+    const unscaled = GAPS_MS.map((gap) => growthOnTicks(linear, gap, 0).growth);
+    expect(unscaled.some((growth) => growth < 3 || growth > 5)).toBe(true);
+    for (const gap of GAPS_MS) {
+      const { growth, runs, smallMs } = growthOnTicks(linear, gap, TICK_MS);
+      expect(smallMs * runs).toBeGreaterThanOrEqual(
+        minSampleMs(TICK_MS) - TICK_MS,
+      );
+      expect(growth).toBeGreaterThan(3);
+      expect(growth).toBeLessThan(5);
+      expect(
+        growthOnTicks((n) => (n / 40_000) ** 2 / 5, gap, TICK_MS).growth,
+      ).toBeGreaterThan(MAX_GROWTH);
+    }
+  });
+
+  it("measures the step of a clock, and 0 for one that never moves", () => {
+    let t = 0;
+    expect(resolutionOf(() => Math.floor((t += 0.5) / 15.625) * 15.625)).toBe(
+      15.625,
+    );
+    expect(resolutionOf(() => 7)).toBe(0);
+    expect(cpuMsResolution()).toBeGreaterThan(0);
+    expect(cpuMsResolution()).toBeLessThan(20);
   });
 
   it("calibrates a cost ratio on a coarse clock without jumping to MAX_RUNS", () => {
