@@ -50,9 +50,34 @@ export const CSP_KEYWORDS: ReadonlySet<string> = new Set([
   "inline-speculation-rules",
 ]);
 
-/** Directives whose values are source lists (where keywords need quotes). */
+/**
+ * Directives whose values are source lists (where keywords need quotes):
+ * every CSP Level 3 fetch directive, the -elem and -attr variants included
+ * (they do not end in -src), plus the document and navigation ones.
+ */
+const SOURCE_LIST_DIRECTIVES: ReadonlySet<string> = new Set([
+  "default-src",
+  "script-src",
+  "script-src-elem",
+  "script-src-attr",
+  "style-src",
+  "style-src-elem",
+  "style-src-attr",
+  "img-src",
+  "font-src",
+  "connect-src",
+  "media-src",
+  "object-src",
+  "frame-src",
+  "child-src",
+  "worker-src",
+  "manifest-src",
+  "fenced-frame-src",
+  "base-uri",
+  "form-action",
+  "frame-ancestors",
+]);
+
+/** Whether a directive (any case) takes a source list. */
 export const isSourceListDirective = (name: string): boolean =>
-  name.endsWith("-src") ||
-  name === "base-uri" ||
-  name === "form-action" ||
-  name === "frame-ancestors";
+  SOURCE_LIST_DIRECTIVES.has(name.toLowerCase());

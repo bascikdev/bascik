@@ -161,6 +161,24 @@ describe("contentSecurityPolicyHeader", () => {
     );
   });
 
+  it("script-src-attr and style-src-attr get no hashes (an element hash never matches an attribute, and they fall back to script-src/style-src only when absent)", () => {
+    expect(
+      contentSecurityPolicyHeader(
+        {
+          directives: {
+            "script-src": ["'self'"],
+            "script-src-attr": ["'none'"],
+            "style-src": ["'self'"],
+            "style-src-attr": ["'none'"],
+          },
+        },
+        HASHES,
+      ).value,
+    ).toBe(
+      "script-src 'self' 'sha256-AAA=' 'sha256-BBB='; script-src-attr 'none'; style-src 'self' 'sha256-CCC='; style-src-attr 'none'",
+    );
+  });
+
   it("does not create a directive when the route has no hashes of that kind", () => {
     expect(
       contentSecurityPolicyHeader(
@@ -326,6 +344,72 @@ describe("config validation: contentSecurityPolicy", () => {
     ).toBe("contentSecurityPolicy.directives.script-src[1]");
   });
 
+  it("an unquoted keyword is caught in every source-list directive, -elem and -attr variants included", () => {
+    for (const directive of [
+      "default-src",
+      "script-src",
+      "script-src-elem",
+      "script-src-attr",
+      "style-src",
+      "style-src-elem",
+      "style-src-attr",
+      "img-src",
+      "font-src",
+      "connect-src",
+      "media-src",
+      "object-src",
+      "frame-src",
+      "child-src",
+      "worker-src",
+      "manifest-src",
+      "fenced-frame-src",
+      "base-uri",
+      "form-action",
+      "frame-ancestors",
+    ]) {
+      const errors = shape({ directives: { [directive]: ["self"] } });
+      expect(errors, directive).toHaveLength(1);
+      expect(errors[0].key, directive).toBe(
+        `contentSecurityPolicy.directives.${directive}[0]`,
+      );
+      expect(errors[0].message, directive).toBe(
+        "write self as 'self' (with single quotes).",
+      );
+    }
+  });
+
+  it("an upper-case -elem directive is still a source list", () => {
+    const errors = shape({ directives: { "Script-Src-Elem": ["none"] } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toBe(
+      "write none as 'none' (with single quotes).",
+    );
+  });
+
+  it("a misspelled -elem or -attr directive gets a did-you-mean", () => {
+    expect(
+      shape({ directives: { "script-src-elm": ["'self'"] } })[0].message,
+    ).toBe(
+      '"script-src-elm" is not a CSP directive. Did you mean "script-src-elem"?',
+    );
+    expect(
+      shape({ directives: { style_src_attr: ["'self'"] } })[0].message,
+    ).toBe(
+      '"style_src_attr" is not a CSP directive. Did you mean "style-src-attr"?',
+    );
+  });
+
+  it("a keyword in a non-source-list directive is left alone (sandbox, require-trusted-types-for)", () => {
+    expect(
+      shape({
+        directives: {
+          sandbox: ["allow-scripts"],
+          "require-trusted-types-for": ["'script'"],
+        },
+      }),
+    ).toEqual([]);
+  });
+
   it("a source with whitespace or ';' is refused (it would start another source or directive)", () => {
     for (const bad of [
       "'self' https://a.example",
@@ -374,6 +458,22 @@ describe("config validation: contentSecurityPolicy", () => {
         hashes: false,
       }),
     ).toEqual([]);
+  });
+
+  it("warns about 'unsafe-inline', * and https: in script-src-elem too (it decides which <script> elements run)", () => {
+    const found = warnings({
+      directives: { "script-src-elem": ["'self'", "'unsafe-inline'", "*"] },
+    });
+    expect(found.map((w) => [w.key, w.message])).toEqual([
+      [
+        "contentSecurityPolicy.directives.script-src-elem",
+        "contentSecurityPolicy.directives.script-src-elem lists 'unsafe-inline', so every inline script runs, including one injected into a page, and Bascik adds no script hashes to it. Remove 'unsafe-inline' to allow only the scripts from your build.",
+      ],
+      [
+        "contentSecurityPolicy.directives.script-src-elem",
+        "contentSecurityPolicy.directives.script-src-elem lists *, so a script from any site may run. List the origins you load scripts from instead.",
+      ],
+    ]);
   });
 
   it("'unsafe-inline' in style-src is a normal first step: no warning", () => {

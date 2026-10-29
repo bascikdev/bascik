@@ -451,6 +451,33 @@ describe("server-script-unescaped-markup: linear time", () => {
     expect(diags).toHaveLength(10_000 * 2);
     expect(growthOf(small, large)).toBeLessThan(8);
   }, 60_000);
+
+  it("an import specifier with a long run of tabs reads in linear time (CPU growth under 8x for 4x the tabs)", () => {
+    // `{ html<tabs>x }`: splitting the specifier on /\s+as\s+/ retried the
+    // tab run from every tab, so typing in a large import froze the editor.
+    const script = (tabs: number) =>
+      `import { html${"\t".repeat(tabs)}x } from "@bascik/bascik/html";\nexport default () => \`<p>\${q}</p>\`;\n`;
+    const small = script(5_000);
+    const large = script(20_000);
+    expect(covered(large)).toEqual(["${q}"]);
+    expect(growthOf(small, large)).toBeLessThan(8);
+  }, 60_000);
+});
+
+describe("server-script-unescaped-markup: import names that are not identifiers", () => {
+  it.each(["h(", "h\\", "h[", "h+", "h)"])(
+    "a half-typed local name %s is not a tag and does not throw",
+    (local) => {
+      const body = `import { html as ${local} } from "@bascik/bascik/html";\nexport default () => \`<p>\${items.map((i) => ${local}\`<b>\${i}</b>\`)}</p>\`;\n`;
+      expect(() => analyze(body)).not.toThrow();
+      expect(covered(body).length).toBeGreaterThan(0);
+    },
+  );
+
+  it("an identifier alias still tags", () => {
+    const body = `import { html as h } from "@bascik/bascik/html";\nexport default () => \`<p>\${items.map((i) => h\`<b>\${i}</b>\`)}</p>\`;\n`;
+    expect(covered(body)).toEqual([]);
+  });
 });
 
 describe("non-markup templates (SQL, URLs, plain text) get no sink warnings", () => {

@@ -1029,30 +1029,39 @@ export const collectConfigWarnings = (
   const csp = raw.contentSecurityPolicy;
   if (isPlainObject(csp) && isPlainObject(csp.directives)) {
     const directives = csp.directives;
-    const sourcesOf = (name: string): string[] =>
-      Array.isArray(directives[name])
-        ? (directives[name] as unknown[]).filter(
-            (s): s is string => typeof s === "string",
-          )
+    // Directive names are case-insensitive; the header builder lowercases them.
+    const valueOf = (name: string): unknown =>
+      Object.entries(directives).find(
+        ([written]) => written.toLowerCase() === name,
+      )?.[1];
+    const sourcesOf = (name: string): string[] => {
+      const value = valueOf(name);
+      return Array.isArray(value)
+        ? (value as unknown[]).filter((s): s is string => typeof s === "string")
         : [];
+    };
     const hashScripts =
       csp.hashes !== false &&
       !(isPlainObject(csp.hashes) && csp.hashes.scripts === false);
-    if (hashScripts && sourcesOf("script-src").includes("'unsafe-inline'"))
-      warnings.push({
-        key: "contentSecurityPolicy.directives.script-src",
-        value: directives["script-src"],
-        message:
-          "contentSecurityPolicy.directives.script-src lists 'unsafe-inline', so every inline script runs, including one injected into a page, and Bascik adds no script hashes to it. Remove 'unsafe-inline' to allow only the scripts from your build.",
-      });
-    for (const wide of sourcesOf("script-src").filter(
-      (s) => s === "*" || s.toLowerCase() === "https:" || s === "http:",
-    ))
-      warnings.push({
-        key: "contentSecurityPolicy.directives.script-src",
-        value: wide,
-        message: `contentSecurityPolicy.directives.script-src lists ${wide}, so a script from any site may run. List the origins you load scripts from instead.`,
-      });
+    // script-src-elem decides which <script> elements run when written, so
+    // it gets the same warnings as script-src.
+    for (const name of ["script-src", "script-src-elem"]) {
+      const at = `contentSecurityPolicy.directives.${name}`;
+      if (hashScripts && sourcesOf(name).includes("'unsafe-inline'"))
+        warnings.push({
+          key: at,
+          value: valueOf(name),
+          message: `${at} lists 'unsafe-inline', so every inline script runs, including one injected into a page, and Bascik adds no script hashes to it. Remove 'unsafe-inline' to allow only the scripts from your build.`,
+        });
+      for (const wide of sourcesOf(name).filter(
+        (s) => s === "*" || s.toLowerCase() === "https:" || s === "http:",
+      ))
+        warnings.push({
+          key: at,
+          value: wide,
+          message: `${at} lists ${wide}, so a script from any site may run. List the origins you load scripts from instead.`,
+        });
+    }
     if (
       csp.reportOnly === true &&
       !("report-to" in directives) &&

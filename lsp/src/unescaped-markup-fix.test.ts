@@ -120,6 +120,34 @@ describe("quick fix: Wrap template in html`...`", () => {
     return { doc, action };
   };
 
+  it.each(["h(", "h\\", "h["])(
+    "an existing import with a half-typed local name %s: the fix does not throw and tags with html",
+    (local) => {
+      const script = `      import { html as ${local} } from "@bascik/bascik/html";\n${SEARCH}`;
+      const { doc, action } = fixFor(PAGE(script));
+      expect(action).toBeDefined();
+      const fixed = applyEdits(doc, action!.edit!.changes![doc.uri]);
+      expect(fixed).toContain("return html`<p>You searched for ${q}</p>`;");
+    },
+  );
+
+  it("an existing import split by a long run of tabs: the fix reads it in linear time", () => {
+    const script = (tabs: number) =>
+      `      import { esc${"\t".repeat(tabs)}x } from "@bascik/bascik/html";\n${SEARCH}`;
+    const time = (tabs: number) => {
+      const { doc, diags } = open(PAGE(script(tabs)));
+      const diag = markupDiags(diags)[0];
+      const start = process.cpuUsage();
+      createCodeActions(doc, diag.range, diags, snapshot());
+      const { user, system } = process.cpuUsage(start);
+      return (user + system) / 1000;
+    };
+    time(5_000);
+    const small = Math.min(time(5_000), time(5_000), time(5_000));
+    const large = Math.min(time(20_000), time(20_000), time(20_000));
+    expect(large / Math.max(small, 5)).toBeLessThan(8);
+  }, 60_000);
+
   it("adds the tag and the import in one edit", () => {
     const { doc, action } = fixFor(PAGE(SEARCH));
     expect(action).toBeDefined();

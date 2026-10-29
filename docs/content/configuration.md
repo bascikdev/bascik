@@ -594,9 +594,9 @@ contentSecurityPolicy: {
 The option is validated at startup with the location of each problem:
 
 - `contentSecurityPolicy.directives: "script_src" is not a CSP directive. Did you mean "script-src"?`
-- `contentSecurityPolicy.directives.script-src[0]: write self as 'self' (with single quotes).`
+- `contentSecurityPolicy.directives.script-src[0]: write self as 'self' (with single quotes).` The keyword check covers every directive that takes sources: each `-src` directive, `script-src-elem`, `script-src-attr`, `style-src-elem`, `style-src-attr`, `base-uri`, `form-action` and `frame-ancestors`.
 - A source with a space, `;` or `,` (each source is its own string), `hashes` that is not a boolean or `{ scripts, styles }` booleans (a misspelled key gets a did-you-mean), and `reportOnly` that is not a boolean.
-- Warnings: `contentSecurityPolicy.directives.script-src lists 'unsafe-inline', so every inline script runs, including one injected into a page, and Bascik adds no script hashes to it.`, `*` or `https:` in `script-src`, and `reportOnly` with no `report-to` or `report-uri` directive.
+- Warnings: `contentSecurityPolicy.directives.script-src lists 'unsafe-inline', so every inline script runs, including one injected into a page, and Bascik adds no script hashes to it.`, `*` or `https:` in `script-src`, the same two warnings for `script-src-elem`, and `reportOnly` with no `report-to` or `report-uri` directive.
 
 ## Mode Overrides (`dev`, `build`, `server`)
 

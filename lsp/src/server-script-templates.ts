@@ -157,6 +157,36 @@ export interface HtmlImports {
   namespaces: Set<string>;
 }
 
+const IDENTIFIER = /^[\w$]+$/;
+
+/** `value` as a literal RegExp source: every syntax character escaped. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+}
+
+/**
+ * One `{ ... }` import entry (`esc`, `html as h`) as [exported, local], or
+ * undefined when it is not `name` or `name as local` with plain identifier
+ * names (a half-typed `html as h(` binds nothing to tag with). Splits on
+ * whitespace runs, not /\s+as\s+/, which retried a long whitespace run from
+ * each of its characters.
+ */
+export function parseImportSpecifier(
+  entry: string,
+): [exported: string, local: string] | undefined {
+  const words = entry.split(/\s+/).filter(Boolean);
+  const [exported, as, local] =
+    words.length === 1
+      ? [words[0], "as", words[0]]
+      : words.length === 3
+        ? words
+        : [];
+  if (as !== "as" || !exported || !local) return undefined;
+  return IDENTIFIER.test(exported) && IDENTIFIER.test(local)
+    ? [exported, local]
+    : undefined;
+}
+
 export function findHtmlImports(body: string): HtmlImports {
   const named = new Map<string, string>();
   const namespaces = new Set<string>();
@@ -164,11 +194,9 @@ export function findHtmlImports(body: string): HtmlImports {
     /\bimport\s*\{([^}]*)\}\s*from\s*["']@bascik\/bascik\/html["']/g,
   )) {
     for (const entry of m[1].split(",")) {
-      const parts = entry.trim().split(/\s+as\s+/);
-      const exported = parts[0]?.trim();
-      const local = (parts[1] ?? parts[0])?.trim();
-      if (exported && local && HTML_EXPORTS.has(exported))
-        named.set(local, exported);
+      const specifier = parseImportSpecifier(entry);
+      if (specifier && HTML_EXPORTS.has(specifier[0]))
+        named.set(specifier[1], specifier[0]);
     }
   }
   for (const m of body.matchAll(
@@ -387,8 +415,7 @@ export function isExempt(
   for (const tag of ctx.htmlTags) {
     if (e.startsWith(`${tag}\``)) return true;
     // A callback that returns html (items.map((i) => html`...`)).
-    if (new RegExp(`=>\\s*${tag.replace(/[.$]/g, "\\$&")}\``).test(e))
-      return true;
+    if (new RegExp(`=>\\s*${escapeRegExp(tag)}\``).test(e)) return true;
   }
   if (/^[\w$]+$/.test(e)) {
     const bound = ctx.bindings.get(e);

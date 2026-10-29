@@ -34,6 +34,7 @@ import {
 } from "./directive-rules.js";
 import { findModuleSpecifiers } from "./module-specifiers.js";
 import { analyzeServerScriptSource } from "./server-script-rules.js";
+import { parseImportSpecifier } from "./server-script-templates.js";
 import {
   analyzeComponentSource,
   type ComponentMetadata,
@@ -2040,7 +2041,7 @@ export function buildWrapHtmlEdits(
       : body,
   );
   const word = (name: string): string =>
-    `(?<![\\w$.])${name.replace(/\$/g, "\\$")}(?![\\w$])`;
+    `(?<![\\w$.])${escapeRegExp(name)}(?![\\w$])`;
   const uses = (name: string): boolean => new RegExp(word(name)).test(code);
   // An imported name is safe to tag with when it is only ever a tag or a
   // callee: anywhere else (a parameter, a variable, a function declaration)
@@ -2057,10 +2058,11 @@ export function buildWrapHtmlEdits(
         .map((e) => e.trim())
         .filter(Boolean)
     : [];
+  // Names that are not identifiers (a half-typed `html as h(`) bind nothing.
   const bound = entries
-    .map((e) => e.split(/\s+as\s+/).map((x) => x.trim()))
-    .filter(([exported]) => exported === "html")
-    .map((parts) => parts[1] ?? parts[0]);
+    .map(parseImportSpecifier)
+    .filter((parts) => parts?.[0] === "html")
+    .map((parts) => parts![1]);
   tag = bound.find(onlyTagOrCall);
   if (tag === undefined) {
     if (!bound.includes("html") && !uses("html")) {

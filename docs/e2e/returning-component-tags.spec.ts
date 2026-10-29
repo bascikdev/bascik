@@ -11,6 +11,7 @@
  * - /testing/troubleshooting: the pass-through demo has no Preview and shows the misspelled and escaped tags as sent.
  */
 import { test, expect, type Locator, type Page } from "@playwright/test";
+import { parse, type DefaultTreeAdapterMap } from "parse5";
 
 /** The first demo box after the heading with `id`. */
 const boxAfter = (page: Page, id: string): Locator =>
@@ -43,6 +44,26 @@ const paneText = async (pane: Locator, language: string): Promise<string> =>
     .locator(`[data-language-pane="${language}"]`)
     .first()
     .textContent()) ?? "";
+
+type Node = DefaultTreeAdapterMap["node"];
+
+/**
+ * The text of every <script> element in Output HTML, in order. Parsed with parse5 rather than matched with a regex so
+ * an uppercase <SCRIPT>, a script with attributes or a split end tag still counts, and an extra script fails the check.
+ */
+const scriptBodies = (html: string): string[] => {
+  const bodies: string[] = [];
+  const walk = (node: Node): void => {
+    if (node.nodeName === "script" && "childNodes" in node)
+      bodies.push(
+        node.childNodes.map((c) => ("value" in c ? c.value : "")).join(""),
+      );
+    if ("childNodes" in node) node.childNodes.forEach(walk);
+    if ("content" in node) walk(node.content);
+  };
+  walk(parse(html));
+  return bodies;
+};
 
 /** Card names in Output HTML text, in order. */
 const outputNames = (html: string): string[] =>
@@ -140,9 +161,7 @@ test.describe("Returning component tags demos", () => {
     // The card's script has no scoped id, so no request-time id is sent and
     // the three copies of the script are identical (one CSP hash).
     expect(html.match(REQUEST_ID) ?? []).toEqual([]);
-    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(
-      (m) => m[1],
-    );
+    const scripts = scriptBodies(html);
     expect(scripts).toHaveLength(3);
     expect(new Set(scripts).size).toBe(1);
 

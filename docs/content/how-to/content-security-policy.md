@@ -19,7 +19,7 @@ Three ways to use the hashes:
 Set the directives you want, written as in a CSP header with keywords in single quotes. Bascik adds each route's inline script hashes and inline style hashes to your directives and sends the result on every HTML response. Setting the option turns on `generate.cspHashes`. The hashes never allow more than your policy already does:
 
 - **A directive you wrote is only extended.** Script hashes go at the end of `script-src`, and style hashes at the end of `style-src`. Your sources stay as written, in order. If you wrote `'none'`, the hashes replace it, so the directive allows those hashes and nothing else.
-- **`script-src-elem` and `style-src-elem`**, when you write them, get the same hashes, because they take over from `script-src` and `style-src` for `<script>` and `<style>` elements.
+- **`script-src-elem` and `style-src-elem`**, when you write them, get the same hashes, because they take over from `script-src` and `style-src` for `<script>` and `<style>` elements. `script-src-attr` and `style-src-attr` get none: they cover inline `on...=` and `style=` attributes, which an element hash never matches.
 - **A missing `script-src` or `style-src` starts from `default-src`.** Bascik creates the directive from your `default-src` sources plus the hashes. With `default-src 'none'`, the created directive is only the hashes. Bascik never adds a source such as `'self'` that you did not write.
 - **No `default-src` either: nothing is created.** Without both directives, the browser already runs inline scripts and styles. A directive with only hashes would block your own script files, so Bascik leaves the policy as written. To restrict scripts, write `script-src` or `default-src`.
 - **`'unsafe-inline'` means no hashes.** A directive that lists `'unsafe-inline'` gets none, because a hash would turn `'unsafe-inline'` off. This also applies to a missing directive whose `default-src` lists `'unsafe-inline'`.
@@ -48,7 +48,7 @@ export default defineConfig({
 
 The hashes always come from the build, never from a response body: a `<script>` a server script reflects from the request gets no hash, so the browser blocks it. Routes with a server or stream script also carry the hashes of every component that can be rendered at request time (see [Server and stream scripts](#server-and-stream-scripts)). Without the option, no header is sent and responses are unchanged.
 
-The config is validated at startup, with the location of each problem: `"script_src" is not a CSP directive. Did you mean "script-src"?`, `write self as 'self' (with single quotes).`, a source with a space or `;`, and warnings for `'unsafe-inline'` in `script-src` (every inline script runs, including an injected one), `*` or `https:` in `script-src`, and `reportOnly` with no `report-to` or `report-uri`. See [Configuration](/configuration#contentsecuritypolicy).
+The config is validated at startup, with the location of each problem: `"script_src" is not a CSP directive. Did you mean "script-src"?`, `write self as 'self' (with single quotes).` (in any directive that takes sources, `script-src-elem` and `style-src-attr` included), a source with a space or `;`, and warnings for `'unsafe-inline'` in `script-src` or `script-src-elem` (every inline script runs, including an injected one), `*` or `https:` in either, and `reportOnly` with no `report-to` or `report-uri`. See [Configuration](/configuration#contentsecuritypolicy).
 
 ### Node production server (bascik --server)
 

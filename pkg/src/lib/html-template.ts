@@ -164,9 +164,37 @@ export class HtmlError extends Error {
 const MARK = "${…}";
 const EXCERPT = 80;
 
+const SPACE = /\s/;
+
+/**
+ * Each line break and the whitespace around it, as one space (an excerpt
+ * fits on one line): every run of whitespace (JS `\s`) that holds a `\n`
+ * becomes one space, and other runs stay as they are. One pass over the text,
+ * where a regex that matches whitespace, a line break, then whitespace again
+ * takes quadratic time on a long run of whitespace with no line break.
+ */
+export const foldLineBreaks = (text: string): string => {
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    if (!SPACE.test(text[i])) {
+      out += text[i++];
+      continue;
+    }
+    const start = i;
+    let breaks = false;
+    while (i < text.length && SPACE.test(text[i])) {
+      if (text[i] === "\n") breaks = true;
+      i++;
+    }
+    out += breaks ? " " : text.slice(start, i);
+  }
+  return out;
+};
+
 /** The static text with each hole shown as ${…}, cut to about 80 characters around `hole`. */
 const excerpt = (strings: readonly string[], hole: number): string => {
-  const parts = strings.map((part) => part.replace(/\s*\n\s*/g, " "));
+  const parts = strings.map(foldLineBreaks);
   const whole = parts.join(MARK);
   if (whole.length <= EXCERPT) return whole;
   let at = 0;
