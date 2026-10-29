@@ -384,7 +384,7 @@ describe("scanning for inline code without regular-expression backtracking", () 
  */
 const MAX_GROWTH = 8;
 const MIN_SAMPLE_MS = 25;
-const TICKS_PER_SAMPLE = 8;
+const TICKS_PER_SAMPLE = 16;
 const MAX_RUNS = 2_000;
 const NOISE_FLOOR_MS = 5;
 const CEILING_MS = 2_000;

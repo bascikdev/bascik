@@ -156,9 +156,12 @@ export const cpuMsAsync = async (
  * time in scheduler ticks of about 15.6 ms: a sample one tick long reads 0
  * or a whole tick depending on where the ticks fall, and the fastest of
  * several then read 0, which made linear checks read a growth of 12 to 25.
- * Across eight ticks a sample is off by an eighth at most.
+ * A sample is accepted at half its target (see `samplesOf`), and at eight
+ * ticks that left 4 to 5: Windows CI read 5 ticks against 10 and a growth of
+ * exactly 8. Sixteen keeps an accepted sample at 8 ticks or more, off by an
+ * eighth at most.
  */
-export const TICKS_PER_SAMPLE = 8;
+export const TICKS_PER_SAMPLE = 16;
 
 /**
  * The smallest step `read` moves by, in milliseconds, from a few steps of

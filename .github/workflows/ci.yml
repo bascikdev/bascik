@@ -226,6 +226,10 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      # The bascik-refactor parity checks drive a real browser on fixture pages.
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
       - name: Run docs unit tests
         run: yarn docs:test
 

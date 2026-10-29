@@ -387,7 +387,7 @@ describe("server-script-bascik-import allows exactly @bascik/bascik/html", () =>
 
 describe("server-script-unescaped-markup: linear time", () => {
   // After pkg/src/lib/linear-time.test-helper.ts (lsp tests build from lsp/src
-  // only): this thread's CPU time, samples spanning eight steps of the clock
+  // only): this thread's CPU time, samples spanning sixteen steps of the clock
   // (Windows counts CPU time in ticks of about 15.6 ms), the fastest of
   // interleaved samples, and more pairs while the growth is in the band load
   // reaches on linear work. Process CPU time, best of three and no warm-up
@@ -414,7 +414,7 @@ describe("server-script-unescaped-markup: linear time", () => {
     return Number.isFinite(smallest) ? smallest : 0;
   };
   const growthOf = (small: string, large: string): number => {
-    const targetMs = Math.max(25, 8 * clockStepMs());
+    const targetMs = Math.max(25, 16 * clockStepMs());
     analyze(small);
     analyze(large);
     let runs = 1;
