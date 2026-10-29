@@ -95,6 +95,7 @@ import {
   resolveRoutePath,
 } from "./routes.ts";
 import {
+  CHILD_SYSTEM_MAX_VAR,
   CHILD_WORKER_COUNT_VAR,
   SYSTEM_MAX_CHILD_PROCESSES,
 } from "./script-runner.ts";
@@ -898,6 +899,9 @@ const startPagePool = (pageList: string[]): PagePool => {
         // The `transpiled:` line is printed inside the worker, which cannot tell on its own that it has a terminal.
         ...(workerEnvironment() ?? process.env),
         [CHILD_WORKER_COUNT_VAR]: String(poolSize),
+        // Every worker divides the main thread's number instead of measuring
+        // memory again, so their shares add up to one consistent budget.
+        [CHILD_SYSTEM_MAX_VAR]: String(SYSTEM_MAX_CHILD_PROCESSES),
       },
       // The pool can now be trimmed or torn down while workers are still
       // loading the compiler; it must wait until each has loaded first.

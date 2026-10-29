@@ -5,7 +5,14 @@ import {
   MEM_PER_CHILD,
   SPILLED_ENV_FILE_VAR,
   Semaphore,
+  CHILD_SYSTEM_MAX_VAR,
+  CHILD_WORKER_COUNT_VAR,
+  MAX_CHILD_PROCESSES_VAR,
+  availableMemoryBytes,
   computeMaxChildProcesses,
+  needsVmStat,
+  parseVmStat,
+  resolveChildBudget,
   runModule,
 } from "./script-runner.ts";
 
@@ -295,9 +302,10 @@ describe("runModule permit ownership", () => {
  * Child pool sizing. The old formula took `Math.max(freemem() * 0.6,
  * totalmem() * 0.25)`, so total memory acted as a floor and a 16 GB machine
  * with under 100 MB free still admitted `min(cpus, 35)` children. Available
- * memory (`process.availableMemory()`, since `os.freemem()` under-reports on
- * macOS) now bounds the pool, and a page worker thread gets only its share of
- * the system maximum instead of the whole thing.
+ * memory (`availableMemoryBytes()`: `process.availableMemory()`, or `vm_stat`
+ * on macOS with libuv before 1.52, where both it and `os.freemem()` count only
+ * truly free pages) now bounds the pool, and a page worker thread gets only
+ * its share of the system maximum instead of the whole thing.
  */
 describe("computeMaxChildProcesses", () => {
   const GB = 1024 * 1024 * 1024;
@@ -419,5 +427,223 @@ describe("computeMaxChildProcesses", () => {
     expect(
       computeMaxChildProcesses({ ...roomy, override: 2, workerCount: 2 }),
     ).toBe(1);
+  });
+});
+
+/**
+ * On macOS, libuv before 1.52 (every Node 22 release so far, Node 24 before
+ * 24.17) makes `process.availableMemory()` return `os.freemem()`: a few hundred
+ * MB on an idle 16 GB machine. That sized the child budget, and so the page
+ * worker pool, to 1 for the whole build. `vm_stat` gives the reclaimable total
+ * libuv 1.52 reports.
+ */
+describe("availableMemoryBytes on macOS with libuv before 1.52", () => {
+  const MB = 1024 * 1024;
+  const VM_STAT = `Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                                     6147.
+Pages active:                                 330799.
+Pages inactive:                               329896.
+Pages speculative:                               433.
+Pages throttled:                                   0.
+Pages wired down:                             164798.
+`;
+  const reclaimable = (6147 + 329896 + 433) * 16384;
+
+  it("chooses vm_stat by platform and libuv version", () => {
+    expect(needsVmStat("darwin", "1.51.0")).toBe(true);
+    expect(needsVmStat("darwin", "1.50.0")).toBe(true);
+    expect(needsVmStat("darwin", "0.99.9")).toBe(true);
+    expect(needsVmStat("darwin", "1.52.0")).toBe(false);
+    expect(needsVmStat("darwin", "1.52.1")).toBe(false);
+    expect(needsVmStat("darwin", "2.0.0")).toBe(false);
+    // Linux and Windows libuv already counts reclaimable memory.
+    expect(needsVmStat("linux", "1.51.0")).toBe(false);
+    expect(needsVmStat("win32", "1.40.0")).toBe(false);
+    // An unreadable version on macOS is treated as old: vm_stat is right on any.
+    expect(needsVmStat("darwin", undefined)).toBe(true);
+    expect(needsVmStat("darwin", "unknown")).toBe(true);
+  });
+
+  it("parses free + inactive + speculative pages times the page size", () => {
+    expect(parseVmStat(VM_STAT)).toBe(reclaimable);
+    // 4 KiB pages (Intel Macs) and a missing speculative line.
+    expect(
+      parseVmStat(
+        "Mach Virtual Memory Statistics: (page size of 4096 bytes)\n" +
+          "Pages free:  10.\nPages inactive:  20.\n",
+      ),
+    ).toBe(30 * 4096);
+  });
+
+  it("rejects unparseable output and unexpected page-size lines instead of guessing", () => {
+    expect(parseVmStat("")).toBeUndefined();
+    expect(parseVmStat("vm_stat: command not found")).toBeUndefined();
+    // No header: the page size is unknown.
+    expect(
+      parseVmStat("Pages free: 10.\nPages inactive: 20.\n"),
+    ).toBeUndefined();
+    for (const header of [
+      "(page size of 0 bytes)",
+      "(page size of 12345 bytes)",
+      "(page size of 268435456 bytes)",
+      "(page size of sixteen bytes)",
+    ]) {
+      expect(
+        parseVmStat(`${header}\nPages free: 10.\nPages inactive: 20.\n`),
+        header,
+      ).toBeUndefined();
+    }
+    // A required count missing or malformed.
+    expect(
+      parseVmStat("(page size of 4096 bytes)\nPages free: 10.\n"),
+    ).toBeUndefined();
+    expect(
+      parseVmStat(
+        "(page size of 4096 bytes)\nPages free: lots.\nPages inactive: 20.\n",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("uses vm_stat on darwin with libuv 1.51, and availableMemory() everywhere else", () => {
+    const vmStat = vi.fn(() => VM_STAT);
+    const availableMemory = vi.fn(() => 200 * MB);
+    const totalMem = () => 16 * 1024 * MB;
+    expect(
+      availableMemoryBytes({
+        platform: "darwin",
+        uvVersion: "1.51.0",
+        vmStat,
+        availableMemory,
+        totalMem,
+      }),
+    ).toBe(reclaimable);
+    expect(availableMemory).not.toHaveBeenCalled();
+    vmStat.mockClear();
+    for (const [platform, uvVersion] of [
+      ["darwin", "1.52.1"],
+      ["linux", "1.51.0"],
+    ]) {
+      expect(
+        availableMemoryBytes({
+          platform,
+          uvVersion,
+          vmStat,
+          availableMemory,
+          totalMem,
+        }),
+      ).toBe(200 * MB);
+    }
+    expect(vmStat).not.toHaveBeenCalled();
+  });
+
+  it("falls back to total memory when vm_stat is missing or prints something else", () => {
+    const totalMem = () => 16 * 1024 * MB;
+    const availableMemory = () => 200 * MB;
+    const missing = () => {
+      throw Object.assign(new Error("spawnSync /usr/bin/vm_stat ENOENT"), {
+        code: "ENOENT",
+      });
+    };
+    for (const vmStat of [missing, () => "garbage", () => ""]) {
+      expect(
+        availableMemoryBytes({
+          platform: "darwin",
+          uvVersion: "1.51.0",
+          vmStat,
+          availableMemory,
+          totalMem,
+        }),
+      ).toBe(16 * 1024 * MB);
+    }
+  });
+
+  it("sizes a 16 GB, 8 CPU Mac with 200 MB free to the CPU count, not 1", () => {
+    const totalMemBytes = 16 * 1024 * MB;
+    const budget = (available: number) =>
+      computeMaxChildProcesses({
+        cpuCount: 8,
+        availableMemBytes: available,
+        totalMemBytes,
+      });
+    // What Node 22 on macOS measured before this fix.
+    expect(budget(200 * MB)).toBe(1);
+    expect(
+      budget(
+        availableMemoryBytes({
+          platform: "darwin",
+          uvVersion: "1.51.0",
+          vmStat: () => VM_STAT,
+          availableMemory: () => 200 * MB,
+          totalMem: () => totalMemBytes,
+        }),
+      ),
+    ).toBe(8);
+  });
+});
+
+describe("resolveChildBudget", () => {
+  const GB = 1024 * 1024 * 1024;
+  const machine = { cpuCount: 8, totalMemBytes: 32 * GB };
+
+  it("measures memory on the main thread and ignores worker variables there", () => {
+    const measureAvailable = vi.fn(() => 16 * GB);
+    const env: Record<string, string | undefined> = {
+      [CHILD_WORKER_COUNT_VAR]: "4",
+      [CHILD_SYSTEM_MAX_VAR]: "2",
+    };
+    expect(
+      resolveChildBudget({ ...machine, mainThread: true, env, measureAvailable }),
+    ).toEqual({ systemMax: 8, threadMax: 8 });
+    expect(measureAvailable).toHaveBeenCalledTimes(1);
+    expect(env).toEqual({});
+  });
+
+  it("gives a page worker its share of the inherited system maximum without measuring memory", () => {
+    const measureAvailable = vi.fn(() => 0);
+    const env: Record<string, string | undefined> = {
+      [CHILD_WORKER_COUNT_VAR]: "3",
+      [CHILD_SYSTEM_MAX_VAR]: "6",
+      [MAX_CHILD_PROCESSES_VAR]: "1",
+    };
+    expect(
+      resolveChildBudget({ ...machine, mainThread: false, env, measureAvailable }),
+    ).toEqual({ systemMax: 6, threadMax: 2 });
+    expect(measureAvailable).not.toHaveBeenCalled();
+    // Consumed so build-script children do not inherit them; the user's own
+    // override is left in place.
+    expect(env).toEqual({ [MAX_CHILD_PROCESSES_VAR]: "1" });
+  });
+
+  it("falls back to measuring in a worker when the inherited value is missing or malformed", () => {
+    for (const inherited of [undefined, "", "0", "-2", "two", "1.5"]) {
+      const measureAvailable = vi.fn(() => 16 * GB);
+      const env: Record<string, string | undefined> = {
+        [CHILD_WORKER_COUNT_VAR]: "2",
+        [CHILD_SYSTEM_MAX_VAR]: inherited,
+      };
+      expect(
+        resolveChildBudget({
+          ...machine,
+          mainThread: false,
+          env,
+          measureAvailable,
+        }),
+        String(inherited),
+      ).toEqual({ systemMax: 8, threadMax: 4 });
+      expect(measureAvailable).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("skips the memory measurement when BASCIK_MAX_CHILD_PROCESSES decides", () => {
+    const measureAvailable = vi.fn(() => 0);
+    expect(
+      resolveChildBudget({
+        ...machine,
+        mainThread: true,
+        env: { [MAX_CHILD_PROCESSES_VAR]: "3" },
+        measureAvailable,
+      }),
+    ).toEqual({ systemMax: 3, threadMax: 3 });
+    expect(measureAvailable).not.toHaveBeenCalled();
   });
 });

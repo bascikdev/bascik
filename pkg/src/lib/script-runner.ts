@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { cpus, totalmem, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -112,12 +112,15 @@ const parsePositiveInteger = (raw: string | undefined): number | undefined => {
  * they hit the execFile timeout. Available memory now bounds the pool, with a
  * minimum of 1 so a build always makes forward progress.
  *
- * The caller passes `process.availableMemory()`, not `os.freemem()`. On macOS
+ * The caller passes `availableMemoryBytes()`, not `os.freemem()`. On macOS
  * XNU keeps file pages in inactive memory, so `freemem()` counts only truly
  * free pages and reads a few hundred MB on an idle 16 GB machine, which would
- * serialize every build script during normal operation. `availableMemory()`
- * counts the memory the kernel will hand out, and on Linux it also respects a
- * cgroup limit. The `BASCIK_MAX_CHILD_PROCESSES` override replaces the
+ * serialize every build script during normal operation. On Linux and Windows
+ * `process.availableMemory()` already counts what the kernel will hand out
+ * (MemAvailable, a cgroup limit, ullAvailPhys). On macOS it does so only from
+ * libuv 1.52; earlier libuv (every Node 22 release so far, Node 24 before
+ * 24.17) returns `freemem()` there, so `availableMemoryBytes()` reads
+ * `vm_stat` instead. The `BASCIK_MAX_CHILD_PROCESSES` override replaces the
  * computed system maximum when it still gets it wrong.
  *
  * `workerCount` divides the system maximum across page worker threads, since
@@ -154,36 +157,175 @@ export const computeMaxChildProcesses = ({
   return Math.max(1, Math.floor(systemMax / Math.max(1, workerCount)));
 };
 
-// A page worker thread gets the share the main thread assigned it through the
-// environment (env is the only channel available at module load, before
-// `workerData` is read). The pointer is consumed here so that every child a
-// worker spawns, through `runModule` or `runDirectiveHandler`, sees the same
-// environment the main thread would have given it.
-const childWorkerCount = isMainThread
-  ? 1
-  : parsePositiveInteger(process.env[CHILD_WORKER_COUNT_VAR]);
-delete process.env[CHILD_WORKER_COUNT_VAR];
+/**
+ * The first libuv whose `uv_get_available_memory` on macOS counts reclaimable
+ * pages (free + inactive + speculative). Earlier versions return the same
+ * value as `os.freemem()` there.
+ */
+const LIBUV_DARWIN_RECLAIMABLE: readonly [number, number] = [1, 52];
 
-const systemResources = {
-  cpuCount: cpus().length,
-  availableMemBytes: process.availableMemory(),
-  totalMemBytes: totalmem(),
-  override: parsePositiveInteger(process.env[MAX_CHILD_PROCESSES_VAR]),
+/**
+ * Whether `process.availableMemory()` under-reports on this runtime: macOS
+ * with libuv older than 1.52. An unreadable uv version on macOS counts as
+ * old, since `vm_stat` is accurate on every version anyway.
+ */
+export const needsVmStat = (
+  platform: string,
+  uvVersion: string | undefined,
+): boolean => {
+  if (platform !== "darwin") return false;
+  const match = /^(\d+)\.(\d+)/.exec(uvVersion ?? "");
+  if (!match) return true;
+  const [major, minor] = [Number(match[1]), Number(match[2])];
+  const [wantMajor, wantMinor] = LIBUV_DARWIN_RECLAIMABLE;
+  return major < wantMajor || (major === wantMajor && minor < wantMinor);
 };
+
+/**
+ * Reclaimable bytes from `vm_stat` output: (free + inactive + speculative)
+ * pages times the page size from its header line, the sum libuv 1.52 reports.
+ * `undefined` when the header or the free or inactive count is missing or
+ * malformed, so a changed format falls back rather than guessing.
+ * `speculative` is optional and counts as 0 when absent.
+ */
+export const parseVmStat = (output: string): number | undefined => {
+  const pageSizeMatch = /\(page size of (\d+) bytes\)/.exec(output);
+  if (!pageSizeMatch) return undefined;
+  const pageSize = Number(pageSizeMatch[1]);
+  // Real page sizes are 4 KiB or 16 KiB; anything not a power of two from
+  // 512 B to 1 MiB means the line is not what it looks like.
+  if (
+    !Number.isSafeInteger(pageSize) ||
+    pageSize < 512 ||
+    pageSize > 1024 * 1024 ||
+    (pageSize & (pageSize - 1)) !== 0
+  ) {
+    return undefined;
+  }
+  const pages = (label: string): number | undefined => {
+    const match = new RegExp(`^Pages ${label}:\\s+(\\d+)\\.?\\s*$`, "m").exec(
+      output,
+    );
+    return match ? Number(match[1]) : undefined;
+  };
+  const free = pages("free");
+  const inactive = pages("inactive");
+  if (free === undefined || inactive === undefined) return undefined;
+  return (free + inactive + (pages("speculative") ?? 0)) * pageSize;
+};
+
+const readVmStat = (): string =>
+  execFileSync("/usr/bin/vm_stat", [], {
+    encoding: "utf8",
+    timeout: 2000,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+
+/**
+ * Memory the kernel will hand out, in bytes. `process.availableMemory()`
+ * except on macOS with libuv older than 1.52 (see `needsVmStat`), where one
+ * `vm_stat` call (about 3 ms) gives the reclaimable total. If `vm_stat` fails
+ * or prints something unrecognizable, total memory is returned, so the
+ * `totalMem * 0.25` cap in `computeMaxChildProcesses` decides instead of a
+ * `freemem()`-sized budget that would serialize the build.
+ */
+export const availableMemoryBytes = ({
+  platform = process.platform,
+  uvVersion = process.versions.uv,
+  vmStat = readVmStat,
+  availableMemory = () => process.availableMemory(),
+  totalMem = totalmem,
+}: {
+  platform?: string;
+  uvVersion?: string;
+  vmStat?: () => string;
+  availableMemory?: () => number;
+  totalMem?: () => number;
+} = {}): number => {
+  if (!needsVmStat(platform, uvVersion)) return availableMemory();
+  try {
+    return parseVmStat(vmStat()) ?? totalMem();
+  } catch {
+    return totalMem();
+  }
+};
+
+/**
+ * Carries the main thread's `SYSTEM_MAX_CHILD_PROCESSES` to page worker
+ * threads, next to `CHILD_WORKER_COUNT_VAR`, so every worker divides the same
+ * number (instead of re-measuring memory, and on older macOS running
+ * `vm_stat`, once per worker at module load). Internal, consumed on read.
+ */
+export const CHILD_SYSTEM_MAX_VAR = "BASCIK_INTERNAL_SYSTEM_MAX_CHILDREN";
+
+/**
+ * Resolve the process-wide child budget and this thread's share of it. A page
+ * worker thread takes both the worker count and the system maximum from the
+ * environment the main thread gave it (env is the only channel available at
+ * module load, before `workerData` is read) and removes them, so that every
+ * child a worker spawns, through `runModule` or `runDirectiveHandler`, sees
+ * the same environment the main thread would have given it. Memory is only
+ * measured when nothing supplies the system maximum.
+ */
+export const resolveChildBudget = ({
+  mainThread,
+  env,
+  cpuCount,
+  totalMemBytes,
+  measureAvailable,
+}: {
+  mainThread: boolean;
+  env: Record<string, string | undefined>;
+  cpuCount: number;
+  totalMemBytes: number;
+  measureAvailable: () => number;
+}): { systemMax: number; threadMax: number } => {
+  const workerCount = mainThread
+    ? 1
+    : parsePositiveInteger(env[CHILD_WORKER_COUNT_VAR]);
+  const inherited = mainThread
+    ? undefined
+    : parsePositiveInteger(env[CHILD_SYSTEM_MAX_VAR]);
+  delete env[CHILD_WORKER_COUNT_VAR];
+  delete env[CHILD_SYSTEM_MAX_VAR];
+  const override =
+    inherited ?? parsePositiveInteger(env[MAX_CHILD_PROCESSES_VAR]);
+  const systemMax = computeMaxChildProcesses({
+    cpuCount,
+    // Not measured when an override or the inherited value decides anyway.
+    availableMemBytes: override === undefined ? measureAvailable() : 0,
+    totalMemBytes,
+    override,
+  });
+  return {
+    systemMax,
+    threadMax: computeMaxChildProcesses({
+      cpuCount,
+      availableMemBytes: 0,
+      totalMemBytes,
+      override: systemMax,
+      workerCount,
+    }),
+  };
+};
+
+const childBudget = resolveChildBudget({
+  mainThread: isMainThread,
+  env: process.env,
+  cpuCount: cpus().length,
+  totalMemBytes: totalmem(),
+  measureAvailable: () => availableMemoryBytes(),
+});
 
 /**
  * The process-wide child budget. `processAllPages` sizes the page worker pool
  * to at most this many workers, so dividing it among them never bottoms out
  * at the per-worker floor of 1 and the pool as a whole stays within it.
  */
-export const SYSTEM_MAX_CHILD_PROCESSES =
-  computeMaxChildProcesses(systemResources);
+export const SYSTEM_MAX_CHILD_PROCESSES = childBudget.systemMax;
 
 /** This thread's share of the budget: all of it on the main thread. */
-const MAX_CHILD_PROCESSES = computeMaxChildProcesses({
-  ...systemResources,
-  workerCount: childWorkerCount,
-});
+const MAX_CHILD_PROCESSES = childBudget.threadMax;
 
 class Semaphore {
   private queue: Array<() => void> = [];
@@ -252,7 +394,13 @@ export const sharedChildSemaphore = new Semaphore(MAX_CHILD_PROCESSES);
  */
 export const setChildWorkerCount = (workerCount: number): void => {
   sharedChildSemaphore.setMax(
-    computeMaxChildProcesses({ ...systemResources, workerCount }),
+    computeMaxChildProcesses({
+      cpuCount: 0,
+      availableMemBytes: 0,
+      totalMemBytes: 0,
+      override: SYSTEM_MAX_CHILD_PROCESSES,
+      workerCount,
+    }),
   );
 };
 

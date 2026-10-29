@@ -1260,17 +1260,33 @@ describe("over-limit bodies get a complete 413 (lingering close)", () => {
       CUTOFF_BUDGET_MS * 2,
     );
 
+    // nghttp2 1.69 and later (Node 22.23+, 24.17+) answers DATA past a
+    // declared content-length with GOAWAY(PROTOCOL_ERROR), ending the session;
+    // 1.64 (Node 22.18 to 22.22, 24.0) resets only that stream with
+    // RST_STREAM(PROTOCOL_ERROR) and keeps the session serving. Either way the
+    // lying stream ends at once and the server stays up.
+    const nghttp2EndsLyingSession = (() => {
+      const [major, minor] = (process.versions.nghttp2 ?? "0.0")
+        .split(".")
+        .map(Number);
+      return major > 1 || (major === 1 && minor >= 69);
+    })();
+
     it(
-      "HTTP/2: DATA past a declared content-length is a protocol error that ends that session (nghttp2), and the server stays up",
+      "HTTP/2: DATA past a declared content-length is a protocol error that ends that stream promptly (nghttp2; newer nghttp2 also ends the session), and the server stays up",
       async () => {
         // Pins Node's behavior, which Bascik cannot change: nghttp2 checks
-        // DATA against content-length below the stream API and answers a
-        // body longer than declared with GOAWAY(PROTOCOL_ERROR), so every
-        // stream on that session fails. Only an honest or absent length
-        // keeps the session (the tests above).
+        // DATA against content-length below the stream API. Only an honest or
+        // absent length keeps the stream (the tests above).
         const client = connectH2();
         client.on("error", () => {});
-        const sessionClosed = new Promise<void>((r) => client.once("close", r));
+        let sessionEnded = false;
+        const sessionClosed = new Promise<void>((r) =>
+          client.once("close", () => {
+            sessionEnded = true;
+            r();
+          }),
+        );
         const req = client.request({
           ":method": "POST",
           ":path": "/api/upload",
@@ -1279,18 +1295,46 @@ describe("over-limit bodies get a complete 413 (lingering close)", () => {
         });
         req.on("error", () => {});
         req.resume();
+        const streamClosed = new Promise<void>((r) => req.once("close", r));
         void (async () => {
           const piece = Buffer.alloc(CHUNK, 0x61);
           while (!req.destroyed && !req.closed) {
             await new Promise<void>((r) => req.write(piece, () => r()));
           }
         })();
-        const closedInTime = await Promise.race([
-          sessionClosed.then(() => true),
-          sleep(CUTOFF_BUDGET_MS).then(() => false),
-        ]);
-        if (!closedInTime) client.destroy();
-        expect(closedInTime, "nghttp2 ends the lying session").toBe(true);
+        try {
+          const started = Date.now();
+          const streamClosedInTime = await Promise.race([
+            streamClosed.then(() => true),
+            sleep(CUTOFF_BUDGET_MS).then(() => false),
+          ]);
+          expect(streamClosedInTime, "nghttp2 ends the lying stream").toBe(
+            true,
+          );
+          expect(Date.now() - started).toBeLessThan(CUTOFF_BUDGET_MS);
+
+          if (nghttp2EndsLyingSession) {
+            const closedInTime = await Promise.race([
+              sessionClosed.then(() => true),
+              sleep(CUTOFF_BUDGET_MS).then(() => false),
+            ]);
+            expect(closedInTime, "nghttp2 ends the lying session").toBe(true);
+          } else {
+            expect(req.rstCode, "stream reset with PROTOCOL_ERROR").toBe(
+              http2.constants.NGHTTP2_PROTOCOL_ERROR,
+            );
+            expect(sessionEnded, "only the stream is reset").toBe(false);
+            const healthy = await new Promise<number>((resolve, reject) => {
+              const r = client.request({ ":path": "/api/healthy" });
+              r.on("response", (h) => resolve(Number(h[":status"])));
+              r.on("error", reject);
+              r.resume();
+            });
+            expect(healthy, "the same session still serves").toBe(200);
+          }
+        } finally {
+          client.destroy();
+        }
 
         const fresh = connectH2();
         try {
@@ -1305,7 +1349,7 @@ describe("over-limit bodies get a complete 413 (lingering close)", () => {
           fresh.close();
         }
       },
-      CUTOFF_BUDGET_MS * 2,
+      CUTOFF_BUDGET_MS * 3,
     );
 
     it("an upload under the limit is unaffected", async () => {

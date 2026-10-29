@@ -283,8 +283,10 @@ jobs:
         run: yarn typecheck:all
 
   # The published packages declare `engines.node >=22.22.0`, and `bin/bascik.js` enforces it, so one lane proves every
-  # workspace still builds and passes its unit tests on that floor. The other jobs stay on Node 24: two pkg test helpers
-  # need a V8 13.6 intrinsic and Node 24's TLS cleanup callback ordering, and those tests skip themselves on Node 22.
+  # workspace still builds and passes its unit tests on that floor, plus the framework integration tests (real builds,
+  # servers and sockets; Node 22.22 bundles an older nghttp2 than 24, see body-limit-linger.integration.test.ts). The
+  # other jobs stay on Node 24: two pkg test helpers need a V8 13.6 intrinsic and Node 24's TLS cleanup callback
+  # ordering, and those tests skip themselves on Node 22.
   node-floor:
     name: Node 22.22 Floor
     runs-on: ubuntu-latest
@@ -324,6 +326,12 @@ jobs:
 
       - name: Framework unit tests
         run: yarn pkg:unit
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      - name: Framework integration tests
+        run: yarn pkg:integration
 
       - name: Create-Bascik unit tests
         run: yarn create:unit

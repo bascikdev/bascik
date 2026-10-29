@@ -129,7 +129,10 @@ import { cpus } from "node:os";
 import { listPages } from "./file-system.ts";
 import { executeRoutesScript } from "./routes.ts";
 import { processAllPages, stopPagePools } from "./processing.ts";
-import { CHILD_WORKER_COUNT_VAR } from "./script-runner.ts";
+import {
+  CHILD_SYSTEM_MAX_VAR,
+  CHILD_WORKER_COUNT_VAR,
+} from "./script-runner.ts";
 import {
   CHILD_WORKER_COUNT_MESSAGE,
   PAGE_WORKER_INIT_MESSAGE,
@@ -265,6 +268,8 @@ describe("processAllPages – early page worker pool", () => {
     await flush();
     expect(pools[0].size).toBe(1);
     expect(pools[0].env[CHILD_WORKER_COUNT_VAR]).toBe("1");
+    // Workers divide the main thread's budget rather than measuring their own.
+    expect(pools[0].env[CHILD_SYSTEM_MAX_VAR]).toBe("8");
     release();
     await build;
     expect(pools[0].grow).toHaveBeenCalledWith(5);
