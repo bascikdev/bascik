@@ -2,7 +2,7 @@
 // Alignment diff: per matrix case, compare text-align, the rendered line count and the text's left and right offset
 // from its containing block and from the page edges for every element with its own text (headings, paragraphs,
 // links, a div or span with text) and every image, svg, picture and video, and flag only the cases where they differ,
-// naming the width. Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
+// naming the width. Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project.
 //
 // Why: text was misaligned at certain breakpoints only, and one screenshot per route never showed it.
 import { inPage } from "./lib/dom.mjs";

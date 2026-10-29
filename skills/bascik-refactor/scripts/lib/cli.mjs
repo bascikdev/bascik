@@ -1,4 +1,4 @@
-// Shared CLI helpers for the bascik-refactor scripts. Dependency-free; Node.js 22.18+.
+// Shared CLI helpers for the bascik-refactor scripts. Dependency-free; Node.js 22.22+.
 // Each skill ships as its own archive, so these are copies, not imports from the bascik skill.
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";

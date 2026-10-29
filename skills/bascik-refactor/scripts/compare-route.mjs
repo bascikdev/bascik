@@ -2,7 +2,7 @@
 // Route comparison: capture production and the Bascik target with identical settings at every breakpoint matrix
 // case, count differing pixels, diff element geometry, record evidence, and replay the route's interactions on both
 // sides. Writes report.json and PNGs per route under --out (keep that folder in .gitignore).
-// Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) and sharp in your project.
+// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) and sharp in your project.
 // Read-only toward both sites: it never submits forms; keep submit buttons out of interactions.json.
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";

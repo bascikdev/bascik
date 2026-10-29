@@ -3,7 +3,7 @@
 // Performance, Accessibility, Best Practices and SEO must score exactly 1 (0.995 rounds to 100 in the UI and still
 // fails here). Agentic Browsing is a pass-ratio category: every passable audit must pass under Lighthouse's own rule
 // (manual, notApplicable and hidden audits skipped, informative not counted, otherwise score >= 0.9).
-// Dependency-free; Node.js 22.18+. Reads Lighthouse JSON written by `lighthouse --output=json`; it never runs
+// Dependency-free; Node.js 22.22+. Reads Lighthouse JSON written by `lighthouse --output=json`; it never runs
 // Lighthouse itself. Collect with the Lighthouse CLI 13.3 or later from your project (npx lighthouse). @lhci/cli
 // 0.15 runs its own bundled Lighthouse 12, which has no Agentic Browsing category, so its reports always fail here.
 import { readdirSync, readFileSync } from "node:fs";

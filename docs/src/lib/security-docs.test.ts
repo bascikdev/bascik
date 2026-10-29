@@ -334,7 +334,7 @@ describe("/html-helpers API reference", () => {
       /\d+(\.\d+)?x|\d[\d,]* ops\/s/,
     );
     expect(md).toMatch(/^## Compatibility/m);
-    expect(text).toContain("22.18");
+    expect(text).toContain("22.22");
     expect(text).toMatch(/Cloudflare Workers?/);
   });
 

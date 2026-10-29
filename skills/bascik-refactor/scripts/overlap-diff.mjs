@@ -3,7 +3,7 @@
 // is an svg or img; an icon inside its small dot; two painted blocks pulled over each other), record each pair's
 // center-to-center offset and size ratio, require the same on the target within 1 px, and pixel-diff each overlap
 // rectangle with zero tolerance.
-// Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) and sharp in your project.
+// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) and sharp in your project.
 //
 // Why: a timeline had an SVG over one of its circles that was not perfectly aligned. A 2 px offset is far below any
 // whole-page pixel budget, so only a check that knows the two elements overlap catches it.

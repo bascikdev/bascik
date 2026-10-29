@@ -2,7 +2,7 @@
 // Test hook carryover: collect every test hook (data-testid, data-test, data-test-id, data-cy, data-qa) in production's
 // rendered DOM and in the legacy source, and require each one on the target with the same attribute name and value,
 // on the same element (matched by tag, accessible name, text and position). Reports every missing or moved hook.
-// Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
+// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project.
 //
 // Why: the existing end-to-end suite finds elements by these hooks. A hook dropped, moved to another element or
 // renamed in the refactor breaks those tests silently, or makes them pass against the wrong element.

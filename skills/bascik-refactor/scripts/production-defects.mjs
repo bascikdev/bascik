@@ -6,7 +6,7 @@
 // clipped by its box, overlapping text, and horizontal page scroll. Each defect becomes a decisions ledger row
 // ("production defect: fix in target"), and the parity checks then compare the target with the corrected expectation
 // for that element instead of with production. With --target, a target that copies a defect fails.
-// Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
+// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project.
 //
 // Why: the refactor faithfully copied production bugs, an icon and a section heading misaligned at small widths and
 // images squished at some widths, because every check treated production as the truth.

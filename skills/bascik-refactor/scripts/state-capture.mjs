@@ -3,7 +3,7 @@
 // production and on the Bascik target, wait for the opening animation, and compare the open state: geometry,
 // computed styles, a pixel crop, and the icons in the panel (svg, img, picture, CSS background-image and mask-image,
 // ::before and ::after), the hover and focus styles of the items in it, the trigger's open-state style (a chevron that
-// rotates), and what opening it does to the page around it (a scrim that dims it). Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
+// rotates), and what opening it does to the page around it (a scrim that dims it). Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project.
 //
 // Why: main-nav dropdowns shipped with the wrong style and without their icons, because no check ever looked at a
 // menu in its open state.

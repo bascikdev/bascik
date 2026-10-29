@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Interaction crawl: find every interactive element on a production route, activate each one, record what it did,
 // and replay it on the Bascik target by stable anchors. Reports effects that are missing or different.
-// Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project. Read-only toward both
+// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project. Read-only toward both
 // sites: plain navigation links and submit buttons are never activated.
 //
 // Why: a hero button that scrolls to a section did nothing on the target, and a hand-written interactions.json only

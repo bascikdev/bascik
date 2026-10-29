@@ -2,7 +2,7 @@
 // Repeated sections: fingerprint every section's structure (tag tree with its landmarks and heading shape, no text)
 // on every production route. A fingerprint on two or more routes must be ONE Bascik component in the target source,
 // and every rendered instance of it must have the same computed-style signature.
-// Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
+// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project.
 //
 // Why: a section repeated on several pages, which any human would make a component, was pasted per page by the agent,
 // and one copy was styled wrong.

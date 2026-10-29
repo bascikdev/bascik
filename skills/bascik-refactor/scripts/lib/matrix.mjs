@@ -1,5 +1,5 @@
 // The breakpoint matrix: find the widths where a legacy site's layout switches, and expand them into the viewport
-// cases every route is compared at. Dependency-free; Node.js 22.18+.
+// cases every route is compared at. Dependency-free; Node.js 22.22+.
 //
 // The rule: for every width threshold B, test B - 1, B and B + 1 CSS pixels, plus one width inside every interval
 // and the narrowest and widest supported widths. Width and height are a pair.

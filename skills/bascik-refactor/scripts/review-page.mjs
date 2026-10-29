@@ -3,7 +3,7 @@
 // side at every matrix case, a diff overlay toggle, the open states, the parity findings beside the images, production's
 // own defects listed apart, the seven-point checklist, and a sign-off form. The sign-off is a file,
 // docs/migration/review/<route>.json ({ route, reviewer, verdict, notes, date }), and --verify is the gate the driver
-// runs before it marks a route PASS. Dependency-free; Node.js 22.18+; reads the reports, needs no browser.
+// runs before it marks a route PASS. Dependency-free; Node.js 22.22+; reads the reports, needs no browser.
 //
 // Why: a human looking at production and the target side by side caught what every automated check passed. No route
 // passes without a human pass verdict.

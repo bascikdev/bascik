@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Geometry diff: open production and the Bascik target side by side at every breakpoint matrix width and compare
 // the box of every visible heading, paragraph, button and link, matched by tag plus normalized text.
-// Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project. Read-only: it only loads
+// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project. Read-only: it only loads
 // pages and writes the optional --out report.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

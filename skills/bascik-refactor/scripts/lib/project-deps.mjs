@@ -1,4 +1,4 @@
-// Load Playwright and sharp from the reader's own project. Dependency-free; Node.js 22.18+.
+// Load Playwright and sharp from the reader's own project. Dependency-free; Node.js 22.22+.
 //
 // The bascik-refactor scripts never install anything and never ship these packages: each skill is its own archive with no
 // node_modules. They resolve the packages from the project the scripts run in, the same way the project's own code

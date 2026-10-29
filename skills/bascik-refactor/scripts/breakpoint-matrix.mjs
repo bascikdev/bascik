@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Build docs/migration/breakpoints.json from a legacy site's CSS, Sass and scripts: every width where the layout
 // switches, expanded into B - 1, B, B + 1 cases plus one width inside every interval and the narrowest and widest
-// widths. Dependency-free; Node.js 22.18+. Run from the project root; it only reads the files you pass.
+// widths. Dependency-free; Node.js 22.22+. Run from the project root; it only reads the files you pass.
 import { globSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { discoverThresholds, expandMatrix } from "./lib/matrix.mjs";

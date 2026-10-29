@@ -1,4 +1,4 @@
-// In-page helpers for the parity checks. Dependency-free; Node.js 22.18+.
+// In-page helpers for the parity checks. Dependency-free; Node.js 22.22+.
 //
 // Each function below runs inside the browser, never in Node. inPage() sends them with the check's own function as
 // one expression through Playwright's page.evaluate, which goes over the DevTools protocol, so a production site's

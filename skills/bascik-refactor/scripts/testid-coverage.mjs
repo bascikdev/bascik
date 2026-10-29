@@ -2,7 +2,7 @@
 // Test id coverage: on the Bascik target, every interactive element, form, landmark and component root needs a
 // data-testid. A component root's id is the component name; its parts are <component>-<part>; repeated instances
 // share their ids and tests pick one with nth() or filter({ hasText }). Reports each gap with the source file to edit.
-// Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
+// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project.
 //
 // Why: the target's own end-to-end tests need stable hooks, and class and id names are hashed in production builds.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";

@@ -8,7 +8,7 @@
 //
 // It reads BASCIK_OUT_DIR, BASCIK_PAGES_DIR and BASCIK_BASE, and BASCIK_SITE_URL only when it is set. It skips dot
 // folders, 404.html, 500.html and noindex pages, prefers each page's <link rel="canonical">, and leaves an authored
-// src/pages/llms.txt alone. Dependency-free; Node.js 22.18+. Writes only <outDir>/llms.txt.
+// src/pages/llms.txt alone. Dependency-free; Node.js 22.22+. Writes only <outDir>/llms.txt.
 // The starter-site example (add-example.mjs starter-site/scripts/llms-txt.ts in the bascik skill) does the same job
 // without groups; use whichever you prefer.
 import {

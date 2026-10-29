@@ -3,7 +3,7 @@
 // height, letter spacing, decoration (with its offset and thickness), transform, text fill and gradient, shadow and the
 // focus ring (outline, box-shadow) at rest, under :hover and under :focus-visible (forced with CDP
 // CSS.forcePseudoState), matched by tag plus normalized text.
-// Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
+// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project.
 //
 // Why: some links had the wrong color or the wrong font weight, which a geometry diff never shows, and a hover color
 // only shows when something hovers.

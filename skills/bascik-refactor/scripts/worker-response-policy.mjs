@@ -9,7 +9,7 @@
 // for that route in .bascik/dist/csp-hashes.json. It sets X-Robots-Tag: noindex on preview environments, API
 // responses, errors, redirects and PDFs, sets Cache-Control per response kind, and turns an empty 404 into a plain
 // error page. A 304 Not Modified passes through untouched.
-// Dependency-free and import-free, so the one file can be copied into a project; Node.js 22.18+ for the CLI; Web
+// Dependency-free and import-free, so the one file can be copied into a project; Node.js 22.22+ for the CLI; Web
 // APIs only (crypto.subtle, Response) inside the Worker.
 //
 // Why the build's hashes and not the response's: a server or stream script's output is part of the response. Hashing

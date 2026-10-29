@@ -5,7 +5,7 @@
 // target must match per route, including the routes where a layer is absent, with each fixed layer docked where
 // production docks it, and a dismissal must persist across routes, and in a new tab, as it does in production. Reports
 // missing, extra, placement and wrong trigger state per route.
-// Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
+// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project.
 //
 // Why: a cookie banner present on only a couple of pages was missed. A check that only looks at the routes someone
 // opened, with whatever cookies the browser already had, never sees it.

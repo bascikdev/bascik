@@ -2,7 +2,7 @@
 // Run checks: the one command that runs every parity check per route and matrix case: production defects first, then
 // interactions, open states, repeated sections, text styles, spacing, alignment, overlaps, test hook carryover and
 // coverage, and presence by route. Writes <out>/<route>/report.json for the review page and exits 1 on any finding.
-// Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) and sharp in your project.
+// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) and sharp in your project.
 //
 // Why: agents treated "no flags" from the scripts they happened to run as PASS. One command with every check leaves
 // nothing to forget, and a check that crashed is a finding, never a pass.

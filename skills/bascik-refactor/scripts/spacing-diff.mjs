@@ -3,7 +3,7 @@
 // child's offset from its section's top and each child's height, at a 2 px default tolerance; between sections,
 // compare each section's height and the space between it and the section before it. Measuring inside each section
 // resets the cumulative drift that hides a local spacing error in absolute geometry.
-// Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
+// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project.
 //
 // Why: vertical spacing between elements was off by tens of pixels, and an absolute |dy| > 12 threshold never saw it.
 import { inPage } from "./lib/dom.mjs";

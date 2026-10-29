@@ -289,7 +289,7 @@ export default defineConfig({
 
 ## Scripts
 
-All are dependency-free `.mjs` files (Node.js 22.18+). Playwright and sharp come from your project (the starter has
+All are dependency-free `.mjs` files (Node.js 22.22+). Playwright and sharp come from your project (the starter has
 `@playwright/test`; add `npm install -D sharp lighthouse`, then `npx playwright install chromium`); each script says
 so when one is missing. Run any of them with `--help`.
 
