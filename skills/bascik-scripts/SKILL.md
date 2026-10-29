@@ -34,19 +34,27 @@ Prefer build-time work. Server, stream, and API code needs `bascik --server` (or
 6. **Data paths are relative to the project root.** `readFile('./content/post.md')` resolves from `process.cwd()`, not from the page.
 7. **Watch helpers.** Add `src/lib/` and data folders such as `content/` to `pipeline.watchPaths` so edits rebuild dependent pages in dev.
 8. **Build server and stream output with `html` from `@bascik/bascik/html`.** Plain template strings do not escape. `html` escapes each value for where it lands (text, quoted attribute, URL) and throws on places escaping cannot make safe (`on*`, `<script>`, `style`, unquoted attributes). Nest `html` values and arrays of them (`.map` with no `.join`). Use `raw(value)` only for HTML a sanitizer with an allowlist (for example `sanitize-html`) already cleaned, `json(value)` for `<script type="application/json">`, and `safeUrl(value, { origins })` when a script or stylesheet URL comes from data. Build scripts may return `html` values too. An `html` value is an object, not a string: `String(output)` in tests, `SafeHtml` as a helper's return type. Never `.join("")` fragments (the joined string is escaped and shows `&lt;li&gt;`). A hole cannot add an attribute: for `selected`, `checked` or `disabled`, write the tag twice and choose in code (`checked="${false}"` is still checked). An `html` error shows a plain 500 in the browser; the located message is in the terminal. Details: `read-doc.mjs /security`, `/html-helpers`.
-9. **Directives in output never run.** If a build script prints another `data-bascik-*` script, it is removed with a warning; in server and stream output it is sent as written and never runs on the server. Printed component tags do expand, in build, server, and stream output.
+9. **TypeScript by default.** Helpers (`src/lib/*.ts`), API routes (`src/api/*.ts`), `pipeline.exec` scripts (`scripts/*.ts`), and `bascik.config.ts` are TypeScript; Node strips their types, so there is no build step. Keep to erasable syntax (no `enum`, namespaces with code, or parameter properties), or pass Node flags such as `--experimental-transform-types` through `NODE_OPTIONS`. `data-bascik-*` script blocks run as JavaScript modules: type annotations there fail with a SyntaxError, and a `src=` file is read into the same module, so a typed `.ts` file fails there too. Keep each block to a few lines that import typed helpers. Helpers import each other with the `.ts` extension. Use JavaScript only when the person asks for it; when refactoring TypeScript, keep the types. Browser TypeScript and esbuild: the `bascik` skill, and `read-doc.mjs /scoped-javascript`, `/configuration`, `/how-to/bundling-npm-packages`.
+10. **Directives in output never run.** If a build script prints another `data-bascik-*` script, it is removed with a warning; in server and stream output it is sent as written and never runs on the server. Printed component tags do expand, in build, server, and stream output.
 
 ## Build scripts
 
-```html
-<script data-bascik-build>
-  import { readFile } from "node:fs/promises";
-  import { marked } from "marked";
+```ts
+// src/lib/markdown.ts
+import { readFile } from "node:fs/promises";
+import { marked } from "marked";
 
-  export default async function () {
-    const md = await readFile("./content/intro.md", "utf8");
-    return marked(md);
-  }
+export async function renderMarkdown(path: string): Promise<string> {
+  const md = await readFile(path, "utf8");
+  return marked.parse(md, { async: false }) as string;
+}
+```
+
+```html
+<!-- The path stays in the script, where the cache can see it. -->
+<script data-bascik-build>
+  import { renderMarkdown } from "@/lib/markdown.ts";
+  export default () => renderMarkdown("./content/intro.md");
 </script>
 ```
 

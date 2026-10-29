@@ -88,16 +88,14 @@ A button that opens a native modal <dialog>. Escape, the close button, and a cli
     <div data-bascik-slot></div>
   </div>
 </dialog>
-<script>
-  const dialog = document.getElementById("dialog");
-  document
-    .getElementById("trigger")
-    .addEventListener("click", () => dialog.showModal());
-  document
-    .getElementById("close")
-    .addEventListener("click", () => dialog.close());
+<script type="text/typescript">
+  const dialog = document.getElementById("dialog") as HTMLDialogElement;
+  const trigger = document.getElementById("trigger") as HTMLButtonElement;
+  const close = document.getElementById("close") as HTMLButtonElement;
+  trigger.addEventListener("click", () => dialog.showModal());
+  close.addEventListener("click", () => dialog.close());
   // The dialog has no padding, so a click whose target is the dialog itself landed on the backdrop.
-  dialog.addEventListener("click", (event) => {
+  dialog.addEventListener("click", (event: MouseEvent) => {
     if (event.target === dialog) dialog.close();
   });
 </script>

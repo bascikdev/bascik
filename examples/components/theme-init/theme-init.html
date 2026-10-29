@@ -3,9 +3,9 @@ Applies the saved light or dark theme before first paint. Place it in <head> of 
 -->
 <!-- Tells the browser both schemes are supported before any CSS loads, so form controls and the canvas match. -->
 <meta name="color-scheme" content="light dark" />
-<script>
+<script type="text/typescript">
   try {
-    const theme = localStorage.getItem("theme");
+    const theme: string | null = localStorage.getItem("theme");
     if (theme === "light" || theme === "dark")
       document.documentElement.setAttribute("data-theme", theme);
   } catch {

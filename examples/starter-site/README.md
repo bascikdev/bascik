@@ -31,9 +31,11 @@ In this repository the site lists `../components` as a second component folder t
 
 ## Layout Components
 
-Every page is a short shell: `<site-head />` in `<head>`, then `<site-header><theme-toggle /></site-header>`, a `<main id="main">`, and `<site-footer />`.
+Every page is a short shell: `<site-head />` in `<head>`, then `<site-header><theme-toggle /></site-header>`, a `<main id="main">`, and `<site-footer />`. Keep it that way as the site grows: give each new section with its own job (a hero, a pricing table, a signup form) a component and put its tag in `<main>`, so a page reads like a list of tags.
 
 `site-head` is the site's own component: it holds the stylesheet, favicon, and `theme-init`. The header and footer are the [Site Header](https://bascik.dev/example-components/site-header) and [Site Footer](https://bascik.dev/example-components/site-footer) example components. Edit their navigation in `links.ts` next to each component; the header marks the current page at build time. The theme toggle goes in the header's slot.
+
+Code is TypeScript throughout: the helpers in `src/lib/`, the API route, the exec scripts, and the components' browser scripts (`<script type="text/typescript">`, which Bascik strips to JavaScript with no setup).
 
 ## SEO Tags
 
@@ -69,4 +71,8 @@ Before launch, check every page:
 - `dist/sitemap.xml` and `dist/robots.txt` list the real domain.
 - An unknown URL shows the 404 page.
 
-The agent skills include scripts that check the build output for broken links, SEO tags, and undeclared CSS tokens.
+The agent skills include scripts that check the build output for broken links, SEO tags, and undeclared CSS tokens, and `audit-components.mjs`, which checks that pages stay lists of component tags and that new code is TypeScript:
+
+```sh
+node .agents/skills/bascik/scripts/audit-components.mjs
+```

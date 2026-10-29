@@ -98,12 +98,12 @@ A contact form that validates in the browser and posts JSON to /api/contact (the
   <button class="submit" id="submit" type="submit">Send</button>
   <p class="status" id="status" role="status"></p>
 </form>
-<script>
-  const form = document.getElementById("form");
-  const submit = document.getElementById("submit");
-  const status = document.getElementById("status");
+<script type="text/typescript">
+  const form = document.getElementById("form") as HTMLFormElement;
+  const submit = document.getElementById("submit") as HTMLButtonElement;
+  const status = document.getElementById("status") as HTMLElement;
 
-  form.addEventListener("submit", async (event) => {
+  form.addEventListener("submit", async (event: SubmitEvent) => {
     event.preventDefault();
     if (!form.checkValidity()) {
       form.reportValidity();

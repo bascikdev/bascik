@@ -22,6 +22,14 @@ Read `node <skills-dir>/bascik/scripts/read-doc.mjs /how-to/agent-migration` fir
 5. Run the queue with [references/templates/driver-agent.md](references/templates/driver-agent.md): PASS needs every check, a visual review with no differences and a human pass verdict (`review-page.mjs --verify`). No findings is not a PASS on its own. Escalate framework issues in its reproducible format.
 6. Log every intentional difference in [references/templates/decisions-ledger.md](references/templates/decisions-ledger.md); a row that changes pixels also gets an `accepted.json` entry for `compare-route.mjs --accepted`.
 
+## Components and TypeScript
+
+The parity checks prove the page looks and behaves like production; they do not prove the code is easy to work in. Hold every route to the `bascik` skill's rules as well:
+
+- **Pages are lists of tags.** Each section with a nameable job is a component, a block repeated on a route or across routes is one component with props (`repeated-sections.mjs` checks the rendered pages), and the page holds their tags. Do not port framework-only wrappers, one-element components, or props threaded through layers; use slots.
+- **TypeScript stays TypeScript.** When the legacy site is TypeScript, its component logic, prop and state types, and data helpers move to `.ts` companions, `<script type="text/typescript">` blocks, and `src/lib/*.ts`, with the types carried across. New code is TypeScript unless the person asks for JavaScript. Erasable syntax needs no setup; for `enum`, decorators, or npm packages in the browser, use esbuild through `scripts.typescript` and `pipeline.exec`. Docs: `/scoped-javascript#typescript-in-component-scripts`, `/configuration#scriptstypescript`, `/how-to/bundling-npm-packages`.
+- **Gate it.** `node <skills-dir>/bascik/scripts/audit-components.mjs` exits 0 for every migrated route, or each kept warning has a row in the decisions ledger.
+
 ## Scripts
 
 | Script                                                                     | Use                                                                   |

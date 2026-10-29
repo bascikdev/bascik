@@ -55,16 +55,16 @@ A list with a live text filter. Pass <li> items in the default slot. Without Jav
     <li data-bascik-slot></li>
   </ul>
 </div>
-<script>
-  const query = document.getElementById("query");
-  const count = document.getElementById("count");
-  const items = [...document.getElementById("items").children];
+<script type="text/typescript">
+  const query = document.getElementById("query") as HTMLInputElement;
+  const count = document.getElementById("count") as HTMLElement;
+  const items = [...document.getElementById("items")!.children] as HTMLElement[];
 
-  const apply = () => {
+  const apply = (): void => {
     const needle = query.value.trim().toLowerCase();
     let shown = 0;
     for (const item of items) {
-      const match = item.textContent.toLowerCase().includes(needle);
+      const match = item.textContent!.toLowerCase().includes(needle);
       item.hidden = !match;
       if (match) shown++;
     }
@@ -74,5 +74,5 @@ A list with a live text filter. Pass <li> items in the default slot. Without Jav
   query.addEventListener("input", apply);
   // The browser may restore a typed value on Back or reload without firing input.
   window.addEventListener("pageshow", apply);
-  document.getElementById("controls").hidden = false;
+  document.getElementById("controls")!.hidden = false;
 </script>

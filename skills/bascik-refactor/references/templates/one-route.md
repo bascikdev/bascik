@@ -24,9 +24,13 @@ Read `docs/migration/execution-contract.md` first. Parent prompt: {{PARENT_PROMP
       ids), never generated class names.
    2. Extract structure, geometry, computed styles, pseudo-elements and image sources.
    3. Read only the legacy owner of that subtree in {{LEGACY_ENTRY}} and its imports.
-   4. Implement it in {{TARGET_PAGE}} or a component from {{REQUIRED_COMPONENTS}}: semantic HTML, scoped CSS from
-      measured relationships, no framework wrappers. A section that also appears on another route is one component,
-      used on both.
+   4. Implement it as a component from {{REQUIRED_COMPONENTS}} (or a new one) and place its tag in {{TARGET_PAGE}}:
+      semantic HTML, scoped CSS from measured relationships, no framework wrappers. {{TARGET_PAGE}} stays a list of
+      tags. A section with a nameable job is its own component; a part that only makes sense inside its section
+      stays in it; a value the section does not use goes to the child through a slot, not a forwarded prop. A
+      section that also appears on another route is one component, used on both. Behavior is TypeScript (a `.ts`
+      companion or `<script type="text/typescript">`); when {{LEGACY_ENTRY}} is TypeScript, carry its prop and state
+      types across.
    5. Build, reload, re-measure the same boxes and fix the section before the next one.
 4. Carry every test hook over: each `data-testid`, `data-test`, `data-test-id`, `data-cy` and `data-qa` attribute in
    production's rendered page and in {{LEGACY_ENTRY}} goes on the same element of the target, with the same attribute
@@ -53,6 +57,7 @@ the end. The Lighthouse reports are collected fresh for {{ROUTE}}, so a stale re
 
 ```sh
 npx bascik --build && npx bascik --check
+node "$REFACTOR/../../bascik/scripts/audit-components.mjs"
 node "$REFACTOR/geometry-diff.mjs" --prod "$PROD_URL" --target "$TARGET_URL" --route "{{ROUTE}}"
 node "$REFACTOR/compare-route.mjs" --prod "$PROD_URL" --target "$TARGET_URL" --route "{{ROUTE}}" \
   --interactions docs/migration/interactions.json --accepted docs/migration/accepted.json
