@@ -1596,7 +1596,12 @@ describe.each([true, false])(
         const baseline = html(0);
         expect(expand(html(VARYING_SIZE))).toBe("limit");
         expect(expand(baseline)).toBe("limit");
-        expectLinearTime(html, VARYING_SIZE, expand, { baseline });
+        // Linear growth over the baseline is the bound; one full-size run
+        // under coverage on CI takes 2.2 to 2.5 s, over the default ceiling.
+        expectLinearTime(html, VARYING_SIZE, expand, {
+          baseline,
+          ceilingMs: 10_000,
+        });
       },
       2 * LINEAR_TIME_TIMEOUT_MS,
     );
