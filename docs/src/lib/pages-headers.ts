@@ -16,10 +16,8 @@
  * of pages), not with `/*`, because Pages joins a header set by two matching rules with a comma, and `/*`
  * would also match the immutable files.
  *
- * Speculation rules: every page carries a `Speculation-Rules` header that points at SPECULATION_RULES_PATH, so
- * Chromium browsers prerender a docs page when the pointer rests on a link to it. A header needs no inline
- * script, so the per-page Content-Security-Policy is unchanged. The hover prefetch in docs-sidebar and
- * docs-search stays for other browsers.
+ * Speculation rules are not sent here. A `Speculation-Rules` header names a rules file, which is one more request
+ * before first paint on every page, so the rules are inline in docs-head and hashed into each page's policy.
  *
  * The production `*.pages.dev` alias serves the same pages as bascik.dev. Pages already sends `noindex` for
  * preview deployments, but not for that alias, so a host-scoped rule keeps it out of search results. The
@@ -33,9 +31,6 @@ export const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 /** Cache-Control for pages: always check for a new deploy, but show the cached page while checking. */
 export const HTML_CACHE_CONTROL =
   "public, max-age=0, stale-while-revalidate=86400";
-
-/** Where the speculation rules are served. generate-pages-headers.ts writes the file. */
-export const SPECULATION_RULES_PATH = "/assets/speculation-rules.json";
 
 export const SECURITY_HEADERS_RULE = `/*\n  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'\n  X-Frame-Options: DENY\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n`;
 
@@ -54,7 +49,7 @@ export function pagesHeaders(
   { pageFolders = [], versionedFiles = [] }: PagesHeadersOptions = {},
 ): string {
   const pageRule = (pattern: string) =>
-    `${pattern}\n  Cache-Control: ${HTML_CACHE_CONTROL}\n  Speculation-Rules: "${SPECULATION_RULES_PATH}"\n`;
+    `${pattern}\n  Cache-Control: ${HTML_CACHE_CONTROL}\n`;
   return [
     SECURITY_HEADERS_RULE,
     PAGES_DEV_NOINDEX_RULE,
@@ -67,7 +62,6 @@ export function pagesHeaders(
     ...versionedFiles.map(
       (file) => `${file}\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}\n`,
     ),
-    `${SPECULATION_RULES_PATH}\n  Content-Type: application/speculationrules+json\n`,
   ].join("\n");
 }
 
@@ -84,31 +78,6 @@ export function pageFolders(pagesDir: string): string[] {
       folders.add(`/${folder}/`);
   }
   return [...folders].sort();
-}
-
-/**
- * The speculation rules: prerender a page of this site when the pointer rests on a link to it ("moderate"), or
- * on pointer down. Never assets or other files (any path with a dot), never /search (it opens the search dialog
- * and loads the index), and never links to a heading on the same page.
- */
-export function speculationRules() {
-  return {
-    prerender: [
-      {
-        source: "document",
-        where: {
-          and: [
-            { href_matches: "/*" },
-            { not: { href_matches: "/assets/*" } },
-            { not: { href_matches: "/search*" } },
-            { not: { href_matches: "/*\\.*" } },
-            { not: { selector_matches: "a[href^='#']" } },
-          ],
-        },
-        eagerness: "moderate",
-      },
-    ],
-  };
 }
 
 export interface HeaderRule {

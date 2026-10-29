@@ -3,7 +3,7 @@
 
 import { test, expect } from "@playwright/test";
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { highlightCode } from "../src/lib/highlight.ts";
@@ -16,7 +16,6 @@ import {
   headersForPath,
   parseHeaderRules,
   IMMUTABLE_CACHE_CONTROL,
-  SPECULATION_RULES_PATH,
 } from "../src/lib/pages-headers.ts";
 
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));
@@ -108,6 +107,71 @@ test.describe("built pages", () => {
   });
 });
 
+test.describe("speculation rules", () => {
+  const sha256 = (text: string) =>
+    `'sha256-${createHash("sha256").update(text).digest("base64")}'`;
+
+  test("every page carries one inline rule set that its Content-Security-Policy allows", () => {
+    const pages = builtPages();
+    expect(pages.length).toBeGreaterThan(100);
+    const wrong: string[] = [];
+    for (const { path, html } of pages) {
+      const blocks = [
+        ...html.matchAll(
+          /<script\b[^>]*\btype=["']?speculationrules["']?[^>]*>([\s\S]*?)<\/script>/gi,
+        ),
+      ];
+      if (blocks.length !== 1) {
+        wrong.push(`${path}: ${blocks.length} speculationrules scripts`);
+        continue;
+      }
+      const body = blocks[0][1];
+      const policy =
+        /<meta http-equiv="Content-Security-Policy" content="([^"]*)"/.exec(
+          html,
+        )?.[1] ?? "";
+      if (!policy.includes(sha256(body)))
+        wrong.push(`${path}: the rules' hash is not in the page's policy`);
+      let parsed: { prerender?: Array<Record<string, unknown>> };
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        wrong.push(`${path}: the rules are not JSON`);
+        continue;
+      }
+      // The policy meta must come first, or the browser checks the rules before it knows the policy.
+      if (html.indexOf("Content-Security-Policy") > blocks[0].index)
+        wrong.push(`${path}: the rules come before the policy`);
+      if (parsed.prerender?.[0]?.eagerness !== "moderate")
+        wrong.push(`${path}: the rules do not prerender on hover`);
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  test("prerender same-site pages on hover, never assets, search, files, or links within the page", () => {
+    const html = readFileSync(join(dist, "cli.html"), "utf8");
+    const body =
+      /<script\b[^>]*\btype=["']?speculationrules["']?[^>]*>([\s\S]*?)<\/script>/i.exec(
+        html,
+      )?.[1] ?? "{}";
+    const speculation = JSON.parse(body);
+    expect(Object.keys(speculation)).toEqual(["prerender"]);
+    expect(speculation.prerender).toHaveLength(1);
+    const [rule] = speculation.prerender;
+    expect(rule.source).toBe("document");
+    expect(rule.eagerness).toBe("moderate");
+    expect(rule.where).toEqual({
+      and: [
+        { href_matches: "/*" },
+        { not: { href_matches: "/assets/*" } },
+        { not: { href_matches: "/search*" } },
+        { not: { href_matches: "/*\\.*" } },
+        { not: { selector_matches: "a[href^='#']" } },
+      ],
+    });
+  });
+});
+
 test.describe("search index", () => {
   /** The one content-hashed index in dist, as a site path. */
   const hashedIndex = () => {
@@ -174,16 +238,12 @@ test.describe("Cloudflare Pages headers", () => {
     expect(doubled).toEqual([]);
   });
 
-  test("point pages at valid speculation rules that never prerender assets", () => {
-    expect(headersForPath(rules, "/cli")["speculation-rules"]).toEqual([
-      `"${SPECULATION_RULES_PATH}"`,
-    ]);
-    const speculation = JSON.parse(
-      readFileSync(join(dist, SPECULATION_RULES_PATH), "utf8"),
+  test("send no Speculation-Rules header: the rules are inline, so they cost no request before first paint", () => {
+    const named = rules.filter((rule) =>
+      rule.headers.some(([name]) => name.toLowerCase() === "speculation-rules"),
     );
-    expect(speculation.prerender[0].eagerness).toBe("moderate");
-    expect(JSON.stringify(speculation)).toContain(
-      '{"not":{"href_matches":"/assets/*"}}',
-    );
+    expect(named.map((rule) => rule.pattern)).toEqual([]);
+    expect(headersForPath(rules, "/cli")["speculation-rules"]).toBeUndefined();
+    expect(existsSync(join(dist, "assets/speculation-rules.json"))).toBe(false);
   });
 });

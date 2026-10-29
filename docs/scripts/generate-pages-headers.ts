@@ -1,5 +1,5 @@
 /**
- * Writes the Cloudflare Pages `_headers` file and the speculation rules it points to into the output directory.
+ * Writes the Cloudflare Pages `_headers` file into the output directory.
  *
  * bascik.dev is hosted on Cloudflare Pages, which sets its own Cache-Control and ignores `http.cacheControl`.
  * A `_headers` file is how a Pages site overrides that. Bascik's asset copier skips extensionless files, so the
@@ -11,12 +11,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { VERSIONED_IMAGE_FOLDERS } from "../src/lib/md-renderer.ts";
-import {
-  pagesHeaders,
-  pageFolders,
-  speculationRules,
-  SPECULATION_RULES_PATH,
-} from "../src/lib/pages-headers.ts";
+import { pagesHeaders, pageFolders } from "../src/lib/pages-headers.ts";
 import {
   buildSearchEntries,
   searchIndexJson,
@@ -37,6 +32,3 @@ await writeFile(
     ],
   }),
 );
-const rulesFile = join(outDir, SPECULATION_RULES_PATH);
-await mkdir(dirname(rulesFile), { recursive: true });
-await writeFile(rulesFile, `${JSON.stringify(speculationRules(), null, 2)}\n`);

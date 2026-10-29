@@ -283,7 +283,7 @@ test.describe("phone menu", () => {
   });
 });
 
-// Cloudflare Pages sends a Speculation-Rules header, so Chromium may prerender a page while the pointer rests
+// docs-head carries inline speculation rules, so Chromium may prerender a page while the pointer rests
 // on a link to it. Playwright cannot run a real prerender (Chromium turns prerendering off while DevTools
 // is attached), so this test emulates one: the page loads with document.prerendering true and is activated
 // later, after the visitor switched the theme on the page they came from.
