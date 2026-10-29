@@ -2259,18 +2259,23 @@ describe("injectProps – quote-aware scanning", () => {
   // the one a fresh scan of each spliced string gives (pinned against the
   // splice-per-receiver implementation).
   it("misuse: removed fallback content that closes a quoted value leaves the next receiver as a fresh scan does", () => {
+    // The scan reads a tag name as the browser does: `x="<b` is one name
+    // (its `"` starts no value), so the quotes after its `>` are text, and
+    // both receivers are filled. `<i' ... x='>'</i>` is one tag to the
+    // browser (`</i` after the quoted value is an attribute name), so `<i'`
+    // has no close and `<my-card>` is filled.
     expect(
       injectProps(
         `<x="<b data-bascik-prop-t>""</B><b data-bascik-prop-t></b>`,
         { t: "v" },
       ),
-    ).toBe(`<x="<b>v</B><b></b>`);
+    ).toBe(`<x="<b>v</B><b>v</b>`);
     expect(
       injectProps(
         `<i' data-bascik-prop-t x='>'</i><my-card data-bascik-prop-t></my-card>`,
         { t: "v" },
       ),
-    ).toBe(`<i' x='>v</i><my-card></my-card>`);
+    ).toBe(`<i' x='>'</i><my-card>v</my-card>`);
   });
 
   it("still fills every receiver when the removed fallback holds balanced quotes in text", () => {

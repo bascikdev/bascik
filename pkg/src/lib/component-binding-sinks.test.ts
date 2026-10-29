@@ -72,7 +72,7 @@ describe("a prop bound to a URL attribute", () => {
     const { html, warnings } = bind(`<a data-bascik-attr-href="u">x</a>`, url);
     expect(html).toBe(`<a href="${BLOCKED_URL}">x</a>`);
     expect(warnings).toEqual([
-      `data-bascik-attr-href="u" received a URL that can run script (a javascript:, vbscript: or data: URL), so href is set to about:invalid.`,
+      `data-bascik-attr-href="u" received a URL that can run script (such as javascript:), so href is set to about:invalid.`,
     ]);
   });
 
@@ -628,7 +628,7 @@ describe("an inherited attribute that is a URL only on the root's real tag gets 
     expect(html).toContain(` ${attr}="${BLOCKED_URL}"`);
     expect(html).not.toContain(value);
     expect(warnings).toEqual([
-      `inherited attribute ${attr} received a URL that can run script (a javascript:, vbscript: or data: URL), so ${attr} on the root <${tag}> is set to about:invalid.`,
+      `inherited attribute ${attr} received a URL that can run script (such as javascript:), so ${attr} on the root <${tag}> is set to about:invalid.`,
     ]);
   });
 

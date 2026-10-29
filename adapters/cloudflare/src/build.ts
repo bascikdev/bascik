@@ -239,6 +239,22 @@ export const build = async (
       `  contentSecurityPolicy: { policy: ${JSON.stringify(csp.policy)}, hashes: ${JSON.stringify(workerHashes)} },`,
     );
   }
+  // The build's security headers, dotfile rule, ANSI handling and render
+  // limits (Collin 2026-10-29): the Worker has no config of its own, so it
+  // applies what the build resolved. A graph without them is today's Worker.
+  // codeql[js/bad-code-sanitization] Emits a standalone JS module (never inline HTML), and JSON.stringify yields valid JS literals.
+  if (graph.responseSecurity !== undefined)
+    lines.push(
+      `  responseSecurity: ${JSON.stringify(graph.responseSecurity)},`,
+    );
+  if (graph.hideDotfiles !== undefined)
+    lines.push(
+      `  hideDotfiles: ${graph.hideDotfiles === false ? "false" : "true"},`,
+    );
+  if (graph.stripAnsi !== undefined)
+    lines.push(`  stripAnsi: ${graph.stripAnsi === false ? "false" : "true"},`);
+  if (graph.renderLimits !== undefined)
+    lines.push(`  renderLimits: ${JSON.stringify(graph.renderLimits)},`);
   lines.push(`};`);
   lines.push(`export default createCloudflareWorker(graph);`);
 

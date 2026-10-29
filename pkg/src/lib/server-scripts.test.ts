@@ -260,6 +260,20 @@ describe("executeServerScripts in-process execution", () => {
     expect(result).toBe("<span>&copy; 2026 Built with Bascik</span>");
   });
 
+  it("scripts.stripAnsi: false keeps ANSI codes in server-script output", async () => {
+    (BascikConfig as any).scripts.stripAnsi = false;
+    const html = `<span><script data-bascik-server>export default function() { return '\u001B[33m2026\u001B[39m kept'; }</script></span>`;
+    const result = await executeServerScripts(html, baseRequest, baseContext);
+    expect(result).toBe("<span>\u001B[33m2026\u001B[39m kept</span>");
+  });
+
+  it("scripts.stripAnsi: true (explicit) strips as the default does", async () => {
+    (BascikConfig as any).scripts.stripAnsi = true;
+    const html = `<span><script data-bascik-server>export default function() { return '\u001B[1mbold\u001B[22m'; }</script></span>`;
+    const result = await executeServerScripts(html, baseRequest, baseContext);
+    expect(result).toBe("<span>bold</span>");
+  });
+
   it("throws an error when script tag has both data-bascik-server and data-bascik-build", async () => {
     const html =
       "<script data-bascik-server data-bascik-build>export default function() {}</script>";

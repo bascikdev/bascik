@@ -296,7 +296,7 @@ const REQUEST_DIRECTIVE_RE =
 const extractRequestScripts = (html: string): string[] => {
   const scripts: string[] = [];
   for (const match of scanElementContents(html, "script", {
-    opener: "word-boundary",
+    opener: "tag-space",
     closer: "attributes",
   })) {
     const attrs = html.slice(match.start + 7, match.contentStart - 1);
@@ -331,10 +331,10 @@ const hasStartTag = (source: string, name: string): boolean => {
 
 const extractBuildScripts = (html: string): string[] => {
   const scripts: string[] = [];
-  // `/<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`,
+  // `/<script(?=[\t\n\f\r />])((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`,
   // in linear time.
   for (const match of scanElementContents(html, "script", {
-    opener: "word-boundary",
+    opener: "tag-space",
     closer: "attributes",
   })) {
     const attrs = html.slice(match.start + 7, match.contentStart - 1);

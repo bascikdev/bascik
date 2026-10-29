@@ -214,7 +214,7 @@ const SRC_MARKER_RE = /\ssrc=["']([^"']+)["']/iy;
 
 /**
  * `html.replace(regex, (match, preSrc, srcVal, postSrc, body) => ...)` for
- * `/<script\b((?:[^>"']|"[^"]*"|'[^']*')*?)\ssrc=["']([^"']+)["']((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`:
+ * `/<script(?=[\t\n\f\r />])((?:[^>"']|"[^"]*"|'[^']*')*?)\ssrc=["']([^"']+)["']((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`:
  * quote-aware attributes around a whole-name `src` (never `data-src`). The
  * body is matched too: browsers ignore inline content when `src` is set, so a
  * body never stops the companion from being inlined. Linear, where the regex
@@ -261,7 +261,7 @@ const replaceCompanionScriptTags = (
 };
 
 let anyComponentBuildScript = false;
-// `<script\b(?:[^>"']|"[^"]*"|'[^']*')*\s(?:${BUILD_ATTR_NAME}|${BUILD_ONCE_ATTR_NAME})(?=[\s=/>])`
+// `<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*\s(?:${BUILD_ATTR_NAME}|${BUILD_ONCE_ATTR_NAME})(?=[\s=/>])`
 // (flag `i`), in linear time.
 const findComponentBuildScript = scriptDirectiveFinder(
   ["data-bascik-build", "data-bascik-build-once"],
@@ -404,10 +404,10 @@ const warnComponentCompatibility = async (
     }
   }
 
-  // `(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>`
+  // `(<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>`
   // (flags `gi`), in linear time.
   for (const scriptMatch of scanElementContents(nonCodeScan, "script", {
-    opener: "word-boundary",
+    opener: "tag-space",
     closer: "attributes",
   })) {
     const openTag = nonCodeScan.slice(

@@ -39,7 +39,8 @@ const worstCases = ["script", "style", "textarea"].flatMap((tag) =>
       `<${name} a="1>`,
       `<${name} a='>' `,
       `<${name}></${name}`,
-      `<${name}></${name} x>`,
+      // Not tag white space: an end tag of another name, as the browser reads it.
+      `<${name}></${name}\u000b>`,
     ],
   ),
 );
@@ -122,13 +123,24 @@ describe("raw-text masking time on hostile input", () => {
   it(
     "still masks a complete element after a long run of openers with no closer",
     () => {
-      const run = repeatTo("<script '", 50_000);
       const html = (size: number) =>
         `${repeatTo("<script '", size)}'><my-card></my-card></script><my-card>`;
-      // Quotes pair up in order, so the first or second opener's attributes
-      // run to the `>` after the last quote and its content to the `</script>`.
-      expect(maskRawTextContent(html(50_000))).toBe(
-        `${run}'>${" ".repeat("<my-card></my-card>".length)}</script><my-card>`,
+      // Quotes pair up in order. With an odd number of openers the first
+      // one's attributes run to the `>` after the last quote and its content
+      // to the `</script>`. With an even number the first one's quotes never
+      // close, so it opens nothing, and every later opener is inside its tag
+      // (`isInsideTag`: a quote before any `=` is part of an attribute name),
+      // so nothing is masked. A browser reads the quotes as name characters
+      // and ends the first opener at the first `>`; the opener's attribute
+      // part follows the regex, which reads a quote anywhere.
+      const odd = "<script '".repeat(5555);
+      expect(maskRawTextContent(`${odd}'><my-card></my-card></script>`)).toBe(
+        `${odd}'>${" ".repeat("<my-card></my-card>".length)}</script>`,
+      );
+      const even = `${"<script '".repeat(5554)}'><my-card></my-card></script>`;
+      expect(maskRawTextContent(even)).toBe(even);
+      expect(maskRawTextContent(html(50_000))).toHaveLength(
+        html(50_000).length,
       );
       // The time per character settles only past a few hundred thousand
       // characters: at 50k (a quarter of 12.5k, 0.2 ms a run) this read 5.2

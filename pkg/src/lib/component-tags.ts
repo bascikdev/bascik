@@ -8,6 +8,7 @@ import { maskRawTextContent } from "./component-masking.ts";
 import { __componentScanStatsForTests } from "./component-scan-stats.ts";
 import {
   createOpenTagScanner,
+  isTagNameEndCode,
   isWordOrHyphenCode,
   nameAt,
   type OpenTagMatch,
@@ -46,31 +47,83 @@ const componentMatcherCache = new WeakMap<
 >();
 
 /**
- * `<tagName(?![\w-])(?:[^>"']|"[^"]*"|'[^']*')*>` (flags `gi`) for a name
- * `/^[a-zA-Z][\w:-]*$/` accepts, in linear time (element-content-scan.ts).
+ * `<tagName(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>` (flags `gi`) for
+ * a name `/^[a-zA-Z][\w:-]*$/` accepts, in linear time
+ * (element-content-scan.ts): the tags whose whole name is `tagName`, as a
+ * browser reads a tag name (`isTagNameEndCode`), so `<my-card.foo>`,
+ * `<my-card:x>` and `<my-card</p>` are no `my-card`.
  */
 const componentOpenTags = (html: string, tagName: string): OpenTagScanner => {
   const name = tagName.toLowerCase();
   return createOpenTagScanner(html, (start) => {
     if (!nameAt(html, start + 1, name)) return -1;
     const after = start + 1 + name.length;
-    return isWordOrHyphenCode(html.charCodeAt(after)) ? -1 : after;
+    return isTagNameEndCode(html.charCodeAt(after)) ? after : -1;
   });
 };
 
 const SELF_CLOSING_END_RE = /\/\s*>$/;
 
 /**
+ * A component's close as the browser ends one: `</name` (any case), then
+ * tag whitespace, `/` or `>`, then anything up to the first `>`, the regex
+ * `<\/name(?:[\t\n\f\r /][^>]*)?>`. So `</my-card foo>` and `</my-card/>`
+ * close `my-card`, and `</my-card\v>` and `</my-card\u00a0>` (end tags of
+ * other names) do not. Escaped `tagName` only; sticky, for a close known to
+ * start at `lastIndex`.
+ */
+const closeAtPattern = (escapedName: string, flags = "iy"): RegExp =>
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+  new RegExp(`<\\/${escapedName}(?:[\\t\\n\\f\\r /][^>]*)?>`, flags);
+
+/** Where a close (`closeAtPattern`) starts and ends. */
+interface CloseMatch {
+  index: number;
+  end: number;
+}
+
+/**
+ * The first close of `tagName` (`closeAtPattern`) starting at or after a
+ * position, in linear time over calls in increasing order: the start is
+ * found by `</name` and the character after it, and the end is the first
+ * `>` after the name. With no `>` after one start, none follows a later one,
+ * so there is no close from there on.
+ */
+const createCloseSearch = (
+  html: string,
+  tagName: string,
+): ((from: number) => CloseMatch | null) => {
+  const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+  const start = new RegExp(`<\\/${tn}(?=[\\t\\n\\f\\r />])`, "gi");
+  const nameLength = tagName.length + 2;
+  // The first `>` at or after `gtFrom` is `gtAt` (-1 for none).
+  let gtFrom = Infinity;
+  let gtAt = -1;
+  return (from: number): CloseMatch | null => {
+    start.lastIndex = from;
+    const match = start.exec(html);
+    if (!match) return null;
+    const after = match.index + nameLength;
+    if (!(after >= gtFrom && (gtAt === -1 || after <= gtAt))) {
+      gtFrom = after;
+      gtAt = html.indexOf(">", after);
+    }
+    return gtAt === -1 ? null : { index: match.index, end: gtAt + 1 };
+  };
+};
+
+/**
  * The first match at or after `from` of the list's tag regex,
- * `<(names, longest first)(?![\w-])[\s\S]*?>` (flags `gi`): the tag's
- * start, its name as written, and the end of the first `>` after the name.
- * Linear: the regex scanned to the end of the input from every opener when
- * no `>` followed.
+ * `<(names)(?=[\t\n\f\r />])[\s\S]*?>` (flags `gi`): the tag's start, its
+ * name as written, and the end of the first `>` after the name. Linear: the
+ * regex scanned to the end of the input from every opener when no `>`
+ * followed.
  *
- * Every name is `[a-zA-Z][\w:-]*`, so an alternative matches where it is a
- * prefix of the `[\w:-]` run after the `<` that ends at a `:` or at the end
- * of the run; the first alternative in the regex's order is the longest such
- * prefix in the list.
+ * A name matches only as the whole tag name, as a browser reads one: the
+ * `[\w:-]` run after the `<`, followed by tag whitespace, `/` or `>`
+ * (`isTagNameEndCode`). `<my-card.foo>`, `<my-card</p>` and `<my-card:x>` are
+ * the tags `my-card.foo`, `my-card<` and `my-card:x`, never `my-card`.
  */
 const findComponentTag = (
   html: string,
@@ -89,14 +142,14 @@ const findComponentTag = (
     let nameEnd = -1;
     for (; index <= limit; index++) {
       const code = html.charCodeAt(index);
-      const inRun = isWordOrHyphenCode(code) || code === 0x3a;
+      if (isWordOrHyphenCode(code) || code === 0x3a) continue;
       if (
-        (!inRun || code === 0x3a) &&
         index > nameStart &&
+        isTagNameEndCode(code) &&
         matcher.names.has(html.slice(nameStart, index).toLowerCase())
       )
         nameEnd = index;
-      if (!inRun) break;
+      break;
     }
     if (nameEnd === -1) continue;
     const gt = html.indexOf(">", nameEnd);
@@ -135,7 +188,7 @@ const findOpenTag = (
     tag !== null;
     tag = openTags.next(tag.end)
   ) {
-    if (attributeScan.isInsideValue(tag.start)) continue;
+    if (attributeScan.isInsideTag(tag.start)) continue;
     return {
       openTag: maskedHtml.slice(tag.start, tag.end),
       start: tag.start,
@@ -180,9 +233,9 @@ export const replaceTag = (
       maskedHtml,
     );
     if (closeIndex !== -1) {
-      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-      const closeTagRegexp = new RegExp(`^<\\/${tn}\\s*>`, "i");
-      const closeTagMatch = closeTagRegexp.exec(htmlString.slice(closeIndex));
+      const closeTagRegexp = closeAtPattern(tn);
+      closeTagRegexp.lastIndex = closeIndex;
+      const closeTagMatch = closeTagRegexp.exec(htmlString);
       if (closeTagMatch) {
         // Splice by index so that `$` characters in transpiledTag (e.g.
         // SQL positional parameters like $1, $2 in slot content) are never
@@ -201,13 +254,10 @@ export const replaceTag = (
   // Use a replacement function for the same `$`-safety reason.
   // Search the masked string so a literal tag inside <script>/<style>/<textarea>
   // content is never replaced; splice by index into the original string.
-  // This is `<tagName(?:[^>"']|"[^"]*"|'[^']*')*\s*\/?>` (flags `gi`) in
-  // linear time: with no lookahead after the name, the attribute part starts
-  // right after it, and its `>` ends the match.
-  const name = tagName.toLowerCase();
-  const selfClosingTags = createOpenTagScanner(maskedHtml, (start) =>
-    nameAt(maskedHtml, start + 1, name) ? start + 1 + name.length : -1,
-  );
+  // This is `<tagName(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*\s*\/?>`
+  // (flags `gi`) in linear time: the attribute part starts right after the
+  // whole tag name (`componentOpenTags`), and its `>` ends the match.
+  const selfClosingTags = componentOpenTags(maskedHtml, tagName);
   const attributeScan = createAttributeValueScanner(maskedHtml);
   let selfClosingMatch: OpenTagMatch | null;
   for (
@@ -215,7 +265,7 @@ export const replaceTag = (
     selfClosingMatch !== null;
     selfClosingMatch = selfClosingTags.next(selfClosingMatch.end)
   ) {
-    if (attributeScan.isInsideValue(selfClosingMatch.start)) continue;
+    if (attributeScan.isInsideTag(selfClosingMatch.start)) continue;
     break;
   }
   if (!selfClosingMatch) return htmlString;
@@ -327,12 +377,15 @@ export const getFirstComponent = (
     match !== null;
     match = findComponentTag(maskedHtml, matcher, match.end)
   ) {
-    if (searchState && match.index > 0) {
-      // Stop one byte short: replacing the tag changes the byte the scan peeks at.
-      attributeScan.isInsideValue(match.index - 1);
+    if (searchState && match.index > 2) {
+      // Stop three bytes short: replacing the tag changes the bytes the scan
+      // peeks at after a `<` (up to three, `<!--`).
+      attributeScan.isInsideValue(match.index - 3);
       checkpoint = attributeScan.checkpoint();
     }
-    if (attributeScan.isInsideValue(match.index)) continue;
+    // A name inside another tag (`<p<my-card>`, `</p <my-card>`) or a bogus
+    // comment (`<!x<my-card>`) is part of it, as is one in an attribute value.
+    if (attributeScan.isInsideTag(match.index)) continue;
     break;
   }
   if (match && searchState) searchState.attributeCheckpoint = checkpoint;
@@ -454,8 +507,7 @@ const closeTagPattern = (tagName: string): RegExp => {
   if (!pattern) {
     const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     // Sticky: matches only at `lastIndex`, with no copy of the rest.
-    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    pattern = new RegExp(`<\\/${tn}\\s*>`, "iy");
+    pattern = closeAtPattern(tn);
     if (tagPatterns.size >= 1024) tagPatterns.clear();
     tagPatterns.set(key, pattern);
   }
@@ -532,9 +584,9 @@ const findTag = (
 
   // Try self-closing: <tagName ... /> or <tagName/>
   // Search the masked string so literal tag text inside raw-text elements is skipped.
-  // This is `<tagName(?![\w-])([\s\S]*?)\/?>` (flags `gi`) in linear time:
-  // a match ends just past the first `>` after the name, and when no `>`
-  // follows one opener none follows a later one.
+  // This is `<tagName(?=[\t\n\f\r />])([\s\S]*?)\/?>` (flags `gi`) in
+  // linear time: a match ends just past the first `>` after the name, and
+  // when no `>` follows one opener none follows a later one.
   const name = tagName.toLowerCase();
   for (
     let start = maskedHtml.indexOf("<", searchFrom);
@@ -543,10 +595,10 @@ const findTag = (
   ) {
     if (!nameAt(maskedHtml, start + 1, name)) continue;
     const nameEnd = start + 1 + name.length;
-    if (isWordOrHyphenCode(maskedHtml.charCodeAt(nameEnd))) continue;
+    if (!isTagNameEndCode(maskedHtml.charCodeAt(nameEnd))) continue;
     const gt = maskedHtml.indexOf(">", nameEnd);
     if (gt === -1) break;
-    if (attributeScan.isInsideValue(start)) {
+    if (attributeScan.isInsideTag(start)) {
       start = gt;
       continue;
     }
@@ -579,9 +631,6 @@ export const findMatchingClose = (
   scanner?: AttributeValueScanner,
 ): number => {
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return -1;
-  const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const closeRe = new RegExp(`<\\/${tn}\\s*>`, "gi");
   // Scan the masked string so literal tag text inside <script>/<style>/<textarea>
   // content never skews the depth counter. Indices are valid in the original.
   const maskedHtml = masked !== undefined ? masked : maskRawTextContent(html);
@@ -590,29 +639,29 @@ export const findMatchingClose = (
       ? scanner
       : createAttributeValueScanner(maskedHtml);
   const openTags = componentOpenTags(maskedHtml, tagName);
+  const closes = createCloseSearch(maskedHtml, tagName);
   let depth = 1;
   let pos = contentStart;
   // The leftmost close from an earlier position that still starts at or
   // after this one is the leftmost from here too: reuse it instead of
   // searching again past every open tag before it.
-  let closeMatch: RegExpExecArray | null | undefined;
+  let closeMatch: CloseMatch | null | undefined;
   while (pos < maskedHtml.length) {
-    if (closeMatch === undefined || (closeMatch && closeMatch.index < pos)) {
-      closeRe.lastIndex = pos;
-      closeMatch = closeRe.exec(maskedHtml);
-    }
+    if (closeMatch === undefined || (closeMatch && closeMatch.index < pos))
+      closeMatch = closes(pos);
     const openMatch = openTags.next(pos);
     if (!closeMatch) return -1;
     if (!openMatch || closeMatch.index < openMatch.start) {
-      if (attributeScan.isInsideValue(closeMatch.index)) {
-        pos = closeMatch.index + closeMatch[0].length;
+      // A close inside another tag or a bogus comment is part of it.
+      if (attributeScan.isInsideTag(closeMatch.index)) {
+        pos = closeMatch.end;
         continue;
       }
       depth--;
       if (depth === 0) return closeMatch.index;
-      pos = closeMatch.index + closeMatch[0].length;
+      pos = closeMatch.end;
     } else {
-      if (!attributeScan.isInsideValue(openMatch.start)) {
+      if (!attributeScan.isInsideTag(openMatch.start)) {
         if (
           !SELF_CLOSING_END_RE.test(
             maskedHtml.slice(openMatch.start, openMatch.end),
@@ -644,9 +693,9 @@ interface CloseTokens {
    * another's.
    */
   scanner: AttributeValueScanner;
-  closeRe: RegExp;
+  closes: (from: number) => CloseMatch | null;
   nextOpen: OpenTagMatch | null | undefined;
-  nextClose: RegExpExecArray | null | undefined;
+  nextClose: CloseMatch | null | undefined;
   pos: number;
   done: boolean;
 }
@@ -681,8 +730,7 @@ export const createMatchingCloseFinder = (
       tokens.nextClose === undefined ||
       (tokens.nextClose !== null && tokens.nextClose.index < pos)
     ) {
-      tokens.closeRe.lastIndex = pos;
-      tokens.nextClose = tokens.closeRe.exec(masked);
+      tokens.nextClose = tokens.closes(pos);
     }
     const close = tokens.nextClose;
     if (close === null) return finish(tokens);
@@ -698,13 +746,13 @@ export const createMatchingCloseFinder = (
     let delta = 0;
     if (open === null || close.index < open.start) {
       start = close.index;
-      end = start + close[0].length;
-      if (!tokens.scanner.isInsideValue(start)) delta = -1;
+      end = close.end;
+      if (!tokens.scanner.isInsideTag(start)) delta = -1;
     } else {
       start = open.start;
       end = open.end;
       if (
-        !tokens.scanner.isInsideValue(start) &&
+        !tokens.scanner.isInsideTag(start) &&
         !SELF_CLOSING_END_RE.test(masked.slice(start, end))
       )
         delta = 1;
@@ -736,7 +784,6 @@ export const createMatchingCloseFinder = (
     const key = tagName.toLowerCase();
     let tokens = byTag.get(key);
     if (tokens === undefined) {
-      const tn = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       tokens = {
         starts: [],
         ends: [],
@@ -745,8 +792,7 @@ export const createMatchingCloseFinder = (
         pending: [0],
         openTags: componentOpenTags(masked, key),
         scanner: createAttributeValueScanner(masked),
-        // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-        closeRe: new RegExp(`<\\/${tn}\\s*>`, "gi"),
+        closes: createCloseSearch(masked, key),
         nextOpen: undefined,
         nextClose: undefined,
         pos: 0,

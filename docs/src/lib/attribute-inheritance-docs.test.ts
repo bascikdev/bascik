@@ -131,7 +131,7 @@ describe("/attribute-inheritance: Attributes That Become URLs on the Root", () =
   it("quotes the exact warning Bascik prints, naming the component file", () => {
     const warning = implementationWarning();
     expect(warning).toBe(
-      "<my-embed> (components/my-embed/my-embed.html): inherited attribute data received a URL that can run script (a javascript:, vbscript: or data: URL), so data on the root <object> is set to about:invalid.",
+      "<my-embed> (components/my-embed/my-embed.html): inherited attribute data received a URL that can run script (such as javascript:), so data on the root <object> is set to about:invalid.",
     );
     const fence = /```text\n([\s\S]*?)\n```/.exec(sub)?.[1];
     expect(fence, "a ```text fence with the warning").toBe(warning);

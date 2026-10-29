@@ -206,7 +206,7 @@ When `trustProxy: true` is enabled:
 
 - **Rate limiting** derives client IP from the rightmost (immediate proxy) entry of `X-Forwarded-For`, preventing a single active visitor from exhausting the rate-limit budget for all visitors behind the proxy.
 - **Request URL origin reconstruction** (`request.url` in API routes and server scripts) reconstructs the public scheme (`http` or `https`) and authority from the rightmost entries of `X-Forwarded-Proto` and `X-Forwarded-Host`. If headers are omitted or malformed, Bascik safely falls back to local transport parameters.
-- **HSTS security headers** recognize `X-Forwarded-Proto: https` forwarded by the proxy.
+- **HSTS security headers** recognize `X-Forwarded-Proto: https` forwarded by the proxy, and send the value from [`security.hsts`](/configuration#securityhsts) (`max-age=31536000` by default, without `includeSubDomains`).
 
 When `trustProxy: false` (the default), `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` headers are strictly ignored to prevent client spoofing. Do not enable `trustProxy` if the server is directly exposed to the public Internet without a trusted reverse proxy.
 

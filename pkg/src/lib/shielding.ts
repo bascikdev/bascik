@@ -409,7 +409,7 @@ const replaceElementContents = (
   let cursor = 0;
   for (const match of isScannableElementName(entry)
     ? scanElementContents(html, entry, {
-        opener: "word-boundary",
+        opener: "tag-space",
         closer: closerWhitespace ? "regex-space" : "exact",
       })
     : scanPatternElementContents(

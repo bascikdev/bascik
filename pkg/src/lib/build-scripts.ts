@@ -92,50 +92,60 @@ import {
   STREAM_FLAG,
   SCRIPT_END_TAG,
   SCRIPT_TAG_PREFIX,
+  browserTagSpace,
   getHtmlAttributeValue,
   scriptOpenTag,
 } from "./html-patterns.ts";
 import type { RouteEntry } from "./types.ts";
 
 // Match <script data-bascik-build …> … </script> (captures inner content).
+// Every open tag here is read as the browser reads it (`browserTagSpace`):
+// `<script\u00a0data-bascik-build>` is no script, so it never runs.
 const BUILD_SCRIPT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
+  `${browserTagSpace(`${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`)}([\\s\\S]*?)${SCRIPT_END_TAG}`,
   "gi",
 );
 
 const BUILD_ONCE_SCRIPT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
+  `${browserTagSpace(`${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>`)}([\\s\\S]*?)${SCRIPT_END_TAG}`,
   "gi",
 );
 
 const BUILD_ONCE_OPEN_TAG_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  browserTagSpace(
+    `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  ),
   "i",
 );
 
 const BUILD_MODE_CONFLICT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  browserTagSpace(
+    `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  ),
   "i",
 );
 
 const BUILD_SERVER_CONFLICT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  browserTagSpace(
+    `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  ),
   "i",
 );
 
 const BUILD_ROUTES_CONFLICT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  browserTagSpace(
+    `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  ),
   "i",
 );
 
 const BUILD_STREAM_CONFLICT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  browserTagSpace(
+    `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  ),
   "i",
 );
 
-// Matches a statically visible `process.env.NAME` member read in a build
-// script. Used only to warn when `NAME` is not declared in
-// `scripts.cache.environment`; it is not a substitute for the cache key.
 const PROCESS_ENV_READ_RE = /\bprocess\.env\.([A-Za-z_$][A-Za-z0-9_$]*)\b/g;
 
 // ─── Build-script output cache ───────────────────────────────────────────────
@@ -339,7 +349,7 @@ const readCachedFile = async (
 };
 
 const ALL_PAGE_SCRIPTS_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+(?:${ANY_BUILD_FLAG}|${ROUTES_FLAG})(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
+  `${browserTagSpace(`${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+(?:${ANY_BUILD_FLAG}|${ROUTES_FLAG})(?:\\s+${ATTR})*\\s*>`)}([\\s\\S]*?)${SCRIPT_END_TAG}`,
   "gi",
 );
 
@@ -1168,7 +1178,11 @@ export const executeBuildScripts = async (
     // Printed output is transpiled again, so a directive script inside it (for
     // example in CMS HTML) would run at build time or become a server script.
     // Only directives written in source files run; printed ones are dropped.
-    const { html: safeOutput, removed } = removeOutputDirectives(output ?? "");
+    // security.stripDirectiveScripts off: the output is kept as printed.
+    const { html: safeOutput, removed } =
+      BascikConfig.security?.stripDirectiveScripts === false
+        ? { html: output ?? "", removed: [] as string[] }
+        : removeOutputDirectives(output ?? "");
     for (const name of removed) removedDirectives.add(name);
     // A component build script carries its component's scope so its output
     // matches the component's scoped CSS. Applied after

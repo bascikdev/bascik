@@ -2,8 +2,9 @@ import { stat } from "node:fs/promises";
 import { liveReloadVersionOf } from "./live-reload.ts";
 import { pipeline } from "node:stream/promises";
 import http2 from "node:http2";
-import { extname, resolve, sep } from "node:path";
+import { basename, extname, resolve, sep } from "node:path";
 import type { Server as NetServer } from "node:net";
+import type { BascikConfigOptions } from "./types.ts";
 import { mem } from "./mem.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
 import {
@@ -53,7 +54,15 @@ import {
 } from "./server-lifecycle.ts";
 import { SseManager } from "./sse.ts";
 import { apiRouteRegistry } from "./server-api.ts";
-import { InvalidApiPathError, hasHiddenSegment } from "./route-matching.ts";
+import {
+  InvalidApiPathError,
+  isBascikFolderName,
+  isPrivatePathname,
+} from "./route-matching.ts";
+import {
+  resolveResponseSecurity,
+  type ResponseSecurity,
+} from "./web-response.ts";
 import {
   createWebRequest,
   getRightmostHeaderValue,
@@ -95,17 +104,26 @@ export const resetSseManager = (): void => {
 import { makeEtag } from "./names.ts";
 
 // ─── Security headers sent on every response ──────────────────────────────────
-const SECURITY_HEADERS: Record<string, string> = {
-  "x-content-type-options": "nosniff",
-  "x-frame-options": "SAMEORIGIN",
-  "referrer-policy": "strict-origin-when-cross-origin",
-  "cross-origin-opener-policy": "same-origin-allow-popups",
-  "cross-origin-resource-policy": "cross-origin",
+// `security.headers` / `security.hsts` / `security.privateDynamicPages`,
+// resolved by the portable builder every host shares (web-response.ts).
+// Re-resolved only when the config object changes, so a request pays one
+// identity check.
+let resolvedSecurity: {
+  source: BascikConfigOptions["security"] | undefined;
+  value: ResponseSecurity;
+} | null = null;
+
+export const getResponseSecurity = (): ResponseSecurity => {
+  const source = BascikConfig.security;
+  if (resolvedSecurity === null || resolvedSecurity.source !== source)
+    resolvedSecurity = { source, value: resolveResponseSecurity(source) };
+  return resolvedSecurity.value;
 };
 
 export const getSecurityHeaders = (
   req?: BascikRequest,
 ): Record<string, string> => {
+  const security = getResponseSecurity();
   const isHttps =
     req && req.headers
       ? req.headers[":scheme"] === "https" ||
@@ -114,13 +132,16 @@ export const getSecurityHeaders = (
             req.headers["x-forwarded-proto"],
           )?.toLowerCase() === "https")
       : false;
-  if (isHttps || (BascikConfig.isProdServer && BascikConfig.http.tls.enabled)) {
+  if (
+    security.hsts !== null &&
+    (isHttps || (BascikConfig.isProdServer && BascikConfig.http.tls.enabled))
+  ) {
     return {
-      ...SECURITY_HEADERS,
-      "strict-transport-security": "max-age=31536000; includeSubDomains",
+      ...security.headers,
+      "strict-transport-security": security.hsts,
     };
   }
-  return { ...SECURITY_HEADERS };
+  return { ...security.headers };
 };
 
 // Weak stat-based ETag for static files: no extra file read needed
@@ -252,6 +273,7 @@ export const onError = (
         res.respond(500, {
           "content-type": "text/html; charset=utf-8",
           "content-length": bodyBuf.byteLength,
+          "cache-control": "private, no-store",
           ...secHeaders,
         });
         res.end(bodyBuf);
@@ -264,6 +286,7 @@ export const onError = (
       if (!res.headersSent) {
         res.respond(500, {
           "content-type": "text/html; charset=utf-8",
+          "cache-control": "private, no-store",
           ...secHeaders,
         });
       }
@@ -567,7 +590,13 @@ export const createRequestHandler = () => {
 
       // Dot segments are private (dist/.bascik/, .env, .git). The one public
       // exception is a leading RFC 8615 /.well-known/ below the site root.
-      if (hasHiddenSegment(pathname, BascikConfig.base)) {
+      if (
+        isPrivatePathname(
+          pathname,
+          BascikConfig.base,
+          BascikConfig.security?.hideDotfiles !== false,
+        )
+      ) {
         responseStatus = 404;
         res.respond(404, {
           "content-type": "text/plain; charset=utf-8",
@@ -640,7 +669,17 @@ export const createRequestHandler = () => {
       // `extname` ignores a trailing slash, but `/style.css/` names a
       // directory, not the file: it falls through to the page lookup, which
       // answers 404 like a static host unless a dotted directory page exists.
-      const ext = extname(pathname).toLowerCase();
+      // A dotfile (`/.nojekyll`) has no extension to Node's extname; with
+      // security.hideDotfiles off it is a static file too, typed by its name.
+      const dotfileName =
+        BascikConfig.security?.hideDotfiles === false &&
+        !pathname.endsWith("/") &&
+        !extname(pathname)
+          ? basename(pathname)
+          : "";
+      const ext = (
+        extname(pathname) || (dotfileName.startsWith(".") ? dotfileName : "")
+      ).toLowerCase();
       if (ext && !ext.match(/^\.htm.*$/) && !pathname.endsWith("/")) {
         // Path traversal guard: resolved path must stay inside dist/
         const safePath = pathname.replace(/^\/+/, ""); // strip leading slashes
@@ -649,6 +688,22 @@ export const createRequestHandler = () => {
           responseStatus = 400;
           res.respond(400, { ...secHeaders });
           res.end("Bad Request");
+          return;
+        }
+        // dist/.bascik holds server script source and adapter output. The
+        // path check above already refuses it; this guards the file actually
+        // opened, whatever spelling reached it.
+        if (
+          isBascikFolderName(
+            fullPath.slice(distDir.length + 1).split(sep)[0] ?? "",
+          )
+        ) {
+          responseStatus = 404;
+          res.respond(404, {
+            "content-type": "text/plain; charset=utf-8",
+            ...secHeaders,
+          });
+          res.end("Not Found");
           return;
         }
 
@@ -1031,7 +1086,9 @@ export const createRequestHandler = () => {
         const context = { remoteIp: req.remoteIp, platform: NODE_PLATFORM };
         const timeout =
           BascikConfig.scripts.timeout ?? DEFAULT_SCRIPT_TIMEOUT_MS;
-        responseHeaders["cache-control"] = "private, no-store";
+        // security.privateDynamicPages off: the author's host or CDN decides.
+        if (getResponseSecurity().privateDynamicPages)
+          responseHeaders["cache-control"] = "private, no-store";
         // The plan was built at store time (prompt 67): no regex scan and no
         // page.content.toString() on the request path.
 

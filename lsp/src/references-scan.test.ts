@@ -130,22 +130,21 @@ describe("findComponentUsages, the compiler's own reading of component tags", ()
       `<script><!-- document.write("<script>x</script>"); <my-card></my-card> --></script><x-a></x-a>`,
       [[83, "x-a"]],
     ],
-    [
-      "a name followed by a colon",
-      "<my-card:foo></my-card:foo>",
-      [[0, "my-card"]],
-    ],
-    [
-      "a name followed by a dot",
-      "<my-card.foo></my-card.foo>",
-      [[0, "my-card"]],
-    ],
+    // A browser reads a tag name up to tag whitespace, `/` or `>`: these are
+    // the tags `my-card:foo`, `my-card.foo` and `my-card<`, not `my-card`.
+    ["a name followed by a colon", "<my-card:foo></my-card:foo>", []],
+    ["a name followed by a dot", "<my-card.foo></my-card.foo>", []],
     [
       "a name followed by another tag's <",
       "<p>a <my-card</p><x-a></x-a>",
+      [[17, "x-a"]],
+    ],
+    [
+      "a name followed by tag whitespace or /",
+      "<my-card\tclass=a></my-card><x-a/>",
       [
-        [5, "my-card"],
-        [17, "x-a"],
+        [0, "my-card"],
+        [27, "x-a"],
       ],
     ],
     [
@@ -154,17 +153,26 @@ describe("findComponentUsages, the compiler's own reading of component tags", ()
       [],
     ],
     [
-      "a component named style-guide, which opens a style body that runs to the next </style>",
+      "a component named style-guide, which is no style element even with a </style> after it",
       "<style-guide>a</style-guide><my-card></my-card><p></style></p>",
-      [[0, "style-guide"]],
+      [
+        [0, "style-guide"],
+        [28, "my-card"],
+      ],
     ],
     [
-      "a component named script-loader, which opens a script body that runs to the next </script>",
+      "a component named script-loader, which is no script element even with a </script> after it",
       "<script-loader></script-loader><my-card></my-card><script>x</script><x-a></x-a>",
       [
         [0, "script-loader"],
+        [31, "my-card"],
         [68, "x-a"],
       ],
+    ],
+    [
+      "a style opener followed by tag whitespace, which does open a style body",
+      "<style\n><my-card></my-card></style><x-a></x-a>",
+      [[35, "x-a"]],
     ],
     [
       "a style-guide with no </style> after it, which hides nothing",
@@ -200,6 +208,42 @@ describe("findComponentUsages, the compiler's own reading of component tags", ()
       [[75, "x-a"]],
     ],
     ["upper case", "<MY-CARD></MY-CARD>", [[0, "my-card"]]],
+    // A raw-text opener inside another tag opens nothing, so the tag's own
+    // quote is not blanked up to a later real closer.
+    [
+      "a script opener inside an attribute value, with a real script after it",
+      `<p title="<script>">tip</p><my-card></my-card><script>x()</script>`,
+      [[27, "my-card"]],
+    ],
+    [
+      "a style opener in another tag's name",
+      "<p<style><my-card></my-card></style>",
+      [[9, "my-card"]],
+    ],
+    // A raw-text element ends at `</name` and tag whitespace, `/` or `>`.
+    [
+      "a closer with a slash",
+      "<style></style/><my-card></my-card></style>",
+      [[16, "my-card"]],
+    ],
+    [
+      "a closer with an attribute",
+      "<script></script x=1><x-a></x-a></script>",
+      [[21, "x-a"]],
+    ],
+    [
+      "a closer followed by a vertical tab, which ends nothing",
+      "<style></style\u000b><my-card></my-card></style>",
+      [],
+    ],
+    // A name inside another tag or a bogus comment is part of it.
+    ["a name in another tag's name", "<p<my-card></my-card>", []],
+    ["a name in a bogus comment", "<!x<my-card><?<x-a></x-a>", []],
+    [
+      "a name in an end tag's attribute",
+      "</p <my-card><x-a></x-a>",
+      [[13, "x-a"]],
+    ],
     [
       "a longer name that only starts with a component name",
       "<my-card-list></my-card-list><my-cards></my-cards>",

@@ -417,13 +417,15 @@ describe("open-tag scans keep the regexes' answers on malformed markup", () => {
     );
   });
 
-  it("prefers the longest component name at a `:` boundary", () => {
+  it("matches a component name only as the whole tag name, `:` included", () => {
     const list = {
       a: { fileContent: "A" },
       "a:b": { fileContent: "AB" },
     } as unknown as ComponentList;
     expect(getFirstComponent("<a:b></a:b>", list).name).toBe("a:b");
-    expect(getFirstComponent("<a:c></a>", list).name).toBe("a");
+    // A browser reads `<a:c>` as the tag `a:c`, never as `a` (browser-tag-names.test.ts).
+    expect(getFirstComponent("<a:c></a>", list).name).toBeUndefined();
+    expect(mayContainComponent("<a:c>", list)).toBe(false);
     expect(mayContainComponent("<a-b>", list)).toBe(false);
   });
 

@@ -136,6 +136,25 @@ const cssUrls = (css: string): string[] => {
   return urls;
 };
 
+/**
+ * `security.blockScriptUrls` and `security.blockCodeBindings`, as the build
+ * recorded them (the component manifest carries them to request time). Off
+ * means the value is bound as written, with no warning; it is still escaped
+ * for where it lands, so it stays one attribute value or one element's text.
+ */
+export interface BindingPolicy {
+  /** Script URLs such as `javascript:` in a bound URL attribute become `about:invalid`. */
+  blockScriptUrls: boolean;
+  /** Event handlers, srcdoc, meta http-equiv, SVG animation targets, unsafe styles and script/style receivers are refused. */
+  blockCodeBindings: boolean;
+}
+
+/** Both protections on: the behavior with no `security` config. */
+export const DEFAULT_BINDING_POLICY: Readonly<BindingPolicy> = Object.freeze({
+  blockScriptUrls: true,
+  blockCodeBindings: true,
+});
+
 /** What `injectPropAttributes` does with one bound value. */
 type BindingVerdict =
   | { kind: "bind"; value: string; blocked?: "script" }
@@ -173,9 +192,16 @@ const bindingVerdict = (
   context: BindingContext,
   targetName: string,
   value: string,
+  policy: BindingPolicy,
 ): BindingVerdict => {
   const tag = context.tagName.toLowerCase();
   const target = targetName.toLowerCase();
+  if (!policy.blockCodeBindings) {
+    if (!policy.blockScriptUrls) return { kind: "bind", value };
+    return urlVerdict(tag, target, value) === "blocked"
+      ? { kind: "bind", value: BLOCKED_URL, blocked: "script" }
+      : { kind: "bind", value };
+  }
   if (isEventHandlerName(target))
     return { kind: "refuse", reason: EVENT_HANDLER_REASON };
   if (target === "srcdoc")
@@ -207,8 +233,7 @@ const bindingVerdict = (
         return { kind: "refuse", reason: EVENT_HANDLER_REASON };
     }
   }
-  const verdict = urlVerdict(tag, target, value);
-  if (verdict === "blocked")
+  if (policy.blockScriptUrls && urlVerdict(tag, target, value) === "blocked")
     return { kind: "bind", value: BLOCKED_URL, blocked: "script" };
   if (target === "style") {
     const css = decodeCss(value);
@@ -219,7 +244,7 @@ const bindingVerdict = (
       return {
         kind: "refuse",
         reason:
-          "the value runs script or imports CSS (expression(), behavior, -moz-binding, @import, or a javascript:, vbscript: or non-image data: URL), which a prop bound to style may not do. Bind a data-* attribute and style it from a scoped class",
+          "the value runs script or imports CSS (expression(), behavior, -moz-binding, @import, or a script URL such as javascript: or a non-image data: URL), which a prop bound to style may not do. Bind a data-* attribute and style it from a scoped class",
       };
   }
   return { kind: "bind", value };
@@ -227,6 +252,19 @@ const bindingVerdict = (
 
 /** Raw-text elements whose content a prop receiver never replaces. */
 const UNFILLABLE_RECEIVERS = new Set(["script", "style"]);
+
+/**
+ * A prop value for a `<script>` or `<style>` body, which is raw text: the
+ * browser never decodes entities there, so the value goes in as written.
+ * Only what would end the element early is changed: `</script` (or
+ * `</style`) becomes `<\/script`, which a JS or CSS string reads as the same
+ * text, and in a script `<!--` becomes `<\!--`, so it cannot start the
+ * escaped state in which `<script` nests.
+ */
+const rawTextPropValue = (tagName: string, value: string): string =>
+  tagName.toLowerCase() === "script"
+    ? value.replace(/<(\/script|!--)/gi, "<\\$1")
+    : value.replace(/<(\/style)/gi, "<\\$1");
 
 /**
  * Extract data-bascik-prop-* attributes from a component usage tag string.
@@ -308,6 +346,7 @@ export const injectPropAttributes = (
   props: Record<string, string>,
   rewriteValue?: (targetName: string, value: string) => string,
   warn: (message: string) => void = console.warn,
+  policy: BindingPolicy = DEFAULT_BINDING_POLICY,
 ): string => {
   if (!fileContent) return "";
   if (!fileContent.includes("data-bascik-attr-")) return fileContent;
@@ -419,6 +458,7 @@ export const injectPropAttributes = (
         bindingContext(),
         targetName,
         rewriteValue ? rewriteValue(targetName, propValue) : propValue,
+        policy,
       );
       if (verdict.kind === "refuse") {
         warn(
@@ -428,7 +468,7 @@ export const injectPropAttributes = (
       }
       if (verdict.blocked === "script")
         warn(
-          `data-bascik-attr-${targetName}="${propName}" received a URL that can run script (a javascript:, vbscript: or data: URL), so ${targetName} is set to ${BLOCKED_URL}.`,
+          `data-bascik-attr-${targetName}="${propName}" received a URL that can run script (such as javascript:), so ${targetName} is set to ${BLOCKED_URL}.`,
         );
       const attribute = ` ${targetName}="${escapeHtml(verdict.value)}"`;
       // Whole-name conflict check: the target may already exist, but a
@@ -505,6 +545,7 @@ export const injectProps = (
   fileContent: string | undefined,
   props: Record<string, string>,
   warn: (message: string) => void = console.warn,
+  policy: BindingPolicy = DEFAULT_BINDING_POLICY,
 ): string => {
   if (!fileContent) return "";
   // With no lowercase marker, an empty props object returns early, and without any marker nothing changes.
@@ -604,7 +645,13 @@ export const injectProps = (
       // A script or style body is code: entity escaping cannot keep a value
       // from running there. The receiver stays unfilled (its marker is
       // stripped below) and the element keeps the template's own text.
-      if (UNFILLABLE_RECEIVERS.has(tagName.toLowerCase())) {
+      // With security.blockCodeBindings off, it is filled as written (see
+      // `rawTextPropValue`): only a sequence that would end the element early
+      // is changed.
+      if (
+        policy.blockCodeBindings &&
+        UNFILLABLE_RECEIVERS.has(tagName.toLowerCase())
+      ) {
         warn(
           `Ignoring data-bascik-prop-${propName} on a <${tagName.toLowerCase()}>: a prop is never written into script or style text. ` +
             `Bind it to a data-* attribute instead (data-bascik-attr-data-${propName}="${propName}") and read it from the element's dataset.`,
@@ -631,7 +678,10 @@ export const injectProps = (
       if (attrStart > 0 && /\s/.test(openTag[attrStart - 1])) attrStart--;
       const newOpenTag =
         openTag.slice(0, attrStart) + openTag.slice(receiverAttr.end);
-      const replacement = `${newOpenTag}${escapedPropValue}${closeTag}`;
+      const filled = UNFILLABLE_RECEIVERS.has(tagName.toLowerCase())
+        ? rawTextPropValue(tagName, propValue)
+        : escapedPropValue;
+      const replacement = `${newOpenTag}${filled}${closeTag}`;
       const endIndex = closeIndex + closeTag.length;
       parts.push(source.slice(cursor, openMatch.index), replacement);
       cursor = endIndex;

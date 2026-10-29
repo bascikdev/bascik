@@ -324,6 +324,48 @@ The runtime request handling is identical between both variants; only the packag
 
 Set [`contentSecurityPolicy`](/configuration#contentsecuritypolicy) and the generated Worker sends the header, with the build's hashes, on every page it renders, while the build writes exact-path `public/_headers` rules for static pages. No wrapper and no `run_worker_first` are needed. A site over Cloudflare's 100-rule `_headers` limit fails the build with a message that names the count. See [Content Security Policy](/how-to/content-security-policy#cloudflare).
 
+## Security settings on Cloudflare
+
+The Worker has no config file of its own at request time. The build resolves the [`security`](/configuration#security) settings and [`scripts.stripAnsi`](/configuration#scriptsstripansi) and [`scripts.renderLimits`](/configuration#scriptsrenderlimits) from the default export plus the `build` export, and writes them into the Worker, so a `server` export does not reach Cloudflare. Rebuild after changing them.
+
+- **Binding checks** (`blockScriptUrls`, `blockCodeBindings`) and `stripDirectiveScripts` act at build time, and the component manifest carries the binding settings, so components rendered by the Worker follow the same rules as `bascik --server`.
+- **Headers** (`headers`, `hsts`, `privateDynamicPages`) go on every response the Worker answers: pages with server or stream scripts, API routes, and its own 404, 405 and 500 responses. HSTS is sent on `https://` requests.
+- **Static files** (pages without server scripts, images, CSS) are served by Cloudflare's asset layer without the Worker, so they get none of these headers from Bascik. To send them there too, add a `/*` rule to a `_headers` file in the output. Bascik does not copy extensionless files from `src/pages`, so write `dist/_headers` from a `pipeline.exec` script that runs after the pages are built (`phase: "post"`). The Cloudflare build then copies it into the deployment and appends its own CSP rules after yours:
+
+  ```ts
+  // bascik.config.ts
+  import { defineConfig } from "@bascik/bascik/config";
+
+  export default defineConfig({
+    pipeline: {
+      exec: [{ script: "scripts/write-headers.mjs", phase: "post" }],
+    },
+  });
+  ```
+
+  ```js
+  // scripts/write-headers.mjs: the same headers the Worker sends, for every path
+  import { writeFile } from "node:fs/promises";
+
+  await writeFile(
+    "dist/_headers",
+    `/*
+    X-Content-Type-Options: nosniff
+    X-Frame-Options: SAMEORIGIN
+    Referrer-Policy: strict-origin-when-cross-origin
+    Cross-Origin-Opener-Policy: same-origin-allow-popups
+    Cross-Origin-Resource-Policy: cross-origin
+    Strict-Transport-Security: max-age=31536000
+  `,
+  );
+  ```
+
+  Keep the values in step with your `security` settings: drop a line you turned off, and change one you overrode.
+
+  Each rule counts toward Cloudflare's 100-rule `_headers` limit. Alternatively, `run_worker_first` sends every request through the Worker (see [When `run_worker_first` Applies](#when-run_worker_first-applies)), at the cost of a Worker invocation per static file.
+
+- **Dotfiles** (`hideDotfiles`): the Worker answers 404 for dot paths, and with `hideDotfiles: false` the build deploys dotfiles from `src/pages` and the Worker passes their requests to the asset layer. `/.bascik/` is never deployed.
+
 ## Bindings and secrets
 
 Handlers reach Cloudflare bindings through `context.platform`, which is `undefined` on hosts that offer nothing and `{ name: 'node' }` on the built-in server:
@@ -372,6 +414,8 @@ Provider limits are deployment constraints, not Bascik defaults, and they change
 - **Isolate lifecycle.** Module-level state is per isolate and can vanish between requests. Treat it as a cache, never as storage.
 - **Client disconnects during a stream.** Local workerd does not report a disconnect while a streamed slot is still waiting, so an abandoned stream job, or a component script nested in one, runs until `scripts.timeout`; `bascik --server` aborts it at once. Pass the `signal` to your I/O anyway, and keep `scripts.timeout` short.
 - **Database connections.** Use HTTP-based drivers or Cloudflare's connection products; a raw TCP pool that assumes a long-lived process does not fit the model.
+- **No per-IP rate limit.** `http.rateLimit` is part of `bascik --server`; the Worker does not limit requests per IP. Use Cloudflare's [WAF rate limiting rules](https://developers.cloudflare.com/waf/rate-limiting-rules/) for the routes that need one, such as API routes and pages with server scripts.
+- **No `http.maxBodySize`.** The Worker does not apply `http.maxBodySize` to API request bodies; Cloudflare's request body limit for your plan applies instead (see the [Workers limits](https://developers.cloudflare.com/workers/platform/limits/)). For a smaller cap, check the `content-length` header in your handler and answer 413, or add a WAF rule.
 
 ## Streaming and caching behavior
 

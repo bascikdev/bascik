@@ -32,6 +32,7 @@ describe("Playwright project test selection", () => {
         "**/prod-server.test.ts",
         "**/preserve-server-form.test.ts",
         "**/caching-layer.test.ts",
+        "**/security-defaults.test.ts",
         "**/bascik-add-dev.test.ts",
         "**/dev-exec-lifecycle.test.ts",
         "**/exec-error-policy.test.ts",

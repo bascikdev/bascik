@@ -8,6 +8,8 @@ import type {
   ContentSecurityPolicyConfig,
   CspRouteHashes,
 } from "./content-security-policy.ts";
+import type { ResponseSecurity } from "./web-response.ts";
+import type { RenderLimitsOptions } from "./types.ts";
 
 export interface SiteGraphJob {
   id: string;
@@ -77,6 +79,18 @@ export interface SiteGraph {
    * serves them without the runtime must cover another way.
    */
   contentSecurityPolicy?: SiteGraphContentSecurityPolicy;
+  /**
+   * `security.headers`, `security.hsts` and `security.privateDynamicPages`
+   * from the build, resolved (`resolveResponseSecurity`). Pass it as the
+   * `security` option of the runtime's response builders. Absent: defaults.
+   */
+  responseSecurity?: ResponseSecurity;
+  /** `security.hideDotfiles` from the build; pass to `isPrivatePathname`. Absent: true. */
+  hideDotfiles?: boolean;
+  /** `scripts.stripAnsi` from the build. Absent: true. */
+  stripAnsi?: boolean;
+  /** `scripts.renderLimits` from the build, every field set. Pass as `RenderHost.limits`. Absent: defaults. */
+  renderLimits?: RenderLimitsOptions;
 }
 
 export interface SiteGraphContentSecurityPolicy {

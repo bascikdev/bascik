@@ -846,7 +846,7 @@ describe("B. a usage attribute that becomes a URL only on the root's real tag ge
     const { html, host } = await renderAtRequest(manifest, usage);
     expect(rootAttrs(html, "inh-object").data).toBe("about:invalid");
     expect(host.warnOnce.mock.calls.map((call) => call[1])).toContain(
-      `[bascik] <inh-object> (components/inh-object.html): inherited attribute data received a URL that can run script (a javascript:, vbscript: or data: URL), so data on the root <object> is set to about:invalid. (in server-script output at "${HTTP_PATH}")`,
+      `[bascik] <inh-object> (components/inh-object.html): inherited attribute data received a URL that can run script (such as javascript:), so data on the root <object> is set to about:invalid. (in server-script output at "${HTTP_PATH}")`,
     );
   });
 
@@ -1303,16 +1303,16 @@ describe("D. nested component jobs an injected tag can start", () => {
     expect(host.runComponentJob).not.toHaveBeenCalled();
   });
 
-  it(`at most ${REQUEST_RENDER_LIMITS.maxNestedJobs} nested jobs per response, each with what is left of the page budget`, async () => {
+  it(`at most ${REQUEST_RENDER_LIMITS.maxNestedScripts} nested jobs per response, each with what is left of the page budget`, async () => {
     const manifest = await build(list);
     const output = "<srv-card></srv-card>".repeat(
-      REQUEST_RENDER_LIMITS.maxNestedJobs,
+      REQUEST_RENDER_LIMITS.maxNestedScripts,
     );
     const { host } = await renderAtRequest(manifest, output, {
       timeoutMs: 50,
     });
     expect(host.runComponentJob).toHaveBeenCalledTimes(
-      REQUEST_RENDER_LIMITS.maxNestedJobs,
+      REQUEST_RENDER_LIMITS.maxNestedScripts,
     );
     for (const call of host.runComponentJob.mock.calls)
       expect(call[2]).toBeLessThanOrEqual(50);
@@ -1428,8 +1428,10 @@ describe("G. a hostile output settles in time proportional to its size", () => {
     (
       unit + "x".repeat(Math.max(0, Math.ceil(size / USAGES) - unit.length))
     ).repeat(USAGES);
+  // Each `<a>` is a whole tag: after an `<a ` with no `>`, every later
+  // `<x-p>` would be part of its attributes, as a browser reads it.
   const nested = (size: number) =>
-    `<my-card>${padded("<x-p><a ", size)}</my-card>`;
+    `<my-card>${padded("<x-p><a>", size)}</my-card>`;
   /** One request for `html`: rendered, or a RequestRenderError. */
   const settlerOf = async () => {
     const manifest = await build(list);
@@ -1446,7 +1448,7 @@ describe("G. a hostile output settles in time proportional to its size", () => {
   };
 
   it(
-    "<my-card> + fill('<x-p><a ') + </my-card> settles (rendered or a RequestRenderError) in linear time",
+    "<my-card> + fill('<x-p><a>') + </my-card> settles (rendered or a RequestRenderError) in linear time",
     async () => {
       const settle = await settlerOf();
       await expectLinearTimeAsync(nested, SIZE, settle, {
@@ -1481,7 +1483,7 @@ describe("G. a hostile output settles in time proportional to its size", () => {
   // mask's in expandComponents). The cost is usages times fragment length:
   // at 400 bytes per usage, 7 ms for 100 usages, 60 ms for 500, 186 ms for
   // 1000. Only the instance cap (`REQUEST_RENDER_LIMITS.maxInstances`)
-  // bounds the usage count, and `maxOutputChars` the length: 998 usages in a
+  // bounds the usage count, and `maxOutputLength` the length: 998 usages in a
   // 4 MB output took 1.4 s of CPU. So the cost at the cap is pinned, as a
   // ratio to the work it is made of, timed in the same process: one splice
   // of the page and of its mask per substitution, each then read

@@ -276,9 +276,12 @@ describe("close and closer look-alikes keep unclosed usages linear", () => {
       unit + "x".repeat(Math.max(0, Math.ceil(size / 999) - unit.length))
     ).repeat(999);
   const shapes: Array<[string, (size: number) => string]> = [
+    // `<a ` with no `>` before the next `<x-p>` would make every later
+    // `<x-p>` part of that tag's attributes, as a browser reads it (one
+    // usage, not 999): each `<a>` here is a whole tag.
     [
-      "<my-card> + fill('<x-p><a ') + </x-pa></my-card>",
-      (size) => `<my-card>${fill("<x-p><a ", size)}</x-pa></my-card>`,
+      "<my-card> + fill('<x-p><a>') + </x-pa></my-card>",
+      (size) => `<my-card>${fill("<x-p><a>", size)}</x-pa></my-card>`,
     ],
     [
       "fill('<x-p>') + </x-p-list>",

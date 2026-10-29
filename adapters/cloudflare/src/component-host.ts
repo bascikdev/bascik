@@ -135,6 +135,8 @@ export const componentExecution = (
       timeoutMs: graph.scriptTimeoutMs,
       runComponentJob,
       externalTags: () => false,
+      // The build's scripts.renderLimits (absent: the defaults).
+      limits: graph.renderLimits,
       // D4.6, as on Node and as runGraphJob treats a failing script: the
       // located message fails the job under "error" (a 500 before commit,
       // the stream error log after), is logged under "warn", and the slot

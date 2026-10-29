@@ -98,9 +98,9 @@ export const computePageCspHashes = (emittedHtml: string): PageCspHashes => {
   };
 };
 
-/** `<name\b...>` elements closed the way browsers close them (see `ElementScanOptions`). */
+/** `<name ...>` (the whole tag name) elements closed the way browsers close them (see `ElementScanOptions`). */
 const RAW_ELEMENT_SCAN: ElementScanOptions = {
-  opener: "word-boundary",
+  opener: "tag-space",
   closer: "attributes",
 };
 
@@ -120,7 +120,7 @@ const scanWithRegexFallback = (
   const uncommented = emittedHtml.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
     " ".repeat(comment.length),
   );
-  // `/<(textarea|title|noscript|xmp)\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)(<\/\1(?:[\t\n\f\r /][^>]*)?>)/gi`
+  // `/<(textarea|title|noscript|xmp)(?=[\t\n\f\r />])((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)(<\/\1(?:[\t\n\f\r /][^>]*)?>)/gi`
   // with each element's content blanked, in linear time.
   let scannable = "";
   let cursor = 0;
@@ -142,7 +142,7 @@ const scanWithRegexFallback = (
   // close the element), so the hashed body is exactly what the browser hashes.
   // A quoted attribute value may contain `>`, so the open tag is matched
   // quote-aware and the body starts where the browser's does.
-  // `/<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`,
+  // `/<script(?=[\t\n\f\r />])((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`,
   // in linear time.
   const scriptMatches = scanElementContents(
     scannable,

@@ -41,7 +41,7 @@ const DIRECTIVE_SCRIPT_RE = new RegExp(
 /**
  * A comment, or a whole script element. Comments come first so a script
  * written inside one is skipped. This is the regex
- * `<!--[\s\S]*?-->|(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)`
+ * `<!--[\s\S]*?-->|(<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)`
  * (flags `gi`), scanned in linear time.
  */
 const COMMENT_OR_SCRIPT: readonly ScanAlternative[] = [
@@ -49,7 +49,7 @@ const COMMENT_OR_SCRIPT: readonly ScanAlternative[] = [
   {
     kind: "element",
     name: "script",
-    options: { opener: "word-boundary", closer: "attributes" },
+    options: { opener: "tag-space", closer: "attributes" },
   },
 ];
 const SCRIPT_LINE_ATTR_RE = /\s+data-bascik-script-line="(\d+)"/i;
@@ -104,10 +104,10 @@ export const takeScriptLine = (
 /** Removes every stamp, for when script scoping is turned off. */
 export const stripScriptLines = (html: string): string => {
   if (!html.includes(SCRIPT_LINE_ATTRIBUTE)) return html;
-  // `/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi`, in linear time.
+  // `/<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>/gi`, in linear time.
   return replaceSpans(
     html,
-    openTagsOf(createNamedOpenTagScanner(html, "script", "word-boundary")),
+    openTagsOf(createNamedOpenTagScanner(html, "script")),
     (openTag) => takeScriptLine(openTag).openTag,
   );
 };

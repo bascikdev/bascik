@@ -95,6 +95,13 @@ export interface ComponentManifest {
   minifyHtml: boolean;
   base: string;
   inheritAttributes: boolean;
+  /**
+   * `security.blockScriptUrls` / `security.blockCodeBindings` at build time,
+   * so every host binds request-time props by the build's rules. Optional
+   * and not a schema change: a manifest without it was built with both on,
+   * which is how a reader takes its absence.
+   */
+  security?: { blockScriptUrls: boolean; blockCodeBindings: boolean };
   components: Record<string, ManifestEntry>;
 }
 

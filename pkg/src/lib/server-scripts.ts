@@ -504,7 +504,11 @@ export const runServerScriptJob = async (
         : val !== undefined && val !== null
           ? String(val)
           : "";
-    const output = stripAnsiEscapeCodes(strVal);
+    // scripts.stripAnsi off: terminal color codes reach the page as printed.
+    const output =
+      BascikConfig.scripts?.stripAnsi === false
+        ? strVal
+        : stripAnsiEscapeCodes(strVal);
     // A component's server or stream script prints markup that is spliced
     // in after scoping, so its class and element names are applied here the
     // way a build script's output receives them (prompt 157), whether the

@@ -10,15 +10,16 @@ When one value slips through unescaped, a visitor writes markup into your page. 
 
 ## What Bascik guarantees
 
-When the values in your output are escaped, Bascik keeps escaped data from ever becoming code. The rules are the same on the dev server, `bascik --server`, and Cloudflare Workers, and for the same tag written in a page at build time:
+When the values in your output are escaped, Bascik keeps escaped data from ever becoming code. The rules are the same on the dev server, `bascik --server`, and Cloudflare Workers, and for the same tag written in a page at build time. These protections are on by default; each one that changes your output can be switched off by name in the [`security`](/configuration#security) config (see [Turning protections off](#turning-protections-off)):
 
 - **A prop is text.** Its value is decoded once and escaped again where it lands, so it becomes element text or one attribute value, never markup. A prop receiver on a `<script>` or `<style>` is never filled.
 - **Inherited attributes keep their quoting and their value.** A usage attribute that the component's root has inherited stays one attribute on the component's root, whatever quote the root uses, with the value as written. The one exception is an attribute that becomes a URL only because of the root's tag; see [Attributes That Become URLs on the Root](/attribute-inheritance#attributes-that-become-urls-on-the-root). An inherited `class` or `style` merges into the root's own one, so a value that spells ` class=` stays a value. See [Attribute Inheritance](/attribute-inheritance#what-gets-inherited).
-- **URL bindings are checked.** A prop bound to a URL attribute becomes `about:invalid` when it is a `javascript:`, `vbscript:`, `livescript:`, `mocha:` or non-image `data:` URL. This is the one URL rule `html` uses too. Any other URL is kept as the browser would take it (see [Loading scripts and styles from other sites](#loading-scripts-and-styles-from-other-sites)).
+- **URL bindings are checked.** A script URL runs code when the link is clicked or the frame loads, so a prop bound to a URL attribute becomes `about:invalid` when it is a script URL: `javascript:`, `vbscript:`, `livescript:`, `mocha:` or a non-image `data:` URL. (The last three after `javascript:` are obsolete browser names, listed here once; the rest of these docs say "script URLs such as `javascript:`".) This is the one URL rule `html` uses too. Any other URL is kept as the browser would take it (see [Loading scripts and styles from other sites](#loading-scripts-and-styles-from-other-sites)).
 - **Some bindings are refused.** A prop is never bound to an `on*` event handler, `srcdoc`, a `<meta http-equiv>` value, the attribute an SVG animation sets, or a `style` that runs script or imports CSS. See [Put a Prop in an Attribute](/props#put-a-prop-in-an-attribute).
 - **Nested scripts get no usage data.** A script inside a returned component receives the request, never the usage tag's props, slot or attributes.
 - **Markers cannot be forged.** Only the markers Bascik creates for the current request run nested scripts. A marker spelled in the output is text.
-- **Budgets stop hostile output.** One script output may expand to 1000 component instances and 4 MiB of HTML, one response may run 64 nested component scripts 4 levels deep, and rereading is bounded. Past a budget the script fails like any other error. See [Rules for returned tags](/server-scripts#rules-for-returned-tags).
+- **Budgets stop hostile output.** One script output may expand to 1000 component instances and 4 MiB of HTML, one response may run 64 nested component scripts 4 levels deep, and rereading is bounded. Past a budget the script fails like any other error. The numbers are server settings in [`scripts.renderLimits`](/configuration#scriptsrenderlimits). See [Rules for returned tags](/server-scripts#rules-for-returned-tags).
+- **Responses carry security headers.** Five headers against file-type guessing, framing by other sites, referrer leaks and popups reaching back into your page, HSTS over HTTPS, `private, no-store` on pages built per request, and a 404 for dotfile paths such as `/.env`. See [`security`](/configuration#security). On Cloudflare this covers what the Worker answers; static files on Cloudflare are served by the platform without the Worker and get none of these headers from Bascik unless you add them, as [Security settings on Cloudflare](/deployment/cloudflare#security-settings-on-cloudflare) shows.
 
 ## What is yours
 
@@ -326,6 +327,45 @@ That is a risk when the URL comes from data a visitor can influence: a query par
 - **The URL written in the template**, not taken from data, whenever it is fixed.
 - **Fixed variants chosen in code**: map a visitor's choice to one of a few URLs you wrote (`themes[name] ?? themes.default`), so the value only selects.
 
+### Limit which sites your pages load from
+
+To limit which sites your pages can load from, list them in `contentSecurityPolicy`. Bascik does not rewrite or remove a URL you wrote for this: the HTML ships unchanged, and the browser enforces the list when it loads the page. That is why the setting is off by default: only you know which sites your pages need.
+
+Say your pages load scripts and styles from your own site and `https://cdn.example.com`, and images from your site and `https://images.example.com`:
+
+```ts
+// bascik.config.ts
+import { defineConfig } from "@bascik/bascik/config";
+
+export default defineConfig({
+  contentSecurityPolicy: {
+    directives: {
+      "default-src": ["'self'"],
+      "script-src": ["'self'", "https://cdn.example.com"],
+      "style-src": ["'self'", "https://cdn.example.com"],
+      "img-src": ["'self'", "https://images.example.com"],
+    },
+  },
+});
+```
+
+Every HTML response then carries this header, with the build's hashes of the page's own inline scripts and styles added (shortened here):
+
+```text
+Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.example.com 'sha256-...'; style-src 'self' https://cdn.example.com 'sha256-...'; img-src 'self' https://images.example.com
+```
+
+What the browser does with it:
+
+- `<script src="https://cdn.example.com/app.js">` loads. `<script src="https://evil.example/x.js">`, from a URL a visitor slipped into a profile field, is blocked, and the browser console says why.
+- `<img src="https://images.example.com/a.png">` loads; an image from any other site is blocked.
+- An inline `<script>` a visitor manages to inject is blocked, because its text has no hash.
+- A `fetch` or anything else not listed falls back to `default-src 'self'`: your own site only.
+
+Before you copy this into a site, read [CSP and request-time components](#csp-and-request-time-components) below: with `style-src` set and hashes on, browsers block every `style="..."` attribute, and a component script that uses its instance id stops working. The starter pages have both, so add `'unsafe-inline'` to `style-src` or fix those components first.
+
+Start with `reportOnly: true` to see what would be blocked without blocking it. [Content Security Policy](/how-to/content-security-policy) has a recipe for each host.
+
 ## CSP and request-time components
 
 With `generate.cspHashes` or `contentSecurityPolicy`, every route lists the hashes of its own inline scripts and styles. A route with a server or stream script also lists the hashes of every component that can be rendered at request time, because any of them can be returned. A hash-only policy still blocks a `<script>` or `<style>` a visitor writes, since its text has no hash. A component tag injected through an escaping bug, though, runs that component's own client script, which is why `html` and component scripts that treat markup as data matter even with a policy. The [Content Security Policy](/how-to/content-security-policy) how-to has a recipe for each host.
@@ -349,9 +389,31 @@ In the editor, the quick fix **Wrap template in html\`...\`** adds the tag and t
 
 ![VS Code showing a server script whose template interpolates a query parameter without html: the hole is underlined, the hover names server-script-unescaped-markup, and the quick fix wraps the template in html and adds the import](/assets/vscode/unescaped-markup-still@2x.webp)
 
+## Turning protections off
+
+Bascik changes what you wrote only to protect it, and each such change can be switched off in [`security`](/configuration#security). The default rule decides which way each one starts: a protection is on by default when it cannot break a correct site and needs no setup; it is off by default when the right setting depends on the site and needs setup. So every `security` key starts on, while `contentSecurityPolicy` and `http.trustProxy` start off.
+
+Turn one off only for a reason you can name, and only that one. The keys are independent.
+
+- **`blockScriptUrls`** makes a prop bound to a URL attribute that holds a script URL become `about:invalid`, and does the same for an inherited `data` on an `<object>` root. Off, every bound URL is written as given, with no warning. A reason: a component embeds a PDF from a `data:application/pdf` URL in an `<object data>`, which the check refuses because a `data:` URL other than an image can carry a script. Only turn it off when no visitor can choose the URL.
+- **`blockCodeBindings`** refuses props bound to `on*` event handlers, `srcdoc`, `<meta http-equiv>` values, the attribute an SVG animation sets, and a `style` that runs script or imports CSS, and leaves `<script>` and `<style>` prop receivers unfilled. Off, those props are bound and filled as written. This lets a prop become code. An attribute value is still escaped, so it stays one attribute, but in an `onclick` that text runs. A `<script>` or `<style>` receiver gets the text unchanged, so the code works, except that `</script` (or `</style`) is written `<\/script` and, in a script, `<!--` is written `<\!--`, so the value cannot end the element early. A reason: a design-system component whose `onclick` prop is always a literal written by your own team. Never pass it a value a visitor wrote.
+- **`headers`** sends five response headers. Off, none is sent; an object changes or removes one. A reason: your pages are meant to be embedded on partner sites, so `{ "x-frame-options": false }`, or a CDN already sets these headers and you want one source of truth.
+- **`hsts`** tells browsers to use HTTPS for a year. Off, no HSTS header. A reason: your host or CDN already sends HSTS, or you are moving the domain away from HTTPS. To undo an earlier policy, send `{ maxAge: 0 }` for a while instead of turning it off.
+- **`privateDynamicPages`** marks pages built per request `private, no-store`. Off, Bascik sends no `cache-control` on them, and a shared cache can show one visitor's page to another. A reason: a page's server script shows the same thing to everyone (say, today's stock level) and your CDN should cache it. Never for a page that shows anything about the visitor.
+- **`stripDirectiveScripts`** removes a `<script data-bascik-build>`, `data-bascik-server` or other directive script that a build script prints. Off, printed directives stay and run like ones you wrote, so CMS content can run code during your build or on your server. A reason: a build script that generates pages with server scripts from a template in your own repository, never from content editors.
+- **`hideDotfiles`** answers 404 for a path with a dot segment and does not publish dotfiles from `src/pages`. Off, every dotfile in `src/pages` is published, including `.DS_Store` and any `.env` someone left there. A reason: a host that needs `/.nojekyll` or `/.htaccess` in the output. Check `src/pages` for stray dotfiles first.
+
+What stays on whatever you set:
+
+- A path with `..`, a null byte or a control character gets 400 on every host.
+- `/.bascik/` (the build's own manifests and sidecars in the output) is never served, even with `hideDotfiles` off.
+- The [`html`](#using-html) helper escapes and checks values the same way; `security` does not change it.
+- Opt-in protections such as `contentSecurityPolicy` stay as you configured them.
+
 ## Checklist
 
 - Every server and stream script that returns markup with data in it uses `html`.
+- Each `security` key is left on, or turned off on purpose for a reason you can name.
 - No value lands in an `on*` attribute, a `style`, a `<script>` or a `<style>`; client data goes in `data-*` or `json()`.
 - CMS and Markdown HTML is sanitized with an allowlist, then inserted with `raw()`.
 - Script and stylesheet URLs are fixed in the template, chosen from fixed variants, or checked with `safeUrl(value, { origins })`.

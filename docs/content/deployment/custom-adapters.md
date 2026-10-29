@@ -647,6 +647,10 @@ export interface SiteGraph {
   custom500?: string; // Content or path of custom 500.html template if present
   importRoot: string; // Absolute path to project source import root
   components?: SiteGraphComponents; // Present when the build wrote dist/.bascik/components.json
+  responseSecurity?: ResponseSecurity; // security.headers, hsts and privateDynamicPages, resolved
+  hideDotfiles?: boolean; // security.hideDotfiles (absent: true)
+  stripAnsi?: boolean; // scripts.stripAnsi (absent: true)
+  renderLimits?: RenderLimitsOptions; // scripts.renderLimits, every field set
 }
 
 export interface SiteGraphComponents {
@@ -654,6 +658,17 @@ export interface SiteGraphComponents {
   jobs: Record<string, SiteGraphJob>; // Server and stream scripts inside components, by job ID
 }
 ```
+
+### Security settings in the graph
+
+`readSiteGraph` writes the build's [`security`](/configuration#security) response settings and two script settings into the graph, because a serverless host has no config of its own at request time. Pass them to the runtime and your host agrees with `bascik --server`:
+
+- **`responseSecurity`**: `{ headers, hsts, privateDynamicPages }`, already resolved (`hsts` is the header value or `null`). Pass it as the `security` option of `dynamicPageHeaders`, `mergeHandlerHeaders`, `errorResponse` and `internalErrorPage`. Absent, they send the defaults.
+- **`hideDotfiles`**: pass it as the third argument of `isPrivatePathname(pathname, graph.base, graph.hideDotfiles !== false)` before routing, and answer 404 when it returns `true`. With it off, `publicFiles` already includes dotfiles, never `.bascik/`.
+- **`stripAnsi`**: when not `false`, run a script's output through `stripAnsiEscapeCodes` as `runServerScriptJob` does.
+- **`renderLimits`**: pass it as `limits` on the `RenderHost` you give `wrapRunner`.
+
+Every field is optional so a graph from an older build still works; absent means the default. The binding settings travel in `components.manifest.security` and need nothing from the adapter.
 
 ### `SiteGraphPage`
 
@@ -734,15 +749,15 @@ export interface SiteGraphApiRoute {
 
 Adapters bundle `@bascik/bascik/runtime` into their function entry points. It uses only Web APIs (`Request`, `Response`, `ReadableStream`, `TextEncoder`, `AbortSignal`), so it runs on Node, Cloudflare Workers, Deno and other Web-standard runtimes. It does not route a request by itself: the host decides which page or API route a request is for and calls these parts, as the [tutorial handler](#step-4-write-the-request-handler) and the [Cloudflare adapter source](https://github.com/bascikdev/bascik/tree/main/adapters/cloudflare/src) do.
 
-| Area                | Exports                                                                                                                                                                                                                                              |
-| :------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Page composition    | `composeBufferedResponse(plan, run, signal)`, `streamComposedResponse(plan, run, writer, options)`, and the `ExecutionPlan`, `ExecutionSegment` and `ScriptJobRunner` types. A runner resolves one script job to its output; throwing fails the job. |
-| Deadlines           | `invokeLoadedWithDeadline(load, call, options)`, `invokeWithDeadline(call, options)`, `scriptTimeoutError(ms)`, `createAbortGate(signal)`. A fired deadline or client abort wins over a late result.                                                 |
-| API routes          | `matchApiRoute(routes, pathname, rawPathname)`, `dispatchApiHandler(mod, request, context, options)`, `allowHeaderFor(mod)`, `InvalidApiPathError`, and the `ApiHandlerContext` and `PlatformContext` types.                                         |
-| Paths               | `pageLookupCandidates(pathname)`, `normalizePagePathname(pathname)`, `isUnsafePathname(pathname)`, `hasHiddenSegment(pathname, base)`, `GENERATED_CONTROL_PATHS`.                                                                                    |
-| Responses           | `dynamicPageHeaders(options)`, `errorResponse(status, body, options)`, `internalErrorPage(custom500, options)`, `mergeHandlerHeaders(headers, options)`, `stripRepresentationHeaders(headers)`, `SECURITY_HEADERS`.                                  |
-| Component rendering | `wrapRunner(run, plan, host)`, `RenderHost`, `requestRoutePath(url)`, `renderFailureMessage(error, url)`, `RequestRenderError`, `REQUEST_RENDER_LIMITS`, `createNameHasher(digest)`.                                                                 |
-| Script output       | `applyOutputScope(output, scope)`, `decodeOutputScope(encoded)`, `stripAnsiEscapeCodes(text)`.                                                                                                                                                       |
+| Area                | Exports                                                                                                                                                                                                                                                                               |
+| :------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Page composition    | `composeBufferedResponse(plan, run, signal)`, `streamComposedResponse(plan, run, writer, options)`, and the `ExecutionPlan`, `ExecutionSegment` and `ScriptJobRunner` types. A runner resolves one script job to its output; throwing fails the job.                                  |
+| Deadlines           | `invokeLoadedWithDeadline(load, call, options)`, `invokeWithDeadline(call, options)`, `scriptTimeoutError(ms)`, `createAbortGate(signal)`. A fired deadline or client abort wins over a late result.                                                                                  |
+| API routes          | `matchApiRoute(routes, pathname, rawPathname)`, `dispatchApiHandler(mod, request, context, options)`, `allowHeaderFor(mod)`, `InvalidApiPathError`, and the `ApiHandlerContext` and `PlatformContext` types.                                                                          |
+| Paths               | `pageLookupCandidates(pathname)`, `normalizePagePathname(pathname)`, `isUnsafePathname(pathname)`, `hasHiddenSegment(pathname, base)`, `isPrivatePathname(pathname, base, hideDotfiles)`, `GENERATED_CONTROL_PATHS`.                                                                  |
+| Responses           | `dynamicPageHeaders(options)`, `errorResponse(status, body, options)`, `internalErrorPage(custom500, options)`, `mergeHandlerHeaders(headers, options)`, `stripRepresentationHeaders(headers)`, `SECURITY_HEADERS`, `resolveResponseSecurity(security)`, `DEFAULT_RESPONSE_SECURITY`. |
+| Component rendering | `wrapRunner(run, plan, host)`, `RenderHost`, `requestRoutePath(url)`, `renderFailureMessage(error, url)`, `RequestRenderError`, `REQUEST_RENDER_LIMITS`, `createNameHasher(digest)`.                                                                                                  |
+| Script output       | `applyOutputScope(output, scope)`, `decodeOutputScope(encoded)`, `stripAnsiEscapeCodes(text)`.                                                                                                                                                                                        |
 
 A buffered page response for a page without stream scripts, given a `page` from `graph.pages` and a `run` like the tutorial's:
 

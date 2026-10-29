@@ -196,14 +196,14 @@ import {
   type OpenTagScanner,
 } from "./element-content-scan.ts";
 
-/** `<script\b...>` elements closed the way browsers close them (see `ElementScanOptions`). */
+/** `<script(?=[\t\n\f\r />])...>` elements closed the way browsers close them (see `ElementScanOptions`). */
 const SCRIPT_ELEMENT_SCAN: ElementScanOptions = {
-  opener: "word-boundary",
+  opener: "tag-space",
   closer: "attributes",
 };
 
 /**
- * `html.replace(/(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi, replace)`
+ * `html.replace(/(<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi, replace)`
  * in linear time.
  */
 const replaceScriptElements = (
@@ -554,11 +554,11 @@ export const prefixElementAttribute = (
   const metaShield =
     attribute === "name" ? createContentShield(component.fileContent) : null;
   if (metaShield) {
-    // `/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*(?:\/>|>)/gi`, in linear time.
+    // `/<meta(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*(?:\/>|>)/gi`, in linear time.
     const html = component.fileContent;
     component.fileContent = replaceOpenTags(
       html,
-      createNamedOpenTagScanner(html, "meta", "word-boundary"),
+      createNamedOpenTagScanner(html, "meta"),
       (tag) => metaShield.hide(tag),
     );
   }
@@ -696,7 +696,7 @@ export const prefixElementAttribute = (
       }
     };
 
-    // `/<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`,
+    // `/<script(?=[\t\n\f\r />])((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`,
     // in linear time.
     for (const scriptMatch of scanElementContents(
       scopedAttrsHtml,

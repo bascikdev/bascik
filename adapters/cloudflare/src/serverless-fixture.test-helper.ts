@@ -77,6 +77,15 @@ export interface ServerlessFixtureOptions {
   onServerScriptError?: "error" | "warn" | "ignore";
   /** `scripts.timeout` in ms; 5000 by default. */
   scriptTimeout?: number;
+  /**
+   * The `security` config object (Collin 2026-10-29), written as is. Named
+   * apart from `security`, which adds the attacker-lens pages.
+   */
+  securityConfig?: Record<string, unknown>;
+  /** `scripts.stripAnsi`; unset by default (the config default, on). */
+  stripAnsi?: boolean;
+  /** `scripts.renderLimits`; unset by default (today's limits). */
+  renderLimits?: Record<string, number>;
 }
 
 export const createServerlessFixture = async (
@@ -112,7 +121,18 @@ export const createServerlessFixture = async (
   directory: { components: ["src/components"] },
   generate: { manifest: true, cspHashes: true, sitemap: false, robots: false },
   minify: { identifiers: ${options.identifiers === true}, html: ${options.minifyHtml === true} },
-  scripts: { onServerScriptError: ${JSON.stringify(options.onServerScriptError ?? "error")}, timeout: ${options.scriptTimeout ?? 5000} },
+  scripts: { onServerScriptError: ${JSON.stringify(options.onServerScriptError ?? "error")}, timeout: ${options.scriptTimeout ?? 5000}${
+    options.stripAnsi !== undefined ? `, stripAnsi: ${options.stripAnsi}` : ""
+  }${
+    options.renderLimits
+      ? `, renderLimits: ${JSON.stringify(options.renderLimits)}`
+      : ""
+  } },${
+    options.securityConfig
+      ? `
+  security: ${JSON.stringify(options.securityConfig)},`
+      : ""
+  }
   http: { apiTimeout: 2000 },${
     options.csp
       ? `

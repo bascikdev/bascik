@@ -68,17 +68,34 @@ export default defineConfig({
 
 ### Server Configuration Options
 
-| Option              | Type                     | Default              | Description                                                                        |
-| :------------------ | :----------------------- | :------------------- | :--------------------------------------------------------------------------------- |
-| `http.port`         | `number`                 | `8080` / `8443`      | TCP port to listen on                                                              |
-| `http.hostname`     | `string`                 | `'localhost'`        | Network interface to bind                                                          |
-| `http.compression`  | `boolean`                | `true`               | Enables automatic Gzip and Brotli compression                                      |
-| `http.trustProxy`   | `boolean`                | `false`              | Trust `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` proxy headers |
-| `http.rateLimit`    | `boolean \| object`      | `false`              | In-memory sliding-window IP rate limiter                                           |
-| `http.cacheControl` | `Record<string, string>` | `{}`                 | Custom `Cache-Control` headers matched by file extension                           |
-| `http.timeouts`     | `object`                 | `{}`                 | Socket request, headers, and keep-alive timeout values                             |
-| `http.maxBodySize`  | `number`                 | `1048576` (1MB)      | Maximum payload byte size for API route requests                                   |
-| `http.tls`          | `object`                 | `{ enabled: false }` | TLS / HTTPS and HTTP/2 certificate configuration                                   |
+| Option                         | Type                     | Default                       | Description                                                                                           |
+| :----------------------------- | :----------------------- | :---------------------------- | :---------------------------------------------------------------------------------------------------- |
+| `http.port`                    | `number`                 | `8080` / `8443`               | TCP port to listen on                                                                                 |
+| `http.hostname`                | `string`                 | `'localhost'`                 | Network interface to bind                                                                             |
+| `http.compression`             | `boolean`                | `true`                        | Enables automatic Gzip and Brotli compression                                                         |
+| `http.trustProxy`              | `boolean`                | `false`                       | Trust `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` proxy headers                    |
+| `http.rateLimit`               | `boolean \| object`      | `true`                        | In-memory sliding-window IP rate limiter (500 requests per 10 s per IP)                               |
+| `http.cacheControl`            | `Record<string, string>` | `{}`                          | Custom `Cache-Control` headers matched by file extension                                              |
+| `http.timeouts`                | `object`                 | `{}`                          | Socket request, headers, and keep-alive timeout values                                                |
+| `http.maxBodySize`             | `number`                 | `1048576` (1MB)               | Maximum payload byte size for API route requests                                                      |
+| `http.tls`                     | `object`                 | `{ enabled: false }`          | TLS / HTTPS and HTTP/2 certificate configuration                                                      |
+| `security.headers`             | `boolean \| object`      | `true`                        | The five security headers on every response; an object changes or removes one                         |
+| `security.hsts`                | `boolean \| object`      | `true`                        | `Strict-Transport-Security: max-age=31536000` over HTTPS                                              |
+| `security.privateDynamicPages` | `boolean`                | `true`                        | `cache-control: private, no-store` on pages with server or stream scripts                             |
+| `security.hideDotfiles`        | `boolean`                | `true`                        | 404 for paths with a dot segment such as `/.env`, except `/.well-known/`                              |
+| `scripts.renderLimits`         | `object`                 | `{ maxInstances: 1000, ... }` | Limits on what one script output may render (see [Configuration](/configuration#scriptsrenderlimits)) |
+
+The server reads its own config, including the `server` export, for every row above. See [`security`](/configuration#security) for what each protection does and what turning it off means.
+
+## Security headers
+
+Every response from `bascik --server`, static files and errors included, carries five headers: `x-content-type-options: nosniff`, `x-frame-options: SAMEORIGIN`, `referrer-policy: strict-origin-when-cross-origin`, `cross-origin-opener-policy: same-origin-allow-popups` and `cross-origin-resource-policy: cross-origin`. Change or remove one with [`security.headers`](/configuration#securityheaders), for example `{ "x-frame-options": "DENY" }`; an API route's own headers still win.
+
+Over HTTPS the server adds `strict-transport-security: max-age=31536000`. That means a TLS server, or `http.trustProxy` with a proxy that sends `x-forwarded-proto: https`. The default no longer includes `includeSubDomains`; opt in with `security.hsts: { includeSubDomains: true }` only when every subdomain serves HTTPS. See [`security.hsts`](/configuration#securityhsts).
+
+```sh
+curl -sI https://localhost:8443/ | grep -i -E 'strict-transport|x-frame|x-content'
+```
 
 ## Content-Security-Policy
 

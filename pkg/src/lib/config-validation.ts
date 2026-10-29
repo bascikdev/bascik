@@ -78,7 +78,10 @@ const isPlainObject = (val: unknown): val is Record<string, unknown> =>
 /** Nested map of every known config key. Leaf value is null. */
 const KNOWN_KEYS: Record<string, unknown> = {
   directory: { pages: null, components: null, out: null, api: null },
-  components: { external: null },
+  components: {
+    external: null,
+    expansionLimits: { maxInstances: null, maxPageLength: null },
+  },
   scoping: {
     scriptBlocks: null,
     inheritAttributes: null,
@@ -104,6 +107,15 @@ const KNOWN_KEYS: Record<string, unknown> = {
     onServerScriptError: null,
     timeout: null,
     importRoot: null,
+    stripAnsi: null,
+    renderLimits: {
+      maxInstances: null,
+      maxOutputLength: null,
+      maxNestedScripts: null,
+      maxDepth: null,
+      rescanFactor: null,
+      rescanBase: null,
+    },
   },
   onMinifyError: null,
   http: {
@@ -133,7 +145,64 @@ const KNOWN_KEYS: Record<string, unknown> = {
     hashes: { scripts: null, styles: null },
     reportOnly: null,
   },
+  security: {
+    blockScriptUrls: null,
+    blockCodeBindings: null,
+    // Header names are checked by validateSecurity (case-insensitive, with
+    // their own redirect messages), so the generic walker skips them.
+    headers: null,
+    hsts: { maxAge: null, includeSubDomains: null, preload: null },
+    privateDynamicPages: null,
+    stripDirectiveScripts: null,
+    hideDotfiles: null,
+  },
 };
+
+/** The response headers `security.headers` can change, in lowercase. */
+export const SECURITY_HEADER_NAMES = [
+  "x-content-type-options",
+  "x-frame-options",
+  "referrer-policy",
+  "cross-origin-opener-policy",
+  "cross-origin-resource-policy",
+] as const;
+
+const SECURITY_BOOLEAN_KEYS = [
+  "blockScriptUrls",
+  "blockCodeBindings",
+  "privateDynamicPages",
+  "stripDirectiveScripts",
+  "hideDotfiles",
+] as const;
+
+const SECURITY_KEYS = [
+  "blockScriptUrls",
+  "blockCodeBindings",
+  "headers",
+  "hsts",
+  "privateDynamicPages",
+  "stripDirectiveScripts",
+  "hideDotfiles",
+] as const;
+
+export const RENDER_LIMIT_KEYS = [
+  "maxInstances",
+  "maxOutputLength",
+  "maxNestedScripts",
+  "maxDepth",
+  "rescanFactor",
+  "rescanBase",
+] as const;
+
+export const EXPANSION_LIMIT_KEYS = ["maxInstances", "maxPageLength"] as const;
+
+/** Settings that only take effect when pages and components are built. */
+const BUILD_TIME_ONLY_KEYS: readonly (readonly [string, string])[] = [
+  ["security", "blockScriptUrls"],
+  ["security", "blockCodeBindings"],
+  ["security", "stripDirectiveScripts"],
+  ["components", "expansionLimits"],
+];
 
 const KNOWN_EXEC_ENTRY_KEYS = [
   "script",
@@ -320,6 +389,9 @@ export const validateConfigShape = (
   const push = (key: string, value: unknown, message: string): void => {
     errors.push({ key, value, message });
   };
+
+  // Protections first: a mistake here changes what the site ships.
+  validateSecurity(raw.security, push);
 
   /* directory */
   if (isPlainObject(raw.directory)) {
@@ -587,6 +659,17 @@ export const validateConfigShape = (
         );
       }
     }
+    if (
+      scripts.stripAnsi !== undefined &&
+      typeof scripts.stripAnsi !== "boolean"
+    )
+      push("scripts.stripAnsi", scripts.stripAnsi, "expected true or false");
+    validatePositiveIntegers(
+      scripts.renderLimits,
+      "scripts.renderLimits",
+      RENDER_LIMIT_KEYS,
+      push,
+    );
   }
 
   if (
@@ -746,6 +829,14 @@ export const validateConfigShape = (
     }
   }
 
+  if (isPlainObject(raw.components))
+    validatePositiveIntegers(
+      raw.components.expansionLimits,
+      "components.expansionLimits",
+      EXPANSION_LIMIT_KEYS,
+      push,
+    );
+
   /* scoping */
   if (isPlainObject(raw.scoping) && raw.scoping.preserve !== undefined) {
     const preserve = raw.scoping.preserve;
@@ -806,6 +897,157 @@ export const validateConfigShape = (
   validateContentSecurityPolicy(raw.contentSecurityPolicy, push);
 
   return errors;
+};
+
+type Push = (key: string, value: unknown, message: string) => void;
+
+/**
+ * An optional object of positive whole numbers (the render and expansion
+ * limits). `0`, negatives, fractions, strings, NaN, Infinity and numbers past
+ * Number.MAX_SAFE_INTEGER are all rejected.
+ */
+const validatePositiveIntegers = (
+  value: unknown,
+  prefix: string,
+  keys: readonly string[],
+  push: Push,
+): void => {
+  if (value === undefined) return;
+  if (!isPlainObject(value)) {
+    push(
+      prefix,
+      value,
+      `expected an object { ${keys.map((k) => `${k}?`).join(", ")} }`,
+    );
+    return;
+  }
+  for (const key of keys) {
+    const field = value[key];
+    if (field === undefined) continue;
+    if (typeof field !== "number" || !Number.isSafeInteger(field) || field <= 0)
+      push(`${prefix}.${key}`, field, "expected a positive whole number");
+  }
+};
+
+/** `security`: seven named protections, no master switch. */
+const validateSecurity = (security: unknown, push: Push): void => {
+  if (security === undefined) return;
+  const key = "security";
+  if (!isPlainObject(security)) {
+    push(
+      key,
+      security,
+      `expected an object; turn each protection off by name (${SECURITY_KEYS.join(", ")})`,
+    );
+    return;
+  }
+  for (const name of SECURITY_BOOLEAN_KEYS) {
+    const value = security[name];
+    if (value !== undefined && typeof value !== "boolean")
+      push(`${key}.${name}`, value, "expected true or false");
+  }
+
+  const headers = security.headers;
+  if (headers !== undefined && typeof headers !== "boolean") {
+    if (!isPlainObject(headers)) {
+      push(
+        `${key}.headers`,
+        headers,
+        "expected true, false, or an object of header names",
+      );
+    } else {
+      const seen = new Map<string, string>();
+      for (const [name, value] of Object.entries(headers)) {
+        const at = `${key}.headers.${name}`;
+        const lower = name.toLowerCase();
+        const earlier = seen.get(lower);
+        if (earlier !== undefined) {
+          push(
+            at,
+            value,
+            `names the same header as "${earlier}"; keep one (header names ignore letter case)`,
+          );
+          continue;
+        }
+        seen.set(lower, name);
+        if (!(SECURITY_HEADER_NAMES as readonly string[]).includes(lower)) {
+          let message: string;
+          if (lower === "strict-transport-security")
+            message = "set it with security.hsts";
+          else if (
+            lower === "content-security-policy" ||
+            lower === "content-security-policy-report-only"
+          )
+            message = "set it with contentSecurityPolicy";
+          else {
+            const suggestion = suggestKey(
+              lower,
+              [...SECURITY_HEADER_NAMES],
+              `${key}.headers.`,
+            );
+            message = suggestion.startsWith("did you mean")
+              ? suggestion
+              : `security.headers changes only the headers Bascik sends by default (${SECURITY_HEADER_NAMES.join(", ")}); send other headers from your host or an API route`;
+          }
+          push(at, value, message);
+          continue;
+        }
+        if (value === false) continue;
+        if (typeof value !== "string") {
+          push(
+            at,
+            value,
+            "expected a header value string, or false to remove the header",
+          );
+        } else if (value.trim() === "") {
+          push(at, value, "use false to remove the header");
+        } else if (/[\u0000-\u0008\u000a-\u001f\u007f]/.test(value)) {
+          push(
+            at,
+            value,
+            "header values cannot contain line breaks or control characters",
+          );
+        } else {
+          // Node's setHeader and the Worker's Headers refuse anything else on
+          // every response, so a pasted dash or curly quote fails here.
+          const outside = /[^\t\u0020-\u007e\u0080-\u00ff]/.exec(value);
+          if (outside)
+            push(
+              at,
+              value,
+              `header values can hold only printable ASCII and Latin-1 characters; U+${outside[0].codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")} at index ${outside.index} cannot be sent (a pasted dash or curly quote?)`,
+            );
+        }
+      }
+    }
+  }
+
+  const hsts = security.hsts;
+  if (hsts !== undefined && typeof hsts !== "boolean") {
+    if (!isPlainObject(hsts)) {
+      push(
+        `${key}.hsts`,
+        hsts,
+        "expected true, false, or an object { maxAge?, includeSubDomains?, preload? }",
+      );
+    } else {
+      const maxAge = hsts.maxAge;
+      if (
+        maxAge !== undefined &&
+        (typeof maxAge !== "number" ||
+          !Number.isSafeInteger(maxAge) ||
+          maxAge < 0)
+      )
+        push(
+          `${key}.hsts.maxAge`,
+          maxAge,
+          "expected a whole number of seconds, 0 or more (31536000 is one year)",
+        );
+      for (const flag of ["includeSubDomains", "preload"] as const)
+        if (hsts[flag] !== undefined && typeof hsts[flag] !== "boolean")
+          push(`${key}.hsts.${flag}`, hsts[flag], "expected true or false");
+    }
+  }
 };
 
 /** `contentSecurityPolicy`: directive names, source lists, and the two flags. */
@@ -1026,6 +1268,34 @@ export const collectConfigWarnings = (
     }
   }
 
+  if (isPlainObject(raw.security) && isPlainObject(raw.security.hsts)) {
+    const hsts = raw.security.hsts;
+    const maxAge = typeof hsts.maxAge === "number" ? hsts.maxAge : 31536000;
+    if (
+      hsts.preload === true &&
+      (hsts.includeSubDomains !== true || maxAge < 31536000)
+    )
+      warnings.push({
+        key: "security.hsts.preload",
+        value: true,
+        message:
+          "the browser preload list requires includeSubDomains and a max-age of at least one year (maxAge: 31536000); browsers ignore the preload request until both are set",
+      });
+  }
+
+  if (
+    isPlainObject(raw.security) &&
+    isPlainObject(raw.security.hsts) &&
+    raw.security.hsts.maxAge === 0 &&
+    raw.security.hsts.includeSubDomains === true
+  )
+    warnings.push({
+      key: "security.hsts.includeSubDomains",
+      value: true,
+      message:
+        "maxAge 0 clears the policy, so includeSubDomains has no effect; keep maxAge 0 alone to reset browsers, or set a maxAge to apply HTTPS to subdomains",
+    });
+
   const csp = raw.contentSecurityPolicy;
   if (isPlainObject(csp) && isPlainObject(csp.directives)) {
     const directives = csp.directives;
@@ -1075,6 +1345,56 @@ export const collectConfigWarnings = (
       });
   }
 
+  return warnings;
+};
+
+/**
+ * Settings in the `server` export that only take effect when pages and
+ * components are built. `bascik --server` serves what the build wrote, so
+ * these do nothing there; the author is told where to put them instead.
+ */
+export const collectModeOverrideWarnings = (
+  modeOverrides: unknown,
+  userConfig: unknown = {},
+): ConfigValidationError[] => {
+  const warnings: ConfigValidationError[] = [];
+  if (!isPlainObject(modeOverrides)) return warnings;
+
+  // security.hideDotfiles acts twice: the build decides whether dotfiles in
+  // src/pages are published, and the server whether it answers them. The
+  // build uses the default export plus `build`; `bascik --server` the default
+  // export plus `server`. When those disagree, one half undoes the other.
+  const hideDotfilesIn = (layer: unknown): unknown =>
+    isPlainObject(layer) && isPlainObject(layer.security)
+      ? layer.security.hideDotfiles
+      : undefined;
+  const base = hideDotfilesIn(userConfig) ?? true;
+  const atBuild = hideDotfilesIn(modeOverrides.build) ?? base;
+  const atServer = hideDotfilesIn(modeOverrides.server) ?? base;
+  if (
+    typeof atBuild === "boolean" &&
+    typeof atServer === "boolean" &&
+    atBuild !== atServer
+  )
+    warnings.push({
+      key: "security.hideDotfiles",
+      value: { build: atBuild, server: atServer },
+      message:
+        "the build and the server must agree: the build decides whether dotfiles are published and the server whether it answers them, so with different values dotfiles are either left out of the build or published but answered with 404. Set it once in the default export",
+    });
+
+  if (!isPlainObject(modeOverrides.server)) return warnings;
+  const server = modeOverrides.server;
+  for (const [group, name] of BUILD_TIME_ONLY_KEYS) {
+    const section = server[group];
+    if (!isPlainObject(section) || section[name] === undefined) continue;
+    warnings.push({
+      key: `${group}.${name}`,
+      value: section[name],
+      message:
+        "has no effect in the server export: it applies when pages and components are built; set it in the default or build export",
+    });
+  }
   return warnings;
 };
 

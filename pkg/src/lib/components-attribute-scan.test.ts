@@ -7,8 +7,21 @@ import {
 } from "./components.ts";
 import type { ComponentList } from "./types.ts";
 
-// The original per-call check: a fresh scan from offset zero to `index`.
-const referenceInsideValue = (html: string, index: number): boolean => {
+// What a `<` read in text starts, from the characters after it: a tag
+// (`<a`, `</a`), nothing (`<!--`, which the masker resolves, or a `<` before
+// anything else), or a bogus comment up to `>` (`<!x`, `<?`, `</` and a
+// non-letter).
+const referenceAfterLess = (html: string, at: number): string => {
+  const rest = html.slice(at, at + 4);
+  if (/^<\/?[a-zA-Z]/.test(rest)) return "name";
+  if (rest.startsWith("<!--")) return "text";
+  if (/^<[!?]/.test(rest) || /^<\/[^]/.test(rest)) return "bogus";
+  return "text";
+};
+
+// The original per-call check: a fresh scan from offset zero to `index`,
+// with the tag and bogus-comment starts the tokenizer reads.
+const referenceState = (html: string, index: number): string => {
   let state = "text";
   let quote = "";
   for (let cursor = 0; cursor < index; cursor++) {
@@ -27,12 +40,26 @@ const referenceInsideValue = (html: string, index: number): boolean => {
     } else if (state === "tag") {
       if (char === "=") state = "before-value";
       else if (char === ">") state = "text";
-    } else if (char === "<" && /[a-zA-Z/!?]/.test(html[cursor + 1] ?? "")) {
-      state = "tag";
+    } else if (state === "bogus") {
+      if (char === ">") state = "text";
+    } else if (state === "name") {
+      // A tag name runs to tag white space, `/` or `>`; `=` and quotes are in it.
+      if (char === ">") state = "text";
+      else if (/[\t\n\f\r /]/.test(char)) state = "tag";
+    } else if (char === "<") {
+      state = referenceAfterLess(html, cursor);
     }
   }
+  return state;
+};
+
+const referenceInsideValue = (html: string, index: number): boolean => {
+  const state = referenceState(html, index);
   return state === "quoted" || state === "unquoted" || state === "before-value";
 };
+
+const referenceInsideTag = (html: string, index: number): boolean =>
+  referenceState(html, index) !== "text";
 
 const fragment = fc.constantFrom(
   "<",
@@ -50,6 +77,12 @@ const fragment = fc.constantFrom(
   "<a",
   "</",
   "<!",
+  "<!-",
+  "<!--",
+  "</ ",
+  "<!x",
+  "<x=",
+  '<x"',
   "<?",
   "<1",
   "<<",
@@ -79,6 +112,9 @@ describe("createAttributeValueScanner", () => {
             expect(scanner.isInsideValue(index)).toBe(
               referenceInsideValue(html, index),
             );
+            expect(scanner.isInsideTag(index)).toBe(
+              referenceInsideTag(html, index),
+            );
           }
         },
       ),
@@ -94,19 +130,23 @@ describe("createAttributeValueScanner", () => {
         fc.nat(),
         fc.array(fc.nat(), { maxLength: 10 }),
         (first, suffix, rawCut, rawQueries) => {
-          // The checkpoint also depends on the byte at its cursor, so one must exist.
-          if (first.length === 0) return;
-          const cut = rawCut % first.length;
+          // The checkpoint also depends on the three bytes from its cursor
+          // (the peek after a `<`, up to `<!--`), so they must exist.
+          if (first.length < 3) return;
+          const cut = rawCut % (first.length - 2);
           const scanner = createAttributeValueScanner(first);
           scanner.isInsideValue(cut);
           const checkpoint = scanner.checkpoint();
           expect(checkpoint.cursor).toBe(cut);
-          const second = first.slice(0, cut + 1) + suffix;
+          const second = first.slice(0, cut + 3) + suffix;
           const resumed = createAttributeValueScanner(second, checkpoint);
           for (const raw of rawQueries) {
             const index = raw % (second.length + 1);
             expect(resumed.isInsideValue(index)).toBe(
               referenceInsideValue(second, index),
+            );
+            expect(resumed.isInsideTag(index)).toBe(
+              referenceInsideTag(second, index),
             );
           }
         },

@@ -184,9 +184,10 @@ const parseNamedSlotsOnce = (
 };
 
 /**
- * The close tag `</tagName>` (any case, optional whitespace before `>`) that
- * starts exactly at `closeIndex`, matched in place instead of on a copy of the
- * rest of the template.
+ * The close tag `</tagName>` (any case) that starts exactly at `closeIndex`,
+ * as the browser ends one: `</tagName` and tag whitespace, `/` or `>`, then
+ * anything up to `>` (`findMatchingClose`'s close), matched in place instead
+ * of on a copy of the rest of the template.
  */
 const closeTagAt = (
   html: string,
@@ -194,7 +195,7 @@ const closeTagAt = (
   closeIndex: number,
 ): RegExpExecArray | null => {
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const closeRe = new RegExp(`<\\/${tagName}\\s*>`, "iy");
+  const closeRe = new RegExp(`<\\/${tagName}(?:[\\t\\n\\f\\r /][^>]*)?>`, "iy");
   closeRe.lastIndex = closeIndex;
   return closeRe.exec(html);
 };
@@ -224,7 +225,8 @@ const createNestedComponentCheck = (
 ): ((index: number) => boolean) => {
   if (componentNames.size === 0) return () => false;
   // Lowercase names `getTag` could find opening before the index: each `<name`
-  // token, plus its prefixes ending at a `:` (`<a:b` also opens `a`).
+  // token. `getTag` matches a name only as the whole tag name, so `<a:b`
+  // opens `a:b` alone.
   let present = new Set<string>();
   let tokenRe = /<([a-zA-Z][\w:-]*)/g;
   let pendingToken = tokenRe.exec(masked);
@@ -244,12 +246,7 @@ const createNestedComponentCheck = (
     }
     lastIndex = index;
     while (pendingToken !== null && pendingToken.index < index) {
-      const name = pendingToken[1].toLowerCase();
-      present.add(name);
-      for (let colon = name.indexOf(":"); colon !== -1;) {
-        present.add(name.slice(0, colon));
-        colon = name.indexOf(":", colon + 1);
-      }
+      present.add(pendingToken[1].toLowerCase());
       pendingToken = tokenRe.exec(masked);
     }
     for (const componentName of componentNames) {

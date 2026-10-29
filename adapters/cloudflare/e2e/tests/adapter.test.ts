@@ -77,6 +77,25 @@ test.describe("cloudflare adapter: request-time pages", () => {
     expect(html).not.toContain("text/bascik-server");
   });
 
+  test("a Worker-rendered page carries the default security headers, and a dotfile is a 404", async ({
+    request,
+  }) => {
+    // The `security` defaults (Collin 2026-10-29), from the build's config.
+    const res = await request.get("/server?user=Alice");
+    expect(res.status()).toBe(200);
+    const headers = res.headers();
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+    expect(headers["x-frame-options"]).toBe("SAMEORIGIN");
+    expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+    expect(headers["cross-origin-opener-policy"]).toBe(
+      "same-origin-allow-popups",
+    );
+    expect(headers["cross-origin-resource-policy"]).toBe("cross-origin");
+    // Local workerd serves plain http: no HSTS (https is covered in process).
+    expect(headers["strict-transport-security"]).toBeUndefined();
+    expect((await request.get("/.env")).status()).toBe(404);
+  });
+
   test("a server script composes per request with the platform context on the stream page", async ({
     page,
   }) => {

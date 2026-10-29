@@ -17,7 +17,11 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import http from "node:http";
-import { readFile as readTextFile } from "node:fs/promises";
+import {
+  mkdir as mkdirAsync,
+  readFile as readTextFile,
+  writeFile as writeTextFile,
+} from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -1815,3 +1819,219 @@ describe("serverless parity: opt-in contentSecurityPolicy", () => {
     expect(headers).toContain(`  Content-Security-Policy: ${nodeCsp}`);
   });
 });
+
+// ─── security toggles, scripts.stripAnsi, scripts.renderLimits ──────────────
+//
+// Collin 2026-10-29: "the code you wrote is the code that ships". Each
+// protection is on by default and can be turned off in `security`; Node
+// (`bascik --server`) and the Worker must agree, on and off, for the binding
+// rules (recorded in the manifest at build), the response headers,
+// dynamic-page caching, dotfiles, ANSI stripping and the render limits.
+const TOGGLE_CASES = {
+  on: {},
+  off: {
+    securityConfig: {
+      blockScriptUrls: false,
+      blockCodeBindings: false,
+      headers: { "x-frame-options": "DENY", "x-content-type-options": false },
+      hsts: false,
+      privateDynamicPages: false,
+      stripDirectiveScripts: false,
+      hideDotfiles: false,
+    },
+    stripAnsi: false,
+    renderLimits: { maxInstances: 2 },
+  },
+} as const;
+
+const addTogglePages = async (root: string): Promise<void> => {
+  const put = async (rel: string, content: string) => {
+    await mkdirAsync(dirname(join(root, rel)), { recursive: true });
+    await writeTextFile(join(root, rel), content, "utf8");
+  };
+  await put(
+    "src/components/sec-click/sec-click.html",
+    `<button class="sec-click" data-testid="sec-click" data-bascik-attr-onclick="c">go</button>`,
+  );
+  await put("src/pages/.nojekyll", "");
+  // A build-time usage of each binding beside a request-time one, so the
+  // build and the renderer are held to the same rule.
+  await put(
+    "src/pages/toggles.html",
+    `<!DOCTYPE html><html><head><title>Toggles</title></head><body>
+<sec-click data-bascik-prop-c="built()"></sec-click>
+<sec-link data-bascik-prop-u="javascript:built()"></sec-link>
+<script data-bascik-server>
+export default function () {
+  return '<sec-click data-bascik-prop-c="live()"></sec-click><sec-link data-bascik-prop-u="javascript:live()"></sec-link>';
+}
+</script>
+</body></html>`,
+  );
+  await put(
+    "src/pages/toggles-many.html",
+    `<!DOCTYPE html><html><head><title>Many</title></head><body>
+<script data-bascik-server>
+export default function () { return "<sec-badge></sec-badge>".repeat(3); }
+</script>
+</body></html>`,
+  );
+};
+
+describe.each(Object.keys(TOGGLE_CASES) as (keyof typeof TOGGLE_CASES)[])(
+  "serverless parity: security toggles %s",
+  (mode) => {
+    const off = mode === "off";
+    let root: string;
+    let node: NodeOracle;
+    let cloudflare: Harness;
+
+    beforeAll(async () => {
+      root = await createServerlessFixture(`security-toggles-${mode}`, {
+        components: true,
+        security: true,
+        ...TOGGLE_CASES[mode],
+      });
+      await addTogglePages(root);
+      await buildServerlessFixture(root, "cloudflare-pages");
+      node = await startNodeServer(root);
+      cloudflare = await startHarness({
+        projectRoot: root,
+        target: "cloudflare-pages",
+      });
+    }, 240_000);
+
+    afterAll(async () => {
+      await cloudflare?.dispose();
+      await node?.stop();
+      if (root) await cleanupServerlessFixture(root);
+    });
+
+    const both = async (
+      path: string,
+    ): Promise<{ node: Observed; cf: Observed }> => ({
+      node: await observe(await fetch(new URL(path, node.url))),
+      cf: await observe(await cloudflare.fetch(path)),
+    });
+    const sec = (only: string, q: string) =>
+      `/components-security?only=${only}&q=${encodeURIComponent(q)}`;
+
+    it("a bound javascript: href, at build and request time", async () => {
+      const r = await both("/toggles");
+      expect(r.node.status).toBe(200);
+      expect(r.cf.body).toBe(r.node.body);
+      const body = markup(r.cf.body);
+      if (off) {
+        expect(body).toContain('href="javascript:built()"');
+        expect(body).toContain('href="javascript:live()"');
+        expect(body).not.toContain("about:invalid");
+      } else {
+        expect(body).not.toContain("javascript:built()");
+        expect(body).not.toContain("javascript:live()");
+        expect(body.match(/href="about:invalid"/g)).toHaveLength(2);
+      }
+    });
+
+    it("an onclick binding, at build and request time", async () => {
+      const r = await both("/toggles");
+      expect(r.cf.body).toBe(r.node.body);
+      const body = markup(r.cf.body);
+      if (off) {
+        expect(body).toContain('onclick="built()"');
+        expect(body).toContain('onclick="live()"');
+      } else {
+        expect(body).not.toContain("onclick");
+      }
+    });
+
+    it("a bound javascript: href from escaped visitor input", async () => {
+      const r = await both(sec("link", "javascript:alert(1)"));
+      expect(r.cf.body).toBe(r.node.body);
+      expect(markup(r.cf.body).includes('href="javascript:alert(1)"')).toBe(
+        off,
+      );
+    });
+
+    it("an inherited data URL on an <object> root", async () => {
+      const q = "data:application/pdf;base64,JVBE";
+      const r = await both(sec("inherit-url", q));
+      expect(r.cf.body).toBe(r.node.body);
+      expect(markup(r.cf.body).includes(`data="${q}"`)).toBe(off);
+    });
+
+    it("a <script> prop receiver", async () => {
+      const r = await both(sec("script", "window.toggled=1"));
+      expect(r.cf.body).toBe(r.node.body);
+      expect(markup(r.cf.body).includes("window.toggled=1")).toBe(off);
+    });
+
+    it("response headers on a dynamic page: an x-frame-options override and a nosniff removal", async () => {
+      const r = await both("/toggles");
+      for (const [host, o] of [
+        ["node", r.node],
+        ["cf", r.cf],
+      ] as const) {
+        expect(o.headers["x-frame-options"], host).toBe(
+          off ? "DENY" : "SAMEORIGIN",
+        );
+        expect(o.headers["x-content-type-options"], host).toBe(
+          off ? undefined : "nosniff",
+        );
+        expect(o.headers["referrer-policy"], host).toBe(
+          "strict-origin-when-cross-origin",
+        );
+      }
+    });
+
+    it("dynamic-page cache-control", async () => {
+      const r = await both("/toggles");
+      for (const o of [r.node, r.cf])
+        if (off)
+          expect(o.headers["cache-control"]).not.toBe("private, no-store");
+        else expect(o.headers["cache-control"]).toBe("private, no-store");
+    });
+
+    it("a dotfile from src/pages", async () => {
+      const r = await both("/.nojekyll");
+      expect(r.node.status).toBe(off ? 200 : 404);
+      expect(r.cf.status).toBe(r.node.status);
+    });
+
+    it("the private .bascik folder stays private either way", async () => {
+      const r = await both("/.bascik/components.json");
+      expect(r.node.status).toBe(404);
+      expect(r.cf.status).toBe(404);
+    });
+
+    // On a case-insensitive filesystem (macOS, Windows) these open
+    // dist/.bascik, which holds every server script's source.
+    it.each([
+      "/.BASCIK/server-scripts.json",
+      "/.Bascik/components.json",
+      "/.bascik./server-scripts.json",
+    ])("%s stays private either way", async (path) => {
+      const r = await both(path);
+      expect(r.node.status).toBe(404);
+      expect(r.cf.status).toBe(404);
+      expect(r.node.body.includes("server_script_")).toBe(false);
+    });
+
+    it("ANSI codes in component and page script output", async () => {
+      const r = await both("/components-ansi");
+      expect(r.node.status).toBe(200);
+      expect(r.cf.body).toBe(r.node.body);
+      expect(r.cf.body.includes("\u001b")).toBe(off);
+    });
+
+    it("a render over scripts.renderLimits.maxInstances fails the same way on both hosts", async () => {
+      const r = await both("/toggles-many");
+      expect(r.node.status).toBe(off ? 500 : 200);
+      expect(r.cf.status).toBe(r.node.status);
+      expect(r.cf.body).toBe(r.node.body);
+      if (off) {
+        expect(r.node.headers["cache-control"]).toBe("private, no-store");
+        expect(r.cf.headers["cache-control"]).toBe("private, no-store");
+      }
+    });
+  },
+);

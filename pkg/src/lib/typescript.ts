@@ -50,7 +50,10 @@ const DIRECTIVE_SCRIPT_RE = new RegExp(
 );
 
 const TYPE_ATTR_RE = /(?:^|\s+)type\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+)/i;
-const TAG_START_RE = /<(\/)?([a-z][\w:-]*)\b/gi;
+// A tag and its whole name, as the tokenizer reads one: up to tag whitespace,
+// `/` or `>`, so `<script.x>` and `<style-guide>` are other elements, never a
+// script or a raw-text element. Sticky: it is only asked about one `<`.
+const TAG_START_RE = /<(\/)?([a-z][^\t\n\f\r />]*)/iy;
 const SCRIPT_CLOSE_RE = /<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
 const RAW_TEXT_ELEMENTS = new Set([
   "textarea",

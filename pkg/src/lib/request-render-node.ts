@@ -195,6 +195,9 @@ export const createNodeRenderHost = (
       );
     },
     externalTags: createExternalTagMatcher(BascikConfig.components?.external),
+    // scripts.renderLimits on this host (each host reads its own config, as
+    // for scripts.timeout); a missing field is the default.
+    limits: BascikConfig.scripts?.renderLimits,
     // D4.6: a render failure follows the policy exactly as a failing script
     // does in runServerScriptJob: the located message is thrown as a
     // ServerScriptError (server.ts logs its message, never a stack) or

@@ -298,6 +298,57 @@ const STATIC_ENTRY = [
   "export default createCloudflareWorker(graph);",
 ].join("\n");
 
+// The security toggles, stripAnsi and renderLimits reach the Worker as
+// graph fields the build writes into the entry (Collin 2026-10-29).
+describe("build: security settings in worker-entry.mjs", () => {
+  it("writes responseSecurity, hideDotfiles, stripAnsi and renderLimits into the graph literal", async () => {
+    const project = await createProject();
+    const responseSecurity = {
+      headers: { "x-frame-options": "DENY" },
+      hsts: null,
+      privateDynamicPages: false,
+    };
+    const renderLimits = {
+      maxInstances: 5,
+      maxOutputLength: 4194304,
+      maxNestedScripts: 64,
+      maxDepth: 4,
+      rescanFactor: 16,
+      rescanBase: 33554432,
+    };
+    await runBuild(project, {
+      ...(await graphFor(project)),
+      responseSecurity,
+      hideDotfiles: false,
+      stripAnsi: false,
+      renderLimits,
+    } as SiteGraph);
+    const entry = await readEntry(project);
+    expect(entry).toContain(
+      `  responseSecurity: ${JSON.stringify(responseSecurity)},`,
+    );
+    expect(entry).toContain("  hideDotfiles: false,");
+    expect(entry).toContain("  stripAnsi: false,");
+    expect(entry).toContain(`  renderLimits: ${JSON.stringify(renderLimits)},`);
+  });
+
+  it("misuse: a header value with </script>, quotes and U+2028 round-trips as data", async () => {
+    const project = await createProject();
+    const value = "x</script>\"'\u2028\\";
+    const result = await runBuild(project, {
+      ...(await graphFor(project)),
+      responseSecurity: {
+        headers: { "referrer-policy": value },
+        hsts: "max-age=1",
+        privateDynamicPages: true,
+      },
+    } as SiteGraph);
+    const worker = await readFile(result.workerPath!, "utf8");
+    expect(worker).toContain("referrer-policy");
+    expect(await readEntry(project)).toContain(JSON.stringify(value));
+  });
+});
+
 describe("build: request-time components in worker-entry.mjs (prompt 157)", () => {
   it("a site without components emits the entry byte for byte as before, with no components note", async () => {
     const project = await createProject();

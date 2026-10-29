@@ -118,6 +118,8 @@ export interface ManifestBuildConfig {
   base?: string;
   minify?: Partial<MinifyOptions>;
   scoping?: Partial<ScopingOptions>;
+  /** Only the binding toggles are read; the rest of `security` is the server's. */
+  security?: { blockScriptUrls?: boolean; blockCodeBindings?: boolean };
 }
 
 /**
@@ -169,7 +171,7 @@ function* openTags(
     };
 }
 
-// `<script\b${OPEN_TAG_ATTRS}\s(?:${BUILD_ATTR_NAME}|${BUILD_ONCE_ATTR_NAME})`
+// `<script(?=[\t\n\f\r />])${OPEN_TAG_ATTRS}\s(?:${BUILD_ATTR_NAME}|${BUILD_ONCE_ATTR_NAME})`
 // (flag `i`), in linear time: the index of its first match, or -1.
 const findBuildScript = scriptDirectiveFinder([
   "data-bascik-build",
@@ -362,12 +364,12 @@ const tokenOffsets = (
 
 /**
  * The `[start, end)` ranges of every `<script>` body in `html`: the matches
- * of `<script\b${OPEN_TAG_ATTRS}>([\s\S]*?)(${SCRIPT_END_TAG})` (flags
+ * of `<script(?=[\t\n\f\r />])${OPEN_TAG_ATTRS}>([\s\S]*?)(${SCRIPT_END_TAG})` (flags
  * `gi`), in linear time.
  */
 const scriptBodyRanges = (html: string): Array<[number, number]> =>
   scanElementContents(html, "script", {
-    opener: "word-boundary",
+    opener: "tag-space",
     closer: "attributes",
   }).map((match) => [match.contentStart, match.contentEnd]);
 
@@ -839,6 +841,10 @@ export const buildComponentManifest = async (
     minifyHtml: Boolean(config.minify?.html),
     base: ctx.base,
     inheritAttributes: ctx.inheritAttributes,
+    security: {
+      blockScriptUrls: config.security?.blockScriptUrls !== false,
+      blockCodeBindings: config.security?.blockCodeBindings !== false,
+    },
     components,
   };
 };

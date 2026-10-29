@@ -15,7 +15,7 @@ import {
 } from "./module-specifiers.ts";
 import { scanApiRouteFiles, buildApiRouteTree } from "./api-routes.ts";
 import { withBasePath } from "./base-path.ts";
-import { hasHiddenSegment } from "./route-matching.ts";
+import { isPrivatePathname } from "./route-matching.ts";
 import { getHtmlAttributeValue } from "./html-patterns.ts";
 import { createNamedOpenTagScanner } from "./element-content-scan.ts";
 import {
@@ -29,6 +29,9 @@ import {
   type ComponentManifest,
 } from "./component-manifest.ts";
 import { DEFAULT_SCRIPT_TIMEOUT_MS } from "./server-scripts.ts";
+import { resolveResponseSecurity } from "./web-response.ts";
+import { REQUEST_RENDER_LIMITS } from "./request-render.ts";
+import type { RenderLimitsOptions, SecurityOptions } from "./types.ts";
 import { createHash } from "node:crypto";
 import type {
   ContentSecurityPolicyConfig,
@@ -86,9 +89,9 @@ export const splitDistPageIntoSegments = (
   const segments: DistPageSegment[] = [];
   const scriptIds: string[] = [];
   let cursor = 0;
-  // The script open tags `/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi`
+  // The script open tags `/<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>/gi`
   // finds, in linear time.
-  const openTags = createNamedOpenTagScanner(html, "script", "word-boundary");
+  const openTags = createNamedOpenTagScanner(html, "script");
   let searchFrom = 0;
   for (
     let open = openTags.next(searchFrom);
@@ -141,10 +144,17 @@ export const pageAliasesFor = (httpPath: string, base: string): string[] => {
   return aliases;
 };
 
-/** Whether a dist-relative path may be uploaded as a public static file. */
-export const isPublicAssetPath = (distRelativePath: string): boolean => {
+/**
+ * Whether a dist-relative path may be uploaded as a public static file.
+ * `hideDotfiles` is `security.hideDotfiles`: off, dotfiles deploy, but
+ * `.bascik/`, source maps and precompressed siblings never do.
+ */
+export const isPublicAssetPath = (
+  distRelativePath: string,
+  hideDotfiles = true,
+): boolean => {
   const normalized = distRelativePath.replace(/\\/g, "/");
-  if (hasHiddenSegment(normalized)) return false;
+  if (isPrivatePathname(normalized, "/", hideDotfiles)) return false;
   if (normalized.endsWith(".map")) return false;
   if (/\.(br|gz)$/i.test(normalized) || /\.bmeta$/i.test(normalized))
     return false;
@@ -207,6 +217,12 @@ export interface ReadSiteGraphOptions {
   pagesDir?: string;
   apiDir?: string;
   contentSecurityPolicy?: ContentSecurityPolicyConfig;
+  /** The build's `security` config (default: `BascikConfig.security`). */
+  security?: Partial<SecurityOptions>;
+  /** `scripts.stripAnsi` (default: `BascikConfig.scripts.stripAnsi`). */
+  stripAnsi?: boolean;
+  /** `scripts.renderLimits` (default: `BascikConfig.scripts.renderLimits`). */
+  renderLimits?: Partial<RenderLimitsOptions>;
 }
 
 export const readSiteGraph = async (
@@ -227,6 +243,19 @@ export const readSiteGraph = async (
     BascikConfig?.scripts?.onServerScriptError ??
     "error";
   const importRoot = getImportRoot();
+  // The build's security and render settings, for a host that has no
+  // config of its own (the Worker): resolved here, so every host sends the
+  // same headers and applies the same limits.
+  const security = options.security ?? BascikConfig?.security;
+  const responseSecurity = resolveResponseSecurity(security);
+  const hideDotfiles = security?.hideDotfiles !== false;
+  const stripAnsi =
+    (options.stripAnsi ?? BascikConfig?.scripts?.stripAnsi) !== false;
+  const renderLimits: RenderLimitsOptions = {
+    ...REQUEST_RENDER_LIMITS,
+    ...definedFields(BascikConfig?.scripts?.renderLimits),
+    ...definedFields(options.renderLimits),
+  };
 
   // Read server sidecar
   const sidecarPath = join(distDir, ".bascik", "server-scripts.json");
@@ -342,7 +371,7 @@ export const readSiteGraph = async (
 
   for (const rel of distFiles) {
     if (rel.startsWith(".bascik/")) continue;
-    if (!isPublicAssetPath(rel)) continue;
+    if (!isPublicAssetPath(rel, hideDotfiles)) continue;
     if (/\.html?$/i.test(rel)) {
       const html = await readFile(join(distDir, rel), "utf8");
       const { segments, scriptIds } = splitDistPageIntoSegments(html);
@@ -437,7 +466,17 @@ export const readSiteGraph = async (
     apiRoutes,
     custom500,
     importRoot,
+    responseSecurity,
+    hideDotfiles,
+    stripAnsi,
+    renderLimits,
     ...(components ? { components } : {}),
     ...(contentSecurityPolicy ? { contentSecurityPolicy } : {}),
   };
 };
+
+/** The fields of `obj` that are set, so an `undefined` never hides a default. */
+const definedFields = <T extends object>(obj: T | undefined): Partial<T> =>
+  Object.fromEntries(
+    Object.entries(obj ?? {}).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;

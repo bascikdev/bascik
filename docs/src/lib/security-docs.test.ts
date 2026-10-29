@@ -740,10 +740,15 @@ describe("the rest of the docs teach html too", () => {
     expect(md).toContain('from "@bascik/bascik/html"');
   });
 
-  it("the What html does table lists every blocked scheme", () => {
+  // The full scheme list lives on the Security page only (Collin
+  // 2026-10-29); the table names the rule with "script URLs such as".
+  it("the What html does table names the script-URL rule", () => {
     const md = read("content/server-scripts.md");
     const at = md.indexOf("## Escaping and injection");
-    expect(md.slice(at, at + 6000)).toContain("`livescript:`");
+    expect(md.slice(at, at + 6000)).toContain(
+      "script URLs such as `javascript:`",
+    );
+    expect(read("content/security.md")).toContain("`livescript:`");
   });
 
   it("the CMS recipe shows the sanitize call", () => {

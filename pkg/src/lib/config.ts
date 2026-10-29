@@ -7,6 +7,7 @@ import { LOG_LEVELS, shouldLog, type LogLevel } from "./log-level.ts";
 import { stderr as colorErr } from "./colors.ts";
 import {
   collectConfigWarnings,
+  collectModeOverrideWarnings,
   formatConfigErrors,
   normalizeBasePath,
   validateUserConfig,
@@ -137,6 +138,12 @@ export const defaultConfig: Omit<
   },
   components: {
     external: [],
+    // Equal to BUILD_EXPANSION_LIMITS in component-expansion.ts (a unit test
+    // pins them), kept as literals so config.ts never imports the renderer.
+    expansionLimits: {
+      maxInstances: 10_000,
+      maxPageLength: 50 * 1024 * 1024,
+    },
   },
   scoping: {
     scriptBlocks: true,
@@ -182,6 +189,17 @@ export const defaultConfig: Omit<
     // Kept relative (not resolved here) so worker threads and the main thread
     // resolve it identically against process.cwd() at use sites.
     importRoot: "src",
+    stripAnsi: true,
+    // Equal to REQUEST_RENDER_LIMITS in request-render.ts (a unit test pins
+    // them).
+    renderLimits: {
+      maxInstances: 1000,
+      maxOutputLength: 4 * 1024 * 1024,
+      maxNestedScripts: 64,
+      maxDepth: 4,
+      rescanFactor: 16,
+      rescanBase: 32 * 1024 * 1024,
+    },
   },
   onMinifyError: "warn",
   http: {
@@ -210,6 +228,17 @@ export const defaultConfig: Omit<
     transpiles: true,
   },
   base: "/",
+  // Every protection that changes the author's output is on by default and
+  // can be turned off by name (see docs/content/security.md).
+  security: {
+    blockScriptUrls: true,
+    blockCodeBindings: true,
+    headers: true,
+    hsts: true,
+    privateDynamicPages: true,
+    stripDirectiveScripts: true,
+    hideDotfiles: true,
+  },
 };
 
 // The level list and comparison live in log-level.ts so the CLI parser and the config validator can share them
@@ -406,10 +435,13 @@ export const initBascikConfig = (
 
   // Non-fatal findings (e.g. a missing scripts.importRoot directory) are
   // reported once and never abort startup.
-  for (const warning of collectConfigWarnings(safeUserConfig, {
-    fs: deps.fs,
-    cwd: deps.cwd,
-  })) {
+  for (const warning of [
+    ...collectConfigWarnings(safeUserConfig, {
+      fs: deps.fs,
+      cwd: deps.cwd,
+    }),
+    ...collectModeOverrideWarnings(modeOverrides, safeUserConfig),
+  ]) {
     console.warn(
       `${colorErr.tag("warn", "[bascik] warning:")} ${warning.key} ${JSON.stringify(warning.value)}: ${warning.message}`,
     );

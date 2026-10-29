@@ -5,15 +5,20 @@
  *
  * 1. `maskRawTextContent` (pkg/src/lib/component-masking.ts) blanks comment bodies and the content of
  *    `<script>`, `<style>` and `<textarea>` elements, read left to right as the tokenizer reads them.
- *    A raw-text opener is the regex `<name(?:\b(?:[^>"']|"[^"]*"|'[^']*')*)?>`, so `<style-guide>` opens a
- *    style body too, and the closer is `</name\s*>`. A script follows the tokenizer's escaped and
- *    double-escaped script data states. A `<!--` inside a tag is not a comment, and a comment with no end
- *    hides nothing. An opener with no closer hides nothing.
- * 2. `getFirstComponent` (pkg/src/lib/component-tags.ts) finds `<name` where `name` is the longest
- *    component name that ends the run of `[\w:-]` characters after the `<`, or ends at a `:` in it, with a
- *    `>` somewhere after it, and skips a match inside an attribute value of the masked text.
+ *    A raw-text opener is the regex `<name(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>`: the exact tag
+ *    name, as a browser reads one, so `<style-guide>` is a custom element and opens nothing. The closer is
+ *    the browser's end tag, `<\/name(?:[\t\n\f\r /][^>]*)?>`, so `</style/>` and `</style foo>` end it and
+ *    `</style\v>` does not. A script follows the tokenizer's escaped and double-escaped script data states.
+ *    A `<!--` or an opener inside a tag (its name, an attribute, an end tag) or a bogus comment opens
+ *    nothing, a comment with no end hides nothing, and an opener with no closer hides nothing.
+ * 2. `getFirstComponent` (pkg/src/lib/component-tags.ts) finds `<name` where `name` is a component name
+ *    and the whole tag name: the run of `[\w:-]` characters after the `<`, followed by tag whitespace, `/`
+ *    or `>` (so `<my-card.foo>`, `<my-card:x>` and `<my-card</p>` are no `my-card`), with a `>` somewhere
+ *    after it, and skips a match inside a tag (`<p<my-card>`, an attribute value, `</p <my-card>`) or a bogus
+ *    comment (`<!x<my-card>`, `<?<my-card>`, `</<my-card>`) of the masked text.
  *
- * references-scan.test.ts pins the compiler's answers for the inputs where the two could drift.
+ * references-scan.test.ts pins the compiler's answers for the inputs where the two could drift, and
+ * pkg/src/lib/lsp-component-usages-agreement.test.ts compares the two on random markup.
  */
 
 /** One component tag the compiler expands. */
@@ -36,6 +41,10 @@ const isJsSpace = (code: number): boolean =>
 const isTagSpace = (code: number): boolean =>
   code === 9 || code === 10 || code === 12 || code === 13 || code === 32;
 
+/** What ends a tag name for the tokenizer: tag whitespace, `/` or `>`. NaN is false. */
+const isTagNameEndCode = (code: number): boolean =>
+  isTagSpace(code) || code === 47 || code === 62;
+
 /** `[A-Za-z0-9_]` */
 const isWordCode = (code: number): boolean =>
   (code >= 65 && code <= 90) ||
@@ -43,13 +52,9 @@ const isWordCode = (code: number): boolean =>
   (code >= 48 && code <= 57) ||
   code === 95;
 
-/** `[A-Za-z/!?]`, what may follow a `<` that opens a tag for the attribute scan. NaN is false. */
-const isTagStartCode = (code: number): boolean =>
-  (code >= 65 && code <= 90) ||
-  (code >= 97 && code <= 122) ||
-  code === 47 ||
-  code === 33 ||
-  code === 63;
+/** `[A-Za-z]`. NaN is false. */
+const isLetterCode = (code: number): boolean =>
+  (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 
 /**
  * Where an HTML comment that opens at `start` ends, as the HTML tokenizer ends it: after the first `-->` or
@@ -69,7 +74,24 @@ export function findCommentEnd(html: string, start: number): number {
   }
 }
 
-type TagState = "text" | "tag" | "quoted" | "unquoted" | "before-value";
+type TagState =
+  "text" | "name" | "tag" | "quoted" | "unquoted" | "before-value" | "bogus";
+
+/**
+ * What a `<` at `at`, read in text, starts (the compiler's `stateAfterLess`): a tag's name for `<` or `</`
+ * and a letter (where `=` and quotes are name characters, up to tag whitespace, `/` or `>`); nothing for `<!--` (comments are resolved apart) or a `<` before anything else or the end; a bogus
+ * comment up to `>` for `<!`, `<?`, or `</` and anything else.
+ */
+const stateAfterLess = (html: string, at: number): TagState => {
+  const next = html.charCodeAt(at + 1);
+  if (isLetterCode(next)) return "name";
+  if (next === 63) return "bogus";
+  if (next === 33) return html.startsWith("--", at + 2) ? "text" : "bogus";
+  if (next !== 47) return "text";
+  const after = html.charCodeAt(at + 2);
+  if (Number.isNaN(after)) return "text";
+  return isLetterCode(after) ? "name" : "bogus";
+};
 
 /**
  * The compiler's attribute-value scanner (`createAttributeValueScanner`): the tag state at a position, read
@@ -83,9 +105,12 @@ function createTagStateReader(html: string, origin = 0) {
   let ahead = -2;
   const advance = (index: number): void => {
     while (cursor < index) {
-      if (state === "text" || state === "quoted") {
+      if (state === "text" || state === "quoted" || state === "bogus") {
         if (ahead === -2)
-          ahead = html.indexOf(state === "text" ? "<" : quote, cursor);
+          ahead = html.indexOf(
+            state === "text" ? "<" : state === "bogus" ? ">" : quote,
+            cursor,
+          );
         const end = ahead;
         if (end === -1 || end >= index) {
           cursor = index;
@@ -93,12 +118,16 @@ function createTagStateReader(html: string, origin = 0) {
         }
         ahead = -2;
         if (state === "quoted") state = "tag";
-        else if (isTagStartCode(html.charCodeAt(end + 1))) state = "tag";
+        else if (state === "bogus") state = "text";
+        else state = stateAfterLess(html, end);
         cursor = end + 1;
         continue;
       }
       const code = html.charCodeAt(cursor);
-      if (state === "unquoted") {
+      if (state === "name") {
+        if (code === 62) state = "text";
+        else if (isTagSpace(code) || code === 47) state = "tag";
+      } else if (state === "unquoted") {
         if (code === 62) state = "text";
         else if (isJsSpace(code)) state = "tag";
       } else if (state === "before-value") {
@@ -271,20 +300,36 @@ function createScriptCloserFinder(
   };
 }
 
-/** The first `<tag>...</tag\s*>` element whose opener starts at or after `from`, with a non-decreasing `from`. */
+/**
+ * The first `<tag>...</tag>` element whose opener starts at or after `from`, with a non-decreasing `from`.
+ * The closer is `</tag`, tag whitespace, `/` or `>`, then anything up to the first `>`.
+ */
 function createRawElementFinder(
   html: string,
   tag: "script" | "style" | "textarea",
   tagEnd: (from: number) => number,
 ): (from: number) => RawElement | null {
-  const opener = new RegExp(`<${tag}(?![A-Za-z0-9_])`, "gi");
-  const closer = new RegExp(`</${tag}\\s*>`, "giy");
-  const closerEnd = (at: number): number => {
-    closer.lastIndex = at;
-    return closer.exec(html) ? closer.lastIndex : -1;
+  const opener = new RegExp(`<${tag}(?=[\\t\\n\\f\\r />])`, "gi");
+  const closerStart = new RegExp(`</${tag}(?=[\\t\\n\\f\\r />])`, "giy");
+  // The first `>` at or after a position, remembered.
+  let gtFrom = Infinity;
+  let gtAt = -1;
+  const nextGt = (from: number): number => {
+    if (!(from >= gtFrom && (gtAt === -1 || from <= gtAt))) {
+      gtFrom = from;
+      gtAt = html.indexOf(">", from);
+    }
+    return gtAt;
   };
-  // The first closer at or after a position: remembered, since unclosed openers ask again and again.
-  const anyCloser = new RegExp(`</${tag}\\s*>`, "gi");
+  const closerEnd = (at: number): number => {
+    closerStart.lastIndex = at;
+    if (!closerStart.test(html)) return -1;
+    const gt = nextGt(at + 2 + tag.length);
+    return gt === -1 ? -1 : gt + 1;
+  };
+  // The first closer at or after a position: remembered, since unclosed openers ask again and again. With no
+  // `>` after one closer's name, none follows a later one.
+  const anyCloser = new RegExp(`</${tag}(?=[\\t\\n\\f\\r />])`, "gi");
   let closerFrom = Infinity;
   let closerAt = -1;
   const nextCloser = (from: number): number => {
@@ -292,7 +337,8 @@ function createRawElementFinder(
       anyCloser.lastIndex = from;
       const match = anyCloser.exec(html);
       closerFrom = from;
-      closerAt = match ? match.index : -1;
+      closerAt =
+        match && nextGt(match.index + 2 + tag.length) !== -1 ? match.index : -1;
     }
     return closerAt;
   };
@@ -334,7 +380,7 @@ function createRawElementFinder(
 }
 
 const RAW_TEXT_TAGS = ["script", "style", "textarea"] as const;
-const HAS_RAW_TAG = /<(?:script|style|textarea)\b/i;
+const HAS_RAW_TAG = /<(?:script|style|textarea)[\t\n\f\r />]/i;
 
 /**
  * A same-length copy of `html` with comment bodies and raw-text element content blanked, as the compiler's
@@ -391,15 +437,16 @@ export function maskLikeCompiler(html: string): string {
       continue;
     }
     if (!element) break;
+    // An opener inside a tag (an attribute value that reads `<script>`, or `<p<style>`) is part of that tag.
+    if (insideTag(element.start)) {
+      position = element.start + 1;
+      continue;
+    }
     masked += `${html.slice(cursor, element.contentStart)}${" ".repeat(element.contentEnd - element.contentStart)}`;
     cursor = element.contentEnd;
     position = element.end;
-    // An opener inside a tag (an attribute value that reads `<script>`) is masked, but the tag goes on
-    // around it, so a `<!--` after it is still inside the tag.
-    if (!(comments && insideTag(element.start))) {
-      tagsFrom = element.end;
-      reader = undefined;
-    }
+    tagsFrom = element.end;
+    reader = undefined;
   }
   return cursor === 0 ? html : masked + html.slice(cursor);
 }
@@ -423,12 +470,6 @@ export function findComponentUsages(
   for (const name of names) maxLength = Math.max(maxLength, name.length);
   const length = masked.length;
   const tagState = createTagStateReader(masked);
-  const insideValue = (at: number): boolean => {
-    const state = tagState(at);
-    return (
-      state === "quoted" || state === "unquoted" || state === "before-value"
-    );
-  };
   for (
     let start = masked.indexOf("<");
     start !== -1;
@@ -439,21 +480,21 @@ export function findComponentUsages(
     let nameEnd = -1;
     for (let index = nameStart; index <= limit; index++) {
       const code = masked.charCodeAt(index);
-      const inRun = isNameRunCode(code);
+      if (isNameRunCode(code)) continue;
       if (
-        (!inRun || code === 58) &&
         index > nameStart &&
+        isTagNameEndCode(code) &&
         names.has(masked.slice(nameStart, index).toLowerCase())
       )
         nameEnd = index;
-      if (!inRun) break;
+      break;
     }
     if (nameEnd === -1) continue;
     // No `>` after this name means none after any later one either.
     const gt = masked.indexOf(">", nameEnd);
     if (gt === -1) break;
-    // Inside an attribute value: the compiler searches on after this tag's `>`.
-    if (insideValue(start)) {
+    // Inside a tag or a bogus comment: the compiler searches on after this tag's `>`.
+    if (tagState(start) !== "text") {
       start = gt;
       continue;
     }

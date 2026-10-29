@@ -92,4 +92,27 @@ describe("bascik-config agent skill defaults", () => {
       expect(MODE_DEFAULTS.dev, key).toHaveProperty([`minify.${key}`]);
     }
   });
+  it("lists every security toggle, scripts.stripAnsi and both limit objects (Collin 2026-10-29)", async () => {
+    const { KNOWN_DEFAULTS } = await loadAudit();
+    const expected: Record<string, unknown> = {
+      "security.blockScriptUrls": true,
+      "security.blockCodeBindings": true,
+      "security.headers": true,
+      "security.hsts": true,
+      "security.privateDynamicPages": true,
+      "security.stripDirectiveScripts": true,
+      "security.hideDotfiles": true,
+      "scripts.stripAnsi": true,
+      "scripts.renderLimits.maxInstances": 1000,
+      "scripts.renderLimits.maxOutputLength": 4194304,
+      "scripts.renderLimits.maxNestedScripts": 64,
+      "scripts.renderLimits.maxDepth": 4,
+      "scripts.renderLimits.rescanFactor": 16,
+      "scripts.renderLimits.rescanBase": 33554432,
+      "components.expansionLimits.maxInstances": 10000,
+      "components.expansionLimits.maxPageLength": 52428800,
+    };
+    for (const [path, value] of Object.entries(expected))
+      expect(KNOWN_DEFAULTS[path], path).toEqual(value);
+  });
 });

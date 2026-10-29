@@ -843,3 +843,98 @@ describe("SiteGraph.components and the serverless artifacts (prompt 157)", () =>
     );
   });
 });
+
+/**
+ * Security toggles reach the Worker through the graph (Collin 2026-10-29):
+ * the resolved response headers, hideDotfiles, stripAnsi and renderLimits,
+ * from the build's config or the options (the same pattern as
+ * contentSecurityPolicy).
+ */
+describe("readSiteGraph: security settings for the host", () => {
+  const makeDist = async () => {
+    const testDir = join(
+      tmpdir(),
+      `bascik-site-graph-security-${process.pid}-${Date.now()}`,
+    );
+    const distDir = join(testDir, "dist");
+    await mkdir(join(distDir, ".bascik"), { recursive: true });
+    await writeFile(join(distDir, "index.html"), "<h1>Home</h1>", "utf8");
+    await writeFile(join(distDir, ".nojekyll"), "", "utf8");
+    await writeFile(join(distDir, ".bascik", "server-scripts.json"), "{}");
+    await mkdir(join(testDir, "src/api"), { recursive: true });
+    return { testDir, distDir };
+  };
+
+  it("defaults: the resolved headers, HSTS one year, dotfiles hidden, ANSI stripped, today's render limits", async () => {
+    const { testDir, distDir } = await makeDist();
+    try {
+      const graph = (await readSiteGraph({
+        projectRoot: testDir,
+        distDir,
+        version: "1.0.0",
+        base: "/",
+      })) as unknown as Record<string, any>;
+      expect(graph.responseSecurity).toEqual({
+        headers: {
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "SAMEORIGIN",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "cross-origin-opener-policy": "same-origin-allow-popups",
+          "cross-origin-resource-policy": "cross-origin",
+        },
+        hsts: "max-age=31536000",
+        privateDynamicPages: true,
+      });
+      expect(graph.hideDotfiles).toBe(true);
+      expect(graph.stripAnsi).toBe(true);
+      expect(graph.renderLimits).toEqual({
+        maxInstances: 1000,
+        maxOutputLength: 4 * 1024 * 1024,
+        maxNestedScripts: 64,
+        maxDepth: 4,
+        rescanFactor: 16,
+        rescanBase: 32 * 1024 * 1024,
+      });
+      expect(graph.publicFiles).not.toContain(".nojekyll");
+    } finally {
+      await rm(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it("options carry the config: headers off, hsts off, dynamic cache off, dotfiles shown, ANSI kept, a render limit", async () => {
+    const { testDir, distDir } = await makeDist();
+    try {
+      const graph = (await readSiteGraph({
+        projectRoot: testDir,
+        distDir,
+        version: "1.0.0",
+        base: "/",
+        security: {
+          headers: { "x-frame-options": "DENY", "referrer-policy": false },
+          hsts: false,
+          privateDynamicPages: false,
+          hideDotfiles: false,
+        },
+        stripAnsi: false,
+        renderLimits: { maxInstances: 5 },
+      } as never)) as unknown as Record<string, any>;
+      expect(graph.responseSecurity.headers["x-frame-options"]).toBe("DENY");
+      expect(graph.responseSecurity.headers).not.toHaveProperty(
+        "referrer-policy",
+      );
+      expect(graph.responseSecurity.hsts).toBeNull();
+      expect(graph.responseSecurity.privateDynamicPages).toBe(false);
+      expect(graph.hideDotfiles).toBe(false);
+      expect(graph.stripAnsi).toBe(false);
+      expect(graph.renderLimits.maxInstances).toBe(5);
+      expect(graph.renderLimits.maxDepth).toBe(4);
+      // The dotfile deploys; the private .bascik folder never does.
+      expect(graph.publicFiles).toContain(".nojekyll");
+      expect(
+        graph.publicFiles.some((f: string) => f.startsWith(".bascik/")),
+      ).toBe(false);
+    } finally {
+      await rm(testDir, { recursive: true, force: true });
+    }
+  });
+});

@@ -421,6 +421,49 @@ describe("executeBuildScripts", () => {
     warn.mockRestore();
   });
 
+  it("security.stripDirectiveScripts: false keeps printed directive scripts, without a warning", async () => {
+    // Collin 2026-10-29: the code you wrote is the code that ships. Off, the
+    // printed directives stay in the output (a later pass runs them).
+    clearBuildScriptCaches();
+    const printed =
+      "<p>kept</p><script data-bascik-build>kept()</script>" +
+      "<script data-bascik-server>export default () => 2</script>";
+    resolveWith(printed);
+    const previous = (BascikConfig as any).security;
+    (BascikConfig as any).security = { stripDirectiveScripts: false };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await executeBuildScripts(
+        "<article><script data-bascik-build>console.log(await keep())</script></article>",
+        "src/pages/blog/kept.html",
+      );
+      expect(result).toBe(`<article>${printed}</article>`);
+      expect(warn).not.toHaveBeenCalledWith(
+        expect.stringMatching(/Printed directive scripts never run/),
+      );
+    } finally {
+      (BascikConfig as any).security = previous;
+      warn.mockRestore();
+    }
+  });
+
+  it("security.stripDirectiveScripts: true (explicit) strips as the default does", async () => {
+    clearBuildScriptCaches();
+    resolveWith("<p>x</p><script data-bascik-build>steal()</script>");
+    const previous = (BascikConfig as any).security;
+    (BascikConfig as any).security = { stripDirectiveScripts: true };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await executeBuildScripts(
+        "<article><script data-bascik-build>console.log(await strip())</script></article>",
+      );
+      expect(result).toBe("<article><p>x</p></article>");
+    } finally {
+      (BascikConfig as any).security = previous;
+      warn.mockRestore();
+    }
+  });
+
   it("writes the script content to a temp .mjs file", async () => {
     resolveWith("");
     const scriptContent = "console.log('hi');";

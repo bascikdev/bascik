@@ -130,7 +130,7 @@ It lists every site with its component roots, import root, base, and Bascik vers
 ## Assets and error pages
 
 - Everything public lives under `directory.pages` (images, fonts, downloads, standalone CSS and JS) and is copied to `dist/` with the same structure. CSS and JS there are minified by `--build` automatically.
-- Never copied: dotfiles and dot-directories, `node_modules`, `.html` (compiled instead), `.ts`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.map`, `.md`, test and spec files, and inlined stylesheets. `assets.exclude` adds globs relative to `directory.pages`.
+- Never copied: dotfiles and dot-directories (unless `security.hideDotfiles: false`), `node_modules`, `.html` (compiled instead), `.ts`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.map`, `.md`, test and spec files, and inlined stylesheets. `assets.exclude` adds globs relative to `directory.pages`.
 - Exception: `src/pages/.well-known/` (top level only) is published to `/.well-known/` for RFC 8615 files such as `security.txt` or `assetlinks.json`. Dotfiles inside it stay private, the deny-list still applies to its files, and files need an extension to be served as assets.
 - `src/pages/404.html` becomes `dist/404.html`, which static hosts and both Bascik servers serve for unknown paths.
 - `src/pages/500.html` is used only by `bascik --server`. Do not port a 500 page into a static site.
@@ -155,6 +155,27 @@ export default defineConfig({
 ```
 
 Quote keywords (`'self'`, `'none'`); the validator names a misspelled directive with a did-you-mean and warns about `'unsafe-inline'` next to hashes and `*` or `https:` in `script-src`. Details: `read-doc.mjs /how-to/content-security-policy`.
+
+## Security settings
+
+Bascik changes the author's output only to protect it, and each change has a switch in one `security` object. The default rule: a protection is on by default when it cannot break a correct site and needs no setup; it is off by default when the right setting depends on the site and needs setup (`contentSecurityPolicy`, `http.trustProxy`, `generate.cspHashes`). All seven keys default to `true`; there is no master switch (`security: false` is an error).
+
+| Key                     | On (default)                                                                                                                       |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `blockScriptUrls`       | Script URLs such as `javascript:` in bound URL attributes and inherited `<object data>` become `about:invalid`                     |
+| `blockCodeBindings`     | Props are never bound to `on*`, `srcdoc`, `<meta http-equiv>`, SVG animation targets, unsafe `style`, or `<script>`/`<style>` text |
+| `headers`               | Five security headers; `{ "x-frame-options": "DENY" }` changes one, `false` as a value removes one                                 |
+| `hsts`                  | `max-age=31536000` over HTTPS; `{ maxAge, includeSubDomains, preload }`                                                            |
+| `privateDynamicPages`   | `cache-control: private, no-store` on pages with server or stream scripts                                                          |
+| `stripDirectiveScripts` | Directive scripts printed by build scripts are removed                                                                             |
+| `hideDotfiles`          | Dot paths 404 (except `/.well-known/`) and dotfiles in `src/pages` are not published                                               |
+
+- HSTS no longer sends `includeSubDomains` by default; opt in with `hsts: { includeSubDomains: true }` only when every subdomain serves HTTPS. `hsts: { maxAge: 0 }` makes browsers forget an earlier policy.
+- Turn one off only for a named reason, and never the binding ones for visitor data: `blockCodeBindings: false` lets a prop become code.
+- The binding keys and `stripDirectiveScripts` apply at build time (default or `build` export; Bascik warns in `server`). The Cloudflare Worker uses the build's values for all of them.
+- Limits are server settings, not `security`: `scripts.renderLimits` (request-time rendering, `maxInstances: 1000` and five more) and `components.expansionLimits` (build guard, `maxInstances: 10000`, `maxPageLength`). `scripts.stripAnsi: false` keeps terminal color codes in script output.
+
+Details: `read-doc.mjs /configuration` (section `security`) and `read-doc.mjs /security`.
 
 ## Deploy
 

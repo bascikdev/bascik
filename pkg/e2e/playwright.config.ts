@@ -38,6 +38,9 @@ const staticTestIgnore = [
   // serves dist/ with a minimal harness server that has none of this, so
   // this suite only runs against playwright.server*.config.ts.
   "**/caching-layer.test.ts",
+  // The security headers, HSTS, private dynamic pages and dotfile 404s are
+  // Bascik server features; the static harness sends none of them.
+  "**/security-defaults.test.ts",
   // bascik-add-dev exercises dynamic component addition during live dev watching
   "**/bascik-add-dev.test.ts",
   // Dev-exec lifecycle runs against its own exec-fixture config

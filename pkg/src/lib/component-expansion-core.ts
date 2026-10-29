@@ -28,6 +28,7 @@ import {
   extractProps,
   injectPropAttributes,
   injectProps,
+  type BindingPolicy,
 } from "./component-props.ts";
 import {
   extractDefaultSlotContent,
@@ -136,6 +137,13 @@ export interface ExpandOptions {
    */
   limits: { maxSubstitutions: number; maxOutputBytes: number };
   /**
+   * `security.blockScriptUrls` / `security.blockCodeBindings` for every
+   * binding, inheritance and prop receiver in this expansion. The build reads
+   * them from its config; a request renderer from the component manifest,
+   * so both agree. Absent: both on.
+   */
+  bindings?: BindingPolicy;
+  /**
    * A stage threw for one instance. When this returns, the loop strips the
    * usage tag and continues (the build logs here); a host that must abort the
    * render throws instead, and that error propagates out of the loop. `html`
@@ -169,7 +177,8 @@ export class ComponentExpansionLimitError extends Error {
       `component expansion exceeded safety limits (${substitutions} substitutions). ` +
         `This usually means a component recursively includes itself (e.g. ${tag} ` +
         `contains its own tag, directly or through another component). ` +
-        "Recursive components are not supported; restructure to terminate the recursion.",
+        "Recursive components are not supported; restructure to terminate the recursion. " +
+        "If the page really is this large, raise components.expansionLimits in bascik.config.",
     );
     this.name = "ComponentExpansionLimitError";
   }
@@ -205,11 +214,13 @@ export const stripSourceFileComments = (html: string): string =>
   );
 
 /**
- * A close of any component name: `</name\s*>`, the rule `findMatchingClose`
- * pairs usages with (a greedy name that stops where `\s*>` follows, so a
- * close of `x-p` never reads as one of `x-pa` or `x-p-list`).
+ * The start of a close of any component name: `</name` before tag
+ * whitespace, `/` or `>`, the start of the close `findMatchingClose` pairs
+ * usages with (a greedy name that stops where the tag name ends, so a close
+ * of `x-p` never reads as one of `x-pa` or `x-p-list`). Whether a `>`
+ * follows is not checked: each entry stays an upper bound.
  */
-const ANY_CLOSE = /<\/([a-zA-Z][\w:-]*)\s*>/g;
+const ANY_CLOSE = /<\/([a-zA-Z][\w:-]*)(?=[\t\n\f\r />])/g;
 
 /**
  * Where the last close (`ANY_CLOSE`) of each component name starts in a
@@ -443,6 +454,7 @@ export const expandComponents = (
           props,
           undefined,
           propWarn,
+          opts.bindings,
         );
       }
       if (component.fileName) {
@@ -488,6 +500,7 @@ export const expandComponents = (
           rewriteIdRefs &&
             ((target, value) => rewriteIdRefs(target, value, scopedIdNames)),
           propWarn,
+          opts.bindings,
         );
         currentStage = "attribute scoping";
       }
@@ -510,6 +523,7 @@ export const expandComponents = (
         component.fileContent,
         props,
         propWarn,
+        opts.bindings,
       );
 
       currentStage = "slot resolution";
@@ -621,6 +635,7 @@ export const expandComponents = (
           inheritableAttrs,
           propWarn,
           component.name,
+          opts.bindings,
         );
       }
 

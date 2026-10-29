@@ -46,7 +46,7 @@ const DIRECTIVE_SCRIPT_RE = new RegExp(
  * read as a tag. Only a script element's opening tag is ever rewritten.
  *
  * This is the regex
- * `<!--[\s\S]*?-->|<(style|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>|(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?<\/script(?:[\t\n\f\r /][^>]*)?>)`
+ * `<!--[\s\S]*?-->|<(style|textarea)(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>|(<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?<\/script(?:[\t\n\f\r /][^>]*)?>)`
  * (flags `gi`), scanned in linear time: the regex retried from every opener
  * that had no closer or no `>`.
  */
@@ -55,17 +55,17 @@ const SKIPPED_OR_SCRIPT: readonly ScanAlternative[] = [
   {
     kind: "element",
     name: "style",
-    options: { opener: "word-boundary", closer: "regex-space" },
+    options: { opener: "tag-space", closer: "regex-space" },
   },
   {
     kind: "element",
     name: "textarea",
-    options: { opener: "word-boundary", closer: "regex-space" },
+    options: { opener: "tag-space", closer: "regex-space" },
   },
   {
     kind: "element",
     name: "script",
-    options: { opener: "word-boundary", closer: "attributes" },
+    options: { opener: "tag-space", closer: "attributes" },
   },
 ];
 const SCRIPT_ALTERNATIVE = 3;

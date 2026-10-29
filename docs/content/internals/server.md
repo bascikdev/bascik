@@ -294,7 +294,7 @@ Every incoming request (`req.path`) passes through a deterministic normalization
 
 ### Security response headers
 
-Every response includes standard security headers:
+Every response includes these security headers, resolved once from `security.headers` by `resolveResponseSecurity` in `web-response.ts` (the builder the Worker shares) and re-resolved only when the config object changes:
 
 | Header                         | Value                             |
 | ------------------------------ | --------------------------------- |
@@ -303,6 +303,8 @@ Every response includes standard security headers:
 | `referrer-policy`              | `strict-origin-when-cross-origin` |
 | `cross-origin-opener-policy`   | `same-origin-allow-popups`        |
 | `cross-origin-resource-policy` | `cross-origin`                    |
+
+Over HTTPS (a TLS server, a `:scheme` of `https`, or `x-forwarded-proto: https` under `http.trustProxy`) the server adds `strict-transport-security` with the value from `security.hsts`, `max-age=31536000` by default. Pages with server or stream scripts get `cache-control: private, no-store` unless `security.privateDynamicPages` is `false`. A path with a dot segment is answered 404 by `isPrivatePathname` (route-matching.ts) before any lookup; with `security.hideDotfiles: false` only a first `.bascik` segment is, and a dotfile name is served as a static file. See [`security`](/configuration#security).
 
 ### Graceful shutdown sequence and health checks
 

@@ -325,8 +325,11 @@ describe("the scan budget leaves legitimate pages far under it", () => {
   });
 });
 
-// A visitor's text that cuts every nested usage mid-tag, or leaves a raw-text
-// element open before them. Each splice re-masked the whole instance, and
+// A visitor's text that leaves a tag open between nested usages, or leaves a
+// raw-text element open before them. Each unit starts with the `>` that
+// closes the tag the one before it left open: a `<x-p>` written while a tag
+// is still open is part of that tag (an attribute name), as a browser reads
+// it, and is no usage. Each splice re-masked the whole instance, and
 // each unclosed usage looked for its close to the end, up to 1000 times
 // (about 7 s at 200k characters and 40 s at 1 MB, stopped only by the scan
 // budget). The mask now resumes from the masker's state at the splice, and a
@@ -421,39 +424,39 @@ describe("usages cut mid-tag render without re-masking the instance", () => {
 
   check([
     [
-      "fill('<x-p><a ') (each usage its own)",
+      "fill('><x-p><a ') (each usage its own)",
       "flat",
-      (size, count) => fill("<x-p><a ", size, count),
+      (size, count) => fill("><x-p><a ", size, count),
     ],
     [
-      "<my-card> + fill('<x-p><a ') + </my-card>",
+      "<my-card> + fill('><x-p><a ') + </my-card>",
       "nested",
-      wrapped("", "<x-p><a "),
+      wrapped("", "><x-p><a "),
     ],
     [
-      "<my-card> + fill('<x-p><s') + </my-card>",
+      "<my-card> + fill('><x-p><s') + </my-card>",
       "nested",
-      wrapped("", "<x-p><s"),
+      wrapped("", "><x-p><s"),
     ],
     [
-      "<my-card> + fill('<x-p><scr') + </my-card>",
+      "<my-card> + fill('><x-p><scr') + </my-card>",
       "nested",
-      wrapped("", "<x-p><scr"),
+      wrapped("", "><x-p><scr"),
     ],
     [
-      "<my-card> + fill('<x-p><!-') + </my-card>",
+      "<my-card> + fill('><x-p><!-') + </my-card>",
       "nested",
-      wrapped("", "<x-p><!-"),
+      wrapped("", "><x-p><!-"),
     ],
     [
-      "<my-card> + fill('<x-p><a b=1 c ') + </my-card>",
+      "<my-card> + fill('><x-p><a b=1 c ') + </my-card>",
       "nested",
-      wrapped("", "<x-p><a b=1 c "),
+      wrapped("", "><x-p><a b=1 c "),
     ],
     [
-      "<my-card> + fill('<x-p><a <') + </my-card>",
+      "<my-card> + fill('><x-p><a <') + </my-card>",
       "nested",
-      wrapped("", "<x-p><a <"),
+      wrapped("", "><x-p><a <"),
     ],
     [
       "<my-card><script> + fill('<x-p>') + </my-card> (a script never closed)",
@@ -461,14 +464,14 @@ describe("usages cut mid-tag render without re-masking the instance", () => {
       wrapped("<script>", "<x-p>"),
     ],
     [
-      "<my-card><style> + fill('<x-p><a ') + </my-card> (a style never closed)",
+      "<my-card><style> + fill('><x-p><a ') + </my-card> (a style never closed)",
       "nested",
-      wrapped("<style>", "<x-p><a "),
+      wrapped("<style>", "><x-p><a "),
     ],
     [
-      "<my-card><textarea> + fill('<x-p><s') + </my-card> (a textarea never closed)",
+      "<my-card><textarea> + fill('><x-p><s') + </my-card> (a textarea never closed)",
       "nested",
-      wrapped("<textarea>", "<x-p><s"),
+      wrapped("<textarea>", "><x-p><s"),
     ],
   ]);
 
@@ -481,10 +484,10 @@ describe("usages cut mid-tag render without re-masking the instance", () => {
   // whole re-mask after each splice.
   check([
     [
-      "<my-card> + fill('<x-p><a ') + </x-pa></my-card>",
+      "<my-card> + fill('><x-p><a ') + </x-pa></my-card>",
       "nested",
       (size, count) =>
-        `<my-card>${fill("<x-p><a ", size - 26, count)}</x-pa></my-card>`,
+        `<my-card>${fill("><x-p><a ", size - 26, count)}</x-pa></my-card>`,
     ],
     [
       "fill('<x-p>') + </x-p-list>",
@@ -578,10 +581,10 @@ describe("the scan budget stops hostile outputs fast", () => {
     );
 
   it(
-    "misuse: fill('<x-p><s') of 1 MB with more usages than the instance budget is refused fast",
+    "misuse: fill('><x-p><s') of 1 MB with more usages than the instance budget is refused fast",
     async () => {
       const manifest = await build(list);
-      const output = fill("<x-p><s", 1_000_000, 1200);
+      const output = fill("><x-p><s", 1_000_000, 1200);
       await expect(render(manifest, output)).rejects.toBeInstanceOf(
         RequestRenderError,
       );
@@ -609,7 +612,7 @@ describe("the scan budget stops hostile outputs fast", () => {
     [
       "nesting at the 4 MiB limit",
       "<my-card>".repeat(999) +
-        "a".repeat(REQUEST_RENDER_LIMITS.maxOutputChars - 20_000) +
+        "a".repeat(REQUEST_RENDER_LIMITS.maxOutputLength - 20_000) +
         "</my-card>".repeat(999),
       { plain: 21.16, coverage: 26.34 },
     ],

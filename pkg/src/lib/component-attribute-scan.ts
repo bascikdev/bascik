@@ -124,13 +124,21 @@ export const scanWholeAttributes = (openTag: string): ScannedAttribute[] => {
   return attrs;
 };
 
+/**
+ * Where the tokenizer stands: in text; inside a tag's name (`name`, where
+ * `=` and quotes are name characters, up to tag whitespace, `/` or `>`), at
+ * or in an attribute name or between attributes (`tag`), or in an attribute
+ * value (`before-value`, `quoted`, `unquoted`); or in a bogus comment
+ * (`bogus`), which `<!` (other than `<!--`), `<?`, or `</` before a
+ * character that is not a letter opens, and the next `>` ends, quotes or not.
+ */
 export type AttributeScanState =
-  "text" | "tag" | "before-value" | "quoted" | "unquoted";
+  "text" | "name" | "tag" | "before-value" | "quoted" | "unquoted" | "bogus";
 
 /**
  * Tokenizer state after reading `html[0, cursor)`. It also depends on
- * `html[cursor]` (the peek after a `<`), so it is valid for any string that
- * shares `html[0, cursor]`.
+ * `html[cursor, cursor + 3)` (the peek after a `<`, up to `<!--`), so it is
+ * valid for any string that shares `html[0, cursor + 3)`.
  */
 export interface AttributeValueCheckpoint {
   readonly cursor: number;
@@ -153,11 +161,11 @@ export interface ComponentSearchState {
    */
   closeFinder?: (tagName: string, contentStart: number) => number;
   /**
-   * Where the last close of `tagName` (`</tagName\s*>`, any case) starts in
-   * the searched mask, or -1; a later position is allowed (an upper bound).
-   * A usage whose content starts after it has no close, so its close is not
-   * looked for: an unclosed usage otherwise walks to the end of the text,
-   * once per usage.
+   * Where the last close of `tagName` (`</tagName` before tag whitespace,
+   * `/` or `>`, any case) starts in the searched mask, or -1; a later
+   * position is allowed (an upper bound). A usage whose content starts after
+   * it has no close, so its close is not looked for: an unclosed usage
+   * otherwise walks to the end of the text, once per usage.
    */
   lastCloseAt?: (tagName: string) => number;
 }
@@ -174,21 +182,51 @@ const isScanSpace = (code: number): boolean =>
   (code >= 9 && code <= 13) ||
   (code > 127 && /\s/.test(String.fromCharCode(code)));
 
-// `[a-zA-Z/!?]`; NaN past the end is false.
-const isTagStartCode = (code: number): boolean =>
-  (code >= 65 && code <= 90) ||
-  (code >= 97 && code <= 122) ||
-  code === 47 ||
-  code === 33 ||
-  code === 63;
+/** `[a-zA-Z]`; NaN past the end is false. */
+const isLetterCode = (code: number): boolean =>
+  (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+
+/**
+ * The state a `<` at `at`, read in text, leads to, as the tokenizer reads
+ * it from the characters after it (up to three: `<!--`):
+ *
+ * - `<` and a letter, or `</` and a letter, starts a tag's name (`name`).
+ * - `<!--` starts a comment. The masker resolves comments itself and blanks
+ *   their insides, and leaves one with no end as text, so it stays `text`.
+ * - `<!`, `<?`, or `</` and anything else but the end of input, starts a
+ *   bogus comment (`bogus`) up to the next `>`. `</>` is one with nothing
+ *   inside.
+ * - A `<` (or `</`) before anything else, or the end of input, is text.
+ */
+const stateAfterLess = (html: string, at: number): AttributeScanState => {
+  const next = html.charCodeAt(at + 1);
+  if (isLetterCode(next)) return "name";
+  if (next === 63) return "bogus";
+  if (next === 33) return html.startsWith("--", at + 2) ? "text" : "bogus";
+  if (next !== 47) return "text";
+  const after = html.charCodeAt(at + 2);
+  if (Number.isNaN(after)) return "text";
+  return isLetterCode(after) ? "name" : "bogus";
+};
+
+/** `[\t\n\f\r /]`: what ends a tag name and starts the attributes. */
+const isTagNameSpaceOrSlash = (code: number): boolean =>
+  code === 32 ||
+  code === 9 ||
+  code === 10 ||
+  code === 12 ||
+  code === 13 ||
+  code === 47;
 
 /** `ahead` before the text or quoted state has looked for its end. */
 const NOT_SEARCHED = -2;
 
 /**
- * Answers whether a position in masked HTML falls inside an attribute value.
- * Queries in increasing order cost one pass in total; an earlier query
- * restarts from `origin` (or offset zero before it).
+ * Answers whether a position in masked HTML falls inside an attribute value
+ * (`isInsideValue`) or anywhere inside a tag or bogus comment
+ * (`isInsideTag`). The state at a position depends on up to three characters
+ * after it (`stateAfterLess`). Queries in increasing order cost one pass in
+ * total; an earlier query restarts from `origin` (or offset zero before it).
  */
 export const createAttributeValueScanner = (
   html: string,
@@ -204,9 +242,12 @@ export const createAttributeValueScanner = (
   const advance = (index: number): void => {
     __componentScanStatsForTests.attributeValueBytesScanned += index - cursor;
     while (cursor < index) {
-      if (state === "text" || state === "quoted") {
+      if (state === "text" || state === "quoted" || state === "bogus") {
         if (ahead === NOT_SEARCHED)
-          ahead = html.indexOf(state === "text" ? "<" : quote, cursor);
+          ahead = html.indexOf(
+            state === "text" ? "<" : state === "bogus" ? ">" : quote,
+            cursor,
+          );
         const end = ahead;
         if (end === -1 || end >= index) {
           cursor = index;
@@ -214,12 +255,16 @@ export const createAttributeValueScanner = (
         }
         ahead = NOT_SEARCHED;
         if (state === "quoted") state = "tag";
-        else if (isTagStartCode(html.charCodeAt(end + 1))) state = "tag";
+        else if (state === "bogus") state = "text";
+        else state = stateAfterLess(html, end);
         cursor = end + 1;
         continue;
       }
       const code = html.charCodeAt(cursor);
-      if (state === "unquoted") {
+      if (state === "name") {
+        if (code === 62) state = "text";
+        else if (isTagNameSpaceOrSlash(code)) state = "tag";
+      } else if (state === "unquoted") {
         if (code === 62) state = "text";
         else if (isScanSpace(code)) state = "tag";
       } else if (state === "before-value") {
@@ -233,17 +278,28 @@ export const createAttributeValueScanner = (
       cursor++;
     }
   };
+  const moveTo = (index: number): void => {
+    if (index < cursor) {
+      ({ cursor, state, quote } = index >= origin.cursor ? origin : SCAN_START);
+      ahead = NOT_SEARCHED;
+    }
+    if (cursor < index) advance(index);
+  };
   return {
     isInsideValue(index: number): boolean {
-      if (index < cursor) {
-        ({ cursor, state, quote } =
-          index >= origin.cursor ? origin : SCAN_START);
-        ahead = NOT_SEARCHED;
-      }
-      if (cursor < index) advance(index);
+      moveTo(index);
       return (
         state === "quoted" || state === "unquoted" || state === "before-value"
       );
+    },
+    /**
+     * Whether `index` is inside a tag (its name, an attribute, or an end tag)
+     * or a bogus comment: a `<` there is part of that token, and starts no
+     * element of its own.
+     */
+    isInsideTag(index: number): boolean {
+      moveTo(index);
+      return state !== "text";
     },
     checkpoint: (): AttributeValueCheckpoint => ({ cursor, state, quote }),
   };
@@ -253,8 +309,8 @@ export const createAttributeValueScanner = (
  * The scanner's state after one more character, `html[index]`, read in
  * `state` (with `quote` in the quoted state): the transitions `advance`
  * makes, one character at a time, for a caller that follows two readings of
- * the same text until they agree. The peek after a `<` in text is
- * `html[index + 1]`.
+ * the same text until they agree. The peek after a `<` in text is up to
+ * `html[index + 3]` (`stateAfterLess`).
  */
 export const stepAttributeValueState = (
   html: string,
@@ -265,7 +321,14 @@ export const stepAttributeValueState = (
   const code = html.charCodeAt(index);
   switch (state) {
     case "text":
-      return code === 60 && isTagStartCode(html.charCodeAt(index + 1))
+      return code === 60
+        ? { state: stateAfterLess(html, index), quote }
+        : { state, quote };
+    case "bogus":
+      return code === 62 ? { state: "text", quote } : { state, quote };
+    case "name":
+      if (code === 62) return { state: "text", quote };
+      return isTagNameSpaceOrSlash(code)
         ? { state: "tag", quote }
         : { state, quote };
     case "quoted":

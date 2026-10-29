@@ -46,6 +46,17 @@ const fragment = fc.constantFrom(
   "'",
   "<my-card>",
   "</my-card>",
+  "</style/>",
+  "</script x>",
+  "</style\u000b>",
+  "</textarea\u00a0>",
+  '<p title="<script>">',
+  "<p<style>",
+  "<p ",
+  "<!x",
+  "<?",
+  "</ ",
+  "</",
   '<div class="a">',
   "</div>",
   "text",
@@ -431,7 +442,8 @@ const stateFragment = fc.constantFrom(
   "</p>",
   "x",
   // Look-alikes of raw-text openers and closers, closers with white space
-  // (`\u00a0` is white space to the closer rule), and runs of it.
+  // (`\u00a0` is not tag white space, so `</STYLE\u00a0>` ends nothing),
+  // closers with attributes, and runs of white space.
   "<style-box>",
   "</style-box>",
   "<script-x>",
@@ -444,6 +456,11 @@ const stateFragment = fc.constantFrom(
   " ".repeat(40),
   "\t\n ".repeat(20),
   '<textarea a"b>',
+  "</style x=",
+  "</script/",
+  "<p<style>",
+  "<!x ",
+  "</ ",
 );
 const stateHtml = fc
   .array(stateFragment, { maxLength: 16 })
@@ -476,9 +493,10 @@ describe("spliceRawTextMask resumes the masker's state at the splice", () => {
   // ends inside a tag, where a `<!--` is not a comment. Re-masking the whole
   // page after each such splice was quadratic in the instance count.
   it.each([
-    ["inside a tag name", "<s", "tag"],
-    ["after a partial raw-text opener", "<scr", "tag"],
-    ["after a partial comment opener", "<!-", "tag"],
+    ["inside a tag name", "<s", "name"],
+    ["after a partial raw-text opener", "<scr", "name"],
+    // `<!-` before `<` is a bogus comment, up to the next `>`.
+    ["after a partial comment opener", "<!-", "bogus"],
     ["between attributes", "<a ", "tag"],
     ["after an attribute name", "<a b", "tag"],
     ["after an unquoted value", "<a b=1 ", "tag"],
@@ -592,7 +610,8 @@ describe("spliceRawTextMask resumes the masker's state at the splice", () => {
   it.each([
     ["</style >"],
     ["</STYLE\n>"],
-    ["</style\u00a0>"],
+    ["</style/>"],
+    ['</style x="1">'],
     ["</style\t\f\r >"],
   ])(
     "falls back when a real closer (%j) follows an opener with no element before it",
@@ -606,7 +625,20 @@ describe("spliceRawTextMask resumes the masker's state at the splice", () => {
     },
   );
 
-  // A closer is `</style`, any run of white space, and `>`: a splice can
+  it.each([["</style\u00a0>"], ["</style\u000b>"], ["</stylex>"]])(
+    "accepts the splice when only an end tag of another name (%j) follows an opener with no element",
+    (closer) => {
+      const prefix = '<p>a</p><style a"b> ';
+      const suffix = `<x-p> ${closer}<p>b</p>`;
+      const plain = '<p class="p">v</p>';
+      expect(splice(prefix, "<x-p>", plain, suffix).masked).toBe(
+        maskRawTextContent(prefix + plain + suffix),
+      );
+    },
+  );
+
+  // A closer is `</style`, tag white space or `/`, anything but `>`, and
+  // `>` (or `</style>`): a splice can
   // complete one whose name is far before it, or whose `>` is far after it.
   it.each([10, 3000, 5000])(
     "sees a closer the splice completes across %i characters of white space",
@@ -619,6 +651,9 @@ describe("spliceRawTextMask resumes the masker's state at the splice", () => {
         ["<p><style>a ", "<x-p>", "</style", run + ">b<p>c</p>"],
         // The template is part of the run.
         ["<p><style>a </style ", "<x-p>", run, " >b"],
+        // Attributes after the name: the `>` comes in at the splice.
+        ["<p><style>a </style x=" + run, "<x-p>", ">b", "<p>c</p>"],
+        ["<p><style>a </style/" + run, "<x-p>", "y>b", "<p>c</p>"],
       ];
       for (const [prefix, usage, inserted, suffix] of cases) {
         const spliced = splice(prefix, usage, inserted, suffix);

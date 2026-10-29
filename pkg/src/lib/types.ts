@@ -191,6 +191,77 @@ export interface ComponentsOptions {
    * unchanged; use `scoping.preserve` to stop attribute scoping.
    */
   external: string[];
+  /** Build-time runaway guard for one page's component expansion. */
+  expansionLimits: ExpansionLimitsOptions;
+}
+
+/**
+ * Bounds on how far component expansion may grow one page at build and dev
+ * compile time. Reaching one stops that page with an error naming the key.
+ */
+export interface ExpansionLimitsOptions {
+  /** Component instances expanded on one page. Default 10,000. */
+  maxInstances: number;
+  /** Characters in one page's expanded HTML. Default 50 Mi (52,428,800). */
+  maxPageLength: number;
+}
+
+/**
+ * Bounds on what one server or stream script's output may render at request
+ * time. Reaching one fails that script like any other script error.
+ */
+export interface RenderLimitsOptions {
+  /** Component instances rendered from one script's output. Default 1000. */
+  maxInstances: number;
+  /** Characters in one script's output, and in its rendered HTML. Default 4 Mi. */
+  maxOutputLength: number;
+  /** Scripts that rendered components may run for one script's output. Default 64. */
+  maxNestedScripts: number;
+  /** Levels of scripts inside rendered components. Default 4. */
+  maxDepth: number;
+  /** Rescan budget: characters read again per character of output. Default 16. */
+  rescanFactor: number;
+  /** Rescan budget: characters read again on top of `rescanFactor`. Default 32 Mi. */
+  rescanBase: number;
+}
+
+/** Response headers `security.headers` can change (lowercase). */
+export type SecurityHeaderName =
+  | "x-content-type-options"
+  | "x-frame-options"
+  | "referrer-policy"
+  | "cross-origin-opener-policy"
+  | "cross-origin-resource-policy";
+
+/** `security.hsts` as an object; the header is built from it. */
+export interface HstsOptions {
+  /** Seconds browsers remember to use HTTPS. Default 31536000 (one year). `0` tells them to forget. */
+  maxAge?: number;
+  /** Also apply to every subdomain. Default `false`. */
+  includeSubDomains?: boolean;
+  /** Ask to be added to the browser preload list. Default `false`. */
+  preload?: boolean;
+}
+
+/**
+ * Every protection that changes, drops or refuses something in the author's
+ * output. All on by default; each one can be turned off by name.
+ */
+export interface SecurityOptions {
+  /** Script URLs such as `javascript:` in bound URL attributes become `about:invalid`. */
+  blockScriptUrls: boolean;
+  /** Props are refused for event handlers, `srcdoc`, meta refresh, SVG animation targets, unsafe styles, and `<script>`/`<style>` receivers. */
+  blockCodeBindings: boolean;
+  /** The default response security headers; an object overrides or removes single headers. */
+  headers: boolean | Partial<Record<SecurityHeaderName, string | false>>;
+  /** Strict-Transport-Security over HTTPS. `true` is `max-age=31536000`. */
+  hsts: boolean | HstsOptions;
+  /** `cache-control: private, no-store` on pages with server or stream scripts. */
+  privateDynamicPages: boolean;
+  /** Directive scripts printed by build scripts are removed. */
+  stripDirectiveScripts: boolean;
+  /** Requests for dotfile paths get 404 (except `/.well-known/`); dotfiles in pages are not published. */
+  hideDotfiles: boolean;
 }
 
 export interface AssetsOptions {
@@ -296,6 +367,10 @@ export interface ScriptsOptions {
    * Default `"src"`.
    */
   importRoot: string;
+  /** Remove ANSI terminal color codes from server, stream and component script output. Default `true`. */
+  stripAnsi: boolean;
+  /** Request-time render limits for one script's output. */
+  renderLimits: RenderLimitsOptions;
 }
 
 export interface HttpTlsOptions {
@@ -356,6 +431,7 @@ export interface BascikConfigOptions {
   base: string;
   /** Opt-in Content-Security-Policy header for HTML responses (unset: none). */
   contentSecurityPolicy?: ContentSecurityPolicyConfig;
+  security: SecurityOptions;
   isBuild: boolean;
   isProdServer: boolean;
   only?: string[];
@@ -367,6 +443,7 @@ export type UserConfig = {
   directory?: DirectoryInput;
   components?: {
     external?: string[];
+    expansionLimits?: Partial<ExpansionLimitsOptions>;
   };
   scoping?: {
     scriptBlocks?: boolean;
@@ -396,6 +473,8 @@ export type UserConfig = {
     onServerScriptError?: "error" | "warn" | "ignore";
     timeout?: number;
     importRoot?: string;
+    stripAnsi?: boolean;
+    renderLimits?: Partial<RenderLimitsOptions>;
   };
   onMinifyError?: "warn" | "error";
   http?: {
@@ -422,6 +501,11 @@ export type UserConfig = {
    * default), no header is sent.
    */
   contentSecurityPolicy?: ContentSecurityPolicyConfig;
+  /**
+   * Turn off, by name, a protection that changes your output. Every one is
+   * on by default; see the Security page before turning one off.
+   */
+  security?: Partial<SecurityOptions>;
 };
 
 export interface StoredPage {

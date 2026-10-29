@@ -39,7 +39,7 @@ Attribute inheritance is root-only. To send a prop to an attribute on a non-root
 
 ### Attributes That Become URLs on the Root
 
-Bascik copies an inherited attribute exactly as written, with one exception. An attribute that becomes a URL only because of the root's tag gets the same URL check that `html` and URL prop bindings use (see [Security](/security#what-bascik-guarantees)). That means `data` on an `<object>` root, and `to`, `from`, `by` and `values` on an SVG animation root such as `<animate>`. A script URL there, such as `javascript:`, becomes `about:invalid`. So does any `data:` URL (`data:image/...` included), because an `<object>` can load any page,, and Bascik prints a warning that names the component file. Every other URL, such as `https:` or a relative path, is kept as written.
+Bascik copies an inherited attribute exactly as written, with one exception. An attribute that becomes a URL only because of the root's tag gets the same URL check that `html` and URL prop bindings use (see [Security](/security#what-bascik-guarantees)). That means `data` on an `<object>` root, and `to`, `from`, `by` and `values` on an SVG animation root such as `<animate>`. Values that are script URLs such as `javascript:` become `about:invalid` there. So does any `data:` URL (`data:image/...` included), because an `<object>` can load any page, and Bascik prints a warning that names the component file. Every other URL, such as `https:` or a relative path, is kept as written. To inherit such a value as written, for example a `data:application/pdf` URL you control, turn the check off with [`security.blockScriptUrls: false`](/configuration#security); it then applies to every URL binding, so do it only when no visitor can choose the URL.
 
 Only this case is checked because [`html`](/security), or your own escaping, sees `<my-embed data="...">` and cannot know the root is an `<object>`, where `data` loads a page.
 
@@ -48,7 +48,7 @@ Everything else is yours and is inherited as written, including your own `onclic
 In the demo below, the `https:` URL is kept and the `javascript:` URL becomes `about:invalid`. The first line of each code block names the file; it is an ordinary comment, so it also appears in the Output. The docs site blocks `<object>` embeds, so the Preview shows each embed's fallback text, and the difference is in the `data` attribute in the Output. The build prints this warning for the second usage:
 
 ```text
-<my-embed> (components/my-embed/my-embed.html): inherited attribute data received a URL that can run script (a javascript:, vbscript: or data: URL), so data on the root <object> is set to about:invalid.
+<my-embed> (components/my-embed/my-embed.html): inherited attribute data received a URL that can run script (such as javascript:), so data on the root <object> is set to about:invalid.
 ```
 
 <!-- demo:url-root-usage -->

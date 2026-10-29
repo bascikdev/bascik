@@ -52,6 +52,7 @@ import {
   type ExpandOptions,
 } from "./component-expansion-core.ts";
 import { maskRawTextContent } from "./component-masking.ts";
+import { DEFAULT_BINDING_POLICY } from "./component-props.ts";
 import {
   SCAN_BUDGET,
   ScanBudgetExceededError,
@@ -91,7 +92,10 @@ import type { BascikComponent, ComponentList } from "./types.ts";
 /**
  * What one request may spend on component rendering. Instances and size are
  * per script output (a runaway output is one job's fault); depth and nested
- * jobs are per response (a nested job is itself a script output).
+ * scripts are per response (a nested script's output is itself a script
+ * output). These are the defaults of `scripts.renderLimits`; the field names
+ * are the config's, and a host passes the configured values as
+ * `RenderHost.limits`.
  */
 export const REQUEST_RENDER_LIMITS = {
   /** Component instances one script output may expand to. */
@@ -101,12 +105,43 @@ export const REQUEST_RENDER_LIMITS = {
    * characters (UTF-16 code units, 4 Mi of them). An output with no
    * component tag is never measured: it is the author's, as before.
    */
-  maxOutputChars: 4 * 1024 * 1024,
+  maxOutputLength: 4 * 1024 * 1024,
   /** How deep output-returns-component-returns-output may nest. */
   maxDepth: 4,
   /** Nested component scripts one response may run. */
-  maxNestedJobs: 64,
+  maxNestedScripts: 64,
+  /** Rescan budget, characters per character of output (component-scan-budget.ts). */
+  rescanFactor: SCAN_BUDGET.perOutputChar,
+  /** Rescan budget, characters on top of `rescanFactor` per output. */
+  rescanBase: SCAN_BUDGET.base,
 } as const;
+
+/** The resolved request-time limits (`scripts.renderLimits`). */
+export interface RequestRenderLimits {
+  maxInstances: number;
+  maxOutputLength: number;
+  maxDepth: number;
+  maxNestedScripts: number;
+  rescanFactor: number;
+  rescanBase: number;
+}
+
+const MIB = 1024 * 1024;
+/** "4 MiB (4194304 characters)" for a whole number of Mi, else "N characters". */
+const describeLength = (n: number): string =>
+  n % MIB === 0 ? `${n / MIB} MiB (${n} characters)` : `${n} characters`;
+/** The sentence each budget failure ends with: where to raise it. */
+const raiseHint = (...keys: string[]): string =>
+  ` Raise ${keys.map((k) => `scripts.renderLimits.${k}`).join(" or ")} if this output is expected.`;
+
+/** The fields of `obj` that are set (an `undefined` never hides a default). */
+const definedFields = <T extends object>(obj: T | undefined): Partial<T> => {
+  const out: Partial<T> = {};
+  if (!obj) return out;
+  for (const [key, value] of Object.entries(obj))
+    if (value !== undefined) (out as Record<string, unknown>)[key] = value;
+  return out;
+};
 
 /** Host-neutral dependencies of the renderer (D4). */
 export interface RenderHost {
@@ -153,6 +188,11 @@ export interface RenderHost {
    * (external-components.ts).
    */
   externalTags: (tag: string) => boolean;
+  /**
+   * `scripts.renderLimits` as configured on this host; a missing field (or
+   * no object) is the default in `REQUEST_RENDER_LIMITS`.
+   */
+  limits?: Partial<RequestRenderLimits>;
 }
 
 /**
@@ -519,7 +559,7 @@ export const usageFinalizer = (
 // The staged placeholders of component jobs inside an instantiated template,
 // as server-sidecar.ts writes them, and this request's markers, are empty
 // script elements. `scanEmptyScriptElements` finds them exactly as
-// `/<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>\s*<\/script\s*>/gi` did.
+// `/<script(?=[\t\n\f\r />])((?:[^>"']|"[^"]*"|'[^']*')*)>\s*<\/script\s*>/gi` did.
 // The optional stream marker and the attribute order are fixed by the
 // writer; quotes are matched loosely in case a later sidecar writer changes
 // them. A linear scan: markers are looked for in the whole output, which can
@@ -667,7 +707,10 @@ export const wrapRunner = (
       )
       .slice(0, 32));
   const { httpPath } = host;
-  const limits = REQUEST_RENDER_LIMITS;
+  const limits: RequestRenderLimits = {
+    ...REQUEST_RENDER_LIMITS,
+    ...definedFields(host.limits),
+  };
 
   const located = (entry: ManifestEntry | undefined, line?: number) =>
     entry
@@ -807,14 +850,13 @@ export const wrapRunner = (
     // grow past the limit by more than its own written size, nor past
     // twice the limit at all.
     const tripwire = Math.min(
-      2 * limits.maxOutputChars,
-      limits.maxOutputChars + output.length,
+      2 * limits.maxOutputLength,
+      limits.maxOutputLength + output.length,
     );
     let html: string;
     // The rescans a nested usage cut mid-tag or left unclosed costs the loop
     // (component-scan-budget.ts), bounded in proportion to this output.
-    const scanBudget =
-      SCAN_BUDGET.perOutputChar * output.length + SCAN_BUDGET.base;
+    const scanBudget = limits.rescanFactor * output.length + limits.rescanBase;
     try {
       html = withScanBudget(scanBudget, () =>
         expandByUsage(
@@ -836,6 +878,7 @@ export const wrapRunner = (
             rewriteIdRefs: rewriteIdReferenceTarget,
             numberSourceUrls: false,
             inheritAttributes: manifest.inheritAttributes,
+            bindings: manifest.security ?? DEFAULT_BINDING_POLICY,
             instanceState: {
               ordinalMap: new Map(),
               issuedIds: state.issuedIds,
@@ -873,19 +916,21 @@ export const wrapRunner = (
         const entry = manifest.components[error.tag.slice(1, -1)];
         throw new RequestRenderError(
           `[bascik] ${mode}-script output at "${httpPath}" made the renderer rescan more than ${scanBudget} characters ` +
-            `while expanding components${located(entry)}, over the limit of ${SCAN_BUDGET.perOutputChar} times the output's ` +
-            `${output.length} characters plus ${SCAN_BUDGET.base}. Component tags in it are cut off mid-tag, left unclosed, or nested many levels deep around long content, ` +
-            `which usually means text reached the output unescaped.`,
+            `while expanding components${located(entry)}, over the limit of ${limits.rescanFactor} times the output's ` +
+            `${output.length} characters plus ${limits.rescanBase}. Component tags in it are cut off mid-tag, left unclosed, or nested many levels deep around long content, ` +
+            `which usually means text reached the output unescaped.` +
+            raiseHint("rescanFactor", "rescanBase"),
           httpPath,
           entry?.filePath,
         );
       }
       if (!(error instanceof ComponentExpansionLimitError)) throw error;
-      const limit = `4 MiB (${limits.maxOutputChars} characters) limit per script output`;
+      const limit = `${describeLength(limits.maxOutputLength)} limit per script output`;
       if (output.length > tripwire) {
         throw new RequestRenderError(
           `[bascik] ${mode}-script output at "${httpPath}" is ${output.length} characters before rendering, ` +
-            `over twice the ${limit}, and has component tags in it, so it is refused before they are expanded.`,
+            `over twice the ${limit}, and has component tags in it, so it is refused before they are expanded.` +
+            raiseHint("maxOutputLength"),
           httpPath,
         );
       }
@@ -896,14 +941,16 @@ export const wrapRunner = (
         throw new RequestRenderError(
           `[bascik] ${mode}-script output at "${httpPath}" expands to more than ` +
             `${limits.maxInstances} component instances${located(entry)}; ` +
-            `the limit is ${limits.maxInstances} instances per script output.`,
+            `the limit is ${limits.maxInstances} instances per script output.` +
+            raiseHint("maxInstances"),
           httpPath,
           entry?.filePath,
         );
       }
       throw new RequestRenderError(
         `[bascik] ${mode}-script output at "${httpPath}" grew past ${tripwire} characters while expanding ` +
-          `components${located(entry)}, over the ${limit}.`,
+          `components${located(entry)}, over the ${limit}.` +
+          raiseHint("maxOutputLength"),
         httpPath,
         entry?.filePath,
       );
@@ -913,11 +960,13 @@ export const wrapRunner = (
     // The location names the last instance expanded, the one that was
     // being added when the output went over.
     const checkSize = (text: string, rendered: BascikComponent[]) => {
-      if (rendered.length === 0 || text.length <= limits.maxOutputChars) return;
+      if (rendered.length === 0 || text.length <= limits.maxOutputLength)
+        return;
       const entry = lastEntry(rendered);
       throw new RequestRenderError(
         `[bascik] ${mode}-script output at "${httpPath}" rendered to ${text.length} characters, ` +
-          `over the 4 MiB (${limits.maxOutputChars} characters) limit per script output${located(entry)}.`,
+          `over the ${describeLength(limits.maxOutputLength)} limit per script output${located(entry)}.` +
+          raiseHint("maxOutputLength"),
         httpPath,
         entry?.filePath,
       );
@@ -949,16 +998,18 @@ export const wrapRunner = (
       throw new RequestRenderError(
         `[bascik] ${mode}-script output at "${httpPath}" nests component scripts deeper than ` +
           `${limits.maxDepth} levels${located(first.entry, firstJob?.sourceLine)}; ` +
-          `a component script's output may return components to depth ${limits.maxDepth}.`,
+          `a component script's output may return components to depth ${limits.maxDepth}.` +
+          raiseHint("maxDepth"),
         httpPath,
         first.entry.filePath,
       );
     }
-    if (state.jobsRun + pending.size > limits.maxNestedJobs) {
+    if (state.jobsRun + pending.size > limits.maxNestedScripts) {
       throw new RequestRenderError(
         `[bascik] ${mode}-script output at "${httpPath}" would run more than ` +
-          `${limits.maxNestedJobs} nested component scripts in one response${located(first.entry, firstJob?.sourceLine)}; ` +
-          `the limit is ${limits.maxNestedJobs} per response.`,
+          `${limits.maxNestedScripts} nested component scripts in one response${located(first.entry, firstJob?.sourceLine)}; ` +
+          `the limit is ${limits.maxNestedScripts} per response.` +
+          raiseHint("maxNestedScripts"),
         httpPath,
         first.entry.filePath,
       );

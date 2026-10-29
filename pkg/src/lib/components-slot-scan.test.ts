@@ -16,9 +16,14 @@ describe("named slots inside nested component usages", () => {
     );
   });
 
-  it("treats a colon-qualified tag as opening its prefix name", () => {
+  it("does not read a colon-qualified tag as its prefix name, as a browser does not", () => {
+    // `<x:y>` is the tag `x:y`, not a usage of `x` (browser-tag-names.test.ts),
+    // so the wrapper inside it is the parent's.
     const inner = `<x:y><div data-bascik-slot="s">in</div></x>`;
-    expect(extractNamedSlotContent(inner, names)).toEqual({});
+    expect(extractNamedSlotContent(inner, names)).toEqual({ s: "in" });
+    // A real `x` usage still keeps its wrapper.
+    const nested = `<x><div data-bascik-slot="s">in</div></x>`;
+    expect(extractNamedSlotContent(nested, names)).toEqual({});
   });
 
   it("ignores a usage tag written only after the wrapper", () => {

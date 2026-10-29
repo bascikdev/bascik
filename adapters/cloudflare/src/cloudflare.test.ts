@@ -973,6 +973,50 @@ describe("createCloudflareWorker: components rendered from a built manifest (pro
     expect(await res.text()).not.toContain("SECRET_DETAIL");
   });
 
+  // scripts.renderLimits reach the Worker through the graph (Collin
+  // 2026-10-29): the configured limit, named in the located message.
+  it("graph.renderLimits: maxInstances 2 refuses three cards, naming the setting; no renderLimits keeps 1000", async () => {
+    const three = () =>
+      '<product-card data-bascik-prop-name="item"></product-card>'.repeat(3);
+    const graphWith = (extra: Record<string, unknown>) =>
+      ({
+        ...unitGraph({ onServerScriptError: "warn" }),
+        pages: {
+          "/catalog": {
+            path: "/catalog",
+            is404: false,
+            segments: [
+              { kind: "static", text: "<main>" },
+              { kind: "script", id: "page_job" },
+              { kind: "static", text: "</main>" },
+            ],
+            jobs: { page_job: job("page_job", three) },
+          },
+        },
+        components: { manifest, jobs: {} },
+        ...extra,
+      }) as SiteGraph;
+    const logged: string[] = [];
+    const limited = await createCloudflareWorker(
+      graphWith({ renderLimits: { maxInstances: 2 } }),
+      { log: (m) => logged.push(m) },
+    ).fetch(new Request("https://example.test/catalog"), {}, ctx);
+    expect(await limited.text()).toBe("<main></main>");
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatch(/more than 2 component instances/);
+    expect(logged[0]).toContain("scripts.renderLimits.maxInstances");
+
+    const free = await createCloudflareWorker(graphWith({})).fetch(
+      new Request("https://example.test/catalog"),
+      {},
+      ctx,
+    );
+    expect(free.status).toBe(200);
+    const freeHtml = markup(await free.text());
+    expect(freeHtml).toContain("item");
+    expect(freeHtml).not.toContain("<product-card ");
+  });
+
   // D4.6: a request-time render failure (here the instance budget) is a
   // script failure like any other, so onServerScriptError decides it, and
   // what is logged is the located server-script message (route, component

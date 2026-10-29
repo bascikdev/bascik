@@ -53,7 +53,7 @@ import {
   mergeHandlerHeaders,
   stripRepresentationHeaders,
   GENERATED_CONTROL_PATHS,
-  hasHiddenSegment,
+  isPrivatePathname,
   isUnsafePathname,
   InvalidApiPathError,
   matchApiRoute,
@@ -63,6 +63,8 @@ import {
   type ApiRouteDefinition,
   type ContentSecurityPolicyConfig,
   type CspRouteHashes,
+  type RequestRenderLimits,
+  type ResponseSecurity,
 } from "@bascik/bascik/runtime";
 
 /**
@@ -165,6 +167,17 @@ export interface SiteGraph {
     policy: ContentSecurityPolicyConfig;
     hashes: Record<string, CspRouteHashes>;
   };
+  /**
+   * The build's `security.headers`, `security.hsts` and
+   * `security.privateDynamicPages`, resolved. Absent: the defaults.
+   */
+  responseSecurity?: ResponseSecurity;
+  /** The build's `security.hideDotfiles`. Absent: true. */
+  hideDotfiles?: boolean;
+  /** The build's `scripts.stripAnsi`. Absent: true. */
+  stripAnsi?: boolean;
+  /** The build's `scripts.renderLimits`. Absent: the defaults. */
+  renderLimits?: Partial<RequestRenderLimits>;
 }
 
 // ─── Cloudflare runtime types (subset, kept local to avoid a type dependency) ─
@@ -289,7 +302,11 @@ const runGraphJob = async (
         : value !== undefined && value !== null
           ? String(value)
           : "";
-    return scopeJobOutput(job, stripAnsiEscapeCodes(output));
+    // scripts.stripAnsi off: the codes reach the page as printed.
+    return scopeJobOutput(
+      job,
+      graph.stripAnsi === false ? output : stripAnsiEscapeCodes(output),
+    );
   }
   if (result.aborted && !result.timedOut) return "";
   const error = result.error ?? new Error("Server script failed");
@@ -387,6 +404,10 @@ export const createCloudflareWorker = (
   options: CreateWorkerOptions = {},
 ): CloudflareWorker => {
   const log = options.log ?? ((message: string) => console.error(message));
+  // The build's response security (absent: every default); passed to every
+  // response builder so pages, API responses and errors agree with Node.
+  const security = graph.responseSecurity;
+  const hideDotfiles = graph.hideDotfiles !== false;
 
   /** The opt-in CSP header, from the build's hashes for this page (never its body). */
   const setPageCsp = (headers: Headers, path: string): void => {
@@ -409,6 +430,7 @@ export const createCloudflareWorker = (
       );
       return errorResponse(500, "Internal Server Error", {
         https: isHttps(request),
+        security,
       });
     }
     return env.ASSETS.fetch(request);
@@ -425,23 +447,24 @@ export const createCloudflareWorker = (
     try {
       pathname = decodeURIComponent(url.pathname);
     } catch {
-      return errorResponse(400, "Bad Request", { https });
+      return errorResponse(400, "Bad Request", { https, security });
     }
     if (isUnsafePathname(pathname))
-      return errorResponse(400, "Bad Request", { https });
+      return errorResponse(400, "Bad Request", { https, security });
     // Same rule as the Node server: dot segments are private except a leading
-    // RFC 8615 /.well-known/ below the site root, which the asset layer serves.
-    if (hasHiddenSegment(pathname, graph.base))
-      return errorResponse(404, "Not Found", { https });
+    // RFC 8615 /.well-known/ below the site root, which the asset layer serves
+    // (with security.hideDotfiles off, only a first `.bascik` segment is).
+    if (isPrivatePathname(pathname, graph.base, hideDotfiles))
+      return errorResponse(404, "Not Found", { https, security });
 
     const baseRelative = stripBase(pathname, graph.base);
     if (baseRelative === null)
-      return errorResponse(404, "Not Found", { https });
+      return errorResponse(404, "Not Found", { https, security });
     // The bundle and its routing table are deployment control files, never
     // content. Refusing them here makes the guarantee independent of how a
     // host treats underscore-prefixed uploads.
     if (CONTROL_PATHS.has(baseRelative))
-      return errorResponse(404, "Not Found", { https });
+      return errorResponse(404, "Not Found", { https, security });
 
     const platform: PlatformContext = {
       name: "cloudflare",
@@ -458,7 +481,7 @@ export const createCloudflareWorker = (
       apiMatch = matchApiRoute(graph.apiRoutes, pathname, url.pathname);
     } catch (err) {
       if (!(err instanceof InvalidApiPathError)) throw err;
-      return errorResponse(400, "Bad Request", { https });
+      return errorResponse(400, "Bad Request", { https, security });
     }
     if (apiMatch) {
       const route = apiMatch.route as GraphApiRoute;
@@ -469,7 +492,7 @@ export const createCloudflareWorker = (
         log(
           `[bascik] Failed to load API route module ${route.filePath}: ${(err as Error).stack ?? String(err)}`,
         );
-        return errorResponse(500, "Internal Server Error", { https });
+        return errorResponse(500, "Internal Server Error", { https, security });
       }
       const context: ApiHandlerContext = {
         params: apiMatch.params,
@@ -484,7 +507,10 @@ export const createCloudflareWorker = (
             `[bascik] ${message}${error ? `\n${(error as Error).stack ?? String(error)}` : ""}`,
           ),
       });
-      const headers = mergeHandlerHeaders(response.headers, { https });
+      const headers = mergeHandlerHeaders(response.headers, {
+        https,
+        security,
+      });
       return new Response(request.method === "HEAD" ? null : response.body, {
         status: response.status,
         statusText: response.statusText,
@@ -501,7 +527,7 @@ export const createCloudflareWorker = (
       ) {
         if (request.method !== "GET" && request.method !== "HEAD") {
           const headers = new Headers(
-            errorResponse(405, "", { https }).headers,
+            errorResponse(405, "", { https, security }).headers,
           );
           headers.set("allow", "GET, HEAD");
           return new Response("Method Not Allowed", { status: 405, headers });
@@ -530,7 +556,9 @@ export const createCloudflareWorker = (
 
     const isHead = request.method === "HEAD";
     if (request.method !== "GET" && !isHead) {
-      const headers = new Headers(errorResponse(405, "", { https }).headers);
+      const headers = new Headers(
+        errorResponse(405, "", { https, security }).headers,
+      );
       headers.set("allow", "GET, HEAD");
       return new Response("Method Not Allowed", { status: 405, headers });
     }
@@ -550,10 +578,11 @@ export const createCloudflareWorker = (
         body = await composeBufferedResponse(plan, run, request.signal);
       } catch (err) {
         log(err instanceof Error ? err.message : String(err));
-        return internalErrorPage(graph.custom500, { https });
+        return internalErrorPage(graph.custom500, { https, security });
       }
       const headers = dynamicPageHeaders({
         https,
+        security,
         contentLength: body.byteLength,
       });
       setPageCsp(headers, page.path);
@@ -572,9 +601,11 @@ export const createCloudflareWorker = (
       await streamer.ready;
     } catch (err) {
       log(err instanceof Error ? err.message : String(err));
-      return internalErrorPage(graph.custom500, { https });
+      return internalErrorPage(graph.custom500, { https, security });
     }
-    const headers = stripRepresentationHeaders(dynamicPageHeaders({ https }));
+    const headers = stripRepresentationHeaders(
+      dynamicPageHeaders({ https, security }),
+    );
     setPageCsp(headers, page.path);
     // The edge compresses Worker responses on the fly and, for a streamed
     // body, holds every byte until the stream closes (observed in workerd:

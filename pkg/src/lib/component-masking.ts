@@ -16,7 +16,9 @@ import { __componentScanStatsForTests } from "./component-scan-stats.ts";
 /**
  * Return a same-length copy of `htmlString` where HTML comments and the inner content of
  * `<script>`, `<style>`, and `<textarea>` elements are blanked out with
- * spaces. Component-tag searches run against the masked string so literal
+ * spaces. Only those exact tag names open one: `<style-guide>` is a custom
+ * element, as the browser reads it, and an opener written inside another tag
+ * (`<p title="<script>">`, `<p<style>`) is part of that tag. Component-tag searches run against the masked string so literal
  * tag text inside comments or raw-text elements (e.g. `<my-card>` or `<body>`
  * mentioned in a comment, JSON-LD string, or code example) is never resolved
  * as a component or structural tag.
@@ -42,7 +44,8 @@ const TEXT_STATE: TagState = { state: "text", quote: "" };
 
 const sameTagState = (a: TagState, b: TagState): boolean =>
   a.state === b.state && (a.state !== "quoted" || a.quote === b.quote);
-const HAS_RAW_TAG = /<(?:script|style|textarea)\b/i;
+/** A raw-text opener: the whole tag name, as the tokenizer ends it (`isTagNameEndCode`). */
+const HAS_RAW_TAG = /<(?:script|style|textarea)[\t\n\f\r />]/i;
 
 /**
  * The mask, as the tokenizer reads the page: left to right, whichever of a
@@ -50,18 +53,24 @@ const HAS_RAW_TAG = /<(?:script|style|textarea)\b/i;
  * content is text. So a `<!--` inside a script string is not a comment, and
  * a `</style>` inside a comment does not end an earlier stylesheet.
  *
- * - A `<!--` inside a tag (in an attribute value, say) is not a comment, as
- *   the component search reads tags (`createAttributeValueScanner`, started
- *   in text after the last region that began in text). Otherwise a `<!--` in
- *   `<input value="<!--">` would run to a later `--!>` and hide what follows.
+ * - A `<!--` or a raw-text opener inside a tag (its name, an attribute, an
+ *   end tag) or a bogus comment opens nothing, as the component search reads
+ *   tags (`createAttributeValueScanner`, started in text after the last
+ *   region). Otherwise a `<!--` in `<input value="<!--">` would run to a
+ *   later `--!>`, and a `<script>` in `<p title="<script>">` to a later
+ *   `</script>`, blanking the tag's closing quote and hiding what follows.
  * - A comment ends where the tokenizer ends it (`findCommentEnd`): at the
  *   first `-->` or `--!>`, and `<!-->` and `<!--->` are complete empty
  *   comments. Its inside is blanked; its `<!--` and its closing `-->` or
  *   `--!>` are kept. A comment with no end is left as it is, and comments
  *   are not looked for after it (none can end), as before.
- * - A raw-text element is found as the old
- *   `(<tag(?:\b(?:[^>"']|"[^"]*"|'[^']*')*)?>)([\s\S]*?)(<\/tag\s*>)` regex
- *   found it (element-content-scan.ts), and its content is blanked. A script
+ * - A raw-text element is found as the regex
+ *   `(<tag(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/tag(?:[\t\n\f\r /][^>]*)?>)`
+ *   finds it (element-content-scan.ts), and its content is blanked. Its
+ *   opener is the exact tag name, as a browser reads one: `<style-guide>`,
+ *   `<script.x>` and `<textarea:x>` are other elements and open nothing. Its
+ *   closer is the browser's end tag: `</style/>` and `</style foo>` end it,
+ *   `</style\v>` and `</style\u00a0>` do not. A script
  *   follows the tokenizer's escaped script data states, so its legacy
  *   `<!-- ... -->` wrapper with a nested `<script>` string stays whole. An
  *   opener with no closer is left, and the scan goes on after its `<`.
@@ -118,8 +127,8 @@ const maskInDocumentOrder = (
   const scanners: ElementScanner[] = raw
     ? RAW_TEXT_TAGS.map((tag) =>
         createElementScanner(html, tag, {
-          opener: "word-boundary",
-          closer: "regex-space",
+          opener: "tag-space",
+          closer: "attributes",
           scriptEscapes: tag === "script",
         }),
       )
@@ -164,19 +173,20 @@ const maskInDocumentOrder = (
       continue;
     }
     if (!element) break;
+    // An opener inside a tag (an attribute value that reads `<script>`, or
+    // `<p<style>`) is part of that tag: the browser opens no element there.
+    // Look for the next one after its `<`.
+    if (insideTag(element.start)) {
+      position = element.start + 1;
+      continue;
+    }
     starts.push(element.start);
     ends.push(element.end);
     masked += `${html.slice(cursor, element.contentStart)}${" ".repeat(element.contentEnd - element.contentStart)}`;
     cursor = element.contentEnd;
     position = element.end;
-    // An element whose opener sits inside a tag (an attribute value that
-    // reads `<script>`) is masked as before, but the tag goes on around it:
-    // the browser sees no element there, so a `<!--` after it is still
-    // inside the tag. Only tracked while it can matter.
-    if (!((comments || wantEndState) && insideTag(element.start))) {
-      tagsFrom = element.end;
-      tags = undefined;
-    }
+    tagsFrom = element.end;
+    tags = undefined;
   }
   return {
     masked: cursor === 0 ? html : masked + html.slice(cursor),
@@ -187,17 +197,21 @@ const maskInDocumentOrder = (
   };
 };
 
-// Every place a raw-text match could start: a raw-text name followed by a
-// character `\b` passes for (outside [A-Za-z0-9_]) or by the end of input. A
-// `<!--` outside every region is either inside a tag, which does not depend on
-// what follows, or an unclosed comment, which `openCommentAt` reports.
-const OPENER = /<(?:script|style|textarea)(?![A-Za-z0-9_])/gi;
-const OPENER_AT = /<(?:script|style|textarea)(?![A-Za-z0-9_])/iy;
+// Every place a raw-text match could start: a raw-text name followed by what
+// ends a tag name (tag whitespace, `/` or `>`). A name at the end of input is
+// a partial opener (`PARTIAL_OPENER_AT_END`). A `<!--` outside every region is
+// either inside a tag, which does not depend on what follows, or an unclosed
+// comment, which `openCommentAt` reports. An opener inside a tag never opens
+// an element either, but is counted as pending all the same: that only makes
+// a closed text read as open, and a splice fall back.
+const OPENER = /<(?:script|style|textarea)(?=[\t\n\f\r />])/gi;
+const OPENER_AT = /<(?:script|style|textarea)(?=[\t\n\f\r />])/iy;
 
 // The end of a segment is unsafe when it could be the start of an opener that
-// the following text completes (`<scr` + `ipt>`).
+// the following text completes (`<scr` + `ipt>`), or a `<`, `</` or `<!-`
+// whose tag state the following text decides (`stateAfterLess`).
 const PARTIAL_OPENER_AT_END =
-  /<(?:!-?-?|s(?:c(?:r(?:i(?:pt?)?)?)?|t(?:y(?:le?)?)?)?|t(?:e(?:x(?:t(?:a(?:r(?:ea?)?)?)?)?)?)?)?$/i;
+  /<(?:!-?-?|\/|s(?:c(?:r(?:i(?:pt?)?)?)?|t(?:y(?:le?)?)?)?|t(?:e(?:x(?:t(?:a(?:r(?:ea?)?)?)?)?)?)?)?$/i;
 
 /**
  * What text left open before a position, by the first position of each: a
@@ -358,8 +372,9 @@ const isTagStartCode = (code: number): boolean =>
  * Whether `head`, the text that follows `body[0, at)`, completes a token a
  * `<` in the last few characters before `at` starts: a `<!--`, a raw-text
  * opener's name (or the character after it, which decides whether it is
- * one), or, for a `<` right before `at`, a tag (the tokenizer reads `<`
- * before `[a-zA-Z/!?]` as one, and a `<!--` inside it is not a comment).
+ * one), or a tag or bogus comment whose start the characters after the `<`
+ * decide (`stateAfterLess`: a `<` right before `at` before `[a-zA-Z/!?]`,
+ * a `</` or `<!` before `at`, or a `<!-` before `at`).
  * Conservative: true whenever such a token reaches `at`. When false, a
  * prefix that is closed but for a partial opener at its end masks the same
  * followed by `head` as on its own.
@@ -377,6 +392,10 @@ const completesOpener = (body: string, at: number, head: string): boolean => {
   ) {
     if (index === joint - 1) return isTagStartCode(joined.charCodeAt(joint));
     const rest = joined.slice(index);
+    // Read on its own, `</` before the end is text; with more text after it,
+    // a tag or a bogus comment. (`<!` and `<!-` read on their own are a bogus
+    // comment, which they stay unless a `<!--` straddles `at`, below.)
+    if (index === joint - 2 && rest[1] === "/") return true;
     if (rest.startsWith("<!--")) {
       if (index + 4 > joint) return true;
       continue;
@@ -390,9 +409,10 @@ const completesOpener = (body: string, at: number, head: string): boolean => {
 
 /**
  * Where the tokens that could close a pending opener last start in a page:
- * a closer as the masker's element scanner reads it (`</script\s*>`,
- * `</style\s*>` or `</textarea\s*>`, any case) for a raw-text opener, `-->`
- * or `--!>` for a comment. Unknown (`last` undefined) until a pending opener
+ * the start of a closer as the masker's element scanner reads it (`</script`,
+ * `</style` or `</textarea`, any case, before tag whitespace, `/` or `>`;
+ * whether a `>` follows is not checked, so each is an upper bound) for a
+ * raw-text opener, `-->` or `--!>` for a comment. Unknown (`last` undefined) until a pending opener
  * needs it, then found once and kept up to date across splices by
  * `spliceRawTextMask`, which reads it as an upper bound (a script closer the
  * escape states skip still counts). Reset it (or pass a fresh one) whenever
@@ -402,8 +422,9 @@ export interface MaskFacts {
   last?: Record<PendingKind, number>;
 }
 
-// `\s` is the white space `isRegexWhitespace` accepts.
-const CLOSER_TOKEN = /<\/(script|style|textarea)\s*>|--!?>/gi;
+// A closer's start and the character that ends its name: a fixed-length
+// token, so a closer with no `>` after it counts too (an upper bound).
+const CLOSER_TOKEN = /<\/(script|style|textarea)(?=[\t\n\f\r />])|--!?>/gi;
 
 /** The start of the last closer token of each kind in `text`, plus `offset`. */
 const lastClosers = (
@@ -430,7 +451,7 @@ const lastClosers = (
   return into;
 };
 
-/** `</textarea`, the longest closer before its white space. */
+/** `</textarea`, the longest closer before the character that ends its name. */
 const CLOSER_REACH = 10;
 
 /**
@@ -447,8 +468,9 @@ const OPEN_CLOSE_AT_END = /<\/[A-Za-z][\w:-]*\s*$/y;
  * part of it around the replacement that holds every token touching the
  * replacement or either seam: `{ from, text }`, `text` starting at `from` in
  * the new page. Tokens are closers shaped `</name\s*>`, whose `</name` is at
- * most `reach` characters long, or tokens of at most `reach` characters with
- * no white space (`-->`). Every other token of the new page lies wholly
+ * most `reach` characters long, a closer's start `</name` and the one
+ * character after it (the callers' tokens now), or tokens of at most `reach`
+ * characters with no white space (`-->`). Every other token of the new page lies wholly
  * before `start`, as it was, or wholly after the replacement, where it was
  * after `end`. Null when a white-space run longer than `WINDOW_WALK` might
  * belong to such a token: the caller then assumes one at the replacement's
@@ -692,12 +714,9 @@ export const spliceRawTextMask = (
   // The text after the splice: its mask is the old one once both readings of
   // its tags agree, before anything there that could start a region (a
   // comment's reading depends on the tag state, and an element's on whether
-  // it starts in one). With a comment left open on either side, no comment
-  // after it can end, so the tag state no longer matters.
-  if (
-    pendingAtEnd.comment === undefined &&
-    replaced.pending.comment === undefined
-  ) {
+  // it starts in one). An element's does even with a comment left open on
+  // either side, after which no comment can end.
+  {
     let before = replaced.endState;
     let after = inserted.endState;
     const limit = end + RESYNC_SLACK + (end - start) + replacement.length;

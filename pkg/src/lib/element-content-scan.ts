@@ -54,6 +54,15 @@ export const isTagSpace = (code: number): boolean =>
   code === 0x0d ||
   code === 0x20;
 
+/**
+ * Whether `code` ends a tag name, as the HTML tokenizer ends one: tag
+ * whitespace, `/` or `>`. A name followed by anything else (`-`, `.`, `:`,
+ * `<`, a no-break space, the end of input) is part of a longer name, so
+ * `<style-guide>` is no `<style>` and `<my-card.foo>` no `<my-card>`.
+ */
+export const isTagNameEndCode = (code: number): boolean =>
+  isTagSpace(code) || code === SLASH || code === GT;
+
 const isSpecialCode = (code: number): boolean =>
   code === GT || code === DOUBLE_QUOTE || code === SINGLE_QUOTE;
 
@@ -156,19 +165,20 @@ export interface ElementContentMatch {
 /**
  * The regex an element scan reproduces, for a lowercase `name`:
  *
- * - opener `"word-boundary"`: `<name(?:\b(?:[^>"']|"[^"]*"|'[^']*')*)?>`;
- *   `"tag-space"`: `<name(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>`.
+ * - opener `"tag-space"`: `<name(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>`,
+ *   the name as the tokenizer ends it (`isTagNameEndCode`).
  * - closer `"exact"`: `<\/name>`; `"regex-space"`: `<\/name\s*>`;
  *   `"attributes"`: `<\/name(?:[\t\n\f\r /][^>]*)?>`.
  * - content between them: `[\s\S]*?`, flags `gi`.
  *
- * `scriptEscapes` (for `script` with the `"regex-space"` closer) also follows
- * the tokenizer's escaped and double-escaped script data states: a closer is
+ * `scriptEscapes` (for `script` with the `"regex-space"` or `"attributes"`
+ * closer) also follows the tokenizer's escaped and double-escaped script data
+ * states: a closer is
  * skipped while a `<!--` ... `<script>` inside the content is open, as the
  * browser skips it. Without it every closer counts, as the regex does.
  */
 export interface ElementScanOptions {
-  opener: "word-boundary" | "tag-space";
+  opener: "tag-space";
   closer: "exact" | "regex-space" | "attributes";
   scriptEscapes?: boolean;
 }
@@ -286,7 +296,7 @@ export const createElementScanner = (
   name: string,
   options: ElementScanOptions,
 ): ElementScanner => {
-  const openers = createNamedOpenTagScanner(html, name, options.opener);
+  const openers = createNamedOpenTagScanner(html, name);
 
   const closers = createCloserIndex(
     html,
@@ -466,8 +476,9 @@ const createScriptCloserFinder = (
         if (kind === COMMENT_CLOSE) state = DATA;
         else if (kind & SCRIPT_END) state = ESCAPED;
       } else {
-        // A closer by the regex's rule ends the content; a tokenizer end tag
-        // the regex does not accept (`</script/>`) is text, as before.
+        // A closer by the scan's rule ends the content; a tokenizer end tag
+        // the rule does not accept (`</script/>` under `"regex-space"`) is
+        // text, as before.
         if (kind & END_TAG) {
           const closer = closerAtToken(tokenAt[index]);
           if (closer !== -1) {
@@ -592,7 +603,7 @@ export const scanOpeningTags = (
 };
 
 /**
- * Every match of `/<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>\s*<\/script\s*>/gi`
+ * Every match of `/<script(?=[\t\n\f\r />])((?:[^>"']|"[^"]*"|'[^']*')*)>\s*<\/script\s*>/gi`
  * in `html`: an empty script element, as `[start, end)` and the attribute
  * text between the name and the opener's `>` (the regex's group 1).
  */
@@ -630,12 +641,10 @@ export const scanEmptyScriptElements = (
     let end = -1;
     const nameEnd = start + 7;
     let gt = -1;
-    // `\b` after `script` needs a non-word character; at the end of input it
-    // holds but `>` cannot follow.
+    // The whole tag name is `script` (`isTagNameEndCode`).
     if (
       nameAt(html, start + 1, "script") &&
-      nameEnd < length &&
-      !isWordCode(html.charCodeAt(nameEnd))
+      isTagNameEndCode(html.charCodeAt(nameEnd))
     ) {
       gt = attributeEnd(nameEnd);
       if (gt !== -1) end = closeAfter(gt);
@@ -857,33 +866,18 @@ export const createMarkerWalk = (
 /**
  * The opening tags an element scan (see `ElementScanOptions.opener`) finds
  * for `name` (lowercase, accepted by `isScannableElementName`):
- * `<name(?:\b(?:[^>"']|"[^"]*"|'[^']*')*)?>` for `"word-boundary"` (the same
- * as `<name\b...>` for a name ending in a word character) and
- * `<name(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>` for `"tag-space"`,
- * flags `gi`.
+ * `<name(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>` (flags `gi`), the
+ * tags whose whole name is `name`.
  */
 export const createNamedOpenTagScanner = (
   html: string,
   name: string,
-  opener: ElementScanOptions["opener"],
-): OpenTagScanner => {
-  const length = html.length;
-  const nameEndsInWord = isWordCode(name.charCodeAt(name.length - 1));
-  return createOpenTagScanner(html, (start) => {
+): OpenTagScanner =>
+  createOpenTagScanner(html, (start) => {
     if (!nameAt(html, start + 1, name)) return -1;
     const nameEnd = start + 1 + name.length;
-    if (nameEnd >= length) return -1;
-    const next = html.charCodeAt(nameEnd);
-    if (next === GT) return nameEnd;
-    return (
-      opener === "word-boundary"
-        ? nameEndsInWord !== isWordCode(next)
-        : isTagSpace(next) || next === SLASH
-    )
-      ? nameEnd
-      : -1;
+    return isTagNameEndCode(html.charCodeAt(nameEnd)) ? nameEnd : -1;
   });
-};
 
 /** One alternative of a regex `scanAlternatives` reproduces. */
 export type ScanAlternative =
@@ -1019,15 +1013,15 @@ export const findWhitespaceMarkerAnchors = (
   });
 
 /**
- * Whether `<script\b` at `start` opens a script tag: the name in any case,
- * then a non-word character (or the end of the input, where nothing after
- * it can match).
+ * Whether `<script` at `start` opens a script tag: the name in any case, as
+ * the whole tag name (`isTagNameEndCode`).
  */
 const isScriptOpenerAt = (html: string, start: number): boolean =>
-  nameAt(html, start + 1, "script") && !isWordCode(html.charCodeAt(start + 7));
+  nameAt(html, start + 1, "script") &&
+  isTagNameEndCode(html.charCodeAt(start + 7));
 
 /**
- * The start of the first match of `<script\b(?:[^>"']|"[^"]*"|'[^']*')*`
+ * The start of the first match of `<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*`
  * followed by a marker (no `>` needed), or -1: the first script opener whose
  * attribute chain can stop at one of `anchors` (see `createMarkerWalk`).
  * Linear, where the regex retried the chain from every opener.
@@ -1067,7 +1061,7 @@ export interface MarkedScriptMatch extends ElementContentMatch {
 
 /**
  * Every match, in order, of a `gi` regex alternating forms of
- * `<script\b(CHAIN)MARKER(CHAIN)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>`,
+ * `<script(?=[\t\n\f\r />])(CHAIN)MARKER(CHAIN)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>`,
  * CHAIN being `(?:[^>"']|"[^"]*"|'[^']*')*` (or its lazy form), in linear
  * time. Those regexes took cubic time: both chains retried from every
  * opener.

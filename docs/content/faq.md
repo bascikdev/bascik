@@ -193,7 +193,7 @@ The following files are **excluded** from static asset copying:
 - **`.html` page templates**: compiled into output HTML pages in `dist/`.
 - **Source and documentation files**: `.ts`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.map`, and `.md`.
 - **Test files**: any file matching `*.test.*` or `*.spec.*` (such as `styles.test.ts` or `api.spec.js`).
-- **Hidden paths**: any dotfile or file inside a dot-directory. The exception is a top-level `src/pages/.well-known/` directory, which is published to `/.well-known/` (see [Well-Known URIs](/deployment#well-known-uris)).
+- **Hidden paths**: any dotfile or file inside a dot-directory. The exception is a top-level `src/pages/.well-known/` directory, which is published to `/.well-known/` (see [Well-Known URIs](/deployment#well-known-uris)). A host that needs a dotfile such as `/.nojekyll` can publish them all with [`security.hideDotfiles: false`](/configuration#security); check `src/pages` for stray files such as `.DS_Store` first. `/.bascik/` stays private either way.
 - **Dependencies**: any file inside a `node_modules` directory.
 - **Inlined stylesheets**: global CSS files configured in `assets.inlineStyles` (injected directly into page `<head>` blocks).
 - **Component directory files**: everything in `src/components/` is source-only and never copied directly to `dist/`.

@@ -28,6 +28,9 @@ vi.mock("./config.js", async (importOriginal) => {
     BascikConfig: {
       ...original.BascikConfig,
       minify: { ...original.BascikConfig.minify, identifiers: true },
+      // Own copy: the real config is frozen, and the expansionLimits tests
+      // set a limit for one test.
+      components: { ...original.BascikConfig.components },
       scoping: {
         scriptBlocks: true,
         inheritAttributes: true,
@@ -482,6 +485,58 @@ describe("expandComponents limits", () => {
     ).toThrow(/exceeded safety limits \(1 substitutions\)/);
   });
 
+  it("the wrapper reads components.expansionLimits and the error names the setting", () => {
+    const components = BascikConfig.components as unknown as Record<
+      string,
+      unknown
+    >;
+    const previous = components.expansionLimits;
+    components.expansionLimits = {
+      maxInstances: 3,
+      maxPageLength: BUILD_EXPANSION_LIMITS.maxOutputBytes,
+    };
+    try {
+      let caught: unknown;
+      try {
+        viaWrapper(
+          `<inner-box></inner-box>`.repeat(4),
+          componentList(),
+          PAGE_PATH,
+        );
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(PageProcessingError);
+      expect((caught as Error).message).toMatch(/\(3 substitutions\)/);
+      expect((caught as Error).message).toContain("components.expansionLimits");
+    } finally {
+      components.expansionLimits = previous;
+    }
+  });
+
+  it("the wrapper reads components.expansionLimits.maxPageLength", () => {
+    const components = BascikConfig.components as unknown as Record<
+      string,
+      unknown
+    >;
+    const previous = components.expansionLimits;
+    components.expansionLimits = {
+      maxInstances: BUILD_EXPANSION_LIMITS.maxSubstitutions,
+      maxPageLength: 200,
+    };
+    try {
+      expect(() =>
+        viaWrapper(
+          `<inner-box></inner-box><inner-box></inner-box>`,
+          componentList(),
+          PAGE_PATH,
+        ),
+      ).toThrow(PageProcessingError);
+    } finally {
+      components.expansionLimits = previous;
+    }
+  });
+
   it("the wrapper still raises a PageProcessingError for the page at the build limits", () => {
     const list: ComponentList = {
       "recursive-card": {
@@ -800,3 +855,53 @@ describe.each([true, false])(
     });
   },
 );
+
+// `security.blockScriptUrls` / `security.blockCodeBindings` at build time
+// (Collin 2026-10-29): recursivelyTranspile reads them from the config and
+// passes them to the loop as `bindings`; the loop takes the same option.
+describe("binding toggles at build time", () => {
+  const list = (): ComponentList => ({
+    "link-box": {
+      fileName: "src/components/link-box.html",
+      fileContent: `<a class="l" data-bascik-attr-href="u" data-bascik-attr-onclick="c">go</a>`,
+    },
+  });
+  const USAGE = `<link-box data-bascik-prop-u="javascript:x" data-bascik-prop-c="go()"></link-box>`;
+  const security = () => BascikConfig as unknown as { security?: unknown };
+
+  beforeEach(() => {
+    (BascikConfig.minify as { identifiers: boolean }).identifiers = false;
+  });
+  afterEach(() => {
+    delete security().security;
+  });
+
+  it("default: the href is blocked and onclick is not bound", () => {
+    const html = viaWrapper(USAGE, list(), PAGE_PATH).transpiledHtmlBody;
+    expect(html).toContain(`href="about:invalid"`);
+    expect(html).not.toContain("onclick");
+  });
+
+  it("security.blockScriptUrls: false in the config binds the href as written", () => {
+    security().security = { blockScriptUrls: false, blockCodeBindings: true };
+    const html = viaWrapper(USAGE, list(), PAGE_PATH).transpiledHtmlBody;
+    expect(html).toContain(`href="javascript:x"`);
+    expect(html).not.toContain("onclick");
+  });
+
+  it("security.blockCodeBindings: false in the config binds onclick", () => {
+    security().security = { blockScriptUrls: true, blockCodeBindings: false };
+    const html = viaWrapper(USAGE, list(), PAGE_PATH).transpiledHtmlBody;
+    expect(html).toContain(`onclick="go()"`);
+    expect(html).toContain(`href="about:invalid"`);
+  });
+
+  it("expandComponents takes a bindings option", () => {
+    clearScopingTemplates();
+    const html = viaCore(USAGE, list(), PAGE_PATH, freshState(), {
+      bindings: { blockScriptUrls: false, blockCodeBindings: false },
+    } as Partial<ExpandOptions>).transpiledHtmlBody;
+    expect(html).toContain(`href="javascript:x"`);
+    expect(html).toContain(`onclick="go()"`);
+  });
+});

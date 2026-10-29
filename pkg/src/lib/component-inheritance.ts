@@ -7,6 +7,10 @@ import {
   urlVerdict,
 } from "./url-safety.ts";
 import {
+  DEFAULT_BINDING_POLICY,
+  type BindingPolicy,
+} from "./component-props.ts";
+import {
   createOpenTagScanner,
   isWordOrHyphenCode,
 } from "./element-content-scan.ts";
@@ -103,13 +107,15 @@ interface OwnAttribute {
  * locate. html`` saw `<x-embed data>` and could not know; every other
  * attribute (an `on*` handler, `srcdoc`, `style`, an `href` that was
  * already a URL by name) is the author's markup, as html`` or the author
- * left it.
+ * left it. With `security.blockScriptUrls` off (`policy`), that value is
+ * inherited as written too, with no warning.
  */
 export const mergeAttributesOntoRoot = (
   html: string,
   attrs: Record<string, string>,
   warn: (message: string) => void = console.warn,
   usageTag = "",
+  policy: BindingPolicy = DEFAULT_BINDING_POLICY,
 ): string => {
   if (!Object.keys(attrs).length) return html;
   const masked = maskRawTextContent(html);
@@ -192,13 +198,14 @@ export const mergeAttributesOntoRoot = (
     let value = written;
     if (
       !merges &&
+      policy.blockScriptUrls &&
       urlSlot(rootName, lowerName) !== null &&
       urlSlot(usageName, lowerName) === null &&
       urlVerdict(rootName, lowerName, decodeAttributeEntities(written)) ===
         "blocked"
     ) {
       warn(
-        `inherited attribute ${name} received a URL that can run script (a javascript:, vbscript: or data: URL), so ${name} on the root <${rootName}> is set to ${BLOCKED_URL}.`,
+        `inherited attribute ${name} received a URL that can run script (such as javascript:), so ${name} on the root <${rootName}> is set to ${BLOCKED_URL}.`,
       );
       value = BLOCKED_URL;
     }

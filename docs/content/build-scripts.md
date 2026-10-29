@@ -222,6 +222,8 @@ sanitize HTML from a CMS or an API before printing it.
 
 Write directives in page and component source files. To run more build-time code for printed markup, call a helper from the script that prints it. Bascik removes printed directive scripts before processing the generated markup, so they do not execute during the build or register as server scripts.
 
+A build script that prints directives from a template in your own repository, never from content editors, can keep them with [`security.stripDirectiveScripts: false`](/configuration#security). Printed directives then run like ones you wrote, with no warning, so CMS content can run code during your build or on your server. Leave it on unless every byte the script prints is yours.
+
 ### Head Components & Dynamic Metadata
 
 Build scripts work inside `<head>` as well as `<body>`. This lets you extract repeated meta tags or link tags into dynamic reusable components:

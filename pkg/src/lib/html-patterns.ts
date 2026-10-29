@@ -42,6 +42,27 @@ export const SERVER_FLAG = String.raw`data-bascik-server${ATTR_NAME_END}(?:\s*=\
 export const ROUTES_FLAG = String.raw`data-bascik-routes${ATTR_NAME_END}(?:\s*=\s*${ATTR_VALUE})?`;
 export const STREAM_FLAG = String.raw`data-bascik-stream${ATTR_NAME_END}(?:\s*=\s*${ATTR_VALUE})?`;
 export const SCRIPT_TAG_PREFIX = "<script\\b";
+/** The HTML tokenizer's whitespace, which alone ends a tag name or separates attributes. */
+const TAG_SPACE_CLASS = String.raw`\t\n\f\r `;
+/**
+ * An open-tag regex source built from `SCRIPT_TAG_PREFIX`, `ATTR` and `\s`,
+ * read the way the browser reads the tag: the name `script` ends only at
+ * tag whitespace, `/` or `>`, and only tag whitespace (`\t\n\f\r ` and
+ * space) separates attributes or ends an attribute name. JavaScript's `\s`
+ * also takes a no-break space, a vertical tab and U+2028, which a browser
+ * reads as part of a name: `<script\u00a0data-bascik-build>` is one element
+ * named `script\u00a0data-bascik-build`. For an open tag only: the source
+ * must not hold `[\s\S]`.
+ */
+export const browserTagSpace = (openTagSource: string): string =>
+  openTagSource
+    .replaceAll(
+      SCRIPT_TAG_PREFIX,
+      String.raw`<script(?=[${TAG_SPACE_CLASS}/>])`,
+    )
+    .replaceAll(String.raw`[^\s`, `[^${TAG_SPACE_CLASS}`)
+    .replaceAll(String.raw`[\s`, `[${TAG_SPACE_CLASS}`)
+    .replaceAll(String.raw`\s`, `[${TAG_SPACE_CLASS}]`);
 /**
  * Quote-aware attribute text of an open tag: a quoted value may contain `>`,
  * so `<script data-note="a > b" data-bascik-server>` is one open tag. Each
@@ -151,10 +172,10 @@ const PLACEHOLDER_TYPE_RE = /type=["']text\/bascik-server["']/gi;
 /**
  * The server and stream script elements in `html`, in order: every match of
  *
- * `<script\b${OPEN_TAG_ATTRS}\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})${OPEN_TAG_ATTRS}>([\s\S]*?)${SCRIPT_END_TAG}`
+ * `<script(?=[\t\n\f\r />])${OPEN_TAG_ATTRS}\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})${OPEN_TAG_ATTRS}>([\s\S]*?)${SCRIPT_END_TAG}`
  *
  * and, with `placeholders`, of a second alternative
- * `|<script\b${OPEN_TAG_ATTRS}type=["']text\/bascik-server["']${OPEN_TAG_ATTRS}>([\s\S]*?)${SCRIPT_END_TAG}`
+ * `|<script(?=[\t\n\f\r />])${OPEN_TAG_ATTRS}type=["']text\/bascik-server["']${OPEN_TAG_ATTRS}>([\s\S]*?)${SCRIPT_END_TAG}`
  * (flags `gi`; alternative 1 is the placeholder). Linear, where the regexes
  * took cubic time (`scanMarkedScripts`).
  */
@@ -184,7 +205,7 @@ export const scanRequestScripts = (
   ]);
 
 /**
- * A search for the first match of `<script\b${OPEN_TAG_ATTRS}\s(?:names)`
+ * A search for the first match of `<script(?=[\t\n\f\r />])${OPEN_TAG_ATTRS}\s(?:names)`
  * (flags `i`), where each name is followed by `ATTR_NAME_END`, and the
  * alternation by `(?=[\s=/>])` too with `strictEnd`: the search returns the
  * match's index, or -1. Linear, where the regex retried the chain from every

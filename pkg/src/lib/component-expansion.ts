@@ -13,6 +13,7 @@ import {
   type ComponentInstanceState,
 } from "./component-expansion-core.ts";
 import { scopeComponentInstance } from "./scoping-template.ts";
+import type { BindingPolicy } from "./component-props.ts";
 
 import { BascikConfig } from "./config.ts";
 import { deriveInstanceId } from "./names.ts";
@@ -63,6 +64,31 @@ const flattenString = (value: string): string => {
   return value;
 };
 
+/**
+ * `components.expansionLimits` as the loop's tripwires; a missing field is
+ * the default in `BUILD_EXPANSION_LIMITS`.
+ */
+const buildExpansionLimits = (): {
+  maxSubstitutions: number;
+  maxOutputBytes: number;
+} => {
+  const configured = BascikConfig.components?.expansionLimits;
+  return {
+    maxSubstitutions:
+      configured?.maxInstances ?? BUILD_EXPANSION_LIMITS.maxSubstitutions,
+    maxOutputBytes:
+      configured?.maxPageLength ?? BUILD_EXPANSION_LIMITS.maxOutputBytes,
+  };
+};
+
+/** `security.blockScriptUrls` / `blockCodeBindings`, on unless turned off. */
+export const buildBindingPolicy = (
+  security: Partial<BindingPolicy> | undefined = BascikConfig.security,
+): BindingPolicy => ({
+  blockScriptUrls: security?.blockScriptUrls !== false,
+  blockCodeBindings: security?.blockCodeBindings !== false,
+});
+
 export const recursivelyTranspile = (
   transpiledHtmlBody: string,
   componentList: ComponentList,
@@ -91,7 +117,8 @@ export const recursivelyTranspile = (
         numberSourceUrls: true,
         inheritAttributes: Boolean(BascikConfig.scoping?.inheritAttributes),
         instanceState: state,
-        limits: BUILD_EXPANSION_LIMITS,
+        limits: buildExpansionLimits(),
+        bindings: buildBindingPolicy(),
         // Log and keep going: the failed usage is stripped and the rest of the
         // page still builds, so one broken instance is reported, not fatal.
         onError: (component, currentStage, error, html) => {

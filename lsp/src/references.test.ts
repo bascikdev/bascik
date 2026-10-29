@@ -981,11 +981,14 @@ describe("Find All References for components", () => {
       );
     });
 
-    it("finds a usage the compiler expands after a colon, and none inside a legacy escaped script", async () => {
+    it("finds no usage in a colon-qualified tag or inside a legacy escaped script, as the compiler expands none", async () => {
       await initialize();
+      // `<product-card:wide>` is the tag `product-card:wide` to a browser and
+      // to the compiler, so only the last tag is a usage.
       const page = `<main>
   <product-card:wide></product-card:wide>
   <script><!-- document.write("<script>x</script>"); <product-card></product-card> --></script>
+  <product-card></product-card>
 </main>
 `;
       await write("src/pages/edge.html", page);
@@ -1000,7 +1003,7 @@ describe("Find All References for components", () => {
         (location) => location.uri === uri(file("src/pages/edge.html")),
       );
       expect(inEdge).toEqual([
-        usage("src/pages/edge.html", page, "product-card", 0),
+        usage("src/pages/edge.html", page, "product-card", 2),
       ]);
     });
   });
