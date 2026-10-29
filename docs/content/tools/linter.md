@@ -25,6 +25,7 @@ Use the linter on its own, without `bascik`, when you want per-file checks and n
 - **Script Directive Completion**: Contextually completes `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream` on `<script>` tags, enforcing mutual exclusion so you cannot accidentally combine conflicting script runtimes.
 - **Hover Documentation**: Hovering over any custom component renders its `<!-- @bascik -->` docblock, author description, declared props, and available slot names.
 - **Jump to Definition**: Jump directly from a custom tag to its HTML source file, or from a script import specifier (`@/...`, `./...`) to the target file.
+- **Find All References**: List every page and component that uses a component, from one of its tags or from the component's own file. See [Find All References](#find-all-references).
 - **Linter Diagnostics**: Instant feedback for unclosed components, paired closing tags on zero-slot components, and unscoped runtime DOM or CSS manipulations.
 
 ---
@@ -145,6 +146,14 @@ Install the official **Bascik** extension from the VS Code Marketplace:
 3. Press Enter.
 
 New projects scaffolded with `create-bascik` include `.vscode/extensions.json`, prompting VS Code to recommend installing the extension upon opening the folder.
+
+### Find All References
+
+The server answers the standard `textDocument/references` request for components, so `Shift+F12` in VS Code, `vim.lsp.buf.references()` in Neovim, and any other editor's Find All References list every page and component that uses one. A request resolves on a component tag name, opening or closing, or on the first line, the `<!-- @bascik` comment, or the root element's tag line of the component's own file. Each result is the tag name in an opening tag, pages first, then components. A tag in a comment, an attribute value, or a `<script>`, `<style>`, or `<textarea>` body is not counted, matching what the compiler expands.
+
+![VS Code: Shift+F12 on the @bascik comment of product-card.html opens Peek References listing the pages and components that use it](/assets/vscode/find-references@2x.webp)
+
+> **Source files only.** The server reads your project's HTML files, so a usage that only exists in the output of a build script, a Markdown file, or a server script is not listed.
 
 ### Neovim (`nvim-lspconfig`)
 

@@ -11,6 +11,7 @@ import {
   InitializedNotification,
   InitializeRequest,
   PublishDiagnosticsNotification,
+  ReferencesRequest,
   ShutdownRequest,
   StreamMessageReader,
   StreamMessageWriter,
@@ -162,6 +163,35 @@ describe("the bundled language server", () => {
     const codes = diagnostics.map((d) => d.code);
     expect(codes).toContain("server-script-unescaped-markup");
     expect(codes).not.toContain("server-script-bascik-import");
+  });
+
+  it("answers Find All References for a component", async () => {
+    // A nested project of its own, so its snapshot is built after these files exist.
+    const refs = join(project, "refs");
+    await mkdir(join(refs, "src/components"), { recursive: true });
+    await mkdir(join(refs, "src/pages"), { recursive: true });
+    await writeFile(join(refs, "bascik.config.ts"), "export default {};\n");
+    const component = join(refs, "src/components/promo-tile.html");
+    await writeFile(component, "<!-- @bascik\n  A tile.\n-->\n<div></div>\n");
+    const page = join(refs, "src/pages/index.html");
+    await writeFile(
+      page,
+      "<main>\n  <promo-tile></promo-tile>\n  <!-- <promo-tile> -->\n</main>\n",
+    );
+    const locations = await connection.sendRequest(ReferencesRequest.type, {
+      textDocument: { uri: pathToFileURL(component).toString() },
+      position: { line: 1, character: 2 },
+      context: { includeDeclaration: false },
+    });
+    expect(locations).toEqual([
+      {
+        uri: pathToFileURL(page).toString(),
+        range: {
+          start: { line: 1, character: 3 },
+          end: { line: 1, character: 13 },
+        },
+      },
+    ]);
   });
 
   it("is released as 0.5.0, the version that bundles the language server with the html lint", async () => {

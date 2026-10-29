@@ -11,14 +11,15 @@ That is all the setup there is. The extension activates for HTML, CSS, JavaScrip
 
 ## What You Get
 
-| When you...                     | The extension...                          | Learn more                                           |
-| ------------------------------- | ----------------------------------------- | ---------------------------------------------------- |
-| Type `<` and the start of a tag | Suggests your project's components        | [Component tags](#complete-component-tags)           |
-| Add attributes to a component   | Suggests its props and named slots        | [Props and slots](#complete-props-and-slots)         |
-| Write a `<script>`              | Offers the four execution directives      | [Script directives](#complete-script-directives)     |
-| Hover a component tag           | Shows its source, props, and slots        | [Hover details](#see-a-components-contract-on-hover) |
-| Cmd/Ctrl-click a tag or import  | Jumps to the component or module          | [Navigation](#navigate-components-and-imports)       |
-| Save or type a mistake          | Flags it in the editor and Problems panel | [Diagnostics](#catch-problems-as-you-type)           |
+| When you...                      | The extension...                          | Learn more                                           |
+| -------------------------------- | ----------------------------------------- | ---------------------------------------------------- |
+| Type `<` and the start of a tag  | Suggests your project's components        | [Component tags](#complete-component-tags)           |
+| Add attributes to a component    | Suggests its props and named slots        | [Props and slots](#complete-props-and-slots)         |
+| Write a `<script>`               | Offers the four execution directives      | [Script directives](#complete-script-directives)     |
+| Hover a component tag            | Shows its source, props, and slots        | [Hover details](#see-a-components-contract-on-hover) |
+| Cmd/Ctrl-click a tag or import   | Jumps to the component or module          | [Navigation](#navigate-components-and-imports)       |
+| Press `Shift+F12` on a component | Lists every page and component using it   | [Find All References](#find-all-references)          |
+| Save or type a mistake           | Flags it in the editor and Problems panel | [Diagnostics](#catch-problems-as-you-type)           |
 
 ## Complete Component Tags
 
@@ -113,6 +114,19 @@ Hold `Cmd` on macOS or `Ctrl` on Windows and Linux, then click:
 The `@/` alias follows `scripts.importRoot` from the owning Bascik config and defaults to `src`. Relative imports resolve from the current HTML file.
 
 > **Scope.** Import navigation applies to build, routes, and server scripts. Stream-script import navigation is not currently provided.
+
+## Find All References
+
+VS Code's standard Find All References works on components, so the shortcuts you already know list every page and component that uses one. There are two ways to start it:
+
+- **From a usage.** Put the cursor on a component tag name, opening or closing, in any page or component, and press `Shift+F12`.
+- **From the component itself.** In the component's own file, press `Shift+F12` on its first line, anywhere in its `<!-- @bascik` comment, or on its root element's tag line. You do not need to find a usage first.
+
+![VS Code: Shift+F12 on the @bascik comment of product-card.html opens Peek References listing featured-row.html, gifts.html, and shop.html; selecting the usage in gifts.html previews it, and Enter opens the page at that tag](/assets/vscode/find-references@2x.webp)
+
+`Shift+F12` opens Peek References, which previews each usage in place. Select one and press `Enter` to open it. To list them in the References panel instead, right-click and choose **Find All References**, or press `Shift+Option+F12` (`Shift+Alt+F12` on Windows and Linux). Each result is the tag name in an opening tag, and self-closing tags count. A tag inside an HTML comment, an attribute value, or a `<script>`, `<style>`, or `<textarea>` body is not a usage, because Bascik does not expand it there. Results include unsaved edits in open files, and follow files you add, change, or delete.
+
+> **Source files only.** References come from the HTML files in your project, so a usage that only exists in the output of a build script, a Markdown file, or a server script is not listed.
 
 Bascik-specific syntax highlighting also makes the framework's attributes easy to pick out of ordinary markup. It covers prop and attribute bindings, slots, build scripts, route scripts, server scripts, and preserve directives.
 
@@ -257,7 +271,7 @@ Config files, component directories, and project HTML usage are watched for chan
 
 ## How It Works
 
-The extension does not analyze anything itself. It starts `@bascik/language-server`, which ships inside the extension, and connects it to VS Code. Every diagnostic, completion, hover, and definition on this page comes from that server. The same server runs under [`bascik --check`](/cli#static-analysis-with-bascik-check) and in other editors, so a squiggle in VS Code is the same finding CI reports.
+The extension does not analyze anything itself. It starts `@bascik/language-server`, which ships inside the extension, and connects it to VS Code. Every diagnostic, completion, hover, definition, and reference on this page comes from that server. The same server runs under [`bascik --check`](/cli#static-analysis-with-bascik-check) and in other editors, so a squiggle in VS Code is the same finding CI reports.
 
 If diagnostics ever look stale or missing, open the **Bascik** output panel to see the server's log. Reloading the window restarts it.
 

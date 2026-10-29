@@ -16,6 +16,9 @@ Provides editor-agnostic intelligence for Bascik HTML components, props, slots, 
 - **Jump to Definition (`textDocument/definition`)**:
   - Jump from a component tag directly to its HTML component source file.
   - Jump from build/server script imports (`@/...` or `./...`) to their target source files.
+- **Find All References (`textDocument/references`)**:
+  - Lists every opening tag that uses a component, across pages and components, from a component tag name or from the component's own first line, `<!-- @bascik` comment, or root tag line.
+  - Skips tags in comments, attribute values, and `<script>`, `<style>`, or `<textarea>` bodies, as the compiler does. Usages that only appear in build script, Markdown, or server script output are not visible to the source index.
 - **Diagnostics (`textDocument/diagnostic`)**:
   - Unclosed component tag warnings.
   - Paired closing tag warnings on zero-slot components (`prefer-self-closing-component`).

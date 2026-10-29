@@ -471,6 +471,118 @@ suite("Extension Integration Suite", () => {
     });
   });
 
+  suite("Find All References", () => {
+    /** References at the given offset of a fixture file, as "relative/path:line" strings. */
+    async function referencesAt(
+      relativePath: string,
+      position: vscode.Position,
+    ): Promise<{ where: string[]; texts: string[] }> {
+      const folder = getWorkspaceFolder("primary");
+      const document = await vscode.workspace.openTextDocument(
+        vscode.Uri.file(path.join(folder.uri.fsPath, relativePath)),
+      );
+      const locations =
+        (await vscode.commands.executeCommand<vscode.Location[]>(
+          "vscode.executeReferenceProvider",
+          document.uri,
+          position,
+        )) ?? [];
+      const texts: string[] = [];
+      for (const location of locations) {
+        const target = await vscode.workspace.openTextDocument(location.uri);
+        texts.push(target.getText(location.range));
+      }
+      return {
+        where: locations.map(
+          (location) =>
+            `${path.relative(folder.uri.fsPath, location.uri.fsPath).replace(/\\/g, "/")}:${location.range.start.line}`,
+        ),
+        texts,
+      };
+    }
+
+    test("lists a component's usages from the first line of its own file", async () => {
+      const { where, texts } = await referencesAt(
+        "src/components/my-button.html",
+        new vscode.Position(0, 0),
+      );
+      assert.ok(where.includes("src/component-nav.html:0"), where.join(", "));
+      assert.ok(
+        where.includes("src/unclosed-component.html:1"),
+        where.join(", "),
+      );
+      // VS Code asks with includeDeclaration, so the component file's first line is listed too. VS Code sorts
+      // the list by file itself.
+      const declaration = where.indexOf("src/components/my-button.html:0");
+      assert.ok(declaration >= 0, where.join(", "));
+      assert.ok(
+        texts.every(
+          (text, index) => index === declaration || text === "my-button",
+        ),
+        texts.join(", "),
+      );
+    });
+
+    test("lists the same usages from a usage tag", async () => {
+      const fromUsage = await referencesAt(
+        "src/component-nav.html",
+        new vscode.Position(0, 3),
+      );
+      const fromFile = await referencesAt(
+        "src/components/my-button.html",
+        new vscode.Position(0, 0),
+      );
+      assert.deepStrictEqual(fromUsage.where, fromFile.where);
+    });
+
+    test("returns nothing for a built-in element", async () => {
+      const { where } = await referencesAt(
+        "src/unclosed-component.html",
+        new vscode.Position(0, 2),
+      );
+      assert.deepStrictEqual(where, []);
+    });
+
+    test("drops a deleted page even though listing it left its model open", async () => {
+      const folder = getWorkspaceFolder("primary");
+      const pageUri = vscode.Uri.file(
+        path.join(folder.uri.fsPath, "src/refs-deleted-page.html"),
+      );
+      const listed = async () =>
+        (
+          await referencesAt(
+            "src/components/my-button.html",
+            new vscode.Position(0, 0),
+          )
+        ).where.includes("src/refs-deleted-page.html:0");
+      /** Polls for up to 5 s: the editor reports file changes to the server after a short delay. */
+      const settle = async (expected: boolean, message: string) => {
+        const deadline = Date.now() + 5000;
+        while ((await listed()) !== expected) {
+          if (Date.now() > deadline) assert.fail(message);
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      };
+      await vscode.workspace.fs.writeFile(
+        pageUri,
+        Buffer.from("<my-button></my-button>\n"),
+      );
+      try {
+        // referencesAt opens every listed file, as Peek and the References panel do, so the page's model
+        // stays open after the delete below.
+        await settle(true, "the new page should be listed");
+        await vscode.workspace.fs.delete(pageUri);
+        await settle(false, "the deleted page should no longer be listed");
+      } finally {
+        try {
+          await vscode.workspace.fs.delete(pageUri);
+        } catch {
+          // Already deleted.
+        }
+      }
+    });
+  });
+
   suite("ComponentCompletionItemProvider", () => {
     test("suggests components matching a partial opening tag", async () => {
       const completions = await completionsInFile(
@@ -2459,7 +2571,9 @@ suite("Extension Integration Suite", () => {
       const doc = await openWorkspaceDocument({
         language: "html",
         content:
-          '<script data-bascik-stream>\nexport default async (request) => {\n  return `<a href="${x}">link</a>`;\n};\n</script>',
+          // A markup template reports the hole as server-script-unescaped-markup instead; a bare attribute
+          // string still gets the URL sink warning.
+          '<script data-bascik-stream>\nexport default async (request) => {\n  return `href="${x}"`;\n};\n</script>',
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find(
@@ -2474,7 +2588,8 @@ suite("Extension Integration Suite", () => {
       ["server-script-sink-unquoted-attribute", "<div title=${request}>"],
       ["server-script-sink-inline-script", "<script>${request}</script>"],
       ["server-script-sink-style", "<style>.x { color: ${request}; }</style>"],
-      ["server-script-sink-text-unescaped", "<p>${request.url}</p>"],
+      // A request value in markup text is covered by server-script-unescaped-markup.
+      ["server-script-unescaped-markup", "<p>${request.url}</p>"],
     ] as const) {
       test(`publishes ${code} through HTML integration`, async () => {
         const document = await openWorkspaceDocument({
@@ -2601,7 +2716,7 @@ suite("Extension Integration Suite", () => {
       const doc = await openWorkspaceDocument({
         language: "html",
         content:
-          '<script data-bascik-server>\nimport { escape } from "@/lib/server.ts";\nexport default async (request, context, { signal }) => {\n  const user = escape(request.headers.get("x-user") ?? "guest");\n  return `<p>Hello ${user}</p>`;\n};\n</script>',
+          '<script data-bascik-server>\nimport { html } from "@bascik/bascik/html";\nexport default async (request, context, { signal }) => {\n  const user = request.headers.get("x-user") ?? "guest";\n  return html`<p>Hello ${user}</p>`;\n};\n</script>',
       });
       const diagnostics = vscode.languages
         .getDiagnostics(doc.uri)

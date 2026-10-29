@@ -102,6 +102,8 @@ The header must precede markup, styles, and scripts. It can describe only member
 
 ## Navigation and Editor Intelligence
 
+Press `Shift+F12` on a component tag, or on the first line, `<!-- @bascik` comment, or root tag line of a component file, to list every page and component that uses it with VS Code's standard Find All References. Usages that only appear in build script, Markdown, or server script output are not listed, because the index reads source files.
+
 Import navigation resolves `./`, `../`, and `@/` paths in build, routes, and server scripts, including script `src` attributes. Dedicated highlighting makes Bascik attributes easy to recognize alongside standard HTML.
 
 ## Diagnostics That Understand Bascik

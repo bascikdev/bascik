@@ -23,6 +23,7 @@ import {
   isExcludedProjectPath,
   isInsideComponentRoots,
   isPathInside,
+  isUsageSourcePath,
 } from "./project.js";
 import {
   createDiagnostics,
@@ -31,6 +32,7 @@ import {
   createDefinition,
   createCodeActions,
 } from "./analyzer.js";
+import { createReferences } from "./references.js";
 
 /** Files whose changes can alter a diagnostic: project config, and the HTML that defines or uses components. */
 const WATCHED_FILE_PATTERNS = ["**/bascik.config.{ts,js,mjs}", "**/*.html"];
@@ -41,6 +43,25 @@ const REVALIDATION_DELAY_MS = 50;
 export interface WatchedFileChange {
   fsPath: string;
   type: FileChangeType;
+}
+
+/**
+ * The real path of `fsPath`, resolving symlinks in the part of it that exists, so a deleted file still
+ * resolves through its folder.
+ */
+function realPathOfExisting(fsPath: string): string {
+  let existing = path.resolve(fsPath);
+  const rest: string[] = [];
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync.native(existing), ...rest.reverse());
+    } catch {
+      const parent = path.dirname(existing);
+      if (parent === existing) return path.resolve(fsPath);
+      rest.push(path.basename(existing));
+      existing = parent;
+    }
+  }
 }
 
 export function uriToFsPath(uri: string): string {
@@ -67,6 +88,13 @@ export class BascikLanguageServer {
   private clientWatchesFolders = false;
   private clientSendsFolderChanges = false;
   private watcherRegistration: Disposable | undefined;
+  /**
+   * Open buffers whose file the editor reported deleted, by URI, with the buffer's version at that moment.
+   * VS Code keeps a model for every file it previewed (Peek, the References panel) after the file is deleted,
+   * so such a buffer stops counting as a usage source until it is edited (its version moves on), closed, or
+   * the file comes back.
+   */
+  private readonly deletedBuffers = new Map<string, number>();
 
   constructor(private readonly connection: Connection) {
     this.documents.listen(this.connection);
@@ -106,6 +134,7 @@ export class BascikLanguageServer {
             },
             hoverProvider: true,
             definitionProvider: true,
+            referencesProvider: true,
             codeActionProvider: true,
           },
         };
@@ -137,6 +166,7 @@ export class BascikLanguageServer {
     });
 
     this.documents.onDidClose((event) => {
+      this.deletedBuffers.delete(event.document.uri);
       this.connection.sendDiagnostics({
         uri: event.document.uri,
         diagnostics: [],
@@ -174,6 +204,34 @@ export class BascikLanguageServer {
       return createDefinition(document, params.position, snapshot, fsPath);
     });
 
+    // Find All References for a component. Every failure is an empty list, never an error.
+    this.connection.onReferences(async (params) => {
+      const uri = params.textDocument.uri;
+      if (!uri.startsWith("file:")) return [];
+      const fsPath = uriToFsPath(uri);
+      // A request can name a file that is not open, such as one listed in the References panel.
+      let document = this.documents.get(uri);
+      if (!document && fsPath.toLowerCase().endsWith(".html")) {
+        try {
+          const text = await fsPromises.readFile(fsPath, "utf8");
+          document = TextDocument.create(uri, "html", 0, text);
+        } catch {
+          return [];
+        }
+      }
+      if (!document) return [];
+      const snapshot = await this.getSnapshotForFile(fsPath);
+      if (!snapshot) return [];
+      return createReferences({
+        document,
+        fsPath,
+        position: params.position,
+        includeDeclaration: params.context?.includeDeclaration === true,
+        snapshot,
+        sources: this.referenceSources(snapshot),
+      });
+    });
+
     this.connection.onCodeAction(async (params) => {
       const document = this.documents.get(params.textDocument.uri);
       if (!document) return undefined;
@@ -196,6 +254,36 @@ export class BascikLanguageServer {
         })),
       );
     });
+  }
+
+  /**
+   * The text of every HTML file in a project that can use a component: pages and other HTML under `src` and
+   * the pages folder, and every component file, with open buffers' unsaved text in place of what is on disk.
+   * A buffer left open for a deleted file is not a source.
+   */
+  private referenceSources(snapshot: ProjectSnapshot): Map<string, string> {
+    const sources = new Map<string, string>(snapshot.componentSourceByFile);
+    for (const [file, text] of snapshot.htmlUsageByFile)
+      sources.set(file, text);
+    for (const document of this.documents.all()) {
+      if (document.languageId !== "html" || !document.uri.startsWith("file:"))
+        continue;
+      const fsPath = uriToFsPath(document.uri);
+      if (!fsPath.toLowerCase().endsWith(".html")) continue;
+      if (this.deletedBuffers.get(document.uri) === document.version) continue;
+      if (this.findProjectRoot(fsPath) !== snapshot.projectRoot) continue;
+      if (isExcludedProjectPath(fsPath, snapshot.projectRoot)) continue;
+      if (
+        !isUsageSourcePath(fsPath, snapshot) &&
+        !isInsideComponentRoots(
+          fsPath.replace(/\\/g, "/"),
+          snapshot.componentRoots,
+        )
+      )
+        continue;
+      sources.set(fsPath, document.getText());
+    }
+    return sources;
   }
 
   /**
@@ -268,7 +356,10 @@ export class BascikLanguageServer {
     let everything = false;
     const affectedRoots = new Set<string>();
 
-    for (const { fsPath, type } of changes) {
+    for (const change of changes) {
+      const { type } = change;
+      const fsPath = this.toWorkspaceSpelling(change.fsPath);
+      this.trackDeletedBuffers(fsPath, type);
       const workspaceRoot = this.workspaceFolders.find((root) =>
         isPathInside(fsPath, root),
       );
@@ -297,7 +388,7 @@ export class BascikLanguageServer {
         this.invalidateProject(projectRoot);
         continue;
       }
-      if (!isPathInside(fsPath, path.join(projectRoot, "src"))) continue;
+      if (!isUsageSourcePath(fsPath, snapshot)) continue;
 
       let html: string | undefined;
       if (type !== FileChangeType.Deleted) {
@@ -319,6 +410,43 @@ export class BascikLanguageServer {
       for (const projectRoot of affectedRoots) {
         this.scheduleRevalidation(projectRoot, false);
       }
+    }
+  }
+
+  /**
+   * A watcher can report a path through a symlink's target (`/private/tmp/site/...` for a `/tmp/site`
+   * workspace, or a symlinked home folder) while the workspace folder, the snapshot and open documents use
+   * the folder's own spelling. Returns the path in that spelling when it lies in a workspace folder only
+   * once symlinks are resolved; otherwise as given.
+   */
+  private toWorkspaceSpelling(fsPath: string): string {
+    if (this.workspaceFolders.some((root) => isPathInside(fsPath, root)))
+      return fsPath;
+    const real = realPathOfExisting(fsPath);
+    for (const root of this.workspaceFolders) {
+      const realRoot = realPathOfExisting(root);
+      if (isPathInside(real, realRoot))
+        return path.join(path.resolve(root), path.relative(realRoot, real));
+    }
+    return fsPath;
+  }
+
+  /** Notes open buffers left behind by a deleted file or folder, and forgets them when the file is back. */
+  private trackDeletedBuffers(fsPath: string, type: FileChangeType): void {
+    if (type !== FileChangeType.Deleted && this.deletedBuffers.size === 0)
+      return;
+    const target = realPathOfExisting(fsPath);
+    for (const document of this.documents.all()) {
+      if (!document.uri.startsWith("file:")) continue;
+      const documentPath = uriToFsPath(document.uri);
+      if (
+        !isPathInside(documentPath, fsPath) &&
+        !isPathInside(realPathOfExisting(documentPath), target)
+      )
+        continue;
+      if (type === FileChangeType.Deleted)
+        this.deletedBuffers.set(document.uri, document.version);
+      else this.deletedBuffers.delete(document.uri);
     }
   }
 

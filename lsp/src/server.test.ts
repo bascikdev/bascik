@@ -24,6 +24,7 @@ function createFakeConnection() {
     onCompletion: register("completion"),
     onHover: register("hover"),
     onDefinition: register("definition"),
+    onReferences: register("references"),
     onCodeAction: register("codeAction"),
     onDidChangeWatchedFiles: register("watchedFiles"),
     onDidOpenTextDocument: register("didOpen"),
