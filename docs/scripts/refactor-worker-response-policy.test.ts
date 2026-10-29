@@ -435,9 +435,11 @@ const expectLinearTime = (
   sample(small, 1);
   let runs = 1;
   let ms = sample(small, runs);
-  while (ms < TARGET_MS && runs < MAX_RUNS) {
+  // On a coarse clock the cap rises with the target, so a run of microseconds still spans its ticks.
+  const maxRuns = Math.ceil((MAX_RUNS * TARGET_MS) / MIN_SAMPLE_MS);
+  while (ms < TARGET_MS && runs < maxRuns) {
     runs = Math.min(
-      MAX_RUNS,
+      maxRuns,
       // A step that read nothing says nothing about how short the run is: double rather than jump to MAX_RUNS.
       ms <= 0
         ? runs * 2

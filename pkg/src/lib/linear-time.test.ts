@@ -275,6 +275,19 @@ describe("measureGrowth", () => {
     }
   });
 
+  // A run of microseconds reached MAX_RUNS before its sample spanned enough
+  // ticks: Windows CI read 0.01 ms at a quarter size from 2000-run samples
+  // of about 20 ms, one or two ticks, and a growth of 8.27.
+  it("lets a coarse clock raise the run cap until a sample spans its ticks", () => {
+    const tiny = (n: number) => n / 16_000_000;
+    for (const gap of GAPS_MS) {
+      const { growth, runs } = growthOnTicks(tiny, gap, TICK_MS);
+      expect(runs).toBeGreaterThan(MAX_RUNS);
+      expect(growth).toBeGreaterThan(3);
+      expect(growth).toBeLessThan(5);
+    }
+  });
+
   it("measures the step of a clock, and 0 for one that never moves", () => {
     let t = 0;
     expect(resolutionOf(() => Math.floor((t += 0.5) / 15.625) * 15.625)).toBe(

@@ -274,7 +274,18 @@ const growthOf = (
  * "too fast to time" it sent calibration straight to `MAX_RUNS` of a run
  * that took milliseconds. Doubling reaches one tick in a few steps.
  */
-const growRuns = (runs: number): number => Math.min(MAX_RUNS, runs * 2);
+const growRuns = (runs: number, maxRuns: number): number =>
+  Math.min(maxRuns, runs * 2);
+
+/**
+ * The most runs per sample for a sample target of `targetMs`: `MAX_RUNS` at
+ * the usual minimum, raised in proportion on a coarse clock. A run of
+ * microseconds reached `MAX_RUNS` at one or two Windows ticks (about 20 ms)
+ * and read a growth of 8.27; at the raised cap the sample reaches its ticks
+ * and still takes well under a second.
+ */
+const maxRunsFor = (targetMs: number, minimumMs: number): number =>
+  Math.ceil((MAX_RUNS * targetMs) / minimumMs);
 
 /**
  * Runs for the next calibration step, after `runs` runs took `ms`, of which
@@ -287,13 +298,14 @@ const nextRuns = (
   ms: number,
   varyingMs: number,
   targetMs: number,
+  maxRuns: number,
 ): number =>
   ms <= 0
-    ? growRuns(runs)
+    ? growRuns(runs, maxRuns)
     : Math.max(
         runs,
         Math.min(
-          MAX_RUNS,
+          maxRuns,
           Math.floor((runs * MAX_SAMPLE_MS) / Math.max(ms, 0.001)),
           Math.max(
             runs * 2,
@@ -330,6 +342,7 @@ function* samplesOf<T>(
 ): Generator<Step<T>, Growth, number> {
   const based = baseline !== undefined;
   const targetMs = minSampleMs(resolutionMs);
+  const maxRuns = maxRunsFor(targetMs, MIN_SAMPLE_MS);
   const base = (runs: number) => ({ subject: baseline as T, runs });
   // A first run compiles the code it calls, and can take the minimum on
   // its own.
@@ -341,7 +354,7 @@ function* samplesOf<T>(
   let calibrated = false;
   for (;;) {
     while (ms - baseMs < targetMs) {
-      const more = nextRuns(runs, ms, ms - baseMs, targetMs);
+      const more = nextRuns(runs, ms, ms - baseMs, targetMs, maxRuns);
       if (more === runs) break;
       runs = more;
       ms = yield { subject: small, runs };
@@ -561,12 +574,13 @@ function* costSamplesOf(
     COST_MIN_SAMPLE_MS,
     TICKS_PER_SAMPLE * resolutionMs,
   );
-  while (referenceMs < targetMs && runs < MAX_RUNS) {
+  const maxRuns = maxRunsFor(targetMs, COST_MIN_SAMPLE_MS);
+  while (referenceMs < targetMs && runs < maxRuns) {
     runs =
       referenceMs <= 0
-        ? growRuns(runs)
+        ? growRuns(runs, maxRuns)
         : Math.min(
-            MAX_RUNS,
+            maxRuns,
             Math.max(
               runs * 2,
               Math.ceil((runs * targetMs * 1.5) / Math.max(referenceMs, 0.001)),
