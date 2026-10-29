@@ -42,7 +42,6 @@ You are a pre-push auditing specialist for **Bascik**. Your responsibility is au
 5. **Coverage & Skills Sync**:
    - `yarn coverage:all`
    - Verify if `docs/content/` or `pkg/src/` changed user-facing behavior and update the matching skill in `skills/` accordingly.
-   - Run `yarn create:prepack`.
 
 ## Constraints
 

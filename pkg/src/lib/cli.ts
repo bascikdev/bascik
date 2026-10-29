@@ -54,6 +54,8 @@ export interface CliFlags {
   fix?: boolean;
   force?: boolean;
   yes?: boolean;
+  /** `--no-skills`: `bascik init` skips the agent skills question and install. */
+  noSkills?: boolean;
   dryRun?: boolean;
   addTargets?: string[];
 }
@@ -96,6 +98,7 @@ const BOOLEAN_FLAGS = new Set([
   "--quiet",
   "-q",
   "--no-pin",
+  "--no-skills",
   "--help",
   "-h",
   "--version",
@@ -142,6 +145,7 @@ const SUGGESTION_CANDIDATES = [
   "--dry-run",
   "--quiet",
   "--no-pin",
+  "--no-skills",
   "--help",
   "--version",
   "--config",
@@ -426,6 +430,7 @@ export const resolveCliAction = (args: string[]): CliDecision => {
   if (present.has("--force")) flags.force = true;
   if (present.has("--yes") || present.has("-y")) flags.yes = true;
   if (present.has("--dry-run")) flags.dryRun = true;
+  if (present.has("--no-skills")) flags.noSkills = true;
 
   if (present.has("add")) {
     if (present.has("init")) {
@@ -435,6 +440,9 @@ export const resolveCliAction = (args: string[]): CliDecision => {
       return error(
         "Error: `bascik add` expects at least one package or component target (e.g. `bascik add @acme/ui` or `bascik add @acme/ui/card`).",
       );
+    }
+    if (flags.noSkills) {
+      return error("Error: --no-skills only applies to init.");
     }
     flags.addTargets = positionals;
     return { action: "add", flags };
@@ -484,7 +492,11 @@ export const resolveCliAction = (args: string[]): CliDecision => {
   }
 
   if (flags.yes) {
-    return error("Error: --yes only applies to add.");
+    return error("Error: --yes only applies to add and init.");
+  }
+
+  if (flags.noSkills) {
+    return error("Error: --no-skills only applies to init.");
   }
 
   if (flags.dryRun) {
@@ -556,7 +568,8 @@ Options:
   --strict           Treat warnings as errors during --check (exits 1 on warnings)
   --json             Emit structured JSON findings during --check
   --force            Overwrite modified local components when running add
-  --yes, -y          Skip prompts during add
+  --yes, -y          Skip prompts during add and init
+  --no-skills        Do not install the Bascik agent skills during init
   --dry-run          List what add would do without writing to disk
   --log [path]       Also write build output to a log file
                      (only with --build; default: .bascik/build.log)

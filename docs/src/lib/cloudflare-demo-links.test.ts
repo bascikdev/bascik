@@ -322,7 +322,6 @@ describe("the retired demo product word appears nowhere", () => {
   const ROOTS = [
     "docs/content",
     "skills",
-    "create/assets",
     README,
     "adapters/cloudflare/e2e/fixture",
   ];

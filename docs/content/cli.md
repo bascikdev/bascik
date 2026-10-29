@@ -19,8 +19,11 @@ my-project/
   .gitignore
   .vscode/
     launch.json
-  .agents/skills/        Bascik agent skills (bascik, bascik-components, ...) with scripts
+  AGENTS.md              project brief for coding assistants
+  CLAUDE.md              imports AGENTS.md for Claude Code
+  .agents/skills/        Bascik agent skills, when you answer Y to the skills question
   .claude/skills/        the same skills for Claude Code
+  skills-lock.json       where the skills came from
   e2e/
     playwright.config.ts
     app.spec.ts
@@ -62,11 +65,32 @@ After scaffolding, the tool prompts you interactively:
 ```sh
 ✓ Scaffolded my-project/
 
+Install the Bascik agent skills for coding assistants (Claude Code, Copilot, Cursor, Codex...)? (Y/n)
 Install dependencies now? (Y/n)
 Start the dev server after install? (Y/n)
 ```
 
-Select **Y** for both and you're live at `http://localhost:8080` with no extra commands.
+Select **Y** for all three and you're live at `http://localhost:8080` with no extra commands. The first installs the [agent skills](/agent-skills#new-projects) with the skills CLI; when that fails, such as offline, the project is still created and the command to run later is printed.
+
+| Flag                | Description                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `-y`, `--yes`       | Answer every question with its default: the default template, and yes to the skills, the install and the dev server |
+| `--no-skills`       | Do not install the agent skills                                                                                     |
+| `--no-install`      | Do not run `npm install`                                                                                            |
+| `--no-dev`          | Do not start the dev server                                                                                         |
+| `--template <name>` | `default` (alias `static`) or `cloudflare`                                                                          |
+
+A `--no-*` flag wins over `-y` and skips its question. An unknown flag, such as `--no-skill`, is refused with the flag it most likely meant. Without a terminal, such as in CI, answers piped to the command are used in order, and every question after the input ends takes its default.
+
+## Set up an existing project with `bascik init`
+
+```sh
+bascik init
+bascik init -y           # install the agent skills without asking
+bascik init --no-skills  # skip the agent skills
+```
+
+`bascik init` creates `src/pages/index.html` and `src/components/`, adds `dist/` to `.gitignore`, adds the `dev` and `build` scripts to `package.json`, sets up VS Code, writes the `AGENTS.md` and `CLAUDE.md` [project brief](/agent-skills#project-brief), and asks whether to install the [agent skills](/agent-skills#new-projects) at the installed Bascik version. It adds to files you already have and never replaces them.
 
 ## CLI reference
 
@@ -88,7 +112,8 @@ bascik add <pkg> # copy components from an installed npm package into src/compon
 | `--strict`            | Treat warnings as errors during `--check` (exits with code 1 if warnings are found)                                                                                                                                                                                |
 | `--json`              | Emit findings as a structured JSON document during `--check`                                                                                                                                                                                                       |
 | `--force`             | Overwrite locally modified components during `bascik add`                                                                                                                                                                                                          |
-| `--yes`, `-y`         | Skip interactive confirmation during `bascik add`                                                                                                                                                                                                                  |
+| `--yes`, `-y`         | Skip interactive confirmation during `bascik add`, and install the agent skills without asking during `bascik init`                                                                                                                                                |
+| `--no-skills`         | Do not ask about or install the agent skills during `bascik init`                                                                                                                                                                                                  |
 | `--dry-run`           | List what `bascik add` would do without writing files to disk                                                                                                                                                                                                      |
 | `--port <n>`          | Override the server port (overrides `BASCIK_SERVER_PORT` and `http.port`)                                                                                                                                                                                          |
 | `--host <name>`       | Override the server hostname (overrides `BASCIK_SERVER_HOST` and `http.hostname`)                                                                                                                                                                                  |

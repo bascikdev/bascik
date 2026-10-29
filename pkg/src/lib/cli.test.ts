@@ -533,6 +533,47 @@ describe("cli helper tests", () => {
   });
 });
 
+describe("init and the agent skills", () => {
+  it("passes -y and --no-skills to init", () => {
+    const decision = resolveCliAction(["init", "-y", "--no-skills"]);
+    expect(decision.action).toBe("init");
+    expect(decision.flags.yes).toBe(true);
+    expect(decision.flags.noSkills).toBe(true);
+  });
+
+  it("leaves both unset for a bare init, so init asks", () => {
+    const { flags } = resolveCliAction(["init"]);
+    expect(flags.yes).toBeUndefined();
+    expect(flags.noSkills).toBeUndefined();
+  });
+
+  it("misuse: --no-skills outside init is refused, naming init", () => {
+    for (const args of [
+      ["--no-skills"],
+      ["--build", "--no-skills"],
+      ["add", "@acme/ui", "--no-skills"],
+    ]) {
+      const decision = resolveCliAction(args);
+      expect(decision.action, args.join(" ")).toBe("error");
+      expect(decision.errorMessage).toBe(
+        "Error: --no-skills only applies to init.",
+      );
+    }
+  });
+
+  it("misuse: --yes outside add and init names both", () => {
+    expect(resolveCliAction(["--build", "--yes"]).errorMessage).toBe(
+      "Error: --yes only applies to add and init.",
+    );
+  });
+
+  it("misuse: a typo'd --no-skill is refused with the flag it meant", () => {
+    const decision = resolveCliAction(["init", "--no-skill"]);
+    expect(decision.action).toBe("error");
+    expect(decision.errorMessage).toContain('Did you mean "--no-skills"?');
+  });
+});
+
 describe("CLI_USAGE", () => {
   // Every flag the parser accepts must be discoverable from --help.
   it.each([...CLI_FLAGS])("documents %s", (flag) => {

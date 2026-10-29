@@ -243,7 +243,6 @@ describe("script URLs such as javascript:", () => {
     const offenders = [
       ...files(path.join(DOCS, "content")),
       path.join(REPO, "skills/bascik-scripts/SKILL.md"),
-      path.join(REPO, "create/assets/skills/bascik-scripts/SKILL.md"),
     ]
       .filter((file) => !file.endsWith(path.join("content", "security.md")))
       .filter((file) =>
@@ -345,10 +344,6 @@ describe("bascik-config skill", () => {
     for (const key of SECURITY_KEYS) expect(section, key).toContain(key);
     expectDefaultRule(section, "bascik-config skill");
     expect(section).toContain("includeSubDomains");
-  });
-
-  it("the create copy is the same file", () => {
-    expect(readRepo("create/assets/skills/bascik-config/SKILL.md")).toBe(skill);
   });
 });
 

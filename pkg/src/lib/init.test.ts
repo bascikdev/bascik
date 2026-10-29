@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { initProject } from "./init.ts";
+import { initProject, type InitOptions } from "./init.ts";
+import {
+  CLAUDE_MD,
+  SKILLS_QUESTION,
+  agentsMd,
+  skillsCommand,
+  skillsLaterLines,
+} from "./agent-setup.ts";
 import { VSCODE_SETTINGS_JSON, parseJsonc } from "./vscode-settings.ts";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
@@ -21,6 +28,22 @@ const mockWriteFile = writeFile as ReturnType<typeof vi.fn>;
 vi.spyOn(console, "log").mockImplementation(() => {});
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Stands in for the skills CLI, so no test touches the network. */
+const mockInstall = vi.fn(() => ({
+  status: "pinned" as const,
+  ref: "v1.2.3",
+  command: skillsCommand("v1.2.3"),
+}));
+
+/** initProject with the terminal and the skills CLI replaced. Enter answers every question. */
+const init = (options: InitOptions = {}) =>
+  initProject({
+    ask: async () => "",
+    install: mockInstall,
+    version: "1.2.3",
+    ...options,
+  });
 
 /** Return the content written to writeFile for the given path suffix. */
 const writtenTo = (suffix: string): string | undefined => {
@@ -44,7 +67,7 @@ describe("initProject", () => {
   });
 
   it("creates pages and components directories", async () => {
-    await initProject();
+    await init();
     const dirs = mockMkdir.mock.calls.map((c) =>
       String(c[0]).replace(/\\/g, "/"),
     );
@@ -54,14 +77,14 @@ describe("initProject", () => {
   });
 
   it("writes index.html when absent", async () => {
-    await initProject();
+    await init();
     const html = writtenTo("index.html");
     expect(html).toBeDefined();
     expect(html).toContain("<!DOCTYPE html>");
   });
 
   it("does not create bascik.config.js", async () => {
-    await initProject();
+    await init();
     const cfg = writtenTo("bascik.config.js");
     expect(cfg).toBeUndefined();
   });
@@ -72,7 +95,7 @@ describe("initProject", () => {
       .mockResolvedValueOnce(undefined) // index.html exists
       .mockRejectedValue(new Error("ENOENT"));
 
-    await initProject();
+    await init();
 
     const html = writtenTo("index.html");
     expect(html).toBeUndefined();
@@ -81,7 +104,7 @@ describe("initProject", () => {
   it("adds type:module, dependency, and dev/build scripts to package.json", async () => {
     mockReadFile.mockResolvedValue('{"name":"my-app"}');
 
-    await initProject();
+    await init();
 
     const pkgWrite = writtenTo("package.json");
     expect(pkgWrite).toBeDefined();
@@ -102,7 +125,7 @@ describe("initProject", () => {
       }),
     );
 
-    await initProject();
+    await init();
 
     // writeFile should not have been called for package.json
     const pkgWrite = writtenTo("package.json");
@@ -114,7 +137,7 @@ describe("initProject", () => {
       JSON.stringify({ name: "my-app", scripts: { dev: "bascik" } }),
     );
 
-    await initProject();
+    await init();
 
     const pkgWrite = writtenTo("package.json");
     expect(pkgWrite).toBeDefined();
@@ -126,7 +149,7 @@ describe("initProject", () => {
 
   it("refuses to overwrite package type commonjs", async () => {
     mockReadFile.mockResolvedValue('{"name":"my-app","type":"commonjs"}');
-    await expect(initProject()).rejects.toThrow("init aborted");
+    await expect(init()).rejects.toThrow("init aborted");
   });
 
   it("appends .gitignore entries without clobbering existing content", async () => {
@@ -135,7 +158,7 @@ describe("initProject", () => {
       .mockResolvedValueOnce("node_modules/\n")
       .mockResolvedValueOnce('{"name":"my-app"}');
 
-    await initProject();
+    await init();
 
     const gitignore = writtenTo(".gitignore");
     expect(gitignore).toContain("node_modules/");
@@ -146,7 +169,7 @@ describe("initProject", () => {
   it("skips package.json when it cannot be read", async () => {
     mockReadFile.mockRejectedValue(new Error("ENOENT"));
 
-    await initProject();
+    await init();
 
     const pkgWrite = writtenTo("package.json");
     expect(pkgWrite).toBeUndefined();
@@ -155,7 +178,7 @@ describe("initProject", () => {
   it("skips package.json when it cannot be parsed", async () => {
     mockReadFile.mockResolvedValue("not json {{{{");
 
-    await initProject();
+    await init();
 
     const pkgWrite = writtenTo("package.json");
     expect(pkgWrite).toBeUndefined();
@@ -183,7 +206,7 @@ describe("initProject", () => {
 
     it("writes settings.json with the inline-script check off, and extensions.json", async () => {
       files();
-      await initProject();
+      await init();
       expect(writtenTo(".vscode/settings.json")).toBe(VSCODE_SETTINGS_JSON);
       expect(JSON.parse(writtenTo(".vscode/extensions.json")!)).toEqual({
         recommendations: ["bascik.bascik-vscode"],
@@ -201,7 +224,7 @@ describe("initProject", () => {
         "settings.json": '{\n  // mine\n  "editor.tabSize": 2\n}\n',
         "extensions.json": '{ "recommendations": ["dbaeumer.vscode-eslint"] }',
       });
-      await initProject();
+      await init();
       const settings = writtenTo(".vscode/settings.json")!;
       expect(settings).toContain("// mine");
       expect(parseJsonc(settings)).toEqual({
@@ -218,14 +241,14 @@ describe("initProject", () => {
 
     it("keeps a value the user already chose, even true", async () => {
       files({ "settings.json": '{ "html.validate.scripts": true }' });
-      await initProject();
+      await init();
       expect(writtenTo(".vscode/settings.json")).toBeUndefined();
       expect(logged()).toContain("skipped: .vscode/settings.json");
     });
 
     it("misuse: leaves a broken settings file alone and prints the line to add", async () => {
       files({ "settings.json": "{ oops" });
-      await initProject();
+      await init();
       expect(writtenTo(".vscode/settings.json")).toBeUndefined();
       expect(logged()).toContain(
         '.vscode/settings.json: left as is because it is not valid JSON. Add "html.validate.scripts": false',
@@ -234,8 +257,170 @@ describe("initProject", () => {
 
     it("still sets up VS Code when package.json is missing", async () => {
       mockReadFile.mockRejectedValue(enoent());
-      await initProject();
+      await init();
       expect(writtenTo(".vscode/settings.json")).toBe(VSCODE_SETTINGS_JSON);
+    });
+  });
+
+  describe("coding assistants", () => {
+    const enoent = () => Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    const logged = (): string =>
+      (console.log as unknown as ReturnType<typeof vi.fn>).mock.calls
+        .map((c) => String(c[0]))
+        .join("\n");
+
+    /** Serve package.json and the given root files; everything else is absent. */
+    function files(root: Record<string, string> = {}): void {
+      mockReadFile.mockImplementation(async (path: unknown) => {
+        const p = String(path).replace(/\\/g, "/");
+        if (p.endsWith("/package.json")) return '{"name":"my-app"}';
+        for (const [name, text] of Object.entries(root)) {
+          if (p.endsWith(`/${name}`)) return text;
+        }
+        throw enoent();
+      });
+    }
+
+    it("writes AGENTS.md and a CLAUDE.md that imports it", async () => {
+      files();
+      await init({ skills: false });
+      expect(writtenTo("/AGENTS.md")).toBe(agentsMd());
+      expect(writtenTo("/CLAUDE.md")).toBe(CLAUDE_MD);
+      expect(logged()).toContain("created: AGENTS.md");
+      expect(logged()).toContain("created: CLAUDE.md");
+    });
+
+    it("misuse: merges into an existing AGENTS.md and CLAUDE.md instead of overwriting them", async () => {
+      files({ "AGENTS.md": "# Team rules\n", "CLAUDE.md": "# Notes\n" });
+      await init({ skills: false });
+      expect(writtenTo("/AGENTS.md")).toMatch(/^# Team rules\n\n## Bascik\n/);
+      expect(writtenTo("/CLAUDE.md")).toBe("# Notes\n\n@AGENTS.md\n");
+      expect(logged()).toContain(
+        'updated: AGENTS.md (added a "## Bascik" section)',
+      );
+      expect(logged()).toContain("updated: CLAUDE.md (added @AGENTS.md)");
+    });
+
+    it("leaves files that are already set alone, so running init twice changes nothing", async () => {
+      files({ "AGENTS.md": agentsMd(), "CLAUDE.md": CLAUDE_MD });
+      await init({ skills: false });
+      expect(writtenTo("/AGENTS.md")).toBeUndefined();
+      expect(writtenTo("/CLAUDE.md")).toBeUndefined();
+      expect(logged()).toContain("skipped: AGENTS.md (already set)");
+    });
+
+    it("misuse: a file it cannot read is reported with what to add, and init carries on", async () => {
+      files();
+      mockReadFile.mockImplementation(async (path: unknown) => {
+        const p = String(path).replace(/\\/g, "/");
+        if (p.endsWith("/AGENTS.md") || p.endsWith("/CLAUDE.md")) {
+          throw Object.assign(new Error("EISDIR"), { code: "EISDIR" });
+        }
+        throw enoent();
+      });
+      await init({ skills: false });
+      expect(logged()).toContain("AGENTS.md: could not be written.");
+      expect(logged()).toContain(
+        "CLAUDE.md: could not be written. Add a line with @AGENTS.md",
+      );
+      expect(logged()).toContain("Done!");
+    });
+
+    it("asks about the agent skills and installs them on Enter, at this version, in the project folder", async () => {
+      files();
+      const ask = vi.fn(async () => "");
+      await init({ ask });
+      expect(ask).toHaveBeenCalledWith(SKILLS_QUESTION);
+      expect(mockInstall).toHaveBeenCalledWith(process.cwd(), {
+        version: "1.2.3",
+      });
+      expect(logged()).toContain(
+        "✓ Installed the Bascik agent skills (v1.2.3) in .agents/skills/ and .claude/skills/",
+      );
+    });
+
+    it("-y installs without asking", async () => {
+      files();
+      const ask = vi.fn(async () => "n");
+      await init({ ask, yes: true });
+      expect(ask).not.toHaveBeenCalled();
+      expect(mockInstall).toHaveBeenCalledTimes(1);
+    });
+
+    it("--no-skills neither asks nor installs, even with -y", async () => {
+      files();
+      const ask = vi.fn(async () => "");
+      await init({ ask, yes: true, skills: false });
+      expect(ask).not.toHaveBeenCalled();
+      expect(mockInstall).not.toHaveBeenCalled();
+      expect(logged()).toContain("skipped: agent skills (--no-skills)");
+    });
+
+    it("answering n skips the install and prints the command for later, pinned to this version", async () => {
+      files();
+      await init({ ask: async () => "n" });
+      expect(mockInstall).not.toHaveBeenCalled();
+      expect(logged()).toContain(`    ${skillsCommand("v1.2.3")}`);
+      expect(logged()).toContain(`  ${skillsLaterLines("v1.2.3")[1]}`);
+    });
+
+    it("misuse: in a project whose dev and build scripts run another tool, AGENTS.md names npx bascik instead of them", async () => {
+      mockReadFile.mockImplementation(async (path: unknown) => {
+        const p = String(path).replace(/\\/g, "/");
+        if (p.endsWith("/package.json")) {
+          return '{"scripts":{"dev":"vite","build":"vite build"}}';
+        }
+        throw enoent();
+      });
+      await init({ skills: false });
+      const agents = writtenTo("/AGENTS.md")!;
+      expect(agents).toContain(
+        "- `npx bascik`: dev server with live reload at http://localhost:8080",
+      );
+      expect(agents).toContain(
+        "- `npx bascik --build`: production build into `dist/`",
+      );
+      expect(agents).not.toContain("npm run dev");
+      expect(agents).not.toContain("npm run build");
+      expect(logged()).toContain("npx bascik\n");
+    });
+
+    it("keeps npm run dev and npm run build in AGENTS.md when those scripts run Bascik", async () => {
+      mockReadFile.mockImplementation(async (path: unknown) => {
+        const p = String(path).replace(/\\/g, "/");
+        if (p.endsWith("/package.json")) {
+          return '{"scripts":{"dev":"bascik --port 3000","build":"npx bascik --build"}}';
+        }
+        throw enoent();
+      });
+      await init({ skills: false });
+      expect(writtenTo("/AGENTS.md")).toBe(agentsMd());
+    });
+
+    it("misuse: without a package.json, AGENTS.md names npx bascik, since npm run dev would fail", async () => {
+      files();
+      mockReadFile.mockImplementation(async () => {
+        throw enoent();
+      });
+      await init({ skills: false });
+      expect(writtenTo("/AGENTS.md")).toContain("- `npx bascik`: dev server");
+    });
+
+    it("misuse: a failed install, such as offline, is reported with the command to run later and init still finishes", async () => {
+      files();
+      await init({
+        install: vi.fn(() => ({
+          status: "failed" as const,
+          ref: "v1.2.3",
+          error: "Failed to connect",
+          command: skillsCommand("v1.2.3"),
+        })),
+      });
+      expect(logged()).toContain(
+        "Could not install the Bascik agent skills (Failed to connect).",
+      );
+      expect(logged()).toContain(`  ${skillsCommand("v1.2.3")}`);
+      expect(logged()).toContain("Done!");
     });
   });
 });

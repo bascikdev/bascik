@@ -20,7 +20,6 @@
   "author": "Collin Thomas",
   "type": "module",
   "files": [
-    "assets/",
     "dist/",
     "src/",
     "README.md"
@@ -42,8 +41,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "prepare": "([ -d ../skills ] && rm -rf assets/skills && mkdir -p assets && cp -R ../skills assets/skills && rm -rf assets/skills/bascik-refactor || true) && tsc -p tsconfig.build.json",
-    "prepack": "rm -rf assets/skills && mkdir -p assets && cp -R ../skills assets/skills && rm -rf assets/skills/bascik-refactor",
+    "prepare": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "unit": "vitest run",
     "test": "vitest",

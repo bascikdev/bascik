@@ -4,7 +4,7 @@
  * The page is a recipe a reader copies from on day one, so every file it names must exist, every script must ship
  * with a unit test, and every entry point (switch guides, agent skills page, the skill itself) must lead to it.
  * The global tests (nav-label-h1, seo-meta, link-integrity, docs-editorial, skill-links, skill-bundle,
- * create/src/skill-sync) cover the shared rules once the page and files exist; this file pins what is specific here.
+ * create/src/agent-setup) cover the shared rules once the page and files exist; this file pins what is specific here.
  *
  * Misuse lens: a page added to the nav in the wrong place, a label that drifts from the h1, a GitHub link to a
  * script that was renamed, a script shipped without a test, a demo pane wired to a marker that does not exist,
@@ -698,7 +698,7 @@ describe("bascik-refactor is an opt-in skill", () => {
     expect(text).not.toContain("bascik-migrate/scripts");
   });
 
-  it.each(["skills/README.md", "create/assets/skills/README.md"])(
+  it.each(["skills/README.md"])(
     "%s describes bascik-refactor as opt-in with its install command",
     (rel) => {
       const text = readRepo(rel);

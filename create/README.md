@@ -25,8 +25,10 @@ npm create bascik@rc
 
 ```text
 my-site/
-├── .agents/skills/                 ← Bascik agent skills for Copilot, Cursor, Codex, and others
-├── .claude/skills/                 ← The same skills for Claude Code
+├── AGENTS.md                       ← Project brief for coding assistants
+├── CLAUDE.md                       ← Imports AGENTS.md for Claude Code
+├── .agents/skills/                 ← Bascik agent skills for Copilot, Cursor, Codex, and others (on Y)
+├── .claude/skills/                 ← The same skills for Claude Code (on Y)
 ├── .vscode/
 │   ├── launch.json                 ← Debug launchers for dev server and tests
 │   ├── extensions.json             ← Recommends official Bascik extension
@@ -39,6 +41,23 @@ my-site/
 ```
 
 The starter does not include `bascik.config.ts` because it uses Bascik's built-in defaults. Add a config only when the project needs non-default behavior.
+
+## Agent skills
+
+After scaffolding, `create-bascik` asks:
+
+```text
+Install the Bascik agent skills for coding assistants (Claude Code, Copilot, Cursor, Codex...)? (Y/n)
+```
+
+Yes, the default and what `-y` answers, runs the [skills CLI](https://skills.sh) to install every [Bascik skill](https://bascik.dev/agent-skills) except the opt-in `bascik-refactor`, at the release tag matching the Bascik version scaffolded. `--no-skills` skips it. When you skip it, or the install fails, for example offline, the project is still created and the command to run later is printed, pinned to the same release tag.
+
+| Flag           | Effect                                 |
+| :------------- | :------------------------------------- |
+| `-y`, `--yes`  | Answer every question with its default |
+| `--no-skills`  | Do not install the agent skills        |
+| `--no-install` | Do not run `npm install`               |
+| `--no-dev`     | Do not start the dev server            |
 
 After scaffolding:
 

@@ -16,7 +16,6 @@ import {
   MY_COUNTER_TEST,
   PACKAGE_JSON,
   PLAYWRIGHT_CONFIG,
-  SKILLS_DIR,
   SITE_FOOTER_CSS,
   SITE_FOOTER_HTML,
   SITE_FOOTER_TEST,
@@ -37,12 +36,12 @@ import {
   scaffold,
   validateProjectName,
 } from "./scaffold.js";
+import { CLAUDE_MD, agentsMd } from "./agent-setup.js";
 import { parseJsonc } from "./vscode-settings.js";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
 vi.mock("node:fs/promises", () => ({
-  cp: vi.fn(async () => undefined),
   mkdir: vi.fn(async () => undefined),
   // A new project folder has no files yet, so every read finds nothing.
   readFile: vi.fn(async () => {
@@ -51,9 +50,8 @@ vi.mock("node:fs/promises", () => ({
   writeFile: vi.fn(async () => undefined),
 }));
 
-import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 
-const mockCp = cp as ReturnType<typeof vi.fn>;
 const mockMkdir = mkdir as ReturnType<typeof vi.fn>;
 const mockReadFile = readFile as ReturnType<typeof vi.fn>;
 const mockWriteFile = writeFile as ReturnType<typeof vi.fn>;
@@ -77,6 +75,7 @@ describe("parseCliOptions", () => {
       yesFlag: true,
       noDevFlag: false,
       noInstallFlag: false,
+      noSkillsFlag: false,
       template: undefined,
       projectName: "my-site",
     });
@@ -87,6 +86,7 @@ describe("parseCliOptions", () => {
       yesFlag: true,
       noDevFlag: true,
       noInstallFlag: false,
+      noSkillsFlag: false,
       template: undefined,
       projectName: "my-site",
     });
@@ -99,6 +99,7 @@ describe("parseCliOptions", () => {
       yesFlag: true,
       noDevFlag: true,
       noInstallFlag: true,
+      noSkillsFlag: false,
       template: undefined,
       projectName: "my-site",
     });
@@ -168,6 +169,7 @@ describe("parseCliOptions", () => {
       yesFlag: true,
       noDevFlag: false,
       noInstallFlag: false,
+      noSkillsFlag: false,
       template: undefined,
       projectName: "my-site",
     });
@@ -805,8 +807,8 @@ describe("scaffold", () => {
     const dirs = mockMkdir.mock.calls.map((c) =>
       String(c[0]).replace(/\\/g, "/"),
     );
-    expect(dirs.some((d) => d.endsWith(".agents/skills"))).toBe(true);
-    expect(dirs.some((d) => d.endsWith(".claude/skills"))).toBe(true);
+    // The skills CLI creates the skills folders when the reader says yes.
+    expect(dirs.some((d) => d.includes("skills"))).toBe(false);
     expect(dirs.some((d) => d.endsWith("e2e"))).toBe(true);
     expect(dirs.some((d) => d.includes("src/pages/assets"))).toBe(true);
     expect(dirs.some((d) => d.includes("src/pages/css"))).toBe(true);
@@ -816,9 +818,9 @@ describe("scaffold", () => {
     expect(dirs.some((d) => d.includes("site-meta"))).toBe(true);
   });
 
-  it("writes all 27 expected files", async () => {
+  it("writes all 29 expected files", async () => {
     await scaffold("my-app", "/tmp");
-    expect(mockWriteFile.mock.calls.length).toBe(27);
+    expect(mockWriteFile.mock.calls.length).toBe(29);
   });
 
   it("writes E2E config and spec files", async () => {
@@ -830,31 +832,34 @@ describe("scaffold", () => {
     expect(paths.some((p) => p.endsWith("e2e/app.spec.ts"))).toBe(true);
   });
 
-  it("copies the bundled agent skills into .agents/skills and .claude/skills", async () => {
+  it("writes AGENTS.md and a CLAUDE.md that imports it, with the template's preview command", async () => {
     await scaffold("my-app", "/tmp");
-    expect(mockCp).toHaveBeenCalledTimes(2);
-    const destinations = mockCp.mock.calls.map((c) =>
-      String(c[1]).replace(/\\/g, "/"),
+    expect(writtenTo("/tmp/my-app/AGENTS.md")).toBe(agentsMd());
+    expect(writtenTo("/tmp/my-app/CLAUDE.md")).toBe(CLAUDE_MD);
+    vi.clearAllMocks();
+    await scaffold("edge-app", "/tmp", { template: "cloudflare" });
+    expect(writtenTo("/tmp/edge-app/AGENTS.md")).toBe(
+      agentsMd({ template: "cloudflare" }),
     );
-    expect(destinations).toEqual([
-      "/tmp/my-app/.agents/skills",
-      "/tmp/my-app/.claude/skills",
-    ]);
-    for (const call of mockCp.mock.calls) {
-      expect(call[0]).toBe(SKILLS_DIR);
-      expect(call[2]).toMatchObject({ recursive: true });
-    }
   });
 
-  it("skips only the README at the root of the bundled skills folder", async () => {
+  it("merges into an AGENTS.md and CLAUDE.md the folder already has, and notes what it added", async () => {
+    mockReadFile.mockImplementation(async (path: unknown) => {
+      const file = String(path).replace(/\\/g, "/");
+      if (file.endsWith("/AGENTS.md")) return "# Team rules\n";
+      if (file.endsWith("/CLAUDE.md")) return "# Notes\n";
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+    const { notes } = await scaffold("my-app", "/tmp");
+    expect(writtenTo("AGENTS.md")).toMatch(/^# Team rules\n\n## Bascik\n/);
+    expect(writtenTo("CLAUDE.md")).toBe("# Notes\n\n@AGENTS.md\n");
+    expect(notes).toContain('AGENTS.md: added a "## Bascik" section');
+    expect(notes).toContain("CLAUDE.md: added @AGENTS.md");
+  });
+
+  it("no longer copies agent skills: the CLI installs them with the skills CLI", async () => {
     await scaffold("my-app", "/tmp");
-    const { filter } = mockCp.mock.calls[0][2] as {
-      filter: (source: string) => boolean;
-    };
-    expect(filter(`${SKILLS_DIR}/README.md`)).toBe(false);
-    expect(filter(`${SKILLS_DIR}/bascik/SKILL.md`)).toBe(true);
-    expect(filter(`${SKILLS_DIR}/bascik/references/README.md`)).toBe(true);
-    expect(filter(SKILLS_DIR)).toBe(true);
+    expect(allWrittenPaths().some((p) => p.includes("skills/"))).toBe(false);
   });
 
   it("no longer writes skills into .github/skills", async () => {
@@ -1046,8 +1051,8 @@ describe("scaffold", () => {
   describe("cloudflare template", () => {
     beforeEach(() => scaffold("my-app", "/tmp", { template: "cloudflare" }));
 
-    it("writes the 27 default files plus the edge page and API route", () => {
-      expect(mockWriteFile.mock.calls.length).toBe(29);
+    it("writes the 29 default files plus the edge page and API route", () => {
+      expect(mockWriteFile.mock.calls.length).toBe(31);
       const paths = allWrittenPaths();
       expect(paths).toContain("/tmp/my-app/src/pages/edge.html");
       expect(paths).toContain("/tmp/my-app/src/api/hello.ts");
@@ -1079,8 +1084,47 @@ describe("scaffold", () => {
       );
     });
 
-    it("still copies the agent skills to both destinations", () => {
-      expect(mockCp).toHaveBeenCalledTimes(2);
+    it("writes the brief with the Worker preview command", () => {
+      expect(writtenFiles().get("/tmp/my-app/AGENTS.md")).toBe(
+        agentsMd({ template: "cloudflare" }),
+      );
     });
+  });
+});
+
+describe("parseCliOptions --no-skills", () => {
+  it("reads --no-skills, which skips the agent skills question and install", () => {
+    expect(parseCliOptions(["my-site", "--no-skills"]).noSkillsFlag).toBe(true);
+    expect(parseCliOptions(["my-site", "-y", "--no-skills"])).toMatchObject({
+      yesFlag: true,
+      noSkillsFlag: true,
+      projectName: "my-site",
+    });
+  });
+
+  it("honors npm's consumed --no-skills through npm_config_skills, as npm keeps flags written before --", () => {
+    expect(
+      parseCliOptions(["my-site"], { npm_config_skills: "false" }).noSkillsFlag,
+    ).toBe(true);
+    expect(
+      parseCliOptions(["my-site"], { npm_config_skills: "true" }).noSkillsFlag,
+    ).toBe(false);
+  });
+
+  it("misuse: a typo'd flag such as --no-skill is refused with the flag it meant, instead of installing the skills", () => {
+    expect(() => parseCliOptions(["my-site", "--no-skill"])).toThrow(
+      'Unknown option "--no-skill". Did you mean "--no-skills"?',
+    );
+    expect(() => parseCliOptions(["my-site", "--no-instal"])).toThrow(
+      /Did you mean "--no-install"\?/,
+    );
+  });
+
+  it("misuse: an unrelated flag is refused with the list of flags and no guess", () => {
+    expect(() =>
+      parseCliOptions(["my-site", "--typescript-everywhere"]),
+    ).toThrow(
+      'Unknown option "--typescript-everywhere". create-bascik accepts -y, --yes, --no-install, --no-dev, --no-skills, --template.',
+    );
   });
 });

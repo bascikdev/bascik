@@ -1,9 +1,22 @@
 #!/usr/bin/env node
-import { createInterface } from "node:readline/promises";
 import { join } from "node:path";
+import {
+  SKILLS_QUESTION,
+  answeredNo,
+  createPrompter,
+  installSkills,
+  skillsLaterLines,
+  skillsRef,
+  skillsReportLines,
+} from "./agent-setup.js";
 import { parseCliOptions, type CliOptions } from "./cli.js";
 import { runNpm } from "./npm.js";
-import { scaffold, validateProjectName, type Template } from "./scaffold.js";
+import {
+  BASCIK_VERSION,
+  scaffold,
+  validateProjectName,
+  type Template,
+} from "./scaffold.js";
 
 const args = process.argv.slice(2);
 
@@ -18,18 +31,21 @@ const {
   yesFlag,
   noDevFlag,
   noInstallFlag,
+  noSkillsFlag,
   template: templateArg,
   projectName: nameArg,
 } = options;
 
-const rl = createInterface({ input: process.stdin, output: process.stdout });
+// Without a terminal, such as in CI with no -y, piped answers are used and
+// every question after the input ends takes its default.
+const rl = createPrompter();
 
 let projectName: string;
 
 if (nameArg) {
   projectName = nameArg;
 } else {
-  const answer = await rl.question("Project name (bascik-app): ");
+  const answer = await rl.ask("Project name (bascik-app): ");
   projectName = answer.trim() || "bascik-app";
 }
 
@@ -47,9 +63,7 @@ if (templateArg) {
 } else if (yesFlag) {
   template = "default";
 } else {
-  const cloudflareAnswer = await rl.question(
-    "Deploy to Cloudflare Workers? (y/N) ",
-  );
+  const cloudflareAnswer = await rl.ask("Deploy to Cloudflare Workers? (y/N) ");
   // The other prompts default to yes, so "yes" typed in full is accepted here too.
   template = /^y(es)?$/i.test(cloudflareAnswer.trim())
     ? "cloudflare"
@@ -61,24 +75,38 @@ const { notes } = await scaffold(projectName, process.cwd(), { template });
 console.log(`✓ Scaffolded ${projectName}/\n`);
 for (const note of notes) console.log(`  ${note}`);
 
-let shouldInstall: boolean;
-let shouldDev: boolean;
+/** A yes/no question that defaults to yes. Its `--no-*` flag always wins, and -y answers yes. */
+const confirm = async (question: string, skip: boolean): Promise<boolean> =>
+  skip ? false : yesFlag ? true : !answeredNo(await rl.ask(question));
 
-if (yesFlag) {
-  shouldInstall = !noInstallFlag;
-  shouldDev = !noDevFlag;
-} else {
-  const installAnswer = await rl.question("Install dependencies now? (Y/n) ");
-  shouldInstall = installAnswer.trim().toLowerCase() !== "n";
-  const devAnswer = await rl.question(
-    "Start the dev server after install? (Y/n) ",
-  );
-  shouldDev = devAnswer.trim().toLowerCase() !== "n";
-}
+const shouldInstallSkills = await confirm(SKILLS_QUESTION, noSkillsFlag);
+const shouldInstall = await confirm(
+  "Install dependencies now? (Y/n) ",
+  noInstallFlag,
+);
+const shouldDev = await confirm(
+  "Start the dev server after install? (Y/n) ",
+  noDevFlag,
+);
 
 rl.close();
 
 const projectDir = join(process.cwd(), projectName);
+
+/** Printed when the skills were declined, as bascik init does, so the pinned command is not lost. */
+const skillsLater = shouldInstallSkills
+  ? []
+  : [
+      `To install the Bascik agent skills later, run this in ${projectName}:`,
+      ...skillsLaterLines(skillsRef(BASCIK_VERSION)),
+      "",
+    ];
+
+if (shouldInstallSkills) {
+  console.log("\nInstalling the Bascik agent skills…");
+  const result = installSkills(projectDir, { version: BASCIK_VERSION });
+  for (const line of skillsReportLines(result)) console.log(line);
+}
 
 if (shouldInstall) {
   console.log("\nInstalling dependencies…\n");
@@ -90,6 +118,7 @@ if (shouldInstall) {
 }
 
 if (shouldDev) {
+  if (skillsLater.length > 0) console.log(`\n${skillsLater.join("\n")}`);
   console.log("\nStarting dev server…\n");
   const started = runNpm(["run", "dev"], projectDir);
   if (started.error)
@@ -102,6 +131,7 @@ if (shouldDev) {
   if (!shouldInstall) console.log(`  cd ${projectName}`);
   if (!shouldInstall) console.log("  npm install");
   console.log("  npm run dev\n");
+  for (const line of skillsLater) console.log(line);
 }
 
 if (template === "cloudflare") {

@@ -31,7 +31,6 @@ const POLICY_PAGES = [
   "docs/content/testing/troubleshooting.md",
   "docs/content/internals/server.md",
   "skills/bascik-scripts/SKILL.md",
-  "create/assets/skills/bascik-scripts/SKILL.md",
 ];
 
 /** The section of `markdown` under the heading that contains `marker`. */

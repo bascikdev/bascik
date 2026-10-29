@@ -34,6 +34,8 @@ If you omit `-y`, the CLI steps through the setup prompts interactively.
 
 It does not create `bascik.config.ts` because the starter uses Bascik's built-in defaults.
 
+For coding assistants, it writes an `AGENTS.md` brief with the project's commands and house rules, and a `CLAUDE.md` that imports it for Claude Code. It then asks whether to install the [Bascik agent skills](/agent-skills#new-projects) (yes by default, and with `-y`); pass `--no-skills` to skip them. See [Project Brief](/agent-skills#project-brief) for what the brief says.
+
 To start a site that deploys to Cloudflare Workers, pass `--template cloudflare`. You get the same starter plus the [Cloudflare adapter](/deployment/cloudflare) and Wrangler as dev dependencies, a `build` script that emits the Workers bundle, `preview` and `deploy` scripts, and a demo page with a server script and an API route that run in the Worker. Without `--template`, the interactive prompts ask the same question.
 
 ```sh
@@ -51,6 +53,8 @@ npm install @bascik/bascik
 ```
 
 Run `bascik init` to create the starter directory structure, or add `"dev": "bascik"` and `"build": "bascik --build"` to your `package.json` scripts.
+
+`bascik init` also adds the `AGENTS.md` and `CLAUDE.md` [project brief](/agent-skills#project-brief), appending to files you already have, and asks whether to install the [agent skills](/agent-skills#new-projects). `bascik init -y` installs them without asking, and `bascik init --no-skills` skips them.
 
 ### Editor Setup
 

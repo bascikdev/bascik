@@ -4,11 +4,12 @@ The `create/` folder is a small standalone package that scaffolds a fresh Bascik
 
 ## Code structure
 
-The package has two source files with distinct responsibilities:
+The package's source files have distinct responsibilities:
 
 - `create/src/scaffold.ts`: pure data and file-writing logic. All generated file content lives here as exported string constants and functions. No I/O beyond `fs/promises`. This is what the tests cover.
-- `create/src/index.ts`: the CLI entry point. Handles prompts, including the Cloudflare template question, and spawns `npm install` / `npm run dev`. Not unit-tested.
-- `create/src/cli.ts`: parses `-y`, `--no-install`, `--no-dev`, `--template <name>`, and the positional project name. Because npm keeps flags written before `--` for itself, it also honors the `npm_config_yes` and `npm_config_template` variables npm sets instead.
+- `create/src/agent-setup.ts`: the coding-assistant setup shared with `bascik init`: the `AGENTS.md` brief and the `CLAUDE.md` that imports it (merged into existing files), the agent skills install through the skills CLI, and the prompt helper that keeps a run without a terminal from hanging.
+- `create/src/index.ts`: the CLI entry point. Handles prompts, including the Cloudflare template and agent skills questions, and spawns the skills CLI, `npm install` and `npm run dev`. `create-cli.integration.test.ts` runs it end to end.
+- `create/src/cli.ts`: parses `-y`, `--no-install`, `--no-dev`, `--no-skills`, `--template <name>`, and the positional project name, and refuses an unknown flag with the closest known one. Because npm keeps flags written before `--` for itself, it also honors the `npm_config_yes`, `npm_config_skills` and `npm_config_template` variables npm sets instead.
 
 Keeping them split means you can test every generated file without invoking the CLI or touching the filesystem.
 
@@ -25,8 +26,11 @@ Running `npx create-bascik <name>` writes this structure:
     launch.json
     extensions.json
     settings.json
-  .agents/skills/        Bascik agent skills (bascik, bascik-components, ...) with scripts
+  AGENTS.md              project brief for coding assistants
+  CLAUDE.md              @AGENTS.md, so Claude Code reads the brief
+  .agents/skills/        Bascik agent skills, installed by the skills CLI on Y
   .claude/skills/        the same skills for Claude Code
+  skills-lock.json       written by the skills CLI
   e2e/
     playwright.config.ts
     app.spec.ts
@@ -63,7 +67,21 @@ Running `npx create-bascik <name>` writes this structure:
 
 The `feat-card` component demonstrates named slots. The `my-counter` component demonstrates scoped JS with two independent instances on the home page. Every component includes co-located unit tests, `package.json` includes `npm run lint` (`bascik --check`, which runs the `@bascik/language-server` linter and the project-wide checks), `.vscode/extensions.json` recommends the official Bascik VS Code extension, `.vscode/settings.json` sets `"html.validate.scripts": false` so VS Code does not join a page's separate `<script>` blocks into one file and report false errors, `vite.config.js` configures Vitest with V8 code coverage, and `e2e/` includes Playwright browser specs testing page navigation, counter interaction, and mobile menu toggling.
 
-After scaffolding, the CLI offers to run `npm install` and `npm run dev`. Both prompts can be skipped with `-y`. The `cloudflare` template adds `src/pages/edge.html` (a server-script demo page), `src/api/hello.ts`, the `@bascik/adapter-cloudflare` and `wrangler` dev dependencies, and `build`, `preview`, and `deploy` scripts for Cloudflare Workers.
+After scaffolding, the CLI asks whether to install the agent skills, then offers to run `npm install` and `npm run dev`. All three default to yes, `-y` answers yes to each, and `--no-skills`, `--no-install` and `--no-dev` skip one.
+
+## Agent skills
+
+The skills are not bundled in the package. On yes, the CLI runs the pinned skills CLI in the new project:
+
+```sh
+npx --prefer-offline -y skills@1.7.4 add bascikdev/bascik#v<version> -a universal -a claude-code --copy -y --skill bascik bascik-compatibility ...
+```
+
+`<version>` is the `@bascik/bascik` version the scaffold depends on (`BASCIK_VERSION` in `scaffold.ts`), so the skills match the framework. When that tag is missing, such as before a release is tagged, it retries from the default branch. It does not retry when npx itself failed to reach the npm registry, and it runs npx with `npm_config_fetch_retries=0` and a 20-second fetch timeout (unless you set your own), so an offline first run, with the skills CLI not yet in npm's cache, fails in about a second instead of minutes. When the install fails, or the reader answers no, it prints the command to run later, pinned to the same tag, and carries on. `--copy` writes real folders instead of symlinks, which Windows needs. The skills CLI has no option to leave a skill out and ignores names it does not know, so `PROJECT_SKILLS` in `agent-setup.ts` lists every skill except the opt-in `bascik-refactor`, and a test fails when it no longer matches the repository's `skills/` folder.
+
+`BASCIK_SKILLS_SOURCE` replaces the GitHub source, for example with a local checkout (`BASCIK_SKILLS_SOURCE=$PWD/.. node dist/index.js my-site -y`), and is used as given with no tag. The integration tests use it to install this branch's skills without GitHub.
+
+`agent-setup.ts` has an identical copy at `pkg/src/lib/agent-setup.ts` for `bascik init`; a unit test fails when the two differ. The `cloudflare` template adds `src/pages/edge.html` (a server-script demo page), `src/api/hello.ts`, the `@bascik/adapter-cloudflare` and `wrangler` dev dependencies, and `build`, `preview`, and `deploy` scripts for Cloudflare Workers.
 
 ## Why the generated app uses npm
 
@@ -78,7 +96,7 @@ cd create
 npm run build
 ```
 
-The `npm link` symlink points at the `create/` directory, so a fresh `dist/` is picked up immediately without relinking. `npm link` also runs `prepare`, which copies the latest agent skills from the repository's `skills/` folder into `assets/skills/` and rebuilds `dist/`, so the initial link after a fresh checkout needs no separate build step.
+The `npm link` symlink points at the `create/` directory, so a fresh `dist/` is picked up immediately without relinking. `npm link` also runs `prepare`, which builds `dist/`, so the initial link after a fresh checkout needs no separate build step.
 
 ## Tests
 
@@ -105,9 +123,9 @@ From the repo root, run:
 yarn create:test-site
 ```
 
-This builds `create-bascik` (copying the latest agent skills from `skills/`) and runs the scaffolding CLI to create a test project at `my-site/`. It skips the generated project's npm install, then builds the site using the `@bascik/bascik` package already linked from `pkg/` in the monorepo workspace. This lets CI test the current package changes before an RC is published.
+This builds `create-bascik` and runs the scaffolding CLI to create a test project at `my-site/`. It skips the generated project's npm install, then builds the site using the `@bascik/bascik` package already linked from `pkg/` in the monorepo workspace. This lets CI test the current package changes before an RC is published.
 
-The `-y` flag selects the defaults non-interactively, while `--no-install` and `--no-dev` skip npm install and dev server startup. `--template cloudflare` selects the Cloudflare Workers template; through `npm create` it must follow a `--` separator (`npm create bascik@rc my-site -- --template cloudflare`).
+The `-y` flag selects the defaults non-interactively, while `--no-skills`, `--no-install` and `--no-dev` skip the agent skills, npm install and dev server startup. `--template cloudflare` selects the Cloudflare Workers template; through `npm create` it must follow a `--` separator (`npm create bascik@rc my-site -- --template cloudflare`).
 
 ```text
 Build complete

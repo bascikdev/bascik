@@ -17,7 +17,8 @@
  * 3. Component expansion occurs (e.g. `<header class="header">`, `<footer class="footer">`, `<my-counter>`).
  * 4. Build scripts execute at build time (e.g. copyright year in site footer).
  * 5. Static assets and favicons are preserved and copied to dist/.
- * 6. Scaffolding copied the real agent skills (SKILL.md, references/, scripts/) into `.agents/skills/` and `.claude/skills/`.
+ * 6. Scaffolding wrote AGENTS.md and a CLAUDE.md that imports it, and left the agent skills to the skills CLI
+ *    (create-cli.integration.test.ts runs that install).
  * 7. Negative-control sensitivity: A corrupted scaffolded page (invalid syntax / broken component) is rejected by the compiler.
  * 8. Execution mode parity: Verified across both default and worker build pipelines.
  * 9. The Cloudflare template compiles with the plain `--build` (no adapter installed) and, with the
@@ -42,7 +43,8 @@ import { join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { SKILLS_DIR, scaffold } from "./scaffold.ts";
+import { CLAUDE_MD, agentsMd } from "./agent-setup.ts";
+import { scaffold } from "./scaffold.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -243,29 +245,15 @@ describe("scaffold-to-compiler integration", () => {
     // 1. Run real scaffold
     await scaffold(projectName, parentDir);
 
-    // Verify the agent skills were copied from real assets, with their scripts
-    for (const file of [
-      "bascik/SKILL.md",
-      "bascik/scripts/verify.mjs",
-      "bascik-components/SKILL.md",
-      "bascik-config/scripts/audit-config.mjs",
-    ]) {
-      const agentsCopy = await readFile(
-        join(projectDir, ".agents/skills", file),
-        "utf8",
-      );
-      const claudeCopy = await readFile(
-        join(projectDir, ".claude/skills", file),
-        "utf8",
-      );
-      const bundled = await readFile(join(SKILLS_DIR, file), "utf8");
-      expect(agentsCopy.length, file).toBeGreaterThan(100);
-      expect(agentsCopy, file).toBe(bundled);
-      expect(claudeCopy, file).toBe(bundled);
-    }
-    expect(existsSync(join(projectDir, ".agents/skills/README.md"))).toBe(
-      false,
+    // The coding-assistant files are written; the skills are the skills CLI's job
+    expect(await readFile(join(projectDir, "AGENTS.md"), "utf8")).toBe(
+      agentsMd(),
     );
+    expect(await readFile(join(projectDir, "CLAUDE.md"), "utf8")).toBe(
+      CLAUDE_MD,
+    );
+    expect(existsSync(join(projectDir, ".agents"))).toBe(false);
+    expect(existsSync(join(projectDir, ".claude"))).toBe(false);
     expect(existsSync(join(projectDir, ".github/skills"))).toBe(false);
 
     // 2. Compile via real Bascik CLI child process

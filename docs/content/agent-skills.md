@@ -49,13 +49,39 @@ del skills.tar.gz
 
 ### New projects
 
-Projects created with `npm create bascik@rc` include every skill except the opt-in `bascik-refactor` in `.agents/skills/` and `.claude/skills/`, so there is nothing else to install. Add `bascik-refactor` when you want coding agents to refactor a live site, as [Migrating with Coding Agents](/how-to/agent-migration) describes:
+`npm create bascik@rc` and `bascik init` ask one question after setting up the files:
+
+```text
+Install the Bascik agent skills for coding assistants (Claude Code, Copilot, Cursor, Codex...)? (Y/n)
+```
+
+Press Enter, or pass `-y`, and they run the skills CLI for you, which installs every skill except the opt-in `bascik-refactor` into `.agents/skills/` and `.claude/skills/` and records them in `skills-lock.json`. The skills come from the release tag that matches the Bascik version being set up, such as `bascikdev/bascik#v1.0.0-rc.10`, and from the default branch when that tag cannot be found. Answer `n`, or pass `--no-skills`, to skip it. When you skip it, or the install fails, for example offline, the project is still created and the command to run later is printed, pinned to the same release tag:
+
+```sh
+npx skills add bascikdev/bascik#v1.0.0-rc.10 -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-migrate bascik-scripts bascik-seo bascik-testing
+```
+
+If that tag is not found, run the same command without `#v1.0.0-rc.10` to install from the default branch.
+
+Add `bascik-refactor` when you want coding agents to refactor a live site, as [Migrating with Coding Agents](/how-to/agent-migration) describes:
 
 ```sh
 npx skills add bascikdev/bascik --skill bascik-refactor
 # or from this site:
 npx skills add https://bascik.dev --skill bascik-refactor
 ```
+
+### Project Brief
+
+New projects also get an `AGENTS.md` at the root, a short brief that GitHub Copilot, Cursor, Codex, and other assistants read before they start: the commands to run (`npm run dev`, `npm run build`, `npx bascik --check`, and a preview), the house rules (pages that read like a list of component tags without splitting too far, TypeScript for new code including browser scripts, `html` from `@bascik/bascik/html` for visitor data, `data-testid` on component roots and controls, and `bascik --check` before calling work done), and where the skills live. It links to these docs instead of repeating them.
+
+Claude Code reads `CLAUDE.md` and skips `AGENTS.md` when both exist, so new projects also get a `CLAUDE.md` whose first line imports the brief:
+
+```md
+@AGENTS.md
+```
+
+Both commands add to files you already have instead of replacing them: an existing `AGENTS.md` gets a `## Bascik` section appended, and an existing `CLAUDE.md` gets the `@AGENTS.md` line. When `bascik init` finds `dev` or `build` scripts that run another tool, it keeps them and the brief names `npx bascik` and `npx bascik --build` instead. Running them again changes nothing. Add notes only Claude Code needs below the import line in `CLAUDE.md`.
 
 ### Single file
 
@@ -142,6 +168,12 @@ With the skills CLI, update everything it installed:
 
 ```sh
 npx skills update
+```
+
+`npx skills update` keeps the version a skill was installed from. Skills that a new project installed at a release tag stay at that tag, so after upgrading `@bascik/bascik` run the install again with the new version, as the project's `AGENTS.md` shows:
+
+```sh
+npx skills add bascikdev/bascik#v<version> -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-migrate bascik-scripts bascik-seo bascik-testing
 ```
 
 With curl, run the same install command again; it overwrites the files in place.

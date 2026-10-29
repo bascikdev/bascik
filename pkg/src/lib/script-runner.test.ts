@@ -475,7 +475,7 @@ Pages wired down:                             164798.
     ).toBe(30 * 4096);
   });
 
-  it("rejects unparseable output and unexpected page-size lines instead of guessing", () => {
+  it("rejects unreadable output and unexpected page-size lines instead of guessing", () => {
     expect(parseVmStat("")).toBeUndefined();
     expect(parseVmStat("vm_stat: command not found")).toBeUndefined();
     // No header: the page size is unknown.

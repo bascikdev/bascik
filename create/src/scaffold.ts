@@ -5,28 +5,16 @@
  * Separated from the CLI entry so it can be unit-tested without I/O.
  */
 
-import { cp, mkdir, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { agentFilesReportLines, writeAgentFiles } from "./agent-setup.js";
 import { vscodeReportLines, writeVscodeFiles } from "./vscode-settings.js";
 
-/** The agent skills bundled from the repo-root skills/ directory (copied in by prepare/prepack). */
-export const SKILLS_DIR = fileURLToPath(
-  new URL("../assets/skills", import.meta.url),
-);
-
 /**
- * Project directories that receive the agent skills. `.agents/skills` is the shared location read by GitHub
- * Copilot, Cursor, Codex, Gemini CLI, OpenCode, and others; Claude Code reads `.claude/skills`.
+ * The `@bascik/bascik` release a new project depends on. The agent skills are
+ * installed from the same release's tag, so the two always match.
  */
-export const SKILL_DESTINATIONS = [".agents/skills", ".claude/skills"] as const;
-
-/** Copy every skill directory, skipping the human-facing README at the root of the skills folder. */
-const copySkills = (destination: string): Promise<void> =>
-  cp(SKILLS_DIR, destination, {
-    recursive: true,
-    filter: (source) => resolve(source) !== resolve(SKILLS_DIR, "README.md"),
-  });
+export const BASCIK_VERSION = "1.0.0-rc.10";
 
 // ─── Templates ────────────────────────────────────────────────────────────────
 
@@ -77,7 +65,7 @@ export const PACKAGE_JSON = (
           e2e: "playwright test --config e2e/playwright.config.ts",
         },
         dependencies: {
-          "@bascik/bascik": "^1.0.0-rc.10",
+          "@bascik/bascik": `^${BASCIK_VERSION}`,
         },
         devDependencies: {
           ...(cloudflare && { "@bascik/adapter-cloudflare": "^1.0.0-rc.10" }),
@@ -1046,9 +1034,6 @@ export async function scaffold(
 
   // Create all directories up front
   await Promise.all([
-    ...SKILL_DESTINATIONS.map((dir) =>
-      mkdir(join(root, ...dir.split("/")), { recursive: true }),
-    ),
     mkdir(join(root, "e2e"), { recursive: true }),
     ...(cloudflare
       ? [mkdir(join(root, "src", "api"), { recursive: true })]
@@ -1063,10 +1048,11 @@ export async function scaffold(
   ]);
 
   await Promise.all([
-    // Agent skills (SKILL.md files with their references/ and scripts/)
-    ...SKILL_DESTINATIONS.map((dir) =>
-      copySkills(join(root, ...dir.split("/"))),
-    ),
+    // Coding assistants: merged into an AGENTS.md or CLAUDE.md the folder already has.
+    // The agent skills are installed afterwards by the CLI, with the skills CLI.
+    writeAgentFiles(root, { template }).then((report) => {
+      notes.push(...agentFilesReportLines(report));
+    }),
 
     // Root
     writeFile(

@@ -4,6 +4,8 @@ export interface CliOptions {
   yesFlag: boolean;
   noDevFlag: boolean;
   noInstallFlag: boolean;
+  /** `--no-skills`: do not ask about or install the agent skills. */
+  noSkillsFlag: boolean;
   /** Left undefined when no `--template` flag was given so the entry can ask interactively. */
   template?: Template;
   /** The first positional argument, the project name, with flag values excluded. */
@@ -43,10 +45,48 @@ const unexpectedArgument = (arg: string): Error =>
     `Unexpected argument "${arg}". When running through npm create, put flags after "--": ${NPM_CREATE_EXAMPLE}`,
   );
 
+/** Every flag create-bascik reads. */
+export const CLI_FLAGS = [
+  "-y",
+  "--yes",
+  "--no-install",
+  "--no-dev",
+  "--no-skills",
+  "--template",
+] as const;
+
+/** Edit distance, for suggesting the flag a typo meant. */
+const distance = (a: string, b: string): number => {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) {
+      next[j] = Math.min(
+        prev[j] + 1,
+        next[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    prev = next;
+  }
+  return prev[b.length];
+};
+
+const unknownFlag = (arg: string): Error => {
+  const name = arg.split("=")[0];
+  const best = [...CLI_FLAGS]
+    .map((flag) => ({ flag, d: distance(name, flag) }))
+    .sort((a, b) => a.d - b.d)[0];
+  const hint = best.d <= 3 ? ` Did you mean "${best.flag}"?` : "";
+  return new Error(
+    `Unknown option "${arg}".${hint} create-bascik accepts ${CLI_FLAGS.join(", ")}.`,
+  );
+};
+
 /**
  * Parse the CLI arguments. `--template` takes its value either as the next token
  * or after `=`, so the project name is whichever positional is left over.
- * Throws on an unknown or missing template value, and on a second positional
+ * Throws on an unknown flag, naming the closest one, on an unknown or missing template value, and on a second positional
  * because that is what npm hands over when `--template cloudflare` was given
  * before `--`: npm keeps the flag and forwards its value as a plain argument.
  *
@@ -74,6 +114,9 @@ export function parseCliOptions(
       template = parseTemplate(arg.slice("--template=".length));
     } else if (!arg.startsWith("-")) {
       positionals.push(arg);
+    } else if (!(CLI_FLAGS as readonly string[]).includes(arg)) {
+      // A typo such as --no-skill would otherwise be ignored and do the opposite of what was meant.
+      throw unknownFlag(arg);
     }
   }
 
@@ -96,6 +139,9 @@ export function parseCliOptions(
       env.npm_config_yes === "true",
     noDevFlag: args.includes("--no-dev"),
     noInstallFlag: args.includes("--no-install"),
+    // npm keeps `--no-skills` written before `--` and sets npm_config_skills=false.
+    noSkillsFlag:
+      args.includes("--no-skills") || env.npm_config_skills === "false",
     template,
     projectName: positionals[0],
   };

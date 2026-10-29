@@ -88,7 +88,10 @@ export const runCli = async (
     case "init": {
       const { initProject } = await import("./lib/init.ts");
       console.log("\nInitializing Bascik project…\n");
-      await initProject();
+      await initProject({
+        yes: decision.flags.yes,
+        skills: !decision.flags.noSkills,
+      });
       exit(0);
       return { action: "init", exitCode: 0 };
     }
