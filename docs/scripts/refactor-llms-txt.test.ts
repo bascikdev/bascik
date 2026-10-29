@@ -43,6 +43,21 @@ describe("pageEntry", () => {
     });
   });
 
+  it("reads both <meta> and <link> tags, in any case, from one page", () => {
+    const entry = pageEntry(
+      page(
+        '<title>Press</title><META NAME="description" content="News.">' +
+          '<LINK rel="canonical" href="https://example.com/press/"><link rel=stylesheet href=/a.css>',
+      ),
+      "press/index.html",
+      {},
+    );
+    expect(entry).toMatchObject({
+      description: "News.",
+      url: "https://example.com/press/",
+    });
+  });
+
   it("reads minified HTML with unquoted attributes", () => {
     const entry = pageEntry(
       "<!doctype html><html lang=en><head><title>Contact</title><meta name=description content=Reach-us></head></html>",

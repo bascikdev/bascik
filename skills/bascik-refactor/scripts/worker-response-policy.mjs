@@ -75,19 +75,132 @@ Options:
   --directive <text>    An extra directive, such as "img-src 'self' data:" (repeatable)
   --help                Show this message`;
 
-// Start-tag attributes: a quoted value may hold ">", so it is consumed whole rather than ending the tag.
-const ATTRS = String.raw`((?:[^>"']|"[^"]*"|'[^']*')*)`;
-// An end tag as the HTML tokenizer sees it: the name, then whitespace, "/" or ">", then anything up to ">". So
-// "</script >" and "</script\t\n bar>" end the element, while "</scripts>" and "</script-x>" are body text.
-const endTag = (name) => String.raw`<\/${name}(?:[\t\n\f\r /][^>]*)?>`;
-const SCRIPT_RE = new RegExp(
-  String.raw`<script\b${ATTRS}>([\s\S]*?)${endTag("script")}`,
-  "gi",
-);
-const STYLE_RE = new RegExp(
-  String.raw`<style\b${ATTRS}>([\s\S]*?)${endTag("style")}`,
-  "gi",
-);
+// Script and style elements are found by a forward scan, not a regular expression: a response body can hold visitor
+// input, and a pattern that retries from every "<script" and walks to the end of the body each time is quadratic.
+// Every step below moves forward through the body, so the work is linear in its length. Tag names match ASCII
+// letters in any case, as in HTML.
+const TAB = 9,
+  LF = 10,
+  FF = 12,
+  CR = 13,
+  SPACE = 32;
+const DQUOTE = 34,
+  SQUOTE = 39,
+  SLASH = 47,
+  EQUALS = 61,
+  GT = 62;
+const isSpace = (c) =>
+  c === SPACE || c === LF || c === TAB || c === FF || c === CR;
+/** Whitespace, "/" or ">" ends a tag name for the HTML tokenizer, so "<script-x>" and "</scripts>" are other tags. */
+const endsTagName = (c) => isSpace(c) || c === SLASH || c === GT;
+
+/** True when `name` (lowercase ASCII) is spelled at `at`, in any ASCII case. */
+function nameAt(html, at, name) {
+  for (let k = 0; k < name.length; k++) {
+    const c = html.charCodeAt(at + k);
+    if ((c >= 65 && c <= 90 ? c + 32 : c) !== name.charCodeAt(k)) return false;
+  }
+  return true;
+}
+
+const BEFORE_NAME = 0,
+  NAME = 1,
+  AFTER_NAME = 2,
+  BEFORE_VALUE = 3,
+  UNQUOTED = 4;
+
+/**
+ * The index of the ">" that ends a start tag whose attributes begin at `i`, or -1 when the body ends first (the
+ * tokenizer then drops the tag). Quotes are read as the HTML tokenizer reads them: they open a value only after
+ * "=", so a quoted value may hold ">", while a quote inside a name or an unquoted value is an ordinary character.
+ */
+function startTagEnd(html, i) {
+  let state = BEFORE_NAME;
+  for (; i < html.length; i++) {
+    const c = html.charCodeAt(i);
+    if (c === GT) return i; // in every state; before a value it means the value is missing
+    switch (state) {
+      case BEFORE_NAME: // also the self-closing and after-quoted-value states, which act the same up to ">"
+        if (!isSpace(c) && c !== SLASH) state = NAME; // "=" here starts a name, as in HTML
+        break;
+      case NAME:
+        if (isSpace(c)) state = AFTER_NAME;
+        else if (c === SLASH) state = BEFORE_NAME;
+        else if (c === EQUALS) state = BEFORE_VALUE;
+        break;
+      case AFTER_NAME:
+        if (c === SLASH) state = BEFORE_NAME;
+        else if (c === EQUALS) state = BEFORE_VALUE;
+        else if (!isSpace(c)) state = NAME;
+        break;
+      case BEFORE_VALUE:
+        if (c === DQUOTE || c === SQUOTE) {
+          i = html.indexOf(c === DQUOTE ? '"' : "'", i + 1);
+          if (i < 0) return -1;
+          state = BEFORE_NAME;
+        } else if (!isSpace(c)) state = UNQUOTED;
+        break;
+      case UNQUOTED:
+        if (isSpace(c)) state = BEFORE_NAME;
+        break;
+    }
+  }
+  return -1;
+}
+
+/**
+ * The first end tag at or after `from`, as [start of "</", its closing ">"], or null when there is none. An end tag
+ * is the name, then whitespace, "/" or ">", then anything up to ">". So "</script >" and "</script\t\n bar>" end the
+ * element, while "</scripts>" and "</script-x>" are body text.
+ */
+function endTagFrom(html, from, name) {
+  for (
+    let k = html.indexOf("</", from);
+    k >= 0;
+    k = html.indexOf("</", k + 2)
+  ) {
+    if (!nameAt(html, k + 2, name)) continue;
+    const after = k + 2 + name.length;
+    const c = html.charCodeAt(after);
+    if (c === GT) return [k, after];
+    if (isSpace(c) || c === SLASH) {
+      const gt = html.indexOf(">", after + 1);
+      // No ">" anywhere after: no later end tag can close either.
+      return gt < 0 ? null : [k, gt];
+    }
+  }
+  return null;
+}
+
+/**
+ * Every `name` element (script or style) in `html`, as { attrs, body }: `attrs` is the raw text between the tag
+ * name and the start tag's ">", `body` the text up to the first end tag. An element whose start tag or end tag never
+ * closes is not returned, and nothing after it is: the browser reads the rest of the body as that tag or that text.
+ */
+function rawTextElements(html, name) {
+  const elements = [];
+  let pos = 0;
+  for (let lt = html.indexOf("<", pos); lt >= 0; lt = html.indexOf("<", pos)) {
+    const attrsStart = lt + 1 + name.length;
+    if (
+      !nameAt(html, lt + 1, name) ||
+      !endsTagName(html.charCodeAt(attrsStart))
+    ) {
+      pos = lt + 1;
+      continue;
+    }
+    const tagEnd = startTagEnd(html, attrsStart);
+    if (tagEnd < 0) break;
+    const end = endTagFrom(html, tagEnd + 1, name);
+    if (!end) break;
+    elements.push({
+      attrs: html.slice(attrsStart, tagEnd),
+      body: html.slice(tagEnd + 1, end[0]),
+    });
+    pos = end[1] + 1;
+  }
+  return elements;
+}
 
 // One attribute as the HTML tokenizer reads it: a name, then optionally "=" and a quoted or unquoted value.
 const ATTR = /([^\s"'>\/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*)))?/g;
@@ -113,8 +226,8 @@ function attributesOf(attrs) {
  */
 export function executableInlineScripts(html) {
   const bodies = [];
-  for (const m of html.matchAll(SCRIPT_RE)) {
-    const attrs = attributesOf(m[1]);
+  for (const element of rawTextElements(html, "script")) {
+    const attrs = attributesOf(element.attrs);
     if (attrs.has("src")) continue;
     const type = (attrs.get("type") ?? "").trim();
     if (
@@ -122,14 +235,14 @@ export function executableInlineScripts(html) {
       /^(module|importmap|speculationrules)$/i.test(type) ||
       /^(text|application)\/(x-)?(java|ecma)script$/i.test(type)
     )
-      bodies.push(m[2]);
+      bodies.push(element.body);
   }
   return bodies;
 }
 
 /** Bodies of every inline <style> element. Style attributes need 'unsafe-hashes' and are not covered. */
 export function inlineStyles(html) {
-  return [...html.matchAll(STYLE_RE)].map((m) => m[2]);
+  return rawTextElements(html, "style").map((element) => element.body);
 }
 
 /** Base64 SHA-256 of UTF-8 text, as CSP hash sources use it. */

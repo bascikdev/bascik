@@ -94,10 +94,11 @@ function attributes(tag) {
   return attrs;
 }
 
+/** Start tags by name, as literal patterns: only <meta> and <link> are read. */
+const TAG_PATTERNS = { meta: /<meta\b[^>]*>/gi, link: /<link\b[^>]*>/gi };
+
 const tags = (html, name) =>
-  [...html.matchAll(new RegExp(`<${name}\\b[^>]*>`, "gi"))].map((m) =>
-    attributes(m[0]),
-  );
+  [...html.matchAll(TAG_PATTERNS[name])].map((m) => attributes(m[0]));
 
 const title = (s) => {
   const words = s.replace(/[-_]+/g, " ").trim();

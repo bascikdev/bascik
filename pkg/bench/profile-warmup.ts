@@ -38,6 +38,8 @@ const BUILTINS = [
   "node:zlib",
 ];
 
+// MD5 and SHA-1 are listed on purpose: each digest's first use takes the OpenSSL lock, so every digest the profiled
+// work may reach is fetched once here. Nothing is hashed for integrity or secrecy; the input is the empty string.
 const DIGESTS = ["md5", "sha1", "sha256", "sha384", "sha512"];
 
 export async function warmProcessWideState(): Promise<void> {
@@ -49,8 +51,10 @@ export async function warmProcessWideState(): Promise<void> {
   crypto.getCurves();
   tls.getCiphers();
   for (const algorithm of DIGESTS) {
-    crypto.createHash(algorithm).update("").digest();
-    crypto.createHmac(algorithm, "warm").update("").digest();
+    // Hashes the empty string to warm the digest; protects nothing.
+    crypto.createHash(algorithm).update("").digest(); // nosemgrep: javascript.node-stdlib.cryptography.crypto-weak-algorithm.crypto-weak-algorithm
+    // A fixed key on purpose: the HMAC warms OpenSSL's MAC tables; no secret, nothing is authenticated.
+    crypto.createHmac(algorithm, "warm").update("").digest(); // nosemgrep: javascript.node-stdlib.cryptography.crypto-weak-algorithm.crypto-weak-algorithm, javascript.lang.security.audit.hardcoded-hmac-key.hardcoded-hmac-key
   }
   crypto.randomBytes(16);
   crypto.randomUUID();

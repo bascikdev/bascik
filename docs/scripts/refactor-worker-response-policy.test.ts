@@ -134,7 +134,7 @@ describe("reading script attributes by whole name", () => {
     ).toEqual(["one()", "two()"]);
   });
 
-  it("a real src or data type is still recognised, in any case and quoting, and the first type wins as in HTML", () => {
+  it("a real src or data type is still recognized, in any case and quoting, and the first type wins as in HTML", () => {
     expect(
       executableInlineScripts(
         '<script SRC="/a.js"></script>' +
@@ -145,6 +145,344 @@ describe("reading script attributes by whole name", () => {
       ),
     ).toEqual(["y()"]);
   });
+});
+
+// The regex scan this file replaced, kept as the oracle for the equivalence fuzz below. Its attribute alternation
+// retried from every "<script" or "<style" and walked to the end of the input each time: quadratic on a response
+// body that holds visitor input.
+const OLD_SCRIPT_RE =
+  /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
+const OLD_STYLE_RE =
+  /<style\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
+const OLD_ATTR = /([^\s"'>\/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*)))?/g;
+const oldAttributesOf = (attrs: string) => {
+  const out = new Map<string, string>();
+  for (const m of attrs.matchAll(OLD_ATTR)) {
+    const name = m[1].toLowerCase();
+    if (!out.has(name)) out.set(name, m[2] ?? m[3] ?? m[4] ?? "");
+  }
+  return out;
+};
+const oldExecutableInlineScripts = (html: string) => {
+  const bodies: string[] = [];
+  for (const m of html.matchAll(OLD_SCRIPT_RE)) {
+    const attrs = oldAttributesOf(m[1]);
+    if (attrs.has("src")) continue;
+    const type = (attrs.get("type") ?? "").trim();
+    if (
+      type === "" ||
+      /^(module|importmap|speculationrules)$/i.test(type) ||
+      /^(text|application)\/(x-)?(java|ecma)script$/i.test(type)
+    )
+      bodies.push(m[2]);
+  }
+  return bodies;
+};
+const oldInlineStyles = (html: string) =>
+  [...html.matchAll(OLD_STYLE_RE)].map((m) => m[2]);
+
+/** A seeded PRNG (mulberry32), so a failing input can be regenerated from its seed. */
+const prng = (seed: number) => () => {
+  seed = (seed + 0x6d2b79f5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+
+/** A well-formed page: text and other elements around script and style elements in every spelling HTML allows. */
+const wellFormedPage = (random: () => number) => {
+  const pick = <T>(items: readonly T[]) =>
+    items[Math.floor(random() * items.length)];
+  const caseOf = (name: string) =>
+    [...name].map((c) => (random() < 0.3 ? c.toUpperCase() : c)).join("");
+  const ws = () => pick([" ", " ", "  ", "\t", "\n", "\r\n", "\f"]);
+  const text = () =>
+    pick([
+      "hello",
+      "a > b",
+      "x < y",
+      "</scripts>",
+      "</script-x>",
+      "</styles>",
+      "<scripts>",
+      "<stylesheet>",
+      '"quoted"',
+      "'single'",
+      "<div>",
+      "</div>",
+      '<p class="a > b">',
+      "&amp;",
+      "\n",
+      "<!-- c -->",
+      "<img alt='x'>",
+      '<a title="<script>">',
+      "café",
+      "",
+    ]);
+  const value = (name: string) => {
+    const raw =
+      name.toLowerCase() === "type"
+        ? pick([
+            "module",
+            "importmap",
+            "speculationrules",
+            "text/javascript",
+            "application/ecmascript",
+            "application/json",
+            "application/ld+json",
+            "text/bascik-server",
+            "",
+            " module ",
+          ])
+        : pick([
+            "x",
+            "/a.js",
+            "a > b",
+            "type=module",
+            "<script>",
+            "</script>",
+            "it's",
+            'say "hi"',
+            "",
+          ]);
+    const quoted = [];
+    if (!raw.includes('"')) quoted.push(`"${raw}"`);
+    if (!raw.includes("'")) quoted.push(`'${raw}'`);
+    if (/^[\w/.+:-]+$/.test(raw)) quoted.push(raw);
+    return pick(quoted);
+  };
+  const attrs = () => {
+    let out = "";
+    const count = Math.floor(random() * 4);
+    for (let i = 0; i < count; i++) {
+      const name = pick([
+        "type",
+        "TYPE",
+        "src",
+        "data-src",
+        "data-type",
+        "id",
+        "async",
+        "defer",
+        "nonce",
+        "title",
+        "media",
+      ]);
+      out += ws() + name;
+      if (random() < 0.8)
+        out +=
+          (random() < 0.2 ? ws() : "") +
+          "=" +
+          (random() < 0.2 ? ws() : "") +
+          value(name);
+    }
+    if (random() < 0.1) out += ws() + "/";
+    else if (random() < 0.15) out += ws();
+    return out;
+  };
+  const body = () => {
+    let out = "";
+    const count = Math.floor(random() * 4);
+    for (let i = 0; i < count; i++)
+      out += pick([
+        "a()",
+        "x > y",
+        "if (a < b) {}",
+        '"</scripts>"',
+        "'</script-x>'",
+        "'</styles>'",
+        "<script>",
+        "<style>",
+        "<!-- -->",
+        "\n",
+        "</div>",
+        ".a{color:red}",
+        "é",
+      ]);
+    return out;
+  };
+  const end = (name: string) =>
+    `</${caseOf(name)}${pick([">", ">", " >", "\t\n bar>", "/>", "\f>", ' x="y">'])}`;
+  const element = (name: string) =>
+    `<${caseOf(name)}${attrs()}>${body()}${end(name)}`;
+  let page = "";
+  const parts = 1 + Math.floor(random() * 6);
+  for (let i = 0; i < parts; i++) {
+    const r = random();
+    page += r < 0.4 ? element("script") : r < 0.6 ? element("style") : text();
+  }
+  return page;
+};
+
+describe("scanning for inline code without regular-expression backtracking", () => {
+  it("finds the same scripts and styles as the regex scan it replaced on 50,000 well-formed pages", () => {
+    const differences: string[] = [];
+    for (let seed = 1; seed <= 50_000; seed++) {
+      const html = wellFormedPage(prng(seed));
+      const scripts = executableInlineScripts(html);
+      const styles = inlineStyles(html);
+      if (
+        JSON.stringify(scripts) !==
+          JSON.stringify(oldExecutableInlineScripts(html)) ||
+        JSON.stringify(styles) !== JSON.stringify(oldInlineStyles(html))
+      )
+        differences.push(`seed ${seed}: ${JSON.stringify(html)}`);
+    }
+    expect(differences.slice(0, 5)).toEqual([]);
+  });
+
+  it("finds something on most generated pages, so the fuzz above compares real matches", () => {
+    let withScripts = 0;
+    let withStyles = 0;
+    for (let seed = 1; seed <= 2_000; seed++) {
+      const html = wellFormedPage(prng(seed));
+      if (executableInlineScripts(html).length) withScripts++;
+      if (inlineStyles(html).length) withStyles++;
+    }
+    expect(withScripts).toBeGreaterThan(800);
+    expect(withStyles).toBeGreaterThan(600);
+  });
+
+  // Intended differences, all on markup the HTML tokenizer reads differently from the old regex.
+  it("misuse: a custom element named script-x or style-x is not a script or a style", () => {
+    const html =
+      "<script-x>x()</script><style-x>.x{}</style><script.y>y()</script>";
+    expect(executableInlineScripts(html)).toEqual([]);
+    expect(inlineStyles(html)).toEqual([]);
+  });
+
+  it("misuse: a quote inside an attribute name or an unquoted value opens nothing, as in the browser", () => {
+    expect(
+      executableInlineScripts(
+        `<script a"b>one()</script><script x=a'b>two()</script>`,
+      ),
+    ).toEqual(["one()", "two()"]);
+    expect(inlineStyles(`<style a"b>.a{}</style>`)).toEqual([".a{}"]);
+  });
+
+  it("misuse: an unclosed start tag or a script with no end tag yields nothing, and does not hide earlier code", () => {
+    expect(
+      executableInlineScripts(`<script>ok()</script><script a="never closed>`),
+    ).toEqual(["ok()"]);
+    expect(
+      executableInlineScripts(`<script>ok()</script><script>runs to EOF`),
+    ).toEqual(["ok()"]);
+    expect(inlineStyles(`<style>.ok{}</style><style>.x{}</style `)).toEqual([
+      ".ok{}",
+    ]);
+  });
+});
+
+/**
+ * Linear-time check, after pkg/src/lib/linear-time.test-helper.ts (skill tests cannot import pkg internals): times a
+ * quarter-size and a full-size input in CPU time, repeated until a sample takes `MIN_SAMPLE_MS`, keeps the fastest of
+ * `SAMPLES` interleaved samples of each, and requires the growth to stay under `MAX_GROWTH`. Linear work grows about
+ * 4 times; quadratic about 16. Growth does not depend on the machine's speed, so a loaded runner does not flake it.
+ */
+const MAX_GROWTH = 8;
+const MIN_SAMPLE_MS = 25;
+const MAX_RUNS = 2_000;
+const NOISE_FLOOR_MS = 5;
+const CEILING_MS = 2_000;
+const SAMPLES = 3;
+const LINEAR_TIME_TIMEOUT_MS = 60_000;
+
+const cpuMs = (run: () => unknown) => {
+  const start = process.cpuUsage();
+  run();
+  const { user, system } = process.cpuUsage(start);
+  return (user + system) / 1000;
+};
+
+const expectLinearTime = (
+  input: (size: number) => string,
+  size: number,
+  run: (html: string) => unknown,
+  label: string,
+) => {
+  const small = input(size / 4);
+  const large = input(size);
+  const sample = (html: string, runs: number) =>
+    cpuMs(() => {
+      for (let i = 0; i < runs; i++) run(html);
+    });
+  let runs = 1;
+  let ms = sample(small, runs);
+  while (ms < MIN_SAMPLE_MS && runs < MAX_RUNS) {
+    runs = Math.min(
+      MAX_RUNS,
+      Math.max(
+        runs * 2,
+        Math.ceil((runs * MIN_SAMPLE_MS * 1.5) / Math.max(ms, 0.001)),
+      ),
+    );
+    ms = sample(small, runs);
+  }
+  let smallMs = Infinity;
+  let largeMs = Infinity;
+  for (let i = 0; i < SAMPLES; i++) {
+    smallMs = Math.min(smallMs, sample(small, runs));
+    largeMs = Math.min(largeMs, sample(large, runs));
+  }
+  const growth = largeMs / Math.max(smallMs, NOISE_FLOOR_MS);
+  const what = `${label}: ${(smallMs / runs).toFixed(2)} ms at a quarter size, ${(largeMs / runs).toFixed(2)} ms at full size, ${runs} runs per sample`;
+  expect(growth, `${what} (growth)`).toBeLessThan(MAX_GROWTH);
+  expect(largeMs / runs, `${what} (ceiling)`).toBeLessThan(CEILING_MS);
+};
+
+const repeatTo = (unit: string, size: number) =>
+  unit.repeat(Math.ceil(size / unit.length));
+
+describe("hostile response bodies take linear time", () => {
+  // A server or stream script can reflect visitor input into the body, and with hashResponseBodies: true every HTML
+  // response is scanned on the request path: super-linear work here is a per-request denial of service.
+  const HOSTILE: [string, (size: number) => string][] = [
+    ["start tags that never close", (n) => repeatTo("<script ", n)],
+    ["style start tags that never close", (n) => repeatTo("<style ", n)],
+    ["an attribute list with no >", (n) => `<script${repeatTo(' a="b"', n)}`],
+    ["quote-opening attribute values", (n) => repeatTo('<script a="', n)],
+    ["single quotes after =", (n) => repeatTo("<script a='", n)],
+    ["quotes in attribute names", (n) => repeatTo(`<script "'`, n)],
+    ["start tags with no end tag", (n) => repeatTo("<script>", n)],
+    ["style start tags with no end tag", (n) => repeatTo("<style>", n)],
+    [
+      "end-tag look-alikes with no >",
+      (n) => `<script>${repeatTo("</script ", n)}`,
+    ],
+    [
+      "style end-tag look-alikes with no >",
+      (n) => `<style>${repeatTo("</style\t", n)}`,
+    ],
+    ["near-miss end tags", (n) => `<script>${repeatTo("</scrip</scripts", n)}`],
+    ["a flood of <", (n) => repeatTo("<", n)],
+    ["a flood of </", (n) => `<script>${repeatTo("</", n)}`],
+    [
+      "one closed tag with a long attribute list",
+      (n) => `<script${repeatTo(' a="b" c=d e', n)}>x()</script>`,
+    ],
+    [
+      "one closed tag with long runs of = and whitespace",
+      (n) => `<script a${repeatTo("= \t=", n)}>x()</script>`,
+    ],
+    ["many small scripts", (n) => repeatTo("<script>a()</script>", n)],
+    ["many small styles", (n) => repeatTo("<style>.a{}</style>", n)],
+    ["nested quoted start tags", (n) => repeatTo(`<script a="<script b='`, n)],
+  ];
+  it.each(HOSTILE)(
+    "%s",
+    (label, input) => {
+      expectLinearTime(
+        input,
+        200_000,
+        (html) => {
+          executableInlineScripts(html);
+          inlineStyles(html);
+        },
+        label,
+      );
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 });
 
 describe("sha256Base64 and buildCsp", () => {
