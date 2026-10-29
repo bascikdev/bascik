@@ -18,6 +18,7 @@ import {
 } from "./analyzer.js";
 import { checkFiles, formatDiagnostic } from "./check.js";
 import type { ProjectSnapshot } from "./project.js";
+import { growthOf } from "./linear-time.test.util.js";
 
 const RULE = "server-script-unescaped-markup";
 
@@ -134,18 +135,13 @@ describe("quick fix: Wrap template in html`...`", () => {
   it("an existing import split by a long run of tabs: the fix reads it in linear time", () => {
     const script = (tabs: number) =>
       `      import { esc${"\t".repeat(tabs)}x } from "@bascik/bascik/html";\n${SEARCH}`;
-    const time = (tabs: number) => {
+    // Tick-aware CPU-time growth: see linear-time.test.util.ts.
+    const fixer = (tabs: number) => {
       const { doc, diags } = open(PAGE(script(tabs)));
       const diag = markupDiags(diags)[0];
-      const start = process.cpuUsage();
-      createCodeActions(doc, diag.range, diags, snapshot());
-      const { user, system } = process.cpuUsage(start);
-      return (user + system) / 1000;
+      return () => createCodeActions(doc, diag.range, diags, snapshot());
     };
-    time(5_000);
-    const small = Math.min(time(5_000), time(5_000), time(5_000));
-    const large = Math.min(time(20_000), time(20_000), time(20_000));
-    expect(large / Math.max(small, 5)).toBeLessThan(8);
+    expect(growthOf(fixer(5_000), fixer(20_000))).toBeLessThan(8);
   }, 60_000);
 
   it("adds the tag and the import in one edit", () => {
