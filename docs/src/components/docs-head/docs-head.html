@@ -32,11 +32,20 @@ Shared head markup component. Place inside the head block of a page shell:
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
 <!-- Apply saved theme before first paint to prevent flash -->
+<!-- A page prerendered on hover (see the Speculation-Rules header) runs this before the visitor arrives, so it
+     applies the theme again when the page is shown, in case they switched it in between. -->
 <script>
   !(function () {
-    var t =
-      new URLSearchParams(location.search).get("theme") ||
-      sessionStorage.getItem("theme");
-    if (t) document.documentElement.setAttribute("data-theme", t);
+    function applyTheme() {
+      var t =
+        new URLSearchParams(location.search).get("theme") ||
+        sessionStorage.getItem("theme");
+      if (t) document.documentElement.setAttribute("data-theme", t);
+    }
+    applyTheme();
+    if (document.prerendering)
+      document.addEventListener("prerenderingchange", applyTheme, {
+        once: true,
+      });
   })();
 </script>

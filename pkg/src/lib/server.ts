@@ -145,6 +145,13 @@ export const getSecurityHeaders = (
 };
 
 // Weak stat-based ETag for static files: no extra file read needed
+/**
+ * Cache-Control for a static page with no policy of its own: the browser may
+ * keep it but must check with the server before each use, so a deploy shows
+ * at once and an unchanged page costs a 304.
+ */
+const PAGE_CACHE_CONTROL = "public, max-age=0, must-revalidate";
+
 export const makeStatEtag = (mtimeMs: number, size: number): string =>
   `W/"${mtimeMs.toString(36)}-${size.toString(36)}"`;
 
@@ -1174,6 +1181,10 @@ export const createRequestHandler = () => {
           ? rawEtag
           : getEncodedEtag(rawEtag, pageEncoding);
 
+      // The 200 and the 304 name the same policy: a validator alone left the
+      // first response to the browser's heuristic freshness.
+      responseHeaders["cache-control"] ??= PAGE_CACHE_CONTROL;
+
       if (
         BascikConfig.http.httpCache !== false &&
         matchesIfNoneMatch(
@@ -1185,9 +1196,7 @@ export const createRequestHandler = () => {
         responseStatus = 304;
         res.respond(304, {
           etag: effectivePageEtag,
-          "cache-control":
-            responseHeaders["cache-control"] ??
-            "public, max-age=0, must-revalidate",
+          "cache-control": responseHeaders["cache-control"],
           vary: "Accept-Encoding",
           ...secHeaders,
           ...pageCsp,

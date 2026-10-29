@@ -5,7 +5,7 @@
  * say how long that picture stays on screen. Timing is therefore exact and does not depend on how fast the
  * machine renders.
  */
-import { mkdir, rm, stat } from "node:fs/promises";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import sharp from "sharp";
 
@@ -32,9 +32,22 @@ export const sleep = (ms: number) =>
   new Promise<void>((done) => setTimeout(done, ms));
 
 /**
+ * The reduced-motion still for one frame, as WebP: lossless or lossy at quality 80, whichever is smaller. Flat UI
+ * often compresses better without loss (the lint still was 90 KB lossy, twice its whole lossless animation),
+ * while busy pictures compress better with it.
+ */
+export async function encodeStill(png: Buffer): Promise<Buffer> {
+  const [lossless, lossy] = await Promise.all([
+    sharp(png).webp({ lossless: true, effort: 6 }).toBuffer(),
+    sharp(png).webp({ quality: 80, effort: 6 }).toBuffer(),
+  ]);
+  return lossless.length <= lossy.length ? lossless : lossy;
+}
+
+/**
  * Writes `<name>@2x.webp` into `outDir`: a still image for one frame, or a lossless animated WebP plus a
- * `<name>-still@2x.webp` copy of the last frame for several. The docs serve the still copy to visitors who
- * prefer reduced motion.
+ * `<name>-still@2x.webp` copy of the last frame for several (see `encodeStill`). The docs serve the still copy
+ * to visitors who prefer reduced motion.
  *
  * Lossless because lossy animations only re-encode the changed rectangle, so each frame leaves a faint ghost of
  * the one before it. Flat UI compresses well without loss anyway.
@@ -75,9 +88,7 @@ export async function writeScene(
       delay: frames.map((frame) => frame.hold),
     })
     .toFile(animatedFile);
-  await sharp(frames[frames.length - 1].png)
-    .webp(lossy)
-    .toFile(stillFile);
+  await writeFile(stillFile, await encodeStill(frames[frames.length - 1].png));
   const seconds = (
     frames.reduce((total, frame) => total + frame.hold, 0) / 1000
   ).toFixed(1);

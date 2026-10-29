@@ -29,7 +29,11 @@ function preload(href) {
 document.body.appendChild(overlay);
 var index = null;
 
-function open() {
+/**
+ * Opens the search dialog. `deferIndex` leaves the index download to the caller, for /search, where the
+ * dialog opens while the page is still loading.
+ */
+function open(deferIndex) {
   lastFocused =
     document.activeElement instanceof HTMLElement
       ? document.activeElement
@@ -39,7 +43,7 @@ function open() {
   input.setAttribute("aria-expanded", "true");
   document.body.style.overflow = "hidden";
   input.focus();
-  if (!index) loadIndex();
+  if (!index && deferIndex !== true) loadIndex();
 }
 
 function close() {
@@ -60,13 +64,32 @@ function close() {
   lastFocused = null;
 }
 
-async function loadIndex() {
-  try {
-    index = await (await fetch("/assets/search-index.json")).json();
-    if (input.value.trim()) runSearch(input.value);
-  } catch (e) {
-    console.error("[docs-search] loadIndex error:", e);
+var indexRequest = null;
+
+/** Downloads the index once. SEARCH_INDEX_URL carries a content hash, so the browser can keep it for a year. */
+function loadIndex() {
+  if (!indexRequest) {
+    indexRequest = fetch(SEARCH_INDEX_URL)
+      .then(function (response) {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.json();
+      })
+      .then(function (data) {
+        index = expandSearchIndex(data);
+        if (input.value.trim()) runSearch(input.value);
+      })
+      .catch(function (e) {
+        // Let the next open or hover try again.
+        indexRequest = null;
+        console.error("[docs-search] loadIndex error:", e);
+      });
   }
+  return indexRequest;
+}
+
+/** Starts the download when a visitor is about to search, so results are ready when the dialog opens. */
+function warmIndex() {
+  if (!index) loadIndex();
 }
 
 function esc(s) {
@@ -203,6 +226,8 @@ list.addEventListener(
 );
 
 btn.addEventListener("click", open);
+btn.addEventListener("pointerenter", warmIndex);
+btn.addEventListener("focus", warmIndex);
 backdrop.addEventListener("click", close);
 input.addEventListener("input", function () {
   runSearch(input.value);
@@ -264,12 +289,18 @@ if (kbd && !/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)) {
   kbd.textContent = "Ctrl+K";
 }
 
-// Auto-open on /search?q= (for SearchAction)
+// Auto-open on /search?q= (for SearchAction). The index is about 1 MB, so it waits until the page has loaded
+// instead of competing with the page's own resources.
 if (window.location.pathname === "/search") {
   var q = new URLSearchParams(window.location.search).get("q");
   if (q) {
     input.value = q;
-    open();
+    open(true);
     hint.hidden = true;
-  } else open();
+  } else open(true);
+  if (document.readyState === "complete") setTimeout(loadIndex, 0);
+  else
+    window.addEventListener("load", function () {
+      setTimeout(loadIndex, 0);
+    });
 }

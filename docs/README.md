@@ -64,19 +64,21 @@ To catch performance, accessibility, best practices, and SEO regressions locally
 The audits build the production bundle, start Bascik's production server (`bascik --server`), and test the documentation routes against strict score thresholds.
 
 ```sh
-# Fast default audit across core routes (/, /getting-started, /components)
+# Gate: mobile (/, /getting-started, /components, /search, /libraries, /sitemap), then desktop
+# (/, /getting-started, /stream-scripts, /sitemap, /search), then light-theme accessibility
 yarn docs:lighthouse
 
 # Audit all documentation routes (generated dynamically from nav.ts)
 yarn docs:lighthouse:all
 ```
 
-The audit configuration verifies scores across core categories:
+The gate (`lighthouserc.json` for mobile, `lighthouserc.desktop.json` for desktop) fails on:
 
-- **Performance:** Warning threshold at 0.90
-- **Accessibility:** Error threshold at 1.0
-- **Best Practices:** Error threshold at 1.0
-- **SEO:** Error threshold at 1.0
+- **Performance:** a score under 0.95
+- **Accessibility, Best Practices, SEO:** a score under 1.0 (mobile)
+- **Budgets:** more than 4,000 DOM elements, more than 50 KB of script, a layout shift above 0.01 on /libraries, and a mobile LCP above 2 seconds on /sitemap
+
+Layout forced by a script before first paint (`forced-reflow-insight`) is a warning. So is `lcp-discovery-insight` on desktop: it asks for `fetchpriority="high"` on the opening demo recording, which the docs leave off because on a phone that recording is not the largest paint and the hint makes its download compete with the text that is. The sweep over every route (`yarn docs:lighthouse:all`) warns on a performance score under 0.95 instead of failing, since it takes one run per page.
 
 Detailed audit reports are saved to `.lighthouseci` locally so you can open full HTML reports in your browser to inspect any flagged issues.
 

@@ -86,6 +86,11 @@
   import { existsSync } from "node:fs";
   import { stripTypeScriptTypes } from "node:module";
   import { join, resolve } from "node:path";
+  import {
+    buildSearchEntries,
+    searchIndexJson,
+    searchIndexPath,
+  } from "@/lib/search-index.ts";
   export default async function () {
     // The paths are string literals passed to a call so the script cache key and
     // the dev watcher see both files as dependencies. Without that, editing
@@ -110,8 +115,15 @@
       .replace(/^\/\*\*[\s\S]*?\r?\n\r?\n/m, "") // strip file-level JSDoc
       .replace(/^export function /gm, "function ")
       .replace(/^export const /gm, "var ");
+    // The index file name carries a hash of the index, built from the same content as the file the build
+    // writes (scripts/generate-search-index.ts), so a new deploy never serves a cached old index.
+    const indexUrl = searchIndexPath(
+      searchIndexJson(await buildSearchEntries()),
+    );
     return (
-      "<script>\n(function () {\n" +
+      "<script>\n(function () {\nvar SEARCH_INDEX_URL = " +
+      JSON.stringify(indexUrl) +
+      ";\n\n" +
       fns.trim() +
       "\n\n" +
       dom.trim() +

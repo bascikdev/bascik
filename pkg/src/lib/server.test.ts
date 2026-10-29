@@ -649,6 +649,46 @@ describe("startHttp2Server – stream handler", () => {
     });
   });
 
+  it("sends the same Cache-Control on a page's 200 as on its 304", async () => {
+    // Before, only the 304 named a policy, so the first response left caching to the browser's heuristics.
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).http.httpCache = true;
+    try {
+      const page = makePage({
+        content: Buffer.from("<html>Home</html>"),
+        compressedContent: Buffer.from("br-compressed"),
+        etag: '"abc"',
+      });
+      mockMem.getPage.mockReturnValue(page);
+      const handler = getStreamHandler()!;
+      const first = makeStream();
+      await handler(first, makeHeaders("/", "GET", "br"));
+      const ok = first.respond.mock.calls[0][0];
+      expect(ok[":status"]).toBe(200);
+      expect(ok["cache-control"]).toBe("public, max-age=0, must-revalidate");
+
+      const again = makeStream();
+      await handler(
+        again,
+        makeHeaders("/", "GET", "br", undefined, {
+          "if-none-match": ok.etag,
+        }),
+      );
+      const notModified = again.respond.mock.calls[0][0];
+      expect(notModified[":status"]).toBe(304);
+      expect(notModified["cache-control"]).toBe(ok["cache-control"]);
+
+      // HEAD and identity responses carry it too.
+      const head = makeStream();
+      await handler(head, makeHeaders("/", "HEAD"));
+      expect(head.respond.mock.calls[0][0]["cache-control"]).toBe(
+        ok["cache-control"],
+      );
+    } finally {
+      (BascikConfig as any).http.httpCache = false;
+    }
+  });
+
   it("sets no-cache headers when BascikConfig.http.httpCache is false", async () => {
     const page = makePage({ content: Buffer.from("<html></html>") });
     mockMem.getPage.mockReturnValue(page);

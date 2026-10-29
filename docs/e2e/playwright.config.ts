@@ -12,6 +12,8 @@ const baseURL = `http://localhost:${e2ePort}`;
 
 export default defineConfig({
   testDir: "./",
+  // Runs after the web server is up: pays the server's first-request compression of the search index.
+  globalSetup: "./warm-server.ts",
   workers: 4,
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,

@@ -61,7 +61,7 @@ Each instance of this component has its own isolated state. Place it on a page a
 ```html
 <div class="counter" v-scope="{ count: 0 }">
   <button class="btn" @click="count--">−</button>
-  <span class="count-value">{{ count }}</span>
+  <span class="count-value" v-text="count">0</span>
   <button class="btn btn-primary" @click="count++">+</button>
 </div>
 ```
@@ -108,7 +108,7 @@ Each instance of this component has its own isolated state. Place it on a page a
 ```html
 <div class="bascik__my-counter__counter" v-scope="{ count: 0 }">
   <button class="bascik__my-counter__btn" @click="count--">−</button>
-  <span class="bascik__my-counter__count-value">{{ count }}</span>
+  <span class="bascik__my-counter__count-value" v-text="count">0</span>
   <button
     class="bascik__my-counter__btn bascik__my-counter__btn-primary"
     @click="count++"

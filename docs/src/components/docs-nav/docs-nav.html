@@ -32,21 +32,25 @@
           </li>
         </ul>
         <div class="mobile-only-sections">
-          <script data-bascik-build-once>
-            import { NAV } from "@/lib/nav.ts";
-            import { renderNavListItem } from "@/lib/nav-helpers.ts";
-            export default async function () {
-              let html = "";
-              for (const section of NAV) {
-                html += `<p class="mobile-sec-heading">${section.section}</p><ul class="mobile-sec-nav">`;
-                for (const page of section.pages) {
-                  html += renderNavListItem(page);
+          <!-- The section links repeat the sidebar, about 300 elements on every page. They wait in a template
+               until the menu first opens, so pages do not lay out a menu that is rarely shown. -->
+          <template class="mobile-sections-template">
+            <script data-bascik-build-once>
+              import { NAV } from "@/lib/nav.ts";
+              import { renderNavListItem } from "@/lib/nav-helpers.ts";
+              export default async function () {
+                let html = "";
+                for (const section of NAV) {
+                  html += `<p class="mobile-sec-heading">${section.section}</p><ul class="mobile-sec-nav">`;
+                  for (const page of section.pages) {
+                    html += renderNavListItem(page);
+                  }
+                  html += "</ul>";
                 }
-                html += "</ul>";
+                return html;
               }
-              return html;
-            }
-          </script>
+            </script>
+          </template>
           <hr class="mobile-sep" />
           <ul class="mobile-sec-nav">
             <li>
@@ -155,6 +159,12 @@
     var wrapper = document.querySelector(".dnav-links-wrapper");
     if (toggle && wrapper) {
       toggle.addEventListener("click", function () {
+        var sections = wrapper.querySelector(".mobile-sections-template");
+        if (sections) {
+          var links = sections.content.cloneNode(true);
+          markCurrentLinks(links);
+          sections.replaceWith(links);
+        }
         var isOpen = toggle.getAttribute("aria-expanded") !== "true";
         toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
         document.body.style.overflow = isOpen ? "hidden" : "";
@@ -186,12 +196,20 @@
         syncThemeLabels();
       }
       syncThemeLabels();
+      // docs-head applies the current theme when a prerendered page is shown; its listener runs first.
+      if (document.prerendering)
+        document.addEventListener("prerenderingchange", syncThemeLabels, {
+          once: true,
+        });
       if (themeBtn) themeBtn.addEventListener("click", toggleTheme);
       if (mobileThemeBtn) mobileThemeBtn.addEventListener("click", toggleTheme);
     }
 
     var path = window.location.pathname;
-    document.querySelectorAll(".dnav a").forEach(function (a) {
+    function markCurrentLinks(root) {
+      root.querySelectorAll("a").forEach(markCurrent);
+    }
+    function markCurrent(a) {
       var href = a.getAttribute("href");
       if (!href || href.startsWith("http")) return;
       var current = false;
@@ -208,6 +226,7 @@
         current = href === path;
       }
       if (current) a.setAttribute("aria-current", "page");
-    });
+    }
+    document.querySelectorAll(".dnav a").forEach(markCurrent);
   })();
 </script>

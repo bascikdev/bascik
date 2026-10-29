@@ -11,7 +11,7 @@
  *   </script>
  *
  * Transformations applied on top of standard marked output:
- *   - Fenced code blocks  →  <code-block data-bascik-prop-lang="..."> component
+ *   - Fenced code blocks  →  <code-block data-bascik-prop-lang="..."> component, highlighted (highlight.ts)
  *   - Blockquotes         →  <div class="callout">
  *   - Blockquotes opening with **See it live** → <div class="callout callout-live">
  *     (a more prominent link box pointing at a running deployment)
@@ -33,6 +33,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { marked } from "marked";
 import { slugFromHeadingHtml } from "./heading-slug.ts";
+import { escapeCode, highlightCode, unescapeCode } from "./highlight.ts";
 
 /** Pixel size of a PNG or WebP header, or null when the bytes are neither. */
 function readImageHeader(
@@ -163,6 +164,12 @@ function versionedPath(sitePath: string): string {
  * The HTML for one site image: lazy loading, the display size when the file is a PNG or WebP that ships with
  * the docs, and a `demo-shot` class for the recorded demos so their rounded window corners are not boxed in.
  *
+ * `eager` is for the one image that is likely the Largest Contentful Paint element (see `_transformMd`).
+ *
+ * Do not add a 1x `srcset` for the demo recordings: resizing the lossless animations to 1x makes every one of
+ * them larger (lint 47 KB to 69 KB, error-overlay 150 KB to 217 KB), whatever Lighthouse's image delivery
+ * estimate says.
+ *
  * An animated image with a `-still` copy is wrapped in <picture> so visitors who prefer reduced motion get the
  * still instead. The animation loops forever and cannot be paused, so it must not be their default.
  *
@@ -172,6 +179,7 @@ function renderImage(
   src: string,
   rest: string,
   narrow?: { src: string; maxWidth: number },
+  eager = false,
 ): string {
   const size = imageSize(src);
   const dimensions = size
@@ -180,7 +188,13 @@ function renderImage(
   const demoClass = DEMO_FOLDERS.some((folder) => src.startsWith(folder))
     ? ' class="demo-shot"'
     : "";
-  const image = `<img loading="lazy" decoding="async"${demoClass}${dimensions} src="${versionedPath(src)}"${rest}>`;
+  // The likely LCP image loads eagerly and decodes in step with paint. Lazy loading it would hold the request
+  // until layout, after the HTML is parsed, which delays the Largest Contentful Paint on a laptop. It gets no
+  // fetchpriority="high": on a phone the text or code block above it is the largest paint, and a high-priority
+  // download of an animated recording competed with it (sitemap mobile LCP 1.5 s to 2.4 s in Lighthouse). The
+  // browser raises the priority of an image in the viewport on its own.
+  const loading = eager ? 'loading="eager"' : 'loading="lazy" decoding="async"';
+  const image = `<img ${loading}${demoClass}${dimensions} src="${versionedPath(src)}"${rest}>`;
   const sources: string[] = [];
   // The narrow image has a different shape from the default one, so its sources say how big it is. Without
   // that, the browser would reserve the default image's shape and the page would jump when the real one loads.
@@ -227,8 +241,20 @@ export function demoImage(
   return renderImage(src, ` alt="${escapeAttribute(alt)}"`, narrow);
 }
 
+/**
+ * Most characters of text that may come before an image for it to count as the likely LCP image. Measured on
+ * the pages that open with a recording: getting-started has 499, stream-scripts 725 and sitemap 961, while
+ * developer-experience, whose largest paint is its intro text, has 1,680.
+ */
+const LCP_IMAGE_MAX_TEXT_BEFORE = 1000;
+
 interface RenderMdOptions {
   skipFirstHeading?: boolean;
+  /**
+   * The rendered Markdown is the top of its page, so its first image above the second `<h2>` is likely the
+   * Largest Contentful Paint element and loads eagerly. Set by `renderMd` and by `renderMdRange` without `from`.
+   */
+  pageTop?: boolean;
   stripDemoBlocks?: boolean;
   skipToFirstH2?: boolean;
 }
@@ -248,7 +274,8 @@ interface RenderRange {
  *   the section heading at the top of the MD file (needed for llms.txt consistency).
  */
 /**
- * Extracts and HTML-escapes a specific named code block from a Markdown file.
+ * Extracts a specific named code block from a Markdown file, highlighted in the language of its fence (see
+ * highlight.ts), or HTML-escaped when the highlighter does not know that language.
  *
  * Code blocks are identified by an HTML comment marker placed immediately
  * before the fenced code block in the MD source:
@@ -264,7 +291,7 @@ interface RenderRange {
  *
  * @param {string} filePath - Path relative to process.cwd().
  * @param {string} markerId - The marker identifier, e.g. 'source-html'.
- * @returns {Promise<string>} HTML-escaped code ready for a <code-block> slot.
+ * @returns {Promise<string>} Highlighted, escaped code ready for a <code-block> slot.
  */
 export async function extractDemoBlock(
   filePath: string,
@@ -272,16 +299,11 @@ export async function extractDemoBlock(
 ): Promise<string> {
   const block = await readDemoBlock(filePath, markerId);
   if (block.code === undefined) return block.problem;
-  return escapeCode(block.code);
+  return highlightCode(block.code, block.lang);
 }
 
 /** Escapes source code for a <code-block> slot. */
-export function escapeCode(code: string): string {
-  return code
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
+export { escapeCode };
 
 /**
  * The raw, unescaped text of a named code block, for printing it as live markup (an example preview).
@@ -291,7 +313,8 @@ export async function readDemoBlock(
   filePath: string,
   markerId: string,
 ): Promise<
-  { code: string; problem?: undefined } | { code?: undefined; problem: string }
+  | { code: string; lang: string; problem?: undefined }
+  | { code?: undefined; problem: string }
 > {
   let md: string;
   try {
@@ -309,11 +332,11 @@ export async function readDemoBlock(
 
   const rest = md.slice(markerMatch.index + markerMatch[0].length);
   // Match the next fenced code block (``` ... ```)
-  const codeRe = /^```\w*\n([\s\S]*?)\n^```/m;
+  const codeRe = /^```(\w*)\n([\s\S]*?)\n^```/m;
   const codeMatch = codeRe.exec(rest);
   if (!codeMatch)
     return { problem: `<!-- no code block after demo:${markerId} -->` };
-  return { code: codeMatch[1] };
+  return { code: codeMatch[2], lang: codeMatch[1] || "text" };
 }
 
 export async function renderMd(
@@ -340,7 +363,7 @@ export async function renderMd(
     if (!firstH2) return "";
     md = md.slice(firstH2.index);
   }
-  return _transformMd(md, { skipFirstHeading, stripDemoBlocks });
+  return _transformMd(md, { skipFirstHeading, stripDemoBlocks, pageTop: true });
 }
 
 /**
@@ -386,7 +409,7 @@ export async function renderMdRange(
     md = md.slice(0, idx);
   }
 
-  return _transformMd(md, options);
+  return _transformMd(md, { ...options, pageTop: !from });
 }
 
 function _headingIndex(md: string, headingText: string): number {
@@ -399,7 +422,11 @@ function _headingIndex(md: string, headingText: string): number {
 
 function _transformMd(
   md: string,
-  { skipFirstHeading = false, stripDemoBlocks = false }: RenderMdOptions = {},
+  {
+    skipFirstHeading = false,
+    stripDemoBlocks = false,
+    pageTop = false,
+  }: RenderMdOptions = {},
 ): string {
   if (stripDemoBlocks) {
     md = md
@@ -424,12 +451,16 @@ function _transformMd(
     return `<h${level} id="${slug}"><a class="anchor-link" href="#${slug}">${text}</a></h${level}>`;
   });
 
-  // Convert <pre><code class="language-X"> → <code-block data-bascik-prop-lang="X">
-  // marked already HTML-escapes code content, so it passes safely into the component slot.
+  // Convert <pre><code class="language-X"> → <code-block data-bascik-prop-lang="X">, highlighted at build time.
+  // marked HTML-escapes code content; a language the highlighter does not know keeps that escaped text.
   html = html.replace(
     /<pre><code class="language-([^"]+)">([\s\S]*?)<\/code><\/pre>/g,
-    (_, lang, code) =>
-      `<code-block data-bascik-prop-lang="${lang}">${code}</code-block>\n`,
+    (_, lang: string, code: string) => {
+      const source = unescapeCode(code);
+      const highlighted = highlightCode(source, lang);
+      const body = highlighted === escapeCode(source) ? code : highlighted;
+      return `<code-block data-bascik-prop-lang="${lang}">${body}</code-block>\n`;
+    },
   );
   // Code blocks with no language tag
   html = html.replace(
@@ -461,10 +492,29 @@ function _transformMd(
     "<doc-table>$1</doc-table>",
   );
 
-  // Images: lazy loading, the display size, and a reduced-motion still for animated demos.
+  // Images: lazy loading, the display size, and a reduced-motion still for animated demos. At the top of a
+  // page, the first image above the second <h2> is likely the Largest Contentful Paint element, so it loads
+  // eagerly, unless more than LCP_IMAGE_MAX_TEXT_BEFORE characters of text come first: then the text is the
+  // largest paint on a laptop screen and the image is below the fold on a phone. Only one image gets that,
+  // however many an author places above the fold.
+  const h2Offsets = [...html.matchAll(/<h2[\s>]/g)].map((match) => match.index);
+  const foldOffset = h2Offsets[1] ?? Infinity;
+  const textBefore = (offset: number) =>
+    html
+      .slice(0, offset)
+      .replace(/<[^>]+>/g, "")
+      .replace(/\s+/g, " ").length;
+  let eagerUsed = !pageTop;
   html = html.replace(
     /<img src="(\/[^"]+)"([^>]*)>/g,
-    (_, src: string, rest: string) => renderImage(src, rest),
+    (_, src: string, rest: string, offset: number) => {
+      const eager =
+        !eagerUsed &&
+        offset < foldOffset &&
+        textBefore(offset) <= LCP_IMAGE_MAX_TEXT_BEFORE;
+      if (eager) eagerUsed = true;
+      return renderImage(src, rest, undefined, eager);
+    },
   );
 
   // Open external links in a new tab

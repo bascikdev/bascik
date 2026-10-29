@@ -18,6 +18,38 @@ export interface SearchEntry {
   sitelinks?: string[];
 }
 
+/**
+ * The index file as the build writes it (see compactSearchIndex in src/lib/search-index.ts). `pages` holds each
+ * page's `[title, navLabel, section, path, sitelinks?]` once; each entry is `[page, heading, anchor, text]`.
+ */
+export interface CompactSearchIndex {
+  pages: Array<[string, string, string, string, string[]?]>;
+  entries: Array<[number, string | null, string | null, string]>;
+}
+
+/**
+ * Turns the index file back into one SearchEntry per page and section. A plain array is the old format
+ * (still written to the unversioned path) and is already expanded.
+ */
+export function expandSearchIndex(
+  data: CompactSearchIndex | SearchEntry[],
+): SearchEntry[] {
+  if (Array.isArray(data)) return data;
+  return data.entries.map(function (row) {
+    var page = data.pages[row[0]];
+    var entry: SearchEntry = {
+      title: page[0],
+      navLabel: page[1],
+      section: page[2],
+      path: row[2] === null ? page[3] : page[3] + "#" + row[2],
+      heading: row[1],
+      text: row[3],
+    };
+    if (page[4]) entry.sitelinks = page[4];
+    return entry;
+  });
+}
+
 var GENERIC_SITE_WORDS: Record<string, boolean> = {
   dev: true,
   docs: true,

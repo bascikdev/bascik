@@ -49,7 +49,9 @@ export async function generateLighthouseAllConfig(
       assert: {
         assertions: {
           "is-crawlable": "off",
-          "categories:performance": ["warn", { minScore: 0.9 }],
+          // Every page, one run each: a warning, since one noisy run should not fail the sweep. The gate
+          // that fails is lighthouserc.json and lighthouserc.desktop.json.
+          "categories:performance": ["warn", { minScore: 0.95 }],
           "categories:accessibility": ["error", { minScore: 1.0 }],
           "categories:best-practices": ["error", { minScore: 1.0 }],
           "categories:seo": ["error", { minScore: 1.0 }],

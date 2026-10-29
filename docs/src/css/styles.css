@@ -713,6 +713,26 @@ pre code {
   margin-bottom: 24px;
 }
 
+/* ── Below the fold: skip style and layout until a block nears the viewport ──
+   Only blocks after the fourth h2 of a page, which is below the fold on every docs page at phone and desktop
+   sizes. Chrome lays a content-visibility block out at its estimated size in the first frame even when it is
+   on screen, and its real size then moves the page (layout shift). The estimates are typical heights, and
+   `auto` keeps a block's real height once it has rendered. */
+.docs-content > h2:nth-of-type(4) ~ .prose-codeblock {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 200px;
+}
+
+.docs-content > h2:nth-of-type(4) ~ [data-defer-render="table"] {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 600px;
+}
+
+.docs-content > h2:nth-of-type(4) ~ [data-defer-render="demo"] {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 450px;
+}
+
 /* ── Screenshots in prose ── */
 .docs-content img {
   display: block;

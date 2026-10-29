@@ -104,7 +104,7 @@
     return null;
   }
 
-  function scrollToElement(target, smooth) {
+  function scrollToElement(target, smooth, onSettled) {
     if (!target) return;
     const offset =
       parseFloat(
@@ -120,7 +120,63 @@
       "(prefers-reduced-motion: reduce)",
     ).matches;
     const behavior = smooth && !prefersReduced ? "smooth" : "auto";
+    const startY = window.scrollY;
     window.scrollTo({ top: top, behavior: behavior });
+    settleOn(target, offset, startY, onSettled);
+  }
+
+  // Blocks below the fold use content-visibility: auto, so until they come near the viewport they count at an
+  // estimated height. The scroll above aims with those estimates, and the blocks it lands near then render at
+  // their real height and move the target. Once the scroll ends, aim again until the target holds still. Any
+  // input from the visitor ends this at once, so it never fights their own scrolling. onSettled runs once,
+  // however the settle ends.
+  let cancelSettle = null;
+  function settleOn(target, offset, startY, onSettled) {
+    if (cancelSettle) cancelSettle();
+    let done = false;
+    let corrections = 0;
+    const inputs = ["wheel", "touchstart", "keydown", "pointerdown"];
+    function stop() {
+      if (done) return;
+      done = true;
+      window.removeEventListener("scrollend", check);
+      inputs.forEach(function (type) {
+        window.removeEventListener(type, stop);
+      });
+      if (cancelSettle === stop) cancelSettle = null;
+      if (onSettled) onSettled();
+    }
+    function check() {
+      if (done) return;
+      window.removeEventListener("scrollend", check);
+      // Two frames: one to render the blocks that came into view, one to lay them out.
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          if (done) return;
+          const delta = target.getBoundingClientRect().top - offset;
+          if (Math.abs(delta) <= 1 || corrections++ >= 8) return stop();
+          window.scrollTo({ top: window.scrollY + delta, behavior: "instant" });
+          check();
+        });
+      });
+    }
+    window.addEventListener("scrollend", check);
+    inputs.forEach(function (type) {
+      window.addEventListener(type, stop, { passive: true });
+    });
+    cancelSettle = stop;
+    // A scroll that did not move the page sends no scrollend, and an instant one may be done already.
+    requestAnimationFrame(function () {
+      if (window.scrollY === startY || behaviorIsInstant()) check();
+    });
+    // Never wait longer than a smooth scroll can take.
+    setTimeout(stop, 3000);
+  }
+
+  function behaviorIsInstant() {
+    return (
+      getComputedStyle(document.documentElement).scrollBehavior !== "smooth"
+    );
   }
 
   document
@@ -182,10 +238,56 @@
     handleAutoScroll();
   }
   window.addEventListener("load", handleAutoScroll);
+  // The "On this page" list in docs-sidebar sends its clicks here so they get the same re-aim as every other
+  // anchor jump. detail.target is the heading; detail.onSettled runs once the page holds still on it.
+  document.addEventListener("docs:scroll-to-heading", function (event) {
+    const detail = event.detail || {};
+    if (!detail.target) return;
+    event.preventDefault();
+    scrollToElement(detail.target, true, detail.onSettled);
+  });
   window.addEventListener("hashchange", function () {
     const target = findTargetElement(location.hash);
     if (target) {
       scrollToElement(target, true);
     }
+  });
+</script>
+<script>
+  /* bascik-disable js-attribute-selector */
+  // The copy button of every <code-block> on the page. One handler here instead of a script in each block,
+  // which the page would carry once per block. The code is highlighted at build time, so textContent is the
+  // plain source with no markup.
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    var button =
+      target && target.closest && target.closest("[data-cblock-copy]");
+    if (!button) return;
+    var wrap = button.parentElement;
+    var code = wrap && wrap.querySelector("[data-cblock-code]");
+    var status = wrap && wrap.querySelector("[data-cblock-status]");
+    if (
+      !code ||
+      !navigator.clipboard ||
+      typeof navigator.clipboard.writeText !== "function"
+    )
+      return;
+    navigator.clipboard
+      .writeText(code.textContent)
+      .then(function () {
+        button.setAttribute("data-copied", "");
+        button.setAttribute("aria-label", "Copied!");
+        button.setAttribute("title", "Copied!");
+        if (status) status.textContent = "Code copied to clipboard";
+        setTimeout(function () {
+          button.removeAttribute("data-copied");
+          button.setAttribute("aria-label", "Copy code");
+          button.setAttribute("title", "Copy");
+          if (status) status.textContent = "";
+        }, 2000);
+      })
+      .catch(function () {
+        // Clipboard may be unavailable (permissions / non-secure context)
+      });
   });
 </script>

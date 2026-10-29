@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { highlight, highlightCode } from "../../lib/highlight.ts";
 
 describe("code-block component", () => {
   const componentPath = join(
@@ -12,30 +13,41 @@ describe("code-block component", () => {
     "src/components/code-block/code-block.css",
   );
 
-  it("renders language and file props, default slot, and inline syntax highlighter", async () => {
+  it("renders language and file props, default slot, and a copy button with no highlighter", async () => {
     const html = await readFile(componentPath, "utf8");
 
     expect(html).toContain("data-bascik-prop-lang");
     expect(html).toContain("data-bascik-prop-file");
     expect(html).toContain("data-bascik-slot");
     expect(html).toContain('aria-label="Copy code"');
-    expect(html).toContain('role="status" aria-live="polite"');
-    expect(html).toContain("function highlight(");
+    expect(html).toMatch(/role="status"\s+aria-live="polite"/);
+    // Highlighting happens at build time (src/lib/highlight.ts). A script here is copied into every block.
+    expect(html).not.toContain("function highlight(");
+    expect(html).not.toContain("<script");
+    expect(html).toContain("data-cblock-copy");
+    expect(html).toContain("data-cblock-code");
+    expect(html).toContain("data-cblock-status");
   });
 
-  // The client script reconstructs the highlighter's token spans with DOM APIs.
-  // This test also pins the escaping contract of the highlighter itself.
-  it("highlighter output is the escaped source plus token spans, for any input", async () => {
-    const html = await readFile(componentPath, "utf8");
-    const script = html.slice(
-      html.indexOf("<script>") + "<script>".length,
-      html.indexOf("const root = document"),
+  it("copies with one handler per page, in docs-footer, that reads the block's plain text", async () => {
+    const footer = await readFile(
+      join(process.cwd(), "src/components/docs-footer/docs-footer.html"),
+      "utf8",
     );
-    const highlight = new Function(`${script}\nreturn highlight;`)() as (
-      src: string,
-      lang: string,
-    ) => string | null;
+    expect(footer).toContain('closest("[data-cblock-copy]")');
+    expect(footer).toContain("[data-cblock-code]");
+    expect(footer).toContain(".textContent");
+    expect(footer).not.toContain("innerHTML");
+    // Component class names are renamed per component, so state set from docs-footer is an attribute.
+    expect(footer).toContain('button.setAttribute("data-copied", "")');
+    const css = await readFile(cssPath, "utf8");
+    expect(css).toContain(".cblock-copy[data-copied]");
+    expect(css).not.toContain("--done");
+  });
 
+  // The build puts the highlighter's output straight into the page, so it must be the escaped source plus
+  // token spans and nothing else, for any input.
+  it("highlighter output is the escaped source plus token spans, for any input", async () => {
     const unescape = (text: string): string =>
       text.replace(
         /&(lt|gt|amp);/g,
@@ -105,6 +117,20 @@ describe("code-block component", () => {
         source += alphabet[next() % alphabet.length];
       assertEscaped(source, langs[run % langs.length]);
     }
+  });
+
+  it("highlightCode leaves text, unknown languages, and blank code as escaped text", () => {
+    expect(highlightCode("<b> & </b>", "text")).toBe(
+      "&lt;b&gt; &amp; &lt;/b&gt;",
+    );
+    expect(highlightCode("<b>", "brainfuck")).toBe("&lt;b&gt;");
+    expect(highlightCode("  \n", "js")).toBe("  \n");
+    expect(highlightCode("const a = 1;", " JS ")).toBe(
+      highlight("const a = 1;", "js"),
+    );
+    expect(highlightCode("const a = 1;", "js")).toBe(
+      '<span data-code-token="kw">const</span> a = <span data-code-token="num">1</span>;',
+    );
   });
 
   it("contains sr-only / cblock-status styles for screen reader announcements", async () => {

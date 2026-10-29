@@ -21,4 +21,12 @@ describe("docs-head component", () => {
     expect(html).toContain('href="/assets/apple-touch-icon.png"');
     expect(html).toContain('sessionStorage.getItem("theme")');
   });
+
+  it("applies the theme again when a prerendered page is shown", async () => {
+    // A page prerendered on hover runs this script before the visitor arrives. If they switch the theme in
+    // between, the page must not open in the old one.
+    const html = await readFile(componentPath, "utf8");
+    expect(html).toContain("document.prerendering");
+    expect(html).toContain('"prerenderingchange"');
+  });
 });

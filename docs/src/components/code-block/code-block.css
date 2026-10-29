@@ -135,17 +135,17 @@
   display: none;
 }
 
-.cblock-copy--done {
+.cblock-copy[data-copied] {
   opacity: 1;
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.cblock-copy--done .cblock-copy-icon {
+.cblock-copy[data-copied] .cblock-copy-icon {
   display: none;
 }
 
-.cblock-copy--done .cblock-check-icon {
+.cblock-copy[data-copied] .cblock-check-icon {
   display: block;
   color: var(--accent);
   animation: cblock-check-pop 0.25s ease-out both;

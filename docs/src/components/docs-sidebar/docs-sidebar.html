@@ -77,24 +77,15 @@
         return true;
       }
 
-      requestAnimationFrame(function () {
-        scrollActiveIntoView();
-      });
-
-      // Re-scroll when sidebar becomes visible (e.g. resizing from mobile to desktop)
+      // A ResizeObserver delivers its first callback right after the first layout, so the reads above find
+      // layout already done. Reading them in a requestAnimationFrame before first paint forced a layout of its
+      // own on every page. The observer also re-centers the link when the sidebar appears after a resize from
+      // a phone layout.
       if (typeof ResizeObserver === "function") {
-        var ro = new ResizeObserver(function () {
-          if (sidebar.clientHeight > 0) {
-            scrollActiveIntoView();
-          }
-        });
-        ro.observe(sidebar);
+        new ResizeObserver(scrollActiveIntoView).observe(sidebar);
       } else {
-        window.addEventListener("resize", function () {
-          if (sidebar.clientHeight > 0) {
-            scrollActiveIntoView();
-          }
-        });
+        requestAnimationFrame(scrollActiveIntoView);
+        window.addEventListener("resize", scrollActiveIntoView);
       }
 
       var next = links[idx + 1];
@@ -103,37 +94,50 @@
       }
     }
 
-    links.forEach(function (a) {
-      var href = a.getAttribute("href");
-      if (!href) return;
+    // One set of listeners on the sidebar, not four on each of its several hundred links.
+    function linkFrom(event) {
+      var target = event.target;
+      var link = target && target.closest ? target.closest("a[href]") : null;
+      return link && sidebar.contains(link) ? link : null;
+    }
 
-      var timer;
-      a.addEventListener("pointerenter", function () {
-        if (preloaded.has(href)) return;
-        timer = setTimeout(function () {
-          preload(href);
-        }, 65);
-      });
-
-      a.addEventListener("pointerleave", function () {
-        if (timer) {
-          clearTimeout(timer);
-          timer = null;
-        }
-      });
-
-      a.addEventListener("focus", function () {
+    var hovered = null;
+    var timer = null;
+    sidebar.addEventListener("pointerover", function (event) {
+      var link = linkFrom(event);
+      if (!link || link === hovered) return;
+      if (timer) clearTimeout(timer);
+      hovered = link;
+      var href = link.getAttribute("href");
+      if (preloaded.has(href)) return;
+      timer = setTimeout(function () {
+        timer = null;
         preload(href);
-      });
-
-      a.addEventListener(
-        "touchstart",
-        function () {
-          preload(href);
-        },
-        { passive: true },
-      );
+      }, 65);
     });
+
+    sidebar.addEventListener("pointerout", function (event) {
+      if (!hovered || hovered.contains(event.relatedTarget)) return;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      hovered = null;
+    });
+
+    sidebar.addEventListener("focusin", function (event) {
+      var link = linkFrom(event);
+      if (link) preload(link.getAttribute("href"));
+    });
+
+    sidebar.addEventListener(
+      "touchstart",
+      function (event) {
+        var link = linkFrom(event);
+        if (link) preload(link.getAttribute("href"));
+      },
+      { passive: true },
+    );
   })();
 </script>
 <script>
@@ -203,6 +207,7 @@
       var activeNavigationTarget = "";
       var navigationDestination = 0;
       var navigationMaxTimer = 0;
+      var navigationCount = 0;
 
       // Hold the clicked item as current until the smooth scroll reaches
       // its destination. Timers are unreliable here: a long scroll can
@@ -259,6 +264,31 @@
 
         event.preventDefault();
         history.pushState(null, "", "#" + id);
+        setCurrent(id);
+        window.clearTimeout(navigationMaxTimer);
+        activeNavigationTarget = id;
+        // docs-footer scrolls to the heading and re-aims once blocks below the fold render at their real
+        // height. Hold the clicked item as current until it reports the page has settled.
+        var navigation = ++navigationCount;
+        var handed = !document.dispatchEvent(
+          new CustomEvent("docs:scroll-to-heading", {
+            cancelable: true,
+            detail: {
+              target: target,
+              onSettled: function () {
+                if (navigation !== navigationCount) return;
+                navigationDestination = window.scrollY;
+                releaseNavigationTarget();
+              },
+            },
+          }),
+        );
+        if (handed) {
+          // Never release on the way: the first scroll aims at estimated heights.
+          navigationDestination = NaN;
+          navigationMaxTimer = window.setTimeout(releaseNavigationTarget, 5000);
+          return;
+        }
         var offset =
           parseFloat(
             getComputedStyle(document.documentElement).getPropertyValue(
@@ -277,16 +307,13 @@
         var reducedMotion = window.matchMedia(
           "(prefers-reduced-motion: reduce)",
         ).matches;
-        activeNavigationTarget = id;
         navigationDestination = top;
         window.scrollTo({
           top: top,
           behavior: reducedMotion ? "auto" : "smooth",
         });
-        setCurrent(id);
         // Safety net for when the scroll never reaches the destination
         // or no scroll event fires (already at target, interrupted).
-        window.clearTimeout(navigationMaxTimer);
         navigationMaxTimer = window.setTimeout(
           releaseNavigationTarget,
           reducedMotion ? 0 : 4000,

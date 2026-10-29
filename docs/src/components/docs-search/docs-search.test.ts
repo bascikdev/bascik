@@ -46,6 +46,28 @@ describe("docs-search component template", () => {
     expect(dom).toContain("search-sitelink");
   });
 
+  it("fetches the versioned index URL, warms it on intent, and waits for load on /search", async () => {
+    const html = await readFile(componentPath, "utf8");
+    const dom = await readFile(
+      join(process.cwd(), "src/components/docs-search/docs-search-dom.js"),
+      "utf8",
+    );
+    // The build puts the content-hashed file name in front of the DOM script, so `_headers` can cache it for a year.
+    expect(html).toContain("searchIndexPath(");
+    expect(html).toContain("var SEARCH_INDEX_URL = ");
+    expect(dom).toContain("fetch(SEARCH_INDEX_URL)");
+    expect(dom).not.toContain('fetch("/assets/search-index.json")');
+    expect(dom).toContain("expandSearchIndex(");
+    // Hovering or focusing the search button starts the download before the click.
+    expect(dom).toMatch(
+      /btn\.addEventListener\(\s*"pointerenter",\s*warmIndex/,
+    );
+    expect(dom).toMatch(/btn\.addEventListener\(\s*"focus",\s*warmIndex/);
+    // On /search the 1 MB index must not compete with the page's own resources.
+    expect(dom).toContain('document.readyState === "complete"');
+    expect(dom).toContain('window.addEventListener("load"');
+  });
+
   it("contains sr-only styles for search status live region", async () => {
     const css = await readFile(cssPath, "utf8");
 
