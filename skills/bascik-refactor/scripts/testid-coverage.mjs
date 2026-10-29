@@ -11,13 +11,16 @@ import { inPage } from "./lib/dom.mjs";
 import {
   casesOf,
   finding,
+  masksOf,
   parseArgsFor,
   result,
   routesOf,
+  settleOf,
   runCli,
   withPage,
 } from "./lib/checks.mjs";
 import { componentUsage, pageFor } from "./repeated-sections.mjs";
+import { discover } from "./interaction-crawl.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
 
 export const CHECK = "testid-coverage";
@@ -34,7 +37,18 @@ export const COVERAGE_SELECTOR = [
   '[role="button"]',
   '[role="tab"]',
   '[role="menuitem"]',
+  '[role="menuitemcheckbox"]',
+  '[role="menuitemradio"]',
+  '[role="switch"]',
+  '[role="checkbox"]',
+  '[role="radio"]',
+  '[role="option"]',
+  '[role="combobox"]',
+  '[role="link"]',
+  '[role="slider"]',
+  '[role="spinbutton"]',
   '[role="dialog"]',
+  '[tabindex="0"]',
   "dialog",
   "header",
   "nav",
@@ -45,15 +59,19 @@ export const COVERAGE_SELECTOR = [
 
 const HELP = `Usage: node testid-coverage.mjs --target <url> --route <path>... [options]
 
-Checks the target only. Every rendered interactive element, form, dialog and landmark needs a data-testid; each gap
-names the source file and line to edit. Every component in src/components needs its root's data-testid set to the
-component name, and each part's data-testid starts with "<component>-". Repeated instances share their ids by design.
-Exits 1 on any finding.
+Checks the target only. Every rendered interactive element (a control, a widget role such as switch or option, an
+element in the tab order, and any element with a click or hover listener, such as an <a> without href that a script
+handles), form, dialog and landmark needs a data-testid; each gap names the source file and line to edit. Controls
+in a page's <template> (a share sheet or modal a script clones in) need one too. Every component in src/components,
+in any folder (marketing/promo-card.html is <promo-card>), needs its root's data-testid set to the component name, and
+each part's data-testid starts with "<component>-". Repeated instances share their ids by design. Exits 1 on any
+finding.
 
 Options:
   --target <url>        Bascik origin, such as http://localhost:8080 (a production build: bascik --server)
   --route <path>        Route to check (repeatable, required)
   --target-src <dir>    The Bascik project, holding src/pages and src/components (default .)
+  --settle-ms <ms>      Least time after navigation before measuring (default 5000)
   --matrix <file>       Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --out <dir>           Report folder (default artifacts/checks)
   --json                Print the report as JSON
@@ -73,7 +91,22 @@ const INTERACTIVE_TAGS = new Set([
   "footer",
   "aside",
 ]);
-const INTERACTIVE_ROLES = new Set(["button", "tab", "menuitem", "dialog"]);
+const INTERACTIVE_ROLES = new Set([
+  "button",
+  "tab",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "switch",
+  "checkbox",
+  "radio",
+  "option",
+  "combobox",
+  "link",
+  "slider",
+  "spinbutton",
+  "dialog",
+]);
 
 const TAG_RE =
   /<([a-zA-Z][\w-]*)((?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?)*)\s*\/?>/g;
@@ -115,7 +148,8 @@ const needsId = (t) =>
   (INTERACTIVE_TAGS.has(t.tag) &&
     !(t.tag === "input" && t.attrs.type === "hidden")) ||
   (t.tag === "a" && "href" in t.attrs) ||
-  INTERACTIVE_ROLES.has(t.attrs.role);
+  INTERACTIVE_ROLES.has(t.attrs.role) ||
+  t.attrs.tabindex === "0";
 
 /**
  * Audits one component's source: the root's data-testid must be the component name (component-root), every part with
@@ -162,26 +196,63 @@ export function auditComponent(name, html, file) {
 
 const posix = (p) => p.split(sep).join("/");
 
-/** The components under src/components: [{ name, file }] with file relative to root. */
+const isDir = (path) => existsSync(path) && statSync(path).isDirectory();
+
+/**
+ * The components under src/components, in any folder: [{ name, file }] with file relative to root. Bascik names a
+ * component by its filename only (marketing/promo-card.html is <promo-card>, alert-box/alert-box.html is <alert-box>),
+ * so a companion file without a hyphen in its name is not one.
+ */
 export function components(root) {
   const dir = join(root, "src", "components");
-  if (!existsSync(dir) || !statSync(dir).isDirectory())
+  if (!isDir(dir)) {
+    if (isDir(join(root, "src", "pages"))) return [];
     throw new Error(
-      `${posix(join(root, "src/components"))} not found: pass the Bascik project with --target-src (it holds src/components)`,
+      `${posix(join(root, "src/components"))} not found: pass the Bascik project with --target-src (it holds src/pages and src/components)`,
     );
-  const out = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      const file = join(dir, entry.name, `${entry.name}.html`);
-      if (existsSync(file))
-        out.push({ name: entry.name, file: posix(relative(root, file)) });
-    } else if (entry.name.endsWith(".html"))
-      out.push({
-        name: entry.name.replace(/\.html$/, ""),
-        file: posix(relative(root, join(dir, entry.name))),
-      });
   }
-  return out;
+  const out = [];
+  const walk = (folder) => {
+    for (const entry of readdirSync(folder, { withFileTypes: true })) {
+      const full = join(folder, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith(".html")) {
+        const name = entry.name.replace(/\.html$/, "");
+        if (name.includes("-"))
+          out.push({ name, file: posix(relative(root, full)) });
+      }
+    }
+  };
+  walk(dir);
+  return out.sort((a, b) => a.file.localeCompare(b.file));
+}
+
+/**
+ * Audits the controls inside each <template> of a page source (a share sheet or a modal a script clones in): they are
+ * not in the rendered page, so only the source shows the missing data-testid.
+ */
+export function auditTemplates(html, file) {
+  const findings = [];
+  const text = blank(html);
+  const tags = openingTags(html);
+  for (const m of text.matchAll(/<template\b[^>]*>([\s\S]*?)<\/template>/gi)) {
+    const start = m.index;
+    const end = m.index + m[0].length;
+    for (const t of tags) {
+      if (t.index <= start || t.index >= end || t.tag === "template") continue;
+      if ("data-testid" in t.attrs || !needsId(t)) continue;
+      const label = textAfter(text, t);
+      findings.push(
+        finding(
+          CHECK,
+          "missing",
+          `${file}:${t.line}: <${t.tag}>${label ? ` "${label}"` : ""} in a <template> needs a data-testid (a script renders it later, so the rendered page never shows it)`,
+          { file, line: t.line },
+        ),
+      );
+    }
+  }
+  return findings;
 }
 
 /** Audits every component under root/src/components. */
@@ -191,10 +262,19 @@ export function auditSource(root) {
   );
 }
 
-/** In the page: every element that needs a data-testid and has none, with what finds it in the source. */
+/**
+ * In the page: every element that needs a data-testid and has none (it matches arg.selector, or it is one of
+ * arg.extra, the elements a click or hover listener makes interactive), with what finds it in the source.
+ */
 function collectGaps(arg) {
   const out = [];
-  for (const el of document.querySelectorAll(arg.selector)) {
+  const els = new Set(document.querySelectorAll(arg.selector));
+  for (const selector of arg.extra ?? []) {
+    const el = document.querySelector(selector);
+    if (el && el !== document.body && el !== document.documentElement)
+      els.add(el);
+  }
+  for (const el of els) {
     if (el.hasAttribute("data-testid")) continue;
     if (el.closest("template")) continue;
     out.push({
@@ -267,12 +347,28 @@ export async function runCheck(browser, options) {
     const html = readFileSync(join(root, file), "utf8");
     return { file, html: blank(html), tags: openingTags(html) };
   });
+  for (const file of Object.keys(pages))
+    findings.push(
+      ...auditTemplates(readFileSync(join(root, file), "utf8"), file),
+    );
   const seen = new Set();
   for (const route of routesOf(options)) {
     const page = pageFor(usage, route) ?? "src/pages";
     for (const c of casesOf(options)) {
-      const gaps = await withPage(browser, options.target, route, c, (p) =>
-        inPage(p, collectGaps, { selector: COVERAGE_SELECTOR }),
+      const gaps = await withPage(
+        browser,
+        options.target,
+        route,
+        c,
+        async (p) => {
+          // Anything a listener makes interactive (an <a> without href that a script handles) needs a hook too.
+          const extra = (await discover(p, masksOf(options)))
+            .filter((item) => item.reason === "listener")
+            .map((item) => item.selector);
+          return inPage(p, collectGaps, { selector: COVERAGE_SELECTOR, extra });
+        },
+        masksOf(options),
+        settleOf(options),
       );
       for (const gap of gaps) {
         const at = locate(
@@ -286,7 +382,7 @@ export async function runCheck(browser, options) {
         const hint = at.unmatched
           ? `no tag in ${at.file} or src/components matches it (it may come from a script or a layout); find where it is rendered and add one there`
           : `add one in ${where}`;
-        const label = `<${gap.tag}>${gap.name || gap.text ? ` "${gap.name || gap.text}"` : ""}`;
+        const label = `<${gap.tag}${gap.attrs.role ? ` role="${gap.attrs.role}"` : ""}>${gap.name || gap.text ? ` "${gap.name || gap.text}"` : ""}`;
         const id = `${route}|${where}|${label}`;
         if (seen.has(id)) continue;
         seen.add(id);

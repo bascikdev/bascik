@@ -24,6 +24,8 @@ const TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json",
+  ".jpg": "image/jpeg",
+  ".webm": "video/webm",
 };
 
 export interface FixtureServer {

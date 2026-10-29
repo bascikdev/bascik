@@ -83,9 +83,32 @@ function roleOf(el) {
   return null;
 }
 
+/**
+ * The element's normalized text, with each <time datetime> read as its datetime: a relative date ("58 minutes ago")
+ * that ticks over between the production load and the target load is still the same text.
+ */
+function textOf(el) {
+  if (
+    !(tagOf(el) === "TIME" && el.hasAttribute("datetime")) &&
+    !el.querySelector?.("time[datetime]")
+  )
+    return norm(el.textContent);
+  let out = "";
+  const walk = (node) => {
+    if (node.nodeType === 3) out += node.textContent;
+    else if (node.nodeType === 1) {
+      if (node.localName === "time" && node.hasAttribute("datetime"))
+        out += ` ${node.getAttribute("datetime")} `;
+      else for (const child of node.childNodes) walk(child);
+    }
+  };
+  walk(el);
+  return norm(out);
+}
+
 /** "TAG:normalized text", cut at 70 characters; the name stands in for elements without text, such as an image. */
 function textKey(el) {
-  const text = norm(el.textContent) || accName(el);
+  const text = textOf(el) || accName(el);
   return `${tagOf(el)}:${text.slice(0, 70).trim()}`;
 }
 
@@ -206,6 +229,7 @@ const HELPERS = [
   tagOf,
   accName,
   roleOf,
+  textOf,
   textKey,
   selectorOf,
   pathOf,

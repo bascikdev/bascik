@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>About · Milk frother</title>
+<link rel="stylesheet" href="../assets/site.css" />
+<script src="../assets/site.js" defer></script>
+</head>
+<body id="top">
+<header class="site-header" data-testid="site-header">
+  <a class="logo" href="./" data-testid="site-header-logo">Milk frother</a>
+  <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav" data-testid="site-header-menu-toggle">Menu</button>
+  <nav class="site-nav" id="site-nav" aria-label="Main" data-testid="site-header-nav">
+    <div class="products">
+      <button type="button" aria-expanded="false" aria-controls="products-menu" data-testid="site-header-products">Products</button>
+      <ul class="products-menu" id="products-menu" hidden data-testid="site-header-products-menu">
+        <li><a href="./#features" data-testid="site-header-products-frother"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="#2457d6"/></svg>Frother</a></li>
+        <li><a href="./#gallery" data-testid="site-header-products-whisk"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" fill="#f2b632"/></svg>Whisk</a></li>
+      </ul>
+    </div>
+    <a href="about" data-testid="site-header-about">About</a>
+    <a href="./#journal" data-testid="site-header-journal">Journal</a>
+  </nav>
+</header>
+<main data-testid="about">
+  <section class="section" data-testid="about-intro">
+    <h1>About Milk frother</h1>
+    <p>We started in a small kitchen with a broken whisk and a lot of opinions about foam. <time data-relative datetime="2026-01-01T00:00:00Z">2026-01-01T00:00:00Z</time>, we shipped our hundred-thousandth frother.</p>
+  </section>
+  <section class="section fade-in" id="story" data-testid="about-story">
+    <h2>Our story</h2>
+    <p>Foam is air held in a thin film of milk protein. Fat makes it rich and slows it down; protein makes it hold. We tuned the whisk speed to get both.</p>
+  </section>
+  <section class="section fade-in" data-testid="about-team">
+    <h2>The team</h2>
+    <div class="features">
+      <article class="feature"><h3>Design</h3><p>Three people who argue about millimeters.</p></article>
+      <article class="feature"><h3>Engineering</h3><p>Motors, batteries and a lot of milk.</p></article>
+      <article class="feature"><h3>Support</h3><p>Real replies within a working day.</p></article>
+    </div>
+  </section>
+</main>
+<footer class="site-footer" data-testid="site-footer">
+  <p>Milk frother, made for slow mornings.</p>
+  <p><a href="about" data-testid="site-footer-about">About us</a> · <a href="#top" data-testid="site-footer-top">Back to top</a></p>
+</footer>
+<aside class="cookie-banner" role="region" aria-label="Cookie notice" hidden data-testid="cookie-banner">
+  <p>We use cookies to remember your settings and to measure visits.</p>
+  <button class="btn btn-ghost" type="button" data-testid="cookie-banner-reject">Reject</button>
+  <button class="btn" type="button" data-testid="cookie-banner-accept">Accept</button>
+</aside>
+<dialog class="newsletter" aria-labelledby="newsletter-title" data-testid="newsletter-modal">
+  <button class="newsletter-close" type="button" aria-label="Close" data-testid="newsletter-modal-close">×</button>
+  <h2 id="newsletter-title">Frothy news, monthly</h2>
+  <form data-testid="newsletter-modal-form">
+    <label for="newsletter-email">Email</label>
+    <input id="newsletter-email" type="email" required data-testid="newsletter-modal-email" />
+    <button class="btn" type="submit" data-testid="newsletter-modal-submit">Subscribe</button>
+  </form>
+</dialog>
+
+</body>
+</html>

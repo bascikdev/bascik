@@ -16,10 +16,12 @@ import {
   reload,
   result,
   routesOf,
+  DEFAULT_SETTLE_MS,
+  settleOf,
   runCli,
   withPage,
 } from "./lib/checks.mjs";
-import { routeUrl } from "./lib/capture.mjs";
+import { routeUrl, settle } from "./lib/capture.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
 
 export const CHECK = "interaction-crawl";
@@ -30,17 +32,21 @@ Discovers every interactive element on each production route (the selector below
 hover listener, found with CDP DOMDebugger.getEventListeners; with a delegated click listener on document, body or
 window, the elements with a pointer cursor or a data attribute naming an in-page target; and the triggers of menus
 that open on CSS :hover), activates each one from a fresh load (a click, or a hover) and records the effect: scroll
-distance and the heading scrolled to, location.hash, URL, aria-expanded, open and hidden changes, newly visible
-elements and the focused element. What the page changes on its own in 2.5 s with no activation (a carousel,
-a ticker, a late banner) is not counted as any control's effect. Then it finds the same element on the target by test
-id, role and accessible name, in-page href or text, does the same, and reports missing elements and missing or
-different effects. Exits 1 on any finding.
+distance, the heading scrolled to and where it lands (a heading under a sticky header is a finding), location.hash,
+URL, aria-expanded, open and hidden changes, form values (a quantity stepper), content moved inside a clipped region
+(a carousel track that slides), newly visible elements and the focused element. A control that opens something (a
+dialog, a menu, a disclosure) is opened again and the controls inside it are crawled too, one level deep (a dialog's
+Close). What the page changes on its own with no activation (a carousel, a ticker, a late banner, a modal on a timer)
+is not counted as any control's effect. Then it finds the same element on the target by test id, role and accessible
+name, in-page href or text, does the same, and reports missing elements and missing or different effects. Exits 1 on
+any finding.
 
 Options:
   --prod <url>      Live production origin
   --target <url>    Bascik origin, such as http://localhost:8080 (a production build: bascik --server)
   --route <path>    Route to crawl (repeatable, required)
   --mask <selector> A documented dynamic region to leave out, such as a carousel (repeatable)
+  --settle-ms <ms>  Least time after navigation before measuring (default 5000)
   --matrix <file>   Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --out <dir>       Report folder (default artifacts/checks)
   --json            Print the report as JSON
@@ -86,6 +92,15 @@ export const VOLATILE_MS = 2500;
 
 /** A scroll smaller than this many CSS pixels is not an effect (sub-pixel focus scrolls, rounding). */
 const SCROLL_MIN = 8;
+
+/**
+ * Where the heading an in-page link scrolls to lands may differ by this many CSS pixels (a sticky header that shrinks
+ * while the page scrolls) before it is a finding; a scroll-padding-top lost under a sticky header is far more.
+ */
+export const LANDING_TOLERANCE = 24;
+
+/** The most controls crawled inside one opened dialog, menu or disclosure. */
+const NESTED_MAX = 12;
 
 /** Elements whose appearance counts as an effect: text a visitor reads, images and dialogs, not wrappers. */
 const SHOWN_SELECTOR =
@@ -279,6 +294,36 @@ function captureState(arg) {
       hidden: String(el.hidden),
     };
   }
+  // Form values (a quantity stepper) and content moved inside a clipped region (a carousel track translated or
+  // scrolled), keyed by element like the attributes above.
+  for (const el of document.querySelectorAll("input, select, textarea")) {
+    if (isMasked(el, arg.masks)) continue;
+    const type = String(el.type ?? "").toLowerCase();
+    if (type === "password" || type === "hidden" || type === "file") continue;
+    const entry = (attrs[selectorOf(el)] ??= {});
+    entry.value =
+      type === "checkbox" || type === "radio"
+        ? String(el.checked)
+        : String(el.value);
+  }
+  const translation = (el) => {
+    const t = getComputedStyle(el).transform;
+    if (!t || t === "none") return [0, 0];
+    const m = new DOMMatrixReadOnly(t);
+    return [Math.round(m.m41), Math.round(m.m42)];
+  };
+  for (const box of document.body.querySelectorAll("*")) {
+    if (box.closest("svg") || isMasked(box, arg.masks)) continue;
+    const cs = getComputedStyle(box);
+    if (cs.overflowX === "visible" && cs.overflowY === "visible") continue;
+    if (!isRendered(box)) continue;
+    const entry = (attrs[selectorOf(box)] ??= {});
+    entry.scroll = `${Math.round(box.scrollLeft)},${Math.round(box.scrollTop)}`;
+    for (const child of box.querySelectorAll(":scope > *, :scope > * > *")) {
+      const [x, y] = translation(child);
+      (attrs[selectorOf(child)] ??= {}).shift = `${x},${y}`;
+    }
+  }
   const shown = [
     ...new Set(
       [...document.querySelectorAll(arg.shown)]
@@ -298,6 +343,7 @@ function captureState(arg) {
   )
     focused = textKey(active);
   let scrollTarget = null;
+  let landing = null;
   const skip = new Set(arg.skip ?? []);
   for (const h of document.querySelectorAll("h1, h2, h3, h4, h5, h6")) {
     if (!isRendered(h) || isMasked(h, arg.masks) || skip.has(textKey(h)))
@@ -305,6 +351,17 @@ function captureState(arg) {
     const r = h.getBoundingClientRect();
     if (r.top >= -2 && r.top < innerHeight) {
       scrollTarget = textKey(h);
+      // Where it lands, and whether a fixed or sticky layer covers it there (a sticky header without scroll-padding).
+      const hit = document.elementFromPoint(
+        Math.min(
+          innerWidth - 1,
+          Math.max(0, r.left + Math.min(r.width, 40) / 2),
+        ),
+        Math.min(innerHeight - 1, Math.max(0, r.top + r.height / 2)),
+      );
+      const cover =
+        hit && !h.contains(hit) && !hit.contains(h) ? layerOf(hit) : null;
+      landing = { top: Math.round(r.top), covered: Boolean(cover) };
       break;
     }
   }
@@ -315,6 +372,7 @@ function captureState(arg) {
     focused,
     scrollY,
     scrollTarget,
+    landing,
     hash: location.hash,
     url: href.startsWith(arg.base) ? `/${href.slice(arg.base.length)}` : href,
   };
@@ -347,6 +405,30 @@ export function effectOf(before, after, volatile = {}) {
       const to = b[attr] ?? (attr === "hidden" ? "false" : null);
       if (from !== to) changed.push(`${attr}: ${from} -> ${to}`);
     }
+    if ((a.value ?? null) !== (b.value ?? null) && a.value !== undefined)
+      changed.push(`value: "${a.value}" -> "${b.value ?? ""}"`);
+    // Content moved in a clipped region: the direction only, so a slide of another width still matches.
+    for (const [attr, what] of [
+      ["shift", "content of a clipped region moves"],
+      ["scroll", "a clipped region scrolls"],
+    ]) {
+      if (a[attr] === undefined || b[attr] === undefined) continue;
+      const [x0, y0] = a[attr].split(",").map(Number);
+      const [x1, y1] = b[attr].split(",").map(Number);
+      const sign = attr === "scroll" ? -1 : 1;
+      const dx = (x1 - x0) * sign;
+      const dy = (y1 - y0) * sign;
+      if (Math.abs(dx) < 2 && Math.abs(dy) < 2) continue;
+      const way =
+        Math.abs(dx) >= Math.abs(dy)
+          ? dx < 0
+            ? "left"
+            : "right"
+          : dy < 0
+            ? "up"
+            : "down";
+      changed.push(`${what} ${way}`);
+    }
   }
   const was = new Set(before.shown);
   const scrollDelta = Math.round(after.scrollY - before.scrollY);
@@ -355,6 +437,10 @@ export function effectOf(before, after, volatile = {}) {
     scrollTarget:
       Math.abs(scrollDelta) >= SCROLL_MIN && !skipShown.has(after.scrollTarget)
         ? after.scrollTarget
+        : null,
+    landing:
+      Math.abs(scrollDelta) >= SCROLL_MIN && !skipShown.has(after.scrollTarget)
+        ? (after.landing ?? null)
         : null,
     hash: after.hash,
     url: after.url,
@@ -367,10 +453,41 @@ export function effectOf(before, after, volatile = {}) {
 }
 
 /** In the page: lets smooth scrolling, transitions and a short timer run out after an activation. */
-async function afterActivation() {
+async function afterActivation(arg) {
   await scrollSettled(3000);
   await animationsDone(2000);
-  await new Promise((r) => setTimeout(r, 100));
+  // Then until the DOM outside the masks has been still for 400 ms (at most 2.5 s): a banner that hides itself with a
+  // timer once its slide-out transition ends is hidden on both sides before the state is read.
+  await new Promise((done) => {
+    let timer = setTimeout(finish, 400);
+    const cap = setTimeout(finish, 2500);
+    const observer = new MutationObserver((records) => {
+      if (
+        records.every((r) =>
+          isMasked(
+            r.target.nodeType === 1 ? r.target : r.target.parentElement,
+            arg?.masks,
+          ),
+        )
+      )
+        return;
+      clearTimeout(timer);
+      timer = setTimeout(finish, 400);
+    });
+    function finish() {
+      observer.disconnect();
+      clearTimeout(timer);
+      clearTimeout(cap);
+      done();
+    }
+    observer.observe(document.documentElement, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      characterData: true,
+    });
+  });
+  await animationsDone(1000);
 }
 
 /** Moves the pointer off the page content, so a hover left over from the last activation opens nothing. */
@@ -380,30 +497,44 @@ async function parkPointer(page) {
 
 /**
  * What the page does on its own, with no activation: loads the route fresh, records its state and watches it for
- * VOLATILE_MS. Resolves to { selectors, shown }: the elements whose attributes changed and the texts that appeared
+ * VOLATILE_MS, and at least until `settleMs` after load (see DEFAULT_SETTLE_MS in lib/checks.mjs). Resolves to { selectors, shown }: the elements whose attributes changed and the texts that appeared
  * or went away. A carousel that advances on a timer, a ticker or a late banner then does not count as the effect of
  * whichever control the crawl happened to activate. A region that changes more slowly than this is masked instead.
  */
-export async function observeVolatile(page, origin, route, masks = []) {
-  await reload(page, origin, route);
-  await parkPointer(page);
+export async function observeVolatile(
+  page,
+  origin,
+  route,
+  masks = [],
+  settleMs = DEFAULT_SETTLE_MS,
+) {
   const arg = { shown: SHOWN_SELECTOR, base: routeUrl(origin, "/"), masks };
+  // The attributes as the document is parsed, before any timer runs: a banner that unhides itself 600 ms after load
+  // changes after this on both sides, however long the page takes to settle.
+  await page.goto(routeUrl(origin, route), { waitUntil: "domcontentloaded" });
+  const early = await inPage(page, captureState, arg).catch(() => null);
+  await page.waitForLoadState("load").catch(() => {});
+  await settle(page);
+  await parkPointer(page);
   const first = await inPage(page, captureState, arg);
   const selectors = new Set();
   const shown = new Set();
-  const end = Date.now() + VOLATILE_MS;
+  // At least VOLATILE_MS, and on until the settle time after load, so a modal on a timer is seen to open by itself.
+  const sinceLoad = await page.evaluate(() => performance.now());
+  const end = Date.now() + Math.max(VOLATILE_MS, settleMs - sinceLoad + 500);
   while (Date.now() < end) {
     await page.waitForTimeout(250);
     const now = await inPage(page, captureState, arg);
-    for (const selector of new Set([
-      ...Object.keys(first.attrs),
-      ...Object.keys(now.attrs),
-    ]))
-      if (
-        JSON.stringify(first.attrs[selector]) !==
-        JSON.stringify(now.attrs[selector])
-      )
-        selectors.add(selector);
+    for (const base of early ? [early, first] : [first])
+      for (const selector of new Set([
+        ...Object.keys(base.attrs),
+        ...Object.keys(now.attrs),
+      ]))
+        if (
+          JSON.stringify(base.attrs[selector]) !==
+          JSON.stringify(now.attrs[selector])
+        )
+          selectors.add(selector);
     const before = new Set(first.shown);
     const after = new Set(now.shown);
     for (const key of now.shown) if (!before.has(key)) shown.add(key);
@@ -412,20 +543,50 @@ export async function observeVolatile(page, origin, route, masks = []) {
   return { selectors: [...selectors], shown: [...shown] };
 }
 
+/** Clicks or hovers one element; a covered or animating element gets a DOM click, which still runs its handlers. */
+async function press(locator, mode) {
+  if (mode === "hover") {
+    await locator.hover({ timeout: 2000 }).catch(() => {});
+    return;
+  }
+  try {
+    await locator.click({ timeout: 2000 });
+  } catch {
+    await locator.evaluate((el) => el.click()).catch(() => {});
+  }
+}
+
 /**
  * Activates `item` (a click, or a hover for anchor.mode "hover") from a fresh load of the route and returns its
- * effect, or null when the element is gone after the reload (it rendered late or at random).
+ * effect, or null when the element is gone after the reload (it rendered late or at random). An item found inside an
+ * opened layer carries the controls that open it in `via`; they are activated first, without being measured. The
+ * element is scrolled into view before the state is recorded, so the scroll a click causes is measured from where the
+ * visitor clicks it (a "Back to top" link in the footer), and content that fades in as it scrolls into view is not
+ * counted as the click's effect.
  */
 export async function activate(page, origin, route, item, options = {}) {
-  const { masks = [], volatile = {} } = options;
+  const { masks = [], volatile = {}, settleMs = DEFAULT_SETTLE_MS } = options;
   const selector = typeof item === "string" ? item : item.selector;
   const mode =
     typeof item === "string" ? "click" : (item.anchor?.mode ?? "click");
   const base = routeUrl(origin, "/");
   await reload(page, origin, route);
   await parkPointer(page);
+  for (const step of (typeof item === "string" ? [] : item.via) ?? []) {
+    const opener = page.locator(step.selector).first();
+    if ((await opener.count()) === 0) return null;
+    await press(opener, step.anchor?.mode ?? "click");
+    await inPage(page, afterActivation, { masks }).catch(() => {});
+  }
   const locator = page.locator(selector).first();
   if ((await locator.count()) === 0) return null;
+  // An element production showed on a timer (a cookie banner's button, a timed modal's Close) is clicked once it shows,
+  // on both sides, not before.
+  await locator
+    .waitFor({ state: "visible", timeout: Math.max(1000, settleMs) })
+    .catch(() => {});
+  await locator.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+  await inPage(page, afterActivation, { masks }).catch(() => {});
   const arg = {
     shown: SHOWN_SELECTOR,
     trigger: selector,
@@ -434,25 +595,58 @@ export async function activate(page, origin, route, item, options = {}) {
     skip: volatile.shown ?? [],
   };
   const before = await inPage(page, captureState, arg);
-  if (mode === "hover") await locator.hover({ timeout: 2000 }).catch(() => {});
-  else
-    try {
-      await locator.click({ timeout: 2000 });
-    } catch {
-      // Covered or animating: fall back to a DOM click, which still runs the element's own handlers.
-      await locator.evaluate((el) => el.click()).catch(() => {});
-    }
+  await press(locator, mode);
   await page.waitForLoadState("load").catch(() => {});
-  await inPage(page, afterActivation).catch(() => {});
+  await inPage(page, afterActivation, { masks }).catch(() => {});
   const after = await inPage(page, captureState, arg);
   return effectOf(before, after, volatile);
 }
 
-/** How an anchor reads in a finding: BUTTON "See features", with "(hover)" for a hover target. */
+/**
+ * In the page, after a control opened something: for each selector in arg.selectors, whether its element sits in what
+ * is open now (an open dialog or details, the element the trigger's aria-controls names, a rendered menu, listbox or
+ * popover), so only the controls of the opened layer are crawled next, not content that faded in as the page scrolled.
+ */
+function insideOpened(arg) {
+  const out = [];
+  const trigger = document.querySelector(arg.trigger);
+  const ids = String(trigger?.getAttribute("aria-controls") ?? "")
+    .split(/\s+/)
+    .filter(Boolean);
+  const candidates = [
+    ...document.querySelectorAll(
+      'dialog[open], details[open], [role="dialog"], [role="menu"], [role="listbox"], [popover]',
+    ),
+    ...ids.map((id) => document.getElementById(id)).filter(Boolean),
+  ];
+  for (const el of candidates)
+    if (isRendered(el) && !el.contains(trigger)) out.push(el);
+  return arg.selectors.map((selector) => {
+    const el = document.querySelector(selector);
+    return Boolean(el) && out.some((o) => o.contains(el));
+  });
+}
+
+/** Whether an effect opens something whose controls the crawl should try too (a dialog, a menu, a disclosure). */
+export function opensLayer(effect) {
+  return Boolean(
+    effect?.changed.some(
+      (c) =>
+        c === "open: false -> true" ||
+        c === "aria-expanded: false -> true" ||
+        c === "hidden: true -> false",
+    ),
+  );
+}
+
+/**
+ * How an anchor reads in a finding: BUTTON "See features", with "(hover)" for a hover target and the control that
+ * opens it for one inside a dialog or menu.
+ */
 const describe = (a) =>
-  `${a.tag} "${a.name || a.text}"${a.mode === "hover" ? " (hover)" : ""}`;
+  `${a.tag} "${a.name || a.text}"${a.mode === "hover" ? " (hover)" : ""}${a.via ? ` (inside what ${a.via} opens)` : ""}`;
 const anchorKey = (a) =>
-  `${a.tag}:${a.name || a.text}${a.mode === "hover" ? " (hover)" : ""}`;
+  `${a.tag}:${a.name || a.text}${a.mode === "hover" ? " (hover)" : ""}${a.via ? ` in ${a.via}` : ""}`;
 
 /**
  * The index in `candidates` of the target element that is the same as the production `anchor`, or -1. Only a
@@ -463,7 +657,10 @@ const anchorKey = (a) =>
  */
 export function matchAnchor(anchor, candidates, used = new Set()) {
   const mode = anchor.mode ?? "click";
-  const free = (c, i) => !used.has(i) && (c.mode ?? "click") === mode;
+  const free = (c, i) =>
+    !used.has(i) &&
+    (c.mode ?? "click") === mode &&
+    (c.via ?? null) === (anchor.via ?? null);
   const tries = [
     (c) => anchor.testId && c.testId === anchor.testId,
     (c) =>
@@ -552,6 +749,17 @@ export function diffEffects(prod, target) {
         "different-effect",
         `scrolls to ${a.scrollTarget ?? `${a.scrollDelta} px`} in production and to ${b.scrollTarget ?? `${b.scrollDelta} px`} on the target`,
       );
+    else if (scrolls(a) && a.landing && b.landing) {
+      const covered = b.landing.covered && !a.landing.covered;
+      if (
+        covered ||
+        Math.abs(b.landing.top - a.landing.top) > LANDING_TOLERANCE
+      )
+        add(
+          "different-effect",
+          `scrolls ${a.scrollTarget ?? "the page"} to ${a.landing.top} px from the top of the viewport in production and to ${b.landing.top} px on the target${covered ? ", where a fixed or sticky layer covers it (check scroll-padding-top or scroll-margin-top)" : ""}`,
+        );
+    }
     if (a.hash !== b.hash)
       add(
         a.hash && !b.hash ? "missing-effect" : "different-effect",
@@ -600,7 +808,14 @@ export function diffEffects(prod, target) {
  * Discovers and activates every interactive element of one side for one route and case, after learning what the page
  * changes on its own (observeVolatile).
  */
-export async function crawl(browser, origin, route, matrixCase, masks = []) {
+export async function crawl(
+  browser,
+  origin,
+  route,
+  matrixCase,
+  masks = [],
+  settleMs = DEFAULT_SETTLE_MS,
+) {
   return withPage(
     browser,
     origin,
@@ -608,19 +823,62 @@ export async function crawl(browser, origin, route, matrixCase, masks = []) {
     matrixCase,
     async (page) => {
       const items = await discover(page, masks);
-      const volatile = await observeVolatile(page, origin, route, masks);
+      const volatile = await observeVolatile(
+        page,
+        origin,
+        route,
+        masks,
+        settleMs,
+      );
       const out = [];
-      for (const item of items)
-        out.push({
-          ...item,
-          effect: await activate(page, origin, route, item, {
-            masks,
-            volatile,
-          }),
+      const known = new Set(
+        items.map((item) => `${item.anchor.mode} ${item.selector}`),
+      );
+      for (const item of items) {
+        const effect = await activate(page, origin, route, item, {
+          masks,
+          volatile,
+          settleMs,
         });
+        out.push({ ...item, effect });
+        if (!opensLayer(effect)) continue;
+        // Open it again and crawl the controls that only exist while it is open (a dialog's Close), one level deep.
+        const via = [{ selector: item.selector, anchor: item.anchor }];
+        await activate(
+          page,
+          origin,
+          route,
+          { ...item, via: [] },
+          { masks, settleMs },
+        );
+        const fresh = (await discover(page, masks)).filter(
+          (n) => !known.has(`${n.anchor.mode} ${n.selector}`),
+        );
+        const keep = await inPage(page, insideOpened, {
+          trigger: item.selector,
+          selectors: fresh.map((n) => n.selector),
+        });
+        const inside = fresh.filter((_, i) => keep[i]).slice(0, NESTED_MAX);
+        for (const nested of inside) {
+          const anchor = { ...nested.anchor, via: anchorKey(item.anchor) };
+          out.push({
+            ...nested,
+            anchor,
+            via,
+            effect: await activate(
+              page,
+              origin,
+              route,
+              { ...nested, via },
+              { masks, volatile, settleMs },
+            ),
+          });
+        }
+      }
       return out;
     },
     masks,
+    settleMs,
   );
 }
 
@@ -635,8 +893,8 @@ export async function runCheck(browser, options) {
   for (const route of routesOf(options))
     for (const c of casesOf(options)) {
       const [prod, target] = await Promise.all([
-        crawl(browser, options.prod, route, c, masks),
-        crawl(browser, options.target, route, c, masks),
+        crawl(browser, options.prod, route, c, masks, settleOf(options)),
+        crawl(browser, options.target, route, c, masks, settleOf(options)),
       ]);
       crawled.push({ route, width: c.width, prod, target });
       for (const f of diffEffects(prod, target))

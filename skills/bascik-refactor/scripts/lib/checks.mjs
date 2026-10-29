@@ -125,13 +125,31 @@ export const QUIET_MS = 750;
 export const QUIET_CAP_MS = 4000;
 
 /**
- * Waits until no DOM change happens outside the masked regions for QUIET_MS, at most QUIET_CAP_MS: a banner that
- * slides in a moment after load, or content a script fills in late, is on the page before anything is measured on
- * either side. A region that never stops changing (a ticker, a carousel) runs into the cap; mask it.
+ * How long after navigation starts a check waits, at least, before it measures a page: a newsletter modal or a promo
+ * that opens on a timer (3 s after load is common) is then on the page on both sides, every time, instead of on
+ * whichever side happened to load slower. Pass --settle-ms for a layer on a longer timer, or 0 for a site with none.
  */
-export async function quiet(page, masks = []) {
+export const DEFAULT_SETTLE_MS = 5000;
+
+/** The settle time a runCheck call takes: options.settleMs, or DEFAULT_SETTLE_MS. */
+export function settleOf(options) {
+  const n = Number(options?.settleMs);
+  return options?.settleMs === undefined || !Number.isFinite(n) || n < 0
+    ? DEFAULT_SETTLE_MS
+    : n;
+}
+
+/**
+ * Waits until `settleMs` after navigation started (see DEFAULT_SETTLE_MS), then until no DOM change happens outside
+ * the masked regions for QUIET_MS, at most QUIET_CAP_MS: a banner that slides in a moment after load, a modal on a
+ * timer, or content a script fills in late, is on the page before anything is measured on either side. A region that
+ * never stops changing (a ticker, a carousel) runs into the cap; mask it.
+ */
+export async function quiet(page, masks = [], settleMs = DEFAULT_SETTLE_MS) {
   await page.evaluate(
-    async ({ quietMs, cap, masks }) => {
+    async ({ quietMs, cap, masks, settleMs }) => {
+      const wait = settleMs - performance.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       const inMask = (node) => {
         const el = node.nodeType === 1 ? node : node.parentElement;
         if (!el) return false;
@@ -166,26 +184,63 @@ export async function quiet(page, masks = []) {
       });
       window.scrollTo(0, 0);
     },
-    { quietMs: QUIET_MS, cap: QUIET_CAP_MS, masks },
+    { quietMs: QUIET_MS, cap: QUIET_CAP_MS, masks, settleMs },
   );
 }
 
 /**
  * Opens `route` on `origin` for one case, settled and quiet (see quiet()), runs `fn(page)` and closes the context.
- * `masks` are the documented dynamic regions the quiet wait ignores.
+ * `masks` are the documented dynamic regions the quiet wait ignores; `settleMs` is the least time after navigation
+ * before `fn` runs (DEFAULT_SETTLE_MS when undefined).
  */
-export async function withPage(browser, origin, route, matrixCase, fn, masks) {
+export async function withPage(
+  browser,
+  origin,
+  route,
+  matrixCase,
+  fn,
+  masks,
+  settleMs,
+) {
   const { context, page } = await openPage(
     browser,
     routeUrl(origin, route),
     matrixCase,
   );
   try {
-    await quiet(page, masks ?? []);
+    await quiet(page, masks ?? [], settleMs ?? DEFAULT_SETTLE_MS);
     return await fn(page, context);
   } finally {
     await context.close();
   }
+}
+
+/**
+ * Leaves the masked regions out of every screenshot that follows on this page: each is made invisible (its box stays,
+ * so nothing moves, and what is drawn above it, such as an open menu over an autoplay video, still shows), and a
+ * masked dialog draws no ::backdrop. Done with a constructed stylesheet, which a page's Content-Security-Policy does
+ * not block. Playwright's own screenshot mask paints over everything in the region, open menus included.
+ */
+export async function hideMasks(page, masks = []) {
+  if (!masks.length) return;
+  await page
+    .evaluate((masks) => {
+      const sheet = new CSSStyleSheet();
+      for (const m of masks) {
+        try {
+          sheet.insertRule(
+            `:is(${m}), :is(${m}) * { visibility: hidden !important; }`,
+          );
+          sheet.insertRule(
+            `:is(${m})::backdrop { background: transparent !important; backdrop-filter: none !important; }`,
+          );
+        } catch {
+          // An invalid selector is reported by the check's argument parsing.
+        }
+      }
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    }, masks)
+    .catch(() => {});
 }
 
 /** Navigates an open page back to the route and settles it, so each activation starts from the same state. */
@@ -194,13 +249,13 @@ export async function reload(page, origin, route) {
   await settle(page);
 }
 
-/** A non-negative number of pixels from a flag, or an error naming the flag. */
-export function pixels(flag, value, fallback) {
+/** A non-negative number (of CSS pixels, unless `unit` says otherwise) from a flag, or an error naming the flag. */
+export function pixels(flag, value, fallback, unit = "CSS pixels") {
   if (value === undefined) return fallback;
   const n = Number(value);
   if (value === "" || !Number.isFinite(n) || n < 0)
     throw new Error(
-      `${flag} must be a number of CSS pixels, 0 or more (got "${value}")`,
+      `${flag} must be a number of ${unit}, 0 or more (got "${value}")`,
     );
   return n;
 }
@@ -222,6 +277,7 @@ export function parseArgsFor(
       matrix: { type: "string" },
       out: { type: "string" },
       mask: { type: "string", multiple: true },
+      "settle-ms": { type: "string" },
       json: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
       ...extra,
@@ -241,8 +297,10 @@ export function parseArgsFor(
     if (seen.has(route)) throw new Error(`--route ${route} is given twice`);
     seen.add(route);
   }
+  const { "settle-ms": settle, ...rest } = values;
   return {
-    ...values,
+    ...rest,
+    settleMs: pixels("--settle-ms", settle, DEFAULT_SETTLE_MS, "milliseconds"),
     route: values.route ?? [],
     mask: values.mask ?? [],
     matrix: values.matrix ?? DEFAULT_MATRIX,

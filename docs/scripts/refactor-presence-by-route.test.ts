@@ -67,9 +67,9 @@ const PROD = (): Snapshot[] => [
 ];
 
 describe("constants", () => {
-  it("names the check and inventories every route fresh and after dismissal", () => {
+  it("names the check and inventories every route fresh, after dismissal and in a new tab", () => {
     expect(CHECK).toBe("presence-by-route");
-    expect([...STATES]).toEqual(["fresh", "dismissed"]);
+    expect([...STATES]).toEqual(["fresh", "dismissed", "new-tab"]);
   });
 
   it("looks at dialogs, alert dialogs and live regions as well as positioned elements", () => {

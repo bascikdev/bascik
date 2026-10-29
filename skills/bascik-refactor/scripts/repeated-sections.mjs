@@ -16,6 +16,7 @@ import {
   parseArgsFor,
   result,
   routesOf,
+  settleOf,
   runCli,
   withPage,
 } from "./lib/checks.mjs";
@@ -38,6 +39,7 @@ Options:
   --target <url>       Bascik origin, such as http://localhost:8080 (a production build: bascik --server)
   --route <path>       Route to fingerprint (repeatable; two or more)
   --target-src <dir>   The Bascik project, holding src/pages and src/components (default .)
+  --settle-ms <ms>     Least time after navigation before measuring (default 5000)
   --matrix <file>      Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --out <dir>          Report folder (default artifacts/checks)
   --json               Print the report as JSON
@@ -50,9 +52,14 @@ Options:
 const SECTION_SELECTOR =
   'section, header, footer, nav, aside, article, [role="region"], [role="banner"], [role="contentinfo"], div:has(> h1, > h2, > h3, > h4, > h5, > h6), div:has(> * > h1, > * > h2, > * > h3)';
 
-/** A fingerprint smaller than this (nodes after collapsing, depth) is too generic to call a repeat. */
+/**
+ * A fingerprint smaller than this (nodes after collapsing, depth) is too generic to call a repeat, unless it is a band
+ * with a heading and a link or button (a call to action, a testimonial): such a band of SMALL_MIN_NODES or more counts
+ * when its heading text repeats too, so two different bands with the same three tags are not one section.
+ */
 const MIN_NODES = 5;
 const MIN_DEPTH = 3;
+const SMALL_MIN_NODES = 3;
 
 /** Computed styles in a section's signature: the root, and each part found by its structural path. */
 const SIGNATURE_PROPS = [
@@ -126,6 +133,36 @@ function size(tree) {
   return walk(collapse(tree), 1);
 }
 
+/** Whether a tree is a band: a heading and a link or button somewhere in it. */
+function isBand(tree) {
+  const tags = new Set();
+  const walk = (node) => {
+    tags.add(node.tag);
+    for (const child of node.children ?? []) walk(child);
+  };
+  walk(tree);
+  return (
+    [...tags].some((t) => /^H[1-6]$/.test(t)) &&
+    (tags.has("A") || tags.has("BUTTON"))
+  );
+}
+
+/**
+ * The fingerprint of a section if it is specific enough to call a repeat, or null. A small band (see MIN_NODES) is
+ * fingerprinted with its heading text, so only the same band on two routes repeats.
+ */
+export function sectionFingerprint(section) {
+  const { nodes, depth } = size(section.tree);
+  if (nodes >= MIN_NODES && depth >= MIN_DEPTH)
+    return fingerprint(section.tree);
+  if (nodes >= SMALL_MIN_NODES && section.label && isBand(section.tree))
+    return createHash("sha256")
+      .update(`${shape(section.tree)}\n${section.label}`)
+      .digest("hex")
+      .slice(0, 16);
+  return null;
+}
+
 /**
  * The fingerprints present on two or more routes: [{ fingerprint, routes, keys }] in route order. `byRoute` maps a
  * route to its sections, [{ fingerprint, key }]. A section repeated on one route only is not a cross-route repeat.
@@ -180,12 +217,14 @@ export function componentUsage(root) {
   const componentFiles = existsSync(componentsDir)
     ? htmlFiles(componentsDir)
     : [];
+  // Bascik names a component by its filename only, in any folder: marketing/promo-card.html is <promo-card>.
   const byName = new Map();
   for (const file of componentFiles) {
-    const rel = relative(componentsDir, file).split(sep);
-    const base = rel[rel.length - 1].replace(/\.html$/, "");
-    const name = rel.length > 1 ? rel[0] : base;
-    if (rel.length === 1 || base === name) byName.set(name, file);
+    const name = file
+      .split(sep)
+      .at(-1)
+      .replace(/\.html$/, "");
+    if (name.includes("-")) byName.set(name, file);
   }
   const known = new Set(byName.keys());
   const pages = {};
@@ -342,16 +381,31 @@ function collectSections(arg) {
         const m = /^bascik__([a-z][a-z0-9-]*)__/.exec(c);
         if (m) classes.add(m[1]);
       }
-    let owner = null;
-    for (let n = el; n && n !== document.body; n = n.parentElement) {
-      const own = [...(n.classList ?? [])]
+    // The component that renders the section: one whose scoped class is on the section itself, on a wrapper around
+    // nothing but the section (a component root), or on the one element inside it that holds all its content. A
+    // layout component around a page's slot holds more than the section, so it is not the section's owner.
+    const scoped = (n) =>
+      [...(n.classList ?? [])]
         .map((c) => /^bascik__([a-z][a-z0-9-]*)__/.exec(c)?.[1])
         .find(Boolean);
-      if (own) {
-        owner = own;
-        break;
-      }
+    const text = norm(el.textContent);
+    let owner = null;
+    const within = [];
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+      const own = scoped(n);
+      if (!own) continue;
+      if (!owner && norm(n.textContent) === text) owner = own;
+      else if (n !== el) within.push(own);
     }
+    if (!owner)
+      for (const inner of el.querySelectorAll("*")) {
+        if (norm(inner.textContent) !== text) break;
+        const own = scoped(inner);
+        if (own) {
+          owner = own;
+          break;
+        }
+      }
     out.push({
       tree: tree(el),
       key: `${tagOf(el)}:${label.slice(0, 70).trim()}`,
@@ -360,6 +414,7 @@ function collectSections(arg) {
       path: pathOf(el),
       signature,
       owner,
+      within,
       testId: el.getAttribute("data-testid"),
       classes: [...classes],
     });
@@ -367,21 +422,64 @@ function collectSections(arg) {
   return out;
 }
 
-async function sections(browser, origin, route, c) {
-  return withPage(browser, origin, route, c, (page) =>
-    inPage(page, collectSections, {
-      selector: SECTION_SELECTOR,
-      props: SIGNATURE_PROPS,
-    }),
+async function sections(browser, origin, route, c, options) {
+  return withPage(
+    browser,
+    origin,
+    route,
+    c,
+    (page) =>
+      inPage(page, collectSections, {
+        selector: SECTION_SELECTOR,
+        props: SIGNATURE_PROPS,
+      }),
+    [],
+    settleOf(options),
   );
 }
 
-/** The text of every page and component source with tags removed and whitespace collapsed, for finding pasted copy. */
+const ENTITIES = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  rsquo: "\u2019",
+  lsquo: "\u2018",
+  rdquo: "\u201d",
+  ldquo: "\u201c",
+  mdash: "\u2014",
+  ndash: "\u2013",
+  hellip: "\u2026",
+  copy: "\u00a9",
+  reg: "\u00ae",
+  trade: "\u2122",
+  middot: "\u00b7",
+  eacute: "\u00e9",
+};
+
+/** Decodes the character references an author writes in HTML text (&amp;, &rsquo;, &#39;, &#x2014;). */
+export function decodeEntities(text) {
+  return String(text).replace(
+    /&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi,
+    (all, dec, hex, name) => {
+      if (dec) return String.fromCodePoint(Number(dec));
+      if (hex) return String.fromCodePoint(Number.parseInt(hex, 16));
+      return ENTITIES[name.toLowerCase()] ?? all;
+    },
+  );
+}
+
+/**
+ * The text of every page and component source with tags removed, character references decoded and whitespace
+ * collapsed, so a heading written "Froth &amp; pour" in the source matches the rendered "Froth & pour".
+ */
 function sourceTexts(root, usage) {
   const read = (rel) =>
-    readFileSync(join(root, rel), "utf8")
-      .replace(/<[^>]*>/g, " ")
-      .replace(/\s+/g, " ");
+    decodeEntities(
+      readFileSync(join(root, rel), "utf8").replace(/<[^>]*>/g, " "),
+    ).replace(/\s+/g, " ");
   const pages = Object.fromEntries(
     Object.keys(usage.pages).map((p) => [p, read(p)]),
   );
@@ -395,7 +493,8 @@ function sourceTexts(root, usage) {
  * The component that renders a target instance, or null when its page pastes the markup. In order: its scoped class
  * name (bascik__<name>__), its data-testid, then the source: a page whose own source holds the section's heading text
  * pastes it; a component the page renders that holds the text renders it. Only when the text is in no source (it
- * comes from data or props) does the one component every page shares get the credit.
+ * comes from data or props) does the one component every page shares get the credit, and only if the section sits
+ * inside it or nothing says which component it sits in.
  */
 function componentOf(instance, usage, pages, page, sources) {
   const known = new Set(usage.components);
@@ -414,7 +513,10 @@ function componentOf(instance, usage, pages, page, sources) {
   const shared = pages
     .map((p) => transitive(usage, p))
     .reduce((a, b) => new Set([...a].filter((n) => b.has(n))));
-  return shared.size === 1 ? [...shared][0] : null;
+  if (shared.size !== 1) return null;
+  const [only] = shared;
+  const within = instance.within ?? [];
+  return within.length && !within.includes(only) ? null : only;
 }
 
 /**
@@ -435,12 +537,14 @@ export async function runCheck(browser, options) {
         options.prod,
         route,
         c,
+        options,
       );
       target[`${c.width} ${route}`] = await sections(
         browser,
         options.target,
         route,
         c,
+        options,
       );
     }
   // Fingerprints come from the first case; the signatures are compared at every case.
@@ -448,11 +552,8 @@ export async function runCheck(browser, options) {
   const byRoute = {};
   for (const route of routes)
     byRoute[route] = prod[`${first} ${route}`]
-      .filter((s) => {
-        const { nodes, depth } = size(s.tree);
-        return nodes >= MIN_NODES && depth >= MIN_DEPTH;
-      })
-      .map((s) => ({ ...s, fingerprint: fingerprint(s.tree) }));
+      .map((s) => ({ ...s, fingerprint: sectionFingerprint(s) }))
+      .filter((s) => s.fingerprint);
   let repeated = findRepeated(byRoute);
   // Report the outermost repeat only: a nav inside a repeated header is part of the header's component.
   const instancesOf = (r) =>
@@ -494,7 +595,7 @@ export async function runCheck(browser, options) {
       const label = key.slice(key.indexOf(":") + 1);
       return (
         list.find((s) => s.key === key) ??
-        list.find((s) => fingerprint(s.tree) === r.fingerprint) ??
+        list.find((s) => sectionFingerprint(s) === r.fingerprint) ??
         (label ? list.find((s) => s.label === label) : undefined)
       );
     };
@@ -530,7 +631,7 @@ export async function runCheck(browser, options) {
       const ignore = new Set();
       const prodInst = r.routes.map((route, i) =>
         prod[`${c.width} ${route}`].find(
-          (s) => s.key === r.keys[i] || fingerprint(s.tree) === r.fingerprint,
+          (s) => s.key === r.keys[i] || sectionFingerprint(s) === r.fingerprint,
         ),
       );
       for (const property of new Set(

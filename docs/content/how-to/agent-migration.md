@@ -45,7 +45,7 @@ The scripts are plain Node.js modules with unit tests in the Bascik repository. 
 
 ## What You Need
 
-1. A Bascik project on Node.js 22.18 or newer. `npm create bascik@rc` creates one with every agent skill already in `.agents/skills/` and `.claude/skills/`. For an existing project, install the skills as [Agent Skills](/agent-skills) describes.
+1. A Bascik project on Node.js 22.22 or newer. `npm create bascik@rc` creates one with every agent skill already in `.agents/skills/` and `.claude/skills/`. For an existing project, install the skills as [Agent Skills](/agent-skills) describes.
 2. A read-only checkout of the legacy repository.
 3. The live production URL.
 4. sharp and Lighthouse 13.3 or later as dev dependencies, plus Playwright, which the starter already has. The scripts load them from your project, never from the skill.

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="clock-skew" content="60000" />
+<title>Milk frother</title>
+<link rel="stylesheet" href="../assets/site.css" />
+<script src="../assets/site.js" defer></script>
+</head>
+<body id="top">
+<header class="site-header" data-testid="site-header">
+  <a class="logo" href="./" data-testid="site-header-logo">Milk frother</a>
+  <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav" data-testid="site-header-menu-toggle">Menu</button>
+  <nav class="site-nav" id="site-nav" aria-label="Main" data-testid="site-header-nav">
+    <div class="products">
+      <button type="button" aria-expanded="false" aria-controls="products-menu" data-testid="site-header-products">Products</button>
+      <ul class="products-menu" id="products-menu" hidden data-testid="site-header-products-menu">
+        <li><a href="./#features" data-testid="site-header-products-frother"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="#2457d6"/></svg>Frother</a></li>
+        <li><a href="./#gallery" data-testid="site-header-products-whisk"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" fill="#f2b632"/></svg>Whisk</a></li>
+      </ul>
+    </div>
+    <a href="about" data-testid="site-header-about">About</a>
+    <a href="./#journal" data-testid="site-header-journal">Journal</a>
+  </nav>
+</header>
+<main data-testid="home">
+  <section class="hero" data-ab data-testid="home-hero">
+    <video autoplay muted loop playsinline poster="../assets/hero-poster.jpg" data-testid="hero-video"><source src="../assets/hero.webm" type="video/webm" /></video>
+    <div class="hero-inner">
+      <h1>Foam like a café, at home</h1>
+      <p>A handheld frother that turns any milk into silky microfoam.</p>
+      <a class="cta" href="#features" data-ab data-testid="home-hero-cta">See how it works</a>
+    </div>
+  </section>
+  <section class="section fade-in" id="features" data-testid="home-features">
+    <h2>Why it works</h2>
+    <div class="features">
+      <article class="feature"><h3>Fast</h3><p>Twenty seconds from cold milk to foam, with a single button.</p></article>
+      <article class="feature"><h3>Quiet</h3><p>A balanced motor that hums instead of whining.</p></article>
+      <article class="feature"><h3>Clean</h3><p>Rinse the whisk under the tap and stand it up to dry.</p></article>
+    </div>
+  </section>
+  <section class="section fade-in" id="gallery" data-testid="home-gallery">
+    <h2>In the kitchen</h2>
+    <div class="gallery">
+      <img class="lazy" loading="lazy" width="800" height="600" src="../assets/photo-1.jpg" alt="Frother in a mug" style="background-image:url(data:image/gif;base64,R0lGODlhAQABAIAAAMjP3P///yH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==)" />
+      <img class="lazy" loading="lazy" width="800" height="600" src="../assets/photo-2.jpg" alt="Foam on a latte" style="background-image:url(data:image/gif;base64,R0lGODlhAQABAIAAAMjP3P///yH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==)" />
+      <img class="lazy" loading="lazy" width="800" height="600" src="../assets/photo-3.jpg" alt="Whisk drying" style="background-image:url(data:image/gif;base64,R0lGODlhAQABAIAAAMjP3P///yH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==)" />
+    </div>
+  </section>
+  <section class="section fade-in" data-testid="home-reviews">
+    <h2>What people say</h2>
+    <div class="carousel" data-testid="review-carousel">
+  <div class="carousel-track">
+    <figure class="carousel-slide"><blockquote>Silky foam in twenty seconds.</blockquote><figcaption>Sam, Leeds</figcaption></figure>
+    <figure class="carousel-slide"><blockquote>Quiet enough for a sleeping house.</blockquote><figcaption>Ana, Porto</figcaption></figure>
+    <figure class="carousel-slide"><blockquote>The whisk cleans itself under the tap.</blockquote><figcaption>Kofi, Accra</figcaption></figure>
+  </div>
+  <button class="carousel-btn carousel-prev" type="button" aria-label="Previous review" data-testid="review-carousel-prev">‹</button>
+  <button class="carousel-btn carousel-next" type="button" aria-label="Next review" data-testid="review-carousel-next">›</button>
+  <p class="visually-hidden" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)" data-testid="review-carousel-status">Review 1 of 3</p>
+</div>
+  </section>
+  <section class="section fade-in" id="journal" data-testid="home-journal">
+    <h2>From the journal</h2>
+    <div class="post"><a href="about#story" data-testid="home-journal-post">Why foam needs fat and protein</a><time data-relative datetime="2026-01-01T00:00:00Z">2026-01-01T00:00:00Z</time></div>
+  </section>
+</main>
+<footer class="site-footer" data-testid="site-footer">
+  <p>Milk frother, made for slow mornings.</p>
+  <p><a href="about" data-testid="site-footer-about">About us</a> · <a href="#top" data-testid="site-footer-top">Back to top</a></p>
+</footer>
+<aside class="cookie-banner" role="region" aria-label="Cookie notice" hidden data-testid="cookie-banner">
+  <p>We use cookies to remember your settings and to measure visits.</p>
+  <button class="btn btn-ghost" type="button" data-testid="cookie-banner-reject">Reject</button>
+  <button class="btn" type="button" data-testid="cookie-banner-accept">Accept</button>
+</aside>
+<dialog class="newsletter" aria-labelledby="newsletter-title" data-testid="newsletter-modal">
+  <button class="newsletter-close" type="button" aria-label="Close" data-testid="newsletter-modal-close">×</button>
+  <h2 id="newsletter-title">Frothy news, monthly</h2>
+  <form data-testid="newsletter-modal-form">
+    <label for="newsletter-email">Email</label>
+    <input id="newsletter-email" type="email" required data-testid="newsletter-modal-email" />
+    <button class="btn" type="submit" data-testid="newsletter-modal-submit">Subscribe</button>
+  </form>
+</dialog>
+
+</body>
+</html>

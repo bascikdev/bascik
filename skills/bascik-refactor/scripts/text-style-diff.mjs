@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Text style diff: for every visible text element, links included, compare color, weight, family, size, line height,
-// letter spacing, decoration and transform at rest, under :hover and under :focus-visible (forced with CDP
+// Text style diff: for every visible text element, links included, compare color, weight, style, family, size, line
+// height, letter spacing, decoration (with its offset and thickness), transform, text fill and gradient, shadow and the
+// focus ring (outline, box-shadow) at rest, under :hover and under :focus-visible (forced with CDP
 // CSS.forcePseudoState), matched by tag plus normalized text.
 // Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
 //
@@ -14,6 +15,7 @@ import {
   parseArgsFor,
   result,
   routesOf,
+  settleOf,
   runCli,
   withPage,
 } from "./lib/checks.mjs";
@@ -25,9 +27,12 @@ const HELP = `Usage: node text-style-diff.mjs --prod <url> --target <url> --rout
 
 Compares the text styles of every visible element with its own text (headings, paragraphs, links, buttons, labels,
 list items), matched by tag plus normalized text (a repeated text is matched per copy, in document order: "Learn
-more", "Learn more #2"), at rest and with :hover and :focus-visible forced through CDP CSS.forcePseudoState on the
-element and every ancestor, so a link's or a card's :hover that styles the text counts. One finding per element,
-state and property; an element missing on the target is a finding too. Exits 1 on any finding.
+more", "Learn more #2"; a <time datetime> by its datetime, so a relative date that ticked over still matches), at
+rest and with :hover and :focus-visible forced through CDP CSS.forcePseudoState on the element and every ancestor, so
+a link's or a card's :hover that styles the text counts. The properties: color, font weight, style, family and size,
+line height, letter spacing, text decoration with its thickness and underline offset, text transform and shadow, the
+text fill and a gradient painted through background-clip: text, and the focus ring (outline style, width, color and
+offset, box-shadow). One finding per element, state and property; an element missing on the target is a finding too. Exits 1 on any finding.
 
 Options:
   --prod <url>        Live production origin
@@ -35,6 +40,7 @@ Options:
   --route <path>      Route to compare (repeatable, required)
   --mask <selector>   A documented dynamic region to skip, such as a ticking counter (repeatable; log it in the
                       decisions ledger)
+  --settle-ms <ms>    Least time after navigation before measuring (default 5000)
   --matrix <file>     Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --out <dir>         Report folder (default artifacts/checks)
   --json              Print the report as JSON
@@ -43,12 +49,25 @@ Options:
 export const TEXT_PROPS = Object.freeze([
   "color",
   "font-weight",
+  "font-style",
   "font-family",
   "font-size",
   "line-height",
   "letter-spacing",
   "text-decoration",
+  "text-decoration-thickness",
+  "text-underline-offset",
   "text-transform",
+  "text-shadow",
+  "-webkit-text-fill-color",
+  // Read only where background-clip is text (a gradient headline); "n/a" elsewhere.
+  "background-image",
+  // The focus ring: outline-color and outline-offset count only while an outline is drawn.
+  "outline-style",
+  "outline-width",
+  "outline-color",
+  "outline-offset",
+  "box-shadow",
 ]);
 
 export const STATES = Object.freeze(["rest", "hover", "focus-visible"]);
@@ -144,28 +163,41 @@ function textElements(arg) {
   return out;
 }
 
-/** In the page: the text properties of the element at each selector. */
+/**
+ * In the page: the text properties of the element at each selector. background-image counts only on text it paints
+ * (background-clip: text), and outline-color and outline-offset only while an outline is drawn; elsewhere they read
+ * "n/a", so a button's own background or the color an undrawn outline would have is not a text style.
+ */
 function readStyles(arg) {
   const out = {};
   for (const { key, selector } of arg.items) {
     const el = document.querySelector(selector);
     if (!el) continue;
     const cs = getComputedStyle(el);
+    const clip =
+      cs.getPropertyValue("background-clip") === "text" ||
+      cs.getPropertyValue("-webkit-background-clip") === "text";
+    const outline = cs.getPropertyValue("outline-style") !== "none";
     out[key] = Object.fromEntries(
-      arg.props.map((p) => [p, cs.getPropertyValue(p)]),
+      arg.props.map((p) => {
+        if (p === "background-image" && !clip) return [p, "n/a"];
+        if ((p === "outline-color" || p === "outline-offset") && !outline)
+          return [p, "n/a"];
+        return [p, cs.getPropertyValue(p)];
+      }),
     );
   }
   return out;
 }
 
 /**
- * The text styles of one loaded page in every state: { key: { rest, hover, "focus-visible" } }. Pseudo-states are
- * forced on each element through CDP, so no mouse or keyboard is involved and nothing else on the page changes.
+ * The styles `props` of each item ({ key, selector, ancestors }) of a loaded page in every state:
+ * { key: { rest, hover, "focus-visible" } }. Pseudo-states are forced on each element and its ancestors through CDP,
+ * so no mouse or keyboard is involved and nothing else on the page changes (a menu that is open stays open).
  */
-export async function captureTextStyles(page, masks = []) {
-  const items = await inPage(page, textElements, { masks });
+export async function forcedStyles(page, items, props) {
   const out = {};
-  const rest = await inPage(page, readStyles, { items, props: TEXT_PROPS });
+  const rest = await inPage(page, readStyles, { items, props });
   for (const [key, styles] of Object.entries(rest)) out[key] = { rest: styles };
   const cdp = await page.context().newCDPSession(page);
   try {
@@ -194,7 +226,7 @@ export async function captureTextStyles(page, masks = []) {
     // tree the way a pointer does, and a:hover on a link around a span, or .card:hover a, styles the text from above.
     const forced = new Set(nodes.map((n) => n.nodeId));
     for (const { item } of nodes)
-      for (const selector of item.ancestors) {
+      for (const selector of item.ancestors ?? []) {
         const nodeId = await nodeOf(selector);
         if (nodeId) forced.add(nodeId);
       }
@@ -206,7 +238,7 @@ export async function captureTextStyles(page, masks = []) {
         });
       const styles = await inPage(page, readStyles, {
         items: nodes.map((n) => n.item),
-        props: TEXT_PROPS,
+        props,
       });
       for (const [key, s] of Object.entries(styles))
         if (out[key]) out[key][state] = s;
@@ -220,6 +252,12 @@ export async function captureTextStyles(page, masks = []) {
     await cdp.detach().catch(() => {});
   }
   return out;
+}
+
+/** The text styles of one loaded page in every state: { key: { rest, hover, "focus-visible" } } (see forcedStyles). */
+export async function captureTextStyles(page, masks = []) {
+  const items = await inPage(page, textElements, { masks });
+  return forcedStyles(page, items, TEXT_PROPS);
 }
 
 /** Resolves to { check, ok, findings }. Options: prod, target, routes, cases, masks. */
@@ -236,6 +274,7 @@ export async function runCheck(browser, options) {
           c,
           (page) => captureTextStyles(page, masks),
           masks,
+          settleOf(options),
         );
       const [prod, target] = await Promise.all([
         capture(options.prod),

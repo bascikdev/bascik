@@ -90,6 +90,8 @@ async function run(
     route: "/",
     cases: [WIDE],
     out: join(out, name, variant, target),
+    // No fixture here opens anything on a timer, so the default settle time after load would only slow the suite down.
+    settleMs: 0,
     ...extra,
   });
 }
@@ -324,7 +326,7 @@ describe("identical pairs stay clean", () => {
       "prod",
     );
     expect(r.findings, show(r)).toEqual([]);
-  });
+  }, 120_000);
 
   for (const check of [
     "interaction-crawl",

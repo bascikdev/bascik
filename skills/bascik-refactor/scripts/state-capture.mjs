@@ -2,7 +2,8 @@
 // State capture: open every disclosure the interaction crawl finds (dropdowns, drawers, accordions, tabs) on
 // production and on the Bascik target, wait for the opening animation, and compare the open state: geometry,
 // computed styles, a pixel crop, and the icons in the panel (svg, img, picture, CSS background-image and mask-image,
-// ::before and ::after). Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
+// ::before and ::after), the hover and focus styles of the items in it, the trigger's open-state style (a chevron that
+// rotates), and what opening it does to the page around it (a scrim that dims it). Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
 //
 // Why: main-nav dropdowns shipped with the wrong style and without their icons, because no check ever looked at a
 // menu in its open state.
@@ -12,6 +13,7 @@ import { inPage } from "./lib/dom.mjs";
 import {
   casesOf,
   finding,
+  hideMasks,
   masksOf,
   parseArgsFor,
   reload,
@@ -19,8 +21,10 @@ import {
   routeSlug,
   routesOf,
   runCli,
+  settleOf,
   withPage,
 } from "./lib/checks.mjs";
+import { forcedStyles } from "./text-style-diff.mjs";
 import {
   discover,
   matchAnchor,
@@ -37,20 +41,34 @@ export const POSITION_TOLERANCE = 1;
 /** Two crop pixels match when no channel differs by more than this (of 255): anti-aliasing, never a color change. */
 export const PIXEL_CHANNEL_TOLERANCE = 8;
 
+/**
+ * Opening a panel may change the brightness of the page around it (outside the panel and its trigger) by this much
+ * more or less than production does (0.1 is 10 percent): a scrim that dims the page to 60 percent, or one that is
+ * missing, is far more.
+ */
+export const DIM_TOLERANCE = 0.1;
+
+/** A click that scrolls the page at least this far and flips no open state is an in-page link, not a disclosure. */
+const SCROLL_ONLY = 8;
+
 const HELP = `Usage: node state-capture.mjs --prod <url> --target <url> --route <path>... [options]
 
 Opens every disclosure on each route (an element whose click or hover flips aria-expanded or open, or shows new
 content, including a menu that opens on CSS :hover) on both sides, waits for the opening animation to finish, and
 compares the open panel: its computed styles and size, its place relative to its trigger (within 1 px), the styles of
-each item in it, its icons (kind and file; for an inline svg its drawing and its fill and stroke colors; a glyph drawn
-with ::before or ::after content), and a pixel crop of the panel (a channel may differ by ${PIXEL_CHANNEL_TOLERANCE} of 255, no more).
-Writes both crops to --out for the review page. Exits 1 on any finding.
+each item in it at rest and with :hover and :focus-visible forced, its icons (kind and file; for an inline svg its
+drawing and its fill and stroke colors; a glyph drawn with ::before or ::after content), the trigger's own style and
+icon transforms while open (a chevron that rotates), the brightness of the page around the panel (a scrim), and a
+pixel crop of the panel (a channel may differ by ${PIXEL_CHANNEL_TOLERANCE} of 255, no more). An in-page link whose only effect is a
+scroll is not a disclosure (interaction-crawl checks it). Masked regions are left out of the crops (made invisible,
+so a menu drawn over a masked video still shows), and a masked dialog's backdrop is not drawn. Writes both crops to --out for the review page. Exits 1 on any finding.
 
 Options:
   --prod <url>      Live production origin
   --target <url>    Bascik origin, such as http://localhost:8080 (a production build: bascik --server)
   --route <path>    Route to check (repeatable, required)
   --mask <selector> A documented dynamic region to leave out, such as a carousel (repeatable)
+  --settle-ms <ms>  Least time after navigation before measuring (default 5000)
   --matrix <file>   Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --out <dir>       Report folder; crops go to <out>/states/ (default artifacts/checks)
   --json            Print the report as JSON
@@ -83,6 +101,16 @@ export const STATE_PROPS = Object.freeze([
   "z-index",
 ]);
 
+/** The trigger's styles while its panel is open; its icons' transforms are added as "icon N transform". */
+const TRIGGER_PROPS = [
+  "color",
+  "background-color",
+  "border-top-color",
+  "box-shadow",
+  "font-weight",
+  "text-decoration-line",
+];
+
 const ITEM_PROPS = [
   "color",
   "background-color",
@@ -93,6 +121,8 @@ const ITEM_PROPS = [
   "padding-left",
   "gap",
   "text-decoration-line",
+  "outline-style",
+  "box-shadow",
 ];
 
 /** Every way a page draws an icon. */
@@ -122,23 +152,80 @@ export function iconSource(src) {
     .toLowerCase();
 }
 
-/** One style finding per property whose open-state value differs. */
-export function diffStateStyles(anchor, prod, target) {
+/** One style finding per property whose open-state value differs; `kind` and `what` name the part ("the trigger"). */
+export function diffStateStyles(
+  anchor,
+  prod,
+  target,
+  { kind = "style", what = "" } = {},
+) {
   const findings = [];
-  for (const property of Object.keys(prod)) {
+  for (const property of Object.keys(prod ?? {})) {
     const a = prod[property];
-    const b = target[property];
+    const b = target?.[property];
     if (a === b) continue;
     findings.push(
       finding(
         CHECK,
-        "style",
-        `${anchor} open: ${property} is "${a}" in production and "${b ?? "(missing)"}" on the target`,
+        kind,
+        `${anchor} open: ${what}${property} is "${a}" in production and "${b ?? "(missing)"}" on the target`,
         { anchor, property, prod: a, target: b },
       ),
     );
   }
   return findings;
+}
+
+/**
+ * Compares the items of an open panel under :hover and :focus-visible ({ key: { hover, "focus-visible" } } on each
+ * side): one item-style finding per item, state and property, so a dropdown item that lost its hover highlight shows.
+ */
+export function diffItemStates(anchor, prod, target) {
+  const findings = [];
+  for (const [key, states] of Object.entries(prod ?? {}))
+    for (const state of ["hover", "focus-visible"]) {
+      const a = states[state] ?? {};
+      const b = target?.[key]?.[state];
+      if (!b) continue;
+      for (const property of Object.keys(a)) {
+        if (a[property] === b[property]) continue;
+        findings.push(
+          finding(
+            CHECK,
+            "item-style",
+            `${anchor} open: ${key} (${state}): ${property} is "${a[property]}" in production and "${b[property]}" on the target`,
+            {
+              anchor,
+              key,
+              state,
+              property,
+              prod: a[property],
+              target: b[property],
+            },
+          ),
+        );
+      }
+    }
+  return findings;
+}
+
+/**
+ * Compares what opening the panel does to the brightness of the page around it (`dim`: the mean brightness outside
+ * the panel and trigger once open, divided by the same before opening) on both sides: a scrim missing or added is a
+ * viewport finding.
+ */
+export function diffDim(anchor, prod, target) {
+  if (typeof prod !== "number" || typeof target !== "number") return [];
+  if (Math.abs(prod - target) <= DIM_TOLERANCE) return [];
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  return [
+    finding(
+      CHECK,
+      "viewport",
+      `${anchor} open: the page around the panel is at ${pct(prod)} of its closed brightness in production and ${pct(target)} on the target (${prod < target ? "production dims it, as a scrim or overlay does" : "the target dims it"})`,
+      { anchor, prod, target },
+    ),
+  ];
 }
 
 const iconId = (icon) => `${icon.kind}:${iconSource(icon.src)}`;
@@ -405,8 +492,31 @@ function capturePanel(arg) {
   const trigger = document.querySelector(arg.trigger);
   const box = boxOf(panel);
   const at = trigger ? boxOf(trigger) : null;
+  // The trigger while open: its own style, and each icon's transform (a chevron that turns 180 degrees).
+  let triggerStyles = null;
+  if (trigger && !panel.contains(trigger)) {
+    triggerStyles = pick(trigger, arg.triggerProps);
+    let n = 0;
+    for (const el of [trigger, ...trigger.querySelectorAll("*")]) {
+      const tag = tagOf(el);
+      if (el !== trigger && ["SVG", "IMG", "I", "SPAN"].includes(tag)) {
+        if (el.parentElement?.closest("svg") || !isRendered(el)) continue;
+        if (tag !== "SVG" && tag !== "IMG" && norm(el.textContent)) continue;
+        n++;
+        const cs = getComputedStyle(el);
+        triggerStyles[`icon ${n} transform`] = `${cs.transform} ${cs.rotate}`;
+      }
+      for (const pseudo of ["::before", "::after"]) {
+        const ps = getComputedStyle(el, pseudo);
+        if (ps.content === "none" || ps.content === "normal") continue;
+        triggerStyles[`${tag}${pseudo} transform`] =
+          `${ps.transform} ${ps.rotate}`;
+      }
+    }
+  }
   return {
     styles,
+    triggerStyles,
     icons,
     box,
     position: at
@@ -415,26 +525,117 @@ function capturePanel(arg) {
           dy: Math.round((box.y - at.y) * 10) / 10,
         }
       : null,
+    triggerBox: at,
+    items: [...panel.querySelectorAll('a, button, [role="menuitem"]')]
+      .filter((el) => isRendered(el))
+      .map((el) => {
+        const ancestors = [];
+        for (
+          let a = el.parentElement;
+          a && a !== document.documentElement;
+          a = a.parentElement
+        )
+          ancestors.push(selectorOf(a));
+        return { key: textKey(el), selector: selectorOf(el), ancestors };
+      }),
   };
 }
 
 const SHOWN = "a, button, h1, h2, h3, h4, h5, h6, p, li, img";
 
+/** In the page: the open state of everything a disclosure can flip, as one string, and the scroll position. */
+function openFlags() {
+  const parts = [];
+  for (const el of document.querySelectorAll(
+    "[aria-expanded], details, dialog, [hidden], [popover]",
+  ))
+    parts.push(
+      [
+        el.getAttribute("aria-expanded"),
+        el.open,
+        el.hidden,
+        el.matches?.(":popover-open") ?? false,
+      ].join(","),
+    );
+  return { flags: parts.join("|"), scrollY };
+}
+
+/**
+ * The mean brightness of a viewport screenshot outside `boxes` (viewport coordinates), sampled on a 4 px grid, from 0
+ * to 255.
+ */
+async function brightness(sharp, png, boxes) {
+  const { data, info } = await sharp(png)
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let sum = 0;
+  let n = 0;
+  for (let y = 0; y < info.height; y += 4)
+    for (let x = 0; x < info.width; x += 4) {
+      if (
+        boxes.some(
+          (b) =>
+            b &&
+            x >= b.x &&
+            x < b.x + b.width &&
+            y >= b.y &&
+            y < b.y + b.height,
+        )
+      )
+        continue;
+      const i = (y * info.width + x) * 3;
+      sum += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+      n++;
+    }
+  return n ? sum / n : null;
+}
+
 /**
  * Opens one disclosure on a loaded page (a click, or a hover for a hover target) and captures it, or returns null
  * when nothing opens. Texts the page shows on its own (`volatile`, a carousel) and masked regions do not count as
- * the panel. The crop is cut from a viewport screenshot when the panel is in view, the way a visitor sees it.
+ * the panel, and a click that only scrolls the page (an in-page link, which may make sections fade in) opens nothing.
+ * When the page changes on its own (`volatile` is not empty: a modal on a timer, a late banner), the state is opened
+ * only after `settleMs` from load, so those layers sit in both sides' crops alike. Masked regions are painted out of
+ * every screenshot (hideMasks), and a masked dialog draws no backdrop. The crop is cut from a viewport screenshot when the panel
+ * is in view, the way a visitor sees it.
  */
-async function openState(page, origin, route, item, file, { masks, volatile }) {
+async function openState(
+  page,
+  origin,
+  route,
+  item,
+  file,
+  { masks, volatile, settleMs, sharp },
+) {
   await reload(page, origin, route);
   await page.mouse.move(0, 0).catch(() => {});
   const locator = page.locator(item.selector).first();
   if ((await locator.count()) === 0) return null;
+  await hideMasks(page, masks);
+  if ((volatile?.selectors?.length || volatile?.shown?.length) && settleMs)
+    await page
+      .waitForFunction((ms) => performance.now() >= ms, settleMs, {
+        timeout: settleMs + 1000,
+      })
+      .catch(() => {});
+  await locator.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+  await inPage(page, async () => {
+    await scrollSettled(2000);
+    await animationsDone(3000);
+  });
   const visible = (arg) =>
     [...document.querySelectorAll(arg.selector)]
       .filter((el) => isRendered(el) && !isMasked(el, arg.masks))
       .map((el) => textKey(el));
   const shownBefore = await inPage(page, visible, { selector: SHOWN, masks });
+  const flagsBefore = await inPage(page, openFlags);
+  const shot = () =>
+    page.screenshot({
+      animations: "disabled",
+      caret: "hide",
+    });
+  const closedShot = await shot();
   if (item.anchor?.mode === "hover")
     await locator.hover({ timeout: 2000 }).catch(() => {});
   else
@@ -448,6 +649,12 @@ async function openState(page, origin, route, item, file, { masks, volatile }) {
     await scrollSettled(2000);
     await animationsDone(3000);
   });
+  const flagsAfter = await inPage(page, openFlags);
+  if (
+    Math.abs(flagsAfter.scrollY - flagsBefore.scrollY) >= SCROLL_ONLY &&
+    flagsAfter.flags === flagsBefore.flags
+  )
+    return null;
   const skip = new Set([...shownBefore, ...(volatile?.shown ?? [])]);
   const shown = (
     await inPage(page, visible, { selector: SHOWN, masks })
@@ -461,17 +668,35 @@ async function openState(page, origin, route, item, file, { masks, volatile }) {
       shownSelector: SHOWN,
       props: STATE_PROPS,
       itemProps: ITEM_PROPS,
+      triggerProps: TRIGGER_PROPS,
     },
   );
   if (!captured) return null;
   const { x, y, width, height } = captured.box;
+  const view = await inPage(page, () => ({
+    x: scrollX,
+    y: scrollY,
+    width: innerWidth,
+    height: innerHeight,
+  }));
+  // The page around the panel: its brightness open, relative to closed (a scrim dims it).
+  if (sharp) {
+    const toView = (b) =>
+      b && {
+        x: b.x - view.x,
+        y: b.y - view.y,
+        width: b.width,
+        height: b.height,
+      };
+    const boxes = [toView(captured.box), toView(captured.triggerBox)];
+    const [closed, open] = await Promise.all([
+      brightness(sharp, closedShot, boxes),
+      brightness(sharp, await shot(), boxes),
+    ]);
+    captured.dim =
+      closed && open !== null ? Math.round((open / closed) * 100) / 100 : null;
+  }
   if (width >= 1 && height >= 1) {
-    const view = await inPage(page, () => ({
-      x: scrollX,
-      y: scrollY,
-      width: innerWidth,
-      height: innerHeight,
-    }));
     const inView =
       x >= view.x &&
       y >= view.y &&
@@ -492,12 +717,17 @@ async function openState(page, origin, route, item, file, { masks, volatile }) {
     });
     captured.crop = file;
   }
+  // The items' hover and focus styles, forced on each item while the panel stays open.
+  captured.itemStates = captured.items.length
+    ? await forcedStyles(page, captured.items, ITEM_PROPS).catch(() => null)
+    : null;
   return captured;
 }
 
 /** Compares the open states of every disclosure on one route and case. */
 async function compareCase(browser, options, route, c, dir, states, extra) {
   const { sharp, masks } = extra;
+  const settleMs = settleOf(options);
   const findings = [];
   await withPage(
     browser,
@@ -516,8 +746,8 @@ async function compareCase(browser, options, route, c, dir, states, extra) {
             discover(targetPage, masks),
           ]);
           const [prodVolatile, targetVolatile] = await Promise.all([
-            observeVolatile(prodPage, options.prod, route, masks),
-            observeVolatile(targetPage, options.target, route, masks),
+            observeVolatile(prodPage, options.prod, route, masks, settleMs),
+            observeVolatile(targetPage, options.target, route, masks, settleMs),
           ]);
           const used = new Set();
           let n = 0;
@@ -530,7 +760,7 @@ async function compareCase(browser, options, route, c, dir, states, extra) {
               route,
               item,
               `${stem}-prod.png`,
-              { masks, volatile: prodVolatile },
+              { masks, volatile: prodVolatile, settleMs, sharp },
             );
             if (!prod) continue;
             n++;
@@ -558,7 +788,7 @@ async function compareCase(browser, options, route, c, dir, states, extra) {
               route,
               targetItems[i],
               `${stem}-target.png`,
-              { masks, volatile: targetVolatile },
+              { masks, volatile: targetVolatile, settleMs, sharp },
             );
             if (!target) {
               findings.push(
@@ -583,6 +813,14 @@ async function compareCase(browser, options, route, c, dir, states, extra) {
               ...diffStateStyles(label, prod.styles, target.styles),
               ...diffPosition(label, prod.position, target.position),
               ...diffIcons(label, prod.icons, target.icons),
+              ...diffStateStyles(
+                label,
+                prod.triggerStyles,
+                target.triggerStyles,
+                { kind: "trigger-style", what: "the trigger's " },
+              ),
+              ...diffItemStates(label, prod.itemStates, target.itemStates),
+              ...diffDim(label, prod.dim, target.dim),
             ];
             // The crop catches what no property list names (an icon's stroke width, a divider, a badge). Two crops of
             // another size already differ in width or height above.
@@ -602,8 +840,10 @@ async function compareCase(browser, options, route, c, dir, states, extra) {
           }
         },
         masks,
+        settleMs,
       ),
     masks,
+    settleMs,
   );
   return findings;
 }

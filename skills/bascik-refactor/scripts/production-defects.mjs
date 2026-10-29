@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Production defects: run ON PRODUCTION at every matrix case, before parity, and find what production gets wrong:
 // images squished or stretched (rendered aspect ratio off the natural one by more than 2 percent with object-fit fill
-// or none), an icon off its heading's center by more than 4 px or wrapped to its own line, text that overflows or is
+// or none; lazy images are loaded first; an inline svg drawn with preserveAspectRatio="none" off its viewBox ratio),
+// an icon off the vertical center of its heading or its text label by more than 4 px, or wrapped to its own line, text that overflows or is
 // clipped by its box, overlapping text, and horizontal page scroll. Each defect becomes a decisions ledger row
 // ("production defect: fix in target"), and the parity checks then compare the target with the corrected expectation
 // for that element instead of with production. With --target, a target that copies a defect fails.
@@ -20,6 +21,7 @@ import {
   parseArgsFor,
   result,
   routesOf,
+  settleOf,
   runCli,
   withPage,
 } from "./lib/checks.mjs";
@@ -40,7 +42,10 @@ const HELP = `Usage: node production-defects.mjs --prod <url> --route <path>... 
 
 Runs on production at every matrix case, before any parity check, and lists what production gets wrong:
   squished          an image drawn at another aspect ratio than its file (over ${ASPECT_TOLERANCE * 100} percent) with object-fit fill or none
-  icon-misaligned   an icon whose vertical center is over ${ICON_CENTER_TOLERANCE} px off its heading's, in the same row
+                    (loading="lazy" images are loaded first), or an inline svg with preserveAspectRatio="none" drawn
+                    at another ratio than its viewBox
+  icon-misaligned   an icon whose vertical center is over ${ICON_CENTER_TOLERANCE} px off its heading's, or off its text label's (a
+                    paragraph, span or list item beside it, or the text of its own row), in the same row
   icon-wrapped      an icon on its own line above or below its heading
   text-overflow     text wider or taller than its box
   text-clipped      text cut off by overflow hidden (without an intended ellipsis or line clamp)
@@ -58,6 +63,7 @@ Options:
   --route <path>     Route to check (repeatable, required)
   --ledger <file>    Decisions ledger to append to (default docs/migration/decisions.md)
   --mask <selector>  A documented dynamic region to skip, such as a carousel (repeatable)
+  --settle-ms <ms>   Least time after navigation before measuring (default 5000)
   --matrix <file>    Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --out <dir>        Report folder (default artifacts/checks)
   --json             Print the report as JSON
@@ -103,13 +109,31 @@ export function detectDefects(snapshot) {
     const want = natural.width / natural.height;
     const got = rendered.width / rendered.height;
     if (Math.abs(got / want - 1) <= ASPECT_TOLERANCE) continue;
+    const source =
+      img.source === "viewBox"
+        ? `its viewBox is ${ratioText(natural.width, natural.height)} (${want.toFixed(2)}:1) and preserveAspectRatio is none`
+        : `the file is ${ratioText(natural.width, natural.height)} (${want.toFixed(2)}:1) and object-fit is ${objectFit}`;
     add(
       "squished",
       img,
-      `${img.key} at ${width} px is drawn ${Math.round(rendered.width)}x${Math.round(rendered.height)} (${got.toFixed(2)}:1), but the file is ${ratioText(natural.width, natural.height)} (${want.toFixed(2)}:1) and object-fit is ${objectFit}: ${got < want ? "squished" : "stretched"}`,
+      `${img.key} at ${width} px is drawn ${Math.round(rendered.width)}x${Math.round(rendered.height)} (${got.toFixed(2)}:1), but ${source}: ${got < want ? "squished" : "stretched"}`,
     );
   }
   for (const row of snapshot.iconRows ?? []) {
+    if (row.label) {
+      // An icon beside a text label: off the label's center, and off its first line's when the label wraps.
+      const off = (box) =>
+        Math.round(Math.abs(centerY(row.icon) - centerY(box)) * 10) / 10;
+      const offs = [off(row.label), ...(row.line ? [off(row.line)] : [])];
+      const least = Math.min(...offs);
+      if (overlapsY(row.icon, row.label) && least > ICON_CENTER_TOLERANCE)
+        add(
+          "icon-misaligned",
+          row,
+          `the icon beside ${row.key} at ${width} px is ${least} px off the vertical center of its text`,
+        );
+      continue;
+    }
     if (!overlapsY(row.icon, row.heading)) {
       add(
         "icon-wrapped",
@@ -275,6 +299,32 @@ export function applyCorrections(findings, defects) {
   return { kept, corrected };
 }
 
+/**
+ * In the page: loads every loading="lazy" image that has not loaded (a browser never fetches one far below the fold
+ * until it scrolls there), waits for them (at most 5 s) and scrolls back to the top, so a squished lazy image is
+ * measured too.
+ */
+async function loadLazyImages(arg) {
+  const lazy = [...document.images].filter(
+    (img) => !img.complete && !isMasked(img, arg?.masks ?? []),
+  );
+  for (const img of lazy) img.loading = "eager";
+  await Promise.race([
+    Promise.all(
+      lazy.map(
+        (img) =>
+          img.complete ||
+          new Promise((r) => {
+            img.addEventListener("load", r, { once: true });
+            img.addEventListener("error", r, { once: true });
+          }),
+      ),
+    ),
+    new Promise((r) => setTimeout(r, 5000)),
+  ]);
+  scrollTo(0, 0);
+}
+
 /** In the page: images, icon rows, text boxes and page scroll, as detectDefects reads them. */
 function measureDefects(arg) {
   const masks = arg?.masks ?? [];
@@ -288,6 +338,24 @@ function measureDefects(arg) {
       natural: { width: img.naturalWidth, height: img.naturalHeight },
       rendered: { width: r.width, height: r.height },
       objectFit: getComputedStyle(img).objectFit,
+    });
+  }
+  // An inline svg stretched to its box: preserveAspectRatio="none" draws its viewBox at the box's ratio.
+  for (const svg of document.querySelectorAll("svg[viewBox]")) {
+    if (svg.parentElement?.closest("svg")) continue;
+    if (!/^\s*none\b/.test(svg.getAttribute("preserveAspectRatio") ?? ""))
+      continue;
+    if (!isRendered(svg) || isMasked(svg, masks)) continue;
+    const box = svg.viewBox?.baseVal;
+    if (!box?.width || !box?.height) continue;
+    const r = svg.getBoundingClientRect();
+    images.push({
+      key: textKey(svg),
+      selector: selectorOf(svg),
+      natural: { width: box.width, height: box.height },
+      rendered: { width: r.width, height: r.height },
+      objectFit: "fill",
+      source: "viewBox",
     });
   }
   const isIcon = (el) => {
@@ -318,6 +386,97 @@ function measureDefects(arg) {
       selector: selectorOf(h.parentElement),
       icon: rect(icon),
       heading: rect(h),
+    });
+  }
+  // Icons beside a text label that is not a heading (a feature list, "In the box"): the first sibling with text, or the
+  // text of the icon's own row.
+  const LABELS = new Set([
+    "P",
+    "SPAN",
+    "LI",
+    "A",
+    "LABEL",
+    "DT",
+    "DD",
+    "STRONG",
+    "EM",
+    "DIV",
+    "BUTTON",
+  ]);
+  const rows = new Set(iconRows.map((r) => r.selector));
+  for (const icon of document.body.querySelectorAll("svg, img, i, span")) {
+    if (icon.parentElement?.closest("svg") || isMasked(icon, masks)) continue;
+    if (!isIcon(icon) || icon === document.body) continue;
+    const parent = icon.parentElement;
+    if (!parent || rows.has(selectorOf(parent)) || layerOf(icon)) continue;
+    const firstLine = (el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const r = [...range.getClientRects()].find(
+        (x) => x.width > 0 && x.height > 0,
+      );
+      return r
+        ? { x: r.x, y: r.y + scrollY, width: r.width, height: r.height }
+        : null;
+    };
+    let label = [...parent.children].find(
+      (c) =>
+        c !== icon &&
+        LABELS.has(tagOf(c)) &&
+        !c.contains(icon) &&
+        isRendered(c) &&
+        norm(c.textContent) &&
+        !c.querySelector("svg, img"),
+    );
+    let box = null;
+    let line = null;
+    const rect = (el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y + scrollY, width: r.width, height: r.height };
+    };
+    if (label) {
+      box = rect(label);
+      line = firstLine(label);
+    } else {
+      // The icon's own row: text nodes directly beside it.
+      const text = [...parent.childNodes].filter(
+        (n) => n.nodeType === 3 && norm(n.textContent),
+      );
+      if (!text.length) continue;
+      const range = document.createRange();
+      range.setStartBefore(text[0]);
+      range.setEndAfter(text[text.length - 1]);
+      const rs = [...range.getClientRects()].filter(
+        (x) => x.width > 0 && x.height > 0,
+      );
+      if (!rs.length) continue;
+      const top = Math.min(...rs.map((x) => x.top));
+      const bottom = Math.max(...rs.map((x) => x.bottom));
+      box = {
+        x: rs[0].x,
+        y: top + scrollY,
+        width: rs[0].width,
+        height: bottom - top,
+      };
+      line = {
+        x: rs[0].x,
+        y: rs[0].y + scrollY,
+        width: rs[0].width,
+        height: rs[0].height,
+      };
+      label = parent;
+    }
+    if (/^H[1-6]$/.test(tagOf(label))) continue;
+    // Only a row: the icon sits beside its label, not above or below it.
+    const i = rect(icon);
+    if (!(i.x + i.width <= box.x + 1 || i.x >= box.x + box.width - 1)) continue;
+    rows.add(selectorOf(parent));
+    iconRows.push({
+      key: textKey(label),
+      selector: selectorOf(parent),
+      icon: i,
+      label: box,
+      line,
     });
   }
   const texts = [];
@@ -372,19 +531,23 @@ function measureDefects(arg) {
   };
 }
 
-async function measure(browser, origin, route, c, masks) {
+async function measure(browser, origin, route, c, masks, settleMs) {
   return withPage(
     browser,
     origin,
     route,
     c,
-    async (page) => ({
-      route,
-      width: c.width,
-      height: c.height,
-      ...(await inPage(page, measureDefects, { masks })),
-    }),
+    async (page) => {
+      await inPage(page, loadLazyImages, { masks });
+      return {
+        route,
+        width: c.width,
+        height: c.height,
+        ...(await inPage(page, measureDefects, { masks })),
+      };
+    },
     masks,
+    settleMs,
   );
 }
 
@@ -400,9 +563,9 @@ export async function runCheck(browser, options) {
   for (const route of routesOf(options))
     for (const c of casesOf(options)) {
       const [prodSnap, targetSnap] = await Promise.all([
-        measure(browser, options.prod, route, c, masks),
+        measure(browser, options.prod, route, c, masks, settleOf(options)),
         options.target
-          ? measure(browser, options.target, route, c, masks)
+          ? measure(browser, options.target, route, c, masks, settleOf(options))
           : null,
       ]);
       const prod = detectDefects(prodSnap);

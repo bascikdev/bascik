@@ -33,17 +33,28 @@ const styles = (over: Record<string, Record<string, string>> = {}) => ({
 });
 
 describe("constants", () => {
-  it("names the check, the eight properties and the three states", () => {
+  it("names the check, the text properties (with the focus ring, italics, underline offset and text fill) and the three states", () => {
     expect(CHECK).toBe("text-style-diff");
     expect([...TEXT_PROPS]).toEqual([
       "color",
       "font-weight",
+      "font-style",
       "font-family",
       "font-size",
       "line-height",
       "letter-spacing",
       "text-decoration",
+      "text-decoration-thickness",
+      "text-underline-offset",
       "text-transform",
+      "text-shadow",
+      "-webkit-text-fill-color",
+      "background-image",
+      "outline-style",
+      "outline-width",
+      "outline-color",
+      "outline-offset",
+      "box-shadow",
     ]);
     expect([...STATES]).toEqual(["rest", "hover", "focus-visible"]);
   });

@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Presence by route: for every route, in a fresh browser context (no cookies, no storage) and again after dismissing,
-// inventory the fixed, sticky and overlay layers: banners, notices, dialogs, live regions and anything covering a
-// viewport edge. The target must match per route, including the routes where a layer is absent, and a dismissal must
-// persist across routes as it does in production. Reports missing, extra and wrong trigger state per route.
+// inventory the fixed, sticky and overlay layers: banners, notices, dialogs, live regions, anything covering a
+// viewport edge, an in-flow bar above the site header, and layers that only show once the page is scrolled. The
+// target must match per route, including the routes where a layer is absent, with each fixed layer docked where
+// production docks it, and a dismissal must persist across routes, and in a new tab, as it does in production. Reports
+// missing, extra, placement and wrong trigger state per route.
 // Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
 //
 // Why: a cookie banner present on only a couple of pages was missed. A check that only looks at the routes someone
@@ -11,6 +13,7 @@ import { contextOptions, routeUrl, settle } from "./lib/capture.mjs";
 import { inPage } from "./lib/dom.mjs";
 import {
   casesOf,
+  DEFAULT_SETTLE_MS,
   finding,
   masksOf,
   normalize,
@@ -18,13 +21,17 @@ import {
   result,
   routesOf,
   runCli,
+  settleOf,
 } from "./lib/checks.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
 
 export const CHECK = "presence-by-route";
 
-/** Each route is inventoried fresh, then after every dismissible layer on every route was dismissed once. */
-export const STATES = Object.freeze(["fresh", "dismissed"]);
+/**
+ * Each route is inventoried fresh, then after every dismissible layer on every route was dismissed once, then in a new
+ * tab of that browser (consent kept in sessionStorage comes back there, and on every later visit).
+ */
+export const STATES = Object.freeze(["fresh", "dismissed", "new-tab"]);
 
 /** Elements that are presence by what they are, wherever they sit. Fixed, sticky and edge layers are found by style. */
 export const PRESENCE_SELECTOR =
@@ -40,15 +47,18 @@ const MAX_WAIT_MS = 5000;
 
 const HELP = `Usage: node presence-by-route.mjs --prod <url> --target <url> --route <path>... [options]
 
-For every route and matrix case, opens the page in a fresh browser context (no cookies, no storage) and waits until
-the page has been stable for ${STABLE_MS} ms, so a banner that slides in after load is seen. It inventories every
-fixed or sticky element, dialog and alert dialog, live region and absolutely positioned layer along a viewport edge,
-named by role and accessible name (never by class; a live region without a name by its test id, id or place, never
-by the text it rotates through). Then, in one context per side, it dismisses each dismissible
+For every route and matrix case, opens the page in a fresh browser context (no cookies, no storage), waits until
+--settle-ms after it started loading (a modal on a 3 s timer is on the page) and until the page has been stable for
+${STABLE_MS} ms, so a banner that slides in after load is seen. It inventories every fixed or sticky element, dialog and
+alert dialog, live region, absolutely positioned layer along a viewport edge and in-flow bar above the site header
+(a promo or announcement bar), at the top of the page and again scrolled to the middle and the bottom (a "Back to top"
+button that shows after scrolling), named by role and accessible name (never by class; a live region without a name
+by its test id, id or place, never by the text it rotates through). Each fixed layer and dialog also records where it
+is docked (top, middle or bottom; left, center or right). Then, in one context per side, it dismisses each dismissible
 layer once (a button named Accept, Accept all, Close, Got it, Dismiss and the like, or a --dismiss selector) on every
-route, and inventories every route again: a dismissal that persists across routes in production must persist on the
-target. Reports per route and case: missing, extra, and trigger (a layer that comes back after it was dismissed, or
-the reverse). Exits 1 on any finding.
+route, and inventories every route again, in that tab and then in a new tab: a dismissal that persists across routes
+and tabs in production must persist on the target. Reports per route and case: missing, extra, placement (docked on
+another edge), and trigger (a layer that comes back after it was dismissed, or the reverse). Exits 1 on any finding.
 
 Options:
   --prod <url>           Live production origin
@@ -56,6 +66,7 @@ Options:
   --route <path>         Route to inventory (repeatable, required; pass every route, presence differs per route)
   --dismiss <selector>   Another control that dismisses a layer, such as '[data-consent="accept"]' (repeatable)
   --mask <selector>      A documented dynamic region to leave out (repeatable)
+  --settle-ms <ms>       Least time after navigation before measuring (default 5000)
   --matrix <file>        Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --out <dir>            Report folder (default artifacts/checks)
   --json                 Print the report as JSON
@@ -143,11 +154,25 @@ export function diffPresence(prod, target) {
     const pKeys = new Set(p.items.map((i) => i.key));
     const tKeys = new Set(t.items.map((i) => i.key));
     const id = (key) => `${p.route} ${p.width} ${key}`;
+    for (const item of p.items) {
+      const other = t.items.find((i) => i.key === item.key);
+      if (!other || !item.dock || !other.dock || item.dock === other.dock)
+        continue;
+      if (reported.has(`${id(item.key)} placement`)) continue;
+      reported.add(`${id(item.key)} placement`);
+      findings.push(
+        finding(
+          CHECK,
+          "placement",
+          `${item.key} on ${p.route} at ${p.width} px (${p.state}) is docked ${item.dock} in production and ${other.dock} on the target`,
+          { ...where, key: item.key, prod: item.dock, target: other.dock },
+        ),
+      );
+    }
     for (const key of pKeys) {
       if (tKeys.has(key) || reported.has(id(key))) continue;
       reported.add(id(key));
-      const dismissedHere =
-        p.state === "dismissed" && has(fresh(target, t), key);
+      const dismissedHere = p.state !== "fresh" && has(fresh(target, t), key);
       findings.push(
         dismissedHere
           ? finding(
@@ -167,13 +192,15 @@ export function diffPresence(prod, target) {
     for (const key of tKeys) {
       if (pKeys.has(key) || reported.has(id(key))) continue;
       reported.add(id(key));
-      const cameBack = p.state === "dismissed" && has(fresh(prod, p), key);
+      const cameBack = p.state !== "fresh" && has(fresh(prod, p), key);
       findings.push(
         cameBack
           ? finding(
               CHECK,
               "trigger",
-              `${key} on ${p.route} at ${p.width} px: production keeps it dismissed once it was dismissed, but on the target it comes back after the dismissal`,
+              p.state === "new-tab"
+                ? `${key} on ${p.route} at ${p.width} px: production keeps it dismissed in a new tab of the same browser, but on the target it comes back in a new tab (is the dismissal kept in sessionStorage instead of localStorage or a cookie?)`
+                : `${key} on ${p.route} at ${p.width} px: production keeps it dismissed once it was dismissed, but on the target it comes back after the dismissal`,
               { ...where, key },
             )
           : finding(
@@ -197,6 +224,35 @@ function inventory(arg) {
     const p = getComputedStyle(el).position;
     if (p === "fixed" || p === "sticky" || p === "absolute") candidates.add(el);
   }
+  // An in-flow bar above the site header (a promo or announcement bar) is presence too: it pushes the whole page down.
+  const header = document.querySelector('header, [role="banner"]');
+  const topBars = new Set();
+  if (header && isRendered(header))
+    for (const el of document.body.querySelectorAll("*")) {
+      if (el === header || el.contains(header)) continue;
+      if (
+        !(el.compareDocumentPosition(header) & Node.DOCUMENT_POSITION_FOLLOWING)
+      )
+        continue;
+      if (
+        el.parentElement !== document.body &&
+        !el.parentElement.contains(header)
+      )
+        continue;
+      if (
+        ["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "LINK"].includes(tagOf(el))
+      )
+        continue;
+      const r = el.getBoundingClientRect();
+      if (
+        !isRendered(el) ||
+        !norm(el.textContent) ||
+        r.height > innerHeight * 0.4
+      )
+        continue;
+      topBars.add(el);
+      candidates.add(el);
+    }
   const layers = [];
   for (const el of candidates) {
     if (isMasked(el, arg.masks)) continue;
@@ -213,7 +269,11 @@ function inventory(arg) {
       viewport,
     };
     const reasons = presenceReasonsInPage(info);
+    if (topBars.has(el) && info.visible && !reasons.length) reasons.push("top");
     if (!reasons.length) continue;
+    // Scrolled, only what floats over the page counts: an absolute block passing a viewport edge is not a layer.
+    if (arg.scrolled && !reasons.some((r) => r !== "edge" && r !== "top"))
+      continue;
     layers.push({ el, info, reasons });
   }
   const liveRegions = [
@@ -244,6 +304,17 @@ function inventory(arg) {
         )
           dismiss.push(selectorOf(control));
     const live = layer.reasons.includes("live");
+    // Where a fixed layer or dialog sits in the viewport, by its center: a banner docked at the top instead of the
+    // bottom covers the header's links.
+    let dock = null;
+    if (layer.reasons.includes("fixed") || layer.reasons.includes("dialog")) {
+      const { x, y, width, height } = layer.info.rect;
+      const cx = x + width / 2;
+      const cy = y + height / 2;
+      const third = (v, size, names) =>
+        v < size / 3 ? names[0] : v > (size * 2) / 3 ? names[2] : names[1];
+      dock = `${third(cy, innerHeight, ["top", "middle", "bottom"])}-${third(cx, innerWidth, ["left", "center", "right"])}`;
+    }
     items.push({
       tag: tagOf(el),
       role:
@@ -258,16 +329,31 @@ function inventory(arg) {
           String(liveRegions.indexOf(el) + 1)
         : undefined,
       reasons: layer.reasons,
+      dock,
       dismiss,
     });
   }
   return items;
 }
 
-/** Waits until the inventory has not changed for STABLE_MS, at most MAX_WAIT_MS, and returns it. */
-async function stableInventory(page, dismissSelectors, masks = []) {
+/**
+ * Waits until `settleMs` after navigation and until the inventory has not changed for STABLE_MS, at most MAX_WAIT_MS,
+ * then scrolls to the middle and to the bottom of the page and adds what floats there (a "Back to top" button that
+ * shows after scrolling), and returns it.
+ */
+async function stableInventory(
+  page,
+  dismissSelectors,
+  masks = [],
+  settleMs = DEFAULT_SETTLE_MS,
+) {
   await settle(page);
-  const read = () =>
+  await page
+    .waitForFunction((ms) => performance.now() >= ms, settleMs, {
+      timeout: settleMs + 5000,
+    })
+    .catch(() => {});
+  const read = (scrolled = false) =>
     inPage(
       page,
       `function (arg) { const presenceReasonsInPage = ${presenceReasons}; return (${inventory})(arg); }`,
@@ -275,6 +361,7 @@ async function stableInventory(page, dismissSelectors, masks = []) {
         selector: PRESENCE_SELECTOR,
         dismissName: DISMISS_NAME.source,
         masks,
+        scrolled,
       },
     );
   const start = Date.now();
@@ -288,6 +375,29 @@ async function stableInventory(page, dismissSelectors, masks = []) {
       stableSince = Date.now();
     } else if (Date.now() - stableSince >= STABLE_MS) break;
   }
+  const name = (i) => presenceKey(i);
+  for (const where of ["middle", "bottom"]) {
+    await inPage(
+      page,
+      async (arg) => {
+        const max = document.documentElement.scrollHeight - innerHeight;
+        document.documentElement.style.scrollBehavior = "auto";
+        scrollTo({
+          top: arg.where === "middle" ? max / 2 : max,
+          behavior: "instant",
+        });
+        await new Promise((r) => setTimeout(r, 300));
+        await animationsDone(1500);
+      },
+      { where },
+    );
+    for (const item of await read(true))
+      if (!last.some((i) => name(i) === name(item))) last.push(item);
+  }
+  await inPage(page, () => {
+    scrollTo({ top: 0, behavior: "instant" });
+    document.documentElement.style.scrollBehavior = "";
+  });
   const extra = [];
   for (const selector of dismissSelectors)
     if (
@@ -305,9 +415,9 @@ async function stableInventory(page, dismissSelectors, masks = []) {
 }
 
 const toItems = (raw) =>
-  raw.map((i) => ({ key: presenceKey(i), reasons: i.reasons }));
+  raw.map((i) => ({ key: presenceKey(i), reasons: i.reasons, dock: i.dock }));
 
-/** Inventories one side: each route fresh, then each route after dismissing everything once. */
+/** Inventories one side: each route fresh, then each route after dismissing everything once, then in a new tab. */
 async function inventorySide(
   browser,
   origin,
@@ -315,6 +425,7 @@ async function inventorySide(
   c,
   dismissSelectors,
   masks,
+  settleMs,
 ) {
   const snapshots = [];
   for (const route of routes) {
@@ -322,7 +433,12 @@ async function inventorySide(
     try {
       const page = await context.newPage();
       await page.goto(routeUrl(origin, route), { waitUntil: "load" });
-      const raw = await stableInventory(page, dismissSelectors, masks);
+      const raw = await stableInventory(
+        page,
+        dismissSelectors,
+        masks,
+        settleMs,
+      );
       snapshots.push({
         route,
         width: c.width,
@@ -338,7 +454,12 @@ async function inventorySide(
     const page = await context.newPage();
     for (const route of routes) {
       await page.goto(routeUrl(origin, route), { waitUntil: "load" });
-      const raw = await stableInventory(page, dismissSelectors, masks);
+      const raw = await stableInventory(
+        page,
+        dismissSelectors,
+        masks,
+        settleMs,
+      );
       for (const selector of new Set(raw.flatMap((i) => i.dismiss))) {
         const control = page.locator(selector).first();
         if (!(await control.isVisible().catch(() => false))) continue;
@@ -348,13 +469,29 @@ async function inventorySide(
     }
     for (const route of routes) {
       await page.goto(routeUrl(origin, route), { waitUntil: "load" });
-      const raw = await stableInventory(page, [], masks);
+      const raw = await stableInventory(page, [], masks, settleMs);
       snapshots.push({
         route,
         width: c.width,
         state: "dismissed",
         items: toItems(raw),
       });
+    }
+    // A new tab of the same browser: cookies and localStorage carry over, sessionStorage does not.
+    for (const route of routes) {
+      const tab = await context.newPage();
+      try {
+        await tab.goto(routeUrl(origin, route), { waitUntil: "load" });
+        const raw = await stableInventory(tab, [], masks, settleMs);
+        snapshots.push({
+          route,
+          width: c.width,
+          state: "new-tab",
+          items: toItems(raw),
+        });
+      } finally {
+        await tab.close();
+      }
     }
   } finally {
     await context.close();
@@ -367,12 +504,21 @@ export async function runCheck(browser, options) {
   const routes = routesOf(options);
   const dismiss = options.dismiss ?? [];
   const masks = masksOf(options);
+  const settleMs = settleOf(options);
   const findings = [];
   const inventories = [];
   for (const c of casesOf(options)) {
     const [prod, target] = await Promise.all([
-      inventorySide(browser, options.prod, routes, c, dismiss, masks),
-      inventorySide(browser, options.target, routes, c, dismiss, masks),
+      inventorySide(browser, options.prod, routes, c, dismiss, masks, settleMs),
+      inventorySide(
+        browser,
+        options.target,
+        routes,
+        c,
+        dismiss,
+        masks,
+        settleMs,
+      ),
     ]);
     inventories.push({ width: c.width, prod, target });
     findings.push(...diffPresence(prod, target));

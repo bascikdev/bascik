@@ -118,6 +118,8 @@ async function run(
     route: "/",
     cases: DESKTOP,
     out: join(out, name, side),
+    // The fixtures have no timers, so the default settle time after load would only slow the suite down.
+    settleMs: 0,
     ...extra,
   });
   expect(result.check).toBe(name);
@@ -524,6 +526,8 @@ describe("10. run-checks: one command per route and matrix case", () => {
         server.legacy("site"),
         "--out",
         join(work, side),
+        "--settle-ms",
+        "0",
       ],
       { cwd: docsDir, encoding: "utf8", timeout: 300_000 },
     );

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Alignment diff: per matrix case, compare text-align, the rendered line count and the text's left and right offset
-// from its containing block and from the page edges for every heading, paragraph, button, link, list item, label,
-// caption and cell, and flag only the cases where they differ, naming the width. Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
+// from its containing block and from the page edges for every element with its own text (headings, paragraphs,
+// links, a div or span with text) and every image, svg, picture and video, and flag only the cases where they differ,
+// naming the width. Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
 //
 // Why: text was misaligned at certain breakpoints only, and one screenshot per route never showed it.
 import { inPage } from "./lib/dom.mjs";
@@ -13,6 +14,7 @@ import {
   pixels,
   result,
   routesOf,
+  settleOf,
   runCli,
   withPage,
 } from "./lib/checks.mjs";
@@ -25,11 +27,13 @@ export const SELECTOR =
 
 const HELP = `Usage: node alignment-diff.mjs --prod <url> --target <url> --route <path>... [options]
 
-For every visible heading, paragraph, button, link, list item, label, caption and table cell, matched by tag plus
-normalized text (a repeated text per copy, in document order: "Specs", "Specs #2"), compares at each matrix case:
-text-align (start and left are the same in a left-to-right page), the rendered line count, the left and right offset
-of the rendered text from the element's containing block, and its left and right offset from the page edges (a
-wrapper that lost its centering moves all its text together, so only the page offsets show it). Findings name the
+For every visible heading, paragraph, button, link, list item, label, caption and table cell, every other element
+with its own text (a stat number in a div, a row of spans), matched by tag plus normalized text (a repeated text per
+copy, in document order: "Specs", "Specs #2"), and every image, svg, picture and video (matched by tag and name),
+compares at each matrix case: text-align (start and left are the same in a left-to-right page), the rendered line
+count, the left and right offset of the rendered text (or of the image's box) from the element's containing block,
+and its left and right offset from the page edges (a wrapper that lost its centering moves all its text together, so
+only the page offsets show it). Findings name the
 width where they differ, so a breakpoint-only misalignment is located. Exits 1 on any finding.
 
 Options:
@@ -38,6 +42,7 @@ Options:
   --route <path>        Route to compare (repeatable, required)
   --tolerance <px>      Allowed offset difference in CSS pixels (default 2)
   --mask <selector>     A documented dynamic region to skip, such as a carousel (repeatable)
+  --settle-ms <ms>      Least time after navigation before measuring (default 5000)
   --matrix <file>       Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --out <dir>           Report folder (default artifacts/checks)
   --json                Print the report as JSON
@@ -142,22 +147,40 @@ function measureAlignment(arg) {
   const nodes = {};
   const seen = new Map();
   const page = document.documentElement.clientWidth;
-  for (const el of document.querySelectorAll(arg.selector)) {
+  const MEDIA = new Set(["IMG", "SVG", "PICTURE", "VIDEO"]);
+  const listed = new Set(document.querySelectorAll(arg.selector));
+  for (const el of document.body.querySelectorAll("*")) {
+    const tag = tagOf(el);
+    if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"].includes(tag)) continue;
+    if (el.parentElement?.closest("svg")) continue;
+    // Small svg icons are left to overlap-diff and state-capture: one swapped for a CSS icon would shift every key.
+    const big = (r) => r.width > 48 || r.height > 48;
+    const media =
+      MEDIA.has(tag) &&
+      !(tag === "IMG" && el.closest("picture")) &&
+      (tag !== "SVG" || big(el.getBoundingClientRect()));
+    const own = [...el.childNodes].some(
+      (c) => c.nodeType === 3 && norm(c.textContent),
+    );
+    if (!listed.has(el) && !own && !media) continue;
     if (!isRendered(el) || isMasked(el, arg.masks)) continue;
-    const text = norm(el.textContent);
-    if (!text) continue;
+    const text = textOf(el);
+    if (!text && !media) continue;
     const base = textKey(el);
     const n = (seen.get(base) ?? 0) + 1;
     seen.set(base, n);
     const key = n > 1 ? `${base} #${n}` : base;
     const rects = [];
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-    for (let t = walker.nextNode(); t; t = walker.nextNode()) {
-      if (!norm(t.textContent)) continue;
-      const range = document.createRange();
-      range.selectNodeContents(t);
-      for (const r of range.getClientRects())
-        if (r.width > 0 && r.height > 0) rects.push(r);
+    if (media) rects.push(el.getBoundingClientRect());
+    else {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+        if (!norm(t.textContent)) continue;
+        const range = document.createRange();
+        range.selectNodeContents(t);
+        for (const r of range.getClientRects())
+          if (r.width > 0 && r.height > 0) rects.push(r);
+      }
     }
     if (!rects.length) continue;
     const tops = [];
@@ -169,7 +192,7 @@ function measureAlignment(arg) {
     const container = (el.parentElement ?? el).getBoundingClientRect();
     const round = (v) => Math.round(v * 10) / 10;
     nodes[key] = {
-      textAlign: getComputedStyle(el).textAlign,
+      textAlign: media ? null : getComputedStyle(el).textAlign,
       lines: tops.length,
       left: round(left - container.left),
       right: round(container.right - right),
@@ -198,6 +221,7 @@ export async function runCheck(browser, options) {
           (page) =>
             inPage(page, measureAlignment, { selector: SELECTOR, masks }),
           masks,
+          settleOf(options),
         );
       const [p, t] = await Promise.all([
         measure(options.prod),

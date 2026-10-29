@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Milk frother</title>
+    <style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#1d2433;line-height:1.5;background:#fff}
+.wrap{max-width:960px;margin:0 auto;padding:0 16px}
+.top{background:#fff;border-bottom:1px solid #e3e7ef}
+.top .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+.top a{color:#1d2433;text-decoration:none;font-weight:700}
+main{display:block}
+.foot{border-top:1px solid #e3e7ef;padding:24px 0;color:#5b6475;font-size:14px}
+h1{font-size:36px;line-height:1.2;margin:0 0 16px}
+h2{font-size:28px;line-height:1.25;margin:0 0 12px}
+h3{font-size:20px;line-height:1.3;margin:0 0 8px}
+p{margin:0 0 12px}
+section{padding:48px 0}
+.reviews .viewport{overflow:hidden}
+.reviews .track{display:flex;margin:0;padding:0;list-style:none;transition:transform .3s}
+.reviews .slide{flex:0 0 100%;font-size:20px;padding:24px;background:#f5f7fb}
+.reviews .ctl{display:flex;gap:8px;margin-top:12px}
+.reviews button{width:40px;height:40px;border:1px solid #c9d3ea;background:#fff;border-radius:50%;font-size:20px;cursor:pointer}
+    </style>
+  </head>
+  <body>
+<header class="top" data-testid="site-header"><div class="wrap"><a href="/" data-testid="site-header-home">Milk frother</a></div></header>
+<main data-testid="main">
+<section class="reviews" aria-label="Reviews" data-testid="reviews"><div class="wrap">
+<h2>What owners say</h2>
+<div class="viewport"><ul class="track">
+<li class="slide">Silky foam every single morning.</li>
+<li class="slide">Quieter than my old steam wand.</li>
+<li class="slide">Cleans in ten seconds under the tap.</li>
+</ul></div>
+<div class="ctl"><button type="button" class="prev" aria-label="Previous review" data-testid="reviews-prev">‹</button><button type="button" class="next" aria-label="Next review" data-testid="reviews-next">›</button></div>
+</div></section>
+</main>
+<footer class="foot" data-testid="site-footer"><div class="wrap"><p>© 2026 Milk frother</p></div></footer>
+<script>
+(() => { const track = document.querySelector('.track'); let i = 0;
+const go = (d) => { i = (i + d + 3) % 3; track.style.transform = 'translateX(-' + (i * 100) + '%)'; };
+document.querySelector('.next').addEventListener('click', () => go(1));
+document.querySelector('.prev').addEventListener('click', () => go(-1)); })();
+</script>
+  </body>
+</html>

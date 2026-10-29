@@ -6,7 +6,7 @@
 //
 // Worker response policy: a thin Cloudflare Worker wrapper around the Worker Bascik generates. For every HTML
 // response it sends a strict Content-Security-Policy (no unsafe-inline) listing the SHA-256 hashes the build recorded
-// for that route in dist/.bascik/csp-hashes.json. It sets X-Robots-Tag: noindex on preview environments, API
+// for that route in .bascik/dist/csp-hashes.json. It sets X-Robots-Tag: noindex on preview environments, API
 // responses, errors, redirects and PDFs, sets Cache-Control per response kind, and turns an empty 404 into a plain
 // error page. A 304 Not Modified passes through untouched.
 // Dependency-free and import-free, so the one file can be copied into a project; Node.js 22.18+ for the CLI; Web
@@ -31,7 +31,7 @@
 //
 //      // worker-wrapper.js
 //      import bascikWorker from "./dist/.bascik/cloudflare/worker.js";
-//      import cspHashes from "./dist/.bascik/csp-hashes.json";
+//      import cspHashes from "./.bascik/dist/csp-hashes.json";
 //      import { withResponsePolicy } from "./scripts/worker-response-policy.mjs";
 //
 //      export default withResponsePolicy(bascikWorker, {
@@ -73,7 +73,7 @@ const HELP = `Usage: node worker-response-policy.mjs --html <built page> [--dire
 
 Prints a strict Content-Security-Policy for a built HTML file: SHA-256 hashes of its executable inline scripts and
 inline styles, with no unsafe-inline. Import the module from a Worker wrapper to apply the build's hashes from
-dist/.bascik/csp-hashes.json to every response (see the comment at the top of this file).
+.bascik/dist/csp-hashes.json to every response (see the comment at the top of this file).
 
 Options:
   --html <file>         A built page, such as dist/index.html
@@ -361,7 +361,7 @@ const hashBodies = (sources) =>
  * request, env and ctx through unchanged and applies the policy to the response. env.ENVIRONMENT names the
  * environment ("production" when unset).
  *
- * Hashes come from `cspHashes`, the parsed dist/.bascik/csp-hashes.json: each HTML response lists the hashes of its
+ * Hashes come from `cspHashes`, the parsed .bascik/dist/csp-hashes.json: each HTML response lists the hashes of its
  * route (a 404 those of /404; a route the build never recorded gets none, so its inline code is blocked). Only with
  * `hashResponseBodies: true` are they read from the response body instead, which allows any script a server or
  * stream script injected (see the comment at the top of this file).
@@ -386,7 +386,7 @@ export function withResponsePolicy(
     );
   if (cspHashes === undefined && hashResponseBodies !== true)
     throw new Error(
-      'withResponsePolicy: pass cspHashes, imported with `import cspHashes from "./dist/.bascik/csp-hashes.json"` (set generate: { cspHashes: true }), or hashResponseBodies: true for a site with no server or stream scripts',
+      'withResponsePolicy: pass cspHashes, imported with `import cspHashes from "./.bascik/dist/csp-hashes.json"` (set generate: { cspHashes: true }), or hashResponseBodies: true for a site with no server or stream scripts',
     );
   if (
     cspHashes !== undefined &&

@@ -14,6 +14,7 @@ import { loadPlaywright } from "./lib/project-deps.mjs";
 import {
   DEFAULT_MATRIX,
   DEFAULT_OUT,
+  DEFAULT_SETTLE_MS,
   formatFinding,
   pixels,
   routeSlug,
@@ -60,9 +61,12 @@ still fails. Writes <out>/<route>/report.json ({ route, ok, findings, corrected,
 for review-page.mjs. Exits 1 on any finding, and a check that crashed is a finding. "No findings" is not a PASS on its
 own: the route still needs a visual review and a human sign-off.
 
-Runtime: the interaction crawl reloads the page once per interactive element on each side, and every page waits
-until it has been quiet for 0.75 s, so expect about a minute per route per matrix case on a typical marketing page.
-Run every check anyway: a check skipped to save time is a check that passes nothing.
+Runtime: every page waits until ${DEFAULT_SETTLE_MS / 1000} s after it started loading (--settle-ms, so a modal or banner on a timer is
+on both sides) and then until it has been quiet for 0.75 s, and the interaction crawl and state capture reload the
+page once per interactive element on each side, so expect about two minutes per route per matrix case on a typical
+marketing page (state-capture and interaction-crawl take most of it). Run every check anyway: a check skipped to save
+time is a check that passes nothing. A check that crashes on a navigation timeout (a loaded host, a slow network) is
+run once more, and the report notes the retry; a second crash is a finding.
 
 Options:
   --prod <url>                Live production origin
@@ -73,8 +77,11 @@ Options:
   --matrix <file>             Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --spacing-tolerance <px>    spacing-diff tolerance (default 2)
   --overlap-tolerance <px>    overlap-diff tolerance (default 1)
-  --mask <selector>           A documented dynamic region every check leaves out, such as an autoplay carousel or a
-                              rotating ticker (repeatable; log each one in the decisions ledger)
+  --mask <selector>           A documented dynamic region every check leaves out, such as an autoplay carousel, an
+                              autoplay video, a rotating ticker or a relative clock (repeatable; log each one in the
+                              decisions ledger). Never mask a modal or banner on a timer: --settle-ms waits for it
+  --settle-ms <ms>            Least time after navigation before a page is measured (default ${DEFAULT_SETTLE_MS}); raise it for
+                              a layer on a longer timer, 0 for a site with none
   --dismiss <selector>        Another control presence-by-route uses to dismiss a layer (repeatable)
   --ledger <file>             Append production defects to this decisions ledger
   --only <check>              Run only these checks (repeatable or comma separated)
@@ -110,6 +117,7 @@ export function parseCliArgs(argv) {
       "spacing-tolerance": { type: "string" },
       "overlap-tolerance": { type: "string" },
       mask: { type: "string", multiple: true },
+      "settle-ms": { type: "string" },
       dismiss: { type: "string", multiple: true },
       ledger: { type: "string" },
       only: { type: "string", multiple: true },
@@ -158,6 +166,12 @@ export function parseCliArgs(argv) {
       1,
     ),
     mask: values.mask ?? [],
+    settleMs: pixels(
+      "--settle-ms",
+      values["settle-ms"],
+      DEFAULT_SETTLE_MS,
+      "milliseconds",
+    ),
     dismiss: values.dismiss ?? [],
     ledger: values.ledger,
     out: values.out ?? DEFAULT_OUT,
@@ -203,7 +217,11 @@ export function buildRouteReport(route, results, { expected = CHECKS } = {}) {
       .filter((f) => onRoute(f, route))
       .map((f) => ({ ...f, route: f.route ?? route }));
     for (const d of r.defects ?? []) if (d.route === route) defects.push(d);
-    checks[name] = { ok: own.length === 0, findings: own.length };
+    checks[name] = {
+      ok: own.length === 0,
+      findings: own.length,
+      ...(r.retried ? { retried: r.retried } : {}),
+    };
     raw.push(...own);
   }
   const { kept, corrected } = productionDefects.applyCorrections(raw, defects);
@@ -266,19 +284,37 @@ export function formatFindings(findings) {
   });
 }
 
+/** A crash a second try can get past: a navigation or wait that timed out, or a connection that dropped. */
+export function isTransient(error) {
+  return /Timeout \d+ms exceeded|net::ERR_|Target page, context or browser has been closed|ECONNRESET/.test(
+    String(error?.message ?? error),
+  );
+}
+
 /**
  * Runs one check module over all routes and cases at once (repeated-sections and presence-by-route compare routes with
- * each other), turning a crash into an error result.
+ * each other), turning a crash into an error result. A transient crash (isTransient: a navigation timeout on a loaded
+ * host) is retried once; the result then says so in `retried`, and a second crash is the error.
  */
-async function runOne(name, browser, options) {
-  try {
-    const mod = MODULES.find((m) => m.CHECK === name);
-    return await mod.runCheck(browser, options);
-  } catch (error) {
-    return {
-      check: name,
-      error: `${name} crashed: ${error.message.split("\n")[0]}`,
-    };
+export async function runOne(name, browser, options, modules = MODULES) {
+  const mod = modules.find((m) => m.CHECK === name);
+  let retried;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const r = await mod.runCheck(browser, options);
+      return retried ? { ...r, retried } : r;
+    } catch (error) {
+      const first = error.message.split("\n")[0];
+      if (attempt === 1 && isTransient(error)) {
+        retried = `${name} crashed once and was run again: ${first}`;
+        continue;
+      }
+      return {
+        check: name,
+        error: `${name} crashed: ${first}`,
+        ...(retried ? { retried } : {}),
+      };
+    }
   }
 }
 
@@ -299,6 +335,7 @@ async function main() {
       targetSrc: args.targetSrc,
       legacySrc: args.legacySrc,
       masks: args.mask,
+      settleMs: args.settleMs,
       dismiss: args.dismiss,
     };
     for (const name of args.only) {
@@ -312,7 +349,7 @@ async function main() {
       results.push(r);
       const n = r.error ? "crashed" : `${r.findings.length} finding(s)`;
       console.log(
-        `${r.error || r.findings.length ? "FAIL" : "ok  "}  ${name}  ${n}  (${((Date.now() - started) / 1000).toFixed(1)} s)`,
+        `${r.error || r.findings.length ? "FAIL" : "ok  "}  ${name}  ${n}  (${((Date.now() - started) / 1000).toFixed(1)} s)${r.retried ? "  (retried once after a crash)" : ""}`,
       );
     }
   } finally {

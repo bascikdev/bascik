@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Spacing diff: inside each section, compare the vertical gap between consecutive visible block siblings and each
-// child's offset from its section's top, at a 2 px default tolerance. Measuring inside each section resets the
-// cumulative drift that hides a local spacing error in absolute geometry.
+// Spacing diff: inside each section, compare the vertical gap between consecutive visible block siblings, each
+// child's offset from its section's top and each child's height, at a 2 px default tolerance; between sections,
+// compare each section's height and the space between it and the section before it. Measuring inside each section
+// resets the cumulative drift that hides a local spacing error in absolute geometry.
 // Dependency-free; Node.js 22.18+; needs playwright (or @playwright/test) in your project.
 //
 // Why: vertical spacing between elements was off by tens of pixels, and an absolute |dy| > 12 threshold never saw it.
@@ -14,6 +15,7 @@ import {
   pixels,
   result,
   routesOf,
+  settleOf,
   runCli,
   withPage,
 } from "./lib/checks.mjs";
@@ -29,7 +31,10 @@ each block of content at any depth (an element with its own text that is not inl
 control): its offset from the section's top and the vertical gap to the block above it, on both sides at every
 matrix case, and flags differences above the tolerance. A gap finding names the pair; an offset finding names a block
 that moved without a gap that explains it (the section's top padding, a block beside another, or small gap errors
-that add up). Hidden elements, fixed layers and masked regions do not count. Exits 1 on any finding.
+that add up); a height finding names a block that grew or shrank (a taller button moves everything below it). Between
+sections it compares the space between each section and the one before it (margins that stop collapsing) and each
+section's height (a bottom padding halved), unless a finding inside the section already explains the height. Hidden
+elements, fixed layers and masked regions do not count. Exits 1 on any finding.
 
 Options:
   --prod <url>          Live production origin
@@ -37,6 +42,7 @@ Options:
   --route <path>        Route to compare (repeatable, required)
   --tolerance <px>      Allowed difference in CSS pixels (default 2)
   --mask <selector>     A documented dynamic region to skip, such as a carousel (repeatable)
+  --settle-ms <ms>      Least time after navigation before measuring (default 5000)
   --matrix <file>       Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --out <dir>           Report folder (default artifacts/checks)
   --json                Print the report as JSON
@@ -46,16 +52,21 @@ const sign = (n) => `${n > 0 ? "+" : ""}${n}`;
 const tenth = (n) => Math.round(n * 10) / 10;
 
 /**
- * Compares sections ([{ key, children: [{ key, offset, gap }] }]) on both sides. A child is a block of content (text,
- * an image, a control) at any depth in the section; gap is the space between it and the block above it, or null when
- * it sits beside that block (a grid or flex row). Finding kinds:
+ * Compares sections ([{ key, children: [{ key, offset, gap, height }], height?, gap?, within? }]) on both sides. A child
+ * is a block of content (text, an image, a control) at any depth in the section; gap is the space between it and the
+ * block above it, or null when it sits beside that block (a grid or flex row). A section's own gap is the space
+ * between it and the previous section with the same parent section (null for the first), and `within` lists the keys
+ * of the sections it sits in. Finding kinds:
  *   gap              the space above a block differs
  *   offset           a block moved within its section with no gap finding to explain it: the section's top padding,
  *                    a block beside another that moved on its own, or small gap errors that add up past the tolerance
+ *   height           a block is taller or shorter (a button with more padding moves everything below it)
+ *   section-gap      the space between a section and the one before it differs (margins that stop collapsing)
+ *   section-height   a section is taller or shorter with no finding inside it to explain it (its bottom padding)
  *   missing          a block the target lacks
  *   missing-section  a section the target lacks
  * Findings never spill from one section into another, and one wrong gap is reported once, not again for every block
- * below it or beside it.
+ * below it or beside it, nor again as the height of every section around it.
  */
 export function diffSpacing(
   prod,
@@ -99,6 +110,21 @@ export function diffSpacing(
         continue;
       }
       const where = { section: section.key, key: child.key };
+      if (
+        child.height !== undefined &&
+        t.height !== undefined &&
+        Math.abs(t.height - child.height) > tolerance
+      ) {
+        const delta = tenth(t.height - child.height);
+        findings.push(
+          finding(
+            CHECK,
+            "height",
+            `${section.key}: ${child.key} is ${child.height} px tall in production and ${t.height} px on the target (${sign(delta)} px moves everything below it)`,
+            { ...where, prod: child.height, target: t.height, delta },
+          ),
+        );
+      }
       if (child.gap !== null && t.gap !== null) {
         const delta = tenth(t.gap - child.gap);
         if (Math.abs(delta) > tolerance) {
@@ -154,6 +180,79 @@ export function diffSpacing(
       previous = child.key;
     }
   }
+  return [
+    ...findings,
+    ...diffSectionSpacing(prod, target, findings, tolerance),
+  ];
+}
+
+/**
+ * The space between sections and their heights (see diffSpacing). A section's height is reported only when nothing
+ * inside it (a block finding in it, or a finding on a section within it) already explains the difference.
+ */
+function diffSectionSpacing(prod, target, inner, tolerance) {
+  const findings = [];
+  const bySection = new Map(target.map((s) => [s.key, s]));
+  for (const section of prod) {
+    const t = bySection.get(section.key);
+    if (!t) continue;
+    if (
+      section.gap !== undefined &&
+      section.gap !== null &&
+      t.gap !== undefined &&
+      t.gap !== null &&
+      Math.abs(t.gap - section.gap) > tolerance
+    ) {
+      const delta = tenth(t.gap - section.gap);
+      findings.push(
+        finding(
+          CHECK,
+          "section-gap",
+          `the space between ${section.previous} and ${section.key} is ${section.gap} px in production and ${t.gap} px on the target (${sign(delta)} px moves every section below it)`,
+          {
+            section: section.key,
+            previous: section.previous,
+            prod: section.gap,
+            target: t.gap,
+            delta,
+          },
+        ),
+      );
+    }
+  }
+  const explained = new Set();
+  for (const f of [...inner, ...findings]) {
+    explained.add(f.section);
+    const s = prod.find((p) => p.key === f.section);
+    for (const outer of s?.within ?? []) explained.add(outer);
+  }
+  const heights = [];
+  for (const section of prod) {
+    const t = bySection.get(section.key);
+    if (!t || section.height === undefined || t.height === undefined) continue;
+    if (Math.abs(t.height - section.height) <= tolerance) continue;
+    heights.push({ section, t });
+  }
+  // A section whose inner section grew is explained by that one; report the innermost.
+  for (const { section } of heights)
+    for (const outer of section.within ?? []) explained.add(outer);
+  for (const { section, t } of heights) {
+    if (explained.has(section.key)) continue;
+    const delta = tenth(t.height - section.height);
+    findings.push(
+      finding(
+        CHECK,
+        "section-height",
+        `${section.key} is ${section.height} px tall in production and ${t.height} px on the target (${sign(delta)} px with no block inside it that moved: check its padding)`,
+        {
+          section: section.key,
+          prod: section.height,
+          target: t.height,
+          delta,
+        },
+      ),
+    );
+  }
   return findings;
 }
 
@@ -199,6 +298,16 @@ function measureSections(arg) {
     keyOfSection.set(el, key);
     return key;
   };
+  const inFixed = (el) => {
+    for (let n = el; n && n !== document.body; n = n.parentElement)
+      if (getComputedStyle(n).position === "fixed") return true;
+    return false;
+  };
+  // Every rendered landmark, in document order, keyed before any block so keys do not depend on content.
+  const landmarks = [...document.body.querySelectorAll(LANDMARKS)].filter(
+    (el) => isRendered(el) && !isMasked(el, arg.masks) && !inFixed(el),
+  );
+  for (const el of landmarks) sectionKey(el);
   for (const el of document.body.querySelectorAll("*")) {
     if (["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT"].includes(tagOf(el)))
       continue;
@@ -207,32 +316,57 @@ function measureSections(arg) {
     // Text inside a control belongs to the control.
     if (!MEDIA.has(tagOf(el)) && el.parentElement?.closest("button, select"))
       continue;
-    let fixed = false;
-    for (let n = el; n && n !== document.body; n = n.parentElement)
-      if (getComputedStyle(n).position === "fixed") {
-        fixed = true;
-        break;
-      }
-    if (fixed) continue;
+    if (inFixed(el)) continue;
     const section = sectionOf(el);
     const key = sectionKey(section);
     if (!sections.has(key))
       sections.set(key, { el: section, key, children: [], keys: new Set() });
     const entry = sections.get(key);
     const r = el.getBoundingClientRect();
-    const text = norm(el.textContent) || accName(el);
+    const text = textOf(el) || accName(el);
     let childKey = `${tagOf(el)}:${text.slice(0, 40).trim()}`;
     for (let n = 2; entry.keys.has(childKey); n++)
       childKey = `${tagOf(el)}:${text.slice(0, 40).trim()} #${n}`;
     entry.keys.add(childKey);
     entry.children.push({ key: childKey, rect: r });
   }
+  // Each landmark's height, the space to the previous landmark with the same parent landmark, and its outer landmarks.
+  const geometry = new Map();
+  const lastIn = new Map();
+  for (const el of landmarks) {
+    const parent = el.parentElement?.closest(LANDMARKS) ?? document.body;
+    const r = el.getBoundingClientRect();
+    const before = lastIn.get(parent);
+    const within = [];
+    for (let n = parent; n && n !== document.body;) {
+      within.push(sectionKey(n));
+      n = n.parentElement?.closest(LANDMARKS) ?? document.body;
+    }
+    // A landmark beside the one before it (an article in a grid row) has no vertical space to it.
+    const below = before && r.top >= before.rect.bottom - 1;
+    geometry.set(el, {
+      height: round(r.height),
+      gap: below ? round(r.top - before.rect.bottom) : null,
+      previous: before ? sectionKey(before.el) : null,
+      within,
+    });
+    lastIn.set(parent, { el, rect: r });
+  }
   const out = [];
+  for (const el of landmarks)
+    if (!sections.has(keyOfSection.get(el)))
+      sections.set(keyOfSection.get(el), {
+        el,
+        key: keyOfSection.get(el),
+        children: [],
+        keys: new Set(),
+      });
   for (const { el, key, children } of sections.values()) {
     const top = el.getBoundingClientRect().top;
     let previous = null;
     out.push({
       key,
+      ...(geometry.get(el) ?? {}),
       children: children.map(({ key: childKey, rect }) => {
         // A block beside the one above it (its top above that block's bottom) has no vertical gap to it.
         const below = previous && rect.top >= previous.bottom - 1;
@@ -265,6 +399,7 @@ export async function runCheck(browser, options) {
           c,
           (page) => inPage(page, measureSections, { masks }),
           masks,
+          settleOf(options),
         );
       const [prod, target] = await Promise.all([
         measure(options.prod),

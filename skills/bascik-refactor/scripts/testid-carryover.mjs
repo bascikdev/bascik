@@ -12,10 +12,12 @@ import { inPage } from "./lib/dom.mjs";
 import {
   casesOf,
   finding,
+  masksOf,
   normalize,
   parseArgsFor,
   result,
   routesOf,
+  settleOf,
   runCli,
   withPage,
 } from "./lib/checks.mjs";
@@ -36,9 +38,11 @@ const HELP = `Usage: node testid-carryover.mjs --prod <url> --target <url> --rou
 
 Collects the test hooks (${HOOK_ATTRS.join(", ")}) in production's rendered DOM, hidden elements included, and requires
 each on the target with the same attribute name and value on the same element (tag, accessible name, text and
-position among identical elements). Static hooks in the legacy source that the first render never shows (a box that
-appears on scroll, a modal) must be somewhere on the target's rendered pages or in its source. Dynamic values
-(data-testid={id}) are left to the rendered comparison. Exits 1 on any finding.
+position among identical elements), and on no more elements than in production (a hook copied onto a wrapper breaks
+a strict getByTestId locator). Static hooks in the legacy source that the first render never shows (a box that
+appears on scroll, a modal) must be somewhere on the target's rendered pages or in its source, on the same kind of
+element (the Close button's hook on a <button>, not on the modal's heading). Dynamic values (data-testid={id}) are left
+to the rendered comparison. Exits 1 on any finding.
 
 Options:
   --prod <url>          Live production origin
@@ -46,6 +50,7 @@ Options:
   --route <path>        Route to compare (repeatable, required)
   --legacy-src <dir>    The legacy repository (required: without it the source half would be skipped)
   --target-src <dir>    The Bascik project (default .)
+  --settle-ms <ms>      Least time after navigation before measuring (default 5000)
   --matrix <file>       Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --out <dir>           Report folder (default artifacts/checks)
   --json                Print the report as JSON
@@ -69,22 +74,37 @@ const HOOK_RE =
   /(?<![\w-])(data-(?:testid|test-id|test|cy|qa))(?![\w-])\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\s*(?:"([^"]*)"|'([^']*)'|`([^`$]*)`)\s*\}|(\{))/g;
 
 /**
- * The test hooks in one source file's text: [{ attr, value, dynamic, file, line }]. Static values are read from
- * "x", 'x', {"x"}, {'x'} and {`x`}; anything computed ({id}, {`plan-${id}`}) is kept with value null and dynamic true.
+ * The test hooks in one source file's text: [{ attr, value, dynamic, file, line, tag, text }]. Static values are read
+ * from "x", 'x', {"x"}, {'x'} and {`x`}; anything computed ({id}, {`plan-${id}`}) is kept with value null and dynamic
+ * true. `tag` is the element the attribute sits on as written (a JSX component keeps its capital: Button), and `text`
+ * the text right after its opening tag, when there is any.
  */
 export function collectSourceHooks(text, file) {
   const hooks = [];
   for (const m of text.matchAll(HOOK_RE)) {
     const value = m[2] ?? m[3] ?? m[4] ?? m[5] ?? m[6];
     const line = text.slice(0, m.index).split("\n").length;
+    const open = text.slice(0, m.index).lastIndexOf("<");
+    const tag =
+      open >= 0
+        ? (/^<([A-Za-z][\w.:-]*)/.exec(text.slice(open))?.[1] ?? null)
+        : null;
+    const close = text.indexOf(">", m.index);
+    const after =
+      close >= 0 ? /^([^<{]*)/.exec(text.slice(close + 1))?.[1] : "";
+    const element = { tag, text: normalize(after ?? "") };
     hooks.push(
       value === undefined
-        ? { attr: m[1], value: null, dynamic: true, file, line }
-        : { attr: m[1], value, dynamic: false, file, line },
+        ? { attr: m[1], value: null, dynamic: true, file, line, ...element }
+        : { attr: m[1], value, dynamic: false, file, line, ...element },
     );
   }
   return hooks;
 }
+
+/** A plain HTML element name as written in a source (button, h2), not a component (Button, promo-card), or null. */
+const htmlTag = (tag) =>
+  tag && /^[a-z][a-z0-9]*$/.test(tag) ? tag.toLowerCase() : null;
 
 /** Every source file under `root` (skipping dependencies and build output), with paths relative to `root`. */
 function sourceFiles(root, dir = root) {
@@ -157,12 +177,38 @@ export function diffHooks(prod, target) {
         ),
       );
   }
+  // A hook on more elements than in production: getByTestId is strict, so the suite's fill() or click() fails.
+  const count = (list) => {
+    const n = new Map();
+    for (const h of list) {
+      const id = `${h.attr}="${h.value}"`;
+      n.set(id, (n.get(id) ?? 0) + 1);
+    }
+    return n;
+  };
+  const prodCount = count(prod);
+  for (const [id, n] of count(target)) {
+    const m = prodCount.get(id) ?? 0;
+    if (!m || n <= m) continue;
+    const on = target
+      .filter((t) => `${t.attr}="${t.value}"` === id)
+      .map((t) => describe(t.anchor));
+    findings.push(
+      finding(
+        CHECK,
+        "duplicated",
+        `${id} is on ${n} elements on the target (${on.join(", ")}) and on ${m} in production: a strict locator such as getByTestId resolves to ${n} elements and the test fails`,
+        { hook: id, prod: m, target: n },
+      ),
+    );
+  }
   return findings;
 }
 
 /**
  * Static legacy source hooks found nowhere on the target ([{ attr, value }] from its rendered pages and its source):
- * missing, located at the legacy file and line. Dynamic hooks are skipped.
+ * missing, located at the legacy file and line; found only on another kind of HTML element than the legacy source
+ * puts it on: wrong-element. Dynamic hooks are skipped.
  */
 export function diffSourceHooks(legacy, target) {
   const have = new Set(target.map((t) => `${t.attr}=${t.value}`));
@@ -171,7 +217,34 @@ export function diffSourceHooks(legacy, target) {
   for (const h of legacy) {
     if (h.dynamic || h.value === null) continue;
     const id = `${h.attr}=${h.value}`;
-    if (have.has(id) || seen.has(id)) continue;
+    if (seen.has(id)) continue;
+    if (have.has(id)) {
+      // The same hook on another kind of element: the test that clicks the legacy <button> now clicks a heading.
+      const want = htmlTag(h.tag);
+      const there = target
+        .filter((t) => `${t.attr}=${t.value}` === id)
+        .map((t) => ({
+          tag: htmlTag(t.anchor?.tag?.toLowerCase() ?? t.tag),
+          text: t.anchor?.text ?? t.text ?? "",
+        }));
+      if (
+        want &&
+        there.length &&
+        there.every((t) => t.tag) &&
+        !there.some((t) => t.tag === want)
+      ) {
+        seen.add(id);
+        findings.push(
+          finding(
+            CHECK,
+            "wrong-element",
+            `${h.attr}="${h.value}" is on a <${want}>${h.text ? ` ("${h.text}")` : ""} in the legacy source (${h.file}:${h.line}), but on ${there.map((t) => `<${t.tag}>${t.text ? ` ("${t.text}")` : ""}`).join(", ")} on the target`,
+            { attr: h.attr, value: h.value, file: h.file, line: h.line },
+          ),
+        );
+      }
+      continue;
+    }
     seen.add(id);
     findings.push(
       finding(
@@ -230,8 +303,14 @@ export async function runCheck(browser, options) {
   for (const route of routesOf(options))
     for (const c of casesOf(options)) {
       const hooks = (origin) =>
-        withPage(browser, origin, route, c, (page) =>
-          inPage(page, collectHooks, { attrs: HOOK_ATTRS }),
+        withPage(
+          browser,
+          origin,
+          route,
+          c,
+          (page) => inPage(page, collectHooks, { attrs: HOOK_ATTRS }),
+          masksOf(options),
+          settleOf(options),
         );
       const prod = await hooks(options.prod);
       const target = await hooks(options.target);

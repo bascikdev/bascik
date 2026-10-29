@@ -841,7 +841,7 @@ describe("withResponsePolicy", () => {
 
 describe("withResponsePolicy with the build's csp-hashes.json", () => {
   const sha = (text: string) => `sha256-${nodeHash(text)}`;
-  /** dist/.bascik/csp-hashes.json as `generate.cspHashes` writes it: route -> hash sources. */
+  /** .bascik/dist/csp-hashes.json as `generate.cspHashes` writes it: route -> hash sources. */
   const MANIFEST = {
     "/": { scripts: [sha("home()")], styles: [sha(".h{}")] },
     "/search": { scripts: [sha("app()")], styles: [] },
@@ -983,7 +983,7 @@ describe("withResponsePolicy with the build's csp-hashes.json", () => {
   });
 
   it("misuse: a manifest that is not the parsed JSON (a path string, an array) is rejected at wrap time", () => {
-    for (const bad of ["dist/.bascik/csp-hashes.json", [], null]) {
+    for (const bad of [".bascik/dist/csp-hashes.json", [], null]) {
       expect(
         () => withResponsePolicy(reflecting, { cspHashes: bad as never }),
         String(bad),
@@ -1027,7 +1027,7 @@ describe("the header comment a reader copies from", () => {
     expect(header).toMatch(/stream/i);
     // The build's hashes are the default source, imported in the wrapper.
     expect(header).toMatch(
-      /import cspHashes from "\.\/dist\/\.bascik\/csp-hashes\.json"/,
+      /import cspHashes from "\.\/\.bascik\/dist\/csp-hashes\.json"/,
     );
     expect(header).toMatch(/generate: \{ cspHashes: true \}/);
     // Body hashing is documented as giving no protection against injected markup.
