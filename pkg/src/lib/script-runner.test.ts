@@ -592,7 +592,12 @@ describe("resolveChildBudget", () => {
       [CHILD_SYSTEM_MAX_VAR]: "2",
     };
     expect(
-      resolveChildBudget({ ...machine, mainThread: true, env, measureAvailable }),
+      resolveChildBudget({
+        ...machine,
+        mainThread: true,
+        env,
+        measureAvailable,
+      }),
     ).toEqual({ systemMax: 8, threadMax: 8 });
     expect(measureAvailable).toHaveBeenCalledTimes(1);
     expect(env).toEqual({});
@@ -606,7 +611,12 @@ describe("resolveChildBudget", () => {
       [MAX_CHILD_PROCESSES_VAR]: "1",
     };
     expect(
-      resolveChildBudget({ ...machine, mainThread: false, env, measureAvailable }),
+      resolveChildBudget({
+        ...machine,
+        mainThread: false,
+        env,
+        measureAvailable,
+      }),
     ).toEqual({ systemMax: 6, threadMax: 2 });
     expect(measureAvailable).not.toHaveBeenCalled();
     // Consumed so build-script children do not inherit them; the user's own
