@@ -74,7 +74,51 @@ Two rules are fixable:
 - `missing-prop-prefix`: `<my-card title="Hello">` becomes `<my-card data-bascik-prop-title="Hello">` when `title` is a declared prop of `my-card`.
 - `prefer-self-closing-component`: `<zero-slot-comp></zero-slot-comp>` becomes `<zero-slot-comp />` when the component has no slots.
 
-In VS Code, the same two fixes appear as Quick Fixes (`Cmd+.` or `Ctrl+.`) on the warning. `bascik --check --fix` applies exactly the same fixes, by calling this tool, so either command works in a pre-commit hook.
+In VS Code, the same two fixes appear as Quick Fixes (`Cmd+.` or `Ctrl+.`) on the warning. `bascik --check --fix` applies exactly the same fixes, by calling this tool, so either command works in a pre-commit hook. The editor also offers **Wrap template in html\`...\`** for [`server-script-unescaped-markup`](#server-script-unescaped-markup), which `--fix` never applies (see below).
+
+### `server-script-unescaped-markup`
+
+In a `data-bascik-server` or `data-bascik-stream` script, a template literal that looks like markup (it holds a tag) and interpolates a value without [`html`](/html-helpers) is a warning on that hole:
+
+```text
+src/pages/search.html:14:31 - warning: (server-script-unescaped-markup) This markup template (line 14) interpolates ${q} (hole 1) without html. Wrap the template in html`...` from @bascik/bascik/html, which escapes each value for where it lands.
+```
+
+A value is fine without `html` when it is:
+
+- a string, number, boolean or `null` literal;
+- a number: `x.length`, `price.toFixed(2)`, a whole `Number(q)`, `parseInt(q, 10)` or `Math.round(q)` call, or arithmetic with `-`, `*`, `/`, `%` or a unary sign (`a * 2 - b`, `-x`);
+- a `+` whose operands are all fine (`count + 1`, `items.length + 1`, `"Hi " + esc(q)`), or a loop counter plus a number (`i + 1`) when the name is not bound to a value that is not fine;
+- an `ALL_CAPS` constant;
+- a nested `html` value, such as ``items.map((i) => html`...`)``;
+- a call to `html`, `raw`, `esc`, `safeUrl`, or `json` as imported from `@bascik/bascik/html` (aliases and namespace imports count), or to a function listed in `diagnostics.escapeFunctions`;
+- a conditional (`?:`, `||`, `??`, `&&`) whose rendered operands are fine, or a name bound to one of these.
+
+These are reported, because `+` joins strings and a joined string can carry a visitor's markup:
+
+- `${first + last}` and `${name + ": $" + price.toFixed(2)}`: `toFixed()` makes only its own operand a number;
+- `${q + 1}` when `q` holds request data, and `${Number(x) || name}`, where `name` can render;
+- a `let` or `var` name reassigned after its declaration: every later `name = ...`, `name += ...`, `name ||= ...` or `name ??= ...` counts, so `let label = "everyone"; if (q) label = q;` is reported where `${label}` lands. A `const` is checked by its one value.
+
+Templates tagged with `String.raw`, `dedent`, `outdent`, `stripIndent`, `stripIndents`, `oneLine`, `oneLineTrim` or `codeBlock` join their values as they are, so they are checked like templates without a tag (with no quick fix, since the fix would replace a tag). Other tagged templates (`` sql`...` ``, `` css`...` ``, a project's own tag) are skipped, because a tag may escape its values. Templates that hold no tag (URLs, SQL, JSON, plain text), and the arguments of `console.*()`, `new Error()` and `throw`, are skipped, and so are the sink rules on them: `WHERE id = ${id}` in a SQL template is not an unquoted attribute. A hole where `html` would throw (an `onclick` value, a `<script>` body, a `style`, an unquoted attribute) keeps its own sink warning instead.
+
+The quick fix **Wrap template in html\`...\`** puts `html` before the backtick and adds `import { html } from "@bascik/bascik/html";` after the script's last import, or merges `html` into an existing import from that module. When the name `html` already means something else in the script's code (a variable, a parameter such as `(title, html) => ...`, a function, another import), it imports `html as safeHtml` instead, merged into an existing import from the module when there is one, and tags with `safeHtml`. Words in strings, comments and markup (`<html>`) and members such as `page.html` do not count. When `safeHtml` is taken too, the fix is not offered, so it never writes code that means something else.
+
+The fix is also not offered when a hole of the template sits where `html` would throw, because the fixed page would fail on every request: a tag name (`<h${level}>`), where an attribute name goes (`<p ${attrs}>`), an unquoted value, inside an HTML comment or a `<!...>` declaration, inside a `<script>` or `<style>`, in an `on*`, `style` or `srcdoc` value, in a `<meta>` `http-equiv` or `content` value, or in an attribute of an SVG `<animate>`, `<set>`, `<animateMotion>` or `<animateTransform>`. A template that ends inside a tag, comment or quoted value gets no fix either. Nor is it offered when wrapping would escape a value twice:
+
+- **A hand-written escaper.** A hole such as `${escape(q)}` or `${escapeHtml(q)}`, a call to a function named like an escaper that is not trusted, gets a longer message: `escape() looks like a hand-written escaper, and html escapes too, so wrapping this template in html would show &amp;lt; on the page.` Wrap the template in `html` yourself and pass the value as it is (`${q}`), or list the function in `diagnostics.escapeFunctions` if it is a trusted escaper.
+- **A joined string.** A hole that is a `.join(...)` call, or a name bound to one, holds markup already; wrapping the outer template would escape it. Wrap the inner templates in `html`, drop `.join("")`, and pass the array.
+
+`bascik --check --fix` does not apply the quick fix: wrapping changes the template's value from a string to an `html` value, which can break code that calls `.replace()` or `.length` on it, so the change needs your eyes.
+
+Inside `html` templates the sink rules become errors (`html` throws there), and two more rules catch values that would show as escaped markup:
+
+- `html-escaped-twice` (info) reports `esc()` inside `html`, which shows `&amp;lt;` on the page.
+- `html-joined-string` (warning) reports a `.join(...)` of `html` values, or a name bound to one, in a text hole: `This hole joins its items into one string, which html escapes, so the page shows &lt;li&gt; as text.` Pass the array without `.join("")`.
+
+To trust a project escaper, list it in `diagnostics.escapeFunctions`. To silence a rule, put `// bascik-ignore server-script-unescaped-markup` on the line above the template's first line; it covers every hole in that template, including holes on later lines of a multi-line template. `bascik-disable` and `bascik-enable` comments silence a range, and `diagnostics.disabledRules` turns a rule off for the project. See [Security](/security#the-linter).
+
+![VS Code: a server script returns a template that interpolates a query parameter, the hole is underlined, the hover names server-script-unescaped-markup, and the quick fix wraps the template in html and adds the import](/assets/vscode/unescaped-markup@2x.webp)
 
 ### CI / Pre-commit Integration
 
@@ -171,10 +215,13 @@ To configure diagnostics project-wide, create a `bascik.ext.json` or `bascik.ext
 {
   "diagnostics": {
     "selfClosingComponents": false,
-    "disabledRules": ["component-metadata-duplicate-annotation"]
+    "disabledRules": ["component-metadata-duplicate-annotation"],
+    "escapeFunctions": ["escapeHtml"]
   }
 }
 ```
+
+`serverScriptRules: false` turns off every rule for server and stream scripts. `escapeFunctions` lists a project's own escaping functions, which `server-script-unescaped-markup` then trusts like `esc()`.
 
 ---
 

@@ -59,7 +59,10 @@ import {
   matchApiRoute,
   pageLookupCandidates,
   stripAnsiEscapeCodes,
+  contentSecurityPolicyHeader,
   type ApiRouteDefinition,
+  type ContentSecurityPolicyConfig,
+  type CspRouteHashes,
 } from "@bascik/bascik/runtime";
 
 /**
@@ -154,6 +157,14 @@ export interface SiteGraph {
   release: string;
   /** Present when the site renders component tags in script output. */
   components?: GraphComponents;
+  /**
+   * Opt-in `contentSecurityPolicy`: the policy and the build hashes of each
+   * page the Worker renders (static pages carry theirs in _headers).
+   */
+  contentSecurityPolicy?: {
+    policy: ContentSecurityPolicyConfig;
+    hashes: Record<string, CspRouteHashes>;
+  };
 }
 
 // ─── Cloudflare runtime types (subset, kept local to avoid a type dependency) ─
@@ -377,6 +388,17 @@ export const createCloudflareWorker = (
 ): CloudflareWorker => {
   const log = options.log ?? ((message: string) => console.error(message));
 
+  /** The opt-in CSP header, from the build's hashes for this page (never its body). */
+  const setPageCsp = (headers: Headers, path: string): void => {
+    const csp = graph.contentSecurityPolicy;
+    if (!csp) return;
+    const { name, value } = contentSecurityPolicyHeader(
+      csp.policy,
+      csp.hashes[path],
+    );
+    headers.set(name, value);
+  };
+
   const forwardToAssets = async (
     request: Request,
     env: CloudflareEnv,
@@ -534,6 +556,7 @@ export const createCloudflareWorker = (
         https,
         contentLength: body.byteLength,
       });
+      setPageCsp(headers, page.path);
       return new Response(isHead ? null : body, { status, headers });
     }
 
@@ -552,6 +575,7 @@ export const createCloudflareWorker = (
       return internalErrorPage(graph.custom500, { https });
     }
     const headers = stripRepresentationHeaders(dynamicPageHeaders({ https }));
+    setPageCsp(headers, page.path);
     // The edge compresses Worker responses on the fly and, for a streamed
     // body, holds every byte until the stream closes (observed in workerd:
     // only the gzip header leaves early). An explicit identity encoding opts

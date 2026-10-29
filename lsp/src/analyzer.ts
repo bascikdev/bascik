@@ -562,6 +562,9 @@ export function createDiagnostics(
 
   const text = document.getText();
   const diagnostics: Diagnostic[] = [];
+  const earlyExtConfig = snapshot
+    ? loadExtensionConfig(snapshot.projectRoot)
+    : {};
   const isComponentDocument =
     snapshot !== undefined &&
     isInsideComponentRoots(normalizedDocumentPath, snapshot.componentRoots);
@@ -983,10 +986,16 @@ export function createDiagnostics(
               ? "build"
               : "routes";
         const hasSrcAttribute = /\ssrc\s*=/i.test(openTag);
-        const serverDiags = analyzeServerScriptSource(scriptBody, {
-          hasSrcAttribute,
-          directive,
-        });
+        const serverDiags =
+          earlyExtConfig.diagnostics?.serverScriptRules === false
+            ? []
+            : analyzeServerScriptSource(scriptBody, {
+                hasSrcAttribute,
+                directive,
+                escapeFunctions:
+                  earlyExtConfig.diagnostics?.escapeFunctions ?? [],
+                lineOffset: document.positionAt(scriptBodyOffset).line,
+              });
 
         for (const sd of serverDiags) {
           const start = document.positionAt(scriptBodyOffset + sd.start);
@@ -1003,6 +1012,16 @@ export function createDiagnostics(
             severity,
             source: "bascik",
             code: sd.code,
+            ...(sd.template
+              ? {
+                  data: {
+                    templateStart: scriptBodyOffset + sd.template.start,
+                    fixable: sd.template.fixable,
+                    bodyStart: scriptBodyOffset,
+                    bodyEnd: scriptBodyOffset + scriptBody.length,
+                  } satisfies WrapHtmlData,
+                }
+              : {}),
           });
         }
       }
@@ -1391,7 +1410,7 @@ export function createDiagnostics(
   }
 
   const ignoreRanges = parseIgnoreDirectives(text, languageId);
-  const extConfig = snapshot ? loadExtensionConfig(snapshot.projectRoot) : {};
+  const extConfig = earlyExtConfig;
   const disabledRules = new Set(
     extConfig.diagnostics?.disabledRules?.map((r) => r.toLowerCase()) ?? [],
   );
@@ -1418,7 +1437,20 @@ export function createDiagnostics(
     ) {
       return false;
     }
-    return !isDiagnosticIgnored(line, code, ignoreRanges);
+    if (isDiagnosticIgnored(line, code, ignoreRanges)) return false;
+    // A hole on a later line of a multi-line template: an ignore comment
+    // above the template's first line covers it too.
+    const templateStart = (diag.data as Partial<WrapHtmlData> | undefined)
+      ?.templateStart;
+    if (typeof templateStart === "number") {
+      const templateLine = document.positionAt(templateStart).line;
+      if (
+        templateLine !== line &&
+        isDiagnosticIgnored(templateLine, code, ignoreRanges)
+      )
+        return false;
+    }
+    return true;
   });
 }
 
@@ -1891,6 +1923,190 @@ export function buildAutoFixEdit(
   return undefined;
 }
 
+/** Where the "Wrap template in html`...`" fix applies (offsets in the document). */
+interface WrapHtmlData {
+  templateStart: number;
+  fixable: boolean;
+  bodyStart: number;
+  bodyEnd: number;
+}
+
+const sameEdits = (action: CodeAction, wrap: { edits: TextEdit[] }): boolean =>
+  JSON.stringify(Object.values(action.edit?.changes ?? {})[0]) ===
+  JSON.stringify(wrap.edits);
+
+/**
+ * `body` with string contents, comments and template-literal text replaced
+ * by spaces (offsets kept), and the code inside template holes kept.
+ */
+function codeOnly(body: string): string {
+  const out = body.split("");
+  const blank = (from: number, to: number): void => {
+    for (let k = from; k < to && k < out.length; k++)
+      if (out[k] !== "\n") out[k] = " ";
+  };
+  // A stack of open template literals; each entry is the brace depth of
+  // the hole code that the template sits in.
+  const holes: number[] = [];
+  let depth = 0;
+  let i = 0;
+  const template = (from: number): void => {
+    // Scan template text from `from` (just past ` or }) to the end or `${`.
+    let k = from;
+    while (k < body.length) {
+      if (body[k] === "\\") k += 2;
+      else if (body[k] === "`") {
+        blank(from, k);
+        i = k + 1;
+        return;
+      } else if (body[k] === "$" && body[k + 1] === "{") {
+        blank(from, k);
+        holes.push(depth);
+        depth = 0;
+        i = k + 2;
+        return;
+      } else k++;
+    }
+    blank(from, body.length);
+    i = body.length;
+  };
+  while (i < body.length) {
+    const c = body[i];
+    if (c === "/" && body[i + 1] === "/") {
+      const nl = body.indexOf("\n", i);
+      const end = nl === -1 ? body.length : nl;
+      blank(i, end);
+      i = end;
+    } else if (c === "/" && body[i + 1] === "*") {
+      const close = body.indexOf("*/", i + 2);
+      const end = close === -1 ? body.length : close + 2;
+      blank(i, end);
+      i = end;
+    } else if (c === "'" || c === '"') {
+      let k = i + 1;
+      while (k < body.length && body[k] !== c && body[k] !== "\n")
+        k += body[k] === "\\" ? 2 : 1;
+      blank(i + 1, k);
+      i = k + 1;
+    } else if (c === "`") template(i + 1);
+    else if (c === "{") {
+      depth++;
+      i++;
+    } else if (c === "}") {
+      if (depth === 0 && holes.length > 0) {
+        depth = holes.pop()!;
+        template(i + 1);
+      } else {
+        if (depth > 0) depth--;
+        i++;
+      }
+    } else i++;
+  }
+  return out.join("");
+}
+
+/**
+ * The quick fix for server-script-unescaped-markup: put `html` before the
+ * template's backtick and import it from @bascik/bascik/html (after the
+ * script's last import, or merged into an existing import from the module).
+ * When the name html is already used in the script's code (a variable, a
+ * parameter, another import), it imports `html as safeHtml` instead, so the
+ * fix never tags with a binding that means something else; when safeHtml is
+ * taken too, or a hole sits where html would throw, it is not offered.
+ */
+export function buildWrapHtmlEdits(
+  document: TextDocumentLike,
+  diag: Diagnostic,
+): { title: string; edits: TextEdit[] } | undefined {
+  if (diag.code !== "server-script-unescaped-markup") return undefined;
+  const data = diag.data as WrapHtmlData | undefined;
+  if (!data || !data.fixable) return undefined;
+  const text = document.getText();
+  const body = text.slice(data.bodyStart, data.bodyEnd);
+  const at = (offset: number): Position =>
+    document.positionAt(data.bodyStart + offset);
+  const edits: TextEdit[] = [];
+
+  const existing =
+    /\bimport\s*\{([^}]*)\}\s*from\s*["']@bascik\/bascik\/html["']/.exec(body);
+  // Identifiers in code only: strings, comments and template text blanked,
+  // and the import from the module left out, so `<html>` or "html" is no
+  // clash but a parameter, a variable or another import named html is.
+  const code = codeOnly(
+    existing
+      ? body.slice(0, existing.index) +
+          " ".repeat(existing[0].length) +
+          body.slice((existing.index ?? 0) + existing[0].length)
+      : body,
+  );
+  const word = (name: string): string =>
+    `(?<![\\w$.])${name.replace(/\$/g, "\\$")}(?![\\w$])`;
+  const uses = (name: string): boolean => new RegExp(word(name)).test(code);
+  // An imported name is safe to tag with when it is only ever a tag or a
+  // callee: anywhere else (a parameter, a variable, a function declaration)
+  // it may be shadowed.
+  const onlyTagOrCall = (name: string): boolean =>
+    !new RegExp(`(?<!\\bfunction\\s*)${word(name)}(?!\\s*[\`(])`).test(code) &&
+    !new RegExp(`\\bfunction\\s*${word(name)}`).test(code);
+  const ALIAS = "safeHtml";
+  let tag: string | undefined;
+  let specifier: string | undefined;
+  const entries = existing
+    ? existing[1]
+        .split(",")
+        .map((e) => e.trim())
+        .filter(Boolean)
+    : [];
+  const bound = entries
+    .map((e) => e.split(/\s+as\s+/).map((x) => x.trim()))
+    .filter(([exported]) => exported === "html")
+    .map((parts) => parts[1] ?? parts[0]);
+  tag = bound.find(onlyTagOrCall);
+  if (tag === undefined) {
+    if (!bound.includes("html") && !uses("html")) {
+      tag = "html";
+      specifier = "html";
+    } else if (!bound.includes(ALIAS) && !uses(ALIAS)) {
+      tag = ALIAS;
+      specifier = `html as ${ALIAS}`;
+    } else return undefined;
+  }
+
+  if (specifier !== undefined && existing) {
+    const open = (existing.index ?? 0) + existing[0].indexOf("{") + 1;
+    const close = open + existing[1].length;
+    edits.push({
+      range: { start: at(open), end: at(close) },
+      newText: ` ${[...entries, specifier].join(", ")} `,
+    });
+  } else if (specifier !== undefined) {
+    const statement = `import { ${specifier} } from "@bascik/bascik/html";`;
+    const imports = [
+      ...body.matchAll(
+        /^([ \t]*)import\b[^;]*?from\s*["'][^"']+["'][ \t]*;?[ \t]*$/gm,
+      ),
+    ];
+    const last = imports[imports.length - 1];
+    if (last) {
+      const end = (last.index ?? 0) + last[0].length;
+      edits.push({
+        range: { start: at(end), end: at(end) },
+        newText: `\n${last[1]}${statement}`,
+      });
+    } else {
+      const first = /^([ \t]*)\S/m.exec(body);
+      const lineStart = first?.index ?? 0;
+      edits.push({
+        range: { start: at(lineStart), end: at(lineStart) },
+        newText: `${first?.[1] ?? ""}${statement}\n`,
+      });
+    }
+  }
+  const backtick = document.positionAt(data.templateStart);
+  edits.push({ range: { start: backtick, end: backtick }, newText: tag });
+  return { title: "Wrap template in html`...`", edits };
+}
+
 export function createCodeActions(
   document: TextDocumentLike,
   range: Range,
@@ -1908,6 +2124,21 @@ export function createCodeActions(
 
   for (const diag of activeDiagnostics) {
     if (!rangesOverlap(diag.range, range)) continue;
+    // Editor only: wrapping changes the value from a string to SafeHtml, so
+    // `bascik --check --fix` (applyAutoFixes) never applies it.
+    const wrap = buildWrapHtmlEdits(document, diag);
+    if (wrap) {
+      if (actions.some((a) => a.title === wrap.title && sameEdits(a, wrap)))
+        continue;
+      actions.push({
+        title: wrap.title,
+        kind: CodeActionKind.QuickFix,
+        diagnostics: [diag],
+        isPreferred: true,
+        edit: { changes: { [document.uri]: wrap.edits } },
+      });
+      continue;
+    }
     const fix = buildAutoFixEdit(document, diag);
     if (!fix) continue;
     actions.push({

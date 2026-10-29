@@ -20,6 +20,11 @@ import { existsSync, statSync, accessSync, constants } from "node:fs";
 import { resolve, sep } from "node:path";
 import { SITE_URL_ENV_VAR, validateSiteUrl } from "./environment.ts";
 import { LOG_LEVELS } from "./log-level.ts";
+import {
+  CSP_DIRECTIVES,
+  CSP_KEYWORDS,
+  isSourceListDirective,
+} from "./content-security-policy-rules.ts";
 import { sourceWatchRoot } from "./watch-root.ts";
 
 export interface ConfigValidationError {
@@ -123,6 +128,11 @@ const KNOWN_KEYS: Record<string, unknown> = {
     transpiles: null,
   },
   base: null,
+  contentSecurityPolicy: {
+    directives: null,
+    hashes: { scripts: null, styles: null },
+    reportOnly: null,
+  },
 };
 
 const KNOWN_EXEC_ENTRY_KEYS = [
@@ -793,7 +803,96 @@ export const validateConfigShape = (
     }
   }
 
+  validateContentSecurityPolicy(raw.contentSecurityPolicy, push);
+
   return errors;
+};
+
+/** `contentSecurityPolicy`: directive names, source lists, and the two flags. */
+const validateContentSecurityPolicy = (
+  csp: unknown,
+  push: (key: string, value: unknown, message: string) => void,
+): void => {
+  if (csp === undefined) return;
+  const key = "contentSecurityPolicy";
+  if (!isPlainObject(csp)) {
+    push(key, csp, "expected an object with directives");
+    return;
+  }
+  if (csp.reportOnly !== undefined && typeof csp.reportOnly !== "boolean")
+    push(`${key}.reportOnly`, csp.reportOnly, "expected a boolean");
+  const hashes = csp.hashes;
+  if (isPlainObject(hashes)) {
+    for (const kind of ["scripts", "styles"] as const)
+      if (hashes[kind] !== undefined && typeof hashes[kind] !== "boolean")
+        push(`${key}.hashes.${kind}`, hashes[kind], "expected a boolean");
+  } else if (hashes !== undefined && typeof hashes !== "boolean")
+    push(
+      `${key}.hashes`,
+      hashes,
+      "expected a boolean, or { scripts, styles } booleans to hash only one kind",
+    );
+  const directives = csp.directives;
+  if (!isPlainObject(directives)) {
+    push(
+      `${key}.directives`,
+      directives,
+      'expected an object of directives, for example { "script-src": ["\'self\'"] }',
+    );
+    return;
+  }
+  for (const [name, sources] of Object.entries(directives)) {
+    const lower = name.toLowerCase();
+    if (!CSP_DIRECTIVES.includes(lower)) {
+      let best = "";
+      let bestDistance = Infinity;
+      for (const candidate of CSP_DIRECTIVES) {
+        const distance = editDistance(lower, candidate);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = candidate;
+        }
+      }
+      push(
+        `${key}.directives`,
+        name,
+        bestDistance <= 2
+          ? `"${name}" is not a CSP directive. Did you mean "${best}"?`
+          : `"${name}" is not a CSP directive.`,
+      );
+      continue;
+    }
+    const at = `${key}.directives.${name}`;
+    if (
+      !Array.isArray(sources) ||
+      sources.some((source) => typeof source !== "string")
+    ) {
+      push(
+        at,
+        sources,
+        "expected an array of sources (strings), for example [\"'self'\"]",
+      );
+      continue;
+    }
+    sources.forEach((source: string, index) => {
+      if (source.trim() === "" || /[\s;,]/.test(source)) {
+        push(
+          `${at}[${index}]`,
+          source,
+          "expected one source with no spaces, ';' or ','. List each source as its own string.",
+        );
+      } else if (
+        isSourceListDirective(lower) &&
+        CSP_KEYWORDS.has(source.toLowerCase())
+      ) {
+        push(
+          `${at}[${index}]`,
+          source,
+          `write ${source} as '${source}' (with single quotes).`,
+        );
+      }
+    });
+  }
 };
 
 /* ── I/O validation half ──────────────────────────────────────────────── */
@@ -925,6 +1024,46 @@ export const collectConfigWarnings = (
           "directory does not exist; @/ and / imports in scripts will fail until it is created",
       });
     }
+  }
+
+  const csp = raw.contentSecurityPolicy;
+  if (isPlainObject(csp) && isPlainObject(csp.directives)) {
+    const directives = csp.directives;
+    const sourcesOf = (name: string): string[] =>
+      Array.isArray(directives[name])
+        ? (directives[name] as unknown[]).filter(
+            (s): s is string => typeof s === "string",
+          )
+        : [];
+    const hashScripts =
+      csp.hashes !== false &&
+      !(isPlainObject(csp.hashes) && csp.hashes.scripts === false);
+    if (hashScripts && sourcesOf("script-src").includes("'unsafe-inline'"))
+      warnings.push({
+        key: "contentSecurityPolicy.directives.script-src",
+        value: directives["script-src"],
+        message:
+          "contentSecurityPolicy.directives.script-src lists 'unsafe-inline', so every inline script runs, including one injected into a page, and Bascik adds no script hashes to it. Remove 'unsafe-inline' to allow only the scripts from your build.",
+      });
+    for (const wide of sourcesOf("script-src").filter(
+      (s) => s === "*" || s.toLowerCase() === "https:" || s === "http:",
+    ))
+      warnings.push({
+        key: "contentSecurityPolicy.directives.script-src",
+        value: wide,
+        message: `contentSecurityPolicy.directives.script-src lists ${wide}, so a script from any site may run. List the origins you load scripts from instead.`,
+      });
+    if (
+      csp.reportOnly === true &&
+      !("report-to" in directives) &&
+      !("report-uri" in directives)
+    )
+      warnings.push({
+        key: "contentSecurityPolicy.reportOnly",
+        value: true,
+        message:
+          "contentSecurityPolicy.reportOnly is on but no report-to or report-uri directive says where to send reports; violations show only in the browser console.",
+      });
   }
 
   return warnings;

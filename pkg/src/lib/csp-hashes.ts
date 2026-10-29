@@ -224,6 +224,14 @@ class CspHashCollector {
     });
   }
 
+  /** One route's recorded hashes, unsorted (the dev server's CSP header reads this per request). */
+  getRoute(route: string): PageCspHashes | undefined {
+    const entry = this.pageHashes.get(route);
+    return entry
+      ? { scripts: [...entry.scripts], styles: [...entry.styles] }
+      : undefined;
+  }
+
   getManifest(): CspHashesManifest {
     const sortedPageKeys = Array.from(this.pageHashes.keys()).sort((a, b) =>
       a < b ? -1 : a > b ? 1 : 0,

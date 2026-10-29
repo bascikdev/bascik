@@ -488,7 +488,9 @@ describe.each(ROOTS)("component root $dir", (root) => {
         }
         // No component in these roots nests one of the unsupported ones.
         expect(skipped).toEqual([]);
-      });
+        // Builds every usage of every component (about 1 s alone with
+        // minify.html on); the default 5 s timed out on a loaded machine.
+      }, 60_000);
 
       it("stages the same server and stream script sources as the page sidecar, with the component's output scope", async () => {
         for (const name of Object.keys(list).sort()) {

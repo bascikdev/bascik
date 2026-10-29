@@ -152,4 +152,24 @@ describe("the bundled language server", () => {
     );
     expect(diagnostics.every((d) => d.source === "bascik")).toBe(true);
   });
+
+  it("reports server-script-unescaped-markup from the bundled server, and allows the @bascik/bascik/html import", async () => {
+    const diagnostics = await diagnosticsFor(
+      "src/pages/search.html",
+      "html",
+      '<script data-bascik-server>\nimport { esc } from "@bascik/bascik/html";\nexport default (request) => {\n  const q = new URL(request.url).searchParams.get("q");\n  return `<p>${q}</p>`;\n};\n</script>',
+    );
+    const codes = diagnostics.map((d) => d.code);
+    expect(codes).toContain("server-script-unescaped-markup");
+    expect(codes).not.toContain("server-script-bascik-import");
+  });
+
+  it("is released as 0.5.0, the version that bundles the language server with the html lint", async () => {
+    const { readFile } = await import("node:fs/promises");
+    // The tests compile to CommonJS, so the manifest is found from the working directory (the extension root).
+    const manifest = JSON.parse(
+      await readFile(join(process.cwd(), "package.json"), "utf8"),
+    ) as { version: string };
+    expect(manifest.version).toBe("0.5.0");
+  });
 });

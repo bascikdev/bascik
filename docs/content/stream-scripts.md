@@ -35,12 +35,14 @@ Zero client JavaScript is needed. No React runtime, no hydration phase, no virtu
 <section class="feed-panel" aria-busy="true">
   <p class="pending" role="status">Loading live activity…</p>
   <script data-bascik-stream>
-    import { escape } from "@/lib/server.ts";
+    import { html } from "@bascik/bascik/html";
 
     export default async function (request, context, { signal }) {
       const response = await fetch("https://api.example.com/feed", { signal });
       const items = await response.json();
-      return `<div class="result">${items.map((item) => `<p>${escape(item.text)}</p>`).join("")}</div>`;
+      return html`<div class="result">
+        ${items.map((item) => html`<p>${item.text}</p>`)}
+      </div>`;
     }
   </script>
 </section>
@@ -62,7 +64,7 @@ Stream scripts share the standard server handler signature: `(request, context, 
 
 ```html
 <script data-bascik-stream>
-  import { escape } from "@/lib/server.ts";
+  import { html } from "@bascik/bascik/html";
 
   export default async function (request, context, { signal }) {
     const res = await fetch("https://api.example.com/user", {
@@ -70,7 +72,7 @@ Stream scripts share the standard server handler signature: `(request, context, 
       signal,
     });
     const user = await res.json();
-    return `<article><h3>Welcome back, ${escape(user.name)}</h3></article>`;
+    return html`<article><h3>Welcome back, ${user.name}</h3></article>`;
   }
 </script>
 ```
@@ -114,14 +116,14 @@ Wrap the placeholder and script in a container that reserves its typical dimensi
 <section class="panel" aria-busy="true">
   <p class="pending" role="status">Loading account details…</p>
   <script data-bascik-stream>
-    import { escape } from "@/lib/server.ts";
+    import { html } from "@bascik/bascik/html";
 
     export default async function (request, context, { signal }) {
       const response = await fetch("https://api.example.com/account", {
         signal,
       });
       const account = await response.json();
-      return `<article class="result"><h3>${escape(account.name)}</h3></article>`;
+      return html`<article class="result"><h3>${account.name}</h3></article>`;
     }
   </script>
 </section>
@@ -175,12 +177,12 @@ Add a loading animation with pure CSS keyframes, accounting for [prefers-reduced
 <div class="skeleton-container" aria-busy="true">
   <div class="skeleton" role="status" aria-label="Loading data"></div>
   <script data-bascik-stream>
-    import { escape } from "@/lib/server.ts";
+    import { html } from "@bascik/bascik/html";
 
     export default async function (request, context, { signal }) {
       const res = await fetch("https://api.example.com/details", { signal });
       const data = await res.json();
-      return `<div class="result"><p>${escape(data.details)}</p></div>`;
+      return html`<div class="result"><p>${data.details}</p></div>`;
     }
   </script>
 </div>
@@ -240,30 +242,36 @@ When rendering multiple independent streaming sections (like cards in a dashboar
   <!-- Streaming scripts resolve independently in source order -->
   <div class="cell-1">
     <script data-bascik-stream>
-      import { escape } from "@/lib/server.ts";
+      import { html } from "@bascik/bascik/html";
       export default async function (request, context, { signal }) {
         const stats = await fetchMetrics({ signal });
-        return `<article class="card result-1"><h3>${escape(stats.uptime)}</h3></article>`;
+        return html`<article class="card result-1">
+          <h3>${stats.uptime}</h3>
+        </article>`;
       }
     </script>
   </div>
 
   <div class="cell-2">
     <script data-bascik-stream>
-      import { escape } from "@/lib/server.ts";
+      import { html } from "@bascik/bascik/html";
       export default async function (request, context, { signal }) {
         const feed = await fetchFeed({ signal });
-        return `<article class="card result-2"><h3>${escape(feed.rate)}</h3></article>`;
+        return html`<article class="card result-2">
+          <h3>${feed.rate}</h3>
+        </article>`;
       }
     </script>
   </div>
 
   <div class="cell-3">
     <script data-bascik-stream>
-      import { escape } from "@/lib/server.ts";
+      import { html } from "@bascik/bascik/html";
       export default async function (request, context, { signal }) {
         const db = await fetchDb({ signal });
-        return `<article class="card result-3"><h3>${escape(db.status)}</h3></article>`;
+        return html`<article class="card result-3">
+          <h3>${db.status}</h3>
+        </article>`;
       }
     </script>
   </div>
@@ -308,12 +316,12 @@ When rendering multiple independent streaming sections (like cards in a dashboar
   <section class="metrics" aria-busy="true">
     <p class="pending" role="status">Loading live metrics…</p>
     <script data-bascik-stream>
-      import { escape } from "@/lib/server.ts";
+      import { html } from "@bascik/bascik/html";
 
       export default async function (request, context, { signal }) {
         const res = await fetch("https://api.example.com/metrics", { signal });
         const stats = await res.json();
-        return `<div class="result"><p>${escape(stats.summary)}</p></div>`;
+        return html`<div class="result"><p>${stats.summary}</p></div>`;
       }
     </script>
   </section>
@@ -321,12 +329,12 @@ When rendering multiple independent streaming sections (like cards in a dashboar
   <section class="billing" aria-busy="true">
     <p class="pending" role="status">Loading billing history…</p>
     <script data-bascik-stream>
-      import { escape } from "@/lib/server.ts";
+      import { html } from "@bascik/bascik/html";
 
       export default async function (request, context, { signal }) {
         const res = await fetch("https://api.example.com/billing", { signal });
         const bills = await res.json();
-        return `<div class="result"><p>${escape(bills.total)}</p></div>`;
+        return html`<div class="result"><p>${bills.total}</p></div>`;
       }
     </script>
   </section>
@@ -364,12 +372,12 @@ When rendering multiple independent streaming sections (like cards in a dashboar
   <section class="revenue" aria-busy="true">
     <div class="skeleton" role="status">Loading revenue figures…</div>
     <script data-bascik-stream>
-      import { escape } from "@/lib/server.ts";
+      import { html } from "@bascik/bascik/html";
 
       export default async function (request, context, { signal }) {
         const res = await fetch("https://api.example.com/revenue", { signal });
         const data = await res.json();
-        return `<div class="result"><h2>${escape(data.total)}</h2></div>`;
+        return html`<div class="result"><h2>${data.total}</h2></div>`;
       }
     </script>
   </section>
@@ -385,15 +393,21 @@ If you want content to append progressively as it streams in without showing pla
 <div class="feed-grid">
   <!-- Items stream and append into the grid in arrival order with no placeholders -->
   <script data-bascik-stream>
+    import { html } from "@bascik/bascik/html";
+    import { fetchPrimaryFeed } from "@/lib/feeds.ts";
+
     export default async function (request, context, { signal }) {
       const item = await fetchPrimaryFeed({ signal });
-      return `<article class="feed-card"><h3>${escape(item.title)}</h3></article>`;
+      return html`<article class="feed-card"><h3>${item.title}</h3></article>`;
     }
   </script>
   <script data-bascik-stream>
+    import { html } from "@bascik/bascik/html";
+    import { fetchSecondaryFeed } from "@/lib/feeds.ts";
+
     export default async function (request, context, { signal }) {
       const item = await fetchSecondaryFeed({ signal });
-      return `<article class="feed-card"><h3>${escape(item.title)}</h3></article>`;
+      return html`<article class="feed-card"><h3>${item.title}</h3></article>`;
     }
   </script>
 </div>
@@ -407,7 +421,7 @@ A stream script can return the tags of your own components, exactly like a [serv
 
 ### Stream cards in batches
 
-This page streams the `<product-card>` from the [server script guide](/server-scripts#render-a-card-per-search-result) in two batches, one per `data-bascik-stream` script. Bascik flushes the slots in source order. The card's stylesheet is sent once, as one `<style>` at the start of the first slot in document order that renders a card, so the second batch carries none. Cards in different slots still get distinct request-time ids. Here each batch returns at once so the Output is the same on every run; a real batch arrives when its data resolves, such as a search API that takes a moment.
+This page streams the `<product-card>` from the [server script guide](/server-scripts#render-a-card-per-search-result) in two batches, one per `data-bascik-stream` script. Bascik flushes the slots in source order. The card's stylesheet is sent once, as one `<style>` at the start of the first slot in document order that renders a card, so the second batch carries none. Every card's client script has the same text, so one Content-Security-Policy hash covers both batches. Here each batch returns at once so the Output is the same on every run; a real batch arrives when its data resolves, such as a search API that takes a moment.
 
 <!-- demo:rtc-stream-source-usage -->
 
@@ -502,7 +516,6 @@ The Source tabs show the page and the card's files. The Output is the whole body
         <p class="bascik__product-card__price">$129</p>
         <span class="bascik__product-card__badge">Best seller</span>
         <button
-          id="bascik__product-card__r778b9a6__save"
           class="bascik__product-card__save"
           type="button"
           aria-pressed="false"
@@ -514,14 +527,21 @@ The Source tabs show the page and the card's files. The Output is the whole body
       <script>
         (function () {
           // src/components/product-card/product-card.js
-          const save = document.getElementById(
-            "bascik__product-card__r778b9a6__save",
-          );
-          save.addEventListener("click", () => {
-            const saved = save.getAttribute("aria-pressed") !== "true";
-            save.setAttribute("aria-pressed", String(saved));
-            save.textContent = saved ? "Saved" : "Save";
-          });
+          // One click listener serves every card on the page. The text is the same in
+          // every instance (no scoped id), so one CSP hash covers cards a server script
+          // renders at request time too.
+          if (
+            !document.documentElement.hasAttribute("data-product-card-save")
+          ) {
+            document.documentElement.setAttribute("data-product-card-save", "");
+            document.addEventListener("click", (event) => {
+              const save = event.target.closest(".bascik__product-card__save");
+              if (save === null) return;
+              const saved = save.getAttribute("aria-pressed") !== "true";
+              save.setAttribute("aria-pressed", String(saved));
+              save.textContent = saved ? "Saved" : "Save";
+            });
+          }
         })();
         //# sourceURL=src/components/product-card/product-card.js
       </script>
@@ -531,7 +551,6 @@ The Source tabs show the page and the card's files. The Output is the whole body
         <p class="bascik__product-card__price">$48</p>
         <span class="bascik__product-card__badge">New</span>
         <button
-          id="bascik__product-card__r83a1dbc__save"
           class="bascik__product-card__save"
           type="button"
           aria-pressed="false"
@@ -543,14 +562,21 @@ The Source tabs show the page and the card's files. The Output is the whole body
       <script>
         (function () {
           // src/components/product-card/product-card.js
-          const save = document.getElementById(
-            "bascik__product-card__r83a1dbc__save",
-          );
-          save.addEventListener("click", () => {
-            const saved = save.getAttribute("aria-pressed") !== "true";
-            save.setAttribute("aria-pressed", String(saved));
-            save.textContent = saved ? "Saved" : "Save";
-          });
+          // One click listener serves every card on the page. The text is the same in
+          // every instance (no scoped id), so one CSP hash covers cards a server script
+          // renders at request time too.
+          if (
+            !document.documentElement.hasAttribute("data-product-card-save")
+          ) {
+            document.documentElement.setAttribute("data-product-card-save", "");
+            document.addEventListener("click", (event) => {
+              const save = event.target.closest(".bascik__product-card__save");
+              if (save === null) return;
+              const saved = save.getAttribute("aria-pressed") !== "true";
+              save.setAttribute("aria-pressed", String(saved));
+              save.textContent = saved ? "Saved" : "Save";
+            });
+          }
         })();
         //# sourceURL=src/components/product-card/product-card.js
       </script>
@@ -561,7 +587,6 @@ The Source tabs show the page and the card's files. The Output is the whole body
         <p class="bascik__product-card__price">$31</p>
         <span class="bascik__product-card__badge">Standard</span>
         <button
-          id="bascik__product-card__rd83e356__save"
           class="bascik__product-card__save"
           type="button"
           aria-pressed="false"
@@ -573,14 +598,21 @@ The Source tabs show the page and the card's files. The Output is the whole body
       <script>
         (function () {
           // src/components/product-card/product-card.js
-          const save = document.getElementById(
-            "bascik__product-card__rd83e356__save",
-          );
-          save.addEventListener("click", () => {
-            const saved = save.getAttribute("aria-pressed") !== "true";
-            save.setAttribute("aria-pressed", String(saved));
-            save.textContent = saved ? "Saved" : "Save";
-          });
+          // One click listener serves every card on the page. The text is the same in
+          // every instance (no scoped id), so one CSP hash covers cards a server script
+          // renders at request time too.
+          if (
+            !document.documentElement.hasAttribute("data-product-card-save")
+          ) {
+            document.documentElement.setAttribute("data-product-card-save", "");
+            document.addEventListener("click", (event) => {
+              const save = event.target.closest(".bascik__product-card__save");
+              if (save === null) return;
+              const saved = save.getAttribute("aria-pressed") !== "true";
+              save.setAttribute("aria-pressed", String(saved));
+              save.textContent = saved ? "Saved" : "Save";
+            });
+          }
         })();
         //# sourceURL=src/components/product-card/product-card.js
       </script>
@@ -593,7 +625,7 @@ Run this on Cloudflare Workers: [/catalog-stream](https://cloudflare-adapter.bas
 
 ### Security
 
-Escaping bugs in a stream script that returns component tags mean component injection, exactly as for server scripts: a visitor's unescaped text can write any of your components' tags, and their own scripts run with the request. The guarantees are the same as for server scripts: props are text, bindings to URL, event-handler, `srcdoc`, and `style` attributes are checked, inherited attributes keep their quoting, nested scripts get no usage data, markers cannot be forged, and hostile output fails fast. A failure leaves the stream slot empty rather than sending a 500. See [Security](/server-scripts#security) for the details and the note on `generate.cspHashes`.
+Escaping bugs in a stream script that returns component tags mean component injection, exactly as for server scripts: a visitor's unescaped text can write any of your components' tags, and their own scripts run with the request. The guarantees are the same as for server scripts: props are text, bindings to URL, event-handler, `srcdoc`, and `style` attributes are checked, inherited attributes keep their quoting, nested scripts get no usage data, markers cannot be forged, and hostile output fails fast. A failure leaves the stream slot empty rather than sending a 500. See [Security](/server-scripts#security) for the details and the note on `generate.cspHashes`, and the [Security](/security) page for building output with `html`.
 
 ### Rules when streaming
 
@@ -654,14 +686,14 @@ Pages containing streaming scripts automatically adjust HTTP transport headers:
 <section class="stream-panel" aria-busy="true">
   <p class="pending" role="status">Loading live status…</p>
   <script data-bascik-stream>
-    import { escape } from "@/lib/server.ts";
+    import { html } from "@bascik/bascik/html";
 
     export default async function (request, context, { signal }) {
       const response = await fetch("https://api.example.com/status", {
         signal,
       });
       const data = await response.json();
-      return `<p class="result">System online: ${escape(data.uptime)}</p>`;
+      return html`<p class="result">System online: ${data.uptime}</p>`;
     }
   </script>
 </section>

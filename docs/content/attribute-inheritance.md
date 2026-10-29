@@ -33,6 +33,8 @@ Common use cases:
 - **Testing hooks:** `data-testid`, `data-cy`
 - **Custom data:** any `data-*` attribute except `data-bascik-*`
 
+Inherited values are copied exactly as written: an `onclick`, `style` or `href` on the usage tag lands on the root as you wrote it. The one exception is an attribute that becomes a URL only because of the root's tag, such as `data` on an `<object>` root: a `javascript:`, `vbscript:` or `data:` URL there (`data:image/...` included, as `html` treats `<object data>`) becomes `about:invalid`, and Bascik warns, naming the component file, because neither you nor [`html`](/security) could see the root's tag when the usage was written. An inherited `class` or `style` merges into the root's own `class` or `style` only, never into text another inherited value carries.
+
 Attribute inheritance is root-only. To send a prop to an attribute on a non-root element, use [`data-bascik-attr-{attribute}="{propName}"`](/props#put-a-prop-in-an-attribute). Use slots when the consumer should provide the element or richer markup itself.
 
 ## What Happens with `id`

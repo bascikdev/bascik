@@ -519,6 +519,16 @@ export const initBascikConfig = (
     ...(flags.target ? { target: flags.target } : {}),
   };
 
+  // contentSecurityPolicy needs each route's hashes: it turns on
+  // generate.cspHashes unless the author set cspHashes explicitly.
+  if (
+    BascikConfig.contentSecurityPolicy &&
+    effectiveUserConfig.generate?.cspHashes === undefined &&
+    activeOverride.generate?.cspHashes === undefined
+  ) {
+    BascikConfig.generate = { ...BascikConfig.generate, cspHashes: true };
+  }
+
   if (BascikConfig.pipeline?.exec) {
     BascikConfig.pipeline.exec = normalizeExec(BascikConfig.pipeline.exec);
   }

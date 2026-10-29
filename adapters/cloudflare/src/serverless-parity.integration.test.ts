@@ -17,6 +17,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import http from "node:http";
+import { readFile as readTextFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -1477,5 +1478,340 @@ describe("serverless parity: escaped visitor input in returned component tags (p
       ),
     ].map((match) => match[1].toLowerCase());
     expect(names).toEqual(["class", "data-testid", "title"]);
+  });
+
+  it("B. an inherited data onto an <object> root (a URL only on that tag) never carries a script URL, and the <iframe> root's src, srcdoc and onload are inherited as written, on both hosts", async () => {
+    const escapers: Record<string, (s: string) => string> = {
+      "": (s) =>
+        s
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll('"', "&quot;"),
+      "&esc=full": (s) =>
+        s.replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c]!,
+        ),
+    };
+    for (const q of [
+      "data:text/html,<script>parent.postMessage('script ran: '+location.protocol,'*')</script>",
+      "javascript:alert(document.domain)",
+      " java\tscript:alert(1)",
+    ]) {
+      for (const [esc, e] of Object.entries(escapers)) {
+        const { node: n, cf } = await both(page(q, `${esc}&only=inherit-url`));
+        expect(n.status, q).toBe(200);
+        expect(cf.status, q).toBe(200);
+        expect(cf.body, q).toBe(n.body);
+        const object = openTagOf(cf.body, "sec-embed");
+        const frame = openTagOf(cf.body, "sec-frame");
+        expect(/\sdata="([^"]*)"/.exec(object)?.[1], q).toBe("about:invalid");
+        for (const attr of ["src", "srcdoc", "onload"])
+          expect(frame, `${q} ${attr}`).toContain(` ${attr}="${e(q)}"`);
+      }
+    }
+  });
+
+  it("B. a page's own handler and javascript:void(0) href are inherited as written, on both hosts", async () => {
+    const { node: n, cf } = await both(page("ok", "&only=inherit-kept"));
+    expect(n.status).toBe(200);
+    expect(cf.body).toBe(n.body);
+    expect(openTagOf(cf.body, "sec-sty")).toContain(` onclick="go()"`);
+    expect(openTagOf(cf.body, "sec-anchor")).toContain(
+      ` href="javascript:void(0)"`,
+    );
+  });
+
+  it("B. a value spelling class= or style= inherited before a merged class or style never ends its attribute, on both hosts", async () => {
+    // Attribute names as the tokenizer reads them.
+    const names = (tag: string): string[] =>
+      [
+        ...tag.matchAll(
+          /\s([^\s"'>/=]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/g,
+        ),
+      ].map((match) => match[1].toLowerCase());
+    for (const q of [
+      " class=x onfocus=alert(document.domain) autofocus tabindex=1 style=y ",
+      " class='x' style='y' onfocus=alert(1) autofocus ",
+    ]) {
+      for (const esc of ["", "&esc=full"]) {
+        const { node: n, cf } = await both(
+          page(q, `${esc}&only=inherit-merge`),
+        );
+        expect(n.status, q).toBe(200);
+        expect(cf.status, q).toBe(200);
+        expect(cf.body, q).toBe(n.body);
+        const badge = openTagOf(cf.body, "sec-badge");
+        const sty = openTagOf(cf.body, "sec-sty");
+        expect(names(badge).sort(), badge).toEqual([
+          "class",
+          "data-testid",
+          "title",
+        ]);
+        expect(names(sty).sort(), sty).toEqual([
+          "aria-label",
+          "class",
+          "data-testid",
+          "style",
+        ]);
+        expect(badge).toMatch(/\sclass="big"/);
+        expect(sty).toMatch(/\sstyle="color:red"/);
+      }
+    }
+  });
+
+  it("B. a plain inherited style and on-prefixed names that are no handlers reach the root unchanged, on both hosts", async () => {
+    const { node: n, cf } = await both(page("Q3", "&only=inherit-plain"));
+    expect(cf.body).toBe(n.body);
+    const badge = openTagOf(cf.body, "sec-badge");
+    expect(badge).toContain(` online=""`);
+    expect(badge).toContain(` one="1"`);
+    expect(badge).toContain(
+      ` style="overscroll-behavior: contain; max-height: 20rem; --caption: 'Data: Q3'"`,
+    );
+  });
+
+  it("B. a safe inherited URL reaches the <object> and <iframe> roots unchanged, on both hosts", async () => {
+    const q = "https://example.com/embed?a=1";
+    const { node: n, cf } = await both(page(q, "&only=inherit-url"));
+    expect(cf.body).toBe(n.body);
+    expect(openTagOf(cf.body, "sec-embed")).toContain(` data="${q}"`);
+    expect(openTagOf(cf.body, "sec-frame")).toContain(` src="${q}"`);
+  });
+});
+
+// ─── @bascik/bascik/html on both hosts (Collin 2026-10-28) ──────────────────
+//
+// A server script, a stream script and a component's own server script
+// import the helpers through the package export; the adapter bundles them
+// into the Worker. Every response must be byte-identical on Node and
+// workerd, and a visitor's markup must come back as text.
+describe("serverless parity: @bascik/bascik/html in server, stream and component scripts", () => {
+  let root: string;
+  let node: NodeOracle;
+  let cloudflare: Harness;
+
+  beforeAll(async () => {
+    root = await createServerlessFixture("html", { html: true });
+    await buildServerlessFixture(root, "cloudflare-pages");
+    node = await startNodeServer(root);
+    cloudflare = await startHarness({
+      projectRoot: root,
+      target: "cloudflare-pages",
+      collectLogs: true,
+    });
+  }, 180_000);
+
+  afterAll(async () => {
+    await cloudflare?.dispose();
+    await node?.stop();
+    if (root) await cleanupServerlessFixture(root);
+  });
+
+  const both = async (
+    path: string,
+  ): Promise<{ node: Observed; cf: Observed }> => ({
+    node: await observe(await fetch(new URL(path, node.url))),
+    cf: await observe(await cloudflare.fetch(path)),
+  });
+
+  const ATTACK = `<product-card data-bascik-prop-name=x><img src=x onerror=alert(1)>`;
+
+  it("?q=<product-card ...><img onerror> renders as text with no expanded component, byte-identical on both hosts", async () => {
+    for (const path of [
+      `/html-search?q=${encodeURIComponent(ATTACK)}`,
+      `/html-stream?q=${encodeURIComponent(ATTACK)}`,
+    ]) {
+      const { node: n, cf } = await both(path);
+      expect(n.status, path).toBe(200);
+      expect(cf.status, path).toBe(200);
+      expect(cf.body, path).toBe(n.body);
+      const body = markup(cf.body);
+      expect(body, path).not.toMatch(/<img[\s>]|<product-card/i);
+      expect(body.match(/data-testid="safe-card"/g), path).toHaveLength(1);
+      expect(body, path).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    }
+  });
+
+  it("an html list nests without commas, and the component's own server script (importing html) escapes too", async () => {
+    const { node: n, cf } = await both(
+      `/html-search?q=${encodeURIComponent("<i>x</i>")}`,
+    );
+    expect(cf.body).toBe(n.body);
+    expect(cf.body).toContain("<ul><li>a&lt;</li><li>b&amp;</li></ul>");
+    expect(cf.body).toMatch(
+      /data-testid="safe-live-echo">&lt;i&gt;x&lt;\/i&gt;<\/p>/,
+    );
+    expect(cf.body).not.toContain("[object Object]");
+  });
+
+  it("a visitor's javascript: URL in href is about:invalid on both hosts", async () => {
+    const { node: n, cf } = await both(
+      `/html-search?q=${encodeURIComponent(" JaVa\tScript:alert(1)")}`,
+    );
+    expect(cf.body).toBe(n.body);
+    expect(cf.body).toMatch(/data-testid="link" href="about:invalid"/);
+  });
+
+  it("json() fills a JSON script a visitor cannot end, on both hosts", async () => {
+    const q = "</script><script>alert(1)</script> ";
+    const { node: n, cf } = await both(`/html-json?q=${encodeURIComponent(q)}`);
+    expect(cf.body).toBe(n.body);
+    const text =
+      /<script type="application\/json" id="data">([\s\S]*?)<\/script>/.exec(
+        cf.body,
+      )?.[1];
+    expect(JSON.parse(text ?? "null")).toEqual({ q });
+  });
+
+  it("misuse: an onclick hole is the 500 page on both hosts, and the Worker log carries the template and hole", async () => {
+    const { node: n, cf } = await both("/html-misuse?q=x");
+    expect(n.status).toBe(500);
+    expect(cf.status).toBe(500);
+    expect(cf.body).toBe(n.body);
+    expect(cloudflare.logs.join("\n")).toContain(
+      'html: hole 1 in html`<button onclick="${…}">go</button>` is inside the onclick attribute.',
+    );
+  });
+
+  it("a U+0130 before </textarea> does not move the tokenizer: the href hole is still URL-checked on both hosts", async () => {
+    const { node: n, cf } = await both(
+      `/html-turkish?q=${encodeURIComponent("javascript:alert(1)")}`,
+    );
+    expect(n.status).toBe(200);
+    expect(cf.body).toBe(n.body);
+    expect(cf.body).toMatch(/data-testid="link" href="about:invalid"/);
+  });
+
+  it("an onerror hole inside <noscript> is refused (a 500) on both hosts", async () => {
+    const { node: n, cf } = await both("/html-noscript?q=alert(1)");
+    expect(n.status).toBe(500);
+    expect(cf.status).toBe(500);
+    expect(cf.body).toBe(n.body);
+    expect(cloudflare.logs.join("\n")).toContain(
+      "is inside the onerror attribute.",
+    );
+  });
+
+  it("no Content-Security-Policy header without the option, on both hosts", async () => {
+    const { node: n, cf } = await both("/html-search?q=a");
+    expect(n.headers["content-security-policy"]).toBeUndefined();
+    expect(cf.headers["content-security-policy"]).toBeUndefined();
+  });
+});
+
+// Red team 2026-10-28: with only default-src 'none' written, the hash merge
+// used to create script-src 'self' and style-src 'self', widening the
+// author's policy on both hosts. A created directive starts from default-src.
+describe("serverless parity: contentSecurityPolicy with only default-src 'none'", () => {
+  let root: string;
+  let node: NodeOracle;
+  let cloudflare: Harness;
+
+  beforeAll(async () => {
+    root = await createServerlessFixture("csp-none", {
+      html: true,
+      components: true,
+      csp: { "default-src": ["'none'"], "img-src": ["'self'"] },
+    });
+    await buildServerlessFixture(root, "cloudflare-pages");
+    node = await startNodeServer(root);
+    cloudflare = await startHarness({
+      projectRoot: root,
+      target: "cloudflare-pages",
+    });
+  }, 180_000);
+
+  afterAll(async () => {
+    await cloudflare?.dispose();
+    await node?.stop();
+    if (root) await cleanupServerlessFixture(root);
+  });
+
+  const neverSelf = (csp: string | undefined): void => {
+    expect(csp).toBeDefined();
+    expect(csp).toMatch(/^default-src 'none'; img-src 'self'/);
+    expect(csp).not.toMatch(/(script|style)-src [^;]*'self'/);
+    expect(csp).toMatch(/style-src( 'sha256-[A-Za-z0-9+/=]+')+(;|$)/);
+  };
+
+  it("a page the Worker renders: the created directives are only the hashes, the same on Node", async () => {
+    const n = await observe(await fetch(new URL("/html-search?q=a", node.url)));
+    const cf = await observe(await cloudflare.fetch("/html-search?q=a"));
+    const csp = cf.headers["content-security-policy"];
+    expect(csp).toBe(n.headers["content-security-policy"]);
+    neverSelf(csp);
+  });
+
+  it("a static page with an inline script and style: its _headers rule matches Node and adds no 'self'", async () => {
+    const headers = await readTextFile(
+      join(root, "dist/.bascik/cloudflare-pages/public/_headers"),
+      "utf8",
+    );
+    const nodeCsp = (
+      await observe(await fetch(new URL("/csp-inline", node.url)))
+    ).headers["content-security-policy"];
+    neverSelf(nodeCsp);
+    expect(nodeCsp).toMatch(/script-src( 'sha256-[A-Za-z0-9+/=]+')+(;|$)/);
+    const lines = headers.split("\n");
+    const at = lines.indexOf("/csp-inline");
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(lines[at + 1]).toBe(`  Content-Security-Policy: ${nodeCsp}`);
+  });
+});
+
+describe("serverless parity: opt-in contentSecurityPolicy", () => {
+  let root: string;
+  let node: NodeOracle;
+  let cloudflare: Harness;
+
+  beforeAll(async () => {
+    root = await createServerlessFixture("csp", {
+      html: true,
+      components: true,
+      csp: true,
+    });
+    await buildServerlessFixture(root, "cloudflare-pages");
+    node = await startNodeServer(root);
+    cloudflare = await startHarness({
+      projectRoot: root,
+      target: "cloudflare-pages",
+    });
+  }, 180_000);
+
+  afterAll(async () => {
+    await cloudflare?.dispose();
+    await node?.stop();
+    if (root) await cleanupServerlessFixture(root);
+  });
+
+  it("a page the Worker renders gets the same header as on Node: directives plus the route's widened hashes", async () => {
+    const n = await observe(await fetch(new URL("/html-search?q=a", node.url)));
+    const cf = await observe(await cloudflare.fetch("/html-search?q=a"));
+    const csp = cf.headers["content-security-policy"];
+    expect(csp).toBeDefined();
+    expect(csp).toBe(n.headers["content-security-policy"]);
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toMatch(/script-src 'self' https:\/\/cdn\.example\.com/);
+    expect(csp).toMatch(/style-src 'self'( 'sha256-[A-Za-z0-9+/=]+')+/);
+  });
+
+  it("static pages get exact-path rules in the generated public/_headers, merged after the adapter's own", async () => {
+    const headers = await readTextFile(
+      join(root, "dist/.bascik/cloudflare-pages/public/_headers"),
+      "utf8",
+    );
+    const nodeCsp = (await observe(await fetch(new URL("/", node.url))))
+      .headers["content-security-policy"];
+    expect(nodeCsp).toBeDefined();
+    expect(headers).toMatch(/^\/\n {2}Content-Security-Policy: /m);
+    expect(headers).toContain(`  Content-Security-Policy: ${nodeCsp}`);
   });
 });

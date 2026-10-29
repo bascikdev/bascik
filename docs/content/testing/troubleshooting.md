@@ -133,7 +133,7 @@ Props are text. Bascik HTML-escapes them so markup from a CMS or an API cannot b
 
 ### `<link-card> (components/link-card/link-card.html): data-bascik-attr-href="url" received a URL that can run script (a javascript:, vbscript: or data: URL), so href is set to about:invalid.`
 
-A prop bound to a URL attribute (`href`, `src`, `srcset`, `action`, `formaction`, `poster`, SVG animation values, and the like) carried a `javascript:`, `vbscript:`, or `data:` URL, so the link points nowhere. An image slot such as `<img src>` keeps a `data:image/...` URL. The related message `received a URL outside this site, and <script> would run or apply what it loads` means a `<script src>`, `<object data>`, `<embed src>`, `<base href>`, or stylesheet `<link href>` binding got another origin's URL: bind a path on your site, or write a fixed external URL in the template. The value comes from the usage tag: a page at build time, or a server or stream script at request time, where it is often a visitor's input. Pass a relative or `https:` URL, or validate the URL in the script with `new URL(value, base)` before returning the tag. See [Put a Prop in an Attribute](/props#put-a-prop-in-an-attribute).
+A prop bound to a URL attribute (`href`, `src`, `srcset`, `action`, `formaction`, `poster`, SVG animation values, and the like) carried a `javascript:`, `vbscript:`, `livescript:`, `mocha:`, or non-image `data:` URL, so the link points nowhere. An image slot such as `<img src>` keeps a `data:image/...` URL. Any `http:` or `https:` URL, another site's included, is kept. The value comes from the usage tag: a page at build time, or a server or stream script at request time, where it is often a visitor's input. Pass a relative or `https:` URL, or check it in the script with `safeUrl(value)` from `@bascik/bascik/html` before returning the tag. See [Put a Prop in an Attribute](/props#put-a-prop-in-an-attribute).
 
 ### `<my-card> (components/my-card/my-card.html): Ignoring data-bascik-attr-onclick="action": an event handler's value is code, so a prop is never bound to one.`
 
@@ -366,6 +366,173 @@ Slot resolution, attribute inheritance, and substitution run the same code in bo
 ### One slow server script delays every request
 
 Synchronous work in a handler blocks Node's event loop. Use asynchronous APIs, await them, and offload CPU-heavy work. See [Can a server script slow down other requests?](/faq#can-a-server-script-slow-down-other-requests).
+
+## Server script safety
+
+These messages come from `html` and the other helpers in `@bascik/bascik/html`, and from the linter. An `html` error is thrown inside your call, so it reaches the page like any other script error: a 500 under `scripts.onServerScriptError: 'error'` (an empty slot for a stream script), with the message and your file and line in the log. In development the browser shows only a plain `500 Internal Server Error` page; the message is in the terminal that runs `bascik`. Each message starts with `html: hole N in html` and the template's static text with every hole shown as `${…}`; the hole number counts the template's `${...}` from 1. See [HTML Helpers](/html-helpers#errors) and [Security](/security).
+
+### ``html: hole 2 in html`<a class=${…}>` is an unquoted attribute value (class).``
+
+The value would end at the first space and could start a new attribute. Quote it: `class="${value}"`.
+
+### ``html: hole 1 in html`<button onclick="${…}">` is inside the onclick attribute. An event handler's value is JavaScript, which escaping cannot make safe.``
+
+Put the value in a `data-*` attribute (`data-id="${id}"`) and read it from the component's client script.
+
+### ``html: hole 1 in html`<div style="${…}">` is inside a style attribute.``
+
+CSS can load URLs and change the page, and escaping does not make it safe. Choose between fixed classes in code (`class="${dark ? "dark" : "light"}"`), or put the value in a `data-*` attribute and style it with an attribute selector.
+
+### ``html: hole 1 in html`<script>${…}</script>` is inside a <script> element.``
+
+Escaping HTML does not make JavaScript safe. Put the value in a `data-*` attribute, or return `<script type="application/json">${json(value)}<\/script>` and parse it in the client script.
+
+### ``html: hole 1 in html`<style>${…}</style>` is inside a <style> element.``
+
+Escaping HTML does not make CSS safe. Choose between fixed classes in code.
+
+### ``html: hole 1 in html`<${…}>` is a tag name.``
+
+A value never chooses which element to write. Choose between fixed `html` fragments in code, as in [Dynamic components with html fragments](/security#dynamic-components-with-html-fragments).
+
+### ``html: hole 1 in html`<input ${…}>` is where an attribute name goes, inside <input>.``
+
+A value never chooses which attributes an element has. Write each attribute in the template with a quoted value, or choose between fixed `html` fragments in code. Boolean attributes such as `selected`, `checked` and `disabled` are the usual case: write the tag twice in a small helper and pick one in code, as shown in [Boolean attributes](/html-helpers#boolean-attributes). Do not write `checked="${isChecked}"`: a `false` value renders `checked=""`, which is still checked.
+
+### ``html: hole 1 in html`<!-- ${…} -->` is inside an HTML comment (or a <!...> declaration).``
+
+A value in a comment could close it. Move the value out of the comment, or drop the comment. The same message covers `<!DOCTYPE>`, `<?...>` and CDATA sections.
+
+### ``html: hole 1 in html`<iframe srcdoc="${…}">` is inside srcdoc, an HTML document that runs with the page's origin.``
+
+Set `src` to a URL instead, or render the content in the page.
+
+### ``html: hole 1 in html`<meta http-equiv="refresh" content="${…}">` is a <meta http-equiv> value, which acts on the page (a redirect, a policy).``
+
+A `<meta http-equiv>` redirects or sets a policy. Write its value in the template; send a redirect from an [API route](/api-routes) instead.
+
+### ``html: hole 1 in html`<set attributeName="${…}">` chooses which attribute an SVG animation sets.``
+
+Write `attributeName` (and `attributeType`) in the template. An animation that sets an `on*` attribute is refused as an event handler.
+
+### ``html: hole 1 in html`<a href="java${…}">` continues the URL's scheme from the template text "java", so the value could complete javascript:.``
+
+Start the attribute with the value (`href="${url}"`), which `html` checks, or write the scheme and the first `/` in the template (`href="https://example.com/${path}"`).
+
+### ``html: hole 1 in html`<a href="${…}:8080">` is followed by the template text ":8080" before the URL's first /, ? or #, so together they could form a scheme such as javascript:.``
+
+The value starts the URL, and the text after it could finish a scheme (`javascript` plus `:8080`). Build the whole URL in code, check it with `safeUrl`, and use one hole: `` const url = safeUrl(`https://${host}:8080/`); html`<a href="${url}">` ``. Text after the hole that starts with `/`, `?` or `#` is fine (`href="${base}/about"`).
+
+### ``html: hole 1 in html`<a href="${…}${…}">` is followed directly by another hole in the href URL, so together the values could form a scheme such as javascript:.``
+
+Two holes side by side at the start of a URL could form a scheme between them (`java` and `script:alert(1)`). Join the parts in code, check the result with `safeUrl`, and use one hole.
+
+### ``html: hole 1 in html`<a href="javascript:${…}">` is inside a javascript: URL, which runs as script.``
+
+Use a real URL and handle the click in a component script.
+
+### ``html: hole 1 in html`<script><!--</script><p>${…}</p>` follows a <script> whose text contains <!--, which changes where the browser ends the script, so html cannot tell where hole 1 lands.``
+
+A `<!--` inside a script can make the browser end the script later than `</script>`, so `html` cannot tell where a later hole lands. Remove `<!--` from the script (write `"<" + "!--"` if a string needs it).
+
+### ``html: the template html`<script><!--</script>` has a <script> whose text contains <!--, which changes where the browser ends it, so the fragment cannot be nested safely.``
+
+The same problem with no hole after the script: the fragment could leave the page inside the script once it is nested in another template, so the whole template is refused (hole 0). Remove `<!--` from the script.
+
+### ``html: the template html`<a href="${…}` ends inside the href attribute of <a> (the quote is not closed).``
+
+An `html` fragment must end outside any tag, comment, `<script>`, `<style>`, `<textarea>`, `<title>`, `<svg>` or `<math>`, so it can be nested safely. Close the quote, the tag or the element in the same template. An ordinary unclosed element such as `<div>` is fine. The message names where the template ends, for example `ends inside <svg> (the </svg> end tag is missing)`: inside `<svg>` and `<math>` the browser parses the rest of the page differently, so close them in the template that opens them.
+
+### ``html: hole 2 in html`<p>${…}</p>` received a Promise. Await the value before putting it in the template.``
+
+An `async` helper or a `fetch` result went into the template unawaited. `await` it first.
+
+### ``html: hole 3 in html`<a title="${…}">` (the title attribute) received an html`...` or raw() value. An attribute holds text; pass a string, which html escapes.``
+
+Pass the string itself, not an `html` fragment.
+
+### ``html: hole 1 in html`<div class="${…}">` (the class attribute) received an array. An attribute holds one text value.``
+
+Join it in code: `class="${classes.join(" ")}"`.
+
+### ``html: hole 1 in html`<title>${…}</title>` received an html`...` or raw() value, but <title> holds text only.``
+
+`<title>` and `<textarea>` show their content as text. Pass a string.
+
+### ``html: hole 1 in html`<script type="application/json">${…}</script>` received a string. Only json(value) can fill this script, so the data cannot end it early.``
+
+Pass the data through `json(data)` instead of `JSON.stringify(data)`.
+
+### ``html: hole 1 in html`<svg>${…}</svg>` received an html`...` value with a <script> or <style> whose text contains <, inside <svg> or <math>.``
+
+Inside `<svg>` and `<math>`, the browser reads the text of a `<script>` or `<style>` as markup, so a `<` in it can start a tag and move where the element ends. The fragment was checked as HTML, where that text is plain. Move the fragment out of the `<svg>` or `<math>`, or remove `<` from its script or style (`a < b` can be written `b > a`).
+
+### ``html: hole 1 in html`<noscript>${…}</noscript>` received an html`...` or raw() value that contains </noscript, which ends the <noscript> early.``
+
+`<noscript>`, `<xmp>`, `<iframe>`, `<noembed>` and `<noframes>` end at the first `</noscript` (or their own end tag), even inside what looks like a quoted attribute. The nested value contains that end tag, so the browser would close the element there and read the rest of the value as markup, where its holes were checked as attribute text and not as links or event handlers. Remove the end tag from the value (often a `title` or `alt` that quotes markup), or put the value outside the element.
+
+### ``html: hole 1 in html`<p>${…}</p>` received an object that cannot be converted to text (its toString or valueOf is missing, or threw a TypeError).``
+
+The value is an object where a string was expected. Visitor data does this: a JSON body such as `{"name": {"toString": "x"}}`, or a query-string parser that turns `?name[toString]=x` into an object or returns null-prototype objects. Check the field's type in code (`typeof body.name === "string"`) and pass a string. The original `TypeError` is the error's `cause`.
+
+### ``html: hole 1 in html`<ul>${…}</ul>` received an array nested more than 1000 levels deep, or an array that contains itself.``
+
+An array in a text hole is flattened level by level, up to 1000 levels. Deeper data, often a JSON body built to be deep, or an array that contains itself, is refused instead of overflowing the stack. Flatten or validate the data in code first.
+
+### ``html is a tagged template: write html`<p>${value}</p>`, not html(...). To insert trusted markup, use raw(value).``
+
+`html` was called with parentheses. Write it as a tag, or use `raw()` for a string of trusted HTML.
+
+### ``raw() takes a string of trusted HTML, not a template. Use html`...` for templates.``
+
+`raw` was used as a tag. Use `html` for templates.
+
+### ``raw() takes one string of trusted HTML; received an array. Map each item to html`...` or raw(item).``
+
+Wrap the array in `html` instead: `` html`${items.map((item) => raw(item.body))}` ``.
+
+### `raw() received a Promise. Await the value first.`
+
+Await the sanitized HTML before calling `raw`.
+
+### `esc() received an object that cannot be converted to text (its toString or valueOf is missing, or threw a TypeError). Check that the value is a string before you use it.`
+
+The same problem as `unconvertible-value` above, in `esc()`: check that the value is a string first.
+
+### `safeUrl: origins[1] "cdn.example.com" is not an origin. Write it as https://cdn.example.com.`
+
+Each `origins` entry is a scheme, a host and an optional port, with no path. The message suggests the fix.
+
+### `server-script-unescaped-markup`: This markup template interpolates a value without html
+
+The linter found a template literal with tags in a server or stream script, and a value in it that is not a literal, a number, a nested `html` value, or a call to `html`, `raw`, `esc`, `safeUrl` or `json`. Wrap the template in `html` (the editor's quick fix does it), or list your own escaper in `diagnostics.escapeFunctions`. See the [Linter](/tools/linter#server-script-unescaped-markup).
+
+When the value is a call to a hand-written escaper (`${escape(q)}`), the message says so and the editor offers no quick fix, because `html` would escape the escaper's output again. Wrap the template in `html` and pass the value as it is (`${q}`), then delete the escaper.
+
+### `html-escaped-twice`: esc() inside html`...` escapes twice
+
+`html` already escapes each value, so `esc()` inside it shows `&amp;lt;` on the page. Pass the value as it is.
+
+### `html-joined-string`: This hole joins its items into one string, which html escapes
+
+A hole inside `html` is a `.join(...)` call, or a name bound to one. Joining `html` values makes one plain string, and `html` escapes a plain string, so the tags show as text. Pass the array without `.join("")`; `html` inserts each item as it is.
+
+### My page shows &lt;li&gt; as text
+
+The markup was escaped twice. Either a string that already holds markup (a `.join("")` of fragments, or `` html`a` + html`b` ``, which also makes a plain string) went into an `html` hole, or a hand-escaped value (`esc(q)`, a project `escape(q)`) did. Keep `html` at every level and pass arrays and values as they are:
+
+```js
+const cards = rows.map((p) => html`<li>${p.name}</li>`); // no .join("")
+return html`<ul>
+  ${cards}
+</ul>`;
+```
+
+The linter reports both shapes: `html-joined-string` for the join and `html-escaped-twice` for `esc()`.
+
+### My page shows [object Promise] or commas between cards
+
+`[object Promise]` means an `async` value reached a plain template literal unawaited; await it (inside `html` it is an error instead). Commas between cards mean the script returned an array of `html` fragments directly, which becomes a string with `String(array)`. Return `` html`${cards}` `` instead.
 
 ## Dynamic routes
 

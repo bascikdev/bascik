@@ -193,6 +193,7 @@ import {
   startServerInstance,
 } from "./server.ts";
 import { mem } from "./mem.ts";
+import { getLiveReloadScript } from "./live-reload.ts";
 import { BascikConfig } from "./config.ts";
 import { createReadStream } from "node:fs";
 import { stat, readFile, access, open } from "node:fs/promises";
@@ -535,6 +536,32 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
       "asset-changed",
       expect.any(Function),
     );
+  });
+
+  // A page that loaded before its rebuild finished can miss the reload; the
+  // connect message tells it which version is stored now.
+  it("sends the stored version of the open page with the connected message", async () => {
+    mockMem.getPageExact.mockImplementation((path: string) =>
+      path === "/faq"
+        ? makePage({
+            content: Buffer.from(
+              `<p>faq</p>${getLiveReloadScript("/bascik-live-reload", "41")}`,
+            ),
+          })
+        : undefined,
+    );
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(
+      stream,
+      makeHeaders(
+        "/bascik-live-reload",
+        "GET",
+        "",
+        "https://localhost:8443/faq",
+      ),
+    );
+    expect(stream.write).toHaveBeenCalledWith("data: connected 41\n\n");
   });
 
   it("calls mem.trackOpenPage with the referer pathname when a connection opens", async () => {

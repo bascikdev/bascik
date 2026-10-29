@@ -46,6 +46,7 @@ import {
   type SpecifierEdit,
 } from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
+import { installDataUrlResolveHook } from "./data-url-resolve-hook.ts";
 import { applyOutputScope, decodeOutputScope } from "./output-scope.ts";
 import { createNodeRenderHost } from "./request-render-node.ts";
 import { prepareRenderer, wrapRunner } from "./request-render.ts";
@@ -462,6 +463,7 @@ export const runServerScriptJob = async (
   // Inline modules are NOT padded: the module text is the module's identity, and the same
   // script on two pages (at different positions) must stay one module with shared state.
   // Lines and columns are mapped when an error is reported instead.
+  if (!moduleFilePath) installDataUrlResolveHook(process.cwd());
   const dataUri = `data:text/javascript;charset=utf-8,${encodeURIComponent(rewrittenCode)}`;
   const specifier =
     moduleFilePath ?? dataUri + inlineGenerationSuffix(job, rewrittenCode);

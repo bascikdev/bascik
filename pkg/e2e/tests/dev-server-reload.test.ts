@@ -186,7 +186,8 @@ const subscribeToServerReload = async (
   // write we issue after observing `connected` therefore cannot be processed
   // before that listener exists, so the resulting reload is guaranteed to
   // reach this subscription.
-  await readUntil(/^data: connected$/m, "connected");
+  // The server adds the stored page's version: `connected 12`.
+  await readUntil(/^data: connected( \d+)?$/m, "connected");
   const reload = readUntil(/^data: reload\b/m, "reload").finally(() => {
     clearTimeout(timer);
     controller.abort();
@@ -387,6 +388,49 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
     await expect(page.locator("h1")).toHaveText(markerText, { timeout: 15000 });
     const elapsed = performance.now() - start;
     expect(elapsed).toBeLessThan(5000);
+  });
+
+  // A page can load its old version and connect only after the rebuild that
+  // replaced it, missing that rebuild's reload (CI saw the new component
+  // never appear). The server sends the stored page's version on connect, and
+  // the page reloads when its own differs. Holding the page's live-reload
+  // connection until the rebuild has finished makes that order certain.
+  test("a page that connects after its rebuild reloads into the new version", async ({
+    page,
+  }) => {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let held = false;
+    await page.route("**/bascik-live-reload*", async (route) => {
+      if (!held) {
+        held = true;
+        await released;
+      }
+      await route.continue();
+    });
+    await page.goto("/scope-test");
+    await expect(page.locator("h1")).toHaveText(
+      "JS Scope Rewriting — Live Test",
+    );
+
+    const markerText = `Late Connect Marker ${Date.now()}`;
+    const { reload } = await subscribeToServerReload("/scope-test");
+    await writeFile(
+      pagePath,
+      originalPageContent.replace(
+        "<h1>JS Scope Rewriting — Live Test</h1>",
+        `<h1>${markerText}</h1>`,
+      ),
+      "utf8",
+    );
+    // The rebuild is stored and its reload has gone out, before the page has
+    // a connection to hear it.
+    await reload;
+    await expect(page.locator("h1")).toHaveText(
+      "JS Scope Rewriting — Live Test",
+    );
+    release();
+    await expect(page.locator("h1")).toHaveText(markerText, { timeout: 15000 });
   });
 
   // ── 3. Live Component Modification ─────────────────────────────────────────

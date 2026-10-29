@@ -21,7 +21,11 @@ import { collectAllScriptDeps } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { manifestCollector } from "./manifest.ts";
 import { cspHashCollector } from "./csp-hashes.ts";
-import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
+import { LIVE_RELOAD_SCRIPT, LIVE_RELOAD_VERSION_ATTR } from "./live-reload.ts";
+
+/** Compiled output without its live-reload page version, which counts up per compile. */
+const withoutPageVersion = (html: string | undefined): string | undefined =>
+  html?.replace(new RegExp(` ${LIVE_RELOAD_VERSION_ATTR}="\\d+"`), "");
 import { BuildScriptError } from "./build-error.ts";
 
 // Disable all scoping so tests produce predictable, readable HTML
@@ -1118,7 +1122,7 @@ describe("pageProcessing – $-pattern safety in body/head reassembly", () => {
       "<!DOCTYPE html><html><head><title>Test</title></head><body><textarea></body></textarea><p>tail</p></body></html>";
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const result = await transpilePage(PAGE_PATH, {});
-    expect(result?.distHtml).toBe(
+    expect(withoutPageVersion(result?.distHtml)).toBe(
       "<!DOCTYPE html><html><head><title>Test</title></head><body><textarea></body></textarea><p>tail</p>" +
         LIVE_RELOAD_SCRIPT +
         "</body></html>",
@@ -1130,7 +1134,7 @@ describe("pageProcessing – $-pattern safety in body/head reassembly", () => {
       '<!DOCTYPE html><html><head><script>const closing = "</head>";</script><title>Test</title></head><body><p>body</p></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const result = await transpilePage(PAGE_PATH, {});
-    expect(result?.distHtml).toBe(
+    expect(withoutPageVersion(result?.distHtml)).toBe(
       '<!DOCTYPE html><html><head><script>const closing = "</head>";</script><title>Test</title></head><body><p>body</p>' +
         LIVE_RELOAD_SCRIPT +
         "</body></html>",
@@ -1154,7 +1158,7 @@ describe("transpilePage – base path transform", () => {
       '<!DOCTYPE html><html><head><link href="/app.css"></head><body><a href="/about">About</a></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const result = await transpilePage(PAGE_PATH, {});
-    expect(result?.distHtml).toBe(
+    expect(withoutPageVersion(result?.distHtml)).toBe(
       html.replace("</body>", `${LIVE_RELOAD_SCRIPT}</body>`),
     );
   });
@@ -1919,7 +1923,7 @@ describe("pageProcessing – live-reload script injection", () => {
     await pageProcessing(PAGE_PATH, {});
     const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock
       .calls[0][0];
-    const checkIdx = pageContent.indexOf("if (wasConnected)");
+    const checkIdx = pageContent.indexOf("if (wasConnected");
     const assignIdx = pageContent.indexOf("wasConnected = true");
     expect(checkIdx).toBeGreaterThan(-1);
     expect(assignIdx).toBeGreaterThan(-1);

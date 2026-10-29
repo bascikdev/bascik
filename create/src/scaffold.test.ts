@@ -515,10 +515,18 @@ describe("edgePage", () => {
     expect(levels).toEqual([1, 2, 3]);
   });
 
-  it("escapes the query parameter before interpolating it", () => {
-    expect(html).toContain("escape(name)");
-    expect(html).toContain('"&": "&amp;"');
-    expect(html).toContain('"<": "&lt;"');
+  it("escapes the query parameter with html from @bascik/bascik/html, not a handwritten escaper", () => {
+    const script = html.slice(
+      html.indexOf("<script data-bascik-server>"),
+      html.indexOf("</script>"),
+    );
+    expect(script).toContain('import { html } from "@bascik/bascik/html";');
+    expect(script).toMatch(/return html`/);
+    expect(script).toContain("${name}");
+    expect(script).not.toContain('"&": "&amp;"');
+    expect(script).not.toMatch(/const escape\b/);
+    // One template, so no string concatenation of markup around the value.
+    expect(script).not.toMatch(/'\s*\+\s*\w+\(?name/);
   });
 
   it("links to the API route", () => {

@@ -406,7 +406,7 @@ generate: {
   sitemap: true,         // write sitemap.xml
   robots: true,          // write robots.txt
   sitemapLastmod: false, // include lastmod timestamps
-  cspHashes: false,      // generate CSP hash manifest
+  cspHashes: false,      // generate CSP hash manifest (contentSecurityPolicy turns it on)
   manifest: false,       // write dist/.bascik/manifest.json build manifest
 }
 ```
@@ -572,6 +572,31 @@ BASCIK_LOG_LEVEL=warn bascik        # the same, from the environment
 ```
 
 Use `requests`, `copies`, `deletes`, and `transpiles` to keep one kind of line while hiding another. For example, `export const server = { logging: { requests: false } }` quiets a deployed server's access log without touching any start script.
+
+### `contentSecurityPolicy`
+
+Opt in to a Content-Security-Policy header on every HTML response. Unset (the default), no header is sent.
+
+```ts
+contentSecurityPolicy: {
+  directives: {
+    "default-src": ["'self'"],
+    "script-src": ["'self'", "https://cdn.example.com"],
+  },
+  hashes: true,      // append each route's inline script and style hashes (default)
+                     // { scripts: true, styles: false } hashes scripts only
+  reportOnly: false, // true sends Content-Security-Policy-Report-Only
+}
+```
+
+`directives` maps each directive to its sources, written as in a header, with keywords such as `'self'` and `'none'` in single quotes. With `hashes` on, Bascik appends each route's inline script hashes to `script-src` and style hashes to `style-src` from `dist/.bascik/csp-hashes.json`, so setting the option turns on `generate.cspHashes`. A directive you wrote is only extended (a lone `'none'` is replaced by the hashes), and `script-src-elem` and `style-src-elem` get the hashes too when you write them. A missing `script-src` or `style-src` is created from your `default-src` sources plus the hashes, so `default-src 'none'` yields a directive with only the hashes; with no `default-src` either, none is created. Bascik never adds a source you did not write. `hashes: { scripts: true, styles: false }` hashes one kind only, and a directive that lists `'unsafe-inline'` gets no hashes, because a hash would turn `'unsafe-inline'` off; either keeps inline `style="..."` attributes working under `style-src 'self' 'unsafe-inline'`. The hashes come from the build, never from a response body. The dev server, `bascik --server` and the Cloudflare Worker send the header; on Cloudflare, static pages get exact-path rules in the generated `public/_headers`. See [Content Security Policy](/how-to/content-security-policy) for a recipe per host.
+
+The option is validated at startup with the location of each problem:
+
+- `contentSecurityPolicy.directives: "script_src" is not a CSP directive. Did you mean "script-src"?`
+- `contentSecurityPolicy.directives.script-src[0]: write self as 'self' (with single quotes).`
+- A source with a space, `;` or `,` (each source is its own string), `hashes` that is not a boolean or `{ scripts, styles }` booleans (a misspelled key gets a did-you-mean), and `reportOnly` that is not a boolean.
+- Warnings: `contentSecurityPolicy.directives.script-src lists 'unsafe-inline', so every inline script runs, including one injected into a page, and Bascik adds no script hashes to it.`, `*` or `https:` in `script-src`, and `reportOnly` with no `report-to` or `report-uri` directive.
 
 ## Mode Overrides (`dev`, `build`, `server`)
 

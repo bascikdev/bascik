@@ -27,20 +27,21 @@ src/components/weather-widget/
 ### 1. Pure Helper Module (`weather-service.ts`)
 
 ```ts
+import { html, type SafeHtml } from "@bascik/bascik/html";
+
 export interface WeatherData {
   city: string;
   temp: number;
   condition: string;
 }
 
-export function formatWeatherReport(data: WeatherData): string {
+// The weather API's text is data from another site: html escapes it.
+export function formatWeatherReport(data: WeatherData): SafeHtml {
   const roundedTemp = Math.round(data.temp);
-  return (
-    `<div class="weather-report">` +
-    `<h4>${data.city}</h4>` +
-    `<p>${roundedTemp}°F - ${data.condition}</p>` +
-    `</div>`
-  );
+  return html`<div class="weather-report">
+    <h4>${data.city}</h4>
+    <p>${roundedTemp}°F - ${data.condition}</p>
+  </div>`;
 }
 
 export async function fetchCityWeather(
@@ -88,15 +89,25 @@ import { formatWeatherReport, fetchCityWeather } from "./weather-service.ts";
 
 describe("formatWeatherReport", () => {
   it("formats weather data into HTML markup", () => {
-    const output = formatWeatherReport({
-      city: "Fountain Hills",
-      temp: 72.6,
-      condition: "Sunny",
-    });
+    // html returns an object, not a string: String() it before string checks.
+    const output = String(
+      formatWeatherReport({
+        city: "Fountain Hills",
+        temp: 72.6,
+        condition: "Sunny",
+      }),
+    );
 
     expect(output).toContain("<h4>Fountain Hills</h4>");
     expect(output).toContain("73°F - Sunny");
     expect(output).toContain('class="weather-report"');
+  });
+
+  it("escapes markup in the API's text", () => {
+    const output = String(
+      formatWeatherReport({ city: "<img src=x>", temp: 1, condition: "" }),
+    );
+    expect(output).toContain("&lt;img src=x&gt;");
   });
 });
 
@@ -135,7 +146,7 @@ describe("fetchCityWeather", () => {
 
 ## Direct Server Script Handler Testing
 
-Under Bascik's in-process execution model, server scripts export standard async functions receiving a standard `Request` and returning HTML markup. You can test these handler functions directly in unit tests without starting an HTTP server or spawning child processes:
+Under Bascik's in-process execution model, server scripts export standard async functions receiving a standard `Request` and returning HTML markup. A handler that builds its markup with [`html`](/html-helpers#html) returns a `SafeHtml` object, not a string, so wrap the result in `String(output)` before `toContain` or any string method; without it, `expect(output).toContain("Seattle")` fails with `expected [] to include 'Seattle'`. You can test these handler functions directly in unit tests without starting an HTTP server or spawning child processes:
 
 ```ts
 // src/components/weather-widget/weather-widget.server.test.ts
@@ -149,9 +160,11 @@ describe("weatherHandler", () => {
     });
     const context = { remoteIp: "127.0.0.1" };
 
-    const output = await weatherHandler(request, context, {
-      signal: new AbortController().signal,
-    });
+    const output = String(
+      await weatherHandler(request, context, {
+        signal: new AbortController().signal,
+      }),
+    );
     expect(output).toContain("Seattle");
     expect(output).toContain("Alice");
   });

@@ -33,7 +33,7 @@ Prefer build-time work. Server, stream, and API code needs `bascik --server` (or
 5. **Helpers import helpers with relative paths.** `@/` is rewritten only inside script tags; a `.ts` helper that imports another helper uses `./other.ts` (with the extension) and `import type` for type-only imports. tsconfig `paths` do not apply.
 6. **Data paths are relative to the project root.** `readFile('./content/post.md')` resolves from `process.cwd()`, not from the page.
 7. **Watch helpers.** Add `src/lib/` and data folders such as `content/` to `pipeline.watchPaths` so edits rebuild dependent pages in dev.
-8. **Escape everything you interpolate.** Template strings do not escape. Write a small escaper in `src/lib/` or install `escape-html`; sanitize CMS or user HTML with an allowlist (for example `sanitize-html`).
+8. **Build server and stream output with `html` from `@bascik/bascik/html`.** Plain template strings do not escape. `html` escapes each value for where it lands (text, quoted attribute, URL) and throws on places escaping cannot make safe (`on*`, `<script>`, `style`, unquoted attributes). Nest `html` values and arrays of them (`.map` with no `.join`). Use `raw(value)` only for HTML a sanitizer with an allowlist (for example `sanitize-html`) already cleaned, `json(value)` for `<script type="application/json">`, and `safeUrl(value, { origins })` when a script or stylesheet URL comes from data. Build scripts may return `html` values too. An `html` value is an object, not a string: `String(output)` in tests, `SafeHtml` as a helper's return type. Never `.join("")` fragments (the joined string is escaped and shows `&lt;li&gt;`). A hole cannot add an attribute: for `selected`, `checked` or `disabled`, write the tag twice and choose in code (`checked="${false}"` is still checked). An `html` error shows a plain 500 in the browser; the located message is in the terminal. Details: `read-doc.mjs /security`, `/html-helpers`.
 9. **Directives in output never run.** If a build script prints another `data-bascik-*` script, it is removed with a warning; in server and stream output it is sent as written and never runs on the server. Printed component tags do expand, in build, server, and stream output.
 
 ## Build scripts
@@ -71,10 +71,10 @@ Per-page values come from environment variables: `BASCIK_PAGE_PATH` (`/about`), 
   }
 </script>
 <script data-bascik-build>
-  import { escapeHtml } from "@/lib/escape.ts";
+  import { html } from "@bascik/bascik/html";
   export default function () {
     const { data } = JSON.parse(process.env.BASCIK_ROUTE || "{}");
-    return `<h1>${escapeHtml(data.title)}</h1>`;
+    return html`<h1>${data.title}</h1>`;
   }
 </script>
 ```
@@ -85,10 +85,10 @@ Every bracket name needs a matching `params` key; a param cannot contain `/` (us
 
 ```html
 <script data-bascik-server>
-  import { escapeHtml } from "@/lib/escape.ts";
+  import { html } from "@bascik/bascik/html";
   export default function (request, context, { signal }) {
-    const name = escapeHtml(request.headers.get("x-display-name") ?? "Guest");
-    return `<p>Welcome, ${name}!</p>`;
+    const name = request.headers.get("x-display-name") ?? "Guest";
+    return html`<p>Welcome, ${name}!</p>`;
   }
 </script>
 ```
@@ -102,23 +102,22 @@ Every bracket name needs a matching `params` key; a param cannot contain `/` (us
 
 ```html
 <script data-bascik-server>
-  import { escapeHtml } from "@/lib/escape.ts";
+  import { html } from "@bascik/bascik/html";
   import { searchProducts } from "@/lib/products.ts";
   export default async function (request) {
     const q = new URL(request.url).searchParams.get("q") ?? "";
     const products = await searchProducts(q);
-    return products
-      .map(
-        (p) =>
-          `<product-card data-bascik-prop-name="${escapeHtml(p.name)}"></product-card>`,
-      )
-      .join("");
+    return html`${products.map(
+      (p) =>
+        html`<product-card data-bascik-prop-name="${p.name}"></product-card>`,
+    )}`;
   }
 </script>
 ```
 
 - Each returned tag renders per request with the component's markup, props, slots, and scoped CSS, as at build time. No import, attribute, or config.
-- **Output is HTML with the same power as your markup.** Escape every value in a prop or slot; sanitize HTML from a CMS or an API before returning it.
+- **Output is HTML with the same power as your markup.** Build it with `html` so every value in a prop or slot is escaped; sanitize HTML from a CMS or an API, then insert it with `raw()`.
+- Bound URLs (`data-bascik-attr-href` and the like) lose `javascript:`, `vbscript:` and non-image `data:` URLs (`about:invalid`); any http(s) URL, third-party included, is kept, so restrict script and stylesheet URLs from data with CSP or `safeUrl(value, { origins })`.
 - Scripts inside a returned component run once per instance with the same request and the parent's remaining `scripts.timeout`, and get no props from the usage tag. A nested `stream` script resolves with its parent.
 - Budgets: 1000 component instances and 4 MiB of rendered HTML per script output; 64 nested component scripts per response, 4 levels deep. Over budget, or when an instance fails to render (`failed during <stage>`), `onServerScriptError` decides as for a throw: `'error'` is a 500 for a server script and a logged empty slot for a stream script; `'warn'` logs it and gives an empty slot; `'ignore'` gives an empty slot without a log.
 - The component's CSS is a `<style>` in the body before the first instance in document order, once per response (once more if the page uses the component in its own markup). Unscoped `body`/`*` rules in it restyle the page.

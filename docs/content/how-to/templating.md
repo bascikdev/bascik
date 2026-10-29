@@ -11,9 +11,37 @@ Traditional web frameworks often bundle proprietary templating languages, custom
 - **Transparent data flow:** There are no hidden global contexts, magic lifecycle hooks, or implicit reactive state trees. Data is retrieved, transformed into standard HTML strings using your preferred method, and returned from the default export function.
 - **Ecosystem flexibility:** Simple sites often only need native JavaScript template literals and a small helper module. Content-heavy publications or complex applications might prefer EJS, Nunjucks, or Handlebars. You choose the right tool for your project without framework lock-in.
 
+## html, built in
+
+For markup built in a server, stream or build script, start with [`html`](/html-helpers) from `@bascik/bascik/html`. It is a plain tagged template, with nothing to install: each `${...}` is escaped for where it lands, URLs are checked for `javascript:` and the like, and places escaping cannot make safe (an `onclick` value, a `<script>` body) throw a located error. Arrays of `html` values nest without `.join("")`.
+
+<!-- demo:html-script -->
+
+```html
+<script data-bascik-server>
+  import { html } from "@bascik/bascik/html";
+
+  export default function (request) {
+    const q = new URL(request.url).searchParams.get("q") ?? "";
+    const items = [
+      { title: "First article", href: "/posts/first" },
+      { title: "Second article", href: "/posts/second" },
+    ];
+    return html`<section>
+      <h2>Articles matching ${q}</h2>
+      <ul>
+        ${items.map((item) => html`<li><a href="${item.href}">${item.title}</a></li>`)}
+      </ul>
+    </section>`;
+  }
+</script>
+```
+
+Server and stream scripts handle data from the request, so they are where escaping matters most; see [Security](/security). The template libraries below suit templates that live in their own files, and they are fine in any script. Like `html`, they escape text by default, but none of them checks URL schemes: `href="{{url}}"` keeps `javascript:alert(1)`. Pass a URL that comes from data through `safeUrl` from `@bascik/bascik/html` before it reaches the template.
+
 ## Handlebars
 
-**Handlebars is the recommended templating library.** It is small, its logic-less design fits a build-time system where the template is evaluated once and the result is static HTML, and it escapes values by default so a forgotten escape does not become an injection bug. For a single interpolated value on a single page, the dependency-free helper below is enough; when a template grows past about twenty lines of helper code, that is the signal to reach for Handlebars.
+**Handlebars is the recommended templating library** for templates kept in their own files. It is small, its logic-less design fits a build-time system where the template is evaluated once and the result is static HTML, and it escapes values by default so a forgotten escape does not become an injection bug.
 
 Install Handlebars once and import it in any build or server script.
 
@@ -64,7 +92,7 @@ Handlebars HTML-escapes `{{value}}` expressions by default. Use the triple-stach
 
 ## A dependency-free interpolation helper
 
-Someone adding one interpolated value to one page should not install anything. This helper resolves dotted paths against a plain object, escapes HTML by default, and renders a missing key as an empty string so a data typo degrades quietly instead of throwing.
+`html` covers templates written in a script. For a template kept as a plain string, such as one read from a file or a CMS field, this small helper fills `${path}` placeholders without installing anything. It resolves dotted paths against a plain object, escapes HTML by default, and renders a missing key as an empty string so a data typo degrades quietly instead of throwing. It does not check URLs, so do not put a placeholder at the start of an `href` or `src`.
 
 <!-- demo:helper-module -->
 
@@ -88,7 +116,7 @@ export const interpolate = (template, data) =>
   });
 ```
 
-Use it from a build or server script:
+Use it from a build script:
 
 <!-- demo:helper-usage -->
 
@@ -105,7 +133,7 @@ Use it from a build or server script:
 
 If the helper grows past about twenty lines, that is the signal to reach for Handlebars. A helper that keeps growing new features is a template engine you now have to maintain yourself.
 
-> **Why nothing escapes automatically.** Bascik injects the returned HTML string of your script directly into the HTML document. If Bascik automatically escaped script output, scripts could not emit raw HTML elements or component tags. Escaping untrusted inputs before interpolating them into HTML strings keeps data flow safe and explicit.
+> **Why nothing escapes automatically.** Bascik injects the returned HTML of your script directly into the HTML document. If Bascik automatically escaped script output, scripts could not emit raw HTML elements or component tags. Escaping happens where you put a value into markup: `html` does it for you, one value at a time, and a template library or this helper does it for its own placeholders. See [Security](/security).
 
 ## EJS and Nunjucks, if you already know them
 
@@ -195,18 +223,21 @@ When a data-driven page needs the same data in several places, fetch or read it 
 ```html
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
+  import { html } from "@bascik/bascik/html";
 
   export default async function () {
     // One read at page level; every block below reuses this data.
     const data = JSON.parse(await readFile("./content/data.json", "utf8"));
 
-    const list = data.articles
-      .map((a) => `<li><a href="${a.href}">${a.title}</a></li>`)
-      .join("");
+    const list = data.articles.map(
+      (a) => html`<li><a href="${a.href}">${a.title}</a></li>`,
+    );
 
-    return `<section>
+    return html`<section>
       <h2>${data.site}</h2>
-      <ul>${list}</ul>
+      <ul>
+        ${list}
+      </ul>
     </section>`;
   }
 </script>
@@ -242,14 +273,16 @@ This is the one approach on this page that **requires client-side JavaScript**, 
 
 ```html
 <script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
+  import { readFile } from "node:fs/promises";
+  import { html, json } from "@bascik/bascik/html";
 
   export default async function () {
-    const data = JSON.parse(await readFile('./content/data.json', 'utf8'));
+    const data = JSON.parse(await readFile("./content/data.json", "utf8"));
 
-    return `<script type="application/json" id="page-data">
-      ${JSON.stringify({ site: data.site, articles: data.articles })}
-    </script>`;
+    // json() escapes <, > and &, so no title can end this block early.
+    return html`<script type="application/json" id="page-data">
+      ${json({ site: data.site, articles: data.articles })}
+    <\/script>`;
   }
 </script>
 ```

@@ -964,9 +964,9 @@ export const notFoundPage = (brand: string): string =>
  * of `public/` and renders it in the Worker on every request; `bascik --server`
  * renders it on Node. The script returns the starter's `<feat-card>` around its
  * greeting, and the host renders that tag into the component's markup and
- * scoped CSS per request: this page does not use the card in its own markup. The
- * script concatenates strings rather than using a template literal only so
- * this constant stays readable.
+ * scoped CSS per request: this page does not use the card in its own markup.
+ * The script builds its markup with `html` from @bascik/bascik/html, which
+ * escapes the query parameter for where it lands.
  */
 export const edgePage = (brand: string): string =>
   pageShell(
@@ -981,21 +981,17 @@ export const edgePage = (brand: string): string =>
         <h2 style="margin-top:28px;">Your greeting</h2>
         <div style="max-width:520px;margin-top:16px;">
           <script data-bascik-server>
+            import { html } from "@bascik/bascik/html";
+
             export default function (request) {
-              // Query parameters are untrusted: escape them before they land in HTML.
-              const escape = (value) =>
-                String(value).replace(/[&<>"']/g, (c) =>
-                  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-                );
+              // Query parameters are untrusted: html escapes each value for where it lands.
               const name = new URL(request.url).searchParams.get("name") ?? "visitor";
-              return (
-                '<feat-card data-testid="edge-card">' +
-                '<div data-bascik-slot="header">Server script</div>' +
-                '<h3 data-testid="edge-greeting">Hello, ' + escape(name) + "</h3>" +
-                "<p>Rendered at <code>" + new Date().toISOString() + "</code></p>" +
-                '<div data-bascik-slot="footer"><a href="/edge" class="btn btn-ghost">Reload →</a></div>' +
-                "</feat-card>"
-              );
+              return html\`<feat-card data-testid="edge-card">
+                <div data-bascik-slot="header">Server script</div>
+                <h3 data-testid="edge-greeting">Hello, \${name}</h3>
+                <p>Rendered at <code>\${new Date().toISOString()}</code></p>
+                <div data-bascik-slot="footer"><a href="/edge" class="btn btn-ghost">Reload →</a></div>
+              </feat-card>\`;
             }
           </script>
         </div>

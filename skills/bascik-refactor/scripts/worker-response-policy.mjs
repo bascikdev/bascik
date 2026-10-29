@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+// Simpler path first: a site that only needs a Content-Security-Policy header can set `contentSecurityPolicy` in
+// bascik.config.ts instead. The generated Worker then sends the header with the build's hashes on the pages it
+// renders, and the build writes public/_headers rules for static pages; no wrapper, no run_worker_first. See
+// /how-to/content-security-policy. Use this wrapper when you also need the other policies below.
+//
 // Worker response policy: a thin Cloudflare Worker wrapper around the Worker Bascik generates. For every HTML
 // response it sends a strict Content-Security-Policy (no unsafe-inline) listing the SHA-256 hashes the build recorded
 // for that route in dist/.bascik/csp-hashes.json. It sets X-Robots-Tag: noindex on preview environments, API

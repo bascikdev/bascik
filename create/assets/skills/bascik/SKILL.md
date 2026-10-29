@@ -89,6 +89,7 @@ New components are picked up by the running dev server automatically; no restart
 10. **Client scripts are not bundled.** Bare imports such as `import x from 'pkg'` fail in the browser. They work only in Node-side scripts (`data-bascik-build`, `data-bascik-server`).
 11. **Extract shared layout.** Repeated `<head>` tags, headers, and footers become components (`<site-head />`, `<site-header />`, `<site-footer />`). Pages keep their own `<html>`, `<head>`, and `<body>`.
 12. **Script directives are exclusive.** One `<script>` tag takes at most one of `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`, `data-bascik-server`, `data-bascik-stream`. `data-bascik-build-once` runs once per file with no page context.
+13. **Server and stream scripts build markup with `html`.** `import { html } from "@bascik/bascik/html"` and return `` html`<p>${value}</p>` ``: it escapes each value for where it lands and throws where escaping cannot help. Never interpolate request data into a plain template string. See the `bascik-scripts` skill.
 
 ## Slots, props, and attributes
 

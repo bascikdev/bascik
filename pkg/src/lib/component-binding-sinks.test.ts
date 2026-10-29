@@ -5,6 +5,8 @@
  * attacker's view of the same rules, at build and request time on both
  * hosts, is request-render-security.test.ts and the Cloudflare parity test.
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { mergeAttributesOntoRoot } from "./component-inheritance.ts";
 import {
@@ -12,6 +14,7 @@ import {
   injectPropAttributes,
   injectProps,
 } from "./component-props.ts";
+import { html as htmlTag } from "./html-template.ts";
 
 const bind = (
   template: string,
@@ -189,7 +192,12 @@ describe("a prop bound to a URL attribute", () => {
 });
 
 describe("a prop bound to a URL whose content runs or styles the page", () => {
-  it.each([
+  // Collin 2026-10-28: nothing extra by default. A URL the page runs or
+  // applies takes any http(s) URL, third-party included, as the browser
+  // does; the script-scheme block still holds, so correctly escaped data
+  // never becomes code. CSP script-src/style-src and safeUrl(value,
+  // { origins }) are the opt-in protections (docs /security).
+  const RUNS_OR_APPLIES: [string, string, string][] = [
     ["script", "src", ""],
     ["script", "href", ""],
     ["script", "xlink:href", ""],
@@ -198,60 +206,80 @@ describe("a prop bound to a URL whose content runs or styles the page", () => {
     ["base", "href", ""],
     ["link", "href", ` rel="stylesheet"`],
     ["link", "href", ` rel="modulepreload"`],
-    ["link", "href", ` rel="import"`],
-  ])("<%s %s%s> keeps a same-origin path", (tag, target, extra) => {
-    for (const url of ["/js/app.js", "js/app.js", "./a.js?v=1", "#x", ""]) {
-      const { html, warnings } = bind(
-        `<${tag}${extra} data-bascik-attr-${target}="u">`,
-        url,
-      );
-      expect(html).toBe(`<${tag}${extra} ${target}="${url}">`);
-      expect(warnings).toEqual([]);
-    }
-  });
-
-  it.each([
-    ["script", "src", ""],
-    ["script", "href", ""],
-    ["object", "data", ""],
-    ["embed", "src", ""],
-    ["base", "href", ""],
-    ["link", "href", ` rel="stylesheet"`],
     ["link", "href", ` rel="Preload  ModulePreload"`],
-  ])("<%s %s%s> refuses another origin's URL", (tag, target, extra) => {
-    for (const url of [
-      "https://evil.example/x.js",
-      "HTTP://evil.example/x.js",
-      "//evil.example/x.js",
-      " //evil.example/x.js",
-      "/\\evil.example/x.js",
-      "\\/evil.example/x.js",
-      "\t/\t/evil.example/x.js",
-      "javascript:alert(1)",
-      "data:text/javascript,alert(1)",
-    ]) {
-      const { html, warnings } = bind(
-        `<${tag}${extra} data-bascik-attr-${target}="u">`,
-        url,
-      );
-      expect(html, url).toBe(`<${tag}${extra} ${target}="${BLOCKED_URL}">`);
-      expect(warnings, url).toEqual([
-        `data-bascik-attr-${target}="u" received a URL outside this site, and <${tag}> would run or apply what it loads, so ${target} is set to about:invalid. Bind a same-origin path, or write the URL in the template.`,
-      ]);
-    }
-  });
+    ["link", "href", ` rel="prefetch"`],
+    ["link", "href", ` rel="import"`],
+  ];
 
-  it("a rel or http-equiv another binding gives counts as written", () => {
+  it.each(RUNS_OR_APPLIES)(
+    "<%s %s%s> keeps a same-origin path",
+    (tag, target, extra) => {
+      for (const url of ["/js/app.js", "js/app.js", "./a.js?v=1", "#x", ""]) {
+        const { html, warnings } = bind(
+          `<${tag}${extra} data-bascik-attr-${target}="u">`,
+          url,
+        );
+        expect(html).toBe(`<${tag}${extra} ${target}="${url}">`);
+        expect(warnings).toEqual([]);
+      }
+    },
+  );
+
+  it.each(RUNS_OR_APPLIES)(
+    "<%s %s%s> keeps a third-party https URL, as the browser allows, with no warning",
+    (tag, target, extra) => {
+      for (const url of [
+        "https://cdn.example.net/x.js",
+        "HTTP://cdn.example.net/x.js",
+        "//cdn.example.net/x.js",
+      ]) {
+        const { html, warnings } = bind(
+          `<${tag}${extra} data-bascik-attr-${target}="u">`,
+          url,
+        );
+        expect(html, url).toBe(`<${tag}${extra} ${target}="${url}">`);
+        expect(warnings, url).toEqual([]);
+      }
+    },
+  );
+
+  it.each(RUNS_OR_APPLIES)(
+    "<%s %s%s> still blocks javascript:, vbscript:, livescript:, mocha: and non-image data:",
+    (tag, target, extra) => {
+      for (const url of [
+        "javascript:alert(1)",
+        " \u0001JaVa\tScript:alert(1)",
+        "vbscript:msgbox(1)",
+        "livescript:x",
+        "mocha:x",
+        "data:text/javascript,alert(1)",
+        "data:image/svg+xml,<svg onload=alert(1)>",
+      ]) {
+        const { html, warnings } = bind(
+          `<${tag}${extra} data-bascik-attr-${target}="u">`,
+          url,
+        );
+        expect(html, url).toBe(`<${tag}${extra} ${target}="${BLOCKED_URL}">`);
+        expect(warnings, url).toHaveLength(1);
+        expect(warnings[0], url).toContain(
+          "received a URL that can run script",
+        );
+        expect(warnings[0], url).not.toContain("outside this site");
+      }
+    },
+  );
+
+  it("a rel another binding gives does not change what href may hold", () => {
     const warnings: string[] = [];
     expect(
       injectPropAttributes(
         `<link data-bascik-attr-rel="r" data-bascik-attr-href="u">`,
-        { r: "stylesheet", u: "https://evil.example/x.css" },
+        { r: "stylesheet", u: "https://cdn.example.net/x.css" },
         undefined,
         (message) => warnings.push(message),
       ),
-    ).toBe(`<link rel="stylesheet" href="${BLOCKED_URL}">`);
-    expect(warnings).toHaveLength(1);
+    ).toBe(`<link rel="stylesheet" href="https://cdn.example.net/x.css">`);
+    expect(warnings).toEqual([]);
   });
 
   it("a link that only points elsewhere (canonical, alternate, icon) keeps an absolute URL", () => {
@@ -423,6 +451,11 @@ describe("a prop bound to style", () => {
     'background: url("data:image/png;base64,AAAA") no-repeat',
     "background-image: image-set('/a.png' 1x, '/b.png' 2x)",
     "font-family: 'Noto \\5B8B', serif",
+    "scroll-behavior: smooth",
+    "overscroll-behavior: contain; max-height: 20rem",
+    "overscroll-behavior-y: none",
+    "--caption: 'Data: Q3 sales'",
+    '--note: "data: not a URL"',
   ])("keeps %j", (style) => {
     const { html, warnings } = bind(
       `<p data-bascik-attr-style="u">x</p>`,
@@ -447,7 +480,17 @@ describe("a prop bound to style", () => {
     "width: expression(alert(1))",
     "width: ex\\70ression(alert(1))",
     "behavior: url(x.htc)",
+    "color: red;behavior: url(x.htc)",
+    "color: red; BEHAVIOR : url(x.htc)",
+    "/**/behavior: url(x.htc)",
+    "*behavior: url(x.htc)",
+    "-ms-behavior: url(x.htc)",
+    "\\62 ehavior: url(x.htc)",
     "-moz-binding: url(x.xml#a)",
+    "background-image: image-set('data:text/html,x' 1x)",
+    "background-image: -webkit-image-set(\"data:text/html,x\" 1x, 'b.png' 2x)",
+    "background-image: image-set('a.png' 1x, \"data:text/html,x\" 2x)",
+    "--x: 'safe'; background-image: url('data:text/html,x')",
   ])("refuses %j and keeps the authored style", (style) => {
     const { html, warnings } = bind(
       `<p style="color: blue" data-bascik-attr-style="u">x</p>`,
@@ -537,5 +580,293 @@ describe("inherited attributes on the root", () => {
     ).toBe(
       `<div class='r x&#39; onmouseover=&#39;alert(1)' style='color: red; x&#39; onfocus=&#39;alert(1)' title="y&quot; onmouseover=&quot;alert(1)">x</div>`,
     );
+  });
+});
+
+describe("an inherited attribute that is a URL only on the root's real tag gets the URL check", () => {
+  const inherit = (
+    root: string,
+    attrs: Record<string, string>,
+    usageTag?: string,
+  ): { html: string; warnings: string[] } => {
+    const warnings: string[] = [];
+    const html = mergeAttributesOntoRoot(
+      root,
+      attrs,
+      (message) => warnings.push(message),
+      usageTag,
+    );
+    return { html, warnings };
+  };
+
+  it.each([
+    [
+      `<object class="r"></object>`,
+      "data",
+      "data:text/html,<script>x</script>",
+      "object",
+    ],
+    [`<object class="r"></object>`, "data", "javascript:alert(1)", "object"],
+    [`<OBJECT class="r"></OBJECT>`, "DATA", " java\tscript:x", "object"],
+    [`<object class="r"></object>`, "data", "&#106;avascript:x", "object"],
+    [`<object class="r"></object>`, "data", "javascript&colon;x", "object"],
+    [`<object class="r"></object>`, "data", "java&Tab;script:x", "object"],
+    [`<object class="r"></object>`, "data", "&#x6a;avascript:x", "object"],
+    [`<object class="r"></object>`, "data", "&#106avascript:x", "object"],
+    [
+      `<object class="r"></object>`,
+      "data",
+      "&#100;ata:text/html,&lt;script&gt;x&lt;/script&gt;",
+      "object",
+    ],
+    [`<set attributeName="href">`, "to", "javascript:alert(1)", "set"],
+    [`<animate attributeName="href">`, "values", "/a;javascript:x", "animate"],
+    [`<animate attributeName="href">`, "from", "vbscript:x", "animate"],
+    [`<set attributeName="href">`, "by", "data:text/html,x", "set"],
+  ])("%s %s=%j becomes about:invalid and says so", (root, attr, value, tag) => {
+    const { html, warnings } = inherit(root, { [attr]: value }, "x-embed");
+    expect(html).toContain(` ${attr}="${BLOCKED_URL}"`);
+    expect(html).not.toContain(value);
+    expect(warnings).toEqual([
+      `inherited attribute ${attr} received a URL that can run script (a javascript:, vbscript: or data: URL), so ${attr} on the root <${tag}> is set to about:invalid.`,
+    ]);
+  });
+
+  it.each([
+    [`<a class="r">x</a>`, { href: "javascript:void(0)" }],
+    [`<a class="r">x</a>`, { href: "&#106;avascript:alert(1)" }],
+    [`<a class="r">x</a>`, { "xlink:href": "javascript:alert(1)" }],
+    [`<iframe class="r"></iframe>`, { src: "javascript:alert(1)" }],
+    [
+      `<iframe class="r"></iframe>`,
+      { srcdoc: "&lt;script&gt;alert(1)&lt;/script&gt;" },
+    ],
+    [`<embed class="r">`, { src: "vbscript:x" }],
+    [`<form class="r"></form>`, { action: "javascript:submit()" }],
+    [`<button class="r">x</button>`, { formaction: "javascript:x" }],
+    [`<img class="r">`, { srcset: "/a.png 1x, javascript:x 2x" }],
+    [`<a class="r">x</a>`, { ping: "/ok javascript:x" }],
+    [`<button class="btn">go</button>`, { onclick: "go()" }],
+    [`<div class="r">x</div>`, { onload: "init()", ONMOUSEOVER: "hover()" }],
+    [`<svg class="r"></svg>`, { onclick: "alert(1)" }],
+    [`<div class="r">x</div>`, { style: "background:url(javascript:x)" }],
+    [`<div class="r">x</div>`, { style: "width:expression(alert(1))" }],
+    [`<div class="r">x</div>`, { style: "@import 'https://x.example/x.css'" }],
+    [`<set class="r">`, { attributeName: "href" }],
+    [`<div class="r">x</div>`, { "http-equiv": "refresh", content: "0" }],
+    [`<span class="dot"></span>`, { online: "", one: "1", onboarding: "" }],
+    [`<div class="r">x</div>`, { data: "javascript:not-a-url-on-a-div" }],
+  ])("%s inherits %j exactly as written, without a warning", (root, attrs) => {
+    const { html, warnings } = inherit(root, attrs, "x-thing");
+    for (const [name, value] of Object.entries(attrs))
+      expect(html).toContain(` ${name}="${value}"`);
+    expect(warnings).toEqual([]);
+  });
+
+  it("a style merged into the root's own style is inherited as written", () => {
+    expect(
+      inherit(`<div style="color: red">x</div>`, {
+        style: "background:url(javascript:x)",
+      }),
+    ).toEqual({
+      html: `<div style="color: red; background:url(javascript:x)">x</div>`,
+      warnings: [],
+    });
+  });
+
+  it("an <img src> root keeps a data:image URL", () => {
+    const { html, warnings } = inherit(`<img class="r">`, {
+      src: "data:image/png;base64,AAAA",
+    });
+    expect(html).toBe(`<img class="r" src="data:image/png;base64,AAAA">`);
+    expect(warnings).toEqual([]);
+  });
+
+  // <object data> is not an image slot, so every data: URL is refused there,
+  // data:image/... included, the same as html`<object data="${v}">`.
+  it.each([
+    "data:image/png;base64,iVBOR",
+    "data:image/svg+xml,%3Csvg/%3E",
+    "data:application/pdf;base64,AA",
+  ])("an <object> root refuses data=%j, as html`` does", (value) => {
+    const { html, warnings } = inherit(
+      `<object type="x"></object>`,
+      { data: value },
+      "x-embed",
+    );
+    expect(html).toBe(`<object type="x" data="${BLOCKED_URL}"></object>`);
+    expect(warnings).toHaveLength(1);
+    expect(String(htmlTag`<object data="${value}"></object>`)).toBe(
+      `<object data="${BLOCKED_URL}"></object>`,
+    );
+  });
+
+  it("attribute-inheritance.md does not promise a data:image URL survives on an <object> root", () => {
+    const doc = readFileSync(
+      resolve(
+        import.meta.dirname,
+        "../../../docs/content/attribute-inheritance.md",
+      ),
+      "utf8",
+    );
+    const sentence = doc
+      .split("\n")
+      .find((line) => line.includes("`data` on an `<object>` root"));
+    expect(sentence).toBeDefined();
+    expect(sentence).not.toContain("non-image `data:`");
+    expect(sentence).toContain("`data:image/...` included");
+  });
+
+  it("an attribute the root already has is kept as the template wrote it, and is not judged", () => {
+    for (const [root, attrs] of [
+      [`<a class="r" href="/home">x</a>`, { href: "javascript:alert(1)" }],
+      [`<object data="/a.pdf"></object>`, { data: "javascript:alert(1)" }],
+    ] as const) {
+      const { html, warnings } = inherit(root, attrs);
+      expect(html).toBe(root);
+      expect(warnings).toEqual([]);
+    }
+  });
+
+  it.each([
+    [`<a class="r">x</a>`, { href: "https://example.com/?a=1&amp;b=2" }],
+    [`<a class="r">x</a>`, { href: "/relative", "aria-label": "Go", id: "x" }],
+    [`<div class="r">x</div>`, { title: "javascript:alert(1)", role: "note" }],
+    [
+      `<object class="r"></object>`,
+      { data: "files/a.pdf", type: "application/pdf" },
+    ],
+    [`<object class="r"></object>`, { data: "https://example.com/a.pdf" }],
+    [`<set attributeName="fill">`, { to: "red", values: "red;blue" }],
+  ])("%s keeps safe values %j as written, without a warning", (root, attrs) => {
+    const { html, warnings } = inherit(root, attrs);
+    for (const [name, value] of Object.entries(attrs))
+      expect(html).toContain(`${name}="${value}"`);
+    expect(warnings).toEqual([]);
+  });
+});
+
+describe("a class or style merged onto the root changes only the root's own class or style", () => {
+  const inherit = (
+    root: string,
+    attrs: Record<string, string>,
+  ): { html: string; warnings: string[] } => {
+    const warnings: string[] = [];
+    const html = mergeAttributesOntoRoot(root, attrs, (message) =>
+      warnings.push(message),
+    );
+    return { html, warnings };
+  };
+  /** Attribute names of the first tag, as the HTML tokenizer reads them. */
+  const attrNames = (html: string): string[] => {
+    const open = /^<[a-z]+((?:[^>"']|"[^"]*"|'[^']*')*)>/i.exec(html)![1];
+    return [
+      ...open.matchAll(
+        /\s([^\s"'>/=]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/g,
+      ),
+    ].map((match) => match[1].toLowerCase());
+  };
+
+  it.each([
+    [
+      "class, unquoted inside an earlier value",
+      `<span>badge</span>`,
+      {
+        title: " class=x onfocus=alert(document.domain) autofocus tabindex=1 ",
+        class: "big",
+      },
+      ["title", "class"],
+    ],
+    [
+      "style, unquoted inside an earlier value",
+      `<button class="b">go</button>`,
+      {
+        "aria-label":
+          " style=x onfocus=document.title=document.domain autofocus ",
+        style: "color:red",
+      },
+      ["class", "aria-label", "style"],
+    ],
+    [
+      "class, single-quoted inside an earlier value",
+      `<span>badge</span>`,
+      { title: " class='x' onfocus=alert(1) autofocus ", class: "big" },
+      ["title", "class"],
+    ],
+    [
+      "style, single-quoted inside an earlier value",
+      `<span>badge</span>`,
+      { title: " style='x' onfocus=alert(1) autofocus ", style: "color:red" },
+      ["title", "style"],
+    ],
+    [
+      "class, double-quoted inside a single-quoted earlier value",
+      `<span>badge</span>`,
+      { title: ` class="x" onfocus=alert(1) autofocus `, class: "big" },
+      ["title", "class"],
+    ],
+  ])("%s never ends the earlier value", (_label, root, attrs, names) => {
+    const { html, warnings } = inherit(root, attrs);
+    expect(attrNames(html)).toEqual(names);
+    expect(warnings).toEqual([]);
+  });
+
+  it("the earlier value round-trips, and class and style land once on the root", () => {
+    const title = " class=x onfocus=alert(1) style=y ";
+    const { html } = inherit(`<span>badge</span>`, {
+      title,
+      class: "big",
+      style: "color:red",
+    });
+    expect(html).toBe(
+      `<span title="${title}" class="big" style="color:red">badge</span>`,
+    );
+  });
+
+  it("a root that has a class or style merges into it, wherever it sits and however it is quoted", () => {
+    expect(
+      inherit(`<div title="class=q" class=r style='color: blue'>x</div>`, {
+        "aria-label": " class=z style=z ",
+        class: "big",
+        style: "margin: 0",
+      }).html,
+    ).toBe(
+      `<div title="class=q" class="r big" style='color: blue; margin: 0' aria-label=" class=z style=z ">x</div>`,
+    );
+  });
+
+  it("a root attribute the tokenizer reads as one whole value (an @-named one spelling class=) is not taken for the class", () => {
+    expect(
+      inherit(`<div @click="a class=b" class="r">x</div>`, { class: "big" })
+        .html,
+    ).toBe(`<div @click="a class=b" class="r big">x</div>`);
+    expect(
+      inherit(`<div @click="a class=b">x</div>`, { class: "big" }).html,
+    ).toBe(`<div @click="a class=b" class="big">x</div>`);
+  });
+
+  it("a root whose own title spells class= keeps it as written", () => {
+    expect(
+      inherit(`<div title=" class=q ">x</div>`, { class: "big" }).html,
+    ).toBe(`<div title=" class=q " class="big">x</div>`);
+  });
+});
+
+describe("a binding appended to a tag that already holds a bound value", () => {
+  const two = (template: string, props: Record<string, string>): string =>
+    injectPropAttributes(template, props, undefined, () => {});
+
+  it("goes before the tag's closing whitespace, / and >", () => {
+    expect(
+      two(`<p data-bascik-attr-title="a" data-bascik-attr-lang="b">x</p>`, {
+        a: "a   a",
+        b: "en",
+      }),
+    ).toBe(`<p title="a   a" lang="en">x</p>`);
+    expect(
+      two(`<img data-bascik-attr-alt="a" data-bascik-attr-title="a" \n />`, {
+        a: "x\n\ny",
+      }),
+    ).toBe(`<img alt="x\n\ny" title="x\n\ny" \n />`);
   });
 });

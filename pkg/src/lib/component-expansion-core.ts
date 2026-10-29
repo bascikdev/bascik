@@ -619,6 +619,8 @@ export const expandComponents = (
         transpiledTag = mergeAttributesOntoRoot(
           transpiledTag,
           inheritableAttrs,
+          propWarn,
+          component.name,
         );
       }
 

@@ -12,7 +12,7 @@ import {
 import { minifyHtml } from "./html-minifier.ts";
 import { scriptDirectiveFinder } from "./html-patterns.ts";
 import { scanElementContents } from "./element-content-scan.ts";
-import { getLiveReloadScript } from "./live-reload.ts";
+import { getLiveReloadScript, nextLiveReloadVersion } from "./live-reload.ts";
 import { getHttpPath } from "./paths.ts";
 
 import {
@@ -483,7 +483,7 @@ export const transpilePage = async (
   }
 
   if (!BascikConfig.isBuild) {
-    transpiledHtmlBody = `${transpiledHtmlBody}${getLiveReloadScript(withBasePath("/bascik-live-reload", BascikConfig.base))}`;
+    transpiledHtmlBody = `${transpiledHtmlBody}${getLiveReloadScript(withBasePath("/bascik-live-reload", BascikConfig.base), nextLiveReloadVersion())}`;
   }
 
   // Minify the body AFTER component resolution so that <pre> blocks from resolved

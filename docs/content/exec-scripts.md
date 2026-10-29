@@ -109,10 +109,11 @@ export default defineConfig({
 <!-- src/pages/catalog.html -->
 <script data-bascik-build>
   import { readFileSync } from "node:fs";
+  import { html } from "@bascik/bascik/html";
 
   export default function () {
     const catalog = JSON.parse(readFileSync("dist/catalog.json", "utf8"));
-    return catalog.items.map((item) => `<li>${item.title}</li>`).join("");
+    return html`${catalog.items.map((item) => html`<li>${item.title}</li>`)}`;
   }
 </script>
 ```

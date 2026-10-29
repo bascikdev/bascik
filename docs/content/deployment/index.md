@@ -67,6 +67,10 @@ See [Production Server](/production-server) for full documentation on server con
 
 ---
 
+## Content-Security-Policy
+
+Bascik sends no Content-Security-Policy unless you ask. The [Content Security Policy](/how-to/content-security-policy) how-to has a recipe for each host: the `contentSecurityPolicy` option on the Node servers and Cloudflare, and a `<meta>` tag for static hosts.
+
 ## Per-environment values: the site URL
 
 The site URL is a per-deployment value, so it is not a config-file key. Set `BASCIK_SITE_URL` in each environment's configuration (CI variables, container env, a `.env` file on the target) and the same checked-in source builds for staging and production without mutating anything:

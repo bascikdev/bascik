@@ -308,6 +308,38 @@ const scenes: Scene[] = [
     },
   },
   {
+    // server-script-unescaped-markup: the warning on the hole, its hover, then the quick fix, which wraps the
+    // template in html and adds `import { html } from "@bascik/bascik/html";` to the script.
+    name: "unescaped-markup",
+    file: "src/pages/search.html",
+    content: `<main>
+  <script data-bascik-server>
+    export default function (request) {
+      const q = new URL(request.url).searchParams.get("q") ?? "";
+      return \`<p>You searched for \${|q}</p>\`;
+    }
+  </script>
+</main>
+`,
+    lines: 9,
+    extraHeight: 150,
+    width: 900,
+    run: async (page, rec) => {
+      await page.waitForTimeout(3000);
+      await rec.frame(INTRO_HOLD);
+      await hover(page, 0);
+      await rec.frame(2600);
+      await press(page, "Escape");
+      // Cmd+. opens the Quick Fix menu on the warning.
+      await press(page, "Meta+.");
+      await page.waitForTimeout(1500);
+      await rec.frame(2000);
+      await press(page, "Enter");
+      await page.waitForTimeout(2500);
+      await rec.frame(OUTRO_HOLD);
+    },
+  },
+  {
     name: "scoping-warnings",
     file: "src/css/theme.css",
     content: `.card {

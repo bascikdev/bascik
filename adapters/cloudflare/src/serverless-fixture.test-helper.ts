@@ -57,6 +57,18 @@ export interface ServerlessFixtureOptions {
    * and inherited attributes of returned component tags.
    */
   security?: boolean;
+  /**
+   * Add the @bascik/bascik/html pages (Collin 2026-10-28): a server script,
+   * a stream script and a component's own server script that import the
+   * helpers, a json() page, and an onclick misuse page.
+   */
+  html?: boolean;
+  /**
+   * Set the opt-in `contentSecurityPolicy` option (default-src 'self',
+   * script-src 'self' https://cdn.example.com) so both hosts send the header.
+   * An object sets those directives instead.
+   */
+  csp?: boolean | Record<string, readonly string[]>;
   /** `minify.identifiers`; off by default so scoped names stay readable. */
   identifiers?: boolean;
   /** `minify.html`; off by default. */
@@ -101,7 +113,21 @@ export const createServerlessFixture = async (
   generate: { manifest: true, cspHashes: true, sitemap: false, robots: false },
   minify: { identifiers: ${options.identifiers === true}, html: ${options.minifyHtml === true} },
   scripts: { onServerScriptError: ${JSON.stringify(options.onServerScriptError ?? "error")}, timeout: ${options.scriptTimeout ?? 5000} },
-  http: { apiTimeout: 2000 },
+  http: { apiTimeout: 2000 },${
+    options.csp
+      ? `
+  contentSecurityPolicy: {
+    directives: ${
+      typeof options.csp === "object"
+        ? JSON.stringify(options.csp)
+        : `{
+      "default-src": ["'self'"],
+      "script-src": ["'self'", "https://cdn.example.com"],
+    }`
+    },
+  },`
+      : ""
+  }
 };`,
   );
   await write(
@@ -119,6 +145,14 @@ export const createServerlessFixture = async (
     "src/pages/index.html",
     `<!DOCTYPE html><html><head><title>Static</title></head><body><h1 data-testid="static-heading">Static home</h1></body></html>`,
   );
+  if (typeof options.csp === "object")
+    // A static page with an inline script and style, so its _headers rule
+    // carries hashes merged into the author's directives.
+    await write(
+      root,
+      "src/pages/csp-inline.html",
+      `<!DOCTYPE html><html><head><title>Inline</title><style>h1{color:#222}</style></head><body><h1 data-testid="csp-inline">Inline</h1><script>document.body.dataset.ran = "yes";</script></body></html>`,
+    );
   // RFC 8615: a leading .well-known directory is the one public dot-directory.
   await write(
     root,
@@ -264,6 +298,7 @@ export const DELETE = async () => new Response(null, { status: 204 });`,
   );
   if (options.components) await addComponentPages(root);
   if (options.security) await addSecurityPages(root);
+  if (options.html) await addHtmlPages(root);
   return root;
 };
 
@@ -704,7 +739,13 @@ export const cleanupServerlessFixture = async (root: string): Promise<void> => {
  * visitor's `?q=` through the escaper the docs' search example uses
  * (`&`, `<` and `"`), or the docs' full escaper with `?esc=full`, into:
  * a prop bound to an `href`, a `srcdoc` and a client `<script>` receiver,
- * an inherited `class` on a root whose class is single-quoted, and the
+ * an inherited `class` on a root whose class is single-quoted, an
+ * inherited `data` on an `<object>` root (a URL only on that tag), `src`,
+ * `srcdoc` and handler attributes on an `<iframe>` root (inherited as
+ * written), a page's own handler and `javascript:void(0)` href,
+ * a value spelling ` class=` or ` style=` inherited before a merged class or
+ * style onto a root without one, a plain style and `on`-prefixed names that
+ * are no handlers, and the
  * props and slot of the catalog's own cards (one with a nested job).
  */
 export const addSecurityPages = async (root: string): Promise<void> => {
@@ -729,6 +770,31 @@ export const addSecurityPages = async (root: string): Promise<void> => {
     `<div class='sec-inherit' data-testid='sec-inherit'>inherit</div>`,
   );
   await write(
+    root,
+    "src/components/sec-embed/sec-embed.html",
+    `<object class="sec-embed" data-testid="sec-embed" type="text/html" width="300" height="100"></object>`,
+  );
+  await write(
+    root,
+    "src/components/sec-frame/sec-frame.html",
+    `<iframe class="sec-inherit-frame" data-testid="sec-frame" title="frame"></iframe>`,
+  );
+  await write(
+    root,
+    "src/components/sec-anchor/sec-anchor.html",
+    `<a class="sec-anchor" data-testid="sec-anchor">go</a>`,
+  );
+  await write(
+    root,
+    "src/components/sec-badge/sec-badge.html",
+    `<span data-testid="sec-badge">badge</span>`,
+  );
+  await write(
+    root,
+    "src/components/sec-sty/sec-sty.html",
+    `<button class="sec-sty" data-testid="sec-sty">go</button>`,
+  );
+  await write(
     root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
     "src/pages/components-security.html",
     `<!DOCTYPE html><html><head><title>Security</title></head><body>
@@ -748,6 +814,10 @@ export default function (request) {
     srcdoc: '<sec-srcdoc data-bascik-prop-u="' + e(q) + '"></sec-srcdoc>',
     script: '<sec-script data-bascik-prop-v="' + e(q) + '"></sec-script>',
     inherit: '<sec-inherit class="' + e(q) + '" title="' + e(q) + '"></sec-inherit>',
+    "inherit-merge": '<sec-badge title="' + e(q) + '" class="big"></sec-badge><sec-sty aria-label="' + e(q) + '" style="color:red"></sec-sty>',
+    "inherit-plain": '<sec-badge online one="1" style="overscroll-behavior: contain; max-height: 20rem; --caption: \\'Data: ' + e(q) + '\\'"></sec-badge>',
+    "inherit-url": '<sec-embed data="' + e(q) + '"></sec-embed><sec-frame src="' + e(q) + '" srcdoc="' + e(q) + '" onload="' + e(q) + '"></sec-frame>',
+    "inherit-kept": '<sec-sty onclick="go()"></sec-sty><sec-anchor href="javascript:void(0)"></sec-anchor>',
     card: '<product-card data-bascik-prop-name="' + e(q) + '" data-bascik-prop-price="' + e(q) + '" title="' + e(q) + '">' + e(q) + '</product-card>',
     live: '<product-card-live data-bascik-prop-name="' + e(q) + '" data-bascik-prop-price="' + e(q) + '"><span>' + e(q) + '</span></product-card-live>',
   };
@@ -755,6 +825,126 @@ export default function (request) {
 }
 </script>
 <footer data-testid="tail">tail</footer>
+</body></html>`,
+  );
+};
+
+/**
+ * Pages whose scripts import @bascik/bascik/html, resolved through the
+ * package's export map (the fixture's node_modules/@bascik/bascik is a
+ * symlink to pkg, so pkg/dist/html.js must be built) and bundled into the
+ * Worker by the adapter's esbuild step.
+ */
+export const addHtmlPages = async (root: string): Promise<void> => {
+  await write(
+    root,
+    "src/components/safe-card/safe-card.html",
+    `<article class="safe-card" data-testid="safe-card">
+  <h3 class="safe-card-name" data-bascik-prop-name>Unnamed</h3>
+</article>
+<style>.safe-card { color: rgb(20, 21, 22); }</style>`,
+  );
+  // A component whose own server script imports the helpers.
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/components/safe-live/safe-live.html",
+    `<section class="safe-live" data-testid="safe-live">
+<script data-bascik-server>
+import { html } from "@bascik/bascik/html";
+export default function (request) {
+  const q = new URL(request.url).searchParams.get("q") ?? "";
+  return html\`<p data-testid="safe-live-echo">\${q}</p>\`;
+}
+</script>
+</section>
+<style>.safe-live { color: rgb(23, 24, 25); }</style>`,
+  );
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/pages/html-search.html",
+    `<!DOCTYPE html><html><head><title>Html search</title></head><body>
+<header data-testid="shell">shell</header>
+<script data-bascik-server>
+import { html } from "@bascik/bascik/html";
+export default function (request) {
+  const q = new URL(request.url).searchParams.get("q") ?? "";
+  return html\`<p data-testid="echo">You searched for \${q}</p>
+<safe-card data-bascik-prop-name="\${q}" title="\${q}"></safe-card>
+<a data-testid="link" href="\${q}">again</a>
+<ul>\${["a<", "b&"].map((n) => html\`<li>\${n}</li>\`)}</ul>
+<safe-live></safe-live>\`;
+}
+</script>
+<footer data-testid="tail">tail</footer>
+</body></html>`,
+  );
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/pages/html-stream.html",
+    `<!DOCTYPE html><html><head><title>Html stream</title></head><body>
+<header data-testid="shell">shell</header>
+<script data-bascik-stream>
+import { html } from "@bascik/bascik/html";
+export default async function (request) {
+  const q = new URL(request.url).searchParams.get("q") ?? "";
+  return html\`<p data-testid="echo">\${q}</p><safe-card data-bascik-prop-name="\${q}"></safe-card>\`;
+}
+</script>
+<footer data-testid="tail">tail</footer>
+</body></html>`,
+  );
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/pages/html-json.html",
+    `<!DOCTYPE html><html><head><title>Html json</title></head><body>
+<script data-bascik-server>
+import { html, json } from "@bascik/bascik/html";
+export default function (request) {
+  const q = new URL(request.url).searchParams.get("q") ?? "";
+  return html\`<script type="application/json" id="data">\${json({ q })}<\\/script>\`;
+}
+</script>
+</body></html>`,
+  );
+  // Red-team fix pass: U+0130 before </title> and a hole in <noscript>.
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/pages/html-turkish.html",
+    `<!DOCTYPE html><html><head><title>Html turkish</title></head><body>
+<script data-bascik-server>
+import { html } from "@bascik/bascik/html";
+export default function (request) {
+  const q = new URL(request.url).searchParams.get("q") ?? "";
+  return html\`<h2>İstanbul</h2><textarea>İ</textarea>
+<a data-testid="link" href="\${q}">x</a>\`;
+}
+</script>
+</body></html>`,
+  );
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/pages/html-noscript.html",
+    `<!DOCTYPE html><html><head><title>Html noscript</title></head><body>
+<script data-bascik-server>
+import { html } from "@bascik/bascik/html";
+export default function (request) {
+  const q = new URL(request.url).searchParams.get("q") ?? "";
+  return html\`<noscript><img src="x" onerror="\${q}"></noscript>\`;
+}
+</script>
+</body></html>`,
+  );
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/pages/html-misuse.html",
+    `<!DOCTYPE html><html><head><title>Html misuse</title></head><body>
+<script data-bascik-server>
+import { html } from "@bascik/bascik/html";
+export default function (request) {
+  const q = new URL(request.url).searchParams.get("q") ?? "";
+  return html\`<button onclick="\${q}">go</button>\`;
+}
+</script>
 </body></html>`,
   );
 };

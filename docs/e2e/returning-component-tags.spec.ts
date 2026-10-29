@@ -120,7 +120,7 @@ test.describe("Returning component tags demos", () => {
 
     await code.locator('[data-language="js"]').first().click();
     await expect(visibleLanguage("js")).toBeVisible();
-    await expect(visibleLanguage("js")).toContainText('getElementById("save")');
+    await expect(visibleLanguage("js")).toContainText('closest(".save")');
   });
 
   test("search demo: Output shows the request-time HTML with the Preview's cards", async ({
@@ -137,7 +137,14 @@ test.describe("Returning component tags demos", () => {
     expect(html.indexOf("<style")).toBeGreaterThanOrEqual(0);
     expect(html.indexOf("<style")).toBeLessThan(html.indexOf("<article"));
     expect(html).not.toContain("<product-card");
-    expect(new Set(html.match(REQUEST_ID) ?? []).size).toBe(3);
+    // The card's script has no scoped id, so no request-time id is sent and
+    // the three copies of the script are identical (one CSP hash).
+    expect(html.match(REQUEST_ID) ?? []).toEqual([]);
+    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(
+      (m) => m[1],
+    );
+    expect(scripts).toHaveLength(3);
+    expect(new Set(scripts).size).toBe(1);
 
     const previewNames = await box
       .getByTestId("demo-pane-preview")

@@ -1,4 +1,5 @@
 import { stat } from "node:fs/promises";
+import { liveReloadVersionOf } from "./live-reload.ts";
 import { pipeline } from "node:stream/promises";
 import http2 from "node:http2";
 import { extname, resolve, sep } from "node:path";
@@ -11,6 +12,7 @@ import {
   runShutdownHandlers,
 } from "./events.ts";
 import { getHttpPath } from "./paths.ts";
+import { cspHeadersForPage } from "./csp-header-node.ts";
 import { MIME_MAP } from "./mime.ts";
 import {
   DEFAULT_SCRIPT_TIMEOUT_MS,
@@ -824,7 +826,16 @@ export const createRequestHandler = () => {
         if (openPagePath) mem.trackOpenPage(openPagePath);
 
         const sseManager = getSseManager();
-        const client = sseManager.addClient(res, openPagePath);
+        const storedPage = openPagePath
+          ? mem.getPageExact(openPagePath)
+          : undefined;
+        const client = sseManager.addClient(
+          res,
+          openPagePath,
+          storedPage
+            ? liveReloadVersionOf(storedPage.content.toString())
+            : null,
+        );
         if (!client) {
           return;
         }
@@ -987,10 +998,12 @@ export const createRequestHandler = () => {
 
       responseStatus = is404Page ? 404 : 200;
 
+      const pageCsp = cspHeadersForPage(page);
       const responseHeaders: Record<string, string | number> = {
         "content-type": "text/html; charset=utf-8",
         vary: "Accept-Encoding",
         ...secHeaders,
+        ...pageCsp,
       };
 
       if (BascikConfig.http.httpCache === false) {
@@ -1120,6 +1133,7 @@ export const createRequestHandler = () => {
             "public, max-age=0, must-revalidate",
           vary: "Accept-Encoding",
           ...secHeaders,
+          ...pageCsp,
         });
         return res.end();
       }

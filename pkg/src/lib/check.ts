@@ -284,6 +284,51 @@ const toDisplay = (filePath: string): string => {
 /**
  * Extract all `<script data-bascik-build>` block contents from an HTML string.
  */
+/** Inline `data-bascik-server` and `data-bascik-stream` script attributes. */
+const REQUEST_DIRECTIVE_RE =
+  /(?:^|\s)data-bascik-(?:server|stream)(?=[\s=/]|$)/i;
+
+/**
+ * The text of each inline server and stream script. The tag names in their
+ * templates are static (html refuses a hole in a tag name), so a tag written
+ * there is a real use of the component.
+ */
+const extractRequestScripts = (html: string): string[] => {
+  const scripts: string[] = [];
+  for (const match of scanElementContents(html, "script", {
+    opener: "word-boundary",
+    closer: "attributes",
+  })) {
+    const attrs = html.slice(match.start + 7, match.contentStart - 1);
+    if (REQUEST_DIRECTIVE_RE.test(attrs))
+      scripts.push(html.slice(match.contentStart, match.contentEnd));
+  }
+  return scripts;
+};
+
+/** Whether `source` holds the start tag `<name` (followed by space, / or >). */
+const hasStartTag = (source: string, name: string): boolean => {
+  const needle = `<${name}`;
+  for (
+    let at = source.indexOf(needle);
+    at !== -1;
+    at = source.indexOf(needle, at + 1)
+  ) {
+    const next = source[at + needle.length];
+    if (
+      next === ">" ||
+      next === "/" ||
+      next === " " ||
+      next === "\t" ||
+      next === "\n" ||
+      next === "\r" ||
+      next === "\f"
+    )
+      return true;
+  }
+  return false;
+};
+
 const extractBuildScripts = (html: string): string[] => {
   const scripts: string[] = [];
   // `/<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`,
@@ -698,9 +743,16 @@ export const checkProject = async (
           html,
           occurrences: extractCustomTagOccurrences(html),
           buildScripts: extractBuildScripts(html),
+          requestScripts: extractRequestScripts(html),
         };
       } catch {
-        return { filePath, html: "", occurrences: [], buildScripts: [] };
+        return {
+          filePath,
+          html: "",
+          occurrences: [],
+          buildScripts: [],
+          requestScripts: [],
+        };
       }
     }),
   );
@@ -735,6 +787,12 @@ export const checkProject = async (
       }
     }
   }
+
+  // Server and stream scripts: a component tag in a template is a use.
+  for (const { requestScripts } of scanResults)
+    for (const scriptContent of requestScripts)
+      for (const comp of knownComponents)
+        if (hasStartTag(scriptContent, comp)) usedComponents.add(comp);
 
   for (const { filePath, html, occurrences } of scanResults) {
     const displayPath = toDisplay(filePath);
@@ -1093,7 +1151,7 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
     // A component returned only from a server or stream script is placed on
     // no page by design (prompt 157), so "safe to delete" names those too.
     description:
-      "Defined but never referenced. Safe to delete, or referenced only from a\nbuild, server or stream script, which this check cannot always see.",
+      "Defined but never referenced. Safe to delete, or referenced only from a\nscript this check cannot see (a src= module, or a tag name built in code).",
   },
   "route-collision": {
     title: "API route collisions",

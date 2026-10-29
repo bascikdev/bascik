@@ -208,6 +208,34 @@ const requestTimeCases: HostileCase[] = [
     run: (html) => injectPropAttributes(html, { t: "v" }, undefined, quiet),
   },
   {
+    // A second binding on the tag appends before the close: a visitor value
+    // with a long whitespace run already in the tag made that close-of-tag
+    // regex quadratic.
+    site: "component-props: a second binding after a visitor whitespace run",
+    input: (size) => "a" + " ".repeat(size) + "a",
+    // Smaller than SIZE so a quadratic regression fails in seconds, not minutes.
+    size: 40_000,
+    run: (value) =>
+      injectPropAttributes(
+        `<p data-bascik-attr-title="a" data-bascik-attr-lang="b">x</p>`,
+        { a: value, b: "en" },
+        undefined,
+        quiet,
+      ),
+  },
+  {
+    site: "component-props: one prop bound to two attributes, newline run",
+    input: (size) => "a" + "\n".repeat(size) + "a",
+    size: 40_000,
+    run: (value) =>
+      injectPropAttributes(
+        `<p data-bascik-attr-title="a" data-bascik-attr-lang="a">x</p>`,
+        { a: value },
+        undefined,
+        quiet,
+      ),
+  },
+  {
     site: "component-props: extractProps (anchored, linear before too)",
     input: (size) => `${repeatTo("<a '", size)} data-bascik-prop-`,
     run: (html) => extractProps(html, quiet),

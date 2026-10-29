@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { extractDemoBlock } from "../../../src/lib/md-renderer.js";
+import {
+  extractDemoBlock,
+  readDemoBlock,
+} from "../../../src/lib/md-renderer.js";
 import type ejs from "ejs";
 
 const FIXTURE_DIR = path.resolve(import.meta.dirname, ".");
@@ -109,6 +112,31 @@ describe("templating fixtures", () => {
     expect(html).toContain("<li>Charlie</li>");
   });
 
+  it("the html demo escapes the query and nests the list without .join", async () => {
+    const { code: block = "" } = await readDemoBlock(
+      "./content/how-to/templating.md",
+      "html-script",
+    );
+    const body = /<script data-bascik-server>([\s\S]*?)<\/script>/.exec(
+      block,
+    )![1];
+    // A computed path, so the docs typecheck does not pull pkg/src in.
+    const { html } = await import(
+      path.resolve(import.meta.dirname, "../../../../pkg/src/html.ts")
+    );
+    // The block's import becomes a parameter; its default export is returned.
+    const source = body
+      .replace(/^\s*import .*$/m, "")
+      .replace("export default function", "return function");
+    const handler = new Function("html", source)(html);
+    const out = String(
+      handler(new Request("https://example.com/?q=%3Cb%3Ehi%3C/b%3E")),
+    );
+    expect(out).toContain("Articles matching &lt;b&gt;hi&lt;/b&gt;");
+    expect(out).toContain('<li><a href="/posts/first">First article</a></li>');
+    expect(out).not.toContain(",");
+  });
+
   it("fetch-once fixture reads data once and applies it everywhere", async () => {
     const data = JSON.parse(
       await readFile(path.join(FIXTURE_DIR, "data.json"), "utf8"),
@@ -130,6 +158,7 @@ describe("templating fixtures", () => {
 
 describe("templating page demo markers", () => {
   const MARKERS = [
+    "html-script",
     "handlebars-install",
     "handlebars-script",
     "handlebars-template",

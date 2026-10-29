@@ -4,6 +4,7 @@
 //   UserConfig          — the user-facing input type written in bascik.config (see defineConfig.ts)
 //   BascikConfigOptions — the resolved runtime type after defaults and mode overrides are merged
 //   BascikConfig        — the frozen runtime value exported from config.ts
+import type { ContentSecurityPolicyConfig } from "./content-security-policy.ts";
 import type { BuildScriptStats } from "./build-script-stats.ts";
 
 export type ExecPhase = "pre" | "post" | "parallel";
@@ -353,6 +354,8 @@ export interface BascikConfigOptions {
   http: HttpOptions;
   logging: LoggingOptions;
   base: string;
+  /** Opt-in Content-Security-Policy header for HTML responses (unset: none). */
+  contentSecurityPolicy?: ContentSecurityPolicyConfig;
   isBuild: boolean;
   isProdServer: boolean;
   only?: string[];
@@ -412,6 +415,13 @@ export type UserConfig = {
   };
   logging?: Partial<LoggingOptions>;
   base?: string;
+  /**
+   * Opt in to a Content-Security-Policy header on every HTML response: the
+   * directives as written, plus each route's inline script and style hashes
+   * from the build. Setting it turns on `generate.cspHashes`. Unset (the
+   * default), no header is sent.
+   */
+  contentSecurityPolicy?: ContentSecurityPolicyConfig;
 };
 
 export interface StoredPage {

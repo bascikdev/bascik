@@ -20,6 +20,15 @@ import {
   wordTagNameEnd as tagNameEnd,
 } from "./element-content-scan.ts";
 import { findCommentEnd } from "./html-scanner.ts";
+import {
+  ANIMATION_VALUES,
+  BLOCKED_URL,
+  SVG_ANIMATIONS,
+  escapeHtml,
+  isEventHandlerName,
+  isSafeUrl,
+  urlVerdict,
+} from "./url-safety.ts";
 
 /**
  * `html.replace(/<([a-zA-Z][\w:-]*)(?:[^>"']|"[^"]*"|'[^']*')*>/gi, replace)`
@@ -45,14 +54,6 @@ const decodePropEntities = (value: string): string =>
       })[entity.toLowerCase()] ?? _match,
   );
 
-const escapePropValue = (value: string): string =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Binding sinks (prompt 157 security audit)
 //
@@ -64,155 +65,7 @@ const escapePropValue = (value: string): string =>
 // that write the same usage get the same markup.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The value a refused URL binding gets, as in Closure's safe-URL convention. */
-export const BLOCKED_URL = "about:invalid";
-
-/**
- * Schemes a bound URL may never use: each runs script where a browser
- * follows it (`data:` documents too). Every other scheme (http, mailto, tel,
- * sms, webcal, geo, an app's own, ...) and a relative URL are kept.
- */
-const SCRIPT_URL_SCHEMES = new Set([
-  "javascript",
-  "vbscript",
-  "livescript",
-  "mocha",
-  "data",
-]);
-
-/** Targets whose whole value is one URL the browser follows or fetches. */
-const URL_TARGETS = new Set([
-  "href",
-  "xlink:href",
-  "src",
-  "action",
-  "formaction",
-  "poster",
-  "background",
-  "cite",
-  "codebase",
-  "longdesc",
-  "lowsrc",
-  "dynsrc",
-  "manifest",
-  "icon",
-]);
-
-/**
- * `<tag target>` pairs that only ever show a picture, where a raster or SVG
- * `data:image/*` URL (a placeholder, a blur-up) cannot run anything.
- */
-const IMAGE_TARGETS = new Set([
-  "img src",
-  "img srcset",
-  "source srcset",
-  "video poster",
-  "input src",
-  "link imagesrcset",
-]);
-
-/**
- * `<tag target>` pairs whose content runs in, or styles, the page itself:
- * a bound value must be a path on this site, never another origin's URL.
- */
-const SAME_ORIGIN_TARGETS = new Set([
-  "script src",
-  "script href",
-  "script xlink:href",
-  "object data",
-  "embed src",
-  "base href",
-]);
-
-/** `<link rel>` keywords whose `href` the page runs or applies. */
-const RUN_LINK_RELS = new Set([
-  "stylesheet",
-  "modulepreload",
-  "preload",
-  "prefetch",
-  "import",
-]);
-
-/** SVG elements that write `to`, `from`, `by` or `values` into another attribute. */
-const SVG_ANIMATIONS = new Set([
-  "set",
-  "animate",
-  "animatemotion",
-  "animatetransform",
-  "animatecolor",
-]);
-const ANIMATION_VALUES = new Set(["to", "from", "by", "values"]);
-
-/**
- * A URL the way the URL parser reads it: leading and trailing C0 controls
- * and spaces dropped, and every tab, line feed and carriage return removed,
- * so `" java\tscript:"` reads `javascript:`.
- */
-const normalizeUrl = (url: string): string =>
-  url.replace(/^[\u0000- ]+|[\u0000- ]+$/g, "").replace(/[\t\n\r]/g, "");
-
-/** The scheme the URL parser reads from `url`, lowercased, or null for a relative URL. */
-const urlScheme = (url: string): string | null =>
-  /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(normalizeUrl(url))?.[1].toLowerCase() ??
-  null;
-
-/** A `data:` URL whose type is an image, which only an image slot may keep. */
-const isImageDataUrl = (url: string): boolean =>
-  /^data:image\/[a-z0-9.+-]+[;,]/i.test(normalizeUrl(url));
-
-/** Whether `url` cannot run script where it lands (`image`: an image slot). */
-const isSafeUrl = (url: string, image = false): boolean => {
-  const scheme = urlScheme(url);
-  if (scheme === null || !SCRIPT_URL_SCHEMES.has(scheme)) return true;
-  return image && scheme === "data" && isImageDataUrl(url);
-};
-
-/**
- * Whether `url` is a path on this site: no scheme, and not `//host` (a
- * backslash counts as a slash, as the URL parser reads it).
- */
-const isSameOriginPath = (url: string): boolean => {
-  const normalized = normalizeUrl(url);
-  return urlScheme(normalized) === null && !/^[\\/]{2}/.test(normalized);
-};
-
-/**
- * The URLs of a `srcset` value, split the way the browser splits one: a
- * URL is a run of non-whitespace (commas inside it belong to it, a trailing
- * comma ends the candidate), then descriptors up to a comma outside
- * parentheses.
- */
-const srcsetUrls = (value: string): string[] => {
-  const urls: string[] = [];
-  let index = 0;
-  const isSpace = (c: string): boolean => /[\t\n\f\r ]/.test(c);
-  while (index < value.length) {
-    while (
-      index < value.length &&
-      (isSpace(value[index]) || value[index] === ",")
-    )
-      index++;
-    if (index >= value.length) break;
-    const start = index;
-    while (index < value.length && !isSpace(value[index])) index++;
-    let url = value.slice(start, index);
-    if (url.endsWith(",")) {
-      urls.push(url.replace(/,+$/, ""));
-      continue;
-    }
-    urls.push(url);
-    let depth = 0;
-    while (index < value.length) {
-      const c = value[index];
-      if (c === "(") depth++;
-      else if (c === ")" && depth > 0) depth--;
-      else if (c === "," && depth === 0) break;
-      index++;
-    }
-    url = "";
-  }
-  return urls;
-};
+export { BLOCKED_URL };
 
 /**
  * CSS with its escapes decoded (`\\75 rl` is `url`) and tabs and newlines
@@ -237,27 +90,55 @@ const decodeCss = (css: string): string =>
 
 /**
  * CSS that runs script or pulls in more CSS, in a style value after
- * `decodeCss`: `expression()`, legacy `behavior` and `-moz-binding`,
- * `@import`, and a script URL anywhere (in `url()`, `image-set()` or a
- * string). A `url()` to an image on any site is kept: CSP `img-src`
- * governs where pictures load from.
+ * `decodeCss`: `expression()`, legacy `behavior` (and `-ms-behavior`) and
+ * `-moz-binding`, `@import`, and a script scheme anywhere. `behavior` is the
+ * property itself, not the end of another name: `scroll-behavior` and
+ * `overscroll-behavior` are ordinary CSS. A `url()` to an image on any site
+ * is kept: CSP `img-src` governs where pictures load from.
  */
 const UNSAFE_CSS =
-  /expression\s*\(|behavior\s*:|-moz-binding|@import|(?:java|vb|live)script\s*:|mocha\s*:/i;
+  /expression\s*\(|(?<![\w-])(?:-ms-)?behavior\s*:|-moz-binding|@import|(?:java|vb|live)script\s*:|mocha\s*:/i;
 
-/** Every `url()` argument and quoted string in decoded CSS. */
+/** Functions whose quoted strings are image URLs (`-webkit-` prefixed too). */
+const IMAGE_FUNCTION = /(?:image-set|image|cross-fade)\s*\(/gi;
+
+/**
+ * Every URL in decoded CSS: each `url()` argument, and each quoted string
+ * inside `image-set()`, `image()` or `cross-fade()`, the places a bare
+ * string is a URL in a declaration. Any other string (`content: 'x'`, a
+ * custom property such as `--caption: 'Data: Q3 sales'`) is text. One pass:
+ * each function's arguments are skipped once read.
+ */
 const cssUrls = (css: string): string[] => {
   const urls: string[] = [];
-  const pattern =
-    /url\s*\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))|"([^"]*)"|'([^']*)'/gi;
+  const pattern = /url\s*\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))/gi;
   for (const match of css.matchAll(pattern))
-    urls.push(match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5] ?? "");
+    urls.push(match[1] ?? match[2] ?? match[3] ?? "");
+  IMAGE_FUNCTION.lastIndex = 0;
+  while (IMAGE_FUNCTION.exec(css) !== null) {
+    let index = IMAGE_FUNCTION.lastIndex;
+    let depth = 1;
+    while (index < css.length && depth > 0) {
+      const char = css[index];
+      if (char === '"' || char === "'") {
+        const close = css.indexOf(char, index + 1);
+        const end = close === -1 ? css.length : close;
+        urls.push(css.slice(index + 1, end));
+        index = end + 1;
+        continue;
+      }
+      if (char === "(") depth++;
+      else if (char === ")") depth--;
+      index++;
+    }
+    IMAGE_FUNCTION.lastIndex = index;
+  }
   return urls;
 };
 
 /** What `injectPropAttributes` does with one bound value. */
 type BindingVerdict =
-  | { kind: "bind"; value: string; blocked?: "script" | "origin" }
+  | { kind: "bind"; value: string; blocked?: "script" }
   | { kind: "refuse"; reason: string };
 
 /** The context of a binding: the element and the attributes it already has. */
@@ -266,10 +147,6 @@ interface BindingContext {
   /** Lowercased name to raw value, for the authored attributes. */
   attrs: ReadonlyMap<string, string>;
 }
-
-/** An event handler's name: `on` and letters only (`onboarding-step` is not one). */
-const isEventHandlerName = (target: string): boolean =>
-  /^on[a-z]+$/.test(target);
 
 const EVENT_HANDLER_REASON =
   "an event handler's value is code, so a prop is never bound to one. Bind a data-* attribute and read it from a component script";
@@ -284,9 +161,9 @@ const EVENT_HANDLER_REASON =
  *   `vbscript:`, `data:`), which becomes `about:invalid`; an image slot
  *   also keeps a `data:image/*` URL; a list (`srcset`, `ping`) or an SVG
  *   animation's values are checked entry by entry;
- * - a URL the page runs or applies (`<script src>`, `<object data>`,
- *   `<embed src>`, `<base href>`, a stylesheet or preload `<link href>`)
- *   must be a path on this site;
+ * - a URL the page runs or applies (`<script src>`, `<base href>`, a
+ *   stylesheet `<link href>`) takes any http(s) URL, as browsers allow:
+ *   protecting what a site loads is CSP's job (see /security);
  * - a `style` value that runs script or imports CSS is not bound.
  *
  * Every other target binds the value as it is. The value is escaped by the
@@ -299,7 +176,6 @@ const bindingVerdict = (
 ): BindingVerdict => {
   const tag = context.tagName.toLowerCase();
   const target = targetName.toLowerCase();
-  const pair = `${tag} ${target}`;
   if (isEventHandlerName(target))
     return { kind: "refuse", reason: EVENT_HANDLER_REASON };
   if (target === "srcdoc")
@@ -329,37 +205,11 @@ const bindingVerdict = (
       const animated = (context.attrs.get("attributename") ?? "").toLowerCase();
       if (isEventHandlerName(animated.trim()))
         return { kind: "refuse", reason: EVENT_HANDLER_REASON };
-      return value.split(";").every((entry) => isSafeUrl(entry))
-        ? { kind: "bind", value }
-        : { kind: "bind", value: BLOCKED_URL, blocked: "script" };
     }
   }
-  const runsWhatItLoads =
-    SAME_ORIGIN_TARGETS.has(pair) ||
-    (pair === "link href" &&
-      (context.attrs.get("rel") ?? "")
-        .toLowerCase()
-        .split(/[\t\n\f\r ]+/)
-        .some((rel) => RUN_LINK_RELS.has(rel)));
-  if (runsWhatItLoads)
-    return isSameOriginPath(value)
-      ? { kind: "bind", value }
-      : { kind: "bind", value: BLOCKED_URL, blocked: "origin" };
-  const image = IMAGE_TARGETS.has(pair);
-  if (URL_TARGETS.has(target))
-    return isSafeUrl(value, image)
-      ? { kind: "bind", value }
-      : { kind: "bind", value: BLOCKED_URL, blocked: "script" };
-  if (target === "srcset" || target === "imagesrcset")
-    return srcsetUrls(value).every((url) => isSafeUrl(url, image))
-      ? { kind: "bind", value }
-      : { kind: "bind", value: BLOCKED_URL, blocked: "script" };
-  if (target === "ping")
-    return value
-      .split(/[\t\n\f\r ]+/)
-      .every((url) => url === "" || isSafeUrl(url))
-      ? { kind: "bind", value }
-      : { kind: "bind", value: BLOCKED_URL, blocked: "script" };
+  const verdict = urlVerdict(tag, target, value);
+  if (verdict === "blocked")
+    return { kind: "bind", value: BLOCKED_URL, blocked: "script" };
   if (target === "style") {
     const css = decodeCss(value);
     if (
@@ -430,6 +280,21 @@ export const extractProps = (
     }
   }
   return props;
+};
+
+/**
+ * Where an attribute goes in an opening tag: before the whitespace, optional
+ * `/` and `>` that end it (what `/\s*\/?>$/` matched), or -1 when the tag
+ * does not end in `>`. A scan back from the end: the regex retried from every
+ * position of a whitespace run, quadratic in a visitor value's run of spaces
+ * that an earlier binding had already put in the tag.
+ */
+const closeOfTagIndex = (tag: string): number => {
+  let at = tag.length - 1;
+  if (at < 0 || tag.charCodeAt(at) !== 0x3e) return -1;
+  if (at > 0 && tag.charCodeAt(at - 1) === 0x2f) at--;
+  while (at > 0 && isRegexWhitespace(tag.charCodeAt(at - 1))) at--;
+  return at;
 };
 
 /**
@@ -565,11 +430,7 @@ export const injectPropAttributes = (
         warn(
           `data-bascik-attr-${targetName}="${propName}" received a URL that can run script (a javascript:, vbscript: or data: URL), so ${targetName} is set to ${BLOCKED_URL}.`,
         );
-      else if (verdict.blocked === "origin")
-        warn(
-          `data-bascik-attr-${targetName}="${propName}" received a URL outside this site, and <${bindingContext().tagName}> would run or apply what it loads, so ${targetName} is set to ${BLOCKED_URL}. Bind a same-origin path, or write the URL in the template.`,
-        );
-      const attribute = ` ${targetName}="${escapePropValue(verdict.value)}"`;
+      const attribute = ` ${targetName}="${escapeHtml(verdict.value)}"`;
       // Whole-name conflict check: the target may already exist, but a
       // "target-looking" token inside another attribute's quoted value is
       // text and must not count as the target.
@@ -585,10 +446,9 @@ export const injectPropAttributes = (
           attribute.slice(1) +
           result.slice(existing.end);
       } else {
-        result = result.replace(
-          /(\s*\/?>)$/,
-          (_match, close: string) => `${attribute}${close}`,
-        );
+        const at = closeOfTagIndex(result);
+        if (at !== -1)
+          result = result.slice(0, at) + attribute + result.slice(at);
       }
     }
 
@@ -668,7 +528,7 @@ export const injectProps = (
     if (!resultLower.includes(propName.toLowerCase())) return;
     if (!/^[a-zA-Z0-9_-]+$/.test(propName)) return;
     const attrName = `data-bascik-prop-${propName}`;
-    const escapedPropValue = escapePropValue(propValue);
+    const escapedPropValue = escapeHtml(propValue);
     // Scan whole opening tags and act only on whole attribute names, so a
     // marker token inside another attribute's quoted value is never confused
     // with a receiver.

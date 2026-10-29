@@ -21,6 +21,7 @@ Create `bascik.config.ts` only after naming a concrete requirement that differs 
 - `base` for a subdirectory deployment
 - `scoping.attributes.class: false` for Tailwind
 - `generate.sitemapLastmod`, `generate.cspHashes`, or a custom `minify.js`
+- `contentSecurityPolicy` to send a Content-Security-Policy header (see below)
 
 If every value would equal a default, do not create the file. If one exists, keep only the non-default values. Run the audit after every edit:
 
@@ -134,6 +135,26 @@ It lists every site with its component roots, import root, base, and Bascik vers
 - `src/pages/404.html` becomes `dist/404.html`, which static hosts and both Bascik servers serve for unknown paths.
 - `src/pages/500.html` is used only by `bascik --server`. Do not port a 500 page into a static site.
 - To exclude a redirect-only page from `sitemap.xml`: `<meta name="bascik-sitemap" content="exclude">`. An authored `src/pages/robots.txt` or `sitemap.xml` takes precedence (with a warning) over generation; turn the matching `generate` flag off when you keep one deliberately.
+
+## Content-Security-Policy (opt in)
+
+Bascik sends no CSP by default. `contentSecurityPolicy` makes every HTML response carry one, built from the directives you list plus each route's inline script and style hashes from the build (it turns on `generate.cspHashes`). The dev server and `bascik --server` send it as a header; on Cloudflare the Worker sends it for the pages it renders and the build writes `public/_headers` rules for static pages.
+
+```ts
+export default defineConfig({
+  contentSecurityPolicy: {
+    directives: {
+      "default-src": ["'self'"],
+      "script-src": ["'self'", "https://cdn.example.com"],
+      "img-src": ["'self'", "data:"],
+    },
+    // hashes: true (default) appends each route's hashes to script-src and style-src.
+    // reportOnly: true sends Content-Security-Policy-Report-Only while you try a policy.
+  },
+});
+```
+
+Quote keywords (`'self'`, `'none'`); the validator names a misspelled directive with a did-you-mean and warns about `'unsafe-inline'` next to hashes and `*` or `https:` in `script-src`. Details: `read-doc.mjs /how-to/content-security-policy`.
 
 ## Deploy
 

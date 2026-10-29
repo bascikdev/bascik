@@ -314,7 +314,7 @@ export default async () => \`<a href="\${request.query}"></a>\`;`;
   });
 
   describe("Security and Injection Sink Rules", () => {
-    it("warns about unescaped interpolation in URL attributes", () => {
+    it("warns about unescaped interpolation in URL attributes (as unescaped markup: html checks URLs)", () => {
       const body = `
         export default async (req) => {
           return \`<a href="\${req.query}">click</a>\`;
@@ -324,9 +324,9 @@ export default async () => \`<a href="\${request.query}"></a>\`;`;
         hasSrcAttribute: false,
         directive: "server",
       });
-      expect(
-        diags.some((d) => d.code === "server-script-sink-url-attribute"),
-      ).toBe(true);
+      expect(diags.map((d) => d.code)).toEqual([
+        "server-script-unescaped-markup",
+      ]);
     });
 
     const sinkCodes = (markup: string) =>

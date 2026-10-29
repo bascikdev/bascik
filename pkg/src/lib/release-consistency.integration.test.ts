@@ -513,7 +513,8 @@ describe("packet L1: cross-artifact release candidate verifier", () => {
         await cleanupFixture(rootA);
         await cleanupFixture(rootB);
       }
-    });
+      // Two complete builds; the default 5 s timed out on a loaded machine.
+    }, 60_000);
   });
 });
 

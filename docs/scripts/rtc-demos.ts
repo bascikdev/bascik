@@ -1,8 +1,8 @@
 /**
  * The Output panes of the "Returning component tags" demos, produced by the real request renderer.
  *
- * The four demo boxes (server-scripts.md, stream-scripts.md, testing/troubleshooting.md) show what a server or
- * stream script that returns component tags sends. Their Output blocks are never written by hand: this library
+ * The demo boxes (server-scripts.md, stream-scripts.md, testing/troubleshooting.md, security.md) show what a
+ * server or stream script that returns component tags sends. Their Output blocks are never written by hand: this library
  * builds ONE site from the Markdown source blocks only (each written whole, path comment included, to the path its
  * first-line comment names, exactly as a reader's copy button would paste it, plus the documented bascik.config.ts
  * with minification off), runs the real `bascik --build`, `bascik --check` and
@@ -34,7 +34,13 @@ const DOCS_ROOT = path.resolve(import.meta.dirname, "..");
 const SCRATCH = "/tmp/bascik-rtc-docs-demos";
 const BASCIK_BIN = path.join(repoRoot, "pkg/bin/bascik.js");
 
-export type DemoId = "search" | "live" | "stream" | "passthrough";
+export type DemoId =
+  | "search"
+  | "live"
+  | "stream"
+  | "passthrough"
+  | "security-search"
+  | "security-malicious";
 
 export interface Demo {
   id: DemoId;
@@ -46,6 +52,10 @@ export interface Demo {
   format: "prettier" | "verbatim";
   outputMarker: string;
 }
+
+/** The query the security page's malicious demo sends: a component tag and an onerror payload. */
+export const MALICIOUS_Q =
+  "<product-card data-bascik-prop-name=x><img src=x onerror=alert(1)></product-card>";
 
 export const DEMOS: Demo[] = [
   {
@@ -76,6 +86,20 @@ export const DEMOS: Demo[] = [
     format: "verbatim",
     outputMarker: "rtc-passthrough-output-html",
   },
+  {
+    id: "security-search",
+    md: "content/security.md",
+    url: "/find?q=kettle",
+    format: "prettier",
+    outputMarker: "security-search-output",
+  },
+  {
+    id: "security-malicious",
+    md: "content/security.md",
+    url: `/find?q=${encodeURIComponent(MALICIOUS_Q)}`,
+    format: "prettier",
+    outputMarker: "security-malicious-q-output",
+  },
 ];
 
 /** Every source block a reader copies into a site, by Markdown file and marker. */
@@ -89,6 +113,7 @@ export const SOURCE_BLOCKS: [md: string, marker: string][] = [
   ["content/server-scripts.md", "rtc-live-source-css"],
   ["content/stream-scripts.md", "rtc-stream-source-usage"],
   ["content/testing/troubleshooting.md", "rtc-passthrough-source-usage"],
+  ["content/security.md", "security-search-source-usage"],
 ];
 
 /** The Markdown file that documents the bascik.config.ts the Output was made with. */

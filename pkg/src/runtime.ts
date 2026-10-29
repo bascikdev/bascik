@@ -19,3 +19,4 @@ export * from "./lib/scoping-instantiate.ts";
 export * from "./lib/output-scope.ts";
 export * from "./lib/name-hash.ts";
 export * from "./lib/ansi-escapes.ts";
+export * from "./lib/content-security-policy.ts";

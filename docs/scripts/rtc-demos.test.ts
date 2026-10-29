@@ -1,19 +1,21 @@
 /**
  * The "Returning component tags" demos on the docs site.
  *
- * Four <component-demo> boxes show what a server or stream script that returns component tags sends:
+ * Six <component-demo> boxes show what a server or stream script that returns component tags sends:
  *
  *   search       server-scripts.md   ### Render a card per search result     GET /search
  *   live         server-scripts.md   ### A card with its own server script   GET /featured
  *   stream       stream-scripts.md   ### Stream cards in batches             GET /new-arrivals
  *   passthrough  troubleshooting.md  ### A component tag in script output…   GET /help
+ *   security-search     security.md  ### Search with html                  GET /find?q=kettle
+ *   security-malicious  security.md  ### The same page, attacked           GET /find?q=<product-card…onerror…>
  *
  * The Markdown is the single source: every Source and Output pane is a <!-- demo:rtc-* --> block, so llms.txt and
  * the bundled skill get the same text the boxes show.
  *
  * Output panes are never hand-written. scripts/rtc-demos.ts builds ONE temp site from the md source blocks (each
  * written whole, path comment included, to the path its first line names, plus the documented bascik.config.ts), runs the real
- * `bascik --build` and `bascik --server`, and fetches the four URLs. This test regenerates through it and compares
+ * `bascik --build` and `bascik --server`, and fetches the six URLs. This test regenerates through it and compares
  * with the committed blocks:
  *   - search, live and stream are compared after formatting the raw body exactly as `prettier --write` formats an
  *     ```html fence in Markdown (the formatter is applied here, independently of the generator);
@@ -47,7 +49,13 @@ const SCRATCH = "/tmp/bascik-rtc-docs-demos";
 const readDocs = (rel: string) =>
   readFileSync(path.join(DOCS_ROOT, rel), "utf8");
 
-type DemoId = "search" | "live" | "stream" | "passthrough";
+type DemoId =
+  | "search"
+  | "live"
+  | "stream"
+  | "passthrough"
+  | "security-search"
+  | "security-malicious";
 type Slot =
   | "example"
   | "source-usage"
@@ -80,6 +88,9 @@ interface Spec {
 const SERVER_MD = "content/server-scripts.md";
 const STREAM_MD = "content/stream-scripts.md";
 const TROUBLE_MD = "content/testing/troubleshooting.md";
+const SECURITY_MD = "content/security.md";
+const MALICIOUS_URL =
+  "/find?q=%3Cproduct-card%20data-bascik-prop-name%3Dx%3E%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E%3C%2Fproduct-card%3E";
 
 const SPECS: Spec[] = [
   {
@@ -166,6 +177,41 @@ const SPECS: Spec[] = [
       "output-html": [TROUBLE_MD, "rtc-passthrough-output-html"],
     },
     paths: { "source-usage": "src/pages/help.html" },
+  },
+  {
+    id: "security-search",
+    md: SECURITY_MD,
+    page: "src/pages/security.html",
+    heading: "Search with html",
+    anchor: "search-with-html",
+    successor: "A malicious ?q= comes back as text",
+    url: "/find?q=kettle",
+    format: "prettier",
+    preview: false,
+    pointer: null,
+    slots: {
+      "source-usage": [SECURITY_MD, "security-search-source-usage"],
+      "output-html": [SECURITY_MD, "security-search-output"],
+    },
+    paths: { "source-usage": "src/pages/find.html" },
+  },
+  {
+    id: "security-malicious",
+    md: SECURITY_MD,
+    page: "src/pages/security.html",
+    heading: "The same page, attacked",
+    anchor: "the-same-page-attacked",
+    successor: "The helpers",
+    url: MALICIOUS_URL,
+    format: "prettier",
+    preview: false,
+    pointer: null,
+    // The Usage is the search block above it on the same page.
+    slots: {
+      "source-usage": [SECURITY_MD, "security-search-source-usage"],
+      "output-html": [SECURITY_MD, "security-malicious-q-output"],
+    },
+    paths: { "source-usage": "src/pages/find.html" },
   },
 ];
 
@@ -428,8 +474,15 @@ describe("returning component tags demos: markdown blocks", () => {
         const markerRe = new RegExp(`<!--\\s*demo:${marker}\\s*-->`, "g");
         const hits = md.match(markerRe) ?? [];
         expect(hits.length, `${file} ${marker} (${slot})`).toBe(1);
-        // A block reused from another file (stream's HTML/CSS/JS tabs read the search card) is checked there.
+        // A block reused from another file (stream's HTML/CSS/JS tabs read the search card), or from an earlier
+        // demo in the same file (the attacked security page reads the search page's Usage), is checked there.
         if (file !== spec.md) continue;
+        const owner = SPECS.find((other) =>
+          Object.values(other.slots).some(
+            ([f, m]) => f === file && m === marker,
+          ),
+        );
+        if (owner && owner.id !== spec.id) continue;
         const before = md.slice(0, md.search(new RegExp(markerRe.source)));
         const headings = [...before.matchAll(/^(#{2,4}) (.+)$/gm)];
         expect(headings.at(-1)?.[1], `${marker} sits under an H3`).toBe("###");
@@ -464,23 +517,25 @@ describe("returning component tags demos: markdown blocks", () => {
     },
   );
 
-  it("search: the Usage is the documented shape (reads ?q=, maps products to <product-card>, escapes values)", async () => {
+  it("search: the Usage is the documented shape (reads ?q=, maps products to <product-card> with html)", async () => {
     const usage = await block(SERVER_MD, "rtc-search-source-usage");
     expect(usage).toContain('searchParams.get("q")');
     expect(usage).toMatch(
       /products\s*\.filter[\s\S]*\.map\(|products\.map\(|\.map\(\s*\(p\)/,
     );
-    expect(usage).toContain(
-      '<product-card data-bascik-prop-name="${escape(p.name)}" data-bascik-prop-price="${escape(p.price)}">',
+    expect(usage).toContain('import { html } from "@bascik/bascik/html";');
+    expect(usage).toMatch(
+      /html`<product-card\s+data-bascik-prop-name="\$\{p\.name\}"\s+data-bascik-prop-price="\$\{p\.price\}"/,
     );
-    expect(usage).toContain("</product-card>`");
-    expect(usage).toContain('.join("")');
+    expect(usage).not.toContain(".join(");
+    expect(usage).not.toMatch(/const escape\b/);
     expect(usage).toContain("#escaping-and-injection");
     for (const p of PRODUCTS) {
       expect(usage).toContain(p.name);
       expect(usage).toContain(p.price);
     }
-    expect(usage).not.toMatch(/import\s/);
+    // The one import is the published package, so the Usage works in a new site.
+    expect(usage.match(/import\s/g)).toHaveLength(1);
   });
 
   it("live: stock-line has a class-only server script and no id, so it stays supported", async () => {
@@ -656,6 +711,7 @@ describe("returning component tags demos: the page boxes", () => {
     "src/pages/server-scripts.html",
     "src/pages/stream-scripts.html",
     "src/pages/testing/troubleshooting.html",
+    "src/pages/security.html",
   ])(
     "%s: the ranges cover the whole md in order, and every range holding an rtc block strips demo blocks",
     (page) => {
@@ -800,7 +856,7 @@ describe("returning component tags demos: Output is the real bascik --server res
     },
   );
 
-  it("search: one <style> before the first card, scoped classes, three distinct ids, client script per instance", () => {
+  it("search: one <style> before the first card, scoped classes, a client script per instance with the same text (one CSP hash)", () => {
     const raw = run.raw.search;
     expect(raw).not.toContain("<product-card");
     expect(raw.match(/<style\b/g)).toHaveLength(1);
@@ -810,15 +866,12 @@ describe("returning component tags demos: Output is the real bascik --server res
     expect(cardClass).not.toBe("card");
     const style = /<style\b[^>]*>([\s\S]*?)<\/style>/.exec(raw)![1];
     expect(style).toContain(`.${cardClass}`);
-    const ids = distinctIds(raw);
-    expect(ids.size).toBe(3);
+    // The card's script uses no scoped id, so no instance id is sent and
+    // every copy of the script is byte-identical: one hash covers them all.
+    expect(distinctIds(raw).size).toBe(0);
     const scripts = [...raw.matchAll(SCRIPT_ELEMENT)].map((m) => m[1]);
     expect(scripts).toHaveLength(3);
-    for (const id of ids)
-      expect(
-        scripts.some((s) => s.includes(id)),
-        `${id} in a client script`,
-      ).toBe(true);
+    expect(new Set(scripts).size).toBe(1);
     const names = PRODUCTS.map((p) => raw.indexOf(p.name));
     expect(names.every((n) => n >= 0)).toBe(true);
     expect([...names].sort((a, b) => a - b)).toEqual(names);
@@ -844,7 +897,7 @@ describe("returning component tags demos: Output is the real bascik --server res
     expect(styles.filter((s) => s.includes(`.${cardClass}`))).toHaveLength(1);
   });
 
-  it("stream: one <style>, sent with the first batch before the first card; cards in source order with distinct ids", () => {
+  it("stream: one <style>, sent with the first batch before the first card; cards in source order with identical scripts", () => {
     const raw = run.raw.stream;
     expect(raw).not.toContain("<product-card");
     expect(raw.match(/<style\b/g)).toHaveLength(1);
@@ -857,7 +910,9 @@ describe("returning component tags demos: Output is the real bascik --server res
     const names = PRODUCTS.map((p) => raw.indexOf(p.name));
     expect(names.every((n) => n >= 0)).toBe(true);
     expect([...names].sort((a, b) => a - b)).toEqual(names);
-    expect(distinctIds(raw).size).toBe(3);
+    const scripts = [...raw.matchAll(SCRIPT_ELEMENT)].map((m) => m[1]);
+    expect(scripts).toHaveLength(3);
+    expect(new Set(scripts).size).toBe(1);
   });
 
   it("passthrough: the body holds the script's exact return string, unexpanded, with no <style> or ids", async () => {

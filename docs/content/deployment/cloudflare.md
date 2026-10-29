@@ -320,6 +320,10 @@ npx wrangler pages deploy dist/.bascik/cloudflare-pages/public --project-name <y
 
 The runtime request handling is identical between both variants; only the packaging and routing files differ.
 
+## Content-Security-Policy
+
+Set [`contentSecurityPolicy`](/configuration#contentsecuritypolicy) and the generated Worker sends the header, with the build's hashes, on every page it renders, while the build writes exact-path `public/_headers` rules for static pages. No wrapper and no `run_worker_first` are needed. A site over Cloudflare's 100-rule `_headers` limit fails the build with a message that names the count. See [Content Security Policy](/how-to/content-security-policy#cloudflare).
+
 ## Bindings and secrets
 
 Handlers reach Cloudflare bindings through `context.platform`, which is `undefined` on hosts that offer nothing and `{ name: 'node' }` on the built-in server:

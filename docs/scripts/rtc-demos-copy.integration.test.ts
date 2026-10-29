@@ -40,10 +40,17 @@ const SOURCE_BLOCKS: [string, string][] = [
   ["content/server-scripts.md", "rtc-live-source-css"],
   ["content/stream-scripts.md", "rtc-stream-source-usage"],
   ["content/testing/troubleshooting.md", "rtc-passthrough-source-usage"],
+  ["content/security.md", "security-search-source-usage"],
 ];
 
 const OUTPUTS: {
-  id: "search" | "live" | "stream" | "passthrough";
+  id:
+    | "search"
+    | "live"
+    | "stream"
+    | "passthrough"
+    | "security-search"
+    | "security-malicious";
   md: string;
   marker: string;
 }[] = [
@@ -66,6 +73,16 @@ const OUTPUTS: {
     id: "passthrough",
     md: "content/testing/troubleshooting.md",
     marker: "rtc-passthrough-output-html",
+  },
+  {
+    id: "security-search",
+    md: "content/security.md",
+    marker: "security-search-output",
+  },
+  {
+    id: "security-malicious",
+    md: "content/security.md",
+    marker: "security-malicious-q-output",
   },
 ];
 

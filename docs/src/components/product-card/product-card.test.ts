@@ -45,7 +45,7 @@ describe("product-card component", () => {
     expect(html).toContain('<article class="card" data-testid="product-card">');
     expect(html).toMatch(
       // Prettier puts the label on its own line once the attributes wrap.
-      /<button[^>]*id="save"[^>]*data-testid="product-card-save"[^>]*>\s*Save\s*<\/button>/,
+      /<button[^>]*class="save"[^>]*data-testid="product-card-save"[^>]*>\s*Save\s*<\/button>/,
     );
     expect(html).toContain('aria-pressed="false"');
     expect(html).toContain('<script src="product-card.js"></script>');
@@ -58,8 +58,17 @@ describe("product-card component", () => {
     expect(css).toMatch(/\.card\s*\{/);
     expect(css).toMatch(/\.badge\s*\{/);
     const js = await read("product-card.js");
-    expect(js).toContain('getElementById("save")');
+    expect(js).toContain('closest(".save")');
     expect(js).toContain("aria-pressed");
+  });
+
+  it("has the same script text in every instance, so one CSP hash covers cards rendered at request time", async () => {
+    // A scoped id (getElementById on the card's own id) would put the
+    // instance id in the script text: /how-to/content-security-policy.
+    const html = await read("product-card.html");
+    const js = await read("product-card.js");
+    expect(html).not.toMatch(/\sid="/);
+    expect(js).not.toContain("getElementById");
   });
 
   it("has no server or stream script, so the docs site stays static", async () => {

@@ -20,3 +20,7 @@ pkg/e2e/src/pages/unquoted-routes/*.html
 
 # The extension E2E suite removes and re-adds a folder, and VS Code rewrites this file in its own format each run.
 extensions/vscode-bascik/test-fixtures/multi-root.code-workspace
+
+# html`...` cases that test exact template text; Prettier would reformat the templates as HTML.
+pkg/src/lib/html-template.test.ts
+pkg/src/lib/html-template-attacks.test.ts

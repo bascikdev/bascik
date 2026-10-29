@@ -529,6 +529,38 @@ describe("checkProject", () => {
       expect(unusedTruly).toBeDefined();
     });
 
+    it("a component tag written in a server or stream script's template counts as used", async () => {
+      await setupProject({
+        "pages/find.html": [
+          "<script data-bascik-server>",
+          '  import { html } from "@bascik/bascik/html";',
+          '  export default () => html`<product-card data-bascik-prop-name="${"x"}"></product-card>`;',
+          "</script>",
+          "<script data-bascik-stream>",
+          "  export default async () => `<video-card></video-card>`;",
+          "</script>",
+        ].join("\n"),
+        "components/product-card/product-card.html": "<div>card</div>",
+        "components/video-card/video-card.html": "<div>video</div>",
+        "components/truly-unused/truly-unused.html": "<div>unused</div>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/find.html")]);
+      listComponentsMock.mockResolvedValue(
+        Object.fromEntries(
+          ["product-card", "video-card", "truly-unused"].map((name) => [
+            name,
+            { fileName: join(workDir, `components/${name}/${name}.html`) },
+          ]),
+        ),
+      );
+
+      const findings = await checkProject();
+      const unused = findings.items
+        .filter((i) => i.category === "unused-component")
+        .map((i) => i.message);
+      expect(unused).toEqual(["truly-unused"]);
+    });
+
     it("produces documented JSON schema with formatFindingsJson driven by same data", async () => {
       await setupProject({
         "pages/index.html": "<model-viewer></model-viewer>",
@@ -1728,7 +1760,7 @@ describe("checkProject – request-time component rendering (prompt 157)", () =>
     );
   });
 
-  it("names the per-instance output scope, not the script body, for a component whose stylesheet uses url(#id); an unused catalog component is not called safe to delete", async () => {
+  it("names the per-instance output scope, not the script body, for a component whose stylesheet uses url(#id); a catalog component returned from a server script counts as used", async () => {
     const list: ComponentList = {
       // The server script body references nothing scoped; the stylesheet's
       // url(#shape) scopes the component's classes per instance.
@@ -1775,10 +1807,8 @@ describe("checkProject – request-time component rendering (prompt 157)", () =>
     const unused = findings.items.filter(
       (item) => item.category === "unused-component",
     );
-    expect(unused.map((item) => item.message).sort()).toEqual([
-      "catalog-card",
-      "glow-srv",
-    ]);
+    // <catalog-card> is written in the page's server script, so it is used.
+    expect(unused.map((item) => item.message).sort()).toEqual(["glow-srv"]);
     expect(unsupported[0].locations[0].filePath).toBe(
       unused.find((item) => item.message === "glow-srv")!.locations[0].filePath,
     );
@@ -1789,7 +1819,7 @@ describe("checkProject – request-time component rendering (prompt 157)", () =>
     );
     expect(human).toContain(
       "Defined but never referenced. Safe to delete, or referenced only from a\n" +
-        "  build, server or stream script, which this check cannot always see.",
+        "  script this check cannot see (a src= module, or a tag name built in code).",
     );
   });
 

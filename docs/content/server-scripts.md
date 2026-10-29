@@ -17,14 +17,16 @@ Tag any `<script>` block with `data-bascik-server` to run it at request time on 
 
 ```html
 <script data-bascik-server>
+  import { html } from "@bascik/bascik/html";
+
   export default function (request) {
     const name = request.headers.get("x-display-name") ?? "Guest";
-    return `<p class="greeting">Hello, ${name}!</p>`;
+    return html`<p class="greeting">Hello, ${name}!</p>`;
   }
 </script>
 ```
 
-> This example interpolates a header without escaping so the mechanics are visible. Real scripts must escape; see Escaping and injection.
+`html` from `@bascik/bascik/html` escapes each value for where it lands, so a header that holds markup comes back as text. See [Escaping and injection](#escaping-and-injection).
 
 This recording shows a real dev server running a server script that lives in a component. Every request runs the script again: a new query string renders a new name, and reloading the same URL renders a new time. Nothing is rebuilt between requests:
 
@@ -44,58 +46,61 @@ export default async function (request, context, { signal });
 
 ```html
 <script data-bascik-server>
+  import { html } from "@bascik/bascik/html";
+
   export default function (request) {
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get("page") ?? "1", 10);
     const session = request.headers
       .get("cookie")
       ?.match(/session=([^;]+)/)?.[1];
-    return `<p>Page ${page} &bull; Session: ${session ?? "anonymous"}</p>`;
+    return html`<p>Page ${page} &bull; Session: ${session ?? "anonymous"}</p>`;
   }
 </script>
 ```
 
 ## Escaping and injection
 
-The return value of a server script is HTML by contract. Auto-escaping it would render every `<li>` as literal text. So escaping can only ever apply to individual interpolated values.
+The return value of a server script is HTML. Every value you put into it from a request, a database or an API is data, and it must reach the page as text, never as markup or code. Write the markup with `html` from `@bascik/bascik/html`: a tagged template that reads the markup around each `${...}` and escapes the value for that place.
 
-Which interpolations need escaping, and how, depends on where each one lands:
+```html
+<script data-bascik-server>
+  import { html } from "@bascik/bascik/html";
 
-| Sink                                                   | Correct treatment                                                                                                   |
-| :----------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------ |
-| Text between tags                                      | HTML entity escape (`& < > " '`)                                                                                    |
-| Quoted attribute value (`title="..."`)                 | HTML entity escape                                                                                                  |
-| Unquoted attribute (`class=...`)                       | Never do this; quote the attribute                                                                                  |
-| `href`, `src`, `action`                                | Validate the URL: `new URL(v, base)` and allow-list `http:` / `https:`. Entity escaping does not stop `javascript:` |
-| Inline `<script>` body                                 | Never interpolate untrusted data. Put it in a `data-*` attribute and read it from a static client script            |
-| `on*` event handler attributes                         | Never interpolate untrusted data                                                                                    |
-| `<style>` body or `style=""`                           | Never interpolate untrusted data                                                                                    |
-| Already-rendered HTML (Markdown output, CMS rich text) | An HTML sanitizer at the data layer; entity escaping would destroy it                                               |
-
-A framework cannot know which row a given `${x}` is in. A single escaper function is therefore only correct for the first two rows, and shipping it as "the" helper teaches authors that one function makes output safe.
-
-Write this five-line escaper once in your project or install an npm escaper such as `escape-html`:
-
-```ts
-// src/lib/server.ts
-export const escape = (value: unknown): string =>
-  String(value ?? "").replace(
-    /[&<>"']/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ]!,
-  );
+  export default function (request) {
+    const q = new URL(request.url).searchParams.get("q") ?? "";
+    return html`<p>You searched for ${q}</p>
+      <a href="${q}">Search again</a>`;
+  }
+</script>
 ```
+
+A request for `?q=<img src=x onerror=alert(1)>` returns `You searched for &lt;img src=x onerror=alert(1)&gt;`, and `?q=javascript:alert(1)` makes the link `href="about:invalid"`.
+
+What `html` does depends on where the value lands:
+
+| Where the value lands                                  | What `html` does                                                                                                           |
+| :----------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------- |
+| Text between tags                                      | Escapes `& < > " '`                                                                                                        |
+| Quoted attribute value (`title="..."`, props)          | Escapes `& < > " '`                                                                                                        |
+| URL attribute (`href`, `src`, `action`, `srcset`, ...) | Replaces a `javascript:`, `vbscript:`, `livescript:`, `mocha:` or non-image `data:` URL with `about:invalid`, then escapes |
+| Unquoted attribute (`class=${x}`)                      | Throws: quote the attribute                                                                                                |
+| `on*` event handler, `style` attribute                 | Throws: put the value in a `data-*` attribute                                                                              |
+| Inline `<script>` or `<style>` body                    | Throws, except `json(value)` as the only content of `<script type="application/json">`                                     |
+| Already-rendered HTML (Markdown output, CMS rich text) | Sanitize it at the data layer, then insert it with `raw(value)`                                                            |
+
+A nested `html` value, or an array of them, is inserted as it is, so `${items.map((item) => html`<li>${item}</li>`)}` needs no `.join("")`. `null`, `undefined` and `false` render as nothing. The [Security](/security) page explains what Bascik guarantees and what is yours, and [HTML Helpers](/html-helpers) lists every context, helper and error.
 
 ### Trusted vs untrusted data
 
 - **Untrusted data:** Anything from `request` (headers, URL, query parameters, cookies), any database column that was ever user input, and any third-party API response is untrusted.
-- **Trusted data:** Markup you wrote directly in the template literal is trusted.
+- **Trusted data:** Markup you wrote directly in the template is trusted.
 
 Escape once, at output. Do not store escaped strings.
 
-Bascik exports nothing for use inside a server script. There is no helper to import and nothing is injected into scope. What your script can see is `request`, `context`, `signal`, and whatever you import yourself.
+The helpers are plain functions you import; nothing is injected into scope. Besides `html`, `@bascik/bascik/html` exports `raw` (trusted HTML), `esc` (an escaped string), `safeUrl` (a checked URL) and `json` (JSON for a JSON `<script>`). Your script still sees only `request`, `context`, `signal`, and what it imports.
+
+> **Without html.** Code that builds markup as plain strings must escape each text or quoted-attribute value itself, with `esc(value)` from the same module or a five-character escaper such as `String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])`, and check each URL with `safeUrl(value)`. An escaper does nothing for a `javascript:` URL, an event handler, a `<script>` body or an unquoted attribute, which is why `html` reads where each value lands.
 
 ## Timeouts and Cancellation (`AbortSignal`)
 
@@ -103,12 +108,12 @@ Server script execution is bounded by `scripts.timeout` in `bascik.config.ts`. P
 
 ```html
 <script data-bascik-server>
-  import { escape } from "@/lib/server.ts";
+  import { html } from "@bascik/bascik/html";
 
   export default async function (request, context, { signal }) {
     const res = await fetch("https://api.example.com/user", { signal });
     const data = await res.json();
-    return `<div class="user-profile">User: ${escape(data.name)}</div>`;
+    return html`<div class="user-profile">User: ${data.name}</div>`;
   }
 </script>
 ```
@@ -123,29 +128,26 @@ Create a shared helper file such as `src/lib/server.ts` or `lib/server.mjs` for 
 
 ```ts
 // src/lib/server.ts
-export const escape = (value: unknown): string =>
-  String(value ?? "").replace(
-    /[&<>"']/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ]!,
-  );
+import { html } from "@bascik/bascik/html";
 
 export function getSessionUser(request: Request): string {
   return request.headers.get("x-user-name") ?? "Guest";
 }
+
+/** A card any page's script can nest: html fragments from two modules nest as they are. */
+export const userBadge = (name: string) =>
+  html`<span class="user-badge">${name}</span>`;
 ```
 
 Import it from any server script using the `@/` import root alias (see [Script Imports](/script-imports)):
 
 ```html
 <script data-bascik-server>
-  import { escape, getSessionUser } from "@/lib/server.ts";
+  import { html } from "@bascik/bascik/html";
+  import { getSessionUser, userBadge } from "@/lib/server.ts";
 
   export default function (request) {
-    const user = escape(getSessionUser(request));
-    return `<p>Welcome back, ${user}</p>`;
+    return html`<p>Welcome back, ${userBadge(getSessionUser(request))}</p>`;
   }
 </script>
 ```
@@ -159,7 +161,7 @@ Use `new URL(request.url).searchParams` to page through database records without
 ```html
 <script data-bascik-server>
   import Database from "better-sqlite3";
-  import { escape } from "@/lib/server.ts";
+  import { html } from "@bascik/bascik/html";
 
   export default function (request) {
     const url = new URL(request.url);
@@ -170,8 +172,9 @@ Use `new URL(request.url).searchParams` to page through database records without
         "SELECT title FROM articles ORDER BY created_at DESC LIMIT 20 OFFSET ?",
       )
       .all((page - 1) * 20);
-    const list = items.map((a) => `<li>${escape(a.title)}</li>`).join("");
-    return `<ul>${list}</ul>`;
+    return html`<ul>
+      ${items.map((a) => html`<li>${a.title}</li>`)}
+    </ul>`;
   }
 </script>
 ```
@@ -183,7 +186,7 @@ Use `new URL(request.url).searchParams` to page through database records without
 ```html
 <script data-bascik-server>
   import Database from "better-sqlite3";
-  import { escape } from "@/lib/server.ts";
+  import { html } from "@bascik/bascik/html";
 
   export default function (request) {
     const sessionId = request.headers
@@ -194,9 +197,7 @@ Use `new URL(request.url).searchParams` to page through database records without
     const row = db
       .prepare("SELECT name FROM users WHERE session_id = ?")
       .get(sessionId);
-    return row
-      ? `<p>Hello, ${escape(row.name)}</p>`
-      : "<p>Session expired.</p>";
+    return row ? html`<p>Hello, ${row.name}</p>` : "<p>Session expired.</p>";
   }
 </script>
 ```
@@ -208,7 +209,7 @@ Top-level `await` and ESM imports work seamlessly:
 ```html
 <script data-bascik-server>
   import pg from "pg";
-  import { escape } from "@/lib/server.ts";
+  import { html } from "@bascik/bascik/html";
 
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
@@ -216,7 +217,9 @@ Top-level `await` and ESM imports work seamlessly:
     const { rows } = await pool.query(
       "SELECT title FROM posts ORDER BY date DESC LIMIT 10",
     );
-    return `<ul>${rows.map((r) => `<li>${escape(r.title)}</li>`).join("")}</ul>`;
+    return html`<ul>
+      ${rows.map((r) => html`<li>${r.title}</li>`)}
+    </ul>`;
   }
 </script>
 ```
@@ -229,20 +232,21 @@ Top-level `await` and ESM imports work seamlessly:
 <!-- runs once at build time: static navigation -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
+  import { html } from "@bascik/bascik/html";
 
   export default async function () {
     const links = JSON.parse(await readFile("./data/nav.json", "utf8"));
-    return links.map((l) => `<a href="${l.href}">${l.label}</a>`).join("");
+    return html`${links.map((l) => html`<a href="${l.href}">${l.label}</a>`)}`;
   }
 </script>
 
 <!-- runs on every request: personalized greeting -->
 <script data-bascik-server>
-  import { escape } from "@/lib/server.ts";
+  import { html } from "@bascik/bascik/html";
 
   export default function (request) {
-    const user = escape(request.headers.get("x-display-name") ?? "Guest");
-    return `<p class="greeting">Hello, ${user}</p>`;
+    const user = request.headers.get("x-display-name") ?? "Guest";
+    return html`<p class="greeting">Hello, ${user}</p>`;
   }
 </script>
 ```
@@ -256,6 +260,7 @@ This parallels Next.js `getServerSideProps` client hydration, but emits clean st
 ```html
 <!-- src/pages/dashboard.html -->
 <script data-bascik-server>
+  import { html, json } from "@bascik/bascik/html";
   import { getUserFromRequest } from "@/lib/auth.ts";
 
   export default async function (request) {
@@ -266,9 +271,10 @@ This parallels Next.js `getServerSideProps` client hydration, but emits clean st
       roles: user?.roles ?? [],
     };
 
-    // Escape < to prevent any closing script tag breakout
-    const safeJson = JSON.stringify(session).replaceAll("<", () => "\\u003c");
-    return `<script type="application/json" id="session-data">${safeJson}<\/script>`;
+    // json() escapes <, >, & and the line separators, so the data cannot end the script.
+    return html`<script type="application/json" id="session-data">
+      ${json(session)}
+    <\/script>`;
   }
 </script>
 
@@ -296,7 +302,7 @@ A server script can return the tags of your own components. Bascik renders each 
 
 A common case is a search page that renders the site's shared card for each result. The card is an ordinary component: two props, a default slot for its badge, a companion stylesheet, and a client script for its Save button.
 
-The search page's server script returns one `<product-card>` per match, with the product's values escaped into the props and the slot. A product with no badge leaves the slot empty, so its card keeps the `Standard` fallback. A real site would read the products from a database or an API; here they are inline so the page works as pasted. The first line of each block names the file's path. The page, HTML, and JS path comments are ordinary comments, so they also appear in the Output; the CSS comment is dropped.
+The search page's server script returns one `<product-card>` per match, built with `html`, which escapes the product's values into the props and the slot. A product with no badge leaves the slot empty, so its card keeps the `Standard` fallback. A real site would read the products from a database or an API; here they are inline so the page works as pasted. The first line of each block names the file's path. The page, HTML, and JS path comments are ordinary comments, so they also appear in the Output; the CSS comment is dropped.
 
 <!-- demo:rtc-search-source-usage -->
 
@@ -314,12 +320,8 @@ The search page's server script returns one `<product-card>` per match, with the
     </form>
     <div class="results">
       <script data-bascik-server>
-        // Escape every value you put into a prop or a slot: /server-scripts#escaping-and-injection
-        const escape = (s) =>
-          String(s)
-            .replaceAll("&", "&amp;")
-            .replaceAll("<", "&lt;")
-            .replaceAll('"', "&quot;");
+        // html escapes each value for where it lands: /server-scripts#escaping-and-injection
+        import { html } from "@bascik/bascik/html";
 
         const catalog = [
           { name: "Milk frother", price: "$129", badge: "Best seller" },
@@ -335,15 +337,16 @@ The search page's server script returns one `<product-card>` per match, with the
             p.name.toLowerCase().includes(q),
           );
           if (products.length === 0) {
-            return `<p>No products match "${escape(q)}".</p>`;
+            return html`<p>No products match "${q}".</p>`;
           }
-          const cards = products.map(
+          return html`${products.map(
             (p) =>
-              `<product-card data-bascik-prop-name="${escape(p.name)}" data-bascik-prop-price="${escape(p.price)}">` +
-              (p.badge ? escape(p.badge) : "") +
-              `</product-card>`,
-          );
-          return cards.join("");
+              html`<product-card
+                data-bascik-prop-name="${p.name}"
+                data-bascik-prop-price="${p.price}"
+                >${p.badge}</product-card
+              >`,
+          )}`;
         }
       </script>
     </div>
@@ -360,7 +363,6 @@ The search page's server script returns one `<product-card>` per match, with the
   <p class="price" data-bascik-prop-price>Price on request</p>
   <span class="badge"><span data-bascik-slot>Standard</span></span>
   <button
-    id="save"
     class="save"
     type="button"
     aria-pressed="false"
@@ -426,15 +428,22 @@ The search page's server script returns one `<product-card>` per match, with the
 
 ```js
 // src/components/product-card/product-card.js
-const save = document.getElementById("save");
-save.addEventListener("click", () => {
-  const saved = save.getAttribute("aria-pressed") !== "true";
-  save.setAttribute("aria-pressed", String(saved));
-  save.textContent = saved ? "Saved" : "Save";
-});
+// One click listener serves every card on the page. The text is the same in
+// every instance (no scoped id), so one CSP hash covers cards a server script
+// renders at request time too.
+if (!document.documentElement.hasAttribute("data-product-card-save")) {
+  document.documentElement.setAttribute("data-product-card-save", "");
+  document.addEventListener("click", (event) => {
+    const save = event.target.closest(".save");
+    if (save === null) return;
+    const saved = save.getAttribute("aria-pressed") !== "true";
+    save.setAttribute("aria-pressed", String(saved));
+    save.textContent = saved ? "Saved" : "Save";
+  });
+}
 ```
 
-A request for `/search` with no query matches all three products. The Output is the body `bascik --server` sent for `GET /search`, reformatted for reading. It was built with minification off, as every output example in these docs is; with the defaults, the markup is minified and the class names are short hashes. The card's stylesheet arrives once, as one `<style>` right before the first card, and each card gets its own request-time id (`r` followed by 7 hex digits), so each Save button toggles only its own card. A request for `/search?q=frother` gets the Milk frother card alone.
+A request for `/search` with no query matches all three products. The Output is the body `bascik --server` sent for `GET /search`, reformatted for reading. It was built with minification off, as every output example in these docs is; with the defaults, the markup is minified and the class names are short hashes. The card's stylesheet arrives once, as one `<style>` right before the first card, and one click listener serves every Save button, finding the card it belongs to with `closest`. The script has no scoped id, so its text is the same in every card, and one [Content-Security-Policy](/how-to/content-security-policy#components-rendered-at-request-time) hash covers the cards a server script renders. A request for `/search?q=frother` gets the Milk frother card alone.
 
 ```ts
 // bascik.config.ts
@@ -511,7 +520,6 @@ export default defineConfig({
         <p class="bascik__product-card__price">$129</p>
         <span class="bascik__product-card__badge">Best seller</span>
         <button
-          id="bascik__product-card__r5600b02__save"
           class="bascik__product-card__save"
           type="button"
           aria-pressed="false"
@@ -523,14 +531,21 @@ export default defineConfig({
       <script>
         (function () {
           // src/components/product-card/product-card.js
-          const save = document.getElementById(
-            "bascik__product-card__r5600b02__save",
-          );
-          save.addEventListener("click", () => {
-            const saved = save.getAttribute("aria-pressed") !== "true";
-            save.setAttribute("aria-pressed", String(saved));
-            save.textContent = saved ? "Saved" : "Save";
-          });
+          // One click listener serves every card on the page. The text is the same in
+          // every instance (no scoped id), so one CSP hash covers cards a server script
+          // renders at request time too.
+          if (
+            !document.documentElement.hasAttribute("data-product-card-save")
+          ) {
+            document.documentElement.setAttribute("data-product-card-save", "");
+            document.addEventListener("click", (event) => {
+              const save = event.target.closest(".bascik__product-card__save");
+              if (save === null) return;
+              const saved = save.getAttribute("aria-pressed") !== "true";
+              save.setAttribute("aria-pressed", String(saved));
+              save.textContent = saved ? "Saved" : "Save";
+            });
+          }
         })();
         //# sourceURL=src/components/product-card/product-card.js
       </script>
@@ -540,7 +555,6 @@ export default defineConfig({
         <p class="bascik__product-card__price">$48</p>
         <span class="bascik__product-card__badge">New</span>
         <button
-          id="bascik__product-card__r71d5801__save"
           class="bascik__product-card__save"
           type="button"
           aria-pressed="false"
@@ -552,14 +566,21 @@ export default defineConfig({
       <script>
         (function () {
           // src/components/product-card/product-card.js
-          const save = document.getElementById(
-            "bascik__product-card__r71d5801__save",
-          );
-          save.addEventListener("click", () => {
-            const saved = save.getAttribute("aria-pressed") !== "true";
-            save.setAttribute("aria-pressed", String(saved));
-            save.textContent = saved ? "Saved" : "Save";
-          });
+          // One click listener serves every card on the page. The text is the same in
+          // every instance (no scoped id), so one CSP hash covers cards a server script
+          // renders at request time too.
+          if (
+            !document.documentElement.hasAttribute("data-product-card-save")
+          ) {
+            document.documentElement.setAttribute("data-product-card-save", "");
+            document.addEventListener("click", (event) => {
+              const save = event.target.closest(".bascik__product-card__save");
+              if (save === null) return;
+              const saved = save.getAttribute("aria-pressed") !== "true";
+              save.setAttribute("aria-pressed", String(saved));
+              save.textContent = saved ? "Saved" : "Save";
+            });
+          }
         })();
         //# sourceURL=src/components/product-card/product-card.js
       </script>
@@ -569,7 +590,6 @@ export default defineConfig({
         <p class="bascik__product-card__price">$31</p>
         <span class="bascik__product-card__badge">Standard</span>
         <button
-          id="bascik__product-card__r6a8ea90__save"
           class="bascik__product-card__save"
           type="button"
           aria-pressed="false"
@@ -581,14 +601,21 @@ export default defineConfig({
       <script>
         (function () {
           // src/components/product-card/product-card.js
-          const save = document.getElementById(
-            "bascik__product-card__r6a8ea90__save",
-          );
-          save.addEventListener("click", () => {
-            const saved = save.getAttribute("aria-pressed") !== "true";
-            save.setAttribute("aria-pressed", String(saved));
-            save.textContent = saved ? "Saved" : "Save";
-          });
+          // One click listener serves every card on the page. The text is the same in
+          // every instance (no scoped id), so one CSP hash covers cards a server script
+          // renders at request time too.
+          if (
+            !document.documentElement.hasAttribute("data-product-card-save")
+          ) {
+            document.documentElement.setAttribute("data-product-card-save", "");
+            document.addEventListener("click", (event) => {
+              const save = event.target.closest(".bascik__product-card__save");
+              if (save === null) return;
+              const saved = save.getAttribute("aria-pressed") !== "true";
+              save.setAttribute("aria-pressed", String(saved));
+              save.textContent = saved ? "Saved" : "Save";
+            });
+          }
         })();
         //# sourceURL=src/components/product-card/product-card.js
       </script>
@@ -633,9 +660,12 @@ Keep such a script class-only: a script body that names one of the component's i
 ```html
 <!-- src/components/stock-line/stock-line.html -->
 <script data-bascik-server>
+  import { html } from "@bascik/bascik/html";
+
   export default function (request) {
     const path = new URL(request.url).pathname;
-    return `<span class="stock">In stock · checked for ${path} at request time</span>`;
+    const text = `In stock · checked for ${path} at request time`;
+    return html`<span class="stock">${text}</span>`;
   }
 </script>
 ```
@@ -724,7 +754,6 @@ The Output is the body `bascik --server` sent for `GET /featured`, built with th
           >
         </span>
         <button
-          id="bascik__product-card__raa54050__save"
           class="bascik__product-card__save"
           type="button"
           aria-pressed="false"
@@ -736,14 +765,21 @@ The Output is the body `bascik --server` sent for `GET /featured`, built with th
       <script>
         (function () {
           // src/components/product-card/product-card.js
-          const save = document.getElementById(
-            "bascik__product-card__raa54050__save",
-          );
-          save.addEventListener("click", () => {
-            const saved = save.getAttribute("aria-pressed") !== "true";
-            save.setAttribute("aria-pressed", String(saved));
-            save.textContent = saved ? "Saved" : "Save";
-          });
+          // One click listener serves every card on the page. The text is the same in
+          // every instance (no scoped id), so one CSP hash covers cards a server script
+          // renders at request time too.
+          if (
+            !document.documentElement.hasAttribute("data-product-card-save")
+          ) {
+            document.documentElement.setAttribute("data-product-card-save", "");
+            document.addEventListener("click", (event) => {
+              const save = event.target.closest(".bascik__product-card__save");
+              if (save === null) return;
+              const saved = save.getAttribute("aria-pressed") !== "true";
+              save.setAttribute("aria-pressed", String(saved));
+              save.textContent = saved ? "Saved" : "Save";
+            });
+          }
         })();
         //# sourceURL=src/components/product-card/product-card.js
       </script>
@@ -756,13 +792,13 @@ Run this on Cloudflare Workers: the [live card on /catalog](https://cloudflare-a
 
 ### Security
 
-An escaping bug in a script that returns component tags reaches further than one in a script that returns plain HTML. A visitor whose text lands in the output unescaped can write any of your components' tags, with props, slots, and attributes of their choosing, and each component's own server and stream scripts then run with the current request. Escape every value you interpolate, as in [Escaping and injection](#escaping-and-injection).
+An escaping bug in a script that returns component tags reaches further than one in a script that returns plain HTML. A visitor whose text lands in the output unescaped can write any of your components' tags, with props, slots, and attributes of their choosing, and each component's own server and stream scripts then run with the current request. Build the output with `html`, as in [Escaping and injection](#escaping-and-injection), and see [Security](/security) for the whole picture.
 
 When the values are escaped, Bascik guarantees the following, on the dev server, `bascik --server`, and Cloudflare Workers alike, and for the same tag written in a page at build time:
 
 - **A prop is text.** Its value is decoded once (`&amp;`, `&lt;`, `&gt;`, `&quot;`, `&#39;`, `&#x27;`) and escaped again where it lands, so it becomes element text or one attribute value, never markup. A prop receiver on a `<script>` or `<style>` is never filled, because no escaping keeps a value from running as code there.
-- **Bindings are checked for where they land.** A prop bound to a URL attribute becomes `about:invalid` when it is a `javascript:`, `vbscript:`, or `data:` URL (an image slot such as `<img src>` keeps a `data:image/...` one). Where the page runs or applies what the URL loads (`<script src>`, `<object data>`, `<embed src>`, `<base href>`, a stylesheet or preload `<link href>`), the URL must be a path on your site. SVG animation values (`to`, `from`, `by`, `values`) get the URL check too. A prop is never bound to an `on*` event handler, `srcdoc`, a `<meta http-equiv>` value, or the attribute an SVG animation sets, nor to a `style` that runs script or imports CSS. See [Put a Prop in an Attribute](/props#put-a-prop-in-an-attribute).
-- **Inherited attributes keep their quoting.** A usage attribute escaped for its own quote character stays one attribute on the component's root, whatever quote the root uses.
+- **Bindings are checked for where they land.** A prop bound to a URL attribute becomes `about:invalid` when it is a `javascript:`, `vbscript:`, `livescript:`, `mocha:`, or non-image `data:` URL (an image slot such as `<img src>` keeps a `data:image/...` one). This is the same rule `html` applies. Any other URL, on your site or another, is kept as the browser would take it, including where the page runs or applies what it loads (`<script src>`, `<base href>`, a stylesheet `<link href>`); see [Loading scripts and styles from other sites](/security#loading-scripts-and-styles-from-other-sites) for how to restrict those. SVG animation values (`to`, `from`, `by`, `values`) get the URL check too. A prop is never bound to an `on*` event handler, `srcdoc`, a `<meta http-equiv>` value, or the attribute an SVG animation sets, nor to a `style` that runs script or imports CSS. See [Put a Prop in an Attribute](/props#put-a-prop-in-an-attribute).
+- **Inherited attributes keep their quoting.** A usage attribute escaped for its own quote character stays one attribute on the component's root, whatever quote the root uses. Values are inherited as written, except an attribute that is a URL only on the root's tag: `<my-embed data="...">` onto an `<object>` root never carries a `javascript:`, `vbscript:` or `data:` URL (`data:image/...` included), which becomes `about:invalid`.
 - **Slot content is HTML.** It is your markup, like the rest of the output, so escape the text you put in a slot.
 - **Nested scripts get no usage data.** A script inside a returned component receives the request, never the usage tag's props, slot, or attributes, so a visitor cannot hand it a URL to fetch. It runs within the budgets below: 64 nested scripts and 4 levels per response, inside the page script's remaining timeout.
 - **Markers cannot be forged.** Only the markers Bascik creates for the current request run nested scripts. A placeholder, marker, or escaped tag spelled in the output is text.
@@ -815,11 +851,11 @@ Use `data-bascik-server` when rendering HTML into the document flow. Use API rou
 
 ```html
 <script data-bascik-server>
-  import { escape } from "@/lib/server.ts";
+  import { html } from "@bascik/bascik/html";
 
   export default function (request) {
-    const name = escape(request.headers.get("x-display-name") ?? "Guest");
-    return `
+    const name = request.headers.get("x-display-name") ?? "Guest";
+    return html`
       <aside class="alert-box">
         <strong class="alert-box-title">Session Active</strong>
         <p class="alert-box-message">Logged in as ${name}</p>

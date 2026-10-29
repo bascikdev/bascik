@@ -3,6 +3,8 @@ import fc from "fast-check";
 import {
   LIVE_RELOAD_SCRIPT,
   LIVE_RELOAD_SCRIPT_ATTR,
+  LIVE_RELOAD_VERSION_ATTR,
+  liveReloadVersionOf,
   getLiveReloadScript,
   stripLiveReloadScript,
 } from "./live-reload.ts";
@@ -234,6 +236,98 @@ describe("LIVE_RELOAD_SCRIPT", () => {
     // Generation 3 arrives -> triggers reload
     es.onmessage({ data: "reload 3" });
     expect(reloadCalls).toBe(2);
+  });
+});
+
+// A page can load its old version and miss the reload for the new one: the
+// rebuild finishes (and the reload goes out) before the page's own
+// connection opens. CI's dev e2e lane hit this once: one request for the
+// page, two rebuilds, and no reload. So each compiled page carries its
+// version, the server sends the stored page's version on connect, and a page
+// whose version differs reloads.
+describe("page versions", () => {
+  const run = (version: string | null) => {
+    let reloads = 0;
+    const sources: { onmessage: (e: { data: string }) => void }[] = [];
+    class MockEventSource {
+      readyState = 1;
+      onmessage: ((e: { data: string }) => void) | null = null;
+      onerror: (() => void) | null = null;
+      addEventListener = vi.fn();
+      constructor() {
+        sources.push(this as never);
+      }
+    }
+    const script = getLiveReloadScript(
+      "/bascik-live-reload",
+      version ?? undefined,
+    );
+    const body = script.slice(
+      script.indexOf(">") + 1,
+      script.lastIndexOf("</script>"),
+    );
+    new Function("window", "document", "EventSource", body)(
+      { location: { reload: () => reloads++ }, addEventListener: () => {} },
+      {
+        visibilityState: "visible",
+        currentScript: {
+          getAttribute: (name: string) =>
+            name === LIVE_RELOAD_VERSION_ATTR ? version : null,
+        },
+        body: { appendChild: () => {}, removeChild: () => {} },
+        createElement: () => ({ style: {}, parentNode: null }),
+        addEventListener: () => {},
+      },
+      MockEventSource,
+    );
+    return {
+      send: (data: string) => sources[0].onmessage({ data }),
+      reloads: () => reloads,
+    };
+  };
+
+  it("stamps the script with the page's version, and strips it with the script", () => {
+    const script = getLiveReloadScript("/bascik-live-reload", "7");
+    expect(script).toContain(`${LIVE_RELOAD_VERSION_ATTR}="7"`);
+    expect(stripLiveReloadScript(`<p>a</p>${script}`).trim()).toBe("<p>a</p>");
+  });
+
+  it("reloads a page whose version is not the stored one when it connects", () => {
+    const page = run("7");
+    page.send("connected 8");
+    expect(page.reloads()).toBe(1);
+  });
+
+  it("does not reload a page that is the stored version, or when either side has none", () => {
+    // Each is a first connection: a second one is a reconnect, which reloads.
+    const current = run("7");
+    current.send("connected 7");
+    expect(current.reloads()).toBe(0);
+    const unversionedServer = run("7");
+    unversionedServer.send("connected");
+    expect(unversionedServer.reloads()).toBe(0);
+    const unstamped = run(null);
+    unstamped.send("connected 8");
+    expect(unstamped.reloads()).toBe(0);
+  });
+
+  it("reads the version back from the stored page, quoted or minified, last one wins", () => {
+    const script = getLiveReloadScript("/r", "12");
+    expect(liveReloadVersionOf(`<body>${script}</body>`)).toBe("12");
+    expect(
+      liveReloadVersionOf(
+        `<script ${LIVE_RELOAD_SCRIPT_ATTR} ${LIVE_RELOAD_VERSION_ATTR}=13></script>`,
+      ),
+    ).toBe("13");
+    expect(
+      liveReloadVersionOf(
+        `<p ${LIVE_RELOAD_VERSION_ATTR}="1"></p>${getLiveReloadScript("/r", "2")}`,
+      ),
+    ).toBe("2");
+    expect(liveReloadVersionOf("<p>no script</p>")).toBeNull();
+    expect(
+      liveReloadVersionOf(`<p ${LIVE_RELOAD_VERSION_ATTR}="x9"></p>`),
+    ).toBeNull();
   });
 });
 

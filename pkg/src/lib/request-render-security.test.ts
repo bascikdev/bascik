@@ -81,12 +81,14 @@ import { serverSidecarRegistry } from "./server-sidecar.ts";
 import {
   LINEAR_TIME_TIMEOUT_MS,
   expectCostRatio,
+  expectLinearTime,
   expectLinearTimeAsync,
   measureCostRatioAsync,
   spliceCopies,
   type CalibratedRatio,
 } from "./linear-time.test-helper.ts";
 import type { ComponentList } from "./types.ts";
+import { html as htmlTag } from "./html-template.ts";
 
 type MutableConfig = {
   base: string;
@@ -154,7 +156,11 @@ const renderAtRequest = async (
 };
 
 /** What the build makes of the same usage written in a page. */
-const renderAtBuild = (list: ComponentList, html: string): string => {
+const renderAtBuild = (
+  list: ComponentList,
+  html: string,
+  warn: (message: string) => void = () => {},
+): string => {
   clearScopingTemplates();
   const issuedIds = new Set<string>();
   return expandComponents(html, list, {
@@ -169,7 +175,7 @@ const renderAtBuild = (list: ComponentList, html: string): string => {
     onError: (component, stage, error) => {
       throw new Error(`<${component.name}> failed during ${stage}: ${error}`);
     },
-    warn: () => {},
+    warn,
   }).transpiledHtmlBody;
 };
 
@@ -638,6 +644,506 @@ describe("B. a prop bound with data-bascik-attr-* into a URL attribute", () => {
     const hrefs = [...out.matchAll(/ href="([^"]+)"/g)].map((m) => m[1]);
     expect(hrefs[0]).toBe(`#${ids[0]}`);
     expect(hrefs[1]).toBe("#elsewhere");
+  });
+});
+
+// ─── B. usage attributes inherited onto the root ────────────────────────────
+
+describe("B. a usage attribute that becomes a URL only on the root's real tag gets the URL check; every other one is inherited as written", () => {
+  const list: ComponentList = Object.fromEntries(
+    Object.entries({
+      "inh-object": `<object class="r" type="text/html" width="300" height="100"></object>`,
+      "inh-set": `<set attributeName="href" begin="0s"></set>`,
+      "inh-animate": `<animate attributeName="href" dur="1s"></animate>`,
+      "inh-iframe": `<iframe class="r" title="t"></iframe>`,
+      "inh-a": `<a class="r">go</a>`,
+      "inh-form": `<form class="r"><button>go</button></form>`,
+      "inh-div": `<div class="r">x</div>`,
+      "inh-meta": `<meta name="m"><div class="r">x</div>`,
+      "my-button": `<button class="btn" type="button">go</button>`,
+    }).map(([name, fileContent]) => [
+      name,
+      { fileName: `src/components/${name}.html`, fileContent },
+    ]),
+  );
+  const ROOT_TAG: Record<string, string> = {
+    "inh-object": "object",
+    "inh-set": "set",
+    "inh-animate": "animate",
+    "inh-iframe": "iframe",
+    "inh-a": "a",
+    "inh-form": "form",
+    "inh-div": "div",
+    "inh-meta": "div",
+    "my-button": "button",
+  };
+
+  /** The first element named `tag` in `html`, as the browser parses it. */
+  const findElement = (html: string, tag: string): Element | undefined => {
+    let found: Element | undefined;
+    const visit = (parent: ParentNode): void => {
+      for (const node of parent.childNodes) {
+        if (found) return;
+        if (!isElement(node)) continue;
+        if (node.tagName === tag) {
+          found = node;
+          return;
+        }
+        visit(node);
+      }
+    };
+    visit(
+      parse(`<!doctype html><html><head></head><body>${html}</body></html>`),
+    );
+    return found;
+  };
+  const attrsOf = (element: Element): Record<string, string> =>
+    Object.fromEntries(
+      element.attrs.map((attr) => [attrName(attr).toLowerCase(), attr.value]),
+    );
+
+  /** The attributes of the root element `name` renders, as the browser reads them. */
+  const rootAttrs = (html: string, name: string): Record<string, string> => {
+    const found = findElement(html, ROOT_TAG[name]);
+    if (!found) throw new Error(`no <${ROOT_TAG[name]}> root in ${html}`);
+    return attrsOf(found);
+  };
+
+  /** The attributes of the usage tag itself, as the browser reads them. */
+  const usageAttrs = (usage: string, name: string): Record<string, string> => {
+    const found = findElement(usage, name);
+    if (!found) throw new Error(`no <${name}> in ${usage}`);
+    return attrsOf(found);
+  };
+
+  type Case = { name: string; attr: string; value: string; svg?: boolean };
+  /**
+   * Attributes that are a URL only because of the root's real tag: html``
+   * saw `<inh-object data>` and could not know.
+   */
+  const TAG_DEPENDENT: Case[] = [
+    {
+      name: "inh-object",
+      attr: "data",
+      value: `data:text/html,<script>parent.postMessage('script ran: '+location.protocol,'*')</script>`,
+    },
+    { name: "inh-object", attr: "data", value: "javascript:alert(1)" },
+    { name: "inh-object", attr: "data", value: " java\tscript:alert(1)" },
+    { name: "inh-object", attr: "DATA", value: "JaVaScRiPt:alert(1)" },
+    {
+      name: "inh-set",
+      attr: "to",
+      value: "javascript:alert(1)",
+      svg: true,
+    },
+    {
+      name: "inh-animate",
+      attr: "values",
+      value: "/ok;javascript:alert(1)",
+      svg: true,
+    },
+  ];
+  /** Hand-written entities the browser decodes into a script URL on a tag-dependent attribute. */
+  const HAND_WRITTEN: Case[] = [
+    {
+      name: "inh-object",
+      attr: "data",
+      value: "&#100;ata:text/html,&lt;script&gt;alert(1)&lt;/script&gt;",
+    },
+    { name: "inh-object", attr: "data", value: "&#106;avascript:alert(1)" },
+    { name: "inh-object", attr: "data", value: "javascript&colon;alert(1)" },
+    { name: "inh-object", attr: "data", value: "java&Tab;script:alert(1)" },
+    { name: "inh-object", attr: "data", value: "&#x6A;avascript:alert(1)" },
+    { name: "inh-object", attr: "data", value: "&#106avascript:alert(1)" },
+    {
+      name: "inh-set",
+      attr: "to",
+      value: "&#106;avascript:alert(1)",
+      svg: true,
+    },
+  ];
+
+  const wrap = (c: Case, usage: string): string =>
+    c.svg ? `<svg><a>${usage}</a></svg>` : usage;
+  const handEscaped = (c: Case): string =>
+    wrap(c, `<${c.name} ${c.attr}="${escapeFull(c.value)}"></${c.name}>`);
+  const handWritten = (c: Case): string =>
+    wrap(c, `<${c.name} ${c.attr}="${c.value}"></${c.name}>`);
+  /** The usage as html`` writes it (it refuses no hole here). */
+  const viaHtml = (c: Case): string => {
+    const parts = [
+      `${c.svg ? "<svg><a>" : ""}<${c.name} ${c.attr}="`,
+      `"></${c.name}>${c.svg ? "</a></svg>" : ""}`,
+    ];
+    const strings = Object.assign([...parts], {
+      raw: [...parts],
+    }) as unknown as TemplateStringsArray;
+    return String(htmlTag(strings, c.value));
+  };
+
+  /** Both renders of one usage against `list`, with the warnings each logged. */
+  const renderBoth = async (
+    manifest: ComponentManifest,
+    usage: string,
+  ): Promise<{ out: string; where: string; warnings: string[] }[]> => {
+    const { html, host } = await renderAtRequest(manifest, usage);
+    const buildWarnings: string[] = [];
+    const built = renderAtBuild(list, usage, (m) => buildWarnings.push(m));
+    return [
+      {
+        out: html,
+        where: "request",
+        warnings: host.warnOnce.mock.calls.map((call) => String(call[1])),
+      },
+      { out: built, where: "build", warnings: buildWarnings },
+    ];
+  };
+
+  const expectBlocked = async (
+    manifest: ComponentManifest,
+    c: Case,
+    usage: string,
+    how: string,
+    failures: string[],
+  ): Promise<void> => {
+    const label = `${how} <${c.name} ${c.attr}=${JSON.stringify(c.value)}>`;
+    for (const { out, where, warnings } of await renderBoth(manifest, usage)) {
+      const got = rootAttrs(out, c.name)[c.attr.toLowerCase()];
+      if (got !== "about:invalid")
+        failures.push(
+          `${where} ${label}: ${c.attr}=${JSON.stringify(got)} (want about:invalid)`,
+        );
+      const sinks = view(out).sinks;
+      if (sinks.length > 0)
+        failures.push(`${where} ${label}: sinks ${sinks.join(" | ")}`);
+      const located = warnings.some(
+        (message) =>
+          message.includes(`<${c.name}> (`) &&
+          message.includes(`components/${c.name}.html): `) &&
+          message.includes(
+            `inherited attribute ${c.attr} received a URL that can run script`,
+          ),
+      );
+      if (!located)
+        failures.push(
+          `${where} ${label}: no located warning (got ${JSON.stringify(warnings)})`,
+        );
+    }
+  };
+
+  it("an html`` value on <object data> and on an SVG animation's to/values lands as about:invalid, with a located warning", async () => {
+    const manifest = await build(list);
+    const failures: string[] = [];
+    for (const c of TAG_DEPENDENT)
+      await expectBlocked(manifest, c, viaHtml(c), "html``", failures);
+    expect(failures, failures.join("\n")).toEqual([]);
+  });
+
+  it("the reported repro: html`<x-embed data=${q}>` with a data:text/html document onto an <object> root", async () => {
+    const manifest = await build(list);
+    const q = `data:text/html,<script>parent.postMessage('script ran: '+location.protocol,'*')</script>`;
+    const usage = String(htmlTag`<inh-object data="${q}"></inh-object>`);
+    const { html, host } = await renderAtRequest(manifest, usage);
+    expect(rootAttrs(html, "inh-object").data).toBe("about:invalid");
+    expect(host.warnOnce.mock.calls.map((call) => call[1])).toContain(
+      `[bascik] <inh-object> (components/inh-object.html): inherited attribute data received a URL that can run script (a javascript:, vbscript: or data: URL), so data on the root <object> is set to about:invalid. (in server-script output at "${HTTP_PATH}")`,
+    );
+  });
+
+  it("a hand-escaped value (the docs' full escaper) gets the same check", async () => {
+    const manifest = await build(list);
+    const failures: string[] = [];
+    for (const c of TAG_DEPENDENT)
+      await expectBlocked(manifest, c, handEscaped(c), "escaped", failures);
+    expect(failures, failures.join("\n")).toEqual([]);
+  });
+
+  it("hand-written entities are judged as the browser decodes them (&#106;, &colon;, &Tab;, no-semicolon numeric)", async () => {
+    const manifest = await build(list);
+    const failures: string[] = [];
+    for (const c of HAND_WRITTEN)
+      await expectBlocked(manifest, c, handWritten(c), "raw", failures);
+    expect(failures, failures.join("\n")).toEqual([]);
+  });
+
+  it.each([
+    [
+      "a page's own <my-button onclick> keeps its handler",
+      "my-button",
+      `<my-button onclick="go()"></my-button>`,
+    ],
+    [
+      "href was already a URL by name on <x-link>: javascript:void(0) onto an <a> root is unchanged",
+      "inh-a",
+      `<inh-a href="javascript:void(0)"></inh-a>`,
+    ],
+    [
+      "src and srcdoc onto an <iframe> root are inherited as written",
+      "inh-iframe",
+      `<inh-iframe src="javascript:alert(2)" srcdoc="&lt;script&gt;alert(document.domain)&lt;/script&gt;"></inh-iframe>`,
+    ],
+    [
+      "action onto a <form> root is inherited as written",
+      "inh-form",
+      `<inh-form action="javascript:alert(1)" onsubmit="check(event)"></inh-form>`,
+    ],
+    [
+      "style, handlers and unknown attributes onto a <div> root are inherited as written",
+      "inh-div",
+      `<inh-div style="background:url(javascript:alert(1)); width: expression(1)" onload="init()" ONMOUSEOVER="hover()" attributeName="x" http-equiv="refresh"></inh-div>`,
+    ],
+    [
+      "entities in a by-name URL are inherited as written",
+      "inh-a",
+      `<inh-a href="&#106;avascript:alert(1)"></inh-a>`,
+    ],
+  ])(
+    "%s, at build and request time, without a warning",
+    async (_label, name, usage) => {
+      const manifest = await build(list);
+      const wrote = usageAttrs(usage, name);
+      for (const { out, where, warnings } of await renderBoth(
+        manifest,
+        usage,
+      )) {
+        const attrs = rootAttrs(out, name);
+        for (const [attr, value] of Object.entries(wrote))
+          expect(attrs[attr], `${where} ${attr}`).toBe(value);
+        expect(warnings, where).toEqual([]);
+      }
+    },
+  );
+
+  it("a <meta> before the root never takes http-equiv or content: inheritance skips metadata elements", async () => {
+    const manifest = await build(list);
+    const usage = `<inh-meta http-equiv="refresh" content="0;url=javascript:alert(1)"></inh-meta>`;
+    for (const out of [
+      (await renderAtRequest(manifest, usage)).html,
+      renderAtBuild(list, usage),
+    ]) {
+      expect(out).toMatch(/<meta name="m">/);
+      expect(out).not.toMatch(/<meta[^>]*http-equiv/);
+    }
+  });
+
+  it("safe values are inherited unchanged and without a warning: https and relative URLs, an <object> file, class, id, aria-*, data-*, a plain style", async () => {
+    const manifest = await build(list);
+    const cases: [string, string, Record<string, string>][] = [
+      [
+        "inh-a",
+        `<inh-a href="https://example.com/x?a=1&amp;b=2#c" aria-label="Go" data-x="javascript:not-a-url" title="javascript:alert(1)"></inh-a>`,
+        {
+          href: "https://example.com/x?a=1&b=2#c",
+          "aria-label": "Go",
+          "data-x": "javascript:not-a-url",
+          title: "javascript:alert(1)",
+        },
+      ],
+      [
+        "inh-iframe",
+        `<inh-iframe src="/embed/1" loading="lazy"></inh-iframe>`,
+        { src: "/embed/1", loading: "lazy" },
+      ],
+      [
+        "inh-object",
+        `<inh-object data="files/a.pdf"></inh-object>`,
+        { data: "files/a.pdf" },
+      ],
+      [
+        "inh-object",
+        `<inh-object data="https://example.com/a.pdf?x=1&amp;y=2"></inh-object>`,
+        { data: "https://example.com/a.pdf?x=1&y=2" },
+      ],
+      [
+        "inh-form",
+        `<inh-form action="/search" method="get"></inh-form>`,
+        { action: "/search", method: "get" },
+      ],
+      [
+        "inh-div",
+        `<inh-div style="color: red; background: url(/bg.png)" onboarding-step="2" role="note" data="javascript:not-a-url-on-a-div"></inh-div>`,
+        {
+          style: "color: red; background: url(/bg.png)",
+          "onboarding-step": "2",
+          role: "note",
+          data: "javascript:not-a-url-on-a-div",
+        },
+      ],
+    ];
+    for (const [name, usage, expected] of cases) {
+      for (const { out, where, warnings } of await renderBoth(
+        manifest,
+        usage,
+      )) {
+        const attrs = rootAttrs(out, name);
+        for (const [attr, value] of Object.entries(expected))
+          expect(attrs[attr], `${where} ${name} ${attr}`).toBe(value);
+        expect(warnings, `${where} ${name}`).toEqual([]);
+      }
+    }
+  });
+
+  it(
+    "many inherited attributes on one usage are judged in linear time",
+    () => {
+      const usage = (count: number): string => {
+        let attrs = "";
+        for (let i = 0; i < count; i++)
+          attrs += ` on${String.fromCharCode(97 + (i % 26)).repeat(1 + Math.floor(i / 26))}="x" data-u${i}="javascript:${i}" data-k${i}="v"`;
+        return `<inh-object${attrs} data="${" ".repeat(count)}javascript:x" style="${"background:url(javascript:x);".repeat(count)}"></inh-object>`;
+      };
+      expectLinearTime(usage, 4000, (input) => renderAtBuild(list, input));
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  it(
+    "many usages with inherited script URLs and handlers are judged in linear time in their count",
+    async () => {
+      const manifest = await build(list);
+      const unit = `<inh-object data="data:text/html,x" onload="x" class="k"></inh-object><inh-iframe src="javascript:x" srcdoc="x"></inh-iframe>`;
+      await expectLinearTimeAsync(
+        (count) => unit.repeat(count),
+        200,
+        async (input) => (await renderAtRequest(manifest, input)).html,
+      );
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+});
+
+describe("B. a class or style merged onto the root never reads text an earlier inherited value carries", () => {
+  const list: ComponentList = Object.fromEntries(
+    Object.entries({
+      "x-badge": `<span>badge</span>`,
+      "x-sty": `<button class="b">go</button>`,
+      "scroll-list": `<ul class="list">x</ul>`,
+      "status-dot": `<span class="dot"></span>`,
+    }).map(([name, fileContent]) => [
+      name,
+      { fileName: `src/components/${name}.html`, fileContent },
+    ]),
+  );
+
+  /** The attributes of the first element in the body, as the browser reads them. */
+  const rootAttrs = (html: string): Record<string, string> => {
+    const doc = parse(
+      `<!doctype html><html><head></head><body>${html}</body></html>`,
+    );
+    const htmlEl = doc.childNodes.find(isElement)!;
+    const body = htmlEl.childNodes.filter(isElement)[1];
+    const root = body.childNodes.find(isElement);
+    if (!root) throw new Error(`no root element in ${html}`);
+    return Object.fromEntries(
+      root.attrs.map((attr) => [attrName(attr).toLowerCase(), attr.value]),
+    );
+  };
+
+  /** Both renders of one usage, with the warnings each logged. */
+  const renderBoth = async (
+    usage: string,
+  ): Promise<{ out: string; where: string; warnings: string[] }[]> => {
+    const manifest = await build(list);
+    const { html, host } = await renderAtRequest(manifest, usage);
+    const buildWarnings: string[] = [];
+    const built = renderAtBuild(list, usage, (m) => buildWarnings.push(m));
+    return [
+      {
+        out: html,
+        where: "request",
+        warnings: host.warnOnce.mock.calls.map((call) => String(call[1])),
+      },
+      { out: built, where: "build", warnings: buildWarnings },
+    ];
+  };
+
+  it.each([
+    [
+      "an html`` title holding ` class=x onfocus=...` before a literal class, on a root with no class",
+      " class=x onfocus=alert(document.domain) autofocus tabindex=1 ",
+      (q: string) =>
+        String(htmlTag`<x-badge title="${q}" class="big"></x-badge>`),
+      "title",
+      { class: "big" },
+    ],
+    [
+      "an html`` aria-label holding ` style=x onfocus=...` before a literal style, on a root with no style",
+      " style=x onfocus=document.title=document.domain autofocus ",
+      (q: string) =>
+        String(htmlTag`<x-sty aria-label="${q}" style="color:red"></x-sty>`),
+      "aria-label",
+      { class: "b", style: "color:red" },
+    ],
+    [
+      "a double-quote-escaped title holding ` class='x' onfocus=...` (the single-quoted variant)",
+      " class='x' onfocus=alert(1) autofocus ",
+      (q: string) =>
+        `<x-badge title="${q.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}" class="big"></x-badge>`,
+      "title",
+      { class: "big" },
+    ],
+    [
+      "a double-quote-escaped title holding ` style='x' onfocus=...` before a style",
+      " style='x' onfocus=alert(1) autofocus ",
+      (q: string) =>
+        `<x-badge title="${q.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}" style="color:red"></x-badge>`,
+      "title",
+      { style: "color:red" },
+    ],
+  ])(
+    "%s adds no handler, and the value round-trips",
+    async (_label, q, usageOf, carrier, expected) => {
+      for (const { out, where, warnings } of await renderBoth(usageOf(q))) {
+        const attrs = rootAttrs(out);
+        expect(Object.keys(attrs).sort(), `${where}: ${out}`).toEqual(
+          [carrier, ...Object.keys(expected)].sort(),
+        );
+        expect(attrs[carrier], where).toBe(q);
+        for (const [name, value] of Object.entries(expected))
+          expect(attrs[name], `${where} ${name}`).toBe(value);
+        expect(view(out).sinks, where).toEqual([]);
+        expect(warnings, where).toEqual([]);
+      }
+    },
+  );
+
+  it("a plain style with scroll-behavior, overscroll-behavior or a quoted 'Data: ...' string is inherited whole, without a warning", async () => {
+    for (const style of [
+      "overscroll-behavior: contain; max-height: 20rem",
+      "scroll-behavior: smooth",
+      "--caption: 'Data: Q3 sales'",
+    ]) {
+      const usage = `<scroll-list style="${style}"></scroll-list>`;
+      for (const { out, where, warnings } of await renderBoth(usage)) {
+        expect(rootAttrs(out).style, `${where} ${style}`).toBe(style);
+        expect(warnings, `${where} ${style}`).toEqual([]);
+      }
+    }
+  });
+
+  it(
+    "a merge after many values spelling class= and style=, and a style of many image-set() strings, are judged in linear time",
+    () => {
+      const usage = (count: number): string => {
+        let attrs = "";
+        for (let i = 0; i < count; i++)
+          attrs += ` data-k${i}=" class=x style=y class='z'"`;
+        return `<x-badge${attrs} class="big" style="${"--a: image-set('x.png' 1x, url(y.png) 2x".repeat(count)}"></x-badge>`;
+      };
+      expectLinearTime(usage, 4000, (input) => renderAtBuild(list, input));
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  it("an attribute that starts with on but is no event handler (online, one, onboarding) is inherited, without a warning", async () => {
+    const usage = `<status-dot online one="1" onboarding="step-2"></status-dot>`;
+    for (const { out, where, warnings } of await renderBoth(usage)) {
+      const attrs = rootAttrs(out);
+      expect(attrs.online, where).toBe("");
+      expect(attrs.one, where).toBe("1");
+      expect(attrs.onboarding, where).toBe("step-2");
+      expect(warnings, where).toEqual([]);
+    }
   });
 });
 

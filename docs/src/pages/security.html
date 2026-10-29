@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="How Bascik keeps request data from becoming code, what stays your job, and how html, raw, esc, safeUrl, json and CSP protect server and stream scripts."
+    />
+    <title>Security: Safe Server and Stream Scripts - Bascik Docs</title>
+  </head>
+
+  <body>
+    <docs-nav />
+
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
+
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/security");
+          </script>
+
+          <!-- Content rendered from docs/content/security.md at build time.
+             To update page content, edit the MD file - not this file. -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/security.md", {
+                to: "Search with html",
+              });
+          </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/security.md",
+                {
+                  from: "Search with html",
+                  to: "A malicious ?q= comes back as text",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+          <component-demo
+            data-bascik-prop-no-preview="true"
+            data-bascik-prop-file="src/pages/find.html"
+          >
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/security.md",
+                      "security-search-source-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/security.md",
+                      "security-search-output",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/security.md",
+                {
+                  from: "A malicious ?q= comes back as text",
+                  to: "The same page, attacked",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/security.md",
+                { from: "The same page, attacked", to: "The helpers" },
+                { stripDemoBlocks: true },
+              );
+          </script>
+          <component-demo
+            data-bascik-prop-no-preview="true"
+            data-bascik-prop-file="src/pages/find.html"
+          >
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/security.md",
+                      "security-search-source-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/security.md",
+                      "security-malicious-q-output",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/security.md",
+                { from: "The helpers" },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <docs-pagination />
+        </main>
+      </div>
+    </div>
+
+    <docs-footer />
+  </body>
+</html>

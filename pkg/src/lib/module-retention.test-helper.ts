@@ -17,7 +17,10 @@ import { execute } from "../../bench/profile-runner.ts";
 import { createFixtureTrust, http2Request } from "../../bench/profile-tls.ts";
 import type { ScriptRegistry } from "./script-registry.ts";
 import { analyzeRetentionHeap } from "./module-retention-heap.test-helper.ts";
-import { getLiveReloadScript } from "./live-reload.ts";
+import {
+  LIVE_RELOAD_VERSION_ATTR,
+  getLiveReloadScript,
+} from "./live-reload.ts";
 
 export function registryEntries(
   registry: ScriptRegistry,
@@ -1684,6 +1687,22 @@ export default function retentionShared129(request, context) { ${requestObservat
   const artifacts: { path: string; bytes: number; sha256: string }[] = [];
   let requestCount = 0;
   const origin = `${mode === "http2" ? "https" : "http"}://127.0.0.1:${port}`;
+  // A dev page's live-reload script carries the page's version, which counts
+  // up with every compile; the exact-bytes checks compare everything else.
+  // Only a page holds it: other bodies (binary assets) pass through as is.
+  const withoutPageVersion = (body: Buffer): Buffer =>
+    body.includes(LIVE_RELOAD_VERSION_ATTR)
+      ? Buffer.from(
+          body
+            .toString("utf8")
+            .replace(
+              new RegExp(` ${LIVE_RELOAD_VERSION_ATTR}="\\d+"`, "g"),
+              "",
+            ),
+        )
+      : body;
+  const readDistPage = async (path: string): Promise<Buffer> =>
+    withoutPageVersion(await readFile(path));
   async function readResponse(
     path: string,
   ): Promise<{ status: number; text: string; bytes: Buffer }> {
@@ -1692,15 +1711,14 @@ export default function retentionShared129(request, context) { ${requestObservat
         signal: AbortSignal.any([requests.signal, AbortSignal.timeout(10_000)]),
         headers: { connection: "close" },
       });
-      const bytes = Buffer.from(await response.arrayBuffer());
+      const bytes = withoutPageVersion(
+        Buffer.from(await response.arrayBuffer()),
+      );
       return { status: response.status, text: bytes.toString("utf8"), bytes };
     }
     const response = await http2Request(origin, path, fixtureCa);
-    return {
-      status: response.status,
-      text: response.body.toString("utf8"),
-      bytes: response.body,
-    };
+    const bytes = withoutPageVersion(response.body);
+    return { status: response.status, text: bytes.toString("utf8"), bytes };
   }
   const fixedRoutes: [string, string][] = [
     ["/inline", "inline"],
@@ -2044,7 +2062,7 @@ export default function retentionShared129(request, context) { ${requestObservat
         "utf8",
       );
       assert.deepEqual(
-        Buffer.from(distHtml),
+        withoutPageVersion(Buffer.from(distHtml)),
         expectedBuildDepDiskOutput(revision),
         "exact disk inline.html build-dependency bytes",
       );
@@ -2323,7 +2341,7 @@ export default function retentionShared129(request, context) { ${requestObservat
         // event is published before that write runs.
         await command("page-write-idle");
         assert.deepEqual(
-          await readFile(join(project, "dist/inline.html")),
+          await readDistPage(join(project, "dist/inline.html")),
           expectedInlineOutput(revision),
           "inline exact disk bytes",
         );
@@ -2340,7 +2358,7 @@ export default function retentionShared129(request, context) { ${requestObservat
         "external helper exact response bytes",
       );
       assert.deepEqual(
-        await readFile(join(project, "dist/external.html")),
+        await readDistPage(join(project, "dist/external.html")),
         expected,
         "external helper exact disk bytes",
       );
@@ -2442,9 +2460,10 @@ export default function retentionShared129(request, context) { ${requestObservat
       try {
         if (reader) {
           assert.equal(sse!.status, 200, "external helper SSE admission");
-          assert.equal(
+          // The server adds the stored page's version: `connected 12`.
+          assert.match(
             await nextFrame(),
-            "data: connected",
+            /^data: connected( \d+)?$/,
             "SSE armed before helper mutation",
           );
         }

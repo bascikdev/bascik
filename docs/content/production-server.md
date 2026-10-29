@@ -80,6 +80,10 @@ export default defineConfig({
 | `http.maxBodySize`  | `number`                 | `1048576` (1MB)      | Maximum payload byte size for API route requests                                   |
 | `http.tls`          | `object`                 | `{ enabled: false }` | TLS / HTTPS and HTTP/2 certificate configuration                                   |
 
+## Content-Security-Policy
+
+The server sends no CSP by default. Set [`contentSecurityPolicy`](/configuration#contentsecuritypolicy) to send one on every HTML response, built from your directives and each route's hashes from the build; `curl -I` shows it. See [Content Security Policy](/how-to/content-security-policy) for the recipe on this server and on other hosts.
+
 ## HTTP/2 & TLS Support
 
 Bascik supports native HTTP/2 over TLS with automatic fallback to HTTP/1.1:

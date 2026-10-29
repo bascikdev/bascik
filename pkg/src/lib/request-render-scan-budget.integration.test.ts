@@ -12,6 +12,7 @@
  * unescaped `<` that cuts every nested usage mid-tag, must fail fast with
  * the located RequestRenderError, at every size up to the 4 MiB limit.
  */
+import { installDataUrlResolveHook } from "./data-url-resolve-hook.ts";
 import { readdir, readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -166,6 +167,8 @@ const SCRIPT_RE =
 
 /** The outputs of every server and stream script in `page`, run as written. */
 const pageOutputs = async (page: string, url: string): Promise<string[]> => {
+  // The docs' scripts import @bascik/bascik/html; resolve it from a data: module as the servers do.
+  installDataUrlResolveHook(process.cwd());
   const outputs: string[] = [];
   for (const [, body] of page.matchAll(SCRIPT_RE)) {
     const module = (await import(

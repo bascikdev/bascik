@@ -347,7 +347,7 @@ Components with no matching file (3)
 
 Unused components (1)
   Defined but never referenced. Safe to delete, or referenced only from a
-  build, server or stream script, which this check cannot always see.
+  script this check cannot see (a src= module, or a tag name built in code).
 
   src/components/legacy-banner/legacy-banner.html
 

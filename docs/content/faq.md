@@ -206,6 +206,10 @@ Add `src/pages/404.html` for not found errors or `src/pages/500.html` for server
 
 Bascik supports custom error pages by convention without needing any configuration. In production server mode, `src/pages/500.html` is transpiled at boot and served whenever an internal error occurs. If absent, a minimal built-in document is served instead. For static sites, `dist/404.html` and `dist/500.html` are standard files ready for your static host or CDN.
 
+## How do I keep server scripts safe?
+
+Build every server and stream script's output with `html` from `@bascik/bascik/html`: `` return html`<p>${q}</p>` ``. It escapes each value for where it lands, turns `javascript:` URLs into `about:invalid`, and throws on places escaping cannot make safe, such as an `onclick` value or a `<script>` body. Sanitize CMS or Markdown HTML, then insert it with `raw()`; give client scripts data through `data-*` attributes or `json()`; and turn on a Content-Security-Policy with the `contentSecurityPolicy` option. The linter warns about templates that skip `html`. See [Security](/security) for the whole picture and [HTML Helpers](/html-helpers) for the API.
+
 ## How do I generate pages dynamically from a CMS, database, or API?
 
 Use [Dynamic Routes](/dynamic-routes). Create a template file with bracket parameter syntax in its filename (such as `src/pages/blog/[slug].html` or `src/pages/products/[id].html`) and add a `<script data-bascik-routes>` script.

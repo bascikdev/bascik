@@ -31,8 +31,13 @@ import {
 import { DEFAULT_SCRIPT_TIMEOUT_MS } from "./server-scripts.ts";
 import { createHash } from "node:crypto";
 import type {
+  ContentSecurityPolicyConfig,
+  CspRouteHashes,
+} from "./content-security-policy.ts";
+import type {
   SiteGraph,
   SiteGraphComponents,
+  SiteGraphContentSecurityPolicy,
   SiteGraphPage,
   SiteGraphJob,
   SiteGraphApiRoute,
@@ -201,6 +206,7 @@ export interface ReadSiteGraphOptions {
   onServerScriptError?: "error" | "warn" | "ignore";
   pagesDir?: string;
   apiDir?: string;
+  contentSecurityPolicy?: ContentSecurityPolicyConfig;
 }
 
 export const readSiteGraph = async (
@@ -399,6 +405,27 @@ export const readSiteGraph = async (
     }),
   )}`;
 
+  // Opt-in contentSecurityPolicy: the policy, every route's build hashes,
+  // and the static pages a host serves without its runtime.
+  let contentSecurityPolicy: SiteGraphContentSecurityPolicy | undefined;
+  const policy =
+    options.contentSecurityPolicy ?? BascikConfig?.contentSecurityPolicy;
+  if (policy) {
+    let hashes: Record<string, CspRouteHashes> = {};
+    try {
+      hashes = JSON.parse(
+        await readFile(join(distDir, ".bascik", "csp-hashes.json"), "utf8"),
+      ) as Record<string, CspRouteHashes>;
+    } catch {
+      hashes = {};
+    }
+    const staticRoutes = publicFiles
+      .filter((rel) => /\.html?$/i.test(rel))
+      .map((rel) => getHttpPath(rel, pagesDir))
+      .sort();
+    contentSecurityPolicy = { policy, hashes, staticRoutes };
+  }
+
   return {
     base,
     release,
@@ -411,5 +438,6 @@ export const readSiteGraph = async (
     custom500,
     importRoot,
     ...(components ? { components } : {}),
+    ...(contentSecurityPolicy ? { contentSecurityPolicy } : {}),
   };
 };

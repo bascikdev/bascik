@@ -4,6 +4,11 @@
  * Hosting adapter contract and types for Bascik serverless targets (prompt 142).
  */
 
+import type {
+  ContentSecurityPolicyConfig,
+  CspRouteHashes,
+} from "./content-security-policy.ts";
+
 export interface SiteGraphJob {
   id: string;
   mode: "server" | "stream";
@@ -65,6 +70,19 @@ export interface SiteGraph {
   importRoot: string; // absolute; for adapters that bundle
   /** Present exactly when the build wrote dist/.bascik/components.json (sites with server or stream scripts). */
   components?: SiteGraphComponents;
+  /**
+   * Present exactly when `contentSecurityPolicy` is set: the policy, each
+   * route's build hashes (csp-hashes.json, widened for request-time
+   * components), and the HTTP paths of the static pages, which a host that
+   * serves them without the runtime must cover another way.
+   */
+  contentSecurityPolicy?: SiteGraphContentSecurityPolicy;
+}
+
+export interface SiteGraphContentSecurityPolicy {
+  policy: ContentSecurityPolicyConfig;
+  hashes: Record<string, CspRouteHashes>;
+  staticRoutes: string[];
 }
 
 export interface AdapterBuildContext {

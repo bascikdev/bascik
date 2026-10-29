@@ -299,11 +299,14 @@ inc.addEventListener("click", () => {
   <!-- 2. Async backend finishes, flushes straight into the open connection -->
   <div class="slot">
     <script data-bascik-stream>
-      import { escape } from "@/lib/server.ts";
+      import { html } from "@bascik/bascik/html";
 
       export default async function (request, context, { signal }) {
         const stats = await fetchDatabaseStats({ signal });
-        return `<article class="card"><h3>${escape(stats.cluster)}</h3><p>99.99% Uptime</p></article>`;
+        return html`<article class="card">
+          <h3>${stats.cluster}</h3>
+          <p>99.99% Uptime</p>
+        </article>`;
       }
     </script>
   </div>

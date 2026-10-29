@@ -12,7 +12,7 @@ import {
 } from "@bascik/bascik/adapter";
 import { resolve, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdir, copyFile, writeFile } from "node:fs/promises";
+import { mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
 import {
   CLOUDFLARE_COMPATIBILITY_DATE,
   CLOUDFLARE_COMPATIBILITY_FLAGS,
@@ -21,6 +21,7 @@ import {
   formatUnsupportedImport,
 } from "./compat.js";
 import { resolveWorkerName } from "./config.js";
+import { buildCspHeadersRules, countHeadersRules } from "./csp-headers.js";
 import { build as esbuildBuild } from "esbuild";
 import { manifestHasComponents } from "@bascik/bascik/runtime";
 
@@ -227,6 +228,17 @@ export const build = async (
     lines.push(
       `  components: { manifest: componentManifest, jobs: componentJobs },`,
     );
+  // Opt-in contentSecurityPolicy: the policy and the hashes of the pages
+  // the Worker renders (static pages get _headers rules below).
+  const csp = graph.contentSecurityPolicy;
+  if (csp) {
+    const workerHashes: Record<string, unknown> = {};
+    for (const path of Object.keys(graph.pages))
+      if (csp.hashes[path]) workerHashes[path] = csp.hashes[path];
+    lines.push(
+      `  contentSecurityPolicy: { policy: ${JSON.stringify(csp.policy)}, hashes: ${JSON.stringify(workerHashes)} },`,
+    );
+  }
   lines.push(`};`);
   lines.push(`export default createCloudflareWorker(graph);`);
 
@@ -340,6 +352,30 @@ export const build = async (
     if (!resolve(to).startsWith(publicDir + sep)) continue;
     await mkdir(dirname(to), { recursive: true });
     await copyFile(from, to);
+  }
+
+  // Static pages are served without the Worker: their CSP header goes into
+  // public/_headers, after the author's own rules.
+  if (csp) {
+    const headersPath = join(publicDir, "_headers");
+    let authored = "";
+    try {
+      authored = await readFile(headersPath, "utf8");
+    } catch {
+      authored = "";
+    }
+    const rules = buildCspHeadersRules({
+      policy: csp.policy,
+      hashes: csp.hashes,
+      staticRoutes: csp.staticRoutes,
+      base: graph.base,
+      authoredRules: countHeadersRules(authored),
+    });
+    await writeFile(
+      headersPath,
+      authored === "" ? rules : `${authored.replace(/\s*$/, "")}\n\n${rules}`,
+      "utf8",
+    );
   }
 
   const invocationRoutes = buildInvocationRoutes({
