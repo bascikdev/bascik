@@ -185,6 +185,56 @@ describe("measureGrowth", () => {
     expect(q.runs).toBeGreaterThan(1);
     expect(q.growth).toBeCloseTo(16, 9);
   });
+
+  // Windows counts a thread's CPU time in scheduler ticks of 15.625 ms: a
+  // run shorter than a tick reads 0. Read as "too fast to time", that sent
+  // calibration straight to MAX_RUNS, and a check whose run takes 5 ms spent
+  // minutes per sample (CI's Windows unit job ran for over an hour).
+  const TICK_MS = 15.625;
+  const tickClock = (cost: (n: number) => number) => {
+    let spent = 0;
+    let total = 0;
+    const clock = (fn: () => unknown): number => {
+      spent = 0;
+      fn();
+      total += spent;
+      return Math.floor(spent / TICK_MS) * TICK_MS;
+    };
+    const run = (html: string) => {
+      spent += cost(html.length);
+    };
+    return { clock, run, total: () => total };
+  };
+
+  it("doubles the runs, not jumps to MAX_RUNS, while a coarse clock reads nothing", () => {
+    const linear = tickClock((n) => n / 40_000);
+    const { runs, growth } = measureGrowth(
+      input,
+      SIZE,
+      linear.run,
+      linear.clock,
+    );
+    expect(runs).toBeLessThanOrEqual(16);
+    expect(growth).toBeLessThan(MAX_GROWTH);
+    expect(linear.total()).toBeLessThan(2_000);
+    const quadratic = tickClock((n) => (n / 40_000) ** 2 / 5);
+    expect(
+      measureGrowth(input, SIZE, quadratic.run, quadratic.clock).growth,
+    ).toBeGreaterThan(MAX_GROWTH);
+  });
+
+  it("calibrates a cost ratio on a coarse clock without jumping to MAX_RUNS", () => {
+    const work = tickClock((n) => n);
+    const { runs, ratio } = measureCostRatio(
+      () => work.run("x".repeat(6)),
+      () => work.run("x".repeat(2)),
+      work.clock,
+    );
+    expect(runs).toBeLessThan(MAX_RUNS / 10);
+    expect(ratio).toBeGreaterThan(2);
+    expect(ratio).toBeLessThan(4);
+    expect(work.total()).toBeLessThan(5_000);
+  });
 });
 
 // On the real clock: a quadratic scan of a few thousand items, against a

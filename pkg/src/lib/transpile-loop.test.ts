@@ -333,9 +333,13 @@ describe("close and closer look-alikes keep unclosed usages linear", () => {
       // usages, so their cost is measured as a baseline (no padding) and the
       // growth is taken over it: the re-mask per usage this guards against
       // grows with the padding and reads about 16.
+      // The scan budget above bounds the work on any machine; the default
+      // 2 s ceiling on a 1M-character run is a machine bound, which CI's
+      // Linux runner under coverage passed at 2.26 s.
       expectLinearTime(make, 1_000_000, expandWithin, {
         label,
         baseline: make(0),
+        ceilingMs: 10_000,
       });
     },
     LINEAR_TIME_TIMEOUT_MS,

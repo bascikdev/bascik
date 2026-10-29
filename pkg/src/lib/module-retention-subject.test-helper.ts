@@ -1162,6 +1162,20 @@ async function sample(
   global.gc!();
   await nextTurn();
   global.gc!();
+  // A keep-alive connection lets go of its last request when the socket's
+  // close is processed, which on a loaded runner can land after two turns
+  // (CI once read one request and its context live here). A leak never
+  // clears, so wait a bounded while for releases that are only late.
+  const anyLive = (references: WeakRef<object>[]) =>
+    references.some((reference) => reference.deref());
+  for (
+    let attempt = 0;
+    attempt < 20 && (anyLive(requestRefs) || anyLive(requestClosureRefs));
+    attempt++
+  ) {
+    await delay(25);
+    global.gc!();
+  }
   const memory = process.memoryUsage();
   const currentPlans = new Set(
     mem

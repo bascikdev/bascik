@@ -202,23 +202,36 @@ const growthOf = (
 };
 
 /**
+ * Runs for the next step after one that read no time at all. Windows counts
+ * a thread's CPU time in 15.625 ms scheduler ticks, so a run shorter than a
+ * tick reads 0: that says nothing about how short it is, and taken as
+ * "too fast to time" it sent calibration straight to `MAX_RUNS` of a run
+ * that took milliseconds. Doubling reaches one tick in a few steps.
+ */
+const growRuns = (runs: number): number => Math.min(MAX_RUNS, runs * 2);
+
+/**
  * Runs for the next calibration step, after `runs` runs took `ms`, of which
  * `varyingMs` over the baseline: enough for `MIN_SAMPLE_MS` of it with room
  * for a run that gets faster once compiled, at least twice as many, at most
  * `MAX_RUNS`, and no more than fit in `MAX_SAMPLE_MS`.
  */
 const nextRuns = (runs: number, ms: number, varyingMs: number): number =>
-  Math.max(
-    runs,
-    Math.min(
-      MAX_RUNS,
-      Math.floor((runs * MAX_SAMPLE_MS) / Math.max(ms, 0.001)),
-      Math.max(
-        runs * 2,
-        Math.ceil((runs * MIN_SAMPLE_MS * 1.5) / Math.max(varyingMs, 0.001)),
-      ),
-    ),
-  );
+  ms <= 0
+    ? growRuns(runs)
+    : Math.max(
+        runs,
+        Math.min(
+          MAX_RUNS,
+          Math.floor((runs * MAX_SAMPLE_MS) / Math.max(ms, 0.001)),
+          Math.max(
+            runs * 2,
+            Math.ceil(
+              (runs * MIN_SAMPLE_MS * 1.5) / Math.max(varyingMs, 0.001),
+            ),
+          ),
+        ),
+      );
 
 const LOG = process.env.BASCIK_LINEAR_TIME_LOG;
 const log = (growth: Growth): Growth => {
@@ -464,15 +477,19 @@ function* costSamplesOf(): Generator<
   let runs = 1;
   let referenceMs = yield { reference: true, runs };
   while (referenceMs < COST_MIN_SAMPLE_MS && runs < MAX_RUNS) {
-    runs = Math.min(
-      MAX_RUNS,
-      Math.max(
-        runs * 2,
-        Math.ceil(
-          (runs * COST_MIN_SAMPLE_MS * 1.5) / Math.max(referenceMs, 0.001),
-        ),
-      ),
-    );
+    runs =
+      referenceMs <= 0
+        ? growRuns(runs)
+        : Math.min(
+            MAX_RUNS,
+            Math.max(
+              runs * 2,
+              Math.ceil(
+                (runs * COST_MIN_SAMPLE_MS * 1.5) /
+                  Math.max(referenceMs, 0.001),
+              ),
+            ),
+          );
     referenceMs = yield { reference: true, runs };
   }
   let runMs = Infinity;
