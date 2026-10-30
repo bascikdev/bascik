@@ -149,7 +149,7 @@ When locating behavior or tracing dependencies in `pkg/`, use the `bascik-code-n
 This repo ships its own agent customizations. Know which is which before editing:
 
 - `.github/copilot-instructions.md` (this file): repo-wide rules, always loaded.
-- `.github/skills/<name>/SKILL.md`: 12 project skills (Bascik-specific domain knowledge such as `bascik-css-scoping`, `bascik-server-architecture`, `bascik-playwright-e2e`). These are authored in-repo and safe to edit.
+- `.github/skills/<name>/SKILL.md`: Use the project skills (Bascik-specific domain knowledge such as `bascik-css-scoping`, `bascik-server-architecture`, `bascik-playwright-e2e`). These are authored in-repo and safe to edit.
 - `.github/agents/*.agent.md`: 8 agent definitions (developer, docs, planner, PR reviewer, pre-push, profiler, regression, supervisor).
 - `.agents/skills/<name>/SKILL.md`: 3 externally sourced skills (`playwright-cli`, `specmap`, `vitest`) tracked by `skills-lock.json` with a `computedHash`. Do not hand-edit these; the lock file records their upstream source and hash.
 - `skills/<name>/SKILL.md`: 9 public, user-facing skills (8 bundled by `create-bascik`, plus the opt-in `bascik-refactor`) for people building with Bascik (not for working on this repo). See "Public Agent Skills" above.
