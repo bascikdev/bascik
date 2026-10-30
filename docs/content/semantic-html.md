@@ -4,6 +4,12 @@ Bascik is built on web standards: HTML, CSS, and JavaScript as browsers ship the
 
 Bascik ships the code you wrote. A component tag is replaced by its template, and the elements in that template are the elements visitors get. Bascik never adds a wrapper, never turns a `<nav>` into a `<div>`, and never turns a `<div>` into a `<nav>`. The choice of element is yours, and Bascik keeps it.
 
+## Tag Names Never Reach the Browser
+
+`<site-nav>` and `<faq-item>` exist only in your source. At build time each one is replaced by its template, so the browser, search engines, and screen readers never see the tag name. A component tag does not have to be a semantic element, and it cannot be one: what visitors get is the root element and the markup inside it. That markup is where the HTML standard's elements belong.
+
+Still name a component after what it is. `<site-nav>`, `<product-card>`, and `<faq-item>` read like the page they build, so a page made of components reads almost like an outline. `<blue-box>` or `<wrapper-2>` says nothing. A good name often echoes its root element: `<site-nav>` has a `<nav>` root, and `<faq-item>` has a `<details>` root. The name is for the people reading your code, and the root element is for everyone else.
+
 ## Why It Matters
 
 - **Accessibility comes with it.** A `<button>` is focusable, works with Enter and Space, and is announced as a button. A `<nav>` is a landmark a screen reader lists and jumps to. You get this from the element, with no ARIA and no script.

@@ -2,7 +2,10 @@
  * /semantic-html (Collin 2026-10-29: "Bascik is all about web standards, which also means an emphasis on semantic
  * HTML. Not sure our docs or skills mention this, but it should.")
  *
- * - The page is in the Overview section of the nav, right after "Why Bascik", and its h1 is its nav label.
+ * - The page is in the Components section of the nav, right after "The name Attribute", and its h1 is its nav label
+ *   (Collin 2026-10-30: it belongs with components, not the Overview).
+ * - It says component tag names never reach the browser, so the tag need not be semantic; the root element and its
+ *   markup must be. Tags are still named after what they are, for readability.
  * - It says Bascik ships the element you wrote and never rewrites or rejects markup: it guides and warns.
  * - It links to the HTML standard (WHATWG) and MDN, and covers landmarks, headings, buttons and links, lists, tables,
  *   figure, time, address, labels with fieldset and legend, native elements before ARIA, alt, and lang.
@@ -32,13 +35,16 @@ const prose = (text: string): string =>
     .replace(/\s+/g, " ");
 
 describe("/semantic-html", () => {
-  it("sits in Overview right after Why Bascik, with an h1 equal to its label", () => {
-    const overview = NAV.find((s) => s.section === "Overview")!;
-    const hrefs = overview.pages.map((p) => p.href);
+  it("sits in Components right after The name Attribute, with an h1 equal to its label", () => {
+    const components = NAV.find((s) => s.section === "Components")!;
+    const hrefs = components.pages.map((p) => p.href);
     expect(hrefs.indexOf("/semantic-html")).toBe(
-      hrefs.indexOf("/why-bascik") + 1,
+      hrefs.indexOf("/name-attribute") + 1,
     );
-    const entry = overview.pages.find((p) => p.href === "/semantic-html")!;
+    expect(
+      NAV.filter((s) => s.pages.some((p) => p.href === "/semantic-html")),
+    ).toHaveLength(1);
+    const entry = components.pages.find((p) => p.href === "/semantic-html")!;
     expect(entry.label).toBe("Semantic HTML");
     expect(md.split("\n")[0]).toBe("# Semantic HTML");
   });
@@ -78,6 +84,15 @@ describe("/semantic-html", () => {
       expect(md, topic).toContain(topic);
     expect(md).toMatch(/\]\(https:\/\/html\.spec\.whatwg\.org\/multipage\//);
     expect(md).toMatch(/\]\(https:\/\/developer\.mozilla\.org\/en-US\//);
+  });
+
+  it("says tag names never reach the browser, and to name tags after what they are", () => {
+    const text = prose(md);
+    expect(md).toContain("\n## Tag Names Never Reach the Browser\n");
+    expect(text).toMatch(/never see the tag name/);
+    expect(text).toMatch(/does not have to be a semantic element/);
+    expect(text).toMatch(/name a component after what it is/);
+    expect(text).not.toMatch(/tag names? (must|should) be semantic/i);
   });
 
   it("says an attribute already on the root wins over the usage tag's", () => {
