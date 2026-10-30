@@ -51,9 +51,20 @@ export const importUserConfig = async (
 const syntaxErrorLocation = (configPath: string, err: unknown): string => {
   if (!(err instanceof Error) || err.name !== "SyntaxError") return "";
   if (![".js", ".mjs"].includes(extname(configPath))) return "";
-  const result = spawnSync(process.execPath, ["--check", configPath], {
-    encoding: "utf8",
-  });
+  const check = (flags: string[]) =>
+    spawnSync(process.execPath, [...flags, "--check", configPath], {
+      encoding: "utf8",
+    });
+  let result = check([]);
+  // Node 22 passes `--check` on a .js file with no package.json "type" when the module syntax it guesses also
+  // fails to parse; the import above still threw. Check it again as a module. The message must match the import's
+  // error, so a CommonJS file never gets a location from this.
+  if (
+    result.status === 0 &&
+    extname(configPath) === ".js" &&
+    process.allowedNodeEnvironmentFlags.has("--experimental-default-type")
+  )
+    result = check(["--experimental-default-type=module"]);
   if (result.status === 0 || !result.stderr) return "";
   return checkOutputLocation(result.stderr, configPath, err.message);
 };
