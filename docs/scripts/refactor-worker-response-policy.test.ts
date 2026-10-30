@@ -380,9 +380,10 @@ describe("scanning for inline code without regular-expression backtracking", () 
  * long reads 0), keeps the fastest of `SAMPLES` interleaved samples of each, plus up to `EXTRA_SAMPLES` more while the
  * growth is in the band load reaches on linear work, and requires the growth to stay under `MAX_GROWTH`. Linear work
  * grows about 4 times; quadratic about 16. Growth does not depend on the machine's speed, so a loaded runner does not
- * flake it.
+ * flake it. Linear work reads up to twice 4 where the CPU cache holds the quarter size but not the full size (CI read
+ * 9.2), so the bar is 12.
  */
-const MAX_GROWTH = 8;
+const MAX_GROWTH = 12;
 const MIN_SAMPLE_MS = 25;
 const TICKS_PER_SAMPLE = 16;
 const MAX_RUNS = 2_000;
@@ -391,7 +392,7 @@ const CEILING_MS = 2_000;
 const SAMPLES = 3;
 const EXTRA_SAMPLES = 6;
 const RESAMPLE_ABOVE = 5;
-const RESAMPLE_BELOW = 12;
+const RESAMPLE_BELOW = 14;
 const LINEAR_TIME_TIMEOUT_MS = 60_000;
 
 // This thread's CPU time (Node 23.9 and later), else the process's: the process's also counts V8's GC threads.

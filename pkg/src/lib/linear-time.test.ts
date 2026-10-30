@@ -89,6 +89,29 @@ describe("measureGrowth", () => {
     expect(measureGrowth(input, SIZE, run, clock).growth).toBe(16);
   });
 
+  // A linear scan slows per character once its input and output outgrow the
+  // CPU cache: the Node 22.22 lane on CI read growths of 8.1, 8.1 and 9.2
+  // for linear masking at 200k characters, never above 5.2 locally, where
+  // the cache holds both sizes.
+  it("passes linear work that runs 2.3 times slower per character at full size", () => {
+    const { clock, run } = fakeClock(
+      (n) => (n / 2_000) * (n === SIZE ? 2.3 : 1),
+    );
+    const growth = measureGrowth(input, SIZE, run, clock);
+    expect(growth.growth).toBeCloseTo(9.2, 9);
+    expect(() => expectGrowth(growth)).not.toThrow();
+  });
+
+  it("fails work whose quadratic term is three quarters of the quarter-size run", () => {
+    // 4 × 1/4 + 16 × 3/4 = 13.
+    const { clock, run } = fakeClock(
+      (n) => n / 2_000 + 3 * ((n / 2_000) ** 2 / 25),
+    );
+    const growth = measureGrowth(input, SIZE, run, clock);
+    expect(growth.growth).toBeCloseTo(13, 9);
+    expect(() => expectGrowth(growth)).toThrow(/\(growth\)/);
+  });
+
   it("repeats a quarter-size run under the noise floor until the sample is measurable", () => {
     // 0.06 ms at a quarter size: a single run against the 5 ms floor would
     // put quadratic growth at 0.2, and linear work at 0.05.

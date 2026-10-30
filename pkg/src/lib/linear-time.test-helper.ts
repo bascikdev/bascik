@@ -26,8 +26,16 @@
 import { appendFileSync } from "node:fs";
 import { TestRunner, expect, inject } from "vitest";
 
-/** Linear work grows about 4 times when the input quadruples. */
-export const MAX_GROWTH = 8;
+/**
+ * Linear work grows about 4 times when the input quadruples, and quadratic
+ * work about 16 (15.5 to 16.3 measured). Linear work can read twice 4 where
+ * the CPU cache holds the quarter-size input and its output but not the
+ * full-size ones, which then run slower per character: the Node 22.22 lane
+ * on CI read 8.1, 8.1 and 9.2 for linear masking at 200k characters, which
+ * an earlier bar of 8 failed. 12 leaves room on both sides, and still fails
+ * work whose quadratic term is three quarters of the quarter-size run (13).
+ */
+export const MAX_GROWTH = 12;
 /**
  * Each quarter-size sample repeats the run until it takes at least this long,
  * and each full-size sample repeats it a quarter as many times. Timed once, a
@@ -65,11 +73,12 @@ export const SAMPLES = 3;
  * checks read 5.2 at most; under a loaded machine (other test workers, busy
  * processes, a thread moved to an efficiency core) some read 6 to 7 after
  * three pairs, and about 4 after more. Quadratic work reads 16, above the
- * band, and fails without them.
+ * band, and fails without them. The band reaches past `MAX_GROWTH`, so a
+ * growth that noise lifted just over it is sampled again before it fails.
  */
 export const EXTRA_SAMPLES = 6;
 export const RESAMPLE_ABOVE = 5;
-export const RESAMPLE_BELOW = 12;
+export const RESAMPLE_BELOW = 14;
 const inResampleBand = (growth: number): boolean =>
   growth > RESAMPLE_ABOVE && growth < RESAMPLE_BELOW;
 /**
