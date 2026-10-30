@@ -1795,6 +1795,31 @@ describe("prefixElementAttribute – name attribute: meta element shielding", ()
     expect(result.fileContent).toContain('<meta charset="UTF-8" />');
   });
 
+  it("with name scoping opted in, scopes <details name> per instance like every other name", () => {
+    // The name pass runs only when `scoping.attributes.name` is true (off by
+    // default). Opted in, it keeps the long-standing behavior: each instance's
+    // `<details name>` is its own exclusive group, and only <meta> is shielded.
+    const c = makeComponent(
+      [
+        `<details name="faq" class="item"><summary>Q</summary><input name="email"></details>`,
+        `<DETAILS\n  open\n  name='faq'><summary>Q2</summary></DETAILS>`,
+        `<details-panel name="x"></details-panel>`,
+      ].join("\n"),
+    );
+    const a = prefixElementAttribute({ ...c }, "name", "aaaa1111");
+    const b = prefixElementAttribute({ ...c }, "name", "bbbb2222");
+    for (const result of [a, b]) {
+      expect(result.fileContent).not.toMatch(/name=["']faq["']/);
+      expect(result.fileContent).not.toContain(`name="email"`);
+      expect(result.fileContent).not.toContain(`name="x"`);
+    }
+    const groupOf = (html: string) =>
+      [...html.matchAll(/name=["']([^"']*faq)["']/gi)].map((m) => m[1]);
+    // Both details of one instance share a group; the two instances differ.
+    expect(new Set(groupOf(a.fileContent)).size).toBe(1);
+    expect(groupOf(a.fileContent)[0]).not.toBe(groupOf(b.fileContent)[0]);
+  });
+
   it("leaves no sentinel tokens in the output", () => {
     const c = makeComponent(
       `<meta name="viewport" content="width=device-width" /><input name="field" />`,

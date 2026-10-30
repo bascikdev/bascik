@@ -935,6 +935,19 @@ for (const config of [
       );
     });
 
+    it("names: a name bound to a prop renders per copy and a literal name ships as written, the same on both hosts", async () => {
+      const { node: n, cf } = await both("/components-names");
+      expect(cf.status).toBe(200);
+      expect(cf.body).toBe(n.body);
+      expect(markup(cf.body)).not.toContain("<bound-radios");
+      expect(markup(cf.body)).not.toContain("<plain-radios");
+      expect(cf.body.match(/name="?front"?[\s>]/g)).toHaveLength(2);
+      expect(cf.body.match(/name="?back"?[\s>]/g)).toHaveLength(2);
+      expect(cf.body.match(/name="?size"?[\s>]/g)).toHaveLength(4);
+      expect(cf.body).not.toMatch(/name="?bascik__/);
+      expect(cf.body).not.toContain("data-bascik-attr-name");
+    });
+
     it("budgets: 1000 instances and 64 nested jobs render; 1001 instances and 65 nested jobs are the 500 page on both hosts", async () => {
       for (const [query, status] of [
         ["?n=1000", 200],

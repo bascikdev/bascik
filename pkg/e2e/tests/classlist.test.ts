@@ -178,56 +178,43 @@ test.describe("scope-test page", () => {
 
   // ── 5. setAttribute("name") ────────────────────────────────────────────
   //
-  // Bascik scopes setAttribute("name", value) when the value is a name that
-  // appears in the component's static HTML. Both "username" and "email" appear
-  // in the HTML (email via the sentinel hidden input), so both are scoped.
-  // Scoped names include a per-instance hash:
-  //   bascik__scope-test__<hash>__username
-  // We match with a loose /bascik__scope-test__/ prefix + suffix pattern.
+  // `name` ships as written (scoping.attributes.name is off by default), so
+  // the markup and setAttribute("name", value) both keep the authored value.
+  // The opt-in, where both are scoped per instance, is covered on the base
+  // fixture (base-name-scoping.test.ts).
 
-  test('setAttribute("name"): initial field name is scoped', async ({
+  test('setAttribute("name"): initial field name is as written', async ({
     page,
   }) => {
     const { a } = getInstances(page);
-    await expect(field(a)).toHaveAttribute(
-      "name",
-      /bascik__scope-test__.+__username/,
-    );
+    await expect(field(a)).toHaveAttribute("name", "username");
   });
 
-  test('setAttribute("name"): changes field name to scoped email on instance A', async ({
+  test('setAttribute("name"): changes field name to email on instance A', async ({
     page,
   }) => {
     const { a } = getInstances(page);
     await btn(a, "set-name-btn").click();
-    await expect(field(a)).toHaveAttribute(
-      "name",
-      /bascik__scope-test__.+__email/,
-    );
+    await expect(field(a)).toHaveAttribute("name", "email");
   });
 
-  test('setAttribute("name"): resets field name to scoped username on instance A', async ({
+  test('setAttribute("name"): resets field name to username on instance A', async ({
     page,
   }) => {
     const { a } = getInstances(page);
     await btn(a, "set-name-btn").click();
     await btn(a, "reset-name-btn").click();
-    await expect(field(a)).toHaveAttribute(
-      "name",
-      /bascik__scope-test__.+__username/,
-    );
+    await expect(field(a)).toHaveAttribute("name", "username");
   });
 
   test('setAttribute("name"): does not affect instance B field name', async ({
     page,
   }) => {
     const { a, b } = getInstances(page);
-    // A gets set to email, B must remain scoped username.
+    // A gets set to email, B must keep username.
     await btn(a, "set-name-btn").click();
-    await expect(field(b)).toHaveAttribute(
-      "name",
-      /bascik__scope-test__.+__username/,
-    );
+    await expect(field(a)).toHaveAttribute("name", "email");
+    await expect(field(b)).toHaveAttribute("name", "username");
     // A's name must not be the same value as B's (instance isolation).
     const aName = await field(a).getAttribute("name");
     const bName = await field(b).getAttribute("name");

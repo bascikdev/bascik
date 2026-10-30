@@ -37,7 +37,7 @@ export const KNOWN_DEFAULTS = {
   "scoping.inheritAttributes": true,
   "scoping.attributes.class": true,
   "scoping.attributes.id": true,
-  "scoping.attributes.name": true,
+  "scoping.attributes.name": false,
   "scoping.preserve": ["code"],
   "scoping.deduplicateCss": true,
   "assets.inlineStyles": false,

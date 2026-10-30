@@ -1980,11 +1980,37 @@ suite("Extension Integration Suite", () => {
       );
     });
 
-    test("warns when a component external form does not preserve name attributes", async () => {
+    test("does not warn for a component external form when name ships as written (the default)", async () => {
+      const workspaceFolder = getWorkspaceFolder("primary");
+      const doc = await vscode.workspace.openTextDocument(
+        vscode.Uri.file(
+          path.join(
+            workspaceFolder.uri.fsPath,
+            "src",
+            "components",
+            "external-form.html",
+          ),
+        ),
+      );
+      // Nothing to wait for: give the server time to publish, then expect no warning.
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      assert.ok(
+        !vscode.languages
+          .getDiagnostics(doc.uri)
+          .some((diagnostic) =>
+            diagnostic.message.includes(
+              'External form actions require data-bascik-preserve="name"',
+            ),
+          ),
+      );
+    });
+
+    test("warns when a component external form does not preserve name attributes in a project that scopes name", async () => {
       const workspaceFolder = getWorkspaceFolder("primary");
       const componentUri = vscode.Uri.file(
         path.join(
           workspaceFolder.uri.fsPath,
+          "nested-project",
           "src",
           "components",
           "external-form.html",
@@ -2062,6 +2088,73 @@ suite("Extension Integration Suite", () => {
               'External form actions require data-bascik-preserve="name"',
             ),
           ),
+      );
+    });
+
+    test("warns on a radio group's name in a component a page uses twice, and clears when the page uses it once", async () => {
+      const workspaceFolder = getWorkspaceFolder("primary");
+      const component = await vscode.workspace.openTextDocument(
+        vscode.Uri.file(
+          path.join(
+            workspaceFolder.uri.fsPath,
+            "src",
+            "components",
+            "size-picker.html",
+          ),
+        ),
+      );
+      await vscode.window.showTextDocument(component);
+      const warning = await waitForDiagnostic(
+        component.uri,
+        (diagnostic) => diagnostic.code === "shared-name-group",
+        "Expected shared-name-group on size-picker.html",
+      );
+      assert.strictEqual(warning.severity, vscode.DiagnosticSeverity.Warning);
+      assert.strictEqual(component.getText(warning.range), 'name="size"');
+      assert.strictEqual(warning.range.start.line, 2);
+      assert.match(
+        warning.message,
+        /used 2 times on src\/name-group-page\.html/,
+      );
+      assert.match(warning.message, /own <form>/);
+      assert.match(warning.message, /data-bascik-attr-name="group"/);
+
+      // Unsaved edits to the page count: with one usage left, the warning goes.
+      const page = await vscode.workspace.openTextDocument(
+        vscode.Uri.file(
+          path.join(workspaceFolder.uri.fsPath, "src", "name-group-page.html"),
+        ),
+      );
+      const original = page.getText();
+      const secondLine = page.lineAt(1).rangeIncludingLineBreak;
+      const remove = new vscode.WorkspaceEdit();
+      remove.delete(page.uri, secondLine);
+      assert.ok(await vscode.workspace.applyEdit(remove));
+      try {
+        await waitFor(
+          () =>
+            !vscode.languages
+              .getDiagnostics(component.uri)
+              .some((diagnostic) => diagnostic.code === "shared-name-group"),
+          "Expected shared-name-group to clear when the page uses size-picker once",
+        );
+      } finally {
+        const restore = new vscode.WorkspaceEdit();
+        restore.replace(
+          page.uri,
+          new vscode.Range(
+            page.positionAt(0),
+            page.positionAt(page.getText().length),
+          ),
+          original,
+        );
+        await vscode.workspace.applyEdit(restore);
+        await page.save();
+      }
+      await waitForDiagnostic(
+        component.uri,
+        (diagnostic) => diagnostic.code === "shared-name-group",
+        "Expected shared-name-group again once the page uses size-picker twice",
       );
     });
 

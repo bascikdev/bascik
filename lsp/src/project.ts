@@ -23,6 +23,11 @@ export interface ProjectSnapshot {
    * Find All References reads usages from it and `htmlUsageByFile`.
    */
   componentSourceByFile?: Map<string, string>;
+  /**
+   * `scoping.attributes.name`: whether the project opts in to scoping `name` per component instance. Off by
+   * default, when every `name` ships as written.
+   */
+  scopesName?: boolean;
 }
 
 export const CONFIG_FILE_CANDIDATES = [
@@ -41,6 +46,19 @@ export function parsePagesRoot(source: string | undefined): string {
     /(?<![\w$])pages\s*:\s*['"]([^'"]+)['"]/.exec(source ?? "")?.[1] ??
     DEFAULT_PAGES_ROOT
   );
+}
+
+/**
+ * Reads `scoping.attributes.name` from the config source: true only when the `attributes` object sets
+ * `name: true`. Line comments are ignored; a `name` key anywhere else is not the toggle.
+ */
+export function parseScopesName(source: string | undefined): boolean {
+  // Line comments only: a block-comment regex is quadratic on unclosed `/*` runs, and the other config readers
+  // here do not strip them either.
+  const code = (source ?? "").replace(/(^|[^:"'])\/\/[^\n]*/g, "$1");
+  const attributes = /(?<![\w$])attributes\s*:\s*\{([^{}]*)\}/.exec(code);
+  if (!attributes) return false;
+  return /(?<![\w$-])["']?name["']?\s*:\s*true\b/.test(attributes[1]);
 }
 
 /** Is `fsPath` HTML that `htmlUsageByFile` tracks: under `src` or the pages folder? */
@@ -237,6 +255,7 @@ export async function buildSnapshot(
     pagesRoot,
     htmlUsageByFile,
     componentSourceByFile,
+    scopesName: parseScopesName(configSource),
   };
 }
 

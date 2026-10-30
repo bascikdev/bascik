@@ -408,7 +408,9 @@ describe("Bascik Language Server Analyzer", () => {
     });
   });
   describe("external form preserve check", () => {
-    const formDiagnostics = (formTag: string) => {
+    // Only a project that opts in to name scoping renames field names, so
+    // only there does a form posting elsewhere need them kept literal.
+    const formDiagnostics = (formTag: string, scopesName = true) => {
       const filePath = "/test-project/src/components/site-nav.html";
       const doc = TextDocument.create(
         `file://${filePath}`,
@@ -416,10 +418,19 @@ describe("Bascik Language Server Analyzer", () => {
         1,
         `${formTag}<input name="email"></form>`,
       );
-      return createDiagnostics(doc, filePath, mockSnapshot).filter((d) =>
+      return createDiagnostics(doc, filePath, {
+        ...mockSnapshot,
+        scopesName,
+      }).filter((d) =>
         String(d.message).includes("External form actions require"),
       );
     };
+
+    it("is silent by default, when name ships as written", () => {
+      expect(
+        formDiagnostics('<form action="https://forms.example/submit">', false),
+      ).toHaveLength(0);
+    });
 
     it.each([
       '<form action="https://forms.example/submit" data-bascik-preserve>',

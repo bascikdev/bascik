@@ -3,6 +3,8 @@ export default {
   // Per-lane output directory; see ../bascik.config.ts.
   directory: { out: process.env.BASCIK_E2E_OUT ?? "dist" },
   pipeline: { workers: false },
+  // The opt-in name scoping lane: pkg/e2e itself keeps the default (off).
+  scoping: { attributes: { name: true } },
   minify: { identifiers: false },
 };
 

@@ -23,6 +23,11 @@ process.env.BASCIK_E2E_OUT ??= "dist-dev";
 const e2eDir = fileURLToPath(new URL(".", import.meta.url));
 const pkgDir = join(e2eDir, "..");
 const baseFixtureDir = join(e2eDir, "base-fixture");
+/** Specs that run against base-fixture (base path, opt-in name scoping). */
+const BASE_FIXTURE_SPECS = [
+  "**/base-serving.test.ts",
+  "**/base-name-scoping.test.ts",
+];
 const symlinkFixtureDir = join(e2eDir, "symlink-fixture");
 const devServerTestIgnore = [
   // server-scripts.test.ts and server-scripts-stream.test.ts run here on
@@ -79,7 +84,7 @@ export default defineConfig({
       testIgnore: [
         ...devServerTestIgnore,
         ...devSourceEditingSpecs,
-        "**/base-serving.test.ts",
+        ...BASE_FIXTURE_SPECS,
         "**/static-asset-symlinks.test.ts",
       ],
       fullyParallel: true,
@@ -94,7 +99,7 @@ export default defineConfig({
     },
     {
       name: "base-dev",
-      testMatch: "**/base-serving.test.ts",
+      testMatch: BASE_FIXTURE_SPECS,
       use: { baseURL: "http://localhost:9551" },
       workers: 1,
     },

@@ -15,6 +15,11 @@ const outName = process.env.BASCIK_E2E_OUT;
 const e2eDir = fileURLToPath(new URL(".", import.meta.url));
 const pkgDir = join(e2eDir, "..");
 const baseFixtureDir = join(e2eDir, "base-fixture");
+/** Specs that run against base-fixture (base path, opt-in name scoping). */
+const BASE_FIXTURE_SPECS = [
+  "**/base-serving.test.ts",
+  "**/base-name-scoping.test.ts",
+];
 const staticTestIgnore = [
   // Dedicated to the symlink-enabled live-dev fixture.
   "**/static-asset-symlinks.test.ts",
@@ -64,11 +69,11 @@ export default defineConfig({
   projects: [
     {
       name: "default",
-      testIgnore: [...staticTestIgnore, "**/base-serving.test.ts"],
+      testIgnore: [...staticTestIgnore, ...BASE_FIXTURE_SPECS],
     },
     {
       name: "base-static",
-      testMatch: "**/base-serving.test.ts",
+      testMatch: BASE_FIXTURE_SPECS,
       use: { baseURL: "http://localhost:9550" },
     },
   ],

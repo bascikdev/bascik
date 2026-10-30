@@ -286,6 +286,8 @@ el.classList.add("btn--active");
 
 ### Name selectors
 
+Only with `scoping.attributes.name: true` (off by default, when `name` ships as written):
+
 ```js
 // Source
 document.getElementsByName("email-field");

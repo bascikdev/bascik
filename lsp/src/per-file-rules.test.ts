@@ -539,6 +539,23 @@ describe("every diagnostic can be named", () => {
       "external-form-missing-preserve-name",
       "/site/src/components/my-card.html",
       '<form action="https://example.com/post"></form>',
+      { scopesName: true },
+    ],
+    [
+      "shared-name-group",
+      "/site/src/components/my-card.html",
+      '<input type="radio" name="a"><input type="radio" name="a">',
+      {
+        componentSourceByFile: new Map([
+          [
+            "/site/src/components/my-card.html",
+            '<input type="radio" name="a"><input type="radio" name="a">',
+          ],
+        ]),
+        htmlUsageByFile: new Map([
+          ["/site/src/pages/index.html", "<my-card></my-card><my-card />"],
+        ]),
+      },
     ],
     [
       "attr-prop-unsupplied",
@@ -560,11 +577,14 @@ describe("every diagnostic can be named", () => {
       "/site/src/pages/a.html",
       '<my-card><p data-bascik-slot="missing">x</p></my-card>',
     ],
-  ])("%s", (code, path, text) => {
-    const found = emitted(path, text);
-    expect(found.map((d) => d.code)).toContain(code);
-    expect(found.filter((d) => d.code === undefined)).toEqual([]);
-  });
+  ] as Array<[string, string, string, Partial<ProjectSnapshot>?]>)(
+    "%s",
+    (code, path, text, extra) => {
+      const found = emitted(path, text, { ...withUsage, ...extra });
+      expect(found.map((d) => d.code)).toContain(code);
+      expect(found.filter((d) => d.code === undefined)).toEqual([]);
+    },
+  );
 
   it("treats an unsupplied attr prop as a hint, not a warning, because it cannot see pages built from Markdown", () => {
     const [found] = emitted(

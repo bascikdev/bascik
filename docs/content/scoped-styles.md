@@ -73,7 +73,7 @@ src/components/
 
 Class names are scoped to the **component type** so every instance of the same component shares identical scoped class names. This is intentional: it allows Bascik to emit a single `<style>` block per component regardless of how many times it appears on the page.
 
-ID and `name` attributes are scoped per **component instance** so multiple instances on the same page always have distinct DOM identifiers.
+ID attributes are scoped per **component instance** so multiple instances on the same page always have distinct DOM identifiers. `name` attributes ship as written: a `name` is the key a form field is submitted under and the group a radio or `<details>` belongs to, a contract with the rest of the page rather than a private identifier. See [The `name` Attribute](/name-attribute), which also covers the `scoping.attributes.name` opt-in that scopes `name` per instance.
 
 ```text
 class  →  bascik__<componentName>__<originalName>
@@ -386,7 +386,7 @@ export default defineConfig({
     attributes: {
       class: true, // scope class names
       id: true, // scope id attributes
-      name: true, // scope name attributes
+      name: false, // name ships as written (true scopes it per instance)
     },
   },
 });

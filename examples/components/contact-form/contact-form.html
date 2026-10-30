@@ -1,5 +1,5 @@
 <!-- @bascik
-A contact form that validates in the browser and posts JSON to /api/contact (the starter site's src/api/contact.ts handles it). Without JavaScript it falls back to a normal form POST. Field names are preserved so the server receives name, email, and message.
+A contact form that validates in the browser and posts JSON to /api/contact (the starter site's src/api/contact.ts handles it). Without JavaScript it falls back to a normal form POST. Field names ship as written, so the server receives name, email, and message.
 -->
 <style>
   .form {
@@ -60,15 +60,8 @@ A contact form that validates in the browser and posts JSON to /api/contact (the
     color: var(--color-muted, inherit);
   }
 </style>
-<!-- data-bascik-preserve="name" keeps the field names literal. Without it, Bascik scopes them per instance and the
-     server would receive keys like bascik__contact-form__a1b2__email. -->
-<form
-  class="form"
-  id="form"
-  action="/api/contact"
-  method="post"
-  data-bascik-preserve="name"
->
+<!-- Bascik ships name as written, so the server receives the keys name, email and message. -->
+<form class="form" id="form" action="/api/contact" method="post">
   <div class="field">
     <label for="name">Name</label>
     <input class="input" id="name" name="name" autocomplete="name" required />

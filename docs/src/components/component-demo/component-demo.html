@@ -27,7 +27,7 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
     injected via extractDemoBlock at build time, so they also feed llms.txt
     and SKILL.md.
 -->
-<div class="demo-box" data-defer-render="demo">
+<div class="demo-box" data-defer-render="demo" data-testid="component-demo">
   <span
     class="demo-no-preview-marker"
     data-bascik-prop-no-preview
@@ -36,7 +36,10 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
   ></span>
   <span class="demo-no-output-marker" data-bascik-prop-no-output hidden></span>
   <div class="demo-nav">
-    <div class="demo-tabs">
+    <!-- Each radio group sits in a form of its own: name ships as written,
+         and radios with one name and no form owner are one group across the
+         page, so two demos would otherwise share one tab choice. -->
+    <form class="demo-tabs">
       <label class="demo-tab" data-testid="demo-tab-preview">
         <input
           type="radio"
@@ -68,7 +71,7 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
         />
         <span>Output</span>
       </label>
-    </div>
+    </form>
     <div class="demo-meta" data-bascik-prop-file></div>
   </div>
 
@@ -84,49 +87,51 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
       data-demo-pane
       data-testid="demo-pane-code"
     >
-      <tab-bar class="demo-language-tabs" aria-label="Source language">
-        <label class="demo-language-tab" data-language="usage">
-          <input
-            type="radio"
-            class="demo-lang-radio"
-            name="source-lang"
-            value="usage"
-            checked
-            hidden
-          />
-          <span>Usage</span>
-        </label>
-        <label class="demo-language-tab" data-language="html">
-          <input
-            type="radio"
-            class="demo-lang-radio"
-            name="source-lang"
-            value="html"
-            hidden
-          />
-          <span>HTML</span>
-        </label>
-        <label class="demo-language-tab" data-language="css">
-          <input
-            type="radio"
-            class="demo-lang-radio"
-            name="source-lang"
-            value="css"
-            hidden
-          />
-          <span>CSS</span>
-        </label>
-        <label class="demo-language-tab" data-language="js">
-          <input
-            type="radio"
-            class="demo-lang-radio"
-            name="source-lang"
-            value="js"
-            hidden
-          />
-          <span>JS</span>
-        </label>
-      </tab-bar>
+      <form class="demo-language-form">
+        <tab-bar class="demo-language-tabs" aria-label="Source language">
+          <label class="demo-language-tab" data-language="usage">
+            <input
+              type="radio"
+              class="demo-lang-radio"
+              name="source-lang"
+              value="usage"
+              checked
+              hidden
+            />
+            <span>Usage</span>
+          </label>
+          <label class="demo-language-tab" data-language="html">
+            <input
+              type="radio"
+              class="demo-lang-radio"
+              name="source-lang"
+              value="html"
+              hidden
+            />
+            <span>HTML</span>
+          </label>
+          <label class="demo-language-tab" data-language="css">
+            <input
+              type="radio"
+              class="demo-lang-radio"
+              name="source-lang"
+              value="css"
+              hidden
+            />
+            <span>CSS</span>
+          </label>
+          <label class="demo-language-tab" data-language="js">
+            <input
+              type="radio"
+              class="demo-lang-radio"
+              name="source-lang"
+              value="js"
+              hidden
+            />
+            <span>JS</span>
+          </label>
+        </tab-bar>
+      </form>
       <div class="demo-language-pane" data-language-pane="usage">
         <div data-bascik-slot="source-usage"></div>
       </div>
@@ -148,39 +153,41 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
       data-testid="demo-pane-output"
     >
       <div class="demo-output-header">
-        <tab-bar class="demo-language-tabs" aria-label="Output language">
-          <label class="demo-language-tab" data-language="html">
-            <input
-              type="radio"
-              class="demo-lang-radio"
-              name="output-lang"
-              value="html"
-              checked
-              hidden
-            />
-            <span>HTML</span>
-          </label>
-          <label class="demo-language-tab" data-language="css">
-            <input
-              type="radio"
-              class="demo-lang-radio"
-              name="output-lang"
-              value="css"
-              hidden
-            />
-            <span>CSS</span>
-          </label>
-          <label class="demo-language-tab" data-language="js">
-            <input
-              type="radio"
-              class="demo-lang-radio"
-              name="output-lang"
-              value="js"
-              hidden
-            />
-            <span>JS</span>
-          </label>
-        </tab-bar>
+        <form class="demo-language-form">
+          <tab-bar class="demo-language-tabs" aria-label="Output language">
+            <label class="demo-language-tab" data-language="html">
+              <input
+                type="radio"
+                class="demo-lang-radio"
+                name="output-lang"
+                value="html"
+                checked
+                hidden
+              />
+              <span>HTML</span>
+            </label>
+            <label class="demo-language-tab" data-language="css">
+              <input
+                type="radio"
+                class="demo-lang-radio"
+                name="output-lang"
+                value="css"
+                hidden
+              />
+              <span>CSS</span>
+            </label>
+            <label class="demo-language-tab" data-language="js">
+              <input
+                type="radio"
+                class="demo-lang-radio"
+                name="output-lang"
+                value="js"
+                hidden
+              />
+              <span>JS</span>
+            </label>
+          </tab-bar>
+        </form>
         <label
           class="demo-info-btn"
           aria-label="Output formatting information"
@@ -252,6 +259,12 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
   .demo-tabs {
     display: flex;
     flex-shrink: 0;
+    margin: 0;
+  }
+
+  /* A form only to give the language radios their own group per demo. */
+  .demo-language-form {
+    display: contents;
   }
 
   .demo-tab {

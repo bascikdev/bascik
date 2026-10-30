@@ -609,9 +609,9 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
     }
   });
 
-  it("Archetype 9: Sverdle / Interactive Word-Game & Form-State App (Exclusive <details name>, <output for>, table headers, TypeScript companion script)", () => {
-    const dir = createTempSite({
-      "bascik.config.ts": `export default {};\n`,
+  const wordGameSite = (config: string) =>
+    createTempSite({
+      "bascik.config.ts": config,
       "src/components/word-board/word-board.html": [
         '<div id="board" class="board">',
         '  <table><thead><tr><th id="col-guess">Guess</th><th id="col-score">Score</th></tr></thead>',
@@ -634,18 +634,55 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
         "<!DOCTYPE html><html><head><title>Word Game</title></head><body><word-board /><word-board /></body></html>",
     });
 
+  it("Archetype 9: Sverdle / Interactive Word-Game & Form-State App (Exclusive <details name>, <output for>, table headers, TypeScript companion script)", () => {
+    const dir = wordGameSite(`export default {};\n`);
+
     try {
       const buildRes = runBascikCli(dir, ["--build"]);
       expect(buildRes.status, buildRes.stderr).toBe(0);
 
+      // A warning, not an error: the check passes and names the shared group.
       const checkRes = runBascikCli(dir, ["--check"]);
-      expect(checkRes.status, checkRes.stdout + checkRes.stderr).toBe(0);
+      const checkOutput = checkRes.stdout + checkRes.stderr;
+      expect(checkRes.status, checkOutput).toBe(0);
+      expect(checkOutput).toMatch(
+        /word-board\.html:5:12 - warning: \(shared-name-group\) name="hint-group" is on 2 <details>, and <word-board> is used 2 times on src\/pages\/index\.html/,
+      );
 
       const html = readFileSync(join(dir, "dist/index.html"), "utf8");
       assertValidHtml5(html, "Archetype 9 word-game index.html");
       // TypeScript type annotation should be stripped
       expect(html).not.toContain("BoardState");
-      // Exclusive details name groups should be scoped per instance (2 instances x 2 details = 2 distinct names)
+      // `name` ships as written by default: the form field keeps its key, and
+      // the exclusive <details name> group spans the page as the browser
+      // defines it (2 instances x 2 details, one group).
+      const detailNames = [...html.matchAll(/<details name="([^"]+)">/g)].map(
+        (m) => m[1],
+      );
+      expect(detailNames).toEqual(Array(4).fill("hint-group"));
+      expect(html.match(/<input id="[^"]+" name="letter">/g)).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("Archetype 9 with scoping.attributes.name opted in: each instance gets its own names and the check stays quiet", () => {
+    const dir = wordGameSite(
+      `export default { scoping: { attributes: { name: true } } };\n`,
+    );
+
+    try {
+      const buildRes = runBascikCli(dir, ["--build"]);
+      expect(buildRes.status, buildRes.stderr).toBe(0);
+
+      const checkRes = runBascikCli(dir, ["--check"]);
+      const checkOutput = checkRes.stdout + checkRes.stderr;
+      expect(checkRes.status, checkOutput).toBe(0);
+      expect(checkOutput).not.toContain("shared-name-group");
+
+      const html = readFileSync(join(dir, "dist/index.html"), "utf8");
+      assertValidHtml5(html, "Archetype 9 opted-in index.html");
+      // Exclusive details name groups are scoped per instance (2 instances x 2 details = 2 distinct names)
       const detailNames = [...html.matchAll(/<details name="([^"]+)">/g)].map(
         (m) => m[1],
       );
@@ -653,6 +690,38 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       expect(detailNames[0]).toBe(detailNames[1]);
       expect(detailNames[2]).toBe(detailNames[3]);
       expect(detailNames[0]).not.toBe(detailNames[2]);
+      expect(html).not.toMatch(/<input[^>]*name="letter"/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("<details name> bound to a prop gives each instance its own group with no warnings, and an instance without the prop gets no group", () => {
+    const dir = createTempSite({
+      "bascik.config.ts": `export default {};\n`,
+      "src/components/faq-group/faq-group.html": [
+        "<div>",
+        '  <details data-bascik-attr-name="group"><summary>A</summary></details>',
+        '  <details data-bascik-attr-name="group"><summary>B</summary></details>',
+        "</div>",
+      ].join("\n"),
+      "src/pages/index.html":
+        '<!DOCTYPE html><html><head><title>FAQ</title></head><body><faq-group data-bascik-prop-group="shipping"></faq-group><faq-group data-bascik-prop-group="returns"></faq-group><faq-group></faq-group></body></html>',
+    });
+    try {
+      const buildRes = runBascikCli(dir, ["--build"]);
+      expect(buildRes.status, buildRes.stderr).toBe(0);
+      // The documented recipe builds clean: no binding-conflict warning.
+      expect(buildRes.stdout + buildRes.stderr).not.toMatch(
+        /binding conflict|warn/i,
+      );
+      const html = readFileSync(join(dir, "dist/index.html"), "utf8");
+      const names = [...html.matchAll(/<details name="([^"]+)">/g)].map(
+        (m) => m[1],
+      );
+      expect(names).toEqual(["shipping", "shipping", "returns", "returns"]);
+      // The instance without the prop renders plain <details>: no group.
+      expect(html.match(/<details>/g) ?? []).toHaveLength(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

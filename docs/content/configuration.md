@@ -143,7 +143,7 @@ export default defineConfig({
     attributes: {
       class: true,
       id: true,
-      name: true,
+      name: false,
     },
     preserve: ["code"],
     deduplicateCss: true,
@@ -344,7 +344,7 @@ scoping: {
   attributes: {
     class: true, // scope class attributes
     id: true,    // scope id attributes
-    name: true,  // scope name attributes
+    name: false, // name ships as written; true scopes it per instance
   },
   preserve: ['code'],      // elements and subtrees left unscoped
   deduplicateCss: true,    // deduplicate component CSS output
@@ -361,7 +361,19 @@ Control whether non-`data-bascik-*` attributes on a component usage tag are merg
 
 ### `scoping.attributes`
 
-Control which HTML attribute types are scoped independently. Useful if you're using Tailwind (`class: false`) or don't need name scoping.
+Control which HTML attribute types are scoped independently. Useful if you're using Tailwind (`class: false`).
+
+### `scoping.attributes.name`
+
+Defaults to `false`: every `name` attribute ships as written, on every element, at build time and at request time, on Node and on the Cloudflare Worker. A `name` is a contract with the rest of the page, not a private identifier: it is the key a form field is submitted under, the group of a set of radios or an exclusive `<details>` accordion, the target of a link or form for an `<iframe>`, and the map an `<img usemap>` uses. See [The `name` Attribute](/name-attribute).
+
+Set it to `true` to scope `name` per component instance, which was the default before. Every `name` except `<meta name>` is then rewritten to `bascik__<component>__<instance>__<name>`, `usemap="#x"` follows a `<map name="x">` in the same component, `getElementsByName("x")` in a component script is rewritten to match, and `data-bascik-preserve="name"` keeps one element or subtree literal. Turn it on only when a site has many components that each hold a whole radio group or accordion and you would rather opt the few page-wide names out than give each component its own `<form>` or a name prop. Field names a server reads then need `data-bascik-preserve="name"`, and a `data-bascik-attr-name` or `data-bascik-attr-usemap` binding is then left for the build to render, so a component with one is not rendered at request time (`attr-binding-to-scoped-attribute`).
+
+```ts
+export default defineConfig({
+  scoping: { attributes: { name: true } },
+});
+```
 
 ### `scoping.deduplicateCss`
 

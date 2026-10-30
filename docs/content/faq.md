@@ -172,7 +172,11 @@ Each script tag is isolated in its own IIFE so variables never leak into the glo
 
 ## Why are my form field names hashed?
 
-Bascik scopes `name` per component instance so repeated radio groups remain independent. For a form that posts to an external service requiring literal keys, add `data-bascik-preserve="name"` to the form. This deliberately gives up radio-group isolation inside that preserved subtree, so do not disable name scoping site-wide. See [Preserve Scoping](/preserve).
+They are not by default: `name` ships as written, so `new FormData(form)` and a form post send the names you wrote. Names are hashed only in a project that sets `scoping.attributes.name: true`; there, add `data-bascik-preserve="name"` to a form whose server reads literal keys. See [The `name` Attribute](/name-attribute).
+
+## Why do the radios in two copies of my component act as one group?
+
+`name` ships as written, and the HTML spec makes radios with one name and no form owner one group across the page. Give the component its own `<form>` around the radios, or give each copy its own name through a prop (`data-bascik-attr-name="group"` in the component, `data-bascik-prop-group="..."` on each usage). The linter warns (`shared-name-group`) when a component like this is used more than once on a page. See [The `name` Attribute](/name-attribute#radio-groups-per-component-instance).
 
 ## How do I use a third-party widget that looks up an element by ID?
 
@@ -303,7 +307,7 @@ The dev server is resilient to a bad page, while a production build fails rather
 
 ## Why do two builds of the same source produce byte-identical output?
 
-Bascik builds are fully deterministic. Component instance IDs (used for scoped `id` and `name` DOM attributes) are derived deterministically from the page path, component name, and ordinal index of each instance on the page. Under the default configuration, class names omit instance IDs entirely and were already deterministic. This design guarantees that identical source input produces byte-identical output across repeated runs, worker threads, and different machines.
+Bascik builds are fully deterministic. Component instance IDs (used for scoped `id` attributes, and `name` when `scoping.attributes.name` is on) are derived deterministically from the page path, component name, and ordinal index of each instance on the page. Under the default configuration, class names omit instance IDs entirely and were already deterministic. This design guarantees that identical source input produces byte-identical output across repeated runs, worker threads, and different machines.
 
 ## What is the `.bascik/` folder?
 

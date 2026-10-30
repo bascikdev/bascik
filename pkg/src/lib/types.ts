@@ -165,6 +165,13 @@ export interface DirectoryInput {
 export interface ScopingAttributesOptions {
   class: boolean;
   id: boolean;
+  /**
+   * Scope `name` per component instance. Off by default: `name` is a
+   * page-level contract (the key a form field is submitted under, a radio
+   * group, an `<iframe>` target, a `<map>` for `usemap`, an exclusive
+   * `<details>` accordion), so it ships as written. On, every `name` except
+   * `<meta name>` is rewritten per instance and `usemap` follows its map.
+   */
   name: boolean;
 }
 

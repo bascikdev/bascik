@@ -715,6 +715,8 @@ export const CONTACT_FORM_CSS = `.form { max-width: 520px; }
 /**
  * Contact form. The starter has no backend, so submitting shows a note in
  * place of sending: connect the form to your own endpoint in its script.
+ * Field names ship as written, so `new FormData(form)` has the keys name,
+ * email and message.
  */
 export const CONTACT_FORM_HTML = `<style>
 ${CONTACT_FORM_CSS}</style>

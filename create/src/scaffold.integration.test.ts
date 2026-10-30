@@ -277,6 +277,11 @@ describe("scaffold-to-compiler integration", () => {
     expect(contactHtml).toMatch(/<!doctype html>/i);
     expect(notFoundHtml).toMatch(/<!doctype html>/i);
 
+    // `name` ships as written: the contact form posts the keys it names.
+    for (const key of ["name", "email", "message"])
+      expect(contactHtml).toContain(`name="${key}"`);
+    expect(contactHtml).not.toMatch(/name="bascik__/);
+
     // 4. Verify component expansion and props
     // site-header expands to <header with brand prop or site name
     expect(indexHtml).toContain("<header");

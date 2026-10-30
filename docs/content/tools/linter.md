@@ -121,6 +121,36 @@ To trust a project escaper, list it in `diagnostics.escapeFunctions`. To silence
 
 ![VS Code: a server script returns a template that interpolates a query parameter, the hole is underlined, the hover names server-script-unescaped-markup, and the quick fix wraps the template in html and adds the import](/assets/vscode/unescaped-markup@2x.webp)
 
+### `shared-name-group`
+
+`name` ships as written ([The `name` Attribute](/name-attribute)), so a component that holds a whole name group makes one group of all its copies on a page. The linter warns on the `name` attribute in the component file when the component is used more than once on one page and holds:
+
+- two or more radios with one `name` that are not inside a `<form>` of the component's own (and have no `form` attribute): the copies are one radio group, so choosing in one copy clears the others;
+- two or more `<details>` with one `name`: the copies are one exclusive accordion;
+- a `<map name>`: the page has one map name per copy, and every `usemap` uses the first.
+
+```text
+src/components/froth-picker/froth-picker.html:4:25 - warning: (shared-name-group) name="froth" is on 2 radios with no <form> of their own, and <froth-picker> is used 2 times on src/pages/index.html, so the copies act as one radio group on the page: choosing in one copy clears the others. Wrap the radios in the component's own <form>, or give each copy its own name through a prop: data-bascik-attr-name="group" in place of name here, and data-bascik-prop-group="..." with a different value on each <froth-picker>.
+```
+
+The two fixes: wrap the radios in the component's own `<form>`, or bind the name to a prop (`data-bascik-attr-name="group"` with no literal `name`, and a different `data-bascik-prop-group` on each usage). The rule stays quiet when the name is bound to a prop, when the radios are inside the component's own form, when the component is used once per page, for one radio or one `<details>` per component (a group built from many instances on purpose, such as an accordion with one item per component), and in a project that sets `scoping.attributes.name: true`. It counts usages on every page under `src` and the pages folder, through nested components and in unsaved editor text; pages built from Markdown or by a build script are not counted.
+
+When the shared group is what you want, silence it on the line above the attribute, or around the markup:
+
+```html
+<!-- bascik-ignore shared-name-group -->
+<details name="faq">
+  <summary>Shipping</summary>
+  Two days.
+</details>
+<details name="faq">
+  <summary>Returns</summary>
+  Thirty days.
+</details>
+```
+
+`bascik-ignore` covers its own line and the next, so for a group spread over many lines use `<!-- bascik-disable shared-name-group -->` and `<!-- bascik-enable -->`, or turn the rule off for the project with `"disabledRules": ["shared-name-group"]` in `bascik.ext.json`.
+
 ### CI / Pre-commit Integration
 
 The CLI checker exits with code `0` when clean (or only warnings) and code `1` when errors are detected, making it drop-in ready for GitHub Actions or pre-commit git hooks. Hints are shown in the editor and by this command, and never fail anything:

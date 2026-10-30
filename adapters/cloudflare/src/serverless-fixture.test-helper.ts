@@ -412,6 +412,21 @@ const addComponentPages = async (root: string): Promise<void> => {
     `<a class="link" data-testid="link-card" data-bascik-attr-href="target">Pricing</a>
 <style>.link { color: rgb(4, 5, 6); }</style>`,
   );
+  // `name` ships as written (scoping.attributes.name is off by default): a
+  // radio group whose name is bound to a prop renders at request time with
+  // the prop's value, and a literal name stays literal on every copy.
+  await write(
+    root,
+    "src/components/bound-radios/bound-radios.html",
+    `<fieldset class="radios" data-testid="bound-radios"><input type="radio" data-bascik-attr-name="group" value="a"><input type="radio" data-bascik-attr-name="group" value="b"></fieldset>
+<style>.radios { color: rgb(19, 20, 21); }</style>`,
+  );
+  await write(
+    root,
+    "src/components/plain-radios/plain-radios.html",
+    `<form class="plain" data-testid="plain-radios"><input type="radio" name="size" value="s"><input type="radio" name="size" value="l"></form>
+<style>.plain { color: rgb(22, 23, 24); }</style>`,
+  );
   // A nested job that throws: the parent's policy decides what the reader sees.
   await write(
     root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
@@ -489,6 +504,18 @@ export default function () {
     '<script type="text/bascik-server" data-bascik-server-id="${componentScriptId("product-card-live")}"></' + 'script>' +
     '<bound-id-card data-bascik-prop-anchor="x"></bound-id-card>' +
     '<link-card data-bascik-prop-target="/pricing"></link-card>';
+}
+</script>`,
+  );
+  // Names returned by a script: bound per copy, and literal on every copy.
+  await page(
+    "src/pages/components-names.html",
+    "Names",
+    `<script data-bascik-server>
+export default function () {
+  return '<bound-radios data-bascik-prop-group="front"></bound-radios>' +
+    '<bound-radios data-bascik-prop-group="back"></bound-radios>' +
+    '<plain-radios></plain-radios><plain-radios></plain-radios>';
 }
 </script>`,
   );

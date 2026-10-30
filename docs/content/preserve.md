@@ -1,10 +1,10 @@
 # Preserve Scoping
 
-Keep selected component attributes literal when an external system or browser API must see the original `id`, `name`, or `class` values. Preserving a value also stops Bascik from rewriting the references that point to it or sit beside it, so read the reference rules below before preserving an `id`.
+Keep selected component attributes literal when an external system or browser API must see the original `id` or `class` values (or `name`, when a project opts in to scoping it). Preserving a value also stops Bascik from rewriting the references that point to it or sit beside it, so read the reference rules below before preserving an `id`.
 
 ## How Preserve Works
 
-Bascik scopes `id`, `name`, and `class` inside components so repeated instances never collide. It also rewrites the references that follow those ids: `<label for>`, `aria-*` id lists, fragment-only `href` values on `<a>`, `<area>`, and `<use>`, SVG `url(#id)` values, and similar attributes.
+Bascik scopes `id` and `class` inside components so repeated instances never collide, and `name` too when `scoping.attributes.name` is on (it ships as written by default; see [The `name` Attribute](/name-attribute)). It also rewrites the references that follow those ids: `<label for>`, `aria-*` id lists, fragment-only `href` values on `<a>`, `<area>`, and `<use>`, SVG `url(#id)` values, and similar attributes.
 
 Preserve removes a region from both halves of that process:
 
@@ -59,7 +59,18 @@ The bare directive preserves `id`, `name`, and `class` on the element and every 
 
 ## External Form Endpoints
 
-External services usually require exact field names. Preserve only `name` so IDs and classes keep their normal component isolation:
+External services usually require exact field names. By default `name` ships as written, so a form needs nothing:
+
+```html
+<form action="https://forms.example/submit" method="post">
+  <label for="email">Email</label>
+  <input id="email" name="email" type="email" />
+</form>
+```
+
+The `label for="email"` and its input id are still scoped and rewritten together. The [Contact Form](/example-components/contact-form) example posts literal field names to a server route.
+
+In a project that sets `scoping.attributes.name: true`, preserve only `name` so IDs and classes keep their normal component isolation:
 
 ```html
 <form
@@ -78,11 +89,9 @@ Values are space-separated. The valid tokens are `id`, `name`, and `class`:
 <div id="mount" class="vendor-theme" data-bascik-preserve="id class"></div>
 ```
 
-An unknown token produces a warning and is ignored. Valid tokens beside it still apply.
+An unknown token produces a warning and is ignored. Valid tokens beside it still apply. The `name` token changes nothing unless the project opts in to name scoping.
 
-Preserving only `name` leaves ids scoped, so the `label for="email"` above is still rewritten together with its input id. The [Contact Form](/example-components/contact-form) example uses this with a server route that reads the field names.
-
-> **Radio group tradeoff.** Normal `name` scoping gives each component instance an independent radio group while keeping radios within one instance grouped together. Preserving `name` gives every instance the same literal group name, so selecting a radio in one instance can clear the selection in another. Prefer `data-bascik-preserve="name"` only where an external endpoint requires literal names. Do not disable `scoping.attributes.name` site-wide for this case.
+> **Radio groups.** With `name` as written, radios with one name and no `<form>` of their own are one group across every instance on the page. Give a component that holds a whole radio group its own `<form>`, or a name through a prop. The linter warns (`shared-name-group`) when such a component is used more than once on a page. See [The `name` Attribute](/name-attribute#radio-groups-per-component-instance).
 
 ## Hand-Authored SVG
 

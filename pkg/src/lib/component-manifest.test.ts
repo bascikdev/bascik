@@ -133,7 +133,11 @@ type MutableConfig = {
     css: boolean | ((code: string) => string | Promise<string>);
     js: boolean | ((code: string) => string | Promise<string>);
   };
-  scoping: { deduplicateCss: boolean; inheritAttributes: boolean };
+  scoping: {
+    deduplicateCss: boolean;
+    inheritAttributes: boolean;
+    attributes: { class: boolean; id: boolean; name: boolean };
+  };
   scripts: { onBuildScriptError: "error" | "warn" | "ignore" };
 };
 const config = BascikConfig as unknown as MutableConfig;
@@ -543,6 +547,7 @@ beforeEach(() => {
   config.minify.js = false;
   config.scoping.deduplicateCss = true;
   config.scoping.inheritAttributes = true;
+  config.scoping.attributes = { class: true, id: true, name: true };
   config.scripts.onBuildScriptError = "error";
   serverSidecarRegistry.clear();
   clearScopingTemplates();
@@ -599,6 +604,36 @@ describe("attr-binding classification", () => {
         "its data-bascik-attr-id binding targets an attribute scoping rewrites",
       line: 4,
     });
+  });
+
+  it("with name scoping off (the default), name and usemap bindings are supported and render like the build", async () => {
+    config.scoping.attributes = { class: true, id: true, name: false };
+    const list: ComponentList = {
+      "radio-set": {
+        fileName: "src/components/radio-set.html",
+        fileContent: `<fieldset class="w"><input type="radio" data-bascik-attr-name="group" value="a"><input type="radio" data-bascik-attr-name="group" value="b"><img src="m.png" data-bascik-attr-usemap="map"></fieldset>`,
+        cssFileContent: ".w { color: red }",
+      },
+    };
+    const manifest = await build({ ...list, ...bindingCards() });
+    for (const target of ["name", "usemap"]) {
+      const entry = entryOf(manifest, `bad-${target}`);
+      expect(entry.unsupported, target).toBeUndefined();
+      expect(entry.template, target).not.toBeNull();
+    }
+    // id is still scoped, so its binding is still refused.
+    expect(entryOf(manifest, "bad-id").unsupported?.reason).toBe(
+      "attr-binding-to-scoped-attribute",
+    );
+    const html = `<radio-set data-bascik-prop-group="size" data-bascik-prop-map="#m"></radio-set><radio-set data-bascik-prop-group="color"></radio-set>`;
+    const expected = viaBuild(html, list, PAGE_PATH);
+    expect(expected.transpiledHtmlBody.match(/name="size"/g)).toHaveLength(2);
+    expect(expected.transpiledHtmlBody.match(/name="color"/g)).toHaveLength(2);
+    expect(expected.transpiledHtmlBody).toContain(`usemap="#m"`);
+    const actual = renderWithManifest(html, list, manifest, PAGE_PATH);
+    expect(unnumbered(actual.transpiledHtmlBody)).toBe(
+      unnumbered(expected.transpiledHtmlBody),
+    );
   });
 
   it("bindings to href, title, src, alt, data-*, for and aria-* are supported", async () => {

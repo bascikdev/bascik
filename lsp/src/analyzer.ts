@@ -44,6 +44,11 @@ import {
   isDiagnosticIgnored,
 } from "./ignore-comments.js";
 import { loadExtensionConfig } from "./config.js";
+import {
+  countInstancesOnPages,
+  findNameGroups,
+  sharedNameGroupMessage,
+} from "./name-groups.js";
 
 export const BUILT_IN_HTML_ELEMENTS = new Set([
   "a",
@@ -810,10 +815,13 @@ export function createDiagnostics(
       }
     }
 
+    // Field names are renamed only when the project opts in to name scoping; by default they ship as written,
+    // so a form that posts elsewhere needs nothing.
     const formOpenTagRegex = /<form\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
     let formMatch: RegExpExecArray | null;
     while (
       isComponentDocument &&
+      snapshot?.scopesName === true &&
       (formMatch = formOpenTagRegex.exec(text)) !== null
     ) {
       const formAttributes = readOpenTagAttributes(formMatch[0]);
@@ -840,6 +848,34 @@ export function createDiagnostics(
         severity: DiagnosticSeverity.Warning,
         source: "bascik",
       });
+    }
+
+    if (snapshot && isComponentDocument && !snapshot.scopesName) {
+      const groups = findNameGroups(text);
+      const componentName = normalizeComponentName(fsPath);
+      const instances =
+        groups.length > 0
+          ? countInstancesOnPages(componentName, snapshot, openDocumentTexts)
+          : undefined;
+      if (instances && instances.count > 1) {
+        for (const group of groups) {
+          diagnostics.push({
+            range: {
+              start: document.positionAt(group.attributeStart),
+              end: document.positionAt(group.attributeEnd),
+            },
+            code: "shared-name-group",
+            message: sharedNameGroupMessage(
+              group,
+              componentName,
+              instances,
+              snapshot.projectRoot,
+            ),
+            severity: DiagnosticSeverity.Warning,
+            source: "bascik",
+          });
+        }
+      }
     }
 
     if (snapshot && isComponentDocument) {

@@ -42,6 +42,33 @@ test.describe("Docs Component E2E Tests", () => {
     await expect(page.getByTestId("demo-pane-output").first()).toBeVisible();
   });
 
+  test("each component-demo keeps its own tab: name ships as written, so every demo's radios need their own form", async ({
+    page,
+  }) => {
+    await page.goto("/components");
+    const demos = page.getByTestId("component-demo");
+    expect(await demos.count()).toBeGreaterThan(1);
+    const first = demos.first();
+    const last = demos.last();
+    await first.getByTestId("demo-tab-code").click();
+    await expect(first.getByTestId("demo-pane-code")).toBeVisible();
+    await last.getByTestId("demo-tab-output").click();
+    await expect(last.getByTestId("demo-pane-output")).toBeVisible();
+    // Choosing a tab in another demo leaves the first demo's choice alone.
+    await expect(
+      first.getByTestId("demo-tab-code").locator("input"),
+    ).toBeChecked();
+    await expect(first.getByTestId("demo-pane-code")).toBeVisible();
+    // The same holds for the language radios inside the Source pane: checking
+    // HTML in the last demo leaves Usage checked in the first.
+    const language = (demo: typeof first, value: string) =>
+      demo.getByTestId("demo-pane-code").locator(`input[value="${value}"]`);
+    await expect(language(first, "usage")).toBeChecked();
+    await language(last, "html").dispatchEvent("click");
+    await expect(language(last, "html")).toBeChecked();
+    await expect(language(first, "usage")).toBeChecked();
+  });
+
   test("component-demo hides Output tabs when a demo has no output", async ({
     page,
   }) => {

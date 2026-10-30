@@ -136,12 +136,18 @@ const sha256 = (body: string): string =>
   `sha256-${createHash("sha256").update(Buffer.from(body, "utf8")).digest("base64")}`;
 
 /**
- * Attributes whose bound value scoping would have rewritten (id, name,
- * class; usemap against the scoped `<map name>`) or resolved `url(#id)`
- * references in (D3 step 1).
+ * Attributes whose bound value scoping would have rewritten (id, class) or
+ * resolved `url(#id)` references in (D3 step 1).
  */
 const SCOPED_TARGET_RE =
-  /^(?:id|name|class|usemap|style|fill|stroke|mask|clip-path|filter|marker(?:-[\w-]*)?)$/i;
+  /^(?:id|class|style|fill|stroke|mask|clip-path|filter|marker(?:-[\w-]*)?)$/i;
+
+/**
+ * `name`, and `usemap` against the `<map name>` it points to, which scoping
+ * rewrites only when `scoping.attributes.name` is on (off by default: `name`
+ * ships as written, so a bound one is an ordinary attribute).
+ */
+const NAME_SCOPED_TARGET_RE = /^(?:name|usemap)$/i;
 
 /**
  * The id-reference attributes the build rewrites only on some elements
@@ -224,7 +230,10 @@ const lineAt = (text: string, index: number): number =>
  * The masks keep every offset, so the open tag's index in the masked text is
  * its line in `html` (see `onAuthoredLine` for the line in the source).
  */
-const classifyBindings = (html: string): UnsupportedEntry | null => {
+const classifyBindings = (
+  html: string,
+  scopesName = false,
+): UnsupportedEntry | null => {
   if (!/data-bascik-attr-/i.test(html)) return null;
   const masked = maskElementContents(
     html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
@@ -248,7 +257,10 @@ const classifyBindings = (html: string): UnsupportedEntry | null => {
           detail: "its data-bascik-attr-src binding is on a directive script",
           line,
         };
-      if (SCOPED_TARGET_RE.test(target))
+      if (
+        SCOPED_TARGET_RE.test(target) ||
+        (scopesName && NAME_SCOPED_TARGET_RE.test(target))
+      )
         return {
           reason: "attr-binding-to-scoped-attribute",
           detail: `its data-bascik-attr-${target} binding targets an attribute scoping rewrites`,
@@ -418,6 +430,8 @@ interface BuildContext {
   base: string;
   dedupeCss: boolean;
   inheritAttributes: boolean;
+  /** `scoping.attributes.name`: whether `name` (and `usemap`) is scoped. */
+  scopesName: boolean;
   jsMinifier: ((code: string) => Promise<string>) | null;
   cssMinifier: ((code: string) => Promise<string>) | null;
 }
@@ -435,6 +449,7 @@ interface BuildContext {
 const onAuthoredLine = async (
   binding: UnsupportedEntry,
   fileName: string | undefined,
+  scopesName: boolean,
 ): Promise<UnsupportedEntry> => {
   if (!fileName) return binding;
   let source: string;
@@ -443,7 +458,7 @@ const onAuthoredLine = async (
   } catch {
     return binding;
   }
-  const authored = classifyBindings(source);
+  const authored = classifyBindings(source, scopesName);
   return authored &&
     authored.reason === binding.reason &&
     authored.detail === binding.detail &&
@@ -507,8 +522,9 @@ const buildEntry = async (
 
   // Decided on the component text, before anything runs: a refused component
   // runs no build script and stages nothing.
-  const binding = classifyBindings(raw.fileContent);
-  if (binding) return refused(await onAuthoredLine(binding, raw.fileName));
+  const binding = classifyBindings(raw.fileContent, ctx.scopesName);
+  if (binding)
+    return refused(await onAuthoredLine(binding, raw.fileName, ctx.scopesName));
 
   // The component as the expansion loop hands it to the scope: a fresh copy
   // with its directive scripts stamped (components read by listComponents
@@ -821,6 +837,7 @@ export const buildComponentManifest = async (
     base: config.base ?? "/",
     dedupeCss: config.scoping?.deduplicateCss ?? true,
     inheritAttributes: Boolean(config.scoping?.inheritAttributes),
+    scopesName: Boolean(config.scoping?.attributes?.name),
     jsMinifier: resolveScriptMinifier(),
     cssMinifier: resolveCssMinifier(),
   };

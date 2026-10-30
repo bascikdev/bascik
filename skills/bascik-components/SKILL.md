@@ -199,7 +199,7 @@ Docs: `/scoped-javascript#typescript-in-component-scripts`, `/configuration#scri
 ```text
 class  ->  bascik__<component>__<name>                  shared by every instance
 id     ->  bascik__<component>__<instance>__<name>      unique per instance
-name   ->  bascik__<component>__<instance>__<name>      unique per instance
+name   ->  name                                          as written (scoping.attributes.name: true scopes it per instance)
 p {}   ->  .bascik__<component>__el__p                  class added to template elements
 --x declared in the component -> --bascik__<component>__x
 ```
@@ -217,8 +217,8 @@ Production builds shorten these to hashes. Never hard-code a scoped name.
 7. **Scripts run once per instance and may run late** (production moves body scripts to the end). Re-sync form-driven state on `pageshow`.
 8. **Talk between components with bubbling `CustomEvent`s** listened for on `document`. Never query another component's elements.
 9. **Progressive enhancement:** render something useful without JavaScript; mark script-only controls `hidden` and unhide them in the script.
-10. **Forms a server reads keep their names:** `data-bascik-preserve="name"` on the `<form>`, or `FormData` keys are scoped.
-11. **HTML before script:** `<details name>`, `popover`/`popovertarget`, `<dialog>`, `:user-invalid`, and `:has()` replace most widget code.
+10. **`name` ships as written; it is a page-level contract.** It is the key a field is submitted under (`FormData`, a form post), so write the keys the server reads. Radios with one `name` and no form owner are one group across the page, so a component that holds a whole radio group wraps it in its own `<form>`, or binds `data-bascik-attr-name="group"` (no literal `name`) with a different `data-bascik-prop-group` per usage. The linter warns `shared-name-group` on such a component used twice on a page. Never name a control `action`, `method`, `submit`, `reset`, `elements`, or another form property: it clobbers `form.action` and `form.submit()`. See `/name-attribute`.
+11. **HTML before script:** `<details name>` (one item per component makes a page-wide accordion), `popover`/`popovertarget`, `<dialog>`, `:user-invalid`, and `:has()` replace most widget code.
 
 ## CSS rules (must follow)
 
@@ -252,7 +252,7 @@ It reports an **error** for `var(--x)` with no declaration and no fallback, a **
 | `popover-menu`               | No JavaScript: `popover`, implicit anchor, `position-area` in `@supports`            |
 | `copy-button`                | Prop bound to an attribute with `data-bascik-attr-*`, clipboard, `role="status"`     |
 | `filter-list`                | Slotted `<li>` items reached through a container, `pageshow` re-sync                 |
-| `contact-form`               | Preserved field names, validation, JSON `fetch`, the API route behind it             |
+| `contact-form`               | Literal field names, validation, JSON `fetch`, the API route behind it               |
 | `theme-toggle`, `theme-init` | Theme with no flash, `aria-pressed`, a `theme-change` event                          |
 
 `node <skills-dir>/bascik/scripts/add-example.mjs <name>`. Each page at `https://bascik.dev/example-components/<name>` explains how it works and how to adapt it.
@@ -264,6 +264,7 @@ It reports an **error** for `var(--x)` with no declaration and no fallback, a **
 | Know exactly what CSS is scoped                                          | `/scoped-styles`, `/compatibility#css-scoping`                      |
 | Know which DOM calls are rewritten                                       | `/scoped-javascript`, `/compatibility#dom-selector-rewriting`       |
 | Keep names literal (`preserve`, `data-bascik-preserve`)                  | `/preserve`                                                         |
+| `name` on fields, radios, `<details>`, `<iframe>`, `<map>`               | `/name-attribute`                                                   |
 | Pick an interactivity pattern (fetch, storage, events, delegation, a11y) | `/how-to/interactivity`                                             |
 | Set up tokens, dark mode, fonts, Tailwind                                | `/how-to/theming`                                                   |
 | Style a child component's root from its parent                           | `/attribute-inheritance`                                            |

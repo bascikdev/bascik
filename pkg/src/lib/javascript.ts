@@ -551,6 +551,8 @@ export const prefixElementAttribute = (
   // Shield <meta> elements from name-attribute scoping. The `name` attribute
   // on <meta> refers to a standardized metadata vocabulary (e.g. "viewport",
   // "description", "robots") and must never be mangled by the scoping pipeline.
+  // Name scoping as a whole is opt-in (`scoping.attributes.name`); when it is
+  // on, every other `name` is scoped per instance, `<details name>` included.
   const metaShield =
     attribute === "name" ? createContentShield(component.fileContent) : null;
   if (metaShield) {

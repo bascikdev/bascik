@@ -22,10 +22,8 @@ test.describe("preserve-wildcard-test page", () => {
       "id",
       /bascik__preserve-wildcard__.*__outer/,
     );
-    await expect(outer).toHaveAttribute(
-      "name",
-      /bascik__preserve-wildcard__.*__outer/,
-    );
+    // `name` ships as written unless scoping.attributes.name opts in.
+    await expect(outer).toHaveAttribute("name", "outer");
   });
 
   test("the wildcard-matched tag itself has literal attributes", async ({

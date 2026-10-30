@@ -37,6 +37,7 @@ describe("Playwright project test selection", () => {
         "**/dev-exec-lifecycle.test.ts",
         "**/exec-error-policy.test.ts",
         "**/base-serving.test.ts",
+        "**/base-name-scoping.test.ts",
       ],
     ],
     [
@@ -59,6 +60,7 @@ describe("Playwright project test selection", () => {
         "**/import-root.test.ts",
         "**/server-scripts-stream.test.ts",
         "**/base-serving.test.ts",
+        "**/base-name-scoping.test.ts",
         "**/static-asset-symlinks.test.ts",
       ],
     ],
@@ -74,6 +76,7 @@ describe("Playwright project test selection", () => {
         "**/dev-exec-lifecycle.test.ts",
         "**/exec-error-policy.test.ts",
         "**/base-serving.test.ts",
+        "**/base-name-scoping.test.ts",
       ],
     ],
     [
@@ -88,6 +91,7 @@ describe("Playwright project test selection", () => {
         "**/dev-exec-lifecycle.test.ts",
         "**/exec-error-policy.test.ts",
         "**/base-serving.test.ts",
+        "**/base-name-scoping.test.ts",
       ],
     ],
   ])(

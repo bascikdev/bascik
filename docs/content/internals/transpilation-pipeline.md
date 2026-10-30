@@ -259,7 +259,7 @@ For each component tag found:
 A deterministic `instanceId` (an 8-character hex hash derived from page path, component name, and occurrence ordinal via `deriveInstanceId` in `names.ts`) is generated for this occurrence of the component. An ordered list of transform functions is assembled and applied in a pipeline (each step receives the output of the previous):
 
 1. `prefixElementAttribute(c, "id", instanceId)`: scopes `id` attributes and all corresponding JS DOM selector references.
-2. `prefixElementAttribute(c, "name", instanceId)`: scopes `name` attributes and `getElementsByName` calls.
+2. `prefixElementAttribute(c, "name", instanceId)`: scopes `name` attributes and `getElementsByName` calls. Runs only when `scoping.attributes.name` is on; it is off by default, so `name` ships as written.
 3. `prefixElementAttribute(c, "class", instanceId)`: scopes class names in HTML attributes, CSS, and JS selector calls.
 4. `namespaceScriptTags(c)`: wraps every inline `<script>` in an IIFE, pads it to the source line recorded when the component file was read, and appends a `//# sourceURL` comment for browser DevTools source attribution. The second and later instances of a component get `?instance=N` on that URL after the pipeline runs.
 
@@ -299,7 +299,7 @@ All scoped attribute names follow this pattern:
 ```text
 bascik__<componentName>__<instanceId>__<originalName>
 
-# id and name attributes include instanceId for uniqueness:
+# id attributes (and name, with scoping.attributes.name: true) include instanceId for uniqueness:
 bascik__my-nav__a1b2c3d4__search-input
 
 # class attributes use component name only (no instanceId):

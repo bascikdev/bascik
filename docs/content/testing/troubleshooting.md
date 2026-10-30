@@ -157,7 +157,15 @@ Bascik rewrites `<label for>` automatically when the matching `id` is declared i
 
 ### Form field names are hashed
 
-`name` is scoped per instance so repeated radio groups stay independent. For a form that posts to a service expecting literal keys, add `data-bascik-preserve="name"` to the form. `Unknown data-bascik-preserve token "..."` means the token was not one of `id`, `name`, or `class`. See [Preserve Scoping](/preserve).
+`name` ships as written by default. Hashed names mean the project sets `scoping.attributes.name: true`: add `data-bascik-preserve="name"` to a form that posts to a service expecting literal keys, or turn the option off. `Unknown data-bascik-preserve token "..."` means the token was not one of `id`, `name`, or `class`. See [The `name` Attribute](/name-attribute) and [Preserve Scoping](/preserve).
+
+### Radios in two copies of a component act as one group
+
+Choosing a radio in one copy clears the choice in another because `name` ships as written: radios with one name and no form owner are one group across the page. Wrap the radios in the component's own `<form>`, or bind the name to a prop (`data-bascik-attr-name="group"`, and a different `data-bascik-prop-group` on each usage). The linter reports this as `shared-name-group` on the component file. See [The `name` Attribute](/name-attribute#radio-groups-per-component-instance).
+
+### An exclusive `<details name>` accordion does not close the other items
+
+`name` ships as written, so `<details name="faq">` groups every item on the page with that name, including items rendered by separate component instances. If the items still open independently, check that they share the same `name` value in the page's HTML (a project with `scoping.attributes.name: true` renames it per instance). To give each instance its own group instead, bind the name to a prop and leave out the literal `name`: `<details data-bascik-attr-name="group">` and `data-bascik-prop-group="shipping"` on the instance. A literal `name` next to the binding builds the same output but warns `Attribute binding conflict` for every instance. An instance without the prop gets plain `<details>`, so its items open independently.
 
 ### A third-party widget cannot find its mount element by ID
 
@@ -321,7 +329,7 @@ Components a server or stream script cannot return (1)
 
 A page that uses the component in its own markup still renders it at build time; only script output is affected. Run `bascik --build` first, because the section reads the build's output. The reasons and the usual fix:
 
-- `attr-binding-to-scoped-attribute`: a `data-bascik-attr-*` binding onto `id`, `name`, `class`, `style`, an SVG reference attribute, or an id reference on an element the build does not rewrite. Bind a `data-*` attribute and style it from a scoped class instead.
+- `attr-binding-to-scoped-attribute`: a `data-bascik-attr-*` binding onto `id`, `class`, `style`, an SVG reference attribute, `name` or `usemap` when `scoping.attributes.name` is on, or an id reference on an element the build does not rewrite. Bind a `data-*` attribute and style it from a scoped class instead.
 - `instance-scoped-server-script`: the component's server or stream script names one of its scoped ids or field names, or the component has such a script and its classes are scoped per instance because of `url(#id)` or `scoping.deduplicateCss: false`. Refer to classes in the script, and move the id-dependent markup into the template. A `url(#id)` component with no server or stream script is not affected.
 - `build-script-reads-page-context`: a `data-bascik-build` script in the component reads `BASCIK_PAGE_PATH`, `BASCIK_PAGE_FILE`, or `BASCIK_ROUTE`. Use `data-bascik-build-once`, or pass the value in as a prop.
 - `attr-src-on-directive-script`: a directive script's `src` is bound with `data-bascik-attr-src`. Give it a fixed `src`.

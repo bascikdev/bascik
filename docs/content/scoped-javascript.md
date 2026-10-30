@@ -61,7 +61,7 @@ Each component instance receives its own scoped IDs, and every local reference p
 
 References that do not resolve in the same component remain byte-identical. This preserves component links to literal page-shell IDs, but a reference to an ID declared by another component cannot be scoped safely because that target is instance-specific. Keep related declarations and references in one component, move the target to the page shell, or use [Preserve Scoping](/preserve) when an external system owns the literal ID.
 
-`usemap` is the exception to the ID rule: `<img usemap="#choices">` points to `<map name="choices">`, so it is rewritten only when `name` scoping is enabled.
+`usemap` is the exception to the ID rule: `<img usemap="#choices">` points to `<map name="choices">`, and `name` ships as written, so it is rewritten only when `scoping.attributes.name` is on. See [The `name` Attribute](/name-attribute) for what `name` means on a page, and why a radio group in a repeated component needs a `<form>` of its own.
 
 ## Pitfall: Class-Based DOM Lookups
 
@@ -87,7 +87,7 @@ Because class names are shared across all instances of the same component (for C
 
 The `class` attribute can still coexist on the same element for styling, just add an `id` for the JS lookup.
 
-> **Rule of thumb.** Use `getElementById` (or `getElementsByName`) for elements you need to control per-instance. Reserve `querySelector`/`querySelectorAll` for cases where you intentionally want to sweep across all instances.
+> **Rule of thumb.** Use `getElementById` for elements you need to control per-instance (`getElementsByName` finds every element on the page with that `name`, since `name` ships as written). Reserve `querySelector`/`querySelectorAll` for cases where you intentionally want to sweep across all instances.
 
 ## Source Maps and DevTools Debugging
 
@@ -218,7 +218,7 @@ document.getElementsByClassName("my-class");
 document.querySelector(".my-class");
 document.querySelectorAll(".my-class");
 
-// name attribute
+// name attribute, only with scoping.attributes.name: true
 document.getElementsByName("my-name");
 ```
 
@@ -369,7 +369,8 @@ The counter demo's Output tabs show the complete compiled HTML, CSS, and JavaScr
 The scoping format:
 
 - `class` → `bascik__<componentName>__<originalName>` (shared across all instances)
-- `id` / `name` → `bascik__<componentName>__<instanceId>__<originalName>` (unique per instance)
+- `id` → `bascik__<componentName>__<instanceId>__<originalName>` (unique per instance)
+- `name` → as written (the same per-instance form as `id` with `scoping.attributes.name: true`); see [The `name` Attribute](/name-attribute)
 
 > **Under the hood.** Read the [Scoping System internals](/internals/scoping-system) for the compiler passes, attribute maps, selector rewriting, and CSS deduplication that produce this output.
 

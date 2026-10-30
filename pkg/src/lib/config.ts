@@ -151,7 +151,9 @@ export const defaultConfig: Omit<
     attributes: {
       class: true,
       id: true,
-      name: true,
+      // `name` is a page-level contract (form submission keys, radio groups,
+      // iframe targets, maps, exclusive accordions), so it ships as written.
+      name: false,
     },
     preserve: ["code"],
     deduplicateCss: true,
