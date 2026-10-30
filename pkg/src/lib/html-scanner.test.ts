@@ -281,6 +281,43 @@ describe("scanHtml", () => {
     );
   });
 
+  describe("table-structure tags in foreign content opened inside a table", () => {
+    // In a table's insertion modes, these tags (and </table>) can pop the parser out of SVG or MathML, back past
+    // the table; whether they do depends on the insertion mode (a <table> in a cell does not), which the scan does
+    // not track. So the scan stops at the tag instead of guessing whether what follows is foreign.
+    const script = "<script>a()</script>";
+    it.each([
+      "<table><math><mi><table>",
+      "<table><math><mi><tr>",
+      "<table><math><mi><td>",
+      "<table><math><mi><caption>",
+      "<table><math><mi><tbody>",
+      "<table><math><mi></table>",
+      "<table><svg><foreignObject><table>",
+      "<table><svg><foreignObject><tr>",
+      "<table><svg><foreignObject></table>",
+      "<table><td><math><mi><tr>",
+      "<table><td><svg><foreignObject><td>",
+    ])("stops at the tag, and agrees with parse5 before it: %s", (prefix) => {
+      const html = `${prefix}${script}`;
+      const { scripts, stoppedAt } = scan(html);
+      const tagStart = prefix.lastIndexOf("<");
+      expect(stoppedAt).toBe(tagStart);
+      const reported = scripts
+        .filter((s) => !s.inTemplate && !s.inForeign && s.terminated)
+        .filter((s) => s.start < stoppedAt);
+      expect(reported).toEqual([]);
+      expect(
+        parsedLocations(html).scripts.filter((r) => r.start < stoppedAt),
+      ).toEqual([]);
+    });
+
+    it("keeps scanning foreign content that has no table around it", () => {
+      const html = `<div><svg><foreignObject><table><tr>${script}`;
+      expect(scan(html).stoppedAt).toBe(html.length);
+    });
+  });
+
   it("matches parse5 on every script and comment range in random malformed markup", () => {
     fc.assert(
       fc.property(soup, (html) => {
