@@ -202,9 +202,10 @@ id     ->  bascik__<component>__<instance>__<name>      unique per instance
 name   ->  name                                          as written (scoping.attributes.name: true scopes it per instance)
 p {}   ->  .bascik__<component>__el__p                  class added to template elements
 --x declared in the component -> --bascik__<component>__x
+data-testid ->  as written                               never scoped or hashed
 ```
 
-Production builds shorten these to hashes. Never hard-code a scoped name.
+Production builds shorten these to hashes. Never hard-code a scoped name. Tests use `data-testid` instead: the root gets `data-testid="<component>"`, and each interactive part, form, and landmark inside gets `data-testid="<component>-<part>"` (`plan-card-buy`, `signup-form-email`). Every instance shares them; a page that needs to tell instances apart puts `data-testid` on the usage tag, which replaces the root's. Rule 16 of the `bascik` skill has the full list.
 
 ## Script rules (must follow)
 
@@ -276,6 +277,6 @@ It reports an **error** for `var(--x)` with no declaration and no fallback, a **
 ## Verify
 
 1. `node <skills-dir>/bascik/scripts/preview.mjs '<my-widget />' --count 2` and confirm each instance has its own IDs and its script references them.
-2. `node <skills-dir>/bascik/scripts/verify.mjs` (runs `bascik --check`, which includes the linter, and flags `.id =`, template-literal classes, attribute selectors, and element names in `:is()`).
+2. `node <skills-dir>/bascik/scripts/verify.mjs` (runs `bascik --check`, which includes the linter, and flags `.id =`, template-literal classes, attribute selectors, and element names in `:is()`). Add the `data-testid` attributes its advisory lists.
 3. `node <skills-dir>/bascik/scripts/audit-components.mjs` exits 0: no oversized or tiny components, no repeated blocks, heading groups, or facts, no constant props or prop drilling, and TypeScript scripts.
 4. In the browser: two instances on one page, keyboard only, and JavaScript disabled.

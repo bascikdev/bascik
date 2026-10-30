@@ -1851,6 +1851,59 @@ describe("mergeAttributesOntoRoot", () => {
     expect(result).not.toContain('id="override"');
   });
 
+  describe("a data-testid on the usage tag replaces the root's own", () => {
+    // Every root can carry a default test id, and a page still names one
+    // instance (`<site-nav data-testid="footer-nav">`) without .nth().
+    it.each([
+      [
+        '<nav data-testid="site-nav" class="nav">',
+        '<nav data-testid="footer-nav" class="nav">',
+      ],
+      ["<nav data-testid='site-nav'>", "<nav data-testid='footer-nav'>"],
+      ["<nav data-testid=site-nav>", '<nav data-testid="footer-nav">'],
+      ["<nav data-testid>", '<nav data-testid="footer-nav">'],
+      ['<nav DATA-TESTID="site-nav">', '<nav DATA-TESTID="footer-nav">'],
+    ])("%s", (root, expected) => {
+      expect(
+        mergeAttributesOntoRoot(`${root}<a>Home</a></nav>`, {
+          "data-testid": "footer-nav",
+        }),
+      ).toBe(`${expected}<a>Home</a></nav>`);
+    });
+
+    it("in place, with the class merge and new attributes beside it", () => {
+      expect(
+        mergeAttributesOntoRoot(
+          '<nav class="nav" data-testid="site-nav" aria-label="Main">',
+          {
+            "data-testid": 'a"b',
+            class: "sticky",
+            "aria-label": "Footer",
+            id: "x",
+          },
+        ),
+      ).toBe(
+        '<nav class="nav sticky" data-testid="a&quot;b" aria-label="Main" id="x">',
+      );
+    });
+
+    it("only the first of a duplicated root data-testid, which is the one the browser keeps", () => {
+      expect(
+        mergeAttributesOntoRoot('<nav data-testid="a" data-testid="b">', {
+          "data-testid": "c",
+        }),
+      ).toBe('<nav data-testid="c" data-testid="b">');
+    });
+
+    it("other test hooks keep the root's own value, like every other attribute", () => {
+      expect(
+        mergeAttributesOntoRoot('<nav data-cy="site-nav">', {
+          "data-cy": "footer-nav",
+        }),
+      ).toBe('<nav data-cy="site-nav">');
+    });
+  });
+
   it("merges attribute even if root tag contains data- or prefix matching attribute", () => {
     const html = '<input data-name="header" data-id="123" title="a name" />';
     const result = mergeAttributesOntoRoot(html, {

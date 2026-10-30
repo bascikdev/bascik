@@ -78,7 +78,10 @@ export const extractInheritableAttributes = (
 const inDoubleQuotes = (value: string): string => value.replace(/"/g, "&quot;");
 const inSingleQuotes = (value: string): string => value.replace(/'/g, "&#39;");
 
-/** A class or style the root's template wrote: where it sits and its value. */
+/**
+ * A class, style or data-testid the root's template wrote: where it sits and
+ * its value.
+ */
 interface OwnAttribute {
   start: number;
   end: number;
@@ -91,6 +94,8 @@ interface OwnAttribute {
  * Merge inheritable attributes onto the first (root) element of transpiled HTML.
  *  - class: appended to existing classes, or added if absent.
  *  - style: appended to the existing style after a `;`, or added if absent.
+ *  - data-testid: replaces the root's own, so a component can carry a default
+ *    test id and a page can still name one instance.
  *  - Other attributes: added only if the root element does not already have them.
  * The root's own class and style are found once, in the root as the
  * template wrote it, never in text inheritance adds: a usage value that
@@ -156,7 +161,7 @@ export const mergeAttributesOntoRoot = (
   // as the template wrote it: inherited text is never searched, so a value
   // that spells ` class=` cannot be taken for the root's class.
   const existingAttrs = new Set<string>();
-  const ownSpans = new Map<"class" | "style", OwnAttribute>();
+  const ownSpans = new Map<"class" | "style" | "data-testid", OwnAttribute>();
   // Spans from the tokenizer-state scan are relative to `<tagName${own}`.
   const offset = 1 + tagName.length;
   const ownTag = `<${tagName}${own}`;
@@ -170,7 +175,7 @@ export const mergeAttributesOntoRoot = (
         ? ""
         : ownTag.slice(attr.valueStart, attr.valueEnd);
     existingAttrs.add(lower);
-    if (lower === "class" || lower === "style")
+    if (lower === "class" || lower === "style" || lower === "data-testid")
       ownSpans.set(lower, {
         start: attr.start - offset,
         end: attr.end - offset,
@@ -188,6 +193,7 @@ export const mergeAttributesOntoRoot = (
   const merged = new Map<"class" | "style", string[]>();
   const added: { name: string; merge?: "class" | "style"; value: string }[] =
     [];
+  let testIdReplacement: string | undefined;
 
   for (const [name, written] of Object.entries(attrs)) {
     const lowerName = name.toLowerCase();
@@ -195,6 +201,14 @@ export const mergeAttributesOntoRoot = (
       (lowerName === "class" || lowerName === "style") && written
         ? (lowerName as "class" | "style")
         : undefined;
+    if (
+      lowerName === "data-testid" &&
+      written !== undefined &&
+      ownSpans.has("data-testid")
+    ) {
+      testIdReplacement = written;
+      continue;
+    }
     if (!merges && (written === undefined || existingAttrs.has(lowerName)))
       continue;
     let value = written;
@@ -237,15 +251,20 @@ export const mergeAttributesOntoRoot = (
       base,
     );
 
-  // The root's own attributes, with its class and style spliced in place
-  // (each in its own quote; an unquoted one becomes double-quoted).
+  // The root's own attributes, with its class and style merged and its
+  // data-testid replaced in place (each in its own quote; an unquoted or
+  // valueless one becomes double-quoted).
   let attrStr = "";
   let cursor = 0;
   for (const [kind, span] of [...ownSpans].sort(
     (a, b) => a[1].start - b[1].start,
   )) {
-    if (!merged.has(kind)) continue;
-    const value = join(kind, span.value);
+    let value: string;
+    if (kind === "data-testid") {
+      if (testIdReplacement === undefined) continue;
+      value = testIdReplacement;
+    } else if (merged.has(kind)) value = join(kind, span.value);
+    else continue;
     attrStr +=
       own.slice(cursor, span.start) +
       (span.quote === "'"

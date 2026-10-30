@@ -35,6 +35,8 @@ Common use cases:
 
 Inherited values are copied exactly as written, with one exception: see [Attributes That Become URLs on the Root](#attributes-that-become-urls-on-the-root). An inherited `class` or `style` merges into the root's own `class` or `style` only, never into text another inherited value carries.
 
+When the root already has an attribute the usage tag also sets, the root's value stays, except for `class` and `style`, which merge, and `data-testid`, where the usage tag's value replaces the root's. That lets a component ship a default test id on its root (`data-testid="plan-card"`) while a page names one instance (`<plan-card data-testid="plan-card-featured" />`), so a test can find it with `getByTestId` instead of counting instances. See [End-to-End Testing](/testing/e2e-testing#recommended-pattern-data-testid-attributes).
+
 Attribute inheritance is root-only. To send a prop to an attribute on a non-root element, use [`data-bascik-attr-{attribute}="{propName}"`](/props#put-a-prop-in-an-attribute). Use slots when the consumer should provide the element or richer markup itself.
 
 ### Attributes That Become URLs on the Root

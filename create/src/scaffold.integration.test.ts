@@ -287,8 +287,13 @@ describe("scaffold-to-compiler integration", () => {
     expect(indexHtml).toContain("<header");
     expect(indexHtml).toContain("test-site");
     // my-counter expanded to counter button/UI
-    expect(indexHtml).toContain('data-testid="counter-inc"');
-    expect(indexHtml).toContain('data-testid="counter-dec"');
+    expect(indexHtml).toContain('data-testid="my-counter-inc"');
+    expect(indexHtml).toContain('data-testid="my-counter-dec"');
+    // A usage tag's data-testid replaces <feat-card>'s own on the root.
+    expect(indexHtml).toMatch(
+      /<article class="[^"]+" data-testid="feature-zero-runtime">/,
+    );
+    expect(indexHtml).not.toContain('data-testid="feat-card"');
 
     // 5. Verify build script executed in site-footer (current year)
     const currentYear = String(new Date().getFullYear());
@@ -608,6 +613,26 @@ describe("scaffold-to-compiler integration", () => {
         findings
           .filter((f) => semantic.has(f.rule))
           .map((f) => `${f.rule} ${f.file}:${f.line}`),
+        template,
+      ).toEqual([]);
+    }
+  });
+
+  it("the scaffolded default and cloudflare starters give every component root, control, form, and landmark a data-testid", async () => {
+    const { testIdAdvisory } = (await import(
+      join(REPO_ROOT, "skills/bascik/scripts/lib/testids.mjs")
+    )) as {
+      testIdAdvisory: (
+        root: string,
+      ) => { file: string; line: number; message: string }[];
+    };
+    for (const template of ["default", "cloudflare"] as const) {
+      const parentDir = await createTempDir(`testids-${template}`);
+      await scaffold("testid-site", parentDir, { template });
+      expect(
+        testIdAdvisory(join(parentDir, "testid-site")).map(
+          (gap) => `${gap.file}:${gap.line} ${gap.message}`,
+        ),
         template,
       ).toEqual([]);
     }

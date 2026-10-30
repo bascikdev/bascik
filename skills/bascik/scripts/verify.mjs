@@ -5,6 +5,7 @@ import { parseArgs } from "node:util";
 import { isAbsolute, relative, sep } from "node:path";
 import {
   componentRoots,
+  docsBaseUrl,
   fail,
   findPackageBin,
   findProjectRoot,
@@ -13,6 +14,9 @@ import {
   loadProjectConfig,
   run,
 } from "./lib/project.mjs";
+import { formatTestIdAdvisory, testIdAdvisory } from "./lib/testids.mjs";
+
+export { formatTestIdAdvisory, testIdAdvisory };
 
 const HELP = `Usage: node verify.mjs [--build] [--strict] [--npx]
 
@@ -25,6 +29,9 @@ Runs, from the project root:
                                           reach. Also the project itself, when step 1 had to skip its
                                           per-file checks
   3. bascik --build (with --build)        a full production build
+
+Then prints an advisory, by file and line, of the component roots, controls, forms, and landmarks that have no
+data-testid. The advisory never changes the exit code.
 
 Uses the project's installed packages. Exits nonzero when any step fails.
 
@@ -163,6 +170,12 @@ async function main() {
       ),
     );
   }
+
+  const advisory = formatTestIdAdvisory(
+    testIdAdvisory(root, config?.module),
+    docsBaseUrl(),
+  );
+  if (advisory) console.log(advisory);
 
   const failed = statuses.filter((s) => s === "FAIL").length;
   console.log(

@@ -159,6 +159,12 @@ describe("monorepo layout", () => {
     expect(verified.stdout).toContain(
       "== PASS  bascik-language-server --check ../../shared/components",
     );
+    // The shared nav and the pages' <main> have no data-testid: the advisory lists them, and the exit code stays 0.
+    expect(verified.stdout).toContain("== NOTE  data-testid advisory");
+    expect(verified.stdout).toContain(
+      '../../shared/components/site-nav/site-nav.html:4  <nav> root of <site-nav> has no data-testid; add data-testid="site-nav"',
+    );
+    expect(verified.stdout).toContain("All checks passed.");
   });
 
   it("catches a scoping error in a shared component from inside a site", () => {

@@ -410,6 +410,24 @@ describe("E2E_APP_SPEC", () => {
     }
   });
 
+  it("finds only test ids the starter's components and pages write", () => {
+    const markup = [
+      SITE_HEADER_HTML,
+      SITE_FOOTER_HTML,
+      FEAT_CARD_HTML,
+      MY_COUNTER_HTML,
+      CONTACT_FORM_HTML,
+      indexPage("My App", { template: "cloudflare" }),
+      aboutPage("My App"),
+      contactPage("My App"),
+      notFoundPage("My App"),
+      edgePage("My App"),
+    ].join("\n");
+    for (const spec of [E2E_APP_SPEC, CLOUDFLARE_E2E_APP_SPEC])
+      for (const [, id] of spec.matchAll(/getByTestId\('([^']+)'\)/g))
+        expect(markup, id).toContain(`data-testid="${id}"`);
+  });
+
   it("does not mention the edge page", () => {
     expect(E2E_APP_SPEC).not.toContain("/edge");
     // The feature cards' body rules reach the slot content in the browser.
@@ -489,6 +507,7 @@ describe("edgePage", () => {
 
   it("uses the shared page shell with the brand", () => {
     expect(html).toContain("<title>Edge - My App</title>");
+    expect(html).toContain('<main id="main" data-testid="edge-main">');
     expect(html).toContain("<site-meta />");
     expect(html).toContain('<site-header data-bascik-prop-brand="My App" />');
     expect(html).toContain('<site-footer data-bascik-prop-brand="My App" />');
@@ -575,10 +594,18 @@ describe("semantic HTML in the starter", () => {
   const levels = (html: string) =>
     [...html.matchAll(/<h([1-6])[\s>]/g)].map((m) => Number(m[1]));
 
-  it('every page has lang, a <main id="main"> for the skip link, and one <h1>', () => {
+  it('every page has lang, a <main id="main"> for the skip link with a test id named for the page, and one <h1>', () => {
+    const testIds = {
+      index: "home-main",
+      about: "about-main",
+      contact: "contact-main",
+      notFound: "404-main",
+    };
     for (const [name, html] of Object.entries(pages)) {
       expect(html, name).toContain('<html lang="en">');
-      expect(html.match(/<main id="main">/g), name).toHaveLength(1);
+      expect(html.match(/<main id="main"[^>]*>/g), name).toEqual([
+        `<main id="main" data-testid="${testIds[name as keyof typeof testIds]}">`,
+      ]);
       expect(html.match(/<h1[\s>]/g), name).toHaveLength(1);
     }
   });
@@ -610,7 +637,7 @@ describe("semantic HTML in the starter", () => {
       /<a href="#main" class="skip-link"[^>]*>Skip to content<\/a>/,
     );
     expect(SITE_HEADER_CSS).toMatch(/\.skip-link:focus/);
-    expect(SITE_HEADER_HTML).toMatch(/<nav class="nav" aria-label="Main">/);
+    expect(SITE_HEADER_HTML).toMatch(/<nav class="nav" aria-label="Main"[\s>]/);
     const toggle = /<button id="nav-toggle"[^>]*>/.exec(SITE_HEADER_HTML)![0];
     expect(toggle).toContain('type="button"');
     expect(toggle).toContain('aria-controls="nav-menu"');
@@ -893,45 +920,61 @@ describe("page templates", () => {
       SITE_HEADER_HTML,
       [
         "site-header",
-        "site-logo",
-        "nav-toggle",
-        "nav-menu",
-        "nav-home",
-        "nav-about",
-        "nav-contact",
+        "site-header-skip-link",
+        "site-header-nav",
+        "site-header-logo",
+        "site-header-nav-toggle",
+        "site-header-nav-menu",
+        "site-header-home",
+        "site-header-about",
+        "site-header-contact",
       ],
     ],
     [
       "SITE_FOOTER_HTML",
       SITE_FOOTER_HTML,
-      ["site-footer", "footer-home", "footer-about", "footer-contact"],
+      [
+        "site-footer",
+        "site-footer-nav",
+        "site-footer-home",
+        "site-footer-about",
+        "site-footer-contact",
+      ],
     ],
     [
       "MY_COUNTER_HTML",
       MY_COUNTER_HTML,
-      ["my-counter", "counter-dec", "counter-val", "counter-inc"],
+      ["my-counter", "my-counter-dec", "my-counter-value", "my-counter-inc"],
     ],
     [
       "CONTACT_FORM_HTML",
       CONTACT_FORM_HTML,
       [
         "contact-form",
-        "contact-name",
-        "contact-email",
-        "contact-message",
-        "contact-submit",
-        "contact-status",
+        "contact-form-name",
+        "contact-form-email",
+        "contact-form-message",
+        "contact-form-submit",
+        "contact-form-status",
       ],
     ],
   ])(
     "%s gives its root and interactive parts a data-testid",
     (_name, html, ids) => {
       for (const id of ids) expect(html).toContain(`data-testid="${id}"`);
+      // Every test id names its component: the root's is the component name, and each part's starts with it.
+      const component = ids[0];
+      for (const [, id] of html.matchAll(/data-testid="([^"]+)"/g))
+        expect(id === component || id.startsWith(`${component}-`), id).toBe(
+          true,
+        );
     },
   );
 
-  it("leaves <feat-card>'s root without a data-testid, so each usage's own data-testid reaches it", () => {
-    expect(FEAT_CARD_HTML).toMatch(/<article class="fcard">/);
+  it("gives <feat-card>'s root a data-testid, which each usage's own data-testid replaces", () => {
+    expect(FEAT_CARD_HTML).toMatch(
+      /<article class="fcard" data-testid="feat-card">/,
+    );
   });
 
   it("writes every component script in TypeScript", () => {

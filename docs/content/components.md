@@ -566,6 +566,8 @@ A component's root element is the element that replaces its tag in the output, a
 
 Bascik never adds or removes a wrapper, so what you pick is what ships. [Semantic HTML](/semantic-html) has a table of jobs and their elements, with good and bad examples built by Bascik.
 
+Give the root `data-testid="<component-name>"` and each control inside it `data-testid="<component-name>-<part>"`, so end-to-end tests can find them after a production build hashes class names and IDs. Bascik never scopes or hashes `data-testid`. See [End-to-End Testing](/testing/e2e-testing#recommended-pattern-data-testid-attributes).
+
 ## Multiple Root Elements
 
 Unlike traditional JavaScript frameworks (such as React or Vue 2) that historically required a single root wrapper element or explicit fragment components, Bascik component templates naturally support **multiple top-level HTML elements** in a single `.html` file.

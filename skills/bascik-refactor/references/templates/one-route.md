@@ -36,7 +36,8 @@ Read `docs/migration/execution-contract.md` first. Parent prompt: {{PARENT_PROMP
    production's rendered page and in {{LEGACY_ENTRY}} goes on the same element of the target, with the same attribute
    name and value (`testid-carryover`). Then give every control, form, landmark and component root without one a
    `data-testid` (`testid-coverage`): a component root's id is the component name, a part's is `<component>-<part>`,
-   and repeated instances share their ids (tests pick one with `nth()` or `filter({ hasText })`).
+   and repeated instances share their ids (tests pick one with `filter({ hasText })`, or a `data-testid` on the usage
+   tag replaces the root's). Never put request or random data in a test id.
 5. Implement every interaction in {{INTERACTIONS}} with accurate ARIA state and keyboard support. The interaction crawl
    also activates every control it finds, so an interaction missing from the list still fails.
 6. Match the layers production shows on {{ROUTE}} and only those: cookie banners, notices, chat buttons, sticky bars,

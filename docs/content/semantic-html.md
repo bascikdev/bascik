@@ -13,7 +13,7 @@ Bascik ships the code you wrote. A component tag is replaced by its template, an
 
 ## Components Keep Their Semantics
 
-A component's root element is the element that replaces its tag, and attributes on the usage tag (`class`, `aria-label`, `id`) land on it through [attribute inheritance](/attribute-inheritance). A `class` is appended to the root's own, but any other attribute already on the root wins over the same attribute on the usage tag. So leave a label off the component's root and pass it where the component is used, as the demos below do. Make the root the element for the component's job, not a wrapper `<div>` around it.
+A component's root element is the element that replaces its tag, and attributes on the usage tag (`class`, `aria-label`, `id`) land on it through [attribute inheritance](/attribute-inheritance). A `class` is appended to the root's own, and a `data-testid` on the usage tag replaces the root's, but any other attribute already on the root wins over the same attribute on the usage tag. So leave a label off the component's root and pass it where the component is used, as the demos below do. Make the root the element for the component's job, not a wrapper `<div>` around it.
 
 | Component job                         | Root element                         |
 | ------------------------------------- | ------------------------------------ |

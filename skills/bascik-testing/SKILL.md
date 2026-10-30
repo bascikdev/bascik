@@ -42,7 +42,9 @@ Server, stream, and API logic: put it in `src/lib/*.ts`, unit test the functions
 
 `bascik --build` hashes scoped class names and IDs (`minify.identifiers`). Selectors such as `.my-card` or `#btn` that work in dev fail in production.
 
-- Use `page.getByRole(...)`, `getByLabel(...)`, `getByText(...)`, or `getByTestId(...)` with an explicit `data-testid` in the component template.
+- Find a component, or a part of one, with `getByTestId(...)`. Every component root has `data-testid="<component-name>"` and each interactive part has `data-testid="<component-name>-<part>"` (rule 16 of the `bascik` skill); add any that are missing to the template, and run `verify.mjs`, whose advisory lists the gaps. Bascik never scopes or hashes `data-testid`.
+- Use `getByRole(...)`, `getByLabel(...)`, or `getByText(...)` first when the test is about what a person reads or hears: a button's accessible name, a field's label, a heading.
+- Instances share their test ids. Pick one with `.filter({ hasText: "..." })`, or give it its own with `data-testid` on the usage tag in the test page, which replaces the root's.
 - Never use scoped names (`.bascik__my-card__title`), positional `.nth(N)` chains, or `locator('..')` traversal to reach an element.
 - Put two instances of a component on a test page and assert they act independently; that catches the class-selector pitfall.
 - Test against the production build (`bascik --build` served statically, or `bascik --server`), not only the dev server: script placement and identifiers differ.

@@ -174,9 +174,9 @@ test.describe('Starter App E2E Tests', () => {
   test('counter component increments and decrements count', async ({ page }) => {
     await page.goto('/');
 
-    const val = page.getByTestId('counter-val').first();
-    const decBtn = page.getByTestId('counter-dec').first();
-    const incBtn = page.getByTestId('counter-inc').first();
+    const val = page.getByTestId('my-counter-value').first();
+    const decBtn = page.getByTestId('my-counter-dec').first();
+    const incBtn = page.getByTestId('my-counter-inc').first();
 
     await expect(val).toHaveText('0');
 
@@ -191,8 +191,8 @@ test.describe('Starter App E2E Tests', () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
 
-    const toggle = page.getByTestId('nav-toggle').first();
-    const menu = page.getByTestId('nav-menu').first();
+    const toggle = page.getByTestId('site-header-nav-toggle').first();
+    const menu = page.getByTestId('site-header-nav-menu').first();
 
     // Assert what the reader sees, not the class name: the build scopes
     // .is-open (hashed under minify.identifiers), so the element never
@@ -211,11 +211,11 @@ test.describe('Starter App E2E Tests', () => {
 
   test('contact form answers a submit without leaving the page', async ({ page }) => {
     await page.goto('/contact');
-    await page.getByTestId('contact-name').fill('Ada');
-    await page.getByTestId('contact-email').fill('ada@example.com');
-    await page.getByTestId('contact-submit').click();
+    await page.getByTestId('contact-form-name').fill('Ada');
+    await page.getByTestId('contact-form-email').fill('ada@example.com');
+    await page.getByTestId('contact-form-submit').click();
     await expect(page).toHaveURL('/contact');
-    await expect(page.getByTestId('contact-status')).toBeVisible();
+    await expect(page.getByTestId('contact-form-status')).toBeVisible();
   });
 
   test('feature card styles the title and text passed through its slot', async ({ page }) => {
@@ -511,17 +511,17 @@ export const SITE_HEADER_CSS = `.skip-link {
 export const SITE_HEADER_HTML = `<style>
 ${SITE_HEADER_CSS}</style>
 <header class="header" data-testid="site-header">
-  <a href="#main" class="skip-link" data-testid="skip-link">Skip to content</a>
+  <a href="#main" class="skip-link" data-testid="site-header-skip-link">Skip to content</a>
   <div class="container">
-    <nav class="nav" aria-label="Main">
-      <a href="/" class="logo" data-bascik-prop-brand data-testid="site-logo">My Site</a>
-      <button id="nav-toggle" type="button" class="nav-toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="nav-toggle">
+    <nav class="nav" aria-label="Main" data-testid="site-header-nav">
+      <a href="/" class="logo" data-bascik-prop-brand data-testid="site-header-logo">My Site</a>
+      <button id="nav-toggle" type="button" class="nav-toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle">
         <span></span><span></span><span></span>
       </button>
-      <ul id="nav-menu" class="nav-menu" data-testid="nav-menu">
-        <li><a href="/" data-testid="nav-home">Home</a></li>
-        <li><a href="/about" data-testid="nav-about">About</a></li>
-        <li><a href="/contact" data-testid="nav-contact">Contact</a></li>
+      <ul id="nav-menu" class="nav-menu" data-testid="site-header-nav-menu">
+        <li><a href="/" data-testid="site-header-home">Home</a></li>
+        <li><a href="/about" data-testid="site-header-about">About</a></li>
+        <li><a href="/contact" data-testid="site-header-contact">Contact</a></li>
       </ul>
     </nav>
   </div>
@@ -579,10 +579,10 @@ ${SITE_FOOTER_CSS}</style>
         &copy; <script data-bascik-build-once type="text/typescript">export default (): string => String(new Date().getFullYear());</script>
         <span data-bascik-prop-brand>My Site</span>
       </span>
-      <nav class="footer-nav" aria-label="Footer navigation">
-        <a href="/" data-testid="footer-home">Home</a>
-        <a href="/about" data-testid="footer-about">About</a>
-        <a href="/contact" data-testid="footer-contact">Contact</a>
+      <nav class="footer-nav" aria-label="Footer navigation" data-testid="site-footer-nav">
+        <a href="/" data-testid="site-footer-home">Home</a>
+        <a href="/about" data-testid="site-footer-about">About</a>
+        <a href="/contact" data-testid="site-footer-contact">Contact</a>
       </nav>
     </div>
   </div>
@@ -638,7 +638,7 @@ export const FEAT_CARD_CSS = `.fcard {
  */
 export const FEAT_CARD_HTML = `<style>
 ${FEAT_CARD_CSS}</style>
-<article class="fcard">
+<article class="fcard" data-testid="feat-card">
   <div class="fcard-header"><div data-bascik-slot="header"></div></div>
   <div class="fcard-body"><div data-bascik-slot></div></div>
   <div class="fcard-footer"><div data-bascik-slot="footer"></div></div>
@@ -678,9 +678,9 @@ export const MY_COUNTER_CSS = `.counter {
 export const MY_COUNTER_HTML = `<style>
 ${MY_COUNTER_CSS}</style>
 <div class="counter" role="group" aria-label="Counter" data-testid="my-counter">
-  <button id="btn-dec" type="button" class="btn btn-ghost" aria-label="Decrease" data-testid="counter-dec">−</button>
-  <output id="count-val" class="count-val" aria-live="polite" data-testid="counter-val">0</output>
-  <button id="btn-inc" type="button" class="btn btn-primary" aria-label="Increase" data-testid="counter-inc">+</button>
+  <button id="btn-dec" type="button" class="btn btn-ghost" aria-label="Decrease" data-testid="my-counter-dec">−</button>
+  <output id="count-val" class="count-val" aria-live="polite" data-testid="my-counter-value">0</output>
+  <button id="btn-inc" type="button" class="btn btn-primary" aria-label="Increase" data-testid="my-counter-inc">+</button>
 </div>
 <script type="text/typescript">
   // Each instance runs this with its own ids, so two counters keep their own count.
@@ -737,18 +737,18 @@ ${CONTACT_FORM_CSS}</style>
 <form id="contact-form" class="form" data-testid="contact-form">
   <div class="field">
     <label for="name">Name</label>
-    <input type="text" id="name" name="name" placeholder="Your name" autocomplete="name" data-testid="contact-name" />
+    <input type="text" id="name" name="name" placeholder="Your name" autocomplete="name" data-testid="contact-form-name" />
   </div>
   <div class="field">
     <label for="email">Email</label>
-    <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" data-testid="contact-email" />
+    <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" data-testid="contact-form-email" />
   </div>
   <div class="field">
     <label for="message">Message</label>
-    <textarea id="message" name="message" placeholder="How can we help?" data-testid="contact-message"></textarea>
+    <textarea id="message" name="message" placeholder="How can we help?" data-testid="contact-form-message"></textarea>
   </div>
-  <button type="submit" class="btn" data-testid="contact-submit">Send message</button>
-  <p id="contact-status" class="status" role="status" data-testid="contact-status" hidden></p>
+  <button type="submit" class="btn" data-testid="contact-form-submit">Send message</button>
+  <p id="contact-status" class="status" role="status" data-testid="contact-form-status" hidden></p>
 </form>
 <script type="text/typescript">
   const form = document.getElementById('contact-form') as HTMLFormElement;
@@ -865,7 +865,7 @@ describe('contact-form component', () => {
       expect(html).toContain(\`for="\${id}"\`);
       expect(html).toContain(\`id="\${id}"\`);
     }
-    expect(html).toContain('data-testid="contact-submit"');
+    expect(html).toContain('data-testid="contact-form-submit"');
     expect(html).toContain('<script type="text/typescript">');
     expect(html).toContain('preventDefault');
   });
@@ -878,6 +878,7 @@ const pageShell = (
   title: string,
   brand: string,
   body: string,
+  page: string,
 ): string => `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -886,7 +887,7 @@ const pageShell = (
 </head>
 <body>
   <site-header data-bascik-prop-brand="${brand}" />
-  <main id="main">
+  <main id="main" data-testid="${page}-main">
 ${body}
   </main>
   <site-footer data-bascik-prop-brand="${brand}" />
@@ -961,6 +962,7 @@ export const indexPage = (
         </div>
       </div>
     </section>`,
+    "home",
   );
 
 export const aboutPage = (brand: string): string =>
@@ -991,6 +993,7 @@ export const aboutPage = (brand: string): string =>
         </div>
       </section>
     </div>`,
+    "about",
   );
 
 export const contactPage = (brand: string): string =>
@@ -1006,6 +1009,7 @@ export const contactPage = (brand: string): string =>
         <contact-form />
       </section>
     </div>`,
+    "contact",
   );
 
 export const notFoundPage = (brand: string): string =>
@@ -1021,6 +1025,7 @@ export const notFoundPage = (brand: string): string =>
         <a href="/" class="btn btn-primary">Go home</a>
       </section>
     </div>`,
+    "404",
   );
 
 // ─── Cloudflare template ──────────────────────────────────────────────────────
@@ -1067,6 +1072,7 @@ export const edgePage = (brand: string): string =>
         </div>
       </section>
     </div>`,
+    "edge",
   );
 
 /**

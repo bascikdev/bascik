@@ -98,7 +98,7 @@ dist/                    compiled output, never edited by hand, never committed
 
 ## Write a component
 
-Default pattern: `<style>` above the markup, markup in the middle, a TypeScript `<script>` below. Give every element a script must control an `id` and find it with `getElementById`, and put a `data-testid` on the root and on each control.
+Default pattern: `<style>` above the markup, markup in the middle, a TypeScript `<script>` below. Give every element a script must control an `id` and find it with `getElementById`, and put a `data-testid` on the root and on each control (rule 16).
 
 ```html
 <!-- src/components/like-button/like-button.html -->
@@ -147,6 +147,7 @@ New components are picked up by the running dev server automatically; no restart
 13. **Script directives are exclusive.** One `<script>` tag takes at most one of `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`, `data-bascik-server`, `data-bascik-stream`. `data-bascik-build-once` runs once per file with no page context.
 14. **TypeScript by default.** New browser and Node code is TypeScript (see "TypeScript by default" above). Use JavaScript only when the person asks for it.
 15. **Server and stream scripts build markup with `html`.** `import { html } from "@bascik/bascik/html"` and return `` html`<p>${value}</p>` ``: it escapes each value for where it lands and throws where escaping cannot help. Never interpolate request data into a plain template string. See the `bascik-scripts` skill.
+16. **A `data-testid` on what a test needs.** Every component root gets `data-testid="<component-name>"`, and every interactive part (a button, an input, select, or textarea, a `<summary>`, a link a script handles, an element with an ARIA widget role or `tabindex="0"`) gets `data-testid="<component-name>-<part>"`. Forms, dialogs, and landmarks (`<main>`, `<nav>`, the page's `<header>` and `<footer>`) get one too. Bascik never scopes or hashes `data-testid`, so `getByTestId(...)` matches in a production build where classes and ids are hashed. Instances share their ids: a test picks one with `.filter({ hasText })`, or the page names one with `data-testid` on the usage tag, which replaces the root's. Never put request or random data in a test id, and keep existing hooks (`data-test`, `data-cy`, `data-qa`) when migrating. `scripts/new-component.mjs` adds the root's, and `scripts/verify.mjs` lists the gaps. See `read-doc.mjs /testing/e2e-testing`.
 
 ## Slots, props, and attributes
 
@@ -158,7 +159,7 @@ New components are picked up by the running dev server automatically; no restart
 | Prop into an attribute   | `<img data-bascik-attr-src="image" data-bascik-attr-alt="alt">` | `<my-card data-bascik-prop-image="/a.png" data-bascik-prop-alt="A" />`        |
 | Forward attributes       | (nothing)                                                       | `<my-card class="wide" aria-label="Promo" />` lands on the first root element |
 
-Pass props as `data-bascik-prop-<name>="..."` on the usage tag. A plain attribute such as `label="..."` is not a prop: it is forwarded to the root element and the prop keeps its default. The slot element itself is replaced by the content, so named-slot wrappers disappear: wrap headings and links in a `<div data-bascik-slot="x">` rather than putting the attribute on the `<h1>` or `<a>`. Details: `read-doc.mjs /slots`, `/props`, `/attribute-inheritance`.
+Pass props as `data-bascik-prop-<name>="..."` on the usage tag. A plain attribute such as `label="..."` is not a prop: it is forwarded to the root element and the prop keeps its default. A forwarded attribute the root already has keeps the root's value, except `data-testid`: the usage tag's replaces it, so a page can name one instance. The slot element itself is replaced by the content, so named-slot wrappers disappear: wrap headings and links in a `<div data-bascik-slot="x">` rather than putting the attribute on the `<h1>` or `<a>`. Details: `read-doc.mjs /slots`, `/props`, `/attribute-inheritance`.
 
 ## Script tags at a glance
 
