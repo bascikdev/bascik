@@ -103,6 +103,19 @@ describe("Prompt 39 - Caching Layer Unit Tests", () => {
     expect(resolveCacheControl(".PNG", both)).toBe("upper");
   });
 
+  // The exact-case key wins without a dot too, whatever order the map lists
+  // its keys in, so a file meant to stay uncached is never cached because a
+  // case-folded key happened to come first.
+  it("prefers an exact-case dotless key over a case-folded one, in any key order", () => {
+    const upperFirst = { PNG: "public, max-age=86400", png: "no-store" };
+    const lowerFirst = { png: "no-store", PNG: "public, max-age=86400" };
+    for (const map of [upperFirst, lowerFirst]) {
+      expect(resolveCacheControl(".png", map)).toBe("no-store");
+      expect(resolveCacheControl("png", map)).toBe("no-store");
+      expect(resolveCacheControl(".PNG", map)).toBe("public, max-age=86400");
+    }
+  });
+
   it("emits immutable when configured", () => {
     const config = { ".woff2": "public, max-age=31536000, immutable" };
     expect(resolveCacheControl(".woff2", config)).toContain("immutable");

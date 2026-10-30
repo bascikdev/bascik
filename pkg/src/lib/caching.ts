@@ -405,13 +405,14 @@ export const resolveCacheControl = (
     return configCacheControl;
   }
   if (typeof configCacheControl === "object" && configCacheControl !== null) {
-    // Exact key first, then the same key with a leading dot, then any key
+    // Exact-case keys first, with and without the leading dot, then any key
     // that matches case-insensitively (with or without its dot): server.ts
     // lowercases the request's extension, so `".PNG"` in the config must
-    // still match a request for `photo.png`. Own keys only, so a name like
-    // `"constructor"` never resolves to an Object.prototype member.
+    // still match a request for `photo.png`, but an exact-case key always
+    // wins, whatever order the map lists its keys in. Own keys only, so a
+    // name like `"constructor"` never resolves to an Object.prototype member.
     const withDot = ext.startsWith(".") ? ext : `.${ext}`;
-    for (const key of [ext, withDot]) {
+    for (const key of [withDot, withDot.slice(1)]) {
       if (Object.hasOwn(configCacheControl, key)) {
         return configCacheControl[key];
       }
