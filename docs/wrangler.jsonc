@@ -14,6 +14,10 @@
     // Same as Pages with a 404.html: an unknown URL gets the nearest 404.html with status 404.
     "not_found_handling": "404-page",
   },
+  // bascik.dev is a Workers custom domain, attached by `wrangler deploy` (a preview upload does not touch routes).
+  // Wrangler replaces the Worker's custom domains with this list on deploy. www.bascik.dev redirects here with a
+  // zone redirect rule, not a route.
+  "routes": [{ "pattern": "bascik.dev", "custom_domain": true }],
   // bascik.dev is the only production host. Pages also served production on bascik.pages.dev, which needed a
   // noindex rule; turning workers.dev off leaves no second production host to keep out of search results.
   "workers_dev": false,
