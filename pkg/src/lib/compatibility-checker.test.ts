@@ -204,6 +204,23 @@ describe("compatibility-rules contract & positive/negative probes", () => {
   }
 });
 
+describe("rule patterns on hostile input", () => {
+  it.each([
+    ["document.getElementById(", 20_000],
+    ["document.getElementById( ", 20_000],
+    ["document.getElementById('a", 20_000],
+    ["document.querySelector('.a", 20_000],
+    ["document.getElementsByClassName('a", 20_000],
+  ] as const)(
+    "scans %j repeated without a closing parenthesis in linear time",
+    (unit, count) => {
+      const text = (n: number) => unit.repeat(n);
+      expectLinearTime(text, count, (t) => findCompatibilityMatches(t, "js"));
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+});
+
 describe("bascik-disable and bascik-ignore rule lists", () => {
   const source =
     "document.querySelector('.a');\nel.querySelector('[data-x]');\n";

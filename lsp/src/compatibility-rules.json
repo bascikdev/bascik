@@ -84,7 +84,7 @@
     "id": "js-dynamic-id-lookup",
     "kind": "js",
     "severity": "warning",
-    "pattern": "getElementById\\s*\\((?!\\s*\\)|\\s*[\"'][^\"']*[\"']\\s*\\))[^)]+\\)",
+    "pattern": "getElementById\\s*\\(\\s*(?![\\s)]|([\"'])[^\"'\\n]*\\1\\s*\\))",
     "flags": "g",
     "message": "getElementById() with a dynamic argument (a variable, property, string concatenation, or template literal) is not rewritten by Bascik, so it will not match a scoped component id and returns null at runtime. Values read from custom data-* attributes are not rewritten either.",
     "suggestion": "Pass a static string literal (document.getElementById(\"my-id\")), reference the target through a standard id attribute that Bascik rewrites (aria-controls, popovertarget, commandfor, href=\"#my-id\"), or traverse from a statically looked-up element (btn.closest(), rootEl.querySelector()). If the id comes from outside the component, add // bascik-ignore js-dynamic-id-lookup."
