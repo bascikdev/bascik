@@ -109,3 +109,6 @@ migration-examples/.upstream/
 migration-examples/**/_site/
 
 outreach/
+
+# Scaffold written by `yarn create:test-site`
+/my-site/
