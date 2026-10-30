@@ -158,14 +158,16 @@ export interface SourcePosition {
  * source lines and a caret line under the offending token. The line is used
  * only when it exists in `code`, and the column only when the line above the
  * caret is that source line, so a change in Node's format gives no position
- * rather than a wrong one.
+ * rather than a wrong one. CRLF line ends are read as LF.
  */
 const stripErrorPosition = (
   err: unknown,
   code: string,
 ): SourcePosition | undefined => {
   const stack =
-    err instanceof Error && typeof err.stack === "string" ? err.stack : "";
+    err instanceof Error && typeof err.stack === "string"
+      ? err.stack.replace(/\r\n?/g, "\n")
+      : "";
   const head = /^[^\n]*:(\d+)\n/.exec(stack);
   if (!head) return undefined;
   const line = Number(head[1]);
