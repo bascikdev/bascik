@@ -58,7 +58,7 @@ function suggestions(entries, path) {
 }
 
 async function main() {
-  const { values, positionals } = parseArgs({
+  const { values, positionals } = parseCliArgs("read-doc", {
     allowPositionals: true,
     options: {
       list: { type: "boolean", default: false },
@@ -116,3 +116,30 @@ async function main() {
 }
 
 if (isMain(import.meta.url)) await main();
+
+/**
+ * `parseArgs`, with a short message naming the flag and the valid ones, and
+ * exit code 2, in place of Node's stack trace on a mistyped or missing flag.
+ */
+function parseCliArgs(name, config) {
+  try {
+    return parseArgs(config);
+  } catch (error) {
+    if (!String(error?.code).startsWith("ERR_PARSE_ARGS_")) throw error;
+    const valid = Object.entries(config.options ?? {})
+      .map(
+        ([long, option]) =>
+          `${option.short ? `-${option.short}, ` : ""}--${long}`,
+      )
+      .join(", ");
+    const flag = /'([^']+)'/.exec(error.message)?.[1];
+    const problem =
+      error.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" && flag
+        ? `unknown option "${flag}"`
+        : error.message.split(". ")[0].replace(/\.$/, "");
+    process.stderr.write(
+      `${name}: ${problem}. Valid options: ${valid}. Run with --help.\n`,
+    );
+    process.exit(2);
+  }
+}

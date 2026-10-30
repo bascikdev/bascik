@@ -254,6 +254,35 @@ export default async function (request, context) {
 <footer data-testid="tail">tail</footer>
 </body></html>`,
   );
+  // Inline server and stream scripts written in TypeScript, marked as a
+  // browser script is: both hosts compile them before running them.
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/pages/typed.html",
+    `<!DOCTYPE html><html><head><title>Typed</title></head><body>
+<p data-testid="typed-static">Typed</p>
+<script data-bascik-server type="text/typescript">
+import type { Unused } from "@/lib/types.ts";
+import { label } from "@/lib/format.ts";
+interface Visitor { name: string }
+export default function (request: Request): string {
+  const visitor: Visitor = { name: request.headers.get("x-display-name") ?? "Guest" };
+  return '<p data-testid="typed-server">' + label(visitor.name) + '</p>';
+}
+</script>
+<script data-bascik-stream type="text/typescript">
+export default async function (): Promise<string> {
+  const parts: string[] = ["typed", "stream"];
+  return '<p data-testid="typed-stream">' + parts.join(" ") + '</p>';
+}
+</script>
+</body></html>`,
+  );
+  await write(
+    root,
+    "src/lib/types.ts",
+    `export interface Unused { never: true }\n`,
+  );
   await write(
     root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
     "src/pages/broken-stream.html",

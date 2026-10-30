@@ -47,6 +47,7 @@ import type {
   DistPageSegment,
 } from "./adapter-contract.ts";
 import { privateDirFor } from "./private-dir.ts";
+import { compileDirectiveTypeScript } from "./typescript.ts";
 
 export type { DistPageSegment };
 
@@ -278,6 +279,35 @@ export const readSiteGraph = async (
   }
   const sidecarScripts: Record<string, ServerScriptEntry> =
     sidecar?.scripts ?? {};
+  // An inline script marked type="text/typescript" is compiled here, as the
+  // Node host compiles it before running it, so every host stages and
+  // bundles JavaScript. A `.ts` src module is left to the bundler, which
+  // reads TypeScript by its extension.
+  const compiledSources = new Map<string, string>();
+  for (const [id, entry] of Object.entries(sidecarScripts)) {
+    if (!entry.typescript || entry.modulePath) continue;
+    const sourceFile = entry.sourceFile
+      ? relative(projectRoot, resolve(projectRoot, entry.sourceFile)).replace(
+          /\\/g,
+          "/",
+        )
+      : id;
+    compiledSources.set(
+      id,
+      await compileDirectiveTypeScript(
+        entry.source,
+        sourceFile,
+        "inline",
+        entry.sourceLine !== undefined
+          ? { line: entry.sourceLine, column: entry.sourceColumn ?? 1 }
+          : undefined,
+        // The source is the body as written, so it starts where the body does.
+        entry.sourceLine !== undefined
+          ? { line: entry.sourceLine, column: entry.sourceColumn ?? 1 }
+          : undefined,
+      ),
+    );
+  }
 
   // One host-neutral job from a sidecar entry: a `src=` module by path, an
   // inline script with its specifiers rewritten for staging.
@@ -306,9 +336,13 @@ export const readSiteGraph = async (
         ...scope,
       };
     }
-    const rewritten = rewriteModuleSpecifiers(entry.source, containingDir, {
-      importRoot,
-    });
+    const rewritten = rewriteModuleSpecifiers(
+      compiledSources.get(id) ?? entry.source,
+      containingDir,
+      {
+        importRoot,
+      },
+    );
     return {
       id,
       mode: entry.mode,

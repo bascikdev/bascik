@@ -509,11 +509,11 @@ scripts: {
 
 ### `scripts.typescript`
 
-Selects the compiler for browser TypeScript on the two supported paths: referenced `.ts`/`.mts` companion scripts and inline `<script type="text/typescript">` blocks. It runs before scoping and before `minify.js`, in dev and build alike, on the main thread and in worker threads.
+Selects the compiler for TypeScript in scripts: a component's `.ts`/`.mts` companion, a page's own `<script src="name.ts">`, an inline `<script type="text/typescript">`, and a build, routes, server, or stream script whose `src=` names a `.ts`/`.mts` file or whose tag is marked `type="text/typescript"`. Browser scripts are compiled before scoping and before `minify.js`, in dev and build alike, on the main thread and in worker threads.
 
 - `true` (default): Node's built-in strip-only mode (Node 22.22+). Erasable syntax only; line structure is preserved so `//# sourceURL` line numbers match the source. No dependencies.
-- `false`: Bascik does not transform browser TypeScript. Marked blocks and `.ts` companions are emitted exactly as authored, `type` attribute included. Use this when another tool has already compiled the output that Bascik reads.
-- A function `(code, { sourcePath, kind }) => string | Promise<string>`: bring your own compiler. `kind` is `'companion'` (then `sourcePath` is the `.ts` file) or `'inline'` (then `sourcePath` is the `.html` file containing the block). The function must return plain JavaScript; a throw or non-JavaScript result fails the build with the source path. Use this for non-erasable syntax (`enum`, parameter properties, decorators), for downleveling to an older browser target, or to run the same compiler you use elsewhere.
+- `false`: Bascik does not transform browser TypeScript. Marked blocks, `.ts` companions, and a page's `<script src="name.ts">` are emitted exactly as authored, `type` attribute included. Use this when another tool has already compiled the output that Bascik reads. Build, routes, server, and stream scripts written in TypeScript are still stripped, since nothing else compiles them before they run.
+- A function `(code, { sourcePath, kind, runtime }) => string | Promise<string>`: bring your own compiler. `kind` is `'companion'` (then `sourcePath` is the `.ts` file) or `'inline'` (then `sourcePath` is the `.html` file containing the block). `runtime` is `'browser'` for a browser script and `'server'` for a build, routes, server, or stream script, which runs as an ES module: keep its `import` and `export`. The function must return plain JavaScript; a throw or non-JavaScript result fails the build with the source path. Use this for non-erasable syntax (`enum`, parameter properties, decorators), for downleveling to an older browser target, or to run the same compiler you use elsewhere.
 
 ```ts
 // bascik.config.ts (illustrative: esbuild as the browser TypeScript compiler)
@@ -534,9 +534,9 @@ export default defineConfig({
 });
 ```
 
-This option covers browser scripts only. Build, routes, server, and API route files are executed by Node directly, so their TypeScript is handled by Node itself; pass Node flags such as `--experimental-transform-types` through `NODE_OPTIONS` if those files need more than erasable syntax. The unmarked-`<script>` TypeScript diagnostic is independent of this setting and always runs.
+A server or stream script's `src=` `.ts` module is imported by Node, which strips its types itself, unless this option is a function: then its compiled text runs in its place. API route files and the modules a script imports are always loaded by Node directly; pass Node flags such as `--experimental-transform-types` through `NODE_OPTIONS` if those files need more than erasable syntax. The Cloudflare adapter bundles server and stream scripts with esbuild, which compiles a `.ts` module by its extension. The unmarked-`<script>` TypeScript diagnostic is independent of this setting and always runs.
 
-Regardless of which compiler runs, if the resulting JavaScript still contains a static `import`/`export` declaration and the target `<script>` tag isn't `type="module"`, the build fails fast rather than emitting a classic-script IIFE that would throw a SyntaxError in the browser. Mark the tag `type="module"`, or have your compiler (or a bundler step beforehand) resolve the module graph so no `import`/`export` remains. See [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
+Regardless of which compiler runs, if the resulting JavaScript still contains a static `import`/`export` declaration and the target `<script>` tag isn't `type="module"`, the build fails fast rather than emitting a classic-script IIFE that would throw a SyntaxError in the browser. Mark the tag `type="module"`, or have your compiler (or a bundler step beforehand) resolve the module graph so no `import`/`export` remains. See [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts). A `type="module"` `.ts` script whose output still imports a relative, `@/`, or `.ts` path fails the build too, since Bascik inlines it without bundling; a bundling compiler such as esbuild with `bundle: true` clears it.
 
 ### `scripts.onServerScriptError`
 

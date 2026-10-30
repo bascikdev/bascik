@@ -40,7 +40,6 @@ import {
   type LanguageServerDiagnostic,
 } from "./check-language-server.ts";
 import { getHttpPath } from "./paths.ts";
-import { buildMissingSiteUrlError } from "./sitemap.ts";
 import { getSiteUrl, SITE_URL_ENV_VAR } from "./environment.ts";
 import { config as userConfig, modeOverrides } from "./userConfig.ts";
 import {
@@ -625,10 +624,19 @@ export const checkProject = async (
         features.push("generate.sitemap");
       if (BascikConfig.generate?.robots ?? true)
         features.push("generate.robots");
+      // A warning, not an error: the site URL is a fact about where the site
+      // is deployed, usually set by the host or CI, not something wrong in
+      // the code being checked. `bascik --build` still fails without it, and
+      // the message says so and how to set it; `--strict` fails on it too.
       items.push({
         category: "missing-site-url",
-        severity: "error",
-        message: buildMissingSiteUrlError(features).replace(/\s+/g, " ").trim(),
+        severity: "warning",
+        message:
+          `${SITE_URL_ENV_VAR} is not set, but ${features.join(" and ")} ${features.length > 1 ? "are" : "is"} enabled, ` +
+          `so \`bascik --build\` fails until it is set. Set it where the build runs: ` +
+          `\`${SITE_URL_ENV_VAR}=https://your-domain bascik --build\`, a \`${SITE_URL_ENV_VAR}=\` line in .env, ` +
+          `or \`bascik --build --site-url https://your-domain\`. ` +
+          `Or disable ${features.length > 1 ? "them" : "it"} with ${features.map((f) => `${f}: false`).join(" and ")}.`,
         locations: [{ filePath: configSource }],
       });
     }

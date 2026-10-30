@@ -127,6 +127,7 @@ describe("serverless build artifacts (real build, cloudflare-pages)", () => {
       "/broken-server",
       "/broken-stream",
       "/dashboard",
+      "/typed",
     ]);
     expect(info.apiRoutes).toEqual(
       expect.arrayContaining([

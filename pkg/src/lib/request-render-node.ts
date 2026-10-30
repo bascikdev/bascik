@@ -118,6 +118,7 @@ export const loadComponentJobs = (
         sourceLine: staged.sourceLine ?? job.sourceLine,
         sourceColumn: staged.sourceColumn,
         outputScope: staged.outputScope ?? job.outputScope,
+        ...(staged.typescript ? { typescript: true } : {}),
       };
     }
   }

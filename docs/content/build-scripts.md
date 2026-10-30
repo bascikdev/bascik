@@ -58,6 +58,21 @@ A build script defines its output through a callable default export:
 - **External scripts:** Scripts using `src="..."` follow the identical contract: the referenced file must have a callable default export returning HTML markup.
 - **Cached execution:** When a script's output is cached, neither the module initialization nor the default export runs on a cache hit, so logs do not replay.
 
+### TypeScript
+
+A build script is TypeScript when its `src=` names a `.ts` or `.mts` file, or when its tag is marked `type="text/typescript"`, as a browser script is. Bascik strips the types before it runs the script, the same way it strips browser TypeScript ([`scripts.typescript`](/configuration#scriptstypescript)), so errors and stack traces name the TypeScript source's own lines:
+
+```html
+<script data-bascik-build src="./nav.ts"></script>
+
+<script data-bascik-build type="text/typescript">
+  const year: number = new Date().getFullYear();
+  export default (): string => `<p>&copy; ${year}</p>`;
+</script>
+```
+
+An unmarked inline block is JavaScript. A syntax error, or syntax Node's strip cannot erase such as an `enum`, fails the build with the file, line, and column and a code frame; only the `enum` kind of error suggests a `scripts.typescript` compiler. Routes, server, and stream scripts follow the same rule.
+
 ## `data-bascik-build-once`
 
 `<script data-bascik-build-once>` runs its script once and reuses the markup wherever the file is used. It has the same handler contract as `data-bascik-build`, but no page or route context, so use it for output that is identical everywhere: a copyright year, a list of social links, an inlined SVG logo.

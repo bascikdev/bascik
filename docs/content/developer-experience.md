@@ -122,7 +122,7 @@ The same gesture works for relative imports, the `@/` import-root alias, and `sr
 <script data-bascik-server src="./scripts/greet.ts"></script>
 ```
 
-Alias imports resolve against `scripts.importRoot` (default `src`). The extension reads that key from the closest owning Bascik config, so nested projects keep their navigation and diagnostics isolated.
+A `.ts` `src=`, or an inline block marked `type="text/typescript"`, is TypeScript: Bascik strips its types before it runs and errors name the source's lines (see [Build Scripts](/build-scripts#typescript)). Alias imports resolve against `scripts.importRoot` (default `src`). The extension reads that key from the closest owning Bascik config, so nested projects keep their navigation and diagnostics isolated.
 
 ### Structural & Scoping Warnings in the Problems Panel
 

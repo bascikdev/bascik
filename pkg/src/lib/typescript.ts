@@ -30,7 +30,11 @@ import { stripTypeScriptTypes } from "node:module";
 import { BascikConfig } from "./config.ts";
 import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
 import { getScriptType } from "./script-types.ts";
-import { hasStaticModuleSyntax } from "./module-specifiers.ts";
+import {
+  classifySpecifier,
+  findModuleSpecifiers,
+  hasStaticModuleSyntax,
+} from "./module-specifiers.ts";
 import type {
   TypeScriptCompileContext,
   TypeScriptCompilerOption,
@@ -127,10 +131,84 @@ const suppressStripExperimentalWarning = (): void => {
  * let it propagate so a page never ships with a silently missing script.
  */
 export class TypeScriptTransformError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
+  /** True when the message already names the file, line and column. */
+  readonly located: boolean;
+  constructor(
+    message: string,
+    options?: { cause?: unknown; located?: boolean },
+  ) {
     super(message, options);
     this.name = "TypeScriptTransformError";
+    this.located = options?.located ?? false;
   }
+}
+
+/** A 1-based line and column in a source file. */
+export interface SourcePosition {
+  line: number;
+  column: number;
+}
+
+/**
+ * Where Node's strip-only parser stopped, in `code`'s own lines. Node puts
+ * no position on the error object; its stack starts with `:<line>`, then the
+ * source lines and a caret line under the offending token. The line is used
+ * only when it exists in `code`, and the column only when the line above the
+ * caret is that source line, so a change in Node's format gives no position
+ * rather than a wrong one.
+ */
+const stripErrorPosition = (
+  err: unknown,
+  code: string,
+): SourcePosition | undefined => {
+  const stack =
+    err instanceof Error && typeof err.stack === "string" ? err.stack : "";
+  const head = /^[^\n]*:(\d+)\n/.exec(stack);
+  if (!head) return undefined;
+  const line = Number(head[1]);
+  const lines = code.split("\n");
+  if (!(line >= 1 && line <= lines.length)) return undefined;
+  const stackLines = stack.split("\n");
+  const caret = stackLines.findIndex((text, i) => i > 0 && /^\s*\^/.test(text));
+  const sourceLine = lines[line - 1].replace(/\r$/, "");
+  const column =
+    caret > 0 && stackLines[caret - 1] === sourceLine
+      ? stackLines[caret].indexOf("^") + 1
+      : 1;
+  return { line, column };
+};
+
+/** `line` of `code` with a caret under `column`, indented under the message. */
+const codeFrame = (
+  code: string,
+  position: SourcePosition,
+  fileLine: number,
+): string => {
+  const text = (code.split("\n")[position.line - 1] ?? "").replace(/\r$/, "");
+  const gutter = String(fileLine);
+  // Tabs stay tabs, so the caret lines up under the same character.
+  const pad = text.slice(0, position.column - 1).replace(/[^\t]/g, " ");
+  return `\n  ${gutter} | ${text}\n  ${" ".repeat(gutter.length)} | ${pad}^`;
+};
+
+const NON_ERASABLE_HINT =
+  `\n  Bascik strips erasable TypeScript only (type annotations, interfaces, type aliases, ` +
+  `\`as\` casts, \`!\` assertions, \`import type\`). Non-erasable syntax such as \`enum\`, ` +
+  `parameter properties, or namespaces with runtime code need a compiler: set scripts.typescript to an esbuild, swc or tsc function.`;
+
+export interface StripOptions {
+  /**
+   * Where `code`'s first character is in the file `sourceLabel` names, for
+   * code cut out of a larger file (an inline block). Absent, `code`'s lines
+   * and columns are the file's own (a `.ts` file, or a block padded to its
+   * position).
+   */
+  origin?: SourcePosition;
+  /**
+   * `code` is an inline block whose place in the file is unknown: an error
+   * names its line within the block instead of a file line.
+   */
+  inline?: boolean;
 }
 
 /** `.ts` or `.mts` browser script file (not `.tsx`, not `.js`). */
@@ -148,13 +226,17 @@ export const isTypeScriptScriptTag = (openTag: string): boolean =>
 
 /**
  * Strip erasable TypeScript syntax from `code`, preserving line structure.
- * Throws an `Error` that names `sourceLabel` when the code uses non-erasable
- * syntax (`enum`, parameter properties, runtime namespaces) or is not valid
- * TypeScript at all.
+ * Throws a `TypeScriptTransformError` that names `sourceLabel` when the code
+ * uses non-erasable syntax (`enum`, parameter properties, runtime
+ * namespaces) or is not valid TypeScript at all; when Node reports where, the
+ * message names the line and column (see `StripOptions`) with a code frame.
+ * Only non-erasable syntax gets the `scripts.typescript` hint: a plain syntax
+ * error is fixed in the code, not with a compiler.
  */
 export const stripBrowserTypeScript = (
   code: string,
   sourceLabel?: string,
+  options: StripOptions = {},
 ): string => {
   suppressStripExperimentalWarning();
   try {
@@ -162,15 +244,78 @@ export const stripBrowserTypeScript = (
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     const where = sourceLabel ? ` in "${sourceLabel}"` : "";
+    const hint =
+      (err as NodeJS.ErrnoException)?.code === "ERR_INVALID_TYPESCRIPT_SYNTAX"
+        ? ""
+        : NON_ERASABLE_HINT;
+    const position = stripErrorPosition(err, code);
+    if (!position) {
+      throw new TypeScriptTransformError(
+        `[bascik] TypeScript transformation failed${where}: ${detail}${hint}`,
+        { cause: err },
+      );
+    }
+    const { origin } = options;
+    const fileLine = origin ? origin.line + position.line - 1 : position.line;
+    const fileColumn =
+      origin && position.line === 1
+        ? origin.column + position.column - 1
+        : position.column;
+    const at =
+      options.inline && !origin
+        ? ` at line ${position.line}, column ${position.column} of the <script> block`
+        : sourceLabel
+          ? ` at ${sourceLabel}:${fileLine}:${fileColumn}`
+          : ` at line ${fileLine}, column ${fileColumn}`;
     throw new TypeScriptTransformError(
-      `[bascik] TypeScript transformation failed${where}: ${detail}\n` +
-        `  Bascik strips erasable TypeScript only (type annotations, interfaces, type aliases, ` +
-        `\`as\` casts, \`!\` assertions, \`import type\`). Non-erasable syntax such as \`enum\`, ` +
-        `parameter properties, or namespaces with runtime code must be compiled with tsc or esbuild first.`,
-      { cause: err },
+      `[bascik] TypeScript transformation failed${where}${at}: ${detail}` +
+        codeFrame(
+          code,
+          position,
+          options.inline && !origin ? position.line : fileLine,
+        ) +
+        hint,
+      { cause: err, located: !(options.inline && !origin) && !!sourceLabel },
     );
   }
 };
+
+/**
+ * Static and literal dynamic `import` specifiers a browser cannot load once
+ * a module is inlined into a page: a relative (`./`, `../`) or `@/`
+ * specifier, which would resolve against the page's URL instead of the
+ * source file, and any TypeScript file, which Bascik never publishes. A
+ * `/`-rooted path and a full URL to JavaScript are left alone.
+ */
+export const unbundledModuleImports = (code: string): string[] =>
+  findModuleSpecifiers(code)
+    .map(({ value }) => value)
+    .filter((value) => {
+      const kind = classifySpecifier(value);
+      return (
+        kind === "relative" ||
+        kind === "root" ||
+        isTypeScriptFile(value.replace(/[?#].*$/, ""))
+      );
+    });
+
+/**
+ * The located error for an inlined TypeScript module that still imports
+ * files a browser cannot load (see `unbundledModuleImports`).
+ */
+export const unbundledImportError = (
+  sourcePath: string,
+  where: string,
+  src: string,
+  specifiers: string[],
+): TypeScriptTransformError =>
+  new TypeScriptTransformError(
+    `[bascik] error: "${sourcePath}" (inlined from <script type="module" src="${src}"> at ${where}) ` +
+      `imports ${specifiers.map((s) => `"${s}"`).join(", ")}. Bascik inlines the compiled module into the page ` +
+      `and does not bundle its imports, so the browser would request ${specifiers.length === 1 ? "that file" : "those files"} ` +
+      `from the page's URL and fail. Bundle the module with esbuild (a scripts.typescript function, or a ` +
+      `pipeline.exec step that writes a .js file), or import a published JavaScript URL such as "/js/util.js".`,
+  );
 
 /** Resolve `scripts.typescript`, defaulting to the built-in strip. */
 const resolveCompilerOption = (): TypeScriptCompilerOption => {
@@ -213,7 +358,10 @@ export const transformBrowserTypeScript = async (
 ): Promise<string> => {
   const option = resolveCompilerOption();
   if (option === false) return code;
-  if (option === true) return stripBrowserTypeScript(code, context.sourcePath);
+  if (option === true)
+    return stripBrowserTypeScript(code, context.sourcePath, {
+      inline: context.kind === "inline",
+    });
 
   let output: unknown;
   try {
@@ -239,6 +387,70 @@ export const transformBrowserTypeScript = async (
     );
   }
   return output;
+};
+
+/**
+ * A directive script (`data-bascik-build`, `-build-once`, `-routes`,
+ * `-server`, `-stream`) written in TypeScript: its tag is marked
+ * `type="text/typescript"`, as a browser script is, or its `src=` names a
+ * `.ts` / `.mts` file. A query or fragment on `src` is ignored.
+ */
+export const isTypeScriptDirectiveScript = (
+  openTag: string,
+  srcPath?: string,
+): boolean =>
+  getScriptType(openTag) === TYPESCRIPT_SCRIPT_TYPE ||
+  (srcPath !== undefined && isTypeScriptFile(srcPath.replace(/[?#].*$/, "")));
+
+/**
+ * JavaScript for a directive script written in TypeScript, which runs as an
+ * ES module on the server. A `scripts.typescript` function compiles it (with
+ * `runtime: "server"`); otherwise, `true` or `false`, Node's strip-only mode
+ * does, since a directive script always runs in JavaScript and nothing else
+ * compiles it. Strip-only output keeps every line and column, so errors and
+ * stack traces name the TypeScript source's own positions. `sourcePath` is
+ * the `.ts` file, or the HTML file of an inline block.
+ *
+ * A strip error names the file line and column: `code`'s own when it is a
+ * `.ts` file or a block padded to its position, or counted from `origin`,
+ * where an unpadded block's first character is. When no position is known
+ * (a compiler function failed), the message names `tag`, where the inline
+ * block's opening tag is.
+ */
+export const compileDirectiveTypeScript = async (
+  code: string,
+  sourcePath: string,
+  kind: TypeScriptCompileContext["kind"],
+  /** Where an inline block's opening tag is, named when compiling fails. */
+  tag?: SourcePosition,
+  /**
+   * Where `code`'s first character is in `sourcePath`, when not padded;
+   * `"unknown"` for an inline block whose place is not known, so an error
+   * names the line within the block.
+   */
+  origin?: SourcePosition | "unknown",
+): Promise<string> => {
+  const option = resolveCompilerOption();
+  try {
+    if (typeof option === "function")
+      return await transformBrowserTypeScript(code, {
+        sourcePath,
+        kind,
+        runtime: "server",
+      });
+    return stripBrowserTypeScript(
+      code,
+      sourcePath,
+      origin === "unknown" ? { inline: true } : { origin },
+    );
+  } catch (err) {
+    if (!tag || !(err instanceof TypeScriptTransformError) || err.located)
+      throw err;
+    throw new TypeScriptTransformError(
+      `${err.message}\n  The script starts at ${sourcePath}:${tag.line}:${tag.column}.`,
+      { cause: err.cause ?? err },
+    );
+  }
 };
 
 /**
@@ -408,6 +620,7 @@ export const transformTypeScriptScriptTags = async (
       transformBrowserTypeScript(body, {
         sourcePath: sourceFile,
         kind: "inline",
+        runtime: "browser",
       }),
     ),
   );

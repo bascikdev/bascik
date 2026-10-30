@@ -40,6 +40,10 @@
 
 import { createHash } from "node:crypto";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
+import {
+  compileDirectiveTypeScript,
+  isTypeScriptDirectiveScript,
+} from "./typescript.ts";
 import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { getProjectPath, getRelativePath } from "./file-system.ts";
@@ -907,8 +911,23 @@ export const executeBuildScripts = async (
               position.bodyLine,
               position.bodyColumn,
             );
+      // TypeScript (a marked tag, or a `.ts` src) becomes JavaScript before
+      // its imports are rewritten. Strip-only keeps every line and column.
+      const javascript = isTypeScriptDirectiveScript(
+        openTag,
+        fromSrcFile ? moduleSourcePath : undefined,
+      )
+        ? await compileDirectiveTypeScript(
+            padded,
+            moduleSourcePath,
+            fromSrcFile ? "companion" : "inline",
+            fromSrcFile || !location
+              ? undefined
+              : { line: location.line, column: location.column },
+          )
+        : padded;
       ({ code: preparedScript, edits: specifierEdits } =
-        rewriteModuleSpecifiersWithEdits(padded, scriptBaseDir, {
+        rewriteModuleSpecifiersWithEdits(javascript, scriptBaseDir, {
           importRoot,
         }));
     } catch (err) {

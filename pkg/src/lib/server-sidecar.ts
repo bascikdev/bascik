@@ -8,6 +8,7 @@ import {
   scanRequestScripts,
 } from "./html-patterns.ts";
 import { directiveSourceColumn } from "./directive-source.ts";
+import { getScriptType } from "./script-types.ts";
 import { replaceSpans } from "./element-content-scan.ts";
 import { OUTPUT_SCOPE_ATTRIBUTE } from "./output-scope.ts";
 import { ensurePrivateDir, privateDirFor } from "./private-dir.ts";
@@ -38,6 +39,12 @@ export interface ServerScriptEntry {
    * Absent for page-level scripts.
    */
   outputScope?: string;
+  /**
+   * An inline script whose tag was marked `type="text/typescript"`: every
+   * host compiles `source` to JavaScript before running or bundling it. A
+   * `src=` module is TypeScript by its `.ts` / `.mts` extension instead.
+   */
+  typescript?: true;
 }
 
 export interface ServerScriptsSidecar {
@@ -113,6 +120,7 @@ class ServerSidecarRegistry {
     mode: ServerScriptMode = "server",
     sourceColumn?: number,
     outputScope?: string,
+    typescript?: boolean,
   ): void {
     this.scripts.set(id, {
       id,
@@ -123,6 +131,7 @@ class ServerSidecarRegistry {
       sourceLine,
       sourceColumn,
       ...(outputScope !== undefined ? { outputScope } : {}),
+      ...(typescript ? { typescript: true as const } : {}),
     });
   }
 
@@ -319,6 +328,9 @@ const extractScriptsToSidecar = (
     // from the sidecar when it splices the script's output in.
     const outputScope =
       getHtmlAttributeValue(openTag, OUTPUT_SCOPE_ATTRIBUTE) ?? undefined;
+    // An inline block marked type="text/typescript" is compiled by the host
+    // that runs it; the placeholder keeps no attributes, so the entry says so.
+    const typescript = !srcPath && getScriptType(openTag) === "text/typescript";
     if (recordInRegistry)
       serverSidecarRegistry.recordScript(
         id,
@@ -329,6 +341,7 @@ const extractScriptsToSidecar = (
         mode,
         sourceColumn,
         outputScope,
+        typescript,
       );
     if (outMap) {
       outMap[id] = {
@@ -340,6 +353,7 @@ const extractScriptsToSidecar = (
         sourceLine,
         ...(sourceColumn !== undefined ? { sourceColumn } : {}),
         ...(outputScope !== undefined ? { outputScope } : {}),
+        ...(typescript ? { typescript: true as const } : {}),
       };
     }
     const marker = mode === "stream" ? " data-bascik-stream" : "";

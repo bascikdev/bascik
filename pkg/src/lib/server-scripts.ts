@@ -22,6 +22,10 @@
 
 import { resolve, relative, dirname } from "node:path";
 import { readFile } from "node:fs/promises";
+import {
+  compileDirectiveTypeScript,
+  isTypeScriptDirectiveScript,
+} from "./typescript.ts";
 import { pathToFileURL } from "node:url";
 import { BascikConfig } from "./config.ts";
 import { cleanStackTrace, remapRewrittenColumns } from "./stack-trace.ts";
@@ -195,6 +199,11 @@ export interface ScriptJob {
    * build script's output does. Absent for page-level scripts.
    */
   outputScope?: string;
+  /**
+   * An inline script marked `type="text/typescript"` (on its tag, or in its
+   * sidecar entry): compiled to JavaScript before it runs.
+   */
+  typescript?: boolean;
 }
 
 const inlineDependencies = new WeakMap<
@@ -287,6 +296,7 @@ export const planServerScripts = (
     );
     let srcPath: string | undefined = getHtmlAttributeValue(fullTag, "src");
     let outputScope: string | undefined;
+    let typescript = !srcPath && isTypeScriptDirectiveScript(openTag);
     let sourceFile: string | undefined;
     let sourceLine: number | undefined;
     const annotatedSourceFile = getHtmlAttributeValue(
@@ -329,6 +339,7 @@ export const planServerScripts = (
       sourceLine = entry.sourceLine;
       sourceColumn = entry.sourceColumn;
       outputScope = entry.outputScope;
+      typescript = entry.typescript === true;
       if (entry.modulePath && !srcPath) srcPath = entry.modulePath;
     }
 
@@ -379,6 +390,7 @@ export const planServerScripts = (
         sourceLine,
         sourceColumn,
         ...(outputScope !== undefined ? { outputScope } : {}),
+        ...(typescript ? { typescript } : {}),
       },
     });
     cursor = index + length;
@@ -391,6 +403,38 @@ export const planServerScripts = (
     });
   }
   return { segments, firstStreamIndex };
+};
+
+/**
+ * Compiled TypeScript by source text, so a page's inline TypeScript is
+ * compiled once, not on every request. Cleared whole when it grows past a
+ * bound, which only a dev session editing many scripts reaches.
+ */
+const compiledTypeScript = new Map<string, Promise<string>>();
+const compiledServerTypeScript = (
+  code: string,
+  sourcePath: string,
+  kind: "inline" | "companion",
+  /** Where an inline script's body starts, named when compiling fails. */
+  start?: { line: number; column: number },
+  /** Where `code`'s first character is in the file, for a located error. */
+  origin?: { line: number; column: number },
+): Promise<string> => {
+  const key = `${kind}\0${sourcePath}\0${origin?.line}:${origin?.column}\0${code}`;
+  let compiled = compiledTypeScript.get(key);
+  if (!compiled) {
+    if (compiledTypeScript.size >= 512) compiledTypeScript.clear();
+    compiled = compileDirectiveTypeScript(
+      code,
+      sourcePath,
+      kind,
+      start,
+      origin,
+    );
+    compiled.catch(() => compiledTypeScript.delete(key));
+    compiledTypeScript.set(key, compiled);
+  }
+  return compiled;
 };
 
 /**
@@ -456,6 +500,44 @@ export const runServerScriptJob = async (
   }
 
   const containingFile = job.sourceFile ?? filePath;
+  // TypeScript becomes JavaScript first. An inline block marked
+  // type="text/typescript" is compiled here; a `.ts` src module is imported
+  // as it is, and Node strips its types, unless scripts.typescript names a
+  // compiler: then its compiled text runs in its place.
+  let compiledFromFile = false;
+  if (job.typescript && !moduleFilePath && codeToExecute) {
+    const bodyStart = {
+      line: job.sourceLine ?? job.startLine,
+      column: job.sourceColumn ?? 1,
+    };
+    // The module is the trimmed body: its first character's place in the file.
+    const trimmed = trimmedStartPosition(
+      job.scriptContent,
+      bodyStart.line,
+      bodyStart.column,
+    );
+    codeToExecute = await compiledServerTypeScript(
+      codeToExecute,
+      containingFile
+        ? relative(process.cwd(), containingFile).replace(/\\/g, "/")
+        : new URL(request.url).pathname,
+      "inline",
+      bodyStart,
+      { line: trimmed.line, column: trimmed.columnOffset + 1 },
+    );
+  } else if (
+    moduleFilePath &&
+    codeToExecute &&
+    typeof BascikConfig.scripts?.typescript === "function" &&
+    isTypeScriptDirectiveScript("", moduleFilePath)
+  ) {
+    codeToExecute = await compiledServerTypeScript(
+      codeToExecute,
+      relative(process.cwd(), moduleFilePath).replace(/\\/g, "/"),
+      "companion",
+    );
+    compiledFromFile = true;
+  }
   const scriptBaseDir = moduleFilePath
     ? dirname(moduleFilePath)
     : containingFile
@@ -474,10 +556,12 @@ export const runServerScriptJob = async (
   // Inline modules are NOT padded: the module text is the module's identity, and the same
   // script on two pages (at different positions) must stay one module with shared state.
   // Lines and columns are mapped when an error is reported instead.
-  if (!moduleFilePath) installDataUrlResolveHook(process.cwd());
+  const runsFromFile = moduleFilePath !== undefined && !compiledFromFile;
+  if (!runsFromFile) installDataUrlResolveHook(process.cwd());
   const dataUri = `data:text/javascript;charset=utf-8,${encodeURIComponent(rewrittenCode)}`;
-  const specifier =
-    moduleFilePath ?? dataUri + inlineGenerationSuffix(job, rewrittenCode);
+  const specifier = runsFromFile
+    ? moduleFilePath!
+    : dataUri + inlineGenerationSuffix(job, rewrittenCode);
 
   // A `src=` module is its own file; V8 already names it and its lines.
   const originalSourcePath = moduleFilePath
@@ -502,7 +586,7 @@ export const runServerScriptJob = async (
       originalSourcePath,
       lineOffset,
       exportName: "default",
-      ...(!moduleFilePath ? { moduleOwner: job } : {}),
+      ...(!runsFromFile ? { moduleOwner: job } : {}),
       ...(signal ? { signal } : {}),
     },
   );
@@ -538,8 +622,8 @@ export const runServerScriptJob = async (
   if (result.aborted) return "";
 
   // Columns after a rewritten import on the same line are put back first, in module coordinates.
-  const moduleReferences = moduleFilePath
-    ? [moduleFilePath, pathToFileURL(moduleFilePath).href]
+  const moduleReferences = runsFromFile
+    ? [moduleFilePath!, pathToFileURL(moduleFilePath!).href]
     : [specifier, dataUri];
   const rawTrace = remapRewrittenColumns(
     err.stack || err.message,

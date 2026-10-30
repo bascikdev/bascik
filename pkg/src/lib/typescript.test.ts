@@ -10,6 +10,9 @@ import {
   hasStaticModuleSyntax,
   TYPESCRIPT_SCRIPT_TYPE,
   TypeScriptTransformError,
+  isTypeScriptDirectiveScript,
+  compileDirectiveTypeScript,
+  unbundledModuleImports,
 } from "./typescript.ts";
 
 vi.mock("./config.js", () => ({
@@ -30,6 +33,7 @@ describe("scripts.typescript compiler selection (transformBrowserTypeScript)", (
     const out = await transformBrowserTypeScript(source, {
       sourcePath: "src/components/x/x.ts",
       kind: "companion",
+      runtime: "browser",
     });
     expect(out).not.toContain(": number");
     expect(out).not.toContain("as HTMLElement");
@@ -37,6 +41,7 @@ describe("scripts.typescript compiler selection (transformBrowserTypeScript)", (
     const outDefault = await transformBrowserTypeScript(source, {
       sourcePath: "src/components/x/x.ts",
       kind: "companion",
+      runtime: "browser",
     });
     expect(outDefault).toBe(out);
   });
@@ -46,6 +51,7 @@ describe("scripts.typescript compiler selection (transformBrowserTypeScript)", (
     const out = await transformBrowserTypeScript(source, {
       sourcePath: "src/components/x/x.ts",
       kind: "companion",
+      runtime: "browser",
     });
     expect(out).toBe(source);
   });
@@ -60,10 +66,12 @@ describe("scripts.typescript compiler selection (transformBrowserTypeScript)", (
     const out = await transformBrowserTypeScript(source, {
       sourcePath: "src/components/x/x.ts",
       kind: "companion",
+      runtime: "browser",
     });
     expect(compiler).toHaveBeenCalledWith(source, {
       sourcePath: "src/components/x/x.ts",
       kind: "companion",
+      runtime: "browser",
     });
     expect(out).toContain("// compiled");
     expect(out).not.toContain(": number");
@@ -76,6 +84,7 @@ describe("scripts.typescript compiler selection (transformBrowserTypeScript)", (
     const out = await transformBrowserTypeScript(source, {
       sourcePath: "x.ts",
       kind: "inline",
+      runtime: "browser",
     });
     expect(out).not.toContain(": number");
   });
@@ -88,12 +97,14 @@ describe("scripts.typescript compiler selection (transformBrowserTypeScript)", (
       transformBrowserTypeScript(source, {
         sourcePath: "src/components/x/x.ts",
         kind: "companion",
+        runtime: "browser",
       }),
     ).rejects.toThrow(TypeScriptTransformError);
     await expect(
       transformBrowserTypeScript(source, {
         sourcePath: "src/components/x/x.ts",
         kind: "companion",
+        runtime: "browser",
       }),
     ).rejects.toThrow(
       /src\/components\/x\/x\.ts[\s\S]*esbuild: Unexpected token/,
@@ -108,6 +119,7 @@ describe("scripts.typescript compiler selection (transformBrowserTypeScript)", (
       transformBrowserTypeScript(source, {
         sourcePath: "src/components/x/x.ts",
         kind: "companion",
+        runtime: "browser",
       }),
     ).rejects.toThrow(
       /src\/components\/x\/x\.ts[\s\S]*did not return valid JavaScript/,
@@ -121,6 +133,7 @@ describe("scripts.typescript compiler selection (transformBrowserTypeScript)", (
       transformBrowserTypeScript(source, {
         sourcePath: "x.ts",
         kind: "companion",
+        runtime: "browser",
       }),
     ).rejects.toThrow(/must return a string/);
   });
@@ -131,7 +144,7 @@ describe("scripts.typescript compiler selection (transformBrowserTypeScript)", (
     await expect(
       transformBrowserTypeScript(
         "import { a } from './a.ts';\nexport const b: number = a;",
-        { sourcePath: "x.ts", kind: "companion" },
+        { sourcePath: "x.ts", kind: "companion", runtime: "browser" },
       ),
     ).resolves.toContain("export const b = a;");
   });
@@ -217,6 +230,105 @@ describe("stripBrowserTypeScript", () => {
     expect(() =>
       stripBrowserTypeScript("const = ;", "src/components/x/x.ts"),
     ).toThrow(/src\/components\/x\/x\.ts/);
+  });
+
+  const message = (run: () => unknown): string => {
+    try {
+      run();
+    } catch (err) {
+      return (err as Error).message;
+    }
+    throw new Error("expected a throw");
+  };
+
+  it("names the line and column of a syntax error, with a code frame, and no enum hint", () => {
+    const code =
+      "const items: string[] = [];\nconst bad = 1;\n\nexport default (): string => `<p>${bad} ${items.length) }</p>`;\n";
+    const text = message(() =>
+      stripBrowserTypeScript(code, "src/lib/build.ts"),
+    );
+    const column = code.split("\n")[3].indexOf(")", 50) + 1;
+    expect(text).toContain(`src/lib/build.ts:4:${column}`);
+    expect(text).toContain("Unexpected token");
+    expect(text).toContain("4 | export default (): string =>");
+    expect(text).toMatch(new RegExp(`\\n\\s+\\| {${column}}\\^`));
+    expect(text).not.toMatch(/enum|scripts\.typescript/);
+  });
+
+  it("names the line of non-erasable syntax and keeps the scripts.typescript hint for it", () => {
+    const text = message(() =>
+      stripBrowserTypeScript(
+        "const a: number = 1;\n\nenum X { A }\n",
+        "src/lib/server.ts",
+      ),
+    );
+    expect(text).toContain("src/lib/server.ts:3:1");
+    expect(text).toContain("scripts.typescript");
+  });
+
+  it("puts a syntax error at the file position given by origin", () => {
+    // The code starts at line 10, column 7 of the file; its line 2 is file line 11.
+    const text = message(() =>
+      stripBrowserTypeScript(
+        "let x = 1;\nconst oops = (;\n",
+        "src/pages/a.html",
+        {
+          origin: { line: 10, column: 7 },
+        },
+      ),
+    );
+    expect(text).toContain("src/pages/a.html:11:15");
+    const first = message(() =>
+      stripBrowserTypeScript("const oops = (;", "src/pages/a.html", {
+        origin: { line: 10, column: 7 },
+      }),
+    );
+    expect(first).toContain("src/pages/a.html:10:21");
+  });
+
+  it("names the line of an inline block's own code when the file position is unknown", () => {
+    const text = message(() =>
+      stripBrowserTypeScript(
+        "let x = 1;\nconst oops = (;",
+        "src/pages/a.html",
+        {
+          inline: true,
+        },
+      ),
+    );
+    expect(text).toContain("line 2, column 15 of the <script> block");
+    expect(text).not.toContain("src/pages/a.html:2");
+  });
+});
+
+describe("unbundledModuleImports", () => {
+  it("lists relative, @/ and TypeScript specifiers, which a browser cannot load from an inlined module", () => {
+    expect(
+      unbundledModuleImports(
+        [
+          `import { a } from "./util.ts";`,
+          `import b from "../b.js";`,
+          `import c from "@/lib/c.js";`,
+          `import d from "https://cdn.example.com/d.ts";`,
+          `import e from "/js/e.js";`,
+          `import f from "https://cdn.example.com/f.js";`,
+          `const g = await import("./g.js");`,
+          `export { h } from "./h.mts";`,
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "./util.ts",
+      "../b.js",
+      "@/lib/c.js",
+      "https://cdn.example.com/d.ts",
+      "./g.js",
+      "./h.mts",
+    ]);
+  });
+
+  it("is empty for code with no imports or only published URLs", () => {
+    expect(unbundledModuleImports("console.log(1);")).toEqual([]);
+    expect(unbundledModuleImports(`import x from "/js/x.js";`)).toEqual([]);
   });
 });
 
@@ -493,7 +605,102 @@ describe("transformTypeScriptScriptTags", () => {
     expect(compiler).toHaveBeenCalledWith("let n: number = 1;", {
       sourcePath: "src/components/demo/demo.html",
       kind: "inline",
+      runtime: "browser",
     });
     expect(out).toBe("<script>let n = 1;</script>");
+  });
+});
+
+describe("directive scripts written in TypeScript", () => {
+  it.each([
+    ['<script data-bascik-build type="text/typescript">', undefined, true],
+    ['<script data-bascik-server type="TEXT/TypeScript">', undefined, true],
+    ["<script data-bascik-build>", "./build.ts", true],
+    ["<script data-bascik-routes>", "@/lib/routes.mts?v=1", true],
+    ["<script data-bascik-stream>", "./stream.js", false],
+    ["<script data-bascik-build>", undefined, false],
+    ['<script data-bascik-build type="module">', "./x.tsx", false],
+  ])("%s src=%s is TypeScript: %s", (openTag, src, expected) => {
+    expect(isTypeScriptDirectiveScript(openTag, src)).toBe(expected);
+  });
+
+  it("strips types and keeps every line and column", async () => {
+    const code =
+      "\n\n  const n: number = 1;\n  export default (): number => n;\n";
+    const out = await compileDirectiveTypeScript(
+      code,
+      "src/pages/a.html",
+      "inline",
+    );
+    expect(out.split("\n").length).toBe(code.split("\n").length);
+    expect(out.indexOf("const n")).toBe(code.indexOf("const n"));
+    expect(out.indexOf("export default")).toBe(code.indexOf("export default"));
+    expect(out).not.toMatch(/: number/);
+  });
+
+  it("still strips with scripts.typescript: false, since nothing else compiles a directive script", async () => {
+    (BascikConfig.scripts as { typescript: unknown }).typescript = false;
+    await expect(
+      compileDirectiveTypeScript(
+        "export default (): string => 'x';",
+        "a.ts",
+        "companion",
+      ),
+    ).resolves.not.toContain(": string");
+  });
+
+  it("calls a scripts.typescript function with runtime: server, keeping export", async () => {
+    const compiler = vi.fn((code: string) => code.replace(": string", ""));
+    (BascikConfig.scripts as { typescript: unknown }).typescript = compiler;
+    const out = await compileDirectiveTypeScript(
+      "export default (): string => 'x';",
+      "src/lib/a.ts",
+      "companion",
+    );
+    expect(compiler).toHaveBeenCalledWith("export default (): string => 'x';", {
+      sourcePath: "src/lib/a.ts",
+      kind: "companion",
+      runtime: "server",
+    });
+    expect(out).toBe("export default () => 'x';");
+  });
+
+  it("names where an inline block's enum is when the strip refuses it, and how to compile it", async () => {
+    const failure = compileDirectiveTypeScript(
+      "enum A { B }\nexport default () => A.B;",
+      "src/pages/a.html",
+      "inline",
+      { line: 12, column: 5 },
+      { line: 13, column: 7 },
+    );
+    await expect(failure).rejects.toThrow(TypeScriptTransformError);
+    await expect(failure).rejects.toThrow(/src\/pages\/a\.html:13:7/);
+    await expect(failure).rejects.toThrow(/scripts\.typescript/);
+  });
+
+  it("names the exact file line of a syntax error in an inline block from its origin, not only where the tag starts", async () => {
+    const failure = compileDirectiveTypeScript(
+      "const n: number = 1;\nconst oops = (;\nexport default () => n;",
+      "src/pages/a.html",
+      "inline",
+      { line: 12, column: 5 },
+      { line: 13, column: 1 },
+    );
+    await expect(failure).rejects.toThrow(/src\/pages\/a\.html:14:15/);
+    await expect(failure).rejects.not.toThrow(/starts at|scripts\.typescript/);
+  });
+
+  it("still names where the tag starts when a scripts.typescript function fails without a position", async () => {
+    (BascikConfig.scripts as { typescript: unknown }).typescript = () => {
+      throw new Error("compiler broke");
+    };
+    await expect(
+      compileDirectiveTypeScript(
+        "export default () => 1;",
+        "src/pages/a.html",
+        "inline",
+        { line: 12, column: 5 },
+      ),
+    ).rejects.toThrow(/compiler broke[\s\S]*src\/pages\/a\.html:12:5/);
   });
 });

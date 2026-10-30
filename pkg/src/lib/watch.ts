@@ -7,6 +7,7 @@ import { loadChokidar } from "./dev-watcher.ts";
 import {
   pageProcessing,
   processAllPages,
+  processPagesDependentOnFile,
   processPagesImportingStylesheet,
   removePage,
   selectivelyProcessPages,
@@ -38,6 +39,12 @@ export interface WatchFilesOptions {
 const logInfo = (message: string): void => {
   if (shouldLog(BascikConfig.logging?.level, "info")) console.log(message);
 };
+
+/** A script file a page can read from source: TypeScript or a Node module. */
+const isPageScriptSource = (path: string): boolean =>
+  /\.(?:[cm]?ts|mjs|cjs)$/i.test(path) &&
+  !/\.d\.[cm]?ts$/i.test(path) &&
+  !/\.(?:test|spec)\.[a-z]+$/i.test(path);
 
 export const watchFiles = async (options: WatchFilesOptions = {}) => {
   if (BascikConfig.isBuild) {
@@ -144,6 +151,19 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
         .catch(onWatchError);
     };
 
+    // A script source in the pages directory that is never published (a
+    // page's `<script src="name.ts">`, a build, routes, server or stream
+    // script's `.ts` / `.mjs` src) reaches the pages that read it, as a
+    // component's companion does: they are recompiled and reloaded.
+    const isUnpublishedScriptSource = (path: string): boolean =>
+      isPageScriptSource(path) && !isStaticAssetPath(path);
+    const onPageScriptSource = async (path: string): Promise<void> => {
+      invalidateRuntimeModule(path);
+      if (BascikConfig.isBuild) return;
+      clearBuildScriptCaches(path);
+      await processPagesDependentOnFile(path);
+    };
+
     // Copy non-page files
     w(
       chokidar
@@ -153,14 +173,17 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
             !!(
               stats?.isFile() &&
               !isInlineStylesheet(path) &&
-              !isStaticAssetPath(path)
+              !isStaticAssetPath(path) &&
+              !isPageScriptSource(path)
             ),
           ignoreInitial: true,
           persistent: !BascikConfig.isBuild,
         })
         .on("add", async (path) => {
           try {
-            if (isInlineStylesheet(path)) {
+            if (isUnpublishedScriptSource(path)) {
+              await onPageScriptSource(path);
+            } else if (isInlineStylesheet(path)) {
               if (!BascikConfig.isBuild) {
                 await rebuildAllPages();
               }
@@ -177,7 +200,9 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
         })
         .on("change", async (path) => {
           try {
-            if (isInlineStylesheet(path)) {
+            if (isUnpublishedScriptSource(path)) {
+              await onPageScriptSource(path);
+            } else if (isInlineStylesheet(path)) {
               if (!BascikConfig.isBuild) {
                 await rebuildAllPages();
               }
@@ -195,11 +220,13 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
           }
         })
         .on("unlink", (path) => {
-          const operation = isInlineStylesheet(path)
-            ? rebuildAllPages()
-            : deleteDistFile(path).then(() =>
-                processPagesImportingStylesheet(path),
-              );
+          const operation = isUnpublishedScriptSource(path)
+            ? onPageScriptSource(path)
+            : isInlineStylesheet(path)
+              ? rebuildAllPages()
+              : deleteDistFile(path).then(() =>
+                  processPagesImportingStylesheet(path),
+                );
           operation.catch(onWatchError);
         })
         .on("unlinkDir", handleUnlinkDir)

@@ -507,6 +507,70 @@ describe("readSiteGraph and the component manifest (prompt 157)", () => {
     );
   });
 
+  it("compiles an inline entry marked typescript, so every host stages JavaScript", async () => {
+    const typed = {
+      schema: SIDECAR_SCHEMA_VERSION,
+      scripts: {
+        "job-inline": {
+          mode: "server",
+          source: "\n  export default (request: Request): string => 'typed';\n",
+          sourceFile: "src/pages/dynamic.html",
+          sourceLine: 2,
+          typescript: true,
+        },
+      },
+    };
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": JSON.stringify(typed),
+        ".bascik/components.json": JSON.stringify(manifest(1)),
+      },
+      async (testDir, distDir) => {
+        const graph = await readSiteGraph({
+          projectRoot: testDir,
+          distDir,
+          version: "1.0.0",
+        });
+        const source = graph.pages["/dynamic"].jobs["job-inline"].source;
+        expect(source.kind).toBe("inline");
+        const code = source.kind === "inline" ? source.code : "";
+        expect(code).not.toMatch(/: Request|: string/);
+        expect(code).toMatch(/export default \(request\s*\)\s*=>\s*'typed';/);
+        // Same lines as the source, so the Worker's errors name them too.
+        expect(code.split("\n")).toHaveLength(3);
+      },
+    );
+  });
+
+  it("fails reading the graph when a marked inline entry is not erasable TypeScript, naming its file and line", async () => {
+    const typed = {
+      schema: SIDECAR_SCHEMA_VERSION,
+      scripts: {
+        "job-inline": {
+          mode: "server",
+          source: "enum A { B }\nexport default () => A.B;",
+          sourceFile: "src/pages/dynamic.html",
+          sourceLine: 4,
+          sourceColumn: 7,
+          typescript: true,
+        },
+      },
+    };
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": JSON.stringify(typed),
+        ".bascik/components.json": JSON.stringify(manifest(1)),
+      },
+      async (testDir, distDir) => {
+        await expect(
+          readSiteGraph({ projectRoot: testDir, distDir, version: "1.0.0" }),
+        ).rejects.toThrow(/src\/pages\/dynamic\.html:4:7/);
+      },
+    );
+  });
+
   it("is a no-op for a static dist: no manifest required, no components section, with or without an empty sidecar", async () => {
     await withDist(
       { "index.html": "<h1>Home</h1>" },

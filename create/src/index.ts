@@ -9,7 +9,7 @@ import {
   skillsRef,
   skillsReportLines,
 } from "./agent-setup.js";
-import { parseCliOptions, type CliOptions } from "./cli.js";
+import { USAGE, parseCliOptions, type CliOptions } from "./cli.js";
 import { runNpm } from "./npm.js";
 import {
   BASCIK_VERSION,
@@ -26,6 +26,10 @@ try {
 } catch (err) {
   console.error(`\nError: ${(err as Error).message}\n`);
   process.exit(1);
+}
+if (options.helpFlag) {
+  console.log(USAGE);
+  process.exit(0);
 }
 const {
   yesFlag,

@@ -14,6 +14,7 @@ import {
   processAllPages,
   selectivelyProcessPages,
   processPagesImportingStylesheet,
+  processPagesDependentOnFile,
   removePage,
   pageWriteIdle,
 } from "./processing.ts";
@@ -1385,6 +1386,38 @@ describe("selectivelyProcessPagesForWatchPath", () => {
     expect(eventEmitter.emit).toHaveBeenCalledWith("transpiled", {
       relativePagePath: "pages/cli.html",
     });
+  });
+});
+
+describe("processPagesDependentOnFile", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (BascikConfig as any).assets = { inlineStyles: false, exclude: [] };
+    (mem.pagesDependentOnFile as ReturnType<typeof vi.fn>).mockReturnValue([]);
+  });
+
+  it("rebuilds only the pages that depend on the file", async () => {
+    (mem.pagesDependentOnFile as ReturnType<typeof vi.fn>).mockReturnValueOnce([
+      "src/pages/cli.html",
+    ]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "<html><body>cli content</body></html>",
+    );
+    await processPagesDependentOnFile("src/pages/client.ts");
+    const { eventEmitter } = await import("./events.ts");
+    expect(mem.pagesDependentOnFile).toHaveBeenCalledWith(
+      "src/pages/client.ts",
+    );
+    expect(eventEmitter.emit).toHaveBeenCalledExactlyOnceWith("transpiled", {
+      relativePagePath: "pages/cli.html",
+    });
+  });
+
+  it("does nothing, not even a component reload, when no page depends on the file", async () => {
+    await processPagesDependentOnFile("src/pages/unused.ts");
+    const { eventEmitter } = await import("./events.ts");
+    expect(eventEmitter.emit).not.toHaveBeenCalled();
+    expect(invalidateComponentListCache).not.toHaveBeenCalled();
   });
 });
 

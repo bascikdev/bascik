@@ -394,7 +394,7 @@ Per-file checks (2)
 | Check                                                                                                  | Category                       | Severity                |
 | ------------------------------------------------------------------------------------------------------ | ------------------------------ | ----------------------- |
 | Configuration key and value validation                                                                 | `config-validation`            | Error or warning by key |
-| Missing `BASCIK_SITE_URL` when `generate.sitemap` or `generate.robots` is enabled                      | `missing-site-url`             | Error                   |
+| Missing `BASCIK_SITE_URL` when `generate.sitemap` or `generate.robots` is enabled (the build fails)    | `missing-site-url`             | Warning                 |
 | Pages directory unreadable or empty                                                                    | `pages-directory`              | Error                   |
 | Duplicate component tag names                                                                          | `duplicate-component-name`     | Error                   |
 | Circular component references                                                                          | `circular-component-reference` | Error                   |

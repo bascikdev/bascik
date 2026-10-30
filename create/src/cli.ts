@@ -10,6 +10,8 @@ export interface CliOptions {
   template?: Template;
   /** The first positional argument, the project name, with flag values excluded. */
   projectName?: string;
+  /** `--help` or `-h`: print the usage and exit 0, before anything else. */
+  helpFlag: boolean;
 }
 
 /** `static` is accepted as a synonym because the default starter is a plain static site. */
@@ -47,6 +49,8 @@ const unexpectedArgument = (arg: string): Error =>
 
 /** Every flag create-bascik reads. */
 export const CLI_FLAGS = [
+  "-h",
+  "--help",
   "-y",
   "--yes",
   "--no-install",
@@ -102,6 +106,16 @@ export function parseCliOptions(
   args: string[],
   env: NodeJS.ProcessEnv = process.env,
 ): CliOptions {
+  // Help wins over everything else on the line, even a mistake elsewhere in it.
+  if (args.includes("--help") || args.includes("-h")) {
+    return {
+      helpFlag: true,
+      yesFlag: false,
+      noDevFlag: false,
+      noInstallFlag: false,
+      noSkillsFlag: false,
+    };
+  }
   let template: Template | undefined;
   const positionals: string[] = [];
 
@@ -144,5 +158,24 @@ export function parseCliOptions(
       args.includes("--no-skills") || env.npm_config_skills === "false",
     template,
     projectName: positionals[0],
+    helpFlag: false,
   };
 }
+
+/** What `npm create bascik -- --help` prints. */
+export const USAGE = `Usage: npm create bascik@rc [project-name] -- [options]
+
+Creates a new Bascik project in ./<project-name> (asks for a name when none is given).
+
+Options:
+  --template <name>  The starter: ${TEMPLATES.join(", ")} (alias: static). Asks when not given.
+  -y, --yes          Answer every question with its default: the default template,
+                     install the agent skills, install dependencies, start the dev server
+  --no-skills        Do not install the Bascik agent skills
+  --no-install       Do not run npm install
+  --no-dev           Do not start the dev server
+  -h, --help         Show this help text
+
+npm keeps flags written before "--" for itself, so put them after it:
+  ${NPM_CREATE_EXAMPLE}
+`;

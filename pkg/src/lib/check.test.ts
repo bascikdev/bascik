@@ -627,7 +627,7 @@ describe("checkProject", () => {
       expect(item?.locations).toEqual([{ filePath: "bascik.config.js" }]);
     });
 
-    it("promotes missing site URL to an error when sitemap/robots features are enabled", async () => {
+    it("reports a missing site URL as a warning that names the fix and the failing build, when sitemap/robots features are enabled", async () => {
       delete process.env.BASCIK_SITE_URL;
       await setupProject({ "pages/index.html": "<p>ok</p>" });
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
@@ -638,8 +638,14 @@ describe("checkProject", () => {
         (i) => i.category === "missing-site-url",
       );
       expect(item).toBeDefined();
-      expect(item?.severity).toBe("error");
-      expect(item?.message).toContain("BASCIK_SITE_URL");
+      expect(item?.severity).toBe("warning");
+      expect(item?.message).toContain("BASCIK_SITE_URL is not set");
+      expect(item?.message).toContain("--site-url");
+      expect(item?.message).toContain("generate.sitemap: false");
+      expect(item?.message).toContain("`bascik --build` fails until it is set");
+      expect(item?.message).not.toMatch(/example\.com/);
+      expect(item?.message).not.toContain("[bascik] error");
+      expect(findings.errors).toBe(0);
     });
 
     it("still finds a component named only in a build script after a quoted > on the tag", async () => {

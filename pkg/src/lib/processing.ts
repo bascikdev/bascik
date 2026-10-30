@@ -806,6 +806,25 @@ export const selectivelyProcessPagesForWatchPath = async (
   await processPageBatch(pagesToProcess, componentList, globalStylesHtml);
 };
 
+/**
+ * Rebuild the pages that depend on `path`, a file no watcher otherwise owns
+ * (a page's `.ts` script, a build or server script's `src=` module in the
+ * pages directory), including pages whose last build failed while reading
+ * it. Does nothing when no page depends on it.
+ */
+export const processPagesDependentOnFile = async (
+  path: string,
+): Promise<void> => {
+  const dependentPages = mem.pagesDependentOnFile(path);
+  if (dependentPages.length === 0) return;
+  invalidateComponentListCache();
+  await processPageBatch(
+    componentsHaveBuildScripts()
+      ? withRequestRenderedPages(dependentPages)
+      : dependentPages,
+  );
+};
+
 /** Pages that use a component whose stylesheet imports `path`, as of the last component listing. */
 export const pagesImportingStylesheet = (path: string): string[] => [
   ...new Set(

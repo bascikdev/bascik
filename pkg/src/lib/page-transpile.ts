@@ -25,6 +25,10 @@ import {
   formatPageBuildScriptStats,
 } from "./build-script-stats.ts";
 import { collectAllScriptDeps, executeBuildScripts } from "./build-scripts.ts";
+import {
+  checkServerScriptTypeScript,
+  inlinePageTypeScriptScripts,
+} from "./page-typescript.ts";
 import { stdout as colorOut } from "./colors.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
 import { computePageCspHashes, cspHashCollector } from "./csp-hashes.ts";
@@ -252,6 +256,17 @@ export const transpilePage = async (
   // transformed and diagnosed in `listComponents`, are not re-inspected here.
   // This is the same pass in dev and build: TypeScript strip first, then
   // scoping, then optional `minify.js`.
+  // A page's own <script src="name.ts"> is compiled and inlined, as a
+  // component's .ts companion is; the file becomes a page dependency.
+  const pendingPageTs = inlinePageTypeScriptScripts(
+    htmlWithBuildOutput,
+    pagePath,
+    rawHtml,
+  );
+  pause();
+  const pageTs = await pendingPageTs;
+  resume();
+  htmlWithBuildOutput = pageTs.html;
   const pendingTs = transformTypeScriptScriptTags(
     htmlWithBuildOutput,
     relativePagePathForDiagnostics(pagePath),
@@ -555,6 +570,16 @@ export const transpilePage = async (
     serverScripts,
     pagePath,
   );
+  // A TypeScript server or stream script that cannot compile fails the page
+  // here, as a build script does, not with a 500 on the first request.
+  const pendingServerTs = checkServerScriptTypeScript(
+    Object.values(serverScripts),
+    pagePath,
+    rawHtml,
+  );
+  pause();
+  await pendingServerTs;
+  resume();
   // Compute the page's inline CSP hashes here, at the single defined point
   // where `distHtml` holds the page's final emitted representation. Both the
   // serial and worker paths carry these hashes onward; the main thread records
@@ -567,6 +592,8 @@ export const transpilePage = async (
   pause();
   const fileDependencies = await pendingDeps;
   resume();
+  for (const dep of pageTs.dependencies)
+    if (!fileDependencies.includes(dep)) fileDependencies.push(dep);
 
   // Even on a "successful" transpile the page may reference a helper that does
   // not yet exist (e.g. the harness swallows the import failure). Track it so

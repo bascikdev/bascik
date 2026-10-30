@@ -564,6 +564,7 @@ describe("listComponents – companion scripts", () => {
     expect(compiler).toHaveBeenCalledWith("let n: number = 1;\n", {
       sourcePath: "src/components/custom-comp/custom-comp.ts",
       kind: "companion",
+      runtime: "browser",
     });
     expect(result["custom-comp"].fileContent).toContain(
       "// via-custom-compiler",

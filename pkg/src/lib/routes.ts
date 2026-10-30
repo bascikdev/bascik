@@ -1,4 +1,8 @@
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
+import {
+  compileDirectiveTypeScript,
+  isTypeScriptDirectiveScript,
+} from "./typescript.ts";
 import { dirname, join, relative, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
@@ -465,8 +469,25 @@ export const executeRoutesScript = async (
             position.bodyLine,
             position.bodyColumn,
           );
+    // TypeScript (a marked tag, or a `.ts` src) becomes JavaScript before
+    // its imports are rewritten. Strip-only keeps every line and column.
+    const javascript = isTypeScriptDirectiveScript(
+      openTag,
+      moduleFilePath ? moduleSourcePath : undefined,
+    )
+      ? await compileDirectiveTypeScript(
+          padded,
+          moduleSourcePath,
+          moduleFilePath ? "companion" : "inline",
+          moduleFilePath || !filePath
+            ? undefined
+            : { line: position.tagLine, column: position.tagColumn },
+        )
+      : padded;
     ({ code: preparedScript, edits: specifierEdits } =
-      rewriteModuleSpecifiersWithEdits(padded, scriptBaseDir, { importRoot }));
+      rewriteModuleSpecifiersWithEdits(javascript, scriptBaseDir, {
+        importRoot,
+      }));
   } catch (err) {
     return rethrowLeadingSlash(err);
   }

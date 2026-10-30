@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { parseCliOptions } from "./cli.js";
+import { USAGE, parseCliOptions } from "./cli.js";
 import {
   CLOUDFLARE_E2E_APP_SPEC,
   CLOUDFLARE_GITIGNORE,
@@ -13,6 +13,8 @@ import {
   HELLO_API_ROUTE,
   MY_COUNTER_CSS,
   MY_COUNTER_HTML,
+  CONTACT_FORM_HTML,
+  CONTACT_FORM_CSS,
   MY_COUNTER_TEST,
   PACKAGE_JSON,
   PLAYWRIGHT_CONFIG,
@@ -78,6 +80,7 @@ describe("parseCliOptions", () => {
       noSkillsFlag: false,
       template: undefined,
       projectName: "my-site",
+      helpFlag: false,
     });
   });
 
@@ -89,6 +92,7 @@ describe("parseCliOptions", () => {
       noSkillsFlag: false,
       template: undefined,
       projectName: "my-site",
+      helpFlag: false,
     });
   });
 
@@ -102,6 +106,7 @@ describe("parseCliOptions", () => {
       noSkillsFlag: false,
       template: undefined,
       projectName: "my-site",
+      helpFlag: false,
     });
   });
 
@@ -172,6 +177,7 @@ describe("parseCliOptions", () => {
       noSkillsFlag: false,
       template: undefined,
       projectName: "my-site",
+      helpFlag: false,
     });
     expect(parseCliOptions(["my-site"], {}).yesFlag).toBe(false);
     expect(parseCliOptions(["my-site"], { npm_config_yes: "" }).yesFlag).toBe(
@@ -488,9 +494,13 @@ describe("edgePage", () => {
     expect(html).toContain('<site-footer data-bascik-prop-brand="My App" />');
   });
 
-  it("renders the greeting from a data-bascik-server script with a default export", () => {
-    expect(html).toContain("<script data-bascik-server>");
-    expect(html).toContain("export default function (request)");
+  it("renders the greeting from a TypeScript data-bascik-server script with a default export", () => {
+    expect(html).toContain(
+      '<script data-bascik-server type="text/typescript">',
+    );
+    expect(html).toContain(
+      "export default function (request: Request): string",
+    );
     expect(html).toContain('searchParams.get("name")');
     expect(html).toContain('data-testid="edge-greeting"');
   });
@@ -500,7 +510,7 @@ describe("edgePage", () => {
     // use <feat-card> in its own markup, so the card is rendered at request
     // time, with the header, default, and footer slots filled.
     const script = html.slice(
-      html.indexOf("<script data-bascik-server>"),
+      html.indexOf('<script data-bascik-server type="text/typescript">'),
       html.indexOf("</script>"),
     );
     expect(script).toContain('<feat-card data-testid="edge-card">');
@@ -526,7 +536,7 @@ describe("edgePage", () => {
 
   it("escapes the query parameter with html from @bascik/bascik/html, not a handwritten escaper", () => {
     const script = html.slice(
-      html.indexOf("<script data-bascik-server>"),
+      html.indexOf('<script data-bascik-server type="text/typescript">'),
       html.indexOf("</script>"),
     );
     expect(script).toContain('import { html } from "@bascik/bascik/html";');
@@ -585,10 +595,12 @@ describe("STYLES_CSS", () => {
     expect(STYLES_CSS).toContain("--text:");
   });
 
-  it("includes button, card, and form rules", () => {
+  it("includes button and card rules, and leaves form rules to <contact-form>", () => {
     expect(STYLES_CSS).toContain(".btn");
     expect(STYLES_CSS).toContain(".card");
-    expect(STYLES_CSS).toContain(".form-group");
+    // A component's classes are scoped, so a global .form-group would never match its fields.
+    expect(STYLES_CSS).not.toContain(".form-group");
+    expect(CONTACT_FORM_CSS).toContain(".field input");
   });
 });
 
@@ -649,9 +661,11 @@ describe("SITE_FOOTER_HTML", () => {
     expect(SITE_FOOTER_HTML).not.toContain("${SITE_FOOTER_CSS}");
   });
 
-  it("uses a build-once script for the year", () => {
-    expect(SITE_FOOTER_HTML).toContain("<script data-bascik-build-once>");
-    expect(SITE_FOOTER_HTML).toContain("export default () =>");
+  it("uses a TypeScript build-once script for the year", () => {
+    expect(SITE_FOOTER_HTML).toContain(
+      '<script data-bascik-build-once type="text/typescript">',
+    );
+    expect(SITE_FOOTER_HTML).toContain("export default (): string =>");
     expect(SITE_FOOTER_HTML).toContain("getFullYear");
   });
 });
@@ -679,8 +693,10 @@ describe("MY_COUNTER_HTML", () => {
     expect(MY_COUNTER_HTML).toContain("btn-inc");
   });
 
-  it("wraps the script in an IIFE", () => {
-    expect(MY_COUNTER_HTML).toMatch(/\(function\s*\(\)/);
+  it("writes its script in TypeScript and leaves the per-instance wrapper to Bascik", () => {
+    expect(MY_COUNTER_HTML).toContain('<script type="text/typescript">');
+    expect(MY_COUNTER_HTML).toContain("let count: number = 0;");
+    expect(MY_COUNTER_HTML).not.toMatch(/\(function\s*\(\)/);
   });
 });
 
@@ -730,7 +746,7 @@ describe("MY_COUNTER_CSS", () => {
 describe("page templates", () => {
   it("indexPage uses feat-card with named slots for the features section", () => {
     const html = indexPage("My App");
-    expect(html).toContain("<feat-card>");
+    expect(html).toContain('<feat-card data-testid="feature-zero-runtime">');
     expect(html).toContain('data-bascik-slot="header"');
     expect(html).toContain('data-bascik-slot="footer"');
   });
@@ -748,28 +764,87 @@ describe("page templates", () => {
     const plain = indexPage("My App");
     const cloudflare = indexPage("My App", { template: "cloudflare" });
     expect(plain).not.toContain('href="/edge"');
-    expect(plain.match(/<feat-card>/g)).toHaveLength(3);
+    expect(plain.match(/<feat-card /g)).toHaveLength(3);
     expect(indexPage("My App", { template: "default" })).toBe(plain);
     expect(cloudflare).toContain('href="/edge"');
-    expect(cloudflare.match(/<feat-card>/g)).toHaveLength(4);
+    expect(cloudflare.match(/<feat-card /g)).toHaveLength(4);
     // The extra card is an insertion: everything else on the page is unchanged.
     const edgeCard =
-      /\n\s*<feat-card>\s*<div data-bascik-slot="header">Edge<\/div>[\s\S]*?<\/feat-card>/;
+      /\n\s*<feat-card data-testid="feature-edge">\s*<div data-bascik-slot="header">Edge<\/div>[\s\S]*?<\/feat-card>/;
     expect(cloudflare.replace(edgeCard, "")).toBe(plain);
   });
 
-  it("aboutPage contains two feature cards", () => {
+  it("aboutPage composes two <feat-card> components with test ids", () => {
     const html = aboutPage("My App");
     expect(html).toContain("<site-header");
-    expect(html).toContain("card");
+    expect(html).toContain('<feat-card data-testid="about-mission">');
+    expect(html).toContain('<feat-card data-testid="about-approach">');
+    expect(html).not.toContain('class="card"');
     expect(html).toContain("/contact");
   });
 
-  it("contactPage contains a form with name, email, and message fields", () => {
+  it("contactPage places the <contact-form> component, which has the name, email, and message fields", () => {
     const html = contactPage("My App");
-    expect(html).toContain('<input type="text"');
-    expect(html).toContain('<input type="email"');
-    expect(html).toContain("<textarea");
+    expect(html).toContain("<contact-form />");
+    expect(html).not.toContain("onsubmit");
+    expect(CONTACT_FORM_HTML).toContain('<input type="text"');
+    expect(CONTACT_FORM_HTML).toContain('<input type="email"');
+    expect(CONTACT_FORM_HTML).toContain("<textarea");
+    expect(CONTACT_FORM_HTML).toContain('<script type="text/typescript">');
+  });
+
+  it.each([
+    [
+      "SITE_HEADER_HTML",
+      SITE_HEADER_HTML,
+      [
+        "site-header",
+        "site-logo",
+        "nav-toggle",
+        "nav-menu",
+        "nav-home",
+        "nav-about",
+        "nav-contact",
+      ],
+    ],
+    [
+      "SITE_FOOTER_HTML",
+      SITE_FOOTER_HTML,
+      ["site-footer", "footer-home", "footer-about", "footer-contact"],
+    ],
+    [
+      "MY_COUNTER_HTML",
+      MY_COUNTER_HTML,
+      ["my-counter", "counter-dec", "counter-val", "counter-inc"],
+    ],
+    [
+      "CONTACT_FORM_HTML",
+      CONTACT_FORM_HTML,
+      [
+        "contact-form",
+        "contact-name",
+        "contact-email",
+        "contact-message",
+        "contact-submit",
+        "contact-status",
+      ],
+    ],
+  ])(
+    "%s gives its root and interactive parts a data-testid",
+    (_name, html, ids) => {
+      for (const id of ids) expect(html).toContain(`data-testid="${id}"`);
+    },
+  );
+
+  it("leaves <feat-card>'s root without a data-testid, so each usage's own data-testid reaches it", () => {
+    expect(FEAT_CARD_HTML).toMatch(/<article class="fcard">/);
+  });
+
+  it("writes every component script in TypeScript", () => {
+    for (const html of [SITE_HEADER_HTML, MY_COUNTER_HTML, CONTACT_FORM_HTML])
+      expect(html.match(/<script\b[^>]*>/g)).toEqual([
+        '<script type="text/typescript">',
+      ]);
   });
 
   it("notFoundPage contains 404 and a home link", () => {
@@ -818,9 +893,9 @@ describe("scaffold", () => {
     expect(dirs.some((d) => d.includes("site-meta"))).toBe(true);
   });
 
-  it("writes all 29 expected files", async () => {
+  it("writes all 31 expected files", async () => {
     await scaffold("my-app", "/tmp");
-    expect(mockWriteFile.mock.calls.length).toBe(29);
+    expect(mockWriteFile.mock.calls.length).toBe(31);
   });
 
   it("writes E2E config and spec files", async () => {
@@ -1051,8 +1126,8 @@ describe("scaffold", () => {
   describe("cloudflare template", () => {
     beforeEach(() => scaffold("my-app", "/tmp", { template: "cloudflare" }));
 
-    it("writes the 29 default files plus the edge page and API route", () => {
-      expect(mockWriteFile.mock.calls.length).toBe(31);
+    it("writes the 31 default files plus the edge page and API route", () => {
+      expect(mockWriteFile.mock.calls.length).toBe(33);
       const paths = allWrittenPaths();
       expect(paths).toContain("/tmp/my-app/src/pages/edge.html");
       expect(paths).toContain("/tmp/my-app/src/api/hello.ts");
@@ -1120,11 +1195,41 @@ describe("parseCliOptions --no-skills", () => {
     );
   });
 
+  it.each([["--help"], ["-h"], ["my-site", "--help"], ["--no-skill", "-h"]])(
+    "%s asks for help, which wins over everything else on the line",
+    (...args) => {
+      expect(parseCliOptions(args).helpFlag).toBe(true);
+    },
+  );
+
+  it("documents every flag it accepts in the usage text", () => {
+    for (const flag of [
+      "--template",
+      "-y",
+      "--yes",
+      "--no-skills",
+      "--no-install",
+      "--no-dev",
+      "-h",
+      "--help",
+    ])
+      expect(USAGE).toContain(flag);
+    expect(USAGE).toContain(
+      "npm create bascik@rc my-site -- --template cloudflare",
+    );
+  });
+
+  it("misuse: --helps is refused, pointing at --help", () => {
+    expect(() => parseCliOptions(["--helps"])).toThrow(
+      'Unknown option "--helps". Did you mean "--help"?',
+    );
+  });
+
   it("misuse: an unrelated flag is refused with the list of flags and no guess", () => {
     expect(() =>
       parseCliOptions(["my-site", "--typescript-everywhere"]),
     ).toThrow(
-      'Unknown option "--typescript-everywhere". create-bascik accepts -y, --yes, --no-install, --no-dev, --no-skills, --template.',
+      'Unknown option "--typescript-everywhere". create-bascik accepts -h, --help, -y, --yes, --no-install, --no-dev, --no-skills, --template.',
     );
   });
 });

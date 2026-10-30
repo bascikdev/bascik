@@ -349,6 +349,19 @@ describe("serverless parity: Node oracle versus local workerd", () => {
     expect(Number(identity.headers["content-length"])).toBeGreaterThan(0);
   });
 
+  it('inline server and stream scripts marked type="text/typescript": same bytes on both hosts, types stripped', async () => {
+    const { node: n, cf } = await both("/typed", {
+      headers: { "x-display-name": "Typed" },
+    });
+    expect(n.status).toBe(200);
+    expect(cf.status).toBe(200);
+    expect(n.body).toContain(
+      '<p data-testid="typed-server"><label>Typed</label></p>',
+    );
+    expect(n.body).toContain('<p data-testid="typed-stream">typed stream</p>');
+    expect(cf.body).toBe(n.body);
+  });
+
   it("page aliases resolve identically", async () => {
     for (const alias of [
       "/account/",

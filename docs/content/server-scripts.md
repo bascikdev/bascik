@@ -59,6 +59,25 @@ export default async function (request, context, { signal });
 </script>
 ```
 
+### TypeScript
+
+Write a server script in TypeScript with a `src=` `.ts` or `.mts` module, or mark an inline block `type="text/typescript"`:
+
+```html
+<script data-bascik-server type="text/typescript">
+  import { html } from "@bascik/bascik/html";
+
+  export default (request: Request): string => {
+    const name: string = new URL(request.url).searchParams.get("name") ?? "visitor";
+    return html`<p>Hello, ${name}</p>`;
+  };
+</script>
+```
+
+Bascik strips the types before the script runs, on Node in dev and production and in the [Cloudflare adapter](/deployment/cloudflare)'s Worker bundle. Stripping keeps every line and column, so a stack trace names the page's own lines. A `src=` module is imported as a file and Node strips its types; a [`scripts.typescript`](/configuration#scriptstypescript) function compiles both forms instead. An unmarked inline block is JavaScript.
+
+Both forms are compiled when the page is built, in dev and by `bascik --build`, so a syntax error or an `enum` fails the build naming the file, line, and column, not the first request.
+
 ## Escaping and injection
 
 The return value of a server script is HTML. Every value you put into it from a request, a database or an API is data, and it must reach the page as text, never as markup or code. Write the markup with `html` from `@bascik/bascik/html`: a tagged template that reads the markup around each `${...}` and escapes the value for that place.

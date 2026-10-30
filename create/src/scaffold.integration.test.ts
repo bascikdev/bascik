@@ -295,8 +295,14 @@ describe("scaffold-to-compiler integration", () => {
       "utf8",
     );
     expect(footerHtml).toContain(
-      "export default () => String(new Date().getFullYear())",
+      "export default (): string => String(new Date().getFullYear())",
     );
+    // The starter's browser scripts are TypeScript; the browser gets JavaScript.
+    expect(indexHtml).not.toMatch(
+      /: number|as HTMLSpanElement|text\/typescript/,
+    );
+    expect(contactHtml).toContain('data-testid="contact-form"');
+    expect(contactHtml).not.toMatch(/: SubmitEvent|text\/typescript/);
 
     // 6. Verify representative assets copied to dist
     await expect(access(join(distDir, "favicon.ico"))).resolves.toBeUndefined();
@@ -520,6 +526,57 @@ describe("scaffold-to-compiler integration", () => {
       `the reload link inside an element with the footer class ${footer}`,
     ).toBe(true);
   }, 60_000);
+
+  it.each(["default", "cloudflare"] as const)(
+    "a fresh %s scaffold passes bascik --check with no site URL set, which warns and names the fix, while --build still fails",
+    async (template) => {
+      const parentDir = await createTempDir(`check-${template}`);
+      const projectDir = join(parentDir, "check-site");
+      await scaffold("check-site", parentDir, { template });
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        NO_COLOR: "1",
+        FORCE_COLOR: "0",
+      };
+      delete env.BASCIK_SITE_URL;
+
+      const check = await execFileAsync(
+        process.execPath,
+        [PKG_CLI, "--check"],
+        {
+          cwd: projectDir,
+          encoding: "utf8",
+          env,
+          timeout: 60_000,
+        },
+      );
+      expect(check.stdout).toContain("0 errors");
+      expect(check.stdout).toContain("BASCIK_SITE_URL is not set");
+      expect(check.stdout).toContain("--site-url");
+      // No production URL is invented for the project.
+      expect(existsSync(join(projectDir, ".env"))).toBe(false);
+
+      const build = await execFileAsync(
+        process.execPath,
+        [PKG_CLI, "--build"],
+        {
+          cwd: projectDir,
+          encoding: "utf8",
+          env,
+          timeout: 60_000,
+        },
+      ).then(
+        () => ({ code: 0, output: "" }),
+        (err: { code?: number; stdout?: string; stderr?: string }) => ({
+          code: err.code ?? 1,
+          output: `${err.stdout ?? ""}${err.stderr ?? ""}`,
+        }),
+      );
+      expect(build.code).not.toBe(0);
+      expect(build.output).toContain("BASCIK_SITE_URL is not set");
+    },
+    90_000,
+  );
 
   it("negative control: rejects compilation when a required page contains invalid build-script syntax", async () => {
     const parentDir = await createTempDir("negative-control");

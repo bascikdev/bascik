@@ -256,7 +256,7 @@ Script tags with a `type` other than `text/javascript` are left completely untou
 
 ## TypeScript in Component Scripts
 
-Bascik ships vanilla JavaScript to the browser and never emits raw TypeScript on either of its two supported browser TypeScript paths. No configuration is required.
+Bascik ships vanilla JavaScript to the browser and never emits raw TypeScript from a `.ts` script or a marked inline block. No configuration is required.
 
 **Companion `.ts` files (the default).** Reference a `.ts` or `.mts` file from the component and Bascik strips the types when it inlines the script:
 
@@ -274,6 +274,10 @@ count.addEventListener("click", () => {
   count.textContent = String(n);
 });
 ```
+
+**A page's own `.ts` script.** A page's `<script src="app.ts">` (or `.mts`) is compiled the same way and inlined in place of the reference, its other attributes kept, since Bascik never publishes `.ts` files. An inline classic script ignores `defer` and `async`, so a classic tag with either fails the build naming the tag's line: remove the attribute and put the tag at the end of `<body>`, or mark it `type="module"`, which is deferred inline too. A `src` that is a URL, or a project with `scripts.typescript: false`, is left as written. In dev, editing the `.ts` file rebuilds and reloads the page.
+
+**Imports in a `.ts` module.** Bascik inlines a `type="module"` `.ts` script (a page's own or a component's companion) without bundling it, so the browser would resolve its imports against the page's URL. An import of a relative, `@/`, or `.ts` path therefore fails the build, naming the tag and the import. Bundle the module with esbuild (a `scripts.typescript` function, or a `pipeline.exec` step that writes a `.js` file), or import a published JavaScript URL such as `/js/util.js`.
 
 **Inline blocks marked as TypeScript.** For a short inline script, opt in with the `text/typescript` MIME type. Bascik strips the types and emits an ordinary `<script>`; the `type` attribute is removed in the output:
 
@@ -295,7 +299,7 @@ The pipeline order is fixed: TypeScript strip, then scoping (IIFE wrapping, sele
 
 > **Need to bundle client dependencies?** Bascik intentionally leaves third-party client module bundling to dedicated tools. See the how-to guide on [Bundling npm Packages](/how-to/bundling-npm-packages) for setting up esbuild or Rolldown with `pipeline.exec`.
 
-**Bring your own compiler.** Set [`scripts.typescript`](/configuration#scriptstypescript) to a function to run esbuild, swc, or `tsc` instead of Node's stripper. It receives `(code, { sourcePath, kind })` and returns JavaScript, and it sits at the same point in the pipeline, so scoping and `minify.js` still run afterwards. This is the path for `enum`, decorators, or downleveling to an older browser target. Set it to `false` to turn the transform off entirely when another tool already compiles what Bascik reads.
+**Bring your own compiler.** Set [`scripts.typescript`](/configuration#scriptstypescript) to a function to run esbuild, swc, or `tsc` instead of Node's stripper. It receives `(code, { sourcePath, kind, runtime })` and returns JavaScript, and it sits at the same point in the pipeline, so scoping and `minify.js` still run afterwards. This is the path for `enum`, decorators, or downleveling to an older browser target. Set it to `false` to turn the transform off entirely when another tool already compiles what Bascik reads.
 
 > **`minify.js` is not a TypeScript transform.** Never configure `minify.js` merely to strip TypeScript. Bascik strips supported browser TypeScript automatically before this hook runs, so a `minify.js` function always receives plain JavaScript. Add a custom `minify.js` function only when the project requires non-default JavaScript minification.
 

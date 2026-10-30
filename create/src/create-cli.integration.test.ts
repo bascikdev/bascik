@@ -200,6 +200,18 @@ describe("npm create bascik and the agent skills", () => {
     );
   }, 120_000);
 
+  it.each([["--help"], ["-h"], ["my-site", "--help"]])(
+    "%s prints the usage and exits 0 without asking or writing anything",
+    async (...args) => {
+      const { status, output, parent } = await create(args);
+      expect(status).toBe(0);
+      expect(output).toContain("Usage: npm create bascik@rc");
+      expect(output).toContain("--template <name>");
+      expect(output).not.toContain("Project name");
+      expect(readdirSync(parent)).toEqual([]);
+    },
+  );
+
   it("misuse: a typo'd --no-skill is refused before anything is written", async () => {
     const { status, output, parent } = await create([
       "my-site",

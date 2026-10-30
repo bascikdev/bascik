@@ -97,6 +97,40 @@ describe("server-scripts sidecar", () => {
     expect(result).toBe("<div>part1part2</div>");
   });
 
+  it('marks an inline block typed type="text/typescript" in its entry and runs it as JavaScript through the placeholder', async () => {
+    const rawHtml = `<div><script data-bascik-server type="text/typescript">export default function(request: Request): string { return "typed"; }</script><script data-bascik-stream>export default () => "plain";</script></div>`;
+    const extracted = extractServerScriptsToSidecar(
+      rawHtml,
+      "src/pages/typed.html",
+    );
+    expect(extracted).not.toContain("text/typescript");
+    const ids = [...extracted.matchAll(/data-bascik-server-id="([^"]+)"/g)].map(
+      (match) => match[1],
+    );
+    expect(serverSidecarRegistry.getScript(ids[0])?.typescript).toBe(true);
+    expect(serverSidecarRegistry.getScript(ids[1])).not.toHaveProperty(
+      "typescript",
+    );
+
+    const result = await executeServerScripts(
+      extracted,
+      baseRequest,
+      baseContext,
+    );
+    expect(result).toBe("<div>typedplain</div>");
+  });
+
+  it("does not mark a src= module, which is TypeScript by its extension", () => {
+    const extracted = extractServerScriptsToSidecar(
+      `<script data-bascik-server type="text/typescript" src="./a.ts"></script>`,
+      "src/pages/src.html",
+    );
+    const id = /data-bascik-server-id="([^"]+)"/.exec(extracted)![1];
+    expect(serverSidecarRegistry.getScript(id)).not.toHaveProperty(
+      "typescript",
+    );
+  });
+
   it("preserves authored page identity for inline relative imports", async () => {
     const rawHtml = `<script data-bascik-server>
       import { serverInlineMessage } from './test-fixtures/server-inline-helper.ts';

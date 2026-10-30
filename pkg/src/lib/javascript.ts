@@ -1166,6 +1166,7 @@ export const getComponentScripts = async (
       code = await transformBrowserTypeScript(code, {
         sourcePath: relPath,
         kind: "companion",
+        runtime: "browser",
       });
     }
     const baseName = basename(scriptPath);

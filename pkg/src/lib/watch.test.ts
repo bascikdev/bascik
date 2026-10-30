@@ -17,6 +17,7 @@ const {
   mockSelectivelyProcessPages,
   mockSelectivelyProcessPagesForWatchPath,
   mockProcessPagesImportingStylesheet,
+  mockProcessPagesDependentOnFile,
   mockCopyReplicatePath,
   mockCopyStaticAssets,
   mockIsStaticAssetPath,
@@ -49,6 +50,7 @@ const {
   const mockProcessPagesImportingStylesheet = vi
     .fn()
     .mockResolvedValue(undefined);
+  const mockProcessPagesDependentOnFile = vi.fn().mockResolvedValue(undefined);
   const mockCopyReplicatePath = vi.fn().mockResolvedValue(undefined);
   const mockCopyStaticAssets = vi.fn().mockResolvedValue(undefined);
   const mockIsStaticAssetPath = vi.fn().mockReturnValue(true);
@@ -131,6 +133,7 @@ const {
     mockSelectivelyProcessPages,
     mockSelectivelyProcessPagesForWatchPath,
     mockProcessPagesImportingStylesheet,
+    mockProcessPagesDependentOnFile,
     mockCopyReplicatePath,
     mockCopyStaticAssets,
     mockIsStaticAssetPath,
@@ -165,6 +168,7 @@ vi.mock("./processing.js", () => ({
   processAllPages: mockProcessAllPages,
   processPageBatch: mockProcessPageBatch,
   processPagesImportingStylesheet: mockProcessPagesImportingStylesheet,
+  processPagesDependentOnFile: mockProcessPagesDependentOnFile,
   removePage: mockRemovePage,
   selectivelyProcessPages: mockSelectivelyProcessPages,
   selectivelyProcessPagesForWatchPath: mockSelectivelyProcessPagesForWatchPath,
@@ -643,6 +647,27 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
     },
   );
 
+  it.each(["add", "change", "unlink"])(
+    "rebuilds the pages that read a page's .ts script on '%s', and never copies it to the output",
+    async (event) => {
+      mockIsStaticAssetPath.mockReturnValue(false);
+      mockCopyReplicatePath.mockClear();
+      mockDeleteDistFile.mockClear();
+      mockProcessPagesDependentOnFile.mockClear();
+      try {
+        await getHandler(0, event)?.("/project/src/pages/client.ts");
+        expect(mockProcessPagesDependentOnFile).toHaveBeenCalledExactlyOnceWith(
+          "/project/src/pages/client.ts",
+        );
+        expect(mockCopyReplicatePath).not.toHaveBeenCalled();
+        expect(mockDeleteDistFile).not.toHaveBeenCalled();
+        expect(mockProcessPagesImportingStylesheet).not.toHaveBeenCalled();
+      } finally {
+        mockIsStaticAssetPath.mockReset().mockReturnValue(true);
+      }
+    },
+  );
+
   it("does not look up stylesheet importers for an inline stylesheet, which rebuilds every page", async () => {
     mockIsInlineStylesheet.mockReturnValue(true);
     mockProcessAllPages.mockClear();
@@ -785,8 +810,20 @@ describe("watchFiles – ignored predicates", () => {
     ) => boolean;
     mockIsStaticAssetPath.mockReturnValue(false);
 
-    expect(ignored("/path/to/helper.ts", { isFile: () => true })).toBe(true);
     expect(ignored("/path/to/app.test.js", { isFile: () => true })).toBe(true);
+    expect(ignored("/path/to/app.test.ts", { isFile: () => true })).toBe(true);
+    expect(ignored("/path/to/types.d.ts", { isFile: () => true })).toBe(true);
+    expect(ignored("/path/to/notes.md", { isFile: () => true })).toBe(true);
+  });
+
+  it("watcher 0: watches a page's unpublished script sources (.ts, .mts, .mjs)", () => {
+    const ignored = mockWatch.mock.calls[0][1].ignored as (
+      p: string,
+      s?: { isFile: () => boolean },
+    ) => boolean;
+    mockIsStaticAssetPath.mockReturnValue(false);
+    for (const file of ["client.ts", "mod.mts", "server.mjs"])
+      expect(ignored(`/path/to/${file}`, { isFile: () => true })).toBe(false);
   });
 
   it("watcher 0: returns false when stats is undefined", () => {

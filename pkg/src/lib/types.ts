@@ -321,10 +321,16 @@ export type ScopableConfig =
  * `kind` is `"companion"` for a referenced `.ts`/`.mts` file (then
  * `sourcePath` is that file) or `"inline"` for a `type="text/typescript"`
  * block (then `sourcePath` is the page or component `.html` that contains it).
+ * `runtime` is `"browser"` for a browser script, which Bascik inlines as a
+ * classic script unless its tag is `type="module"`, and `"server"` for a
+ * build, routes, server or stream script written in TypeScript, which runs
+ * as an ES module on the server: keep its `import` and `export` statements
+ * (esbuild: `format: 'esm'`).
  */
 export interface TypeScriptCompileContext {
   sourcePath: string;
   kind: "companion" | "inline";
+  runtime: "browser" | "server";
 }
 
 /**

@@ -15,6 +15,9 @@ import {
   transformTypeScriptScriptTags,
   TypeScriptTransformError,
   hasStaticModuleSyntax,
+  isTypeScriptFile,
+  unbundledImportError,
+  unbundledModuleImports,
 } from "./typescript.ts";
 import { getScriptType } from "./script-types.ts";
 import { stampScriptLines, withScriptLine } from "./script-source-lines.ts";
@@ -700,6 +703,24 @@ export const listComponents = async (
                     `Mark the referencing <script src="${srcVal}"> tag type="module" (native ES modules are never wrapped), ` +
                     `or bundle this file with esbuild, swc, or another tool first so it has no import/export left.`,
                 );
+              }
+              // A TypeScript module companion is inlined, not bundled: an
+              // import of a sibling file would resolve against the page URL.
+              if (
+                isTypeScriptFile(scriptInfo.relPath) &&
+                getScriptType(`<script${attrStr}>`) === "module"
+              ) {
+                const unbundled = unbundledModuleImports(scriptInfo.code);
+                if (unbundled.length)
+                  throw unbundledImportError(
+                    scriptInfo.relPath,
+                    relative(
+                      process.cwd(),
+                      resolve(process.cwd(), fileName),
+                    ).replace(/\\/g, "/"),
+                    srcVal,
+                    unbundled,
+                  );
               }
               // The companion's first line is line 1 of its own sourceURL file.
               const openTag = withScriptLine(

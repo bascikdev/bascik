@@ -209,6 +209,15 @@ test.describe('Starter App E2E Tests', () => {
     await expect(menu).toBeHidden();
   });
 
+  test('contact form answers a submit without leaving the page', async ({ page }) => {
+    await page.goto('/contact');
+    await page.getByTestId('contact-name').fill('Ada');
+    await page.getByTestId('contact-email').fill('ada@example.com');
+    await page.getByTestId('contact-submit').click();
+    await expect(page).toHaveURL('/contact');
+    await expect(page.getByTestId('contact-status')).toBeVisible();
+  });
+
   test('feature card styles the title and text passed through its slot', async ({ page }) => {
     await page.goto('/');
     // The card's own sizes (1rem, 0.88rem), not the page's h3 and p.
@@ -349,22 +358,6 @@ code {
 }
 .callout p { color: var(--text); margin: 0; }
 
-/* ── Form ── */
-.form-group { margin-bottom: 20px; }
-.form-group label {
-  display: block; font-size: 0.88rem; font-weight: 600;
-  color: var(--text); margin-bottom: 6px;
-}
-.form-group input,
-.form-group textarea {
-  width: 100%; background: var(--elevated); border: 1px solid var(--border);
-  border-radius: var(--r-sm); color: var(--text); font-family: inherit;
-  font-size: 0.9rem; padding: 10px 14px; transition: border-color .15s; outline: none;
-}
-.form-group input:focus,
-.form-group textarea:focus { border-color: var(--accent); }
-.form-group textarea { min-height: 120px; resize: vertical; }
-
 /* ── Hero ── */
 .hero { padding: 96px 0 72px; text-align: center; }
 .hero h1 span { color: var(--accent); }
@@ -504,26 +497,26 @@ export const SITE_HEADER_CSS = `.header {
 /** Sticky top nav with logo (brand prop) and mobile hamburger. */
 export const SITE_HEADER_HTML = `<style>
 ${SITE_HEADER_CSS}</style>
-<header class="header">
+<header class="header" data-testid="site-header">
   <div class="container">
     <nav class="nav">
-      <a href="/" class="logo" data-bascik-prop-brand>My Site</a>
+      <a href="/" class="logo" data-bascik-prop-brand data-testid="site-logo">My Site</a>
       <button id="nav-toggle" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false" data-testid="nav-toggle">
         <span></span><span></span><span></span>
       </button>
       <ul id="nav-menu" class="nav-menu" data-testid="nav-menu">
-        <li><a href="/">Home</a></li>
-        <li><a href="/about">About</a></li>
-        <li><a href="/contact">Contact</a></li>
+        <li><a href="/" data-testid="nav-home">Home</a></li>
+        <li><a href="/about" data-testid="nav-about">About</a></li>
+        <li><a href="/contact" data-testid="nav-contact">Contact</a></li>
       </ul>
     </nav>
   </div>
 </header>
-<script>
-  var toggle = document.getElementById('nav-toggle');
-  var menu = document.getElementById('nav-menu');
-  toggle.addEventListener('click', function () {
-    var open = toggle.getAttribute('aria-expanded') === 'true';
+<script type="text/typescript">
+  const toggle = document.getElementById('nav-toggle') as HTMLButtonElement;
+  const menu = document.getElementById('nav-menu') as HTMLUListElement;
+  toggle.addEventListener('click', (): void => {
+    const open = toggle.getAttribute('aria-expanded') === 'true';
     toggle.setAttribute('aria-expanded', String(!open));
     menu.classList.toggle('is-open');
   });
@@ -565,17 +558,17 @@ export const SITE_FOOTER_CSS = `.footer {
 /** Footer with brand prop and build-time year. */
 export const SITE_FOOTER_HTML = `<style>
 ${SITE_FOOTER_CSS}</style>
-<footer class="footer">
+<footer class="footer" data-testid="site-footer">
   <div class="container">
     <div class="footer-inner">
       <span class="footer-copy">
-        &copy; <script data-bascik-build-once>export default () => String(new Date().getFullYear());</script>
+        &copy; <script data-bascik-build-once type="text/typescript">export default (): string => String(new Date().getFullYear());</script>
         <span data-bascik-prop-brand>My Site</span>
       </span>
       <nav class="footer-nav" aria-label="Footer navigation">
-        <a href="/">Home</a>
-        <a href="/about">About</a>
-        <a href="/contact">Contact</a>
+        <a href="/" data-testid="footer-home">Home</a>
+        <a href="/about" data-testid="footer-about">About</a>
+        <a href="/contact" data-testid="footer-contact">Contact</a>
       </nav>
     </div>
   </div>
@@ -670,22 +663,86 @@ export const MY_COUNTER_CSS = `.counter {
 /** Interactive counter: two instances on a page stay fully independent. */
 export const MY_COUNTER_HTML = `<style>
 ${MY_COUNTER_CSS}</style>
-<div class="counter">
+<div class="counter" data-testid="my-counter">
   <button id="btn-dec" class="btn btn-ghost" data-testid="counter-dec">−</button>
   <span id="count-val" class="count-val" data-testid="counter-val">0</span>
   <button id="btn-inc" class="btn btn-primary" data-testid="counter-inc">+</button>
 </div>
-<script>
-  (function () {
-    var count = 0;
-    var val = document.getElementById('count-val');
-    document.getElementById('btn-dec').addEventListener('click', function () {
-      val.textContent = --count;
-    });
-    document.getElementById('btn-inc').addEventListener('click', function () {
-      val.textContent = ++count;
-    });
-  }());
+<script type="text/typescript">
+  // Each instance runs this with its own ids, so two counters keep their own count.
+  let count: number = 0;
+  const val = document.getElementById('count-val') as HTMLSpanElement;
+  const show = (next: number): void => {
+    count = next;
+    val.textContent = String(count);
+  };
+  document.getElementById('btn-dec')!.addEventListener('click', () => show(count - 1));
+  document.getElementById('btn-inc')!.addEventListener('click', () => show(count + 1));
+</script>
+`;
+
+export const CONTACT_FORM_CSS = `.form { max-width: 520px; }
+
+.field { margin-bottom: 20px; }
+.field label {
+  display: block; font-size: 0.88rem; font-weight: 600;
+  color: var(--text); margin-bottom: 6px;
+}
+.field input,
+.field textarea {
+  width: 100%; background: var(--elevated); border: 1px solid var(--border);
+  border-radius: var(--r-sm); color: var(--text); font-family: inherit;
+  font-size: 0.9rem; padding: 10px 14px; transition: border-color .15s; outline: none;
+}
+.field input:focus,
+.field textarea:focus { border-color: var(--accent); }
+.field textarea { min-height: 120px; resize: vertical; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 22px; border: none; border-radius: var(--r-sm);
+  font-size: 0.9rem; font-weight: 600; cursor: pointer;
+  line-height: 1; transition: filter .15s;
+  background: var(--accent); color: #18191b;
+}
+@media (hover: hover) {
+  .btn:hover { filter: brightness(0.88); }
+}
+
+.status { margin: 16px 0 0; color: var(--accent); }
+`;
+
+/**
+ * Contact form. The starter has no backend, so submitting shows a note in
+ * place of sending: connect the form to your own endpoint in its script.
+ */
+export const CONTACT_FORM_HTML = `<style>
+${CONTACT_FORM_CSS}</style>
+<form id="contact-form" class="form" data-testid="contact-form">
+  <div class="field">
+    <label for="name">Name</label>
+    <input type="text" id="name" name="name" placeholder="Your name" autocomplete="name" data-testid="contact-name" />
+  </div>
+  <div class="field">
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" data-testid="contact-email" />
+  </div>
+  <div class="field">
+    <label for="message">Message</label>
+    <textarea id="message" name="message" placeholder="How can we help?" data-testid="contact-message"></textarea>
+  </div>
+  <button type="submit" class="btn" data-testid="contact-submit">Send message</button>
+  <p id="contact-status" class="status" role="status" data-testid="contact-status" hidden></p>
+</form>
+<script type="text/typescript">
+  const form = document.getElementById('contact-form') as HTMLFormElement;
+  const status = document.getElementById('contact-status') as HTMLParagraphElement;
+  form.addEventListener('submit', (event: SubmitEvent): void => {
+    // Nothing receives the form yet: send it to your own endpoint here.
+    event.preventDefault();
+    status.textContent = 'Thanks! This starter form does not send anything yet.';
+    status.hidden = false;
+  });
 </script>
 `;
 
@@ -779,6 +836,26 @@ describe('my-counter component', () => {
 });
 `;
 
+export const CONTACT_FORM_TEST = `import { describe, it, expect } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+describe('contact-form component', () => {
+  const path = join(process.cwd(), 'src/components/contact-form/contact-form.html');
+
+  it('labels every field and handles submit in a TypeScript script', async () => {
+    const html = await readFile(path, 'utf8');
+    for (const id of ['name', 'email', 'message']) {
+      expect(html).toContain(\`for="\${id}"\`);
+      expect(html).toContain(\`id="\${id}"\`);
+    }
+    expect(html).toContain('data-testid="contact-submit"');
+    expect(html).toContain('<script type="text/typescript">');
+    expect(html).toContain('preventDefault');
+  });
+});
+`;
+
 // ─── Pages ───────────────────────────────────────────────────────────────────
 
 const pageShell = (
@@ -803,7 +880,7 @@ ${body}
 
 /** The extra feature card the Cloudflare template adds, linking to the page the Worker renders. */
 const EDGE_FEAT_CARD = `
-          <feat-card>
+          <feat-card data-testid="feature-edge">
             <div data-bascik-slot="header">Edge</div>
             <h3>Rendered per request</h3>
             <p>Server scripts and API routes run in a Cloudflare Worker. Static pages stay on the CDN.</p>
@@ -835,19 +912,19 @@ export const indexPage = (
         <h2>Why Bascik</h2>
         <p>Each card below is a <code>&lt;feat-card&gt;</code> component with three named slots: <code>header</code>, default, and <code>footer</code>.</p>
         <div class="grid-3" style="margin-top:28px;">
-          <feat-card>
+          <feat-card data-testid="feature-zero-runtime">
             <div data-bascik-slot="header">Zero runtime</div>
             <h3>No framework overhead</h3>
             <p>Components compile at build time. Nothing extra ships to the browser.</p>
             <div data-bascik-slot="footer"><a href="/about" class="btn btn-ghost">Learn more →</a></div>
           </feat-card>
-          <feat-card>
+          <feat-card data-testid="feature-scoped-css">
             <div data-bascik-slot="header">Scoped CSS</div>
             <h3>Styles that never leak</h3>
             <p>Each component's class names are automatically namespaced at build time.</p>
             <div data-bascik-slot="footer"><a href="/about" class="btn btn-ghost">Learn more →</a></div>
           </feat-card>
-          <feat-card>
+          <feat-card data-testid="feature-named-slots">
             <div data-bascik-slot="header">Named slots</div>
             <h3>Flexible composition</h3>
             <p>Pass header, body, and footer content into components from the usage site.</p>
@@ -881,14 +958,16 @@ export const aboutPage = (brand: string): string =>
         <p class="page-intro">This is the about page. Tell visitors who you are and what you do.</p>
 
         <div class="grid-2" style="margin-top:32px;">
-          <div class="card">
-            <h2>Our mission</h2>
+          <feat-card data-testid="about-mission">
+            <div data-bascik-slot="header">Mission</div>
+            <h3>Our mission</h3>
             <p>Describe your mission or purpose here. Keep it concise and genuine.</p>
-          </div>
-          <div class="card">
-            <h2>Our approach</h2>
+          </feat-card>
+          <feat-card data-testid="about-approach">
+            <div data-bascik-slot="header">Approach</div>
+            <h3>Our approach</h3>
             <p>Explain how you work or what makes you different from others.</p>
-          </div>
+          </feat-card>
         </div>
 
         <div class="callout" style="margin-top:40px;">
@@ -908,21 +987,7 @@ export const contactPage = (brand: string): string =>
         <h1>Get in touch</h1>
         <p class="page-intro">Have a question or want to work together? Fill out the form below.</p>
 
-        <form style="max-width:520px;" onsubmit="return false;">
-          <div class="form-group">
-            <label for="name">Name</label>
-            <input type="text" id="name" name="name" placeholder="Your name" autocomplete="name" />
-          </div>
-          <div class="form-group">
-            <label for="email">Email</label>
-            <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" />
-          </div>
-          <div class="form-group">
-            <label for="message">Message</label>
-            <textarea id="message" name="message" placeholder="How can we help?"></textarea>
-          </div>
-          <button type="submit" class="btn btn-primary">Send message</button>
-        </form>
+        <contact-form />
       </section>
     </div>`,
   );
@@ -965,10 +1030,10 @@ export const edgePage = (brand: string): string =>
 
         <h2 style="margin-top:28px;">Your greeting</h2>
         <div style="max-width:520px;margin-top:16px;">
-          <script data-bascik-server>
+          <script data-bascik-server type="text/typescript">
             import { html } from "@bascik/bascik/html";
 
-            export default function (request) {
+            export default function (request: Request): string {
               // Query parameters are untrusted: html escapes each value for where it lands.
               const name = new URL(request.url).searchParams.get("name") ?? "visitor";
               return html\`<feat-card data-testid="edge-card">
@@ -1045,6 +1110,7 @@ export async function scaffold(
     mkdir(join(root, "src", "components", "site-footer"), { recursive: true }),
     mkdir(join(root, "src", "components", "feat-card"), { recursive: true }),
     mkdir(join(root, "src", "components", "my-counter"), { recursive: true }),
+    mkdir(join(root, "src", "components", "contact-form"), { recursive: true }),
   ]);
 
   await Promise.all([
@@ -1200,6 +1266,16 @@ export async function scaffold(
     writeFile(
       join(root, "src", "components", "my-counter", "my-counter.test.ts"),
       MY_COUNTER_TEST,
+      "utf8",
+    ),
+    writeFile(
+      join(root, "src", "components", "contact-form", "contact-form.html"),
+      CONTACT_FORM_HTML,
+      "utf8",
+    ),
+    writeFile(
+      join(root, "src", "components", "contact-form", "contact-form.test.ts"),
+      CONTACT_FORM_TEST,
       "utf8",
     ),
   ]);
