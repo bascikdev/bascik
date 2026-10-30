@@ -13,6 +13,7 @@ import {
   invalidateComponentListCache,
 } from "./components.ts";
 import { mem } from "./mem.ts";
+import { getHttpPath } from "./paths.ts";
 import { processAllPages, processPageBatch, removePage } from "./processing.ts";
 import {
   copyStaticAssets,
@@ -58,6 +59,15 @@ export const watchSourceCycles = async (
     entries,
     run: runScript,
     emitter: eventEmitter,
+    // A page open in a browser reloads the moment it is stored, ahead of the pages still compiling.
+    publishEarly: (event, payload) => {
+      if (event !== "transpiled") return false;
+      const { relativePagePath } = payload as { relativePagePath?: string };
+      if (typeof relativePagePath !== "string") return false;
+      const route = (path: string) => path.replace(/\/$/, "") || "/";
+      const pageRoute = route(getHttpPath(relativePagePath));
+      return mem.openPages.some((open) => route(open) === pageRoute);
+    },
     // Under the default dev action ('warn') the cycle already reported a
     // build-error and retries on the next edit. Under 'error' the session ends.
     onExecFailure: (error) => {

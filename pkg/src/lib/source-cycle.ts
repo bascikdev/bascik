@@ -22,6 +22,12 @@ export const createSourceCycle = (options: {
   clock?: FrameworkClock;
   /** Called for every exec script failure after it was reported as a build-error. */
   onExecFailure?: (error: unknown, entry: ExecEntry) => void;
+  /**
+   * Decides whether a publication is emitted the moment compilation produces it instead of being held
+   * until the whole cycle succeeds. Used only when no post script matches the edit, since a post script
+   * is what the hold exists to wait for. A tab showing a page can then reload as soon as that page is ready.
+   */
+  publishEarly?: (event: string, payload: unknown) => boolean;
 }) => {
   const clock = options.clock ?? nativeClock;
   const pending = new Set<string>();
@@ -75,6 +81,7 @@ export const createSourceCycle = (options: {
       return paths.some((path) => execWatchCoversPath(patterns, path));
     });
     const publications: [string, unknown][] = [];
+    const hasPostScript = matching.some((entry) => entry.phase === "post");
     let hadError = false;
     const onError = () => {
       hadError = true;
@@ -100,9 +107,17 @@ export const createSourceCycle = (options: {
           if (parallelTails.get(entry) === task) parallelTails.delete(entry);
         });
       }
-      await options.compile(paths, (event, payload) =>
-        publications.push([event, payload]),
-      );
+      await options.compile(paths, (event, payload) => {
+        if (
+          !hasPostScript &&
+          !closed &&
+          options.publishEarly?.(event, payload)
+        ) {
+          options.emitter.emit(event, payload);
+          return;
+        }
+        publications.push([event, payload]);
+      });
       if (hadError) throw new Error("Source compilation failed");
       for (const entry of matching.filter((entry) => entry.phase === "post"))
         await runEntry(entry);
