@@ -35,7 +35,7 @@ A component is an HTML file named after its tag. Its `<style>` and `<script>` ar
     gap: 1rem;
   }
 </style>
-<nav class="nav">
+<nav class="nav" data-testid="site-nav">
   <a href="/">Home</a>
   <a href="/about">About</a>
 </nav>
@@ -63,75 +63,67 @@ Use the tag in any page or component. There is no import, export, or registratio
 - [Build Scripts](https://bascik.dev/build-scripts), [Dynamic Routes](https://bascik.dev/dynamic-routes), and [Deployment](https://bascik.dev/deployment)
 - [Bascik vs React, Vue, Svelte, and Astro](https://bascik.dev/vs-frameworks)
 
----
+## Repository Layout
 
-### Test Coverage
+This repository holds Bascik and everything around it. Each folder is a Yarn workspace unless noted.
 
-| Package / Suite                       | Lines                                                                                                                                                                                                                                                                                                                                                         | Functions                                                                                                                                                                                                                                                                                                                                                                 | Branches                                                                                                                                                                                                                                                                                                                                                               |
-| :------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`@bascik/bascik` Unit**             | [![Unit lines](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fpkg%2Ftest-coverage.json&query=%24.total.lines.pct&label=unit%20lines&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/pkg/test-coverage.json)                                                 | [![Unit functions](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fpkg%2Ftest-coverage.json&query=%24.total.functions.pct&label=unit%20functions&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/pkg/test-coverage.json)                                                 | [![Unit branches](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fpkg%2Ftest-coverage.json&query=%24.total.branches.pct&label=unit%20branches&suffix=%25&color=blue)](https://github.com/bascikdev/bascik/blob/main/pkg/test-coverage.json)                                                        |
-| **`@bascik/bascik` E2E**              | [![E2E lines](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fpkg%2Fe2e-test-coverage.json&query=%24.total.lines.pct&label=e2e%20lines&suffix=%25&color=orange)](https://github.com/bascikdev/bascik/blob/main/pkg/e2e-test-coverage.json)                                                | [![E2E functions](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fpkg%2Fe2e-test-coverage.json&query=%24.total.functions.pct&label=e2e%20functions&suffix=%25&color=orange)](https://github.com/bascikdev/bascik/blob/main/pkg/e2e-test-coverage.json)                                                | [![E2E branches](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fpkg%2Fe2e-test-coverage.json&query=%24.total.branches.pct&label=e2e%20branches&suffix=%25&color=orange)](https://github.com/bascikdev/bascik/blob/main/pkg/e2e-test-coverage.json)                                                |
-| **`create-bascik` Unit**              | [![Unit lines](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fcreate%2Ftest-coverage.json&query=%24.total.lines.pct&label=unit%20lines&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/create/test-coverage.json)                                           | [![Unit functions](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fcreate%2Ftest-coverage.json&query=%24.total.functions.pct&label=unit%20functions&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/create/test-coverage.json)                                           | [![Unit branches](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fcreate%2Ftest-coverage.json&query=%24.total.branches.pct&label=unit%20branches&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/create/test-coverage.json)                                           |
-| **`bascik-vscode` Extension**         | [![Extension lines](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fextensions%2Fvscode-bascik%2Ftest-coverage.json&query=%24.total.lines.pct&label=ext%20lines&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/extensions/vscode-bascik/test-coverage.json) | [![Extension functions](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fextensions%2Fvscode-bascik%2Ftest-coverage.json&query=%24.total.functions.pct&label=ext%20functions&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/extensions/vscode-bascik/test-coverage.json) | [![Extension branches](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fextensions%2Fvscode-bascik%2Ftest-coverage.json&query=%24.total.branches.pct&label=ext%20branches&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/extensions/vscode-bascik/test-coverage.json) |
-| **`@bascik/adapter-cloudflare` Unit** | [![Adapter lines](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fadapters%2Fcloudflare%2Ftest-coverage.json&query=%24.total.lines.pct&label=adapter%20lines&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/adapters/cloudflare/test-coverage.json)         | [![Adapter functions](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fadapters%2Fcloudflare%2Ftest-coverage.json&query=%24.total.functions.pct&label=adapter%20functions&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/adapters/cloudflare/test-coverage.json)         | [![Adapter branches](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fadapters%2Fcloudflare%2Ftest-coverage.json&query=%24.total.branches.pct&label=adapter%20branches&suffix=%25&color=blue)](https://github.com/bascikdev/bascik/blob/main/adapters/cloudflare/test-coverage.json)                |
-| **`@bascik/language-server` Unit**    | [![LSP lines](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Flsp%2Ftest-coverage.json&query=%24.total.lines.pct&label=lsp%20lines&suffix=%25&color=blue)](https://github.com/bascikdev/bascik/blob/main/lsp/test-coverage.json)                                                          | [![LSP functions](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Flsp%2Ftest-coverage.json&query=%24.total.functions.pct&label=lsp%20functions&suffix=%25&color=blue)](https://github.com/bascikdev/bascik/blob/main/lsp/test-coverage.json)                                                          | [![LSP branches](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Flsp%2Ftest-coverage.json&query=%24.total.branches.pct&label=lsp%20branches&suffix=%25&color=blue)](https://github.com/bascikdev/bascik/blob/main/lsp/test-coverage.json)                                                          |
+| Folder                      | What it is                                                                                                    | README                                                                   |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `pkg/`                      | `@bascik/bascik`: the compiler, CLI, dev server, and production server                                        | [pkg/README.md](pkg/README.md)                                           |
+| `create/`                   | `create-bascik`: the project scaffolder behind `npm create bascik`                                            | [create/README.md](create/README.md)                                     |
+| `lsp/`                      | `@bascik/language-server`: diagnostics, completion, hover, and the `--check` linter for any LSP editor        | [lsp/README.md](lsp/README.md)                                           |
+| `extensions/vscode-bascik/` | The VS Code extension, a thin client of the language server                                                   | [extensions/vscode-bascik/README.md](extensions/vscode-bascik/README.md) |
+| `adapters/cloudflare/`      | `@bascik/adapter-cloudflare`: builds server scripts and API routes into a Cloudflare Worker                   | [adapters/cloudflare/README.md](adapters/cloudflare/README.md)           |
+| `docs/`                     | The [bascik.dev](https://bascik.dev) site, built with Bascik                                                  | [docs/README.md](docs/README.md)                                         |
+| `examples/`                 | Example components and a starter site to copy into a project (not a workspace)                                | [examples/README.md](examples/README.md)                                 |
+| `skills/`                   | Public agent skills for coding assistants, installed with `npx skills add bascikdev/bascik` (not a workspace) | [skills/README.md](skills/README.md)                                     |
+| `skills-tests/`             | Tests and fixtures for `skills/`, kept apart because `skills/` ships to users                                 | [skills-tests/README.md](skills-tests/README.md)                         |
 
----
+## Working in This Repo
 
-## Repo Structure
-
-| Directory                   | Purpose                                                                                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pkg/`                      | The `@bascik/bascik` npm package — source, tests, benchmarks — see [pkg/README.md](pkg/README.md)                                          |
-| `create/`                   | The `create-bascik` scaffolding CLI — `npm create bascik@rc` — see [create/README.md](create/README.md)                                    |
-| `extensions/vscode-bascik/` | The VS Code extension — see [extensions/vscode-bascik/README.md](extensions/vscode-bascik/README.md)                                       |
-| `lsp/`                      | The `@bascik/language-server` LSP server — editor-agnostic intelligence for any LSP-compatible editor — see [lsp/README.md](lsp/README.md) |
-| `docs/`                     | Documentation site at [bascik.dev](https://bascik.dev) — built with Bascik itself                                                          |
-| `skills/`                   | Public agent skills for AI assistants, installed with `npx skills add bascikdev/bascik`. See [skills/README.md](skills/README.md)          |
-
----
-
-## Development Setup
-
-Requires **Node.js ≥ 22.22** and **Yarn ≥ 4** (pinned to `yarn@4.18.0` in `package.json`). The repo uses Yarn workspaces, one install at the root wires everything up.
+Develop on **Node 24**: the full test suite needs it. The published packages support **Node 22.22** and newer, and CI checks that floor in its own job. The repo uses Yarn 4 workspaces (`yarn@4.18.0`, through Corepack), so one install at the root wires everything up:
 
 ```sh
 corepack enable
 yarn install
+yarn pkg:build   # build the compiler first; the docs and tests use pkg/dist
+yarn docs:dev    # the docs site at http://localhost:8080, a good place to try a change
 ```
 
-`node_modules/@bascik/bascik` is symlinked directly to `pkg/`, so changes to `pkg/src/` are immediately available to the docs site after a rebuild — no pack or reinstall step.
+`node_modules/@bascik/bascik` is a symlink to `pkg/`, so the docs and other workspaces use your local build with no pack or reinstall step.
 
-### Working on the package
+Root scripts are prefixed by workspace (`pkg:`, `create:`, `lsp:`, `ext:`, `adapter:cf:`, `docs:`, `skills:`), and the `:all` scripts run every workspace:
 
 ```sh
-yarn pkg:build      # build the package (start here)
-yarn pkg:typecheck  # TypeScript type check
-yarn pkg:unit       # unit tests (single run)
-yarn pkg:test       # unit tests in watch mode
-yarn pkg:e2e        # run e2e tests
-yarn docs:dev       # start docs dev server
+yarn pkg:unit        # one workspace's unit tests (pkg:test watches)
+yarn typecheck:all   # TypeScript in every workspace
+yarn check:all       # formatting (Prettier), spelling (codespell), web standards (webhint)
+yarn unit:all        # unit tests in every workspace
+yarn integration:all # tests that start real processes, servers, and browsers
+yarn e2e:all         # Playwright E2E: the four pkg server lanes, the docs, and the Cloudflare adapter
+yarn test:all        # typecheck, checks, unit, integration, and E2E, plus a Lighthouse audit of the docs
+yarn coverage:all    # regenerate every coverage file in the table below
 ```
 
-### Workspace-wide test commands
+[CI](.github/workflows/ci.yml) runs on every branch push, in gated stages, each starting only when the one before passes: static checks (typecheck, formatting, spelling, web standards, Jelly, Semgrep), unit tests, integration tests, then E2E. A fifth stage deploys bascik.dev and the [Cloudflare adapter demo](https://cloudflare-adapter.bascik.dev) to production from `main`, and uploads a preview of both from every other branch, listing the two URLs in the run summary and in a comment on the branch's pull request, if it has one. Pull requests from forks are tested but never deployed; [DEPLOYMENT.md](DEPLOYMENT.md) is the runbook. Packages are released by pushing a tag, as described in [RELEASING.md](RELEASING.md).
 
-```sh
-yarn typecheck:all  # typecheck all packages (pkg, create, docs, extension, adapter, lsp, skills-tests)
-yarn check:all      # formatting, spelling (codespell), and web standards (webhint)
-yarn unit:all       # unit tests across all packages
-yarn e2e:all        # E2E tests across all packages (pkg lanes run in parallel)
-yarn coverage:all   # update coverage across all packages
-yarn test:all       # run typechecks, checks, unit, integration, and E2E tests, and Lighthouse CLI audits
-```
+Before opening a pull request, run the checks for what you touched (at least the workspace's unit tests and `yarn typecheck:all`, plus `yarn check:format`). There is no changelog before 1.0.0, so leave `CHANGELOG.md` alone. Agent and contributor guidance lives in [`.github/copilot-instructions.md`](.github/copilot-instructions.md), which `CLAUDE.md` also loads.
 
-After any `pkg/src/` change, rebuild the package and the docs server will pick it up automatically (it watches for changes).
+## Test Coverage
 
-### Updating Dynamic Documentation Assets
+| Workspace                                             | Suite                | Lines | Functions | Branches | Source                                              |
+| :---------------------------------------------------- | :------------------- | ----: | --------: | -------: | :-------------------------------------------------- |
+| `@bascik/bascik` (`pkg/`)                             | Unit                 | 92.8% |     91.2% |    85.4% | [JSON](pkg/test-coverage.json)                      |
+| `@bascik/bascik` (`pkg/`)                             | E2E build steps      | 69.9% |     62.1% |    70.5% | [JSON](pkg/e2e-test-coverage.json)                  |
+| `create-bascik` (`create/`)                           | Unit                 | 99.0% |     98.6% |    94.6% | [JSON](create/test-coverage.json)                   |
+| `@bascik/language-server` (`lsp/`)                    | Unit                 | 91.9% |     94.5% |    82.2% | [JSON](lsp/test-coverage.json)                      |
+| `bascik-vscode` (`extensions/vscode-bascik/`)         | Unit                 | 27.3% |     25.0% |    38.5% | [JSON](extensions/vscode-bascik/test-coverage.json) |
+| `@bascik/adapter-cloudflare` (`adapters/cloudflare/`) | Unit                 | 97.8% |     96.2% |    87.1% | [JSON](adapters/cloudflare/test-coverage.json)      |
+| `bascik-docs` (`docs/`)                               | Unit and integration | 62.2% |     67.2% |    67.6% | [JSON](docs/test-coverage.json)                     |
+| `bascik-skills-tests` (`skills-tests/`)               | Unit                 | 50.5% |     51.8% |    49.7% | [JSON](skills-tests/test-coverage.json)             |
 
-Before committing changes that edited source code, tests, or documentation, run this custom prompt:
+Measured on October 30, 2026. Unit numbers come from each workspace's Vitest unit tests; `pkg` counts its unit project only, never its integration tests. The `@bascik/bascik` E2E row is measured separately, while the CLI builds the E2E fixture site and runs the dev and production servers, so it covers entry points and worker threads that unit tests cannot reach. `skills-tests` measures the skills' scripts in `skills/`. The extension's number is low because most of its code calls the VS Code API and runs only in the `yarn ext:e2e` suite, which is not measured; the diagnostics it shows are tested in `lsp/`. The docs number includes the docs' integration tests. Run `yarn coverage:all` to regenerate the JSON files; the [Testing Internals](https://bascik.dev/internals/testing) page explains each suite and shows lines, statements, functions, and branches for all eight coverage files.
 
-```sh
-/pre-push
-```
+## License
 
-This runs a comprehensive pre-push checklist covering code review, documentation updates, spelling/web standards, test execution, coverage updates, and skill file synchronization.
+[MIT](LICENSE)

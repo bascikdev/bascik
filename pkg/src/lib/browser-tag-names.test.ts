@@ -32,11 +32,6 @@ import {
   computePageCspHashes,
   __cspRegexFallbackForTests,
 } from "./csp-hashes.ts";
-import {
-  LINEAR_TIME_TIMEOUT_MS,
-  expectLinearTime,
-  repeatTo,
-} from "./linear-time.test-helper.ts";
 import { transformTypeScriptScriptTags } from "./typescript.ts";
 import type { ComponentList } from "./types.ts";
 
@@ -73,8 +68,6 @@ const compilerUsages = (html: string): Array<[number, string]> => {
     from = usage.index + 1;
   }
 };
-
-const SIZE = 200_000;
 
 describe("a raw-text element opens only for its exact tag name", () => {
   // Component tags after each of these are live markup: the opener is a
@@ -248,43 +241,6 @@ describe("a component tag matches only when its name is the whole tag name", () 
     expect(compilerUsages(html)).toEqual([[start, "my-card"]]);
     expect(replaceTag(html, "my-card", "X")).toBe(html.slice(0, start) + "X");
   });
-});
-
-describe("the browser tag-name rule keeps every scan linear", () => {
-  const hostile: Array<[string, (size: number) => string]> = [
-    ["<style-a repeated", (size) => repeatTo("<style-a", size)],
-    [
-      "<style-guide> repeated before a </style>",
-      (size) => `${repeatTo("<style-guide>", size)}</style>`,
-    ],
-    ["<script-x '> repeated", (size) => repeatTo("<script-x '>", size)],
-    ["<textarea. repeated", (size) => repeatTo("<textarea.", size)],
-    ["<my-card. repeated", (size) => repeatTo("<my-card.", size)],
-    [
-      "<my-card: repeated before a >",
-      (size) => `${repeatTo("<my-card:", size)}>`,
-    ],
-    ["<a:b:a:b repeated", (size) => `<${repeatTo("a:b:", size)}>`],
-    ["<my-card</p> repeated", (size) => repeatTo("<my-card</p>", size)],
-  ];
-
-  it.each(hostile)(
-    "masks and searches %s in linear time",
-    (_label, input) => {
-      expect(maskRawTextContent(input(SIZE))).toHaveLength(input(SIZE).length);
-      expectLinearTime(input, SIZE, maskRawTextContentWithClosure, {
-        label: "mask",
-      });
-      expectLinearTime(input, SIZE, compilerUsages, { label: "usages" });
-      expectLinearTime(
-        input,
-        SIZE,
-        (html) => replaceTag(html, "my-card", "X"),
-        { label: "replaceTag" },
-      );
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
 });
 
 /**
@@ -559,69 +515,4 @@ describe("elements other than script, style and textarea", () => {
     const html = "<svg><style><my-card></my-card></style></svg>";
     expect(compilerUsages(html)).toEqual([]);
   });
-});
-
-describe("the tag-boundary rules keep every scan linear", () => {
-  const hostile: Array<[string, (size: number) => string]> = [
-    [
-      `<p title="<script>"> repeated before a </script>`,
-      (size) => `${repeatTo(`<p title="<script>">`, size)}</script>`,
-    ],
-    [
-      "<p<style> repeated before a </style>",
-      (size) => `${repeatTo("<p<style>", size)}</style>`,
-    ],
-    [
-      "<style></style  repeated with no >",
-      (size) => `<style>${repeatTo("</style ", size)}`,
-    ],
-    [
-      "<script></script/ repeated with no >",
-      (size) => `<script>${repeatTo("</script/", size)}`,
-    ],
-    [
-      "<my-card></my-card  repeated with no >",
-      (size) => `<my-card>${repeatTo("</my-card ", size)}`,
-    ],
-    ["<!x repeated", (size) => repeatTo("<!x", size)],
-    ["</ <my-card repeated", (size) => `${repeatTo("</ <my-card", size)}>`],
-    ["<?<my-card> repeated", (size) => repeatTo("<?<my-card>", size)],
-  ];
-
-  it.each(hostile)(
-    "masks and searches %s in linear time",
-    (_label, input) => {
-      expect(maskRawTextContent(input(SIZE))).toHaveLength(input(SIZE).length);
-      expectLinearTime(input, SIZE, maskRawTextContentWithClosure, {
-        label: "mask",
-      });
-      expectLinearTime(input, SIZE, compilerUsages, { label: "usages" });
-      expectLinearTime(
-        input,
-        SIZE,
-        (html) => replaceTag(html, "my-card", "X"),
-        { label: "replaceTag" },
-      );
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-
-  it(
-    "pairs every usage with a close that has attributes in linear time",
-    () => {
-      const input = (size: number) => repeatTo("<my-card>a</my-card x>", size);
-      expectLinearTime(input, SIZE, (html) => {
-        const find = createMatchingCloseFinder(html, html);
-        let closes = 0;
-        for (
-          let at = html.indexOf("<my-card>");
-          at !== -1;
-          at = html.indexOf("<my-card>", at + 1)
-        )
-          if (find("my-card", at + 9) !== -1) closes++;
-        return closes;
-      });
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
 });

@@ -14,6 +14,8 @@ Bascik is a build tool for HTML components. It is **not** a JavaScript framework
 
 Bascik acts as a build-time find-and-replace: it resolves custom HTML tags to their component source, scopes CSS and JavaScript per component instance, and writes a `dist/` directory of vanilla HTML files. **Zero JavaScript is added to your pages.** Every script in the output was written by you.
 
+This is the package you install in a Bascik project: the compiler, the `bascik` CLI, the dev server, and the production server. The guides are at **[bascik.dev](https://bascik.dev)**; the [repository README](https://github.com/bascikdev/bascik#readme) covers the other packages and how to work on the code.
+
 ---
 
 ## Table of Contents
@@ -32,7 +34,7 @@ Bascik acts as a build-time find-and-replace: it resolves custom HTML tags to th
 
 ## Getting Started
 
-Requires **Node.js ≥ 22.22**.
+Requires **Node.js ≥ 22.22**. To start a new site with a starter project, run `npm create bascik@rc my-site` (see [Getting Started](https://bascik.dev/getting-started)). To add Bascik to an existing project:
 
 ```sh
 yarn add @bascik/bascik
@@ -131,64 +133,16 @@ export const build = defineConfig({
 
 ## Publishing
 
-This repo has four independently versioned npm packages (plus the VS Code extension), each released by pushing a git tag.
-The [Release workflow](../.github/workflows/release.yml) builds and publishes automatically, and `dist/` is **not** committed to git.
-The tag must equal the prefix plus the package's `package.json` version. Prerelease versions such as `1.0.0-rc.1` publish under the `rc` dist-tag.
+This repository has four independently versioned npm packages (plus the VS Code extension), each released by pushing a git tag. The [Release workflow](../.github/workflows/release.yml) builds and publishes, and `dist/` is **not** committed to git. The tag must equal the prefix plus the package's `package.json` version; prerelease versions such as `1.0.0-rc.10` publish under the `rc` dist-tag.
 
-### Tag scheme
+| Package                                               | Tag format                     |
+| ----------------------------------------------------- | ------------------------------ |
+| `@bascik/bascik` (`pkg/`)                             | `v<semver>`                    |
+| `create-bascik` (`create/`)                           | `create-v<semver>`             |
+| `@bascik/adapter-cloudflare` (`adapters/cloudflare/`) | `adapter-cloudflare-v<semver>` |
+| `@bascik/language-server` (`lsp/`)                    | `lsp-v<semver>`                |
 
-| Package                                               | Tag format                     | Example                     |
-| ----------------------------------------------------- | ------------------------------ | --------------------------- |
-| `@bascik/bascik` (`pkg/`)                             | `v<semver>`                    | `v0.3.0`                    |
-| `create-bascik` (`create/`)                           | `create-v<semver>`             | `create-v0.2.0`             |
-| `@bascik/adapter-cloudflare` (`adapters/cloudflare/`) | `adapter-cloudflare-v<semver>` | `adapter-cloudflare-v1.0.0` |
-| `@bascik/language-server` (`lsp/`)                    | `lsp-v<semver>`                | `lsp-v0.1.0`                |
-
-The `if:` condition on each workflow job ensures only the relevant package is published when a tag is pushed.
-
-[RELEASING.md](../RELEASING.md) has the publish order across packages and the release candidate walkthrough. Bascik does not keep a changelog before 1.0.0: a release bumps the version in `package.json` and pushes the tag, and `CHANGELOG.md` starts with the 1.0.0 release.
-
-### Release checklist: `@bascik/bascik`
-
-1. **Update version** in `pkg/package.json` following [Semantic Versioning](https://semver.org/).
-2. **Run tests locally** with `yarn pkg:unit` or `yarn pkg:test:ci`.
-3. **Commit and tag**:
-   ```sh
-   git add pkg/package.json
-   git commit -m "chore: release v0.3.0"
-   git tag v0.3.0
-   git push origin main --tags
-   ```
-4. The Release workflow picks up the `v*.*.*` tag, runs tests, builds, and publishes to npm.
-
-### Release checklist: `create-bascik`
-
-1. **Update version** in `create/package.json`.
-2. **Run tests locally** with `yarn workspace create-bascik test:ci`.
-3. **Commit and tag**:
-   ```sh
-   git add create/package.json
-   git commit -m "chore: release create-bascik v0.2.0"
-   git tag create-v0.2.0
-   git push origin main --tags
-   ```
-4. The Release workflow picks up the `create-v*.*.*` tag, runs tests, builds, and publishes to npm.
-
-### Prerequisites
-
-Ensure the `NPM_TOKEN` secret is set in the repository settings (Settings → Secrets and variables → Actions) before pushing a release tag.
-
-### Manual publish (if needed)
-
-```sh
-# For @bascik/bascik
-yarn pkg:build
-yarn workspace @bascik/bascik npm publish --access public
-
-# For create-bascik
-yarn create:build
-yarn workspace create-bascik npm publish --access public
-```
+[RELEASING.md](../RELEASING.md) has the publish order across packages, the one-time setup, and the release candidate walkthrough. There is no changelog before 1.0.0: a release bumps the version in `package.json` and pushes the tag.
 
 ---
 

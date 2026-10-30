@@ -6,10 +6,10 @@ The user-facing version of this material, written for people deploying their own
 
 ## The Two Deployments
 
-| Site                                                                                 | Cloudflare resource                                                     | Defined in                                                                                       | Built by                                                                             |
-| :----------------------------------------------------------------------------------- | :---------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------- |
-| Docs, [bascik.dev](https://bascik.dev)                                               | Worker `bascik`, assets only (no `main`)                                | [docs/wrangler.jsonc](docs/wrangler.jsonc)                                                       | `yarn pkg:build && yarn docs:build` into `docs/dist`                                 |
-| Adapter demo, [cloudflare-adapter.bascik.dev](https://cloudflare-adapter.bascik.dev) | Worker `bascik-streaming-test`, static assets plus the generated Worker | [adapters/cloudflare/e2e/fixture/wrangler.jsonc](adapters/cloudflare/e2e/fixture/wrangler.jsonc) | `bascik --build --target cloudflare` in the fixture, into `dist/.bascik/cloudflare/` |
+| Site                                                                                 | Cloudflare resource                                                  | Defined in                                                                                       | Built by                                                                             |
+| :----------------------------------------------------------------------------------- | :------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------- |
+| Docs, [bascik.dev](https://bascik.dev)                                               | Worker `bascik`, assets only (no `main`)                             | [docs/wrangler.jsonc](docs/wrangler.jsonc)                                                       | `yarn pkg:build && yarn docs:build` into `docs/dist`                                 |
+| Adapter demo, [cloudflare-adapter.bascik.dev](https://cloudflare-adapter.bascik.dev) | Worker `cloudflare-adapter`, static assets plus the generated Worker | [adapters/cloudflare/e2e/fixture/wrangler.jsonc](adapters/cloudflare/e2e/fixture/wrangler.jsonc) | `bascik --build --target cloudflare` in the fixture, into `dist/.bascik/cloudflare/` |
 
 Both are in the account's zone `bascik.dev`, which uses Cloudflare nameservers (required for Worker custom domains).
 
@@ -23,7 +23,7 @@ Both are in the account's zone `bascik.dev`, which uses Cloudflare nameservers (
 
 ### Demo: `adapters/cloudflare/e2e/fixture/wrangler.jsonc`
 
-- `name` `bascik-streaming-test`, `compatibility_date` `2026-08-01`, `compatibility_flags` `["nodejs_compat"]`.
+- `name` `cloudflare-adapter`, `compatibility_date` `2026-08-01`, `compatibility_flags` `["nodejs_compat"]`.
 - `routes`: `{ "pattern": "cloudflare-adapter.bascik.dev", "custom_domain": true }`. `wrangler deploy` replaces the Worker's custom domains with this list, so a domain added in the dashboard and not listed here is removed on the next deploy. `wrangler preview` never touches routes or domains.
 - `workers_dev: false`, `preview_urls: true`, `previews: {}`.
 - No bindings: the adapter adds `ASSETS`, `main: "worker.js"` and the computed `run_worker_first` when it writes `dist/.bascik/cloudflare/wrangler.jsonc`. The merge rules are in the user docs, under "How the build merges your config".
@@ -48,23 +48,29 @@ The workspace scripts behind them (`yarn workspace bascik-docs cf:*`, `yarn work
 
 ## How Deploys Happen
 
-CI deploys both Workers in stage 5, after every static, unit, integration and E2E job has passed. Nothing deploys when a test fails.
+CI runs on every branch push, and deploys both Workers in stage 5, after every static, unit, integration and E2E job of that run has passed. Nothing deploys when a test fails.
 
-| Event                                   | What CI does                                                                                                                                                                                       |
-| :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Push to `main` (a merged pull request)  | `wrangler deploy` for `bascik` (job `deploy-docs`) and `bascik-streaming-test` (job `deploy-demo`), then checks `https://bascik.dev/` and `https://cloudflare-adapter.bascik.dev/catalog`.         |
-| Pull request from a branch of this repo | `wrangler versions upload --preview-alias <alias>` for both Workers, checks each Preview, then the `preview-comment` job creates or updates one PR comment with both Preview URLs and the commits. |
-| Pull request from a fork                | Nothing: a fork's pull request gets no secrets, and every stage 5 job checks `github.event.pull_request.head.repo.full_name == github.repository`.                                                 |
+| Event                                   | What CI does                                                                                                                                                                                                                                                                                                                                   |
+| :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Push to `main` (a merged pull request)  | `wrangler deploy` for `bascik` (job `deploy-docs`) and `cloudflare-adapter` (job `deploy-demo`), then checks `https://bascik.dev/` and `https://cloudflare-adapter.bascik.dev/catalog`. Never a Preview.                                                                                                                                       |
+| Push to any other branch of this repo   | `wrangler versions upload --preview-alias <alias>` for both Workers and a check of each Preview. The `preview-comment` job then writes both URLs to the run's job summary and, when the branch has an open pull request in this repo, creates or updates the one Preview comment on it. A branch without a pull request gets the summary only. |
+| Pull request from a branch of this repo | Nothing: the stage 1 jobs skip, so every later job skips too. The branch's push run tests it, and its checks show on the pull request.                                                                                                                                                                                                         |
+| Pull request from a fork                | Stages 1 to 4 test the merge commit. Stage 5 never runs on a `pull_request` event, and a fork's pull request gets no secrets anyway.                                                                                                                                                                                                           |
+| Tag push                                | Nothing: the `push` trigger lists only `branches: ["**"]`, which skips tags. `release.yml` handles them.                                                                                                                                                                                                                                       |
+| Push in someone's fork of this repo     | Stages 1 to 4 only: the deploy jobs also check `github.repository == 'bascikdev/bascik'`, so a fork with Actions turned on does not fail on missing credentials.                                                                                                                                                                               |
 
-- **A Preview never touches production.** `wrangler versions upload` creates a new version with its own URL and leaves the deployed version, routes and custom domains alone. It is the generally available Versions feature, not the open-beta `wrangler preview`.
-- **A pull request run builds the merge commit**, `refs/pull/<n>/merge` (the branch merged into `main`), the same commit stages 1 to 4 tested. The comment and the version message name both the branch's head commit and the base branch, so a Preview can include changes from `main` that the branch does not have yet.
-- **The alias is per branch** (`.github/scripts/preview-alias.mjs`). A branch name that is already lowercase `[a-z0-9-]`, starts with a letter and fits is used as is (`pre-release-20261026`). Any other name is lowercased, each run of other characters becomes one `-`, `b-` is prefixed when it starts with a digit, and a 6-character hash of the full branch name is appended (`collin/Foo` becomes `collin-foo-857f77`). The hash keeps `feature/x`, `Feature_X` and `feature-x` from sharing an alias and overwriting each other's Preview. The alias is also shortened, before the hash, when `<alias>-bascik-streaming-test` would exceed one 63-character DNS label. Every push to the branch moves the same alias, so the URLs are `https://<alias>-bascik.<account-subdomain>.workers.dev` and `https://<alias>-bascik-streaming-test.<account-subdomain>.workers.dev` for the life of the branch. Both configs set `preview_urls: true`; Cloudflare adds `X-Robots-Tag: noindex` on `workers.dev` Preview URLs.
-- **The URL comes from Wrangler's machine-readable output** (`WRANGLER_OUTPUT_FILE_PATH`, read by `.github/scripts/wrangler-preview-url.mjs`), and the job fails when the upload reports no alias URL.
+- **One test run per commit.** Without the stage 1 guard, a push to a branch with an open pull request would run CI twice: once for `push` and once for `pull_request`. The stage 1 jobs (`jelly`, `semgrep`, `typecheck`, `standards`) carry `if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository`, and every later job needs them directly or through another stage, so on a same-repo `pull_request` event the whole run skips: a job whose `needs` was skipped is skipped, not failed. The push run's check runs are on the branch's head commit, which is the pull request's head commit, so the pull request's Checks list shows them. It also lists the skipped jobs of the `pull_request` run under the same names; GitHub reports a skipped job as successful. The `main` ruleset requires no status checks today; if you add one, pick a check whose result you can confirm comes from the push run, because a skipped job of the same name passes.
+- **A branch run tests the branch, not the merge.** The push run builds and tests the branch's own commit (`github.sha`), not `refs/pull/<n>/merge`. A branch that is behind `main` is tested without `main`'s newer commits until it is updated; the ruleset's "branches must be up to date" setting covers this for merges once a required check exists. A fork's pull request is still tested as the merge commit.
+- **A Preview never touches production.** `wrangler versions upload` creates a new version with its own URL and leaves the deployed version, routes and custom domains alone. It is the generally available Versions feature, not the open-beta `wrangler preview`. The version message is `Preview <alias> at <sha>`.
+- **The comment and the summary name the commit CI built**, `github.sha`, and the branch: "Built from `<sha>` on `<branch>`". The `preview-comment` job finds the pull request with `GET /repos/bascikdev/bascik/pulls?head=bascikdev:<branch>&state=open` (a fork's branch of the same name has another owner, so it never matches), and edits only the comment that starts with the hidden marker and was written by `github-actions[bot]`. It is the only job with `pull-requests: write`; every other job has `contents: read` only.
+- **The alias is per branch** (`.github/scripts/preview-alias.mjs`, given `github.ref_name`). A branch name that is already lowercase `[a-z0-9-]`, starts with a letter and fits is used as is (`pre-release-20261026`). Any other name is lowercased, each run of other characters becomes one `-`, `b-` is prefixed when it starts with a digit, and a 6-character hash of the full branch name is appended (`collin/Foo` becomes `collin-foo-857f77`). The hash is added only when cleaning changed the name, so `feature/x` and `feature-x` get different aliases (`feature-x-<hash>` and `feature-x`) instead of overwriting each other's Preview, while a clean name stays readable. The alias is also shortened, before the hash, when `<alias>-cloudflare-adapter` would exceed one 63-character DNS label. Every push to the branch moves the same alias, so the URLs are `https://<alias>-bascik.<account-subdomain>.workers.dev` and `https://<alias>-cloudflare-adapter.<account-subdomain>.workers.dev` for the life of the branch. Both configs set `preview_urls: true`; Cloudflare adds `X-Robots-Tag: noindex` on `workers.dev` Preview URLs. Nothing in CI removes a Preview when its branch is deleted: the versions stay in `wrangler versions list`, and the alias keeps pointing at the last one.
+- **The URL comes from Wrangler's machine-readable output** (`WRANGLER_OUTPUT_FILE_PATH`, read by `.github/scripts/wrangler-preview-url.mjs`), and the job fails when the upload reports no alias URL. Each deploy job also appends its own URL to the job summary, so one Worker's URL is visible even when the other's upload failed.
 - **Smoke checks** (`.github/scripts/smoke-test.mjs`, retried for about a minute): docs Preview `/` 200, `/components` 200, `/components/` 307, `/semantic-html` and `/name-attribute` 301, an unknown path 404; demo Preview and production `/`, `/catalog`, `/catalog-stream` 200; docs production `/`, `/components` 200 and `/semantic-html` 301.
-- **No overlapping deploys, and never an older commit over a newer one.** Each job has a concurrency group per ref. A newer push to a pull request cancels the running upload; on `main` a running production deploy always finishes. A concurrency group does not order runs, though: if commit X is pushed before Y but Y's tests finish first, Y deploys and X would deploy later and put older code live. So each deploy job runs `.github/scripts/newest-commit.mjs` inside its group, right before Wrangler. It compares the commit the run built (the head commit on a pull request) with the branch tip from `git ls-remote`, and when the branch has moved on, it skips the upload or deploy and the smoke checks with a notice. The newer run deploys instead, and the Preview comment job skips because it has no URLs.
+- **A newer push to a branch cancels the older run.** The workflow's concurrency group is per ref, with `cancel-in-progress` on for every ref except `main`, so a second push to a branch cancels the first push's whole run, its Preview upload included. Runs on `main` each get their own group (`ci-main-<run id>`), because a shared group would cancel a pending `main` run whenever a third one queued.
+- **Never an older commit over a newer one.** No job has its own concurrency group. On a branch the workflow's group already allows one run at a time. On `main` a shared deploy group would hold only one pending deploy, so an older commit's deploy that queued later would cancel a newer commit's pending one, and the newest commit would never deploy; so `main` deploys never wait for or cancel each other. Runs also finish in any order: if commit X is pushed to `main` before Y but Y's tests finish first, Y deploys and X would deploy later and put older code live. So each deploy job runs `.github/scripts/newest-commit.mjs` right before Wrangler. It compares `github.sha` with the branch tip from `git ls-remote`, and when the branch has moved on, it skips the upload or deploy and the smoke checks with a notice. The newer run deploys instead, and the `preview-comment` job skips because it has no URLs. Two `main` deploys could only overlap if a newer commit were pushed, tested and deployed during the minute between an older run's check and the end of its `wrangler deploy`.
 - **CI never asks before taking over a hostname.** Wrangler runs without a terminal in CI, and then `wrangler deploy` sets `override_existing_origin` and `override_existing_dns_record` when it attaches the custom domains in `routes` (Wrangler 4.152.0, `publishCustomDomains`). A hostname in `routes` that another Worker or a DNS record holds is taken over on the next push to `main`, without the prompt a local deploy shows. Add a hostname to a `routes` list only when you mean that.
 - **The docs job checks out the full git history** (`fetch-depth: 0`), because `docs/scripts/generate-git-dates.ts` reads it for sitemap `lastmod` and article dates.
-- The helpers are tested by `pkg/e2e/scripts/ci-deploy.test.ts` (run by `yarn pkg:unit` and the `unit-pkg` CI job), which also checks the five-stage job graph. When you add a stage 4 job, add it to the `needs` of both deploy jobs or that test fails.
+- The helpers are tested by `pkg/e2e/scripts/ci-deploy.test.ts` (run by `yarn pkg:unit` and the `unit-pkg` CI job). It also checks the five-stage job graph, and evaluates the workflow's own `if:` conditions for a push to `main`, a branch push, a tag, a same-repo pull request, a fork's pull request and a push in a fork, so a condition that would preview `main`, deploy from a pull request or a tag, or test a same-repo pull request twice fails it. When you add a stage 4 job, add it to the `needs` of both deploy jobs or that test fails.
 
 ## Credentials
 
@@ -93,7 +99,7 @@ corepack enable && yarn install --immutable
 export CLOUDFLARE_ACCOUNT_ID=<account-id>
 export CLOUDFLARE_API_TOKEN=<token>                     # or run `npx wrangler login` from docs/ instead
 yarn pkg:build && yarn docs:build && yarn docs:cf:deploy  # docs, Worker bascik
-yarn adapter:cf:demo:deploy                               # demo: builds, then deploys bascik-streaming-test
+yarn adapter:cf:demo:deploy                               # demo: builds, then deploys cloudflare-adapter
 ```
 
 Both use the repo's own Wrangler (`^4.152.0`, a workspace devDependency); do not run a downloaded `npx wrangler@latest`. Then run the read-only checks below, and re-run the failed CI deploy once CI works, so the next deploy again comes from CI.
@@ -106,67 +112,30 @@ None of these change anything:
 
 ```sh
 cf workers get bascik                         # exists; "subdomain": enabled false, previews_enabled true
-cf workers get bascik-streaming-test          # references.domains lists cloudflare-adapter.bascik.dev
+cf workers get cloudflare-adapter          # references.domains lists cloudflare-adapter.bascik.dev
 cd docs && npx wrangler deployments list      # newest deployment: message "main at <sha>" from CI
-npx wrangler versions list                    # Preview versions carry "PR #<n>: <head sha> merged into main"
+npx wrangler versions list                    # Preview versions carry "Preview <alias> at <sha>"
 curl -s -o /dev/null -w "%{http_code}\n" https://bascik.dev/                                 # 200
 curl -s -o /dev/null -w "%{http_code}\n" https://cloudflare-adapter.bascik.dev/catalog         # 200
 curl -s -o /dev/null -w "%{http_code}\n" https://cloudflare-adapter.bascik.dev/catalog-stream  # 200
 ```
 
-For the demo, run the `wrangler` commands from `adapters/cloudflare` with `--config e2e/fixture/dist/.bascik/cloudflare/wrangler.jsonc` after `yarn adapter:cf:demo:build`. On a pull request, the Preview comment links both Previews; the `Deploy Docs` and `Deploy Adapter Demo` job logs show each smoke check.
+For the demo, run the `wrangler` commands from `adapters/cloudflare` with `--config e2e/fixture/dist/.bascik/cloudflare/wrangler.jsonc` after `yarn adapter:cf:demo:build`. On a branch run, the `Publish Preview URLs` job summary links both Previews, and so does the Preview comment when the branch has a pull request; the `Deploy Docs` and `Deploy Adapter Demo` job logs show each smoke check.
 
-## State on 2026-10-30
+## Setup History (2026-10-30)
 
-Read with the `cf` CLI (read-only) and `curl`, after the maintainer's cutover (commit `a18dc30c`):
+Everything below was a one-time account change, done by the maintainer session with its own credentials. It is recorded here for context and rollback; nothing in it needs doing again.
 
-- **bascik.dev** is the Worker `bascik`, created and deployed by the maintainer at 20:02 UTC. `references.domains` lists the custom domain `bascik.dev`; `subdomain` has `enabled: false`, `previews_enabled: true`. The zone has no `CNAME bascik.dev -> bascik.pages.dev` any more, and the Pages project `bascik` has no custom domains. `https://bascik.dev/components/` answers `307` (Workers; Pages answered `308`). That deploy predates this branch's docs build, so `/semantic-html` answered `404` until CI deploys from `main`. `www.bascik.dev` is a proxied `CNAME` to `bascik.dev` and answers `301` to `https://bascik.dev`.
-- **The Pages project `bascik` still exists** (production branch `main`, previews for all branches, `bascik.pages.dev`). Retiring it is step 4.
-- **cloudflare-adapter.bascik.dev** is the Worker `bascik-streaming-test` with the custom domain attached, `workers.dev` off and Preview URLs on (`*-bascik-streaming-test.<account-subdomain>.workers.dev`). Its newest deployment was 2026-09-13, so `/catalog` and `/catalog-stream` answered `404` live until CI deploys the current build.
-- **The demo had a Workers Builds connection.** Its trigger is being removed by the maintainer, so only CI deploys the demo. Until it is gone, a merge to `main` that touches its watch paths can deploy the demo twice (same build, harmless). Check with `cf builds workers get <worker-tag>` (not found once removed).
+1. **Credentials.** A user API token scoped to Workers Scripts write and Account Settings read on the account, Workers Routes write on zone `bascik.dev`, and Memberships and User Details read was created and stored as the repository secret `CLOUDFLARE_API_TOKEN` (token id `a535972bb41d83efb3d745a817321ea0`), with the repository variable `CLOUDFLARE_ACCOUNT_ID`. See [Credentials](#credentials) to rotate it.
+2. **bascik.dev moved from Pages to the Worker `bascik`.** The custom domain was removed from the Pages project, the proxied `CNAME bascik.dev -> bascik.pages.dev` was deleted, and a `wrangler deploy` of `main`'s docs build created the Worker with `bascik.dev` as its custom domain (declared in `docs/wrangler.jsonc`). Downtime was a few seconds. `www.bascik.dev` still answers `301` to `https://bascik.dev` through a zone redirect.
+3. **The Pages project `bascik` was deleted**, after deleting its 498 deployments (Cloudflare refuses to delete a project with many). `bascik.pages.dev` no longer resolves.
+4. **The demo Worker was recreated as `cloudflare-adapter`**, matching its subdomain. The old Worker `bascik-streaming-test` was deleted, which also removed its Workers Builds Git connection, its build trigger, and its custom domain. A `wrangler deploy` of `main`'s demo build created `cloudflare-adapter` with `cloudflare-adapter.bascik.dev` as its custom domain (declared in `adapters/cloudflare/e2e/fixture/wrangler.jsonc`).
 
-## One-Time Steps
+Both production Workers were deployed from `main` at the time, so pages that exist only on unmerged branches (such as `/catalog` on the demo) answer `404` until CI deploys `main` again. From now on only CI stage 5 deploys either Worker; neither is connected to Workers Builds.
 
-These are dashboard or account changes. Do them in order, and run each check before going on.
+**Rollback of the docs to Pages** would mean recreating a Pages project and its `CNAME`, then removing the `routes` entry from `docs/wrangler.jsonc` first, or the next CI deploy takes the hostname back.
 
-### 1. Credentials and Workers Builds
-
-1. Create the token and set the secret and variable as in [Credentials](#credentials).
-2. Remove the demo's Workers Builds connection: Workers & Pages > `bascik-streaming-test` > Settings > Build > Disconnect. Do not connect the docs Worker to Workers Builds.
-
-Check: `gh secret list` shows `CLOUDFLARE_API_TOKEN`, `gh variable list` shows `CLOUDFLARE_ACCOUNT_ID`, and a pull request from a branch of this repo gets the Preview comment.
-
-### 2. Docs: First Deploy of the Worker (Done)
-
-Done by the maintainer on 2026-10-30, before stage 5 first ran. It had to come first: `wrangler versions upload` only adds a version to an existing Worker and fails with "You cannot upload a new version of a Worker that does not yet exist" otherwise, so every pull request's docs Preview depended on it. Before deploying, from the repo root: `yarn docs:cf:check` (a dry run; with a fresh build it reads about 325 files, uploads a no-op Worker of 0.31 KiB, and finds no bindings).
-
-Check: `cf workers get bascik` exists. Open a docs Preview URL from a pull request comment and compare it with production: status, `Location`, `Cache-Control`, `Content-Type`, security headers, and `X-Robots-Tag: noindex` (Preview only). The differences from Pages are listed under "Pages and Workers Differ Here" below.
-
-### 3. Docs: Move bascik.dev from Pages to the Worker
-
-Done by the maintainer session on 2026-10-30 with its own credentials, through the custom-domain path of item 4 below: `docs/wrangler.jsonc` lists `bascik.dev` as a custom domain since commit `a18dc30c`, the Worker holds it, and neither the Pages `CNAME` nor the Pages custom domain is left. The steps stay here as the record and for a rollback. CI's `wrangler deploy` now re-applies the same custom domain on every push to `main`; with the domain already on `bascik`, there is nothing for it to take over. Moving the hostname changes DNS and Pages, so a rollback to Pages is done with the maintainer's own credentials, not the deploy token, and needs the `routes` entry removed from `docs/wrangler.jsonc` first, or the next CI deploy takes the hostname back.
-
-bascik.dev is a Pages custom domain, which is the proxied `CNAME bascik.dev -> bascik.pages.dev`. A Worker custom domain cannot be created on a hostname that still has a `CNAME`, so the switch goes through a Workers route first. Add to the Worker, check, then remove from Pages:
-
-1. Add a narrow Workers route in zone `bascik.dev` to Worker `bascik`, such as `bascik.dev/__worker-check*`, and request `https://bascik.dev/__worker-check`. The Worker answers with its 404 page, and HTML from the Worker carries an `ETag`; HTML from Pages has none. That a route takes over from the Pages `CNAME` on this zone is expected but not yet verified, which is why this step comes first.
-2. Replace it with the route `bascik.dev/*` to `bascik`. Traffic moves at once, and deleting the route moves it back to Pages.
-3. Check `https://bascik.dev`: HTML `ETag` present, the URL matrix from step 2, the 301s for `/semantic-html` and `/name-attribute`, the Web Analytics beacon in a real browser (the zone injects it for browser-like HTML requests only, so plain `curl` never shows it), and `https://www.bascik.dev` still answering `301` to `https://bascik.dev`.
-4. Remove the Pages hold on the hostname, choosing one:
-   - **Keep the route** (no gap): replace the `CNAME` to Pages with a proxied placeholder `AAAA bascik.dev 100::`, then remove `bascik.dev` from the Pages project's custom domains.
-   - **Switch to a Worker custom domain** (a gap of seconds): remove `bascik.dev` from the Pages project, delete the `CNAME`, add `bascik.dev` as the Worker's custom domain, then delete the route.
-5. Put the domain in `docs/wrangler.jsonc`, so the repo owns it: `"routes": [{ "pattern": "bascik.dev/*", "zone_name": "bascik.dev" }]` for the route, or `[{ "pattern": "bascik.dev", "custom_domain": true }]` for a custom domain (done: the custom domain). Commit it only after item 4. A local, interactive `wrangler deploy` asks before replacing a conflicting record, but CI does not ask (see "How Deploys Happen"), so a custom domain entry merged while the Pages `CNAME` still exists makes the next `main` deploy try to replace that record itself.
-
-Checks: `cf dns records list --zone bascik.dev` (no `CNAME bascik.dev -> bascik.pages.dev`), `cf pages domains list --project-name bascik` (no `bascik.dev`), and `cf workers get bascik` (`references.domains` lists `bascik.dev` when it is a custom domain).
-
-### 4. Docs: Retire the Pages Project
-
-1. Pause the Pages project's automatic builds, production and preview, so it stops building every push: `bascik` > Settings > Builds > Branch control.
-2. After the Worker has served bascik.dev for a while, delete the Pages project. This also ends `bascik.pages.dev`.
-3. Then remove the `https://:project.pages.dev/*` noindex rule from `docs/src/lib/pages-headers.ts` and its test.
-
-Check: `cf pages get bascik` returns not found.
-
-### 5. Worker Secrets
+## Worker Secrets
 
 Neither Worker has secrets or bindings, and neither build needs a secret. If one ever does, set a runtime secret on the Worker, never in a config file:
 
@@ -175,7 +144,7 @@ cd docs && npx wrangler secret put <NAME>
 cd adapters/cloudflare/e2e/fixture/dist/.bascik/cloudflare && npx wrangler secret put <NAME>
 ```
 
-A build-time value goes in a GitHub Actions secret, passed to the build step's `env` only. Check runtime secrets with `cf workers secrets list --worker bascik-streaming-test` (or `--worker bascik`).
+A build-time value goes in a GitHub Actions secret, passed to the build step's `env` only. Check runtime secrets with `cf workers secrets list --worker cloudflare-adapter` (or `--worker bascik`).
 
 ## Pages and Workers Differ Here
 

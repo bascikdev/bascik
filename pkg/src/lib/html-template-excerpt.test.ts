@@ -7,11 +7,6 @@
  */
 import { describe, expect, it } from "vitest";
 import { foldLineBreaks, html, HtmlError } from "./html-template.ts";
-import {
-  expectLinearTime,
-  LINEAR_TIME_TIMEOUT_MS,
-  repeatTo,
-} from "./linear-time.test-helper.ts";
 
 /** The regex the fold replaced, kept as the reference for its output. */
 const reference = (text: string): string => text.replace(/\s*\n\s*/g, " ");
@@ -79,30 +74,6 @@ describe("foldLineBreaks", () => {
     ])
       expect(foldLineBreaks(text), JSON.stringify(text)).toBe(reference(text));
   });
-
-  it(
-    "takes linear time on a long run of tabs and spaces with no line break",
-    () => {
-      expectLinearTime(
-        (size) => `<p>${repeatTo("\t ", size)}x</p>`,
-        40_000,
-        foldLineBreaks,
-      );
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-
-  it(
-    "takes linear time on whitespace runs that each end in a line break",
-    () => {
-      expectLinearTime(
-        (size) => repeatTo("\t \t \n", size),
-        200_000,
-        foldLineBreaks,
-      );
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
 
   it("still folds line breaks in an HtmlError's excerpt", () => {
     let error: unknown;

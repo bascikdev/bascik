@@ -23,11 +23,9 @@
  *
  * Moved pages redirect through the `_redirects` file (PAGE_REDIRECTS), written by the same script.
  *
- * The production `*.pages.dev` alias serves the same pages as bascik.dev. Pages already sends `noindex` for
- * preview deployments, but not for that alias, so a host-scoped rule keeps it out of search results. The
- * `:project` placeholder matches any project name, so the rule never touches the custom domain. On Workers the
- * preview URLs live on workers.dev, so a second host rule marks every workers.dev host `noindex` (see
- * WORKERS_DEV_NOINDEX_RULE for why Cloudflare does not already do that for us).
+ * bascik.dev is a Worker with static assets, whose preview URLs live on workers.dev, so a host-scoped rule marks
+ * every workers.dev host `noindex` (see WORKERS_DEV_NOINDEX_RULE for why Cloudflare does not already do that for
+ * us). The former Pages project and its pages.dev alias are deleted, so no pages.dev rule is needed.
  */
 import { readdirSync } from "node:fs";
 import { relative, sep } from "node:path";
@@ -39,14 +37,6 @@ export const HTML_CACHE_CONTROL =
   "public, max-age=0, stale-while-revalidate=86400";
 
 export const SECURITY_HEADERS_RULE = `/*\n  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'\n  X-Frame-Options: DENY\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n`;
-
-/**
- * The production `bascik.pages.dev` alias. The Pages project stays up until bascik.dev has fully moved to the
- * Worker, and while it serves pages this rule keeps the duplicate host out of search results. On a Worker the
- * rule matches no host, so it costs nothing there. Remove it, with its test, when the Pages project is deleted.
- */
-export const PAGES_DEV_NOINDEX_RULE =
-  "https://:project.pages.dev/*\n  X-Robots-Tag: noindex\n";
 
 /**
  * Every workers.dev host: the Worker's preview URLs (`<alias>-bascik.<account>.workers.dev`, uploaded by CI with
@@ -76,7 +66,6 @@ export function pagesHeaders(
     `${pattern}\n  Cache-Control: ${HTML_CACHE_CONTROL}\n`;
   return [
     SECURITY_HEADERS_RULE,
-    PAGES_DEV_NOINDEX_RULE,
     WORKERS_DEV_NOINDEX_RULE,
     pageRule("/"),
     pageRule("/:page"),

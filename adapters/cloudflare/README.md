@@ -7,7 +7,11 @@ Cloudflare Workers with Static Assets and Cloudflare Pages hosting adapter for [
 
 ## Overview
 
-This adapter compiles Bascik request-time scripts and API routes into a Cloudflare Workers deployment bundle with static asset routing.
+This adapter compiles Bascik request-time scripts and API routes into a Cloudflare Workers deployment bundle with static asset routing. Install it in a Bascik project that deploys to Cloudflare (Node.js 22.22 or newer), or start one with `npm create bascik@rc my-site -- --template cloudflare`:
+
+```sh
+npm install --save-dev @bascik/adapter-cloudflare wrangler
+```
 
 See the [Cloudflare deployment guide](https://bascik.dev/deployment/cloudflare) for setup instructions, recipes, and limits.
 
@@ -57,7 +61,7 @@ The Worker name comes from `CLOUDFLARE_WORKER_NAME`, `WORKER_NAME`, or `CF_PAGES
 
 ## Demo Worker
 
-[cloudflare-adapter.bascik.dev](https://cloudflare-adapter.bascik.dev/) is the E2E fixture, `e2e/fixture/`, deployed as the Worker `bascik-streaming-test`. Its `e2e/fixture/wrangler.jsonc` holds the whole Worker definition: the custom domain (`routes` with `custom_domain: true`), `workers_dev: false`, `preview_urls: true`, and the empty `previews` block that `wrangler preview` requires. The E2E lane builds the fixture with `--target cloudflare-pages`, which does not read that file.
+[cloudflare-adapter.bascik.dev](https://cloudflare-adapter.bascik.dev/) is the E2E fixture, `e2e/fixture/`, deployed as the Worker `cloudflare-adapter`. Its `e2e/fixture/wrangler.jsonc` holds the whole Worker definition: the custom domain (`routes` with `custom_domain: true`), `workers_dev: false`, `preview_urls: true`, and the empty `previews` block that `wrangler preview` requires. The E2E lane builds the fixture with `--target cloudflare-pages`, which does not read that file.
 
 From the repo root:
 
@@ -69,3 +73,19 @@ yarn adapter:cf:demo:deploy   # build, then wrangler deploy to production
 ```
 
 The workspace scripts `demo:build`, `demo:dev`, `demo:preview`, and `demo:deploy` run one step each, for a CI that builds and deploys in separate commands.
+
+## Development
+
+From the repository root:
+
+```sh
+yarn adapter:cf:build      # compile dist/
+yarn adapter:cf:typecheck  # TypeScript type check
+yarn adapter:cf:unit       # unit tests
+yarn adapter:cf:coverage   # unit tests with coverage, written to test-coverage.json
+yarn adapter:cf:e2e        # build the fixture and run Playwright against it in local workerd
+```
+
+The E2E lane uses the built compiler and adapter, so run `yarn pkg:build && yarn adapter:cf:build` first.
+
+CI deploys the demo Worker after every other stage passes, and posts a preview URL on pull requests. [DEPLOYMENT.md](../../DEPLOYMENT.md) is the runbook.

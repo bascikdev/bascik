@@ -7,8 +7,8 @@
 // the upload or deploy when it prints `false`.
 //
 // Usage: node .github/scripts/newest-commit.mjs <ref> <sha>
-//   <ref>  refs/heads/main on a push, refs/heads/<github.head_ref> on a PR.
-//   <sha>  github.sha on a push, github.event.pull_request.head.sha on a PR.
+//   <ref>  github.ref of the push, such as refs/heads/main.
+//   <sha>  github.sha, the commit the push run built.
 // Prints `true` or `false`, and explains a `false` on stderr.
 import { execFileSync } from "node:child_process";
 

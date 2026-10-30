@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// Turns a pull request's branch name into the Workers preview alias CI passes
+// Turns a branch name into the Workers preview alias CI passes
 // to `wrangler versions upload --preview-alias`. One alias serves every Worker
 // the repo deploys, so a branch keeps the same Preview URLs on every push:
 // https://<alias>-<worker-name>.<account-subdomain>.workers.dev
 //
 // Usage: node .github/scripts/preview-alias.mjs <branch> <worker-name>...
-// Prints the alias. Pass the PR's head branch (github.head_ref), not github.ref.
+// Prints the alias. Pass the pushed branch's short name (github.ref_name);
+// `refs/heads/<name>` works too.
 //
 // A branch name that is already a valid alias is used as is. Any other name
 // gets a short hash of the full branch name appended, so `feature/x`,
@@ -32,11 +33,15 @@ const MIN_ALIAS_LENGTH = 8;
 export function previewAlias(branch, workerNames) {
   if (typeof branch !== "string" || branch.trim() === "")
     throw new Error(
-      "preview-alias: a branch name is required (github.head_ref on a pull request)",
+      "preview-alias: a branch name is required (github.ref_name on a push)",
     );
   if (branch.startsWith("refs/pull/"))
     throw new Error(
-      `preview-alias: "${branch}" is a pull request ref, not a branch; pass github.head_ref`,
+      `preview-alias: "${branch}" is a pull request ref, not a branch; pass github.ref_name from a push`,
+    );
+  if (branch.startsWith("refs/tags/"))
+    throw new Error(
+      `preview-alias: "${branch}" is a tag; only branch pushes get a Preview`,
     );
   if (
     !Array.isArray(workerNames) ||

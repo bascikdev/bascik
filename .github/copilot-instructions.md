@@ -50,7 +50,7 @@ Then inspect the relevant `docs/dist/` output to confirm the pkg change has the 
 
 ## Deploying the Docs and the Adapter Demo
 
-Both Workers deploy from CI stage 5 in `.github/workflows/ci.yml`, after every test stage passes: a push to `main` runs `wrangler deploy` for each, and a pull request from a branch of this repo uploads a Preview version of each under a per-branch alias and lists the URLs in one PR comment. `DEPLOYMENT.md` is the runbook (credentials, manual emergency deploys, read-only checks, the one-time dashboard steps). Each Worker is defined by a committed config: `docs/wrangler.jsonc` (the docs, an assets-only Worker) and `adapters/cloudflare/e2e/fixture/wrangler.jsonc` (the demo, carried into the generated config by the adapter). Change deployment settings there, not in the dashboard. A hostname added to a config's `routes` is taken over on the next `main` deploy without a prompt (CI runs Wrangler non-interactively). Never run `wrangler deploy` (without `--dry-run`), `wrangler versions upload` or `wrangler preview` from an agent session. The deploy helpers in `.github/scripts/` are tested by `pkg/e2e/scripts/ci-deploy.test.ts`, which also checks the five-stage job graph; a new stage 4 job must be added to the `needs` of both deploy jobs.
+Both Workers deploy from CI stage 5 in `.github/workflows/ci.yml`, after every test stage passes: a push to `main` runs `wrangler deploy` for each, and a push to any other branch of this repo uploads a Preview version of each under a per-branch alias, lists both URLs in the run summary, and posts them in one comment on the branch's open pull request, if it has one. `DEPLOYMENT.md` is the runbook (credentials, manual emergency deploys, read-only checks, the one-time dashboard steps). Each Worker is defined by a committed config: `docs/wrangler.jsonc` (the docs, an assets-only Worker) and `adapters/cloudflare/e2e/fixture/wrangler.jsonc` (the demo, carried into the generated config by the adapter). Change deployment settings there, not in the dashboard. A hostname added to a config's `routes` is taken over on the next `main` deploy without a prompt (CI runs Wrangler non-interactively). Never run `wrangler deploy` (without `--dry-run`), `wrangler versions upload` or `wrangler preview` from an agent session. The deploy helpers in `.github/scripts/` are tested by `pkg/e2e/scripts/ci-deploy.test.ts`, which also checks the five-stage job graph; a new stage 4 job must be added to the `needs` of both deploy jobs.
 
 ## Keeping Docs Visuals in Sync
 
@@ -67,9 +67,10 @@ Docs visuals have three kinds, each with one home. Do not add a second mechanism
 **When adding, removing, or significantly changing tests in `pkg/src/` or `pkg/e2e/`:**
 
 - The testing docs (`docs/content/internals/testing.md`) describe the test approach, not an enumerated list of files. The "Unit Test Files" and "E2E Test Files" sections link to GitHub, which is always current. You only need to update the prose if the testing _patterns_ change (e.g. a new mock strategy, a new test runner, new helpers, or a new E2E server mode).
-- `pkg/` has two Vitest projects configured in `pkg/vite.config.js`: `unit` (fast, excludes `*.integration.test.ts`) and `integration` (only `*.integration.test.ts`). Integration tests spawn real processes, servers, and worker threads, so they run in their own project, their own command (`yarn pkg:integration`), and their own CI job. Run `yarn integration:all` (`pkg`, `docs`, and `skills-tests`) when a change touches a real process, server, or worker boundary.
+- `pkg/` has three Vitest projects configured in `pkg/vite.config.js`: `unit` (fast, excludes `*.integration.test.ts` and `*.linear-time.test.ts`), `integration` (only `*.integration.test.ts`), and `linear-time` (only `*.linear-time.test.ts`). Integration tests spawn real processes, servers, and worker threads, so they run in their own project, their own command (`yarn pkg:integration`), and their own CI job. Run `yarn integration:all` (`pkg`, `docs`, and `skills-tests`) when a change touches a real process, server, or worker boundary.
+- A test that measures growth with `pkg/src/lib/linear-time.test-helper.ts` (`expectLinearTime`, `expectCostRatio`, and so on, with `LINEAR_TIME_TIMEOUT_MS`) goes in a sibling `<module>.linear-time.test.ts`, never in a unit test file: CPU-time sampling takes seconds per check on Windows. The helper throws in the `unit` project. Run them with `yarn pkg:linear-time` (or `yarn linear-time:all`); CI runs them once, on Linux, next to integration.
 - E2E tests support four Bascik server modes: static production (`playwright.config.ts`), HTTP/1.1 production server (`playwright.server.config.ts`), HTTP/2 production server (`playwright.server-http2.config.ts` via `yarn pkg:e2e:prod`), and live dev server (`playwright.dev.config.ts` via `yarn pkg:e2e:dev`). Three exec lanes run outside `pkg:e2e:all` (CI runs each; run them by hand when you change exec): `playwright.dev-exec.config.ts` plus `playwright.dev-exec-gated.config.ts` (via `yarn pkg:e2e:dev:exec`) cover dev-server exec lifecycle ownership, `playwright.exec-build.config.ts` (via `yarn pkg:e2e:exec:build`) covers pre/parallel/post ordering and failure in `bascik --build`, and `playwright.exec-policy.config.ts` (via `yarn pkg:e2e:exec:policy`) covers `pipeline.onExecError`. The last two spawn the CLI in temporary projects. The Cloudflare adapter lane lives in the `@bascik/adapter-cloudflare` workspace (`yarn adapter:cf:e2e`), not in `pkg/e2e/`. `yarn pkg:e2e:all [lane ...] [playwright args]` runs the four main lanes in parallel through `pkg/e2e/scripts/run-lanes.ts` (`yarn pkg:e2e:all:serial` keeps the old chain). Each lane has its own ports and builds into its own `BASCIK_E2E_OUT` directory (`pkg/e2e/dist-<lane>`), so specs read output only through `pkg/e2e/tests/helpers/out-dir.ts`, never a literal `dist/`.
-- The coverage numbers shown on the testing page are read from `pkg/test-coverage.json` (unit tests) and `pkg/e2e-test-coverage.json` (E2E build-step coverage) at docs build time. `pkg/test-coverage.json` is generated from the `unit` project only, so it must never include integration coverage. Do not run the `pre-push` skill or pre-push scripts automatically after adding tests. The user handles running pre-push steps.
+- The coverage table on the testing page reads every coverage JSON file listed under "Coverage JSON Files" below at docs build time (`docs/src/lib/coverage-table.ts`). `pkg/test-coverage.json` is generated from the `unit` project only, so it must never include integration coverage. Do not run the `pre-push` skill or pre-push scripts automatically after adding tests. The user handles running pre-push steps.
 
 **The VS Code extension is a thin client of `@bascik/language-server`** (`extensions/vscode-bascik/build.mjs` bundles the server from `lsp/src` into the VSIX). Every diagnostic, completion, hover, and definition is implemented once, in `lsp/src/`; never add analysis code to the extension. When you change `lsp/src/server.ts` (project discovery, file watching, workspace folders, publishing), also run `yarn ext:unit` (starts the real server bundle) and `yarn ext:e2e` (real VS Code); fakes do not reproduce editor timing. See the `bascik-vscode-extension` skill.
 
@@ -80,7 +81,7 @@ Update `docs/content/internals/server.md` to reflect the change. This page is th
 
 ### Coverage JSON Files
 
-Eight coverage files are generated. The first five feed the testing page (`docs/src/pages/internals/testing.html`), each read at docs build time; `lsp/test-coverage.json`, `docs/test-coverage.json`, and `skills-tests/test-coverage.json` are not shown there:
+Eight coverage files are generated. The testing page (`docs/src/pages/internals/testing.html`) shows all eight in one table, read at docs build time by `docs/src/lib/coverage-table.ts` in the order of the root `README.md` coverage table (its test fails when the two orders differ). A new coverage file needs a row in both tables and an entry in `pipeline.watchPaths` in `docs/bascik.config.ts`:
 
 | File                                          | Generated by                                                           |
 | --------------------------------------------- | ---------------------------------------------------------------------- |
@@ -200,7 +201,7 @@ Root script prefixes map to workspaces:
 | `lsp:`        | `@bascik/language-server`    |
 | `skills:`     | `bascik-skills-tests`        |
 
-Aggregators (`unit:all`, `integration:all`, `e2e:all`, `coverage:all`, `typecheck:all`, `check:all`, `test:all`) fan out across all workspaces.
+Aggregators (`unit:all`, `integration:all`, `linear-time:all`, `e2e:all`, `coverage:all`, `typecheck:all`, `check:all`, `test:all`) fan out across all workspaces.
 
 ### Formatting (Prettier)
 
@@ -224,7 +225,7 @@ If one of these commands hangs or cannot access the required resource, the comma
 
 ### Token-Efficient Test Execution & Output Parsing
 
-- **Unit tests, typechecks, checks, E2E, and Lighthouse**: To run all tests across all monorepo packages (`pkg`, `docs`, `create`, `extensions/vscode-bascik`, `adapters/cloudflare`, `lsp`, `skills-tests`), use `yarn test:all`. For unit tests only, use `yarn unit:all`. For the long-running integration suite, use `yarn integration:all` (`pkg`, `docs`, and `skills-tests`).
+- **Unit tests, typechecks, checks, E2E, and Lighthouse**: To run all tests across all monorepo packages (`pkg`, `docs`, `create`, `extensions/vscode-bascik`, `adapters/cloudflare`, `lsp`, `skills-tests`), use `yarn test:all`. For unit tests only, use `yarn unit:all`. For the long-running integration suite, use `yarn integration:all` (`pkg`, `docs`, and `skills-tests`). For the linear-time checks, use `yarn linear-time:all` (`pkg` and `lsp`).
 - **E2E tests**: Playwright E2E tests are configured in package scripts (`yarn pkg:e2e`, `yarn pkg:e2e:dev`, `yarn pkg:e2e:prod`, `yarn adapter:cf:e2e`, `yarn e2e:all`) with `--reporter=line` output to preserve context tokens. `yarn e2e:all` includes static build, live dev server, production HTTP/1.1, production HTTP/2, docs, and Cloudflare adapter configurations.
 - **Efficient output parsing**:
   - Always check the overall status first: **Did it pass or fail?**
@@ -253,7 +254,7 @@ The project uses **Vitest 5** (`"vitest": "^5.0.3"`). Behavior that affects how 
 - `vi.mock()`, `vi.unmock()`, and `vi.hoisted()` must be at module top level; nested calls throw. Use `vi.doMock()` when a mock must be registered inside a test.
 - Unawaited `.resolves` / `.rejects` assertions fail the test. Always `await` them.
 - `-t` matches the `>`-joined full name (`-t 'suite > test'`), not a space-joined one.
-- Inline projects inherit the root config (arrays merge). `pkg/vite.config.js` excludes `bench/**` from the `integration` project's benchmarks for this reason.
+- Inline projects inherit the root config (arrays merge). `pkg/vite.config.js` excludes `bench/**` from the `integration` and `linear-time` projects' benchmarks for this reason.
 - `vite` is a peer of `vitest` and Yarn does not install peers, so every workspace that runs Vitest lists `vite` in `devDependencies`.
 - Benchmarks use the `bench` test-context fixture: `test("name", async ({ bench }) => { await bench.compare(bench("a", fn), bench("b", fn)); })`. The top-level `bench()` import is gone.
 

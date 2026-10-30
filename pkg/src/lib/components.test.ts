@@ -28,12 +28,6 @@ import {
 } from "./components.ts";
 import { minifyHtml } from "./html-minifier.ts";
 import {
-  CEILING_MS,
-  LINEAR_TIME_TIMEOUT_MS,
-  cpuMs,
-  expectLinearTime,
-} from "./linear-time.test-helper.ts";
-import {
   createMatchingCloseFinder,
   mayContainComponent,
   findMatchingClose,
@@ -421,30 +415,6 @@ describe("getFirstComponent", () => {
       expect(getFirstComponent(html, auditLabel).content).toBe(html);
     });
 
-    it(
-      "handles many tag-like attribute tokens without recursive rescanning",
-      () => {
-        const mentions = (n: number) =>
-          "<span><audit-label></audit-label>".repeat(n);
-        const input = (n: number) =>
-          `<p title="${mentions(n)}">text</p><audit-label/>`;
-        const html = input(1000);
-        expect(getFirstComponent(html, auditLabel).content).toBe(
-          "<audit-label/>",
-        );
-        expect(getTag(html, "audit-label").content).toBe("<audit-label/>");
-        expect(replaceTag(html, "audit-label", "replacement")).toBe(
-          `<p title="${mentions(1000)}">text</p>replacement`,
-        );
-        expectLinearTime(input, 1000, (h) => [
-          getFirstComponent(h, auditLabel),
-          getTag(h, "audit-label"),
-          replaceTag(h, "audit-label", "replacement"),
-        ]);
-      },
-      LINEAR_TIME_TIMEOUT_MS,
-    );
-
     it("does not match a component tag inside a single-quoted attribute value", () => {
       const html = "<p title='Use <audit-label> exactly'>Visible text</p>";
       expect(getFirstComponent(html, auditLabel)).toEqual({});
@@ -783,85 +753,6 @@ describe("injectProps", () => {
       ),
     ).toBe("<p>Hi</p><!-- <b data-bascik-prop-title></b>");
   });
-
-  it(
-    "misuse: a template that repeats a prop receiver thousands of times is filled in linear time",
-    () => {
-      // Splicing each receiver into the growing result, and re-masking the
-      // whole template for each close search, took seconds at 5000 receivers.
-      const count = 5000;
-      const template = (n: number) =>
-        `<div>${"<b data-bascik-prop-title>f</b><i data-bascik-prop-unset>u</i>".repeat(n)}</div>`;
-      const value = "y".repeat(2000);
-      const out = injectProps(template(count), { title: value });
-      expect(out).toBe(`<div>${`<b>${value}</b><i>u</i>`.repeat(count)}</div>`);
-      expectLinearTime(template, count, (t) =>
-        injectProps(t, { title: value }),
-      );
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-
-  it(
-    "misuse: thousands of unfilled markers in a large template are stripped in linear time",
-    () => {
-      const count = 5000;
-      const filler = "z".repeat(2000);
-      const template = (n: number) =>
-        `<div>${`<i data-bascik-prop-unset class="c">${filler}</i>`.repeat(n)}</div>`;
-      const out = injectProps(template(count), { other: "v" });
-      expect(out).toBe(
-        `<div>${`<i class="c">${filler}</i>`.repeat(count)}</div>`,
-      );
-      expectLinearTime(template, count, (t) => injectProps(t, { other: "v" }));
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-
-  it(
-    "misuse: thousands of receivers whose fallback holds a balanced script, style or textarea are filled in linear time",
-    () => {
-      // A balanced raw-text element cannot change how anything after it is
-      // masked, yet each one used to re-mask the whole template.
-      const count = 5000;
-      const template = (n: number) =>
-        `<div>${"<b data-bascik-prop-t><script>1</script></b><i data-bascik-prop-t><style>a{}</style><textarea>q</textarea></i>".repeat(n)}</div>`;
-      const out = injectProps(template(count), { t: "x" });
-      expect(out).toBe(`<div>${"<b>x</b><i>x</i>".repeat(count)}</div>`);
-      // About 0.6 s of CPU under coverage: growth guards this one, the
-      // ceiling only catches what takes seconds.
-      expectLinearTime(template, count, (t) => injectProps(t, { t: "x" }), {
-        ceilingMs: 5000,
-      });
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-
-  it(
-    "misuse: tens of thousands of unclosed receivers, or receivers closed only once at the end, cost linear time",
-    () => {
-      const count = 40_000;
-      const unclosed = (n: number) => "<i data-bascik-prop-t>f".repeat(n);
-      expect(injectProps(unclosed(count), { t: "x" })).toBe(
-        "<i>f".repeat(count),
-      );
-      const tail = 3000;
-      const closedOnce = (n: number) =>
-        `${"<i data-bascik-prop-t>f".repeat(n)}</i>`;
-      // Only the last receiver pairs with the one close; the rest stay
-      // unfilled, exactly as a depth count from each of them finds.
-      expect(injectProps(closedOnce(tail), { t: "x" })).toBe(
-        `${"<i>f".repeat(tail - 1)}<i>x</i>`,
-      );
-      const fill = (t: string) => injectProps(t, { t: "x" });
-      expectLinearTime(unclosed, count, fill, {
-        label: "unclosed",
-        ceilingMs: 5000,
-      });
-      expectLinearTime(closedOnce, tail, fill, { label: "closed once" });
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
 
   it.each([
     [
@@ -1225,94 +1116,6 @@ describe("extractNamedSlotContent", () => {
 });
 
 describe("replaceNamedSlots", () => {
-  it(
-    "misuse: a template that repeats named slot wrappers thousands of times is filled in linear time",
-    () => {
-      // Splicing each wrapper into the growing result copied it once per
-      // wrapper, and each close search rescanned attribute state from the
-      // start: 5000 wrappers took seconds. Linear work takes milliseconds.
-      const count = 5000;
-      const template = (n: number) =>
-        `<div>${'<i data-bascik-slot="s">f</i><b data-bascik-slot="Missing">fb</b>'.repeat(n)}</div>`;
-      const content = "x".repeat(2000);
-      const fill = (t: string) =>
-        replaceNamedSlots(t, { S: content }, new Set(["my-card"]));
-      expect(fill(template(count))).toBe(
-        `<div>${`${content}fb`.repeat(count)}</div>`,
-      );
-      expectLinearTime(template, count, fill);
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-
-  it(
-    "misuse: thousands of usage wrappers are extracted in linear time, and the last fill of a repeated name wins",
-    () => {
-      const count = 5000;
-      const inner = (n: number) =>
-        `${'<p>body</p><div data-bascik-slot="side">n</div>'.repeat(n - 1)}<div data-bascik-slot="side">last</div>`;
-      const usages = new Set(["my-card"]);
-      expect(extractNamedSlotContent(inner(count), usages)).toEqual({
-        side: "last",
-      });
-      expect(extractDefaultSlotContent(inner(count), usages)).toBe(
-        "<p>body</p>".repeat(count - 1),
-      );
-      // A fresh set per run, as each usage has: the parse of the last inner
-      // content and set is reused, so a repeated set would time a lookup.
-      expectLinearTime(inner, count, (i) => {
-        const names = new Set(["my-card"]);
-        return [
-          extractNamedSlotContent(i, names),
-          extractDefaultSlotContent(i, names),
-        ];
-      });
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-
-  it(
-    "misuse: tens of thousands of unclosed slot wrappers, or wrappers closed only once at the end, cost linear time",
-    () => {
-      const count = 40_000;
-      const unclosed = (n: number) => '<i data-bascik-slot="s">f'.repeat(n);
-      expect(replaceNamedSlots(unclosed(count), { s: "x" })).toBe(
-        unclosed(count),
-      );
-      expect(extractDefaultSlotContent(unclosed(count))).toBe(unclosed(count));
-      const defaults = (n: number) => "<i data-bascik-slot>f".repeat(n);
-      expect(replaceDefaultSlots(defaults(count), "x")).toBe(defaults(count));
-      const tail = 3000;
-      const closedOnce = (n: number) =>
-        `${'<i data-bascik-slot="s">f'.repeat(n)}</i>`;
-      // Only the last wrapper pairs with the one close.
-      expect(replaceNamedSlots(closedOnce(tail), { s: "x" })).toBe(
-        `${'<i data-bascik-slot="s">f'.repeat(tail - 1)}x`,
-      );
-      const defaultsOnce = (n: number) =>
-        `${"<i data-bascik-slot>f".repeat(n)}</i>`;
-      expect(replaceDefaultSlots(defaultsOnce(tail), "x")).toBe(
-        `${"<i data-bascik-slot>f".repeat(tail - 1)}x`,
-      );
-      const named = (t: string) => replaceNamedSlots(t, { s: "x" });
-      const fillDefault = (t: string) => replaceDefaultSlots(t, "x");
-      expectLinearTime(unclosed, count, named, { label: "named, unclosed" });
-      expectLinearTime(unclosed, count, (t) => extractDefaultSlotContent(t), {
-        label: "extract default, unclosed",
-      });
-      expectLinearTime(defaults, count, fillDefault, {
-        label: "default, unclosed",
-      });
-      expectLinearTime(closedOnce, tail, named, {
-        label: "named, closed once",
-      });
-      expectLinearTime(defaultsOnce, tail, fillDefault, {
-        label: "default, closed once",
-      });
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-
   it("fills wrappers in document order around text, nested same-tag fallbacks and wrappers inside a child usage", () => {
     const template =
       '<a>1<div data-bascik-slot="x"><div>fb</div></div>2<my-card><i data-bascik-slot="x">kept</i></my-card>3<i data-bascik-slot="y">y</i>4</a>';
@@ -1381,34 +1184,6 @@ describe("replaceNamedSlots", () => {
 });
 
 describe("replaceDefaultSlots", () => {
-  it(
-    "misuse: a template that repeats its default slot is replaced in linear time, and past the engine's string limit fails at once",
-    () => {
-      // Splicing into the growing result copied it once per marker: 2000
-      // markers of 20000 characters took tens of seconds.
-      const template = (n: number) =>
-        `<div>${"<i data-bascik-slot>f</i>".repeat(n)}</div>`;
-      const content = "x".repeat(20_000);
-      const out = replaceDefaultSlots(template(2000), content);
-      expect(out).toBe(`<div>${content.repeat(2000)}</div>`);
-      expectLinearTime(template, 2000, (t) => replaceDefaultSlots(t, content));
-      // Past the limit, the time to fail is not a matter of growth: building
-      // the result up to the engine's limit before failing takes seconds.
-      const huge = "x".repeat(300_000);
-      let thrown: unknown;
-      const failMs = cpuMs(() => {
-        try {
-          replaceDefaultSlots(template(2000), huge);
-        } catch (error) {
-          thrown = error;
-        }
-      });
-      expect(String(thrown)).toMatch(/Invalid string length/);
-      expect(failMs).toBeLessThan(CEILING_MS);
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-
   it("replaces every repeated marker with the content and keeps the text between them in order", () => {
     const template = `<a><b data-bascik-slot>1</b>-<c data-bascik-slot>2</c>-<d data-bascik-slot></d></a>`;
     expect(replaceDefaultSlots(template, "X")).toBe("<a>X-X-X</a>");

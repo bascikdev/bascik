@@ -1,23 +1,22 @@
 # Bascik Docs
 
-The official Bascik documentation site, built with Bascik itself.
+The source of [bascik.dev](https://bascik.dev), the Bascik documentation site. It is built with Bascik itself, so it doubles as the largest real project the compiler is tested against. This README is for contributors editing the docs; readers want the site.
 
-## Pages
+## Layout
 
-| Route              | Content                                                              |
-| ------------------ | -------------------------------------------------------------------- |
-| `/`                | Overview and feature index                                           |
-| `/getting-started` | Installation, folder structure, first component, dev + build scripts |
-| `/slots`           | Default slot, `data-bascik-slot`, slot fallback content, named slots |
-| `/props`           | `data-bascik-prop-*`: injecting text values into component templates |
+| Path              | What it holds                                                                                        |
+| ----------------- | ---------------------------------------------------------------------------------------------------- |
+| `content/`        | The Markdown for most pages (`content/slots.md` is `/slots`)                                         |
+| `src/pages/`      | One `.html` shell per route; most render a `content/` file with a build script                       |
+| `src/components/` | The site's components (`docs-nav`, `docs-sidebar`, `code-block`, `component-demo`, `diagram-*`, ...) |
+| `src/diagrams/`   | The demo blocks behind the `diagram-*` components on each page                                       |
+| `src/lib/`        | Build-time helpers (Markdown renderer, navigation, headers) and their unit tests                     |
+| `scripts/`        | Generators (search index, `llms.txt`, Open Graph images, recordings) and their tests                 |
+| `e2e/`            | Playwright tests against a built copy of the site                                                    |
+| `lighthouse/`     | Lighthouse CI configs and their own build config                                                     |
+| `wrangler.jsonc`  | The Cloudflare Worker that serves bascik.dev (see [Deployment](#deployment))                         |
 
-## Components
-
-| Component     | Purpose                                                             |
-| ------------- | ------------------------------------------------------------------- |
-| `docs-nav`    | Sticky top navigation                                               |
-| `docs-footer` | Page footer                                                         |
-| `code-block`  | Syntax-highlighted code block; props: `lang`, optional `file` label |
+The writing rules for pages, examples, diagrams, recordings, and the agent skills are in [`.github/instructions/docs.instructions.md`](../.github/instructions/docs.instructions.md). Read them before editing anything here.
 
 ## Development
 
@@ -35,7 +34,7 @@ yarn docs:unit                       # Vitest unit tests
 yarn docs:e2e                        # Playwright E2E tests
 yarn docs:lighthouse                 # Lighthouse CLI audit (core routes)
 yarn docs:lighthouse:all             # Lighthouse CLI audit (all routes from nav.ts)
-yarn docs:coverage                   # unit tests with coverage report
+yarn docs:coverage                   # unit and integration tests with coverage report
 ```
 
 ## Testing & Auditing
@@ -47,7 +46,7 @@ The documentation site maintains high quality and prevents regressions through a
 ```sh
 yarn docs:unit         # Run Vitest unit tests
 yarn skills:test       # The public agent skills' tests (skills-tests/, not docs/)
-yarn docs:coverage     # Run unit tests and generate a coverage report
+yarn docs:coverage     # Run unit and integration tests and generate a coverage report
 ```
 
 ### End-to-End (E2E) Tests
@@ -111,15 +110,27 @@ Detailed audit reports are saved to `.lighthouseci` locally so you can open full
 yarn workspace bascik-docs pkg-dev   # watches pkg source directly via --watch-path
 ```
 
+## Deployment
+
+bascik.dev is the assets-only Cloudflare Worker `bascik`, defined in [`wrangler.jsonc`](wrangler.jsonc). CI deploys it after every other stage passes: a push to `main` deploys to production, and a push to any other branch uploads a preview, whose URL is in the run summary and in a comment on the branch's pull request, if it has one. Nobody deploys by hand. To check the Worker locally, from the repo root:
+
+```sh
+yarn pkg:build && yarn docs:build
+yarn docs:cf:dev     # wrangler dev on docs/dist
+yarn docs:cf:check   # wrangler deploy --dry-run
+```
+
+[DEPLOYMENT.md](../DEPLOYMENT.md) is the runbook: credentials, the custom domain, and every deploy script.
+
 ## Design
 
-The docs site shares the same color palette as the demo app:
+The color tokens live on `:root` in `src/css/styles.css`. The dark theme's core colors:
 
 ```text
 background:  #18191b
 accent:      #d3ff8d
 text:        #f0f1f2
-text-muted:  #7c8290
+text-muted:  #8d929e
 ```
 
 The layout uses a sidebar on desktop (`docs-layout` CSS grid) that collapses to a single column on mobile.

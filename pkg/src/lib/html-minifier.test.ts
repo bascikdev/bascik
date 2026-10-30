@@ -2,10 +2,6 @@ import { describe, it, expect, vi } from "vitest";
 import fc from "fast-check";
 import { minifyHtml, extractScriptTags } from "./html-minifier.ts";
 import { domSnapshot } from "./html-parse-oracle.test-helper.ts";
-import {
-  LINEAR_TIME_TIMEOUT_MS,
-  expectLinearTime,
-} from "./linear-time.test-helper.ts";
 
 /**
  * The browser's view of `html`: structure and text with comments and
@@ -214,20 +210,6 @@ describe("extractScriptTags", () => {
     );
   });
 
-  it(
-    "stays linear on many comment openers without a close",
-    () => {
-      for (const unit of ["<!--", "<!---->"])
-        expectLinearTime(
-          (n) => `<p>a</p>${unit.repeat(n)}`,
-          50_000,
-          minifyHtml,
-          { label: unit },
-        );
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-
   it("still removes comments in a closed context, including next to a kept one", () => {
     const html =
       "<p>a</p><!-- gone --><scr<!-- kept -->ipt>b()</script><!-- gone too --><p>c</p>";
@@ -264,31 +246,6 @@ describe("extractScriptTags", () => {
         "<script>one()</script>\n<script>two()</script>\n<script>three()</script>",
     );
   });
-
-  it(
-    "stays fast on many scripts, including many inside unclosed tags",
-    () => {
-      const scripts = (n: number) => "<p>x</p><script>a()</script>".repeat(n);
-      const inUnclosedTags = (n: number) =>
-        "<p x <script>a()</script>".repeat(n);
-      const afterLongOpeners = (n: number) =>
-        ("<" + "a".repeat(100) + "<script>a()</script>").repeat(n);
-      expect(extractScriptTags(scripts(20_000)).split("\n")).toHaveLength(
-        20_000,
-      );
-      expect(extractScriptTags(inUnclosedTags(20_000))).toBe("");
-      expectLinearTime(scripts, 20_000, extractScriptTags, {
-        label: "scripts",
-      });
-      expectLinearTime(inUnclosedTags, 20_000, extractScriptTags, {
-        label: "scripts inside unclosed tags",
-      });
-      expectLinearTime(afterLongOpeners, 10_000, minifyHtml, {
-        label: "scripts after long openers",
-      });
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
 
   it("never changes what the browser builds or which scripts can run, on random malformed markup", () => {
     // parse5 is the oracle: structure, text, and the set of scripts that can
@@ -447,20 +404,6 @@ describe("minifyHtml", () => {
       "<div><b>a</b> <b>b</b></div>",
     );
   });
-
-  it(
-    "keeps the space across a table's comment stand-ins in linear time",
-    () => {
-      for (const unit of [" <!-- c -->", "<!-- c --> <b>b</b>"])
-        expectLinearTime(
-          (n) => `<table><tr><td><b>a</b>${unit.repeat(n)} <b>z</b>`,
-          20_000,
-          minifyHtml,
-          { label: unit },
-        );
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
 
   it("preserves sensitive content with whitespace in closing tags", () => {
     const script =

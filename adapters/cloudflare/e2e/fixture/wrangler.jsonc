@@ -8,7 +8,7 @@
 // which does not read this file.
 {
   "$schema": "../../../../node_modules/wrangler/config-schema.json",
-  "name": "bascik-streaming-test",
+  "name": "cloudflare-adapter",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
   // The custom domain is attached by `wrangler deploy` (a preview upload does

@@ -78,15 +78,6 @@ import {
   scopeComponentInstance,
 } from "./scoping-template.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
-import {
-  LINEAR_TIME_TIMEOUT_MS,
-  expectCostRatio,
-  expectLinearTime,
-  expectLinearTimeAsync,
-  measureCostRatioAsync,
-  spliceCopies,
-  type CalibratedRatio,
-} from "./linear-time.test-helper.ts";
 import type { ComponentList } from "./types.ts";
 import { html as htmlTag } from "./html-template.ts";
 
@@ -986,43 +977,6 @@ describe("B. a usage attribute that becomes a URL only on the root's real tag ge
       }
     }
   });
-
-  it(
-    "many inherited attributes on one usage are judged in linear time",
-    () => {
-      // Names of one width (three letters name 17,576 handlers): names that
-      // grow with the count made the input itself grow about 8 times for 4
-      // times the count, and CI read that as a growth of 8.3.
-      const letters = (i: number): string =>
-        [676, 26, 1]
-          .map((place) =>
-            String.fromCharCode(97 + (Math.floor(i / place) % 26)),
-          )
-          .join("");
-      const usage = (count: number): string => {
-        let attrs = "";
-        for (let i = 0; i < count; i++)
-          attrs += ` on${letters(i)}="x" data-u${i}="javascript:${i}" data-k${i}="v"`;
-        return `<inh-object${attrs} data="${" ".repeat(count)}javascript:x" style="${"background:url(javascript:x);".repeat(count)}"></inh-object>`;
-      };
-      expectLinearTime(usage, 4000, (input) => renderAtBuild(list, input));
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-
-  it(
-    "many usages with inherited script URLs and handlers are judged in linear time in their count",
-    async () => {
-      const manifest = await build(list);
-      const unit = `<inh-object data="data:text/html,x" onload="x" class="k"></inh-object><inh-iframe src="javascript:x" srcdoc="x"></inh-iframe>`;
-      await expectLinearTimeAsync(
-        (count) => unit.repeat(count),
-        200,
-        async (input) => (await renderAtRequest(manifest, input)).html,
-      );
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
 });
 
 describe("B. a class or style merged onto the root never reads text an earlier inherited value carries", () => {
@@ -1133,20 +1087,6 @@ describe("B. a class or style merged onto the root never reads text an earlier i
       }
     }
   });
-
-  it(
-    "a merge after many values spelling class= and style=, and a style of many image-set() strings, are judged in linear time",
-    () => {
-      const usage = (count: number): string => {
-        let attrs = "";
-        for (let i = 0; i < count; i++)
-          attrs += ` data-k${i}=" class=x style=y class='z'"`;
-        return `<x-badge${attrs} class="big" style="${"--a: image-set('x.png' 1x, url(y.png) 2x".repeat(count)}"></x-badge>`;
-      };
-      expectLinearTime(usage, 4000, (input) => renderAtBuild(list, input));
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
 
   it("an attribute that starts with on but is no event handler (online, one, onboarding) is inherited, without a warning", async () => {
     const usage = `<status-dot online one="1" onboarding="step-2"></status-dot>`;
@@ -1401,125 +1341,6 @@ describe("E. tags an attacker can spell in escaped or raw-text positions stay te
       const { html } = await renderAtRequest(manifest, output);
       expect(view(html).sinks).toEqual([]);
     },
-  );
-});
-
-// ─── G. work an echoed output can make the renderer do ──────────────────────
-
-describe("G. a hostile output settles in time proportional to its size", () => {
-  const list: ComponentList = {
-    "my-card": {
-      fileName: "src/components/my-card.html",
-      fileContent: `<div class="c"><div data-bascik-slot>s</div></div>`,
-    },
-    "x-p": {
-      fileName: "src/components/x-p.html",
-      fileContent: `<p class="p" data-bascik-prop-v>v</p>`,
-    },
-  };
-  // 999 nested usages (under the instance budget), each opener cut mid-tag
-  // at the splice, padded to 400 KB: before a scanning budget this re-masks
-  // the whole instance once per nested instance (about 4 s here, about 40 s
-  // at 1 MB). Both sizes hold 999 usages, so that cost is linear in the
-  // output too, and only the calibrated cost at the cap below fails it. The
-  // growth is taken over the same 999 usages with no padding (the
-  // baseline), whose fixed cost otherwise held it at 2.7 and hid a quadratic
-  // term: it fails a pass quadratic in the padding.
-  const SIZE = 400_000;
-  const USAGES = 999;
-  /** `USAGES` copies of `unit`, padded with text to `size` characters in all. */
-  const padded = (unit: string, size: number): string =>
-    (
-      unit + "x".repeat(Math.max(0, Math.ceil(size / USAGES) - unit.length))
-    ).repeat(USAGES);
-  // Each `<a>` is a whole tag: after an `<a ` with no `>`, every later
-  // `<x-p>` would be part of its attributes, as a browser reads it.
-  const nested = (size: number) =>
-    `<my-card>${padded("<x-p><a>", size)}</my-card>`;
-  /** One request for `html`: rendered, or a RequestRenderError. */
-  const settlerOf = async () => {
-    const manifest = await build(list);
-    config.minify.identifiers = false;
-    const host = makeHost(manifest);
-    return (html: string) =>
-      wrapRunner(
-        runnerOf(html),
-        serverPlan("a"),
-        host,
-      )("a", new AbortController().signal).catch((error) => {
-        expect(error).toBeInstanceOf(RequestRenderError);
-      });
-  };
-
-  it(
-    "<my-card> + fill('<x-p><a>') + </my-card> settles (rendered or a RequestRenderError) in linear time",
-    async () => {
-      const settle = await settlerOf();
-      await expectLinearTimeAsync(nested, SIZE, settle, {
-        baseline: nested(0),
-      });
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-
-  // Each usage its own fragment: the request's fixed cost is per usage, so
-  // the padding hardly moves it (12 ms at 50 KB, 19 ms at 800 KB) and a
-  // growth in the padding read 0.8. A pass over the rest of the output per
-  // usage is what to fail, and it is quadratic in the usage count: so the
-  // count is what grows, from a quarter of `USAGES` to all of them, each
-  // padded to 400 characters as above.
-  it(
-    "fill('<x-p><s') settles (rendered or a RequestRenderError) in linear time in its usage count",
-    async () => {
-      const settle = await settlerOf();
-      const unit = padded("<x-p><s", SIZE).slice(0, Math.ceil(SIZE / USAGES));
-      // 996 usages, 249 at a quarter: under the instance budget.
-      await expectLinearTimeAsync((count) => unit.repeat(count), 996, settle);
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-
-  // The nested case is linear in the output at a fixed usage count, but not
-  // in the usage count. `<my-card>` holds every usage, so it expands as one
-  // fragment (expandByUsage), and each substitution splices the whole
-  // fragment and its mask: V8 joins the pieces lazily and copies the whole
-  // string the next time it is read (`body.slice` in spliceRawTextMask, the
-  // mask's in expandComponents). The cost is usages times fragment length:
-  // at 400 bytes per usage, 7 ms for 100 usages, 60 ms for 500, 186 ms for
-  // 1000. Only the instance cap (`REQUEST_RENDER_LIMITS.maxInstances`)
-  // bounds the usage count, and `maxOutputLength` the length: 998 usages in a
-  // 4 MB output took 1.4 s of CPU. So the cost at the cap is pinned, as a
-  // ratio to the work it is made of, timed in the same process: one splice
-  // of the page and of its mask per substitution, each then read
-  // (`spliceCopies`). CPU time on both sides keeps load out of the ratio,
-  // and the splices slow down with the machine as the request does; a
-  // regression that makes the request more than twice as costly fails it
-  // (four runs read 1.24 to 1.25 plain, 2.31 to 2.32 with coverage). The
-  // calibration is the highest of four runs on an M-series Mac, with and
-  // without coverage (which slows the renderer and not the copying); measure
-  // again after a change that makes the request cheaper.
-  const CAP_COST: CalibratedRatio = { plain: 1.25, coverage: 2.32 };
-  it(
-    "costs at most twice its calibrated share at the instance cap",
-    async () => {
-      expect(REQUEST_RENDER_LIMITS.maxInstances).toBe(1000);
-      const output = nested(SIZE);
-      const manifest = await build(list);
-      config.minify.identifiers = false;
-      const host = makeHost(manifest);
-      const settle = () =>
-        wrapRunner(
-          runnerOf(output),
-          serverPlan("a"),
-          host,
-        )("a", new AbortController().signal);
-      expect(await settle()).not.toContain("<x-p");
-      expectCostRatio(
-        await measureCostRatioAsync(settle, () => spliceCopies(output, USAGES)),
-        CAP_COST,
-      );
-    },
-    LINEAR_TIME_TIMEOUT_MS,
   );
 });
 

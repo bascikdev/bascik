@@ -38,6 +38,7 @@
     "pkg:unit:watch": "yarn workspace @bascik/bascik unit:watch",
     "pkg:integration": "yarn workspace @bascik/bascik integration",
     "pkg:integration:watch": "yarn workspace @bascik/bascik integration:watch",
+    "pkg:linear-time": "yarn workspace @bascik/bascik linear-time",
     "pkg:test:all": "yarn workspace @bascik/bascik test:all",
     "pkg:e2e": "yarn workspace @bascik/bascik e2e",
     "pkg:e2e:dev": "yarn workspace @bascik/bascik e2e:dev",
@@ -112,6 +113,7 @@
     "lsp:check": "yarn workspace @bascik/language-server build && node lsp/dist/bin.js --check",
     "lsp:test": "yarn workspace @bascik/language-server test",
     "lsp:unit": "yarn workspace @bascik/language-server unit",
+    "lsp:linear-time": "yarn workspace @bascik/language-server linear-time",
     "lsp:test:ci": "yarn workspace @bascik/language-server test:ci",
     "lsp:typecheck": "yarn workspace @bascik/language-server typecheck",
     "lsp:coverage": "yarn workspace @bascik/language-server coverage",
@@ -131,11 +133,12 @@
     "typecheck:all": "yarn pkg:typecheck && yarn create:typecheck && yarn docs:typecheck && yarn ext:typecheck && yarn adapter:cf:typecheck && yarn lsp:typecheck && yarn skills:typecheck",
     "unit:all": "yarn pkg:unit && yarn create:unit && yarn docs:unit && yarn ext:unit && yarn adapter:cf:unit && yarn lsp:unit && yarn skills:unit",
     "integration:all": "yarn pkg:integration && yarn docs:integration && yarn skills:integration",
+    "linear-time:all": "yarn pkg:linear-time && yarn lsp:linear-time",
     "e2e:all": "yarn pkg:e2e:all && yarn docs:e2e && yarn adapter:cf:e2e",
     "coverage:all": "yarn pkg:coverage && yarn create:coverage && yarn docs:coverage && yarn ext:coverage && yarn adapter:cf:coverage && yarn lsp:coverage && yarn skills:coverage",
     "cover:all": "yarn coverage:all",
     "update-coverage:all": "yarn coverage:all",
-    "test:all": "yarn typecheck:all && yarn check:all && yarn unit:all && yarn integration:all && yarn e2e:all && yarn docs:lighthouse"
+    "test:all": "yarn typecheck:all && yarn check:all && yarn unit:all && yarn integration:all && yarn linear-time:all && yarn e2e:all && yarn docs:lighthouse"
   },
   "devDependencies": {
     "prettier": "3.9.10"

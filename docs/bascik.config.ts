@@ -28,6 +28,8 @@ export default defineConfig({
       "../create/test-coverage.json",
       "../extensions/vscode-bascik/test-coverage.json",
       "../adapters/cloudflare/test-coverage.json",
+      "../lsp/test-coverage.json",
+      "../skills-tests/test-coverage.json",
       "test-coverage.json",
       "build-timings.json",
     ],

@@ -3,7 +3,7 @@
 [![Unit lines](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fcreate%2Ftest-coverage.json&query=%24.total.lines.pct&label=unit%20lines&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/create/test-coverage.json)
 [![Unit functions](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fcreate%2Ftest-coverage.json&query=%24.total.functions.pct&label=unit%20functions&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/create/test-coverage.json)
 
-Interactive project initializer for [Bascik](https://bascik.dev).
+Interactive project initializer for [Bascik](https://bascik.dev): the command behind `npm create bascik`. Use it to start a new Bascik site with a working starter, editor settings, tests, and the agent skills. Requires Node.js 22.22 or newer. The [Getting Started guide](https://bascik.dev/getting-started) walks through the result, and [Create App internals](https://bascik.dev/internals/create-app) explains how the scaffolder works.
 
 ## Quick Start
 

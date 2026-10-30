@@ -117,7 +117,7 @@ Set `BASCIK_SITE_URL` as a build environment variable if the site generates a si
 
 ### Deploy from GitHub Actions
 
-A workflow in your repository can build the site and run Wrangler itself. This one deploys every push to `main`, and uploads a Preview version for each pull request without touching production:
+A workflow in your repository can build the site and run Wrangler itself. This one deploys every push to `main`, and uploads a Preview version for every push to any other branch without touching production, so each branch keeps its own Preview URL:
 
 ```yaml
 # .github/workflows/deploy.yml
@@ -125,21 +125,20 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    branches: ["**"] # every branch; tag pushes do not match
+
+# One run per branch at a time, in push order: a newer push to a branch cancels its running
+# Preview upload, while a running deploy of main always finishes (a newer push to main
+# replaces one that is still waiting, so only the newest waiting push deploys).
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # A pull request from a fork gets no secrets, so it skips the job.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
-    # One deploy per branch at a time; a newer push cancels a running Preview upload.
-    concurrency:
-      group: deploy-${{ github.ref }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -155,16 +154,19 @@ jobs:
           BASCIK_SITE_URL: https://shop.example.com
 
       - name: Upload a Preview version
-        if: github.event_name == 'pull_request'
+        if: github.ref != 'refs/heads/main'
         working-directory: dist/.bascik/cloudflare
-        run: npx wrangler versions upload --preview-alias "pr-$PR_NUMBER"
+        # br-<branch>: lowercase letters, digits and single dashes, at most 33 characters.
+        run: |
+          slug="$(printf '%s' "$BRANCH" | tr -cs 'A-Za-z0-9' '-' | tr 'A-Z' 'a-z' | cut -c1-30 | sed 's/^-//; s/-$//')"
+          npx wrangler versions upload --preview-alias "br-${slug:-branch}"
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.ref_name }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Deploy to production
-        if: github.event_name == 'push'
+        if: github.ref == 'refs/heads/main'
         working-directory: dist/.bascik/cloudflare
         run: npx wrangler deploy
         env:
@@ -174,13 +176,15 @@ jobs:
 
 Before the first run:
 
-- **Check that Preview URLs are on.** Without a `preview_urls` setting, Preview URLs follow `workers_dev`, which is on unless your config has `routes`. A Worker served only on a custom domain therefore needs `preview_urls: true` (see [Worker Previews](#worker-previews)), or the upload succeeds without a Preview URL. Setting it explicitly avoids surprises either way. Each pull request then keeps one URL across pushes, `https://pr-<number>-<worker-name>.<your-subdomain>.workers.dev`, and Wrangler prints it as `Version Preview Alias URL`. For a script, set `WRANGLER_OUTPUT_FILE_PATH` to a file: Wrangler appends one JSON object per command, and the `version-upload` entry has `preview_alias_url`.
+- **Check that Preview URLs are on.** Without a `preview_urls` setting, Preview URLs follow `workers_dev`, which is on unless your config has `routes`. A Worker served only on a custom domain therefore needs `preview_urls: true` (see [Worker Previews](#worker-previews)), or the upload succeeds without a Preview URL. Setting it explicitly avoids surprises either way. Each branch then keeps one URL across pushes, `https://br-<branch>-<worker-name>.<your-subdomain>.workers.dev`, and Wrangler prints it as `Version Preview Alias URL`. For a script, set `WRANGLER_OUTPUT_FILE_PATH` to a file: Wrangler appends one JSON object per command, and the `version-upload` entry has `preview_alias_url`.
 - **Create an API token** in the Cloudflare dashboard (My Profile > API Tokens) with **Workers Scripts: Edit** on your account, plus **Workers Routes: Edit** on the zone when your config has `routes` or a custom domain. The "Edit Cloudflare Workers" template grants these and more. Store it as the repository secret `CLOUDFLARE_API_TOKEN`, and your account ID as the repository variable `CLOUDFLARE_ACCOUNT_ID` (Settings > Secrets and variables > Actions).
 - **Pin Wrangler** in your `devDependencies`, so `npx wrangler` runs the version your lock file names rather than downloading one.
 - **Deploy once from `main`** before relying on Previews: `wrangler versions upload` only adds a version to a Worker that already exists, and fails with "You cannot upload a new version of a Worker that does not yet exist" for a new one.
 - **Check `routes` before merging.** Wrangler runs without a terminal in CI, so `wrangler deploy` attaches each custom domain in `routes` without the confirmation it asks for locally, replacing a DNS record or another Worker's custom domain on that hostname.
 
-`wrangler versions upload` is the generally available way to get a Preview from CI, and works without a `previews` block. A Preview alias is a lowercase DNS label: letters, digits and `-`, starting with a letter, and short enough that `<alias>-<worker-name>` fits in 63 characters, which `pr-<number>` always is. Run tests in an earlier job and add `needs: [test]` to the deploy job, so nothing deploys when they fail. A concurrency group keeps two deploys from running at once but does not order them: when an older push's tests finish after a newer push has deployed, the older one deploys last. If that can happen, compare `git ls-remote origin refs/heads/main` with `$GITHUB_SHA` before `wrangler deploy` and skip the step when they differ.
+`wrangler versions upload` is the generally available way to get a Preview from CI, and works without a `previews` block. A Preview alias is a lowercase DNS label: letters, digits and `-`, starting with a letter, and short enough that `<alias>-<worker-name>` fits in 63 characters. The `slug=` line builds one from the branch name: every run of other characters becomes one `-`, the `br-` prefix makes it start with a letter, and a branch name with no letters or digits, such as `_`, falls back to `br-branch`. At 33 characters it fits any Worker name up to 29 characters; lower the `cut` for a longer name. Two branches that differ only in punctuation or case, such as `feature/x` and `feature-x`, or that share their first 30 characters, get the same alias, and each push replaces the other's Preview. Append a few characters of a hash of the branch name to tell them apart if that matters.
+
+The workflow runs only on push, so a pull request shows the checks and Previews of its branch's latest push. A fork's pushes never deploy to your account: the workflow runs in the fork only if its owner turns on Actions there, and then fails on the missing `CLOUDFLARE_API_TOKEN`. To skip it in forks instead, add `if: github.repository == '<owner>/<repo>'` to the job. Run tests in an earlier job of the same workflow and add `needs: [test]` to the deploy job, so nothing deploys when they fail. Keep the concurrency group on the workflow, not on the deploy job: a group holds only one waiting run, and a group on the job alone would let an older push's deploy that finished testing later replace a newer one that was waiting. If the deploy runs from a separate workflow instead, compare `git ls-remote origin "$GITHUB_REF"` with `$GITHUB_SHA` before Wrangler and skip the step when they differ, so an older push never deploys last.
 
 ### Deploy from Git with Workers Builds
 

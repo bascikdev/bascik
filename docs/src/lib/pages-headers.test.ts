@@ -11,7 +11,6 @@ import {
   headersForPath,
   HTML_CACHE_CONTROL,
   IMMUTABLE_CACHE_CONTROL,
-  PAGES_DEV_NOINDEX_RULE,
   SECURITY_HEADERS_RULE,
   WORKERS_DEV_NOINDEX_RULE,
 } from "./pages-headers.ts";
@@ -65,7 +64,7 @@ describe("pages-headers", () => {
     );
     expect(
       headers.startsWith(
-        `${SECURITY_HEADERS_RULE}\n${PAGES_DEV_NOINDEX_RULE}\n${WORKERS_DEV_NOINDEX_RULE}\n`,
+        `${SECURITY_HEADERS_RULE}\n${WORKERS_DEV_NOINDEX_RULE}\n`,
       ),
     ).toBe(true);
   });
@@ -102,11 +101,9 @@ describe("pages-headers", () => {
     );
   });
 
-  it("keeps the pages.dev alias out of search results without touching the custom domain", () => {
+  it("has no pages.dev rule now that the Pages project is deleted, and never sends noindex for a path", () => {
     const headers = pagesHeaders([]);
-    expect(headers).toContain(
-      "https://:project.pages.dev/*\n  X-Robots-Tag: noindex",
-    );
+    expect(headers).not.toContain("pages.dev");
     // Path-only rules apply to every host, including bascik.dev, so noindex must never be path-only.
     const pathOnlyBlocks = headers
       .split("\n\n")

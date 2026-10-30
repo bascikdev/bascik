@@ -1,10 +1,26 @@
 name: CI
 
+# Every branch push runs CI, and its stage 5 deploys: main to production, any other branch to a Preview of both
+# Workers. Tags never run it (release.yml handles them): a push filter with only `branches` skips tag pushes.
+#
+# pull_request is here only so pull requests from forks get tested. A pull request from a branch of this repo is
+# already tested by that branch's push run, whose checks are on the same head commit and so show on the pull
+# request; the stage 1 jobs skip on such a pull_request event, and every later job needs them, so the rest of that
+# run skips too (a skipped `needs` skips the job instead of failing it). A fork's pull request runs stages 1 to 4
+# and never stage 5, which runs only on push.
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
     branches: [main]
+
+# A newer push to a branch cancels that branch's older run, Preview upload included. Runs on main never share a
+# group, so none is canceled or left pending. No job has its own concurrency group (a shared group holds only one
+# pending job, so a later-queued older deploy could cancel a newer one); the newest-commit check before Wrangler keeps
+# main's production deploys in order.
+concurrency:
+  group: ${{ github.ref == 'refs/heads/main' && format('ci-main-{0}', github.run_id) || format('ci-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # ── Stage 1: Static analysis, typechecks, formatting, and spelling ──────────────
@@ -12,6 +28,8 @@ jobs:
   jelly:
     name: Jelly Static Analysis
     runs-on: ubuntu-latest
+    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file).
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     permissions:
       contents: read
     steps:
@@ -41,6 +59,8 @@ jobs:
   semgrep:
     name: Semgrep Static Analysis
     runs-on: ubuntu-latest
+    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file).
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     permissions:
       contents: read
     steps:
@@ -54,6 +74,8 @@ jobs:
   typecheck:
     name: Workspace Typechecks
     runs-on: ubuntu-latest
+    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file).
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     permissions:
       contents: read
     steps:
@@ -80,6 +102,8 @@ jobs:
   standards:
     name: Spelling & Web Standards
     runs-on: ubuntu-latest
+    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file).
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     permissions:
       contents: read
     steps:
@@ -347,7 +371,7 @@ jobs:
       - name: Run extension unit tests
         run: yarn ext:unit
 
-  # ── Stage 3: Integration tests and the Node 22.22 floor (after every unit job) ───
+  # ── Stage 3: Integration tests, linear-time checks, and the Node 22.22 floor (after every unit job)
 
   integration-pkg:
     name: Framework Integration Tests
@@ -545,6 +569,43 @@ jobs:
       - name: Agent skills unit tests
         run: yarn skills:unit
 
+  # Linear-time scaling checks (pkg and the language server): CPU-growth measurements on hostile input. They are
+  # slow and platform-independent (an algorithm is linear or not on every OS), so they run once, on Linux, here
+  # instead of in the unit jobs, where Windows' coarse CPU clock made them take most of the Windows job.
+  linear-time:
+    name: Linear-Time Checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs:
+      [
+        unit-pkg,
+        unit-create,
+        unit-lsp,
+        unit-windows,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-skills,
+        unit-extension,
+      ]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run linear-time checks
+        run: yarn linear-time:all
+
   # ── Stage 4: End-to-end tests (after every stage 3 job passes) ──────────────────
 
   e2e-pkg-static:
@@ -552,7 +613,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [integration-pkg, integration-docs, integration-skills, node-floor]
+    needs:
+      [
+        integration-pkg,
+        integration-docs,
+        integration-skills,
+        node-floor,
+        linear-time,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -582,7 +650,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [integration-pkg, integration-docs, integration-skills, node-floor]
+    needs:
+      [
+        integration-pkg,
+        integration-docs,
+        integration-skills,
+        node-floor,
+        linear-time,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -621,7 +696,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [integration-pkg, integration-docs, integration-skills, node-floor]
+    needs:
+      [
+        integration-pkg,
+        integration-docs,
+        integration-skills,
+        node-floor,
+        linear-time,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -651,7 +733,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [integration-pkg, integration-docs, integration-skills, node-floor]
+    needs:
+      [
+        integration-pkg,
+        integration-docs,
+        integration-skills,
+        node-floor,
+        linear-time,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -681,7 +770,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [integration-pkg, integration-docs, integration-skills, node-floor]
+    needs:
+      [
+        integration-pkg,
+        integration-docs,
+        integration-skills,
+        node-floor,
+        linear-time,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -711,7 +807,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [integration-pkg, integration-docs, integration-skills, node-floor]
+    needs:
+      [
+        integration-pkg,
+        integration-docs,
+        integration-skills,
+        node-floor,
+        linear-time,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -741,7 +844,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [integration-pkg, integration-docs, integration-skills, node-floor]
+    needs:
+      [
+        integration-pkg,
+        integration-docs,
+        integration-skills,
+        node-floor,
+        linear-time,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -764,16 +874,15 @@ jobs:
         run: yarn create:test-site
 
   # ── Stage 5: Deploy to Cloudflare (after every stage 4 job passes) ──────────────
-  # Pushes to main deploy both Workers to production. A pull request from a branch of this repo uploads a Preview
-  # version of each under one alias per branch and lists the URLs in a single PR comment; a fork's pull request has no
-  # secrets and skips the stage. The token reaches only the Wrangler steps. Runbook: DEPLOYMENT.md.
+  # Runs only on a branch push in this repository, never on a pull_request event, a tag, or a fork. A push to main
+  # deploys both Workers to production. A push to any other branch uploads a Preview version of each under one alias
+  # per branch, lists both URLs in the run summary, and updates the single Preview comment on the branch's open pull
+  # request, if it has one. The token reaches only the Wrangler steps. Runbook: DEPLOYMENT.md.
 
   deploy-docs:
     name: Deploy Docs (bascik.dev)
     runs-on: ubuntu-latest
-    if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && github.repository == 'bascikdev/bascik'
     permissions:
       contents: read
     needs:
@@ -786,12 +895,11 @@ jobs:
         e2e-docs,
         e2e-create,
       ]
-    # One deploy per ref at a time. A newer push to a pull request replaces its running Preview upload; on main a
-    # running production deploy always finishes. The group does not order runs, so the newest-commit step below keeps
-    # an older commit whose tests finished late from replacing a newer one.
-    concurrency:
-      group: deploy-docs-${{ github.ref }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    # No job-level concurrency group, on purpose. The workflow's group already cancels an older run of a branch, so a
+    # branch has one run in stage 5 at a time. On main a shared job group would hold one pending deploy and let an older
+    # commit's deploy that queued later cancel a newer commit's pending one, leaving the newest commit undeployed. Main
+    # deploys therefore never wait or get canceled; the newest-commit step right before Wrangler keeps an older commit
+    # whose tests finished late from replacing a newer one.
     outputs:
       preview-url: ${{ steps.upload.outputs.url }}
     steps:
@@ -824,28 +932,28 @@ jobs:
       - name: Build package and docs
         run: yarn pkg:build && yarn docs:build
 
-      # Runs inside the concurrency group, right before Wrangler. Skips the upload or deploy when the branch has moved
-      # on: a newer commit that finished testing first has already deployed, or will, and this one must not replace it.
+      # Runs right before Wrangler. Skips the upload or deploy when the branch has moved on: a newer commit that
+      # finished testing first has already deployed, or will, and this one must not replace it.
       - name: Check this is still the newest commit
         id: newest
         env:
-          REF: ${{ github.event_name == 'pull_request' && format('refs/heads/{0}', github.head_ref) || github.ref }}
-          SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
         run: |
           newest="$(node .github/scripts/newest-commit.mjs "$REF" "$SHA")"
           echo "newest=$newest" >> "$GITHUB_OUTPUT"
 
       - name: Compute the Preview alias
-        if: github.event_name == 'pull_request'
+        if: github.ref != 'refs/heads/main'
         id: alias
         env:
-          HEAD_REF: ${{ github.head_ref }}
+          BRANCH: ${{ github.ref_name }}
         run: |
-          alias="$(node .github/scripts/preview-alias.mjs "$HEAD_REF" bascik bascik-streaming-test)"
+          alias="$(node .github/scripts/preview-alias.mjs "$BRANCH" bascik cloudflare-adapter)"
           echo "alias=$alias" >> "$GITHUB_OUTPUT"
 
       - name: Upload a Preview version
-        if: github.event_name == 'pull_request' && steps.newest.outputs.newest == 'true'
+        if: github.ref != 'refs/heads/main' && steps.newest.outputs.newest == 'true'
         id: upload
         working-directory: docs
         env:
@@ -853,20 +961,21 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-docs.ndjson
           ALIAS: ${{ steps.alias.outputs.alias }}
-          MESSAGE: "PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.head.sha }} merged into ${{ github.base_ref }}"
+          MESSAGE: "Preview ${{ steps.alias.outputs.alias }} at ${{ github.sha }}"
         run: |
           yarn wrangler versions upload --preview-alias "$ALIAS" --message "$MESSAGE"
           url="$(node ../.github/scripts/wrangler-preview-url.mjs "$WRANGLER_OUTPUT_FILE_PATH")"
           echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Docs Preview: $url" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke-test the Preview
-        if: github.event_name == 'pull_request' && steps.newest.outputs.newest == 'true'
+        if: github.ref != 'refs/heads/main' && steps.newest.outputs.newest == 'true'
         env:
           URL: ${{ steps.upload.outputs.url }}
         run: node .github/scripts/smoke-test.mjs "$URL" /=200 /components=200 /components/=307 /semantic-html=301 /name-attribute=301 /no-such-page=404
 
       - name: Deploy to production
-        if: github.event_name == 'push' && steps.newest.outputs.newest == 'true'
+        if: github.ref == 'refs/heads/main' && steps.newest.outputs.newest == 'true'
         working-directory: docs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -875,15 +984,13 @@ jobs:
         run: yarn wrangler deploy --message "$MESSAGE"
 
       - name: Smoke-test production
-        if: github.event_name == 'push' && steps.newest.outputs.newest == 'true'
+        if: github.ref == 'refs/heads/main' && steps.newest.outputs.newest == 'true'
         run: node .github/scripts/smoke-test.mjs https://bascik.dev /=200 /components=200 /semantic-html=301
 
   deploy-demo:
     name: Deploy Adapter Demo (cloudflare-adapter.bascik.dev)
     runs-on: ubuntu-latest
-    if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && github.repository == 'bascikdev/bascik'
     permissions:
       contents: read
     needs:
@@ -896,9 +1003,7 @@ jobs:
         e2e-docs,
         e2e-create,
       ]
-    concurrency:
-      group: deploy-demo-${{ github.ref }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    # No job-level concurrency group: see deploy-docs.
     outputs:
       preview-url: ${{ steps.upload.outputs.url }}
     steps:
@@ -929,28 +1034,28 @@ jobs:
       - name: Build package, adapter, and demo
         run: yarn adapter:cf:demo:build
 
-      # Runs inside the concurrency group, right before Wrangler. Skips the upload or deploy when the branch has moved
-      # on: a newer commit that finished testing first has already deployed, or will, and this one must not replace it.
+      # Runs right before Wrangler. Skips the upload or deploy when the branch has moved on: a newer commit that
+      # finished testing first has already deployed, or will, and this one must not replace it.
       - name: Check this is still the newest commit
         id: newest
         env:
-          REF: ${{ github.event_name == 'pull_request' && format('refs/heads/{0}', github.head_ref) || github.ref }}
-          SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
         run: |
           newest="$(node .github/scripts/newest-commit.mjs "$REF" "$SHA")"
           echo "newest=$newest" >> "$GITHUB_OUTPUT"
 
       - name: Compute the Preview alias
-        if: github.event_name == 'pull_request'
+        if: github.ref != 'refs/heads/main'
         id: alias
         env:
-          HEAD_REF: ${{ github.head_ref }}
+          BRANCH: ${{ github.ref_name }}
         run: |
-          alias="$(node .github/scripts/preview-alias.mjs "$HEAD_REF" bascik bascik-streaming-test)"
+          alias="$(node .github/scripts/preview-alias.mjs "$BRANCH" bascik cloudflare-adapter)"
           echo "alias=$alias" >> "$GITHUB_OUTPUT"
 
       - name: Upload a Preview version
-        if: github.event_name == 'pull_request' && steps.newest.outputs.newest == 'true'
+        if: github.ref != 'refs/heads/main' && steps.newest.outputs.newest == 'true'
         id: upload
         working-directory: adapters/cloudflare
         env:
@@ -958,21 +1063,22 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-demo.ndjson
           ALIAS: ${{ steps.alias.outputs.alias }}
-          MESSAGE: "PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.head.sha }} merged into ${{ github.base_ref }}"
+          MESSAGE: "Preview ${{ steps.alias.outputs.alias }} at ${{ github.sha }}"
         run: |
           yarn wrangler versions upload --config e2e/fixture/dist/.bascik/cloudflare/wrangler.jsonc --preview-alias "$ALIAS" --message "$MESSAGE"
           url="$(node ../../.github/scripts/wrangler-preview-url.mjs "$WRANGLER_OUTPUT_FILE_PATH")"
           echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Adapter demo Preview: $url" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke-test the Preview
-        if: github.event_name == 'pull_request' && steps.newest.outputs.newest == 'true'
+        if: github.ref != 'refs/heads/main' && steps.newest.outputs.newest == 'true'
         env:
           URL: ${{ steps.upload.outputs.url }}
         run: node .github/scripts/smoke-test.mjs "$URL" /=200 /catalog=200 /catalog-stream=200
 
       # Also attaches the custom domain listed in the fixture's wrangler.jsonc `routes`.
       - name: Deploy to production
-        if: github.event_name == 'push' && steps.newest.outputs.newest == 'true'
+        if: github.ref == 'refs/heads/main' && steps.newest.outputs.newest == 'true'
         working-directory: adapters/cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -981,24 +1087,22 @@ jobs:
         run: yarn wrangler deploy --config e2e/fixture/dist/.bascik/cloudflare/wrangler.jsonc --message "$MESSAGE"
 
       - name: Smoke-test production
-        if: github.event_name == 'push' && steps.newest.outputs.newest == 'true'
+        if: github.ref == 'refs/heads/main' && steps.newest.outputs.newest == 'true'
         run: node .github/scripts/smoke-test.mjs https://cloudflare-adapter.bascik.dev /=200 /catalog=200 /catalog-stream=200
 
-  # Runs after both uploads, so the comment always lists two URLs from the same commit. A run whose commit was no
-  # longer the newest uploaded nothing and leaves the comment to the newer run.
+  # Runs after both uploads, so the summary and the comment always list two URLs from the same commit. A run whose
+  # commit was no longer the newest uploaded nothing and leaves both to the newer run. A branch without an open pull
+  # request in this repo gets the summary only.
   preview-comment:
-    name: Comment Preview URLs
+    name: Publish Preview URLs
     runs-on: ubuntu-latest
     if: >-
-      github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event_name == 'push' && github.ref != 'refs/heads/main' &&
       needs.deploy-docs.outputs.preview-url != '' && needs.deploy-demo.outputs.preview-url != ''
     permissions:
       contents: read
       pull-requests: write
     needs: [deploy-docs, deploy-demo]
-    concurrency:
-      group: preview-comment-${{ github.ref }}
-      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1009,13 +1113,12 @@ jobs:
         with:
           node-version: 24
 
-      - name: Create or update the Preview comment
+      # A push run builds the branch commit itself, github.sha, so that is the commit the comment names.
+      - name: Write the summary and the pull request comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          MERGE_SHA: ${{ github.sha }}
-          BASE_REF: ${{ github.base_ref }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           DOCS_PREVIEW_URL: ${{ needs.deploy-docs.outputs.preview-url }}
           DEMO_PREVIEW_URL: ${{ needs.deploy-demo.outputs.preview-url }}

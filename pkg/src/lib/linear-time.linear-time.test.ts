@@ -23,6 +23,7 @@ import {
   minSampleMs,
   resolutionOf,
   cpuMsResolution,
+  requireLinearTimeProject,
 } from "./linear-time.test-helper.ts";
 
 const SIZE = 200_000;
@@ -404,6 +405,17 @@ describe("expectLinearTime", () => {
       measureGrowth(items, 1_000, (list) => (spent += list.length), clock)
         .growth,
     ).toBeCloseTo(4, 9);
+  });
+
+  // The unit project runs on Windows on every pull request, where a check
+  // takes seconds: measurements belong in *.linear-time.test.ts files.
+  it("refuses to measure in the unit project, and says where the test goes", () => {
+    expect(() => requireLinearTimeProject("unit")).toThrow(
+      /move this test into a \*\.linear-time\.test\.ts file/,
+    );
+    expect(() => requireLinearTimeProject("linear-time")).not.toThrow();
+    expect(() => requireLinearTimeProject("integration")).not.toThrow();
+    expect(() => requireLinearTimeProject(undefined)).not.toThrow();
   });
 
   it(

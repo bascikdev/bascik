@@ -10,6 +10,10 @@
  * growth is in the band load reaches on linear work. The run cap rises with
  * the sample target: a run of microseconds capped at 64 runs reached only
  * one Windows tick and read a growth of 9.2.
+ *
+ * Tests that call `growthOf` go in `<name>.linear-time.test.ts`: the
+ * `linear-time` Vitest project runs them (`yarn workspace
+ * @bascik/language-server linear-time`), and the `unit` project skips them.
  */
 import { TestRunner } from "vitest";
 

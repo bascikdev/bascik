@@ -10,10 +10,6 @@ import {
   formatApiRouteWarning,
   type ApiRouteDefinition,
 } from "./api-routes.ts";
-import {
-  expectLinearTime,
-  LINEAR_TIME_TIMEOUT_MS,
-} from "./linear-time.test-helper.ts";
 
 // Route files are the script extensions components and configs accept:
 // .ts, .mts, .js, .mjs. Anything else in the folder (types, notes, CommonJS)
@@ -72,19 +68,6 @@ describe("fileToApiRoutePath", () => {
   ])("maps %j to %j", (relPath, expected) => {
     expect(fileToApiRoutePath(relPath)).toBe(expected);
   });
-
-  it(
-    "runs in linear time on a long slash run inside the path",
-    () => {
-      // `/\/+$/` is quadratic on a slash run that does not end the string.
-      const relPath = (slashes: number) => `a${"/".repeat(slashes)}b.ts`;
-      expect(fileToApiRoutePath(relPath(50_000))).toBe(
-        `/api/a${"/".repeat(50_000)}b`,
-      );
-      expectLinearTime(relPath, 50_000, fileToApiRoutePath);
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
 });
 
 describe("API route matching (pure)", () => {

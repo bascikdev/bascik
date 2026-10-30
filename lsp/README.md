@@ -2,7 +2,7 @@
 
 Official Language Server Protocol (LSP) server for Bascik projects.
 
-Provides editor-agnostic intelligence for Bascik HTML components, props, slots, mutually exclusive script directives, and scoping diagnostics across any LSP-compatible editor.
+Provides editor-agnostic intelligence for Bascik HTML components, props, slots, mutually exclusive script directives, and scoping diagnostics across any LSP-compatible editor. Use it to wire Bascik into Neovim, Zed, Helix, a coding agent, or CI. In VS Code, install the [Bascik extension](https://bascik.dev/tools/vscode-extension) instead: it bundles this server. Requires Node.js 22.22 or newer. Every rule is documented on the [Linter](https://bascik.dev/tools/linter) page.
 
 ## Capabilities
 
@@ -97,3 +97,18 @@ npx @bascik/language-server --check --fix    # also apply the fixes that have on
 ```
 
 `--project <path>` names the project when the target lives outside it, such as a monorepo's shared components. The exit code is 1 when any error is found, otherwise 0. `--fix` applies the prop prefix and self-closing fixes above and rewrites those files; the `html` wrap fix is never applied there.
+
+## Development
+
+The diagnostics, completions, hovers, and definitions are implemented once, here in `src/`; the VS Code extension bundles this server rather than reimplementing any of it. From the repository root:
+
+```sh
+yarn lsp:build      # compile dist/
+yarn lsp:typecheck  # TypeScript type check
+yarn lsp:unit       # unit tests
+yarn lsp:linear-time # linear-time scaling checks (CPU growth on large input; CI runs them on Linux)
+yarn lsp:coverage   # unit tests with coverage, written to lsp/test-coverage.json
+yarn lsp:check      # build, then run --check on the repository
+```
+
+When you change `src/server.ts` (project discovery, file watching, publishing), also run `yarn ext:unit` and `yarn ext:e2e`, which start the real server bundle.

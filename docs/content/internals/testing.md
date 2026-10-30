@@ -2,12 +2,23 @@
 
 Bascik organizes verification across three distinct levels: **unit tests** that verify isolated functions and modules, **integration tests** that exercise real process boundaries, compilers, and cross-subsystem compositions, and **end-to-end tests** (Playwright) that build and browser-test the full transpilation pipeline against a live server.
 
+## Test Coverage
+
+Each workspace commits a `test-coverage.json` with its coverage totals, and the table below reads all eight files when the docs are built. Run `yarn coverage:all` to regenerate every file, or the workspace's own script named in the table.
+
+- **Unit rows** come from each workspace's Vitest unit tests. `@bascik/bascik` counts its `unit` project only, never its integration tests or linear-time checks. Its CLI entry points (`index.ts`, `transpile.ts`, `page-worker.ts`) are excluded, because only the E2E run reaches them.
+- **E2E build steps** is measured separately, with V8 coverage captured while the CLI builds the E2E fixture site and runs the dev and production servers. It covers the entry points, startup, and worker threads that unit tests cannot reach.
+- **`bascik-vscode`** is low because most of the extension calls the VS Code API and runs only in the `yarn ext:e2e` suite, which is not measured. The diagnostics, completions, hovers, and definitions it shows are tested in `@bascik/language-server`.
+- **`bascik-docs`** includes the docs' integration tests and covers the build-time helpers in `docs/src/lib/` and the scripts in `docs/scripts/`.
+- **`bascik-skills-tests`** measures the public agent skills' scripts in `skills/`.
+
 ## Testing Levels and Architecture
 
 The codebase distinguishes test runners from testing levels:
 
 - **Unit tests (Vitest):** Run with `yarn unit:all` or per-workspace commands. Verify isolated functions, HTML, CSS, and JavaScript string transforms, and CSS scoping using deterministic inputs and minimal mocks where isolation is required.
 - **Integration tests (Vitest):** Run separately with `yarn integration:all` or per-package `integration` commands. Rather than isolating units, these exercise real subsystems collaborating across real boundaries. Key examples include real CLI child-process builds (`worker-serial-parity.integration.test.ts`), real worker thread lifecycles (`worker-pool.real.integration.test.ts`), real dev server module invalidation (`dev-module-reload.integration.test.ts`), real project scaffolding to compiler execution (`scaffold.integration.test.ts`), and serverless runtime parity (`serverless-parity.integration.test.ts`).
+- **Linear-time checks (Vitest):** Run separately with `yarn linear-time:all` or per-package `linear-time` commands. They time CPU growth on hostile input (see [Time-Boundary Testing Model](#time-boundary-testing-model)), which takes seconds per check on Windows, so they live in `*.linear-time.test.ts` files outside the unit suite.
 - **End-to-end tests (Playwright):** Run via `yarn pkg:e2e`, `yarn pkg:e2e:dev`, or `yarn pkg:e2e:prod`. These boot actual servers (static file server, live dev server with SSE, HTTP/1.1 cleartext, or HTTP/2 TLS production server) and navigate headless browsers to verify real DOM rendering, script execution, and user interaction.
 
 ### The Real versus Mocked Boundary Rule
@@ -68,8 +79,20 @@ yarn skills:integration # bascik-skills-tests (bascik-refactor parity checks in 
 # Interactive watch mode (pkg)
 yarn pkg:integration:watch
 
-# Run both unit and integration suites for the package
+# Run the unit, integration, and linear-time suites for the package
 yarn pkg:test:all
+```
+
+## Running Linear-Time Checks
+
+The checks that guard against super-linear work (see [Time-Boundary Testing Model](#time-boundary-testing-model)) live in `*.linear-time.test.ts` files next to the module's other tests, and run in their own Vitest project. Each check times several samples in CPU time, which Windows counts in ticks of about 15.6 ms, so a check takes seconds there and milliseconds on Linux and macOS. Keeping them out of the `unit` project keeps the unit suite fast on every operating system. CI runs them once, on Linux, in the integration stage.
+
+```sh
+# Workspace-wide linear-time checks
+yarn linear-time:all
+
+# @bascik/bascik only
+yarn pkg:linear-time
 ```
 
 ## Running E2E Tests
@@ -239,7 +262,7 @@ test.describe("my-feature-test page", () => {
 
 ## Test Configuration
 
-Vitest is configured in `pkg/vite.config.js` with two projects: `unit` (fast, excludes `*.integration.test.ts`) and `integration` (only `*.integration.test.ts`):
+Vitest is configured in `pkg/vite.config.js` with three projects: `unit` (fast, excludes `*.integration.test.ts` and `*.linear-time.test.ts`), `integration` (only `*.integration.test.ts`), and `linear-time` (only `*.linear-time.test.ts`):
 
 ```js
 export default defineConfig({
@@ -260,7 +283,10 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["src/**/*.test.ts", "e2e/scripts/**/*.test.ts"],
-          exclude: ["src/**/*.integration.test.ts"],
+          exclude: [
+            "src/**/*.integration.test.ts",
+            "src/**/*.linear-time.test.ts",
+          ],
           env: { BASCIK_VERIFY_SCOPING_TEMPLATES: "1" },
           // Whether the run collects coverage, for calibrated cost ratios.
           globalSetup: ["./vitest.coverage-setup.ts"],
@@ -271,6 +297,15 @@ export default defineConfig({
           name: "integration",
           include: ["src/**/*.integration.test.ts"],
           // Projects inherit the root `benchmark.include`; run benchmarks once.
+          benchmark: { exclude: ["bench/**"] },
+          env: { BASCIK_VERIFY_SCOPING_TEMPLATES: "1" },
+          globalSetup: ["./vitest.coverage-setup.ts"],
+        },
+      },
+      {
+        test: {
+          name: "linear-time",
+          include: ["src/**/*.linear-time.test.ts"],
           benchmark: { exclude: ["bench/**"] },
           env: { BASCIK_VERIFY_SCOPING_TEMPLATES: "1" },
           globalSetup: ["./vitest.coverage-setup.ts"],
@@ -342,7 +377,7 @@ Bascik uses five test mechanics for time-sensitive behavior. This keeps framewor
 4. **Browser context timing with `page.clock`:** Browser-only scheduling behavior is tested with Playwright clock controls in the browser runtime.
 5. **External watchdogs on wall clock:** Startup, sockets, and filesystem event flows use real time to match production boundaries.
 
-Tests that guard against super-linear work on hostile input (masking, tag and attribute scans, request-time rendering) do not use fixed wall-clock bounds, which flaked on loaded CI runners. `linear-time.test-helper.ts` (`expectLinearTime`, `expectLinearTimeAsync`) times a quarter-size and a full-size input in this thread's CPU time, interleaved over several samples, keeps the fastest of each, and requires the growth ratio to stay under `MAX_GROWTH` (12): linear work grows about 4 times when the input quadruples, quadratic work about 16. A run too fast to time is repeated within a sample, a growth in the band that load reaches is sampled again, a fixed cost both sizes share is measured as a `baseline` and taken out, and a full-size ceiling still fails catastrophic regressions. Work that a cap keeps linear but slow is checked with `expectCostRatio` against reference work in the same process, with separate limits with and without coverage. A test that measures growth must set `LINEAR_TIME_TIMEOUT_MS` as its timeout, because Windows counts CPU time in coarse ticks and the check takes seconds there; the helper throws otherwise. The language server's tests share the same approach (`lsp/src/linear-time.test.util.ts`).
+Tests that guard against super-linear work on hostile input (masking, tag and attribute scans, request-time rendering) do not use fixed wall-clock bounds, which flaked on loaded CI runners. `linear-time.test-helper.ts` (`expectLinearTime`, `expectLinearTimeAsync`) times a quarter-size and a full-size input in this thread's CPU time, interleaved over several samples, keeps the fastest of each, and requires the growth ratio to stay under `MAX_GROWTH` (12): linear work grows about 4 times when the input quadruples, quadratic work about 16. A run too fast to time is repeated within a sample, a growth in the band that load reaches is sampled again, a fixed cost both sizes share is measured as a `baseline` and taken out, and a full-size ceiling still fails catastrophic regressions. Work that a cap keeps linear but slow is checked with `expectCostRatio` against reference work in the same process, with separate limits with and without coverage. A test that measures growth goes in a `*.linear-time.test.ts` file and sets `LINEAR_TIME_TIMEOUT_MS` as its timeout, because Windows counts CPU time in coarse ticks and the check takes seconds there. The helper throws in a test of the `unit` project, and in a test with a shorter timeout. The language server's tests share the same approach (`lsp/src/linear-time.test.util.ts`).
 
 For architecture ownership, cancellation rules, and timeout surfaces, see [Time Boundaries](/internals/time-boundaries).
 
@@ -398,9 +433,10 @@ The root `package.json` provides aggregated tasks across all projects:
 - `yarn check:all`: runs formatting (`check:format`), spelling (`check:spelling`), and web standards (`check:standards`)
 - `yarn unit:all`: runs unit test suites across all packages
 - `yarn integration:all`: runs the long-running integration test suite
+- `yarn linear-time:all`: runs the linear-time checks (`pkg` and `lsp`)
 - `yarn e2e:all`: runs Playwright E2E suites across the workspace (the four `pkg` lanes in parallel through `yarn pkg:e2e:all`, then docs and the Cloudflare adapter)
 - `yarn coverage:all`: generates and updates coverage reports across all packages
-- `yarn test:all`: runs typechecks, spelling/standards checks, unit tests, integration tests, and E2E suites in sequence (coverage excluded)
+- `yarn test:all`: runs typechecks, spelling/standards checks, unit tests, integration tests, linear-time checks, and E2E suites in sequence (coverage excluded)
 
 ## Contributing a Fix
 
@@ -408,6 +444,6 @@ The root `package.json` provides aggregated tasks across all projects:
 2. Make your changes in `pkg/src/`.
 3. Add or update tests in the paired `*.test.ts` file.
 4. Run `yarn pkg:unit` and ensure all tests pass.
-5. Run `yarn pkg:integration` if your change touches a real process, server, or worker boundary.
+5. Run `yarn pkg:integration` if your change touches a real process, server, or worker boundary, and `yarn pkg:linear-time` if it touches a scan, masking, or rendering loop that a linear-time check covers.
 6. Run `yarn pkg:typecheck` to confirm there are no TypeScript errors.
 7. Open a pull request against `main`.

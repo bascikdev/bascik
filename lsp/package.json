@@ -43,12 +43,13 @@
     "build": "tsc -p ./tsconfig.json",
     "watch": "tsc -watch -p ./tsconfig.json",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
-    "test": "vitest run",
-    "test:ci": "vitest run",
-    "unit": "vitest run",
-    "coverage": "vitest run --coverage.enabled && node bin/update-coverage.ts",
+    "test": "vitest run --project unit",
+    "test:ci": "vitest run --project unit",
+    "unit": "vitest run --project unit",
+    "linear-time": "vitest run --project linear-time",
+    "coverage": "vitest run --project unit --coverage.enabled && node bin/update-coverage.ts",
     "cover": "yarn coverage",
-    "update-coverage": "vitest run --coverage.enabled && node bin/update-coverage.ts"
+    "update-coverage": "vitest run --project unit --coverage.enabled && node bin/update-coverage.ts"
   },
   "dependencies": {
     "vscode-languageserver": "^10.1.2",

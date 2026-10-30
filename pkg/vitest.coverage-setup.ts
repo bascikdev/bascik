@@ -1,5 +1,5 @@
 /**
- * Global setup for both Vitest projects (vite.config.js): tells the tests
+ * Global setup for every Vitest project (vite.config.js: unit, integration, linear-time): tells the tests
  * whether this run collects coverage, which slows the code under test and
  * not the plain JavaScript a calibrated cost ratio compares it with
  * (`coverageEnabled` in src/lib/linear-time.test-helper.ts). It reads the

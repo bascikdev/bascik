@@ -89,6 +89,22 @@ const inResampleBand = (growth: number): boolean =>
 export const LINEAR_TIME_TIMEOUT_MS = 60_000;
 
 /**
+ * Throws in a test of the `unit` Vitest project (vite.config.js). A check
+ * takes seconds on Windows, where the unit suite runs on every pull request,
+ * so measurements live in `*.linear-time.test.ts` files (the `linear-time`
+ * project, run once on Linux) or in integration tests. Outside a test, or
+ * without a project name, it does nothing.
+ */
+export const requireLinearTimeProject = (
+  projectName: string | undefined,
+): void => {
+  if (projectName === "unit")
+    throw new Error(
+      "measures CPU time, which takes seconds on Windows: move this test into a *.linear-time.test.ts file (the linear-time Vitest project)",
+    );
+};
+
+/**
  * Throws in a test whose timeout is under `LINEAR_TIME_TIMEOUT_MS`. Windows
  * counts CPU time in ticks of about 15.6 ms, so a sample spans eight of them
  * and a check takes seconds there, while it takes milliseconds on macOS and
@@ -97,7 +113,9 @@ export const LINEAR_TIME_TIMEOUT_MS = 60_000;
  * so a fake clock skips the check. Outside a test (a hook) it does nothing.
  */
 const requireLinearTimeTimeout = (): void => {
-  const timeout = TestRunner.getCurrentTest()?.timeout;
+  const test = TestRunner.getCurrentTest();
+  requireLinearTimeProject(test?.file.projectName);
+  const timeout = test?.timeout;
   if (timeout !== undefined && timeout < LINEAR_TIME_TIMEOUT_MS)
     throw new Error(
       `measures CPU time, which takes seconds on Windows: give this test LINEAR_TIME_TIMEOUT_MS (it has ${timeout} ms)`,
@@ -110,7 +128,7 @@ const threadCpuUsage: (previous?: NodeJS.CpuUsage) => NodeJS.CpuUsage =
 
 /**
  * Whether this run collects coverage, from the resolved Vitest
- * configuration (vitest.coverage-setup.ts, a global setup of both projects).
+ * configuration (vitest.coverage-setup.ts, a global setup of every project).
  * Coverage slows the code under test and not plain JavaScript, so a
  * calibrated cost ratio needs a limit for each. It throws rather than guess:
  * a run that took the looser limit by mistake would let through what the
