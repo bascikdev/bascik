@@ -40,6 +40,26 @@ const storeSample = async (key = "test-page", components: string[] = []) => {
 // storePage / getPage round-trip
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe("storePage emits page-stored", () => {
+  it("fires once the page is retrievable, with the relative page path", async () => {
+    // Same fresh module graph as `mem`, so this is the emitter mem uses.
+    const { eventEmitter } = await import("./events.ts");
+    const seen: Array<{ relativePagePath: string; stored: boolean }> = [];
+    const listener = ({ relativePagePath }: { relativePagePath: string }) =>
+      seen.push({
+        relativePagePath,
+        stored: mem.getPageExact(relativePagePath) !== undefined,
+      });
+    eventEmitter.on("page-stored", listener);
+    try {
+      await storeSample("evt-test");
+    } finally {
+      eventEmitter.removeListener("page-stored", listener);
+    }
+    expect(seen).toEqual([{ relativePagePath: "evt-test", stored: true }]);
+  });
+});
+
 describe("storePage + getPage round-trip", () => {
   it("returns the stored page for the correct httpPath", async () => {
     await storeSample("rt-test");
@@ -586,5 +606,133 @@ describe("storePage precomputes serverScriptPlan", () => {
     } finally {
       errorSpy.mockRestore();
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// storePage carries the component manifest of its publication (prompt 157)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("storePage carries the component manifest of its publication (prompt 157)", () => {
+  // A page's server and stream scripts render component tags at request time
+  // with the manifest its page was built against (D6). The store keeps the
+  // reference it was handed, so a page re-stored by a later publication
+  // carries that publication's manifest while a page the publication did not
+  // touch keeps the old one: a request never mixes two versions.
+  const manifestFor = (
+    version: string,
+  ): import("./component-manifest.ts").ComponentManifest => ({
+    schema: 1,
+    identifiers: false,
+    minifyHtml: false,
+    base: "/",
+    inheritAttributes: true,
+    components: {
+      "server-card": {
+        name: "server-card",
+        filePath: `src/components/server-card/server-card.html#${version}`,
+        template: null,
+        css: null,
+        jobs: [],
+        cspStable: { style: true, script: true },
+        scriptHashes: [],
+      },
+    },
+  });
+  const SERVER_PAGE = `<p>a</p><script data-bascik-server>export default () => '<server-card></server-card>';</script>`;
+
+  it("a StoredPage carries the manifest it was stored with, by reference", async () => {
+    const manifest = manifestFor("one");
+    await mem.storePage({
+      relativePagePath: "manifest-page",
+      absolutePagePath: "manifest-page",
+      pageContent: SERVER_PAGE,
+      usedComponentsNames: [],
+      componentManifest: manifest,
+    });
+    const page = mem.getPage("manifest-page")!;
+    expect(page.serverScriptPlan).toBeDefined();
+    expect(page.componentManifest).toBe(manifest);
+  });
+
+  it("a page stored after invalidation carries the new manifest and the old page keeps the old reference", async () => {
+    const first = manifestFor("one");
+    await mem.storePage({
+      relativePagePath: "page-a",
+      absolutePagePath: "page-a",
+      pageContent: SERVER_PAGE,
+      usedComponentsNames: [],
+      componentManifest: first,
+    });
+    await mem.storePage({
+      relativePagePath: "page-b",
+      absolutePagePath: "page-b",
+      pageContent: SERVER_PAGE,
+      usedComponentsNames: [],
+      componentManifest: first,
+    });
+
+    // The component list was invalidated and only page-b was re-stored.
+    const second = manifestFor("two");
+    await mem.storePage({
+      relativePagePath: "page-b",
+      absolutePagePath: "page-b",
+      pageContent: SERVER_PAGE,
+      usedComponentsNames: [],
+      componentManifest: second,
+    });
+
+    expect(mem.getPage("page-a")!.componentManifest).toBe(first);
+    expect(mem.getPage("page-b")!.componentManifest).toBe(second);
+    expect(mem.getPage("page-b")!.componentManifest).not.toBe(first);
+  });
+
+  // Prompt 157 remeasure: the renderer's per-page work (the component tag
+  // search, the plan's modes) is done when the page is stored, so the first
+  // request to a server or stream route does not pay for it.
+  const renderable = () => {
+    const manifest = manifestFor("one");
+    manifest.components["server-card"].template = {
+      fileContent: ["<p>card</p>"],
+    } as never;
+    return manifest;
+  };
+
+  it("storing a server page with a renderable manifest compiles its component search then", async () => {
+    const { __componentScanStatsForTests: stats } =
+      await import("./component-scan-stats.ts");
+    const before = stats.searchesCompiled;
+    await mem.storePage({
+      relativePagePath: "prepared-page",
+      absolutePagePath: "prepared-page",
+      pageContent: SERVER_PAGE,
+      usedComponentsNames: [],
+      componentManifest: renderable(),
+    });
+    expect(stats.searchesCompiled).toBe(before + 1);
+  });
+
+  it("misuse: a static page stored with a manifest prepares nothing", async () => {
+    const { __componentScanStatsForTests: stats } =
+      await import("./component-scan-stats.ts");
+    const before = stats.searchesCompiled;
+    await mem.storePage({
+      relativePagePath: "static-with-manifest",
+      absolutePagePath: "static-with-manifest",
+      pageContent: "<p>static</p>",
+      usedComponentsNames: [],
+      componentManifest: renderable(),
+    });
+    expect(stats.searchesCompiled).toBe(before);
+  });
+
+  it("a page stored without a manifest carries none, so a static site pays nothing", async () => {
+    await mem.storePage({
+      relativePagePath: "plain-page",
+      absolutePagePath: "plain-page",
+      pageContent: "<p>static</p>",
+      usedComponentsNames: [],
+    });
+    expect(mem.getPage("plain-page")!.componentManifest).toBeUndefined();
   });
 });

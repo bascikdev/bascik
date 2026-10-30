@@ -71,6 +71,6 @@ When you run `bascik` or `npm run dev`:
 2. **Change Detection:** On an observed add, change, or deletion, Bascik identifies dependent pages.
 3. **Phase Ordering:** Matching pre scripts finish before dependency-content memoization is invalidated. Result caching stays enabled and rechecks dependency bytes. Parallel starts alongside compilation.
 4. **Selective Re-Transpile:** Known dependents rebuild. An extra watch path with no known dependents falls back to all pages.
-5. **Live Reload:** After successful compilation and post scripts, the cycle publishes its buffered page reloads. Failures publish errors instead. Exec completion alone emits none; later source edits retry failed paths.
+5. **Live Reload:** When a `post` script matches the edit, every page reload waits until compilation and that script succeed. When none matches, a page open in a browser reloads as soon as it is compiled, ahead of the pages still compiling, and the other reloads follow when the cycle ends. Failures publish errors instead of the held reloads. Exec completion alone emits none; later source edits retry failed paths.
 
 > **Testing and Verifying:** To test watch paths locally, start `npx bascik`, edit a watched Markdown or JSON file in another terminal, and observe the re-transpile log in the server console.

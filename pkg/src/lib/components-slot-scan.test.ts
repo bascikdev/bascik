@@ -16,14 +16,41 @@ describe("named slots inside nested component usages", () => {
     );
   });
 
-  it("treats a colon-qualified tag as opening its prefix name", () => {
+  it("does not read a colon-qualified tag as its prefix name, as a browser does not", () => {
+    // `<x:y>` is the tag `x:y`, not a usage of `x` (browser-tag-names.test.ts),
+    // so the wrapper inside it is the parent's.
     const inner = `<x:y><div data-bascik-slot="s">in</div></x>`;
-    expect(extractNamedSlotContent(inner, names)).toEqual({});
+    expect(extractNamedSlotContent(inner, names)).toEqual({ s: "in" });
+    // A real `x` usage still keeps its wrapper.
+    const nested = `<x><div data-bascik-slot="s">in</div></x>`;
+    expect(extractNamedSlotContent(nested, names)).toEqual({});
   });
 
   it("ignores a usage tag written only after the wrapper", () => {
     const inner = `<div data-bascik-slot="s">a</div><inner-card><b>b</b></inner-card>`;
     expect(extractNamedSlotContent(inner, names)).toEqual({ s: "a" });
+  });
+
+  it("the same text read with another set of component names is parsed for that set, and a result stays unchanged by later reads", () => {
+    // One usage's default and named slots are read from one parse; a read
+    // with other names, or of other text, never answers from it.
+    const inner = `<inner-card><div data-bascik-slot="head">mine</div></inner-card><div data-bascik-slot="head">parent</div>`;
+    const nested = extractNamedSlotContent(inner, names);
+    expect(nested).toEqual({ head: "parent" });
+    expect(extractDefaultSlotContent(inner, names)).toBe(
+      `<inner-card><div data-bascik-slot="head">mine</div></inner-card>`,
+    );
+    // Without the names, both wrappers are this usage's own.
+    expect(extractDefaultSlotContent(inner, new Set())).toBe(
+      `<inner-card></inner-card>`,
+    );
+    expect(extractDefaultSlotContent(inner, names)).toBe(
+      `<inner-card><div data-bascik-slot="head">mine</div></inner-card>`,
+    );
+    expect(extractNamedSlotContent(`${inner} `, names)).toEqual({
+      head: "parent",
+    });
+    expect(nested).toEqual({ head: "parent" });
   });
 
   it("ignores component tag text inside a script or a quoted attribute", () => {

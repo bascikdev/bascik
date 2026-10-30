@@ -22,11 +22,15 @@ import { createHash } from "node:crypto";
 
 const META_MARKER = 'http-equiv="Content-Security-Policy"';
 
-/** The `type` values of a `<script>` whose body runs, or is an import map. Other types are data. */
+/**
+ * The `type` values of a `<script>` whose body runs, or is an import map or speculation rules (browsers check
+ * both against script-src). Other types are data.
+ */
 const EXECUTABLE_TYPES = new Set([
   "",
   "module",
   "importmap",
+  "speculationrules",
   "text/javascript",
   "application/javascript",
 ]);
@@ -87,12 +91,22 @@ export function pagePolicy(scripts: PageScripts): string {
 }
 
 /**
+ * Whether the page's `<head>` already has a policy `<meta>`. Only a real tag counts: a page that shows one in
+ * its text (the CSP how-to does, in a code block) still needs its own policy.
+ */
+function hasPolicyMeta(html: string): boolean {
+  const headEnd = /<\/head\s*>|<body\b/i.exec(html);
+  const head = headEnd ? html.slice(0, headEnd.index) : html;
+  return new RegExp(`<meta\\s[^>]*${META_MARKER}`, "i").test(head);
+}
+
+/**
  * Adds the policy `<meta>` to a built page, right after `<meta charset>` so the encoding declaration stays
  * inside the first 1,024 bytes and the policy applies to every script after it. Returns the page unchanged
  * when it already has a policy or has no `<head>`.
  */
 export function injectCspMeta(html: string): string {
-  if (html.includes(META_MARKER)) return html;
+  if (hasPolicyMeta(html)) return html;
   const meta = `<meta ${META_MARKER} content="${pagePolicy(collectPageScripts(html))}" />`;
   const charset = /<meta\s+charset\s*=[^>]*>/i.exec(html);
   if (charset) {

@@ -18,13 +18,15 @@ Configure Playwright to build and serve your compiled Bascik application before 
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
-  testDir: "./e2e",
+  testDir: "./",
   use: {
     baseURL: "http://localhost:8080",
     headless: true,
   },
   webServer: {
-    command: "npx bascik --build && npx bascik --server",
+    // Playwright runs the command beside this config; the site is one up.
+    cwd: "..",
+    command: "npx bascik --build && npx bascik --server --port 8080",
     url: "http://localhost:8080",
     reuseExistingServer: !process.env.CI,
   },
@@ -33,21 +35,23 @@ export default defineConfig({
 
 ## Identifier Minification & Locator Strategy
 
-In production builds (`bascik --build`), identifier minification (`minify.identifiers: true`) hashes and compresses element IDs and class names (for example, `.card` becomes `.b1a2`). Behavior-oriented E2E tests should avoid depending on raw compiled class or ID selectors.
+In production builds (`bascik --build`), identifier minification (`minify.identifiers: true`) hashes and compresses element IDs and class names (for example, `.card` becomes a 12-character name such as `.b2Y4G9eD1K8b`). Behavior-oriented E2E tests should avoid depending on raw compiled class or ID selectors.
 
 ### Recommended Pattern: `data-testid` Attributes
 
-Add `data-testid` attributes to interactive elements and target them using Playwright's native `page.getByTestId(...)` API:
+Add `data-testid` attributes to interactive elements and target them using Playwright's native `page.getByTestId(...)` API. Bascik never scopes or hashes `data-testid`, so the same locator works in dev and in a production build.
+
+Name them after the component: its root gets `data-testid="<component-name>"`, and each interactive part (a button, field, `<summary>`, or element with an ARIA widget role) gets `data-testid="<component-name>-<part>"`. Forms, dialogs, and landmarks such as `<main>` and `<nav>` get one too. Every instance of a component shares its test ids, so pick one with `.filter({ hasText: "..." })`, or give one its own by putting `data-testid` on the usage tag, which replaces the root's (see [Attribute Inheritance](/attribute-inheritance#what-gets-inherited)). Never put request data or random values in a test id.
 
 ```html
-<!-- src/components/search/search.html -->
+<!-- src/components/search-overlay/search-overlay.html -->
 <div data-testid="search-overlay" class="overlay">
   <input
-    data-testid="search-input"
+    data-testid="search-overlay-input"
     type="search"
     placeholder="Search docs..."
   />
-  <button data-testid="search-submit" type="submit">Search</button>
+  <button data-testid="search-overlay-submit" type="submit">Search</button>
 </div>
 ```
 
@@ -59,13 +63,13 @@ test("search modal opens and filters results", async ({ page }) => {
   await page.goto("/");
 
   const modal = page.getByTestId("search-overlay");
-  const input = page.getByTestId("search-input");
+  const input = page.getByTestId("search-overlay-input");
 
   await page.keyboard.press("Control+k");
   await expect(modal).toBeVisible();
 
   await input.fill("scoped styles");
-  await expect(page.getByTestId("search-result").first()).toContainText(
+  await expect(page.getByTestId("search-overlay-result").first()).toContainText(
     "Scoped Styles",
   );
 });

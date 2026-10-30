@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Symptom-first fixes for Bascik: config errors, unresolved components, scoping surprises, build and server script failures, dev and production server issues."
+    />
+    <title>Troubleshooting Bascik Builds and Servers</title>
+  </head>
+
+  <body>
+    <docs-nav />
+
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
+
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () =>
+              renderSectionLabel("/testing/troubleshooting");
+          </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/testing/troubleshooting.md",
+                {
+                  to: "A component tag in script output reaches the browser as written",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/testing/troubleshooting.md",
+                {
+                  from: "A component tag in script output reaches the browser as written",
+                  to: "`Components a server or stream script cannot return`",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+          <!-- No Preview: an unknown element and escaped text add nothing to look at. -->
+          <component-demo
+            data-bascik-prop-no-preview="true"
+            data-bascik-prop-file="src/pages/help.html"
+          >
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/testing/troubleshooting.md",
+                      "rtc-passthrough-source-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/testing/troubleshooting.md",
+                      "rtc-passthrough-output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/testing/troubleshooting.md",
+                {
+                  from: "`Components a server or stream script cannot return`",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <docs-pagination />
+        </main>
+      </div>
+    </div>
+
+    <docs-footer />
+  </body>
+</html>

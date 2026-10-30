@@ -17,6 +17,12 @@ Shared head markup component. Place inside the head block of a page shell:
     querySelector calls), so no DOM selector rewriting is needed.
   - Because it lives in <head>, keep it dependency-free and synchronous so it
     does not block or defer the critical path.
+  - The speculationrules script below is JSON, not code: Bascik leaves
+    it unwrapped, and scripts/generate-csp-meta.ts hashes it into each page's
+    Content-Security-Policy, since browsers check speculation rules against
+    script-src. The rules are inline, not a Speculation-Rules header, because a
+    header's rules file is one more request before first paint (about 150 ms of
+    simulated mobile LCP).
 -->
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -32,11 +38,43 @@ Shared head markup component. Place inside the head block of a page shell:
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
 <!-- Apply saved theme before first paint to prevent flash -->
+<!-- A page prerendered on hover (see the speculation rules below) runs this before the visitor arrives, so it
+     applies the theme again when the page is shown, in case they switched it in between. -->
 <script>
   !(function () {
-    var t =
-      new URLSearchParams(location.search).get("theme") ||
-      sessionStorage.getItem("theme");
-    if (t) document.documentElement.setAttribute("data-theme", t);
+    function applyTheme() {
+      var t =
+        new URLSearchParams(location.search).get("theme") ||
+        sessionStorage.getItem("theme");
+      if (t) document.documentElement.setAttribute("data-theme", t);
+    }
+    applyTheme();
+    if (document.prerendering)
+      document.addEventListener("prerenderingchange", applyTheme, {
+        once: true,
+      });
   })();
+</script>
+<!-- Chromium prerenders a page of this site when the pointer rests on a link to it ("moderate"), or on pointer
+     down. Never assets or other files (any path with a dot), never /search (it opens the search dialog and
+     loads the index), and never links to a heading on the same page. docs-sidebar and docs-search prefetch on
+     hover for other browsers. -->
+<script type="speculationrules">
+  {
+    "prerender": [
+      {
+        "source": "document",
+        "where": {
+          "and": [
+            { "href_matches": "/*" },
+            { "not": { "href_matches": "/assets/*" } },
+            { "not": { "href_matches": "/search*" } },
+            { "not": { "href_matches": "/*\\.*" } },
+            { "not": { "selector_matches": "a[href^='#']" } }
+          ]
+        },
+        "eagerness": "moderate"
+      }
+    ]
+  }
 </script>

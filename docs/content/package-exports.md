@@ -1,19 +1,20 @@
 # Package Exports
 
-Bascik ships as a single npm package, `@bascik/bascik`, with a small set of subpath exports. There is no large SDK surface: the package exposes configuration helpers for your build, a hosting adapter contract for deployment targets, and a portable request-execution runtime for serverless hosts. Everything else is the `bascik` CLI.
+Bascik ships as a single npm package, `@bascik/bascik`, with a small set of subpath exports. There is no large SDK surface: the package exposes configuration helpers for your build, a hosting adapter contract for deployment targets, a portable request-execution runtime for serverless hosts, and safe-HTML helpers for your scripts. Everything else is the `bascik` CLI.
 
 ## Export map
 
-| Import specifier         | Purpose                                                                                                                                                            | Where it is documented                                                                   |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| `@bascik/bascik`         | Main entry: `defineConfig`, `composeSiteUrl`, and CLI helpers (`runCli`, `readVersion`, `installProcessCrashHandlers`, `resolveBuildLogPath`, `setupBuildLogging`) | [Configuration](/configuration), [Command Line Interface](/cli)                          |
-| `@bascik/bascik/config`  | `defineConfig` plus the full `BascikConfig` type for `bascik.config.ts`                                                                                            | [Configuration](/configuration)                                                          |
-| `@bascik/bascik/runtime` | Host-neutral request execution: buffered and streamed page composition, deadline-bounded invocation, and API route dispatch                                        | [Custom Adapters](/deployment/custom-adapters), [Server Architecture](/internals/server) |
-| `@bascik/bascik/adapter` | Hosting adapter contract: `defineAdapter`, the `SiteGraph` types, and site-graph readers                                                                           | [Custom Adapters](/deployment/custom-adapters)                                           |
+| Import specifier         | Purpose                                                                                                                     | Where it is documented                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `@bascik/bascik`         | Main entry: the same exports as `/config` (`defineConfig`, `composeSiteUrl` and the configuration types)                    | [Configuration](/configuration)                                                          |
+| `@bascik/bascik/config`  | `defineConfig` plus the full `BascikConfig` type for `bascik.config.ts`                                                     | [Configuration](/configuration)                                                          |
+| `@bascik/bascik/runtime` | Host-neutral request execution: buffered and streamed page composition, deadline-bounded invocation, and API route dispatch | [Custom Adapters](/deployment/custom-adapters), [Server Architecture](/internals/server) |
+| `@bascik/bascik/adapter` | Hosting adapter contract: `defineAdapter`, the `SiteGraph` types, and site-graph readers                                    | [Custom Adapters](/deployment/custom-adapters)                                           |
+| `@bascik/bascik/html`    | Safe HTML for server, stream and build scripts: `html`, `raw`, `esc`, `safeUrl`, `json`                                     | [HTML Helpers](/html-helpers), [Security](/security)                                     |
 
 ## `@bascik/bascik`
 
-The main entry re-exports the configuration helper and a few programmatic CLI utilities. Most projects only ever import `defineConfig` from it (or from `/config`).
+The main entry resolves to the same module as `/config`. Most projects only ever import `defineConfig` from it (or from `/config`).
 
 ```ts
 import { defineConfig, composeSiteUrl } from "@bascik/bascik";
@@ -24,8 +25,9 @@ export default defineConfig({
 ```
 
 - `defineConfig(config)` returns the config unchanged, typed as `BascikConfig`, so your editor surfaces every option with inline docs.
-- `composeSiteUrl(base, siteUrl)` composes a site URL from a base path and origin.
-- `runCli(args)` runs the CLI programmatically; `readVersion()`, `installProcessCrashHandlers()`, `resolveBuildLogPath(args)`, and `setupBuildLogging(path)` support embedding the CLI in custom tooling.
+- `composeSiteUrl(siteUrl, base, pathname)` joins a site origin, the base path and a page path into an absolute URL (`composeSiteUrl("https://example.com", "/docs/", "/about")` gives `https://example.com/docs/about`).
+
+The CLI itself is not importable: run it through the `bascik` command.
 
 ## `@bascik/bascik/config`
 
@@ -47,7 +49,7 @@ Key functions:
 
 - `composeBufferedResponse(plan, run, signal)` composes a fully buffered `Uint8Array` body for a page whose `data-bascik-server` jobs all resolve before the response starts.
 - `streamComposedResponse(plan, run, writer, options)` drives the two-phase streamer: `server` jobs resolve before commit, `stream` jobs run with bounded lookahead after headers are sent. Returns a `ComposedStreamer` with `ready`, `commit`, `done`, `signal`, and `toReadableStream()`.
-- `invokeWithDeadline(handler, options)` runs a handler under a timeout and an upstream `AbortSignal`, settling exactly once.
+- `invokeWithDeadline(handler, options)` runs a handler under a timeout and an upstream `AbortSignal`, settling exactly once. Once the deadline fires or the upstream aborts, the result is a timeout or an abort even if the handler settles afterwards. `invokeLoadedWithDeadline(load, call, options)` does the same with a module load under the same deadline, and `createAbortGate(signal)` is the settlement rule both use. `scriptTimeoutError(ms)` builds the `Script execution timed out after Nms` error that server, stream and component scripts report on every host.
 - `dispatchApiHandler(module, request, context, options)` dispatches a web `Request` to an API route module's exported methods, handling `HEAD`, `OPTIONS`, and the `Allow` header.
 
 The runtime also exports the shared response policy (`dynamicPageHeaders`, `mergeHandlerHeaders`, `stripRepresentationHeaders`, `errorResponse`, `internalErrorPage`, `SECURITY_HEADERS`) and pure route matching (`matchApiRoute`, `sortApiRoutes`, `pageLookupCandidates`, `isUnsafePathname`, `hasHiddenSegment`).
@@ -75,3 +77,20 @@ export default defineAdapter({
 It also exports the site-graph readers used inside adapters: `readSiteGraph`, `pageAliasesFor`, `detectPublicCollisions`, `isPublicAssetPath`, and `splitDistPageIntoSegments`.
 
 See [Custom Adapters](/deployment/custom-adapters) for the full tutorial and API reference.
+
+## `@bascik/bascik/html`
+
+The html subpath is the one export meant for server and stream scripts (build scripts may use it too). It holds plain functions that build HTML safely: the `html` tagged template, which escapes each value for where it lands and refuses places escaping cannot make safe, plus `raw`, `esc`, `safeUrl`, `json`, `isHtml` and `HtmlError`.
+
+```html
+<script data-bascik-server>
+  import { html } from "@bascik/bascik/html";
+
+  export default function (request) {
+    const q = new URL(request.url).searchParams.get("q") ?? "";
+    return html`<p>You searched for ${q}</p>`;
+  }
+</script>
+```
+
+It has no Node builtins, so the Cloudflare adapter bundles it into the Worker. See [HTML Helpers](/html-helpers) for the API reference and [Security](/security) for how it fits with the rest of a site's protection.

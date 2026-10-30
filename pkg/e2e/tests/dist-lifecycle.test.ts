@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { defaultOutDir } from "./helpers/out-dir.ts";
 
 const e2eDir = fileURLToPath(new URL("..", import.meta.url));
 const pkgDir = join(e2eDir, "..");
@@ -43,7 +44,7 @@ test("a fresh build removes output for a deleted source page", async () => {
   const pagesDir = join(fixtureDir, "src/pages");
   const componentsDir = join(fixtureDir, "src/components");
   const stalePagePath = join(pagesDir, "stale.html");
-  const staleOutputPath = join(fixtureDir, "dist/stale.html");
+  const staleOutputPath = join(defaultOutDir(fixtureDir), "stale.html");
 
   try {
     await Promise.all([

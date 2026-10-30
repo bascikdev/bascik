@@ -122,7 +122,7 @@ The same gesture works for relative imports, the `@/` import-root alias, and `sr
 <script data-bascik-server src="./scripts/greet.ts"></script>
 ```
 
-Alias imports resolve against `scripts.importRoot` (default `src`). The extension reads that key from the closest owning Bascik config, so nested projects keep their navigation and diagnostics isolated.
+A `.ts` `src=`, or an inline block marked `type="text/typescript"`, is TypeScript: Bascik strips its types before it runs and errors name the source's lines (see [Build Scripts](/build-scripts#typescript)). Alias imports resolve against `scripts.importRoot` (default `src`). The extension reads that key from the closest owning Bascik config, so nested projects keep their navigation and diagnostics isolated.
 
 ### Structural & Scoping Warnings in the Problems Panel
 
@@ -161,7 +161,7 @@ Write standard HTML, plain CSS, and standard JavaScript in one file:
 
 ```html
 <article class="card">
-  <h3 class="name"><slot name="name">Guest User</slot></h3>
+  <h3 class="name"><span data-bascik-slot="name">Guest User</span></h3>
   <p class="role" data-bascik-prop-role></p>
 </article>
 
@@ -224,9 +224,7 @@ Compare source template code with what appears when inspecting elements in brows
 
 ```html
 <article class="bascik__user-card__card">
-  <h3 class="bascik__user-card__name">
-    <span>Sarah Chen</span>
-  </h3>
+  <h3 class="bascik__user-card__name">Sarah Chen</h3>
   <p class="bascik__user-card__role">Lead Engineer</p>
 </article>
 ```
@@ -261,7 +259,7 @@ Error [ERR_MODULE_NOT_FOUND]: Cannot find module './does-not-exist' imported fro
 
 ### VS Code Debugging (`F5`)
 
-To debug `bascik.config.ts` or custom build scripts, press `F5` in VS Code. Node 24 native TypeScript support allows VS Code to attach directly to `.ts` files:
+To debug `bascik.config.ts` or custom build scripts, press `F5` in VS Code. Node's native TypeScript support (22.22 or newer) allows VS Code to attach directly to `.ts` files:
 
 ```json
 // .vscode/launch.json
@@ -312,7 +310,7 @@ Line numbers match while JavaScript is not minified, which is the default for th
 
 ### Build and Server Script Stack Trace Remapping
 
-Node.js runs each `<script data-bascik-build>`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream` block as a module of its own. When one throws:
+Node.js runs each `<script data-bascik-build>`, `data-bascik-build-once`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream` block as a module of its own. When one throws:
 
 1. **Source Lines and Columns:** The stack names the file the script was written in and the failing line and column in that file (for example, `src/pages/dashboard.html:34:11`), including in a component, whose markup and `<style>` blocks above the script are moved out before it runs.
 2. **Syntax Errors:** In a build or routes script, a syntax error shows the file, the failing line, and a caret under the token. In a server or stream script, Node reports no line for a syntax error, so Bascik names the file and the line the script starts on.
@@ -321,7 +319,7 @@ Node.js runs each `<script data-bascik-build>`, `data-bascik-routes`, `data-basc
 
 ### TypeScript and Custom Minifier Source Maps
 
-- **Native TypeScript Support:** Node 24 and Node 22.18+ strip TypeScript types without an intermediate compilation step, preserving source line numbers in imported `.ts` modules.
+- **Native TypeScript Support:** Node 24 and Node 22.22+ strip TypeScript types without an intermediate compilation step, preserving source line numbers in imported `.ts` modules.
 - **External Source Maps (`sourceMap: true`):** Set `"sourceMap": true` in `tsconfig.json` so external tools, debuggers, and language servers generate and resolve `.map` files across external libraries and helper scripts.
 - **BYOMinifier Integration:** When using custom minifiers via `minify.js` or `minify.css` in `bascik.config.ts` (such as Terser, esbuild, or LightningCSS), you can configure inline or external source maps according to your production requirements.
 
@@ -348,7 +346,7 @@ describe("user-card contract", () => {
 
   it("defines slot and prop placeholders correctly", async () => {
     const html = await readFile(filePath, "utf8");
-    expect(html).toContain('<slot name="name">');
+    expect(html).toContain('data-bascik-slot="name"');
     expect(html).toContain("data-bascik-prop-role");
   });
 });
@@ -416,27 +414,36 @@ npm run build
 Terminal Output:
 
 ```terminal
-transpiled: pages/index.html -> dist/index.html
-transpiled: pages/about.html -> dist/about.html
-extracted: dist/css/styles.css (minified)
+transpiled: pages/index.html in 0.6ms
+transpiled: pages/about.html in 0.3ms
+copied (minified): pages/css/styles.css
 
-✓ Build completed in 34ms
+✓ 2 pages transpiled in 34ms
+
+✓ Build complete in 41ms
 ```
 
 ### Inspecting Output Files (`dist/index.html`)
 
-Open `dist/index.html` to see the compiled result. Custom component tags are fully expanded, and component CSS is extracted into minified stylesheets:
+Open `dist/index.html` to see the compiled result. Custom component tags are fully expanded, and component CSS is scoped into one `<style>` block per page. Shown here unminified and with readable class names; a default build also minifies and shortens them:
 
 ```html
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <title>Team Directory</title>
-    <link rel="stylesheet" href="/css/styles.css" />
+    <style>
+      .bascik__user-card__card {
+        padding: 16px;
+        border: 1px solid #3a3d40;
+        border-radius: 8px;
+      }
+      /* ...the other user-card rules... */
+    </style>
   </head>
   <body>
     <article class="bascik__user-card__card">
-      <h3 class="bascik__user-card__name"><span>Sarah Chen</span></h3>
+      <h3 class="bascik__user-card__name">Sarah Chen</h3>
       <p class="bascik__user-card__role">Lead Engineer</p>
     </article>
   </body>
@@ -454,7 +461,7 @@ npx bascik --server
 Terminal Output:
 
 ```terminal
-Serving dist/ at http://localhost:8080
+Server running at http://localhost:8080
 ```
 
 > **Deep Dive:** Read [Deployment Overview](/deployment) for deployment targets and [Production Server](/production-server) for server options.

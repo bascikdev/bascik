@@ -1,235 +1,39 @@
 /**
- * Generates docs/src/pages/assets/search-index.json from all nav pages.
- * Each entry is one of:
- *   - a page-level entry (heading: null, text = intro paragraph)
- *   - a section-level entry (heading = h2 text, path = /page#anchor)
+ * Writes the search index from all nav pages: the compact index at dist/assets/search-index.<hash>.json, which
+ * pages fetch, and a plain array of entries at dist/assets/search-index.json, which the agent skill scripts and
+ * older pages read. Earlier hashed files are removed. See src/lib/search-index.ts for what each entry holds and how the
+ * file is laid out.
  *
  * Run via: node scripts/generate-search-index.ts
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve, dirname } from "node:path";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { join, resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NAV, HOME_SITELINKS } from "../src/lib/nav.ts";
+import {
+  buildSearchEntries,
+  publicSearchIndexJson,
+  searchIndexJson,
+  searchIndexPath,
+  PUBLIC_SEARCH_INDEX_PATH,
+  SEARCH_INDEX_FILE_PATTERN,
+} from "../src/lib/search-index.ts";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const docsDir = resolve(__dirname, "..");
+export { stripMd, metaDescription } from "../src/lib/search-index.ts";
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, "")
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
-}
+const docsDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const outDir = process.env.BASCIK_OUT_DIR ?? join(docsDir, "dist");
 
-export function stripMd(text: string): string {
-  const visible: string[] = [];
-  let from = 0;
-  while (from < text.length) {
-    const start = text.indexOf("<!--", from);
-    if (start < 0) {
-      visible.push(text.slice(from));
-      break;
-    }
-    visible.push(text.slice(from, start));
-    const end = text.indexOf("-->", start + 4);
-    if (end < 0) break;
-    from = end + 3;
-  }
-  const cleaned = visible.join(" ");
-  return cleaned
-    .replace(/```[a-z0-9_-]*\n?([\s\S]*?)```/gi, "$1")
-    .replace(/`([^`\n]+)`/g, "$1")
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/\*([^*\n]+)\*/g, "$1")
-    .replace(/^>\s*/gm, "")
-    .replace(/^[\s|:\-]+$/gm, "") // table separator rows
-    .replace(/\|/g, " ") // table cell pipes → spaces
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-async function readMd(href: string): Promise<string | null> {
-  const standard = join(docsDir, "content", href.slice(1) + ".md");
-  try {
-    return await readFile(standard, "utf8");
-  } catch {}
-  const base = join(docsDir, "content", href.split("/").pop()! + ".md");
-  try {
-    return await readFile(base, "utf8");
-  } catch {}
-  return null;
-}
-
-interface SearchEntry {
-  title: string;
-  navLabel: string;
-  section: string;
-  path: string;
-  heading: string | null;
-  text: string;
-  /** Home entry only: ordered page paths the search UI nests beneath it. */
-  sitelinks?: string[];
-}
-
-function decodeAttr(value: string): string {
-  return value
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
-}
-
-/**
- * The Home entry reads its title and description from pages/index.html so the
- * search result can never drift from what the page declares. It is surfaced
- * only for brand queries (see isNavigationalQuery in search-logic.ts).
- */
-/** The value of `name` in one tag's attributes, in either quote style and in any attribute order. */
-function attributeValue(tag: string, name: string): string | undefined {
-  const match = new RegExp(
-    `\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`,
-    "i",
-  ).exec(tag);
-  return match ? (match[1] ?? match[2]) : undefined;
-}
-
-/** The content of `<meta name="description">`, wherever `name` and `content` sit in the tag. */
-export function metaDescription(html: string): string | undefined {
-  for (const [tag] of html.matchAll(/<meta\b[^>]*>/gi)) {
-    if (attributeValue(tag, "name")?.toLowerCase() === "description")
-      return attributeValue(tag, "content");
-  }
-  return undefined;
-}
-
-async function homeEntry(): Promise<SearchEntry> {
-  const homePage = join(docsDir, "src/pages/index.html");
-  let title = "Bascik";
-  let text = "";
-  try {
-    const html = await readFile(homePage, "utf8");
-    const t = /<title>([^<]*)<\/title>/i.exec(html);
-    if (t) title = decodeAttr(t[1]).trim();
-    const description = metaDescription(html);
-    if (description !== undefined) text = decodeAttr(description).trim();
-  } catch (error) {
-    // The Home result still works without them, but a search snippet that silently disappears is a bug to see.
-    console.warn(
-      `[search-index] warning: could not read the Home page title and description from ${homePage}: ${(error as Error).message}`,
-    );
-  }
-  return {
-    title,
-    navLabel: "Bascik",
-    section: "Home",
-    path: "/",
-    heading: null,
-    text,
-    sitelinks: [...HOME_SITELINKS],
-  };
-}
-
-function parseMd(
-  md: string,
-  navLabel: string,
-  section: string,
-  href: string,
-): SearchEntry[] {
-  const lines = md.split("\n");
-  const entries: SearchEntry[] = [];
-
-  const h1Line = lines.find((l) => /^# /.test(l));
-  const rawTitle = h1Line ? h1Line.slice(2).trim() : navLabel;
-  const title = rawTitle
-    .replace(/`([^`\n]+)`/g, "$1")
-    .replace(/\*\*([^*]+)\*\*/g, "$1");
-
-  const sections: { heading: string | null; lines: string[] }[] = [];
-  let cur: { heading: string | null; lines: string[] } = {
-    heading: null,
-    lines: [],
-  };
-  let pastH1 = false;
-  for (const line of lines) {
-    if (/^# /.test(line)) {
-      pastH1 = true;
-      continue;
-    }
-    if (!pastH1) continue;
-    if (/^#{2,3}\s+/.test(line)) {
-      sections.push(cur);
-      const rawHeading = line.replace(/^#{2,3}\s+/, "").trim();
-      const heading = rawHeading
-        .replace(/`([^`\n]+)`/g, "$1")
-        .replace(/\*\*([^*]+)\*\*/g, "$1")
-        .replace(/\*([^*\n]+)\*/g, "$1")
-        .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
-      cur = { heading, lines: [] };
-    } else {
-      cur.lines.push(line);
-    }
-  }
-  sections.push(cur);
-
-  const introText = stripMd(sections[0].lines.join("\n")).slice(0, 2000);
-  entries.push({
-    title,
-    navLabel,
-    section,
-    path: href,
-    heading: null,
-    text: introText,
-  });
-
-  for (const sec of sections.slice(1)) {
-    if (!sec.heading) continue;
-    const text = stripMd(sec.lines.join("\n")).slice(0, 2000);
-    const anchor = slugify(sec.heading);
-    entries.push({
-      title,
-      navLabel,
-      section,
-      path: `${href}#${anchor}`,
-      heading: sec.heading,
-      text,
-    });
-  }
-
-  return entries;
-}
-
-const entries: SearchEntry[] = [await homeEntry()];
-
-for (const { section, pages } of NAV) {
-  for (const { href, label } of pages) {
-    // External nav entries (e.g. Merch) are off-site and have no local content
-    // Markdown, so they are not indexed for search.
-    if (/^https?:\/\//i.test(href)) continue;
-    const md = await readMd(href);
-    if (!md) {
-      entries.push({
-        title: label,
-        navLabel: label,
-        section,
-        path: href,
-        heading: null,
-        text: "",
-      });
-      continue;
-    }
-    entries.push(...parseMd(md, label, section, href));
-  }
-}
-
-const outPath = join(
-  process.env.BASCIK_OUT_DIR ?? join(docsDir, "dist"),
-  "assets/search-index.json",
+const entries = await buildSearchEntries();
+const json = searchIndexJson(entries);
+const outPath = join(outDir, searchIndexPath(json));
+const assetsDir = dirname(outPath);
+await mkdir(assetsDir, { recursive: true });
+// Old hashed files would pile up in dist during dev, where content changes rebuild the index.
+for (const name of await readdir(assetsDir))
+  if (SEARCH_INDEX_FILE_PATTERN.test(name) && name !== basename(outPath))
+    await rm(join(assetsDir, name), { force: true });
+await writeFile(outPath, json);
+await writeFile(
+  join(outDir, PUBLIC_SEARCH_INDEX_PATH),
+  publicSearchIndexJson(entries),
 );
-await mkdir(dirname(outPath), { recursive: true });
-await writeFile(outPath, JSON.stringify(entries));

@@ -16,6 +16,7 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { API_ROUTE_EXTENSIONS } from "./api-routes.ts";
 import { BascikConfig } from "./config.ts";
 
 /** One per-file finding, as the language server reports it. */
@@ -138,7 +139,7 @@ export function languageServerTargets(
     targets.push({ path: resolve(cwd, root) });
   targets.push({
     path: resolve(cwd, directory?.api ?? "src/api"),
-    extensions: ["ts", "js", "mjs"],
+    extensions: API_ROUTE_EXTENSIONS.map((ext) => ext.slice(1)),
   });
   return targets.filter(
     (target) => typeof target === "string" || existsSync(target.path),

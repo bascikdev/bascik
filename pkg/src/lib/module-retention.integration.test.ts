@@ -5,6 +5,8 @@ import { join } from "node:path";
 import {
   runRetentionExperiment,
   compareRetentionTrends,
+  tlsCleanupRuntimeSkipReason,
+  tlsCleanupRuntimeSupported,
   type RetentionCheckpoint,
 } from "./module-retention.test-helper.ts";
 import {
@@ -128,9 +130,14 @@ describe("module retention lifecycle evidence", () => {
       "property:module -> Module",
     ]);
   });
-  it.each(["http1", "http2"] as const)(
+  it.for(["http1", "http2"] as const)(
     "retains a fixed-source %s production control",
-    async (mode) => {
+    { timeout: 60_000 },
+    async (mode, { skip }) => {
+      // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
+      // (assertSupportedTlsCleanupRuntime); skip the lane off Node 24.
+      if (mode === "http2" && !tlsCleanupRuntimeSupported)
+        skip(tlsCleanupRuntimeSkipReason);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
       directories.push(directory);
       const checkpoints = await runRetentionExperiment(
@@ -165,7 +172,6 @@ describe("module retention lifecycle evidence", () => {
       );
       expect(heaps[1].fixtureJobs.length).toBe(heaps[0].fixtureJobs.length);
     },
-    60_000,
   );
   it("attributes object module jobs only through strong loader edges", () => {
     const heap: HeapSnapshot = {

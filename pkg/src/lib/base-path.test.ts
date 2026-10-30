@@ -8,6 +8,7 @@ import {
   rewriteSrcsetBasePaths,
   shouldRewriteBasePath,
 } from "./base-path.ts";
+import { repeatTo } from "./linear-time.test-helper.ts";
 
 describe("base path normalization", () => {
   it.each([
@@ -34,14 +35,6 @@ describe("composeSiteUrl", () => {
     ],
   ])("composes %j + %j + %j", (siteUrl, base, pathname, expected) => {
     expect(composeSiteUrl(siteUrl, base, pathname)).toBe(expected);
-  });
-
-  it("runs in linear time when the site URL holds a long slash run", () => {
-    // `/\/+$/` is quadratic on a slash run that does not end the string.
-    const siteUrl = `https://bascik.dev${"/".repeat(50_000)}x`;
-    const start = performance.now();
-    expect(composeSiteUrl(siteUrl, "/", "/a")).toBe(`${siteUrl}/a`);
-    expect(performance.now() - start).toBeLessThan(250);
   });
 });
 
@@ -181,6 +174,35 @@ describe("rewriteHtmlBasePaths", () => {
     const html = String.raw`<img alt="C:\" src="/logo.png">`;
     expect(rewriteHtmlBasePaths(html, "/sub/")).toBe(
       String.raw`<img alt="C:\" src="/sub/logo.png">`,
+    );
+  });
+});
+
+describe("rewriteHtmlBasePaths time on hostile input", () => {
+  // Since request-time component rendering, every expanded usage is rebased
+  // on each request when base is not "/", and slot content can carry
+  // visitor text. The old opening-tag and <style> regexes scanned to the end
+  // of the input from every opener that could not reach a `>`: about 6 s for
+  // `<a x` repeated with one quote after it at 100k characters, and 1.8 s
+  // for `<style '` repeated.
+  const SIZE = 200_000;
+
+  it("ends a stylesheet at </style> with attributes or a slash, as before", () => {
+    for (const close of ["</style>", "</style/>", "</style x>", "</STYLE\n>"]) {
+      const html = `<style>a{background:url(/a.png)}${close}<img src="/b.png">`;
+      expect(rewriteHtmlBasePaths(html, "/sub/"), close).toBe(
+        `<style>a{background:url(/sub/a.png)}${close}<img src="/sub/b.png">`,
+      );
+    }
+  });
+
+  it("still rewrites a complete tag and stylesheet after a long run of unclosed openers", () => {
+    const run = repeatTo("<style '", SIZE).slice(0, 50_000);
+    const html = `<p>${run.replaceAll("'", "")}</p><style>a{background:url(/i.png)}</style><img src="/i.png">`;
+    expect(rewriteHtmlBasePaths(html, "/sub/")).toBe(
+      html
+        .replace("url(/i.png)", "url(/sub/i.png)")
+        .replace('src="/i.png"', 'src="/sub/i.png"'),
     );
   });
 });

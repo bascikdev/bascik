@@ -20,17 +20,24 @@
  * receives already-valid JavaScript.
  *
  * Compiler selection is `scripts.typescript` (see `TypeScriptCompilerOption`):
- * `true` (default) uses Node's `stripTypeScriptTypes` (22.18+) in strip-only
+ * `true` (default) uses Node's `stripTypeScriptTypes` (22.22+) in strip-only
  * mode, which is line-preserving so `//# sourceURL` line numbers stay
  * accurate; `false` leaves both paths untouched for projects that compile
  * elsewhere; a function is a bring-your-own compiler (esbuild, swc, tsc).
  */
 
+import { spawn } from "node:child_process";
+import { Worker } from "node:worker_threads";
 import { stripTypeScriptTypes } from "node:module";
+import { availableParallelism } from "node:os";
 import { BascikConfig } from "./config.ts";
 import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
 import { getScriptType } from "./script-types.ts";
-import { hasStaticModuleSyntax } from "./module-specifiers.ts";
+import {
+  classifySpecifier,
+  findModuleSpecifiers,
+  hasStaticModuleSyntax,
+} from "./module-specifiers.ts";
 import type {
   TypeScriptCompileContext,
   TypeScriptCompilerOption,
@@ -50,7 +57,10 @@ const DIRECTIVE_SCRIPT_RE = new RegExp(
 );
 
 const TYPE_ATTR_RE = /(?:^|\s+)type\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+)/i;
-const TAG_START_RE = /<(\/)?([a-z][\w:-]*)\b/gi;
+// A tag and its whole name, as the tokenizer reads one: up to tag whitespace,
+// `/` or `>`, so `<script.x>` and `<style-guide>` are other elements, never a
+// script or a raw-text element. Sticky: it is only asked about one `<`.
+const TAG_START_RE = /<(\/)?([a-z][^\t\n\f\r />]*)/iy;
 const SCRIPT_CLOSE_RE = /<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
 const RAW_TEXT_ELEMENTS = new Set([
   "textarea",
@@ -124,10 +134,86 @@ const suppressStripExperimentalWarning = (): void => {
  * let it propagate so a page never ships with a silently missing script.
  */
 export class TypeScriptTransformError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
+  /** True when the message already names the file, line and column. */
+  readonly located: boolean;
+  constructor(
+    message: string,
+    options?: { cause?: unknown; located?: boolean },
+  ) {
     super(message, options);
     this.name = "TypeScriptTransformError";
+    this.located = options?.located ?? false;
   }
+}
+
+/** A 1-based line and column in a source file. */
+export interface SourcePosition {
+  line: number;
+  column: number;
+}
+
+/**
+ * Where Node's strip-only parser stopped, in `code`'s own lines. Node puts
+ * no position on the error object; its stack starts with `:<line>`, then the
+ * source lines and a caret line under the offending token. The line is used
+ * only when it exists in `code`, and the column only when the line above the
+ * caret is that source line, so a change in Node's format gives no position
+ * rather than a wrong one. CRLF line ends are read as LF.
+ */
+const stripErrorPosition = (
+  err: unknown,
+  code: string,
+): SourcePosition | undefined => {
+  const stack =
+    err instanceof Error && typeof err.stack === "string"
+      ? err.stack.replace(/\r\n?/g, "\n")
+      : "";
+  const head = /^[^\n]*:(\d+)\n/.exec(stack);
+  if (!head) return undefined;
+  const line = Number(head[1]);
+  const lines = code.split("\n");
+  if (!(line >= 1 && line <= lines.length)) return undefined;
+  const stackLines = stack.split("\n");
+  const caret = stackLines.findIndex((text, i) => i > 0 && /^\s*\^/.test(text));
+  const sourceLine = lines[line - 1].replace(/\r$/, "");
+  const column =
+    caret > 0 && stackLines[caret - 1] === sourceLine
+      ? stackLines[caret].indexOf("^") + 1
+      : 1;
+  return { line, column };
+};
+
+/** `line` of `code` with a caret under `column`, indented under the message. */
+const codeFrame = (
+  code: string,
+  position: SourcePosition,
+  fileLine: number,
+): string => {
+  const text = (code.split("\n")[position.line - 1] ?? "").replace(/\r$/, "");
+  const gutter = String(fileLine);
+  // Tabs stay tabs, so the caret lines up under the same character.
+  const pad = text.slice(0, position.column - 1).replace(/[^\t]/g, " ");
+  return `\n  ${gutter} | ${text}\n  ${" ".repeat(gutter.length)} | ${pad}^`;
+};
+
+const NON_ERASABLE_HINT =
+  `\n  Bascik strips erasable TypeScript only (type annotations, interfaces, type aliases, ` +
+  `\`as\` casts, \`!\` assertions, \`import type\`). Non-erasable syntax such as \`enum\`, ` +
+  `parameter properties, or namespaces with runtime code need a compiler: set scripts.typescript to an esbuild, swc or tsc function.`;
+
+export interface StripOptions {
+  /**
+   * Where `code`'s first character is in the file `sourceLabel` names, for
+   * code cut out of a larger file (an inline block). Absent, `code`'s lines
+   * and columns are the file's own (a `.ts` file, or a block padded to its
+   * position).
+   */
+  origin?: SourcePosition;
+  /**
+   * `code` is an inline block whose place in the file is unknown: an error
+   * names its line within the block instead of a file line.
+   */
+  inline?: boolean;
 }
 
 /** `.ts` or `.mts` browser script file (not `.tsx`, not `.js`). */
@@ -145,29 +231,344 @@ export const isTypeScriptScriptTag = (openTag: string): boolean =>
 
 /**
  * Strip erasable TypeScript syntax from `code`, preserving line structure.
- * Throws an `Error` that names `sourceLabel` when the code uses non-erasable
- * syntax (`enum`, parameter properties, runtime namespaces) or is not valid
- * TypeScript at all.
+ * Throws a `TypeScriptTransformError` that names `sourceLabel` when the code
+ * uses non-erasable syntax (`enum`, parameter properties, runtime
+ * namespaces) or is not valid TypeScript at all; when Node reports where, the
+ * message names the line and column (see `StripOptions`) with a code frame.
+ * Only non-erasable syntax gets the `scripts.typescript` hint: a plain syntax
+ * error is fixed in the code, not with a compiler.
  */
 export const stripBrowserTypeScript = (
   code: string,
   sourceLabel?: string,
+  options: StripOptions = {},
 ): string => {
   suppressStripExperimentalWarning();
   try {
     return stripTypeScriptTypes(code, { mode: "strip" });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    const where = sourceLabel ? ` in "${sourceLabel}"` : "";
-    throw new TypeScriptTransformError(
-      `[bascik] TypeScript transformation failed${where}: ${detail}\n` +
-        `  Bascik strips erasable TypeScript only (type annotations, interfaces, type aliases, ` +
-        `\`as\` casts, \`!\` assertions, \`import type\`). Non-erasable syntax such as \`enum\`, ` +
-        `parameter properties, or namespaces with runtime code must be compiled with tsc or esbuild first.`,
-      { cause: err },
+    const hint =
+      (err as NodeJS.ErrnoException)?.code === "ERR_INVALID_TYPESCRIPT_SYNTAX"
+        ? ""
+        : NON_ERASABLE_HINT;
+    throw locatedError(
+      "[bascik] TypeScript transformation failed",
+      detail,
+      hint,
+      code,
+      stripErrorPosition(err, code),
+      sourceLabel,
+      options,
+      err,
     );
   }
 };
+
+/**
+ * A `TypeScriptTransformError` whose message is `${title} in "label" at
+ * label:line:column: detail`, a code frame and `hint`. Without a position it
+ * names the file only; for an inline block with no known place, the line
+ * within the block (see `StripOptions`).
+ */
+const locatedError = (
+  title: string,
+  detail: string,
+  hint: string,
+  code: string,
+  position: SourcePosition | undefined,
+  sourceLabel: string | undefined,
+  options: StripOptions,
+  cause: unknown,
+): TypeScriptTransformError => {
+  const where = sourceLabel ? ` in "${sourceLabel}"` : "";
+  if (!position) {
+    return new TypeScriptTransformError(`${title}${where}: ${detail}${hint}`, {
+      cause,
+    });
+  }
+  const { origin } = options;
+  const fileLine = origin ? origin.line + position.line - 1 : position.line;
+  const fileColumn =
+    origin && position.line === 1
+      ? origin.column + position.column - 1
+      : position.column;
+  const at =
+    options.inline && !origin
+      ? ` at line ${position.line}, column ${position.column} of the <script> block`
+      : sourceLabel
+        ? ` at ${sourceLabel}:${fileLine}:${fileColumn}`
+        : ` at line ${fileLine}, column ${fileColumn}`;
+  return new TypeScriptTransformError(
+    `${title}${where}${at}: ${detail}` +
+      codeFrame(
+        code,
+        position,
+        options.inline && !origin ? position.line : fileLine,
+      ) +
+      hint,
+    { cause, located: !(options.inline && !origin) && !!sourceLabel },
+  );
+};
+
+/** What `node --check` said about a module: its stderr, or "" when it parsed. */
+const moduleCheckCache = new Map<string, string>();
+const MODULE_CHECK_CACHE_LIMIT = 500;
+let moduleChecksRunning = 0;
+const moduleCheckQueue: Array<() => void> = [];
+const MODULE_CHECK_CONCURRENCY = Math.max(
+  1,
+  Math.min(8, availableParallelism()),
+);
+
+/** Test-only: `node --check` processes started, and a switch that turns the shared checker off. */
+export const __moduleCheckStatsForTests = {
+  processes: 0,
+  disableChecker: false,
+};
+
+/**
+ * The shared checker: one worker thread per thread that builds pages, which
+ * parses each module with `vm.SourceTextModule` (V8's module parse with its
+ * early errors, the same parse `node --check --input-type=module` runs). It
+ * never links or evaluates a module, so imports are not loaded and nothing
+ * runs. `vm.SourceTextModule` needs `--experimental-vm-modules`, which a
+ * worker thread can take for itself without changing the build process.
+ *
+ * It answers only "parses" or "does not": a SyntaxError from it carries no
+ * line, so a module that does not parse is checked again with `node --check`
+ * for the located message. A build of valid scripts starts no process.
+ */
+const CHECKER_SOURCE = `
+const vm = require("node:vm");
+const { parentPort } = require("node:worker_threads");
+// vm.SourceTextModule is experimental; its one-time warning is not the author's concern.
+process.emitWarning = () => {};
+parentPort.on("message", ({ id, code }) => {
+  let parses = true;
+  try {
+    new vm.SourceTextModule(code);
+  } catch (error) {
+    parses = !(error && error.name === "SyntaxError");
+  }
+  parentPort.postMessage({ id, parses });
+});
+`;
+
+interface SharedChecker {
+  worker: Worker;
+  pending: Map<number, (parses: boolean | undefined) => void>;
+  nextId: number;
+}
+
+let sharedChecker: SharedChecker | undefined;
+/** Set once the checker failed to start or crashed: `node --check` takes over. */
+let sharedCheckerBroken = false;
+
+const settleSharedChecker = (checker: SharedChecker): void => {
+  sharedCheckerBroken = true;
+  if (sharedChecker === checker) sharedChecker = undefined;
+  for (const resolveParse of checker.pending.values()) resolveParse(undefined);
+  checker.pending.clear();
+};
+
+const getSharedChecker = (): SharedChecker | undefined => {
+  if (sharedChecker) return sharedChecker;
+  if (sharedCheckerBroken) return undefined;
+  let worker: Worker;
+  try {
+    worker = new Worker(CHECKER_SOURCE, {
+      eval: true,
+      execArgv: ["--experimental-vm-modules"],
+      stdout: true,
+      stderr: true,
+    });
+  } catch {
+    sharedCheckerBroken = true;
+    return undefined;
+  }
+  const checker: SharedChecker = { worker, pending: new Map(), nextId: 0 };
+  // Idle, it never holds the process open; while a parse is pending, it does.
+  worker.unref();
+  worker.on("message", ({ id, parses }: { id: number; parses: boolean }) => {
+    const resolveParse = checker.pending.get(id);
+    if (!resolveParse) return;
+    checker.pending.delete(id);
+    if (checker.pending.size === 0) worker.unref();
+    resolveParse(parses);
+  });
+  worker.on("error", () => settleSharedChecker(checker));
+  worker.on("exit", () => settleSharedChecker(checker));
+  sharedChecker = checker;
+  return checker;
+};
+
+/**
+ * Whether `code` parses as an ES module, by the shared checker. Undefined
+ * when the checker is not available, so the caller asks `node --check`.
+ */
+const parsesInSharedChecker = (code: string): Promise<boolean | undefined> => {
+  if (__moduleCheckStatsForTests.disableChecker)
+    return Promise.resolve(undefined);
+  const checker = getSharedChecker();
+  if (!checker) return Promise.resolve(undefined);
+  return new Promise((resolveParse) => {
+    const id = checker.nextId++;
+    checker.pending.set(id, resolveParse);
+    if (checker.pending.size === 1) checker.worker.ref();
+    try {
+      checker.worker.postMessage({ id, code });
+    } catch {
+      checker.pending.delete(id);
+      resolveParse(undefined);
+    }
+  });
+};
+
+/**
+ * Parse `code` as an ES module in a separate `node --check` process, which
+ * reads it from stdin and never runs it or loads its imports. Resolves to
+ * Node's stderr when the module does not parse, "" when it does, and also ""
+ * when the check itself could not run (the script then fails where it runs,
+ * as before).
+ */
+const nodeCheckProcess = async (code: string): Promise<string> => {
+  if (moduleChecksRunning >= MODULE_CHECK_CONCURRENCY)
+    await new Promise<void>((resolveTurn) =>
+      moduleCheckQueue.push(resolveTurn),
+    );
+  moduleChecksRunning++;
+  try {
+    return await new Promise<string>((resolveCheck) => {
+      // NODE_OPTIONS could preload modules into the check; it parses only.
+      const { NODE_OPTIONS: _ignored, ...env } = process.env;
+      let child;
+      try {
+        child = spawn(
+          process.execPath,
+          ["--check", "--input-type=module", "-"],
+          { env, stdio: ["pipe", "ignore", "pipe"] },
+        );
+        __moduleCheckStatsForTests.processes++;
+      } catch {
+        resolveCheck("");
+        return;
+      }
+      let stderr = "";
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk: string) => (stderr += chunk));
+      child.on("error", () => resolveCheck(""));
+      child.on("close", (status) =>
+        resolveCheck(status === 0 || !/SyntaxError/.test(stderr) ? "" : stderr),
+      );
+      child.stdin.on("error", () => {});
+      child.stdin.end(code);
+    });
+  } finally {
+    moduleChecksRunning--;
+    moduleCheckQueue.shift()?.();
+  }
+};
+
+/**
+ * Whether `code` parses as an ES module: "" when it does, else Node's
+ * `node --check` stderr, which names the line and column. The shared checker
+ * answers first, so only a module that does not parse (or a thread where the
+ * checker cannot start) starts a process. Results are cached by text, so a
+ * dev rebuild of an unchanged script does no work.
+ */
+const nodeModuleCheck = async (code: string): Promise<string> => {
+  const cached = moduleCheckCache.get(code);
+  if (cached !== undefined) return cached;
+  const parses = await parsesInSharedChecker(code);
+  const result = parses === true ? "" : await nodeCheckProcess(code);
+  if (moduleCheckCache.size >= MODULE_CHECK_CACHE_LIMIT)
+    moduleCheckCache.clear();
+  moduleCheckCache.set(code, result);
+  return result;
+};
+
+/**
+ * Fail on JavaScript a directive script would not load: compiled output
+ * that is not a valid ES module. Node's type strip parses TypeScript but
+ * does not apply JavaScript's early errors, so a redeclared `let`, a
+ * duplicate export or `await` in a plain function strips cleanly and would
+ * otherwise fail only when the script is first imported, at request time
+ * for a server or stream script. `code` is the compiled module and the
+ * other arguments are what was passed to `compileDirectiveTypeScript`, so
+ * the message names the same file, line and column a strip error would.
+ * When a `scripts.typescript` function compiled it, the line is the
+ * output's, and the message says so.
+ */
+export const checkDirectiveModuleSyntax = async (
+  code: string,
+  sourcePath: string,
+  origin?: SourcePosition | "unknown",
+): Promise<void> => {
+  const stderr = await nodeModuleCheck(code);
+  if (!stderr) return;
+  const detail =
+    /^SyntaxError: (.*)$/m.exec(stderr)?.[1]?.trim() ?? "invalid JavaScript";
+  const reported = new Error(detail);
+  reported.stack = stderr;
+  const position = stripErrorPosition(reported, code);
+  if (typeof resolveCompilerOption() === "function") {
+    throw new TypeScriptTransformError(
+      `[bascik] Syntax error in the scripts.typescript output for "${sourcePath}"` +
+        (position
+          ? ` at line ${position.line}, column ${position.column} of that output`
+          : "") +
+        `: ${detail}. The compiler returned JavaScript that is not a valid ES module.`,
+    );
+  }
+  throw locatedError(
+    "[bascik] Syntax error",
+    detail,
+    "",
+    code,
+    position,
+    sourcePath,
+    origin === "unknown" ? { inline: true } : { origin },
+    reported,
+  );
+};
+
+/**
+ * Static and literal dynamic `import` specifiers a browser cannot load once
+ * a module is inlined into a page: a relative (`./`, `../`) or `@/`
+ * specifier, which would resolve against the page's URL instead of the
+ * source file, and any TypeScript file, which Bascik never publishes. A
+ * `/`-rooted path and a full URL to JavaScript are left alone.
+ */
+export const unbundledModuleImports = (code: string): string[] =>
+  findModuleSpecifiers(code)
+    .map(({ value }) => value)
+    .filter((value) => {
+      const kind = classifySpecifier(value);
+      return (
+        kind === "relative" ||
+        kind === "root" ||
+        isTypeScriptFile(value.replace(/[?#].*$/, ""))
+      );
+    });
+
+/**
+ * The located error for an inlined TypeScript module that still imports
+ * files a browser cannot load (see `unbundledModuleImports`).
+ */
+export const unbundledImportError = (
+  sourcePath: string,
+  where: string,
+  src: string,
+  specifiers: string[],
+): TypeScriptTransformError =>
+  new TypeScriptTransformError(
+    `[bascik] error: "${sourcePath}" (inlined from <script type="module" src="${src}"> at ${where}) ` +
+      `imports ${specifiers.map((s) => `"${s}"`).join(", ")}. Bascik inlines the compiled module into the page ` +
+      `and does not bundle its imports, so the browser would request ${specifiers.length === 1 ? "that file" : "those files"} ` +
+      `from the page's URL and fail. Bundle the module with esbuild (a scripts.typescript function, or a ` +
+      `pipeline.exec step that writes a .js file), or import a published JavaScript URL such as "/js/util.js".`,
+  );
 
 /** Resolve `scripts.typescript`, defaulting to the built-in strip. */
 const resolveCompilerOption = (): TypeScriptCompilerOption => {
@@ -210,7 +611,10 @@ export const transformBrowserTypeScript = async (
 ): Promise<string> => {
   const option = resolveCompilerOption();
   if (option === false) return code;
-  if (option === true) return stripBrowserTypeScript(code, context.sourcePath);
+  if (option === true)
+    return stripBrowserTypeScript(code, context.sourcePath, {
+      inline: context.kind === "inline",
+    });
 
   let output: unknown;
   try {
@@ -236,6 +640,70 @@ export const transformBrowserTypeScript = async (
     );
   }
   return output;
+};
+
+/**
+ * A directive script (`data-bascik-build`, `-build-once`, `-routes`,
+ * `-server`, `-stream`) written in TypeScript: its tag is marked
+ * `type="text/typescript"`, as a browser script is, or its `src=` names a
+ * `.ts` / `.mts` file. A query or fragment on `src` is ignored.
+ */
+export const isTypeScriptDirectiveScript = (
+  openTag: string,
+  srcPath?: string,
+): boolean =>
+  getScriptType(openTag) === TYPESCRIPT_SCRIPT_TYPE ||
+  (srcPath !== undefined && isTypeScriptFile(srcPath.replace(/[?#].*$/, "")));
+
+/**
+ * JavaScript for a directive script written in TypeScript, which runs as an
+ * ES module on the server. A `scripts.typescript` function compiles it (with
+ * `runtime: "server"`); otherwise, `true` or `false`, Node's strip-only mode
+ * does, since a directive script always runs in JavaScript and nothing else
+ * compiles it. Strip-only output keeps every line and column, so errors and
+ * stack traces name the TypeScript source's own positions. `sourcePath` is
+ * the `.ts` file, or the HTML file of an inline block.
+ *
+ * A strip error names the file line and column: `code`'s own when it is a
+ * `.ts` file or a block padded to its position, or counted from `origin`,
+ * where an unpadded block's first character is. When no position is known
+ * (a compiler function failed), the message names `tag`, where the inline
+ * block's opening tag is.
+ */
+export const compileDirectiveTypeScript = async (
+  code: string,
+  sourcePath: string,
+  kind: TypeScriptCompileContext["kind"],
+  /** Where an inline block's opening tag is, named when compiling fails. */
+  tag?: SourcePosition,
+  /**
+   * Where `code`'s first character is in `sourcePath`, when not padded;
+   * `"unknown"` for an inline block whose place is not known, so an error
+   * names the line within the block.
+   */
+  origin?: SourcePosition | "unknown",
+): Promise<string> => {
+  const option = resolveCompilerOption();
+  try {
+    if (typeof option === "function")
+      return await transformBrowserTypeScript(code, {
+        sourcePath,
+        kind,
+        runtime: "server",
+      });
+    return stripBrowserTypeScript(
+      code,
+      sourcePath,
+      origin === "unknown" ? { inline: true } : { origin },
+    );
+  } catch (err) {
+    if (!tag || !(err instanceof TypeScriptTransformError) || err.located)
+      throw err;
+    throw new TypeScriptTransformError(
+      `${err.message}\n  The script starts at ${sourcePath}:${tag.line}:${tag.column}.`,
+      { cause: err.cause ?? err },
+    );
+  }
 };
 
 /**
@@ -405,6 +873,7 @@ export const transformTypeScriptScriptTags = async (
       transformBrowserTypeScript(body, {
         sourcePath: sourceFile,
         kind: "inline",
+        runtime: "browser",
       }),
     ),
   );

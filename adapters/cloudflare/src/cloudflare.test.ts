@@ -10,13 +10,22 @@
  * like success" failure mode is impossible by construction.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { rename, rm } from "node:fs/promises";
+import { readFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   buildServerlessFixture,
   cleanupServerlessFixture,
+  componentScriptId,
   createServerlessFixture,
 } from "./serverless-fixture.test-helper.ts";
+import {
+  createCloudflareWorker,
+  createGraphJobRunner,
+  type ComponentManifest,
+  type GraphPage,
+  type GraphScriptJob,
+  type SiteGraph,
+} from "./runtime.ts";
 import {
   createGate,
   startHarness,
@@ -313,3 +322,821 @@ describe("cloudflare adapter: missing binding diagnostics", () => {
     }
   }, 120_000);
 });
+
+// ─── Request-time components (prompt 157) ───────────────────────────────────
+
+const LIVE_ID = componentScriptId("product-card-live");
+const STOCK_SCOPE = encodeURIComponent(
+  JSON.stringify({
+    classes: { stock: "bascik__product-card-live__stock" },
+    elements: {},
+  }),
+);
+const EMPTY_MANIFEST: ComponentManifest = {
+  schema: 1,
+  identifiers: false,
+  minifyHtml: false,
+  base: "/",
+  inheritAttributes: true,
+  components: {},
+};
+
+const job = (
+  id: string,
+  handler: unknown,
+  extra: Partial<GraphScriptJob> = {},
+): GraphScriptJob => ({
+  id,
+  mode: "server",
+  load: async () => ({ default: handler }),
+  ...extra,
+});
+
+const unitGraph = (
+  overrides: Partial<SiteGraph> & {
+    componentJobs?: Record<string, GraphScriptJob>;
+  } = {},
+): SiteGraph => {
+  const { componentJobs, ...rest } = overrides;
+  return {
+    base: "/",
+    scriptTimeoutMs: 1000,
+    apiTimeoutMs: 1000,
+    onServerScriptError: "error",
+    pages: {},
+    apiRoutes: [],
+    release: "test",
+    ...(componentJobs
+      ? { components: { manifest: EMPTY_MANIFEST, jobs: componentJobs } }
+      : {}),
+    ...rest,
+  };
+};
+
+const unitPage = (jobs: Record<string, GraphScriptJob> = {}): GraphPage => ({
+  path: "/catalog",
+  is404: false,
+  segments: [],
+  jobs,
+});
+
+const runnerFor = (
+  graph: SiteGraph,
+  page: GraphPage = unitPage(),
+  log: (message: string) => void = () => {},
+) =>
+  createGraphJobRunner(
+    page,
+    graph,
+    new Request("https://example.test/catalog"),
+    {
+      remoteIp: "",
+      platform: { name: "cloudflare", env: {}, waitUntil: () => {} },
+    },
+    log,
+  );
+
+describe("createGraphJobRunner: component jobs (prompt 157)", () => {
+  it("resolves a component job on a page whose own jobs are empty and applies its output scope", async () => {
+    const run = runnerFor(
+      unitGraph({
+        componentJobs: {
+          [LIVE_ID]: job(LIVE_ID, () => '<p class="stock">in stock</p>', {
+            outputScope: STOCK_SCOPE,
+          }),
+        },
+      }),
+    );
+    await expect(run(LIVE_ID, new AbortController().signal)).resolves.toBe(
+      '<p class="bascik__product-card-live__stock">in stock</p>',
+    );
+  });
+
+  it("applies the output scope a page job carries too (a component placed statically), as Node does", async () => {
+    const pageJob = job("server_script_x", () => '<p class="stock">s</p>', {
+      outputScope: STOCK_SCOPE,
+    });
+    const run = runnerFor(unitGraph(), unitPage({ server_script_x: pageJob }));
+    await expect(
+      run("server_script_x", new AbortController().signal),
+    ).resolves.toBe('<p class="bascik__product-card-live__stock">s</p>');
+  });
+
+  it("a component job runs under the graph's script deadline", async () => {
+    const run = runnerFor(
+      unitGraph({
+        scriptTimeoutMs: 40,
+        componentJobs: {
+          [LIVE_ID]: job(LIVE_ID, () => new Promise(() => {})),
+        },
+      }),
+    );
+    await expect(run(LIVE_ID, new AbortController().signal)).rejects.toThrow(
+      /Script execution timed out after 40ms/,
+    );
+  });
+
+  it("policy: a throwing component job rejects under error, logs and yields empty under warn, yields empty silently under ignore", async () => {
+    const throwing = {
+      [LIVE_ID]: job(LIVE_ID, () => {
+        throw new Error("nested failed on purpose");
+      }),
+    };
+    await expect(
+      runnerFor(unitGraph({ componentJobs: throwing }))(
+        LIVE_ID,
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow(
+      /server script error at "\/catalog"[\s\S]*nested failed on purpose/,
+    );
+
+    const warned: string[] = [];
+    await expect(
+      runnerFor(
+        unitGraph({ onServerScriptError: "warn", componentJobs: throwing }),
+        unitPage(),
+        (m) => warned.push(m),
+      )(LIVE_ID, new AbortController().signal),
+    ).resolves.toBe("");
+    expect(warned).toEqual([
+      expect.stringContaining("nested failed on purpose"),
+    ]);
+
+    const ignored: string[] = [];
+    await expect(
+      runnerFor(
+        unitGraph({ onServerScriptError: "ignore", componentJobs: throwing }),
+        unitPage(),
+        (m) => ignored.push(m),
+      )(LIVE_ID, new AbortController().signal),
+    ).resolves.toBe("");
+    expect(ignored).toEqual([]);
+  });
+
+  it("misuse: a component script without a default export names its job id, like a page job", async () => {
+    const run = runnerFor(
+      unitGraph({
+        componentJobs: {
+          [LIVE_ID]: {
+            id: LIVE_ID,
+            mode: "server",
+            load: async () => ({ render: () => "x" }) as never,
+          },
+        },
+      }),
+    );
+    await expect(run(LIVE_ID, new AbortController().signal)).rejects.toThrow(
+      `Server script "${LIVE_ID}" does not export a default function.`,
+    );
+  });
+
+  it("strips ANSI escapes from page and component job output, before the output scope, as runServerScriptJob does on Node", async () => {
+    const run = runnerFor(
+      unitGraph({
+        componentJobs: {
+          [LIVE_ID]: job(
+            LIVE_ID,
+            () => '<p class="stock">\u001b[31mred\u001b[0m</p>',
+            { outputScope: STOCK_SCOPE },
+          ),
+        },
+      }),
+      unitPage({
+        server_script_x: job(
+          "server_script_x",
+          () => "\u001b]0;title\u0007plain \u001b[1mbold\u001b[22m\u001bM",
+        ),
+      }),
+    );
+    const signal = new AbortController().signal;
+    await expect(run(LIVE_ID, signal)).resolves.toBe(
+      '<p class="bascik__product-card-live__stock">red</p>',
+    );
+    await expect(run("server_script_x", signal)).resolves.toBe("plain bold");
+  });
+
+  it("misuse: a failing component job's message names its component file (the bundled stack never does): a throw, a timeout and a missing default export, under error and warn", async () => {
+    const OWNER =
+      "server script in src/components/product-card-live/product-card-live.html:25";
+    const located =
+      /\n {4}in the server script in src\/components\/product-card-live\/product-card-live\.html:25$/;
+    const failing: Array<[string, GraphScriptJob, RegExp]> = [
+      [
+        "throw",
+        job(
+          LIVE_ID,
+          () => {
+            throw new Error("nested failed on purpose");
+          },
+          { owner: OWNER },
+        ),
+        /nested failed on purpose/,
+      ],
+      [
+        "timeout",
+        job(LIVE_ID, () => new Promise(() => {}), { owner: OWNER }),
+        /Script execution timed out after 30ms/,
+      ],
+      [
+        "no default export",
+        {
+          id: LIVE_ID,
+          mode: "server",
+          owner: OWNER,
+          load: async () => ({ render: () => "x" }) as never,
+        },
+        new RegExp(
+          `Server script "${LIVE_ID}" does not export a default function\\.`,
+        ),
+      ],
+    ];
+    for (const [label, failingJob, cause] of failing) {
+      const graph = {
+        scriptTimeoutMs: 30,
+        componentJobs: { [LIVE_ID]: failingJob },
+      };
+      const error = await runnerFor(unitGraph(graph))(
+        LIVE_ID,
+        new AbortController().signal,
+      ).then(
+        () => undefined,
+        (e: Error) => e,
+      );
+      expect(error?.message, label).toMatch(cause);
+      expect(error?.message, label).toMatch(located);
+      const warned: string[] = [];
+      await runnerFor(
+        unitGraph({ ...graph, onServerScriptError: "warn" }),
+        unitPage(),
+        (m) => warned.push(m),
+      )(LIVE_ID, new AbortController().signal);
+      expect(warned, label).toEqual([expect.stringMatching(located)]);
+    }
+    // A page job has no owner in the graph: its message is as before.
+    const pageError = await runnerFor(
+      unitGraph(),
+      unitPage({
+        server_script_x: job("server_script_x", () => {
+          throw new Error("page failed");
+        }),
+      }),
+    )("server_script_x", new AbortController().signal).then(
+      () => undefined,
+      (e: Error) => e,
+    );
+    expect(pageError?.message).toMatch(/page failed/);
+    expect(pageError?.message).not.toContain("in the server script in");
+  });
+
+  it("misuse: an already aborted request yields an empty component output, never a throw", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const run = runnerFor(
+      unitGraph({
+        componentJobs: { [LIVE_ID]: job(LIVE_ID, () => "never") },
+      }),
+    );
+    await expect(run(LIVE_ID, controller.signal)).resolves.toBe("");
+  });
+
+  it("misuse: an id in neither the page nor the components section still throws the deployment-graph message", async () => {
+    for (const graph of [
+      unitGraph(),
+      unitGraph({ componentJobs: { [LIVE_ID]: job(LIVE_ID, () => "") } }),
+    ]) {
+      await expect(
+        runnerFor(graph)("component_script_typo", new AbortController().signal),
+      ).rejects.toThrow(
+        '[bascik] server script job "component_script_typo" is missing from the deployment graph.',
+      );
+    }
+  });
+});
+
+/**
+ * A fired deadline wins on the Worker as on Node: a page job, a component
+ * job or an API handler that resolves synchronously inside its own abort
+ * listener at the deadline is a timeout (504 for a route), and a client abort
+ * answered the same way is an abort, never a success with what the handler
+ * returned. Today the job wrapper's own awaits happen to let the abort win;
+ * these pin that the rule, not the wrapper, decides.
+ */
+describe("createCloudflareWorker: a fired deadline wins", () => {
+  const resolvesOnAbort =
+    <T>(value: () => T) =>
+    (...args: unknown[]) => {
+      const { signal } = args[args.length - 1] as { signal: AbortSignal };
+      return new Promise<T>((resolve) => {
+        signal.addEventListener("abort", () => resolve(value()), {
+          once: true,
+        });
+      });
+    };
+  const ctx = { waitUntil: () => {} };
+
+  it("misuse: a page job and a component job that resolve inside the abort listener time out under error, and yield empty with a log under warn", async () => {
+    for (const id of ["server_script_x", LIVE_ID]) {
+      const jobs = {
+        [id]: job(
+          id,
+          resolvesOnAbort(() => "late"),
+        ),
+      };
+      const graph = (onServerScriptError: SiteGraph["onServerScriptError"]) =>
+        unitGraph({
+          scriptTimeoutMs: 30,
+          onServerScriptError,
+          ...(id === LIVE_ID ? { componentJobs: jobs } : {}),
+        });
+      const page = id === LIVE_ID ? unitPage() : unitPage(jobs);
+      await expect(
+        runnerFor(graph("error"), page)(id, new AbortController().signal),
+        id,
+      ).rejects.toThrow(/timed out after 30ms/);
+      const warned: string[] = [];
+      await expect(
+        runnerFor(graph("warn"), page, (m) => warned.push(m))(
+          id,
+          new AbortController().signal,
+        ),
+        id,
+      ).resolves.toBe("");
+      expect(warned, id).toEqual([
+        expect.stringMatching(/timed out after 30ms/),
+      ]);
+    }
+  });
+
+  it("misuse: a job that resolves inside the listener on a client abort yields empty without a log, not its value", async () => {
+    const logged: string[] = [];
+    const upstream = new AbortController();
+    const pending = runnerFor(
+      unitGraph({
+        scriptTimeoutMs: 1000,
+        componentJobs: {
+          [LIVE_ID]: job(
+            LIVE_ID,
+            resolvesOnAbort(() => "late"),
+          ),
+        },
+      }),
+      unitPage(),
+      (m) => logged.push(m),
+    )(LIVE_ID, upstream.signal);
+    await new Promise((r) => setTimeout(r, 5));
+    upstream.abort();
+    await expect(pending).resolves.toBe("");
+    expect(logged).toEqual([]);
+  });
+
+  const apiWorker = (GET: unknown, log: (m: string) => void = () => {}) =>
+    createCloudflareWorker(
+      unitGraph({
+        apiTimeoutMs: 30,
+        apiRoutes: [
+          {
+            path: "/api/deadline",
+            filePath: "src/api/deadline.ts",
+            paramNames: [],
+            isDynamic: false,
+            load: async () => ({ GET }),
+          },
+        ],
+      }),
+      { log },
+    );
+
+  it("misuse: an API handler that returns a Response inside its abort listener at the deadline is a 504, not a 200", async () => {
+    const logged: string[] = [];
+    const res = await apiWorker(
+      resolvesOnAbort(() => new Response("late")),
+      (m) => logged.push(m),
+    ).fetch(new Request("https://example.test/api/deadline"), {}, ctx);
+    expect(res.status).toBe(504);
+    expect(await res.text()).toBe("Gateway Timeout");
+    expect(logged.join("\n")).toMatch(/timed out/);
+  });
+
+  it("misuse: an API handler that returns a Response inside its abort listener on a client abort is a 499, not a 200 or a 504", async () => {
+    const upstream = new AbortController();
+    const pending = apiWorker(
+      resolvesOnAbort(() => new Response("late")),
+    ).fetch(
+      new Request("https://example.test/api/deadline", {
+        signal: upstream.signal,
+      }),
+      {},
+      ctx,
+    );
+    await new Promise((r) => setTimeout(r, 5));
+    upstream.abort();
+    expect((await pending).status).toBe(499);
+  });
+});
+
+/**
+ * The Worker handler in-process, with the manifest a real build wrote and
+ * hand-made jobs, so a test can hold a nested job open, abort the request
+ * under it, and measure the budget it was given.
+ */
+describe("createCloudflareWorker: components rendered from a built manifest (prompt 157)", () => {
+  let root: string;
+  let manifest: ComponentManifest;
+
+  beforeAll(async () => {
+    root = await createServerlessFixture("components-inprocess", {
+      components: true,
+    });
+    await buildServerlessFixture(root, "cloudflare-pages");
+    manifest = JSON.parse(
+      await readFile(join(root, ".bascik/dist/components.json"), "utf8"),
+    ) as ComponentManifest;
+  }, 120_000);
+
+  afterAll(async () => {
+    if (root) await cleanupServerlessFixture(root);
+  });
+
+  const liveScope = () =>
+    manifest.components["product-card-live"].jobs[0].outputScope;
+
+  const workerFor = (
+    pageHandler: unknown,
+    nested: GraphScriptJob["load"],
+    overrides: Partial<SiteGraph> = {},
+    log: (message: string) => void = () => {},
+  ) =>
+    createCloudflareWorker(
+      {
+        ...unitGraph(overrides),
+        pages: {
+          "/catalog": {
+            path: "/catalog",
+            is404: false,
+            segments: [
+              { kind: "static", text: "<main>" },
+              { kind: "script", id: "server_script_page" },
+              { kind: "static", text: "</main>" },
+            ],
+            jobs: {
+              server_script_page: job("server_script_page", pageHandler),
+            },
+          },
+        },
+        components: {
+          manifest,
+          jobs: {
+            [LIVE_ID]: {
+              id: LIVE_ID,
+              mode: "server",
+              outputScope: liveScope(),
+              load: nested,
+            },
+          },
+        },
+      },
+      { log },
+    );
+
+  const ctx = { waitUntil: () => {} };
+  // Without minify.html a component's own comments (its `@bascik` usage
+  // sample spells the tag) are emitted with each instance, as at build time:
+  // author text, not an unrendered tag. A comment ends where the HTML parser
+  // ends it ("-->", "--!>", an abrupt "<!-->" or the end of input), in one
+  // pass: removing again could join text around a comment into a new one and
+  // hide a tag the browser shows.
+  const markup = (html: string) =>
+    html.replace(/<!--(?:-?>|[\s\S]*?(?:--!?>|$))/g, "");
+  const LIVE_TAG =
+    '<product-card-live data-bascik-prop-name="Kettle"></product-card-live>';
+
+  it("markup() drops comments where the HTML parser ends them, so it never hides a tag a browser would see", () => {
+    // A comment ends at "--!>" too, and "<!-->" is an empty comment. Ending
+    // either one at a later "-->" would swallow the tag between them and let
+    // the not.toContain checks below pass on an unrendered tag.
+    expect(markup(`<!-- a --!>${LIVE_TAG}<!-- b -->`)).toBe(LIVE_TAG);
+    expect(markup(`<!-->${LIVE_TAG}<!--->`)).toBe(LIVE_TAG);
+    expect(markup(`<p>x</p><!-- unterminated ${LIVE_TAG}`)).toBe("<p>x</p>");
+  });
+
+  it("wraps the page runner: a returned tag is rendered with its nested job's scoped output", async () => {
+    const worker = workerFor(
+      () => LIVE_TAG,
+      async () => ({
+        default: () => '<p class="stock" data-testid="stock">in stock</p>',
+      }),
+    );
+    const res = await worker.fetch(
+      new Request("https://example.test/catalog"),
+      {},
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(markup(html)).not.toContain("<product-card-live");
+    expect(html).toContain("Kettle");
+    expect(html).toContain(
+      '<p class="bascik__product-card-live__stock" data-testid="stock">in stock</p>',
+    );
+  });
+
+  it("misuse: a percent-encoded spelling of the route renders the same ids as the plain one (workerd normalizes, Node does not)", async () => {
+    const worker = workerFor(
+      () => LIVE_TAG + LIVE_TAG,
+      async () => ({ default: () => '<p class="stock">s</p>' }),
+    );
+    const plain = await (
+      await worker.fetch(new Request("https://example.test/catalog"), {}, ctx)
+    ).text();
+    expect(plain).toMatch(/id="bascik__product-card-live__r[0-9a-f]{7}__tile"/);
+    for (const spelling of ["/c%61talog", "/%63%61talog", "/%63%61%74alog"]) {
+      const res = await worker.fetch(
+        new Request(`https://example.test${spelling}`),
+        {},
+        ctx,
+      );
+      expect(res.status, spelling).toBe(200);
+      expect(await res.text(), spelling).toBe(plain);
+    }
+  });
+
+  it("misuse: aborting the request mid nested job aborts the nested job's own signal", async () => {
+    let nestedSignal: AbortSignal | undefined;
+    let started!: () => void;
+    const nestedStarted = new Promise<void>((resolve) => (started = resolve));
+    const worker = workerFor(
+      () => LIVE_TAG,
+      async () => ({
+        default: (
+          _request: Request,
+          _context: unknown,
+          { signal }: { signal: AbortSignal },
+        ) =>
+          new Promise((_resolve, reject) => {
+            nestedSignal = signal;
+            started();
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          }),
+      }),
+    );
+    const controller = new AbortController();
+    const response = worker.fetch(
+      new Request("https://example.test/catalog", {
+        signal: controller.signal,
+      }),
+      {},
+      ctx,
+    );
+    const settled = response.then(
+      () => "settled",
+      () => "settled",
+    );
+    expect(
+      await Promise.race([nestedStarted.then(() => "started"), settled]),
+      "the nested job never started: the returned tag was not rendered",
+    ).toBe("started");
+    expect(nestedSignal?.aborted).toBe(false);
+    controller.abort();
+    await response.catch(() => undefined);
+    expect(nestedSignal?.aborted).toBe(true);
+  });
+
+  it("budget: a nested job gets what is left of the page's deadline, not a fresh one", async () => {
+    const worker = workerFor(
+      async () => {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        return LIVE_TAG;
+      },
+      async () => ({ default: () => new Promise(() => {}) }),
+      { scriptTimeoutMs: 300 },
+    );
+    const started = Date.now();
+    const res = await worker.fetch(
+      new Request("https://example.test/catalog"),
+      {},
+      ctx,
+    );
+    const elapsed = Date.now() - started;
+    expect(res.status).toBe(500);
+    // A fresh 300 ms deadline for the nested job would end near 450 ms.
+    expect(elapsed).toBeLessThan(420);
+  });
+
+  it.each(["warn", "ignore"] as const)(
+    "policy %s: a throwing nested job leaves its slot empty and keeps the parent's card",
+    async (policy) => {
+      const logged: string[] = [];
+      const worker = workerFor(
+        () => LIVE_TAG,
+        async () => ({
+          default: () => {
+            throw new Error("nested failed on purpose SECRET_DETAIL");
+          },
+        }),
+        { onServerScriptError: policy },
+        (m) => logged.push(m),
+      );
+      const res = await worker.fetch(
+        new Request("https://example.test/catalog"),
+        {},
+        ctx,
+      );
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(markup(html)).not.toContain("<product-card-live");
+      expect(html).toContain("Kettle");
+      expect(html).not.toContain("SECRET_DETAIL");
+      expect(logged.some((m) => m.includes("SECRET_DETAIL"))).toBe(
+        policy === "warn",
+      );
+    },
+  );
+
+  it("policy error: a throwing nested job is the 500 page", async () => {
+    const worker = workerFor(
+      () => LIVE_TAG,
+      async () => ({
+        default: () => {
+          throw new Error("nested failed on purpose SECRET_DETAIL");
+        },
+      }),
+    );
+    const res = await worker.fetch(
+      new Request("https://example.test/catalog"),
+      {},
+      ctx,
+    );
+    expect(res.status).toBe(500);
+    expect(await res.text()).not.toContain("SECRET_DETAIL");
+  });
+
+  // scripts.renderLimits reach the Worker through the graph (Collin
+  // 2026-10-29): the configured limit, named in the located message.
+  it("graph.renderLimits: maxInstances 2 refuses three cards, naming the setting; no renderLimits keeps 1000", async () => {
+    const three = () =>
+      '<product-card data-bascik-prop-name="item"></product-card>'.repeat(3);
+    const graphWith = (extra: Record<string, unknown>) =>
+      ({
+        ...unitGraph({ onServerScriptError: "warn" }),
+        pages: {
+          "/catalog": {
+            path: "/catalog",
+            is404: false,
+            segments: [
+              { kind: "static", text: "<main>" },
+              { kind: "script", id: "page_job" },
+              { kind: "static", text: "</main>" },
+            ],
+            jobs: { page_job: job("page_job", three) },
+          },
+        },
+        components: { manifest, jobs: {} },
+        ...extra,
+      }) as SiteGraph;
+    const logged: string[] = [];
+    const limited = await createCloudflareWorker(
+      graphWith({ renderLimits: { maxInstances: 2 } }),
+      { log: (m) => logged.push(m) },
+    ).fetch(new Request("https://example.test/catalog"), {}, ctx);
+    expect(await limited.text()).toBe("<main></main>");
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatch(/more than 2 component instances/);
+    expect(logged[0]).toContain("scripts.renderLimits.maxInstances");
+
+    const free = await createCloudflareWorker(graphWith({})).fetch(
+      new Request("https://example.test/catalog"),
+      {},
+      ctx,
+    );
+    expect(free.status).toBe(200);
+    const freeHtml = markup(await free.text());
+    expect(freeHtml).toContain("item");
+    expect(freeHtml).not.toContain("<product-card ");
+  });
+
+  // D4.6: a request-time render failure (here the instance budget) is a
+  // script failure like any other, so onServerScriptError decides it, and
+  // what is logged is the located server-script message (route, component
+  // file), not a stack of Bascik internals. Node does the same
+  // (request-render-node.test.ts).
+  describe.each(["error", "warn", "ignore"] as const)(
+    "a request-time render failure under onServerScriptError %s",
+    (policy) => {
+      const overBudget = () =>
+        '<product-card data-bascik-prop-name="item"></product-card>'.repeat(
+          1001,
+        );
+      const pageWorker = (mode: "server" | "stream", logged: string[]) =>
+        createCloudflareWorker(
+          {
+            ...unitGraph({ onServerScriptError: policy }),
+            pages: {
+              "/catalog": {
+                path: "/catalog",
+                is404: false,
+                segments: [
+                  { kind: "static", text: "<main>" },
+                  { kind: "script", id: "page_job" },
+                  { kind: "static", text: "</main>" },
+                ],
+                jobs: { page_job: job("page_job", overBudget, { mode }) },
+              },
+            },
+            components: { manifest, jobs: {} },
+          },
+          { log: (m) => logged.push(m) },
+        );
+      const expectLocated = (message: string) => {
+        expect(message).toContain(`server script error at "/catalog"`);
+        expect(message).toMatch(
+          /expands to more than 1000 component instances/,
+        );
+        // The file as the manifest records it, the form bascik --check and
+        // the dev server print, never the project-relative source path.
+        expect(message).toContain(
+          "(<product-card>, components/product-card/product-card.html)",
+        );
+        expect(message).not.toContain("src/components/");
+        expect(message).not.toContain("RequestRenderError");
+        expect(message).not.toMatch(/^\s+at /m);
+      };
+
+      it("misuse: a server script over the instance budget is the 500 page under error, an empty slot under warn and ignore", async () => {
+        const logged: string[] = [];
+        const res = await pageWorker("server", logged).fetch(
+          new Request("https://example.test/catalog"),
+          {},
+          ctx,
+        );
+        const html = await res.text();
+        expect(res.status).toBe(policy === "error" ? 500 : 200);
+        if (policy !== "error") expect(html).toBe("<main></main>");
+        expect(logged).toHaveLength(policy === "ignore" ? 0 : 1);
+        if (logged.length) expectLocated(logged[0]);
+      });
+
+      it("misuse: a stream script over the instance budget leaves its slot empty, reported under the policy", async () => {
+        const logged: string[] = [];
+        const res = await pageWorker("stream", logged).fetch(
+          new Request("https://example.test/catalog"),
+          {},
+          ctx,
+        );
+        expect(res.status).toBe(200);
+        expect(await res.text()).toBe("<main></main>");
+        expect(logged).toHaveLength(policy === "ignore" ? 0 : 1);
+        if (logged.length) expectLocated(logged[0]);
+      });
+    },
+  );
+});
+
+// The same nested-failure policies end to end in workerd: the bundle carries
+// the policy the site was built with.
+describe.each(["warn", "ignore"] as const)(
+  "cloudflare adapter in local workerd: a nested job that throws under %s (prompt 157)",
+  (policy) => {
+    let root: string;
+    let harness: Harness;
+
+    beforeAll(async () => {
+      root = await createServerlessFixture(`components-${policy}`, {
+        components: true,
+        onServerScriptError: policy,
+      });
+      await buildServerlessFixture(root, "cloudflare-pages");
+      harness = await startHarness({
+        projectRoot: root,
+        target: "cloudflare-pages",
+      });
+    }, 180_000);
+
+    afterAll(async () => {
+      await harness?.dispose();
+      if (root) await cleanupServerlessFixture(root);
+    });
+
+    it("a server parent keeps the rendered card and drops only the nested output", async () => {
+      const res = await harness.fetch("/components-boom");
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).not.toContain("<boom-card");
+      expect(html).toContain('data-testid="boom-card"');
+      expect(html).toContain('data-testid="after-boom"');
+      expect(html).not.toContain("SECRET_DETAIL");
+    });
+
+    it("a stream parent keeps the rendered card and the document completes", async () => {
+      const res = await harness.fetch("/components-boom-stream");
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).not.toContain("<boom-card");
+      expect(html).toContain('data-testid="boom-card"');
+      expect(html).toContain('data-testid="tail"');
+      expect(html).not.toContain("SECRET_DETAIL");
+    });
+  },
+);

@@ -70,14 +70,14 @@ Accessible tabs built from the sections passed in. Each child of the default slo
     <div data-bascik-slot></div>
   </div>
 </div>
-<script>
+<script type="text/typescript">
   // Every id below is rewritten per instance, so several tab groups on one page stay independent.
-  const root = document.getElementById("root");
-  const tablist = document.getElementById("tablist");
-  const panels = [...document.getElementById("panels").children];
-  const tabs = [];
+  const root = document.getElementById("root") as HTMLElement;
+  const tablist = document.getElementById("tablist") as HTMLElement;
+  const panels = [...document.getElementById("panels")!.children] as HTMLElement[];
+  const tabs: HTMLButtonElement[] = [];
 
-  const select = (index, moveFocus) => {
+  const select = (index: number, moveFocus: boolean): void => {
     tabs.forEach((tab, i) => {
       const selected = i === index;
       tab.setAttribute("aria-selected", String(selected));
@@ -110,16 +110,17 @@ Accessible tabs built from the sections passed in. Each child of the default slo
     panel.tabIndex = 0;
   });
 
-  tablist.addEventListener("keydown", (event) => {
-    const current = tabs.indexOf(document.activeElement);
+  tablist.addEventListener("keydown", (event: KeyboardEvent) => {
+    const current = tabs.indexOf(document.activeElement as HTMLButtonElement);
     if (current === -1) return;
     const last = tabs.length - 1;
-    const next = {
+    const keys: Record<string, number> = {
       ArrowRight: current === last ? 0 : current + 1,
       ArrowLeft: current === 0 ? last : current - 1,
       Home: 0,
       End: last,
-    }[event.key];
+    };
+    const next: number | undefined = keys[event.key];
     if (next === undefined) return;
     event.preventDefault();
     select(next, true);

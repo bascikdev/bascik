@@ -15,6 +15,10 @@ import {
 import { cleanStackTrace } from "./stack-trace.ts";
 import { BuildScriptError } from "./build-error.ts";
 
+// A TypeScript build script is checked in a real `node --check` child process, and the first type strip loads
+// Node's WebAssembly parser. On a busy Windows runner either can pass Vitest's 5 s default.
+vi.setConfig({ testTimeout: 30_000 });
+
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
 const { state, buildScriptMocks } = vi.hoisted(() => {
@@ -361,6 +365,33 @@ describe("executeBuildScripts", () => {
     expect(mockExecFile).toHaveBeenCalledTimes(2);
   });
 
+  it("counts the scripts that ran and the ones served from cache into options.stats", async () => {
+    resolveSequence([
+      { stdout: "<p>once</p>" },
+      { stdout: "<p>a</p>" },
+      { stdout: "<p>b</p>" },
+    ]);
+    const html =
+      "<script data-bascik-build-once>o()</script>" +
+      "<script data-bascik-build>a()</script><script data-bascik-build>b()</script>";
+    const file = "src/pages/stats.html";
+
+    // Cold: the build-once pass and the build pass both count into the same object.
+    const cold = { ran: 0, cached: 0, childMs: 0 };
+    await executeBuildScripts(html, file, null, { stats: cold });
+    expect(mockExecFile).toHaveBeenCalledTimes(3);
+    expect(cold.ran).toBe(3);
+    expect(cold.cached).toBe(0);
+    expect(cold.childMs).toBeGreaterThan(0);
+
+    // Warm: nothing runs, so no child time is charged.
+    mockExecFile.mockClear();
+    const warm = { ran: 0, cached: 0, childMs: 0 };
+    await executeBuildScripts(html, file, null, { stats: warm });
+    expect(mockExecFile).not.toHaveBeenCalled();
+    expect(warm).toEqual({ ran: 0, cached: 3, childMs: 0 });
+  });
+
   it("replaces a data-bascik-build script tag with handler returned markup", async () => {
     resolveWith("<h1>Generated heading</h1>\n");
     const html =
@@ -392,6 +423,49 @@ describe("executeBuildScripts", () => {
       ),
     );
     warn.mockRestore();
+  });
+
+  it("security.stripDirectiveScripts: false keeps printed directive scripts, without a warning", async () => {
+    // Collin 2026-10-29: the code you wrote is the code that ships. Off, the
+    // printed directives stay in the output (a later pass runs them).
+    clearBuildScriptCaches();
+    const printed =
+      "<p>kept</p><script data-bascik-build>kept()</script>" +
+      "<script data-bascik-server>export default () => 2</script>";
+    resolveWith(printed);
+    const previous = (BascikConfig as any).security;
+    (BascikConfig as any).security = { stripDirectiveScripts: false };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await executeBuildScripts(
+        "<article><script data-bascik-build>console.log(await keep())</script></article>",
+        "src/pages/blog/kept.html",
+      );
+      expect(result).toBe(`<article>${printed}</article>`);
+      expect(warn).not.toHaveBeenCalledWith(
+        expect.stringMatching(/Printed directive scripts never run/),
+      );
+    } finally {
+      (BascikConfig as any).security = previous;
+      warn.mockRestore();
+    }
+  });
+
+  it("security.stripDirectiveScripts: true (explicit) strips as the default does", async () => {
+    clearBuildScriptCaches();
+    resolveWith("<p>x</p><script data-bascik-build>steal()</script>");
+    const previous = (BascikConfig as any).security;
+    (BascikConfig as any).security = { stripDirectiveScripts: true };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await executeBuildScripts(
+        "<article><script data-bascik-build>console.log(await strip())</script></article>",
+      );
+      expect(result).toBe("<article><p>x</p></article>");
+    } finally {
+      (BascikConfig as any).security = previous;
+      warn.mockRestore();
+    }
   });
 
   it("writes the script content to a temp .mjs file", async () => {

@@ -83,14 +83,17 @@ The saved choice has to be applied before the page renders, or the page flashes 
 To offer system, light, and dark, use a `<select>` and remove the saved value for "system":
 
 ```html
-<label for="theme">Theme</label>
-<select class="select" id="theme">
-  <option value="system">System</option>
-  <option value="light">Light</option>
-  <option value="dark">Dark</option>
-</select>
-<script>
-  const select = document.getElementById("theme");
+<!-- src/components/theme-switch/theme-switch.html -->
+<div class="theme-switch" data-testid="theme-switch">
+  <label for="theme">Theme</label>
+  <select class="select" id="theme" data-testid="theme-switch-select">
+    <option value="system">System</option>
+    <option value="light">Light</option>
+    <option value="dark">Dark</option>
+  </select>
+</div>
+<script type="text/typescript">
+  const select = document.getElementById("theme") as HTMLSelectElement;
   select.value =
     document.documentElement.getAttribute("data-theme") ?? "system";
   select.addEventListener("change", () => {

@@ -7,7 +7,7 @@ description: Development, syntax grammars, language-server wiring, bundling, and
 
 # VS Code Extension Development for Bascik (`extensions/vscode-bascik`)
 
-The extension is a thin **language client**. It starts `@bascik/language-server` and connects it to VS Code. Every diagnostic, completion, hover, definition, and quick fix comes from the server in `lsp/`, so the editor, `bascik --check`, and other editors agree. The extension holds no rules of its own, and must not grow any: a rule added here would be missing from CI.
+The extension is a thin **language client**. It starts `@bascik/language-server` and connects it to VS Code. Every diagnostic, completion, hover, definition, reference, and quick fix comes from the server in `lsp/`, so the editor, `bascik --check`, and other editors agree. The extension holds no rules of its own, and must not grow any: a rule added here would be missing from CI.
 
 ---
 
@@ -35,13 +35,13 @@ A VSIX ships no `node_modules`, so `build.mjs` bundles both files with their dep
 
 ## 2. Where a change belongs
 
-| Change                                                             | Where                                                                                                                                                                              |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A diagnostic rule, completion, hover, definition, code action      | `lsp/src/` (`analyzer.ts`, `server-script-rules.ts`, `api-rules.ts`, `directive-rules.ts`, `rules.ts`), with a test in `lsp/`                                                      |
-| Scoping compatibility rules                                        | `docs/content/compatibility.md` is the source; `docs/scripts/generate-compatibility-rules.ts` writes `lsp/src/compatibility-rules.json` and `pkg/src/lib/compatibility-rules.json` |
-| Which files the server is sent, how it is launched                 | `extensions/vscode-bascik/src/client-options.ts`, `extension.ts`                                                                                                                   |
-| Project discovery, file watching, workspace folders, stale results | `lsp/src/server.ts`, tested in `lsp/src/server.test.ts`                                                                                                                            |
-| Highlighting                                                       | `syntaxes/bascik-html.tmLanguage.json`                                                                                                                                             |
+| Change                                                                    | Where                                                                                                                                                                              |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A diagnostic rule, completion, hover, definition, references, code action | `lsp/src/` (`analyzer.ts`, `server-script-rules.ts`, `api-rules.ts`, `directive-rules.ts`, `rules.ts`), with a test in `lsp/`                                                      |
+| Scoping compatibility rules                                               | `docs/content/compatibility.md` is the source; `docs/scripts/generate-compatibility-rules.ts` writes `lsp/src/compatibility-rules.json` and `pkg/src/lib/compatibility-rules.json` |
+| Which files the server is sent, how it is launched                        | `extensions/vscode-bascik/src/client-options.ts`, `extension.ts`                                                                                                                   |
+| Project discovery, file watching, workspace folders, stale results        | `lsp/src/server.ts`, tested in `lsp/src/server.test.ts`                                                                                                                            |
+| Highlighting                                                              | `syntaxes/bascik-html.tmLanguage.json`                                                                                                                                             |
 
 Scoping rules (`css-*`, `js-*`) apply to component files only. Pages, API routes, and scripts outside the component folders are not scoped, so they are not checked.
 
@@ -79,5 +79,5 @@ yarn lsp:unit          # the analysis itself
 
 - The Marketplace needs plain `x.y.z` versions; `.github/scripts/publish-vsce.sh` enforces it. `engines.vscode` must be at least what `vscode-languageclient` requires (`^1.91.0` today) and match `@types/vscode`.
 - Publishing uses `vsce publish --no-dependencies`. That is correct only because everything is bundled; do not add a runtime `dependencies` entry that is not bundled.
-- Do not mutate the package version without updating changelogs.
+- Change the package version only for a release; see `RELEASING.md`, "Extension releases".
 - Ensure fixtures in `test-fixtures/sample-workspace` reflect valid component structures.

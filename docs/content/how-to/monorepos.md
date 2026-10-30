@@ -56,7 +56,7 @@ With `scripts.importRoot` pointing at the shared scripts directory, `@/` reaches
 
 ```html
 <!-- sites/marketing/src/pages/pricing.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import { renderMd } from "@/md-renderer.ts"; // shared/scripts/md-renderer.ts
   import { pricingTable } from "./helpers/pricing.ts"; // sites/marketing/src/pages/helpers/pricing.ts
 
@@ -85,11 +85,11 @@ Order in the array does not decide which component wins, since duplicates are er
 
 ## Imports inside shared components
 
-A build script in a shared component runs as part of whichever site uses it, so `@/` resolves against **that site's** `scripts.importRoot`. When every site points `scripts.importRoot` at the same shared folder, `@/` works everywhere. When the sites differ, import shared helpers with a relative path, which resolves against the component file and works in every site:
+A build script in a shared component runs as part of whichever site uses it, so `@/` resolves against **that site's** `scripts.importRoot`. When every site points `scripts.importRoot` at the same shared folder, `@/` works everywhere. When the sites differ, import shared helpers with a relative path, which resolves against the component file and works in every site. The nav prints the same links on every page, so its script is `data-bascik-build-once`:
 
 ```html
 <!-- shared/components/site-nav/site-nav.html -->
-<script data-bascik-build>
+<script data-bascik-build-once type="text/typescript">
   import { links } from "../../scripts/links.ts";
   export default () => links();
 </script>

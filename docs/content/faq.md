@@ -1,6 +1,6 @@
 # FAQ
 
-Answers to common questions about Bascik.
+Answers to common questions about Bascik. For error messages and things that stopped working, see [Troubleshooting](/testing/troubleshooting).
 
 ## How do you pronounce Bascik? Where does the name come from?
 
@@ -44,19 +44,6 @@ Bascik will advance through minor updates to support new browser capabilities, p
 
 Then of course, I hope for very few patch updates as stability is a top priority.
 
-## What happens if I name a component after a native HTML element?
-
-If you create a file like `nav.html` or `div.html`, Bascik will print a warning in the terminal when starting the dev server or running a build, and still load it:
-
-```text
-warning: Component "nav" has the same name as a native HTML element.
-This may cause unexpected behavior, consider a hyphenated name like "my-nav".
-```
-
-The component will conflict with every occurrence of that element in your pages. All your `<nav>` tags would be replaced by the component content, most likely breaking your site entirely.
-
-Always use a hyphenated name for components, for example `site-nav.html` instead of `nav.html`. This follows the HTML custom element convention: a hyphen in the tag name is how browsers (and Bascik) distinguish a component from a built-in element.
-
 ## What happens if I use uppercase letters in a component filename?
 
 Component names are normalized to lowercase when loaded. `My-Card.html` registers as `my-card` and is used as `<my-card>` in pages.
@@ -65,42 +52,17 @@ If you have two files that differ only in case (for example `my-card.html` and `
 
 > **Convention.** Use lowercase, hyphenated filenames for all components: `site-nav.html`, `feature-card.html`, `alert-box.html`. This matches the HTML custom element convention and avoids any case-collision surprises.
 
-## What happens if I reference a component that doesn't exist?
+## What does Bascik output?
 
-During a build, Bascik emits a warning naming the unresolved tag, and the tag ships to the output unchanged. The build does not fail.
+A directory of plain `.html` files (and your assets). No client-side JavaScript framework, no special server required. Any static host (Netlify, Vercel, GitHub Pages, Cloudflare Pages, S3, or a plain Nginx server) can serve it.
 
-Similarly, `bascik --check` reports unmatched hyphenated tags as warnings (exit code 0). This allows third-party web components like `<model-viewer>` or `<ion-icon>` to pass without causing validation errors.
+## Does Bascik add any JavaScript to my pages?
 
-To silence the warning for a tag you own on purpose, list it in [`components.external`](/configuration#componentsexternal), for example `components: { external: ['model-viewer', 'ion-icon', 'vendor-*'] }`. Typos stay reported. `scoping.preserve` does not do this: it only controls attribute scoping.
+No. Bascik is a build-time tool. The output is vanilla HTML, CSS, and exactly the JavaScript you wrote. No runtime script is injected into your pages.
 
-## Why does `--check` list my third-party web components?
+## Does Bascik enforce semantic HTML?
 
-Bascik does not maintain a hardcoded allowlist of third-party custom element names. When you run `bascik --check`, any custom hyphenated tag without a matching file in `src/components/` is listed under "Components with no matching file" as a warning. Bascik passes these tags through to the output HTML unchanged so the browser or custom element library can handle them. Declare the ones you use in [`components.external`](/configuration#componentsexternal) to remove them from the report. If you want `--check` to fail whenever warnings are reported, pass `--strict`.
-
-## What does `bascik --check` actually check?
-
-`bascik --check` validates pages, components, config, and API route files in one pass. It does this in two halves, and each rule lives in exactly one of them.
-
-**Project checks**, which `bascik` runs itself because they need the whole project:
-
-- Config and path validation issues (including missing script paths and unreadable TLS files)
-- Missing site URL when sitemap/robots generation is enabled
-- Duplicate component tag names and circular component references
-- Two pages, or two API route files, that resolve to the same URL
-- Unmatched or unused components
-- WHATWG HTML5 parse errors in every compiled `dist/` HTML file (requires [parse5](https://parse5.js.org/) as a dev dependency; if not installed, `--check` prints a one-line install hint instead)
-
-**Per-file checks**, which need only one file and come from the [linter](/tools/linter) (`@bascik/language-server`, which projects created with `npm create bascik` already have):
-
-- Unknown `data-bascik-*` attribute names (likely typos)
-- Script mode conflicts such as one tag containing both `data-bascik-build` and `data-bascik-server`
-- API route files with no method handler, or with a method export that is not uppercase
-- CSS and JavaScript in components that cannot be scoped
-- Advisory conventions such as component `<style>` placement and `<script>` placement ordering
-
-If the linter is not installed, the project checks still run and the report says the per-file checks were skipped.
-
-Run `bascik --check --json` for machine-readable results, and `bascik --check --strict` if you want warnings to fail CI.
+No. Bascik ships the markup you wrote and never rewrites or rejects it, so a `<div>` stays a `<div>` and a `<nav>` stays a `<nav>`. It guides and warns instead. [Component Best Practices](/component-best-practices#use-htmls-elements) has the checklist, and the `bascik` agent skill's `audit-components.mjs` warns about a clickable `<div>`, a component whose root is a `<div>` where a `<nav>` or `<article>` fits, a skipped heading level, an image with no `alt`, a form control with no label, and a page with no `<main>`.
 
 ## Can I use Bascik with JavaScript libraries like Alpine.js or HTMX?
 
@@ -109,6 +71,109 @@ Yes. Bascik's output is vanilla HTML. Any library that works with HTML works wit
 ## Can I use an npm package with no CDN build?
 
 Yes, by bundling it yourself. Bascik does not rewrite bare specifiers in client-side scripts, so `import x from 'some-package'` in a `<script type="module">` fails in the browser. Run esbuild as a `pipeline.exec` step with `phase: 'pre'`, write the bundle into `dist/assets/js/`, and import it from the page with a root-relative URL. See [Bundling npm Packages](/how-to/bundling-npm-packages) for the full recipe.
+
+## Which templating library should I use with Bascik?
+
+**Handlebars** is the recommended option. It is small, its logic-less design fits a build-time system where the template is evaluated once and the result is static HTML, and it escapes values by default. For a single interpolated value on a single page, a roughly fifteen-line dependency-free helper is enough; when it grows past about twenty lines, that is the signal to reach for Handlebars. If your team already knows EJS or Nunjucks, keep using it. See [Templating](/how-to/templating) for the full guide.
+
+## Does Bascik run on Windows?
+
+Windows is a supported platform, and Bascik's own tests run on it in CI. Two things differ from macOS and Linux:
+
+- **Symlinked assets.** `assets.symlink` needs permission to create symlinks. Without it, Bascik warns once and copies the files instead. See [How can I speed up development when my site has many static assets?](#how-can-i-speed-up-development-when-my-site-has-many-static-assets).
+- **Line endings.** Source files saved with Windows (CRLF) line endings build to the same output as LF files, so you do not need to convert them. If you keep your project in Git, add `* text=auto eol=lf` to `.gitattributes` so every contributor gets the same bytes.
+
+If something behaves differently on Windows than this page says, please [open an issue](https://github.com/bascikdev/bascik/issues).
+
+## Can Bascik components be nested?
+
+Yes. Components can use other components inside their markup. Bascik resolves nested components recursively at build time.
+
+## Can I organize components into subfolders?
+
+Yes. You can organize `src/components/` however you prefer: completely flat, grouped by feature or section (e.g. `src/components/marketing/promo-card.html`), or in dedicated per-component directories (e.g. `src/components/alert-box/alert-box.html`).
+
+Tag names come from the filename only, so subfolders do not create separate namespaces. `src/components/marketing/promo-card.html` registers `<promo-card>`. Choose whichever folder structure fits your project, ensuring each component file has a unique name.
+
+## Do I need to restart the dev server when I add a new component?
+
+No. The dev server watches the components directory. Drop a new `.html` (or paired `.css`) file in and all pages that use that tag are automatically re-transpiled and reloaded. No restart required.
+
+## How do I share components between projects?
+
+A components directory is plain files, so sharing means using `bascik add` from an npm package, copying files directly, or using a git submodule. Component names derive from filenames regardless of subfolder nesting, so a copied component that collides with a local one fails the build by design; rename with a prefix on the way in. See [Sharing Components](/how-to/sharing-components).
+
+## Is there a component registry?
+
+No. Bascik does not host a centralized component registry or index. Instead, Bascik uses standard npm packages as the distribution mechanism via the `bascik.components` field in `package.json`. You install packages using standard package managers (npm, yarn, pnpm) and copy components in with `bascik add`. This avoids a proprietary registry ecosystem, lets you inspect installed files directly, and keeps the build independent of remote network registries.
+
+## What happens if I edit a component I added?
+
+The copied files belong to your project and are meant to be customized. When you edit a copied component, `bascik-lock.json` detects the content modification via its recorded SHA-256 hash. If you later re-run `bascik add <package>`, Bascik protects your work by refusing to overwrite your modified files unless you explicitly pass the `--force` flag.
+
+## What happens if I place other files or helper modules in my component directory?
+
+Nothing gets copied to `dist/`.
+
+The `src/components/` directory is treated strictly as source-only files:
+
+- Component `.html` templates are resolved and inlined into pages at build time.
+- Companion `.css` files are scoped and deduplicated into page `<style>` blocks.
+- Client `.ts`, `.mts`, `.js`, or `.mjs` scripts referenced via `<script src="...">` are inlined and scoped into page `<script>` blocks.
+- Build-time (`data-bascik-build`) and server-time (`data-bascik-server`) scripts run in Node.js, and their returned markup replaces the script tag.
+- Any other files (helper modules, JSON data files, tests, READMEs) stay in `src/components/` and are never copied to `dist/`.
+
+Static assets intended to be served directly as public URLs should be placed in `src/pages/` instead.
+
+## How do local script references (`<script src="...">`) work inside a component?
+
+When a component `.html` file includes a `<script src="counter.ts"></script>` tag pointing to a local file in its component directory, Bascik resolves and inlines that script at build time.
+
+A `.ts` or `.mts` companion is stripped to JavaScript first (erasable syntax only, no configuration needed). Bascik then wraps the script in an isolated IIFE, rewrites DOM selector calls for scoping, runs any `minify.js` step, and attaches a DevTools `//# sourceURL` directive on its own final line, mapping directly back to your source `.ts`/`.js` file. Inline blocks can opt in with `<script type="text/typescript">`; an ordinary unmarked `<script>` stays JavaScript, and Bascik warns when it finds TypeScript syntax there.
+
+Unreferenced local files are ignored so Node build/server helpers are never accidentally bundled into client code. External `<script src="...">` links pointing to CDNs or global assets are left untouched and passed through to the page output.
+
+## How do I put a prop into an attribute?
+
+Add `data-bascik-attr-{attribute}="{propName}"` to the target element in the component template. For example, `<a data-bascik-attr-href="link">` reads `data-bascik-prop-link="/about"` from the component usage and emits `<a href="/about">`. This works on non-root elements, unlike attribute inheritance. It is a build-time `data-*` directive, not a variable or templating expression. See [Props](/props#put-a-prop-in-an-attribute).
+
+## Where should I put images and fonts?
+
+Put them under `directory.pages`, either beside the page that uses them or in a shared folder such as `src/pages/assets/`, `src/pages/images/`, or `src/pages/fonts/`. For example, `src/pages/fonts/site.woff2` becomes `dist/fonts/site.woff2`.
+
+Keep tests and source-only helpers outside `directory.pages`. For project-specific exceptions, add page-relative glob patterns to `assets.exclude`. If assets must come from a separate source tree, use a `pipeline.exec` script to copy intentionally selected files into `directory.out`.
+
+## Which files in `src/pages/` are copied to `dist/` and which are excluded?
+
+Eligible static assets placed in `src/pages/` are copied to `dist/` with their directory structure preserved. This makes `src/pages/` the publish tree for both routes and their browser assets.
+
+The following files are **excluded** from static asset copying:
+
+- **`.html` page templates**: compiled into output HTML pages in `dist/`.
+- **Source and documentation files**: `.ts`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.map`, and `.md`.
+- **Test files**: any file matching `*.test.*` or `*.spec.*` (such as `styles.test.ts` or `api.spec.js`).
+- **Hidden paths**: any dotfile or file inside a dot-directory. The exception is a top-level `src/pages/.well-known/` directory, which is published to `/.well-known/` (see [Well-Known URIs](/deployment#well-known-uris)). A host that needs a dotfile such as `/.nojekyll` can publish them all with [`security.hideDotfiles: false`](/configuration#security); check `src/pages` for stray files such as `.DS_Store` first. `/.bascik/` stays private either way.
+- **Dependencies**: any file inside a `node_modules` directory.
+- **Inlined stylesheets**: global CSS files configured in `assets.inlineStyles` (injected directly into page `<head>` blocks).
+- **Component directory files**: everything in `src/components/` is source-only and never copied directly to `dist/`.
+
+`assets.exclude` adds project-specific glob exclusions matched relative to `directory.pages`. The built-in exclusions always apply.
+
+## How do I add a custom error page?
+
+Add `src/pages/404.html` for not found errors or `src/pages/500.html` for server errors.
+
+Bascik supports custom error pages by convention without needing any configuration. In production server mode, `src/pages/500.html` is transpiled at boot and served whenever an internal error occurs. If absent, a minimal built-in document is served instead. For static sites, `dist/404.html` and `dist/500.html` are standard files ready for your static host or CDN.
+
+## How do I keep server scripts safe?
+
+Build every server and stream script's output with `html` from `@bascik/bascik/html`: `` return html`<p>${q}</p>` ``. It escapes each value for where it lands, turns `javascript:` URLs into `about:invalid`, and throws on places escaping cannot make safe, such as an `onclick` value or a `<script>` body. Sanitize CMS or Markdown HTML, then insert it with `raw()`; give client scripts data through `data-*` attributes or `json()`; and turn on a Content-Security-Policy with the `contentSecurityPolicy` option. The linter warns about templates that skip `html`. See [Security](/security) for the whole picture and [HTML Helpers](/html-helpers) for the API.
+
+## How do I generate pages dynamically from a CMS, database, or API?
+
+Use [Dynamic Routes](/dynamic-routes). Create a template file with bracket parameter syntax in its filename (such as `src/pages/blog/[slug].html` or `src/pages/products/[id].html`) and add a `<script data-bascik-routes>` script.
+
+The script runs in Node.js at build time, queries your headless CMS, database, or REST API, and exports a default callable function returning an array of `{ params, data? }` route objects. Bascik expands the single template into concrete static HTML pages in `dist/`. Inside the template, `<script data-bascik-build>` blocks read the route params and data from `process.env.BASCIK_ROUTE`.
 
 ## Should I fingerprint my assets?
 
@@ -128,224 +193,45 @@ Bascik then links unchanged assets from `src/pages/` into `dist/` instead of cop
 
 Restart the dev server after changing configuration. Each dev startup clears `dist/`, so previously copied assets are recreated as links. On Windows, if symlink permissions are unavailable, Bascik warns once and falls back to copying. Enable Developer Mode or grant symlink permission to use the faster path.
 
-## Does Bascik run on Windows?
-
-Windows is a supported platform, and Bascik's own tests run on it in CI. Two things differ from macOS and Linux:
-
-- **Symlinked assets.** `assets.symlink` needs permission to create symlinks. Without it, Bascik warns once and copies the files instead. See [How can I speed up development when my site has many static assets?](#how-can-i-speed-up-development-when-my-site-has-many-static-assets).
-- **Line endings.** Source files saved with Windows (CRLF) line endings build to the same output as LF files, so you do not need to convert them. If you keep your project in Git, add `* text=auto eol=lf` to `.gitattributes` so every contributor gets the same bytes.
-
-If something behaves differently on Windows than this page says, please [open an issue](https://github.com/bascikdev/bascik/issues).
-
-## How do I share components between projects?
-
-A components directory is plain files, so sharing means using `bascik add` from an npm package, copying files directly, or using a git submodule. Component names derive from filenames regardless of subfolder nesting, so a copied component that collides with a local one fails the build by design; rename with a prefix on the way in. See [Sharing Components](/how-to/sharing-components).
-
-## Is there a component registry?
-
-No. Bascik does not host a centralized component registry or index. Instead, Bascik uses standard npm packages as the distribution mechanism via the `bascik.components` field in `package.json`. You install packages using standard package managers (npm, yarn, pnpm) and copy components in with `bascik add`. This avoids a proprietary registry ecosystem, lets you inspect installed files directly, and keeps the build independent of remote network registries.
-
-## What happens if I edit a component I added?
-
-The copied files belong to your project and are meant to be customized. When you edit a copied component, `bascik-lock.json` detects the content modification via its recorded SHA-256 hash. If you later re-run `bascik add <package>`, Bascik protects your work by refusing to overwrite your modified files unless you explicitly pass the `--force` flag.
-
-## Which templating library should I use with Bascik?
-
-**Handlebars** is the recommended option. It is small, its logic-less design fits a build-time system where the template is evaluated once and the result is static HTML, and it escapes values by default. For a single interpolated value on a single page, a roughly fifteen-line dependency-free helper is enough; when it grows past about twenty lines, that is the signal to reach for Handlebars. If your team already knows EJS or Nunjucks, keep using it. See [Templating](/how-to/templating) for the full guide.
-
 ## Why do build scripts export a function instead of using console.log()?
 
 Build scripts (`<script data-bascik-build>`) and dynamic route scripts (`<script data-bascik-routes>`) run as standard ECMAScript modules outside the browser. They export a callable default function that returns their result: an HTML string for build scripts, or an array of route entries for dynamic route scripts.
 
-Standard console methods (`console.log()`, `console.error()`) write diagnostic logs to the terminal for debugging only. By separating the result channel from standard output, diagnostic messages from user code and third-party dependencies never leak into generated HTML markup or corrupt route payloads. If you need request-time server rendering with access to the incoming request, server scripts (`<script data-bascik-server>`) export a default request handler function (`export default function(request) { return ... }`). See [Build Scripts](/build-scripts#handler-contract--console-logging).
-
-## Why is my build script returning stale data?
-
-The build script cache keys on the script body and its statically scanned local dependencies. It cannot detect runtime dependencies such as network API calls, `readdir` directory reads, or computed file paths, so a script whose output depends on a remote API is served from cache with stale data across builds. Configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that script from caching. If the stale data comes from an environment variable, declare the variable in `scripts.cache.environment` so its value becomes part of the cache key. See [Build Scripts](/build-scripts#script-caching) for the full cache key and invalidation limits.
-
-## Does Bascik add any JavaScript to my pages?
-
-No. Bascik is a build-time tool. The output is vanilla HTML, CSS, and exactly the JavaScript you wrote. No runtime script is injected into your pages.
-
-## Can I organize components into subfolders?
-
-Yes. You can organize `src/components/` however you prefer: completely flat, grouped by feature or section (e.g. `src/components/marketing/promo-card.html`), or in dedicated per-component directories (e.g. `src/components/alert-box/alert-box.html`).
-
-Tag names come from the filename only, so subfolders do not create separate namespaces. `src/components/marketing/promo-card.html` registers `<promo-card>`. Choose whichever folder structure fits your project, ensuring each component file has a unique name.
-
-## What happens if two components have the same name?
-
-If two component files define the same tag name (such as `src/components/marketing/card.html` and `src/components/admin/card.html`, or `card.html` and `card.v2.html`), Bascik throws a build error naming both colliding file paths. Duplicate component names are not allowed because tag names come from the filename alone.
-
-## Why did my hand-written robots.txt get overwritten?
-
-In earlier versions of Bascik, generated files could overwrite authored ones. Bascik now checks the source tree (`src/pages/robots.txt` or `src/pages/sitemap.xml`) before generating files. If an authored file exists, Bascik preserves it and emits a warning with steps to configure `generate.robots: false` or delete the authored file.
-
-## Why do two builds of the same source produce byte-identical output?
-
-Bascik builds are fully deterministic. Component instance IDs (used for scoped `id` and `name` DOM attributes) are derived deterministically from the page path, component name, and ordinal index of each instance on the page. Under the default configuration, class names omit instance IDs entirely and were already deterministic. This design guarantees that identical source input produces byte-identical output across repeated runs, worker threads, and different machines.
-
-## Do I need a process supervisor?
-
-Yes, when running `bascik --server` in production, a process supervisor such as systemd, Docker container restart policy, or Kubernetes pod supervisor is expected.
-
-Bascik provides process-level crash safety handlers for unexpected rejections or exceptions. Instead of attempting ungraceful recovery in an indeterminate state, it logs full diagnostic context and exits with a non-zero code (`1`). A supervisor restarts the process cleanly.
-
-## Why did my server exit?
-
-If `bascik --server` exited unexpectedly, check the process log for `[bascik] Fatal uncaught exception:` or `[bascik] Fatal unhandled promise rejection:`. Bascik captures unhandled errors and deliberately terminates with code `1` rather than continuing in an unsafe memory state. Ensure your deployment environment has a process supervisor configured to restart the server on failure.
-
-## What is `dist/.bascik/`?
-
-`dist/.bascik/` is a build-internal directory that holds artifacts generated for deployment tools and runtime servers. For example, `generate.manifest: true` writes `dist/.bascik/manifest.json`, `generate.cspHashes: true` writes `dist/.bascik/csp-hashes.json`, and static builds with server scripts write `dist/.bascik/server-scripts.json`. Because the directory starts with a dot, Bascik's built-in servers and request guards 404 all requests to `/.bascik/*` to prevent exposing build inventory.
-
-## How do I use a strict Content Security Policy with Bascik?
-
-List the hash of each inline script in the policy. Enable `generate.cspHashes: true` in `bascik.config.ts` and Bascik writes the SHA-256 hashes of all inlined component scripts and stylesheets to `dist/.bascik/csp-hashes.json`, or hash the built pages yourself in a `post` exec script. See [Content Security Policy](/how-to/content-security-policy) for a worked recipe.
-
-## Does Bascik set a Content Security Policy header?
-
-No. Bascik inlines styles and component scripts for performance and scoping isolation. Setting a CSP header directly in Bascik would require `'unsafe-inline'`, which defeats the purpose of CSP. Instead, Bascik generates SHA-256 hash manifests (`generate.cspHashes: true`) so your host or CDN edge can serve a strict policy.
-
-## Why does my browser reject the dev TLS certificate?
-
-Modern browsers require SubjectAltName (SAN) extensions on certificates. When generating self-signed certificates (`http.tls.enabled: true`), Bascik creates certificates with SAN extensions covering `localhost`, `*.localhost`, `127.0.0.1`, and `::1`. If you have `mkcert` installed, Bascik uses it to create locally-trusted certificates automatically.
-
-## Why did my dynamic route 404?
-
-Dynamic route parameters must be URL-safe tokens. Characters like `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows device names are disallowed. Also ensure your template's routes script returned an array containing valid `params` objects matching the bracket names in the filename.
-
-## Why is my rate limit blocking everyone behind my CDN?
-
-If `bascik --server` runs behind a CDN or load balancer without `http.trustProxy: true`, all incoming connections share the CDN's socket IP address. One active user will exhaust the rate limit budget for all users. Enable `trustProxy: true` under `http` or `export const server` in `bascik.config.ts` so client IPs are resolved from the trusted reverse proxy headers.
-
-## Why did live reload stop working?
-
-If live reload previously disconnected behind a corporate proxy or VPN, Bascik now sends automatic comment heartbeats every 20 seconds to prevent proxy idle timeouts. If you are developing with multiple tabs open or experiencing a build error, an in-browser overlay will display the exact error location until corrected.
-
-## Why are my static asset requests missing from the logs?
-
-In earlier releases, static asset streams logged before the file descriptor finished opening. Bascik now logs static asset and page requests when the response finishes transmission, capturing the HTTP status and total transfer time. Set `logging.requests: false` if you prefer to suppress request logs.
-
-## Why do I need to restart after changing my config?
-
-Bascik deep-freezes configuration at server boot to guarantee consistency across worker threads, routers, and watchers. When `bascik.config.ts` changes during development, Bascik logs a restart hint. Hot config reload is intentionally avoided to prevent state desynchronization.
-
-## Why did my deployment fail to bind the port?
-
-Under `bascik --server`, encountering `EADDRINUSE` fails fast with an explicit error rather than silently incrementing to another port. This ensures traffic intended for your configured port is not routed to an unmonitored port. In local development mode (`bascik`), auto-incrementing remains active.
-
-## How do I do a zero-downtime deploy?
-
-Configure your orchestrator or reverse proxy to use `GET /_health` as the readiness probe. When a deployment replaces existing containers, sending `SIGTERM` makes Bascik report `503` on `/_health` immediately while draining existing requests within `http.timeouts.drain` (default 5 seconds). Once the load balancer shifts traffic to the new instances, the old process exits cleanly.
-
-## Why is my build script output stale?
-
-Bascik caches build script executions based on statically scanned local dependencies. If your script fetches data from a remote network API, reads a directory dynamically via `readdir`, or uses computed file paths, configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that path from caching.
+Standard console methods (`console.log()`, `console.error()`) write diagnostic logs to the terminal for debugging only. By separating the result channel from standard output, diagnostic messages from user code and third-party dependencies never leak into generated HTML markup or corrupt route payloads. If you need request-time server rendering with access to the incoming request, server scripts (`<script data-bascik-server>`) export a default request handler function (`export default function(request) { return ... }`). See [Build Scripts](/build-scripts#handler-contract-console-logging).
 
 ## Can I rebuild only part of my site?
 
 Yes. Run `bascik --build --only "<glob>"` to selectively transpile matching pages (e.g. `bascik --build --only "blog/**"`). Targeted builds do not clean the output directory, so your other compiled pages remain intact in `dist/`. Note that sitemap and robots generation is skipped during targeted builds to prevent delisting pages that were not rebuilt; run a full build before deploying to production.
 
-## Why did my `parallel` exec script's output not appear?
-
-In `bascik --build`, `parallel` lifecycle scripts are spawned concurrently and joined before page transpilation begins. However, if transpilation requires generated content from a script, configure that script with `phase: 'pre'` to guarantee it finishes before page compilation starts.
-
-## How do local script references (`<script src="...">`) work inside a component?
-
-When a component `.html` file includes a `<script src="counter.ts"></script>` tag pointing to a local file in its component directory, Bascik resolves and inlines that script at build time.
-
-A `.ts` or `.mts` companion is stripped to JavaScript first (erasable syntax only, no configuration needed). Bascik then wraps the script in an isolated IIFE, rewrites DOM selector calls for scoping, runs any `minify.js` step, and attaches a DevTools `//# sourceURL` directive on its own final line, mapping directly back to your source `.ts`/`.js` file. Inline blocks can opt in with `<script type="text/typescript">`; an ordinary unmarked `<script>` stays JavaScript, and Bascik warns when it finds TypeScript syntax there.
-
-Unreferenced local files are ignored so Node build/server helpers are never accidentally bundled into client code. External `<script src="...">` links pointing to CDNs or global assets are left untouched and passed through to the page output.
-
-## What happens if I place other files or helper modules in my component directory?
-
-Nothing gets copied to `dist/`.
-
-The `src/components/` directory is treated strictly as source-only files:
-
-- Component `.html` templates are resolved and inlined into pages at build time.
-- Companion `.css` files are scoped and deduplicated into page `<style>` blocks.
-- Client `.ts`, `.js`, or `.mjs` scripts referenced via `<script src="...">` are inlined and scoped into page `<script>` blocks.
-- Build-time (`data-bascik-build`) and server-time (`data-bascik-server`) scripts run in Node.js, and their returned markup replaces the script tag.
-- Any other files (helper modules, JSON data files, tests, READMEs) stay in `src/components/` and are never copied to `dist/`.
-
-Static assets intended to be served directly as public URLs should be placed in `src/pages/` instead.
-
-## Which files in `src/pages/` are copied to `dist/` and which are excluded?
-
-Eligible static assets placed in `src/pages/` are copied to `dist/` with their directory structure preserved. This makes `src/pages/` the publish tree for both routes and their browser assets.
-
-The following files are **excluded** from static asset copying:
-
-- **`.html` page templates**: compiled into output HTML pages in `dist/`.
-- **Source and documentation files**: `.ts`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.map`, and `.md`.
-- **Test files**: any file matching `*.test.*` or `*.spec.*` (such as `styles.test.ts` or `api.spec.js`).
-- **Hidden paths**: any dotfile or file inside a dot-directory. The exception is a top-level `src/pages/.well-known/` directory, which is published to `/.well-known/` (see [Well-Known URIs](/deployment#well-known-uris)).
-- **Dependencies**: any file inside a `node_modules` directory.
-- **Inlined stylesheets**: global CSS files configured in `assets.inlineStyles` (injected directly into page `<head>` blocks).
-- **Component directory files**: everything in `src/components/` is source-only and never copied directly to `dist/`.
-
-`assets.exclude` adds project-specific glob exclusions matched relative to `directory.pages`. The built-in exclusions always apply.
-
-## Where should I put images and fonts?
-
-Put them under `directory.pages`, either beside the page that uses them or in a shared folder such as `src/pages/assets/`, `src/pages/images/`, or `src/pages/fonts/`. For example, `src/pages/fonts/site.woff2` becomes `dist/fonts/site.woff2`.
-
-Keep tests and source-only helpers outside `directory.pages`. For project-specific exceptions, add page-relative glob patterns to `assets.exclude`. If assets must come from a separate source tree, use a `pipeline.exec` script to copy intentionally selected files into `directory.out`.
-
-## Do I need to restart the dev server when I add a new component?
-
-No. The dev server watches the components directory. Drop a new `.html` (or paired `.css`) file in and all pages that use that tag are automatically re-transpiled and reloaded. No restart required.
-
-## Can Bascik components be nested?
-
-Yes. Components can use other components inside their markup. Bascik resolves nested components recursively at build time.
-
-## Why is my prop value showing as escaped text?
-
-Props are text values. Bascik HTML-escapes them during injection so markup from a CMS, database, or API cannot become an executable element or script. If you need rich HTML or a nested component, pass it through a default or named [slot](/slots) instead. Slot content remains markup and participates in component scoping.
-
-## How do I put a prop into an attribute?
-
-Add `data-bascik-attr-{attribute}="{propName}"` to the target element in the component template. For example, `<a data-bascik-attr-href="link">` reads `data-bascik-prop-link="/about"` from the component usage and emits `<a href="/about">`. This works on non-root elements, unlike attribute inheritance. It is a build-time `data-*` directive, not a variable or templating expression. See [Props](/props#put-a-prop-in-an-attribute).
-
-## How do I use a third-party widget that looks up an element by ID?
-
-Add a bare `data-bascik-preserve` directive to the widget mount point. Its literal ID and subtree remain unscoped, so calls such as `turnstile.render('widget-mount')` can find it. Bascik removes the directive from compiled output. See [Preserve Scoping](/preserve).
-
-## Why are my form field names hashed?
-
-Bascik scopes `name` per component instance so repeated radio groups remain independent. For a form that posts to an external service requiring literal keys, add `data-bascik-preserve="name"` to the form. This deliberately gives up radio-group isolation inside that preserved subtree, so do not disable name scoping site-wide. See [Preserve Scoping](/preserve).
-
-## Why is my `<label for>` not working?
-
-Bascik rewrites `<label for>` automatically when the matching `id` is declared in the same component. The label and control receive the same per-instance scoped identifier, including when identifier minification is enabled. A reference to an ID in another component is left unchanged because Bascik cannot choose that component's instance at build time. Keep the label and control together or target a literal page-shell ID. See [Scoped JavaScript](/scoped-javascript#html-id-references).
-
-## Why is my inline SVG gradient not showing?
-
-Declare the gradient ID and its CSS `url(#id)` reference in the same component. Bascik rewrites the fragment to the instance-scoped ID and automatically emits per-instance CSS for that component. Cross-document fragments such as `url(sprite.svg#icon)` are intentionally untouched. For an SVG ID graph owned by another tool, use [Preserve Scoping](/preserve). See [Scoped Styles](/scoped-styles#css-fragment-references).
-
-## How do I generate pages dynamically from a CMS, database, or API?
-
-Use [Dynamic Routes](/dynamic-routes). Create a template file with bracket parameter syntax in its filename (such as `src/pages/blog/[slug].html` or `src/pages/products/[id].html`) and add a `<script data-bascik-routes>` script.
-
-The script runs in Node.js at build time, queries your headless CMS, database, or REST API, and exports a default callable function returning an array of `{ params, data? }` route objects. Bascik expands the single template into concrete static HTML pages in `dist/`. Inside the template, `<script data-bascik-build>` blocks read the route params and data from `process.env.BASCIK_ROUTE`.
-
-## What does Bascik output?
-
-A directory of plain `.html` files (and your assets). No client-side JavaScript framework, no special server required. Any static host (Netlify, Vercel, GitHub Pages, Cloudflare Pages, S3, or a plain Nginx server) can serve it.
-
-## Why did my deleted page keep showing up in `dist/`?
-
-Current Bascik versions clean `directory.out` at the start of every dev and build run, before pre-phase lifecycle scripts execute. A page, renamed asset, or removed dynamic route from an earlier run should therefore not remain in the new output. `bascik --server` is intentionally read-only: it starts the production runtime from output previously generated by `bascik --build`, so it neither builds nor cleans files. For local development, plain `bascik` transpiles, serves, watches, and reloads the site in one command.
-
-If stale output remains, confirm that the command is running from the expected project root and that `directory.out` points to the directory you are inspecting.
-
 ## Can I see the transpiled HTML during development?
 
 Yes. Dev mode stores the updated page in memory first so it can be served immediately, then writes the same transpiled HTML to `directory.out` asynchronously. You can inspect `dist/index.html` or the corresponding nested output file while the dev server runs without adding disk latency to page serving.
+
+## What does `bascik --check` actually check?
+
+`bascik --check` validates pages, components, config, and API route files in one pass. It does this in two halves, and each rule lives in exactly one of them.
+
+**Project checks**, which `bascik` runs itself because they need the whole project:
+
+- Config and path validation issues (including missing script paths and unreadable TLS files)
+- Missing site URL when sitemap/robots generation is enabled
+- Duplicate component tag names and circular component references
+- Two pages, or two API route files, that resolve to the same URL
+- Unmatched or unused components
+- Components a server or stream script cannot return, with the reason, after a build of a site that has server or stream scripts ([Request-Time Component Rendering](/compatibility#request-time-component-rendering))
+- WHATWG HTML5 parse errors in every compiled `dist/` HTML file (requires [parse5](https://parse5.js.org/) as a dev dependency; if not installed, `--check` prints a one-line install hint instead)
+
+**Per-file checks**, which need only one file and come from the [linter](/tools/linter) (`@bascik/language-server`, which projects created with `npm create bascik` already have):
+
+- Unknown `data-bascik-*` attribute names (likely typos)
+- Script mode conflicts such as one tag containing both `data-bascik-build` and `data-bascik-server`
+- API route files with no method handler, or with a method export that is not uppercase
+- CSS and JavaScript in components that cannot be scoped
+- Advisory conventions such as component `<style>` placement and `<script>` placement ordering
+
+If the linter is not installed, the project checks still run and the report says the per-file checks were skipped.
+
+Run `bascik --check --json` for machine-readable results, and `bascik --check --strict` if you want warnings to fail CI.
 
 ## How does Bascik handle bad markup or invalid code? Does it crash?
 
@@ -362,23 +248,15 @@ The dev server is resilient to a bad page, while a production build fails rather
 - **Source and Output I/O:** A missing or unreadable configured pages directory, failure to create an output directory, or failure to write a page is fatal in build mode. These errors are never discarded, including `ENOENT` write failures.
 - **Missing Components Directory:** A project without `src/components/` builds as a site with no components; create the directory when you add the first one, and the dev server picks it up without a restart. Any other directory listed in `directory.components` that does not exist is an error naming that path, because it is usually a typo.
 
-## Can a server script slow down other requests?
+## Why do two builds of the same source produce byte-identical output?
 
-Yes, if it executes long-running synchronous code or blocks Node's event loop.
+Bascik builds are fully deterministic. Component instance IDs (used for scoped `id` attributes, and `name` when `scoping.attributes.name` is on) are derived deterministically from the page path, component name, and ordinal index of each instance on the page. Under the default configuration, class names omit instance IDs entirely and were already deterministic. This design guarantees that identical source input produces byte-identical output across repeated runs, worker threads, and different machines.
 
-Server scripts (`<script data-bascik-server>`) execute in-process within the same Node.js runtime to eliminate fork overhead and process starvation. Because Node runs JavaScript on a single thread, synchronous computations (such as heavy regex matching or CPU loops) block the event loop while they run, delaying concurrent requests. Always use asynchronous APIs with `await`, pass `signal` to `fetch()` or database clients to respect `scripts.timeout`, and offload intensive CPU tasks to worker threads.
+## What is the `.bascik/` folder?
 
-## Why did part of my page disappear after HTML minification?
+`.bascik/dist/` is Bascik's private build folder: it sits beside `dist/`, never inside it, so a static host that serves every file of `dist/` never publishes it. It holds the build state and the ownership inventory that `bascik --server` and `--only` builds read, and the artifacts generated for deployment tools and runtime servers: `generate.manifest: true` writes `.bascik/dist/manifest.json`, `generate.cspHashes: true` writes `.bascik/dist/csp-hashes.json`, and builds with server scripts write `.bascik/dist/server-scripts.json` (the source of every server script) and `.bascik/dist/components.json`, the component templates used to render component tags that server and stream scripts return. The folder is named after `directory.out`, so `build/www` gets `build/.bascik/www/`. Bascik writes a `.gitignore` into `.bascik/` so none of it is committed, and a full build clears `.bascik/dist/` along with `dist/`. A server deploy that runs `bascik --server` copies both `dist/` and `.bascik/dist/` from the same build (it warns about pages whose HTML differs from the build's record, but cannot tell a `.bascik/dist/` from a build that changed only server-script source, and it refuses to start when a page names a server script `.bascik/dist/` does not hold or lost a placeholder `.bascik/dist/` holds for it); a static deploy copies `dist/` only, from a plain `bascik --build`. After a `--target` build, `dist/` also holds the deployment folder `dist/.bascik/<target>/`, with the Worker and its config, so do not publish `dist/` to a static host then. See [Deployment Overview](/deployment#whats-in-dist).
 
-Current Bascik versions shield scripts, `<pre>`, and `<textarea>` before stripping HTML comments, so a literal `<!--` inside JavaScript or JSON-LD cannot consume the rest of the document. Scripts nested inside a container also remain in that container. If output still disappears, check for an unclosed ordinary HTML comment outside those raw-text regions and compare with `minify.html: false`, which disables page and component HTML minification.
-
-## Why do I see multiple identical script tags in my page output?
-
-This is by design and is how Bascik's component scoping works.
-
-When you use a component multiple times on a page, each instance of that component includes its corresponding `<script>` block in the expanded output. Because class names are scoped to the component name rather than an individual instance ID (which allows CSS rules to be deduplicated into a single `<style>` block), component scripts that query elements by class name or use DOM traversal produce identical JavaScript code for every instance.
-
-Each script tag is isolated in its own IIFE so variables never leak into the global scope. Having one script tag per component instance guarantees that every instance receives its behavior without requiring a runtime framework, component registry, or bundling step.
+`dist/.bascik/<target>/` is something else: the deployment folder a `--target` build writes, such as `dist/.bascik/cloudflare/`. Bascik's built-in servers and the Cloudflare Worker answer 404 for `/.bascik/*` in any letter case.
 
 ## Why is `siteUrl` an environment variable and not a config option?
 
@@ -390,38 +268,23 @@ Bascik follows the standard precedence chain instead: `--site-url` flag, then th
 
 Set `base: '/docs/'` in `bascik.config.ts`. Bascik prefixes root-relative HTML and CSS URLs during the build, serves dev and production-server requests below `/docs/`, and includes the prefix in generated sitemap, robots, and canonical URLs. Requests without the prefix return `404`, matching a static subdirectory host. See [Subdirectory deploys](/deployment#subdirectory-deploys).
 
-## Why is my `fetch('/api/x')` broken under `base`?
+## Does Bascik set a Content Security Policy header?
 
-Bascik cannot safely infer URLs assembled or used inside JavaScript, so it does not rewrite them. Emit `process.env.BASCIK_BASE` into a data attribute from a build script, read that value from the DOM, and prefix the request path in client code. This keeps the deployment value build-time and adds no Bascik runtime. See [`BASCIK_BASE`](/build-scripts#bascik_base) for an illustrative pattern.
+Only when you ask. By default Bascik sends none, because a policy has to list the sites your pages load from, and only you know them. A strict policy lists the hash of each inline script instead of allowing `'unsafe-inline'`. Set [`contentSecurityPolicy`](/configuration#contentsecuritypolicy) with your directives and the dev server, `bascik --server`, and Cloudflare send the header with your directives plus each route's inline script and style hashes. On Cloudflare, static pages get it through exact-path rules in the generated `_headers` file. For a static host, `generate.cspHashes: true` writes the SHA-256 hashes of every page's inline scripts and styles to `.bascik/dist/csp-hashes.json` for your host or CDN to serve. See [Content Security Policy](/how-to/content-security-policy) for a recipe per host.
 
-## Why is my `bascik.config.ts` being ignored?
+## Do I need a process supervisor?
 
-Check for a `bascik.config.js` in the same directory. When both files exist in the project root, the `.js` file takes precedence, so a stale or accidental `.js` file shadows your `.ts` config. Delete the `.js` file, or pass `--config bascik.config.ts` to load a specific file explicitly.
+Yes, when running `bascik --server` in production, a process supervisor such as systemd, Docker container restart policy, or Kubernetes pod supervisor is expected.
 
-Two other things to rule out: only the project root is searched (a config in a subdirectory or parent directory is never picked up), and only the `.js` and `.ts` extensions are supported (`.mjs`, `.cjs`, `.mts`, and `.cts` files are not discovered). See [Config file discovery](/configuration#config-file-discovery).
+Bascik provides process-level crash safety handlers for unexpected rejections or exceptions. Instead of attempting ungraceful recovery in an indeterminate state, it logs full diagnostic context and exits with a non-zero code (`1`). A supervisor restarts the process cleanly.
 
-## How do I add a custom error page?
+## How do I do a zero-downtime deploy?
 
-Add `src/pages/404.html` for not found errors or `src/pages/500.html` for server errors.
+Configure your orchestrator or reverse proxy to use `GET /_health` as the readiness probe. When a deployment replaces existing containers, sending `SIGTERM` makes Bascik report `503` on `/_health` immediately while draining existing requests within `http.timeouts.drain` (default 5 seconds). Once the load balancer shifts traffic to the new instances, the old process exits cleanly.
 
-Bascik supports custom error pages by convention without needing any configuration. In production server mode, `src/pages/500.html` is transpiled at boot and served whenever an internal error occurs. If absent, a minimal built-in document is served instead. For static sites, `dist/404.html` and `dist/500.html` are standard files ready for your static host or CDN.
+## Can a server script return a component?
 
-## Why are my assets re-downloading after every deploy?
-
-In earlier versions, static asset ETags were derived from file modification times (`mtime`), which differed across CI checkouts and server replicas. Bascik now uses deterministic SHA-256 content hashes for all static and page ETags, computed once and cached in memory. Identical bytes produce identical ETags across separate server instances and deploys.
-
-## Why did my build fail with a configuration error?
-
-Bascik validates `bascik.config.ts` at startup and refuses to run on an invalid configuration, so a mistake surfaces immediately with a clear message instead of a confusing runtime failure later. The report lists every problem at once: each entry names the key, shows the value it received, and states what was expected.
-
-Common causes:
-
-- **A typo in a key name**, such as `directroy:` or `minfy:`. Unknown keys are rejected, with a "did you mean" suggestion when the key is a near miss of a real option.
-- **A value of the wrong type or range**, such as `http.port: 70000` or `scripts.timeout: 0`.
-- **A path that does not exist**, such as a `pipeline.exec[].script`, a `pipeline.watchPaths` entry, or a TLS certificate file.
-- **An invalid `BASCIK_SITE_URL`**, which must be an absolute `http` or `https` URL.
-
-Fix each listed key and re-run. See [Configuration validation](/configuration#configuration-validation).
+Yes. A `data-bascik-server` or `data-bascik-stream` script can return the tags of your own components, such as one `<product-card>` per search result, and Bascik renders each tag at request time with the component's markup, props, slots, and scoped CSS. There is no import and no setting. Escape the values you put into props, and sanitize HTML from a CMS or an API before returning it, because every tag in the output renders. A few component shapes cannot be rendered this way and are left as written; `bascik --check` lists them. See [Returning component tags](/server-scripts#returning-component-tags) for a worked example and the rules, or see it live on Cloudflare Workers in the [product catalog demo](https://cloudflare-adapter.bascik.dev/catalog?q=frother).
 
 ## Can Bascik handle form submissions and API requests?
 
@@ -434,11 +297,3 @@ No. If you run Bascik with `bascik --server`, API routes run in-process on the s
 ## Why does Bascik not include middleware chains or interceptors?
 
 Bascik favors explicit, standard TypeScript composition over implicit framework middleware. Because handlers take a standard `Request` and return a `Response`, you can compose auth guards, logging, or input validators using plain functions: `export const POST = withAuth(async (req) => ...);`. This keeps handlers transparent, portable, and easily testable without mocking framework internals.
-
-## How big a request body can an API route accept?
-
-By default, Bascik limits API route request bodies to `1048576` bytes (1 MB). You can configure this with `http.maxBodySize` in `bascik.config.ts`. Bascik counts bytes on the fly as they stream from the client and immediately terminates oversized requests with `413 Payload Too Large` without buffering the entire body into memory.
-
-## Why did my API route return 504?
-
-API route execution is guarded by `http.apiTimeout` (default: 10,000 ms). If your handler does not return a `Response` before this timeout elapses, Bascik aborts the request and responds with `504 Gateway Timeout`. Handlers receive a cooperative `AbortSignal` in their context to cancel long-running database queries or external fetch requests.

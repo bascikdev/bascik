@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Look up the Baseline browser support status of web platform features from the Web Platform Status API
 // (https://webstatus.dev), which is built on the web-features data that MDN and caniuse also use.
-// Dependency-free; Node.js 22.18+.
+// Dependency-free; Node.js 22.22+.
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
@@ -95,7 +95,7 @@ async function search(origin, query, limit) {
 }
 
 async function main() {
-  const { values, positionals } = parseArgs({
+  const { values, positionals } = parseCliArgs("baseline", {
     allowPositionals: true,
     options: {
       limit: { type: "string", default: "3" },
@@ -147,3 +147,30 @@ const invokedDirectly =
   Boolean(process.argv[1]) &&
   pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
 if (invokedDirectly) await main();
+
+/**
+ * `parseArgs`, with a short message naming the flag and the valid ones, and
+ * exit code 2, in place of Node's stack trace on a mistyped or missing flag.
+ */
+function parseCliArgs(name, config) {
+  try {
+    return parseArgs(config);
+  } catch (error) {
+    if (!String(error?.code).startsWith("ERR_PARSE_ARGS_")) throw error;
+    const valid = Object.entries(config.options ?? {})
+      .map(
+        ([long, option]) =>
+          `${option.short ? `-${option.short}, ` : ""}--${long}`,
+      )
+      .join(", ");
+    const flag = /'([^']+)'/.exec(error.message)?.[1];
+    const problem =
+      error.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" && flag
+        ? `unknown option "${flag}"`
+        : error.message.split(". ")[0].replace(/\.$/, "");
+    process.stderr.write(
+      `${name}: ${problem}. Valid options: ${valid}. Run with --help.\n`,
+    );
+    process.exit(2);
+  }
+}

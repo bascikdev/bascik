@@ -13,14 +13,14 @@ Bascik includes a zero-dependency server whose shared core is `pkg/src/lib/serve
 
 ## 1. Dev Server vs. Prod Server Architecture
 
-| Feature               | Dev Server (`bascik`)                              | Prod Server (`bascik --server`)          |
-| :-------------------- | :------------------------------------------------- | :--------------------------------------- |
-| **Purpose**           | Local authoring, watching, live-reloading          | High-throughput static & dynamic serving |
-| **Live Reload / SSE** | Injects SSE client script into HTML pages          | Disabled                                 |
-| **Watcher**           | `chokidar` watches `src/`, triggers rebuilds & SSE | No filesystem watcher                    |
-| **Request Scripts**   | Executes `data-bascik-server` on request           | Executes `data-bascik-server` on request |
-| **HTTP Protocols**    | HTTP/1.1 & HTTP/2 (ALPN)                           | HTTP/1.1 & HTTP/2 (ALPN)                 |
-| **TLS**               | Auto-generated in-memory certificates              | Auto-generated or custom certs           |
+| Feature               | Dev Server (`bascik`)                              | Prod Server (`bascik --server`)                 |
+| :-------------------- | :------------------------------------------------- | :---------------------------------------------- |
+| **Purpose**           | Local authoring, watching, live-reloading          | High-throughput static & dynamic serving        |
+| **Live Reload / SSE** | Injects SSE client script into HTML pages          | Disabled                                        |
+| **Watcher**           | `chokidar` watches `src/`, triggers rebuilds & SSE | No filesystem watcher                           |
+| **Request Scripts**   | Executes `data-bascik-server` on request           | Executes `data-bascik-server` on request        |
+| **HTTP Protocols**    | HTTP/1.1; HTTP/2 (ALPN) with `http.tls.enabled`    | HTTP/1.1; HTTP/2 (ALPN) with `http.tls.enabled` |
+| **TLS**               | Off by default; generated or custom certs          | Off by default; generated or custom certs       |
 
 ---
 
@@ -30,23 +30,23 @@ Bascik supports secure serving with ALPN (Application-Layer Protocol Negotiation
 
 - **ALPN Protocols:** Advertises `['h2', 'http/1.1']` to clients.
 - **Fallback Behavior:** If a client does not support HTTP/2 or requests plain HTTP/1.1, the server handles it seamlessly via `http2.createSecureServer({ allowHTTP1: true })`.
-- **Disabling TLS for Testing:**
-  Set `BASCIK_ENABLE_TLS=false` when testing environments that cannot handle self-signed certificates without complex trust stores. (There is no `--no-tls` flag; the environment variable is the only switch.)
+- **Enabling TLS:** TLS (and with it HTTP/2) is off unless `http.tls.enabled: true` is set in config; without it `startServer()` serves plain HTTP/1.1. With TLS on, `ensureCertificates()` (`pki.ts`) uses `http.tls.keyFile` / `http.tls.certFile`, or generates `bascik-privkey.pem` / `bascik-cert.pem` in the project on first run (trusted via `mkcert` when installed, otherwise self-signed with `openssl`). There is no TLS environment variable or CLI flag.
 
 ---
 
 ## 3. Server-Sent Events (SSE) Live-Reload System
 
-In dev mode, the server maintains an open SSE connection with connected browser tabs at `/__bascik_live_reload`:
+In dev mode, the server maintains an open SSE connection with connected browser tabs at `/bascik-live-reload`:
 
 ### Injected Client Script
 
 The server injects a small, resilient SSE listener into HTML responses in dev mode:
 
 ```js
-const es = new EventSource("/__bascik_live_reload");
+// Simplified from live-reload.ts: "reload <generation>" messages, reconnect, and error overlay omitted.
+const es = new EventSource("/bascik-live-reload");
 es.onmessage = (event) => {
-  if (event.data === "reload") {
+  if (event.data.startsWith("reload")) {
     location.reload();
   }
 };
@@ -57,7 +57,7 @@ es.onmessage = (event) => {
 To prevent intermediate proxies, firewalls, and browser timeouts from severing idle SSE connections:
 
 1. **Headers:** `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`.
-2. **Heartbeat:** Transmit periodic comment pings (`:\n\n`) every 15–30 seconds.
+2. **Heartbeat:** Transmit periodic pings (`DEFAULT_HEARTBEAT_INTERVAL_MS`, 20 seconds, in `sse.ts`).
 3. **Clean Teardown:** Listen for `req.on('close')` to remove client response objects from the active broadcaster set to prevent memory leaks.
 
 ---
@@ -84,11 +84,11 @@ stream.on("error", (err: NodeJS.ErrnoException) => {
 
 `<script data-bascik-server>` blocks execute in-process as Node.js ESM modules using `ScriptRegistry` without spawning child processes.
 
-- **Sidecar loading:** In production (`bascik --server`), script sources are loaded from `dist/.bascik/server-scripts.json` at startup.
+- **Sidecar loading:** In production (`bascik --server`), script sources are loaded from `.bascik/dist/server-scripts.json` at startup.
 - **Context delivery:** Handlers receive `(request: Request, context: { remoteIp }, { signal })`, identical to API routes.
-- **Output:** The handler's return value replaces the script tag in the page response.
-- **Escaping:** Output is raw HTML. Bascik ships no escaper; authors write one or import one.
-- **Fault containment:** Errors in one script block fail only that block, logged per `scripts.onServerScriptError`.
+- **Output:** The handler's return value replaces the script tag in the page response. Component tags in the output are rendered at request time (markup, props, slots, scoped CSS, nested server scripts) from the component manifest, within the `scripts.renderLimits` budgets.
+- **Escaping:** Output is HTML. `html` from `@bascik/bascik/html` (`pkg/src/html.ts`) escapes each value for where it lands; plain string output is not escaped.
+- **Fault containment:** A throwing or over-budget script follows `scripts.onServerScriptError`: `'error'` (default) answers 500 for a server script, `'warn'` and `'ignore'` leave its slot empty.
 
 ---
 
@@ -101,7 +101,7 @@ Test and run server modes directly using workspace helper scripts:
 yarn docs:dev
 
 # Prod server in docs workspace
-yarn docs:serve
+yarn docs:preview
 
 # HTTP/1.1 E2E tests
 yarn --cwd pkg e2e:prod:http1

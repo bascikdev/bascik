@@ -79,5 +79,14 @@
     "flags": "g",
     "message": "A document-level lookup of one element by class (document.querySelector('.class'), document.getElementsByClassName('class')[0]) is document-wide under deduplicateCss and returns the first instance's element when a component is used multiple times.",
     "suggestion": "Use document.getElementById() or rootEl.querySelector() for per-instance lookup."
+  },
+  {
+    "id": "js-dynamic-id-lookup",
+    "kind": "js",
+    "severity": "warning",
+    "pattern": "getElementById\\s*\\(\\s*(?![\\s)]|([\"'])[^\"'\\n]*\\1\\s*\\)|[\\w$]+(?:\\??\\.[\\w$]+)*\\??\\.(?:getAttribute\\s*\\(\\s*([\"'`])(?:form|list|popovertarget|commandfor|for|headers|itemref|aria-(?:activedescendant|errormessage|labelledby|describedby|controls|owns|flowto|details))\\2\\s*\\)|getAttribute\\s*\\(\\s*([\"'`])(?:xlink:)?href\\3\\s*\\)\\s*\\.\\s*(?:slice|substring)\\s*\\(\\s*1\\s*\\)|htmlFor)\\s*\\))",
+    "flags": "g",
+    "message": "getElementById() with a dynamic argument (a variable, property, string concatenation, or template literal) is not rewritten by Bascik, so it will not match a scoped component id and returns null at runtime. Values read from custom data-* attributes are not rewritten either.",
+    "suggestion": "Pass a static string literal (document.getElementById(\"my-id\")), reference the target through a standard id attribute that Bascik rewrites (aria-controls, popovertarget, commandfor, href=\"#my-id\"), or traverse from a statically looked-up element (btn.closest(), rootEl.querySelector()). If the id comes from outside the component, add // bascik-ignore js-dynamic-id-lookup."
   }
 ]

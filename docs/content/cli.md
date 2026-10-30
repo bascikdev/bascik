@@ -7,20 +7,25 @@ Bascik features a simple, fast, and highly informative CLI for both development 
 ```sh
 npm create bascik@rc
 # or: npm create bascik@rc my-project
+# or: npm create bascik@rc my-project -- --template cloudflare
 ```
 
-Scaffolds a complete starter project in a new directory. Prompts for a project name if not passed as an argument. Creates:
+Scaffolds a complete starter project in a new directory. Prompts for a project name if not passed as an argument. `--template cloudflare` adds the [Cloudflare adapter](/deployment/cloudflare), Wrangler, and an edge demo page to the same starter; it goes after `--` because npm keeps flags placed before it for itself. Creates:
 
 ```text
 my-project/
   package.json
-  bascik.config.ts
   vite.config.js
   .gitignore
   .vscode/
     launch.json
-  .agents/skills/        Bascik agent skills (bascik, bascik-components, ...) with scripts
+    extensions.json
+    settings.json
+  AGENTS.md              project brief for coding assistants
+  CLAUDE.md              imports AGENTS.md for Claude Code
+  .agents/skills/        Bascik agent skills, when you answer Y to the skills question
   .claude/skills/        the same skills for Claude Code
+  skills-lock.json       where the skills came from
   e2e/
     playwright.config.ts
     app.spec.ts
@@ -53,6 +58,9 @@ my-project/
       my-counter/
         my-counter.html
         my-counter.test.ts
+      contact-form/
+        contact-form.html
+        contact-form.test.ts
 ```
 
 Every scaffolded project includes co-located unit tests for its components, Playwright E2E browser tests in `e2e/`, Vitest configuration in `vite.config.js`, and pre-configured test scripts (`npm test`, `npm run test:watch`, `npm run test:coverage`, and `npm run e2e`).
@@ -62,11 +70,32 @@ After scaffolding, the tool prompts you interactively:
 ```sh
 ✓ Scaffolded my-project/
 
+Install the Bascik agent skills for coding assistants (Claude Code, Copilot, Cursor, Codex...)? (Y/n)
 Install dependencies now? (Y/n)
 Start the dev server after install? (Y/n)
 ```
 
-Select **Y** for both and you're live at `http://localhost:8080` with no extra commands.
+Select **Y** for all three and you're live at `http://localhost:8080` with no extra commands. The first installs the [agent skills](/agent-skills#new-projects) with the skills CLI; when that fails, such as offline, the project is still created and the command to run later is printed.
+
+| Flag                | Description                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `-y`, `--yes`       | Answer every question with its default: the default template, and yes to the skills, the install and the dev server |
+| `--no-skills`       | Do not install the agent skills                                                                                     |
+| `--no-install`      | Do not run `npm install`                                                                                            |
+| `--no-dev`          | Do not start the dev server                                                                                         |
+| `--template <name>` | `default` (alias `static`) or `cloudflare`                                                                          |
+
+A `--no-*` flag wins over `-y` and skips its question. An unknown flag, such as `--no-skill`, is refused with the flag it most likely meant. Without a terminal, such as in CI, answers piped to the command are used in order, and every question after the input ends takes its default.
+
+## Set up an existing project with `bascik init`
+
+```sh
+bascik init
+bascik init -y           # install the agent skills without asking
+bascik init --no-skills  # skip the agent skills
+```
+
+`bascik init` creates `src/pages/index.html` and `src/components/`, adds `dist/` to `.gitignore`, adds the `dev` and `build` scripts to `package.json`, sets up VS Code, writes the `AGENTS.md` and `CLAUDE.md` [project brief](/agent-skills#project-brief), and asks whether to install the [agent skills](/agent-skills#new-projects) at the installed Bascik version. It adds to files you already have and never replaces them.
 
 ## CLI reference
 
@@ -79,27 +108,28 @@ bascik --check   # static analysis: validate pages, components, and config witho
 bascik add <pkg> # copy components from an installed npm package into src/components/
 ```
 
-| Flag                  | Description                                                                                                                                                                                                                                                        |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--log [path]`        | Also write build output to a log file. Only valid with `--build`. Default: `.bascik/build.log`                                                                                                                                                                     |
-| `--only <glob>`       | Only transpile pages matching the glob pattern (relative to `directory.pages`). Repeatable. Only valid with `--build`                                                                                                                                              |
-| `--target <name>`     | Also emit a serverless deployment bundle under `dist/.bascik/<name>/`. Accepts an official name (`cloudflare-pages`, `cloudflare-workers`), an adapter package (`@acme/adapter-foo`), or a local path. Only valid with `--build`; cannot be combined with `--only` |
-| `--fix`               | Apply deterministic fixes during `--check` (for example, a missing `data-bascik-prop-` prefix), then report the findings that remain                                                                                                                               |
-| `--strict`            | Treat warnings as errors during `--check` (exits with code 1 if warnings are found)                                                                                                                                                                                |
-| `--json`              | Emit findings as a structured JSON document during `--check`                                                                                                                                                                                                       |
-| `--force`             | Overwrite locally modified components during `bascik add`                                                                                                                                                                                                          |
-| `--yes`, `-y`         | Skip interactive confirmation during `bascik add`                                                                                                                                                                                                                  |
-| `--dry-run`           | List what `bascik add` would do without writing files to disk                                                                                                                                                                                                      |
-| `--port <n>`          | Override the server port (overrides `BASCIK_SERVER_PORT` and `http.port`)                                                                                                                                                                                          |
-| `--host <name>`       | Override the server hostname (overrides `BASCIK_SERVER_HOST` and `http.hostname`)                                                                                                                                                                                  |
-| `--log-level <level>` | Override `logging.level`: `silent`, `error`, `warn`, `info`, or `debug` (overrides `BASCIK_LOG_LEVEL`)                                                                                                                                                             |
-| `--quiet`, `-q`       | The same as `--log-level warn`: hide the per-page, copy, request, and script progress lines. The server address and the transpile summary still print. Cannot be combined with `--log-level`                                                                       |
-| `--no-pin`            | Do not pin the server address to the top row of the terminal. Only valid for the dev server. The same as `BASCIK_PIN_SERVER_URL=0`                                                                                                                                 |
-| `--site-url <url>`    | Set the site URL for this run (overrides `BASCIK_SITE_URL` and `.env`)                                                                                                                                                                                             |
-| `--env-file <path>`   | Load env vars from a file (repeatable; later files win)                                                                                                                                                                                                            |
-| `--config <path>`     | Load the config from a specific file instead of `./bascik.config.js` or `./bascik.config.ts`                                                                                                                                                                       |
-| `-h`, `--help`        | Show the help text                                                                                                                                                                                                                                                 |
-| `-v`, `--version`     | Show the installed Bascik version                                                                                                                                                                                                                                  |
+| Flag                  | Description                                                                                                                                                                                                                                                                      |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--log [path]`        | Also write build output to a log file. Only valid with `--build`. Default: `.bascik/build.log`                                                                                                                                                                                   |
+| `--only <glob>`       | Only transpile pages matching the glob pattern (relative to `directory.pages`). Repeatable. Only valid with `--build`                                                                                                                                                            |
+| `--target <name>`     | Also emit a serverless deployment bundle under `dist/.bascik/<name>/`. Accepts an official name (`cloudflare`, `cloudflare-workers`, `cloudflare-pages`), an adapter package (`@acme/adapter-foo`), or a local path. Only valid with `--build`; cannot be combined with `--only` |
+| `--fix`               | Apply deterministic fixes during `--check` (for example, a missing `data-bascik-prop-` prefix), then report the findings that remain                                                                                                                                             |
+| `--strict`            | Treat warnings as errors during `--check` (exits with code 1 if warnings are found)                                                                                                                                                                                              |
+| `--json`              | Emit findings as a structured JSON document during `--check`                                                                                                                                                                                                                     |
+| `--force`             | Overwrite locally modified components during `bascik add`                                                                                                                                                                                                                        |
+| `--yes`, `-y`         | Skip interactive confirmation during `bascik add`, and install the agent skills without asking during `bascik init`                                                                                                                                                              |
+| `--no-skills`         | Do not ask about or install the agent skills during `bascik init`                                                                                                                                                                                                                |
+| `--dry-run`           | List what `bascik add` would do without writing files to disk                                                                                                                                                                                                                    |
+| `--port <n>`          | Override the server port (overrides `BASCIK_SERVER_PORT` and `http.port`)                                                                                                                                                                                                        |
+| `--host <name>`       | Override the server hostname (overrides `BASCIK_SERVER_HOST` and `http.hostname`)                                                                                                                                                                                                |
+| `--log-level <level>` | Override `logging.level`: `silent`, `error`, `warn`, `info`, or `debug` (overrides `BASCIK_LOG_LEVEL`)                                                                                                                                                                           |
+| `--quiet`, `-q`       | The same as `--log-level warn`: hide the per-page, copy, request, and script progress lines. The server address and the transpile summary still print. Cannot be combined with `--log-level`                                                                                     |
+| `--no-pin`            | Do not pin the server address to the top row of the terminal. Only valid for the dev server. The same as `BASCIK_PIN_SERVER_URL=0`                                                                                                                                               |
+| `--site-url <url>`    | Set the site URL for this run (overrides `BASCIK_SITE_URL` and `.env`)                                                                                                                                                                                                           |
+| `--env-file <path>`   | Load env vars from a file (repeatable; later files win)                                                                                                                                                                                                                          |
+| `--config <path>`     | Load the config from a specific file instead of `./bascik.config.js`, `.mjs`, or `.ts`                                                                                                                                                                                           |
+| `-h`, `--help`        | Show the help text                                                                                                                                                                                                                                                               |
+| `-v`, `--version`     | Show the installed Bascik version                                                                                                                                                                                                                                                |
 
 Every value-taking flag accepts both forms:
 
@@ -138,7 +168,7 @@ bascik add @acme/ui --force
 
 ### The `bascik-lock.json` lockfile
 
-`bascik add` maintains a `bascik-lock.json` file in your project root. Unlike build artifacts in `dist/.bascik/`, `bascik-lock.json` is committed project state that tracks:
+`bascik add` maintains a `bascik-lock.json` file in your project root. Unlike build artifacts in `.bascik/dist/`, `bascik-lock.json` is committed project state that tracks:
 
 - Installed component packages and versions
 - The list of copied files
@@ -203,7 +233,7 @@ Important rules for targeted builds:
 - **Pages only:** `--only` scopes page transpilation, not static assets. Static assets are still copied and verified.
 - **Production base:** targeted builds require an existing successful full production build. Run `bascik --build` before the first targeted build.
 - **Sitemap and robots:** `sitemap.xml` and `robots.txt` generation is skipped with a warning during targeted builds to prevent delisting pages that were not rebuilt. Run a full `bascik --build` to regenerate whole-site sitemaps.
-- **Owned artifact transactions:** `manifest.json`, `csp-hashes.json`, and `server-scripts.json` are reconciled from a durable source-to-output ownership inventory (`dist/.bascik/ownership.json`). Pages you rebuild are exactly replaced; pages you do not rebuild are retained untouched (for example, an untouched page's server script keeps resolving); outputs a rebuilt page no longer produces (such as a removed dynamic route) are pruned. All of this happens in one staged transaction, so a failed targeted build never corrupts the previous valid artifact set. Rebuilt-only pruning means a source page deleted without a later targeted build is pruned by a full build.
+- **Owned artifact transactions:** `manifest.json`, `csp-hashes.json`, and `server-scripts.json` are reconciled from a durable source-to-output ownership inventory (`.bascik/dist/ownership.json`). Pages you rebuild are exactly replaced; pages you do not rebuild are retained untouched (for example, an untouched page's server script keeps resolving); outputs a rebuilt page no longer produces (such as a removed dynamic route) are pruned. All of this happens in one staged transaction, so a failed targeted build never corrupts the previous valid artifact set. Rebuilt-only pruning means a source page deleted without a later targeted build is pruned by a full build.
 
 ## Serverless bundles (`--target`)
 
@@ -238,7 +268,7 @@ Port 8080 is in use, trying 8081…
 Server running at http://localhost:8081
 ```
 
-If you explicitly configure the server to run with TLS (`enableTls: true` in `bascik.config.ts`), Bascik will serve over HTTPS (default port `8443`) and generate local TLS certificates if needed via `mkcert` or `openssl` fallback.
+If you explicitly configure the server to run with TLS (`http.tls.enabled: true` in `bascik.config.ts`), Bascik will serve over HTTPS (default port `8443`) and generate local TLS certificates if needed via `mkcert` or `openssl` fallback.
 
 ## Watching for file changes
 
@@ -270,7 +300,7 @@ While the dev server is active, Bascik incrementally updates your build as files
 
 Development and production builds handle page failures differently. The dev server logs a failed page, finishes booting, and continues serving every page that compiled successfully. Saving a fix retries that page without requiring a server restart.
 
-`bascik --build` treats missing or unreadable configured directories (except a missing default `src/components/`, which means no components), pages without a non-empty `<body>`, runaway component expansion, and output directory or file write failures as hard errors. It waits for all page jobs, reports every failure together, exits nonzero, and does not print `Build complete`.
+`bascik --build` treats missing or unreadable configured directories (except a missing default `src/components/`, which means no components), pages without a non-empty `<body>`, runaway component expansion (a page over the [`components.expansionLimits`](/configuration#componentsexpansionlimits) of 10,000 component instances or 50 Mi characters), and output directory or file write failures as hard errors. It waits for all page jobs, reports every failure together, exits nonzero, and does not print `Build complete`.
 
 ```terminal
 Build failed with 2 page errors:
@@ -346,8 +376,10 @@ Components with no matching file (3)
                      did you mean <my-card>?
 
 Unused components (1)
-  Defined but never referenced. Safe to delete, or referenced only from a
-  build script, which this check cannot always see.
+  Never written as a tag in a page, a component, a build, server or stream
+  script, or a local module one imports. Safe to delete, unless a script
+  builds the tag name in code, which this check cannot follow (a note says
+  where one does).
 
   src/components/legacy-banner/legacy-banner.html
 
@@ -366,19 +398,21 @@ Per-file checks (2)
 
 `bascik --check` runs the following validations. The first table is the project checks, which `bascik` runs itself. The second is the per-file checks, which come from the language server:
 
-| Check                                                                             | Category                       | Severity                |
-| --------------------------------------------------------------------------------- | ------------------------------ | ----------------------- |
-| Configuration key and value validation                                            | `config-validation`            | Error or warning by key |
-| Missing `BASCIK_SITE_URL` when `generate.sitemap` or `generate.robots` is enabled | `missing-site-url`             | Error                   |
-| Pages directory unreadable or empty                                               | `pages-directory`              | Error                   |
-| Duplicate component tag names                                                     | `duplicate-component-name`     | Error                   |
-| Circular component references                                                     | `circular-component-reference` | Error                   |
-| Duplicate route resolution from page paths                                        | `duplicate-route-resolution`   | Error                   |
-| Multiple API route files resolving to one URL, or ambiguous catch-all pairs       | `route-collision`              | Error                   |
-| Malformed or non-final API catch-all (`[...]`, `x[...a]`, `[...a]/b.ts`)          | `invalid-catch-all`            | Error                   |
-| Unmatched component tag usage                                                     | `unmatched-tag`                | Warning                 |
-| Unused component file                                                             | `unused-component`             | Warning                 |
-| WHATWG HTML5 parse errors in compiled `dist/` HTML files                          | `dist-html-spec`               | Error                   |
+| Check                                                                                                  | Category                       | Severity                |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------ | ----------------------- |
+| Configuration key and value validation                                                                 | `config-validation`            | Error or warning by key |
+| Missing `BASCIK_SITE_URL` when `generate.sitemap` or `generate.robots` is enabled (the build fails)    | `missing-site-url`             | Warning                 |
+| Pages directory unreadable or empty                                                                    | `pages-directory`              | Error                   |
+| Duplicate component tag names                                                                          | `duplicate-component-name`     | Error                   |
+| Circular component references                                                                          | `circular-component-reference` | Error                   |
+| Duplicate route resolution from page paths                                                             | `duplicate-route-resolution`   | Error                   |
+| Multiple API route files resolving to one URL, or ambiguous catch-all pairs                            | `route-collision`              | Error                   |
+| Malformed or non-final API catch-all (`[...]`, `x[...a]`, `[...a]/b.ts`)                               | `invalid-catch-all`            | Error                   |
+| Unmatched component tag usage                                                                          | `unmatched-tag`                | Warning                 |
+| Unused component file                                                                                  | `unused-component`             | Warning                 |
+| WHATWG HTML5 parse errors in compiled `dist/` HTML files                                               | `dist-html-spec`               | Error                   |
+| Components a server or stream script cannot return (read from the last build)                          | `request-render-unsupported`   | Warning                 |
+| Components whose request-time CSS or scripts `csp-hashes.json` cannot cover, with `generate.cspHashes` | `request-render-csp-unstable`  | Warning                 |
 
 The per-file checks, from `@bascik/language-server`:
 
@@ -395,6 +429,17 @@ The per-file checks, from `@bascik/language-server`:
 | CSS or JavaScript in a component that cannot be scoped                                              | `css-*`, `js-*`             | Error or warning by rule |
 
 The language server knows more rules than these, such as undeclared props and slots and unsafe patterns in server scripts. They are all reported by `bascik --check` too. See [Linter](/tools/linter) for the full list and how to suppress one by its rule id. Hints, which are advice for the editor, are not reported by `--check`, so they never fail a CI run.
+
+A component counts as used when its start tag is written anywhere `bascik --check` reads markup: a page, another component, the body of a build, server or stream script, the `src=` module of one, or a local module (`./`, `../` or `@/`) any of those import, followed through their own imports. A tag counts whether it sits on one line or its attributes start on the next (`<cta-band` then a line break), the way a browser reads it, and a tag written in a template literal counts too. A tag in a client-side `<script>`, or in a package, does not. What the check cannot see is a tag name built in code, such as `` `<card-${kind}>` `` or `"<" + tag`: when any script does that, each unused component carries a note that names the file and line, because it may be used there:
+
+```text
+Unused components (1)
+  ...
+  src/components/pick-b/pick-b.html
+      may be used: a script builds a tag name in code at src/lib/pick.ts:2, which this check cannot follow
+```
+
+The same note is the `note` field of the finding in `--json` output.
 
 The `dist-html-spec` check requires [parse5](https://parse5.js.org/), the reference WHATWG HTML5 parser, to be installed as a dev dependency. When parse5 is present, `--check` parses every compiled HTML file in `dist/` and reports any spec violation with a `file:line:col [error-code]` location. When parse5 is not installed, `--check` prints a one-line hint but does not fail:
 
@@ -493,7 +538,7 @@ Schema:
 
 `distHtmlChecked` is the number of `dist/` HTML files parse5 validated, or `null` when `dist/` does not exist or parse5 is not installed. `distHtmlSpecHintNeeded` is `true` when `dist/` has HTML files but parse5 is absent.
 
-`perFileChecked` is the number of files the language server checked, or `null` when it is not installed or too old, in which case `perFileHintNeeded` is `true`. `fixedFiles` lists the files `--fix` rewrote. A finding from the language server has `"source": "language-server"` and a `column`; its `category` is the rule id.
+`perFileChecked` is the number of files the language server checked, or `null` when it is not installed or too old, in which case `perFileHintNeeded` is `true`. `fixedFiles` lists the files `--fix` rewrote. A finding from the language server has `"source": "language-server"` and a `column`; its `category` is the rule id. An `unused-component` finding has a `note` when a script builds a tag name in code (see [Static analysis](#static-analysis-with-bascik-check) above).
 
 `bascik --check` exits with code `1` when errors are found (or warnings under `--strict`), which makes it suitable for CI:
 
@@ -561,15 +606,15 @@ export default {
 };
 ```
 
-| Option      | Default                        | Description                                    |
-| ----------- | ------------------------------ | ---------------------------------------------- |
-| `port`      | `8080` (HTTP) / `8443` (HTTPS) | TCP port to listen on                          |
-| `hostname`  | `"localhost"`                  | Hostname or IP to bind to                      |
-| `enableTls` | `false`                        | Enable TLS (HTTPS) and serve over HTTP/2.      |
-| `keyFile`   | auto-generated                 | Path to a PEM private key when TLS is enabled. |
-| `certFile`  | auto-generated                 | Path to a PEM certificate when TLS is enabled. |
+| Option         | Default                        | Description                                    |
+| -------------- | ------------------------------ | ---------------------------------------------- |
+| `port`         | `8080` (HTTP) / `8443` (HTTPS) | TCP port to listen on                          |
+| `hostname`     | `"localhost"`                  | Hostname or IP to bind to                      |
+| `tls.enabled`  | `false`                        | Enable TLS (HTTPS) and serve over HTTP/2.      |
+| `tls.keyFile`  | auto-generated                 | Path to a PEM private key when TLS is enabled. |
+| `tls.certFile` | auto-generated                 | Path to a PEM certificate when TLS is enabled. |
 
-When `enableTls` is true and `keyFile` / `certFile` are omitted, Bascik generates certificates automatically using `mkcert` (if installed) or `openssl` as a fallback.
+When `tls.enabled` is true and `tls.keyFile` / `tls.certFile` are omitted, Bascik generates certificates automatically using `mkcert` (if installed) or `openssl` as a fallback.
 
 To preview the production build locally with Bascik's built-in production server:
 
@@ -587,7 +632,7 @@ Then open the URL printed by `http-server` (default: `http://127.0.0.1:8080`).
 
 ## Editor setup and output inspection
 
-**VS Code false positives.** Editors validate multiple `<script>` blocks in an HTML file as if they shared one scope. Bascik wraps each component script block in an IIFE at build time, so those editor warnings can be misleading. In VS Code, disable the project-level script validation:
+**VS Code false positives.** VS Code's built-in HTML checker joins every classic `<script>` (one without `type="module"`) in a file into one JavaScript file, so two Bascik scripts that each `export default` show "A module cannot have multiple default exports." Bascik runs each build and server script on its own, and wraps each component script in its own scope, so that error is false. Plain `<script>` blocks in a page still share the browser's global scope, so the same top-level `const` in two page scripts is a real error. `npm create bascik` and `bascik init` turn this check off in `.vscode/settings.json`, and the [Bascik extension](/tools/vscode-extension#several-scripts-in-one-file) offers to add it in a Bascik workspace that has no value set. For other projects, add this to `.vscode/settings.json`:
 
 ```json
 {

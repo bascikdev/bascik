@@ -49,12 +49,12 @@ import {
   type ModuleGraph,
 } from "./module-graph.ts";
 import { isNetworkResetError } from "./server.ts";
-import {
-  nativeClock,
-  type FrameworkClock,
-  type TimeoutHandle,
-} from "./clock.ts";
+import { nativeClock, type FrameworkClock } from "./clock.ts";
 import { BascikConfig } from "./config.ts";
+import {
+  invokeLoadedWithDeadline,
+  scriptTimeoutError,
+} from "./request-execution.ts";
 
 export interface LoadedScriptModule {
   /**
@@ -161,6 +161,8 @@ export interface ScriptExecutionResult<T = unknown> {
   value?: T;
   error?: Error;
   timedOut?: boolean;
+  /** The upstream signal aborted before the script settled (not a timeout). */
+  aborted?: boolean;
   isNetworkReset?: boolean;
 }
 
@@ -368,169 +370,40 @@ export class ScriptRegistry {
     const exportName = options.exportName ?? "default";
     const timeoutMs = options.timeoutMs;
 
-    const controller = new AbortController();
-    let upstreamSignalUnsubscribe: (() => void) | undefined;
-
-    if (options.signal) {
-      if (options.signal.aborted) {
-        controller.abort(options.signal.reason);
-      } else {
-        const onAbort = () => controller.abort(options.signal!.reason);
-        options.signal.addEventListener("abort", onAbort, { once: true });
-        upstreamSignalUnsubscribe = () =>
-          options.signal!.removeEventListener("abort", onAbort);
-      }
-    }
-
-    let timer: TimeoutHandle | undefined;
-    let didTimeout = false;
-
-    if (timeoutMs && timeoutMs > 0) {
-      timer = this.clock.setTimeout(() => {
-        didTimeout = true;
-        controller.abort(
-          new Error(`Script execution timed out after ${timeoutMs}ms`),
-        );
-      }, timeoutMs);
-    }
-
-    let settled = false;
-    let onAbortListener: (() => void) | undefined;
-
-    const toError = (raw: unknown): Error =>
-      raw instanceof Error ? raw : new Error(String(raw));
-
-    try {
-      if (controller.signal.aborted) {
-        throw controller.signal.reason;
-      }
-
-      // Race load with abort signal
-      const loadPromise = Promise.resolve(
-        this.load(specifier, options.moduleOwner),
-      );
-      loadPromise.catch(() => {});
-
-      const abortDuringLoadPromise = new Promise<never>((_, reject) => {
-        if (controller.signal.aborted) {
-          reject(controller.signal.reason);
-          return;
+    // The deadline, the upstream link and the rule that a fired deadline
+    // wins over a later settlement are the portable core's, shared with
+    // `executeApiRoute` and the Worker.
+    const result = await invokeLoadedWithDeadline(
+      () => this.load(specifier, options.moduleOwner),
+      (loaded, { signal }) => {
+        const handler = loaded.module[exportName];
+        if (typeof handler !== "function") {
+          throw new TypeError(
+            `Module "${resolvedPath}" does not export a function named "${exportName}".`,
+          );
         }
-        onAbortListener = () => {
-          if (!settled) {
-            if (didTimeout) {
-              reject(
-                new Error(`Script execution timed out after ${timeoutMs}ms`),
-              );
-            } else {
-              reject(controller.signal.reason);
-            }
-          }
-        };
-        controller.signal.addEventListener("abort", onAbortListener, {
-          once: true,
-        });
-      });
-      abortDuringLoadPromise.catch(() => {});
-
-      const loaded = (await Promise.race([
-        loadPromise,
-        abortDuringLoadPromise,
-      ])) as LoadedScriptModule;
-
-      if (onAbortListener) {
-        controller.signal.removeEventListener("abort", onAbortListener);
-        onAbortListener = undefined;
-      }
-
-      if (controller.signal.aborted) {
-        throw controller.signal.reason;
-      }
-
-      const handler = loaded.module[exportName];
-
-      if (typeof handler !== "function") {
-        throw new TypeError(
-          `Module "${resolvedPath}" does not export a function named "${exportName}".`,
-        );
-      }
-
-      let resultPromise: Promise<unknown>;
-      try {
-        resultPromise = Promise.resolve(
-          handler(...args, {
-            signal: controller.signal,
-          }),
-        );
-      } catch (syncErr) {
-        resultPromise = Promise.reject(syncErr);
-      }
-
-      // Observe rejection so late rejection after settlement never triggers unhandled-rejection
-      resultPromise.catch(() => {});
-
-      let value: T;
-      if (controller.signal.aborted) {
-        throw controller.signal.reason;
-      }
-
-      const abortPromise = new Promise<never>((_, reject) => {
-        if (controller.signal.aborted) {
-          reject(controller.signal.reason);
-          return;
-        }
-        onAbortListener = () => {
-          if (!settled) {
-            if (didTimeout) {
-              reject(
-                new Error(`Script execution timed out after ${timeoutMs}ms`),
-              );
-            } else {
-              reject(controller.signal.reason);
-            }
-          }
-        };
-        controller.signal.addEventListener("abort", onAbortListener, {
-          once: true,
-        });
-      });
-      abortPromise.catch(() => {});
-
-      value = (await Promise.race([resultPromise, abortPromise])) as T;
-      settled = true;
-
-      return {
-        ok: true,
-        value,
-      };
-    } catch (rawError: unknown) {
-      settled = true;
-      const err = toError(rawError);
-      const isNetReset = isNetworkResetError(rawError);
-      // The error is returned, not logged: the caller decides whether a failure
-      // is reported (`onServerScriptError`), so logging here printed every error
-      // twice and ignored `onServerScriptError: "ignore"`.
-      return {
-        ok: false,
-        error: err,
-        timedOut: didTimeout,
-        isNetworkReset: isNetReset,
-      };
-    } finally {
-      settled = true;
-      if (timer) {
-        this.clock.clearTimeout(timer);
-        timer = undefined;
-      }
-      if (onAbortListener) {
-        controller.signal.removeEventListener("abort", onAbortListener);
-        onAbortListener = undefined;
-      }
-      if (upstreamSignalUnsubscribe) {
-        upstreamSignalUnsubscribe();
-        upstreamSignalUnsubscribe = undefined;
-      }
-    }
+        return handler(...args, { signal }) as T | Promise<T>;
+      },
+      {
+        timeoutMs,
+        clock: this.clock,
+        timeoutError: scriptTimeoutError,
+        ...(options.signal ? { signal: options.signal } : {}),
+      },
+    );
+    if (result.ok) return { ok: true, value: result.value as T };
+    // The error is returned, not logged: the caller decides whether a failure
+    // is reported (`onServerScriptError`), so logging here printed every error
+    // twice and ignored `onServerScriptError: "ignore"`.
+    return {
+      ok: false,
+      error: result.error,
+      timedOut: result.timedOut,
+      ...(result.aborted ? { aborted: true } : {}),
+      // The raw rejection, not the wrapped Error: a non-Error rejection keeps
+      // only its String() form in `error` and would lose its reset `code`.
+      isNetworkReset: isNetworkResetError(result.thrown),
+    };
   }
 }
 

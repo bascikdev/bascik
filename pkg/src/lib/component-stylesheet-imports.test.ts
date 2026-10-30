@@ -35,6 +35,7 @@ vi.mock("./build-scripts.js", () => ({
 }));
 
 import {
+  componentsHaveBuildScripts,
   componentsImportingStylesheet,
   invalidateComponentListCache,
   listComponents,
@@ -180,5 +181,32 @@ describe("componentsImportingStylesheet", () => {
     );
     await listComponents();
     expect(componentsImportingStylesheet(tokens)).toEqual([]);
+  });
+});
+
+describe("componentsHaveBuildScripts (prompt 157, D6)", () => {
+  // A cache clear rebuilds the request-rendered pages only when some
+  // component has a build script, the one way a watched input or asset can
+  // change what a component renders.
+  it("is true only while the last listing has a component with a data-bascik-build or data-bascik-build-once script", async () => {
+    writeFileSync(
+      join(components(), "my-card/my-card.html"),
+      '<div class="card">card</div><script>var notBuild = "data-bascik-build";</script>',
+    );
+    await listComponents();
+    expect(componentsHaveBuildScripts()).toBe(false);
+
+    writeFileSync(
+      join(components(), "my-nav.html"),
+      '<nav><script data-bascik-build-once>export default () => "menu";</script></nav>',
+    );
+    invalidateComponentListCache();
+    await listComponents();
+    expect(componentsHaveBuildScripts()).toBe(true);
+
+    rmSync(join(components(), "my-nav.html"));
+    invalidateComponentListCache();
+    await listComponents();
+    expect(componentsHaveBuildScripts()).toBe(false);
   });
 });

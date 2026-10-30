@@ -20,6 +20,7 @@ import { brotliCompressSync, gzipSync } from "node:zlib";
 import {
   validateResponses,
   validateArtifact,
+  capturedArtifactKind,
   validatePrivateDirectory,
   cleanGeneratorEnvironment,
   summarizeCpuProfile,
@@ -28,7 +29,13 @@ import {
   validateCompression,
   summarizeAllocationProfile,
   workerCpuLimitation,
+  parseCpuProfileFilename,
+  harnessDigests,
 } from "../../bench/profile-workload.ts";
+import {
+  createGroupControl,
+  planCaptures,
+} from "../../bench/profile-runner.ts";
 
 const roots: string[] = [];
 async function temporaryRoot() {
@@ -93,6 +100,51 @@ const response = {
 };
 
 describe("profiling workload acceptance", () => {
+  it("records a digest of every harness file a capture loads, including the main-subject preload and its warm-up", async () => {
+    const bench = fileURLToPath(new URL("../../bench/", import.meta.url));
+    const recorded = Object.keys(await harnessDigests(bench)).sort();
+    // Every bench module the runner reaches through imports, spawned module
+    // URLs or preloads shapes what gets measured.
+    const reached = new Set<string>();
+    const pending = ["profile-runner.ts"];
+    while (pending.length) {
+      const file = pending.pop()!;
+      if (reached.has(file)) continue;
+      reached.add(file);
+      const source = await readFile(join(bench, file), "utf8");
+      for (const [, reference] of source.matchAll(
+        /(?:from\s+|import\(\s*|new URL\(\s*)["']\.\/([\w.-]+\.ts)["']/g,
+      ))
+        pending.push(reference);
+    }
+    expect(recorded).toEqual([...reached].sort());
+    expect(recorded).toEqual(
+      expect.arrayContaining([
+        "profile-main.ts",
+        "profile-warmup.ts",
+        "profile-isolate.ts",
+        "profile-tls.ts",
+      ]),
+    );
+  });
+  it("misuse: an edit to a harness file only a preload reaches changes the recorded harness identity, and a missing one fails by name", async () => {
+    const bench = fileURLToPath(new URL("../../bench/", import.meta.url));
+    const root = await temporaryRoot();
+    const copy = join(root, "bench");
+    await mkdir(copy);
+    for (const file of await readdir(bench))
+      if (file.endsWith(".ts"))
+        await writeFile(join(copy, file), await readFile(join(bench, file)));
+    const before = await harnessDigests(copy);
+    await writeFile(
+      join(copy, "profile-warmup.ts"),
+      `${await readFile(join(copy, "profile-warmup.ts"), "utf8")}\n// edited\n`,
+    );
+    const after = await harnessDigests(copy);
+    expect(after["profile-warmup.ts"]).not.toBe(before["profile-warmup.ts"]);
+    await rm(join(copy, "profile-warmup.ts"));
+    await expect(harnessDigests(copy)).rejects.toThrow(/profile-warmup\.ts/);
+  });
   it("requires single-flight asynchronous codecs and settled compression", () => {
     const valid = {
       calls: 1,
@@ -360,6 +412,38 @@ describe("capture artifact integrity", () => {
         .every(([, command]) => !String(command).includes("docs")),
     ).toBe(true);
   });
+  // 0x streams the V8 isolate log into isolate-*-v8.json and exits without
+  // waiting for that stream: under load the file is left cut short for good
+  // (a full run failed 0x-http1-br on "Unterminated string in JSON at
+  // position 65548"). It is 0x's intermediate log, not the capture, so it is
+  // kept as a non-empty artifact; 0x's synchronous meta.json and stacks are
+  // still parsed.
+  it("parses every captured JSON artifact except 0x's streamed isolate log", () => {
+    expect(
+      capturedArtifactKind("0x", "/p/123.0x/isolate-0x7f-123-v8.json"),
+    ).toBe("binary");
+    expect(capturedArtifactKind("0x", "/p/123.0x/meta.json")).toBe("json");
+    expect(capturedArtifactKind("0x", "/p/123.0x/stacks.123.json")).toBe(
+      "json",
+    );
+    expect(capturedArtifactKind("0x", "/p/flamegraph.html")).toBe("html");
+    expect(capturedArtifactKind("cpu", "/p/isolate-0x7f-1-v8.json")).toBe(
+      "json",
+    );
+    expect(capturedArtifactKind("cpu", "/p/CPU.1.cpuprofile")).toBe("cpu");
+    expect(
+      capturedArtifactKind("doctor", "/p/x.clinic-doctor-systeminfo"),
+    ).toBe("binary");
+  });
+
+  it("names the file and its size when an artifact does not parse", async () => {
+    const path = join(await temporaryRoot(), "cut.json");
+    await writeFile(path, '{"a":"unterminated');
+    await expect(validateArtifact(path, "json")).rejects.toThrow(
+      `invalid json artifact ${path} (18 bytes)`,
+    );
+  });
+
   it("rejects missing, empty, undecodable and structurally invalid CPU artifacts", async () => {
     const path = join(await temporaryRoot(), "capture.cpuprofile");
     await expect(validateArtifact(path, "cpu")).rejects.toThrow();
@@ -438,6 +522,109 @@ describe("capture artifact integrity", () => {
     await expect(validatePrivateDirectory(outside, [repository])).resolves.toBe(
       await realpath(outside),
     );
+  });
+});
+
+describe("process group settlement and capture planning", () => {
+  const errno = (code: string) =>
+    Object.assign(new Error(`kill ${code}`), { code });
+
+  // On macOS, kill(-pgid) answers EPERM while the only members left in the
+  // group have exited and wait to be reaped (a subject's children that exit
+  // with it). Nothing is left to signal; the settlement waits for them to go.
+  it("misuse: EPERM from a group whose members have all exited is not a settlement failure", () => {
+    let probes = 0;
+    const signals: string[] = [];
+    const control = createGroupControl(4242, true, ((
+      pid: number,
+      signal: string | number,
+    ) => {
+      expect(pid).toBe(-4242);
+      if (signal === 0) {
+        if (probes++ < 2) throw errno("EPERM");
+        throw errno("ESRCH");
+      }
+      signals.push(String(signal));
+      throw errno("EPERM");
+    }) as typeof process.kill);
+    expect(control.alive()).toBe(true);
+    expect(() => control.signal("SIGTERM")).not.toThrow();
+    expect(signals).toEqual(["SIGTERM"]);
+    expect(control.alive()).toBe(true);
+    expect(control.alive()).toBe(false);
+  });
+
+  it("an error other than ESRCH or EPERM still fails the settlement", () => {
+    const control = createGroupControl(4242, true, (() => {
+      throw errno("EINVAL");
+    }) as typeof process.kill);
+    expect(() => control.alive()).toThrow(/EINVAL/);
+    expect(() => control.signal("SIGTERM")).toThrow(/EINVAL/);
+  });
+
+  it("skips a capture this platform cannot take, as a limitation, not a failure", () => {
+    const limitation = "Unsupported worker CPU capture on Node v24.21.0/macOS";
+    const plan = planCaptures(["control", "cpu"], ["static", "workers"], {
+      workerCpu: limitation,
+    });
+    expect(plan.captures.map((capture) => capture.label)).toEqual([
+      "control-static-identity",
+      "control-workers-identity",
+      "cpu-static-identity",
+    ]);
+    expect(plan.skipped).toEqual([
+      { label: "cpu-workers-identity", reason: limitation },
+    ]);
+    // Without the limitation every lane is planned.
+    expect(
+      planCaptures(["cpu"], ["workers"], {}).captures.map((c) => c.label),
+    ).toEqual(["cpu-workers-identity"]);
+  });
+
+  it.runIf(Boolean(workerCpuLimitation()))(
+    "misuse: a run that asks only for a capture this platform cannot take fails, naming the skip",
+    async () => {
+      const root = await temporaryRoot();
+      const runner = fileURLToPath(
+        new URL("../../bench/profile-workload.ts", import.meta.url),
+      );
+      await expect(
+        promisify(execFile)(
+          process.execPath,
+          [
+            runner,
+            "--tools",
+            "cpu",
+            "--scenarios",
+            "workers",
+            "--rounds",
+            "1",
+            "--report-dir",
+            root,
+          ],
+          { timeout: 60_000, env: cleanGeneratorEnvironment(process.env) },
+        ),
+      ).rejects.toThrow();
+      const manifest = JSON.parse(
+        await readFile(join(root, "manifest.json"), "utf8"),
+      );
+      expect(manifest.success).toBe(false);
+      expect(manifest.captures).toEqual([]);
+      expect(manifest.skipped).toEqual([
+        { label: "cpu-workers-identity", reason: workerCpuLimitation() },
+      ]);
+    },
+    60_000,
+  );
+
+  it("misuse: a typo'd tool or scenario is still a failure, not a skip", () => {
+    const plan = planCaptures(["cpuu"], ["http1"], {});
+    expect(plan.captures).toEqual([]);
+    expect(plan.skipped).toEqual([]);
+    expect(plan.invalid).toEqual([
+      { label: "cpuu-http1-identity", error: "unsupported profiler" },
+      { label: "cpuu-http1-br", error: "unsupported profiler" },
+    ]);
   });
 });
 
@@ -745,6 +932,82 @@ describe("bounded real profiling runner", () => {
     expect(manifest.success).toBe(false);
     expect(manifest.failures.length).toBeGreaterThan(0);
   }, 60_000);
+  it("misuse: the cpu tool samples the main subject only after the process-wide OpenSSL and builtin-loader state is warm", async () => {
+    // Native --cpu-prof samples from bootstrap. On Node 24/macOS a sampled
+    // thread that takes OpenSSL's provider-store rwlock for the first time
+    // (crypto.getCiphers while `import "node:http"` links undici, http2 and
+    // tls; default and system CA parsing) can block on it forever: about 5%
+    // of 200 concurrent processes did, so a loaded suite saw "capture
+    // deadline exceeded". Warming that state unsampled, then starting the
+    // inspector profiler, stalled none of 600.
+    const root = await temporaryRoot();
+    await promisify(execFile)(
+      process.execPath,
+      [
+        runner,
+        "--tools",
+        "cpu",
+        "--scenarios",
+        "http2",
+        "--rounds",
+        "1",
+        "--report-dir",
+        root,
+      ],
+      { timeout: 180_000, env: cleanGeneratorEnvironment(process.env) },
+    );
+    const manifest = JSON.parse(
+      await readFile(join(root, "manifest.json"), "utf8"),
+    );
+    expect(manifest.success).toBe(true);
+    const { command } = JSON.parse(
+      await readFile(
+        join(root, "cpu-http2-identity", "capture", "command.json"),
+        "utf8",
+      ),
+    );
+    expect(
+      command.filter((flag: string) => flag.startsWith("--cpu-prof")),
+    ).toEqual([]);
+    expect(
+      command.filter(
+        (flag: string) =>
+          flag.startsWith("--import=") && flag.endsWith("profile-main.ts"),
+      ),
+    ).toHaveLength(1);
+    const pid = manifest.captures[0].result.pid;
+    const profiles = join(root, "cpu-http2-identity", "profiles");
+    const events = (
+      await readFile(join(profiles, `events-${pid}-0.jsonl`), "utf8")
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line).event);
+    const warmed = events.indexOf("main-warmed");
+    const started = events.indexOf("main-profiler-started");
+    expect(warmed).toBeGreaterThanOrEqual(0);
+    expect(started).toBeGreaterThan(warmed);
+    expect(events.indexOf("main-profile-written")).toBeGreaterThan(started);
+    const main = (await readdir(profiles)).filter(
+      (name) => parseCpuProfileFilename(name)?.pid === pid,
+    );
+    expect(main).toHaveLength(1);
+  }, 180_000);
+  it("misuse: the main-subject profiler preload refuses to run without a capture directory instead of profiling nothing", async () => {
+    const preload = fileURLToPath(
+      new URL("../../bench/profile-main.ts", import.meta.url),
+    );
+    const environment = cleanGeneratorEnvironment(process.env);
+    await expect(
+      promisify(execFile)(
+        process.execPath,
+        [`--import=${preload}`, "-e", "0"],
+        { timeout: 30_000, env: environment },
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining("BASCIK_PROFILE_CAPTURE_DIR"),
+    });
+  });
   it.each(["http2", "static", "dev", "serial", "workers"])(
     "validates real %s work and labeled CPU coverage",
     async (scenario) => {

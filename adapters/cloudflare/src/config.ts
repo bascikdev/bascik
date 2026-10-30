@@ -5,7 +5,7 @@
  * Supports jsonc (comments and trailing commas), json, and toml with safe error reporting.
  */
 
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { readFile } from "node:fs/promises";
 import {
   parse as parseJsoncRaw,
@@ -13,6 +13,10 @@ import {
   type ParseError,
 } from "jsonc-parser";
 import { parse as parseTomlRaw, TomlError } from "smol-toml";
+import {
+  CLOUDFLARE_COMPATIBILITY_DATE,
+  CLOUDFLARE_COMPATIBILITY_FLAGS,
+} from "./compat.js";
 
 /**
  * Wrangler configuration file discovery order according to Cloudflare Wrangler documentation:
@@ -131,6 +135,30 @@ export function parseToml(
 }
 
 /**
+ * Parses package.json as strict JSON (no comments, no trailing commas, as
+ * npm reads it). An error is located by line and column and, like the
+ * Wrangler parsers, never quotes the file: `JSON.parse`'s own message
+ * includes a source excerpt. A value that is not an object has no name.
+ */
+function parsePackageJson(text: string): { name?: unknown } | null {
+  const errors: ParseError[] = [];
+  const parsed: unknown = parseJsoncRaw(text, errors, {
+    allowTrailingComma: false,
+    disallowComments: true,
+  });
+  if (errors.length > 0) {
+    const first = errors[0];
+    const { line, character } = lineAndCharacterAt(text, first.offset);
+    throw new Error(
+      `[bascik] Failed to parse package.json at line ${line}, column ${character}: ${printParseErrorCode(first.error)}.`,
+    );
+  }
+  return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+    ? (parsed as { name?: unknown })
+    : null;
+}
+
+/**
  * Discovers and parses the highest precedence Wrangler configuration file in the project root.
  * Returns null if no Wrangler configuration file exists.
  * Throws an actionable error if the discovered configuration file is malformed.
@@ -147,7 +175,9 @@ export async function discoverWranglerConfig(
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         continue;
       }
-      throw err;
+      // The bare fs message (EISDIR, EACCES) names no file.
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`[bascik] Failed to read ${filename}: ${msg}`);
     }
 
     // The file exists: parse it according to its extension
@@ -204,14 +234,19 @@ export async function resolveWorkerName(
     };
   }
 
+  let pkgJsonRaw: string | undefined;
   try {
-    const pkgJsonRaw = await readFile(
-      join(projectRoot, "package.json"),
-      "utf8",
-    );
-    const pkgJson = JSON.parse(pkgJsonRaw) as { name?: string };
+    pkgJsonRaw = await readFile(join(projectRoot, "package.json"), "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`[bascik] Failed to read package.json: ${msg}`);
+    }
+  }
+  if (pkgJsonRaw !== undefined) {
+    const pkgJson = parsePackageJson(pkgJsonRaw);
     if (
-      pkgJson.name &&
+      pkgJson?.name &&
       typeof pkgJson.name === "string" &&
       pkgJson.name.trim()
     ) {
@@ -224,11 +259,6 @@ export async function resolveWorkerName(
         };
       }
     }
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`[bascik] Failed to parse package.json: ${msg}`);
-    }
   }
 
   return {
@@ -236,4 +266,253 @@ export async function resolveWorkerName(
     source: "default",
     discoveredConfig: discovered,
   };
+}
+
+/** The Worker entry the adapter generates beside the generated config. */
+export const GENERATED_WORKER_MAIN = "worker.js";
+/** The binding the generated Worker serves static files through (runtime.ts). */
+export const ASSETS_BINDING = "ASSETS";
+
+export interface GenerateWranglerConfigInput {
+  /** The authored config discovered in the project root, if any. */
+  authored: DiscoveredConfig | null | undefined;
+  projectRoot: string;
+  /** Where the generated wrangler.jsonc is written (dist/.bascik/<target>/). */
+  outDir: string;
+  workerName: string;
+  /** `true`, or the computed invocation routes. */
+  runWorkerFirst: true | string[];
+  /** The installed wrangler/config-schema.json, when it resolves. */
+  schemaPath?: string;
+  compatibilityDate?: string;
+  compatibilityFlags?: readonly string[];
+}
+
+type Json = Record<string, unknown>;
+
+const isObject = (value: unknown): value is Json =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const toPosix = (path: string): string => path.replace(/\\/g, "/");
+
+/**
+ * Generates the wrangler.jsonc written beside worker.js. The adapter owns
+ * `name` (resolved by resolveWorkerName), `main`, `assets.directory`,
+ * `assets.binding` and `assets.run_worker_first` (computed from the routes,
+ * unioned with an authored list); `compatibility_flags` are the union of the
+ * authored flags and the adapter's. Every other authored key, top level or
+ * nested, is carried over verbatim, except that path-valued keys Wrangler
+ * reads relative to the config file are rebased from the project root to the
+ * output directory, so they name the same files. An authored key the adapter
+ * replaces is reported as a warning naming the file and key; an authored
+ * `assets.binding` other than `ASSETS` is an error, since the generated
+ * Worker reads `env.ASSETS`. Unknown keys are carried over without checks:
+ * Wrangler validates its own config.
+ */
+export function generateWranglerConfig(input: GenerateWranglerConfigInput): {
+  config: Json;
+  warnings: string[];
+} {
+  const {
+    authored,
+    projectRoot,
+    outDir,
+    workerName,
+    runWorkerFirst,
+    schemaPath,
+    compatibilityDate = CLOUDFLARE_COMPATIBILITY_DATE,
+    compatibilityFlags = CLOUDFLARE_COMPATIBILITY_FLAGS,
+  } = input;
+  const filename = authored?.filename ?? "wrangler.jsonc";
+  const values: Json = authored?.values ?? {};
+  const warnings: string[] = [];
+  const at = (key: string) => `[bascik] ${filename}: "${key}"`;
+
+  const rebase = (value: unknown): unknown => {
+    if (typeof value !== "string" || value === "") return value;
+    if (isAbsolute(value) || /^[a-z][a-z0-9+.-]*:/i.test(value)) return value;
+    return toPosix(relative(outDir, resolve(projectRoot, value))) || ".";
+  };
+  const rebaseList = (value: unknown): unknown =>
+    Array.isArray(value) ? value.map(rebase) : rebase(value);
+  const rebaseMap = (value: unknown): unknown =>
+    isObject(value)
+      ? Object.fromEntries(
+          Object.entries(value).map(([k, v]) => [k, rebase(v)]),
+        )
+      : value;
+  const rebaseItems = (value: unknown, fn: (item: Json) => Json): unknown =>
+    Array.isArray(value)
+      ? value.map((item) => (isObject(item) ? fn(item) : item))
+      : value;
+  const rebaseD1 = (item: Json): Json => {
+    const out = { ...item };
+    if ("migrations_dir" in out)
+      out.migrations_dir = rebase(out.migrations_dir);
+    // Wrangler defaults migrations_dir to ./migrations beside the config file;
+    // the generated config sits elsewhere, so the authored folder is named.
+    // A migrations_pattern without migrations_dir is left for Wrangler to
+    // report, as it would from the project root.
+    else if (!("migrations_pattern" in out))
+      out.migrations_dir = rebase("migrations");
+    if ("migrations_pattern" in out)
+      out.migrations_pattern = rebase(out.migrations_pattern);
+    return out;
+  };
+  const rebaseContainer = (item: Json): Json => {
+    const out = { ...item };
+    // `image` is a Dockerfile path or a registry reference: only a path
+    // spelled as one is rebased.
+    if (
+      typeof out.image === "string" &&
+      (/^\.\.?[\\/]/.test(out.image) || /dockerfile/i.test(out.image)) &&
+      !/^[a-z][a-z0-9+.-]*:/i.test(out.image)
+    )
+      out.image = rebase(out.image);
+    if ("image_build_context" in out)
+      out.image_build_context = rebase(out.image_build_context);
+    // Named images of a Durable Object-managed container.
+    if (isObject(out.images))
+      out.images = Object.fromEntries(
+        Object.entries(out.images).map(([imageName, image]) => {
+          if (!isObject(image)) return [imageName, image];
+          const rebased = { ...image };
+          if ("dockerfile" in rebased)
+            rebased.dockerfile = rebase(rebased.dockerfile);
+          if ("build_context" in rebased)
+            rebased.build_context = rebase(rebased.build_context);
+          return [imageName, rebased];
+        }),
+      );
+    return out;
+  };
+
+  /** The assets block the adapter writes, merged with an authored one. */
+  const mergeAssets = (assets: unknown, keyPrefix: string): Json => {
+    const authoredAssets = isObject(assets) ? assets : {};
+    if (assets !== undefined && !isObject(assets))
+      warnings.push(
+        `${at(`${keyPrefix}assets`)} is not an object and is ignored: the adapter writes its own assets block.`,
+      );
+    const {
+      directory,
+      binding,
+      run_worker_first: authoredFirst,
+      not_found_handling,
+      ...rest
+    } = authoredAssets;
+    if (directory !== undefined)
+      warnings.push(
+        `${at(`${keyPrefix}assets.directory`)} is ignored: the adapter stages the site's files in ./public beside the generated worker.js. Remove the key.`,
+      );
+    if (binding !== undefined && binding !== ASSETS_BINDING)
+      throw new Error(
+        `${at(`${keyPrefix}assets.binding`)} must be "${ASSETS_BINDING}" or left out: the generated Worker serves static files through env.${ASSETS_BINDING}.`,
+      );
+    let first: true | string[];
+    if (runWorkerFirst === true) first = true;
+    else {
+      const extra = Array.isArray(authoredFirst)
+        ? authoredFirst.filter((p): p is string => typeof p === "string")
+        : [];
+      first = [...new Set([...runWorkerFirst, ...extra])];
+    }
+    return {
+      directory: "./public",
+      binding: ASSETS_BINDING,
+      ...rest,
+      not_found_handling: not_found_handling ?? "404-page",
+      run_worker_first: first,
+    };
+  };
+
+  const unionFlags = (flags: unknown): string[] => [
+    ...new Set([
+      ...(Array.isArray(flags)
+        ? flags.filter(
+            (f): f is string => typeof f === "string" && f.trim().length > 0,
+          )
+        : []),
+      ...compatibilityFlags,
+    ]),
+  ];
+
+  /** Rebases the path-valued keys of a top-level or env section. */
+  const rebaseSection = (section: Json): Json => {
+    const out = { ...section };
+    if ("tsconfig" in out) out.tsconfig = rebase(out.tsconfig);
+    if ("base_dir" in out) out.base_dir = rebase(out.base_dir);
+    if (isObject(out.build)) {
+      const build = { ...out.build };
+      // Wrangler runs build.command in the config's folder by default: the
+      // generated config sits elsewhere, so the authored folder is named.
+      if ("cwd" in build) build.cwd = rebase(build.cwd);
+      else if (build.command !== undefined) build.cwd = rebase(".");
+      if ("watch_dir" in build) build.watch_dir = rebaseList(build.watch_dir);
+      out.build = build;
+    }
+    if ("d1_databases" in out)
+      out.d1_databases = rebaseItems(out.d1_databases, rebaseD1);
+    if ("containers" in out)
+      out.containers = rebaseItems(out.containers, rebaseContainer);
+    if (isObject(out.site) && "bucket" in out.site)
+      out.site = { ...out.site, bucket: rebase(out.site.bucket) };
+    for (const key of ["wasm_modules", "text_blobs", "data_blobs"])
+      if (key in out) out[key] = rebaseMap(out[key]);
+    if (isObject(out.previews)) out.previews = rebaseSection(out.previews);
+    return out;
+  };
+
+  const {
+    $schema: authoredSchema,
+    name: _name,
+    main,
+    compatibility_date,
+    compatibility_flags,
+    assets,
+    env,
+    ...rest
+  } = values;
+  if (main !== undefined)
+    warnings.push(
+      `${at("main")} is ignored: the adapter generates the Worker entry (${GENERATED_WORKER_MAIN}) from your pages and API routes. Remove the key.`,
+    );
+
+  let schema: unknown;
+  if (typeof authoredSchema === "string") schema = rebase(authoredSchema);
+  else if (authoredSchema !== undefined) schema = authoredSchema;
+  else if (schemaPath)
+    schema = toPosix(relative(outDir, schemaPath)) || undefined;
+
+  let envOut: unknown = env;
+  if (isObject(env)) {
+    envOut = Object.fromEntries(
+      Object.entries(env).map(([envName, section]) => {
+        if (!isObject(section)) return [envName, section];
+        const prefix = `env.${envName}.`;
+        const { main: envMain, ...envRest } = section;
+        if (envMain !== undefined)
+          warnings.push(
+            `${at(`${prefix}main`)} is ignored: every environment runs the generated ${GENERATED_WORKER_MAIN}. Remove the key.`,
+          );
+        const out = rebaseSection(envRest);
+        if ("compatibility_flags" in out)
+          out.compatibility_flags = unionFlags(out.compatibility_flags);
+        if ("assets" in out) out.assets = mergeAssets(out.assets, prefix);
+        return [envName, out];
+      }),
+    );
+  }
+
+  const config: Json = {
+    ...(schema !== undefined ? { $schema: schema } : {}),
+    name: workerName,
+    main: GENERATED_WORKER_MAIN,
+    compatibility_date: compatibility_date ?? compatibilityDate,
+    compatibility_flags: unionFlags(compatibility_flags),
+    ...rebaseSection(rest),
+    ...(env !== undefined ? { env: envOut } : {}),
+    assets: mergeAssets(assets, ""),
+  };
+  return { config, warnings };
 }

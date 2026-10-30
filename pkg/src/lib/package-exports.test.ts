@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { gzipSync } from "node:zlib";
 import { build, type Message } from "esbuild";
 
 const bundleForWeb = async (
@@ -81,5 +82,104 @@ describe("package exports surface", () => {
     const { errors, bytes } = await bundleForWeb(runtimeDist);
     expect(errors).toEqual([]);
     expect(bytes).toBeGreaterThan(0);
+  });
+});
+
+// ─── @bascik/bascik/html (safety helpers for server and stream scripts) ─────
+
+const bundleHtml = async (
+  entry: string,
+  platform: "browser" | "neutral",
+): Promise<{ errors: Message[]; minified: number; text: string }> => {
+  const result = await build({
+    entryPoints: [entry],
+    bundle: true,
+    write: false,
+    platform,
+    format: "esm",
+    target: "es2022",
+    minify: true,
+    logLevel: "silent",
+  });
+  const text = result.outputFiles?.[0]?.text ?? "";
+  return {
+    errors: result.errors,
+    minified: Buffer.byteLength(text),
+    text,
+  };
+};
+
+describe("@bascik/bascik/html export", () => {
+  it("is declared with types and default, like the other subpaths", async () => {
+    const pkg = JSON.parse(
+      await readFile(join(process.cwd(), "package.json"), "utf8"),
+    ) as { exports: Record<string, { types?: string; default?: string }> };
+    expect(pkg.exports["./html"]).toEqual({
+      types: "./dist/html.d.ts",
+      default: "./dist/html.js",
+    });
+  });
+
+  it("src/html.ts exports exactly the documented API", async () => {
+    const mod = await import("../html.ts");
+    expect(Object.keys(mod).sort()).toEqual(
+      ["HtmlError", "esc", "html", "isHtml", "json", "raw", "safeUrl"].sort(),
+    );
+  });
+
+  it("is not re-exported from ./runtime (scripts import it by its own subpath)", async () => {
+    const runtime = await import("../runtime.ts");
+    expect(runtime).not.toHaveProperty("html");
+    expect(runtime).not.toHaveProperty("safeUrl");
+  });
+
+  it.each(["browser", "neutral"] as const)(
+    "src/html.ts bundles for platform %s with zero node: imports and stays under 9 KB gzipped",
+    async (platform) => {
+      const { errors, minified, text } = await bundleHtml(
+        resolve(process.cwd(), "src/html.ts"),
+        platform,
+      );
+      expect(errors).toEqual([]);
+      expect(text).not.toMatch(/["']node:/);
+      expect(minified).toBeGreaterThan(0);
+      // About 4 KB of the minified size is the located error messages
+      // (template, hole, why and the fix), which are part of the API. The
+      // parser-differential readings (raw-text bodies as markup, foreign
+      // content as HTML) added about 1.5 KB in the red-team fix pass, and
+      // the tree builder's end-tag rule for foreign content, <plaintext> as
+      // markup and the unconvertible-value and array-depth errors about
+      // 1.2 KB in the second one.
+      expect(minified).toBeLessThanOrEqual(22 * 1024);
+      expect(gzipSync(text).byteLength).toBeLessThanOrEqual(9 * 1024);
+    },
+  );
+
+  it("dist/html.js (when built) bundles for the web with zero node: imports", async () => {
+    const dist = resolve(process.cwd(), "dist/html.js");
+    if (!existsSync(dist)) return;
+    const { errors, text } = await bundleHtml(dist, "browser");
+    expect(errors).toEqual([]);
+    expect(text).not.toMatch(/["']node:/);
+  });
+
+  it("the html module graph is html.ts, html-template.ts and url-safety.ts only", async () => {
+    const result = await build({
+      entryPoints: [resolve(process.cwd(), "src/html.ts")],
+      bundle: true,
+      write: false,
+      metafile: true,
+      platform: "neutral",
+      format: "esm",
+      logLevel: "silent",
+    });
+    const inputs = Object.keys(result.metafile!.inputs)
+      .map((p) => p.replace(/^.*src\//, "src/"))
+      .sort();
+    expect(inputs).toEqual([
+      "src/html.ts",
+      "src/lib/html-template.ts",
+      "src/lib/url-safety.ts",
+    ]);
   });
 });

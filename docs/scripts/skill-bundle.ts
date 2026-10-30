@@ -167,7 +167,8 @@ export async function createSkillArchive(
 
 /**
  * The `description` value from a SKILL.md frontmatter block. Handles the scalar forms YAML allows for a one-key
- * string: plain, double-quoted, single-quoted, and folded or literal block scalars (`>`, `>-`, `|`, `|-`).
+ * string: plain, double-quoted, single-quoted, and folded or literal block scalars (`>`, `>-`, `|`, `|-`). Throws on a
+ * plain value that YAML cannot parse, so a skill real clients would skip never publishes.
  */
 export async function readSkillDescription(
   skillMdPath: string,
@@ -190,6 +191,13 @@ export async function readSkillDescription(
   }
   if (value.startsWith('"')) return JSON.parse(value) as string;
   if (value.startsWith("'")) return value.slice(1, -1).replace(/''/g, "'");
+  // A plain scalar cannot hold ": " or " #": YAML reads a nested mapping or a comment, and `npx skills add` skips the skill.
+  const bad = /: | #/.exec(value)?.[0];
+  if (bad) {
+    throw new Error(
+      `skill-bundle: ${skillMdPath} description contains "${bad}", which YAML does not allow in an unquoted value; reword it or quote the whole value`,
+    );
+  }
   return value;
 }
 

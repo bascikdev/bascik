@@ -9,6 +9,8 @@ import {
   toBase62,
 } from "./names.ts";
 import { BascikConfig } from "./config.ts";
+import { createHash } from "node:crypto";
+import { createNameHasher, nameHashFromDigest } from "./name-hash.ts";
 
 vi.mock("./config.js", () => {
   return {
@@ -54,6 +56,68 @@ describe("getAttributeNameHash", () => {
     const hash1 = getAttributeNameHash("bascik__btn__primary");
     const hash2 = getAttributeNameHash("bascik__btn__secondary");
     expect(hash1).not.toBe(hash2);
+  });
+});
+
+// The portable half a Worker computes from its own sha256 (prompt 157): one
+// algorithm, so a request-time rendered class name is the build's.
+describe("nameHashFromDigest", () => {
+  it("equals getAttributeNameHash for the same name", () => {
+    clearHashCache();
+    for (const name of ["tile", "bascik__product-card__tile", "", "ü-ß"]) {
+      const digest = new Uint8Array(createHash("sha256").update(name).digest());
+      expect(nameHashFromDigest(digest)).toBe(getAttributeNameHash(name));
+    }
+  });
+
+  it("reads only the first 8 bytes, big-endian: a longer or zero digest still gives a 12-character name starting with b", () => {
+    const zeros = new Uint8Array(32);
+    expect(nameHashFromDigest(zeros)).toBe(`b${"0".repeat(11)}`);
+    const tail = new Uint8Array(32);
+    tail[8] = 255;
+    expect(nameHashFromDigest(tail)).toBe(nameHashFromDigest(zeros));
+    const max = new Uint8Array(8).fill(255);
+    expect(nameHashFromDigest(max)).toBe(`b${toBase62(2n ** 64n - 1n, 11)}`);
+    expect(nameHashFromDigest(max)).toHaveLength(12);
+  });
+});
+
+// A request-time host hashes names that embed per-request instance ids, so
+// its memo must stay bounded whatever a client sends (prompt 157).
+describe("createNameHasher", () => {
+  const sha256 = (input: string) =>
+    new Uint8Array(createHash("sha256").update(input).digest());
+
+  it("gives the build's names", () => {
+    clearHashCache();
+    const hash = createNameHasher(sha256);
+    for (const name of ["tile", "bascik__product-card__r1234567__tile", ""])
+      expect(hash(name)).toBe(getAttributeNameHash(name));
+  });
+
+  it("memoizes a repeated name, and forgets everything once it holds `limit` names instead of growing", () => {
+    const digest = vi.fn(sha256);
+    const hash = createNameHasher(digest, 3);
+    hash("a");
+    hash("a");
+    expect(digest).toHaveBeenCalledTimes(1);
+    hash("b");
+    hash("c");
+    hash("a");
+    expect(digest).toHaveBeenCalledTimes(3);
+    // A fourth distinct name clears the memo: "a" is computed again.
+    hash("d");
+    hash("a");
+    expect(digest).toHaveBeenCalledTimes(5);
+    expect(hash("a")).toBe(getAttributeNameHash("a"));
+  });
+
+  it("misuse: a limit below 1 still hashes every name correctly (nothing is kept)", () => {
+    const digest = vi.fn(sha256);
+    const hash = createNameHasher(digest, 0);
+    expect(hash("a")).toBe(getAttributeNameHash("a"));
+    expect(hash("a")).toBe(getAttributeNameHash("a"));
+    expect(digest).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -128,6 +192,42 @@ describe("deriveInstanceId", () => {
     const id1 = deriveInstanceId("src/pages/index.html", "card-item", 1);
     const id2 = deriveInstanceId("src/pages/about.html", "card-item", 1);
     expect(id1).not.toBe(id2);
+  });
+
+  // Request-time instance ids are `r` + 7 hex (prompt 157). They are minted
+  // per request without the build's issued-id set, so the two shapes must be
+  // disjoint by construction: a build id is always exactly 8 lowercase hex
+  // characters, on the natural and on the salted path.
+  it("always emits ^[0-9a-f]{8}$, never the request id shape ^r[0-9a-f]{7}$", () => {
+    const buildShape = /^[0-9a-f]{8}$/;
+    const requestShape = /^r[0-9a-f]{7}$/;
+    const issued = new Set<string>();
+    const ids: string[] = [];
+    for (let n = 0; n < 5000; n++) {
+      ids.push(
+        deriveInstanceId(
+          `src/pages/p${n % 7}.html`,
+          `c${n % 13}-box`,
+          n + 1,
+          issued,
+        ),
+      );
+    }
+    // Force the salt loop too: re-request every id a second time.
+    for (let n = 0; n < 5000; n++) {
+      ids.push(
+        deriveInstanceId(
+          `src/pages/p${n % 7}.html`,
+          `c${n % 13}-box`,
+          n + 1,
+          issued,
+        ),
+      );
+    }
+    expect(ids).toHaveLength(10_000);
+    expect(issued.size).toBe(10_000);
+    expect(ids.filter((id) => !buildShape.test(id))).toEqual([]);
+    expect(ids.filter((id) => requestShape.test(id))).toEqual([]);
   });
 
   it("resolves forced collisions deterministically without emitting duplicates", () => {

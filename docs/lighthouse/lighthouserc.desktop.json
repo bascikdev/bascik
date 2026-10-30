@@ -1,0 +1,54 @@
+{
+  "ci": {
+    "collect": {
+      "startServerCommand": "bascik --config lighthouse/bascik.config.ts --server --port 8097",
+      "startServerReadyPattern": "Server running at http://localhost:8097",
+      "url": [
+        "http://localhost:8097/",
+        "http://localhost:8097/getting-started",
+        "http://localhost:8097/stream-scripts",
+        "http://localhost:8097/sitemap",
+        "http://localhost:8097/search"
+      ],
+      "numberOfRuns": 1,
+      "settings": {
+        "preset": "desktop",
+        "chromeFlags": "--no-sandbox --headless",
+        "onlyCategories": ["performance"]
+      }
+    },
+    "assert": {
+      "assertMatrix": [
+        {
+          "matchingUrlPattern": ".*",
+          "assertions": {
+            "categories:performance": [
+              "error",
+              {
+                "minScore": 0.95
+              }
+            ],
+            "dom-size-insight": [
+              "error",
+              {
+                "maxNumericValue": 4000
+              }
+            ],
+            "resource-summary:script:size": [
+              "error",
+              {
+                "maxNumericValue": 51200
+              }
+            ],
+            "forced-reflow-insight": "warn",
+            "lcp-discovery-insight": "warn"
+          }
+        }
+      ]
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": "./.lighthouseci-desktop"
+    }
+  }
+}

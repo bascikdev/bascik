@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Northwind Tasks</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 Helvetica,
+          Arial,
+          sans-serif;
+        color: #1d2433;
+      }
+      .w_p1 {
+        padding: 24px 40px;
+      }
+      .row {
+        display: flex;
+        gap: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="w_p1">
+      <nav aria-label="Main">
+        <a href="/pricing" data-qa="nav-pricing">Pricing</a>
+        <a href="/contact">Contact</a>
+      </nav>
+    </header>
+    <main class="w_p1">
+      <div class="row">
+        <h1>Plan work your team can see</h1>
+        <button type="button" data-testid="hero-cta">Get started</button>
+      </div>
+      <form data-cy="signup-form" action="/signup" method="post">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" data-test="signup-email" />
+        <button type="submit" data-test-id="signup-submit">Sign up</button>
+      </form>
+    </main>
+    <footer data-testid="site-footer">
+      <form
+        data-testid="footer-newsletter"
+        action="/newsletter"
+        method="post"
+        hidden
+      >
+        <input name="email" type="email" aria-label="Email" />
+        <button type="submit">Subscribe</button>
+      </form>
+    </footer>
+  </body>
+</html>

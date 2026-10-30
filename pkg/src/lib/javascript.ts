@@ -78,9 +78,12 @@ import { basename, dirname, relative } from "node:path";
 import { getUniqueId, minifyAttributeName } from "./names.ts";
 import { BascikConfig } from "./config.ts";
 import { findComponentRoot } from "./component-roots.ts";
+import { COMPANION_SCRIPT_RE } from "./companion-scripts.ts";
+import { scanHtml } from "./html-scanner.ts";
 import {
   ANY_DIRECTIVE_ATTR_NAME,
   isBuildScriptOpenTag,
+  isRequestScriptOpenTag,
 } from "./html-patterns.ts";
 import {
   encodeOutputScope,
@@ -88,20 +91,53 @@ import {
   type OutputScope,
 } from "./output-scope.ts";
 
+/** Cheap probe: a template naming none of these directives has nothing to annotate. */
+const OUTPUT_SCOPED_DIRECTIVE_PROBE = /data-bascik-(?:build|server|stream)/i;
+
 /**
- * Add the output-scope annotation to each component build script. Its output
- * is generated after component scoping, so the annotation lets that output
- * receive the same class and element names as the template.
+ * Add the output-scope annotation to each component build, server and stream
+ * script. Their output is generated after component scoping (a build script's
+ * at page time, a server or stream script's at request time, prompt 157), so
+ * the annotation lets that output receive the same class and element names
+ * as the template. Client scripts are scoped in place and never carry it.
+ *
+ * Script start tags come from the HTML tokenizer scan, not a text search:
+ * `<script data-bascik-server>` written inside a client script's string, a
+ * style, textarea or comment body, or another tag's quoted attribute value is
+ * text, and splicing a double-quoted attribute into it would break that
+ * script's JavaScript (PR 113 review). Where the scan stops following the
+ * browser (see html-scanner.ts), later scripts stay unannotated: their output
+ * keeps its authored class names, which is visible, rather than corrupting
+ * text the compiler cannot classify.
  */
-const annotateBuildScripts = (html: string, encodedScope: string): string =>
-  html.replace(/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, (openTag) => {
-    if (openTag.includes(OUTPUT_SCOPE_ATTRIBUTE)) return openTag;
-    if (!isBuildScriptOpenTag(openTag)) return openTag;
-    return openTag.replace(
-      />$/,
-      ` ${OUTPUT_SCOPE_ATTRIBUTE}="${encodedScope}">`,
-    );
+const annotateOutputScopedScripts = (
+  html: string,
+  encodedScope: string,
+): string => {
+  if (!OUTPUT_SCOPED_DIRECTIVE_PROBE.test(html)) return html;
+  const insertAt: number[] = [];
+  scanHtml(html, {
+    token(token) {
+      if (token.kind !== "tag" || token.isEndTag || token.name !== "script")
+        return;
+      const openTag = html.slice(token.start, token.end);
+      if (openTag.includes(OUTPUT_SCOPE_ATTRIBUTE)) return;
+      if (!isBuildScriptOpenTag(openTag) && !isRequestScriptOpenTag(openTag))
+        return;
+      // Before the closing `>`, the same place the attribute always went.
+      insertAt.push(token.end - 1);
+    },
   });
+  if (insertAt.length === 0) return html;
+  const attribute = ` ${OUTPUT_SCOPE_ATTRIBUTE}="${encodedScope}"`;
+  let result = "";
+  let last = 0;
+  for (const index of insertAt) {
+    result += html.slice(last, index) + attribute;
+    last = index;
+  }
+  return result + html.slice(last);
+};
 
 /**
  * A `<script>` open tag carrying any Bascik directive (`build`, `server`,
@@ -149,6 +185,51 @@ import {
   rewriteUsemapReferencesInHtml,
 } from "./id-references.ts";
 import type { BascikComponent } from "./types.ts";
+import {
+  createNamedOpenTagScanner,
+  createOpenTagScanner,
+  isRegexWhitespace,
+  openTagsOf,
+  replaceScannedElements,
+  replaceSpans,
+  scanElementContents,
+  type ElementScanOptions,
+  type OpenTagScanner,
+} from "./element-content-scan.ts";
+
+/** `<script(?=[\t\n\f\r />])...>` elements closed the way browsers close them (see `ElementScanOptions`). */
+const SCRIPT_ELEMENT_SCAN: ElementScanOptions = {
+  opener: "tag-space",
+  closer: "attributes",
+};
+
+/**
+ * `html.replace(/(<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi, replace)`
+ * in linear time.
+ */
+const replaceScriptElements = (
+  html: string,
+  replace: (match: string, open: string, body: string, close: string) => string,
+): string =>
+  replaceScannedElements(
+    html,
+    "script",
+    SCRIPT_ELEMENT_SCAN,
+    (open, body, close) => replace(open + body + close, open, body, close),
+  );
+
+/** `html` with each open tag `tags` finds replaced by `replace(tag)`. */
+const replaceOpenTags = (
+  html: string,
+  tags: OpenTagScanner,
+  replace: (tag: string) => string,
+): string => replaceSpans(html, openTagsOf(tags), replace);
+
+/** `[a-zA-Z0-9-]` */
+const isTagNameCode = (code: number): boolean =>
+  (code >= 0x30 && code <= 0x39) ||
+  ((code | 0x20) >= 0x61 && (code | 0x20) <= 0x7a) ||
+  code === 0x2d;
 
 interface ScopedCssCacheEntry {
   css: string;
@@ -199,9 +280,13 @@ const rewriteIdReferencesInStyleTags = (
     "textarea",
   ]);
   let changed = false;
-  const rewrittenHtml = shielded.html.replace(
-    /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
-    (_match, openTag: string, css: string, closeTag: string) => {
+  // `(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)`
+  // (flags `gi`), in linear time.
+  const rewrittenHtml = replaceScannedElements(
+    shielded.html,
+    "style",
+    { opener: "tag-space", closer: "attributes" },
+    (openTag: string, css: string, closeTag: string) => {
       const rewrittenCss = rewriteIdReferencesInCss(css, resolve);
       changed ||= rewrittenCss !== css;
       return `${openTag}${rewrittenCss}${closeTag}`;
@@ -311,8 +396,17 @@ const replaceSafeAttr = (
 
   // This simple regex identifies tags loosely. It handles nested attributes
   // because we only process the attributes inside the matched tag brackets.
-  return html.replace(
-    /<[a-zA-Z0-9-]+(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?>/g,
+  // `/<[a-zA-Z0-9-]+(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?>/g`, in linear time.
+  return replaceOpenTags(
+    html,
+    createOpenTagScanner(html, (start) => {
+      let index = start + 1;
+      while (isTagNameCode(html.charCodeAt(index))) index++;
+      if (index === start + 1) return -1;
+      const code = html.charCodeAt(index);
+      if (code === 0x3e) return index;
+      return isRegexWhitespace(code) ? index + 1 : -1;
+    }),
     (tagMatch) => {
       if (!attrQuickCheck.test(tagMatch)) return tagMatch;
       // First, find all proper string boundaries in this tag to ignore false matches.
@@ -458,11 +552,16 @@ export const prefixElementAttribute = (
   // Shield <meta> elements from name-attribute scoping. The `name` attribute
   // on <meta> refers to a standardized metadata vocabulary (e.g. "viewport",
   // "description", "robots") and must never be mangled by the scoping pipeline.
+  // Name scoping as a whole is opt-in (`scoping.attributes.name`); when it is
+  // on, every other `name` is scoped per instance, `<details name>` included.
   const metaShield =
     attribute === "name" ? createContentShield(component.fileContent) : null;
   if (metaShield) {
-    component.fileContent = component.fileContent.replace(
-      /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*(?:\/>|>)/gi,
+    // `/<meta(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*(?:\/>|>)/gi`, in linear time.
+    const html = component.fileContent;
+    component.fileContent = replaceOpenTags(
+      html,
+      createNamedOpenTagScanner(html, "meta"),
       (tag) => metaShield.hide(tag),
     );
   }
@@ -600,12 +699,22 @@ export const prefixElementAttribute = (
       }
     };
 
-    for (const scriptMatch of scopedAttrsHtml.matchAll(
-      /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi,
+    // `/<script(?=[\t\n\f\r />])((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`,
+    // in linear time.
+    for (const scriptMatch of scanElementContents(
+      scopedAttrsHtml,
+      "script",
+      SCRIPT_ELEMENT_SCAN,
     )) {
-      const openTag = scriptMatch[1];
+      const openTag = scopedAttrsHtml.slice(
+        scriptMatch.start + 7,
+        scriptMatch.contentStart - 1,
+      );
       if (DIRECTIVE_SCRIPT_RE.test(openTag)) continue;
-      const src = scriptMatch[2];
+      const src = scopedAttrsHtml.slice(
+        scriptMatch.contentStart,
+        scriptMatch.contentEnd,
+      );
 
       // classList.add/remove/toggle/contains/replace — extract every quoted token
       replaceBalancedCall(
@@ -675,8 +784,8 @@ export const prefixElementAttribute = (
   const scopedHtml =
     seenAttrMap.size === 0
       ? scopedAttrsHtml
-      : scopedAttrsHtml.replace(
-          /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
+      : replaceScriptElements(
+          scopedAttrsHtml,
           (match, open: string, body: string, close: string) => {
             if (DIRECTIVE_SCRIPT_RE.test(open)) return match;
             let updatedBody = body;
@@ -964,7 +1073,7 @@ export const prefixElementAttribute = (
           `bascik__${scopeKey}__el__${element}`,
         );
       }
-      component.fileContent = annotateBuildScripts(
+      component.fileContent = annotateOutputScopedScripts(
         component.fileContent,
         encodeOutputScope(scope),
       );
@@ -1019,7 +1128,7 @@ export const getComponentScripts = async (
     } else {
       const scriptBaseName = basename(scriptPath);
       const nameWithoutExt = scriptBaseName
-        .replace(/\.(js|ts|mjs)$/, "")
+        .replace(COMPANION_SCRIPT_RE, "")
         .toLowerCase();
       return (
         nameWithoutExt === componentBaseName ||
@@ -1033,8 +1142,8 @@ export const getComponentScripts = async (
   matchingScriptFiles.sort((a, b) => {
     const aBase = basename(a).toLowerCase();
     const bBase = basename(b).toLowerCase();
-    const aMain = aBase.replace(/\.(js|ts|mjs)$/, "") === componentBaseName;
-    const bMain = bBase.replace(/\.(js|ts|mjs)$/, "") === componentBaseName;
+    const aMain = aBase.replace(COMPANION_SCRIPT_RE, "") === componentBaseName;
+    const bMain = bBase.replace(COMPANION_SCRIPT_RE, "") === componentBaseName;
     if (aMain && !bMain) return -1;
     if (!aMain && bMain) return 1;
     return a < b ? -1 : a > b ? 1 : 0;
@@ -1060,6 +1169,7 @@ export const getComponentScripts = async (
       code = await transformBrowserTypeScript(code, {
         sourcePath: relPath,
         kind: "companion",
+        runtime: "browser",
       });
     }
     const baseName = basename(scriptPath);
@@ -1094,9 +1204,9 @@ export const namespaceScriptTags = (
 
   // Only wrap <script> tags with no type or type="text/javascript"
   component.fileContent = commentShield.restore(
-    commentMaskedContent.replace(
-      /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
-      (match, stampedOpen, code, close, _offset) => {
+    replaceScriptElements(
+      commentMaskedContent,
+      (match, stampedOpen, code, close) => {
         // Server, stream, build, and routes scripts run in Node.js, never wrap in browser IIFE
         if (DIRECTIVE_SCRIPT_RE.test(stampedOpen)) return match;
 

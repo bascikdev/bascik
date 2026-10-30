@@ -8,6 +8,13 @@
  *  - src/pages/index.html   — starter HTML page
  *  - src/components/        — empty components directory
  *  - .gitignore additions    — dist/ and node_modules/.cache/bascik/
+ *  - .vscode/settings.json   — "html.validate.scripts": false (merged, never replaced)
+ *  - .vscode/extensions.json — recommends the Bascik extension (merged, never replaced)
+ *  - AGENTS.md               — the project brief for coding assistants (merged, never replaced)
+ *  - CLAUDE.md               — imports AGENTS.md for Claude Code (merged, never replaced)
+ *  - .agents/skills/, .claude/skills/ — the Bascik agent skills, after a Y/n
+ *    question that defaults to yes (`-y` answers yes, `--no-skills` skips),
+ *    installed with the skills CLI at this Bascik version's tag
  *
  * Updates package.json (if present):
  *  - Adds "type": "module" only when absent (never rewrites "commonjs")
@@ -17,6 +24,27 @@
 
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  SKILLS_QUESTION,
+  agentFilesReportLines,
+  answeredNo,
+  createPrompter,
+  installSkills,
+  skillsLaterLines,
+  skillsRef,
+  skillsReportLines,
+  writeAgentFiles,
+  type AgentFileStatus,
+  type AgentsOptions,
+} from "./agent-setup.ts";
+import { readVersion } from "./version.ts";
+import {
+  HTML_VALIDATE_SCRIPTS,
+  BASCIK_EXTENSION_ID,
+  vscodeReportLines,
+  writeVscodeFiles,
+  type VscodeFileStatus,
+} from "./vscode-settings.ts";
 
 const INDEX_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -45,7 +73,20 @@ async function writeIfAbsent(path: string, content: string): Promise<boolean> {
   }
 }
 
-export async function initProject(): Promise<void> {
+export interface InitOptions {
+  /** `-y`: answer yes to the agent skills question. */
+  yes?: boolean;
+  /** False for `--no-skills`: neither ask about nor install the agent skills. */
+  skills?: boolean;
+  /** Asks a question and resolves with the answer. Defaults to the terminal. */
+  ask?: (question: string) => Promise<string>;
+  /** Installs the skills. Defaults to the skills CLI; replaced in tests. */
+  install?: typeof installSkills;
+  /** The Bascik version whose skills to install. Defaults to this package's. */
+  version?: string;
+}
+
+export async function initProject(options: InitOptions = {}): Promise<void> {
   const cwd = process.cwd();
 
   const pagesDir = join(cwd, "src", "pages");
@@ -69,14 +110,111 @@ export async function initProject(): Promise<void> {
   await ensureGitignoreEntries(gitignorePath, REQUIRED_GITIGNORE_ENTRIES);
   console.log("  updated: .gitignore (dist/, node_modules/.cache/bascik/)");
 
-  // Update package.json
+  const scripts = await updatePackageJson(pkgPath);
+  const commands = bascikCommands(scripts);
+  await setUpVscode(cwd);
+  await setUpAgentFiles(cwd, commands);
+  await setUpSkills(cwd, options);
+  printDone(commands);
+}
+
+type Commands = NonNullable<AgentsOptions["commands"]>;
+
+/** Whether an npm script runs the Bascik CLI, with `--build` or without. */
+function runsBascik(script: string | undefined, build: boolean): boolean {
+  return (
+    typeof script === "string" &&
+    /^\s*(npx\s+)?bascik(\s|$)/.test(script) &&
+    /(^|\s)--build(\s|=|$)/.test(script) === build
+  );
+}
+
+/**
+ * The commands that run the Bascik dev server and build: the npm scripts when
+ * they run Bascik, otherwise `npx bascik`, as when a project's `dev` script
+ * runs another tool or there is no package.json.
+ */
+function bascikCommands(
+  scripts: Record<string, string> | undefined,
+): Required<Commands> {
+  return {
+    dev: runsBascik(scripts?.dev, false) ? "npm run dev" : "npx bascik",
+    build: runsBascik(scripts?.build, true)
+      ? "npm run build"
+      : "npx bascik --build",
+  };
+}
+
+/** Write or merge AGENTS.md and CLAUDE.md, the brief every coding assistant reads. */
+async function setUpAgentFiles(cwd: string, commands: Commands): Promise<void> {
+  const report = await writeAgentFiles(cwd, { commands });
+  const problems = agentFilesReportLines({
+    agents: report.agents === "failed" ? "failed" : "unchanged",
+    claude: report.claude === "failed" ? "failed" : "unchanged",
+  });
+  const added: Record<keyof typeof report, string> = {
+    agents: 'a "## Bascik" section',
+    claude: "@AGENTS.md",
+  };
+  const files = { agents: "AGENTS.md", claude: "CLAUDE.md" } as const;
+  for (const key of ["agents", "claude"] as const) {
+    const status: AgentFileStatus = report[key];
+    if (status === "created") console.log(`  created: ${files[key]}`);
+    else if (status === "updated") {
+      console.log(`  updated: ${files[key]} (added ${added[key]})`);
+    } else if (status === "unchanged") {
+      console.log(`  skipped: ${files[key]} (already set)`);
+    }
+  }
+  for (const line of problems) console.log(`  ${line}`);
+}
+
+/**
+ * Ask whether to install the agent skills (yes by default) and install them
+ * with the skills CLI. A failed install is reported with the command to run
+ * later and never fails init.
+ */
+async function setUpSkills(cwd: string, options: InitOptions): Promise<void> {
+  if (options.skills === false) {
+    console.log("  skipped: agent skills (--no-skills)");
+    return;
+  }
+  const version = options.version ?? (await readVersion());
+  if (!options.yes) {
+    let answer: string;
+    if (options.ask) {
+      answer = await options.ask(SKILLS_QUESTION);
+    } else {
+      const prompter = createPrompter();
+      answer = await prompter.ask(SKILLS_QUESTION);
+      prompter.close();
+    }
+    if (answeredNo(answer)) {
+      console.log("  skipped: agent skills. To install them later, run:");
+      for (const line of skillsLaterLines(skillsRef(version))) {
+        console.log(`  ${line}`);
+      }
+      return;
+    }
+  }
+  console.log("  installing: Bascik agent skills…");
+  const result = (options.install ?? installSkills)(cwd, { version });
+  for (const line of skillsReportLines(result)) console.log(`  ${line}`);
+}
+
+/**
+ * Add what Bascik needs to package.json. Resolves with the scripts it ends
+ * up with, or undefined when there is no package.json it could read.
+ */
+async function updatePackageJson(
+  pkgPath: string,
+): Promise<Record<string, string> | undefined> {
   let pkgRaw: string;
   try {
     pkgRaw = await readFile(pkgPath, "utf8");
   } catch {
     console.log("  skipped: package.json (not found — run `npm init` first)");
-    printDone();
-    return;
+    return undefined;
   }
 
   let pkg: Record<string, unknown>;
@@ -84,8 +222,7 @@ export async function initProject(): Promise<void> {
     pkg = JSON.parse(pkgRaw) as Record<string, unknown>;
   } catch {
     console.log("  skipped: package.json (could not parse — edit manually)");
-    printDone();
-    return;
+    return undefined;
   }
 
   const changes: string[] = [];
@@ -133,16 +270,51 @@ export async function initProject(): Promise<void> {
   } else {
     console.log("  skipped: package.json (already configured)");
   }
-
-  printDone();
+  return scripts;
 }
 
-function printDone(): void {
+/**
+ * Write or merge .vscode/settings.json and .vscode/extensions.json. VS Code's
+ * HTML checker joins a page's <script> blocks into one file, so two Bascik
+ * scripts that each `export default` show a false error without the setting.
+ */
+async function setUpVscode(cwd: string): Promise<void> {
+  const report = await writeVscodeFiles(cwd);
+  const added: Record<keyof typeof report, string> = {
+    settings: `"${HTML_VALIDATE_SCRIPTS}": false`,
+    extensions: BASCIK_EXTENSION_ID,
+  };
+  const problems = vscodeReportLines({
+    settings: keepProblem(report.settings),
+    extensions: keepProblem(report.extensions),
+  });
+  for (const key of ["settings", "extensions"] as const) {
+    const file = `.vscode/${key}.json`;
+    const status = report[key];
+    if (status === "created") console.log(`  created: ${file}`);
+    else if (status === "updated") {
+      console.log(`  updated: ${file} (added ${added[key]})`);
+    } else if (status === "unchanged") {
+      console.log(`  skipped: ${file} (already set)`);
+    }
+  }
+  for (const line of problems) console.log(`  ${line}`);
+}
+
+/** Only the statuses that need the user to act, for vscodeReportLines. */
+function keepProblem(status: VscodeFileStatus): VscodeFileStatus {
+  return status === "invalid" || status === "failed" ? status : "unchanged";
+}
+
+function printDone(commands: Commands): void {
+  const start =
+    commands.dev === "npm run dev"
+      ? "  npm run dev\n  yarn dev"
+      : `  ${commands.dev}`;
   console.log(`
 Done! Start the dev server with:
 
-  npm run dev
-  yarn dev
+${start}
 
 Configuration is optional. Create bascik.config.ts only when you need
 to change a default: https://bascik.dev/configuration

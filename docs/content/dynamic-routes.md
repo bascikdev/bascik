@@ -41,7 +41,7 @@ In this recording, `src/pages/blog/[slug].html` lists two posts, so `/blog/third
 
 Each element in the returned array must be an object with:
 
-- `params` (required): An object whose keys match the bracket names in the template filename. For `[slug].html`, `params` must contain `{ slug: "..." }`. Values are automatically converted to strings.
+- `params` (required): An object whose keys match the bracket names in the template filename. For `[slug].html`, `params` must contain `{ slug: "..." }`. Values must be strings or numbers; numbers are converted to strings.
 - `data` (optional): Any JSON-serializable value (object, array, string, number, or boolean) to pass directly to build scripts across the process boundary without re-fetching.
 
 ```json
@@ -57,7 +57,7 @@ Each element in the returned array must be an object with:
 ]
 ```
 
-> **Strict validation.** Every required bracket parameter in the filename must be present in `params`. If a bracket name is missing, or if the default export does not return a valid array of route entries, the build halts with a descriptive error. To generate no pages from a template, return an explicit empty array `return []`.
+> **Strict validation.** If the default export does not return an array, the build halts with a descriptive error (under the default `scripts.onRoutesScriptError: 'error'`). A route entry that lacks a `params` object, misses a bracket parameter, or has an invalid value is skipped with a warning naming its index, and the other entries still build. To generate no pages from a template, return an explicit empty array `return []`.
 
 ## Accessing Route Data in Build Scripts
 
@@ -98,7 +98,7 @@ Inside your template, `<script data-bascik-build>` blocks can read the current r
 Dynamic route templates can contain both `<script data-bascik-build>` and `<script data-bascik-server>` blocks.
 
 - The `<script data-bascik-routes>` script expands the template into concrete HTML files at build time (for example, `dist/blog/hello-world.html` and `dist/blog/second-post.html`).
-- The `<script data-bascik-server>` blocks remain in the generated HTML files and execute per request when served by the Bascik production server.
+- The `<script data-bascik-server>` blocks remain in the generated HTML files and execute per request when served by the dev server, `bascik --server`, or a serverless target such as the [Cloudflare Adapter](/deployment/cloudflare).
 - Note that `<script data-bascik-routes>` cannot be combined with `<script data-bascik-build>` or `<script data-bascik-server>` on the same script tag.
 
 ## Cache Invalidation
@@ -126,10 +126,10 @@ Dynamic routes automatically integrate into Bascik's built-in sitemap generator 
 Bascik validates routes scripts, route parameters, and output destinations during the build:
 
 - **Collision Detection:** If a dynamic route and a static page resolve to the same output path (e.g. `src/pages/blog/hello.html` and `src/pages/blog/[slug].html` with `slug: "hello"`), or if two dynamic templates produce colliding paths, Bascik fails the build with an error naming both sources.
-- **URL-Safe Route Parameters:** Route parameter values must be valid filename and URL tokens. Characters such as `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`) are rejected with descriptive warnings.
+- **URL-Safe Route Parameters:** Route parameter values must be valid filename and URL tokens. Characters such as `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`) are rejected: the entry is skipped with a warning that names it.
 - **Zero Routes:** If a routes script returns an empty array `[]`, Bascik emits a warning indicating the template produced 0 routes.
-- **Missing Parameters:** If a template is named `[category]/[id].html` and a route object only provides `{ category: "news" }`, Bascik throws an error indicating that parameter `id` was not supplied.
-- **Invalid Output Format:** If the default export does not resolve to an array of objects with `params`, Bascik throws a descriptive error detailing the invalid return value.
+- **Missing Parameters:** If a template is named `[category]/[id].html` and a route object only provides `{ category: "news" }`, Bascik skips that entry with a warning that parameter `id` is missing.
+- **Invalid Output Format:** If the default export does not resolve to an array, Bascik throws a descriptive error detailing the invalid return value. An entry without a `params` object is skipped with a warning.
 - **Conflicting Directives:** Specifying `data-bascik-routes` alongside `data-bascik-build` or `data-bascik-server` on a single script tag is prevented with a validation error.
 
 ## Common How-to Examples

@@ -1,6 +1,6 @@
 {
   "name": "@bascik/language-server",
-  "version": "0.1.0-rc.5",
+  "version": "0.1.0-rc.6",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
@@ -18,6 +18,9 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "engines": {
+    "node": ">=22.22.0"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -40,12 +43,13 @@
     "build": "tsc -p ./tsconfig.json",
     "watch": "tsc -watch -p ./tsconfig.json",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
-    "test": "vitest run",
-    "test:ci": "vitest run",
-    "unit": "vitest run",
-    "coverage": "vitest run --coverage.enabled && node bin/update-coverage.ts",
+    "test": "vitest run --project unit",
+    "test:ci": "vitest run --project unit",
+    "unit": "vitest run --project unit",
+    "linear-time": "vitest run --project linear-time",
+    "coverage": "vitest run --project unit --coverage.enabled && node bin/update-coverage.ts",
     "cover": "yarn coverage",
-    "update-coverage": "vitest run --coverage.enabled && node bin/update-coverage.ts"
+    "update-coverage": "vitest run --project unit --coverage.enabled && node bin/update-coverage.ts"
   },
   "dependencies": {
     "vscode-languageserver": "^10.1.2",
@@ -55,7 +59,7 @@
     "@types/node": "^24.19.1",
     "@vitest/coverage-v8": "^5.0.3",
     "typescript": "^7.0.2",
-    "vite": "^8.3.2",
+    "vite": "^8.3.4",
     "vitest": "^5.0.3"
   }
 }

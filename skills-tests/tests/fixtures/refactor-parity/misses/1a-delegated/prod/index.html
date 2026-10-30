@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Milk frother</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 Helvetica,
+          Arial,
+          sans-serif;
+        color: #1d2433;
+      }
+      .card {
+        cursor: pointer;
+        padding: 12px;
+        background: #eee;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section>
+        <h1>Froth in seconds</h1>
+        <div class="card" data-scroll="#specs">See the specs</div>
+      </section>
+      <div style="height: 1400px"></div>
+      <section id="specs">
+        <h2>Specs</h2>
+        <p>Details</p>
+      </section>
+      <div style="height: 1400px"></div>
+    </main>
+    <script>
+      document.addEventListener("click", (e) => {
+        const t = e.target.closest("[data-scroll]");
+        if (t) document.querySelector(t.dataset.scroll).scrollIntoView();
+      });
+    </script>
+  </body>
+</html>

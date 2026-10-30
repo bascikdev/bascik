@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Check that components only use CSS custom properties (design tokens) that are declared somewhere.
-// Dependency-free; Node.js 22.18+. Run from the project root.
+// Dependency-free; Node.js 22.22+. Run from the project root.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -100,9 +100,12 @@ function findRoot(start) {
   let dir = resolve(start);
   while (true) {
     if (
-      ["bascik.config.js", "bascik.config.ts", "package.json"].some((f) =>
-        existsSync(join(dir, f)),
-      )
+      [
+        "bascik.config.js",
+        "bascik.config.mjs",
+        "bascik.config.ts",
+        "package.json",
+      ].some((f) => existsSync(join(dir, f)))
     )
       return dir;
     const parent = dirname(dir);
@@ -112,7 +115,11 @@ function findRoot(start) {
 }
 
 async function loadConfig(root) {
-  for (const file of ["bascik.config.js", "bascik.config.ts"]) {
+  for (const file of [
+    "bascik.config.js",
+    "bascik.config.mjs",
+    "bascik.config.ts",
+  ]) {
     const path = join(root, file);
     if (existsSync(path))
       return (await import(pathToFileURL(path).href)).default ?? {};
@@ -121,7 +128,7 @@ async function loadConfig(root) {
 }
 
 async function main() {
-  const { values } = parseArgs({
+  const { values } = parseCliArgs("check-tokens", {
     options: {
       json: { type: "boolean", default: false },
       unused: { type: "boolean", default: false },
@@ -173,3 +180,30 @@ const invokedDirectly =
   Boolean(process.argv[1]) &&
   pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
 if (invokedDirectly) await main();
+
+/**
+ * `parseArgs`, with a short message naming the flag and the valid ones, and
+ * exit code 2, in place of Node's stack trace on a mistyped or missing flag.
+ */
+function parseCliArgs(name, config) {
+  try {
+    return parseArgs(config);
+  } catch (error) {
+    if (!String(error?.code).startsWith("ERR_PARSE_ARGS_")) throw error;
+    const valid = Object.entries(config.options ?? {})
+      .map(
+        ([long, option]) =>
+          `${option.short ? `-${option.short}, ` : ""}--${long}`,
+      )
+      .join(", ");
+    const flag = /'([^']+)'/.exec(error.message)?.[1];
+    const problem =
+      error.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" && flag
+        ? `unknown option "${flag}"`
+        : error.message.split(". ")[0].replace(/\.$/, "");
+    process.stderr.write(
+      `${name}: ${problem}. Valid options: ${valid}. Run with --help.\n`,
+    );
+    process.exit(2);
+  }
+}

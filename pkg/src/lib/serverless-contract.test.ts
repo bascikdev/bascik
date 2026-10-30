@@ -8,7 +8,11 @@
  *    `platform: "browser"` is the located negative-control oracle: it has no
  *    `node:*` builtins, so any Node import in the graph is a hard error. This
  *    is an import-hygiene guard, not a Workers acceptance test (134/135 own
- *    that).
+ *    that). Free Node globals (`process`, `Buffer`, `require`, `__dirname`,
+ *    `__filename`) resolve to nothing at bundle time and esbuild leaves them
+ *    in place without complaint, so the bundle text is scanned for them too
+ *    (prompt 157); `__fixtures__/leaky-handler.ts` proves the scan catches
+ *    what the bundle step does not.
  * 2. The Node runtime modules (`server-scripts.ts`, `api-runtime.ts`) are NOT
  *    in that graph. They own module loading, sockets, and Buffer sinks and are
  *    expected to keep failing the boundary. If one day they pass, the negative
@@ -28,7 +32,7 @@ const docsContent = resolve(here, "../../../docs/content");
 
 const bundleForWeb = async (
   entry: string,
-): Promise<{ errors: Message[]; bytes: number }> => {
+): Promise<{ errors: Message[]; bytes: number; text: string }> => {
   try {
     const result = await build({
       entryPoints: [entry],
@@ -44,12 +48,26 @@ const bundleForWeb = async (
     return {
       errors: result.errors,
       bytes: result.outputFiles?.[0]?.contents.byteLength ?? 0,
+      text: result.outputFiles?.[0]?.text ?? "",
     };
   } catch (err) {
     const failure = err as { errors?: Message[] };
-    return { errors: failure.errors ?? [], bytes: 0 };
+    return { errors: failure.errors ?? [], bytes: 0, text: "" };
   }
 };
+
+/**
+ * Node globals a Web bundle cannot provide. Comments are stripped from the
+ * bundle, so a hit is a reference (or a string literal, which still names a
+ * leak to look at).
+ */
+const FREE_NODE_GLOBALS =
+  /\b(?:process|Buffer|require|__dirname|__filename)\b/g;
+const freeNodeGlobals = (text: string): string[] =>
+  Array.from(text.matchAll(FREE_NODE_GLOBALS), (match) => {
+    const start = Math.max(0, match.index - 30);
+    return text.slice(start, match.index + match[0].length + 30);
+  });
 
 const nodeBuiltinErrors = (errors: Message[]): string[] =>
   errors
@@ -66,19 +84,66 @@ describe("serverless contract: host-neutral runtime boundary", () => {
     expect(bytes).toBeGreaterThan(0);
   });
 
-  it("the portable request-execution graph has no Node resolution errors", async () => {
+  it("negative control for the global scan: a free `process` read bundles clean and is caught by the scan", async () => {
+    const { errors, text } = await bundleForWeb(
+      resolve(here, "__fixtures__/leaky-handler.ts"),
+    );
+    expect(errors).toEqual([]);
+    expect(freeNodeGlobals(text)).not.toEqual([]);
+  });
+
+  it("the portable request-execution graph has no Node resolution errors or free Node globals", async () => {
     const entries = [
       resolve(here, "request-execution.ts"),
       resolve(here, "web-response.ts"),
       resolve(here, "route-matching.ts"),
+      // Request-time component rendering (prompt 157): the expansion loop and
+      // the scoping-template replay run inside a Worker, so neither may pull
+      // in `node:crypto`, `node:fs`, `process`, or the config module.
+      resolve(here, "component-expansion-core.ts"),
+      resolve(here, "scoping-instantiate.ts"),
+      // The request-time renderer itself (phase 3) and the runtime entry
+      // adapters bundle, which re-exports it.
+      resolve(here, "request-render.ts"),
+      // What a Worker host applies to component script output itself, and
+      // the scoped-name hash it computes from its own sha256 (phase 4).
+      resolve(here, "output-scope.ts"),
+      resolve(here, "name-hash.ts"),
+      // The ANSI stripping Node applies to every script's output, so a
+      // Worker sends the same bytes.
+      resolve(here, "ansi-escapes.ts"),
+      resolve(here, "../runtime.ts"),
     ];
     for (const entry of entries) {
-      const { errors } = await bundleForWeb(entry);
+      const { errors, text } = await bundleForWeb(entry);
       expect(nodeBuiltinErrors(errors), `${entry} leaks Node builtins`).toEqual(
         [],
       );
       expect(errors, `${entry} does not bundle for the Web`).toEqual([]);
+      expect(text.length, `${entry} produced an empty bundle`).toBeGreaterThan(
+        0,
+      );
+      expect(
+        freeNodeGlobals(text),
+        `${entry} references a free Node global`,
+      ).toEqual([]);
     }
+  });
+
+  it("runtime.ts re-exports the portable renderer graph for adapters (prompt 157)", async () => {
+    // Dynamic so the other contract tests still run while the module is
+    // missing; an adapter imports these from `@bascik/bascik/runtime`.
+    const runtime = (await import("../runtime.ts")) as Record<string, unknown>;
+    expect(typeof runtime.wrapRunner).toBe("function");
+    expect(typeof runtime.RequestRenderError).toBe("function");
+    expect(typeof runtime.expandComponents).toBe("function");
+    expect(typeof runtime.instantiateTemplate).toBe("function");
+    expect(typeof runtime.applyOutputScope).toBe("function");
+    expect(typeof runtime.decodeOutputScope).toBe("function");
+    expect(typeof runtime.nameHashFromDigest).toBe("function");
+    expect(typeof runtime.createNameHasher).toBe("function");
+    expect(typeof runtime.requestRoutePath).toBe("function");
+    expect(typeof runtime.stripAnsiEscapeCodes).toBe("function");
   });
 
   it("negative control: the Node runtime entrypoints still fail the boundary", async () => {

@@ -19,10 +19,10 @@ Open Source → JS in the counter demo to see ordinary event listeners and `getE
 Component templates can contain multiple `<script>` tags. Bascik processes each script tag according to its attributes:
 
 - **Client scripts:** Standard JavaScript blocks are each wrapped in an isolated IIFE `(function() { ... })();` when `scoping.scriptBlocks` is enabled. If you include multiple client `<script>` tags in a single component, each runs in its own IIFE so local variables do not collide.
-- **Local script files (`<script src="counter.ts">`):** References to local `.ts`, `.js`, or `.mjs` files inside the component's directory are resolved and inlined at build time, then scoped and wrapped as client scripts.
+- **Local script files (`<script src="counter.ts">`):** References to local `.ts`, `.mts`, `.js`, or `.mjs` files inside the component's directory are resolved and inlined at build time, then scoped and wrapped as client scripts.
 - **Build scripts (`<script data-bascik-build>`):** Executed during build/dev time in Node.js to generate dynamic markup. Can also use `src="..."` to run a local script file.
-- **Server scripts (`<script data-bascik-server>`):** Executed on the server at request time in Node.js. Can also use `src="..."` to run a local script file.
-- **Streaming scripts (`<script data-bascik-stream>`):** Executed on the server at request time in Node.js with chunked HTTP streaming. Can also use `src="..."` to run a local script file.
+- **Server scripts (`<script data-bascik-server>`):** Executed on the server at request time (Node.js or a Cloudflare Worker). Can return component tags, which render at request time. Can also use `src="..."` to run a local script file.
+- **Streaming scripts (`<script data-bascik-stream>`):** Executed on the server at request time (Node.js or a Cloudflare Worker) with chunked HTTP streaming. Can also use `src="..."` to run a local script file.
 - **Data scripts (e.g. `type="application/ld+json"`):** Left untouched without IIFE wrapping or minification.
 
 > **Directory Isolation Rule:** Local `src="..."` script references are strictly confined to the component's own folder. A component in `src/components/demo-counter/` can only reference script files inside `src/components/demo-counter/`. It cannot access files across other component directories. **Recommended Pattern:** Keeping separate, unrelated logic in dedicated `<script>` tags (such as one script block for form validation and another for UI animation) is recommended for clean, readable code. You don't need to break code into tiny scripts arbitrarily, but isolating independent concerns into separate script blocks keeps your component's JavaScript organized and prevents variable name collisions.
@@ -35,12 +35,15 @@ The two counters at the top of this page are the same component. Change either c
 
 For a larger case, the [Tab Group](/example-components/tab-group) example builds a tab list at run time and derives every tab and panel ID from its scoped root ID, so several groups on one page never collide.
 
+Each instance carries its own copy of the component's scripts, so every instance gets its behavior without a runtime framework, a registry, or a bundling step. Seeing the same `<script>` once per instance in the page output is expected. Inline classic scripts are wrapped in an IIFE (with [`scoping.scriptBlocks`](/configuration#scopingscriptblocks), on by default) so their variables stay out of the global scope. In build output, from the second instance on, each copy's `//# sourceURL` ends in `?instance=N`, so browser devtools list the copies separately.
+
 ## Where Component Scripts Run
 
 A component script is an inline classic script, and where it sits in the page depends on the mode:
 
 - **Production (`bascik --build`).** HTML minification (`minify.html`, on by default) moves component scripts to the end of the document, just before `</body>`, in document order. Every element in the page exists when they run, even when the component is nested inside `<main>` or another container.
 - **Development server, or `minify.html: false`.** Each script stays directly after its component's markup. An element that comes later in the document does not exist yet when the script runs.
+- **A component returned by a server or stream script.** The component is rendered at request time, and its script stays inside the rendered markup in every mode. With `minify.html` on it moves only to the end of the outermost component the script returned, never to the end of the document, so later page markup does not exist yet when it runs. Its scoped ids are derived from a request-time instance id; its class names are the ones the build uses, unless the component's CSS is per instance (`url(#id)` or `scoping.deduplicateCss: false`). See [Returning component tags](/server-scripts#returning-component-tags).
 
 Write scripts that behave the same in both. Use `getElementById` for the component's own elements, which are always earlier in the document. Look up any other element inside an event handler, or inside a `DOMContentLoaded` listener. A lookup at the top of the script can succeed in production and return `null` in development.
 
@@ -60,7 +63,7 @@ Each component instance receives its own scoped IDs, and every local reference p
 
 References that do not resolve in the same component remain byte-identical. This preserves component links to literal page-shell IDs, but a reference to an ID declared by another component cannot be scoped safely because that target is instance-specific. Keep related declarations and references in one component, move the target to the page shell, or use [Preserve Scoping](/preserve) when an external system owns the literal ID.
 
-`usemap` is the exception to the ID rule: `<img usemap="#choices">` points to `<map name="choices">`, so it is rewritten only when `name` scoping is enabled.
+`usemap` is the exception to the ID rule: `<img usemap="#choices">` points to `<map name="choices">`, and `name` ships as written, so it is rewritten only when `scoping.attributes.name` is on. See [Component Best Practices](/component-best-practices#name-form-controls-and-groups) for what `name` means on a page, and why a radio group in a repeated component needs a `<form>` of its own.
 
 ## Pitfall: Class-Based DOM Lookups
 
@@ -86,7 +89,7 @@ Because class names are shared across all instances of the same component (for C
 
 The `class` attribute can still coexist on the same element for styling, just add an `id` for the JS lookup.
 
-> **Rule of thumb.** Use `getElementById` (or `getElementsByName`) for elements you need to control per-instance. Reserve `querySelector`/`querySelectorAll` for cases where you intentionally want to sweep across all instances.
+> **Rule of thumb.** Use `getElementById` for elements you need to control per-instance (`getElementsByName` finds every element on the page with that `name`, since `name` ships as written). Reserve `querySelector`/`querySelectorAll` for cases where you intentionally want to sweep across all instances.
 
 ## Source Maps and DevTools Debugging
 
@@ -123,9 +126,9 @@ When `console.log()` runs or an uncaught exception occurs inside a component scr
 
 ## Dynamic Runtime Classes
 
-If a class is only toggled at runtime (`classList.toggle("is-open")`) but doesn't appear on any element in the template HTML, Bascik's compiler won't register it. The CSS side minifies the name but the JS side doesn't, causing a silent mismatch at runtime.
+A class that a script only toggles at runtime (`classList.toggle("is-open")`) is scoped like any other class when the component's CSS defines it: Bascik rewrites the string in the `classList` call to the same scoped (and, in production, hashed) name the CSS uses, even when no element in the template carries the class. A class the component's CSS does not define stays unscoped on both sides.
 
-The toggle below registers `is-open` on a hidden element, then safely applies that scoped class at runtime.
+The toggle below applies its scoped `is-open` class at runtime.
 
 <!-- demo:runtime-class-usage -->
 
@@ -217,7 +220,7 @@ document.getElementsByClassName("my-class");
 document.querySelector(".my-class");
 document.querySelectorAll(".my-class");
 
-// name attribute
+// name attribute, only with scoping.attributes.name: true
 document.getElementsByName("my-name");
 ```
 
@@ -228,6 +231,7 @@ Additional rewritten forms include `element.closest()`, `element.matches()`, `el
 `<script data-bascik-build>` blocks run at transpile time as Node.js ESM modules. The script exports a default callable function returning an HTML string, which replaces the tag in the page, useful for pulling in Markdown, JSON, or other external content at build time:
 
 ```html
+<!-- src/pages/about.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
   import { marked } from "marked";
@@ -239,11 +243,11 @@ Additional rewritten forms include `element.closest()`, `element.matches()`, `el
 </script>
 ```
 
-> **Component tags work too.** Build script output is processed in the component resolution step, so its output can contain Bascik component tags. Directive scripts in the output (`data-bascik-build`, `data-bascik-server`, `data-bascik-stream`, `data-bascik-routes`) are removed with a warning and never run; see [Printing HTML You Did Not Write](/build-scripts#printing-html-you-did-not-write).
+> **Component tags work too.** Build script output is processed in the component resolution step, so its output can contain Bascik component tags. Directive scripts in the output (`data-bascik-build`, `data-bascik-build-once`, `data-bascik-server`, `data-bascik-stream`, `data-bascik-routes`) are removed with a warning and never run; see [Printing HTML You Did Not Write](/build-scripts#printing-html-you-did-not-write).
 
 ## Non-JavaScript Script Types
 
-Script tags with a `type` other than `text/javascript` are left completely untouched, no IIFE, no scoping:
+Script tags whose `type` is not JavaScript (anything other than no `type`, `text/javascript`, `module`, or another JavaScript MIME type) are left completely untouched, no IIFE, no scoping. A `type="module"` script has its selectors rewritten but is never wrapped in an IIFE:
 
 ```html
 <script type="application/json" id="config-data">
@@ -255,7 +259,7 @@ Script tags with a `type` other than `text/javascript` are left completely untou
 
 ## TypeScript in Component Scripts
 
-Bascik ships vanilla JavaScript to the browser and never emits raw TypeScript on either of its two supported browser TypeScript paths. No configuration is required.
+Bascik ships vanilla JavaScript to the browser and never emits raw TypeScript from a `.ts` script or a marked inline block. No configuration is required.
 
 **Companion `.ts` files (the default).** Reference a `.ts` or `.mts` file from the component and Bascik strips the types when it inlines the script:
 
@@ -274,6 +278,10 @@ count.addEventListener("click", () => {
 });
 ```
 
+**A page's own `.ts` script.** A page's `<script src="app.ts">` (or `.mts`) is compiled the same way and inlined in place of the reference, its other attributes kept, since Bascik never publishes `.ts` files. An inline classic script ignores `defer` and `async`, so a classic tag with either fails the build naming the tag's line: remove the attribute and put the tag at the end of `<body>`, or mark it `type="module"`, which is deferred inline too. A `src` that is a URL, or a project with `scripts.typescript: false`, is left as written. In dev, editing the `.ts` file rebuilds and reloads the page.
+
+**Imports in a `.ts` module.** Bascik inlines a `type="module"` `.ts` script (a page's own or a component's companion) without bundling it, so the browser would resolve its imports against the page's URL. An import of a relative, `@/`, or `.ts` path therefore fails the build, naming the tag and the import. Bundle the module with esbuild (a `scripts.typescript` function, or a `pipeline.exec` step that writes a `.js` file), or import a published JavaScript URL such as `/js/util.js`.
+
 **Inline blocks marked as TypeScript.** For a short inline script, opt in with the `text/typescript` MIME type. Bascik strips the types and emits an ordinary `<script>`; the `type` attribute is removed in the output:
 
 ```html
@@ -288,15 +296,69 @@ count.addEventListener("click", () => {
 
 The pipeline order is fixed: TypeScript strip, then scoping (IIFE wrapping, selector rewriting, `//# sourceURL`), then optional `minify.js`. The minifier only ever receives valid JavaScript, so `minify.js: true` and custom minifiers such as esbuild or terser work unchanged on TypeScript-authored components. The strip preserves line structure, so DevTools line numbers still match the `.ts` source.
 
-> **Erasable syntax only by default.** The default compiler is Node's strip-only TypeScript mode (Node 22.18+), which removes annotations, interfaces, type aliases, `as` casts, `!` non-null assertions, and `import type`. Non-erasable syntax (`enum`, parameter properties, namespaces with runtime code) fails the build with the offending file path. Use the erasable equivalents (`as const` objects instead of `enum`), or plug in your own compiler.
+> **Erasable syntax only by default.** The default compiler is Node's strip-only TypeScript mode (Node 22.22+), which removes annotations, interfaces, type aliases, `as` casts, `!` non-null assertions, and `import type`. Non-erasable syntax (`enum`, parameter properties, namespaces with runtime code) fails the build with the offending file path. Use the erasable equivalents (`as const` objects instead of `enum`), or plug in your own compiler.
 
-**Module-shaped `.ts` needs `type="module"`.** Stripping types never removes `import`/`export` declarations, they are valid JavaScript on their own. A classic `<script src="counter.ts">` (no `type` attribute) is scoped and IIFE-wrapped, and `import`/`export` are illegal inside a classic script, so the build fails fast with an actionable error naming the file. Fix it one of two ways: add `type="module"` to the referencing `<script>` tag (native ES modules are never IIFE-wrapped, so module syntax is left alone), or bundle the file first with esbuild, Rolldown, swc, or another tool so no `import`/`export` remains. This applies to inline `type="text/typescript"` blocks the same way, since those are always classic scripts.
+**Module-shaped `.ts` needs `type="module"`.** Stripping types never removes `import`/`export` declarations, they are valid JavaScript on their own. A classic `<script src="counter.ts">` (no `type` attribute) is scoped and IIFE-wrapped, and `import`/`export` are illegal inside a classic script, so the build fails fast with an actionable error naming the file. An `.mts` companion follows the same rule: the `.m` tells Node.js and TypeScript the file is a module, but the browser only reads the `<script>` tag. Fix it one of two ways: add `type="module"` to the referencing `<script>` tag (native ES modules are never IIFE-wrapped, so module syntax is left alone), or bundle the file first with esbuild, Rolldown, swc, or another tool so no `import`/`export` remains. This applies to inline `type="text/typescript"` blocks the same way, since those are always classic scripts.
 
 > **Need to bundle client dependencies?** Bascik intentionally leaves third-party client module bundling to dedicated tools. See the how-to guide on [Bundling npm Packages](/how-to/bundling-npm-packages) for setting up esbuild or Rolldown with `pipeline.exec`.
 
-**Bring your own compiler.** Set [`scripts.typescript`](/configuration#scriptstypescript) to a function to run esbuild, swc, or `tsc` instead of Node's stripper. It receives `(code, { sourcePath, kind })` and returns JavaScript, and it sits at the same point in the pipeline, so scoping and `minify.js` still run afterwards. This is the path for `enum`, decorators, or downleveling to an older browser target. Set it to `false` to turn the transform off entirely when another tool already compiles what Bascik reads.
+**Bring your own compiler.** Set [`scripts.typescript`](/configuration#scriptstypescript) to a function to run esbuild, swc, or `tsc` instead of Node's stripper. It receives `(code, { sourcePath, kind, runtime })` and returns JavaScript, and it sits at the same point in the pipeline, so scoping and `minify.js` still run afterwards. This is the path for `enum`, decorators, or downleveling to an older browser target. Set it to `false` to turn the transform off entirely when another tool already compiles what Bascik reads.
 
 > **`minify.js` is not a TypeScript transform.** Never configure `minify.js` merely to strip TypeScript. Bascik strips supported browser TypeScript automatically before this hook runs, so a `minify.js` function always receives plain JavaScript. Add a custom `minify.js` function only when the project requires non-default JavaScript minification.
+
+### Example: A Page's Own TypeScript File
+
+The page below references `counter.ts` from a classic `<script>` at the end of `<body>`. Bascik compiles the file, inlines it in place of the reference, and names the file in a `//# sourceURL` comment so DevTools shows `counter.ts`. The Preview is this docs page running the same file; click the button.
+
+<!-- demo:ts-page-usage -->
+
+```html
+<!-- src/pages/counter.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Counter</title>
+  </head>
+  <body>
+    <button type="button" id="page-counter" data-testid="page-counter">
+      Clicked 0 times
+    </button>
+    <script src="./counter.ts"></script>
+  </body>
+</html>
+```
+
+<!-- demo:ts-page-source-js -->
+
+```ts
+// src/pages/counter.ts
+const button = document.getElementById("page-counter") as HTMLButtonElement;
+let clicks: number = 0;
+button.addEventListener("click", () => {
+  clicks += 1;
+  button.textContent = `Clicked ${clicks} times`;
+});
+```
+
+The Output is the page's `<body>` as `bascik --build` writes it, with minification off: the reference is gone, and the script holds the file's JavaScript with its types removed.
+
+<!-- demo:ts-page-output-html -->
+
+```html
+<button type="button" id="page-counter" data-testid="page-counter">
+  Clicked 0 times
+</button>
+<script>
+  // src/pages/counter.ts
+  const button = document.getElementById("page-counter");
+  let clicks = 0;
+  button.addEventListener("click", () => {
+    clicks += 1;
+    button.textContent = `Clicked ${clicks} times`;
+  });
+  //# sourceURL=src/pages/counter.ts
+</script>
+```
 
 ## How Scoping Works
 
@@ -309,7 +371,8 @@ The counter demo's Output tabs show the complete compiled HTML, CSS, and JavaScr
 The scoping format:
 
 - `class` → `bascik__<componentName>__<originalName>` (shared across all instances)
-- `id` / `name` → `bascik__<componentName>__<instanceId>__<originalName>` (unique per instance)
+- `id` → `bascik__<componentName>__<instanceId>__<originalName>` (unique per instance)
+- `name` → as written (the same per-instance form as `id` with `scoping.attributes.name: true`); see [Component Best Practices](/component-best-practices#name-form-controls-and-groups)
 
 > **Under the hood.** Read the [Scoping System internals](/internals/scoping-system) for the compiler passes, attribute maps, selector rewriting, and CSS deduplication that produce this output.
 
@@ -452,11 +515,11 @@ inc.addEventListener("click", () => {
   let n = 0;
   dec.addEventListener("click", () => {
     n--;
-    count.textContent = n;
+    count.textContent = String(n);
   });
   inc.addEventListener("click", () => {
     n++;
-    count.textContent = n;
+    count.textContent = String(n);
   });
 })();
 ```

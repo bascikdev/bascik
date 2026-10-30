@@ -46,7 +46,7 @@ const PKG_ENTRY = resolve(
 export interface ReleaseCandidate {
   projectRoot: string;
   distDir: string;
-  /** dist-relative path -> emitted bytes (includes .bascik metadata). */
+  /** dist-relative path -> emitted bytes (includes the private folder, keyed .bascik/). */
   emittedFiles: Record<string, Buffer>;
   /** Declared provenance that must resolve for the release to be pinned. */
   provenance: {
@@ -513,7 +513,8 @@ describe("packet L1: cross-artifact release candidate verifier", () => {
         await cleanupFixture(rootA);
         await cleanupFixture(rootB);
       }
-    });
+      // Two complete builds; the default 5 s timed out on a loaded machine.
+    }, 60_000);
   });
 });
 
@@ -831,8 +832,8 @@ describe("packet L2: rejected candidate, activation, drain, rollback", () => {
         // Corrupt B's sidecar so production admission rejects it before binding.
         const sidecarPath = join(
           rootB,
-          "dist",
           ".bascik",
+          "dist",
           "server-scripts.json",
         );
         await writeFile(sidecarPath, "{corrupt", "utf8");
@@ -1097,7 +1098,7 @@ describe("packet L2: rejected candidate, activation, drain, rollback", () => {
         if (process.platform !== "win32") {
           await (
             await import("node:fs/promises")
-          ).chmod(join(root, "dist", ".bascik"), 0o500);
+          ).chmod(join(root, ".bascik", "dist"), 0o500);
         }
         let threw = false;
         try {
@@ -1108,7 +1109,7 @@ describe("packet L2: rejected candidate, activation, drain, rollback", () => {
           if (process.platform !== "win32") {
             await (
               await import("node:fs/promises")
-            ).chmod(join(root, "dist", ".bascik"), 0o700);
+            ).chmod(join(root, ".bascik", "dist"), 0o700);
           }
         }
         expect(threw).toBe(true);

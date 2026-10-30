@@ -174,10 +174,37 @@ describe("skill-bundle", () => {
     expect(await readSkillDescription(file)).toBe("Folded across two lines.");
   });
 
+  it("rejects a plain description that YAML cannot parse, the way `npx skills add` does", async () => {
+    const file = path.join(dir, "delta.md");
+    await writeFile(
+      file,
+      "---\nname: d\ndescription: Use it when needed. Opt-in: not bundled.\n---\n",
+    );
+    await expect(readSkillDescription(file)).rejects.toThrow(
+      /delta\.md.*": ".*quote/,
+    );
+    await writeFile(
+      file,
+      "---\nname: d\ndescription: Use it for tags #like this.\n---\n",
+    );
+    await expect(readSkillDescription(file)).rejects.toThrow(/delta\.md.*" #"/);
+    await writeFile(
+      file,
+      "---\nname: d\ndescription: Ratio 3:1 and C#, all fine.\n---\n",
+    );
+    expect(await readSkillDescription(file)).toBe(
+      "Ratio 3:1 and C#, all fine.",
+    );
+  });
+
   it("publishes a discovery entry for every public skill in the repository", async () => {
     const { index } = await createWellKnownSkills(repoSkillsDir);
     expect(index.skills.map((skill) => skill.name)).toEqual(
       await listSkillNames(repoSkillsDir),
+    );
+    // Opt-in skills that create-bascik leaves out are still published here.
+    expect(index.skills.map((skill) => skill.name)).toContain(
+      "bascik-refactor",
     );
     for (const entry of index.skills) {
       expect(entry.name).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
@@ -204,6 +231,16 @@ describe("skill-bundle", () => {
       expect(frontmatter, `${name} frontmatter`).toMatch(
         new RegExp(`^name: ${name}$`, "m"),
       );
+      // Every top-level plain scalar must parse as YAML: an unquoted ": " or " #" makes real clients skip the skill.
+      for (const line of frontmatter.split("\n")) {
+        const value = /^[a-z-]+:\s+(.+)$/.exec(line)?.[1] ?? "";
+        if (/^["'>|]/.test(value)) continue;
+        expect(value, `${name} frontmatter: ${line}`).not.toMatch(/: | #/);
+      }
+      await expect(
+        readSkillDescription(path.join(repoSkillsDir, name, "SKILL.md")),
+        `${name} description parses`,
+      ).resolves.not.toBe("");
       const description = /^description: (.+)$/m.exec(frontmatter)?.[1] ?? "";
       expect(description.length, `${name} description`).toBeGreaterThan(40);
       expect(description.length, `${name} description`).toBeLessThanOrEqual(
@@ -241,6 +278,18 @@ describe("skill-bundle", () => {
         `${name} is defined in both skills/ and .github/skills/`,
       ).not.toContain(name);
     }
+  });
+
+  it("keeps references/ folders out of every public skill but bascik-refactor: the docs are the reference", async () => {
+    const files = await collectSkillFiles(repoSkillsDir);
+    const outside = files
+      .map((file) => file.path)
+      .filter(
+        (file) =>
+          file.split("/")[1] === "references" &&
+          !file.startsWith("bascik-refactor/"),
+      );
+    expect(outside).toEqual([]);
   });
 
   it("only links to files that exist inside the same skill", async () => {

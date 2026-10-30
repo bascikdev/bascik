@@ -61,7 +61,7 @@ Register it as a `pre` step so the file exists before any page references it. Th
 
 ```ts
 // bascik.config.ts
-import { defineConfig } from "@bascik/bascik";
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   pipeline: {

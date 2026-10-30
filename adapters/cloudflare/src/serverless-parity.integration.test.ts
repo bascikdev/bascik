@@ -15,13 +15,21 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createServer } from "node:net";
 import http from "node:http";
+import {
+  access,
+  mkdir as mkdirAsync,
+  readFile as readTextFile,
+  writeFile as writeTextFile,
+} from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildServerlessFixture,
   cleanupServerlessFixture,
+  componentScriptId,
   createServerlessFixture,
 } from "./serverless-fixture.test-helper.ts";
 import {
@@ -66,6 +74,8 @@ const freePort = (): Promise<number> =>
 
 interface NodeOracle {
   url: URL;
+  /** What the server has written to stdout and stderr so far. */
+  output(): string;
   stop(): Promise<void>;
 }
 
@@ -85,7 +95,12 @@ const startNodeServer = async (projectRoot: string): Promise<NodeOracle> => {
     },
   );
   const stderr: string[] = [];
-  child.stderr?.on("data", (d) => stderr.push(String(d)));
+  const output: string[] = [];
+  child.stderr?.on("data", (d) => {
+    stderr.push(String(d));
+    output.push(String(d));
+  });
+  child.stdout?.on("data", (d) => output.push(String(d)));
   const url = new URL(`http://127.0.0.1:${port}/`);
   // Readiness is the health endpoint, never a sleep.
   const deadline = Date.now() + 20_000;
@@ -102,6 +117,7 @@ const startNodeServer = async (projectRoot: string): Promise<NodeOracle> => {
   }
   return {
     url,
+    output: () => output.join(""),
     stop: () =>
       new Promise((resolveStop) => {
         child.once("exit", () => resolveStop());
@@ -331,6 +347,19 @@ describe("serverless parity: Node oracle versus local workerd", () => {
     });
     await identity.all();
     expect(Number(identity.headers["content-length"])).toBeGreaterThan(0);
+  });
+
+  it('inline server and stream scripts marked type="text/typescript": same bytes on both hosts, types stripped', async () => {
+    const { node: n, cf } = await both("/typed", {
+      headers: { "x-display-name": "Typed" },
+    });
+    expect(n.status).toBe(200);
+    expect(cf.status).toBe(200);
+    expect(n.body).toContain(
+      '<p data-testid="typed-server"><label>Typed</label></p>',
+    );
+    expect(n.body).toContain('<p data-testid="typed-stream">typed stream</p>');
+    expect(cf.body).toBe(n.body);
   });
 
   it("page aliases resolve identically", async () => {
@@ -569,7 +598,7 @@ describe("serverless parity: failed deployment assembly", () => {
     try {
       await buildServerlessFixture(root, "cloudflare-pages");
       const { readFile, writeFile, stat } = await import("node:fs/promises");
-      const sidecarPath = join(root, "dist/.bascik/server-scripts.json");
+      const sidecarPath = join(root, ".bascik/dist/server-scripts.json");
       const sidecar = JSON.parse(await readFile(sidecarPath, "utf8")) as {
         scripts: Record<string, unknown>;
       };
@@ -672,3 +701,1609 @@ for (const target of ["cloudflare-pages", "cloudflare-workers"] as const) {
     });
   });
 }
+
+// ─── Request-time components (prompt 157) ───────────────────────────────────
+//
+// The catalog demo (the e2e fixture's pages and components, copied verbatim)
+// and the misuse pages, served from ONE dist by both hosts. The renderer is
+// the same portable module on both; what differs is the host: the name hash
+// (identity, or the build's attribute hash under minify.identifiers, which
+// the Worker computes with node:crypto under nodejs_compat), the component
+// job lookup, the deadline and the error policy. Byte equality of the whole
+// body is the oracle; the absolute assertions name what a reader would see.
+
+/**
+ * Markup outside HTML comments. Without minify.html a component's own
+ * comments (its `@bascik` usage sample among them) are emitted with every
+ * instance, as at build time; they are author text, not an unrendered tag.
+ * A comment ends where the HTML parser ends it ("-->", "--!>", an abrupt
+ * "<!-->" or the end of input), in one pass: removing again could join text
+ * around a comment into a new one and hide a tag the browser shows.
+ */
+const markup = (html: string): string =>
+  html.replace(/<!--(?:-?>|[\s\S]*?(?:--!?>|$))/g, "");
+
+/** Every `<style>` block of `html` that defines `className`. */
+const styleBlocksDefining = (html: string, className: string): string[] =>
+  [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)]
+    .filter((m) => m[1].includes(`.${className}{`))
+    .map((m) => m[0]);
+
+/** The class and id of every element carrying `data-testid="<testid>"`. */
+const instancesOf = (
+  html: string,
+  testid: string,
+): Array<{ id: string; className: string; index: number }> =>
+  [
+    ...html.matchAll(
+      new RegExp(
+        `<article id="?([^"\\s>]+)"? class="?([^"\\s>]+)"? data-testid="?${testid}"?[\\s>]`,
+        "g",
+      ),
+    ),
+  ].map((m) => ({ id: m[1], className: m[2], index: m.index ?? -1 }));
+
+const PRODUCT_NAMES = [
+  "Pour-over kettle",
+  "Ceramic dripper",
+  "Milk frother",
+  "Glass carafe",
+  "Filters &amp; holder",
+];
+
+for (const config of [
+  { base: "/", identifiers: false, minifyHtml: false },
+  { base: "/sub/", identifiers: true, minifyHtml: true },
+] as const) {
+  describe(`serverless parity: components returned by scripts (base ${config.base}, identifiers ${config.identifiers ? "on" : "off"}, prompt 157)`, () => {
+    let root: string;
+    let node: NodeOracle;
+    let cloudflare: Harness;
+    const at = (path: string) =>
+      config.base === "/" ? path : `${config.base.slice(0, -1)}${path}`;
+
+    beforeAll(async () => {
+      root = await createServerlessFixture(
+        `components-${config.identifiers ? "ids" : "readable"}`,
+        { components: true, ...config },
+      );
+      await buildServerlessFixture(root, "cloudflare-pages");
+      node = await startNodeServer(root);
+      cloudflare = await startHarness({
+        projectRoot: root,
+        target: "cloudflare-pages",
+      });
+    }, 180_000);
+
+    afterAll(async () => {
+      await cloudflare?.dispose();
+      await node?.stop();
+      if (root) await cleanupServerlessFixture(root);
+    });
+
+    const both = async (
+      path: string,
+      init?: RequestInit,
+    ): Promise<{ node: Observed; cf: Observed }> => ({
+      node: await observe(await fetch(new URL(at(path), node.url), init)),
+      cf: await observe(await cloudflare.fetch(at(path), init)),
+    });
+
+    it("catalog.html: identical bytes on both hosts, every <product-card> rendered, with and without ?q=", async () => {
+      for (const query of ["", "?q=frother", "?q=FILTERS", "?q=nothing"]) {
+        const { node: n, cf } = await both(`/catalog${query}`);
+        expect(n.status, `node ${query}`).toBe(200);
+        expect(cf.status, `cf ${query}`).toBe(200);
+        // The oracle renders; the Worker must not hand the tag to the client.
+        expect(markup(n.body), `node ${query}`).not.toContain("<product-card");
+        expect(markup(cf.body), `cf ${query}`).not.toContain("<product-card");
+        expect(cf.body, query).toBe(n.body);
+      }
+      const all = (await both("/catalog")).cf.body;
+      for (const name of PRODUCT_NAMES) expect(all).toContain(`>${name}<`);
+      const one = (await both("/catalog?q=frother")).cf.body;
+      expect(instancesOf(one, "product-card")).toHaveLength(1);
+      expect(one).toContain(">Best seller<");
+      expect((await both("/catalog?q=nothing")).cf.body).toContain(
+        'data-testid="catalog-empty"',
+      );
+    });
+
+    it("catalog.html: one <style> per component per response, defining the scoped class the instances carry, before the first one", async () => {
+      const { node: n, cf } = await both("/catalog");
+      for (const [label, body] of [
+        ["node", n.body],
+        ["cloudflare", cf.body],
+      ] as const) {
+        const cards = instancesOf(body, "product-card");
+        expect(cards, label).toHaveLength(5);
+        const className = cards[0].className;
+        if (!config.identifiers)
+          expect(className, label).toBe("bascik__product-card__tile");
+        for (const card of cards) expect(card.className, label).toBe(className);
+        const blocks = styleBlocksDefining(body, className);
+        expect(blocks, label).toHaveLength(1);
+        expect(body.indexOf(blocks[0]), label).toBeLessThan(cards[0].index);
+        expect(body.indexOf(blocks[0]), label).toBeGreaterThan(
+          body.indexOf("</head>"),
+        );
+      }
+    });
+
+    it("catalog.html: each instance gets a distinct request-time id, the same on both hosts", async () => {
+      const { node: n, cf } = await both("/catalog");
+      const ids = instancesOf(cf.body, "product-card").map((c) => c.id);
+      expect(ids).toEqual(instancesOf(n.body, "product-card").map((c) => c.id));
+      expect(new Set(ids).size).toBe(5);
+      if (!config.identifiers)
+        for (const id of ids)
+          expect(id).toMatch(/^bascik__product-card__r[0-9a-f]{7}__tile$/);
+    });
+
+    it("catalog.html: the nested job of <product-card-live> ran with the request and its output carries the component's classes", async () => {
+      const { node: n, cf } = await both("/catalog");
+      const stock = `In stock · checked for ${at("/catalog")} at request time`;
+      expect(n.body).toContain(stock);
+      expect(cf.body).toContain(stock);
+      expect(markup(cf.body)).not.toContain("<product-card-live");
+      if (!config.identifiers)
+        expect(cf.body).toContain(
+          `<p class="bascik__product-card-live__stock" data-testid="product-card-stock">${stock}</p>`,
+        );
+      expect(cf.body).not.toContain("text/bascik-server");
+    });
+
+    it("catalog.html: the escaped sample in <pre><code> is page markup and stays text", async () => {
+      const { cf } = await both("/catalog");
+      expect(cf.body).toContain(
+        "<code>&lt;product-card data-bascik-prop-name=",
+      );
+    });
+
+    it("catalog.html: HEAD content-length equals the GET body length on both hosts", async () => {
+      for (const host of ["node", "cf"] as const) {
+        const head =
+          host === "node"
+            ? await fetch(new URL(at("/catalog"), node.url), { method: "HEAD" })
+            : await cloudflare.fetch(at("/catalog"), { method: "HEAD" });
+        expect(head.status, host).toBe(200);
+        await head.arrayBuffer();
+        const streamed =
+          host === "node"
+            ? await rawStreamed(node.url, at("/catalog"))
+            : await cloudflare.streamed(at("/catalog"));
+        const body = (await streamed.all()).map((c) => c.text).join("");
+        expect(Number(head.headers.get("content-length")), host).toBe(
+          Buffer.byteLength(body, "utf8"),
+        );
+      }
+    });
+
+    it("catalog-stream.html: identical ordered fragments on both hosts, one <style> ahead of the first tile", async () => {
+      // Batch 1 is the slowest and batch 2 the fastest: completion order is
+      // not document order, so the style decision must follow the document.
+      const path = at("/catalog-stream?delay=60");
+      const nodeStream = await rawStreamed(node.url, path);
+      const cfStream = await cloudflare.streamed(path);
+      const nodeBody = (await nodeStream.all()).map((c) => c.text).join("");
+      const cfBody = (await cfStream.all()).map((c) => c.text).join("");
+      expect(cfStream.status).toBe(200);
+      expect(cfStream.headers["content-length"]).toBeUndefined();
+      expect(markup(nodeBody)).not.toContain("<product-card");
+      expect(markup(cfBody)).not.toContain("<product-card");
+      expect(cfBody).toBe(nodeBody);
+      const positions = PRODUCT_NAMES.map((name) =>
+        cfBody.indexOf(`>${name}<`),
+      );
+      expect(positions.every((p) => p > 0)).toBe(true);
+      expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+      const cards = instancesOf(cfBody, "product-card");
+      expect(cards).toHaveLength(5);
+      const blocks = styleBlocksDefining(cfBody, cards[0].className);
+      expect(blocks).toHaveLength(1);
+      expect(cfBody.indexOf(blocks[0])).toBeLessThan(cards[0].index);
+      // The shell was sent before any batch: the footer precedes every tile.
+      expect(
+        cfBody.indexOf('data-testid="catalog-stream-footer"'),
+      ).toBeLessThan(cards[0].index);
+    });
+
+    it("misuse: typo'd, escaped, attribute-embedded and unsupported tags and a guessed placeholder pass through verbatim on both hosts; only the supported tag renders", async () => {
+      const { node: n, cf } = await both("/components-misuse");
+      expect(cf.status).toBe(200);
+      expect(cf.body).toBe(n.body);
+      expect(cf.body).toContain(
+        '<product-crad data-testid="typo">typo stays</product-crad>',
+      );
+      expect(cf.body).toContain("&lt;product-card&gt; stays text");
+      expect(cf.body).toContain('title="<product-card>"');
+      // Unsupported (a prop bound to id): left as the author wrote it.
+      expect(cf.body).toContain(
+        '<bound-id-card data-bascik-prop-anchor="x"></bound-id-card>',
+      );
+      // A guessed staged placeholder is author text: nothing runs.
+      expect(cf.body).toContain(
+        `data-bascik-server-id="${componentScriptId("product-card-live")}"`,
+      );
+      expect(cf.body).not.toContain("product-card-stock");
+      // The supported tag renders, and its bound href is below the base.
+      expect(markup(cf.body)).not.toContain("<link-card");
+      expect(cf.body).toMatch(
+        new RegExp(
+          `data-testid="?link-card"? href="?${at("/pricing")}"?[\\s>]`,
+        ),
+      );
+    });
+
+    it("names: a name bound to a prop renders per copy and a literal name ships as written, the same on both hosts", async () => {
+      const { node: n, cf } = await both("/components-names");
+      expect(cf.status).toBe(200);
+      expect(cf.body).toBe(n.body);
+      expect(markup(cf.body)).not.toContain("<bound-radios");
+      expect(markup(cf.body)).not.toContain("<plain-radios");
+      expect(cf.body.match(/name="?front"?[\s>]/g)).toHaveLength(2);
+      expect(cf.body.match(/name="?back"?[\s>]/g)).toHaveLength(2);
+      expect(cf.body.match(/name="?size"?[\s>]/g)).toHaveLength(4);
+      expect(cf.body).not.toMatch(/name="?bascik__/);
+      expect(cf.body).not.toContain("data-bascik-attr-name");
+    });
+
+    it("budgets: 1000 instances and 64 nested jobs render; 1001 instances and 65 nested jobs are the 500 page on both hosts", async () => {
+      for (const [query, status] of [
+        ["?n=1000", 200],
+        ["?n=1001", 500],
+        ["?n=64&kind=live", 200],
+        ["?n=65&kind=live", 500],
+      ] as const) {
+        const { node: n, cf } = await both(`/components-budget${query}`);
+        expect(n.status, `node ${query}`).toBe(status);
+        expect(cf.status, `cf ${query}`).toBe(status);
+        expect(cf.body, query).toBe(n.body);
+        expect(markup(cf.body), query).not.toContain("<product-card");
+      }
+    });
+
+    it("budgets: a component whose script returns itself stops at depth 4 with the 500 page on both hosts", async () => {
+      const { node: n, cf } = await both("/components-chain");
+      expect(n.status).toBe(500);
+      expect(cf.status).toBe(500);
+      expect(cf.body).toBe(n.body);
+      expect(markup(cf.body)).not.toContain("<chain-card");
+    });
+
+    it("policy error: a nested job that throws is the 500 page under a server parent and an empty slot under a stream parent", async () => {
+      const server = await both("/components-boom");
+      expect(server.node.status).toBe(500);
+      expect(server.cf.status).toBe(500);
+      expect(server.cf.body).toBe(server.node.body);
+      expect(server.cf.body).not.toContain("SECRET_DETAIL");
+      const stream = await both("/components-boom-stream");
+      expect(stream.node.status).toBe(200);
+      expect(stream.cf.status).toBe(200);
+      expect(stream.cf.body).toBe(stream.node.body);
+      expect(stream.cf.body).toContain('data-testid="tail"');
+      expect(markup(stream.cf.body)).not.toContain("<boom-card");
+      expect(stream.cf.body).not.toContain("SECRET_DETAIL");
+    });
+
+    it("misuse: a component script without a default export is the 500 page on both hosts", async () => {
+      const { node: n, cf } = await both("/components-nodefault");
+      expect(n.status).toBe(500);
+      expect(cf.status).toBe(500);
+      expect(cf.body).toBe(n.body);
+    });
+
+    it("ids: components returned by sibling nested jobs that finish in random order get the same ids on every request, on both hosts", async () => {
+      const bodies = new Set<string>();
+      for (let i = 0; i < 6; i++) {
+        const { node: n, cf } = await both("/components-nest");
+        expect(n.status, `request ${i}`).toBe(200);
+        expect(cf.status, `request ${i}`).toBe(200);
+        expect(cf.body, `request ${i}`).toBe(n.body);
+        bodies.add(n.body);
+      }
+      expect(bodies.size).toBe(1);
+      const [body] = bodies;
+      expect(markup(body)).not.toContain("<product-card");
+      const inner = instancesOf(body, "product-card");
+      expect(inner).toHaveLength(3);
+      expect(new Set(inner.map((card) => card.id)).size).toBe(3);
+    });
+
+    it("misuse: ANSI escapes printed by a component script and by a page script are stripped the same way on both hosts", async () => {
+      const { node: n, cf } = await both("/components-ansi");
+      expect(n.status).toBe(200);
+      expect(cf.status).toBe(200);
+      expect(cf.body).toBe(n.body);
+      expect(cf.body).not.toContain("\u001b");
+      expect(cf.body).toMatch(/>red<\/i>/);
+      expect(cf.body).toContain("page");
+    });
+
+    it("misuse: a percent-encoded spelling of the route gets the plain route's instance ids on both hosts", async () => {
+      const ids = (html: string) =>
+        [
+          ...instancesOf(html, "product-card"),
+          ...instancesOf(html, "product-card-live"),
+        ].map((card) => card.id);
+      const plain = await both("/catalog");
+      expect(ids(plain.cf.body)).toHaveLength(6);
+      for (const spelling of ["/c%61talog", "/%63%61talog"]) {
+        const encoded = await both(spelling);
+        expect(encoded.node.status, spelling).toBe(200);
+        expect(encoded.cf.status, spelling).toBe(200);
+        expect(ids(encoded.node.body), spelling).toEqual(ids(plain.node.body));
+        expect(ids(encoded.cf.body), spelling).toEqual(ids(plain.cf.body));
+        expect(ids(encoded.cf.body), spelling).toEqual(ids(encoded.node.body));
+      }
+    });
+  });
+}
+
+// Nested-job failure under each policy, and a nested job that outlives the
+// page's deadline, compared byte for byte (prompt 157). A short deadline
+// keeps the timeout cases fast.
+for (const policy of ["error", "warn", "ignore"] as const) {
+  describe(`serverless parity: nested component jobs under onServerScriptError "${policy}" (prompt 157)`, () => {
+    let root: string;
+    let node: NodeOracle;
+    let cloudflare: Harness;
+
+    beforeAll(async () => {
+      root = await createServerlessFixture(`components-policy-${policy}`, {
+        components: true,
+        onServerScriptError: policy,
+        scriptTimeout: 1000,
+      });
+      await buildServerlessFixture(root, "cloudflare-pages");
+      node = await startNodeServer(root);
+      cloudflare = await startHarness({
+        projectRoot: root,
+        target: "cloudflare-pages",
+        collectLogs: true,
+      });
+    }, 180_000);
+
+    afterAll(async () => {
+      await cloudflare?.dispose();
+      await node?.stop();
+      if (root) await cleanupServerlessFixture(root);
+    });
+
+    const both = async (
+      path: string,
+    ): Promise<{ node: Observed; cf: Observed }> => ({
+      node: await observe(await fetch(new URL(path, node.url))),
+      cf: await observe(await cloudflare.fetch(path)),
+    });
+
+    /**
+     * `both(path)`, plus the `[bascik]` report each host logged for it. A
+     * log is written as the response is settled, so each host's log is
+     * awaited until it holds `expected`; with nothing expected, both are
+     * read after a grace period in which a stray log would have arrived.
+     */
+    const bothWithLogs = async (path: string, expected: RegExp | null) => {
+      const nodeFrom = node.output().length;
+      const cfFrom = cloudflare.logs.length;
+      const observed = await both(path);
+      const nodeLog = () => node.output().slice(nodeFrom);
+      const cfLog = () => cloudflare.logs.slice(cfFrom).join("\n");
+      const deadline = Date.now() + 5000;
+      if (expected) {
+        while (
+          Date.now() < deadline &&
+          !(expected.test(nodeLog()) && expected.test(cfLog()))
+        )
+          await new Promise((r) => setTimeout(r, 25));
+      } else {
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      return {
+        ...observed,
+        nodeLog: nodeLog().trim(),
+        cfLog: cfLog().trim(),
+      };
+    };
+
+    it("a nested job that throws: the 500 page under error, else the card with an empty slot, under a server parent; an empty slot under a stream parent", async () => {
+      const server = await both("/components-boom");
+      const status = policy === "error" ? 500 : 200;
+      expect(server.node.status).toBe(status);
+      expect(server.cf.status).toBe(status);
+      expect(server.cf.body).toBe(server.node.body);
+      expect(server.cf.body).not.toContain("SECRET_DETAIL");
+      if (policy !== "error") {
+        expect(server.cf.body).toContain('data-testid="boom-card"');
+        expect(server.cf.body).toContain('data-testid="after-boom"');
+      }
+      const stream = await both("/components-boom-stream");
+      expect(stream.node.status).toBe(200);
+      expect(stream.cf.status).toBe(200);
+      expect(stream.cf.body).toBe(stream.node.body);
+      expect(stream.cf.body).toContain('data-testid="tail"');
+      expect(stream.cf.body).not.toContain("SECRET_DETAIL");
+    });
+
+    // D4.6: every kind of request-time render failure (the instance,
+    // nested-job, depth and size budgets, and a "failed during <stage>")
+    // follows the policy like any other script failure, with the same bytes
+    // and the same located log line on both hosts.
+    const renderFailures: Array<{ path: string; message: RegExp }> = [
+      {
+        path: "/components-budget?n=1001",
+        message:
+          /expands to more than 1000 component instances \(<product-card>, components\/product-card\/product-card\.html\)/,
+      },
+      {
+        path: "/components-budget?n=65&kind=live",
+        message:
+          /would run more than 64 nested component scripts in one response \(<product-card-live>, components\/product-card-live\/product-card-live\.html:\d+\)/,
+      },
+      {
+        path: "/components-chain",
+        message:
+          /nests component scripts deeper than 4 levels \(<chain-card>, components\/chain-card\/chain-card\.html:\d+\)/,
+      },
+      {
+        path: "/components-size?kind=rendered",
+        message:
+          /rendered to \d+ characters, over the 4 MiB \(4194304 characters\) limit per script output \(<twice-card>, components\/twice-card\/twice-card\.html\)/,
+      },
+      {
+        path: "/components-size?kind=grew",
+        message:
+          /grew past \d+ characters while expanding components \(<four-card>, components\/four-card\/four-card\.html\)/,
+      },
+      {
+        path: "/components-size?kind=refused",
+        message:
+          /is \d+ characters before rendering, over twice the 4 MiB \(4194304 characters\) limit per script output, and has component tags in it, so it is refused before they are expanded\./,
+      },
+      {
+        path: "/components-size?kind=scan",
+        message:
+          /made the renderer rescan more than \d+ characters while expanding components \(<once-card>, components\/once-card\/once-card\.html\), over the limit of 16 times the output's \d+ characters plus 33554432\./,
+      },
+      {
+        path: "/components-size?kind=stage",
+        message:
+          /Rendering <wide-card> \(components\/wide-card\/wide-card\.html\) from (?:server|stream)-script output at "\/components-size(?:-stream)?" failed during slot resolution: Invalid string length/,
+      },
+    ];
+    const streamTwin = (path: string) =>
+      path.replace(
+        /^\/components-(budget|chain|size)/,
+        (_, page: string) => `/components-${page}-stream`,
+      );
+
+    for (const failure of renderFailures) {
+      it(`misuse: ${failure.path} (server and stream) is the 500 page under error and an empty slot under warn and ignore for a server script, an empty slot for a stream script; the same bytes and the same located log on both hosts`, async () => {
+        for (const path of [failure.path, streamTwin(failure.path)]) {
+          const stream = path.includes("-stream");
+          const logged = policy !== "ignore";
+          const r = await bothWithLogs(path, logged ? failure.message : null);
+          const status = !stream && policy === "error" ? 500 : 200;
+          expect(r.node.status, `node ${path}`).toBe(status);
+          expect(r.cf.status, `cf ${path}`).toBe(status);
+          expect(r.cf.body, path).toBe(r.node.body);
+          for (const tag of [
+            "<product-card",
+            "<chain-card",
+            "<once-card",
+            "<twice-card",
+            "<four-card",
+            "<wide-card",
+          ])
+            expect(markup(r.cf.body), path).not.toContain(tag);
+          if (status === 200) {
+            expect(r.cf.body, path).toContain('data-testid="shell"');
+            expect(r.cf.body, path).toContain('data-testid="tail"');
+            // The slot is empty: nothing of the failed output is sent.
+            expect(r.cf.body, path).not.toContain('data-testid="product-card"');
+            expect(r.cf.body, path).not.toContain('data-testid="chain-card"');
+            expect(r.cf.body, path).not.toContain("xxxxxxxx");
+          }
+          if (!logged) {
+            expect(r.nodeLog, `node log ${path}`).toBe("");
+            expect(r.cfLog, `cf log ${path}`).toBe("");
+            continue;
+          }
+          // The located message every server-script error logs: the route
+          // and the component file, never a stack of Bascik internals.
+          const route = new URL(path, "http://x").pathname;
+          expect(r.cfLog, `cf log ${path}`).toBe(r.nodeLog);
+          expect(r.nodeLog, path).toMatch(failure.message);
+          expect(r.nodeLog, path).toContain(
+            `[bascik] server script error at "${route}":\n`,
+          );
+          expect(r.nodeLog, path).not.toContain("RequestRenderError");
+          expect(r.nodeLog, path).not.toMatch(/^\s+at /m);
+          expect(r.nodeLog, path).not.toMatch(
+            /request-render|component-host|_worker\.js/,
+          );
+        }
+      }, 60_000);
+    }
+
+    it("misuse: a page job, a stream job and a component job that resolve inside their abort listener at the deadline time out under the policy on both hosts, never delivering what they returned", async () => {
+      for (const path of [
+        "/deadline-yield",
+        "/deadline-yield-stream",
+        "/components-yield",
+        "/components-yield-stream",
+      ]) {
+        const { node: n, cf } = await both(path);
+        const stream = path.endsWith("-stream");
+        // A server job's error-policy failure is the 500 page before commit;
+        // a stream job's is an empty slot after it.
+        const status = !stream && policy === "error" ? 500 : 200;
+        expect(n.status, `node ${path}`).toBe(status);
+        expect(cf.status, `cf ${path}`).toBe(status);
+        expect(n.body, `node ${path}`).not.toContain("yielded-late");
+        expect(cf.body, `cf ${path}`).not.toContain("yielded-late");
+        expect(cf.body, path).toBe(n.body);
+        if (status === 200)
+          expect(cf.body, path).toContain('data-testid="tail"');
+        if (
+          status === 200 &&
+          path.startsWith("/components") &&
+          policy !== "error"
+        )
+          expect(cf.body, path).toContain('data-testid="yield-card"');
+      }
+    }, 20_000);
+
+    it("misuse: an API route that returns a Response inside its abort listener at the deadline is a 504 on both hosts", async () => {
+      const { node: n, cf } = await both("/api/deadline-yield");
+      expect(n.status).toBe(504);
+      expect(cf.status).toBe(504);
+      expect(n.body).not.toContain("yielded-late");
+      expect(cf.body).toBe(n.body);
+    }, 20_000);
+
+    it("misuse: a client that disconnects mid nested job: Node aborts its signal at once; workerd, which reports no disconnect while a streamed slot is idle, aborts it at the deadline; neither leaves it running", async () => {
+      for (const host of ["node", "cf"] as const) {
+        const key = `disconnect-${host}`;
+        const fetchHost = (path: string) =>
+          host === "node"
+            ? fetch(new URL(path, node.url))
+            : cloudflare.fetch(path);
+        const state = async (): Promise<string> =>
+          (
+            (await (await fetchHost(`/api/abort-probe?key=${key}`)).json()) as {
+              state: string;
+            }
+          ).state;
+        const waitFor = async (expected: string, timeoutMs: number) => {
+          const deadline = Date.now() + timeoutMs;
+          let seen = await state();
+          while (seen !== expected && Date.now() < deadline) {
+            await new Promise((r) => setTimeout(r, 20));
+            seen = await state();
+          }
+          expect(seen, `${host}: nested job state`).toBe(expected);
+        };
+        const path = `/components-slow-stream?key=${key}`;
+        const started = Date.now();
+        const streamed =
+          host === "node"
+            ? await rawStreamed(node.url, path)
+            : await cloudflare.streamed(path);
+        expect(streamed.status, host).toBe(200);
+        // The shell before the slot is sent; the rest waits for the job.
+        await streamed.until('data-testid="shell"');
+        await waitFor("started", 3000);
+        streamed.destroy();
+        await waitFor("aborted", 3000);
+        const abortedAfter = Date.now() - started;
+        // The deadline is 1 s: Node's abort comes from the disconnect.
+        if (host === "node") expect(abortedAfter, host).toBeLessThan(900);
+        else expect(abortedAfter, host).toBeLessThan(1900);
+        // The host keeps serving after the abandoned response.
+        const next = await fetchHost("/components-boom-stream");
+        expect(next.status, host).toBe(200);
+        await next.arrayBuffer();
+      }
+    }, 20_000);
+
+    it("a nested job past the deadline times out at what is left of the page's budget, and its signal aborts, on both hosts", async () => {
+      for (const parent of ["slow", "slow-stream"] as const) {
+        const observed: Observed[] = [];
+        for (const host of ["node", "cf"] as const) {
+          const key = `timeout-${parent}-${host}`;
+          const path = `/components-${parent}?key=${key}`;
+          const started = Date.now();
+          const res =
+            host === "node"
+              ? await fetch(new URL(path, node.url))
+              : await cloudflare.fetch(path);
+          observed.push(await observe(res));
+          const elapsed = Date.now() - started;
+          // One 1 s budget for the page and its nested job, not two.
+          expect(elapsed, `${host} ${parent}`).toBeGreaterThanOrEqual(900);
+          expect(elapsed, `${host} ${parent}`).toBeLessThan(1900);
+          const probePath = `/api/abort-probe?key=${key}`;
+          const probe =
+            host === "node"
+              ? await fetch(new URL(probePath, node.url))
+              : await cloudflare.fetch(probePath);
+          expect(
+            ((await probe.json()) as { state: string }).state,
+            `${host} ${parent}`,
+          ).toBe("aborted");
+        }
+        const [n, cf] = observed;
+        const status = parent === "slow" && policy === "error" ? 500 : 200;
+        expect(n.status, parent).toBe(status);
+        expect(cf.status, parent).toBe(status);
+        expect(cf.body, parent).toBe(n.body);
+        expect(cf.body, parent).not.toContain("slow-done");
+        // Under error a stream parent's whole slot is empty after commit;
+        // under warn and ignore only the nested output is.
+        if (status === 200)
+          expect(cf.body, parent).toContain('data-testid="tail"');
+        if (policy !== "error")
+          expect(cf.body, parent).toContain('data-testid="slow-card"');
+      }
+    });
+  });
+}
+
+// ─── Request-time components: attacker lens (prompt 157 security audit) ────
+//
+// A visitor controls `?q=`, which the page script escapes (the docs' search
+// escaper, or the docs' full escaper with `esc=full`) into props, slots and
+// inherited attributes of returned component tags. Every case asserts the
+// SAFE outcome and byte equality on both hosts; a failure here is a finding
+// a correctly escaping author cannot stop, on that host.
+describe("serverless parity: escaped visitor input in returned component tags (prompt 157 security)", () => {
+  let root: string;
+  let node: NodeOracle;
+  let cloudflare: Harness;
+
+  beforeAll(async () => {
+    root = await createServerlessFixture("components-security", {
+      components: true,
+      security: true,
+    });
+    await buildServerlessFixture(root, "cloudflare-pages");
+    node = await startNodeServer(root);
+    cloudflare = await startHarness({
+      projectRoot: root,
+      target: "cloudflare-pages",
+    });
+  }, 180_000);
+
+  afterAll(async () => {
+    await cloudflare?.dispose();
+    await node?.stop();
+    if (root) await cleanupServerlessFixture(root);
+  });
+
+  const page = (q: string, extra = ""): string =>
+    `/components-security?q=${encodeURIComponent(q)}${extra}`;
+  const both = async (
+    path: string,
+  ): Promise<{ node: Observed; cf: Observed }> => ({
+    node: await observe(await fetch(new URL(path, node.url))),
+    cf: await observe(await cloudflare.fetch(path)),
+  });
+  /** The opening tag of the element carrying `data-testid="<id>"`. */
+  const openTagOf = (html: string, id: string): string =>
+    html.match(
+      new RegExp(
+        `<[a-z]+(?:[^>"']|"[^"]*"|'[^']*')*data-testid=["']?${id}["']?(?:[^>"']|"[^"]*"|'[^']*')*>`,
+      ),
+    )?.[0] ?? "";
+
+  it("A. text and attribute payloads escaped into the catalog card's props, slot and inherited title never become markup, on both hosts", async () => {
+    const payloads = [
+      `<script>alert(1)</script>`,
+      `"><img src=x onerror=alert(1)>`,
+      `</textarea><img src=x onerror=alert(1)>`,
+      `--><img src=x onerror=alert(1)>`,
+      `&lt;img src=x onerror=alert(1)&gt;`,
+      `<product-card-live></product-card-live>`,
+      `<script type="text/bascik-server" data-bascik-job="${"0".repeat(32)}:0"></script>`,
+    ];
+    for (const q of payloads) {
+      for (const esc of ["", "&esc=full"]) {
+        const { node: n, cf } = await both(page(q, `${esc}&only=card`));
+        expect(n.status, q).toBe(200);
+        expect(cf.status, q).toBe(200);
+        expect(cf.body, q).toBe(n.body);
+        const body = markup(cf.body);
+        // Visitor text is only ever text: no element it spelled, no job it named.
+        expect(body, q).not.toMatch(
+          /<img|<script>alert|<script type="text\/bascik-server"|<product-card-live|product-card-stock/,
+        );
+      }
+    }
+  });
+
+  it("D. a nested job started by a returned card sees none of the usage's props or slot, and one instance runs one job, on both hosts", async () => {
+    const q = "http://169.254.169.254/latest/meta-data/";
+    const { node: n, cf } = await both(page(q, "&only=live"));
+    expect(cf.status).toBe(200);
+    expect(cf.body).toBe(n.body);
+    const stock = [
+      ...cf.body.matchAll(/In stock · checked for ([^<]*) at request time/g),
+    ];
+    expect(stock).toHaveLength(1);
+    expect(stock[0][1]).toBe("/components-security");
+  });
+
+  it("F. CR/LF and header-shaped visitor text stay in the body: no Set-Cookie, the dynamic cache policy and Vary unchanged, on both hosts", async () => {
+    const q = "x\r\nSet-Cookie: pwned=1\r\nVary: *\r\n\r\n<h1>split</h1>";
+    const { node: n, cf } = await both(page(q, "&only=card"));
+    for (const [host, r] of [
+      ["node", n],
+      ["cf", cf],
+    ] as const) {
+      expect(r.status, host).toBe(200);
+      expect(r.headers["set-cookie"], host).toBeUndefined();
+      expect(r.headers["cache-control"], host).toBe("private, no-store");
+      expect(r.headers["vary"] ?? "", host).not.toContain("*");
+      expect(markup(r.body), host).not.toContain("<h1>split");
+    }
+    expect(cf.body).toBe(n.body);
+  });
+
+  it("B. a prop bound to href never carries a script URL a visitor typed, on both hosts", async () => {
+    const findings: string[] = [];
+    for (const q of [
+      "javascript:alert(document.domain)",
+      "JaVaScRiPt:alert(1)",
+      "java\tscript:alert(1)",
+      " \u0001javascript:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+    ]) {
+      const { node: n, cf } = await both(page(q, "&only=link"));
+      expect(cf.body, q).toBe(n.body);
+      const href =
+        /href="([^"]*)"/.exec(openTagOf(cf.body, "sec-link"))?.[1] ?? "";
+      const scheme = href
+        .replace(/&#9;|\t|\n/g, "")
+        .replace(/^[\u0000- ]+/, "")
+        .toLowerCase();
+      if (/^(?:javascript|vbscript|data):/.test(scheme))
+        findings.push(`${JSON.stringify(q)} -> href="${href}"`);
+    }
+    expect(findings, findings.join("\n")).toEqual([]);
+  });
+
+  it("B. a prop bound to srcdoc never carries visitor markup into the frame, on both hosts", async () => {
+    const q = "<script>alert(document.domain)</script>";
+    const { node: n, cf } = await both(page(q, "&only=srcdoc"));
+    expect(cf.body).toBe(n.body);
+    const srcdoc =
+      /srcdoc="([^"]*)"/.exec(openTagOf(cf.body, "sec-srcdoc"))?.[1] ?? "";
+    // The browser decodes the attribute once and parses the result as a document.
+    const decoded = srcdoc
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, "&");
+    expect(decoded).not.toContain("<script>");
+  });
+
+  it("A. a prop received by a component's client <script> never becomes script text, on both hosts", async () => {
+    const q = "alert(document.domain)";
+    const { node: n, cf } = await both(page(q, "&esc=full&only=script"));
+    expect(cf.body).toBe(n.body);
+    expect(cf.body).not.toMatch(
+      /<script>\s*alert\(document\.domain\)\s*<\/script>/,
+    );
+  });
+
+  it("A. an inherited class escaped with the docs' search escaper never adds an attribute to a single-quoted root, on both hosts", async () => {
+    const q = "x' onmouseover='alert(document.domain)";
+    const { node: n, cf } = await both(page(q, "&only=inherit"));
+    expect(cf.body).toBe(n.body);
+    // Attribute names as the tokenizer reads them: text inside a quoted
+    // value (the visitor's `onmouseover=`, now `&#39;`-encoded) is not one.
+    const names = [
+      ...openTagOf(cf.body, "sec-inherit").matchAll(
+        /\s([^\s"'>/=]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/g,
+      ),
+    ].map((match) => match[1].toLowerCase());
+    expect(names).toEqual(["class", "data-testid", "title"]);
+  });
+
+  it("B. an inherited data onto an <object> root (a URL only on that tag) never carries a script URL, and the <iframe> root's src, srcdoc and onload are inherited as written, on both hosts", async () => {
+    const escapers: Record<string, (s: string) => string> = {
+      "": (s) =>
+        s
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll('"', "&quot;"),
+      "&esc=full": (s) =>
+        s.replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c]!,
+        ),
+    };
+    for (const q of [
+      "data:text/html,<script>parent.postMessage('script ran: '+location.protocol,'*')</script>",
+      "javascript:alert(document.domain)",
+      " java\tscript:alert(1)",
+    ]) {
+      for (const [esc, e] of Object.entries(escapers)) {
+        const { node: n, cf } = await both(page(q, `${esc}&only=inherit-url`));
+        expect(n.status, q).toBe(200);
+        expect(cf.status, q).toBe(200);
+        expect(cf.body, q).toBe(n.body);
+        const object = openTagOf(cf.body, "sec-embed");
+        const frame = openTagOf(cf.body, "sec-frame");
+        expect(/\sdata="([^"]*)"/.exec(object)?.[1], q).toBe("about:invalid");
+        for (const attr of ["src", "srcdoc", "onload"])
+          expect(frame, `${q} ${attr}`).toContain(` ${attr}="${e(q)}"`);
+      }
+    }
+  });
+
+  it("B. a page's own handler and javascript:void(0) href are inherited as written, on both hosts", async () => {
+    const { node: n, cf } = await both(page("ok", "&only=inherit-kept"));
+    expect(n.status).toBe(200);
+    expect(cf.body).toBe(n.body);
+    expect(openTagOf(cf.body, "sec-sty")).toContain(` onclick="go()"`);
+    expect(openTagOf(cf.body, "sec-anchor")).toContain(
+      ` href="javascript:void(0)"`,
+    );
+  });
+
+  it("B. a value spelling class= or style= inherited before a merged class or style never ends its attribute, on both hosts", async () => {
+    // Attribute names as the tokenizer reads them.
+    const names = (tag: string): string[] =>
+      [
+        ...tag.matchAll(
+          /\s([^\s"'>/=]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/g,
+        ),
+      ].map((match) => match[1].toLowerCase());
+    for (const q of [
+      " class=x onfocus=alert(document.domain) autofocus tabindex=1 style=y ",
+      " class='x' style='y' onfocus=alert(1) autofocus ",
+    ]) {
+      for (const esc of ["", "&esc=full"]) {
+        const { node: n, cf } = await both(
+          page(q, `${esc}&only=inherit-merge`),
+        );
+        expect(n.status, q).toBe(200);
+        expect(cf.status, q).toBe(200);
+        expect(cf.body, q).toBe(n.body);
+        const badge = openTagOf(cf.body, "sec-badge");
+        const sty = openTagOf(cf.body, "sec-sty");
+        expect(names(badge).sort(), badge).toEqual([
+          "class",
+          "data-testid",
+          "title",
+        ]);
+        expect(names(sty).sort(), sty).toEqual([
+          "aria-label",
+          "class",
+          "data-testid",
+          "style",
+        ]);
+        expect(badge).toMatch(/\sclass="big"/);
+        expect(sty).toMatch(/\sstyle="color:red"/);
+      }
+    }
+  });
+
+  it("B. a plain inherited style and on-prefixed names that are no handlers reach the root unchanged, on both hosts", async () => {
+    const { node: n, cf } = await both(page("Q3", "&only=inherit-plain"));
+    expect(cf.body).toBe(n.body);
+    const badge = openTagOf(cf.body, "sec-badge");
+    expect(badge).toContain(` online=""`);
+    expect(badge).toContain(` one="1"`);
+    expect(badge).toContain(
+      ` style="overscroll-behavior: contain; max-height: 20rem; --caption: 'Data: Q3'"`,
+    );
+  });
+
+  it("B. a safe inherited URL reaches the <object> and <iframe> roots unchanged, on both hosts", async () => {
+    const q = "https://example.com/embed?a=1";
+    const { node: n, cf } = await both(page(q, "&only=inherit-url"));
+    expect(cf.body).toBe(n.body);
+    expect(openTagOf(cf.body, "sec-embed")).toContain(` data="${q}"`);
+    expect(openTagOf(cf.body, "sec-frame")).toContain(` src="${q}"`);
+  });
+});
+
+// ─── @bascik/bascik/html on both hosts (Collin 2026-10-28) ──────────────────
+//
+// A server script, a stream script and a component's own server script
+// import the helpers through the package export; the adapter bundles them
+// into the Worker. Every response must be byte-identical on Node and
+// workerd, and a visitor's markup must come back as text.
+describe("serverless parity: @bascik/bascik/html in server, stream and component scripts", () => {
+  let root: string;
+  let node: NodeOracle;
+  let cloudflare: Harness;
+
+  beforeAll(async () => {
+    root = await createServerlessFixture("html", { html: true });
+    await buildServerlessFixture(root, "cloudflare-pages");
+    node = await startNodeServer(root);
+    cloudflare = await startHarness({
+      projectRoot: root,
+      target: "cloudflare-pages",
+      collectLogs: true,
+    });
+  }, 180_000);
+
+  afterAll(async () => {
+    await cloudflare?.dispose();
+    await node?.stop();
+    if (root) await cleanupServerlessFixture(root);
+  });
+
+  const both = async (
+    path: string,
+  ): Promise<{ node: Observed; cf: Observed }> => ({
+    node: await observe(await fetch(new URL(path, node.url))),
+    cf: await observe(await cloudflare.fetch(path)),
+  });
+
+  const ATTACK = `<product-card data-bascik-prop-name=x><img src=x onerror=alert(1)>`;
+
+  it("?q=<product-card ...><img onerror> renders as text with no expanded component, byte-identical on both hosts", async () => {
+    for (const path of [
+      `/html-search?q=${encodeURIComponent(ATTACK)}`,
+      `/html-stream?q=${encodeURIComponent(ATTACK)}`,
+    ]) {
+      const { node: n, cf } = await both(path);
+      expect(n.status, path).toBe(200);
+      expect(cf.status, path).toBe(200);
+      expect(cf.body, path).toBe(n.body);
+      const body = markup(cf.body);
+      expect(body, path).not.toMatch(/<img[\s>]|<product-card/i);
+      expect(body.match(/data-testid="safe-card"/g), path).toHaveLength(1);
+      expect(body, path).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    }
+  });
+
+  it("an html list nests without commas, and the component's own server script (importing html) escapes too", async () => {
+    const { node: n, cf } = await both(
+      `/html-search?q=${encodeURIComponent("<i>x</i>")}`,
+    );
+    expect(cf.body).toBe(n.body);
+    expect(cf.body).toContain("<ul><li>a&lt;</li><li>b&amp;</li></ul>");
+    expect(cf.body).toMatch(
+      /data-testid="safe-live-echo">&lt;i&gt;x&lt;\/i&gt;<\/p>/,
+    );
+    expect(cf.body).not.toContain("[object Object]");
+  });
+
+  it("a visitor's javascript: URL in href is about:invalid on both hosts", async () => {
+    const { node: n, cf } = await both(
+      `/html-search?q=${encodeURIComponent(" JaVa\tScript:alert(1)")}`,
+    );
+    expect(cf.body).toBe(n.body);
+    expect(cf.body).toMatch(/data-testid="link" href="about:invalid"/);
+  });
+
+  it("json() fills a JSON script a visitor cannot end, on both hosts", async () => {
+    const q = "</script><script>alert(1)</script> ";
+    const { node: n, cf } = await both(`/html-json?q=${encodeURIComponent(q)}`);
+    expect(cf.body).toBe(n.body);
+    const text =
+      /<script type="application\/json" id="data">([\s\S]*?)<\/script>/.exec(
+        cf.body,
+      )?.[1];
+    expect(JSON.parse(text ?? "null")).toEqual({ q });
+  });
+
+  it("misuse: an onclick hole is the 500 page on both hosts, and the Worker log carries the template and hole", async () => {
+    const { node: n, cf } = await both("/html-misuse?q=x");
+    expect(n.status).toBe(500);
+    expect(cf.status).toBe(500);
+    expect(cf.body).toBe(n.body);
+    expect(cloudflare.logs.join("\n")).toContain(
+      'html: hole 1 in html`<button onclick="${…}">go</button>` is inside the onclick attribute.',
+    );
+  });
+
+  it("a U+0130 before </textarea> does not move the tokenizer: the href hole is still URL-checked on both hosts", async () => {
+    const { node: n, cf } = await both(
+      `/html-turkish?q=${encodeURIComponent("javascript:alert(1)")}`,
+    );
+    expect(n.status).toBe(200);
+    expect(cf.body).toBe(n.body);
+    expect(cf.body).toMatch(/data-testid="link" href="about:invalid"/);
+  });
+
+  it("an onerror hole inside <noscript> is refused (a 500) on both hosts", async () => {
+    const { node: n, cf } = await both("/html-noscript?q=alert(1)");
+    expect(n.status).toBe(500);
+    expect(cf.status).toBe(500);
+    expect(cf.body).toBe(n.body);
+    expect(cloudflare.logs.join("\n")).toContain(
+      "is inside the onerror attribute.",
+    );
+  });
+
+  it("no Content-Security-Policy header without the option, on both hosts", async () => {
+    const { node: n, cf } = await both("/html-search?q=a");
+    expect(n.headers["content-security-policy"]).toBeUndefined();
+    expect(cf.headers["content-security-policy"]).toBeUndefined();
+  });
+});
+
+// Red team 2026-10-28: with only default-src 'none' written, the hash merge
+// used to create script-src 'self' and style-src 'self', widening the
+// author's policy on both hosts. A created directive starts from default-src.
+describe("serverless parity: contentSecurityPolicy with only default-src 'none'", () => {
+  let root: string;
+  let node: NodeOracle;
+  let cloudflare: Harness;
+
+  beforeAll(async () => {
+    root = await createServerlessFixture("csp-none", {
+      html: true,
+      components: true,
+      csp: { "default-src": ["'none'"], "img-src": ["'self'"] },
+    });
+    await buildServerlessFixture(root, "cloudflare-pages");
+    node = await startNodeServer(root);
+    cloudflare = await startHarness({
+      projectRoot: root,
+      target: "cloudflare-pages",
+    });
+  }, 180_000);
+
+  afterAll(async () => {
+    await cloudflare?.dispose();
+    await node?.stop();
+    if (root) await cleanupServerlessFixture(root);
+  });
+
+  const neverSelf = (csp: string | undefined): void => {
+    expect(csp).toBeDefined();
+    expect(csp).toMatch(/^default-src 'none'; img-src 'self'/);
+    expect(csp).not.toMatch(/(script|style)-src [^;]*'self'/);
+    expect(csp).toMatch(/style-src( 'sha256-[A-Za-z0-9+/=]+')+(;|$)/);
+  };
+
+  it("a page the Worker renders: the created directives are only the hashes, the same on Node", async () => {
+    const n = await observe(await fetch(new URL("/html-search?q=a", node.url)));
+    const cf = await observe(await cloudflare.fetch("/html-search?q=a"));
+    const csp = cf.headers["content-security-policy"];
+    expect(csp).toBe(n.headers["content-security-policy"]);
+    neverSelf(csp);
+  });
+
+  it("a static page with an inline script and style: its _headers rule matches Node and adds no 'self'", async () => {
+    const headers = await readTextFile(
+      join(root, "dist/.bascik/cloudflare-pages/public/_headers"),
+      "utf8",
+    );
+    const nodeCsp = (
+      await observe(await fetch(new URL("/csp-inline", node.url)))
+    ).headers["content-security-policy"];
+    neverSelf(nodeCsp);
+    expect(nodeCsp).toMatch(/script-src( 'sha256-[A-Za-z0-9+/=]+')+(;|$)/);
+    const lines = headers.split("\n");
+    const at = lines.indexOf("/csp-inline");
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(lines[at + 1]).toBe(`  Content-Security-Policy: ${nodeCsp}`);
+  });
+});
+
+describe("serverless parity: opt-in contentSecurityPolicy", () => {
+  let root: string;
+  let node: NodeOracle;
+  let cloudflare: Harness;
+
+  beforeAll(async () => {
+    root = await createServerlessFixture("csp", {
+      html: true,
+      components: true,
+      csp: true,
+    });
+    await buildServerlessFixture(root, "cloudflare-pages");
+    node = await startNodeServer(root);
+    cloudflare = await startHarness({
+      projectRoot: root,
+      target: "cloudflare-pages",
+    });
+  }, 180_000);
+
+  afterAll(async () => {
+    await cloudflare?.dispose();
+    await node?.stop();
+    if (root) await cleanupServerlessFixture(root);
+  });
+
+  it("a page the Worker renders gets the same header as on Node: directives plus the route's widened hashes", async () => {
+    const n = await observe(await fetch(new URL("/html-search?q=a", node.url)));
+    const cf = await observe(await cloudflare.fetch("/html-search?q=a"));
+    const csp = cf.headers["content-security-policy"];
+    expect(csp).toBeDefined();
+    expect(csp).toBe(n.headers["content-security-policy"]);
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toMatch(/script-src 'self' https:\/\/cdn\.example\.com/);
+    expect(csp).toMatch(/style-src 'self'( 'sha256-[A-Za-z0-9+/=]+')+/);
+  });
+
+  it("static pages get exact-path rules in the generated public/_headers, merged after the adapter's own", async () => {
+    const headers = await readTextFile(
+      join(root, "dist/.bascik/cloudflare-pages/public/_headers"),
+      "utf8",
+    );
+    const nodeCsp = (await observe(await fetch(new URL("/", node.url))))
+      .headers["content-security-policy"];
+    expect(nodeCsp).toBeDefined();
+    expect(headers).toMatch(/^\/\n {2}Content-Security-Policy: /m);
+    expect(headers).toContain(`  Content-Security-Policy: ${nodeCsp}`);
+  });
+});
+
+// ─── a post exec script that edits inline code after the build hashed it ─────
+//
+// Post-build edits are legitimate ("the code you wrote is the code that
+// ships"). The build takes the CSP hashes again from dist/ once the post
+// phase finishes, so a post script that rewrites a static page's inline
+// script, and one that adds an inline script to a page the Worker renders,
+// ship with headers that allow them on both hosts.
+describe("serverless parity: a post exec script rewrites inline scripts after the pages are written", () => {
+  let root: string;
+  let node: NodeOracle;
+  let cloudflare: Harness;
+  const sha = (body: string) =>
+    `'sha256-${createHash("sha256").update(body, "utf8").digest("base64")}'`;
+  // The build minifies the page's script to this body.
+  const WRITTEN = 'document.body.dataset.ran="yes";';
+  const REWRITTEN = 'document.body.dataset.ran="post";';
+  const ADDED = "window.__postAdded = 1;";
+
+  beforeAll(async () => {
+    root = await createServerlessFixture("csp-post", {
+      csp: { "default-src": ["'self'"], "script-src": ["'self'"] },
+      postExec: `import { readFile, writeFile } from "node:fs/promises";
+const edit = async (file, change) =>
+  writeFile(file, change(await readFile(file, "utf8")));
+await edit("dist/csp-inline.html", (html) =>
+  html.replace(${JSON.stringify(WRITTEN)}, ${JSON.stringify(REWRITTEN)}));
+await edit("dist/account.html", (html) =>
+  html.replace("</body>", "<script>${ADDED}</script></body>"));
+`,
+    });
+    await buildServerlessFixture(root, "cloudflare-pages");
+    node = await startNodeServer(root);
+    cloudflare = await startHarness({
+      projectRoot: root,
+      target: "cloudflare-pages",
+    });
+  }, 180_000);
+
+  afterAll(async () => {
+    await cloudflare?.dispose();
+    await node?.stop();
+    if (root) await cleanupServerlessFixture(root);
+  });
+
+  it("csp-hashes.json holds the rewritten script's hash, not the one the page was written with", async () => {
+    const hashes = JSON.parse(
+      await readTextFile(join(root, ".bascik/dist/csp-hashes.json"), "utf8"),
+    ) as Record<string, { scripts: string[] }>;
+    expect(hashes["/csp-inline"].scripts.map((h) => `'${h}'`)).toEqual([
+      sha(REWRITTEN),
+    ]);
+    expect(hashes["/account"].scripts.map((h) => `'${h}'`)).toContain(
+      sha(ADDED),
+    );
+  });
+
+  it("the static page's _headers rule and the Node header allow the rewritten script, and agree", async () => {
+    const n = await observe(await fetch(new URL("/csp-inline", node.url)));
+    expect(n.body).toContain(REWRITTEN);
+    const nodeCsp = n.headers["content-security-policy"];
+    expect(nodeCsp).toContain(sha(REWRITTEN));
+    expect(nodeCsp).not.toContain(sha(WRITTEN));
+    const headers = await readTextFile(
+      join(root, "dist/.bascik/cloudflare-pages/public/_headers"),
+      "utf8",
+    );
+    const lines = headers.split("\n");
+    const at = lines.indexOf("/csp-inline");
+    expect(at, headers).toBeGreaterThanOrEqual(0);
+    expect(lines[at + 1]).toBe(`  Content-Security-Policy: ${nodeCsp}`);
+  });
+
+  it("a page the Worker renders sends the added script's hash, as Node does", async () => {
+    const n = await observe(await fetch(new URL("/account", node.url)));
+    const cf = await observe(await cloudflare.fetch("/account"));
+    expect(cf.body).toContain(ADDED);
+    const csp = cf.headers["content-security-policy"];
+    expect(csp).toContain(sha(ADDED));
+    expect(csp).toBe(n.headers["content-security-policy"]);
+  });
+
+  it("bascik --server starts without the changed-page warning: the build recorded the post-phase pages", () => {
+    expect(node.output()).not.toMatch(/differs? from the pages/);
+  });
+});
+
+// ─── a post exec script that removes a server-script placeholder ────────────
+//
+// A server or stream script lives in the sidecar; the page keeps only its
+// placeholder. A post script that removes one would ship a page whose script
+// never runs: on Node, `bascik --server` refuses to start, and a Worker
+// would serve the page without it and say nothing. So every build fails
+// after its post phase, with the message the server gives, before a bundle
+// is made.
+describe("serverless parity: a post exec script that removes a placeholder fails the build", () => {
+  const POST_DROP = `import { readFile, writeFile } from "node:fs/promises";
+const edit = async (file, change) =>
+  writeFile(file, change(await readFile(file, "utf8")));
+await edit("dist/account.html", (html) =>
+  html.replace(/<script type="text\\/bascik-server" data-bascik-server-id="[^"]+"><\\/script>/, ""));
+await edit("dist/dashboard.html", (html) =>
+  html.replace(/<script type="text\\/bascik-server" data-bascik-server-id="[^"]+" data-bascik-stream><\\/script>/, ""));
+`;
+  const roots: string[] = [];
+  afterAll(async () => {
+    for (const root of roots) await cleanupServerlessFixture(root);
+  });
+
+  /** The located lines `bascik --server` gives for the same dist/. */
+  const located = async (root: string) => {
+    const sidecar = JSON.parse(
+      await readTextFile(
+        join(root, ".bascik/dist/server-scripts.json"),
+        "utf8",
+      ),
+    ) as { scripts: Record<string, { mode: string }> };
+    const ids = Object.keys(sidecar.scripts).sort();
+    const pageOf = (id: string) =>
+      Buffer.from(id.slice("server_script_".length), "hex")
+        .toString("utf8")
+        .replace(/::\d+$/, "");
+    const account = ids.filter(
+      (id) =>
+        id.startsWith("server_script_") && pageOf(id) === "pages/account.html",
+    );
+    const dashboard = ids.filter(
+      (id) =>
+        id.startsWith("server_script_") &&
+        pageOf(id) === "pages/dashboard.html",
+    );
+    const html = await readTextFile(join(root, "dist/dashboard.html"), "utf8");
+    const lostStream = dashboard.find((id) => !html.includes(id))!;
+    expect(account).toHaveLength(1);
+    expect(dashboard).toHaveLength(4);
+    expect(sidecar.scripts[lostStream].mode).toBe("stream");
+    return [
+      `dist/account.html: .bascik/dist/server-scripts.json holds 1 server script for this page, but the page has no placeholder for it ` +
+        `(\`<script type="text/bascik-server" data-bascik-server-id="${account[0]}"></script>\`)`,
+      `dist/dashboard.html: .bascik/dist/server-scripts.json holds 4 server scripts for this page, but 1 of their placeholders is gone ` +
+        `(\`<script type="text/bascik-server" data-bascik-server-id="${lostStream}" data-bascik-stream></script>\`)`,
+    ];
+  };
+
+  for (const target of ["cloudflare-pages", "cloudflare-workers"] as const) {
+    it(`--target ${target} fails with the page, the count and the tag to paste back, and makes no bundle`, async () => {
+      const root = await createServerlessFixture(`lost-${target}`, {
+        postExec: POST_DROP,
+      });
+      roots.push(root);
+      const { stdout, stderr } = await buildServerlessFixture(root, target);
+      const lines = await located(root);
+      expect(stderr).toContain(
+        "[bascik] --build: a page lost a server-script placeholder after the build wrote it.",
+      );
+      for (const line of lines) expect(stderr).toContain(line);
+      expect(stderr).toContain(
+        "A `post` exec script removed or rewrote the placeholder",
+      );
+      expect(stdout).not.toContain("Build complete");
+      await expect(
+        access(join(root, `dist/.bascik/${target}`)),
+      ).rejects.toThrow();
+
+      // A post script that keeps every placeholder builds, and the bundle
+      // is made.
+      await writeTextFile(
+        join(root, "scripts/post-edit.mjs"),
+        "// keeps every placeholder\n",
+        "utf8",
+      );
+      const kept = await buildServerlessFixture(root, target);
+      expect(kept.stdout, kept.stderr).toContain("Build complete");
+      await access(join(root, `dist/.bascik/${target}`));
+
+      // The same edit made to dist/ after the build: bascik --server, the
+      // second line, refuses with the same located text.
+      await writeTextFile(join(root, "scripts/drop.mjs"), POST_DROP, "utf8");
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      await promisify(execFile)(process.execPath, ["scripts/drop.mjs"], {
+        cwd: root,
+      });
+      let started: NodeOracle | undefined;
+      let refusal = "";
+      try {
+        started = await startNodeServer(root);
+      } catch (err) {
+        refusal = (err as Error).message;
+      }
+      await started?.stop();
+      expect(
+        started,
+        "bascik --server started on a page with a lost placeholder",
+      ).toBeUndefined();
+      expect(refusal).toContain(
+        "--server: production startup validation failed.",
+      );
+      for (const line of lines) expect(refusal).toContain(line);
+    }, 180_000);
+  }
+});
+
+// ─── security toggles, scripts.stripAnsi, scripts.renderLimits ──────────────
+//
+// Collin 2026-10-29: "the code you wrote is the code that ships". Each
+// protection is on by default and can be turned off in `security`; Node
+// (`bascik --server`) and the Worker must agree, on and off, for the binding
+// rules (recorded in the manifest at build), the response headers,
+// dynamic-page caching, dotfiles, ANSI stripping and the render limits.
+const TOGGLE_CASES = {
+  on: {},
+  off: {
+    securityConfig: {
+      blockScriptUrls: false,
+      blockCodeBindings: false,
+      headers: { "x-frame-options": "DENY", "x-content-type-options": false },
+      hsts: false,
+      privateDynamicPages: false,
+      stripDirectiveScripts: false,
+      hideDotfiles: false,
+    },
+    stripAnsi: false,
+    renderLimits: { maxInstances: 2 },
+  },
+} as const;
+
+const addTogglePages = async (root: string): Promise<void> => {
+  const put = async (rel: string, content: string) => {
+    await mkdirAsync(dirname(join(root, rel)), { recursive: true });
+    await writeTextFile(join(root, rel), content, "utf8");
+  };
+  await put(
+    "src/components/sec-click/sec-click.html",
+    `<button class="sec-click" data-testid="sec-click" data-bascik-attr-onclick="c">go</button>`,
+  );
+  await put("src/pages/.nojekyll", "");
+  // A build-time usage of each binding beside a request-time one, so the
+  // build and the renderer are held to the same rule.
+  await put(
+    "src/pages/toggles.html",
+    `<!DOCTYPE html><html><head><title>Toggles</title></head><body>
+<sec-click data-bascik-prop-c="built()"></sec-click>
+<sec-link data-bascik-prop-u="javascript:built()"></sec-link>
+<script data-bascik-server>
+export default function () {
+  return '<sec-click data-bascik-prop-c="live()"></sec-click><sec-link data-bascik-prop-u="javascript:live()"></sec-link>';
+}
+</script>
+</body></html>`,
+  );
+  await put(
+    "src/pages/toggles-many.html",
+    `<!DOCTYPE html><html><head><title>Many</title></head><body>
+<script data-bascik-server>
+export default function () { return "<sec-badge></sec-badge>".repeat(3); }
+</script>
+</body></html>`,
+  );
+};
+
+describe.each(Object.keys(TOGGLE_CASES) as (keyof typeof TOGGLE_CASES)[])(
+  "serverless parity: security toggles %s",
+  (mode) => {
+    const off = mode === "off";
+    let root: string;
+    let node: NodeOracle;
+    let cloudflare: Harness;
+
+    beforeAll(async () => {
+      root = await createServerlessFixture(`security-toggles-${mode}`, {
+        components: true,
+        security: true,
+        ...TOGGLE_CASES[mode],
+      });
+      await addTogglePages(root);
+      await buildServerlessFixture(root, "cloudflare-pages");
+      node = await startNodeServer(root);
+      cloudflare = await startHarness({
+        projectRoot: root,
+        target: "cloudflare-pages",
+      });
+    }, 240_000);
+
+    afterAll(async () => {
+      await cloudflare?.dispose();
+      await node?.stop();
+      if (root) await cleanupServerlessFixture(root);
+    });
+
+    const both = async (
+      path: string,
+    ): Promise<{ node: Observed; cf: Observed }> => ({
+      node: await observe(await fetch(new URL(path, node.url))),
+      cf: await observe(await cloudflare.fetch(path)),
+    });
+    const sec = (only: string, q: string) =>
+      `/components-security?only=${only}&q=${encodeURIComponent(q)}`;
+
+    it("a bound javascript: href, at build and request time", async () => {
+      const r = await both("/toggles");
+      expect(r.node.status).toBe(200);
+      expect(r.cf.body).toBe(r.node.body);
+      const body = markup(r.cf.body);
+      if (off) {
+        expect(body).toContain('href="javascript:built()"');
+        expect(body).toContain('href="javascript:live()"');
+        expect(body).not.toContain("about:invalid");
+      } else {
+        expect(body).not.toContain("javascript:built()");
+        expect(body).not.toContain("javascript:live()");
+        expect(body.match(/href="about:invalid"/g)).toHaveLength(2);
+      }
+    });
+
+    it("an onclick binding, at build and request time", async () => {
+      const r = await both("/toggles");
+      expect(r.cf.body).toBe(r.node.body);
+      const body = markup(r.cf.body);
+      if (off) {
+        expect(body).toContain('onclick="built()"');
+        expect(body).toContain('onclick="live()"');
+      } else {
+        expect(body).not.toContain("onclick");
+      }
+    });
+
+    it("a bound javascript: href from escaped visitor input", async () => {
+      const r = await both(sec("link", "javascript:alert(1)"));
+      expect(r.cf.body).toBe(r.node.body);
+      expect(markup(r.cf.body).includes('href="javascript:alert(1)"')).toBe(
+        off,
+      );
+    });
+
+    it("an inherited data URL on an <object> root", async () => {
+      const q = "data:application/pdf;base64,JVBE";
+      const r = await both(sec("inherit-url", q));
+      expect(r.cf.body).toBe(r.node.body);
+      expect(markup(r.cf.body).includes(`data="${q}"`)).toBe(off);
+    });
+
+    it("a <script> prop receiver", async () => {
+      const r = await both(sec("script", "window.toggled=1"));
+      expect(r.cf.body).toBe(r.node.body);
+      expect(markup(r.cf.body).includes("window.toggled=1")).toBe(off);
+    });
+
+    it("response headers on a dynamic page: an x-frame-options override and a nosniff removal", async () => {
+      const r = await both("/toggles");
+      for (const [host, o] of [
+        ["node", r.node],
+        ["cf", r.cf],
+      ] as const) {
+        expect(o.headers["x-frame-options"], host).toBe(
+          off ? "DENY" : "SAMEORIGIN",
+        );
+        expect(o.headers["x-content-type-options"], host).toBe(
+          off ? undefined : "nosniff",
+        );
+        expect(o.headers["referrer-policy"], host).toBe(
+          "strict-origin-when-cross-origin",
+        );
+      }
+    });
+
+    // Static files on Cloudflare are served by the asset layer, which takes
+    // the headers from the generated public/_headers; the Worker sets them on
+    // what it renders. Node sends HSTS over https only, and the asset layer
+    // sends it on every response (a browser ignores it over http), so HSTS
+    // is compared between the two Cloudflare responses over https.
+    it("a static page and a Worker-rendered page from the same build send Node's security headers, each once", async () => {
+      const names = [
+        "x-content-type-options",
+        "x-frame-options",
+        "referrer-policy",
+        "cross-origin-opener-policy",
+        "cross-origin-resource-policy",
+      ];
+      const pick = (o: Observed, list = names) =>
+        Object.fromEntries(
+          list.filter((n) => n in o.headers).map((n) => [n, o.headers[n]]),
+        );
+      const https = async (path: string) =>
+        observe(
+          await cloudflare.mf.dispatchFetch(`https://example.test${path}`),
+        );
+      const nodeStatic = await observe(await fetch(new URL("/", node.url)));
+      const nodeDynamic = await observe(
+        await fetch(new URL("/toggles", node.url)),
+      );
+      const cfStatic = await https("/");
+      const cfDynamic = await https("/toggles");
+      expect(cfStatic.status).toBe(200);
+      expect(cfDynamic.status).toBe(200);
+      expect(pick(nodeStatic)).toEqual(pick(nodeDynamic));
+      expect(pick(cfStatic)).toEqual(pick(nodeStatic));
+      expect(pick(cfDynamic)).toEqual(pick(nodeStatic));
+      const withHsts = [...names, "strict-transport-security"];
+      expect(pick(cfStatic, withHsts)).toEqual(pick(cfDynamic, withHsts));
+      expect(cfStatic.headers["strict-transport-security"]).toBe(
+        off ? undefined : "max-age=31536000",
+      );
+      for (const value of Object.values(pick(cfStatic, withHsts)))
+        expect(value).not.toContain(",");
+    });
+
+    it("dynamic-page cache-control", async () => {
+      const r = await both("/toggles");
+      for (const o of [r.node, r.cf])
+        if (off)
+          expect(o.headers["cache-control"]).not.toBe("private, no-store");
+        else expect(o.headers["cache-control"]).toBe("private, no-store");
+    });
+
+    it("a dotfile from src/pages", async () => {
+      const r = await both("/.nojekyll");
+      expect(r.node.status).toBe(off ? 200 : 404);
+      expect(r.cf.status).toBe(r.node.status);
+    });
+
+    it("the private .bascik folder stays private either way", async () => {
+      const r = await both("/.bascik/components.json");
+      expect(r.node.status).toBe(404);
+      expect(r.cf.status).toBe(404);
+    });
+
+    // On a case-insensitive filesystem (macOS, Windows) these open
+    // dist/.bascik, which holds the deployment folder (a Worker bundle
+    // carries server script source).
+    it.each([
+      "/.BASCIK/server-scripts.json",
+      "/.Bascik/components.json",
+      "/.bascik./server-scripts.json",
+    ])("%s stays private either way", async (path) => {
+      const r = await both(path);
+      expect(r.node.status).toBe(404);
+      expect(r.cf.status).toBe(404);
+      expect(r.node.body.includes("server_script_")).toBe(false);
+    });
+
+    it("ANSI codes in component and page script output", async () => {
+      const r = await both("/components-ansi");
+      expect(r.node.status).toBe(200);
+      expect(r.cf.body).toBe(r.node.body);
+      expect(r.cf.body.includes("\u001b")).toBe(off);
+    });
+
+    it("a render over scripts.renderLimits.maxInstances fails the same way on both hosts", async () => {
+      const r = await both("/toggles-many");
+      expect(r.node.status).toBe(off ? 500 : 200);
+      expect(r.cf.status).toBe(r.node.status);
+      expect(r.cf.body).toBe(r.node.body);
+      if (off) {
+        expect(r.node.headers["cache-control"]).toBe("private, no-store");
+        expect(r.cf.headers["cache-control"]).toBe("private, no-store");
+      }
+    });
+  },
+);

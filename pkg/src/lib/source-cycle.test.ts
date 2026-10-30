@@ -220,6 +220,61 @@ describe("source-owned phase cycles", () => {
     cycle.close();
   });
 
+  it("emits a publication chosen by publishEarly while compilation is still running, and holds the rest", async () => {
+    vi.useFakeTimers();
+    const emitter = new EventEmitter();
+    const reload = vi.fn();
+    emitter.on("transpiled", reload);
+    const rest = gate();
+    const cycle = createSourceCycle({
+      entries: [],
+      run: vi.fn(),
+      emitter,
+      publishEarly: (_event, payload) =>
+        (payload as { relativePagePath: string }).relativePagePath ===
+        "open.html",
+      compile: async (_paths, publish) => {
+        publish("transpiled", { relativePagePath: "open.html" });
+        publish("transpiled", { relativePagePath: "other.html" });
+        await rest.promise;
+      },
+    });
+    cycle.enqueue("src/components/x.html");
+    await vi.advanceTimersByTimeAsync(50);
+    expect(reload.mock.calls).toEqual([[{ relativePagePath: "open.html" }]]);
+    rest.resolve();
+    await cycle.idle();
+    expect(reload.mock.calls).toEqual([
+      [{ relativePagePath: "open.html" }],
+      [{ relativePagePath: "other.html" }],
+    ]);
+    cycle.close();
+  });
+
+  it("holds every publication through a matching post script even when publishEarly accepts it", async () => {
+    vi.useFakeTimers();
+    const emitter = new EventEmitter();
+    const reload = vi.fn();
+    emitter.on("transpiled", reload);
+    const post = gate();
+    const cycle = createSourceCycle({
+      entries: [{ script: "post.ts", phase: "post", watch: ["content/"] }],
+      run: () => post.promise,
+      publishEarly: () => true,
+      compile: async (_paths, publish) => {
+        publish("transpiled", { relativePagePath: "index.html" });
+      },
+      emitter,
+    });
+    cycle.enqueue("content/a.md");
+    await vi.advanceTimersByTimeAsync(50);
+    expect(reload).not.toHaveBeenCalled();
+    post.resolve();
+    await cycle.idle();
+    expect(reload).toHaveBeenCalledTimes(1);
+    cycle.close();
+  });
+
   it("tells the owner about each exec failure after reporting it, for pre, parallel, and post alike", async () => {
     vi.useFakeTimers();
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});

@@ -67,16 +67,23 @@ import { deleteDistFile, getRelativePath, listPages } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
 
 import {
+  componentsHaveBuildScripts,
   componentsImportingStylesheet,
   invalidateComponentListCache,
   listComponents,
 } from "./components.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
-import { BUILD_ONCE_ATTR_NAME, OPEN_TAG_ATTRS } from "./html-patterns.ts";
+import { scriptDirectiveFinder } from "./html-patterns.ts";
 
 import { stdout as colorOut, workerEnvironment } from "./colors.ts";
 import { BascikConfig } from "./config.ts";
+import {
+  addBuildScriptStats,
+  createBuildScriptStats,
+  formatBuildScriptSummary,
+  type BuildScriptStats,
+} from "./build-script-stats.ts";
 import { formatDuration } from "./format.ts";
 import { logInfo } from "./log.ts";
 import { mem } from "./mem.ts";
@@ -87,7 +94,31 @@ import {
   isDynamicRoute,
   resolveRoutePath,
 } from "./routes.ts";
-import { serverSidecarRegistry } from "./server-sidecar.ts";
+import {
+  CHILD_SYSTEM_MAX_VAR,
+  CHILD_WORKER_COUNT_VAR,
+  SYSTEM_MAX_CHILD_PROCESSES,
+} from "./script-runner.ts";
+import {
+  CHILD_WORKER_COUNT_MESSAGE,
+  PAGE_WORKER_INIT_MESSAGE,
+  type ChildWorkerCountMessage,
+  type PageWorkerInitMessage,
+} from "./page-worker-messages.ts";
+import {
+  serverSidecarRegistry,
+  sidecarHasPageEntries,
+} from "./server-sidecar.ts";
+import {
+  pageHasServerScripts,
+  sourceHasServerScripts,
+} from "./server-scripts.ts";
+import {
+  buildComponentManifest,
+  startComponentManifest,
+  type ComponentManifest,
+} from "./component-manifest.ts";
+import { loadComponentJobs } from "./request-render-node.ts";
 import { generateSitemapFiles } from "./sitemap.ts";
 import { filterPagesByOnlyGlobs } from "./targeted-build.ts";
 import type {
@@ -96,6 +127,7 @@ import type {
   TranspilePageResult,
 } from "./types.ts";
 import { WorkerPool } from "./worker-pool.ts";
+import { registerExitStopper } from "./exit-stoppers.ts";
 
 import {
   PageProcessingError,
@@ -134,11 +166,10 @@ export interface PageJob {
   onceResolvedHtml?: string;
 }
 
-// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const BUILD_ONCE_SCRIPT_RE = new RegExp(
-  String.raw`<script\b${OPEN_TAG_ATTRS}\s${BUILD_ONCE_ATTR_NAME}`,
-  "i",
-);
+// `<script\b${OPEN_TAG_ATTRS}\s${BUILD_ONCE_ATTR_NAME}` (flag `i`), in linear time.
+const findBuildOnceScript = scriptDirectiveFinder(["data-bascik-build-once"]);
+const hasBuildOnceScript = (html: string): boolean =>
+  findBuildOnceScript(html) !== -1;
 
 /**
  * Loads every component for a batch of pages. A failure is reported to the browser and then rethrown, so
@@ -156,6 +187,127 @@ const loadComponentList = async () => {
   }
 };
 
+/**
+ * Whether any page's own source has a server or stream script element, so
+ * the build can start the manifest before any page has compiled. A page
+ * whose server script comes from a component or a build script is caught by
+ * {@link startManifestForServerPage} when its result lands. A false positive
+ * (an element inside a comment) costs a manifest that is never taken, so it
+ * never prints. Never rejects.
+ */
+const pageSourcesHaveServerScripts = async (
+  pagePaths: string[],
+): Promise<boolean> => {
+  const found = await Promise.all(
+    pagePaths.map(async (pagePath) =>
+      sourceHasServerScripts(await readFile(pagePath, "utf8").catch(() => "")),
+    ),
+  );
+  return found.includes(true);
+};
+
+/**
+ * A build page with a server or stream script makes the site need a
+ * component manifest (prompt 157, D1): start it now, beside the pages still
+ * compiling, rather than after them. The build collects it when it writes
+ * its metadata, and its output is held until then.
+ */
+const startManifestForServerPage = (
+  scripts: Record<string, unknown> | undefined,
+  componentList: ComponentList,
+): void => {
+  if (BascikConfig.isBuild && sidecarHasPageEntries(scripts))
+    startComponentManifest(componentList, BascikConfig);
+};
+
+// ─── Dev component manifest (prompt 157, D6) ─────────────────────────────────
+//
+// In dev the request-time renderer needs the same manifest `--build` writes to
+// .bascik/dist/components.json, built from the component list of the
+// publication that stored the page and attached to the page by reference, so
+// a request always renders with the manifest its page was built against and
+// never a mix of two component versions. Memoized on the ComponentList object:
+// one build per publication (every page of a batch shares the list object),
+// and a selective batch under an unchanged list reuses it. Built lazily, on
+// the first page with a server or stream script, so a site without one never
+// runs the component build scripts twice, and a static page is stored without
+// waiting for it. The build stages every component server/stream script in
+// `serverSidecarRegistry` under its `component_script_*` id as a side effect,
+// which is how a request-rendered instance's nested job resolves.
+const devComponentManifests = new WeakMap<
+  ComponentList,
+  Promise<ComponentManifest>
+>();
+
+const devComponentManifest = (
+  componentList: ComponentList,
+  { early = false }: { early?: boolean } = {},
+): Promise<ComponentManifest> => {
+  let pending = devComponentManifests.get(componentList);
+  if (pending && !early) {
+    // Started early, before any page asked: a failure is reported to the
+    // first page that does, then retried, as a build started by it would be.
+    const started = pending;
+    started.catch(() => {
+      if (devComponentManifests.get(componentList) === started)
+        devComponentManifests.delete(componentList);
+    });
+  }
+  if (!pending) {
+    // The jobs are resolved from the registry as soon as the build staged
+    // them: the ids are stable across versions (name::ordinal) and the next
+    // publication re-stages them in the same registry, so a manifest first
+    // used after that would pair this template with the next script.
+    pending = buildComponentManifest(componentList, BascikConfig).then(
+      (manifest) => {
+        loadComponentJobs(manifest);
+        return manifest;
+      },
+    );
+    devComponentManifests.set(componentList, pending);
+    // A failed build is not kept: the next publication retries and reports
+    // it again instead of serving pages against a rejection forever. One
+    // started early is kept until a page has been told (above).
+    const started = pending;
+    started.catch(() => {
+      if (!early && devComponentManifests.get(componentList) === started)
+        devComponentManifests.delete(componentList);
+    });
+  }
+  return pending;
+};
+
+/**
+ * The manifest to store with a dev page: the publication's manifest when the
+ * page carries a server or stream script, nothing otherwise (a static page
+ * never renders at request time, so it never waits for the build). Decided
+ * exactly, as the stored page's plan is: a page that only mentions the
+ * attribute in its text (the docs) builds no manifest.
+ */
+const devManifestForPage = async (
+  componentList: ComponentList,
+  html: string | Buffer,
+): Promise<ComponentManifest | undefined> =>
+  pageHasServerScripts(html)
+    ? await devComponentManifest(componentList)
+    : undefined;
+
+/**
+ * `pages` plus every stored page with a server-script plan (prompt 157, D6).
+ * Such a page renders component tags from its scripts' output with the
+ * manifest of the component list it was stored against, and no page depends
+ * on a component it only meets in script output, so a component input change
+ * (a component file, a stylesheet a component imports) rebuilds them all
+ * (open or not: a tab opened later must not render the old component); the
+ * rebuild re-stores each with the next manifest and reloads its open tabs
+ * like any rebuilt page. So does a watched-path edit when some component has
+ * a build script: that script may read the edited file, and only the
+ * manifest build ran it for a component met in script output.
+ */
+const withRequestRenderedPages = (pages: string[]): string[] => [
+  ...new Set([...pages, ...mem.pagesWithServerScriptPlan()]),
+];
+
 export const templateToGeneratedRelativePaths = new Map<string, Set<string>>();
 
 export const clearTemplateRoutesCache = (): void => {
@@ -164,6 +316,7 @@ export const clearTemplateRoutesCache = (): void => {
 
 export const expandPageToJobs = async (
   pagePath: string,
+  scriptStats?: BuildScriptStats,
 ): Promise<PageJob[]> => {
   if (!isDynamicRoute(pagePath)) {
     return [
@@ -215,9 +368,10 @@ export const expandPageToJobs = async (
   const baseRelativePath = getRelativePath(pagePath, "pages");
   // Build-once output has no route context, so it is the same for every route:
   // run it here, once per template, instead of once per generated page.
-  const onceResolvedHtml = BUILD_ONCE_SCRIPT_RE.test(result.cleanedHtml)
+  const onceResolvedHtml = hasBuildOnceScript(result.cleanedHtml)
     ? await executeBuildScripts(result.cleanedHtml, pagePath, null, {
         once: true,
+        stats: scriptStats,
       })
     : undefined;
 
@@ -428,6 +582,8 @@ export const processPageBatch = async (
   componentList?: ComponentList,
   globalStylesHtml?: string,
   initialPageErrors: PageProcessingError[] = [],
+  /** Receives every page's build-script counts, for the boot summary line. */
+  scriptStats?: BuildScriptStats,
 ): Promise<string[]> => {
   const pageErrors = [...initialPageErrors];
   if (pageInputs.length === 0) {
@@ -521,9 +677,12 @@ export const processPageBatch = async (
       job.preCleanedHtml,
       { onceResolvedHtml: job.onceResolvedHtml },
     );
+    if (result?.buildScripts && scriptStats)
+      addBuildScriptStats(scriptStats, result.buildScripts);
     if (result && isCurrentGeneration(job.pagePath, generation)) {
       if (result.serverScripts) {
         serverSidecarRegistry.recordScripts(result.serverScripts);
+        startManifestForServerPage(result.serverScripts, componentList!);
         const relSource = getRelativePath(job.pagePath, "pages");
         for (const id of Object.keys(result.serverScripts)) {
           ownershipTracker.recordScript(job.pagePath, relSource, id);
@@ -536,6 +695,10 @@ export const processPageBatch = async (
           pageContent: result.distHtml,
           usedComponentsNames: result.usedComponentsNames,
           fileDependencies: result.fileDependencies,
+          componentManifest: await devManifestForPage(
+            componentList!,
+            result.distHtml,
+          ),
         });
         void queueTranspiledPageWrite({
           relativePagePath: result.relativePagePath,
@@ -576,9 +739,37 @@ export const processPageBatch = async (
     await runJobs(homeJobs);
   }
 
-  // Transpile remaining (closed) pages afterwards
+  // The remaining pages are drained through the same pick-time queue as the
+  // worker path, not started all at once: each lane takes its next page only
+  // when it is free, so a tab that connects while this batch is running (the
+  // single-thread boot, and every component or stylesheet rebuild regardless
+  // of `pipeline.workers`) still jumps ahead of the pages that have not begun.
+  // Real parallelism is already bounded by the build-script child semaphore;
+  // two lanes per core keep every permit busy while a lane is between
+  // scripts, so throughput matches the previous all-at-once start. Results
+  // are kept in input order, not completion order, so a build's output never
+  // depends on which lane finished first.
   if (restJobs.length > 0) {
-    await runJobs(restJobs);
+    const restResults: (TranspilePageResult | null)[] = restJobs.map(
+      () => null,
+    );
+    const restIndex = new Map(restJobs.map((job, index) => [job, index]));
+    const compileQueue = createCompileQueue(restJobs);
+    const lanes = Math.min(restJobs.length, Math.max(1, cpus().length) * 2);
+    await Promise.all(
+      Array.from({ length: lanes }, async () => {
+        for (let job = compileQueue.next(); job; job = compileQueue.next()) {
+          try {
+            restResults[restIndex.get(job)!] = await runJob(job);
+          } catch (error) {
+            pageErrors.push(normalizePageError(job.pagePath, error));
+          }
+        }
+      }),
+    );
+    for (const result of restResults) {
+      if (result) results.push(result);
+    }
   }
 
   reportPageErrors(pageErrors);
@@ -603,11 +794,35 @@ export const selectivelyProcessPagesForWatchPath = async (
   if (changedPath) {
     const dependentPages = mem.pagesDependentOnFile(changedPath);
     if (dependentPages.length > 0) {
-      pagesToProcess = dependentPages;
+      // The component list was invalidated above; a component build script
+      // may read the edited file, and for a component met only in script
+      // output only the manifest build ran it (D6, as in watch-source.ts).
+      pagesToProcess = componentsHaveBuildScripts()
+        ? withRequestRenderedPages(dependentPages)
+        : dependentPages;
     }
   }
 
   await processPageBatch(pagesToProcess, componentList, globalStylesHtml);
+};
+
+/**
+ * Rebuild the pages that depend on `path`, a file no watcher otherwise owns
+ * (a page's `.ts` script, a build or server script's `src=` module in the
+ * pages directory), including pages whose last build failed while reading
+ * it. Does nothing when no page depends on it.
+ */
+export const processPagesDependentOnFile = async (
+  path: string,
+): Promise<void> => {
+  const dependentPages = mem.pagesDependentOnFile(path);
+  if (dependentPages.length === 0) return;
+  invalidateComponentListCache();
+  await processPageBatch(
+    componentsHaveBuildScripts()
+      ? withRequestRenderedPages(dependentPages)
+      : dependentPages,
+  );
 };
 
 /** Pages that use a component whose stylesheet imports `path`, as of the last component listing. */
@@ -630,7 +845,7 @@ export const processPagesImportingStylesheet = async (
   const pagesToTranspile = pagesImportingStylesheet(path);
   if (pagesToTranspile.length === 0) return;
   invalidateComponentListCache();
-  await processPageBatch(pagesToTranspile);
+  await processPageBatch(withRequestRenderedPages(pagesToTranspile));
 };
 
 export const selectivelyProcessPages = async (path: string): Promise<void> => {
@@ -641,12 +856,10 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
   if (!componentName) return;
   // A stylesheet that is not itself a component's companion still reaches the
   // pages of every component that imports it.
-  const pagesToTranspile = [
-    ...new Set([
-      ...mem.pagesThisComponentIsUsedOn(componentName),
-      ...pagesImportingStylesheet(path),
-    ]),
-  ];
+  const pagesToTranspile = withRequestRenderedPages([
+    ...mem.pagesThisComponentIsUsedOn(componentName),
+    ...pagesImportingStylesheet(path),
+  ]);
   // Enter the batch immediately so it claims each affected page generation at
   // the component event boundary. Loading components and global styles inside
   // processPageBatch happens only after those claims. Otherwise a newer direct
@@ -655,60 +868,265 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
   await processPageBatch(pagesToTranspile);
 };
 
+/**
+ * Start the page worker pool for `pageList` as soon as the list is known,
+ * before the component list has loaded and before routes are expanded.
+ *
+ * A worker spends its first few hundred milliseconds starting a thread and
+ * loading the compiler's modules. Component loading and expansion (every
+ * dynamic route's routes script, mostly waiting on child processes) run on
+ * the main thread meanwhile, so starting the workers first overlaps the two
+ * instead of paying for them one after the other while the other cores sit
+ * idle.
+ *
+ * The job count is not known yet, so the pool starts at one worker per page
+ * (a page yields at least one job unless its routes script finds no routes)
+ * and is fitted to the job count after expansion (`fitPagePool`). Starting
+ * at that lower bound rather than at the CPU count matters for small sites
+ * with a dynamic route: every worker loads the whole compiler, and a worker
+ * cannot be stopped until it has loaded (`readySignal`), so surplus workers
+ * would cost CPU, memory and the end of the phase for nothing. A dynamic
+ * route that expands to more jobs than there are pages grows the pool, and
+ * only those extra workers start after expansion, as every worker did before
+ * the pool was started early.
+ *
+ * Every worker thread runs its own child semaphore sized to 1/poolSize of the
+ * system child budget, floored at 1 permit. Keeping the pool within that
+ * budget (memory-derived, or `BASCIK_MAX_CHILD_PROCESSES`) is what stops a
+ * low-memory machine from running cpus().length children at once: with more
+ * workers than permits the floor would give each one a child anyway.
+ * `cpus()` can be empty on some platforms and containers; at least one
+ * worker keeps the build from waiting forever on a pool that can run nothing.
+ */
+type PagePool = WorkerPool<PageJob, PageWorkerResult | null>;
+
+const pagePoolSize = (workCount: number): number =>
+  Math.max(1, Math.min(cpus().length, workCount, SYSTEM_MAX_CHILD_PROCESSES));
+
+const startPagePool = (pageList: string[]): PagePool => {
+  const poolSize = pagePoolSize(pageList.length);
+  const workerExt = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
+  const workerUrl = new URL(`./page-worker${workerExt}`, import.meta.url);
+  return new WorkerPool<PageJob, PageWorkerResult | null>(
+    fileURLToPath(workerUrl),
+    poolSize,
+    // The compile inputs follow as an init message (`processAllPages`); the
+    // worker entry only needs truthy `workerData` to know it is a page worker.
+    {},
+    {
+      env: {
+        // The `transpiled:` line is printed inside the worker, which cannot tell on its own that it has a terminal.
+        ...(workerEnvironment() ?? process.env),
+        [CHILD_WORKER_COUNT_VAR]: String(poolSize),
+        // Every worker divides the main thread's number instead of measuring
+        // memory again, so their shares add up to one consistent budget.
+        [CHILD_SYSTEM_MAX_VAR]: String(SYSTEM_MAX_CHILD_PROCESSES),
+      },
+      // The pool can now be trimmed or torn down while workers are still
+      // loading the compiler; it must wait until each has loaded first.
+      readySignal: true,
+    },
+  );
+};
+
+/**
+ * Fit an early-started pool to the job count: grow it when a dynamic route
+ * expanded to more jobs than there are pages, trim it when some page yielded
+ * none, so the pool ends up the size it would have had if it had been sized
+ * to the jobs from the start. The workers are told the new count, because
+ * each worker's share of the child budget was set from the size at spawn.
+ */
+const fitPagePool = (
+  pool: PagePool,
+  pageCount: number,
+  jobCount: number,
+): number => {
+  const startSize = pagePoolSize(pageCount);
+  const size = pagePoolSize(jobCount);
+  if (size === startSize) return size;
+  if (size > startSize) pool.grow(size);
+  // Not awaited: the trimmed workers are out of the pool already, and their
+  // threads can take a couple of hundred milliseconds to stop while loading
+  // modules, which would only delay the first page. `terminate()` at the end
+  // of the phase waits for them.
+  else void pool.shrink(size);
+  pool.configure({
+    kind: CHILD_WORKER_COUNT_MESSAGE,
+    workerCount: size,
+  } satisfies ChildWorkerCountMessage);
+  return size;
+};
+
+/**
+ * One `processAllPages` call's pool, from before the page list is known
+ * (`listed` settles with the pool, or null) until the phase stops it.
+ */
+interface PagePoolPhase {
+  listed: Promise<{ pool: PagePool | null }>;
+  stopped?: Promise<void>;
+}
+
+const pagePoolPhases = new Set<PagePoolPhase>();
+
+/** Phases released but whose pool has not finished stopping. */
+const stoppingPagePools = new Set<Promise<void>>();
+
+/**
+ * Stop a phase's pool once, however many paths ask for it. Never rejects: it
+ * runs on the way out of a failed build, where a failure to stop a worker
+ * must not replace the error that failed the build.
+ */
+const releasePagePool = (
+  phase: PagePoolPhase,
+  options: { abandon?: boolean } = {},
+): Promise<void> => {
+  pagePoolPhases.delete(phase);
+  if (!phase.stopped) {
+    const stopped = phase.listed
+      .then(({ pool }) => pool?.terminate(options))
+      .catch(() => {})
+      .finally(() => stoppingPagePools.delete(stopped));
+    stoppingPagePools.add(stopped);
+    phase.stopped = stopped;
+  }
+  return phase.stopped;
+};
+
+/**
+ * Stop every page worker pool a `processAllPages` call has started, or is
+ * about to start, and has not stopped yet. For a caller about to exit while
+ * a phase is still running: a build runs the phase next to the static asset
+ * copy, and when the copy fails first the CLI exits at once. Exiting while a
+ * worker is still loading the compiler can abort Node 24 (see `readySignal`
+ * in `WorkerPool`); stopping the pool first waits for each worker to load.
+ * Never rejects. The abandoned phase keeps running until the process exits,
+ * and its jobs fail on the stopped pool, or, with `abandon`, never finish.
+ */
+export const stopPagePools = async (
+  options: { abandon?: boolean } = {},
+): Promise<void> => {
+  await Promise.all(
+    [...pagePoolPhases].map((phase) => releasePagePool(phase, options)),
+  );
+};
+
+// Every exit path (the crash net, the dev server's signal shutdown, the
+// CLI's own exits) stops the page pools first, including one a phase has
+// already released but is still stopping: its workers may still be loading.
+// The running phase's jobs are abandoned, not failed: the process is exiting
+// for its own reason (a crash, a Ctrl-C), and a block of "terminated" page
+// errors reported while it waits would bury that reason and blame the pages.
+registerExitStopper(() =>
+  pagePoolPhases.size === 0 && stoppingPagePools.size === 0
+    ? null
+    : Promise.all([
+        stopPagePools({ abandon: true }),
+        ...stoppingPagePools,
+      ]).then(() => {}),
+);
+
 export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   logInfo(colorOut.dim("Starting transpiling..."));
   invalidateComponentListCache();
   const useWorkers =
     options?.useWorkers ?? BascikConfig.pipeline?.workers ?? false;
   const start = performance.now();
-  // Parallel processing of pages
-  const [pages, componentList, globalStylesHtml] = await Promise.all([
-    listPages(),
-    loadComponentList(),
-    resolveInlineStylesHtml(),
-  ]);
-  let pageList = pages ?? [];
-
-  if (
-    BascikConfig.isBuild &&
-    BascikConfig.only &&
-    BascikConfig.only.length > 0
-  ) {
-    pageList = filterPagesByOnlyGlobs(
-      pageList,
-      BascikConfig.only,
-      BascikConfig.directory.pages,
-    );
+  // Summed from every page (and the build-once pass of every route template)
+  // so the summary can say how much of the phase was build scripts.
+  const scriptStats = createBuildScriptStats();
+  // The page list alone sizes the worker pool, so the pool starts as soon as
+  // it is known (see `startPagePool`): its workers load the compiler while
+  // the component list and global styles are still being read, and while
+  // routes expand, instead of after all of it.
+  const listed = listPages().then((pages) => {
+    let pageList = pages ?? [];
+    if (
+      BascikConfig.isBuild &&
+      BascikConfig.only &&
+      BascikConfig.only.length > 0
+    ) {
+      pageList = filterPagesByOnlyGlobs(
+        pageList,
+        BascikConfig.only,
+        BascikConfig.directory.pages,
+      );
+    }
+    const pool =
+      useWorkers && pageList.length > 0 ? startPagePool(pageList) : null;
+    return { pageList, pool };
+  });
+  const phase: PagePoolPhase = { listed };
+  if (useWorkers) pagePoolPhases.add(phase);
+  let pageList: string[];
+  let pool: PagePool | null;
+  let componentList: ComponentList;
+  let globalStylesHtml: string;
+  try {
+    [{ pageList, pool }, componentList, globalStylesHtml] = await Promise.all([
+      listed,
+      loadComponentList(),
+      resolveInlineStylesHtml(),
+    ]);
+  } catch (error) {
+    // Promise.all rejects on the first failure, which can come before the
+    // page list (and so the pool) exists: wait for it, then stop the pool,
+    // so a failed component load never leaves worker threads behind.
+    await releasePagePool(phase);
+    throw error;
   }
+  // FIFO on each worker's port, so this arrives before any page job, and
+  // the pool replays it to any worker it spawns later. Sent now rather than
+  // after the pool is fitted: the pool starts at no more workers than pages,
+  // so a worker that receives it and is then trimmed is rare (a routes
+  // script that found no routes), while cloning the list now overlaps
+  // expansion instead of sitting right in front of the first page.
+  pool?.configure({
+    kind: PAGE_WORKER_INIT_MESSAGE,
+    componentList,
+    globalStylesHtml,
+  } satisfies PageWorkerInitMessage);
+
+  // Read now, acted on once the pages are handed out: the manifest's own
+  // work then fills the time the main thread waits on the page workers
+  // instead of delaying them.
+  const sourcesNeedManifest = pageSourcesHaveServerScripts(pageList);
+  const startManifestFromSources = () =>
+    void sourcesNeedManifest.then((needed) => {
+      if (!needed) return;
+      if (BascikConfig.isBuild)
+        startComponentManifest(componentList, BascikConfig);
+      // Dev: the publication's manifest, which the first server page stored
+      // would otherwise start; its failure is reported to that page.
+      else devComponentManifest(componentList, { early: true }).catch(() => {});
+    });
 
   let relativePaths: string[] = [];
 
   const expansionErrors: PageProcessingError[] = [];
-  const jobBatches = await Promise.all(
-    pageList.map(async (pagePath) => {
-      try {
-        return await expandPageToJobs(pagePath);
-      } catch (error) {
-        expansionErrors.push(
-          normalizePageError(pagePath, error, "expand routes"),
-        );
-        return [];
-      }
-    }),
-  );
+  let jobBatches: PageJob[][];
+  try {
+    jobBatches = await Promise.all(
+      pageList.map(async (pagePath) => {
+        try {
+          return await expandPageToJobs(pagePath, scriptStats);
+        } catch (error) {
+          expansionErrors.push(
+            normalizePageError(pagePath, error, "expand routes"),
+          );
+          return [];
+        }
+      }),
+    );
+  } catch (error) {
+    // Each page's failure is caught above; this covers anything that escapes
+    // (an error while recording one), so the early workers never keep the
+    // process alive after the build has failed.
+    await releasePagePool(phase);
+    throw error;
+  }
   const allJobs = jobBatches.flat();
 
-  if (useWorkers && allJobs.length > 0) {
-    const workerExt = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
-    const workerUrl = new URL(`./page-worker${workerExt}`, import.meta.url);
-    const poolSize = Math.min(cpus().length, allJobs.length);
-    const pool = new WorkerPool<PageJob, PageWorkerResult | null>(
-      fileURLToPath(workerUrl),
-      poolSize,
-      { componentList, globalStylesHtml },
-      // The `transpiled:` line is printed inside the worker, which cannot tell on its own that it has a terminal.
-      { env: workerEnvironment() },
-    );
+  if (pool && allJobs.length > 0) {
     const [openJobs, restJobs] = partitionByOpenPages(allJobs) as [
       PageJob[],
       PageJob[],
@@ -740,9 +1158,13 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
       try {
         const generation = pagesClaimed.get(job.pagePath)!;
         const result = await pool.run(job);
+        // The worker counted its own scripts; the summary is printed here.
+        if (result?.buildScripts)
+          addBuildScriptStats(scriptStats, result.buildScripts);
         if (result && isCurrentGeneration(job.pagePath, generation)) {
           if (result.serverScripts) {
             serverSidecarRegistry.recordScripts(result.serverScripts);
+            startManifestForServerPage(result.serverScripts, componentList);
             // Prompt 101: attribute each transferred server/stream script to its
             // owning source page so the ownership transaction can prune scripts
             // removed from a rebuilt owner while retaining untouched owners'.
@@ -774,6 +1196,10 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
               pageContent: pageBytes,
               usedComponentsNames: result.usedComponentsNames,
               fileDependencies: result.fileDependencies,
+              componentManifest: await devManifestForPage(
+                componentList,
+                pageBytes,
+              ),
             });
             void queueTranspiledPageWrite({
               relativePagePath: result.relativePagePath,
@@ -795,6 +1221,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     };
 
     try {
+      const poolSize = fitPagePool(pool, pageList.length, allJobs.length);
       // Pages already open in a browser finish first, so their reload is not
       // delayed by anything else.
       if (openJobs.length > 0) {
@@ -810,7 +1237,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
       // previous result.
       const compileQueue = createCompileQueue(restJobs);
       const lanes = Math.min(restJobs.length, poolSize * 2);
-      await Promise.all(
+      const compiled = Promise.all(
         Array.from({ length: lanes }, async () => {
           for (let job = compileQueue.next(); job; job = compileQueue.next()) {
             const result = await runWorkerJob(job);
@@ -818,23 +1245,30 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
           }
         }),
       );
+      startManifestFromSources();
+      await compiled;
 
       reportPageErrors(pageErrors);
     } finally {
       // Always terminate — otherwise a rejected job leaves worker threads
       // alive and the CLI hangs on exit instead of reporting the failure.
-      await pool.terminate();
+      await releasePagePool(phase);
     }
 
     relativePaths = results
       .map((r) => r?.relativePagePath ?? null)
       .filter((p): p is string => p !== null);
   } else {
+    // No job to hand out (every expansion failed or produced no routes):
+    // release the early workers now instead of keeping them for the phase.
+    await releasePagePool(phase);
+    startManifestFromSources();
     relativePaths = await processPageBatch(
       allJobs,
       componentList,
       globalStylesHtml,
       expansionErrors,
+      scriptStats,
     );
   }
 
@@ -845,8 +1279,14 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     await generateSitemapFiles(relativePaths);
   }
 
+  // The wall time covers every build-script child process, which no page line
+  // includes, so the counts after it are what explain a long phase: all ran
+  // means a cold cache (the first dev boot after a build, or a shared helper
+  // edited), all cached means the time went elsewhere. Painted only when
+  // present: `styleText` wraps even an empty string in escape codes on a TTY.
+  const scriptSummary = formatBuildScriptSummary(scriptStats);
   console.log(
-    `\n${colorOut.green(`✓ ${count} page${count !== 1 ? "s" : ""} transpiled`)} in ${colorOut.bold(formatDuration(elapsed))}`,
+    `\n${colorOut.green(`✓ ${count} page${count !== 1 ? "s" : ""} transpiled`)} in ${colorOut.bold(formatDuration(elapsed))}${scriptSummary ? colorOut.dim(scriptSummary) : ""}`,
   );
 
   if (
@@ -890,6 +1330,10 @@ export const pageProcessing = (
     .then(async () => {
       try {
         if (!isDynamicRoute(pagePath)) {
+          // Resolved here rather than inside transpilePage so the dev
+          // manifest (prompt 157) is built from the same list object the
+          // page is; a failure reaches the same catch below either way.
+          if (!componentList) componentList = await listComponents();
           const result = await transpilePage(
             pagePath,
             componentList,
@@ -915,6 +1359,10 @@ export const pageProcessing = (
                 pageContent: distHtml,
                 usedComponentsNames,
                 fileDependencies,
+                componentManifest: await devManifestForPage(
+                  componentList,
+                  distHtml,
+                ),
               });
               void queueTranspiledPageWrite({
                 relativePagePath,

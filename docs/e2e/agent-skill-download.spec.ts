@@ -12,6 +12,7 @@ import {
   listSkillNames,
   readTar,
 } from "../scripts/skill-bundle.ts";
+import { E2E_DIST_DIR } from "./site.ts";
 
 const docsDir = fileURLToPath(new URL("..", import.meta.url));
 const pkgIndex = join(docsDir, "../pkg/dist/index.js");
@@ -147,8 +148,8 @@ test.describe("Agent skill download", () => {
     request,
   }) => {
     test.setTimeout(120_000);
-    const searchIndexPath = join(docsDir, "dist/assets/search-index.json");
-    const llmsTxtPath = join(docsDir, "dist/llms.txt");
+    const searchIndexPath = join(E2E_DIST_DIR, "assets/search-index.json");
+    const llmsTxtPath = join(E2E_DIST_DIR, "llms.txt");
 
     const [preSearch, preLlms, preSearchBytes, preLlmsBytes] =
       await Promise.all([

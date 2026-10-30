@@ -21,6 +21,13 @@ describe("docs-nav component", () => {
     expect(html).toContain('from "@/lib/nav.ts"');
   });
 
+  it("updates the theme button labels when a prerendered page is shown", async () => {
+    const html = await readFile(componentPath, "utf8");
+    expect(html).toMatch(
+      /addEventListener\(\s*"prerenderingchange",\s*syncThemeLabels/,
+    );
+  });
+
   it("shows the scheduled release date in the notice banner until the release ships", async () => {
     const html = await readFile(componentPath, "utf8");
     const match = /scheduled to release ([A-Z][a-z]+ \d{1,2}, \d{4})/.exec(

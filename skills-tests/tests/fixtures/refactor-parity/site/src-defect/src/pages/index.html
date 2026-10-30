@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Northwind Tasks</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 Helvetica,
+          Arial,
+          sans-serif;
+        color: #1d2433;
+      }
+      .link {
+        color: #2457d6;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .link:hover {
+        color: #173a8f;
+        text-decoration: underline;
+      }
+      .hero {
+        min-height: 640px;
+        padding: 64px 40px;
+      }
+      .hero h1,
+      .intro h1 {
+        margin: 0 0 16px;
+        font-size: 40px;
+        line-height: 48px;
+      }
+      .hero p {
+        max-width: 520px;
+        margin: 0 0 24px;
+      }
+      .cta {
+        padding: 12px 20px;
+        border: 0;
+        background: #2457d6;
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+      }
+      .intro {
+        padding: 64px 40px;
+      }
+      .roadmap {
+        padding: 48px 40px;
+      }
+      .timeline {
+        position: relative;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .timeline li {
+        position: relative;
+        padding: 0 0 32px 40px;
+      }
+      .dot {
+        position: absolute;
+        left: 0;
+        top: 2px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #2457d6;
+      }
+      .check {
+        position: absolute;
+        left: 6px;
+        top: 8px;
+        width: 12px;
+        height: 12px;
+      }
+      @media (max-width: 767px) {
+        .hero h1,
+        .intro h1 {
+          font-size: 32px;
+          line-height: 40px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <site-header />
+    <main data-testid="main">
+      <section class="hero" data-testid="hero">
+        <h1>Plan work your team can see</h1>
+        <p>Boards, timelines and reports for small teams, in one place.</p>
+        <button type="button" class="cta" data-testid="hero-cta">
+          See features
+        </button>
+      </section>
+      <feature-grid>
+        <div data-bascik-slot="heading"><h2>Features</h2></div>
+        <li>
+          <h3>Boards</h3>
+          <p>Move cards from idea to done.</p>
+        </li>
+        <li>
+          <h3>Timelines</h3>
+          <p>See every deadline on one line.</p>
+        </li>
+        <li>
+          <h3>Reports</h3>
+          <p>Share progress every Friday.</p>
+        </li>
+      </feature-grid>
+      <section class="roadmap" data-testid="roadmap">
+        <h2>Roadmap</h2>
+        <ol class="timeline">
+          <li>
+            <span class="dot"></span>
+            <svg class="check" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="M2 6l3 3 5-6"
+                stroke="#fff"
+                stroke-width="2"
+                fill="none"
+              />
+            </svg>
+            Research
+          </li>
+          <li>
+            <span class="dot"></span>
+            <svg class="check" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="M2 6l3 3 5-6"
+                stroke="#fff"
+                stroke-width="2"
+                fill="none"
+              />
+            </svg>
+            Design review
+          </li>
+          <li>
+            <span class="dot"></span>
+            <svg class="check" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="M2 6l3 3 5-6"
+                stroke="#fff"
+                stroke-width="2"
+                fill="none"
+              />
+            </svg>
+            Launch
+          </li>
+        </ol>
+      </section>
+    </main>
+    <site-footer />
+    <script></script>
+  </body>
+</html>

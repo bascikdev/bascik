@@ -33,6 +33,7 @@ import { BascikConfig } from "./config.ts";
 import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { privateDirFor } from "./private-dir.ts";
 
 describe("targeted build CLI parsing & glob matching", () => {
   it("parses single --only <glob>", () => {
@@ -137,10 +138,11 @@ describe("targeted build artifact merging and warnings", () => {
 
   afterEach(async () => {
     await rm(tempDir, { recursive: true, force: true });
+    await rm(privateDirFor(tempDir), { recursive: true, force: true });
   });
 
   it("reconciles manifest entries on targeted build, pruning a rebuilt owner's removed output", async () => {
-    const manifestDir = join(tempDir, ".bascik");
+    const manifestDir = privateDirFor(tempDir);
     await mkdir(manifestDir, { recursive: true });
     // Prior build: index owned both index.html and a route that will be removed.
     const initialManifest: BuildManifest = {
@@ -196,7 +198,7 @@ describe("targeted build artifact merging and warnings", () => {
   });
 
   it("reconciles csp-hashes entries on targeted build, pruning a rebuilt owner's removed route", async () => {
-    const cspDir = join(tempDir, ".bascik");
+    const cspDir = privateDirFor(tempDir);
     await mkdir(cspDir, { recursive: true });
     const initialCsp: CspHashesManifest = {
       "/": { scripts: ["sha256-abc"], styles: [] },

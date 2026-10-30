@@ -1,4 +1,5 @@
 import EventEmitter from "node:events";
+import { stopBeforeExit } from "./exit-stoppers.ts";
 
 export const eventEmitter = new EventEmitter();
 // Every open browser tab adds a `transpiled` + `asset-changed` listener for its
@@ -20,7 +21,10 @@ export const _resetShutdownHandlersForTesting = () => {
 
 export const runShutdownHandlers = async (): Promise<void> => {
   const errors: unknown[] = [];
-  const promises: Promise<void>[] = [];
+  // Every caller exits next: stop the page worker pools too (bounded, never
+  // rejects), since exiting while a page worker is still loading can abort
+  // Node 24 (`exit-stoppers.ts`).
+  const promises: Promise<void>[] = [stopBeforeExit() ?? Promise.resolve()];
 
   for (const fn of _shutdownHandlers) {
     try {

@@ -3,10 +3,15 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isMainThread, parentPort, threadId } from "node:worker_threads";
 import { profileJournal } from "./profile-diagnostics.ts";
+import { warmProcessWideState } from "./profile-warmup.ts";
 
 const directory = process.env.BASCIK_PROFILE_CAPTURE_DIR;
 if (directory) {
   const journal = profileJournal(directory);
+  // Unsampled, so this isolate never takes the process-wide locks a sampled
+  // thread can deadlock on for the first time under the profiler.
+  await warmProcessWideState();
+  journal("isolate-warmed");
   const session = new Session();
   journal("inspector-connect");
   session.connect();
@@ -76,7 +81,14 @@ if (directory) {
         return Reflect.apply(target, receiver, [
           event,
           event === "message"
-            ? (input: string | { pagePath: string }) => {
+            ? (input: string | { pagePath: string } | { kind: string }) => {
+                // Settings, not a task (see `page-worker-messages.ts`): no
+                // reply follows, so no per-task profile is started for it.
+                if (typeof input === "object" && "kind" in input) {
+                  journal("settings", { kind: input.kind });
+                  listener(input);
+                  return;
+                }
                 journal("listener-entry", {
                   taskId: `${typeof input === "string" ? input : input.pagePath}:${taskSequence}`,
                 });
@@ -95,6 +107,9 @@ if (directory) {
     });
     const postMessage = parentPort.postMessage.bind(parentPort);
     parentPort.postMessage = (...args: Parameters<typeof postMessage>) => {
+      // The loaded signal (`WorkerPool` `readySignal`) ends no task.
+      if ((args[0] as { ready?: unknown } | null)?.ready === true)
+        return postMessage(...args);
       save();
       journal("reply-sent", { taskId });
       return postMessage(...args);

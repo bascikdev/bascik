@@ -11,7 +11,7 @@ Most websites built with Bascik fall into one of three deployment models:
 If your site is a marketing page, blog, documentation site, portfolio, or uses build-time scripts (`data-bascik-build`) to fetch data, **static hosting is all you need**.
 
 - **How it works:** Run `bascik --build` to produce `dist/` and upload it to any host or CDN.
-- **Popular hosts:** Cloudflare Pages, GitHub Pages, Netlify, Vercel, AWS S3 / CloudFront, and traditional web servers (NGINX, Caddy, Apache).
+- **Popular hosts:** Cloudflare (Pages or Workers static assets), GitHub Pages, Netlify, Vercel, AWS S3 / CloudFront, and traditional web servers (NGINX, Caddy, Apache).
 - **Zero runtime maintenance:** No Node.js process to keep alive in production, zero compute charges, and instant global caching.
 
 > **Get Started:** Follow our step-by-step, hand-holding [Static Hosting Guide](/deployment/static-hosting) to deploy your site to Cloudflare Pages, GitHub Pages, Netlify, and more in minutes.
@@ -23,7 +23,7 @@ If your site uses request-time server scripts (`data-bascik-server`), progressiv
 - **How it works:** Running `bascik --build --target cloudflare` compiles static assets for the CDN while packaging your server scripts, stream scripts, and API routes into an edge Worker automatically.
 - **Benefits:** Global edge execution, zero origin servers to maintain, and automatic streaming.
 
-> **Read the Guide:** Check out the [Cloudflare Adapter](/deployment/cloudflare) guide for build commands, Wrangler configuration, and edge features, or learn about [Custom Adapters](/deployment/custom-adapters).
+> **Read the Guide:** Check out the [Cloudflare Adapter](/deployment/cloudflare) guide for build commands, keeping your Wrangler configuration in the repo, Workers Builds, Worker Previews, and edge features, or learn about [Custom Adapters](/deployment/custom-adapters).
 
 ### 3. Node.js Production Server (`bascik --server`)
 
@@ -67,6 +67,10 @@ See [Production Server](/production-server) for full documentation on server con
 
 ---
 
+## Content-Security-Policy
+
+Bascik sends no Content-Security-Policy unless you ask. The [Content Security Policy](/how-to/content-security-policy) how-to has a recipe for each host: the `contentSecurityPolicy` option on the Node servers and Cloudflare, and a `<meta>` tag for static hosts.
+
 ## Per-environment values: the site URL
 
 The site URL is a per-deployment value, so it is not a config-file key. Set `BASCIK_SITE_URL` in each environment's configuration (CI variables, container env, a `.env` file on the target) and the same checked-in source builds for staging and production without mutating anything:
@@ -90,17 +94,39 @@ The output uses root-relative paths (e.g. `/css/styles.css`). Files must be serv
 
 Builds are reproducible and deterministic: identical source inputs always produce byte-identical output across repeated runs and machines. This makes it straightforward to diff `dist/` between builds or verify deployed artifacts against the exact commit that produced them.
 
-Every full dev or build run cleans `directory.out` before pre-phase lifecycle scripts run. The output therefore reflects the current source tree, without pages or assets left behind by earlier runs. Pre-phase scripts can still generate files in the output directory because cleaning finishes before those scripts start. `bascik --server` only reads an existing build and never cleans it. Targeted builds (`bascik --build --only <glob>`) also skip cleaning so existing pages survive when rebuilding a small subset.
+Every full dev or build run cleans `directory.out` and its private build folder before pre-phase lifecycle scripts run. The output therefore reflects the current source tree, without pages or assets left behind by earlier runs. Pre-phase scripts can still generate files in the output directory because cleaning finishes before those scripts start. `bascik --server` only reads an existing build and never cleans it. Targeted builds (`bascik --build --only <glob>`) also skip cleaning so existing pages survive when rebuilding a small subset.
+
+### What a static host receives
+
+A static host serves every file of the folder you point it at, dotfiles included, so after a plain `bascik --build`, `dist/` holds only the site: pages, CSS, scripts and assets. Bascik's private build files live in `.bascik/dist/`, beside `dist/` and never inside it: the build state, the ownership inventory (`ownership.json`, which names your source files), and, when the site has them, the server-script sidecar (`server-scripts.json`, the source of every server and stream script), the component manifest, the CSP hashes and the file manifest. The folder is named after [`directory.out`](/configuration#directory), so `build/www` gets `build/.bascik/www/`, and Bascik writes a `.gitignore` into `.bascik/` so it is never committed.
+
+| Deploy                                       | What it copies                                                                                                           |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Static host (Pages, Netlify, S3, a web root) | `dist/` from a plain `bascik --build`, never after a `--target` build                                                    |
+| `bascik --server` on your own machine        | both `dist/` and `.bascik/dist/` from the same build, with the project's `bascik.config.ts`, `src/api/` and dependencies |
+| `--target cloudflare`                        | `dist/.bascik/cloudflare/` (its `public/` folder and the Worker); see [Cloudflare](/deployment/cloudflare)               |
+
+`.bascik/dist/` holds the server scripts and CSP hashes for the pages of its own build, so a `bascik --server` deploy copies both folders from the same `bascik --build`. The build records the content of every page it wrote. When a page in `dist/` differs from that record, `bascik --server` starts and prints one warning that names the pages (or says that all of them changed). A deploy step that edits `dist/` after the build (adding analytics, a minifier, a CDN rewrite) is the expected cause. The warning ends with how to start without it: make the change in a `post` [exec script](/exec-scripts), which runs before the build records its pages and takes their CSP hashes.
+
+The warning compares page HTML only. It catches a `.bascik/dist/` copied from another build when that build wrote different pages. A build that changed only a server script's source writes the same pages, because the source lives in the sidecar and each placeholder is named by its page and position. A `.bascik/dist/` from such a build starts with no warning and runs that build's server scripts, so always copy both folders from the same build.
+
+The server serves each page as it is in `dist/`, with the server scripts and CSP hashes `.bascik/dist/` holds. A server script runs from the sidecar, matched to its placeholder in the page. A minifier may change the placeholder's quotes, letter case, whitespace or attribute order, because a browser reads every such spelling as the same attributes. It must keep the `<script>` element with its `type="text/bascik-server"` and its `data-bascik-server-id`. A `post` exec script that removes a placeholder fails the build: once the `post` phase finishes, `bascik --build` (plain or `--target`) checks that every page still has each placeholder the sidecar holds for it, and stops before any deployment folder is written. The message names the page, how many server scripts the sidecar holds for it, and the tag to paste back, with `data-bascik-stream` for a stream script. If a page edited after the build no longer has such a placeholder, `bascik --server` refuses to start with the same message.
+
+When the site sends a CSP, a deploy step after the build that adds, removes or rewrites an inline `<script>` or `<style>` makes those blocks fail the CSP hashes. A minifier that drops one trailing semicolon is enough. Browsers block that code, or report it when the policy is `reportOnly`. With [`contentSecurityPolicy`](/configuration#contentsecuritypolicy) set, the startup warning names each changed page whose inline code is no longer all in `csp-hashes.json`. It counts only the kinds the policy restricts with hashes, so inline styles are left out when the policy has no `style-src` or `default-src`, or allows `'unsafe-inline'` styles. A `post` exec script fixes this: once the `post` phase finishes, the build takes the CSP hashes again from the pages in `dist/`, so `csp-hashes.json`, the `bascik --server` header and a `--target` deployment's headers match the HTML that ships. The warning checks inline hashes only. A step that moves an external script or stylesheet to another host, such as a CDN rewrite or an analytics tag, needs that host in `script-src` or `style-src`.
+
+`bascik --server` refuses to start only when it cannot run the release: `dist/` copied without `.bascik/dist/` (it names both folders); a page whose server-script placeholder the sidecar does not hold or holds in another mode (a `.bascik/dist/` from an older build that lacks a script the new `dist/` names), which names the page and asks for `bascik --build`; or a page that lost a placeholder the sidecar holds for it, as above. A `--only` build refuses a `dist/` whose pages differ from the record, because it keeps the other pages' server scripts and CSP hashes. It names the first such page and both causes: you edited `dist/` after the build (make the change in a `post` exec script, or run a full `bascik --build`, which reconciles), or `.bascik/dist/` came from another build.
+
+A `--target` build writes its deployment folder inside `dist/`, to `dist/.bascik/<target>/`: the Worker, with the source of every server script and API route, and its config. Deploy that folder, not `dist/`, and do not point a static host at `dist/` after a `--target` build, or it publishes the Worker; the build prints the same note. The deployment folder's own `public/` folder never holds a `.bascik` path. See [What is the `.bascik/` folder?](/faq#what-is-the-bascik-folder).
 
 ### Consuming the build manifest
 
-When `generate.manifest: true` is configured, Bascik outputs `dist/.bascik/manifest.json`. Deployment workflows and CDN synchronization scripts can consume this manifest to upload only modified files or verify build outputs:
+When `generate.manifest: true` is configured, Bascik outputs `.bascik/dist/manifest.json`. Deployment workflows and CDN synchronization scripts can consume this manifest to upload only modified files or verify build outputs:
 
 ```js
-// Example deploy-layer script reading dist/.bascik/manifest.json
+// Example deploy-layer script reading .bascik/dist/manifest.json
 import { readFileSync } from "node:fs";
 
-const manifest = JSON.parse(readFileSync("dist/.bascik/manifest.json", "utf8"));
+const manifest = JSON.parse(readFileSync(".bascik/dist/manifest.json", "utf8"));
 for (const [relPath, info] of Object.entries(manifest.files)) {
   console.log(
     `Deploying ${relPath} (${info.size} bytes, SHA-256: ${info.hash})`,
@@ -110,9 +136,9 @@ for (const [relPath, info] of Object.entries(manifest.files)) {
 
 ### Content Security Policy
 
-Bascik inlines component `<style>` blocks and wraps component `<script>` blocks in isolated IIFEs. To support a strict policy without `'unsafe-inline'`, enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik emits `dist/.bascik/csp-hashes.json` mapping each page to its exact post-minification inline script and style SHA-256 hashes (`sha256-<base64>`).
+Bascik inlines component `<style>` blocks and wraps component `<script>` blocks in isolated IIFEs. To support a strict policy without `'unsafe-inline'`, enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik emits `.bascik/dist/csp-hashes.json` mapping each page to its exact post-minification inline script and style SHA-256 hashes (`sha256-<base64>`), taken from the pages as `post` exec scripts left them.
 
-Bascik emits hashes rather than setting a policy because the policy depends on your site and your host. Setting a generic one inside the framework would provide false assurance. [Content Security Policy](/how-to/content-security-policy) shows how to turn the hashes into a policy.
+Bascik sends no policy of its own because the policy depends on your site and your host. Setting a generic one inside the framework would provide false assurance. The [`contentSecurityPolicy`](/configuration#contentsecuritypolicy) option sends the directives you write, plus these hashes, from the Node servers and the Cloudflare Worker, and turns on `generate.cspHashes` for you. [Content Security Policy](/how-to/content-security-policy) shows how to turn the hashes into a policy on each host.
 
 ### Cross-Origin Isolation Headers
 
@@ -202,7 +228,7 @@ When `trustProxy: true` is enabled:
 
 - **Rate limiting** derives client IP from the rightmost (immediate proxy) entry of `X-Forwarded-For`, preventing a single active visitor from exhausting the rate-limit budget for all visitors behind the proxy.
 - **Request URL origin reconstruction** (`request.url` in API routes and server scripts) reconstructs the public scheme (`http` or `https`) and authority from the rightmost entries of `X-Forwarded-Proto` and `X-Forwarded-Host`. If headers are omitted or malformed, Bascik safely falls back to local transport parameters.
-- **HSTS security headers** recognize `X-Forwarded-Proto: https` forwarded by the proxy.
+- **HSTS security headers** recognize `X-Forwarded-Proto: https` forwarded by the proxy, and send the value from [`security.hsts`](/configuration#securityhsts) (`max-age=31536000` by default, without `includeSubDomains`).
 
 When `trustProxy: false` (the default), `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` headers are strictly ignored to prevent client spoofing. Do not enable `trustProxy` if the server is directly exposed to the public Internet without a trusted reverse proxy.
 

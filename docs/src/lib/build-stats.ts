@@ -33,8 +33,15 @@ export interface ExecTiming {
   seconds: number;
 }
 
+/** The per-page figures of one build: the median `transpiled:` line and the slowest. */
+export interface PageTimings {
+  /** The median of the per-page `transpiled:` lines, in milliseconds. */
+  pageMedianMs: number;
+  slowestPage: { path: string; ms: number };
+}
+
 /** One production build, in seconds unless the name says otherwise. */
-export interface BuildRunTimings {
+export interface BuildRunTimings extends PageTimings {
   /** Wall time of the whole command, including Node starting up and loading the config. */
   wallSeconds: number;
   /** The "Build complete in" figure the CLI prints. */
@@ -51,9 +58,6 @@ export interface BuildRunTimings {
   otherSeconds: number;
   /** Every exec script with how long it took. `parallel` ones overlap page compilation. */
   execScripts: ExecTiming[];
-  /** The median of the per-page `transpiled:` lines, in milliseconds. */
-  pageMedianMs: number;
-  slowestPage: { path: string; ms: number };
 }
 
 export interface BuildTimings {
@@ -69,6 +73,19 @@ export interface BuildTimings {
   cold: BuildRunTimings;
   /** Right after a cold build, with every cacheable build script result on disk. */
   warm: BuildRunTimings;
+  /**
+   * The per-page figures from a warm build on one worker thread. With `pipeline.workers` on, a page's
+   * `transpiled:` time includes waiting for a core it shares with the other workers and their script
+   * children, which inflates it several times over; one thread at a time reports what the page itself
+   * costs. Absent from timings measured before this run was added, and the panel then says so.
+   */
+  oneWorker?: PageTimings;
+  /** Median milliseconds from a warm-cache dev-server Markdown edit to updated disk output, not browser reload. */
+  devContentEdit?: {
+    medianDiskMs: number;
+    samples: number;
+    measuredOn: string;
+  };
 }
 
 const round = (value: number, digits = 2): number => {
@@ -92,7 +109,11 @@ export function parseBuildLog(
 ): BuildRunTimings & { pages: number } {
   const log = stripVTControlCharacters(rawLog);
 
-  const pagesLine = /^✓ (\d+) pages? transpiled in (\S+)$/m.exec(log);
+  // Both lines may end in a parenthetical about build scripts ("(969 build scripts ran, 0 from cache)",
+  // "(+5.1s in 52 build scripts)"); the duration before it is the figure wanted here.
+  const pagesLine = /^✓ (\d+) pages? transpiled in (\S+)(?: \(.*\))?$/m.exec(
+    log,
+  );
   if (!pagesLine)
     throw new Error('The build log has no "pages transpiled" line');
   const totalLine = /^✓ Build complete in (\S+)$/m.exec(log);
@@ -120,7 +141,9 @@ export function parseBuildLog(
   const preScriptsSeconds = phaseSeconds("pre");
   const postScriptsSeconds = phaseSeconds("post");
 
-  const perPage = [...log.matchAll(/^transpiled: (\S+) in (\S+)$/gm)]
+  const perPage = [
+    ...log.matchAll(/^transpiled: (\S+) in (\S+)(?: \(.*\))?$/gm),
+  ]
     .map((match) => ({
       path: match[1],
       ms: Math.round(parseDuration(match[2]) * 1000),

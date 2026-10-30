@@ -1,5 +1,6 @@
 {
   "recommendations": [
+    "bascik.bascik-vscode",
     "codespellai.codespellai-vscode",
     "esbenp.prettier-vscode",
     "webhint.vscode-webhint"

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Server Components Stream Test</title>
+  </head>
+
+  <body>
+    <header data-testid="scs-header">header</header>
+
+    <!-- The first stream job is slow (?delay=) and the second is instant, so
+         the jobs complete out of document order. The component's style block
+         must still land exactly once, before the first card in document
+         order, which is this one. -->
+    <section data-testid="scs-slot" aria-busy="true">
+      <p data-testid="scs-skeleton" role="status">Loading cards...</p>
+      <script data-bascik-stream>
+        export default async function (request, context, { signal }) {
+          const searchParams = new URL(request.url).searchParams;
+          const requested = Number(searchParams.get("delay") ?? 0);
+          const delay = Number.isFinite(requested)
+            ? Math.min(Math.max(requested, 0), 5000)
+            : 0;
+          if (delay > 0) {
+            await new Promise((resolve, reject) => {
+              const t = setTimeout(resolve, delay);
+              signal?.addEventListener(
+                "abort",
+                () => {
+                  clearTimeout(t);
+                  reject(signal.reason);
+                },
+                { once: true },
+              );
+            });
+          }
+          return (
+            `<server-card data-bascik-prop-title="Stream one">` +
+            `<span data-bascik-slot="badge"><em data-testid="scs-badge">first</em></span>` +
+            `<p data-testid="scs-body-1">stream body one</p>` +
+            `</server-card>`
+          );
+        }
+      </script>
+    </section>
+
+    <script data-bascik-stream>
+      export default function () {
+        return (
+          `<server-card data-bascik-prop-title="Stream two">` +
+          `<p data-testid="scs-body-2">stream body two</p>` +
+          `</server-card>`
+        );
+      }
+    </script>
+
+    <footer data-testid="scs-footer">footer</footer>
+  </body>
+</html>

@@ -36,15 +36,14 @@ npx clinic <tool> [options] -- node <entrypoint>
 
 ## Workspace Quick-Run Commands
 
-When working in this repository (`@bascik/bascik`), pre-configured npm/yarn profiling scripts in `pkg/package.json` can be executed directly to profile the `docs/` site across build, dev, and serve modes:
+When working in this repository (`@bascik/bascik`), Clinic runs through the `pkg/bench/` harness, which captures into a private fixture and writes reports to `--report-dir` (options and limits in `pkg/bench/README.md`):
 
-| Target Mode                        | Doctor                                            | Flame                                            | Bubbleprof                                            | HeapProfiler                                            |
-| :--------------------------------- | :------------------------------------------------ | :----------------------------------------------- | :---------------------------------------------------- | :------------------------------------------------------ |
-| **Static Build (`--build`)**       | `yarn --cwd pkg profile:clinic:doctor-docs-build` | `yarn --cwd pkg profile:clinic:flame-docs-build` | `yarn --cwd pkg profile:clinic:bubbleprof-docs-build` | `yarn --cwd pkg profile:clinic:heapprofiler-docs-build` |
-| **Dev Server (watch mode)**        | `yarn --cwd pkg profile:clinic:doctor-docs-dev`   | `yarn --cwd pkg profile:clinic:flame-docs-dev`   | `yarn --cwd pkg profile:clinic:bubbleprof-docs-dev`   | `yarn --cwd pkg profile:clinic:heapprofiler-docs-dev`   |
-| **Production Server (`--server`)** | `yarn --cwd pkg profile:clinic:doctor-docs-serve` | `yarn --cwd pkg profile:clinic:flame-docs-serve` | `yarn --cwd pkg profile:clinic:bubbleprof-docs-serve` | `yarn --cwd pkg profile:clinic:heapprofiler-docs-serve` |
+| Target Mode                                  | Command                                                                                                                                |
+| :------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
+| **Docs site build or dev (`--modes`)**       | `yarn workspace @bascik/bascik profile:compiler --tools doctor,flame,bubbleprof,heapprofiler --modes build --report-dir "$REPORT_DIR"` |
+| **Server, static, dev, and build workloads** | `yarn workspace @bascik/bascik profile:workload --tools doctor,bubbleprof,heapprofiler --report-dir "$REPORT_DIR"`                     |
 
-Generated reports are saved into `docs/dist/profile-clinic-<tool>-<mode>/`.
+`profile:workload` has no `flame` tool; use `profile:compiler` or 0x for flamegraphs.
 
 ---
 

@@ -53,8 +53,39 @@ export const stripLiveReloadScript = (html: string): string => {
   return removeHtmlRanges(html, removals).html;
 };
 
-export const getLiveReloadScript = (url = "/bascik-live-reload") => `
-<script ${LIVE_RELOAD_SCRIPT_ATTR}>
+/**
+ * The attribute that carries a compiled page's version on its live-reload
+ * script. A page can load its old version and miss the reload for the new
+ * one: the rebuild finishes, and its reload goes out, before the page's own
+ * connection opens. So the server sends the stored page's version when a
+ * page connects (`connected <version>`), and a page whose version differs
+ * reloads.
+ */
+export const LIVE_RELOAD_VERSION_ATTR = "data-bascik-live-reload-version";
+
+let lastPageVersion = 0;
+/** A version for a page being compiled now, unique in this process. */
+export const nextLiveReloadVersion = (): string => String(++lastPageVersion);
+
+/**
+ * The version on the last live-reload script in a stored page, quoted or
+ * left unquoted by the minifier, or null when it has none.
+ */
+export const liveReloadVersionOf = (html: string): string | null => {
+  const at = html.lastIndexOf(`${LIVE_RELOAD_VERSION_ATTR}=`);
+  if (at === -1) return null;
+  let i = at + LIVE_RELOAD_VERSION_ATTR.length + 1;
+  if (html[i] === '"' || html[i] === "'") i++;
+  let end = i;
+  while (end < html.length && html[end] >= "0" && html[end] <= "9") end++;
+  return end > i ? html.slice(i, end) : null;
+};
+
+export const getLiveReloadScript = (
+  url = "/bascik-live-reload",
+  version?: string,
+) => `
+<script ${LIVE_RELOAD_SCRIPT_ATTR}${version ? ` ${LIVE_RELOAD_VERSION_ATTR}="${version}"` : ""}>
   (function() {
     var wasConnected = false;
     var source = null;
@@ -64,6 +95,8 @@ export const getLiveReloadScript = (url = "/bascik-live-reload") => `
     var banner = null;
     var errorOverlay = null;
     var lastGeneration = 0;
+    var pageVersion = (document.currentScript &&
+      document.currentScript.getAttribute('${LIVE_RELOAD_VERSION_ATTR}')) || '';
 
     function escapeHtml(str) {
       return String(str || '')
@@ -136,10 +169,11 @@ export const getLiveReloadScript = (url = "/bascik-live-reload") => `
             removeErrorOverlay();
             window.location.reload();
           }
-        } else if (msg === 'connected') {
+        } else if (msg === 'connected' || msg.indexOf('connected ') === 0) {
           retryCount = 0;
           removeBanner();
-          if (wasConnected) {
+          var storedVersion = msg.split(' ')[1] || '';
+          if (wasConnected || (pageVersion && storedVersion && storedVersion !== pageVersion)) {
             removeErrorOverlay();
             window.location.reload();
           }

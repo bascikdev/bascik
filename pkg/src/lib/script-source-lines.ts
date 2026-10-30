@@ -22,6 +22,13 @@
  * instances their own URL (`?instance=2`, `?instance=3`, ...).
  */
 import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
+import {
+  createNamedOpenTagScanner,
+  openTagsOf,
+  replaceSpans,
+  scanAlternatives,
+  type ScanAlternative,
+} from "./element-content-scan.ts";
 import { getScriptType, isJavaScriptScript } from "./script-types.ts";
 
 /** Internal attribute: the source line the script's body starts on. Never reaches the output. */
@@ -31,11 +38,21 @@ const DIRECTIVE_SCRIPT_RE = new RegExp(
   String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`,
   "i",
 );
-/** A comment, or a whole script element. Comments come first so a script written inside one is skipped. */
-const COMMENT_OR_SCRIPT_RE =
-  /<!--[\s\S]*?-->|(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi;
+/**
+ * A comment, or a whole script element. Comments come first so a script
+ * written inside one is skipped. This is the regex
+ * `<!--[\s\S]*?-->|(<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)`
+ * (flags `gi`), scanned in linear time.
+ */
+const COMMENT_OR_SCRIPT: readonly ScanAlternative[] = [
+  { kind: "comment" },
+  {
+    kind: "element",
+    name: "script",
+    options: { opener: "tag-space", closer: "attributes" },
+  },
+];
 const SCRIPT_LINE_ATTR_RE = /\s+data-bascik-script-line="(\d+)"/i;
-const SCRIPT_OPEN_TAG_RE = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
 
 /** Scripts that end up in the browser with a sourceURL: classic, module, and `text/typescript` (stripped later). */
 const getsSourceUrl = (openTag: string): boolean =>
@@ -56,28 +73,20 @@ export const stampScriptLines = (html: string): string => {
   if (!/<script\b/i.test(html)) return html;
   let line = 1;
   let counted = 0;
-  return html.replace(
-    COMMENT_OR_SCRIPT_RE,
-    (
-      match,
-      open: string | undefined,
-      body: string,
-      close: string,
-      offset: number,
-    ) => {
-      if (
-        open === undefined ||
-        !getsSourceUrl(open) ||
-        SCRIPT_LINE_ATTR_RE.test(open)
-      )
-        return match;
-      const bodyStart = offset + open.length;
-      for (let index = counted; index < bodyStart; index++)
-        if (html.charCodeAt(index) === 10) line++;
-      counted = bodyStart;
-      return `${withScriptLine(open, line)}${body}${close}`;
-    },
-  );
+  let result = "";
+  let cursor = 0;
+  for (const match of scanAlternatives(html, COMMENT_OR_SCRIPT)) {
+    if (match.alternative === 0) continue;
+    const open = html.slice(match.start, match.contentStart);
+    if (!getsSourceUrl(open) || SCRIPT_LINE_ATTR_RE.test(open)) continue;
+    const bodyStart = match.contentStart;
+    for (let index = counted; index < bodyStart; index++)
+      if (html.charCodeAt(index) === 10) line++;
+    counted = bodyStart;
+    result += html.slice(cursor, match.start) + withScriptLine(open, line);
+    cursor = bodyStart;
+  }
+  return cursor === 0 ? html : result + html.slice(cursor);
 };
 
 /** Splits the stamp off a script open tag. */
@@ -93,13 +102,15 @@ export const takeScriptLine = (
 };
 
 /** Removes every stamp, for when script scoping is turned off. */
-export const stripScriptLines = (html: string): string =>
-  html.includes(SCRIPT_LINE_ATTRIBUTE)
-    ? html.replace(
-        SCRIPT_OPEN_TAG_RE,
-        (openTag) => takeScriptLine(openTag).openTag,
-      )
-    : html;
+export const stripScriptLines = (html: string): string => {
+  if (!html.includes(SCRIPT_LINE_ATTRIBUTE)) return html;
+  // `/<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>/gi`, in linear time.
+  return replaceSpans(
+    html,
+    openTagsOf(createNamedOpenTagScanner(html, "script")),
+    (openTag) => takeScriptLine(openTag).openTag,
+  );
+};
 
 /**
  * The newlines to put before a script body (and its IIFE wrapper) so the

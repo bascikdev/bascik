@@ -21,6 +21,11 @@ import { BascikConfig } from "./config.ts";
 import { manifestCollector } from "./manifest.ts";
 import { cspHashCollector } from "./csp-hashes.ts";
 import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
+import {
+  isFlatString,
+  stringFlatnessProbeSkipReason,
+  stringFlatnessProbeSupported,
+} from "./string-flatness-probe.test-helper.ts";
 
 // Disable all scoping so tests produce predictable, readable HTML
 vi.mock("./config.js", () => ({
@@ -78,6 +83,8 @@ vi.mock("node:fs/promises", () => ({
   writeFile: vi.fn(async () => {}),
   mkdir: vi.fn(async () => {}),
   rm: vi.fn(async () => {}),
+  // finalizeOwnedArtifacts commits each staged artifact with a rename.
+  rename: vi.fn(async () => {}),
 }));
 
 vi.mock("./build-scripts.js", () => ({
@@ -132,6 +139,16 @@ vi.mock("./worker-pool.js", () => {
         };
       });
       this.terminate = vi.fn(async () => {});
+      // processAllPages starts the pool before expansion and trims it to the
+      // job count, so the stand-in tracks its size like the real one.
+      this.size = arguments[1];
+      this.shrink = vi.fn(async (n: number) => {
+        this.size = Math.min(this.size, n);
+      });
+      this.grow = vi.fn((n: number) => {
+        this.size = Math.max(this.size, n);
+      });
+      this.configure = vi.fn();
     }),
   };
 });
@@ -150,12 +167,29 @@ vi.mock("./components.js", async (importOriginal) => {
   return {
     ...actual,
     invalidateComponentListCache: vi.fn(),
+  };
+});
+
+// The expansion loop imports the leaf modules directly (prompt 157: it must
+// bundle for the Web, and the `./components.js` barrel pulls in node:fs), so
+// the simulated stage failures are injected there, not on the barrel.
+vi.mock("./component-props.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  return {
+    ...actual,
     injectProps: (fileContent: any, props: any) => {
       if (fileContent && fileContent.includes("fail-during-prop-injection")) {
         throw new Error("Simulated prop injection failure");
       }
       return actual.injectProps(fileContent, props);
     },
+  };
+});
+
+vi.mock("./component-slots.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  return {
+    ...actual,
     replaceNamedSlots: (fileContent: any, slots: any) => {
       if (fileContent && fileContent.includes("fail-during-slot-resolution")) {
         throw new Error("Simulated slot resolution failure");
@@ -189,7 +223,7 @@ vi.mock("node:os", async (importOriginal) => {
   };
 });
 
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { cpus } from "node:os";
 import { mem } from "./mem.ts";
 import { invalidateComponentListCache } from "./components.ts";
@@ -346,6 +380,16 @@ describe("processAllPages – build mode sitemap", () => {
           throw new Error(`worker failed for ${job.pagePath}`);
         });
         this.terminate = terminate;
+        // processAllPages starts the pool before expansion and trims it to the
+        // job count, so the stand-in tracks its size like the real one.
+        this.size = arguments[1];
+        this.shrink = vi.fn(async (n: number) => {
+          this.size = Math.min(this.size, n);
+        });
+        this.grow = vi.fn((n: number) => {
+          this.size = Math.max(this.size, n);
+        });
+        this.configure = vi.fn();
       },
     );
 
@@ -695,9 +739,10 @@ describe("transpilePage – auto-fetches componentList", () => {
 
 describe("recursivelyTranspile – non-Error thrown in component processing", () => {
   it("stringifies a non-Error rejection in the error log", async () => {
-    const componentsModule = await import("./components.ts");
+    // The loop calls the leaf module, not the barrel (prompt 157).
+    const propsModule = await import("./component-props.ts");
     // Temporarily make injectProps throw a plain string (not an Error instance)
-    vi.spyOn(componentsModule, "injectProps").mockImplementationOnce(() => {
+    vi.spyOn(propsModule, "injectProps").mockImplementationOnce(() => {
       throw "string-error-not-an-Error-object";
     });
 
@@ -1243,18 +1288,22 @@ describe("recursivelyTranspile – flat string output (prompt 85)", () => {
     expect(first).toContain("<span>Row 249</span>");
   });
 
-  it("returned body is a flat V8 string after 500 splices", async () => {
-    const { isFlatString } =
-      await import("./string-flatness-probe.test-helper.ts");
-    const { transpiledHtmlBody, usedComponents } = recursivelyTranspile(
-      page,
-      componentList,
-      [],
-      "src/pages/index.html",
-    );
-    expect(usedComponents).toHaveLength(500);
-    expect(isFlatString(transpiledHtmlBody)).toBe(true);
-  });
+  // WHY: the %StringIsFlat intrinsic exists from V8 13.6 (Node 24.0.0). Node
+  // 22.x ships V8 12.4, so this probe-backed check skips there (reason in the
+  // title) rather than failing.
+  it.skipIf(!stringFlatnessProbeSupported)(
+    `returned body is a flat V8 string after 500 splices${stringFlatnessProbeSupported ? "" : ` (skipped: ${stringFlatnessProbeSkipReason})`}`,
+    () => {
+      const { transpiledHtmlBody, usedComponents } = recursivelyTranspile(
+        page,
+        componentList,
+        [],
+        "src/pages/index.html",
+      );
+      expect(usedComponents).toHaveLength(500);
+      expect(isFlatString(transpiledHtmlBody)).toBe(true);
+    },
+  );
 });
 
 describe("dynamic routes pipeline expansion", () => {
@@ -1460,6 +1509,7 @@ describe("dynamic routes pipeline expansion", () => {
       expect.any(String),
       templatePath,
       { params: { slug: "test" }, data: { id: 1 } },
+      expect.objectContaining({ stats: expect.anything() }),
     );
   });
 
@@ -2083,6 +2133,16 @@ describe("monotonic dev publication & concurrency overlap", () => {
         };
       });
       this.terminate = vi.fn(async () => {});
+      // processAllPages starts the pool before expansion and trims it to the
+      // job count, so the stand-in tracks its size like the real one.
+      this.size = arguments[1];
+      this.shrink = vi.fn(async (n: number) => {
+        this.size = Math.min(this.size, n);
+      });
+      this.grow = vi.fn((n: number) => {
+        this.size = Math.max(this.size, n);
+      });
+      this.configure = vi.fn();
     });
 
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -2172,5 +2232,73 @@ describe("prompt 99: failed import dependency recovery", () => {
     );
     const result = await transpilePage(PAGE_ABS, {});
     expect(result).not.toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Prompt 157: a static-only site builds byte-identical output. The component
+// manifest exists only for sites with page-owned server or stream scripts, so
+// a build without any writes no components.json, touches no sidecar, and never
+// builds a manifest.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("static-only build emits no component manifest (prompt 157)", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    (BascikConfig as Record<string, unknown>).isBuild = true;
+    (BascikConfig as Record<string, unknown>).only = undefined;
+    const componentsModule = await import("./components.ts");
+    vi.spyOn(componentsModule, "listComponents").mockResolvedValue({
+      "my-comp": {
+        fileName: "src/components/my-comp.html",
+        fileContent: '<div class="c"><p>static component</p></div>',
+        cssFileContent: ".c { color: red }",
+      },
+    });
+  });
+
+  afterEach(() => {
+    (BascikConfig as Record<string, unknown>).isBuild = false;
+    vi.restoreAllMocks();
+  });
+
+  it("writes the page and the ownership inventory, and no components.json, sidecar or manifest build", async () => {
+    const manifestModule = await import("./component-manifest.ts");
+    const buildManifest = vi.spyOn(manifestModule, "buildComponentManifest");
+    const { finalizeOwnedArtifacts, ownershipTracker } =
+      await import("./ownership.ts");
+    ownershipTracker.clear();
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([PAGE_PATH]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      '<!DOCTYPE html><html lang="en"><head></head><body><my-comp></my-comp><p>hello</p></body></html>',
+    );
+
+    await processAllPages();
+    await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: false });
+
+    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([path]) => String(path),
+    );
+    const page = written.find((path) => path.endsWith("index.html"));
+    expect(page).toBeDefined();
+    expect(written.some((path) => path.includes("ownership.json"))).toBe(true);
+    expect(written.some((path) => path.includes("components.json"))).toBe(
+      false,
+    );
+    expect(written.some((path) => path.includes("server-scripts.json"))).toBe(
+      false,
+    );
+    expect(buildManifest).not.toHaveBeenCalled();
+    // The emitted page is the plain expansion: no manifest marker of any kind.
+    const [, pageContent] = (
+      writeFile as ReturnType<typeof vi.fn>
+    ).mock.calls.find(([path]) => String(path).endsWith("index.html"))!;
+    const html = Buffer.isBuffer(pageContent)
+      ? pageContent.toString("utf8")
+      : String(pageContent);
+    expect(html).toContain("<p>static component</p>");
+    expect(html).toContain("<p>hello</p>");
+    expect(html).not.toContain("bascik-source-file");
+    expect(html).not.toContain("text/bascik-server");
   });
 });

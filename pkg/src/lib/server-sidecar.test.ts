@@ -11,7 +11,12 @@ vi.mock("./config.js", () => ({
 import {
   serverSidecarRegistry,
   extractServerScriptsToSidecar,
+  extractComponentScriptsToSidecar,
+  SIDECAR_SCHEMA_VERSION,
+  serverScriptPagePath,
+  type ServerScriptEntry,
 } from "./server-sidecar.ts";
+import { encodeOutputScope } from "./output-scope.ts";
 import {
   htmlHasServerScripts,
   executeServerScripts,
@@ -90,6 +95,40 @@ describe("server-scripts sidecar", () => {
       baseContext,
     );
     expect(result).toBe("<div>part1part2</div>");
+  });
+
+  it('marks an inline block typed type="text/typescript" in its entry and runs it as JavaScript through the placeholder', async () => {
+    const rawHtml = `<div><script data-bascik-server type="text/typescript">export default function(request: Request): string { return "typed"; }</script><script data-bascik-stream>export default () => "plain";</script></div>`;
+    const extracted = extractServerScriptsToSidecar(
+      rawHtml,
+      "src/pages/typed.html",
+    );
+    expect(extracted).not.toContain("text/typescript");
+    const ids = [...extracted.matchAll(/data-bascik-server-id="([^"]+)"/g)].map(
+      (match) => match[1],
+    );
+    expect(serverSidecarRegistry.getScript(ids[0])?.typescript).toBe(true);
+    expect(serverSidecarRegistry.getScript(ids[1])).not.toHaveProperty(
+      "typescript",
+    );
+
+    const result = await executeServerScripts(
+      extracted,
+      baseRequest,
+      baseContext,
+    );
+    expect(result).toBe("<div>typedplain</div>");
+  });
+
+  it("does not mark a src= module, which is TypeScript by its extension", () => {
+    const extracted = extractServerScriptsToSidecar(
+      `<script data-bascik-server type="text/typescript" src="./a.ts"></script>`,
+      "src/pages/src.html",
+    );
+    const id = /data-bascik-server-id="([^"]+)"/.exec(extracted)![1];
+    expect(serverSidecarRegistry.getScript(id)).not.toHaveProperty(
+      "typescript",
+    );
   });
 
   it("preserves authored page identity for inline relative imports", async () => {
@@ -246,7 +285,11 @@ describe("loadSidecar production readiness distinctions", () => {
       const path = join(dir, ".bascik", "server-scripts.json");
       await writeFile(
         path,
-        JSON.stringify({ version: "1", schema: 2, scripts: {} }),
+        JSON.stringify({
+          version: "1",
+          schema: SIDECAR_SCHEMA_VERSION,
+          scripts: {},
+        }),
         "utf8",
       );
       const result = await serverSidecarRegistry.loadSidecar(path);
@@ -267,7 +310,7 @@ describe("loadSidecar production readiness distinctions", () => {
         path,
         JSON.stringify({
           version: "1",
-          schema: 2,
+          schema: SIDECAR_SCHEMA_VERSION,
           scripts: {
             buf: { id: "buf", mode: "server", source: "return 1" },
             strm: {
@@ -335,7 +378,7 @@ describe("loadSidecar production readiness distinctions", () => {
         path,
         JSON.stringify({
           version: "1",
-          schema: 2,
+          schema: SIDECAR_SCHEMA_VERSION,
           scripts: { a: { id: "a", source: "return 1" } },
         }),
         "utf8",
@@ -357,7 +400,7 @@ describe("loadSidecar production readiness distinctions", () => {
         path,
         JSON.stringify({
           version: "1",
-          schema: 2,
+          schema: SIDECAR_SCHEMA_VERSION,
           scripts: { a: { id: "a", mode: "build", source: "return 1" } },
         }),
         "utf8",
@@ -377,7 +420,11 @@ describe("loadSidecar production readiness distinctions", () => {
       const path = join(dir, ".bascik", "server-scripts.json");
       await writeFile(
         path,
-        JSON.stringify({ version: "1", schema: 2, scripts: { a: null } }),
+        JSON.stringify({
+          version: "1",
+          schema: SIDECAR_SCHEMA_VERSION,
+          scripts: { a: null },
+        }),
         "utf8",
       );
       await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(
@@ -395,7 +442,11 @@ describe("loadSidecar production readiness distinctions", () => {
       const path = join(dir, ".bascik", "server-scripts.json");
       await writeFile(
         path,
-        JSON.stringify({ version: "1", schema: 2, scripts: [1, 2] }),
+        JSON.stringify({
+          version: "1",
+          schema: SIDECAR_SCHEMA_VERSION,
+          scripts: [1, 2],
+        }),
         "utf8",
       );
       await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(
@@ -404,5 +455,196 @@ describe("loadSidecar production readiness distinctions", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("component scripts and output scope (prompt 157, schema 3)", () => {
+  const outDir = () =>
+    join(
+      tmpdir(),
+      `bascik-sidecar-components-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    );
+  const hex = (text: string) => Buffer.from(text).toString("hex");
+  const scope = encodeOutputScope({
+    classes: { line: "bascik__srv-card__line" },
+    elements: {},
+  });
+
+  beforeEach(() => {
+    serverSidecarRegistry.clear();
+  });
+
+  it("is schema 3", () => {
+    expect(SIDECAR_SCHEMA_VERSION).toBe(3);
+  });
+
+  it("carries data-bascik-output-scope into the entry and strips it from the placeholder", () => {
+    const outMap: Record<string, ServerScriptEntry> = {};
+    const html =
+      `<div><script data-bascik-server data-bascik-output-scope="${scope}">export default () => '<p class="line">s</p>';</script>` +
+      `<script data-bascik-stream data-bascik-output-scope="${scope}">export default async () => 'x';</script>` +
+      `<script data-bascik-server>export default () => 'plain';</script></div>`;
+    const extracted = extractServerScriptsToSidecar(
+      html,
+      "src/pages/index.html",
+      outMap,
+      "src/pages/index.html",
+    );
+    expect(extracted).not.toContain("data-bascik-output-scope");
+    expect(extracted).toBe(
+      `<div><script type="text/bascik-server" data-bascik-server-id="server_script_${hex("src/pages/index.html::1")}"></script>` +
+        `<script type="text/bascik-server" data-bascik-server-id="server_script_${hex("src/pages/index.html::2")}" data-bascik-stream></script>` +
+        `<script type="text/bascik-server" data-bascik-server-id="server_script_${hex("src/pages/index.html::3")}"></script></div>`,
+    );
+    const entries = Object.values(outMap);
+    expect(entries.map((entry) => entry.outputScope)).toEqual([
+      scope,
+      scope,
+      undefined,
+    ]);
+    expect(entries.map((entry) => entry.mode)).toEqual([
+      "server",
+      "stream",
+      "server",
+    ]);
+    // The source is the body alone; the annotation is not part of it.
+    expect(entries[0].source).toBe(
+      `export default () => '<p class="line">s</p>';`,
+    );
+    for (const entry of entries) {
+      expect(serverSidecarRegistry.getScript(entry.id)?.outputScope).toBe(
+        entry.outputScope,
+      );
+    }
+    // A plain entry has no outputScope key at all, so the JSON stays as before.
+    expect("outputScope" in entries[2]).toBe(false);
+  });
+
+  it("extractComponentScriptsToSidecar stages component_script_<hex(name::ordinal)> ids that resolve through getScript", () => {
+    const template =
+      `<div class="bascik__srv-card__wrap"><script data-bascik-server data-bascik-output-scope="${scope}" data-bascik-source-file="src%2Fcomponents%2Fsrv-card%2Fsrv-card.html" data-bascik-source-line="3">\nexport default () => '<p class="bascik__srv-card__line">s</p>';\n</script>` +
+      `<script data-bascik-stream>export default async () => 'later';</script></div>`;
+    const outMap: Record<string, ServerScriptEntry> = {};
+    const staged = extractComponentScriptsToSidecar(
+      template,
+      "srv-card",
+      outMap,
+    );
+    const first = `component_script_${hex("srv-card::1")}`;
+    const second = `component_script_${hex("srv-card::2")}`;
+    expect(staged).toBe(
+      `<div class="bascik__srv-card__wrap"><script type="text/bascik-server" data-bascik-server-id="${first}"></script>` +
+        `<script type="text/bascik-server" data-bascik-server-id="${second}" data-bascik-stream></script></div>`,
+    );
+    expect(Object.keys(outMap)).toEqual([first, second]);
+    expect(serverSidecarRegistry.getScript(first)).toMatchObject({
+      id: first,
+      mode: "server",
+      source: `\nexport default () => '<p class="bascik__srv-card__line">s</p>';\n`,
+      sourceFile: "src/components/srv-card/srv-card.html",
+      sourceLine: 3,
+      outputScope: scope,
+    });
+    expect(serverSidecarRegistry.getScript(second)).toMatchObject({
+      id: second,
+      mode: "stream",
+      source: "export default async () => 'later';",
+    });
+    expect(
+      serverSidecarRegistry.getScript(second)?.outputScope,
+    ).toBeUndefined();
+    // Running it over the staged template records nothing new.
+    const again: Record<string, ServerScriptEntry> = {};
+    expect(extractComponentScriptsToSidecar(staged, "srv-card", again)).toBe(
+      staged,
+    );
+    expect(again).toEqual({});
+  });
+
+  it("writes schema 3 with outputScope and loads it back", async () => {
+    const dir = outDir();
+    const previousOutDir = BascikConfig.directory.out;
+    try {
+      BascikConfig.directory.out = dir;
+      const id = `component_script_${hex("srv-card::1")}`;
+      serverSidecarRegistry.recordScripts({
+        [id]: {
+          id,
+          mode: "server",
+          source: "export default () => 'x';",
+          sourceFile: "src/components/srv-card/srv-card.html",
+          sourceLine: 3,
+          outputScope: scope,
+        },
+      });
+      const path = await serverSidecarRegistry.writeSidecar("1.0.0");
+      expect(path).not.toBeNull();
+      const written = JSON.parse(await readFile(path!, "utf8"));
+      expect(written.schema).toBe(3);
+      expect(written.scripts[id].outputScope).toBe(scope);
+      serverSidecarRegistry.clear();
+      const loaded = await serverSidecarRegistry.loadSidecar(path!);
+      expect(loaded.present).toBe(true);
+      expect(serverSidecarRegistry.getScript(id)).toMatchObject({
+        mode: "server",
+        outputScope: scope,
+      });
+    } finally {
+      BascikConfig.directory.out = previousOutDir;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a schema-2 sidecar with the rebuild message", async () => {
+    const dir = outDir();
+    await mkdir(join(dir, ".bascik"), { recursive: true });
+    try {
+      const path = join(dir, ".bascik", "server-scripts.json");
+      await writeFile(
+        path,
+        JSON.stringify({
+          version: "1",
+          schema: 2,
+          scripts: { a: { id: "a", mode: "server", source: "return 1" } },
+        }),
+        "utf8",
+      );
+      await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(
+        /uses schema 2, but this runtime understands schema 3/,
+      );
+      await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(
+        /Run `bascik --build`/,
+      );
+      expect(serverSidecarRegistry.isSidecarPresent()).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("serverScriptPagePath", () => {
+  it("names the page a page-owned id was staged from", () => {
+    const outMap: Record<string, ServerScriptEntry> = {};
+    extractServerScriptsToSidecar(
+      `<script data-bascik-server>export default () => "a";</script>`,
+      "pages/blog/a::b.html",
+      outMap,
+    );
+    const [id] = Object.keys(outMap);
+    expect(serverScriptPagePath(id)).toBe("pages/blog/a::b.html");
+  });
+
+  it("misuse: a component id, a foreign id or a malformed id names no page", () => {
+    const outMap: Record<string, ServerScriptEntry> = {};
+    extractComponentScriptsToSidecar(
+      `<script data-bascik-server>export default () => "a";</script>`,
+      "note-card",
+      outMap,
+      { record: false },
+    );
+    expect(serverScriptPagePath(Object.keys(outMap)[0])).toBeUndefined();
+    expect(serverScriptPagePath("placeholder_123")).toBeUndefined();
+    expect(serverScriptPagePath("server_script_zz")).toBeUndefined();
+    expect(serverScriptPagePath("server_script_")).toBeUndefined();
   });
 });

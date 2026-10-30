@@ -143,7 +143,14 @@ export const buildApiRouteTree = (
 };
 
 /**
- * Recursively scans directory for API route source files (.ts, .js, .mjs).
+ * The file extensions an API route may use: the same script extensions
+ * components and `bascik.config.*` accept. Node strips types from `.ts` and
+ * `.mts` natively, so both load without a build step.
+ */
+export const API_ROUTE_EXTENSIONS = [".ts", ".mts", ".js", ".mjs"] as const;
+
+/**
+ * Recursively scans directory for API route source files (.ts, .mts, .js, .mjs).
  */
 export const scanApiRouteFiles = async (dir: string): Promise<string[]> => {
   if (!existsSync(dir)) {
@@ -159,7 +166,7 @@ export const scanApiRouteFiles = async (dir: string): Promise<string[]> => {
       results.push(...(await scanApiRouteFiles(fullPath)));
     } else if (entry.isFile()) {
       const ext = extname(entry.name).toLowerCase();
-      if (ext === ".ts" || ext === ".js" || ext === ".mjs") {
+      if ((API_ROUTE_EXTENSIONS as readonly string[]).includes(ext)) {
         results.push(fullPath);
       }
     }

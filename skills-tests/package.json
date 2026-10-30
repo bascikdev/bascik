@@ -1,0 +1,29 @@
+{
+  "name": "bascik-skills-tests",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "author": "Collin Thomas",
+  "description": "Tests and fixtures for the public agent skills in ../skills/. Kept out of skills/ because that folder ships to users.",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "unit": "yarn workspace @bascik/bascik build && vitest run --project unit",
+    "integration": "yarn workspace @bascik/bascik build && yarn workspace @bascik/language-server build && vitest run --project integration",
+    "test": "yarn workspace @bascik/bascik build && yarn workspace @bascik/language-server build && vitest run",
+    "coverage": "yarn workspace @bascik/bascik build && vitest run --project unit --coverage.enabled && node update-coverage.ts",
+    "cover": "yarn coverage"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^24.19.1",
+    "@vitest/coverage-v8": "^5.0.3",
+    "marked": "^18.0.14",
+    "sharp": "^0.35.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
+  }
+}

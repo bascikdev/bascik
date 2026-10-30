@@ -22,6 +22,10 @@
 
 import { resolve, relative, dirname } from "node:path";
 import { readFile } from "node:fs/promises";
+import {
+  compileDirectiveTypeScript,
+  isTypeScriptDirectiveScript,
+} from "./typescript.ts";
 import { pathToFileURL } from "node:url";
 import { BascikConfig } from "./config.ts";
 import { cleanStackTrace, remapRewrittenColumns } from "./stack-trace.ts";
@@ -46,6 +50,11 @@ import {
   type SpecifierEdit,
 } from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
+import { installDataUrlResolveHook } from "./data-url-resolve-hook.ts";
+import { applyOutputScope, decodeOutputScope } from "./output-scope.ts";
+import { createNodeRenderHost } from "./request-render-node.ts";
+import { prepareRenderer, wrapRunner } from "./request-render.ts";
+import type { ComponentManifest } from "./component-manifest-file.ts";
 import {
   composeBufferedResponse,
   streamComposedResponse,
@@ -60,11 +69,9 @@ import {
   ROUTES_FLAG,
   SERVER_FLAG,
   STREAM_FLAG,
-  SCRIPT_END_TAG,
   SCRIPT_TAG_PREFIX,
-  SERVER_ATTR_NAME,
-  STREAM_ATTR_NAME,
   getHtmlAttributeValue,
+  scanRequestScripts,
   scriptOpenTag,
 } from "./html-patterns.ts";
 import type { ServerScriptMode } from "./server-sidecar.ts";
@@ -82,13 +89,12 @@ export { STREAM_LOOKAHEAD };
 // Match <script data-bascik-server …> … </script> or <script type="text/bascik-server" …> … </script>.
 // The attribute is matched as a whole name (SERVER_ATTR_NAME) so
 // `data-bascik-server-id` alone is never a script; the placeholder form is
-// matched by the `type=` alternative only.
-// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const createServerScriptRegex = (): RegExp =>
-  new RegExp(
-    String.raw`<script\b(?:[^>"']|"[^"]*"|'[^']*')*\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)${SCRIPT_END_TAG}|<script\b(?:[^>"']|"[^"]*"|'[^']*')*type=["']text\/bascik-server["'](?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)${SCRIPT_END_TAG}`,
-    "gi",
-  );
+// matched by the `type=` alternative only. `scanRequestScripts` finds what
+// the regex
+// `<script\b${OPEN_TAG_ATTRS}\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})${OPEN_TAG_ATTRS}>([\s\S]*?)${SCRIPT_END_TAG}|<script\b${OPEN_TAG_ATTRS}type=["']text\/bascik-server["']${OPEN_TAG_ATTRS}>([\s\S]*?)${SCRIPT_END_TAG}`
+// (flags `gi`) did, in linear time; the regex took cubic time.
+const hasServerScriptElement = (html: string): boolean =>
+  scanRequestScripts(html, true).length > 0;
 
 // ─── Directive presence and conflict detection ─────────────────────────────────────────
 const tagHas = (flag: string): RegExp =>
@@ -115,25 +121,64 @@ const findDirectiveConflict = (
 };
 
 /**
+ * The pre-filter's words, in any case: a placeholder's attributes may be
+ * spelled in capitals, which a browser reads the same way.
+ */
+const SERVER_SCRIPT_WORDS_RE = /data-bascik-server|text\/bascik-server/i;
+
+/**
+ * Whether `html` mentions a server script or placeholder at all. A Buffer is
+ * read as latin1, which keeps every ASCII byte and costs no UTF-8 decoding;
+ * with the case-insensitive regex that is faster than two byte searches.
+ */
+const mentionsServerScripts = (html: string | Buffer): boolean =>
+  SERVER_SCRIPT_WORDS_RE.test(
+    typeof html === "string" ? html : html.toString("latin1"),
+  );
+
+/**
  * Return `true` if `html` contains at least one `data-bascik-server` block or placeholder.
  *
- * The Buffer path is a deliberately loose PRE-FILTER (`includes`), not a
+ * The Buffer path is a deliberately loose PRE-FILTER (a word search), not a
  * decision: a false positive only costs one regex run downstream. The string
  * path is exact.
  */
 export const htmlHasServerScripts = (html: string | Buffer): boolean => {
-  if (Buffer.isBuffer(html)) {
-    return (
-      html.includes("data-bascik-server") || html.includes("text/bascik-server")
-    );
-  }
-  return createServerScriptRegex().test(html);
+  if (Buffer.isBuffer(html)) return mentionsServerScripts(html);
+  return hasServerScriptElement(html);
 };
+
+/**
+ * Whether a stored page gets a server-script plan: the decision `mem`
+ * makes (the byte pre-filter, then a plan with a script segment, or a
+ * planner error), so a page that only mentions the attribute in its text
+ * (documentation, a blog post) is false. Text is decoded only when the
+ * pre-filter matches.
+ */
+export const pageHasServerScripts = (html: string | Buffer): boolean =>
+  mentionsServerScripts(html) &&
+  hasServerScriptElement(
+    typeof html === "string" ? html : html.toString("utf8"),
+  );
+
+/**
+ * Whether a page's source text has a server or stream script element, as
+ * the build will extract it. Raw text, so a tag inside a comment counts.
+ */
+export const sourceHasServerScripts = (source: string): boolean =>
+  /data-bascik-(?:server|stream)/i.test(source) &&
+  hasServerScriptElement(source);
 
 /** Default execution timeout per server-script (ms). */
 export const DEFAULT_SCRIPT_TIMEOUT_MS = 30_000;
 
-interface ScriptJob {
+/**
+ * One script to run for a page: an inline block, a `src=` module, or a
+ * sidecar placeholder resolved to its entry. Exported so the request-time
+ * renderer's Node host (request-render-node.ts) can build one per staged
+ * component script.
+ */
+export interface ScriptJob {
   fullTag: string;
   scriptContent: string;
   openTag: string;
@@ -148,6 +193,17 @@ interface ScriptJob {
   /** The line and column the script's body starts at in `sourceFile`, recorded when the file was read. */
   sourceLine?: number;
   sourceColumn?: number;
+  /**
+   * The encoded output scope of a script written inside a component (prompt
+   * 157): its output receives the component's class and element names, as a
+   * build script's output does. Absent for page-level scripts.
+   */
+  outputScope?: string;
+  /**
+   * An inline script marked `type="text/typescript"` (on its tag, or in its
+   * sidecar entry): compiled to JavaScript before it runs.
+   */
+  typescript?: boolean;
 }
 
 const inlineDependencies = new WeakMap<
@@ -208,15 +264,15 @@ export const planServerScripts = (
   html: string,
   filePath?: string,
 ): ServerScriptPlan => {
-  const matches = [...html.matchAll(createServerScriptRegex())];
+  const matches = scanRequestScripts(html, true);
   const segments: Array<StaticSegment | ScriptSegment> = [];
   let firstStreamIndex = -1;
   let cursor = 0;
 
   for (const match of matches) {
-    const fullTag = match[0];
-    let scriptContent = match[1] ?? match[2] ?? "";
-    const index = match.index!;
+    const fullTag = html.slice(match.start, match.end);
+    let scriptContent = html.slice(match.contentStart, match.contentEnd);
+    const index = match.start;
     const length = fullTag.length;
     const openTag = scriptOpenTag(fullTag, scriptContent);
 
@@ -239,6 +295,8 @@ export const planServerScripts = (
       "data-bascik-server-id",
     );
     let srcPath: string | undefined = getHtmlAttributeValue(fullTag, "src");
+    let outputScope: string | undefined;
+    let typescript = !srcPath && isTypeScriptDirectiveScript(openTag);
     let sourceFile: string | undefined;
     let sourceLine: number | undefined;
     const annotatedSourceFile = getHtmlAttributeValue(
@@ -261,7 +319,7 @@ export const planServerScripts = (
       if (!entry) {
         throw new Error(
           `[bascik] Server script placeholder "${placeholderId}" could not be resolved from sidecar. ` +
-            `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+            `Run \`bascik --build\` to regenerate .bascik/dist/server-scripts.json.`,
         );
       }
       // The sidecar entry is the source of truth for the mode; the marker on
@@ -280,6 +338,8 @@ export const planServerScripts = (
       sourceFile = entry.sourceFile;
       sourceLine = entry.sourceLine;
       sourceColumn = entry.sourceColumn;
+      outputScope = entry.outputScope;
+      typescript = entry.typescript === true;
       if (entry.modulePath && !srcPath) srcPath = entry.modulePath;
     }
 
@@ -329,6 +389,8 @@ export const planServerScripts = (
         sourceFile,
         sourceLine,
         sourceColumn,
+        ...(outputScope !== undefined ? { outputScope } : {}),
+        ...(typescript ? { typescript } : {}),
       },
     });
     cursor = index + length;
@@ -341,6 +403,38 @@ export const planServerScripts = (
     });
   }
   return { segments, firstStreamIndex };
+};
+
+/**
+ * Compiled TypeScript by source text, so a page's inline TypeScript is
+ * compiled once, not on every request. Cleared whole when it grows past a
+ * bound, which only a dev session editing many scripts reaches.
+ */
+const compiledTypeScript = new Map<string, Promise<string>>();
+const compiledServerTypeScript = (
+  code: string,
+  sourcePath: string,
+  kind: "inline" | "companion",
+  /** Where an inline script's body starts, named when compiling fails. */
+  start?: { line: number; column: number },
+  /** Where `code`'s first character is in the file, for a located error. */
+  origin?: { line: number; column: number },
+): Promise<string> => {
+  const key = `${kind}\0${sourcePath}\0${origin?.line}:${origin?.column}\0${code}`;
+  let compiled = compiledTypeScript.get(key);
+  if (!compiled) {
+    if (compiledTypeScript.size >= 512) compiledTypeScript.clear();
+    compiled = compileDirectiveTypeScript(
+      code,
+      sourcePath,
+      kind,
+      start,
+      origin,
+    );
+    compiled.catch(() => compiledTypeScript.delete(key));
+    compiledTypeScript.set(key, compiled);
+  }
+  return compiled;
 };
 
 /**
@@ -406,6 +500,44 @@ export const runServerScriptJob = async (
   }
 
   const containingFile = job.sourceFile ?? filePath;
+  // TypeScript becomes JavaScript first. An inline block marked
+  // type="text/typescript" is compiled here; a `.ts` src module is imported
+  // as it is, and Node strips its types, unless scripts.typescript names a
+  // compiler: then its compiled text runs in its place.
+  let compiledFromFile = false;
+  if (job.typescript && !moduleFilePath && codeToExecute) {
+    const bodyStart = {
+      line: job.sourceLine ?? job.startLine,
+      column: job.sourceColumn ?? 1,
+    };
+    // The module is the trimmed body: its first character's place in the file.
+    const trimmed = trimmedStartPosition(
+      job.scriptContent,
+      bodyStart.line,
+      bodyStart.column,
+    );
+    codeToExecute = await compiledServerTypeScript(
+      codeToExecute,
+      containingFile
+        ? relative(process.cwd(), containingFile).replace(/\\/g, "/")
+        : new URL(request.url).pathname,
+      "inline",
+      bodyStart,
+      { line: trimmed.line, column: trimmed.columnOffset + 1 },
+    );
+  } else if (
+    moduleFilePath &&
+    codeToExecute &&
+    typeof BascikConfig.scripts?.typescript === "function" &&
+    isTypeScriptDirectiveScript("", moduleFilePath)
+  ) {
+    codeToExecute = await compiledServerTypeScript(
+      codeToExecute,
+      relative(process.cwd(), moduleFilePath).replace(/\\/g, "/"),
+      "companion",
+    );
+    compiledFromFile = true;
+  }
   const scriptBaseDir = moduleFilePath
     ? dirname(moduleFilePath)
     : containingFile
@@ -424,9 +556,12 @@ export const runServerScriptJob = async (
   // Inline modules are NOT padded: the module text is the module's identity, and the same
   // script on two pages (at different positions) must stay one module with shared state.
   // Lines and columns are mapped when an error is reported instead.
+  const runsFromFile = moduleFilePath !== undefined && !compiledFromFile;
+  if (!runsFromFile) installDataUrlResolveHook(process.cwd());
   const dataUri = `data:text/javascript;charset=utf-8,${encodeURIComponent(rewrittenCode)}`;
-  const specifier =
-    moduleFilePath ?? dataUri + inlineGenerationSuffix(job, rewrittenCode);
+  const specifier = runsFromFile
+    ? moduleFilePath!
+    : dataUri + inlineGenerationSuffix(job, rewrittenCode);
 
   // A `src=` module is its own file; V8 already names it and its lines.
   const originalSourcePath = moduleFilePath
@@ -451,7 +586,7 @@ export const runServerScriptJob = async (
       originalSourcePath,
       lineOffset,
       exportName: "default",
-      ...(!moduleFilePath ? { moduleOwner: job } : {}),
+      ...(!runsFromFile ? { moduleOwner: job } : {}),
       ...(signal ? { signal } : {}),
     },
   );
@@ -464,16 +599,31 @@ export const runServerScriptJob = async (
         : val !== undefined && val !== null
           ? String(val)
           : "";
-    return stripAnsiEscapeCodes(strVal);
+    // scripts.stripAnsi off: terminal color codes reach the page as printed.
+    const output =
+      BascikConfig.scripts?.stripAnsi === false
+        ? strVal
+        : stripAnsiEscapeCodes(strVal);
+    // A component's server or stream script prints markup that is spliced
+    // in after scoping, so its class and element names are applied here the
+    // way a build script's output receives them (prompt 157), whether the
+    // component was placed on the page statically or rendered at request
+    // time. Page-level scripts carry no scope and are untouched.
+    const scope = decodeOutputScope(job.outputScope);
+    return scope ? applyOutputScope(output, scope) : output;
   }
 
   const behavior = BascikConfig.scripts?.onServerScriptError ?? "error";
   const err = result.error ?? new Error("Server script error");
   if (result.isNetworkReset) return "";
+  // The client went away before the script settled: nothing is delivered, so
+  // there is nothing to report, even when the script answered the abort with
+  // a value inside its listener. The Worker drops an aborted job the same way.
+  if (result.aborted) return "";
 
   // Columns after a rewritten import on the same line are put back first, in module coordinates.
-  const moduleReferences = moduleFilePath
-    ? [moduleFilePath, pathToFileURL(moduleFilePath).href]
+  const moduleReferences = runsFromFile
+    ? [moduleFilePath!, pathToFileURL(moduleFilePath!).href]
     : [specifier, dataUri];
   const rawTrace = remapRewrittenColumns(
     err.stack || err.message,
@@ -489,8 +639,11 @@ export const runServerScriptJob = async (
   );
   // An in-process `import()` of a module with a syntax error reports only Node's
   // own loader frames, so nothing names the file. Point at where the script starts.
+  // A timeout is raised by the registry, not the script, so its trace names no
+  // file either; a nested component script's timeout (prompt 157) would
+  // otherwise be impossible to place.
   if (
-    err instanceof SyntaxError &&
+    (err instanceof SyntaxError || result.timedOut) &&
     !cleanedMsg.includes(`${originalSourcePath}:`)
   ) {
     cleanedMsg += `\n    in the script that starts at ${originalSourcePath}:${lineOffset}:${columnOffset + 1}`;
@@ -503,9 +656,48 @@ export const runServerScriptJob = async (
 };
 
 /**
+ * The portable plan for a stored plan, built once. The core never mutates
+ * it, and the renderer keys its per-page work (the `minify.html` page scan)
+ * on its identity, so a fresh copy per request would redo that work on
+ * every request.
+ */
+const executionPlans = new WeakMap<ServerScriptPlan, ExecutionPlan>();
+const executionPlanFor = (plan: ServerScriptPlan): ExecutionPlan => {
+  let execution = executionPlans.get(plan);
+  if (!execution) {
+    execution = {
+      segments: plan.segments.map((segment, i) =>
+        segment.kind === "static"
+          ? { kind: "static", bytes: segment.bytes }
+          : { kind: "script", mode: segment.mode, id: String(i) },
+      ),
+      firstStreamIndex: plan.firstStreamIndex,
+    };
+    executionPlans.set(plan, execution);
+  }
+  return execution;
+};
+
+/**
+ * Build what a request to a page with `plan` would otherwise build on its
+ * first request: the portable plan and, with a component manifest, the
+ * renderer's per-page work (prompt 157). The store calls this when it
+ * stores a page; each piece is cached on the plan or the manifest.
+ */
+export const prepareServerScriptPlan = (
+  plan: ServerScriptPlan,
+  manifest?: ComponentManifest | null,
+): void => {
+  prepareRenderer(executionPlanFor(plan), manifest);
+};
+
+/**
  * Bridge a Node plan onto the portable core (prompt 132). Script jobs are
  * addressed by segment index; the runner closes over the request so the core
- * never sees ScriptRegistry, paths, or config.
+ * never sees ScriptRegistry, paths, or config. With a component manifest
+ * (prompt 157) the runner is wrapped so component tags in a job's output are
+ * rendered; without one, or with a manifest that has nothing to render, the
+ * runner is returned as is.
  */
 const toExecution = (
   plan: ServerScriptPlan,
@@ -514,15 +706,9 @@ const toExecution = (
   timeoutMs: number,
   filePath: string | undefined,
   signal?: AbortSignal,
+  manifest?: ComponentManifest | null,
 ): { execution: ExecutionPlan; run: ScriptJobRunner } => {
-  const execution: ExecutionPlan = {
-    segments: plan.segments.map((segment, i) =>
-      segment.kind === "static"
-        ? { kind: "static", bytes: segment.bytes }
-        : { kind: "script", mode: segment.mode, id: String(i) },
-    ),
-    firstStreamIndex: plan.firstStreamIndex,
-  };
+  const execution = executionPlanFor(plan);
   const run: ScriptJobRunner = (id) => {
     const segment = plan.segments[Number(id)] as ScriptSegment;
     return runServerScriptJob(
@@ -534,13 +720,23 @@ const toExecution = (
       signal,
     );
   };
-  return { execution, run };
+  if (!manifest) return { execution, run };
+  const host = createNodeRenderHost(manifest, {
+    request,
+    context,
+    timeoutMs,
+    filePath,
+  });
+  return { execution, run: wrapRunner(run, execution, host) };
 };
 
 /**
  * Buffered execution of a plan: every job runs (concurrently), then outputs are
  * joined with the static segments into one Buffer. This is the byte-for-byte
- * behavior every `data-bascik-server` page has always had.
+ * behavior every `data-bascik-server` page has always had. `manifest` is the
+ * page's component manifest (`StoredPage.componentManifest`, prompt 157):
+ * with it, component tags in job output are rendered; without it they are
+ * the author's text.
  */
 export const executeServerScriptPlan = async (
   plan: ServerScriptPlan,
@@ -548,6 +744,7 @@ export const executeServerScriptPlan = async (
   context: ServerScriptContext,
   timeoutMs: number = DEFAULT_SCRIPT_TIMEOUT_MS,
   filePath?: string,
+  manifest?: ComponentManifest | null,
 ): Promise<Buffer> => {
   const { execution, run } = toExecution(
     plan,
@@ -555,6 +752,8 @@ export const executeServerScriptPlan = async (
     context,
     timeoutMs,
     filePath,
+    undefined,
+    manifest,
   );
   const bytes = await composeBufferedResponse(execution, run);
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -615,7 +814,8 @@ export interface ServerScriptStreamer {
  *
  * The scheduler itself is the portable core in `request-execution.ts`; this
  * function only adapts the Node plan, the ScriptRegistry runner, and the
- * Buffer sink onto it.
+ * Buffer sink onto it. `manifest` is the page's component manifest, as for
+ * `executeServerScriptPlan`.
  */
 export const streamServerScripts = (
   plan: ServerScriptPlan,
@@ -625,6 +825,7 @@ export const streamServerScripts = (
   filePath: string | undefined,
   sink: ResponseSink,
   signal?: AbortSignal,
+  manifest?: ComponentManifest | null,
 ): ServerScriptStreamer => {
   const { execution, run } = toExecution(
     plan,
@@ -633,6 +834,7 @@ export const streamServerScripts = (
     timeoutMs,
     filePath,
     signal,
+    manifest,
   );
   const streamer = streamComposedResponse(
     execution,

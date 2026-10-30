@@ -19,6 +19,15 @@ describe("csp-meta", () => {
     expect(origins).toEqual([]);
   });
 
+  it("hashes inline speculation rules, which browsers check against script-src", () => {
+    const rules =
+      '{"prerender":[{"source":"document","eagerness":"moderate"}]}';
+    const { hashes } = collectPageScripts(
+      `<script type="speculationrules">${rules}</script><script type=SpeculationRules>${rules}</script>`,
+    );
+    expect(hashes).toEqual([hashOf(rules)]);
+  });
+
   it("does not hash external scripts and records only third-party origins", () => {
     const { hashes, origins } = collectPageScripts(
       '<script type="module" src="/assets/vendor/x.js"></script><script src="https://unpkg.com/alpinejs" defer></script>',
@@ -76,6 +85,18 @@ describe("csp-meta", () => {
     expect(result.indexOf("Content-Security-Policy")).toBeLessThan(
       result.indexOf("<script>"),
     );
+  });
+
+  it("still adds a policy to a page whose text shows a policy meta tag", () => {
+    // The CSP how-to shows `<meta http-equiv="Content-Security-Policy" ...>` in a code block. Only a real tag
+    // in <head> means the page already has a policy.
+    const html =
+      '<head><meta charset="UTF-8" /></head><body><pre><code>&lt;meta http-equiv="Content-Security-Policy" content="x" /&gt;</code></pre><script>run()</script></body>';
+    const result = injectCspMeta(html);
+    expect(result).toContain(
+      `<meta charset="UTF-8" /><meta http-equiv="Content-Security-Policy" content="script-src 'self' ${hashOf("run()")}`,
+    );
+    expect(injectCspMeta(result)).toBe(result);
   });
 
   it("falls back to <head>, skips pages without one, and is idempotent", () => {

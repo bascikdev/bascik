@@ -7,6 +7,7 @@ import { format } from "node:util";
 import { CLI_USAGE, resolveCliAction } from "./lib/cli.ts";
 import { readVersion } from "./lib/version.ts";
 import { installProcessCrashHandlers } from "./lib/crash-net.ts";
+import { exitAfterStopping } from "./lib/exit-stoppers.ts";
 import { stripColors } from "./lib/colors.ts";
 
 export { readVersion, installProcessCrashHandlers };
@@ -87,7 +88,10 @@ export const runCli = async (
     case "init": {
       const { initProject } = await import("./lib/init.ts");
       console.log("\nInitializing Bascik project…\n");
-      await initProject();
+      await initProject({
+        yes: decision.flags.yes,
+        skills: !decision.flags.noSkills,
+      });
       exit(0);
       return { action: "init", exitCode: 0 };
     }
@@ -181,7 +185,10 @@ export const runCli = async (
           ) {
             console.error(errMsg);
           }
-          process.exit(1);
+          // A failed build or dev boot may still have page workers loading
+          // (exiting then can abort Node 24): stop them first.
+          exitAfterStopping(1);
+          return { action: decision.action, exitCode: 1 };
         }
         throw err;
       }
@@ -205,6 +212,6 @@ if (isMain) {
     await runCli(process.argv.slice(2), { exitOnFinish: true });
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    exitAfterStopping(1);
   }
 }

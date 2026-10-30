@@ -4,13 +4,27 @@ import { tmpdir } from "node:os";
 import { mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import { emitServerlessArtifacts } from "./serverless-artifacts.ts";
 import { SIDECAR_SCHEMA_VERSION } from "./server-sidecar.ts";
+import { COMPONENT_MANIFEST_SCHEMA_VERSION } from "./component-manifest.ts";
+import { privateDirFor } from "./private-dir.ts";
+
+// A sidecar with page entries needs the component manifest a build writes
+// beside it (prompt 157); the fixtures here render no components.
+const EMPTY_COMPONENT_MANIFEST = {
+  schema: COMPONENT_MANIFEST_SCHEMA_VERSION,
+  identifiers: true,
+  minifyHtml: true,
+  base: "/",
+  inheritAttributes: true,
+  components: {},
+};
 
 describe("adapter contract and execution", () => {
   it("runs reference fixture adapter, stages inline sources, writes build-info.json and cleans staging", async () => {
     const testDir = join(tmpdir(), `bascik-contract-test-${Date.now()}`);
     const distDir = join(testDir, "dist");
-    const bascikHiddenDir = join(distDir, ".bascik");
+    const bascikHiddenDir = privateDirFor(distDir);
     await mkdir(bascikHiddenDir, { recursive: true });
+    await mkdir(distDir, { recursive: true });
 
     // static file
     await writeFile(join(distDir, "index.html"), "<h1>Home</h1>", "utf8");
@@ -33,6 +47,11 @@ describe("adapter contract and execution", () => {
     await writeFile(
       join(bascikHiddenDir, "server-scripts.json"),
       JSON.stringify(sidecar),
+      "utf8",
+    );
+    await writeFile(
+      join(bascikHiddenDir, "components.json"),
+      JSON.stringify(EMPTY_COMPONENT_MANIFEST),
       "utf8",
     );
 
@@ -78,8 +97,9 @@ describe("adapter contract and execution", () => {
   it("stages inline script sources in .staging and cleans up after build", async () => {
     const testDir = join(tmpdir(), `bascik-contract-staging-${Date.now()}`);
     const distDir = join(testDir, "dist");
-    const bascikHiddenDir = join(distDir, ".bascik");
+    const bascikHiddenDir = privateDirFor(distDir);
     await mkdir(bascikHiddenDir, { recursive: true });
+    await mkdir(distDir, { recursive: true });
 
     await writeFile(
       join(distDir, "stream.html"),
@@ -99,6 +119,11 @@ describe("adapter contract and execution", () => {
     await writeFile(
       join(bascikHiddenDir, "server-scripts.json"),
       JSON.stringify(sidecar),
+      "utf8",
+    );
+    await writeFile(
+      join(bascikHiddenDir, "components.json"),
+      JSON.stringify(EMPTY_COMPONENT_MANIFEST),
       "utf8",
     );
 
@@ -156,8 +181,9 @@ describe("adapter contract and execution", () => {
       JSON.stringify({ name: "absent-test" }),
     );
     const distDir = join(testDir, "dist");
-    const bascikHiddenDir = join(distDir, ".bascik");
+    const bascikHiddenDir = privateDirFor(distDir);
     await mkdir(bascikHiddenDir, { recursive: true });
+    await mkdir(distDir, { recursive: true });
     await writeFile(join(distDir, "index.html"), "<h1>Home</h1>", "utf8");
 
     try {
@@ -178,8 +204,9 @@ describe("adapter contract and execution", () => {
   it("rejects an adapter that writes outside its target outDir", async () => {
     const testDir = join(tmpdir(), `bascik-contract-escape-${Date.now()}`);
     const distDir = join(testDir, "dist");
-    const bascikHiddenDir = join(distDir, ".bascik");
+    const bascikHiddenDir = privateDirFor(distDir);
     await mkdir(bascikHiddenDir, { recursive: true });
+    await mkdir(distDir, { recursive: true });
 
     await writeFile(join(distDir, "index.html"), "<h1>Home</h1>", "utf8");
     const sidecar = { schema: SIDECAR_SCHEMA_VERSION, scripts: {} };
@@ -226,8 +253,9 @@ describe("adapter contract and execution", () => {
   it("rejects an adapter that creates a symlink pointing outside outDir", async () => {
     const testDir = join(tmpdir(), `bascik-contract-symlink-${Date.now()}`);
     const distDir = join(testDir, "dist");
-    const bascikHiddenDir = join(distDir, ".bascik");
+    const bascikHiddenDir = privateDirFor(distDir);
     await mkdir(bascikHiddenDir, { recursive: true });
+    await mkdir(distDir, { recursive: true });
 
     await writeFile(join(distDir, "index.html"), "<h1>Home</h1>", "utf8");
     const sidecar = { schema: SIDECAR_SCHEMA_VERSION, scripts: {} };
@@ -277,8 +305,9 @@ describe("adapter contract and execution", () => {
   it("rejects an adapter that mutates existing dist files outside outDir", async () => {
     const testDir = join(tmpdir(), `dist-read-only-${Date.now()}`);
     const distDir = join(testDir, "dist");
-    const bascikHiddenDir = join(distDir, ".bascik");
+    const bascikHiddenDir = privateDirFor(distDir);
     await mkdir(bascikHiddenDir, { recursive: true });
+    await mkdir(distDir, { recursive: true });
 
     const distFile = join(distDir, "index.html");
     await writeFile(distFile, "<h1>Original</h1>", "utf8");
@@ -325,10 +354,11 @@ describe("adapter contract and execution", () => {
   it("rejects build when public assets collide with generated control files or static API routes", async () => {
     const testDir = join(tmpdir(), `bascik-collision-test-${Date.now()}`);
     const distDir = join(testDir, "dist");
-    const bascikHiddenDir = join(distDir, ".bascik");
+    const bascikHiddenDir = privateDirFor(distDir);
     const srcApiDir = join(testDir, "src/api");
     await mkdir(bascikHiddenDir, { recursive: true });
     await mkdir(srcApiDir, { recursive: true });
+    await mkdir(distDir, { recursive: true });
 
     // Colliding public file with API route
     await writeFile(join(distDir, "index.html"), "<h1>Home</h1>", "utf8");

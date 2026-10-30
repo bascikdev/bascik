@@ -19,7 +19,7 @@ Bascik inverts that relationship. Adding a new component adds zero JavaScript to
 Start with the category you want to improve. Each page lists what Lighthouse checks, what Bascik already does for you, and the vanilla HTML, CSS, and JavaScript patterns for the rest.
 
 - **[Performance](/lighthouse/performance):** Responsive images, lazy loading, resource hints, font loading, critical CSS, minification, and profiling with Chrome DevTools.
-- **[Accessibility](/lighthouse/accessibility):** Semantic landmarks, labels, skip links, contrast, focus, and native interactive elements like `<details>` and `<dialog>`.
+- **[Accessibility](/lighthouse/accessibility):** Semantic landmarks, labels, skip links, contrast, focus, and native interactive elements like `<details>` and `<dialog>`. Start with [Component Best Practices](/component-best-practices#use-htmls-elements): most accessibility audits pass when each element is the right one for its job.
 - **[Best Practices](/lighthouse/best-practices):** HTTPS, a valid document shell, image aspect ratios, a clean console, and Content Security Policy hashes.
 - **[SEO](/lighthouse/seo):** Titles, descriptions, canonical URLs, Open Graph, JSON-LD structured data, and a complete head template.
 - **[Agentic Browsing](/lighthouse/agentic-browsing):** The accessibility tree, layout stability, and `llms.txt` for AI agents and automated browsers.
@@ -34,7 +34,7 @@ Bascik's performance story starts before any of the techniques on the category p
 
 **HTML minification.** HTML comments are stripped and excess whitespace is collapsed in every built page. Content inside `<pre>`, `<textarea>`, `<script>`, and `<style>`, and every attribute value, is left intact, and non-breaking spaces are never touched. The minifier does not read your CSS: an element styled `white-space: pre` (or `pre-wrap`, `pre-line`) that is not a `<pre>` loses its extra spaces and line breaks, so use `<pre>` for preformatted text or set `minify.html: false`.
 
-**Script minification.** `minify.js` is `true` by default, stripping comments and whitespace from every inline `<script>` block and any `.js` static files copied to `dist/`. For identifier mangling and dead-code elimination, plug in esbuild (see [Minify JavaScript Output](/lighthouse/performance#minify-javascript-output-byominifier)).
+**Script minification.** `minify.js` is `true` by default, stripping comments and whitespace from every inline `<script>` block and any `.js` static files copied to `dist/`. For local variable renaming and constant folding, worth roughly another 9% of compressed script bytes, plug in esbuild (see [Minify JavaScript Output](/lighthouse/performance#minify-javascript-output-byominifier)).
 
 **Maximum Brotli compression.** Under `bascik --server` and `bascik --build`, pages are compressed using maximum Brotli quality (`BROTLI_MAX_QUALITY = 11`), delivering optimal payload sizes for production delivery. Compressible static assets (CSS, JavaScript, SVG, JSON) up to 2 MiB are compressed on demand by negotiation; already-compressed formats (images, video, WOFF2) and assets above 2 MiB are served as-is. Large assets are streamed from disk rather than buffered, so a burst of requests for a big file does not multiply its size in server memory.
 

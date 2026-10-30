@@ -36,13 +36,15 @@ import { defineConfig } from "vite";
 export default defineConfig({ test: { include: ["src/**/*.test.ts"] } });
 ```
 
-Server, stream, and API logic: put it in `src/lib/*.ts`, unit test the functions, and cover the HTTP layer with requests against the dev server or `bascik --server`.
+Server, stream, and API logic: put it in `src/lib/*.ts`, unit test the functions, and cover the HTTP layer with requests against the dev server or `bascik --server`. A function or handler that returns `html` from `@bascik/bascik/html` returns an object, not a string: assert on `String(output)` (`expect(String(output)).toContain("Seattle")`), and type a helper's return as `SafeHtml`, not `string`.
 
 ## E2E tests: locators that survive production
 
 `bascik --build` hashes scoped class names and IDs (`minify.identifiers`). Selectors such as `.my-card` or `#btn` that work in dev fail in production.
 
-- Use `page.getByRole(...)`, `getByLabel(...)`, `getByText(...)`, or `getByTestId(...)` with an explicit `data-testid` in the component template.
+- Find a component, or a part of one, with `getByTestId(...)`. Every component root has `data-testid="<component-name>"` and each interactive part has `data-testid="<component-name>-<part>"` (rule 16 of the `bascik` skill); add any that are missing to the template, and run `verify.mjs`, whose advisory lists the gaps. Bascik never scopes or hashes `data-testid`.
+- Use `getByRole(...)`, `getByLabel(...)`, or `getByText(...)` first when the test is about what a person reads or hears: a button's accessible name, a field's label, a heading.
+- Instances share their test ids. Pick one with `.filter({ hasText: "..." })`, or give it its own with `data-testid` on the usage tag in the test page, which replaces the root's.
 - Never use scoped names (`.bascik__my-card__title`), positional `.nth(N)` chains, or `locator('..')` traversal to reach an element.
 - Put two instances of a component on a test page and assert they act independently; that catches the class-selector pitfall.
 - Test against the production build (`bascik --build` served statically, or `bascik --server`), not only the dev server: script placement and identifiers differ.
@@ -65,7 +67,7 @@ Install `parse5` as a dev dependency and `bascik --check` will report WHATWG par
 
 ## Debug
 
-- **Component scripts:** in DevTools Sources, open `src/components/<name>.html` (Cmd+P / Ctrl+P). Lines match the source in dev. Later instances are `<name>.html?instance=2`. Use `debugger;` to stop in every instance.
+- **Component scripts:** in DevTools Sources, open `src/components/<name>/<name>.html` (Cmd+P / Ctrl+P). Lines match the source in dev. Later instances are `<name>.html?instance=2`. Use `debugger;` to stop in every instance.
 - **Build, routes, server, and stream scripts:** errors point at the file and line where the script was written. Set breakpoints in VS Code and launch the dev server under the debugger.
 - **Wrong output:** run `node <skills-dir>/bascik/scripts/preview.mjs --page src/pages/x.html` to read the unminified compiled page.
 - **Stale build script output:** a script that reads the network or a directory is cached; add it to `scripts.cache.exclude` or delete `node_modules/.cache/bascik/script-cache`.
@@ -74,7 +76,7 @@ VS Code launch configurations and step-by-step flows: `read-doc.mjs /testing/deb
 
 ## Lighthouse
 
-Bascik output starts near 100 because it adds no runtime. The remaining points come from ordinary HTML practice: explicit image `width` and `height`, `loading="lazy"` below the fold only, preload of the hero image and critical fonts, `defer` scripts, a unique `<title>`, description, and canonical per page, landmarks, labeled controls, and `lang` on `<html>`. Checklists: `read-doc.mjs /lighthouse/performance`, `/lighthouse/accessibility`, `/lighthouse/best-practices`, `/lighthouse/seo`, and `/lighthouse/agentic-browsing`.
+Bascik output starts near 100 because it adds no runtime. The remaining points come from ordinary HTML practice: explicit image `width` and `height`, `loading="lazy"` below the fold only, preload of the hero image and critical fonts, `defer` scripts, a unique `<title>`, description, and canonical per page, landmarks, labeled controls, and `lang` on `<html>`. Checklists: `read-doc.mjs /lighthouse/performance`, `/lighthouse/accessibility`, `/lighthouse/best-practices`, `/lighthouse/seo`, and `/lighthouse/agentic-browsing`. To fail a build unless every page scores 100 in all five categories, run `bascik-refactor/scripts/lighthouse-gate.mjs` from the opt-in `bascik-refactor` skill (`npx skills add bascikdev/bascik --skill bascik-refactor`) over the Lighthouse JSON reports.
 
 ## Look it up
 
@@ -84,5 +86,6 @@ Bascik output starts near 100 because it adds no runtime. The remaining points c
 | Test components in a browser         | `/testing/component-testing`, `/testing/e2e-testing`                         |
 | Test build, server, and exec scripts | `/testing/build-scripts`, `/testing/server-scripts`, `/testing/exec-scripts` |
 | Lint in CI                           | `/testing/linting`, `/tools/linter`                                          |
+| Fix a known problem                  | `/testing/troubleshooting`                                                   |
 
 `node <skills-dir>/bascik/scripts/read-doc.mjs <path>` prints any of these.

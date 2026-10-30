@@ -210,13 +210,6 @@ describe("extractScriptTags", () => {
     );
   });
 
-  it("stays linear on many comment openers without a close", () => {
-    const started = performance.now();
-    minifyHtml(`<p>a</p>${"<!--".repeat(50_000)}`);
-    minifyHtml(`<p>a</p>${"<!---->".repeat(50_000)}`);
-    expect(performance.now() - started).toBeLessThan(2000);
-  });
-
   it("still removes comments in a closed context, including next to a kept one", () => {
     const html =
       "<p>a</p><!-- gone --><scr<!-- kept -->ipt>b()</script><!-- gone too --><p>c</p>";
@@ -252,20 +245,6 @@ describe("extractScriptTags", () => {
       '<p>a</p><script data-bascik-server>s()</script><script type="application/ld+json">{}</script>\n' +
         "<script>one()</script>\n<script>two()</script>\n<script>three()</script>",
     );
-  });
-
-  it("stays fast on many scripts, including many inside unclosed tags", () => {
-    const started = performance.now();
-    expect(
-      extractScriptTags("<p>x</p><script>a()</script>".repeat(20_000)).split(
-        "\n",
-      ),
-    ).toHaveLength(20_000);
-    expect(extractScriptTags("<p x <script>a()</script>".repeat(20_000))).toBe(
-      "",
-    );
-    minifyHtml(("<" + "a".repeat(100) + "<script>a()</script>").repeat(10_000));
-    expect(performance.now() - started).toBeLessThan(2000);
   });
 
   it("never changes what the browser builds or which scripts can run, on random malformed markup", () => {
@@ -385,6 +364,45 @@ describe("minifyHtml", () => {
     }
     expect(result).toContain("<!-- literal -->\n<script>example()</script>");
     expect(fullInputNormalizations).toBeLessThanOrEqual(1);
+  });
+
+  it("keeps the space between inline elements across a comment or script stand-in in a table", () => {
+    // A comment renders nothing, so `a</b> <!-- --> <b>b` shows "a b"; the
+    // `<!---->` a table keeps in its place must not cost that space.
+    expect(
+      minifyHtml(
+        "<table><tr><td><b>a</b> <!-- c --> <b>b</b></td></tr></table>",
+      ),
+    ).toBe("<table><tr><td><b>a</b><!----> <b>b</b></td></tr></table>");
+    expect(
+      minifyHtml(
+        "<table><tr><td><b>a</b><!-- c --> <b>b</b></td></tr></table>",
+      ),
+    ).toBe("<table><tr><td><b>a</b><!----> <b>b</b></td></tr></table>");
+    expect(
+      minifyHtml(
+        "<table><tr><td><button>a</button>\n<script>x()</script>\n<button>b</button></td></tr></table>",
+      ),
+    ).toBe(
+      "<table><tr><td><button>a</button><!----> <button>b</button></td></tr></table>\n<script>x()</script>",
+    );
+    expect(
+      minifyHtml(
+        "<table><tr><td><b>a</b> <!-- c --> <!-- d --><!-- e --> <b>b</b></td></tr></table>",
+      ),
+    ).toBe(
+      "<table><tr><td><b>a</b><!----><!----><!----> <b>b</b></td></tr></table>",
+    );
+    // Next to a block, the whitespace still goes.
+    expect(
+      minifyHtml(
+        "<table><tr><td><p>a</p> <!-- c --> <b>b</b></td></tr></table>",
+      ),
+    ).toBe("<table><tr><td><p>a</p><!----><b>b</b></td></tr></table>");
+    // Matches what the same markup gives outside a table.
+    expect(minifyHtml("<div><b>a</b> <!-- c --> <b>b</b></div>")).toBe(
+      "<div><b>a</b> <b>b</b></div>",
+    );
   });
 
   it("preserves sensitive content with whitespace in closing tags", () => {

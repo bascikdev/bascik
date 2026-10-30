@@ -1,15 +1,14 @@
 /**
- * e2e tests for form `name` attribute scoping on the form-test fixture page.
+ * e2e tests for form `name` attributes on the form-test fixture page.
  *
- * Two instances of <form-test> are rendered side by side. Tests verify:
- *   - Input/select `name` attributes are scoped per-instance
- *   - `new FormData(form)` entries use the scoped names as keys
- *   - The two instances produce distinct scoped names (different hash segments)
+ * Two instances of <form-test> are rendered side by side. `name` ships as
+ * written (scoping.attributes.name is off by default; the opt-in is covered
+ * on the base fixture). Tests verify:
+ *   - Input/select `name` attributes keep the authored names
+ *   - `new FormData(form)` entries use the authored names as keys
+ *   - Each instance's form submits only its own fields
  *   - Clicking a button in one instance does not mutate the other instance's result
- *   - The in-component `getElementById` calls are also rewritten to scoped names
- *
- * The fixture is built with `minify.identifiers: false` so readable scoped
- * names like `bascik__form-test__9c332cac__username` appear in the DOM.
+ *   - The in-component `getElementById` calls are rewritten to scoped ids
  */
 import { test, expect, type Page, type Locator } from "@playwright/test";
 
@@ -32,56 +31,45 @@ const button = (instance: Locator, testId: string) =>
 // Test suite
 // ---------------------------------------------------------------------------
 
-test.describe("form-test page — name attribute scoping", () => {
+test.describe("form-test page — name attribute", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/form-test");
   });
 
-  // ── 1. username input has a scoped name attribute ───────────────────────
+  // ── 1. username input keeps its authored name ───────────────────────────
 
-  test("username input has scoped name attribute", async ({ page }) => {
+  test("username input keeps its authored name", async ({ page }) => {
     const { a } = getInstances(page);
-    const usernameInput = a.getByTestId("username-input");
-    await expect(usernameInput).toHaveAttribute(
+    await expect(a.getByTestId("username-input")).toHaveAttribute(
       "name",
-      /bascik__form-test__.+__username/,
+      "username",
     );
   });
 
-  // ── 2. email input has a scoped name attribute ──────────────────────────
+  // ── 2. email input keeps its authored name ──────────────────────────────
 
-  test("email input has scoped name attribute", async ({ page }) => {
+  test("email input keeps its authored name", async ({ page }) => {
     const { a } = getInstances(page);
-    const emailInput = a.getByTestId("email-input");
-    await expect(emailInput).toHaveAttribute(
-      "name",
-      /bascik__form-test__.+__email/,
-    );
+    await expect(a.getByTestId("email-input")).toHaveAttribute("name", "email");
   });
 
-  // ── 3. role select has a scoped name attribute ──────────────────────────
+  // ── 3. role select keeps its authored name ──────────────────────────────
 
-  test("role select has scoped name attribute", async ({ page }) => {
+  test("role select keeps its authored name", async ({ page }) => {
     const { a } = getInstances(page);
-    const roleSelect = a.getByTestId("role-select");
-    await expect(roleSelect).toHaveAttribute(
-      "name",
-      /bascik__form-test__.+__role/,
-    );
+    await expect(a.getByTestId("role-select")).toHaveAttribute("name", "role");
   });
 
-  // ── 4. FormData keys contain the scoped name prefix ─────────────────────
+  // ── 4. FormData keys are the authored names ─────────────────────────────
   //
   // Clicking "Read FormData" runs `new FormData(form)` inside the component's
-  // scoped script, then joins the entry keys into the result div. Because name
-  // attributes are scoped, FormData uses the scoped names as keys.
+  // script, then joins the entry keys into the result div: the keys a server
+  // receives on submit.
 
-  test("FormData keys use scoped names (contain bascik__form-test__ prefix)", async ({
-    page,
-  }) => {
+  test("FormData keys are the authored names", async ({ page }) => {
     const { a } = getInstances(page);
     await button(a, "submit-btn").click();
-    await expect(result(a)).toHaveText(/keys: bascik__form-test__.+__username/);
+    await expect(result(a)).toHaveText("keys: username, email, role");
   });
 
   // ── 5. FormData has exactly 3 entries ───────────────────────────────────
@@ -94,20 +82,25 @@ test.describe("form-test page — name attribute scoping", () => {
     await expect(result(a)).toHaveText("count: 3");
   });
 
-  // ── 6. both instances have different name scopes (different hashes) ─────
+  // ── 6. both instances share the authored name ───────────────────────────
   //
-  // Each instance gets a unique hash segment. The scoped names for instance A
-  // and instance B must differ so FormData from both forms doesn't collide.
+  // Each copy has its own <form>, so the shared name never collides: each
+  // form's FormData holds only its own three fields.
 
-  test("both instances have different scoped name attributes for username", async ({
+  test("both instances keep the same authored name for username", async ({
     page,
   }) => {
     const { a, b } = getInstances(page);
-    const nameA = await a.getByTestId("username-input").getAttribute("name");
-    const nameB = await b.getByTestId("username-input").getAttribute("name");
-    expect(nameA).toMatch(/bascik__form-test__.+__username/);
-    expect(nameB).toMatch(/bascik__form-test__.+__username/);
-    expect(nameA).not.toBe(nameB);
+    await expect(a.getByTestId("username-input")).toHaveAttribute(
+      "name",
+      "username",
+    );
+    await expect(b.getByTestId("username-input")).toHaveAttribute(
+      "name",
+      "username",
+    );
+    await button(b, "check-entries-btn").click();
+    await expect(result(b)).toHaveText("count: 3");
   });
 
   // ── 7. clicking submit in A does not affect B's result ──────────────────

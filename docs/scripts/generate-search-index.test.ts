@@ -1,9 +1,23 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
 import config from "../bascik.config.ts";
 import { HOME_SITELINKS } from "../src/lib/nav.ts";
 import { stripMd } from "./generate-search-index.ts";
+import { expandSearchIndex } from "../src/components/docs-search/search-logic.ts";
+import {
+  buildSearchEntries,
+  searchIndexJson,
+  searchIndexPath,
+} from "../src/lib/search-index.ts";
+
+const assetsDir = path.resolve(import.meta.dirname, "../dist/assets");
+
+/** The compact index the pages fetch, at its content-hashed name. */
+async function hashedIndexFile(): Promise<string> {
+  const json = searchIndexJson(await buildSearchEntries());
+  return path.join(assetsDir, path.basename(searchIndexPath(json)));
+}
 
 describe("generate-search-index", () => {
   it("drops comments without joining words into comment delimiters", () => {
@@ -32,12 +46,9 @@ describe("generate-search-index", () => {
   it("generates dist/assets/search-index.json from nav pages", async () => {
     await import("./generate-search-index.js");
 
-    const searchIndexFile = path.resolve(
-      import.meta.dirname,
-      "../dist/assets/search-index.json",
-    );
+    const searchIndexFile = await hashedIndexFile();
     const content = await fs.readFile(searchIndexFile, "utf8");
-    const entries = JSON.parse(content);
+    const entries = expandSearchIndex(JSON.parse(content));
 
     expect(Array.isArray(entries)).toBe(true);
     expect(entries.length).toBeGreaterThan(0);
@@ -48,6 +59,29 @@ describe("generate-search-index", () => {
     expect(firstEntry).toHaveProperty("section");
     expect(firstEntry).toHaveProperty("path");
     expect(firstEntry).toHaveProperty("text");
+  });
+
+  it("writes the compact index at its hashed name and the public array at the unversioned name, and drops stale versions", async () => {
+    const stale = path.join(assetsDir, "search-index.0000000000.json");
+    await fs.mkdir(assetsDir, { recursive: true });
+    await fs.writeFile(stale, "{}");
+    vi.resetModules();
+    await import("./generate-search-index.js");
+
+    const compact = JSON.parse(
+      await fs.readFile(await hashedIndexFile(), "utf8"),
+    );
+    expect(Array.isArray(compact.pages)).toBe(true);
+    const legacy = JSON.parse(
+      await fs.readFile(path.join(assetsDir, "search-index.json"), "utf8"),
+    );
+    expect(Array.isArray(legacy)).toBe(true);
+    expect(legacy).toEqual(expandSearchIndex(compact));
+    await expect(fs.access(stale)).rejects.toThrow();
+    const versions = (await fs.readdir(assetsDir)).filter((name) =>
+      /^search-index\.[0-9a-f]{10}\.json$/.test(name),
+    );
+    expect(versions).toEqual([path.basename(await hashedIndexFile())]);
   });
 
   it("reads the meta description whatever the attribute order or quote style", async () => {
@@ -71,19 +105,18 @@ describe("generate-search-index", () => {
   it("indexes the Home page first with the ordered sitelinks from nav.ts", async () => {
     await import("./generate-search-index.js");
 
-    const searchIndexFile = path.resolve(
-      import.meta.dirname,
-      "../dist/assets/search-index.json",
-    );
+    const searchIndexFile = await hashedIndexFile();
     const entries: Array<{
-      title: string;
+      title?: string;
       navLabel: string;
-      section: string;
+      section?: string;
       path: string;
       heading: string | null;
       text: string;
       sitelinks?: string[];
-    }> = JSON.parse(await fs.readFile(searchIndexFile, "utf8"));
+    }> = expandSearchIndex(
+      JSON.parse(await fs.readFile(searchIndexFile, "utf8")),
+    );
 
     const home = entries[0];
     expect(home.path).toBe("/");
@@ -104,17 +137,14 @@ describe("generate-search-index", () => {
   it("indexes code block contents and h3 headings for deduplicateCss across pages", async () => {
     await import("./generate-search-index.js");
 
-    const searchIndexFile = path.resolve(
-      import.meta.dirname,
-      "../dist/assets/search-index.json",
-    );
+    const searchIndexFile = await hashedIndexFile();
     const content = await fs.readFile(searchIndexFile, "utf8");
     const entries: Array<{
       navLabel: string;
       heading: string | null;
       text: string;
       path: string;
-    }> = JSON.parse(content);
+    }> = expandSearchIndex(JSON.parse(content));
 
     const dedupEntries = entries.filter(
       (e) =>

@@ -1,12 +1,24 @@
 import { maskCssSyntax } from "./css-tokenizer.ts";
+import { replaceSpans, scanOpeningTags } from "./element-content-scan.ts";
+
+/**
+ * `html.replace(/<[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g, replace)`
+ * in linear time.
+ */
+const replaceOpeningTags = (
+  html: string,
+  replace: (openingTag: string) => string,
+): string =>
+  replaceSpans(
+    html,
+    scanOpeningTags(html).map(([start, end]) => ({ start, end })),
+    replace,
+  );
 import {
   createContentShield,
   maskElementContents,
   shieldElementContents,
 } from "./shielding.ts";
-
-const OPENING_TAG_PATTERN =
-  /<[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g;
 
 const shieldComments = (
   html: string,
@@ -43,10 +55,14 @@ export const collectDeclaredIds = (html: string): Set<string> => {
     maskElementContents(html, ["script", "style", "textarea"]),
   );
   const declaredIds = new Set<string>();
-  for (const tagMatch of shieldedHtml.matchAll(OPENING_TAG_PATTERN)) {
-    const idMatch = tagMatch[0].match(
-      /\sid\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+?))(?=\s|\/>|>|$)/i,
-    );
+  // The opening tags `/<[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g`
+  // finds, in linear time.
+  for (const [tagStart, tagEnd] of scanOpeningTags(shieldedHtml)) {
+    const idMatch = shieldedHtml
+      .slice(tagStart, tagEnd)
+      .match(
+        /\sid\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+?))(?=\s|\/>|>|$)/i,
+      );
     const rawUnquoted = idMatch?.[3];
     const unquoted = rawUnquoted?.endsWith("/")
       ? rawUnquoted.slice(0, -1)
@@ -171,7 +187,7 @@ export const rewriteIdReferencesInHtml = (
 ): string => {
   if (!QUICK_ID_REF_RE.test(html)) return html;
   const { html: shieldedHtml, restore } = shieldHtmlScanningContexts(html);
-  const rewritten = shieldedHtml.replace(OPENING_TAG_PATTERN, (openingTag) => {
+  const rewritten = replaceOpeningTags(shieldedHtml, (openingTag) => {
     if (!QUICK_ID_REF_RE.test(openingTag)) return openingTag;
     const tagName = openingTag
       .match(/^<\s*([a-zA-Z][a-zA-Z0-9:-]*)/)?.[1]
@@ -244,7 +260,7 @@ export const rewriteUsemapReferencesInHtml = (
 ): string => {
   if (!/usemap/i.test(html)) return html;
   const { html: shieldedHtml, restore } = shieldHtmlScanningContexts(html);
-  const rewritten = shieldedHtml.replace(OPENING_TAG_PATTERN, (openingTag) => {
+  const rewritten = replaceOpeningTags(shieldedHtml, (openingTag) => {
     if (!/^<\s*img(?:\s|\/?>)/i.test(openingTag)) return openingTag;
     return replaceAttributeValue(openingTag, "usemap", (value) =>
       rewriteFragment(value, resolve),

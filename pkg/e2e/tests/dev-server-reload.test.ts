@@ -10,6 +10,7 @@
  *   6. HTTP protocol, security headers, and method handling (GET, HEAD, 405, 400)
  *   7. In-memory page serving, Brotli compression, and route normalization
  *   8. Request-time script execution (`data-bascik-server`) in dev mode
+ *   9. Component edits that only reach a page through script output (prompt 157)
  *
  * Run with:
  *   npx playwright test --config e2e/playwright.dev.config.ts
@@ -21,6 +22,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 import { spawn } from "node:child_process";
+import { BOOT_GATE_PAGE } from "./helpers/boot-gate-page.ts";
+import { outDir } from "./helpers/out-dir.ts";
 
 const e2eDir = fileURLToPath(new URL("..", import.meta.url));
 const pkgDir = join(e2eDir, "..");
@@ -31,7 +34,7 @@ const staticCssPath = join(e2eDir, "src/pages/dev-static-test.css");
 const contentDocPath = join(e2eDir, "src/content/watch-doc.md");
 const subfolderPagePath = join(e2eDir, "src/pages/subfolder/route-test.html");
 const inlinedGlobalCssPath = join(e2eDir, "src/css/inlined-global.css");
-const scopeTestOutputPath = join(e2eDir, "dist/scope-test.html");
+const scopeTestOutputPath = join(outDir(e2eDir), "scope-test.html");
 
 const dynamicCreatedCompPath = join(
   e2eDir,
@@ -130,6 +133,17 @@ const restoreFileIfChanged = async (
 };
 
 /**
+ * Origin of the dev server this project runs against (its `baseURL`), for
+ * requests made with `fetch` outside the Playwright request fixture. Read per
+ * call so the lane config stays the only place the port is written.
+ */
+const laneOrigin = (): string => {
+  const baseURL = test.info().project.use.baseURL;
+  if (!baseURL) throw new Error("dev-server-reload needs a project baseURL");
+  return new URL(baseURL).origin;
+};
+
+/**
  * Subscribe to the dev server's SSE stream as if a tab had `httpPath` open,
  * and resolve once one `reload` event for that page arrives. Used by
  * `afterEach` so the rebuild caused by restoring a fixture is fully consumed
@@ -145,8 +159,9 @@ const subscribeToServerReload = async (
 ): Promise<{ reload: Promise<void> }> => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
-  const res = await fetch(`http://localhost:9443/bascik-live-reload`, {
-    headers: { Referer: `http://localhost:9443${httpPath}` },
+  const origin = laneOrigin();
+  const res = await fetch(`${origin}/bascik-live-reload`, {
+    headers: { Referer: `${origin}${httpPath}` },
     signal: controller.signal,
   });
   const reader = res.body!.getReader();
@@ -171,7 +186,8 @@ const subscribeToServerReload = async (
   // write we issue after observing `connected` therefore cannot be processed
   // before that listener exists, so the resulting reload is guaranteed to
   // reach this subscription.
-  await readUntil(/^data: connected$/m, "connected");
+  // The server adds the stored page's version: `connected 12`.
+  await readUntil(/^data: connected( \d+)?$/m, "connected");
   const reload = readUntil(/^data: reload\b/m, "reload").finally(() => {
     clearTimeout(timer);
     controller.abort();
@@ -298,8 +314,8 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
 
   test("SSE endpoint responds with event-stream content-type and no-cache headers", async () => {
     const controller = new AbortController();
-    const res = await fetch("http://localhost:9443/bascik-live-reload", {
-      headers: { Referer: "http://localhost:9443/scope-test" },
+    const res = await fetch(`${laneOrigin()}/bascik-live-reload`, {
+      headers: { Referer: `${laneOrigin()}/scope-test` },
       signal: controller.signal,
     });
     expect(res.headers.get("content-type")).toContain("text/event-stream");
@@ -372,6 +388,49 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
     await expect(page.locator("h1")).toHaveText(markerText, { timeout: 15000 });
     const elapsed = performance.now() - start;
     expect(elapsed).toBeLessThan(5000);
+  });
+
+  // A page can load its old version and connect only after the rebuild that
+  // replaced it, missing that rebuild's reload (CI saw the new component
+  // never appear). The server sends the stored page's version on connect, and
+  // the page reloads when its own differs. Holding the page's live-reload
+  // connection until the rebuild has finished makes that order certain.
+  test("a page that connects after its rebuild reloads into the new version", async ({
+    page,
+  }) => {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let held = false;
+    await page.route("**/bascik-live-reload*", async (route) => {
+      if (!held) {
+        held = true;
+        await released;
+      }
+      await route.continue();
+    });
+    await page.goto("/scope-test");
+    await expect(page.locator("h1")).toHaveText(
+      "JS Scope Rewriting — Live Test",
+    );
+
+    const markerText = `Late Connect Marker ${Date.now()}`;
+    const { reload } = await subscribeToServerReload("/scope-test");
+    await writeFile(
+      pagePath,
+      originalPageContent.replace(
+        "<h1>JS Scope Rewriting — Live Test</h1>",
+        `<h1>${markerText}</h1>`,
+      ),
+      "utf8",
+    );
+    // The rebuild is stored and its reload has gone out, before the page has
+    // a connection to hear it.
+    await reload;
+    await expect(page.locator("h1")).toHaveText(
+      "JS Scope Rewriting — Live Test",
+    );
+    release();
+    await expect(page.locator("h1")).toHaveText(markerText, { timeout: 15000 });
   });
 
   // ── 3. Live Component Modification ─────────────────────────────────────────
@@ -1147,8 +1206,100 @@ test.describe("Dev Server Request-Time Scripts (data-bascik-server)", () => {
   });
 });
 
+test.describe("Dev Server component edits used only in script output (prompt 157)", () => {
+  // `server-card` appears in no page's markup: its only usages are the strings
+  // the server scripts on /server-components return. The page therefore has
+  // no component dependency for the watcher to follow; what links them is the
+  // request-time manifest, rebuilt on any component-list invalidation, and the
+  // reload the dev server publishes for every open page that has a
+  // server-script plan.
+  const serverCardPath = join(
+    e2eDir,
+    "src/components/server-card/server-card.html",
+  );
+  const INSTANCES = 3;
+  let originalServerCard: string;
+
+  const countOf = (html: string, marker: string): number =>
+    html.split(marker).length - 1;
+
+  test.beforeAll(async () => {
+    originalServerCard = await readFile(serverCardPath, "utf8");
+  });
+
+  test.afterEach(async () => {
+    const current = await readFile(serverCardPath, "utf8").catch(() => null);
+    if (current !== originalServerCard) {
+      const { reload } = await subscribeToServerReload("/server-components");
+      await writeFile(serverCardPath, originalServerCard, "utf8");
+      await reload.catch(() => {});
+    }
+  });
+
+  test("editing a component used only in server-script output reloads the open server page and the next response renders the new template", async ({
+    page,
+  }) => {
+    await page.goto("/server-components");
+    const versions = page.getByTestId("server-card-version");
+    await expect(versions).toHaveCount(INSTANCES);
+    await expect(versions.first()).toHaveText("server-card-v1");
+
+    const marker = `server-card-v2-${Date.now()}`;
+    const start = performance.now();
+    await writeFile(
+      serverCardPath,
+      originalServerCard.replace("server-card-v1", marker),
+      "utf8",
+    );
+
+    // The tab reloads over SSE and every instance renders the edited template.
+    await expect(page.getByTestId("server-card-version").first()).toHaveText(
+      marker,
+      { timeout: 15000 },
+    );
+    await expect(page.getByTestId("server-card-version")).toHaveText(
+      Array.from({ length: INSTANCES }, () => marker),
+    );
+    expect(performance.now() - start).toBeLessThan(5000);
+  });
+
+  test("a request during the rebuild renders a single version of the component", async ({
+    request,
+  }) => {
+    const before = await (await request.get("/server-components")).text();
+    expect(countOf(before, "server-card-v1")).toBe(INSTANCES);
+
+    const marker = `server-card-v2-${Date.now()}`;
+    await writeFile(
+      serverCardPath,
+      originalServerCard.replace("server-card-v1", marker),
+      "utf8",
+    );
+
+    // Every response between the write and the first fully new one is either
+    // all old or all new: a page always renders with the manifest it was
+    // stored with, never a mix.
+    await expect
+      .poll(
+        async () => {
+          const html = await (await request.get("/server-components")).text();
+          const oldCount = countOf(html, "server-card-v1");
+          const newCount = countOf(html, marker);
+          expect(oldCount + newCount, html).toBe(INSTANCES);
+          expect(oldCount === 0 || newCount === 0, html).toBe(true);
+          return newCount;
+        },
+        { timeout: 15000 },
+      )
+      .toBe(INSTANCES);
+  });
+});
+
 test.describe("Dev Server API Route Module Reload (prompt 112)", () => {
-  const apiRoutePath = join(e2eDir, "src/api/health.ts");
+  // A route no other spec requests: production lanes running alongside import
+  // API handlers from this same source tree on first request, so editing a
+  // shared route such as health.ts could leak into them.
+  const apiRoutePath = join(e2eDir, "src/api/reload-probe.ts");
   let originalHealthRoute: string;
 
   test.beforeAll(async () => {
@@ -1162,7 +1313,7 @@ test.describe("Dev Server API Route Module Reload (prompt 112)", () => {
       await expect
         .poll(
           async () => {
-            const res = await fetch("http://localhost:9443/api/health");
+            const res = await fetch(`${laneOrigin()}/api/reload-probe`);
             return (await res.json()).status;
           },
           { timeout: 15000 },
@@ -1174,7 +1325,7 @@ test.describe("Dev Server API Route Module Reload (prompt 112)", () => {
   test("serves the edited API route handler on the next request without a restart", async ({
     request,
   }) => {
-    const before = await request.get("/api/health");
+    const before = await request.get("/api/reload-probe");
     expect(before.status()).toBe(200);
     expect((await before.json()).status).toBe("healthy");
 
@@ -1191,7 +1342,7 @@ test.describe("Dev Server API Route Module Reload (prompt 112)", () => {
     await expect
       .poll(
         async () => {
-          const res = await request.get("/api/health");
+          const res = await request.get("/api/reload-probe");
           return (await res.json()).status;
         },
         { timeout: 15000 },
@@ -1279,13 +1430,33 @@ test.describe("Dev Server Startup Output", () => {
     const uniqueTranspiled = new Set(transpiledLines);
     expect(transpiledLines.length).toBe(uniqueTranspiled.size);
 
-    // 2. Check summary line: exactly one "✓ N pages transpiled in Xms" before server ready
+    // 2. Check summary line: exactly one "✓ N pages transpiled in Xms" before server ready.
+    // A site with build scripts appends "(N build scripts ran, M from cache)".
     const summaryLines = lines.filter((l) =>
-      /^✓ \d+ pages? transpiled in (?:[<]?[\d.]+(?:ms|s))$/.test(l),
+      /^✓ \d+ pages? transpiled in (?:[<]?[\d.]+(?:ms|s))(?: \(\d+ build scripts? ran, \d+ from cache\))?$/.test(
+        l,
+      ),
     );
     expect(summaryLines.length).toBe(1);
   });
 });
+
+/**
+ * The environment for a dev server a test starts itself in this fixture.
+ * The Playwright worker carries the lane's BASCIK_E2E_OUT (dist-dev), which
+ * is the lane's own dev server's output directory: a child booting into it
+ * cleared it while that server was writing there, failed with "ENOTEMPTY:
+ * directory not empty, rmdir", and exited during boot (seen as a 20 s wait
+ * for "Server running at" under yarn pkg:e2e:all). Each child gets its own.
+ */
+const childServerEnv = (port: string): NodeJS.ProcessEnv => ({
+  ...process.env,
+  BASCIK_SERVER_PORT: port,
+  BASCIK_E2E_OUT: childServerOut(port),
+});
+const childServerOut = (port: string): string => `dist-dev-child-${port}`;
+const removeChildServerOut = (port: string): Promise<void> =>
+  rm(join(e2eDir, childServerOut(port)), { recursive: true, force: true });
 
 const stopChildServer = async (
   child: ReturnType<typeof spawn>,
@@ -1322,7 +1493,7 @@ test.describe("Dev Server Cold Start & Boot Loading Screen", () => {
 
     const child = spawn(process.execPath, [entryPath], {
       cwd: e2eDir,
-      env: { ...process.env, BASCIK_SERVER_PORT: port },
+      env: childServerEnv(port),
     });
     let output = "";
     let exited = false;
@@ -1376,59 +1547,126 @@ test.describe("Dev Server Cold Start & Boot Loading Screen", () => {
     } finally {
       await stopChildServer(child);
       await rm(brokenPagePath, { force: true });
+      await removeChildServerOut(port);
     }
   });
 
+  // The boot page answers only while the initial transpile is still running
+  // and only for a page not yet in memory: alone that window is under a
+  // second for /index.html, and under load it may pass before the first
+  // request lands. So the test holds the transpile open itself: a gate page
+  // whose build script waits for a file the test writes only after it has
+  // seen the boot page, which makes the boot page's assertion unconditional.
+  // The server is polled until it binds (the child's output is shown if it
+  // exits first), never for a fixed number of attempts.
   test("serves boot loading screen during cold start before initial transpile completes and resolves pages afterwards", async () => {
+    test.setTimeout(150_000);
     const entryPath = join(pkgDir, "bin/bascik.js");
     const cacheDir = join(e2eDir, "node_modules/.cache/bascik");
     await rm(cacheDir, { recursive: true, force: true });
 
+    const gateDir = await mkdtemp(join(tmpdir(), "bascik-boot-gate-"));
+    const gateFile = join(gateDir, "release");
+    const gatePagePath = join(e2eDir, `src/pages/${BOOT_GATE_PAGE}`);
+    // Released by the test's file, by the test's cleanup removing the gate
+    // directory, or when this Playwright worker is gone (killed on a
+    // timeout, Ctrl-C), so an interrupted run never holds a later build.
+    // run-lanes.ts also removes a gate page a killed run left behind.
+    const gatePage = `<!doctype html><html><head><title>Boot gate</title></head><body>
+<script data-bascik-build>
+import { existsSync } from "node:fs";
+export default async function () {
+  // Held until the test has seen the boot page (dev-server-reload.test.ts).
+  const owner = ${process.pid};
+  const alive = () => {
+    try {
+      process.kill(owner, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const deadline = Date.now() + 50000;
+  while (
+    existsSync(${JSON.stringify(gateDir)}) &&
+    !existsSync(${JSON.stringify(gateFile)}) &&
+    alive() &&
+    Date.now() < deadline
+  )
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  return '<p data-testid="boot-gate">gate released</p>';
+}
+</script>
+</body></html>
+`;
     const port = "9992";
     const baseUrl = `http://localhost:${port}`;
-    const child = spawn(process.execPath, [entryPath], {
-      cwd: e2eDir,
-      env: { ...process.env, BASCIK_SERVER_PORT: port },
-    });
-
+    let child: ReturnType<typeof spawn> | undefined;
     let bootFinished = false;
     let output = "";
-    const captureOutput = (data: Buffer): void => {
-      output += stripVTControlCharacters(data.toString("utf8"));
-      bootFinished = output.includes("All tasks completed in");
-    };
-    child.stdout?.on("data", captureOutput);
-    child.stderr?.on("data", captureOutput);
+    const exited = (): boolean =>
+      child !== undefined &&
+      (child.exitCode !== null || child.signalCode !== null);
 
     try {
-      // 1. Poll until server binds port and responds to requests
-      let bootPageRes: Response | null = null;
-      for (let i = 0; i < 150; i++) {
-        try {
-          const res = await fetch(`${baseUrl}/index.html`);
-          if (res.status === 200) {
-            bootPageRes = res;
-            break;
-          }
-        } catch {
-          // Connection refused while starting server
-        }
-        await new Promise((r) => setTimeout(r, 100));
-      }
+      await writeFile(gatePagePath, gatePage, "utf8");
+      child = spawn(process.execPath, [entryPath], {
+        cwd: e2eDir,
+        env: childServerEnv(port),
+      });
+      const captureOutput = (data: Buffer): void => {
+        output += stripVTControlCharacters(data.toString("utf8"));
+        bootFinished = output.includes("All tasks completed in");
+      };
+      child.stdout?.on("data", captureOutput);
+      child.stderr?.on("data", captureOutput);
 
-      expect(bootPageRes).not.toBeNull();
-      expect(bootPageRes?.status).toBe(200);
+      // 1. Poll until the server binds and answers. The gate page cannot be
+      //    in memory yet, so it gets the boot page.
+      let bootPage: { status: number; html: string } | null = null;
+      await expect
+        .poll(
+          async () => {
+            if (exited())
+              throw new Error(`dev server exited during boot:\n${output}`);
+            try {
+              const res = await fetch(`${baseUrl}/${BOOT_GATE_PAGE}`);
+              bootPage = { status: res.status, html: await res.text() };
+              return true;
+            } catch {
+              return false; // connection refused while the server starts
+            }
+          },
+          { timeout: 60000, intervals: [50] },
+        )
+        .toBe(true);
 
-      // If caught while still booting, verify boot loading screen HTML
-      if (!bootFinished) {
-        const html = await bootPageRes!.text();
-        expect(html).toContain("Building site");
-      }
+      // 2. The boot loading screen, while the initial transpile is held.
+      expect(bootPage!.status).toBe(200);
+      expect(bootPage!.html).toContain("Building site");
+      expect(bootFinished).toBe(false);
 
-      // 2. Wait for initial transpile / boot phase to complete
-      await expect.poll(() => bootFinished, { timeout: 20000 }).toBe(true);
+      // 3. Release the transpile and wait for boot to complete.
+      await writeFile(gateFile, "go", "utf8");
+      await expect
+        .poll(
+          () => {
+            if (exited() && !bootFinished)
+              throw new Error(`dev server exited during boot:\n${output}`);
+            return bootFinished;
+          },
+          { timeout: 60000 },
+        )
+        .toBe(true);
 
-      // 3. Verify requesting /index.html, /, and /scope-test.html after boot return status 200 with transpiled content
+      // 4. Every page resolves with its transpiled content, the gate page
+      //    included, and none of them is the boot page.
+      const gateRes = await fetch(`${baseUrl}/${BOOT_GATE_PAGE}`);
+      expect(gateRes.status).toBe(200);
+      const gateText = await gateRes.text();
+      expect(gateText).not.toContain("Building site");
+      expect(gateText).toContain("gate released");
+
       const indexHtmlRes = await fetch(`${baseUrl}/index.html`);
       expect(indexHtmlRes.status).toBe(200);
       const indexText = await indexHtmlRes.text();
@@ -1446,7 +1684,12 @@ test.describe("Dev Server Cold Start & Boot Loading Screen", () => {
       expect(scopeText).not.toContain("Building site");
       expect(scopeText).toContain("JS Scope Rewriting");
     } finally {
-      await stopChildServer(child);
+      // Release the main dev server's compile of the gate page too.
+      await writeFile(gateFile, "go", "utf8").catch(() => {});
+      if (child) await stopChildServer(child);
+      await rm(gatePagePath, { force: true });
+      await rm(gateDir, { recursive: true, force: true });
+      await removeChildServerOut(port);
     }
   });
 
@@ -1463,24 +1706,30 @@ test.describe("Dev Server Cold Start & Boot Loading Screen", () => {
     const baseUrl = `http://localhost:${port}`;
     const child = spawn(process.execPath, [entryPath], {
       cwd: e2eDir,
-      env: { ...process.env, BASCIK_SERVER_PORT: port },
+      env: childServerEnv(port),
     });
 
-    let serverReady = false;
+    let output = "";
     const captureOutput = (data: Buffer): void => {
-      if (
-        stripVTControlCharacters(data.toString("utf8")).includes(
-          "Server running at",
-        )
-      ) {
-        serverReady = true;
-      }
+      output += stripVTControlCharacters(data.toString("utf8"));
     };
     child.stdout?.on("data", captureOutput);
     child.stderr?.on("data", captureOutput);
 
     try {
-      await expect.poll(() => serverReady, { timeout: 20000 }).toBe(true);
+      // Boot here is a few seconds even under load. A child that exits
+      // first fails at once with its output, not after the poll's timeout.
+      await expect
+        .poll(
+          () => {
+            if (child.exitCode !== null || child.signalCode !== null)
+              throw new Error(`dev server exited during boot:\n${output}`);
+            return output.includes("Server running at");
+          },
+          { timeout: 20000, message: "dev server did not finish booting" },
+        )
+        .toBe(true);
+      expect(output).toContain(`Server running at ${baseUrl}`);
 
       // Open a real page in the browser that connects the injected live-reload EventSource
       await page.goto(`${baseUrl}/server-scripts-resilience-test.html`);
@@ -1505,6 +1754,7 @@ test.describe("Dev Server Cold Start & Boot Loading Screen", () => {
       expect(durationMs).toBeLessThan(1500);
     } finally {
       await stopChildServer(child);
+      await removeChildServerOut(port);
     }
   });
 });

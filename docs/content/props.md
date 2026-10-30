@@ -12,6 +12,8 @@ Set `data-bascik-prop-{name}="value"` on the component tag. The value is injecte
 
 Prop values are HTML-escaped when injected, so `&`, `<`, `>`, quotes, and apostrophes render as text rather than markup. Use entity-encoded quotes such as `&quot;` or `&#39;` inside the usage attribute. Use a [slot](/slots) when the value should be interpreted as HTML.
 
+A receiver on a `<script>` or `<style>` element is never filled: escaping cannot keep a value from running as code there. The element keeps the template's own text and Bascik warns. To hand a value to a script, bind it to a `data-*` attribute (see below) and read it from the element's `dataset`.
+
 <!-- demo:basic-props-html -->
 
 ```html
@@ -86,7 +88,17 @@ Use `data-bascik-attr-{attribute}="{propName}"` when the same prop values should
 </media-card>
 ```
 
-The directive is removed from compiled output. If the named prop is missing, Bascik adds no target attribute. If the target attribute already exists, the prop value wins and Bascik warns. Values are HTML-attribute-escaped. Bound `id`, `name`, and `class` values enter the normal scoping pipeline.
+The directive is removed from compiled output. If the named prop is missing, Bascik adds no target attribute. If the target attribute already exists, the prop value wins and Bascik warns. Values are HTML-attribute-escaped. Bound `id` and `class` values enter the normal scoping pipeline. A bound `name` ships as the prop's value, which gives each usage its own radio group or `<details>` group (see [Component Best Practices](/component-best-practices#name-form-controls-and-groups)); with `scoping.attributes.name: true` it is scoped too.
+
+A few targets give the browser a value to run, and escaping cannot make that safe, so Bascik checks them. The rules are the same at build time and when a [server script returns the tag](/server-scripts#security):
+
+- **URL attributes** (`href`, `xlink:href`, `src`, `srcset`, `action`, `formaction`, `poster`, `cite`, `ping`, and other URL attributes) keep any URL except one that can run script: script URLs such as `javascript:`, and `data:` URLs, are replaced with `about:invalid` and Bascik warns. Relative, `https:`, `mailto:`, `tel:`, `sms:`, `webcal:`, and app URLs are kept. Where the element only shows a picture (`<img src>`, `srcset` on `<img>` and `<source>`, `<video poster>`, `<input type="image" src>`), a `data:image/...` URL is kept too, for placeholders. Leading spaces, control characters, tabs, and line breaks are ignored when the scheme is read, as the browser does. A `srcset` is split into URLs the way the browser splits it (a comma inside a URL is part of it), and one script URL in a `srcset` or `ping` list replaces the whole value.
+- **URLs the page runs or applies**, `<script src>` (and `href` on an SVG `<script>`), `<object data>`, `<embed src>`, `<base href>`, and a stylesheet or preload `<link href>`, take any `http:` or `https:` URL, another site's included, as the browser does. They get the same script-scheme check as every URL binding. Whoever picks such a URL picks the code or styles the page runs, so when it can come from visitor-influenced data, restrict it as [Loading scripts and styles from other sites](/security#loading-scripts-and-styles-from-other-sites) describes: a CSP `script-src` or `style-src`, `safeUrl(value, { origins })`, or the URL written in the template.
+- **SVG animations** (`<set>`, `<animate>`, `<animateMotion>`, `<animateTransform>`) write `to`, `from`, `by`, and `values` into another attribute, so each `;`-separated value gets the URL check. `attributeName` is never bound, and nothing is bound into a value animated into an `on*` attribute.
+- **Event handlers** (`on` followed by letters only, such as `data-bascik-attr-onclick`; a name with a hyphen like `onboarding-step` is an ordinary attribute), **`srcdoc`**, and **`<meta http-equiv>`** (its `content` or `http-equiv`) are never bound: their values are code, a whole document, or an instruction to the page such as a redirect. Bascik warns and leaves the template's own attribute, if any.
+- **`style`** is not bound when the value runs script or imports CSS: `expression(`, `behavior:`, `-moz-binding`, `@import`, or one of the script URLs such as `javascript:` or a non-image `data:` URL, in `url()`, `image-set()`, or a string. CSS escapes are decoded before the check. Plain declarations and images are bound: `color: red`, `--progress: 40%`, `background-image: url(/img/hero.jpg)`.
+
+Each of these checks is a protection that changes what you wrote, so each can be turned off by name: [`security.blockScriptUrls: false`](/configuration#security) binds every URL as given, and [`security.blockCodeBindings: false`](/configuration#security) binds event handlers, `srcdoc`, `<meta http-equiv>`, SVG animation targets and unsafe `style` values, and fills `<script>` and `<style>` receivers. An attribute value is still escaped, so it stays one attribute; a `<script>` or `<style>` gets the text as written, with only `</script` (or `</style`) changed to `<\/script` so it cannot end the element. Turning `blockCodeBindings` off lets a prop become code. See [Turning protections off](/security#turning-protections-off).
 
 This is the same prop mechanism with a different destination. It adds no variables, expressions, interpolation, or templating syntax. A prop may independently drive both element content and an attribute.
 

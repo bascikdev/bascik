@@ -90,7 +90,7 @@ In Bascik, creating a component is creating a file. Name a file `my-nav.html` an
 
 CSS inside that file scopes itself to that component. Write `.card { padding: 20px; }` and Bascik rewrites it to something like `.bascik__my-card__card { padding: 20px; }` at build time. You never manage a namespace. You never worry about a class name colliding with another component. You write CSS the way you always have, it just works.
 
-JavaScript inside that file scopes itself too. Write `document.getElementById('count')` and Bascik rewrites it to target the scoped version of that element, so two instances of the same counter on one page stay completely isolated, not through Shadow DOM or any runtime trick, but because the selectors were rewritten before the browser ever saw them. TypeScript works here as well; `bascik.config.ts`, build scripts, and helper modules all run natively on Node 22.18+ with no compiler step.
+JavaScript inside that file scopes itself too. Write `document.getElementById('count')` and Bascik rewrites it to target the scoped version of that element, so two instances of the same counter on one page stay completely isolated, not through Shadow DOM or any runtime trick, but because the selectors were rewritten before the browser ever saw them. TypeScript works here as well; `bascik.config.ts`, build scripts, and helper modules all run natively on Node 22.22+ with no compiler step.
 
 > Create a file. Use the tag. Everything inside it, HTML, CSS, JavaScript, stays contained. No imports. No exports. No configuration. Use what you know, and use what the browser knows.
 
@@ -112,7 +112,7 @@ Every Web Component requires JavaScript to be parsed, evaluated, and registered 
 
 Web Components also introduce a non-trivial API surface: custom element registries, shadow DOM, light DOM, lifecycle callbacks, slot distribution rules. For a developer writing a navigation bar, none of that is relevant. It is framework complexity without the framework ecosystem.
 
-Bascik takes a different position: run the component resolution at build time, ship vanilla HTML. A `<site-nav>` tag in source becomes a `<nav>` element in the output. **Zero JavaScript is added to your pages.** Every script in the final HTML was written by you.
+Bascik takes a different position: run the component resolution at build time, ship vanilla HTML. A `<site-nav>` tag in source becomes the `<nav>` element its template holds, so the browser and screen readers see a real navigation landmark. **Zero JavaScript is added to your pages.** Every script in the final HTML was written by you.
 
 ## Bascik and AI
 
@@ -144,9 +144,11 @@ Every decision in Bascik follows three simple rules:
 - **Be transparent.** There is no hidden runtime, no virtual DOM abstraction, and no framework black box. What you write in source is what ships in `dist/`: plain HTML, CSS, and JavaScript with deterministic, human-readable scoping prefixes.
 - **Use what exists.** Use the standard HTML, CSS, and JavaScript APIs. Do not invent a template language. Do not add a reactive data system. Do not require a runtime. Do not get between the developer and the browser.
 
+"Use what exists" applies to your markup too. HTML already has an element for most jobs: `<nav>`, `<button>`, `<details>`, `<dialog>`, and a `<label>` for every input. Bascik ships the element you wrote, so a component whose root is a `<nav>` is a navigation landmark in every browser and screen reader, with no ARIA and no script, and a component whose root is a `<div>` is a `<div>`. Bascik guides and warns about this, and never rewrites your markup. [Component Best Practices](/component-best-practices#use-htmls-elements) has the checklist.
+
 ![A terminal running bascik on a new project. The line Server running at localhost:8080 stays pinned to the top row while four pages transpile in under a quarter of a second below it. After one file is saved, only that page is rebuilt, in a few milliseconds](/assets/demos/dev-terminal@2x.webp)
 
-Bascik exports configuration helpers (`defineConfig`) for your build, and nothing for your runtime code. Server scripts, stream scripts, and API routes receive standard web objects and import what they need from their own project or npm. If a task feels like it needs a Bascik helper, the answer is a five-line function in `src/lib/`, not a new export.
+Bascik exports configuration helpers (`defineConfig`) for your build, and one module for your runtime code: [`@bascik/bascik/html`](/html-helpers), which escapes the values a server or stream script puts into markup, because escaping is easy to get wrong and costly when it is. Otherwise, server scripts, stream scripts, and API routes receive standard web objects and import what they need from their own project or npm. If a task feels like it needs a Bascik helper, the answer is a five-line function in `src/lib/`, not a new export.
 
 Bascik is a find-and-replace at build time. Custom component tags are resolved to their source HTML. CSS class names are scoped so they cannot collide. Script variables are isolated so they cannot leak. The output is a directory of vanilla HTML files that any server can host, any browser can render, and any tool can inspect without knowing Bascik exists.
 

@@ -4,6 +4,11 @@ import {
   type TimeoutHandle,
 } from "./clock.ts";
 import { runShutdownHandlers } from "./events.ts";
+import {
+  DEFAULT_HTTP_TIMEOUTS,
+  defaultHeadersTimeout,
+} from "./config-validation.ts";
+import type { HttpTimeoutsOptions } from "./types.ts";
 
 export type ServerHealthState = "booting" | "ready" | "draining";
 
@@ -11,6 +16,41 @@ let serverHealthState: ServerHealthState = "ready";
 
 export const DEFAULT_DRAIN_TIMEOUT_MS = 5000;
 export const MAX_PORT_INCREMENTS = 20;
+
+/** Node's default `connectionsCheckingInterval`. */
+const NODE_CONNECTIONS_CHECKING_INTERVAL_MS = 30_000;
+const MIN_CONNECTIONS_CHECKING_INTERVAL_MS = 50;
+
+/**
+ * `http.timeouts` as the options of Node's HTTP/1.1 server (`http.Server`,
+ * and the HTTP/1.1 fallback of the TLS server). Request and headers bound
+ * receiving the request only; once it is in, the response may take as long
+ * as it needs (streams, SSE). keepAlive is how long an idle socket waits for
+ * its next request. Config validation keeps headers <= request, as Node
+ * requires.
+ */
+export const nodeServerTimeouts = (
+  timeouts: HttpTimeoutsOptions | undefined,
+) => {
+  const requestTimeout = timeouts?.request ?? DEFAULT_HTTP_TIMEOUTS.request;
+  const headersTimeout =
+    timeouts?.headers ?? defaultHeadersTimeout(requestTimeout);
+  return {
+    requestTimeout,
+    headersTimeout,
+    keepAliveTimeout: timeouts?.keepAlive ?? DEFAULT_HTTP_TIMEOUTS.keepAlive,
+    // Node checks the request and headers deadlines on this interval, 30 s
+    // by default, so a 10 s headers timeout could fire 30 s late. Checking
+    // at half the shorter timeout keeps the cut-off within 1.5x of it.
+    connectionsCheckingInterval: Math.min(
+      NODE_CONNECTIONS_CHECKING_INTERVAL_MS,
+      Math.max(
+        MIN_CONNECTIONS_CHECKING_INTERVAL_MS,
+        Math.floor(Math.min(requestTimeout, headersTimeout) / 2),
+      ),
+    ),
+  };
+};
 
 export interface GracefulShutdownOptions {
   server: {

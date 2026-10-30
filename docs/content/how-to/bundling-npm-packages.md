@@ -48,14 +48,14 @@ Write a small bundler script at the project root. It bundles a browser entry poi
 
 <!-- demo:bundle-script -->
 
-```js
-// build-bundle.mjs: bundles client dependencies into dist/assets/js/.
+```ts
+// build-bundle.ts: bundles client dependencies into dist/assets/js/.
 // Run as a pipeline.exec step with phase: 'pre' so the bundle exists
 // before pages are transpiled and referenced.
 import { build } from "esbuild";
 
 await build({
-  entryPoints: ["src/client/confetti-entry.mjs"],
+  entryPoints: ["src/client/confetti-entry.ts"],
   bundle: true,
   format: "esm",
   minify: true,
@@ -63,12 +63,12 @@ await build({
 });
 ```
 
-The entry point is where the bare specifier lives. esbuild resolves it against `node_modules` and inlines the package into the bundle:
+The entry point is where the bare specifier lives. esbuild resolves it against `node_modules`, inlines the package into the bundle, and strips the entry's types, so the page loads plain JavaScript:
 
 <!-- demo:bundle-entry -->
 
-```js
-// src/client/confetti-entry.mjs: the browser entry point.
+```ts
+// src/client/confetti-entry.ts: the browser entry point.
 // Bare specifiers are fine here because esbuild resolves and bundles them.
 import confetti from "canvas-confetti";
 
@@ -81,13 +81,13 @@ Register the bundler as a `pipeline.exec` step in `bascik.config.ts`:
 
 ```ts
 // bascik.config.ts: run the bundler as a pre-transpile exec step.
-import { defineConfig } from "@bascik/bascik";
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   pipeline: {
     exec: [
       {
-        script: "build-bundle.mjs",
+        script: "build-bundle.ts",
         phase: "pre",
         watch: ["src/client/"],
       },
@@ -119,18 +119,18 @@ You can use Rolldown identically. Install Rolldown:
 npm install --save-dev rolldown canvas-confetti
 ```
 
-Write `build-bundle.mjs` using the Rolldown API:
+Write `build-bundle.ts` using the Rolldown API:
 
-```js
-// build-bundle.mjs
+```ts
+// build-bundle.ts
 import { rolldown } from "rolldown";
 
 const bundle = await rolldown({
-  input: "src/client/confetti-entry.mjs",
+  input: "src/client/confetti-entry.ts",
 });
 
 await bundle.write({
-  dir: "dist/assets/js",
+  file: "dist/assets/js/confetti-bundle.mjs",
   format: "esm",
   minify: true,
 });

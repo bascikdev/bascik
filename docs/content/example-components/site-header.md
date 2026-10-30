@@ -27,7 +27,7 @@ The navigation lives in a TypeScript file next to the component. Edit the list f
 ## How It Works
 
 - The build script inside `<nav>` imports `./links.ts`. Relative imports in a component's script resolve from the component's folder, so the component and its data travel together.
-- A component build script runs for each use with `BASCIK_PAGE_PATH` set to that page's path, so each page marks its own link: `aria-current="page"` on the page itself, and `aria-current="true"` on the section it belongs to (Blog on a blog post). See [Build Scripts with Page Context](/how-to/page-aware-scripts#component-build-scripts).
+- The nav's script is `data-bascik-build`, not [`data-bascik-build-once`](/build-scripts#data-bascik-build-once), because its output depends on the page. A `data-bascik-build` script in a component runs for each use with `BASCIK_PAGE_PATH` set to that page's path, so each page marks its own link: `aria-current="page"` on the page itself, and `aria-current="true"` on the section it belongs to (Blog on a blog post). See [Build Scripts with Page Context](/how-to/page-aware-scripts#component-build-scripts).
 - Markup a build script prints is scoped like the component's template, so `.nav-list a` in the component's CSS matches the printed links.
 - The skip link targets `#main`. No element in the component has that ID, so Bascik leaves the reference unscoped and it finds the `<main>` on the page.
 - `<div data-bascik-slot></div>` is replaced by whatever you put inside the tag, or by nothing.

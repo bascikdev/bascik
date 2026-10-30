@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Bascik conventions: pages as lists of components that own their CSS and TypeScript, the HTML element for each job, and form names as HTML defines."
+    />
+    <title>Component Best Practices in Bascik</title>
+  </head>
+
+  <body>
+    <docs-nav />
+
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
+
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () =>
+              renderSectionLabel("/component-best-practices");
+          </script>
+
+          <!-- Rendered from docs/content/component-best-practices.md; each demo box sits at the end of its section. -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/component-best-practices.md",
+                { to: "Good: The Root Is the Nav" },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo
+            data-bascik-prop-file="src/components/site-nav/"
+            data-bascik-prop-no-preview="true"
+          >
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "semantic-nav-bad-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "semantic-nav-bad-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "semantic-nav-bad-output",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/component-best-practices.md",
+                {
+                  from: "Good: The Root Is the Nav",
+                  to: "Buttons for Actions, Links for Navigation",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo data-bascik-prop-file="src/components/site-nav/">
+            <div data-bascik-slot="example">
+              <site-nav aria-label="Demo site" />
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "semantic-nav-good-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "semantic-nav-good-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "semantic-nav-good-output",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/component-best-practices.md",
+                {
+                  from: "Buttons for Actions, Links for Navigation",
+                  to: "Native Elements Before ARIA or JavaScript",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo data-bascik-prop-file="src/components/like-button/">
+            <div data-bascik-slot="example">
+              <like-button />
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "semantic-button-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "semantic-button-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "semantic-button-output",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/component-best-practices.md",
+                {
+                  from: "Native Elements Before ARIA or JavaScript",
+                  to: "Checklist",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo data-bascik-prop-file="src/components/faq-item/">
+            <div data-bascik-slot="example">
+              <faq-item
+                data-bascik-prop-question="Does Bascik add JavaScript?"
+                data-bascik-prop-answer="No. Every script in the output is one you wrote."
+              />
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "semantic-details-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "semantic-details-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "semantic-details-output",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/component-best-practices.md",
+                {
+                  from: "Checklist",
+                  to: "Radio Groups per Component Instance",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/component-best-practices.md",
+                {
+                  from: "Radio Groups per Component Instance",
+                  to: "Radios Inside a Larger Form",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo data-bascik-prop-file="src/components/froth-picker/">
+            <div data-bascik-slot="example">
+              <froth-picker data-bascik-prop-cup="Morning cup" />
+              <froth-picker data-bascik-prop-cup="Evening cup" />
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "name-radio-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "name-radio-source-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "name-radio-output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/component-best-practices.md", {
+                from: "Radios Inside a Larger Form",
+                to: "Exclusive `<details>` Accordions",
+              });
+          </script>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/component-best-practices.md",
+                {
+                  from: "Exclusive `<details>` Accordions",
+                  to: "One Accordion per Copy",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo
+            data-bascik-prop-file="src/components/frother-question/"
+          >
+            <div data-bascik-slot="example">
+              <frother-question>
+                <span data-bascik-slot="question">Which milk froths best?</span>
+                Cold whole milk gives the thickest foam.
+              </frother-question>
+              <frother-question>
+                <span data-bascik-slot="question">Can it froth oat milk?</span>
+                Yes. Use a barista blend for a finer foam.
+              </frother-question>
+              <frother-question>
+                <span data-bascik-slot="question"
+                  >How do I clean the whisk?</span
+                >
+                Rinse it under warm water right after use.
+              </frother-question>
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "name-details-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "name-details-source-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/component-best-practices.md",
+                      "name-details-output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/component-best-practices.md", {
+                from: "One Accordion per Copy",
+              });
+          </script>
+
+          <docs-pagination />
+        </main>
+      </div>
+    </div>
+
+    <docs-footer />
+  </body>
+</html>

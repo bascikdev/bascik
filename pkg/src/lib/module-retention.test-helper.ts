@@ -17,7 +17,10 @@ import { execute } from "../../bench/profile-runner.ts";
 import { createFixtureTrust, http2Request } from "../../bench/profile-tls.ts";
 import type { ScriptRegistry } from "./script-registry.ts";
 import { analyzeRetentionHeap } from "./module-retention-heap.test-helper.ts";
-import { getLiveReloadScript } from "./live-reload.ts";
+import {
+  LIVE_RELOAD_VERSION_ATTR,
+  getLiveReloadScript,
+} from "./live-reload.ts";
 
 export function registryEntries(
   registry: ScriptRegistry,
@@ -692,6 +695,29 @@ export class RetentionIpcWaiters {
 }
 
 /**
+ * WHY one predicate for both sides: the http2 retention child calls
+ * `assertSupportedTlsCleanupRuntime` (below) and aborts on anything but Node
+ * 24, whose TLS cleanup callback ordering is the one the causal acknowledgment
+ * was verified against. The parent tests consult `tlsCleanupRuntimeSupported`
+ * and skip the http2 lanes before spawning the child. If the gate and the
+ * assertion used different checks (a `>= 24` gate once let Node 25/26 through),
+ * unsupported runtimes would spawn a child that fails instead of skipping. Both
+ * therefore call this predicate; broaden it only after re-verifying the
+ * callback ordering on the new major.
+ */
+export function isTlsCleanupRuntimeSupported(
+  version: string = process.version,
+): boolean {
+  return /^v24\./.test(version);
+}
+
+/** Parent-side gate for the http2 retention lanes (see the predicate above). */
+export const tlsCleanupRuntimeSupported = isTlsCleanupRuntimeSupported();
+
+/** Skip reason for the http2 retention lanes on runtimes other than Node 24. */
+export const tlsCleanupRuntimeSkipReason = `http2 retention evidence needs Node 24's verified TLS cleanup callback ordering; running ${process.version}`;
+
+/**
  * Validates that an unsupported Node runtime environment or missing _destroySSL prototype throws.
  */
 export function assertSupportedTlsCleanupRuntime(
@@ -699,7 +725,7 @@ export function assertSupportedTlsCleanupRuntime(
   prototype: unknown = tls.TLSSocket.prototype,
 ): void {
   assert(
-    version.startsWith("v24."),
+    isTlsCleanupRuntimeSupported(version),
     `causal TLS transport cleanup acknowledgment requires the verified Node 24 callback ordering (got ${version})`,
   );
   const proto = prototype as { _destroySSL?: unknown } | null | undefined;
@@ -1661,6 +1687,22 @@ export default function retentionShared129(request, context) { ${requestObservat
   const artifacts: { path: string; bytes: number; sha256: string }[] = [];
   let requestCount = 0;
   const origin = `${mode === "http2" ? "https" : "http"}://127.0.0.1:${port}`;
+  // A dev page's live-reload script carries the page's version, which counts
+  // up with every compile; the exact-bytes checks compare everything else.
+  // Only a page holds it: other bodies (binary assets) pass through as is.
+  const withoutPageVersion = (body: Buffer): Buffer =>
+    body.includes(LIVE_RELOAD_VERSION_ATTR)
+      ? Buffer.from(
+          body
+            .toString("utf8")
+            .replace(
+              new RegExp(` ${LIVE_RELOAD_VERSION_ATTR}="\\d+"`, "g"),
+              "",
+            ),
+        )
+      : body;
+  const readDistPage = async (path: string): Promise<Buffer> =>
+    withoutPageVersion(await readFile(path));
   async function readResponse(
     path: string,
   ): Promise<{ status: number; text: string; bytes: Buffer }> {
@@ -1669,15 +1711,14 @@ export default function retentionShared129(request, context) { ${requestObservat
         signal: AbortSignal.any([requests.signal, AbortSignal.timeout(10_000)]),
         headers: { connection: "close" },
       });
-      const bytes = Buffer.from(await response.arrayBuffer());
+      const bytes = withoutPageVersion(
+        Buffer.from(await response.arrayBuffer()),
+      );
       return { status: response.status, text: bytes.toString("utf8"), bytes };
     }
     const response = await http2Request(origin, path, fixtureCa);
-    return {
-      status: response.status,
-      text: response.body.toString("utf8"),
-      bytes: response.body,
-    };
+    const bytes = withoutPageVersion(response.body);
+    return { status: response.status, text: bytes.toString("utf8"), bytes };
   }
   const fixedRoutes: [string, string][] = [
     ["/inline", "inline"],
@@ -2021,7 +2062,7 @@ export default function retentionShared129(request, context) { ${requestObservat
         "utf8",
       );
       assert.deepEqual(
-        Buffer.from(distHtml),
+        withoutPageVersion(Buffer.from(distHtml)),
         expectedBuildDepDiskOutput(revision),
         "exact disk inline.html build-dependency bytes",
       );
@@ -2300,7 +2341,7 @@ export default function retentionShared129(request, context) { ${requestObservat
         // event is published before that write runs.
         await command("page-write-idle");
         assert.deepEqual(
-          await readFile(join(project, "dist/inline.html")),
+          await readDistPage(join(project, "dist/inline.html")),
           expectedInlineOutput(revision),
           "inline exact disk bytes",
         );
@@ -2316,8 +2357,11 @@ export default function retentionShared129(request, context) { ${requestObservat
         expected,
         "external helper exact response bytes",
       );
+      // A helper change is a source cycle, which publishes the page as soon as it is compiled; the disk
+      // write is still queued, so join it before reading dist/ (as the inline case does).
+      await command("page-write-idle");
       assert.deepEqual(
-        await readFile(join(project, "dist/external.html")),
+        await readDistPage(join(project, "dist/external.html")),
         expected,
         "external helper exact disk bytes",
       );
@@ -2419,9 +2463,10 @@ export default function retentionShared129(request, context) { ${requestObservat
       try {
         if (reader) {
           assert.equal(sse!.status, 200, "external helper SSE admission");
-          assert.equal(
+          // The server adds the stored page's version: `connected 12`.
+          assert.match(
             await nextFrame(),
-            "data: connected",
+            /^data: connected( \d+)?$/,
             "SSE armed before helper mutation",
           );
         }

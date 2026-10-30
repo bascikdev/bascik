@@ -23,8 +23,16 @@
       content="Bascik adds zero JavaScript to your pages by default, but you are free to bundle any library - Alpine.js, HTMX, or a custom bundle."
     />
     <title>Use Alpine.js, HTMX, and JS Libraries with Bascik</title>
-    <script src="https://unpkg.com/petite-vue" defer init></script>
-    <script src="https://unpkg.com/alpinejs" defer></script>
+    <!-- Exact versions and files: an unversioned unpkg URL redirects before the real file starts loading. -->
+    <script
+      src="https://unpkg.com/petite-vue@0.4.1/dist/petite-vue.iife.js"
+      defer
+      init
+    ></script>
+    <script
+      src="https://unpkg.com/alpinejs@3.17.5/dist/cdn.min.js"
+      defer
+    ></script>
   </head>
 
   <body>
@@ -246,6 +254,7 @@
                   type="search"
                   v-model="query"
                   placeholder="Filter frameworks…"
+                  aria-label="Filter frameworks"
                   class="demo-petite-input"
                 />
                 <ul class="demo-petite-list">

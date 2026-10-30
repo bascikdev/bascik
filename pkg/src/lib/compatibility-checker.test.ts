@@ -145,6 +145,52 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         "// bascik-ignore js-document-class-query\ndocument.querySelector('.btn');",
       ],
     },
+    "js-dynamic-id-lookup": {
+      kind: "js",
+      positive: [
+        "document.getElementById(targetId);",
+        "document.getElementById(btn.dataset.target);",
+        "document.getElementById(`item-${i}`);",
+        // javascript.ts only rewrites "/' quoted literals, so a backtick
+        // literal and a concatenation ship unscoped even without a variable.
+        "document.getElementById(`panel`);",
+        'document.getElementById("pre-" + n);',
+        'document.getElementById("a"+b);',
+        "document.getElementById( id );",
+        "document.getElementById(ids[0]);",
+        'document.getElementById(el.getAttribute("data-target"));',
+        // `href` reads back with its `#`, which getElementById never matches.
+        'document.getElementById(link.getAttribute("href"));',
+        'document.getElementById(btn.getAttribute("popovertarget") + "-x");',
+        "document.getElementById(btn.getAttribute(name));",
+        'document.getElementById(btn.getAttribute("aria-controlsx"));',
+        'document.getElementById(btn.getAttribute("data-popovertarget"));',
+      ],
+      negative: [
+        // The value of an ID-reference attribute Bascik rewrites is already
+        // the scoped id, so reading it is the lookup the rule recommends.
+        'document.getElementById(button.getAttribute("popovertarget"));',
+        "document.getElementById(btn.getAttribute('aria-controls'));",
+        "document.getElementById(this.getAttribute(`commandfor`));",
+        'document.getElementById(event.currentTarget.getAttribute("aria-controls"));',
+        'document.getElementById(btn?.getAttribute("popovertarget"));',
+        'document.getElementById( label.getAttribute("for") );',
+        'document.getElementById(input.getAttribute("list"));',
+        'document.getElementById(el.getAttribute("aria-describedby"));',
+        'document.getElementById(link.getAttribute("href").slice(1));',
+        'document.getElementById(link.getAttribute("href").substring(1));',
+        "document.getElementById(label.htmlFor);",
+        'document.getElementById("panel");',
+        "document.getElementById('panel');",
+        'document.getElementById( "panel" );',
+        'document.getElementById("panel").focus();',
+        'document.getElementById(\n  "panel"\n);',
+        "document.getElementById();",
+        "document.getElementById( );",
+        "// document.getElementById(targetId);",
+        "// bascik-ignore js-dynamic-id-lookup\ndocument.getElementById(targetId);",
+      ],
+    },
   };
 
   it("covers every rule in compatibility-rules.json with positive and negative test vectors", () => {
@@ -254,20 +300,4 @@ describe("maskComments", () => {
       );
     },
   );
-
-  it.each([
-    ["css", '"' + '\\"'.repeat(100_000)],
-    ["css", "'" + "\\'".repeat(100_000)],
-    ["css", "url( ".repeat(60_000)],
-    ["css", 'url("'.repeat(60_000)],
-    ["css", "/*a".repeat(60_000)],
-    ["js", "`" + "\\`".repeat(100_000)],
-    ["js", "/*a".repeat(60_000)],
-  ] as const)("stays linear on unclosed %s input (%#)", (kind, text) => {
-    // The replaced regex took tens of seconds on each of these. A linear scan takes milliseconds, so the bound
-    // only has to tell the two apart.
-    const start = performance.now();
-    expect(maskComments(text, kind)).toBe(text);
-    expect(performance.now() - start).toBeLessThan(1000);
-  });
 });

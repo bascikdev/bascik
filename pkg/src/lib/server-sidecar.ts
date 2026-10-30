@@ -1,13 +1,17 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { BascikConfig } from "./config.ts";
 import {
-  SCRIPT_END_TAG,
-  SERVER_ATTR_NAME,
   STREAM_ATTR_NAME,
   getHtmlAttributeValue,
+  isServerPlaceholderOpenTag,
+  scanRequestScripts,
 } from "./html-patterns.ts";
 import { directiveSourceColumn } from "./directive-source.ts";
+import { getScriptType } from "./script-types.ts";
+import { replaceSpans } from "./element-content-scan.ts";
+import { OUTPUT_SCOPE_ATTRIBUTE } from "./output-scope.ts";
+import { ensurePrivateDir, privateDirFor } from "./private-dir.ts";
 
 /**
  * How a request-time script participates in the response (prompt 65).
@@ -27,19 +31,60 @@ export interface ServerScriptEntry {
   sourceLine?: number;
   /** The column the body starts at on that line. Absent in sidecars written before it was recorded. */
   sourceColumn?: number;
+  /**
+   * The component's encoded `data-bascik-output-scope` value for a server or
+   * stream script written inside a component (prompt 157): its output is
+   * spliced in after scoping, so the runner applies the component's class and
+   * element names to it the way a build script's output receives them.
+   * Absent for page-level scripts.
+   */
+  outputScope?: string;
+  /**
+   * An inline script whose tag was marked `type="text/typescript"`: every
+   * host compiles `source` to JavaScript before running or bundling it. A
+   * `src=` module is TypeScript by its `.ts` / `.mts` extension instead.
+   */
+  typescript?: true;
 }
 
 export interface ServerScriptsSidecar {
   version: string;
   /**
-   * Sidecar schema version. Bumped when `mode` was added; older sidecars
-   * without it are rejected with a rebuild message.
+   * Sidecar schema version. Bumped when `mode` was added (2) and again when
+   * `outputScope` and component-level `component_script_*` entries were added
+   * (3, prompt 157); older sidecars are rejected with a rebuild message.
    */
   schema?: number;
   scripts: Record<string, ServerScriptEntry>;
 }
 
-export const SIDECAR_SCHEMA_VERSION = 2;
+export const SIDECAR_SCHEMA_VERSION = 3;
+
+/**
+ * Prefix of the ids of server and stream scripts staged from a component
+ * template rather than a page (prompt 157). Each is
+ * `component_script_<hex(name::ordinal)>` and belongs to the synthetic
+ * sidecar owner `components`, regenerated on every build that writes a
+ * component manifest.
+ */
+export const COMPONENT_SCRIPT_ID_PREFIX = "component_script_";
+
+export const isComponentScriptId = (id: string): boolean =>
+  id.startsWith(COMPONENT_SCRIPT_ID_PREFIX);
+
+/**
+ * True when `scripts` holds at least one page-owned entry (a `server_script_*`
+ * id staged from a page). The component manifest exists exactly for such
+ * releases: a server or stream script that runs is what can return a
+ * component tag (prompt 157, D1).
+ */
+export const sidecarHasPageEntries = (
+  scripts: Record<string, unknown> | undefined | null,
+): boolean =>
+  Boolean(scripts) &&
+  Object.keys(scripts as Record<string, unknown>).some(
+    (id) => !isComponentScriptId(id),
+  );
 
 export interface SidecarLoadResult {
   /** Whether a sidecar file was present at the resolved path. */
@@ -74,6 +119,8 @@ class ServerSidecarRegistry {
     sourceLine?: number,
     mode: ServerScriptMode = "server",
     sourceColumn?: number,
+    outputScope?: string,
+    typescript?: boolean,
   ): void {
     this.scripts.set(id, {
       id,
@@ -83,6 +130,8 @@ class ServerSidecarRegistry {
       sourceFile,
       sourceLine,
       sourceColumn,
+      ...(outputScope !== undefined ? { outputScope } : {}),
+      ...(typescript ? { typescript: true as const } : {}),
     });
   }
 
@@ -114,9 +163,9 @@ class ServerSidecarRegistry {
   }
 
   async loadSidecar(sidecarPath?: string): Promise<SidecarLoadResult> {
-    const outDir = resolve(process.cwd(), BascikConfig.directory.out);
     const targetPath =
-      sidecarPath ?? join(outDir, ".bascik", "server-scripts.json");
+      sidecarPath ??
+      join(privateDirFor(BascikConfig.directory.out), "server-scripts.json");
     let parsed: ServerScriptsSidecar;
     try {
       const content = await readFile(targetPath, "utf8");
@@ -142,7 +191,7 @@ class ServerSidecarRegistry {
       this.sidecarPresent = false;
       throw new Error(
         `[bascik] --server: server scripts sidecar at ${targetPath} has a malformed "scripts" member. ` +
-          `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+          `Run \`bascik --build\` to regenerate .bascik/dist/server-scripts.json.`,
       );
     }
     // Schema incompatibility: an unknown version means the runtime and the
@@ -156,7 +205,7 @@ class ServerSidecarRegistry {
       throw new Error(
         `[bascik] --server: server scripts sidecar at ${targetPath} uses schema ${parsed.schema}, ` +
           `but this runtime understands schema ${SIDECAR_SCHEMA_VERSION}. ` +
-          `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+          `Run \`bascik --build\` to regenerate .bascik/dist/server-scripts.json.`,
       );
     }
     const scripts = scriptsRaw as Record<string, ServerScriptEntry>;
@@ -168,7 +217,7 @@ class ServerSidecarRegistry {
         this.sidecarPresent = false;
         throw new Error(
           `[bascik] --server: server scripts sidecar at ${targetPath} has a null or malformed entry "${id}". ` +
-            `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+            `Run \`bascik --build\` to regenerate .bascik/dist/server-scripts.json.`,
         );
       }
       if (entry.mode !== "server" && entry.mode !== "stream") {
@@ -176,7 +225,7 @@ class ServerSidecarRegistry {
         this.sidecarPresent = false;
         throw new Error(
           `[bascik] --server: server scripts sidecar at ${targetPath} is stale (entry "${id}" has no mode). ` +
-            `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+            `Run \`bascik --build\` to regenerate .bascik/dist/server-scripts.json.`,
         );
       }
     }
@@ -186,15 +235,17 @@ class ServerSidecarRegistry {
   }
 
   async writeSidecar(version: string = "unknown"): Promise<string | null> {
-    const outDir = resolve(process.cwd(), BascikConfig.directory.out);
-    const sidecarPath = join(outDir, ".bascik", "server-scripts.json");
+    const sidecarPath = join(
+      privateDirFor(BascikConfig.directory.out),
+      "server-scripts.json",
+    );
 
     // Even if no scripts were registered, if server-scripts.json exists or is requested, we write the sidecar
     if (this.scripts.size === 0) {
       return null;
     }
 
-    await mkdir(dirname(sidecarPath), { recursive: true });
+    await ensurePrivateDir(BascikConfig.directory.out);
 
     const sortedKeys = Array.from(this.scripts.keys()).sort((a, b) =>
       a < b ? -1 : a > b ? 1 : 0,
@@ -222,6 +273,102 @@ export const serverSidecarRegistry = new ServerSidecarRegistry();
 const STREAM_ATTR_RE = new RegExp(String.raw`\s${STREAM_ATTR_NAME}`, "i");
 
 /**
+ * Replace every `<script data-bascik-server>` and `<script data-bascik-stream>`
+ * tag in `html` with an inert placeholder and record each script's source and
+ * mode in the serverSidecarRegistry (and the optional `outMap`). `mintId`
+ * names the entry for the N-th script found; `defaultSourceFile` names the
+ * file when the tag carries no `data-bascik-source-file` stamp.
+ */
+const extractScriptsToSidecar = (
+  html: string,
+  mintId: (ordinal: number) => string,
+  outMap: Record<string, ServerScriptEntry> | undefined,
+  defaultSourceFile: string | undefined,
+  recordInRegistry = true,
+): string => {
+  let scriptOrdinal = 0;
+  // Whole-attribute-name boundary: a placeholder's `data-bascik-server-id` must
+  // never re-match, or re-running this over placeholdered HTML would record the
+  // empty placeholder body over the real source.
+  // `scanRequestScripts` finds the matches of
+  // `<script\b((?:[^>"']|"[^"]*"|'[^']*')*\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})(?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)${SCRIPT_END_TAG}`
+  // (flags `gi`) in linear time; the regex took cubic time.
+  const replace = (
+    match: string,
+    openAttrs: string,
+    scriptContent: string,
+  ): string => {
+    // A stream placeholder legitimately carries `data-bascik-stream` as a
+    // mode marker. It is already extracted; leave it alone.
+    if (isServerPlaceholderOpenTag(`<script${openAttrs}>`)) return match;
+    scriptOrdinal++;
+    const id = mintId(scriptOrdinal);
+    const openTag = `<script${openAttrs}>`;
+    const mode: ServerScriptMode = STREAM_ATTR_RE.test(openTag)
+      ? "stream"
+      : "server";
+    const srcPath = getHtmlAttributeValue(openTag, "src");
+    const annotatedSourceFile = getHtmlAttributeValue(
+      openTag,
+      "data-bascik-source-file",
+    );
+    const scriptSourceFile = annotatedSourceFile
+      ? decodeURIComponent(annotatedSourceFile)
+      : defaultSourceFile;
+    const annotatedSourceLine = getHtmlAttributeValue(
+      openTag,
+      "data-bascik-source-line",
+    );
+    const sourceLine = annotatedSourceLine
+      ? Number.parseInt(annotatedSourceLine, 10)
+      : undefined;
+    const sourceColumn = directiveSourceColumn(openTag);
+    // The component's output scope travels with the entry, never with the
+    // placeholder: the emitted page is unchanged and the runner reads it
+    // from the sidecar when it splices the script's output in.
+    const outputScope =
+      getHtmlAttributeValue(openTag, OUTPUT_SCOPE_ATTRIBUTE) ?? undefined;
+    // An inline block marked type="text/typescript" is compiled by the host
+    // that runs it; the placeholder keeps no attributes, so the entry says so.
+    const typescript = !srcPath && getScriptType(openTag) === "text/typescript";
+    if (recordInRegistry)
+      serverSidecarRegistry.recordScript(
+        id,
+        scriptContent,
+        srcPath,
+        scriptSourceFile,
+        sourceLine,
+        mode,
+        sourceColumn,
+        outputScope,
+        typescript,
+      );
+    if (outMap) {
+      outMap[id] = {
+        id,
+        mode,
+        source: scriptContent,
+        modulePath: srcPath,
+        sourceFile: scriptSourceFile,
+        sourceLine,
+        ...(sourceColumn !== undefined ? { sourceColumn } : {}),
+        ...(outputScope !== undefined ? { outputScope } : {}),
+        ...(typescript ? { typescript: true as const } : {}),
+      };
+    }
+    const marker = mode === "stream" ? " data-bascik-stream" : "";
+    return `<script type="text/bascik-server" data-bascik-server-id="${id}"${marker}></script>`;
+  };
+  return replaceSpans(html, scanRequestScripts(html, false), (match, found) =>
+    replace(
+      match,
+      html.slice(found.start + 7, found.contentStart - 1),
+      html.slice(found.contentStart, found.contentEnd),
+    ),
+  );
+};
+
+/**
  * Replace all <script data-bascik-server> and <script data-bascik-stream> tags
  * in `html` with inert placeholders and record each script's source and mode
  * in the serverSidecarRegistry (and optional outMap). Stream placeholders carry
@@ -234,67 +381,50 @@ export const extractServerScriptsToSidecar = (
   pagePath: string = "page",
   outMap?: Record<string, ServerScriptEntry>,
   sourceFile?: string,
-): string => {
-  let scriptOrdinal = 0;
-  // Whole-attribute-name boundary: a placeholder's `data-bascik-server-id` must
-  // never re-match, or re-running this over placeholdered HTML would record the
-  // empty placeholder body over the real source.
-  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const serverScriptRe = new RegExp(
-    String.raw`<script\b((?:[^>"']|"[^"]*"|'[^']*')*\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})(?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)${SCRIPT_END_TAG}`,
-    "gi",
+): string =>
+  extractScriptsToSidecar(
+    html,
+    (ordinal) =>
+      `server_script_${Buffer.from(`${pagePath}::${ordinal}`).toString("hex")}`,
+    outMap,
+    sourceFile,
   );
-  return html.replace(
-    serverScriptRe,
-    (match: string, openAttrs: string, scriptContent: string) => {
-      // A stream placeholder legitimately carries `data-bascik-stream` as a
-      // mode marker. It is already extracted; leave it alone.
-      if (/type=["']text\/bascik-server["']/i.test(`<script${openAttrs}>`))
-        return match;
-      scriptOrdinal++;
-      const id = `server_script_${Buffer.from(`${pagePath}::${scriptOrdinal}`).toString("hex")}`;
-      const openTag = `<script${openAttrs}>`;
-      const mode: ServerScriptMode = STREAM_ATTR_RE.test(openTag)
-        ? "stream"
-        : "server";
-      const srcPath = getHtmlAttributeValue(openTag, "src");
-      const annotatedSourceFile = getHtmlAttributeValue(
-        openTag,
-        "data-bascik-source-file",
-      );
-      const scriptSourceFile = annotatedSourceFile
-        ? decodeURIComponent(annotatedSourceFile)
-        : sourceFile;
-      const annotatedSourceLine = getHtmlAttributeValue(
-        openTag,
-        "data-bascik-source-line",
-      );
-      const sourceLine = annotatedSourceLine
-        ? Number.parseInt(annotatedSourceLine, 10)
-        : undefined;
-      const sourceColumn = directiveSourceColumn(openTag);
-      serverSidecarRegistry.recordScript(
-        id,
-        scriptContent,
-        srcPath,
-        scriptSourceFile,
-        sourceLine,
-        mode,
-        sourceColumn,
-      );
-      if (outMap) {
-        outMap[id] = {
-          id,
-          mode,
-          source: scriptContent,
-          modulePath: srcPath,
-          sourceFile: scriptSourceFile,
-          sourceLine,
-          ...(sourceColumn !== undefined ? { sourceColumn } : {}),
-        };
-      }
-      const marker = mode === "stream" ? " data-bascik-stream" : "";
-      return `<script type="text/bascik-server" data-bascik-server-id="${id}"${marker}></script>`;
-    },
-  );
+
+/**
+ * The page a `server_script_*` id was staged from (its `pagePath`, such as
+ * `pages/live.html`), or undefined for a component script or an id this
+ * build did not mint.
+ */
+export const serverScriptPagePath = (id: string): string | undefined => {
+  const prefix = "server_script_";
+  if (!id.startsWith(prefix)) return undefined;
+  const hex = id.slice(prefix.length);
+  if (!/^(?:[0-9a-f]{2})+$/.test(hex)) return undefined;
+  const decoded = Buffer.from(hex, "hex").toString("utf8");
+  const ordinal = decoded.lastIndexOf("::");
+  return ordinal > 0 ? decoded.slice(0, ordinal) : undefined;
 };
+
+/**
+ * The same extraction for a component's scoping template (prompt 157): the
+ * N-th server or stream script of component `componentName` is staged once
+ * as `component_script_<hex(name::ordinal)>`, so a request-time render of the
+ * component resolves its placeholder through the sidecar like a page does.
+ * The source file and line come from the template's directive stamps.
+ * With `record: false` the entries go into `outMap` only, for a caller that
+ * records them once it knows they are wanted.
+ */
+export const extractComponentScriptsToSidecar = (
+  template: string,
+  componentName: string,
+  outMap?: Record<string, ServerScriptEntry>,
+  { record = true }: { record?: boolean } = {},
+): string =>
+  extractScriptsToSidecar(
+    template,
+    (ordinal) =>
+      `${COMPONENT_SCRIPT_ID_PREFIX}${Buffer.from(`${componentName}::${ordinal}`).toString("hex")}`,
+    outMap,
+    undefined,
+    record,
+  );

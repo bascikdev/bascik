@@ -95,6 +95,7 @@ function assertInventoriesMatch(
 async function writeMetamorphicFixture(
   root: string,
   minified: boolean = false,
+  scopesName: boolean = false,
 ): Promise<void> {
   await createFixtureDirs(root);
   await mkdir(join(root, "src/components-a"), { recursive: true });
@@ -107,7 +108,7 @@ async function writeMetamorphicFixture(
   directory: { components: ["src/components-a", "src/components-b"] },
   pipeline: { workers: false },
   generate: { manifest: true, cspHashes: true, sitemap: false, robots: false },
-  minify: { identifiers: ${minified} },
+  minify: { identifiers: ${minified} },${scopesName ? "\n  scoping: { attributes: { name: true } }," : ""}
 };`,
   );
 
@@ -303,33 +304,44 @@ describe("packet B1: metamorphic build artifact comparison and ordering", () => 
       // the absolute pagePath input differs, resulting in distinct instance IDs.
       // Prompt 155 requirement: "If public bytes differ across roots, retain the minimal reproduction,
       // trace the actual identity input, and request a supported-contract decision before fixes."
+      // The fixture's only per-instance attribute is the card's `<slot name>`. By default `name` ships as
+      // written, so its bytes do not depend on the root; with name scoping opted in, they do.
       const rootA = fixtureRoot("two-root-a");
       const rootB = fixtureRoot("two-root-b");
+      const scopedA = fixtureRoot("two-root-scoped-a");
+      const scopedB = fixtureRoot("two-root-scoped-b");
       try {
         await writeMetamorphicFixture(rootA, false);
         await writeMetamorphicFixture(rootB, false);
+        await writeMetamorphicFixture(scopedA, false, true);
+        await writeMetamorphicFixture(scopedB, false, true);
 
-        const runA = await runRealBuild({ projectRoot: rootA });
-        const runB = await runRealBuild({ projectRoot: rootB });
-        expect(runA.stdout).toContain("Build complete");
-        expect(runB.stdout).toContain("Build complete");
+        const aboutOf = async (root: string) => {
+          const run = await runRealBuild({ projectRoot: root });
+          expect(run.stdout).toContain("Build complete");
+          const files = await readEmittedFiles(join(root, "dist"));
+          return files["about.html"].toString("utf8");
+        };
 
-        const filesA = await readEmittedFiles(join(rootA, "dist"));
-        const filesB = await readEmittedFiles(join(rootB, "dist"));
+        // Default: no per-instance identity reaches the output.
+        const htmlA = await aboutOf(rootA);
+        expect(htmlA).toContain('<slot name="title">');
+        expect(await aboutOf(rootB)).toBe(htmlA);
 
-        const htmlA = filesA["about.html"].toString("utf8");
-        const htmlB = filesB["about.html"].toString("utf8");
-
-        // Public bytes differ between roots due to path-derived scoped instance identities
-        expect(htmlA).not.toBe(htmlB);
+        // Opted in: public bytes differ between roots due to path-derived scoped instance identities.
+        const scopedHtmlA = await aboutOf(scopedA);
+        expect(scopedHtmlA).not.toContain('<slot name="title">');
+        expect(await aboutOf(scopedB)).not.toBe(scopedHtmlA);
 
         // Trace the exact identity input mechanism:
         // deriveInstanceId hashes(`${pagePath}::${componentName}::${ordinal}`)
         // where pagePath incorporates the absolute project root.
-        expect(rootA).not.toBe(rootB);
+        expect(scopedA).not.toBe(scopedB);
       } finally {
         await cleanupFixture(rootA);
         await cleanupFixture(rootB);
+        await cleanupFixture(scopedA);
+        await cleanupFixture(scopedB);
       }
     });
 

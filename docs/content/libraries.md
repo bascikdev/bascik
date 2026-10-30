@@ -61,7 +61,7 @@ Each instance of this component has its own isolated state. Place it on a page a
 ```html
 <div class="counter" v-scope="{ count: 0 }">
   <button class="btn" @click="count--">−</button>
-  <span class="count-value">{{ count }}</span>
+  <span class="count-value" v-text="count">0</span>
   <button class="btn btn-primary" @click="count++">+</button>
 </div>
 ```
@@ -108,7 +108,7 @@ Each instance of this component has its own isolated state. Place it on a page a
 ```html
 <div class="bascik__my-counter__counter" v-scope="{ count: 0 }">
   <button class="bascik__my-counter__btn" @click="count--">−</button>
-  <span class="bascik__my-counter__count-value">{{ count }}</span>
+  <span class="bascik__my-counter__count-value" v-text="count">0</span>
   <button
     class="bascik__my-counter__btn bascik__my-counter__btn-primary"
     @click="count++"
@@ -146,7 +146,12 @@ petite-vue's `v-for` and `v-model` work as expected. Filter a list in real time 
 <script src="https://unpkg.com/petite-vue" defer init></script>
 
 <div v-scope="{ query: '', items: ['Astro', 'Eleventy', 'Next.js'] }">
-  <input type="search" v-model="query" placeholder="Filter frameworks…" />
+  <input
+    type="search"
+    v-model="query"
+    placeholder="Filter frameworks…"
+    aria-label="Filter frameworks"
+  />
   <ul>
     <li
       v-for="item in items.filter(i => i.toLowerCase().includes(query.toLowerCase()))"
@@ -166,7 +171,12 @@ petite-vue's `v-for` and `v-model` work as expected. Filter a list in real time 
   items: ['Astro', 'Eleventy', 'Next.js', 'Nuxt', 'SvelteKit']
 }"
 >
-  <input type="search" v-model="query" placeholder="Filter frameworks…" />
+  <input
+    type="search"
+    v-model="query"
+    placeholder="Filter frameworks…"
+    aria-label="Filter frameworks"
+  />
   <ul>
     <template
       v-for="item in items.filter(i =>
@@ -181,7 +191,7 @@ petite-vue's `v-for` and `v-model` work as expected. Filter a list in real time 
 
 ### Shared State Across Components
 
-For state that needs to be shared between separate components, define it in a vanilla JavaScript module and import it in a `data-bascik-build` script or a regular `<script type="module">`:
+For state that needs to be shared between separate components, define it in a vanilla JavaScript module and import it in a regular `<script type="module">`:
 
 ```js
 // src/pages/store.js - imported by components that share state
@@ -191,12 +201,14 @@ export const store = reactive({ cart: [] });
 
 ```html
 <!-- src/components/cart-button.html -->
+<div id="cart-root" v-scope="{ store }">Cart ({{ store.cart.length }})</div>
 <script type="module">
   import { createApp } from "https://unpkg.com/petite-vue?module";
   import { store } from "/store.js";
-  createApp({ store }).mount("#cart-root");
+  // getElementById is rewritten to this instance's scoped id; a "#cart-root"
+  // string passed to mount() would not be.
+  createApp({ store }).mount(document.getElementById("cart-root"));
 </script>
-<div id="cart-root" v-scope="{ store }">Cart ({{ store.cart.length }})</div>
 ```
 
 ## Alpine.js
@@ -227,9 +239,9 @@ export const store = reactive({ cart: [] });
 
 ## Tailwind CSS
 
-[Tailwind CSS](https://tailwindcss.com) is a utility-first CSS framework. Because Tailwind's utility classes are global by design, you need to tell Bascik not to scope class attributes, otherwise Bascik renames `class="flex gap-4"` to `class="bascik__my-comp__flex bascik__my-comp__gap-4"`, which Tailwind's CSS will never match.
+[Tailwind CSS](https://tailwindcss.com) is a utility-first CSS framework. Tailwind's utility classes are global by design. Bascik scopes only the class names a component's own CSS defines, so `class="flex gap-4"` passes through unchanged unless the component's stylesheet also has a `.flex` or `.gap-4` rule; then Bascik renames it to `bascik__my-comp__flex`, which Tailwind's CSS will never match.
 
-Set `scoping.attributes.class` to `false` in `bascik.config.ts`:
+To rule that out, set `scoping.attributes.class` to `false` in `bascik.config.ts`:
 
 ```ts
 // bascik.config.ts
@@ -299,7 +311,7 @@ With class scoping turned off, Tailwind utility classes work normally inside any
 
 For production, replace the CDN tag with a [Tailwind CLI](https://tailwindcss.com/docs/installation) build step that scans your source files and emits a single CSS file; the CDN is only recommended for development.
 
-> **Trade-off.** With `class: false`, Bascik no longer isolates component class names; you give up class-level CSS isolation in exchange for Tailwind compatibility. IDs and names are still scoped independently. For most Tailwind projects this is the right choice since Tailwind's utilities are intentionally global.
+> **Trade-off.** With `class: false`, Bascik no longer isolates component class names; you give up class-level CSS isolation in exchange for Tailwind compatibility. IDs are still scoped independently. For most Tailwind projects this is the right choice since Tailwind's utilities are intentionally global.
 
 ## Any Library Works
 
@@ -325,7 +337,7 @@ Bascik places no restrictions on which libraries you use. A few common patterns:
 
 ## Scoping Compatibility
 
-**Bascik scopes `class`, `id`, and `name` attributes at build time.** Library-specific attributes, `v-scope`, `x-data`, `@click`, `hx-get`, `data-controller`: are never touched.
+**Bascik scopes `class` and `id` attributes at build time** (and `name`, when `scoping.attributes.name` is on). Library-specific attributes, `v-scope`, `x-data`, `@click`, `hx-get`, `data-controller`: are never touched.
 
 One thing to be aware of: if a library dynamically sets a class or ID value at runtime (e.g. `:class="activeClass"` where `activeClass` is a JavaScript variable), that value is a runtime string and will _not_ correspond to a Bascik-scoped class name. Use `data-*` attributes for runtime-toggled state and target them with CSS attribute selectors instead. Bascik scopes the class name at build time, but the `[data-state="on"]` part is a plain attribute selector that survives scoping unchanged, so the CSS correctly matches the attribute value the library sets at runtime.
 

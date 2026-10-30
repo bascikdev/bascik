@@ -40,10 +40,15 @@
 
 import { createHash } from "node:crypto";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
+import {
+  compileDirectiveTypeScript,
+  isTypeScriptDirectiveScript,
+} from "./typescript.ts";
 import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { getProjectPath, getRelativePath } from "./file-system.ts";
 import { BuildScriptError, type BuildScriptLocation } from "./build-error.ts";
+import type { BuildScriptStats } from "./build-script-stats.ts";
 import {
   directiveSourcePosition,
   padToSourcePosition,
@@ -91,50 +96,60 @@ import {
   STREAM_FLAG,
   SCRIPT_END_TAG,
   SCRIPT_TAG_PREFIX,
+  browserTagSpace,
   getHtmlAttributeValue,
   scriptOpenTag,
 } from "./html-patterns.ts";
 import type { RouteEntry } from "./types.ts";
 
 // Match <script data-bascik-build …> … </script> (captures inner content).
+// Every open tag here is read as the browser reads it (`browserTagSpace`):
+// `<script\u00a0data-bascik-build>` is no script, so it never runs.
 const BUILD_SCRIPT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
+  `${browserTagSpace(`${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`)}([\\s\\S]*?)${SCRIPT_END_TAG}`,
   "gi",
 );
 
 const BUILD_ONCE_SCRIPT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
+  `${browserTagSpace(`${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>`)}([\\s\\S]*?)${SCRIPT_END_TAG}`,
   "gi",
 );
 
 const BUILD_ONCE_OPEN_TAG_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  browserTagSpace(
+    `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  ),
   "i",
 );
 
 const BUILD_MODE_CONFLICT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  browserTagSpace(
+    `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_ONCE_FLAG}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  ),
   "i",
 );
 
 const BUILD_SERVER_CONFLICT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  browserTagSpace(
+    `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  ),
   "i",
 );
 
 const BUILD_ROUTES_CONFLICT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  browserTagSpace(
+    `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  ),
   "i",
 );
 
 const BUILD_STREAM_CONFLICT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  browserTagSpace(
+    `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s*>|${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s+${ANY_BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  ),
   "i",
 );
 
-// Matches a statically visible `process.env.NAME` member read in a build
-// script. Used only to warn when `NAME` is not declared in
-// `scripts.cache.environment`; it is not a substitute for the cache key.
 const PROCESS_ENV_READ_RE = /\bprocess\.env\.([A-Za-z_$][A-Za-z0-9_$]*)\b/g;
 
 // ─── Build-script output cache ───────────────────────────────────────────────
@@ -169,6 +184,11 @@ const depContentCache = new Map<string, string>();
 export const MAX_IN_MEMORY_SCRIPT_OUTPUTS = 512;
 
 const inMemoryScriptOutputCache = new Map<string, string>();
+// Whether the run that produced a memoized output read its page context
+// (BASCIK_PAGE_PATH, BASCIK_PAGE_FILE, BASCIK_ROUTE), kept beside the output so
+// a cache hit can still answer `onReadsPageContext` (prompt 157). Absent for
+// records written before the flag existed.
+const memoizedPageContextReads = new Map<string, boolean>();
 
 /**
  * Entry cap (distinct source texts) for the dependency scan memo. Every cache
@@ -224,7 +244,13 @@ const indexOutputKey = (key: string): void => {
   }
 };
 
-const memoizeOutput = (key: string, output: string): void => {
+const memoizeOutput = (
+  key: string,
+  output: string,
+  readsPageContext?: boolean,
+): void => {
+  if (readsPageContext === undefined) memoizedPageContextReads.delete(key);
+  else memoizedPageContextReads.set(key, readsPageContext);
   if (inMemoryScriptOutputCache.has(key)) {
     inMemoryScriptOutputCache.set(key, output);
     return;
@@ -232,6 +258,7 @@ const memoizeOutput = (key: string, output: string): void => {
   while (inMemoryScriptOutputCache.size >= MAX_IN_MEMORY_SCRIPT_OUTPUTS) {
     const oldest = inMemoryScriptOutputCache.keys().next().value as string;
     inMemoryScriptOutputCache.delete(oldest);
+    memoizedPageContextReads.delete(oldest);
     unindexOutputKey(oldest);
   }
   inMemoryScriptOutputCache.set(key, output);
@@ -259,6 +286,7 @@ export const clearBuildScriptCaches = (filePath?: string): void => {
     if (keys) {
       for (const key of [...keys]) {
         inMemoryScriptOutputCache.delete(key);
+        memoizedPageContextReads.delete(key);
         // Drop this key from every other dependency's set too, so no
         // dependency indexes a key that is no longer memoized.
         unindexOutputKey(key);
@@ -269,6 +297,7 @@ export const clearBuildScriptCaches = (filePath?: string): void => {
   }
   depContentCache.clear();
   inMemoryScriptOutputCache.clear();
+  memoizedPageContextReads.clear();
   outputKeysByDependency.clear();
   dependenciesByOutputKey.clear();
   dependencyScanCache.clear();
@@ -324,7 +353,7 @@ const readCachedFile = async (
 };
 
 const ALL_PAGE_SCRIPTS_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+(?:${ANY_BUILD_FLAG}|${ROUTES_FLAG})(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
+  `${browserTagSpace(`${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+(?:${ANY_BUILD_FLAG}|${ROUTES_FLAG})(?:\\s+${ATTR})*\\s*>`)}([\\s\\S]*?)${SCRIPT_END_TAG}`,
   "gi",
 );
 
@@ -596,23 +625,41 @@ const computeScriptCacheKey = async (
   return key;
 };
 
+interface CachedScriptOutput {
+  output: string;
+  /** Whether the recorded run read its page context; undefined for older records. */
+  readsPageContext: boolean | undefined;
+}
+
 const readScriptCache = async (
   cacheDir: string,
   key: string,
-): Promise<string | null> => {
+): Promise<CachedScriptOutput | null> => {
   const memCached = inMemoryScriptOutputCache.get(key);
-  if (memCached !== undefined) return memCached;
+  if (memCached !== undefined)
+    return {
+      output: memCached,
+      readsPageContext: memoizedPageContextReads.get(key),
+    };
   try {
     const raw = await readFile(join(cacheDir, `${key}.json`), "utf8");
-    const entry = JSON.parse(raw) as { v?: number; output?: string };
+    const entry = JSON.parse(raw) as {
+      v?: number;
+      output?: string;
+      readsPageContext?: boolean;
+    };
     if (
       typeof entry === "object" &&
       entry !== null &&
       entry.v === SCRIPT_CACHE_VERSION &&
       typeof entry.output === "string"
     ) {
-      memoizeOutput(key, entry.output);
-      return entry.output;
+      const readsPageContext =
+        typeof entry.readsPageContext === "boolean"
+          ? entry.readsPageContext
+          : undefined;
+      memoizeOutput(key, entry.output, readsPageContext);
+      return { output: entry.output, readsPageContext };
     }
   } catch {
     /* cache miss */
@@ -624,12 +671,17 @@ const writeScriptCache = async (
   cacheDir: string,
   key: string,
   output: string,
+  readsPageContext?: boolean,
 ): Promise<void> => {
-  memoizeOutput(key, output);
+  memoizeOutput(key, output, readsPageContext);
   // Best-effort: don't let a cache write failure abort the build.
   await writeFile(
     join(cacheDir, `${key}.json`),
-    JSON.stringify({ v: SCRIPT_CACHE_VERSION, output }),
+    JSON.stringify({
+      v: SCRIPT_CACHE_VERSION,
+      output,
+      ...(readsPageContext !== undefined ? { readsPageContext } : {}),
+    }),
     "utf8",
   ).catch(() => {});
 };
@@ -639,6 +691,22 @@ export interface ExecuteBuildScriptOptions {
   pagePath?: string;
   sourceFile?: string;
   once?: boolean;
+  /**
+   * Called once for each `data-bascik-build` script in this call whose run
+   * read its page context (BASCIK_PAGE_PATH, BASCIK_PAGE_FILE, BASCIK_ROUTE),
+   * whether it ran now or its cache record says so. The component manifest
+   * (prompt 157) runs a component's build scripts once with an empty page
+   * context and refuses the component when one of them read it, since its
+   * output would differ per page. Build-once scripts never see a page
+   * context and are not reported.
+   */
+  onReadsPageContext?: () => void;
+  /**
+   * Where to count this call's cache hits, misses, and child-process time.
+   * The caller owns the object; a page passes one through every pass (page,
+   * body, head) so the counts on its `transpiled:` line are the page's.
+   */
+  stats?: BuildScriptStats;
 }
 
 /**
@@ -724,6 +792,8 @@ export const executeBuildScripts = async (
     specifierEdits: SpecifierEdit[];
     outputScope: OutputScope | null;
     output?: string;
+    /** Whether the run (or its cache record) read the page context. */
+    readsPageContext?: boolean;
   }
 
   const tasks: ScriptTask[] = [];
@@ -841,8 +911,23 @@ export const executeBuildScripts = async (
               position.bodyLine,
               position.bodyColumn,
             );
+      // TypeScript (a marked tag, or a `.ts` src) becomes JavaScript before
+      // its imports are rewritten. Strip-only keeps every line and column.
+      const javascript = isTypeScriptDirectiveScript(
+        openTag,
+        fromSrcFile ? moduleSourcePath : undefined,
+      )
+        ? await compileDirectiveTypeScript(
+            padded,
+            moduleSourcePath,
+            fromSrcFile ? "companion" : "inline",
+            fromSrcFile || !location
+              ? undefined
+              : { line: location.line, column: location.column },
+          )
+        : padded;
       ({ code: preparedScript, edits: specifierEdits } =
-        rewriteModuleSpecifiersWithEdits(padded, scriptBaseDir, {
+        rewriteModuleSpecifiersWithEdits(javascript, scriptBaseDir, {
           importRoot,
         }));
     } catch (err) {
@@ -892,8 +977,17 @@ export const executeBuildScripts = async (
         pageFile !== "" &&
         resolve(process.cwd(), sourceFile) !==
           resolve(process.cwd(), pageFile));
+    // A file's script run with no page at all (a component's request-time
+    // template, prompt 157) prints what a run on any page that never read its
+    // page context printed, so that page's shared record answers it too.
+    const withoutPage =
+      !options?.once &&
+      sourceFile !== "" &&
+      routeStr === "" &&
+      pageFile === "" &&
+      pagePath === "";
     const sharedKey =
-      cacheKey !== null && pageContextVaries
+      cacheKey !== null && (pageContextVaries || withoutPage)
         ? await computeScriptCacheKey(
             trimmedScript,
             scriptBaseDir,
@@ -933,13 +1027,17 @@ export const executeBuildScripts = async (
   }
 
   // A page-specific record, or one a run on another page proved page-independent.
-  const readCachedOutput = async (task: ScriptTask): Promise<string | null> => {
+  const readCachedOutput = async (
+    task: ScriptTask,
+  ): Promise<CachedScriptOutput | null> => {
     if (task.cacheKey !== null) {
       const cached = await readScriptCache(cacheDir, task.cacheKey);
       if (cached !== null) return cached;
     }
     if (task.sharedKey !== null) {
-      return readScriptCache(cacheDir, task.sharedKey);
+      const shared = await readScriptCache(cacheDir, task.sharedKey);
+      // A shared record exists only for a run that never read its page.
+      if (shared !== null) return { ...shared, readsPageContext: false };
     }
     return null;
   };
@@ -949,10 +1047,18 @@ export const executeBuildScripts = async (
   for (const task of tasks) {
     const cached = await readCachedOutput(task);
     if (cached !== null) {
-      task.output = cached;
+      task.output = cached.output;
+      task.readsPageContext = cached.readsPageContext;
       continue;
     }
     uncachedTasks.push(task);
+  }
+  // The recursive build-once call above received the same `stats`, so a
+  // page's build-once scripts are counted as the page's too.
+  const stats = options?.stats;
+  if (stats) {
+    stats.cached += tasks.length - uncachedTasks.length;
+    stats.ran += uncachedTasks.length;
   }
 
   if (uncachedTasks.length > 0) {
@@ -987,6 +1093,10 @@ export const executeBuildScripts = async (
     // re-executed: partial execution may have side effects that are unsafe to
     // duplicate, so there is no blind fallback retry. Siblings keep their own
     // output; a failed script contributes an empty replacement.
+    //
+    // The loop is timed as a whole: the page's own clock is paused for this
+    // await, so this is the only place the child time is seen.
+    const childrenStarted = performance.now();
     for (const task of uncachedTasks) {
       const taskSourceUrlComment =
         task.moduleSourcePath !== "unknown"
@@ -1010,11 +1120,17 @@ export const executeBuildScripts = async (
         if (stderr) process.stderr.write(stderr);
         const output = result;
         if (task.cacheKey !== null)
-          await writeScriptCache(cacheDir, task.cacheKey, output);
+          await writeScriptCache(
+            cacheDir,
+            task.cacheKey,
+            output,
+            readsPageContext,
+          );
         // A run that never looked at its page produced what every page gets.
         if (task.sharedKey !== null && !readsPageContext)
-          await writeScriptCache(cacheDir, task.sharedKey, output);
+          await writeScriptCache(cacheDir, task.sharedKey, output, false);
         task.output = output;
+        task.readsPageContext = readsPageContext;
       } catch (err: any) {
         // The script's own output, printed once. Its error report is the message below.
         if (err?.stdout) process.stdout.write(err.stdout);
@@ -1063,6 +1179,13 @@ export const executeBuildScripts = async (
         await unlink(task.tmpPath).catch(() => {});
       }
     }
+    if (stats) stats.childMs += performance.now() - childrenStarted;
+  }
+
+  if (options?.onReadsPageContext && !options.once) {
+    for (const task of tasks) {
+      if (task.readsPageContext) options.onReadsPageContext();
+    }
   }
 
   // Splice each script's output in at its own match index, from right to left
@@ -1074,7 +1197,11 @@ export const executeBuildScripts = async (
     // Printed output is transpiled again, so a directive script inside it (for
     // example in CMS HTML) would run at build time or become a server script.
     // Only directives written in source files run; printed ones are dropped.
-    const { html: safeOutput, removed } = removeOutputDirectives(output ?? "");
+    // security.stripDirectiveScripts off: the output is kept as printed.
+    const { html: safeOutput, removed } =
+      BascikConfig.security?.stripDirectiveScripts === false
+        ? { html: output ?? "", removed: [] as string[] }
+        : removeOutputDirectives(output ?? "");
     for (const name of removed) removedDirectives.add(name);
     // A component build script carries its component's scope so its output
     // matches the component's scoped CSS. Applied after

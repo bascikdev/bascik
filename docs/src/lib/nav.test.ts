@@ -200,7 +200,7 @@ describe("renderPagination", () => {
       const html = renderPagination();
       expect(html).toContain('data-pg="prev"');
       expect(html).toContain('data-pg="next"');
-      expect(html).toContain('href="/stream-scripts"');
+      expect(html).toContain('href="/security"');
       expect(html).toContain('href="/api-routes"');
     } finally {
       process.env.BASCIK_PAGE_PATH = originalPath;
@@ -221,7 +221,7 @@ describe("renderPagination", () => {
       const html = renderPagination();
       expect(html).toContain('data-pg="prev"');
       expect(html).toContain('data-pg="next"');
-      expect(html).toContain('href="/stream-scripts"');
+      expect(html).toContain('href="/security"');
       expect(html).toContain('href="/api-routes"');
     } finally {
       process.env.BASCIK_SOURCE_FILE = originalFile;

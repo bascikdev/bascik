@@ -19,8 +19,8 @@
  */
 
 import { readFile, readdir } from "node:fs/promises";
-import { resolve, relative, join } from "node:path";
-import { existsSync } from "node:fs";
+import { resolve, relative, join, dirname, extname } from "node:path";
+import { existsSync, statSync } from "node:fs";
 import { listPages, getRelativePath, deepReadDirFlat } from "./file-system.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import { listComponents } from "./components.ts";
@@ -40,9 +40,9 @@ import {
   type LanguageServerDiagnostic,
 } from "./check-language-server.ts";
 import { getHttpPath } from "./paths.ts";
-import { buildMissingSiteUrlError } from "./sitemap.ts";
 import { getSiteUrl, SITE_URL_ENV_VAR } from "./environment.ts";
 import { config as userConfig, modeOverrides } from "./userConfig.ts";
+import { CONFIG_FILE_NAMES, findConfigFile } from "./config-file-names.ts";
 import {
   validateUserConfig,
   type ConfigValidationError,
@@ -50,8 +50,33 @@ import {
   PRESERVE_WILDCARD_PATTERN,
 } from "./config-validation.ts";
 import { stdout } from "./colors.ts";
-import { BUILD_ATTR_NAME, BUILD_ONCE_ATTR_NAME } from "./html-patterns.ts";
+import {
+  BUILD_ATTR_NAME,
+  BUILD_ONCE_ATTR_NAME,
+  getHtmlAttributeValue,
+} from "./html-patterns.ts";
+import { getImportRoot } from "./import-root.ts";
+import {
+  classifySpecifier,
+  findModuleSpecifiers,
+  resolveScriptSrcPath,
+  resolveSpecifierPath,
+} from "./module-specifiers.ts";
+import {
+  createAttributeScanner,
+  createMarkerWalk,
+  findMarkerAnchors,
+  isTagSpace,
+  isWordCode,
+  scanElementContents,
+} from "./element-content-scan.ts";
+import {
+  sidecarHasPageEntries,
+  type ServerScriptsSidecar,
+} from "./server-sidecar.ts";
+import { readComponentManifest } from "./component-manifest-file.ts";
 import type { ComponentList } from "./types.ts";
+import { privateDirFor } from "./private-dir.ts";
 
 export type FindingSeverity = "error" | "warning";
 
@@ -68,6 +93,8 @@ export interface CheckFinding {
   message: string;
   locations: FindingLocation[];
   suggestion?: string;
+  /** A caveat shown under the finding, such as a use the check cannot see. */
+  note?: string;
   /** `language-server` for per-file findings; absent for the project checks this module owns. */
   source?: "language-server";
 }
@@ -214,21 +241,17 @@ export const extractCustomTagOccurrences = (html: string): TagOccurrence[] => {
   });
   const stripped = stripElementContents(noComments);
   const occurrences: TagOccurrence[] = [];
-  const lines = stripped.split("\n");
-  const re = /<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)[\s\/>]/gi;
-
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-    const lineText = lines[lineIndex];
-    let m: RegExpExecArray | null;
-    re.lastIndex = 0;
-    while ((m = re.exec(lineText)) !== null) {
-      occurrences.push({
-        tag: m[1].toLowerCase(),
-        line: lineIndex + 1,
-      });
-    }
+  // The tag name ends where a browser ends it: at tag whitespace (a newline
+  // included, so attributes may start on the next line), `/` or `>`. The
+  // whole text is scanned at once, not line by line.
+  const re = /<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)(?=[\t\n\f\r \/>])/gi;
+  let counted = 0;
+  let line = 1;
+  for (const m of stripped.matchAll(re)) {
+    for (; counted < m.index; counted++)
+      if (stripped.charCodeAt(counted) === 10) line++;
+    occurrences.push({ tag: m[1].toLowerCase(), line });
   }
-
   return occurrences;
 };
 
@@ -268,37 +291,332 @@ const toDisplay = (filePath: string): string => {
   }
 };
 
+/** Inline `data-bascik-server` and `data-bascik-stream` script attributes. */
+const REQUEST_DIRECTIVE_RE =
+  /(?:^|\s)data-bascik-(?:server|stream)(?=[\s=/]|$)/i;
+
 /**
- * Extract all `<script data-bascik-build>` block contents from an HTML string.
+ * The note on an unused component when some script builds a tag name in
+ * code: the component may be used there, so the warning names the places
+ * instead of claiming it is unused. Undefined when no script does.
  */
-const extractBuildScripts = (html: string): string[] => {
-  const scripts: string[] = [];
-  const scriptRegex =
-    /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = scriptRegex.exec(html)) !== null) {
-    const attrs = match[1];
-    const content = match[2];
-    if (BUILD_DIRECTIVE_RE.test(attrs)) {
-      scripts.push(content);
-    }
+const computedTagNote = (sites: FindingLocation[]): string | undefined => {
+  if (sites.length === 0) return undefined;
+  const shown = sites
+    .slice(0, 3)
+    .map((site) => `${site.filePath}:${site.line}`)
+    .join(", ");
+  const more = sites.length > 3 ? ` and ${sites.length - 3} more` : "";
+  return (
+    `may be used: a script builds a tag name in code at ${shown}${more}, ` +
+    `which this check cannot follow`
+  );
+};
+
+/** A build, server or stream script in a page or component. */
+interface DirectiveScript {
+  /** The inline body (empty for a `src=` script). */
+  content: string;
+  /** The 0-based line of `content`'s first character in the file. */
+  line: number;
+  /** The `src=` value, when the script names a module. */
+  src?: string;
+}
+
+/**
+ * Every build (`data-bascik-build`, `data-bascik-build-once`), server and
+ * stream script in `html`: its inline body and its `src=`. The tag names in
+ * their templates are static (html refuses a hole in a tag name), so a tag
+ * written there, or in a local module the script imports, is a real use of
+ * the component.
+ */
+const extractDirectiveScripts = (html: string): DirectiveScript[] => {
+  const scripts: DirectiveScript[] = [];
+  let counted = 0;
+  let line = 0;
+  // `/<script(?=[\t\n\f\r />])((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`,
+  // in linear time.
+  for (const match of scanElementContents(html, "script", {
+    opener: "tag-space",
+    closer: "attributes",
+  })) {
+    const attrs = html.slice(match.start + 7, match.contentStart - 1);
+    if (!BUILD_DIRECTIVE_RE.test(attrs) && !REQUEST_DIRECTIVE_RE.test(attrs))
+      continue;
+    for (; counted < match.contentStart; counted++)
+      if (html.charCodeAt(counted) === 10) line++;
+    const src = getHtmlAttributeValue(`<script ${attrs}>`, "src")?.trim();
+    scripts.push({
+      content: html.slice(match.contentStart, match.contentEnd),
+      line,
+      ...(src ? { src } : {}),
+    });
   }
   return scripts;
 };
 
+/** A start tag's name, read as a browser reads it: up to tag whitespace, `/` or `>`. */
+const START_TAG_NAME_RE = /<([a-zA-Z][^\t\n\f\r />]*)(?=[\t\n\f\r />])/g;
+
+/**
+ * Markup whose tag name is built in code: a template hole in the name
+ * (`` `<${tag}>` ``, `` `<card-${kind}>` ``), or a string that ends in `<` or
+ * a partial name and is concatenated (`"<" + tag`, `'<card-' + kind`).
+ */
+const COMPUTED_TAG_NAME_RE = /<[a-zA-Z0-9-]*\$\{|<[a-zA-Z0-9-]*["']\s*\+/g;
+
+/** What a script (or a module it imports) says about component use. */
+interface ScriptUses {
+  /** Lowercased start-tag names written in it. */
+  tags: Set<string>;
+  /** The text, for the quoted-name check. */
+  text: string;
+  /** 1-based lines where a tag name is built in code. */
+  computedLines: number[];
+}
+
+const scanScriptUses = (text: string, lineOffset: number): ScriptUses => {
+  const tags = new Set<string>();
+  for (const match of text.matchAll(START_TAG_NAME_RE))
+    tags.add(match[1].toLowerCase());
+  const computedLines: number[] = [];
+  let counted = 0;
+  let line = lineOffset + 1;
+  for (const match of text.matchAll(COMPUTED_TAG_NAME_RE)) {
+    for (; counted < match.index; counted++)
+      if (text.charCodeAt(counted) === 10) line++;
+    if (computedLines.at(-1) !== line) computedLines.push(line);
+  }
+  return { tags, text, computedLines };
+};
+
+/** How many local modules `bascik --check` reads while following script imports. */
+const MAX_SCRIPT_MODULES = 2000;
+
+const SCRIPT_MODULE_EXTENSIONS = [".ts", ".mts", ".js", ".mjs", ".cjs"];
+
+/**
+ * The file a local specifier names, trying the script extensions (and
+ * `index.*`) when it has none, and the TypeScript twin of a `.js` / `.mjs`
+ * specifier (`./x.js` written for `./x.ts`). Undefined when none exists.
+ */
+const resolveLocalModuleFile = (base: string): string | undefined => {
+  const clean = base.replace(/[?#].*$/, "");
+  const ext = extname(clean);
+  const candidates = !ext
+    ? [
+        ...SCRIPT_MODULE_EXTENSIONS.map((e) => clean + e),
+        ...SCRIPT_MODULE_EXTENSIONS.map((e) => join(clean, `index${e}`)),
+      ]
+    : ext === ".js" || ext === ".mjs"
+      ? [clean, clean.slice(0, -ext.length) + (ext === ".js" ? ".ts" : ".mts")]
+      : [clean];
+  for (const file of candidates) {
+    try {
+      if (statSync(file).isFile()) return file;
+    } catch {
+      // try the next candidate
+    }
+  }
+  return undefined;
+};
+
+/**
+ * Follows the local modules (`./`, `../`, `@/`) that build, server and stream
+ * scripts import, and their imports in turn, each file once per check and at
+ * most MAX_SCRIPT_MODULES in all. A package, a missing file or a leading-`/`
+ * specifier is not followed.
+ */
+const createScriptModuleReader = () => {
+  const importRoot = getImportRoot();
+  const seen = new Set<string>();
+  const found: Array<{ filePath: string; uses: ScriptUses }> = [];
+
+  const follow = async (text: string, fromDir: string): Promise<void> => {
+    let specifiers: string[];
+    try {
+      specifiers = findModuleSpecifiers(text).map(({ value }) => value);
+    } catch {
+      return;
+    }
+    for (const specifier of specifiers) {
+      const kind = classifySpecifier(specifier);
+      if (kind !== "relative" && kind !== "root") continue;
+      const base = resolveSpecifierPath(specifier, fromDir, importRoot);
+      const file = base && resolveLocalModuleFile(base);
+      if (file) await visit(file);
+    }
+  };
+
+  const visit = async (file: string): Promise<void> => {
+    if (seen.has(file) || seen.size >= MAX_SCRIPT_MODULES) return;
+    seen.add(file);
+    let text: string;
+    try {
+      text = await readFile(file, "utf8");
+    } catch {
+      return;
+    }
+    found.push({ filePath: file, uses: scanScriptUses(text, 0) });
+    await follow(text, dirname(file));
+  };
+
+  /** Read one directive script of `ownerFile`: its body, its `src=` module, and their imports. */
+  const readScript = async (
+    script: DirectiveScript,
+    ownerFile: string,
+  ): Promise<ScriptUses> => {
+    const ownerDir = dirname(ownerFile);
+    if (script.src && classifySpecifier(script.src) !== "root-slash") {
+      const file = resolveLocalModuleFile(
+        resolveScriptSrcPath(script.src, ownerDir, importRoot),
+      );
+      if (file) await visit(file);
+    }
+    await follow(script.content, ownerDir);
+    return scanScriptUses(script.content, script.line);
+  };
+
+  return { readScript, modules: found };
+};
+
+/** `[a-zA-Z0-9:-]` */
+const isPreserveNameCode = (code: number): boolean =>
+  (code >= 0x30 && code <= 0x3a) || // digits and `:`
+  ((code | 0x20) >= 0x61 && (code | 0x20) <= 0x7a) ||
+  code === 0x2d;
+
+/** A trie node of closer names: children by lowercase code, and the closers of the name ending here. */
+interface CloserTrieNode {
+  children: Map<number, CloserTrieNode>;
+  starts: number[];
+  ends: number[];
+}
+
+const newCloserTrieNode = (): CloserTrieNode => ({
+  children: new Map(),
+  starts: [],
+  ends: [],
+});
+
+/**
+ * Every closer `<\/NAME(?:[\t\n\f\r /][^>]*)?>` in `html` (ASCII case
+ * folded), filed under its name: the whole `[a-zA-Z0-9:-]` run after `</`,
+ * since a shorter name is followed by a name character.
+ */
+const indexClosersByName = (html: string): CloserTrieNode => {
+  const root = newCloserTrieNode();
+  for (
+    let at = html.indexOf("</");
+    at !== -1;
+    at = html.indexOf("</", at + 2)
+  ) {
+    let index = at + 2;
+    let node = root;
+    while (isPreserveNameCode(html.charCodeAt(index))) {
+      const key = html.charCodeAt(index) | 0x20;
+      let child = node.children.get(key);
+      if (child === undefined) {
+        child = newCloserTrieNode();
+        node.children.set(key, child);
+      }
+      node = child;
+      index++;
+    }
+    if (index === at + 2) continue;
+    const code = html.charCodeAt(index);
+    let end = -1;
+    if (code === 0x3e) end = index + 1;
+    else if (isTagSpace(code) || code === 0x2f) {
+      const gt = html.indexOf(">", index + 1);
+      if (gt !== -1) end = gt + 1;
+    }
+    if (end === -1) continue;
+    node.starts.push(at);
+    node.ends.push(end);
+  }
+  return root;
+};
+
+/**
+ * One pass of
+ * `(<([a-z][a-z0-9:-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*\bdata-bascik-preserve\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)`
+ * (flags `gi`) replaced by the opener, spaces for the content, and the
+ * closer, in linear time; the regex took cubic time.
+ *
+ * At each `<` the regex tries the longest name first, then each shorter one
+ * ending at a word boundary: a shorter name leaves its rest to the attribute
+ * chain, which still reaches the same `>` (name characters are not special),
+ * but the closer it needs is its own. So the name is the longest prefix of
+ * the name run that ends at a word boundary, has a marker where the chain
+ * after it can stop, and has a closer after the `>`. Only prefixes that name
+ * some closer are tried, by walking the run down a trie of closer names.
+ */
+const maskPreservedSubtreesOnce = (html: string): string => {
+  const anchors = findMarkerAnchors(html, /data-bascik-preserve/gi, (at) =>
+    (at === 0 || !isWordCode(html.charCodeAt(at - 1))) &&
+    !isWordCode(html.charCodeAt(at + 20))
+      ? at
+      : -1,
+  );
+  if (anchors.length === 0) return html;
+  const markerAt = createMarkerWalk(html, anchors, "first");
+  const attributeEnd = createAttributeScanner(html);
+  const closers = indexClosersByName(html);
+  const isBoundary = (at: number): boolean =>
+    isWordCode(html.charCodeAt(at - 1)) !== isWordCode(html.charCodeAt(at));
+  let result = "";
+  let cursor = 0;
+  let start = html.indexOf("<");
+  while (start !== -1) {
+    let matched = false;
+    const first = html.charCodeAt(start + 1) | 0x20;
+    if (first >= 0x61 && first <= 0x7a) {
+      // Prefixes of the name run that name a closer, shortest first.
+      const ends: number[] = [];
+      const nodes: CloserTrieNode[] = [];
+      let node: CloserTrieNode | undefined = closers;
+      for (
+        let index = start + 1;
+        isPreserveNameCode(html.charCodeAt(index));
+        index++
+      ) {
+        node = node.children.get(html.charCodeAt(index) | 0x20);
+        if (node === undefined) break;
+        if (node.starts.length > 0) {
+          ends.push(index + 1);
+          nodes.push(node);
+        }
+      }
+      const gt = ends.length === 0 ? -1 : attributeEnd(start + 1);
+      for (let k = ends.length - 1; k >= 0 && gt !== -1 && !matched; k--) {
+        const nameEnd = ends[k];
+        if (!isBoundary(nameEnd) || markerAt(nameEnd) === -1) continue;
+        const { starts, ends: closerEnds } = nodes[k];
+        let low = 0;
+        let high = starts.length;
+        while (low < high) {
+          const middle = (low + high) >>> 1;
+          if (starts[middle] <= gt) low = middle + 1;
+          else high = middle;
+        }
+        if (low === starts.length) continue;
+        result += `${html.slice(cursor, gt + 1)}${" ".repeat(starts[low] - gt - 1)}${html.slice(starts[low], closerEnds[low])}`;
+        cursor = closerEnds[low];
+        matched = true;
+      }
+    }
+    start = html.indexOf("<", matched ? cursor : start + 1);
+  }
+  return cursor === 0 ? html : result + html.slice(cursor);
+};
+
 const maskPreservedSubtrees = (html: string): string => {
   let result = html;
-  const re =
-    /(<([a-z][a-z0-9:-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*\bdata-bascik-preserve\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi;
   let previous = "";
   while (previous !== result) {
     previous = result;
-    result = result.replace(
-      re,
-      (_m, open: string, _tag: string, inner: string, close: string) => {
-        return `${open}${" ".repeat(inner.length)}${close}`;
-      },
-    );
+    result = maskPreservedSubtreesOnce(result);
   }
   return result;
 };
@@ -319,29 +637,9 @@ const mapConfigErrorSeverity = (
 };
 
 const resolveConfigSourcePath = (): string => {
-  const argv = process.argv.slice(2);
-  const inline = argv.find((arg) => arg.startsWith("--config="));
-  const inlinePath = inline ? inline.slice("--config=".length) : undefined;
-  const configFlagIndex = argv.indexOf("--config");
-  const flaggedPath =
-    configFlagIndex !== -1 &&
-    argv[configFlagIndex + 1] &&
-    !argv[configFlagIndex + 1].startsWith("-")
-      ? argv[configFlagIndex + 1]
-      : undefined;
-  const explicitPath = inlinePath || flaggedPath;
-  if (explicitPath) {
-    return relative(
-      process.cwd(),
-      resolve(process.cwd(), explicitPath),
-    ).replace(/\\/g, "/");
-  }
-
-  const jsPath = resolve(process.cwd(), "bascik.config.js");
-  if (existsSync(jsPath)) return "bascik.config.js";
-  const tsPath = resolve(process.cwd(), "bascik.config.ts");
-  if (existsSync(tsPath)) return "bascik.config.ts";
-  return "bascik.config.js";
+  const { path } = findConfigFile();
+  if (!path) return CONFIG_FILE_NAMES[0];
+  return relative(process.cwd(), path).replace(/\\/g, "/");
 };
 
 const canonicalPath = (filePath: string): string =>
@@ -440,10 +738,19 @@ export const checkProject = async (
         features.push("generate.sitemap");
       if (BascikConfig.generate?.robots ?? true)
         features.push("generate.robots");
+      // A warning, not an error: the site URL is a fact about where the site
+      // is deployed, usually set by the host or CI, not something wrong in
+      // the code being checked. `bascik --build` still fails without it, and
+      // the message says so and how to set it; `--strict` fails on it too.
       items.push({
         category: "missing-site-url",
-        severity: "error",
-        message: buildMissingSiteUrlError(features).replace(/\s+/g, " ").trim(),
+        severity: "warning",
+        message:
+          `${SITE_URL_ENV_VAR} is not set, but ${features.join(" and ")} ${features.length > 1 ? "are" : "is"} enabled, ` +
+          `so \`bascik --build\` fails until it is set. Set it where the build runs: ` +
+          `\`${SITE_URL_ENV_VAR}=https://your-domain bascik --build\`, a \`${SITE_URL_ENV_VAR}=\` line in .env, ` +
+          `or \`bascik --build --site-url https://your-domain\`. ` +
+          `Or disable ${features.length > 1 ? "them" : "it"} with ${features.map((f) => `${f}: false`).join(" and ")}.`,
         locations: [{ filePath: configSource }],
       });
     }
@@ -558,10 +865,15 @@ export const checkProject = async (
           filePath,
           html,
           occurrences: extractCustomTagOccurrences(html),
-          buildScripts: extractBuildScripts(html),
+          directiveScripts: extractDirectiveScripts(html),
         };
       } catch {
-        return { filePath, html: "", occurrences: [], buildScripts: [] };
+        return {
+          filePath,
+          html: "",
+          occurrences: [],
+          directiveScripts: [] as DirectiveScript[],
+        };
       }
     }),
   );
@@ -584,17 +896,33 @@ export const checkProject = async (
     componentGraph.set(canonical, new Set<string>());
   }
 
-  // Check build script sources for string literal references to components
-  for (const { buildScripts } of scanResults) {
-    for (const scriptContent of buildScripts) {
-      for (const comp of knownComponents) {
-        // String literal check: e.g. "my-card", 'my-card', `my-card`
-        const literalRegex = new RegExp(`["'\`]${comp}["'\`]`);
-        if (literalRegex.test(scriptContent)) {
-          usedComponents.add(comp);
-        }
-      }
-    }
+  // Build, server and stream scripts, their src= modules and the local modules
+  // they import: a component's start tag written there is a use, and so is
+  // its name as a whole string literal ("my-card", for a tag built from it).
+  // A tag name built in code is not; where one is, an unused warning says so.
+  const scriptReader = createScriptModuleReader();
+  const scriptUses: Array<{ filePath: string; uses: ScriptUses }> = [];
+  for (const { filePath, directiveScripts } of scanResults)
+    for (const script of directiveScripts)
+      scriptUses.push({
+        filePath,
+        uses: await scriptReader.readScript(script, filePath),
+      });
+  scriptUses.push(...scriptReader.modules);
+  const computedTagSites: FindingLocation[] = [];
+  for (const { filePath, uses } of scriptUses) {
+    for (const tag of uses.tags)
+      if (knownComponents.has(tag)) usedComponents.add(tag);
+    for (const comp of knownComponents)
+      if (
+        !usedComponents.has(comp) &&
+        (uses.text.includes(`"${comp}"`) ||
+          uses.text.includes(`'${comp}'`) ||
+          uses.text.includes(`\`${comp}\``))
+      )
+        usedComponents.add(comp);
+    for (const line of uses.computedLines)
+      computedTagSites.push({ filePath: toDisplay(filePath), line });
   }
 
   for (const { filePath, html, occurrences } of scanResults) {
@@ -755,6 +1083,7 @@ export const checkProject = async (
 
   // Unused components -> warnings
   const unused = [...knownComponents].filter((c) => !usedComponents.has(c));
+  const computedNote = computedTagNote(computedTagSites);
   for (const comp of unused) {
     const rawPath = componentList[comp]?.fileName;
     const locPath = rawPath ? toDisplay(rawPath) : comp;
@@ -763,8 +1092,19 @@ export const checkProject = async (
       severity: "warning",
       message: comp,
       locations: [{ filePath: locPath }],
+      ...(computedNote ? { note: computedNote } : {}),
     });
   }
+
+  const distDir = resolve(process.cwd(), BascikConfig.directory?.out ?? "dist");
+
+  // ── Request-time component rendering (prompt 157, D7) ────────────────────
+  // A built site whose sidecar has page-owned server or stream entries renders
+  // component tags from their output through .bascik/dist/components.json.
+  // The components that manifest refused are left unexpanded at request time,
+  // so each is reported with its reason; with generate.cspHashes on, so are
+  // the components whose request-time output a hash-only policy cannot cover.
+  items.push(...(await requestRenderFindings(distDir)));
 
   // ── dist/ HTML spec validation (optional parse5 dep) ─────────────────────
   // When parse5 is installed, walk every compiled HTML file in dist/ and run
@@ -772,7 +1112,6 @@ export const checkProject = async (
   // finding so the user sees exactly where the output is malformed.
   // When parse5 is not installed, set a hint flag so the formatter can nudge
   // the user toward installing it — without failing the check.
-  const distDir = resolve(process.cwd(), BascikConfig.directory?.out ?? "dist");
   let distHtmlChecked: number | null = null;
   let distHtmlSpecHintNeeded = false;
 
@@ -850,8 +1189,94 @@ export const checkProject = async (
   };
 };
 
+/**
+ * The components a server or stream script cannot return, read from the
+ * manifest the last build wrote (no build script runs during a check). Nothing
+ * when the built sidecar has no page-owned entries: such a site never renders
+ * a component at request time.
+ */
+const requestRenderFindings = async (
+  distDir: string,
+): Promise<CheckFinding[]> => {
+  const findings: CheckFinding[] = [];
+  let sidecar: ServerScriptsSidecar;
+  try {
+    sidecar = JSON.parse(
+      await readFile(
+        join(privateDirFor(distDir), "server-scripts.json"),
+        "utf8",
+      ),
+    ) as ServerScriptsSidecar;
+  } catch {
+    return findings;
+  }
+  if (!sidecar || !sidecarHasPageEntries(sidecar.scripts)) return findings;
+  let manifest: Awaited<ReturnType<typeof readComponentManifest>>;
+  try {
+    manifest = await readComponentManifest(distDir);
+  } catch {
+    // A stale or unreadable manifest is a build problem; `bascik --build`
+    // and `bascik --server` report it with the rebuild message.
+    return findings;
+  }
+  if (!manifest) return findings;
+  const reportCsp = Boolean(BascikConfig.generate?.cspHashes);
+  for (const name of Object.keys(manifest.components).sort()) {
+    const entry = manifest.components[name];
+    // The manifest records the file in the form every other section
+    // displays through toDisplay, so it is printed as recorded.
+    const filePath = entry.filePath;
+    if (entry.unsupported) {
+      // The detail says what in the component triggered the reason (several
+      // distinct refusals share one), so the line is something to act on.
+      const { reason, detail, line } = entry.unsupported;
+      findings.push({
+        category: "request-render-unsupported",
+        severity: "warning",
+        message: `<${name}> is left unexpanded when a server or stream script returns it: ${reason}${detail ? `: ${detail}` : ""}`,
+        locations: [line !== undefined ? { filePath, line } : { filePath }],
+      });
+      continue;
+    }
+    if (!reportCsp || (entry.cspStable.style && entry.cspStable.script))
+      continue;
+    const causes: string[] = [];
+    if (!entry.cspStable.style)
+      causes.push("its stylesheet is emitted per instance");
+    if (!entry.cspStable.script)
+      causes.push("its client scripts embed the instance id");
+    findings.push({
+      category: "request-render-csp-unstable",
+      severity: "warning",
+      message: `<${name}> rendered from script output is not covered by csp-hashes.json: ${causes.join(" and ")}`,
+      locations: [{ filePath }],
+    });
+  }
+  return findings;
+};
+
 /** Category descriptive headers and explanations. */
 const CATEGORY_META: Record<string, { title: string; description: string }> = {
+  "request-render-unsupported": {
+    title: "Components a server or stream script cannot return",
+    description:
+      "A data-bascik-server or data-bascik-stream script that returns one of these\n" +
+      "tags leaves it unexpanded, for the reason listed: the component binds a\n" +
+      "prop to an attribute scoping rewrites, embeds the instance id in a server\n" +
+      "or stream script body, runs its server or stream script with per-instance\n" +
+      "class names (a stylesheet using url(#id), or scoping.deduplicateCss: false),\n" +
+      "reads the page context from a build script, binds the src of a directive\n" +
+      "script, or cannot be recorded as a scoping template. The compatibility\n" +
+      "table documents each reason and how to restructure the component:\n" +
+      "https://bascik.dev/compatibility#request-time-component-rendering",
+  },
+  "request-render-csp-unstable": {
+    title: "Components without stable CSP hashes at request time",
+    description:
+      "generate.cspHashes is on, but these components embed the instance id in\n" +
+      "their stylesheet or client scripts, so a server or stream script that\n" +
+      "returns them cannot satisfy a hash-only Content-Security-Policy.",
+  },
   "unmatched-tag": {
     title: "Components with no matching file",
     description:
@@ -859,8 +1284,10 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
   },
   "unused-component": {
     title: "Unused components",
+    // A component returned only from a server or stream script is placed on
+    // no page by design (prompt 157), so "safe to delete" names those too.
     description:
-      "Defined but never referenced. Safe to delete, or referenced only from a\nbuild script, which this check cannot always see.",
+      "Never written as a tag in a page, a component, a build, server or stream\nscript, or a local module one imports. Safe to delete, unless a script\nbuilds the tag name in code, which this check cannot follow (a note says\nwhere one does).",
   },
   "route-collision": {
     title: "API route collisions",
@@ -1041,6 +1468,7 @@ export const formatFindingsHuman = (findings: CheckFindings): string => {
       } else if (category === "unused-component") {
         const loc = item.locations[0]?.filePath ?? item.message;
         section += `  ${loc}\n`;
+        if (item.note) section += `      ${item.note}\n`;
       } else if (category === "route-collision") {
         section += `  ${item.message}\n`;
         for (const loc of item.locations) {
@@ -1091,6 +1519,8 @@ export interface CheckJsonOutput {
     message: string;
     locations: FindingLocation[];
     suggestion?: string;
+    /** A caveat, such as an unused component a tag name built in code may use. */
+    note?: string;
     /** `language-server` for per-file findings; absent for the project checks. */
     source?: "language-server";
   }>;
@@ -1116,8 +1546,15 @@ export const formatFindingsJson = (findings: CheckFindings): string => {
       message: item.message,
       locations: item.locations,
       ...(item.suggestion ? { suggestion: item.suggestion } : {}),
+      ...(item.note ? { note: item.note } : {}),
       ...(item.source ? { source: item.source } : {}),
     })),
   };
   return JSON.stringify(output, null, 2);
+};
+
+/** The open-tag scans `bascik --check` runs, for the linear-time tests. */
+export const __checkScansForTests = {
+  extractDirectiveScripts,
+  maskPreservedSubtrees,
 };

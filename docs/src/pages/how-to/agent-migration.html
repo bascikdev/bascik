@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Have coding agents refactor an existing site to Bascik: three-source evidence, a breakpoint matrix, geometry diffs, PASS-gated prompts, and 5 x 100 Lighthouse."
+    />
+    <title>Migrate an Existing Site with Coding Agents - Bascik</title>
+  </head>
+
+  <body>
+    <docs-nav />
+
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
+
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () =>
+              renderSectionLabel("/how-to/agent-migration");
+          </script>
+
+          <!-- From the intro through the grid wrapper prose; demo blocks are shown below, not as plain fences. -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/how-to/agent-migration.md",
+                { to: "The Geometry Diff" },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <!-- The rendered framework DOM: illustrative only, outside the demo box and never compiled. -->
+          <code-block data-bascik-prop-lang="html">
+            <script data-bascik-build>
+              import { extractDemoBlock } from "@/lib/md-renderer.ts";
+              export default async () =>
+                await extractDemoBlock(
+                  "./content/how-to/agent-migration.md",
+                  "migration-grid-legacy",
+                );
+            </script>
+          </code-block>
+
+          <component-demo
+            data-bascik-prop-file="src/components/press-list/press-list.html"
+          >
+            <div data-bascik-slot="example">
+              <press-list />
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/how-to/agent-migration.md",
+                      "migration-grid-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/how-to/agent-migration.md",
+                      "migration-grid-source-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/how-to/agent-migration.md",
+                      "migration-grid-source-css",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/how-to/agent-migration.md",
+                      "migration-grid-output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/how-to/agent-migration.md",
+                      "migration-grid-output-css",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/how-to/agent-migration.md",
+                { from: "The Geometry Diff" },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <docs-pagination />
+        </main>
+      </div>
+    </div>
+
+    <docs-footer />
+  </body>
+</html>

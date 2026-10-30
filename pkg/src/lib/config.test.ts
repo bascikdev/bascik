@@ -39,7 +39,7 @@ describe("defaultConfig", () => {
     expect(defaultConfig.scoping.inheritAttributes).toBe(true);
     expect(defaultConfig.scoping.attributes.class).toBe(true);
     expect(defaultConfig.scoping.attributes.id).toBe(true);
-    expect(defaultConfig.scoping.attributes.name).toBe(true);
+    expect(defaultConfig.scoping.attributes.name).toBe(false);
     expect(defaultConfig.scoping.deduplicateCss).toBe(true);
     expect(defaultConfig.scoping.preserve).toEqual(["code"]);
   });

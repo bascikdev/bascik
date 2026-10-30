@@ -28,6 +28,9 @@ const fixtureDir = join(e2eDir, "exec-fixture");
 
 export default defineConfig({
   testDir: "./tests",
+  // Own results dir (pkg/test-results/dev-exec): Playwright clears its outputDir at
+  // run start and keeps .last-run.json there, so lanes must not share one.
+  outputDir: "../test-results/dev-exec",
   testMatch: "**/dev-exec-lifecycle.test.ts",
   grepInvert: /gated/,
   workers: 1,

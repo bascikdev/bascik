@@ -7,7 +7,7 @@
   <body>
     <h1>Import Root Aliases in Server Scripts</h1>
     <script data-bascik-server>
-      import { importRootMarker } from "@/lib/import-root-helper.ts";
+      import { importRootMarker } from "@/lib/import-root-server-helper.ts";
       export default function () {
         return `<span data-testid="import-root-server">${importRootMarker()}</span>`;
       }

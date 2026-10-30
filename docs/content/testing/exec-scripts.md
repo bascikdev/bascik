@@ -1,19 +1,24 @@
 # Testing Exec Scripts
 
-Lifecycle build scripts (configured via the `exec` option in `bascik.config.ts`) execute Node.js tasks during compilation to generate automated artifacts, such as XML sitemaps, search indexes, RSS feeds, or optimized Open Graph social images.
+Lifecycle build scripts (configured via the `pipeline.exec` option in `bascik.config.ts`) execute Node.js tasks during compilation to generate automated artifacts, such as XML sitemaps, search indexes, RSS feeds, or optimized Open Graph social images.
 
-Because lifecycle scripts run in the main build process, they should be designed as modular, testable TypeScript helpers. This allows verifying their logic in Vitest without needing to launch a full CLI transpiler or production web server.
+Because lifecycle scripts run as separate Node.js processes that Bascik starts around compilation, they should be designed as modular, testable TypeScript helpers. This allows verifying their logic in Vitest without needing to launch a full CLI transpiler or production web server.
 
 ## Lifecycle Execution Context
 
-Bascik supports registering scripts that execute before or after the main compilation pass:
+Bascik supports registering scripts that execute before (`pre`, the default), alongside (`parallel`), or after (`post`) the main compilation pass:
 
 ```ts
 // bascik.config.ts
 import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
-  exec: ["scripts/generate-sitemap.ts", "scripts/generate-search-index.ts"],
+  pipeline: {
+    exec: [
+      { script: "scripts/generate-sitemap.ts", phase: "post" },
+      { script: "scripts/generate-search-index.ts", phase: "post" },
+    ],
+  },
 });
 ```
 
@@ -168,8 +173,8 @@ describe("buildSearchIndexJson", () => {
 
     expect(parsed[0].title).toBe("Introduction");
     expect(parsed[0].route).toBe("/intro");
-    // HTML tag and markdown ** stripped
-    expect(parsed[0].text).toBe("Welcome to Bascik! Let`s build fast sites.");
+    // HTML tags and the markdown markers *, # and ` stripped
+    expect(parsed[0].text).toBe("Welcome to Bascik! Lets build fast sites.");
   });
 });
 ```

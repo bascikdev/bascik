@@ -45,11 +45,11 @@ const LOG = `
 Starting transpiling...
 (completed) exec: scripts/generate-og-images.ts in 722ms
 transpiled: pages/404.html in 93ms
-transpiled: pages/cli.html in 613ms
+transpiled: pages/cli.html in 613ms (+2.4s in 52 build scripts, 3 cached)
 transpiled: pages/faq.html in 1.2s
 copied: assets/x.css
 
-✓ 3 pages transpiled in 19.82s
+✓ 3 pages transpiled in 19.82s (969 build scripts ran, 0 from cache)
 (started) exec: scripts/generate-git-dates.ts
 (completed) exec: scripts/generate-git-dates.ts in 523ms
 (completed) exec: scripts/generate-csp-meta.ts in 226ms
@@ -98,6 +98,15 @@ describe("parseBuildLog", () => {
       ["scripts/generate-git-dates.ts", "post"],
       ["scripts/generate-csp-meta.ts", "post"],
     ]);
+    expect(parsed.slowestPage).toEqual({ path: "pages/faq.html", ms: 1200 });
+    expect(parsed.pageMedianMs).toBe(613);
+  });
+
+  it("reads a log without the build-script parentheticals, as a site with no build scripts prints", () => {
+    const plain = LOG.replace(/ \(.*\)$/gm, "");
+    expect(plain).not.toContain("build scripts");
+    const parsed = parseBuildLog(plain, 21.4, execEntries);
+    expect(parsed.pagesSeconds).toBe(19.82);
     expect(parsed.slowestPage).toEqual({ path: "pages/faq.html", ms: 1200 });
     expect(parsed.pageMedianMs).toBe(613);
   });

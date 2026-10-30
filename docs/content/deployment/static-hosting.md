@@ -10,11 +10,13 @@ Every static deployment boils down to three simple steps:
 2. **Preview (optional):** Inspect the production output locally with `npx http-server dist` or `npx bascik --server`.
 3. **Deploy:** Point your hosting provider to the `dist/` folder.
 
+After a plain `bascik --build`, `dist/` holds only the site. Bascik keeps its private build files in `.bascik/dist/`, beside it, so a host that serves every file of `dist/`, dotfiles included, never publishes them. A `--target` build (such as `bascik --build --target cloudflare`, the `npm run build` of a `create-bascik` project set up for Cloudflare) also writes its deployment folder into `dist/.bascik/<target>/`: the Worker, with the source of every server script, and its config. Do not point a static host at `dist/` after a `--target` build; build with plain `bascik --build` for a static host, or deploy the target's own folder. See [What a static host receives](/deployment#what-a-static-host-receives).
+
 That is all there is to it. There are no runtime servers to manage, no container images to maintain, and no backend hosting bills.
 
-## Deploy to Cloudflare Pages (Recommended)
+## Deploy to Cloudflare (Recommended)
 
-Cloudflare Pages offers unlimited bandwidth, instant global caching across 300+ cities, free automatic SSL certificates, and zero-configuration builds directly from Git.
+Cloudflare serves a static `dist/` from Pages (options A and B) or from Workers static assets (option C). Cloudflare Pages offers unlimited bandwidth, instant global caching across 300+ cities, free automatic SSL certificates, and zero-configuration builds directly from Git.
 
 ### Option A: Automatic Git Deployments
 
@@ -42,6 +44,10 @@ npx bascik --build
 # 2. Deploy dist/ directly to Cloudflare Pages
 npx wrangler pages deploy dist --project-name my-bascik-site
 ```
+
+### Option C: Workers Static Assets
+
+Cloudflare Workers can serve the same `dist/` with no Worker code: a `wrangler.jsonc` in the project root that points `assets.directory` at `./dist`, deployed with `npx wrangler deploy` or from Git with Workers Builds. `_headers`, `_redirects` and `404.html` work as on Pages, and you get [Worker Previews](/deployment/cloudflare#worker-previews) for branches. [Moving a static site from Pages to Workers](/deployment/cloudflare#moving-a-static-site-from-pages-to-workers) has the config, the differences from Pages, and how to move a custom domain without downtime.
 
 > **Dynamic Cloudflare Features:** If your site uses request-time server scripts (`data-bascik-server`), progressive HTML streams (`data-bascik-stream`), or edge API routes (`src/api/`), use the official [Cloudflare Adapter](/deployment/cloudflare) instead of pure static hosting.
 
@@ -270,7 +276,7 @@ npx http-server dist
 
 ### Sitemap and Robots.txt
 
-When `generate.sitemap: true` or `generate.robots: true` is configured in `bascik.config.ts`, Bascik requires a valid site URL so search engines receive absolute URLs. Pass `BASCIK_SITE_URL` during the build:
+When `generate.sitemap` or `generate.robots` is on (both are by default), Bascik requires a valid site URL so search engines receive absolute URLs. Pass `BASCIK_SITE_URL` during the build:
 
 ```sh
 BASCIK_SITE_URL=https://example.com npx bascik --build

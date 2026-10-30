@@ -14,7 +14,8 @@
  *     and CSP entry behind in a fresh process.
  *
  * This module persists a **versioned source-to-output ownership inventory** at
- * `dist/.bascik/ownership.json`. Every output file and sidecar script is owned
+ * `.bascik/dist/ownership.json` (beside dist/, never in it: see
+ * private-dir.ts). Every output file and sidecar script is owned
  * by exactly one source page. For a targeted build the inventory lets us:
  *   - **exactly replace rebuilt owners** (a page rebuilt now owns exactly the
  *     outputs and scripts it produced this process),
@@ -28,12 +29,29 @@
  * Ownership is never inferred from filename prefixes or mutable traversal
  * order; it is read from the durable inventory and updated only by the
  * in-process tracker during a build.
+ *
+ * Request-time component rendering (prompt 157) adds a fourth staged
+ * artifact, `components.json`, and a synthetic owner that is not a page: the
+ * `components` owner (`COMPONENTS_OWNER`) holds the sidecar entries of the
+ * component server and stream scripts, which are a function of the
+ * component list rather than of any page. It is dropped from the prior
+ * inventory before the sidecar is reconciled and re-added only when the
+ * reconciled sidecar has page-owned entries (the point at which a site
+ * renders components at request time), so the manifest exists exactly when
+ * the last page script does and is pruned after the commit loop with the
+ * other obsolete outputs. With `generate.cspHashes` on, every route that
+ * carries a server or stream placeholder also gets the manifest's stable
+ * component hashes merged into its per-output `csp` copy. See the comments
+ * at the components-owner reconciliation, the manifest staging and the
+ * post-commit prune below for each step's reason.
  */
 
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { getHttpPath } from "./paths.ts";
+import type { PageCspHashes } from "./types.ts";
 
 /** Bumped when the on-disk ownership schema changes incompatibly. */
 export const OWNERSHIP_SCHEMA = 1;
@@ -45,6 +63,14 @@ export interface OwnershipOutput {
   file: string;
   /** HTTP route key used by csp-hashes.json, e.g. `/a`, `/blog/one`. */
   route: string;
+  /**
+   * The route's own CSP hashes, before the component hashes a server or
+   * stream placeholder route lists were added (prompt 157, D5). Kept for
+   * placeholder routes only, so a targeted build that leaves this page
+   * untouched re-widens from the page's own hashes rather than from an entry
+   * an earlier manifest already widened.
+   */
+  csp?: PageCspHashes;
 }
 
 export interface OwnershipEntry {
@@ -71,7 +97,8 @@ export const isTargetedBuild = (): boolean =>
   );
 
 const outDir = (): string => resolve(process.cwd(), BascikConfig.directory.out);
-const ownershipPath = (): string => join(outDir(), ".bascik", "ownership.json");
+const ownershipPath = (): string =>
+  join(privateDirFor(outDir()), "ownership.json");
 
 /** dist-relative key for a page's output file (mirrors the manifest key). */
 export const toOutputFileKey = (distRelPath: string): string => {
@@ -393,19 +420,46 @@ import {
   type BuildManifest,
   type ManifestEntry,
 } from "./manifest.ts";
-import { cspHashCollector, type CspHashesManifest } from "./csp-hashes.ts";
+import {
+  computePageCspHashes,
+  cspHashCollector,
+  widenRouteCspHashes,
+  type CspHashesManifest,
+} from "./csp-hashes.ts";
 import { emitPrecompressedSidecars } from "./precompress.ts";
 import {
   serverSidecarRegistry,
+  sidecarHasPageEntries,
   type ServerScriptEntry,
   type ServerScriptsSidecar,
   SIDECAR_SCHEMA_VERSION,
 } from "./server-sidecar.ts";
+import {
+  takeComponentManifest,
+  componentManifestPath,
+  manifestCspHashes,
+  sortedComponentManifest,
+  type ComponentManifest,
+} from "./component-manifest.ts";
+import { listComponents } from "./components.ts";
+import { privateDirFor } from "./private-dir.ts";
+import { collectHtmlPaths } from "./build-state.ts";
 
-const manifestPath = (): string => join(outDir(), ".bascik", "manifest.json");
-const cspPath = (): string => join(outDir(), ".bascik", "csp-hashes.json");
+const manifestPath = (): string =>
+  join(privateDirFor(outDir()), "manifest.json");
+const cspPath = (): string => join(privateDirFor(outDir()), "csp-hashes.json");
 const sidecarPath = (): string =>
-  join(outDir(), ".bascik", "server-scripts.json");
+  join(privateDirFor(outDir()), "server-scripts.json");
+
+/**
+ * The synthetic owner of the component-level server and stream jobs in the
+ * sidecar (prompt 157). It is regenerated from the current component list on
+ * every build that writes a component manifest and never carried over by
+ * reconciliation: its scripts are a function of the components, not of any
+ * page, so a prior inventory's entry is dropped before the sidecar is
+ * reconciled and re-added only when a manifest is written again.
+ */
+export const COMPONENTS_OWNER = "components";
 
 async function readJsonIfPresent<T>(path: string): Promise<T | null> {
   try {
@@ -425,7 +479,7 @@ const pageOutputSet = (inv: OwnershipInventory): Set<string> =>
  * transaction. Page files follow ownership: a page output survives only when a
  * current owner still produces it (rebuilt owner exact replacement / untouched
  * owner retained), so a removed route is pruned. Non-page files (raw-copied
- * assets, sitemap, robots, and the `.bascik/*` metadata files) are retained
+ * assets, sitemap and robots) are retained
  * from prior and overlaid with anything re-produced this process.
  */
 const reconcileManifest = (
@@ -520,6 +574,50 @@ const reconcileSidecar = (
 };
 
 /**
+ * Record the CSP hashes of every page as it is in dist/ now (prompt 157
+ * follow-up: post-build edits are legitimate). A page's hashes are taken
+ * while it is written, before `post` exec scripts run, so a script that
+ * rewrites, adds or removes an inline script or style would leave the
+ * recorded hashes describing HTML that does not ship, and the browser would
+ * block that code. Each page the inventory owns, and any other page a script
+ * added, is read once; a page whose bytes are the ones this process wrote
+ * keeps the hashes it was written with, so only edited pages are scanned.
+ * The HTML is never changed.
+ */
+const rehashEditedPages = async (inv: OwnershipInventory): Promise<void> => {
+  const written = manifestCollector.getFiles();
+  const routes = new Map<string, string>();
+  for (const owner of Object.values(inv.owners))
+    for (const output of owner.outputs) routes.set(output.file, output.route);
+  let onDisk: string[] = [];
+  try {
+    onDisk = await collectHtmlPaths(outDir());
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  const files = [...new Set([...routes.keys(), ...onDisk])].sort();
+  for (let i = 0; i < files.length; i += 32)
+    await Promise.all(
+      files.slice(i, i + 32).map(async (file) => {
+        let bytes: Buffer;
+        try {
+          bytes = await readFile(join(outDir(), file));
+        } catch (err) {
+          // A script removed the page: there is nothing to hash.
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+          throw err;
+        }
+        const hash = createHash("sha256").update(bytes).digest("hex");
+        if (written[file]?.hash === hash) return;
+        cspHashCollector.recordComputed(
+          routes.get(file) ?? outputRouteForKey(file),
+          computePageCspHashes(bytes.toString("utf8")),
+        );
+      }),
+    );
+};
+
+/**
  * Finalize all build artifacts from a single ownership transaction.
  *
  * Full build: dist/ was cleaned at startup, so `prior` is empty; the inventory
@@ -540,7 +638,15 @@ const reconcileSidecar = (
  */
 export const finalizeOwnedArtifacts = async (
   version: string,
-  options: { forTargetedBuild: boolean },
+  options: {
+    forTargetedBuild: boolean;
+    /**
+     * An exec script ran after the pages were written (`post`, or
+     * `parallel`, which a build joins before this): re-hash the pages from
+     * dist/ so csp-hashes.json describes the HTML that ships.
+     */
+    rehashPagesFromDisk?: boolean;
+  },
 ): Promise<void> => {
   const currentEntries = ownershipTracker.getEntries();
   const priorInventory = await readOwnershipInventory();
@@ -564,6 +670,9 @@ export const finalizeOwnedArtifacts = async (
   }
 
   const inv = result.inventory;
+  // The components owner is never an untouched owner to retain: it is
+  // rebuilt below from the reconciled page sidecar, or it goes away.
+  delete inv.owners[COMPONENTS_OWNER];
   validateInventory(inv);
 
   // Prompt 140: with `http.precompress`, emit verified `.br`/`.gz` sidecars
@@ -573,6 +682,9 @@ export const finalizeOwnedArtifacts = async (
   // then rename); a failure here aborts before any metadata commit, so the
   // previous valid artifact set is untouched.
   await emitPrecompressedSidecars();
+
+  if (options.rehashPagesFromDisk && BascikConfig.generate?.cspHashes)
+    await rehashEditedPages(inv);
 
   const currentManifest = manifestCollector.getFiles();
   const currentCsp = cspHashCollector.getManifest();
@@ -596,12 +708,74 @@ export const finalizeOwnedArtifacts = async (
     commits.push(await stageJsonArtifact(manifestPath(), { version, files }));
   }
 
+  // Page-owned sidecar entries decide whether the site renders components at
+  // request time (prompt 157, D1). The reconciled sidecar is the only reliable
+  // source: a targeted build runs in a fresh process and rebuilds only some
+  // pages, so an untouched page's server script must still count.
+  const sidecar = reconcileSidecar(inv, priorSidecar, currentSidecar);
+  let componentManifest: ComponentManifest | null = null;
+  if (sidecar && sidecarHasPageEntries(sidecar.scripts)) {
+    // Regenerated fully from the current component list on every such build;
+    // listComponents serves the list processAllPages loaded (before any --only
+    // filter), so a targeted build of one static page sees every component.
+    // Usually started while the pages compiled (startComponentManifest).
+    componentManifest = await takeComponentManifest(
+      await listComponents(),
+      BascikConfig,
+    );
+    const componentScripts = Object.values(componentManifest.components)
+      .flatMap((entry) => entry.jobs.map((job) => job.id))
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    for (const id of componentScripts) {
+      const entry = serverSidecarRegistry.getScript(id);
+      if (entry) sidecar.scripts[id] = entry;
+    }
+    inv.owners[COMPONENTS_OWNER] = {
+      source: COMPONENTS_OWNER,
+      relSource: COMPONENTS_OWNER,
+      outputs: [],
+      scripts: componentScripts,
+    };
+    commits.push(
+      await stageJsonArtifact(
+        componentManifestPath(outDir()),
+        sortedComponentManifest(componentManifest),
+      ),
+    );
+  }
+
   if (BascikConfig.generate?.cspHashes) {
-    const csp = reconcileCsp(inv, priorCsp, currentCsp, priorInventory);
+    let csp = reconcileCsp(inv, priorCsp, currentCsp, priorInventory);
+    if (componentManifest) {
+      // Every route with a server or stream placeholder, rebuilt or untouched,
+      // can render any manifest component at request time (D5). Each is
+      // widened from its own hashes: this build's for a rebuilt page, the
+      // copy its inventory output keeps for an untouched one (a prior entry
+      // was already widened by the manifest of its own build, whose hashes
+      // may since have changed), or that prior entry when an older inventory
+      // kept no copy. The copy is recorded for the next targeted build.
+      const placeholderRoutes: string[] = [];
+      for (const owner of Object.values(inv.owners)) {
+        if (owner.source === COMPONENTS_OWNER || owner.scripts.length === 0)
+          continue;
+        owner.outputs = owner.outputs.map((output) => {
+          const own =
+            currentCsp[output.route] ?? output.csp ?? csp[output.route];
+          placeholderRoutes.push(output.route);
+          if (!own) return output;
+          csp[output.route] = own;
+          return { ...output, csp: own };
+        });
+      }
+      csp = widenRouteCspHashes(
+        csp,
+        placeholderRoutes,
+        manifestCspHashes(componentManifest),
+      );
+    }
     commits.push(await stageJsonArtifact(cspPath(), csp));
   }
 
-  const sidecar = reconcileSidecar(inv, priorSidecar, currentSidecar);
   if (sidecar) {
     commits.push(await stageJsonArtifact(sidecarPath(), sidecar));
   }
@@ -619,5 +793,14 @@ export const finalizeOwnedArtifacts = async (
   // ── Prune obsolete outputs only AFTER metadata commit ────────────────────
   for (const fileKey of result.obsoleteOutputs) {
     await pruneOutputFile(fileKey);
+  }
+
+  // The component manifest goes with the last page script (prompt 157): a
+  // release with no page entries must boot without one. Ordered after the
+  // commit loop like the other prunes. Only a prior build that wrote one (its
+  // inventory carries the components owner) leaves one to remove, so a
+  // static-only site's dist is never touched.
+  if (!componentManifest && priorInventory?.owners[COMPONENTS_OWNER]) {
+    await rm(componentManifestPath(outDir()), { force: true });
   }
 };

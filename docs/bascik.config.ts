@@ -28,6 +28,8 @@ export default defineConfig({
       "../create/test-coverage.json",
       "../extensions/vscode-bascik/test-coverage.json",
       "../adapters/cloudflare/test-coverage.json",
+      "../lsp/test-coverage.json",
+      "../skills-tests/test-coverage.json",
       "test-coverage.json",
       "build-timings.json",
     ],
@@ -73,9 +75,12 @@ export default defineConfig({
     cache: {
       // Example pages read example files through markers in their Markdown, which the cache key cannot see.
       // <build-breakdown> counts pages and components by reading directories, which it cannot see either.
+      // <docs-search> hashes the search index built from content/, which the cache key cannot see, and a stale
+      // hash would let browsers keep an old index for a year.
       exclude: [
         "src/pages/example-components/**",
         "src/components/build-breakdown/**",
+        "src/components/docs-search/**",
       ],
     },
   },

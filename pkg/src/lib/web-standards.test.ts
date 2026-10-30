@@ -285,9 +285,7 @@ describe("Web Standards Validation via @webref & MDN BCD", () => {
         remoteIp: "127.0.0.1",
       };
       const headers = getSecurityHeaders(mockHttpsReq);
-      expect(headers["strict-transport-security"]).toBe(
-        "max-age=31536000; includeSubDomains",
-      );
+      expect(headers["strict-transport-security"]).toBe("max-age=31536000");
     });
 
     it("verifies RFC 9239 JavaScript MIME type complies with current web standard", () => {

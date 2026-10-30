@@ -107,11 +107,20 @@ describe("docs scripts BASCIK_OUT_DIR environment override", () => {
     expect(res.signal).toBeNull();
     expect(res.code).toBe(0);
 
-    const destIndexPath = join(isolatedOut, "assets/search-index.json");
-    const indexRaw = await readFile(destIndexPath, "utf8");
-    const parsed = JSON.parse(indexRaw);
-    expect(Array.isArray(parsed)).toBe(true);
-    expect(parsed.length).toBeGreaterThan(0);
+    const assets = await readdir(join(isolatedOut, "assets"));
+    const hashed = assets.find((name) =>
+      /^search-index\.[0-9a-f]{10}\.json$/.test(name),
+    );
+    expect(hashed).toBeDefined();
+    const parsed = JSON.parse(
+      await readFile(join(isolatedOut, "assets", hashed!), "utf8"),
+    );
+    expect(Array.isArray(parsed.pages)).toBe(true);
+    expect(parsed.entries.length).toBeGreaterThan(0);
+    const legacy = JSON.parse(
+      await readFile(join(isolatedOut, "assets/search-index.json"), "utf8"),
+    );
+    expect(Array.isArray(legacy)).toBe(true);
 
     const afterContent = await readdir(contentDir);
     expect(afterContent).toEqual(beforeContent);

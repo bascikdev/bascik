@@ -6,6 +6,10 @@ import {
   resolveCssImports,
 } from "./styles.ts";
 import { getComponentScripts } from "./javascript.ts";
+import {
+  COMPANION_SCRIPT_RE,
+  TEST_COMPANION_SCRIPT_RE,
+} from "./companion-scripts.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { deepReadDirFlat } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
@@ -15,6 +19,9 @@ import {
   transformTypeScriptScriptTags,
   TypeScriptTransformError,
   hasStaticModuleSyntax,
+  isTypeScriptFile,
+  unbundledImportError,
+  unbundledModuleImports,
 } from "./typescript.ts";
 import { getScriptType } from "./script-types.ts";
 import { stampScriptLines, withScriptLine } from "./script-source-lines.ts";
@@ -22,6 +29,7 @@ import { stampDirectiveSources } from "./directive-source.ts";
 import {
   BUILD_ATTR_NAME,
   BUILD_ONCE_ATTR_NAME,
+  scriptDirectiveFinder,
   ROUTES_ATTR_NAME,
   SERVER_ATTR_NAME,
   STREAM_ATTR_NAME,
@@ -29,6 +37,13 @@ import {
 } from "./html-patterns.ts";
 import { findCompatibilityMatches } from "./compatibility-checker.ts";
 import { stderr as colorErr } from "./colors.ts";
+import {
+  findMarkerAnchors,
+  isRegexWhitespace,
+  replaceSpans,
+  scanElementContents,
+  scanMarkedScripts,
+} from "./element-content-scan.ts";
 import {
   PLAUSIBLE_TAG_NAME,
   PRESERVE_WILDCARD_PATTERN,
@@ -202,6 +217,76 @@ export const componentsImportingStylesheet = (filePath: string): string[] => [
   ...(stylesheetImporters.get(resolve(filePath)) ?? []),
 ];
 
+const SRC_MARKER_RE = /\ssrc=["']([^"']+)["']/iy;
+
+/**
+ * `html.replace(regex, (match, preSrc, srcVal, postSrc, body) => ...)` for
+ * `/<script(?=[\t\n\f\r />])((?:[^>"']|"[^"]*"|'[^']*')*?)\ssrc=["']([^"']+)["']((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`:
+ * quote-aware attributes around a whole-name `src` (never `data-src`). The
+ * body is matched too: browsers ignore inline content when `src` is set, so a
+ * body never stops the companion from being inlined. Linear, where the regex
+ * took cubic time (`scanMarkedScripts`; the lazy first chain takes the first
+ * `src` that lets the rest match, and a `src="a'` value is read as written).
+ */
+const replaceCompanionScriptTags = (
+  html: string,
+  replace: (
+    match: string,
+    preSrc: string,
+    srcVal: string,
+    postSrc: string,
+    body: string,
+  ) => string,
+): string => {
+  const markers = new Map<number, RegExpExecArray>();
+  const anchors = findMarkerAnchors(html, /src=/gi, (index) => {
+    if (index === 0 || !isRegexWhitespace(html.charCodeAt(index - 1)))
+      return -1;
+    SRC_MARKER_RE.lastIndex = index - 1;
+    const marker = SRC_MARKER_RE.exec(html);
+    if (marker === null) return -1;
+    markers.set(index - 1, marker);
+    return index - 1;
+  });
+  const matches = scanMarkedScripts(html, [
+    {
+      anchors,
+      markerEnd: (anchor) => anchor + markers.get(anchor)![0].length,
+      pick: "first",
+    },
+  ]);
+  return replaceSpans(html, matches, (match, found) => {
+    const marker = markers.get(found.marker)!;
+    return replace(
+      match,
+      html.slice(found.start + 7, found.marker),
+      marker[1],
+      html.slice(found.marker + marker[0].length, found.contentStart - 1),
+      html.slice(found.contentStart, found.contentEnd),
+    );
+  });
+};
+
+let anyComponentBuildScript = false;
+// `<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*\s(?:${BUILD_ATTR_NAME}|${BUILD_ONCE_ATTR_NAME})(?=[\s=/>])`
+// (flag `i`), in linear time.
+const findComponentBuildScript = scriptDirectiveFinder(
+  ["data-bascik-build", "data-bascik-build-once"],
+  true,
+);
+const hasComponentBuildScript = (html: string): boolean =>
+  findComponentBuildScript(html) !== -1;
+
+/**
+ * Whether any component, as of the last component listing, carries a
+ * `data-bascik-build` script. Such a script may read any file, so a cache
+ * clear (a watched input or asset edit) can change what the component
+ * renders even though the component's own files did not change (prompt 157,
+ * D6: the request-time manifest ran that script).
+ */
+export const componentsHaveBuildScripts = (): boolean =>
+  anyComponentBuildScript;
+
 /** Load all component HTML and CSS files from the configured components directory. */
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const BUILD_DIRECTIVE_RE = new RegExp(
@@ -304,12 +389,17 @@ const warnComponentCompatibility = async (
     );
   };
 
-  const styleBlockRegex =
-    /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
-  let styleMatch: RegExpExecArray | null;
-  while ((styleMatch = styleBlockRegex.exec(nonCodeScan)) !== null) {
-    const styleBody = styleMatch[2] ?? "";
-    const styleOffset = styleMatch.index + styleMatch[1].length;
+  // `(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>`
+  // (flags `gi`), in linear time.
+  for (const styleMatch of scanElementContents(nonCodeScan, "style", {
+    opener: "tag-space",
+    closer: "attributes",
+  })) {
+    const styleBody = nonCodeScan.slice(
+      styleMatch.contentStart,
+      styleMatch.contentEnd,
+    );
+    const styleOffset = styleMatch.contentStart;
     for (const m of findCompatibilityMatches(styleBody, "css")) {
       emitWarning(
         relHtml,
@@ -321,11 +411,16 @@ const warnComponentCompatibility = async (
     }
   }
 
-  const scriptBlockRegex =
-    /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
-  let scriptMatch: RegExpExecArray | null;
-  while ((scriptMatch = scriptBlockRegex.exec(nonCodeScan)) !== null) {
-    const openTag = scriptMatch[1];
+  // `(<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>`
+  // (flags `gi`), in linear time.
+  for (const scriptMatch of scanElementContents(nonCodeScan, "script", {
+    opener: "tag-space",
+    closer: "attributes",
+  })) {
+    const openTag = nonCodeScan.slice(
+      scriptMatch.start,
+      scriptMatch.contentStart,
+    );
     if (
       BUILD_DIRECTIVE_RE.test(openTag) ||
       SERVER_DIRECTIVE_RE.test(openTag) ||
@@ -350,8 +445,11 @@ const warnComponentCompatibility = async (
       typeVal === "application/javascript" ||
       typeVal === "text/typescript";
     if (isJs) {
-      const scriptBody = scriptMatch[2] ?? "";
-      const scriptOffset = scriptMatch.index + openTag.length;
+      const scriptBody = nonCodeScan.slice(
+        scriptMatch.contentStart,
+        scriptMatch.contentEnd,
+      );
+      const scriptOffset = scriptMatch.contentStart;
       for (const m of findCompatibilityMatches(scriptBody, "js")) {
         emitWarning(
           relHtml,
@@ -407,7 +505,14 @@ export const deriveComponentName = (fileName: string): string => {
     .toLowerCase();
 };
 
-const COMPONENT_FILE_RE = /\.(html|css|js|ts|mjs)$/;
+// Markup, stylesheets, and every COMPANION_SCRIPT_RE extension. `bascik add`
+// copies the same set, so a published component arrives with every file the
+// build reads.
+export const COMPONENT_FILE_RE = /\.(html|css|js|mjs|ts|mts)$/;
+
+/** A file `listComponents` reads: markup, a stylesheet, or a companion script. */
+export const isComponentSourceFile = (path: string): boolean =>
+  COMPONENT_FILE_RE.test(path);
 const DEFAULT_COMPONENT_ROOT = "src/components";
 
 /**
@@ -457,8 +562,8 @@ export const listComponents = async (
   );
   const componentScriptFileNames = (componentFileNames as string[]).filter(
     (fileName) =>
-      fileName.match(/\.(js|ts|mjs)$/) &&
-      !fileName.match(/\.(test|spec)\.(js|ts|mjs)$/),
+      COMPANION_SCRIPT_RE.test(fileName) &&
+      !TEST_COMPANION_SCRIPT_RE.test(fileName),
   );
   // Check for duplicate component names across files
   const nameToFilePaths = new Map<string, string[]>();
@@ -564,12 +669,15 @@ export const listComponents = async (
       let resolvedContent = onceResolvedContent;
 
       if (companionScripts && companionScripts.scriptMap.size > 0) {
-        resolvedContent = resolvedContent.replace(
-          // Quote-aware attributes around a whole-name `src` (never `data-src`).
-          // The body is matched too: browsers ignore inline content when `src`
-          // is set, so a body never stops the companion from being inlined.
-          /<script\b((?:[^>"']|"[^"]*"|'[^']*')*?)\ssrc=["']([^"']+)["']((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi,
-          (match, preSrc, srcVal, postSrc, ignoredBody: string) => {
+        resolvedContent = replaceCompanionScriptTags(
+          resolvedContent,
+          (
+            match: string,
+            preSrc: string,
+            srcVal: string,
+            postSrc: string,
+            ignoredBody: string,
+          ) => {
             // A directive script's `src=` is a Node.js module that its own
             // runtime resolves and executes, never browser code to inline.
             if (isDirectiveScriptOpenTag(`<script${preSrc} ${postSrc}>`)) {
@@ -606,6 +714,24 @@ export const listComponents = async (
                     `Mark the referencing <script src="${srcVal}"> tag type="module" (native ES modules are never wrapped), ` +
                     `or bundle this file with esbuild, swc, or another tool first so it has no import/export left.`,
                 );
+              }
+              // A TypeScript module companion is inlined, not bundled: an
+              // import of a sibling file would resolve against the page URL.
+              if (
+                isTypeScriptFile(scriptInfo.relPath) &&
+                getScriptType(`<script${attrStr}>`) === "module"
+              ) {
+                const unbundled = unbundledModuleImports(scriptInfo.code);
+                if (unbundled.length)
+                  throw unbundledImportError(
+                    scriptInfo.relPath,
+                    relative(
+                      process.cwd(),
+                      resolve(process.cwd(), fileName),
+                    ).replace(/\\/g, "/"),
+                    srcVal,
+                    unbundled,
+                  );
               }
               // The companion's first line is line 1 of its own sourceURL file.
               const openTag = withScriptLine(
@@ -673,6 +799,12 @@ export const listComponents = async (
     }),
   );
   stylesheetImporters = nextStylesheetImporters;
+  anyComponentBuildScript = (components as BascikComponent[]).some(
+    (component) =>
+      hasComponentBuildScript(
+        component.scriptDependenciesContent ?? component.fileContent ?? "",
+      ),
+  );
   const builtList = (components as BascikComponent[]).reduce(
     (acc: ComponentList, { name, ...rest }) => {
       if (!name) return acc;
@@ -686,3 +818,6 @@ export const listComponents = async (
   }
   return builtList;
 };
+
+/** The companion script inlining scan, for the linear-time tests. */
+export const __companionScriptTagsForTests = replaceCompanionScriptTags;

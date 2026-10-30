@@ -1,0 +1,27 @@
+.press {
+  box-sizing: border-box;
+  width: min(100%, 1200px);
+  margin: 0 auto;
+  /* Offset 2 of 24 columns on each side: one twelfth of the section's width. */
+  padding: 32px calc(min(100%, 1200px) / 12);
+}
+
+.title {
+  margin: 0 0 16px;
+  font-size: 1.5rem;
+}
+
+.items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  padding: 16px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+}

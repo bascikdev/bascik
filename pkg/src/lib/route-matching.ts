@@ -520,3 +520,40 @@ export const hasHiddenSegment = (pathname: string, base = "/"): boolean => {
       !(index === 0 && segment === WELL_KNOWN_SEGMENT),
   );
 };
+
+/**
+ * Whether a request path is never served. With `security.hideDotfiles` on
+ * (the default) that is `hasHiddenSegment`: every dot segment but a leading
+ * /.well-known/. Off, dotfiles are public, but a first segment of `.bascik`
+ * below the base (in any letter case, see `isBascikFolderName`) still is not: that folder holds the build's sidecars,
+ * manifests and adapter output. Traversal and null bytes are refused with a
+ * 400 before this check, either way.
+ */
+export const isPrivatePathname = (
+  pathname: string,
+  base = "/",
+  hideDotfiles = true,
+): boolean => {
+  if (hideDotfiles) return hasHiddenSegment(pathname, base);
+  let path = pathname;
+  if (base !== "/" && base.length > 1) {
+    const prefix = base.endsWith("/") ? base : `${base}/`;
+    if (path.startsWith(prefix)) path = path.slice(prefix.length - 1);
+  }
+  const first = path.split("/").find((segment) => segment.length > 0);
+  return first !== undefined && isBascikFolderName(first);
+};
+
+/**
+ * Whether a path segment names the private `.bascik` folder on disk. macOS
+ * and Windows filesystems ignore letter case, and Windows drops trailing dots
+ * and spaces, so `.BASCIK`, `.Bascik` and `.bascik.` open the same folder.
+ */
+export const isBascikFolderName = (segment: string): boolean => {
+  // A scan from the end, not /[. ]+$/: that regex is quadratic on a request
+  // segment of many dots and spaces followed by another character.
+  let end = segment.length;
+  while (end > 0 && (segment[end - 1] === "." || segment[end - 1] === " "))
+    end--;
+  return segment.slice(0, end).toLowerCase() === ".bascik";
+};

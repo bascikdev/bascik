@@ -32,6 +32,8 @@ The transition follows a consistent five-step workflow:
 
 Move repeating markup patterns (such as navigation, footers, cards, or buttons) into `.html` files in `src/components/`. The hyphenated filename becomes the component tag name.
 
+Keep the semantic elements as you extract, and fix the ones that are missing: a component's root is the element that ships, so a navigation component's root is a `<nav>`, a card that stands on its own is an `<article>`, and a clickable `<div>` becomes a `<button>`. Never turn semantic markup into `<div>`s. See [Component Best Practices](/component-best-practices#use-htmls-elements).
+
 ### 2. Map Slots and Props
 
 Replace framework-specific slots and properties with Bascik equivalents:
@@ -51,7 +53,7 @@ Place static `.html` files in `src/pages/`. For parameterized routes like blogs,
 
 Write standard vanilla JavaScript in `<script>` tags inside components for client interactivity. Bascik automatically isolates instance IDs so multiple components do not clash.
 
-> **AI-Assisted Migration:** If you use LLMs or AI coding assistants to help convert component templates, see the [Agent Skills](/agent-skills) documentation for guidelines on providing context to AI tools.
+> **AI-Assisted Migration:** If you use LLMs or AI coding assistants to help convert component templates, see the [Agent Skills](/agent-skills) documentation for guidelines on providing context to AI tools. To have coding agents refactor a whole live site so every page matches production and scores 100 in Lighthouse, follow [Migrating with Coding Agents](/how-to/agent-migration).
 
 ## What Maps to What
 

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   splitDistPageIntoSegments,
   pageAliasesFor,
@@ -6,10 +6,12 @@ import {
   detectPublicCollisions,
   readSiteGraph,
 } from "./site-graph.ts";
-import { join } from "node:path";
+import { emitServerlessArtifacts } from "./serverless-artifacts.ts";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import { SIDECAR_SCHEMA_VERSION } from "./server-sidecar.ts";
+import { privateDirFor } from "./private-dir.ts";
 
 describe("splitDistPageIntoSegments", () => {
   it("splits placeholder HTML into static text and script ids in document order", () => {
@@ -119,23 +121,6 @@ describe("splitDistPageIntoSegments", () => {
     expect(rebuilt).toBe(html);
   });
 
-  it("stays linear on many placeholders and many unterminated placeholder open tags", () => {
-    const started = performance.now();
-    const many =
-      '<p>a</p><script type="text/bascik-server" data-bascik-server-id="s"></script>'.repeat(
-        50_000,
-      );
-    expect(splitDistPageIntoSegments(many).scriptIds).toHaveLength(50_000);
-    expect(
-      splitDistPageIntoSegments(
-        '<script type="text/bascik-server" data-bascik-server-id="s">'.repeat(
-          50_000,
-        ),
-      ).scriptIds,
-    ).toEqual([]);
-    expect(performance.now() - started).toBeLessThan(2000);
-  });
-
   it.each([
     ["a bare end tag", "</script>", ["p"]],
     ["whitespace before the end tag", " \n\t</script>", ["p"]],
@@ -149,31 +134,6 @@ describe("splitDistPageIntoSegments", () => {
   ])("matches the placeholder end tag for %s", (_case, tail, expected) => {
     const html = `<script type="text/bascik-server" data-bascik-server-id="p">${tail}`;
     expect(splitDistPageIntoSegments(html).scriptIds).toEqual(expected);
-  });
-
-  it("stays linear on long whitespace runs and repeated unterminated end tags", () => {
-    const open = '<script type="text/bascik-server" data-bascik-server-id="s">';
-    const started = performance.now();
-    expect(
-      splitDistPageIntoSegments(`${open}${" ".repeat(200_000)}x`).scriptIds,
-    ).toEqual([]);
-    expect(
-      splitDistPageIntoSegments(`${open}${"</script\t".repeat(50_000)}`)
-        .scriptIds,
-    ).toEqual([]);
-    expect(
-      splitDistPageIntoSegments(`${open}${" ".repeat(200_000)}</script>`)
-        .scriptIds,
-    ).toEqual(["s"]);
-    expect(performance.now() - started).toBeLessThan(1000);
-  });
-
-  it("stays fast on many repeated type attributes in an unterminated tag", () => {
-    const html = `<script ${'type="text/bascik-server"'.repeat(20_000)}`;
-    const started = performance.now();
-    const { scriptIds } = splitDistPageIntoSegments(html);
-    expect(performance.now() - started).toBeLessThan(1000);
-    expect(scriptIds).toEqual([]);
   });
 
   it("preserves multi-byte text exactly", () => {
@@ -267,9 +227,10 @@ describe("readSiteGraph", () => {
   it("reads dist/ and sidecar, builds host-neutral SiteGraph", async () => {
     const testDir = join(tmpdir(), `bascik-site-graph-test-${Date.now()}`);
     const distDir = join(testDir, "dist");
-    const bascikHiddenDir = join(distDir, ".bascik");
+    const bascikHiddenDir = privateDirFor(distDir);
     const srcApiDir = join(testDir, "src/api");
     await mkdir(bascikHiddenDir, { recursive: true });
+    await mkdir(distDir, { recursive: true });
     await mkdir(srcApiDir, { recursive: true });
 
     // 1. static page
@@ -306,6 +267,20 @@ describe("readSiteGraph", () => {
     await writeFile(
       join(bascikHiddenDir, "server-scripts.json"),
       JSON.stringify(sidecar),
+      "utf8",
+    );
+    // A sidecar with page entries needs the component manifest a build
+    // writes beside it (prompt 157).
+    await writeFile(
+      join(bascikHiddenDir, "components.json"),
+      JSON.stringify({
+        schema: 1,
+        identifiers: true,
+        minifyHtml: true,
+        base: "/",
+        inheritAttributes: true,
+        components: {},
+      }),
       "utf8",
     );
 
@@ -359,6 +334,624 @@ describe("readSiteGraph", () => {
 
       expect(graph.apiRoutes).toHaveLength(1);
       expect(graph.apiRoutes[0].path).toBe("/api/hello");
+    } finally {
+      await rm(testDir, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * Prompt 157: readSiteGraph validates `.bascik/dist/components.json` the way
+ * the production boot does. A dist with page-owned server or stream entries
+ * and no compatible manifest is a stale build; a static dist never needs one.
+ */
+describe("readSiteGraph and the component manifest (prompt 157)", () => {
+  const placeholderPage = `<p>Hi</p><script type="text/bascik-server" data-bascik-server-id="job-inline"></script>`;
+  const sidecarWithPageEntry = {
+    schema: SIDECAR_SCHEMA_VERSION,
+    scripts: {
+      "job-inline": {
+        mode: "server",
+        source: 'console.log("inline");',
+        sourceFile: "src/pages/dynamic.html",
+        sourceLine: 2,
+      },
+    },
+  };
+  const manifest = (schema: number) => ({
+    schema,
+    identifiers: true,
+    minifyHtml: true,
+    base: "/",
+    inheritAttributes: true,
+    components: {},
+  });
+
+  const withDist = async (
+    files: Record<string, string>,
+    run: (testDir: string, distDir: string) => Promise<void>,
+  ) => {
+    const testDir = join(
+      tmpdir(),
+      `bascik-site-graph-manifest-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    );
+    const distDir = join(testDir, "dist");
+    await mkdir(privateDirFor(distDir), { recursive: true });
+    await mkdir(distDir, { recursive: true });
+    await mkdir(join(testDir, "src/api"), { recursive: true });
+    for (const [rel, content] of Object.entries(files)) {
+      await writeFile(
+        rel.startsWith(".bascik/")
+          ? join(privateDirFor(distDir), rel.slice(".bascik/".length))
+          : join(distDir, rel),
+        content,
+        "utf8",
+      );
+    }
+    try {
+      await run(testDir, distDir);
+    } finally {
+      await rm(testDir, { recursive: true, force: true });
+    }
+  };
+
+  it("fails with the rebuild message when page entries exist but components.json is missing", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": JSON.stringify(sidecarWithPageEntry),
+      },
+      async (testDir, distDir) => {
+        const read = () =>
+          readSiteGraph({ projectRoot: testDir, distDir, version: "1.0.0" });
+        await expect(read()).rejects.toThrow(/components\.json/);
+        await expect(read()).rejects.toThrow(/bascik --build/);
+      },
+    );
+  });
+
+  it("fails the same way on an incompatible components.json schema", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": JSON.stringify(sidecarWithPageEntry),
+        ".bascik/components.json": JSON.stringify(manifest(99)),
+      },
+      async (testDir, distDir) => {
+        const read = () =>
+          readSiteGraph({ projectRoot: testDir, distDir, version: "1.0.0" });
+        await expect(read()).rejects.toThrow(/schema 99/);
+        await expect(read()).rejects.toThrow(/bascik --build/);
+      },
+    );
+  });
+
+  it("reads a dist with page entries and a compatible manifest", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": JSON.stringify(sidecarWithPageEntry),
+        ".bascik/components.json": JSON.stringify(manifest(1)),
+      },
+      async (testDir, distDir) => {
+        const graph = await readSiteGraph({
+          projectRoot: testDir,
+          distDir,
+          version: "1.0.0",
+        });
+        expect(graph.pages["/dynamic"].jobs["job-inline"]).toBeDefined();
+        expect(graph.publicFiles).not.toContain(".bascik/components.json");
+      },
+    );
+  });
+
+  it("compiles an inline entry marked typescript, so every host stages JavaScript", async () => {
+    const typed = {
+      schema: SIDECAR_SCHEMA_VERSION,
+      scripts: {
+        "job-inline": {
+          mode: "server",
+          source: "\n  export default (request: Request): string => 'typed';\n",
+          sourceFile: "src/pages/dynamic.html",
+          sourceLine: 2,
+          typescript: true,
+        },
+      },
+    };
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": JSON.stringify(typed),
+        ".bascik/components.json": JSON.stringify(manifest(1)),
+      },
+      async (testDir, distDir) => {
+        const graph = await readSiteGraph({
+          projectRoot: testDir,
+          distDir,
+          version: "1.0.0",
+        });
+        const source = graph.pages["/dynamic"].jobs["job-inline"].source;
+        expect(source.kind).toBe("inline");
+        const code = source.kind === "inline" ? source.code : "";
+        expect(code).not.toMatch(/: Request|: string/);
+        expect(code).toMatch(/export default \(request\s*\)\s*=>\s*'typed';/);
+        // Same lines as the source, so the Worker's errors name them too.
+        expect(code.split("\n")).toHaveLength(3);
+      },
+    );
+  });
+
+  it("fails reading the graph when a marked inline entry is not erasable TypeScript, naming its file and line", async () => {
+    const typed = {
+      schema: SIDECAR_SCHEMA_VERSION,
+      scripts: {
+        "job-inline": {
+          mode: "server",
+          source: "enum A { B }\nexport default () => A.B;",
+          sourceFile: "src/pages/dynamic.html",
+          sourceLine: 4,
+          sourceColumn: 7,
+          typescript: true,
+        },
+      },
+    };
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": JSON.stringify(typed),
+        ".bascik/components.json": JSON.stringify(manifest(1)),
+      },
+      async (testDir, distDir) => {
+        await expect(
+          readSiteGraph({ projectRoot: testDir, distDir, version: "1.0.0" }),
+        ).rejects.toThrow(/src\/pages\/dynamic\.html:4:7/);
+      },
+    );
+  });
+
+  it("is a no-op for a static dist: no manifest required, no components section, with or without an empty sidecar", async () => {
+    await withDist(
+      { "index.html": "<h1>Home</h1>" },
+      async (testDir, distDir) => {
+        const graph = await readSiteGraph({
+          projectRoot: testDir,
+          distDir,
+          version: "1.0.0",
+        });
+        expect(graph.publicFiles).toEqual(["index.html"]);
+        expect((graph as { components?: unknown }).components).toBeUndefined();
+      },
+    );
+    await withDist(
+      {
+        "index.html": "<h1>Home</h1>",
+        ".bascik/server-scripts.json": JSON.stringify({
+          schema: SIDECAR_SCHEMA_VERSION,
+          scripts: {},
+        }),
+      },
+      async (testDir, distDir) => {
+        const graph = await readSiteGraph({
+          projectRoot: testDir,
+          distDir,
+          version: "1.0.0",
+        });
+        expect(graph.publicFiles).toEqual(["index.html"]);
+        expect((graph as { components?: unknown }).components).toBeUndefined();
+      },
+    );
+  });
+});
+
+/**
+ * Prompt 157, phase 3: the site graph carries the component manifest and the
+ * component jobs (`SiteGraph.components = { manifest, jobs }`) so an adapter
+ * can render component tags from script output at request time. The section
+ * exists exactly when the manifest does; component jobs are never attached
+ * to a page. `emitServerlessArtifacts` stages component inline sources like
+ * page jobs and warns, naming the adapter, when the manifest has components
+ * but the adapter's build result does not declare `components: true`.
+ */
+describe("SiteGraph.components and the serverless artifacts (prompt 157)", () => {
+  const SRV_JOB_ID = `component_script_${Buffer.from("srv-card::1").toString("hex")}`;
+  const outputScope = encodeURIComponent(
+    JSON.stringify({
+      classes: { line: "bascik__srv-card__line" },
+      elements: {},
+    }),
+  );
+  const placeholderPage = `<p>Hi</p><script type="text/bascik-server" data-bascik-server-id="job-inline"></script>`;
+  const pageEntry = {
+    mode: "server",
+    source: "export default () => '<srv-card></srv-card>';",
+    sourceFile: "src/pages/dynamic.html",
+    sourceLine: 2,
+  };
+  const componentEntry = {
+    mode: "server",
+    source: "export default () => '<p class=\"line\">from component</p>';",
+    sourceFile: "src/components/srv-card.html",
+    sourceLine: 2,
+    outputScope,
+  };
+  const sidecar = (scripts: Record<string, unknown>) =>
+    JSON.stringify({ schema: SIDECAR_SCHEMA_VERSION, scripts });
+  const srvCard = (jobId: string) => ({
+    name: "srv-card",
+    filePath: "src/components/srv-card.html",
+    template: {
+      instanceId: "rsentinel",
+      tokenCount: 1,
+      steps: [],
+      fileContent: {
+        parts: [
+          `<div class="bascik__srv-card__wrap" data-rid="`,
+          `"><script type="text/bascik-server" data-bascik-server-id="${jobId}"></script></div>`,
+        ],
+        tokens: [0],
+      },
+      size: 0,
+    },
+    css: null,
+    jobs: [
+      {
+        id: jobId,
+        mode: "server",
+        ordinal: 1,
+        sourceFile: "src/components/srv-card.html",
+        sourceLine: 2,
+        outputScope,
+      },
+    ],
+    cspStable: { style: true, script: true },
+    scriptHashes: [],
+  });
+  const manifest = (components: Record<string, unknown>) =>
+    JSON.stringify({
+      schema: 1,
+      identifiers: false,
+      minifyHtml: false,
+      base: "/",
+      inheritAttributes: true,
+      components,
+    });
+
+  const withDist = async (
+    files: Record<string, string>,
+    run: (testDir: string, distDir: string) => Promise<void>,
+  ) => {
+    const testDir = join(
+      tmpdir(),
+      `bascik-site-graph-components-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    );
+    const distDir = join(testDir, "dist");
+    await mkdir(privateDirFor(distDir), { recursive: true });
+    await mkdir(distDir, { recursive: true });
+    await mkdir(join(testDir, "src/api"), { recursive: true });
+    for (const [rel, content] of Object.entries(files)) {
+      await writeFile(
+        rel.startsWith(".bascik/")
+          ? join(privateDirFor(distDir), rel.slice(".bascik/".length))
+          : join(distDir, rel),
+        content,
+        "utf8",
+      );
+    }
+    try {
+      await run(testDir, distDir);
+    } finally {
+      await rm(testDir, { recursive: true, force: true });
+    }
+  };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("readSiteGraph attaches components = { manifest, jobs } when the manifest exists, with component jobs off the pages", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": sidecar({
+          "job-inline": pageEntry,
+          [SRV_JOB_ID]: componentEntry,
+        }),
+        ".bascik/components.json": manifest({
+          "srv-card": srvCard(SRV_JOB_ID),
+        }),
+      },
+      async (testDir, distDir) => {
+        const graph = await readSiteGraph({
+          projectRoot: testDir,
+          distDir,
+          version: "1.0.0",
+        });
+        expect(graph.components).toBeDefined();
+        expect(graph.components?.manifest.schema).toBe(1);
+        expect(
+          graph.components?.manifest.components["srv-card"].jobs[0].id,
+        ).toBe(SRV_JOB_ID);
+        expect(graph.components?.jobs[SRV_JOB_ID]).toEqual({
+          id: SRV_JOB_ID,
+          mode: "server",
+          source: {
+            kind: "inline",
+            code: expect.stringContaining("from component"),
+            stagedPath: "",
+          },
+          owner: expect.stringContaining("src/components/srv-card.html"),
+          // The sidecar entry's scope travels with the job (phase 4), so an
+          // adapter styles the component's script output as Node does.
+          outputScope,
+        });
+        expect(Object.keys(graph.components?.jobs ?? {})).toEqual([SRV_JOB_ID]);
+        expect(Object.keys(graph.pages["/dynamic"].jobs)).toEqual([
+          "job-inline",
+        ]);
+        // A page-level script has no scope, and no `outputScope` key at all.
+        expect(graph.pages["/dynamic"].jobs["job-inline"]).not.toHaveProperty(
+          "outputScope",
+        );
+      },
+    );
+  });
+
+  it("a page job from a component placed statically carries the component's output scope", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": sidecar({
+          "job-inline": { ...pageEntry, outputScope },
+        }),
+        ".bascik/components.json": manifest({}),
+      },
+      async (testDir, distDir) => {
+        const graph = await readSiteGraph({
+          projectRoot: testDir,
+          distDir,
+          version: "1.0.0",
+        });
+        expect(graph.pages["/dynamic"].jobs["job-inline"].outputScope).toBe(
+          outputScope,
+        );
+      },
+    );
+  });
+
+  it("an empty manifest attaches an empty components section", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": sidecar({ "job-inline": pageEntry }),
+        ".bascik/components.json": manifest({}),
+      },
+      async (testDir, distDir) => {
+        const graph = await readSiteGraph({
+          projectRoot: testDir,
+          distDir,
+          version: "1.0.0",
+        });
+        expect(graph.components?.manifest.components).toEqual({});
+        expect(graph.components?.jobs).toEqual({});
+      },
+    );
+  });
+
+  it("fails like the production boot when the manifest names a job the sidecar lacks", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": sidecar({ "job-inline": pageEntry }),
+        ".bascik/components.json": manifest({
+          "srv-card": srvCard(SRV_JOB_ID),
+        }),
+      },
+      async (testDir, distDir) => {
+        const read = () =>
+          readSiteGraph({ projectRoot: testDir, distDir, version: "1.0.0" });
+        await expect(read()).rejects.toThrow(SRV_JOB_ID);
+        await expect(read()).rejects.toThrow(/srv-card/);
+        await expect(read()).rejects.toThrow(/bascik --build/);
+      },
+    );
+  });
+
+  it("emitServerlessArtifacts warns, naming the adapter, when the manifest has components and the adapter result lacks components: true", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": sidecar({
+          "job-inline": pageEntry,
+          [SRV_JOB_ID]: componentEntry,
+        }),
+        ".bascik/components.json": manifest({
+          "srv-card": srvCard(SRV_JOB_ID),
+        }),
+      },
+      async (testDir, distDir) => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        const result = await emitServerlessArtifacts(
+          resolve(import.meta.dirname, "__fixtures__/reference-adapter.ts"),
+          { version: "1.0.0", projectRoot: testDir, distDir },
+        );
+        expect(result.adapter).toBe("reference");
+        const warnings = warn.mock.calls.map((call) => call.join(" "));
+        const about = warnings.filter((w) => /component/i.test(w));
+        expect(about).toHaveLength(1);
+        expect(about[0]).toContain("reference");
+        expect(about[0]).toMatch(/srv-card|components\.json|component tags/);
+      },
+    );
+  });
+
+  it("stages component inline sources like page jobs and stays silent for an adapter that declares components: true", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": sidecar({
+          "job-inline": pageEntry,
+          [SRV_JOB_ID]: componentEntry,
+        }),
+        ".bascik/components.json": manifest({
+          "srv-card": srvCard(SRV_JOB_ID),
+        }),
+      },
+      async (testDir, distDir) => {
+        await writeFile(
+          join(testDir, "inspect-adapter.mjs"),
+          `
+          import { readFile } from "node:fs/promises";
+          export default {
+            name: "inspect",
+            async build(context) {
+              const job = context.graph.components.jobs[${JSON.stringify(SRV_JOB_ID)}];
+              const content = await readFile(job.source.stagedPath, "utf8");
+              globalThis.__bascik_component_staged = { stagedPath: job.source.stagedPath, content };
+              return { publicDir: context.outDir, components: true };
+            }
+          };
+          `,
+          "utf8",
+        );
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        await emitServerlessArtifacts("./inspect-adapter.mjs", {
+          version: "1.0.0",
+          projectRoot: testDir,
+          distDir,
+        });
+        const staged = (
+          globalThis as {
+            __bascik_component_staged?: { stagedPath: string; content: string };
+          }
+        ).__bascik_component_staged;
+        delete (globalThis as { __bascik_component_staged?: unknown })
+          .__bascik_component_staged;
+        expect(staged?.stagedPath).toContain(".staging");
+        expect(staged?.content).toContain("from component");
+        // Staging is cleaned up after the build, like page jobs.
+        await expect(readFile(staged!.stagedPath, "utf8")).rejects.toThrow();
+        expect(
+          warn.mock.calls
+            .map((call) => call.join(" "))
+            .filter((w) => /component/i.test(w)),
+        ).toEqual([]);
+      },
+    );
+  });
+
+  it("stays silent for an empty manifest with an adapter that does not declare components", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": sidecar({ "job-inline": pageEntry }),
+        ".bascik/components.json": manifest({}),
+      },
+      async (testDir, distDir) => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        await emitServerlessArtifacts(
+          resolve(import.meta.dirname, "__fixtures__/reference-adapter.ts"),
+          { version: "1.0.0", projectRoot: testDir, distDir },
+        );
+        expect(
+          warn.mock.calls
+            .map((call) => call.join(" "))
+            .filter((w) => /component/i.test(w)),
+        ).toEqual([]);
+      },
+    );
+  });
+});
+
+/**
+ * Security toggles reach the Worker through the graph (Collin 2026-10-29):
+ * the resolved response headers, hideDotfiles, stripAnsi and renderLimits,
+ * from the build's config or the options (the same pattern as
+ * contentSecurityPolicy).
+ */
+describe("readSiteGraph: security settings for the host", () => {
+  const makeDist = async () => {
+    const testDir = join(
+      tmpdir(),
+      `bascik-site-graph-security-${process.pid}-${Date.now()}`,
+    );
+    const distDir = join(testDir, "dist");
+    await mkdir(privateDirFor(distDir), { recursive: true });
+    await mkdir(distDir, { recursive: true });
+    await writeFile(join(distDir, "index.html"), "<h1>Home</h1>", "utf8");
+    await writeFile(join(distDir, ".nojekyll"), "", "utf8");
+    await writeFile(join(privateDirFor(distDir), "server-scripts.json"), "{}");
+    await mkdir(join(testDir, "src/api"), { recursive: true });
+    return { testDir, distDir };
+  };
+
+  it("defaults: the resolved headers, HSTS one year, dotfiles hidden, ANSI stripped, today's render limits", async () => {
+    const { testDir, distDir } = await makeDist();
+    try {
+      const graph = (await readSiteGraph({
+        projectRoot: testDir,
+        distDir,
+        version: "1.0.0",
+        base: "/",
+      })) as unknown as Record<string, any>;
+      expect(graph.responseSecurity).toEqual({
+        headers: {
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "SAMEORIGIN",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "cross-origin-opener-policy": "same-origin-allow-popups",
+          "cross-origin-resource-policy": "cross-origin",
+        },
+        hsts: "max-age=31536000",
+        privateDynamicPages: true,
+      });
+      expect(graph.hideDotfiles).toBe(true);
+      expect(graph.stripAnsi).toBe(true);
+      expect(graph.renderLimits).toEqual({
+        maxInstances: 1000,
+        maxOutputLength: 4 * 1024 * 1024,
+        maxNestedScripts: 64,
+        maxDepth: 4,
+        rescanFactor: 16,
+        rescanBase: 32 * 1024 * 1024,
+      });
+      expect(graph.publicFiles).not.toContain(".nojekyll");
+    } finally {
+      await rm(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it("options carry the config: headers off, hsts off, dynamic cache off, dotfiles shown, ANSI kept, a render limit", async () => {
+    const { testDir, distDir } = await makeDist();
+    try {
+      const graph = (await readSiteGraph({
+        projectRoot: testDir,
+        distDir,
+        version: "1.0.0",
+        base: "/",
+        security: {
+          headers: { "x-frame-options": "DENY", "referrer-policy": false },
+          hsts: false,
+          privateDynamicPages: false,
+          hideDotfiles: false,
+        },
+        stripAnsi: false,
+        renderLimits: { maxInstances: 5 },
+      } as never)) as unknown as Record<string, any>;
+      expect(graph.responseSecurity.headers["x-frame-options"]).toBe("DENY");
+      expect(graph.responseSecurity.headers).not.toHaveProperty(
+        "referrer-policy",
+      );
+      expect(graph.responseSecurity.hsts).toBeNull();
+      expect(graph.responseSecurity.privateDynamicPages).toBe(false);
+      expect(graph.hideDotfiles).toBe(false);
+      expect(graph.stripAnsi).toBe(false);
+      expect(graph.renderLimits.maxInstances).toBe(5);
+      expect(graph.renderLimits.maxDepth).toBe(4);
+      // The dotfile deploys; the private .bascik folder never does.
+      expect(graph.publicFiles).toContain(".nojekyll");
+      expect(
+        graph.publicFiles.some((f: string) => f.startsWith(".bascik/")),
+      ).toBe(false);
     } finally {
       await rm(testDir, { recursive: true, force: true });
     }

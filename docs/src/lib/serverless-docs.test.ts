@@ -165,7 +165,12 @@ describe("serverless docs: commands and code agree with the implementation", () 
 
   it("the binding example executes against the adapter context shape and degrades on Node", async () => {
     const md = await read("deployment/cloudflare.md");
-    const [tsBlock] = fencedBlocks(md, "ts");
+    // The page has other ts blocks (a config example); the binding example
+    // is the one that reads context.platform.
+    const tsBlock =
+      fencedBlocks(md, "ts").find((block) =>
+        block.includes("context.platform"),
+      ) ?? "";
     expect(tsBlock).toContain("context.platform");
     // Compile the snippet by stripping type annotations the way Node does,
     // then run the handler with a Cloudflare-shaped and a Node-shaped context.

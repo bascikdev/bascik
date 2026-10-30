@@ -1,6 +1,6 @@
 /**
  * Throwaway Bascik projects for testing the repo-root examples/ folder and the agent skill scripts against the real
- * compiler. Shared by examples.integration.test.ts, skill-monorepo.integration.test.ts, and e2e/examples.spec.ts.
+ * compiler. Shared by examples.integration.test.ts, e2e/examples.spec.ts, and skills-tests/tests/skill-monorepo.integration.test.ts.
  *
  * Projects live in a temp directory and link node_modules to this repository's packages, so tests never write into
  * examples/ or any package source.

@@ -1,6 +1,6 @@
 {
   "name": "@bascik/adapter-cloudflare",
-  "version": "1.0.0-rc.9",
+  "version": "1.0.0-rc.10",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
@@ -30,7 +30,11 @@
     "typecheck": "tsc --noEmit",
     "unit": "vitest run",
     "update-coverage": "yarn coverage",
-    "e2e": "playwright test --config e2e/playwright.config.ts"
+    "e2e": "playwright test --config e2e/playwright.config.ts",
+    "demo:build": "cd e2e/fixture && bascik --build --target cloudflare",
+    "demo:deploy": "cd e2e/fixture/dist/.bascik/cloudflare && wrangler deploy",
+    "demo:preview": "cd e2e/fixture/dist/.bascik/cloudflare && wrangler preview",
+    "demo:dev": "cd e2e/fixture/dist/.bascik/cloudflare && wrangler dev"
   },
   "dependencies": {
     "esbuild": "^0.28.2",
@@ -38,7 +42,7 @@
     "smol-toml": "^1.9.0"
   },
   "peerDependencies": {
-    "@bascik/bascik": "^1.0.0-rc.9"
+    "@bascik/bascik": "^1.0.0-rc.10"
   },
   "devDependencies": {
     "@bascik/bascik": "workspace:*",
@@ -47,13 +51,14 @@
     "@vitest/coverage-v8": "^5.0.3",
     "miniflare": "4.20260730.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.2",
-    "vitest": "^5.0.3"
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3",
+    "wrangler": "^4.152.0"
   },
   "publishConfig": {
     "access": "public"
   },
   "engines": {
-    "node": ">=22.18.0"
+    "node": ">=22.22.0"
   }
 }

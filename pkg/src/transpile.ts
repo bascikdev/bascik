@@ -24,6 +24,8 @@ import {
 import { toleratingExecFailure } from "./lib/exec-policy.ts";
 import { stdout as colorOut } from "./lib/colors.ts";
 import { pinServerUrl } from "./lib/pinned-banner.ts";
+import { privateDirFor } from "./lib/private-dir.ts";
+import { assertPlaceholdersKept } from "./lib/lost-placeholders.ts";
 
 export const runTranspile = async (
   options: { exitOnError?: boolean } = {},
@@ -51,7 +53,33 @@ export const runTranspile = async (
     await assertProductionBuildState("targeted-build");
   }
   if (!isTargetedBuild) {
-    await rm(outputDirectory, { recursive: true, force: true });
+    // Another process writing this directory (a second dev server in the
+    // project, a build beside a running dev server) adds files while the
+    // removal walks it, and rmdir fails with ENOTEMPTY. Do not retry: a retry
+    // usually wins the race and deletes the other process's output under it,
+    // leaving it to serve or ship a partial tree with no error. Fail loudly
+    // and say what is in the way instead of a bare ENOTEMPTY.
+    // The private folder beside it (private-dir.ts) belongs to the same
+    // build: a sidecar or manifest the new build does not write must not
+    // survive into it. It goes first, so a folder that cannot be cleared
+    // leaves the previous release's pages and artifacts in place together.
+    for (const [dir, what] of [
+      [privateDirFor(outputDirectory), "the private build folder"],
+      [outputDirectory, "the output directory"],
+    ] as const) {
+      try {
+        await rm(dir, { recursive: true, force: true });
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException)?.code;
+        throw new Error(
+          `Could not clear ${what} ${dir}` +
+            `${code ? ` (${code})` : ""}: another bascik dev server or build ` +
+            `may be writing to it. Stop it, or give this one its own ` +
+            `directory.out.`,
+          { cause: err },
+        );
+      }
+    }
   }
 
   const overallStart = performance.now();
@@ -83,11 +111,28 @@ export const runTranspile = async (
     // build the coordinator reconciles rebuilt/untouched owners and prunes
     // obsolete outputs; for a full build dist/ was cleaned, so it publishes
     // the current process's state fresh with no merge.
+    // A `post` script (or a `parallel` one, joined above) may have edited the
+    // pages after they were written and hashed: the CSP hashes are taken
+    // again from dist/ as it now is, so the header matches the HTML that
+    // ships, on this host and in the serverless bundle built from it below.
+    const editsAfterWrite = (BascikConfig.pipeline?.exec ?? []).some(
+      (entry) => entry.phase === "post" || entry.phase === "parallel",
+    );
     await finalizeOwnedArtifacts(version, {
       forTargetedBuild: Boolean(
         BascikConfig.only && BascikConfig.only.length > 0,
       ),
+      rehashPagesFromDisk: editsAfterWrite,
     });
+    // The same script may have removed a server or stream script's
+    // placeholder, so the script would never run: fail every build here, on
+    // dist/ as it ships and before a serverless bundle is made from it, with
+    // the message `bascik --server` gives at startup.
+    if (editsAfterWrite)
+      await assertPlaceholdersKept(
+        outputDirectory,
+        relativeOutputDirectory.replace(/\\/g, "/"),
+      );
 
     if (BascikConfig.target) {
       // Prompt 133: the deployment bundle is assembled from the finalized

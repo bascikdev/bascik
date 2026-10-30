@@ -17,6 +17,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { privateDirFor } from "./private-dir.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -35,32 +36,46 @@ export interface EmittedFile {
 export interface EmittedInventory {
   /** output-relative path (forward slashes) -> content hash + byte size */
   files: Record<string, EmittedFile>;
-  /** page route path -> inline script/style hashes from dist/.bascik/csp-hashes.json */
+  /** page route path -> inline script/style hashes from .bascik/dist/csp-hashes.json */
   csp: Record<string, { scripts: string[]; styles: string[] }>;
   /** id -> source of each recorded server script (from the sidecar) */
   sidecar: Record<string, string>;
 }
 
-/** Recursively collect every file under `dir` as output-relative path -> bytes. */
+/**
+ * Recursively collect every file a build emitted for the output directory
+ * `dir` as output-relative path -> bytes: the files under `dir`, and the
+ * files of its private folder beside it (private-dir.ts) keyed `.bascik/…`,
+ * so an inventory covers the sidecar, CSP hashes and manifest too.
+ */
 export const readEmittedFiles = async (
   dir: string,
 ): Promise<Record<string, Buffer>> => {
   const out: Record<string, Buffer> = {};
-  const walk = async (current: string): Promise<void> => {
-    const entries = await readdir(current, { withFileTypes: true });
+  const walk = async (root: string, current: string, prefix: string) => {
+    let entries;
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch (err) {
+      if (root !== dir && (err as NodeJS.ErrnoException).code === "ENOENT")
+        return;
+      throw err;
+    }
     for (const entry of entries.sort((a, b) =>
       a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
     )) {
       const full = join(current, entry.name);
       if (entry.isDirectory()) {
-        await walk(full);
+        await walk(root, full, prefix);
         continue;
       }
-      const rel = relative(dir, full).replace(/\\/g, "/");
-      out[rel] = await readFile(full);
+      const rel = relative(root, full).replace(/\\/g, "/");
+      out[`${prefix}${rel}`] = await readFile(full);
     }
   };
-  await walk(dir);
+  await walk(dir, dir, "");
+  const priv = privateDirFor(dir);
+  await walk(priv, priv, ".bascik/");
   return out;
 };
 
@@ -129,7 +144,7 @@ export const runRealBuild = async (
 
 export const readSiteManifest = async (projectRoot: string) => {
   const content = await readFile(
-    join(projectRoot, "dist", ".bascik", "manifest.json"),
+    join(privateDirFor(join(projectRoot, "dist")), "manifest.json"),
     "utf8",
   );
   return JSON.parse(content) as {

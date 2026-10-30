@@ -47,24 +47,37 @@ const watcherReadiness: Promise<void>[] = [];
 const observedWatchers: object[] = [];
 
 /**
- * Count chokidar's self-clearing internal timers on one watcher: throttles
- * (`change` 50ms, raw `watch` 5ms, `readdir` 1000ms, `remove` 100ms),
- * awaitWriteFinish polls, and atomic unlink deferrals. Each owns a live
- * `Timeout` until it expires, so a resource sample taken inside that window
- * reports a transient timer rather than a retained one.
+ * Count chokidar's self-clearing internal timers on one watcher. Chokidar 6
+ * keeps them on its event policy (`watcher.events`): awaitWriteFinish polls,
+ * atomic unlink deferrals, held empty-file adds and changes, and the 50ms
+ * `change` throttle. Each owns a live `Timeout`
+ * until it expires, so a resource sample taken inside that window reports a
+ * transient timer rather than a retained one.
  */
 function watcherTransientTimers(watcher: object): number {
   if (Reflect.get(watcher, "closed") === true) return 0;
+  const policy: unknown = Reflect.get(watcher, "events");
+  assert(
+    policy !== null && typeof policy === "object",
+    "chokidar events observation unavailable",
+  );
   let count = 0;
-  for (const field of ["_pendingWrites", "_pendingUnlinks"]) {
-    const pending: unknown = Reflect.get(watcher, field);
+  for (const field of ["pendingWrites", "pendingUnlinks", "heldAdds"]) {
+    const pending: unknown = Reflect.get(policy, field);
     assert(pending instanceof Map, `chokidar ${field} observation unavailable`);
     count += pending.size;
   }
-  const throttled: unknown = Reflect.get(watcher, "_throttled");
+  const changes: unknown = Reflect.get(policy, "pendingChanges");
+  assert(
+    changes instanceof Map,
+    "chokidar pendingChanges observation unavailable",
+  );
+  for (const change of changes.values())
+    if (Reflect.get(change as object, "held")) count += 1;
+  const throttled: unknown = Reflect.get(policy, "throttled");
   assert(
     throttled instanceof Map,
-    "chokidar _throttled observation unavailable",
+    "chokidar throttled observation unavailable",
   );
   for (const action of throttled.values())
     if (action instanceof Map) count += action.size;
@@ -74,8 +87,9 @@ function watcherTransientTimers(watcher: object): number {
 /** Wait for every watcher's transient timers to expire before sampling resources. */
 async function drainWatcherTimers(): Promise<void> {
   const pollMs = 10;
-  // Chokidar's longest internal timer is the 1000ms readdir throttle; allow
-  // several back-to-back rescans before declaring the watcher stuck.
+  // Chokidar 6's transient timers are short (100ms atomic unlink, 50ms change
+  // throttle, awaitWriteFinish polls); allow many back-to-back rounds before
+  // declaring the watcher stuck.
   for (
     let waited = 0;
     observedWatchers.some((watcher) => watcherTransientTimers(watcher) > 0);
@@ -1162,6 +1176,20 @@ async function sample(
   global.gc!();
   await nextTurn();
   global.gc!();
+  // A keep-alive connection lets go of its last request when the socket's
+  // close is processed, which on a loaded runner can land after two turns
+  // (CI once read one request and its context live here). A leak never
+  // clears, so wait a bounded while for releases that are only late.
+  const anyLive = (references: WeakRef<object>[]) =>
+    references.some((reference) => reference.deref());
+  for (
+    let attempt = 0;
+    attempt < 20 && (anyLive(requestRefs) || anyLive(requestClosureRefs));
+    attempt++
+  ) {
+    await delay(25);
+    global.gc!();
+  }
   const memory = process.memoryUsage();
   const currentPlans = new Set(
     mem
@@ -1447,10 +1475,16 @@ process.on(
         // `transpiled` event is published before that write runs, so a caller
         // asserting exact dist/ bytes must await this first.
         assert(
-          buildDepEnabled || devModuleInlineEnabled,
+          buildDepEnabled || devModuleInlineEnabled || devModuleExternalEnabled,
           "page-write-idle requires a page-edit fixture",
         );
-        await pageWriteIdle(resolve("src/pages/inline.html"));
+        await pageWriteIdle(
+          resolve(
+            devModuleExternalEnabled
+              ? "src/pages/external.html"
+              : "src/pages/inline.html",
+          ),
+        );
         result = { idle: true };
       } else if (message.action === "completed") {
         assert(armed, "edit must be armed");

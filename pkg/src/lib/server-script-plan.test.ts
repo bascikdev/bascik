@@ -31,6 +31,7 @@ vi.mock("./script-registry.js", () => ({
 import {
   planServerScripts,
   streamServerScripts,
+  executeServerScriptPlan,
   executeServerScripts,
   type ScriptSegment,
 } from "./server-scripts.ts";
@@ -38,6 +39,8 @@ import {
   extractServerScriptsToSidecar,
   serverSidecarRegistry,
 } from "./server-sidecar.ts";
+import { encodeOutputScope } from "./output-scope.ts";
+import type { ComponentManifest } from "./component-manifest.ts";
 
 const req = new Request("http://localhost/x");
 const ctx = { remoteIp: "127.0.0.1" };
@@ -361,5 +364,149 @@ describe("stream scripts share the server-script machinery", () => {
     expect(stream.replace("data-bascik-stream", "data-bascik-server")).toBe(
       server,
     );
+  });
+});
+
+/**
+ * Prompt 157: a server or stream script inside a component carries the
+ * component's output scope in its sidecar entry, and `runServerScriptJob`
+ * applies it to the script's output the way a build script's output receives
+ * element classes. This holds for a component placed statically on a page
+ * (its placeholder is a `component_script_*` entry in the page's HTML) and
+ * for a component rendered at request time from another script's output.
+ */
+describe("component server-script output receives the output scope (prompt 157)", () => {
+  const COMPONENT_JOB_ID = `component_script_${Buffer.from("srv-card::1").toString("hex")}`;
+  const outputScope = encodeOutputScope({
+    classes: { line: "bascik__srv-card__line", wrap: "bascik__srv-card__wrap" },
+    elements: { b: "bascik__srv-card__b" },
+  });
+  const recordComponentScript = () =>
+    serverSidecarRegistry.recordScript(
+      COMPONENT_JOB_ID,
+      "export default function() { return '/*C*/'; }",
+      undefined,
+      "src/components/srv-card.html",
+      2,
+      "server",
+      undefined,
+      outputScope,
+    );
+  const componentOutput = `<b>x</b><p class="line other">y</p><!-- <p class="line"> --><script>var s = "<p class=\\"line\\">";</script>`;
+  const scopedOutput = `<b class="bascik__srv-card__b">x</b><p class="bascik__srv-card__line other">y</p><!-- <p class="line"> --><script>var s = "<p class=\\"line\\">";</script>`;
+
+  it("statically placed: a component_script placeholder on a page comes back with the element class and the class mapping", async () => {
+    recordComponentScript();
+    const c = deferred();
+    route({ "/*C*/": c });
+    c.resolve(componentOutput);
+    const html = `<div><script type="text/bascik-server" data-bascik-server-id="${COMPONENT_JOB_ID}"></script></div>`;
+    expect(await executeServerScripts(html, req, ctx)).toBe(
+      `<div>${scopedOutput}</div>`,
+    );
+  });
+
+  it("a page-level entry without an output scope is spliced in untouched", async () => {
+    serverSidecarRegistry.recordScript(
+      "server_script_page",
+      "export default function() { return '/*P*/'; }",
+      undefined,
+      "src/pages/x.html",
+      1,
+      "server",
+    );
+    const p = deferred();
+    route({ "/*P*/": p });
+    p.resolve(componentOutput);
+    const html = `<div><script type="text/bascik-server" data-bascik-server-id="server_script_page"></script></div>`;
+    expect(await executeServerScripts(html, req, ctx)).toBe(
+      `<div>${componentOutput}</div>`,
+    );
+  });
+
+  it("request-rendered: a page script returning <srv-card> renders the component and its nested job's output with the scope applied", async () => {
+    recordComponentScript();
+    // A hand-written manifest: the template's one token is the instance id,
+    // placed verbatim (identifiers off), and its server script is the
+    // staged placeholder, never the source.
+    const manifest: ComponentManifest = {
+      schema: 1,
+      identifiers: false,
+      minifyHtml: false,
+      base: "/",
+      inheritAttributes: true,
+      components: {
+        "srv-card": {
+          name: "srv-card",
+          filePath: "src/components/srv-card.html",
+          template: {
+            instanceId: "rsentinel",
+            tokenCount: 1,
+            steps: [],
+            fileContent: {
+              parts: [
+                `<div class="bascik__srv-card__wrap" data-rid="`,
+                `"><script type="text/bascik-server" data-bascik-server-id="${COMPONENT_JOB_ID}"></script></div>`,
+              ],
+              tokens: [0],
+            },
+            cssFileContent: undefined,
+            scopedIdNames: undefined,
+            requiresPerInstanceCss: undefined,
+            size: 0,
+          },
+          css: null,
+          jobs: [
+            {
+              id: COMPONENT_JOB_ID,
+              mode: "server",
+              ordinal: 1,
+              sourceFile: "src/components/srv-card.html",
+              sourceLine: 2,
+              outputScope,
+            },
+          ],
+          cspStable: { style: true, script: true },
+          scriptHashes: [],
+        },
+      },
+    };
+    const page = deferred();
+    const nested = deferred();
+    route({ "/*P*/": page, "/*C*/": nested });
+    page.resolve(`<srv-card></srv-card>`);
+    nested.resolve(componentOutput);
+    const html = `<main><script data-bascik-server>export default function() { return '/*P*/'; }</script></main>`;
+    const out = (
+      await executeServerScriptPlan(
+        planServerScripts(html, "src/pages/catalog.html"),
+        req,
+        ctx,
+        1000,
+        "src/pages/catalog.html",
+        manifest,
+      )
+    ).toString("utf8");
+    expect(out).toMatch(
+      new RegExp(
+        `^<main><div class="bascik__srv-card__wrap" data-rid="r[0-9a-f]{7}">${scopedOutput.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}</div></main>$`,
+      ),
+    );
+    expect(out).not.toContain("text/bascik-server");
+    expect(out).not.toContain("bascik-job");
+
+    // Without a manifest the tag is the author's text, as before.
+    page.resolve(`<srv-card></srv-card>`);
+    expect(
+      (
+        await executeServerScriptPlan(
+          planServerScripts(html, "src/pages/catalog.html"),
+          req,
+          ctx,
+          1000,
+          "src/pages/catalog.html",
+        )
+      ).toString("utf8"),
+    ).toBe(`<main><srv-card></srv-card></main>`);
   });
 });

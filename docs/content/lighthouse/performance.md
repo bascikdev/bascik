@@ -8,21 +8,15 @@ See the [Lighthouse overview](/lighthouse) for what Bascik does automatically, s
 
 The deepest lesson from McMaster-Carr (see [Real-World Benchmarks](/lighthouse#real-world-benchmarks-mcmaster-carr-and-bring-a-trailer)) is architectural. Its homepage has no JavaScript framework, no client-side router, and no hydration step. Every category link is a plain `<a>` tag. Every product name is a text node delivered in the first TCP packet.
 
-A Bascik site or any statically built HTML page works the same way. Compare the waterfalls:
+A Bascik site works the same way, whether its pages are built ahead of time or rendered per request. Compare the waterfalls:
 
-| Step |   Framework SPA    | Static HTML (Bascik) |
-| ---- | :----------------: | :------------------: |
-| 1    |  Fetch HTML shell  | Fetch complete HTML  |
-| 2    |  Fetch JS bundle   |   Browser paints ✓   |
-| 3    | Parse & execute JS |                      |
-| 4    |   Fetch API data   |                      |
-| 5    |   Render content   |                      |
+### Fewer Steps, Sooner Content
 
-A framework SPA requires five sequential steps before the user sees content. A static HTML page requires one. Every framework adds steps; every step adds latency that compounds across all network conditions.
+A framework SPA fetches an HTML shell, then a JavaScript bundle, runs it, fetches the data, and only then renders, so content appears after about four round trips. A statically built Bascik page arrives complete in the first response and paints at once. Every step a framework adds is latency that compounds on a slow network.
+
+A page with a `data-bascik-server` script is still one request. The script runs on the server, next to your data, and the complete HTML arrives a little later than a static page but far sooner than the SPA's content. Mark the slow part `data-bascik-stream` instead, and the server flushes the shell at once, so Time to First Byte (TTFB) and First Contentful Paint (FCP) stay near the static-page baseline while the streamed section arrives later in the same response. Largest Contentful Paint (LCP) still depends on the slowest `server` script and on any `stream` script placed before the LCP element. See [Placeholders That Do Not Shift Layout](/stream-scripts#placeholders-that-do-not-shift-layout) for zero-CLS streaming recipes.
 
 This is why sites like McMaster-Carr, which could justify a rich SPA for their 600,000-product catalog, choose server-rendered HTML. Content is immediately useful to every user on every device, and search engines index it without executing JavaScript.
-
-With the production server, marking slow request-time blocks `<script data-bascik-stream>` lets the shell of a server-rendered page reach the browser before that backend work finishes. This moves Time to First Byte (TTFB) and First Contentful Paint (FCP) to roughly the static-page baseline while Largest Contentful Paint (LCP) still depends on the slowest `server` script and on any `stream` script placed before the LCP element. See [Placeholders That Do Not Shift Layout](/stream-scripts#placeholders-that-do-not-shift-layout) for zero-CLS streaming recipes.
 
 > **Add interactivity surgically.** McMaster's search autocomplete is a small, focused script that loads after the page is visible. Bring a Trailer's live bid counter is a lightweight WebSocket updater, not a full application framework. Use Bascik's scoped `<script>` blocks or `<script defer>` to layer in interactivity after the HTML has painted, never block the first render for it. Many common widgets need no script at all; see [native interactive elements](/lighthouse/accessibility#css-first-interactivity).
 
@@ -241,7 +235,7 @@ Prefetch is low-priority and only runs during idle time, so it never competes wi
 
 ### Dynamic Prefetching on Hover and Focus
 
-While hardcoding `<link rel="prefetch">` tags works well for high-priority pages, you can dynamically prefetch navigation links as the user interacts with your site. This is how the Bascik documentation sidebar and search results work under the hood.
+While hardcoding `<link rel="prefetch">` tags works well for high-priority pages, you can dynamically prefetch navigation links as the user interacts with your site. The Bascik documentation sidebar and search results do this for browsers without speculation rules; in Chromium, an inline `<script type="speculationrules">` in the shared head prerenders a page when the pointer rests on a link to it.
 
 By listening for `pointerenter` (hover), `focus`, and `touchstart` events on link elements, you can append a `<link rel="prefetch">` element to your document `<head>` just as the user begins their navigation attempt. Since a typical user hovers over a link for about 100 to 300 milliseconds before clicking it, this simple script gives the browser a valuable head start to fetch and cache the next page.
 
@@ -348,7 +342,7 @@ Because Bascik adds no runtime scripts of its own, every `<script>` tag in your 
 
 Bascik's `minify.js` option strips comments and collapses whitespace from every inline `<script>` block and any `.js` files copied into `dist/`. It is `true` by default, so production builds are already smaller without any configuration.
 
-For maximum compression, identifier mangling, dead-code elimination, and tree-shaking, Bascik's **BYOMinifier (Bring Your Own Minifier)** lets you point `minify.js` at esbuild's `transform` API. esbuild has zero npm dependencies (it ships as a single native binary) and is typically 10–100× faster than alternatives:
+The built-in minifier never renames anything. A project that wants the smallest possible output can point `minify.js` at esbuild's `transform` API through **BYOMinifier (Bring Your Own Minifier)**. esbuild shortens local variable names and folds constant expressions on top of what the built-in already does. It does not remove unused code in this mode. Measured on this documentation site, that is about 22% less raw script text but only about 9% less after compression, which works out to roughly 3% of a Brotli-compressed page, for under a second of extra build time. esbuild has zero npm dependencies (it ships as a single native binary) and is typically 10–100× faster than alternatives:
 
 ```sh
 npm install --save-dev esbuild
@@ -369,7 +363,7 @@ export const build = defineConfig({
 });
 ```
 
-The function receives the raw JS string for each script block and must return the minified string. Async functions are fully supported, so any Promise-based minifier works. The built-in `true` mode is a safe fallback for projects that prefer to keep their toolchain dependency-free.
+The function receives the raw JS string for each script block and must return the minified string. Async functions are fully supported, so any Promise-based minifier works. The built-in `true` mode is a safe fallback for projects that prefer to keep their toolchain dependency-free. terser trims a further percent or so of compressed size by deleting unused functions and variables, at roughly fifteen times esbuild's transform time, so it is worth it only when the last few hundred bytes matter more than build time. Component scripts are wrapped in an IIFE and every scoped id and class is a string literal, so renaming by either tool is safe, and Bascik computes CSP hashes from the final output after the minifier runs.
 
 > **What gets minified.** Only inline scripts (those without a `src` attribute) and `.js` static files copied to `dist/`. External scripts loaded with `src=` and non-JS script types such as `application/ld+json` are always left untouched.
 

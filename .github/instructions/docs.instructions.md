@@ -39,7 +39,7 @@ Each docs page that has a corresponding MD file uses a `<script data-bascik-buil
 
 The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformations:
 
-- Fenced code blocks (` ``` `) → `<code-block data-bascik-prop-lang="…">` component
+- Fenced code blocks (` ``` `) → `<code-block data-bascik-prop-lang="…">` component, highlighted at build time (`docs/src/lib/highlight.ts`)
 - Blockquotes (`>`) → `<div class="callout">`
 
 ## HTML Page Shell Structure
@@ -67,9 +67,7 @@ The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformati
 
           <!-- Any page-specific summary UI (technique grids, etc.) -->
 
-          <div class="callout">
-            <p><strong>Next:</strong> …</p>
-          </div>
+          <docs-pagination />
         </main>
       </div>
     </div>
@@ -80,7 +78,7 @@ The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformati
 
 ## Images in `/assets/demos/` and `/assets/vscode/`
 
-Both folders are served with `Cache-Control: public, max-age=31536000, immutable` on Cloudflare Pages (rule written by `docs/scripts/generate-pages-headers.ts`). That is only safe because every reference gets a `?v=<content hash>` from the image helper in `docs/src/lib/md-renderer.ts`. Always reference these images through a Markdown image (`![alt](/assets/demos/x@2x.webp)`) or `demoImage()` in a `data-bascik-build` script. Never write a raw `<img src>`, `<link href>`, or CSS `url()` into them: `docs/src/lib/versioned-image-references.test.ts` fails if you do. When re-recording a demo, keep the same file name; the hash changes on its own.
+Both folders are served with `Cache-Control: public, max-age=31536000, immutable` by Cloudflare (a `_headers` rule written by `docs/scripts/generate-pages-headers.ts`; Workers static assets and Pages read it the same way). That is only safe because every reference gets a `?v=<content hash>` from the image helper in `docs/src/lib/md-renderer.ts`. Always reference these images through a Markdown image (`![alt](/assets/demos/x@2x.webp)`) or `demoImage()` in a `data-bascik-build` script. Never write a raw `<img src>`, `<link href>`, or CSS `url()` into them: `docs/src/lib/versioned-image-references.test.ts` fails if you do. When re-recording a demo, keep the same file name; the hash changes on its own.
 
 ## Visuals
 
@@ -130,23 +128,24 @@ For a comparison, use a `diagram-row` per pair of panels. Add `data-bascik-prop-
 
 ## Updating the Agent Skills (`skills/`)
 
-**Do not run `#pre-push.prompt.md` or pre-push scripts automatically.** The user handles running pre-push steps.
+**Do not run the `pre-push` skill (`.github/skills/pre-push/SKILL.md`) or pre-push scripts automatically.** The user handles running pre-push steps.
 
 Note: `llms.txt` and search index are generated automatically when running `yarn docs:build` (or during dev server via `exec` in `docs/bascik.config.ts`). **Lifecycle/generation scripts executed by `exec` must write their generated output files directly to the output directory (`dist/`), never to the source directories (`src/`), to avoid polluting the source tree with build-time artifacts.**
 
-The public skills live in the repo-root `skills/` folder, one directory per skill (`bascik`, `bascik-components`, `bascik-compatibility`, `bascik-scripts`, `bascik-seo`, `bascik-config`, `bascik-testing`, `bascik-migrate`). That folder is the source of truth for every distribution channel:
+The public skills live in the repo-root `skills/` folder, one directory per skill (`bascik`, `bascik-components`, `bascik-compatibility`, `bascik-scripts`, `bascik-seo`, `bascik-config`, `bascik-testing`, `bascik-migrate`, and the opt-in `bascik-refactor`). That folder is the source of truth for every distribution channel:
 
 - `npx skills add bascikdev/bascik` reads it straight from GitHub.
 - `docs/scripts/publish-agent-skill.ts` (an `exec` producer) writes `/assets/skills.tar.gz`, the RFC 8615 discovery index `/.well-known/agent-skills/index.json` with one `<name>.tar.gz` per skill (so `npx skills add https://bascik.dev` works), and copies `skills/bascik/SKILL.md` to `/assets/SKILL.md`.
-- `create-bascik` bundles a copy in `create/assets/skills/`, which the scaffold copies into `.agents/skills/` and `.claude/skills/`. Refresh it with `yarn create:prepack`; `create/src/skill-sync.test.ts` fails when the copy drifts.
+- `npm create bascik` and `bascik init` ask (default yes) and run the skills CLI, which installs every skill except the opt-in `bascik-refactor` from GitHub at the matching release tag into `.agents/skills/` and `.claude/skills/`. No copy is bundled. `PROJECT_SKILLS` in `create/src/agent-setup.ts` names those skills, and `create/src/agent-setup.test.ts` fails when it stops matching the `skills/` folders minus the opt-in ones. Readers install `bascik-refactor` with `npx skills add bascikdev/bascik --skill bascik-refactor`.
 
-**The docs are the reference; the skills are a router.** A skill holds only the must-follow rules an assistant gets wrong without them, short decision tables, and "How do I..." tables that point to docs pages (`read-doc.mjs /path`). Explanations, option lists, and code examples belong in `docs/content/`, never in a skill. There are no `references/` folders. When a docs change alters a rule, default, API, or pitfall that a skill states, update that rule in the same task. When a skill needs guidance the docs do not have, add it to the docs and link to it.
+**The docs are the reference; the skills are a router.** A skill holds only the must-follow rules an assistant gets wrong without them, short decision tables, and "How do I..." tables that point to docs pages (`read-doc.mjs /path`). Explanations, option lists, and code examples belong in `docs/content/`, never in a skill. There are no `references/` folders, except in `bascik-refactor`: its `references/` hold the prompt templates and the production-parity contract that the `/how-to/agent-migration` page hands to coding agents. When a docs change alters a rule, default, API, or pitfall that a skill states, update that rule in the same task. When a skill needs guidance the docs do not have, add it to the docs and link to it.
 
 Structure rules:
 
 - Each `SKILL.md` stays short (well under 500 lines) with prescriptive rules up front. `name` must match the directory name.
-- Every docs path a skill names (`read-doc.mjs /path`, a backticked `/path` in a "Read" column, or `https://bascik.dev/path`), including `#fragments`, must exist; `docs/scripts/skill-links.test.ts` fails otherwise. Every example a skill names must exist in `examples/`.
-- Scripts are dependency-free Node.js (22.18+) `.mjs` files that run from the user's project root. Shared helpers live in `skills/bascik/scripts/lib/`; other skills refer to `<skills-dir>/bascik/scripts/...` rather than copying them. A script that belongs to another skill stays self-contained (no imports from `bascik/scripts/lib/`), because that skill can be installed on its own.
+- Every docs path a skill names (`read-doc.mjs /path`, a backticked `/path` in a "Read" column, or `https://bascik.dev/path`), including `#fragments`, must exist; `skills-tests/tests/skill-links.test.ts` fails otherwise. Every example a skill names must exist in `examples/`.
+- Skill tests and fixtures live in the `skills-tests/` workspace (`bascik-skills-tests`), never in `skills/` (it ships to users) and never in `docs/`. `skills-tests/tests/skill-*.test.ts` and `verify-script.test.ts` test the skills' rules and scripts, `skills-tests/tests/refactor-*.test.ts` test each `bascik-refactor` script (one test file per script), and `skills-tests/tests/fixtures/refactor-parity/` holds the parity check fixture pages the `*.integration.test.ts` files drive in Chromium. Run `yarn skills:unit` and `yarn skills:integration`. Tests of how the docs site publishes skills (`docs/scripts/skill-bundle.test.ts`, `docs/scripts/publish-agent-skill.test.ts`) stay in `docs/`.
+- Scripts are dependency-free Node.js (22.22+) `.mjs` files that run from the user's project root. The exception is `bascik-refactor`, whose scripts load Playwright and sharp from the reader's own project through `scripts/lib/project-deps.mjs` and fail with an install command when either is missing. Shared helpers live in `skills/bascik/scripts/lib/`; other skills refer to `<skills-dir>/bascik/scripts/...` rather than copying them. A script that belongs to another skill stays self-contained (no imports from `bascik/scripts/lib/`), because that skill can be installed on its own.
 
 ## Examples (`examples/`)
 
@@ -161,7 +160,7 @@ The repo-root `examples/` folder is the only copy of every example: `examples/co
 - `skills/bascik-config/scripts/audit-config.mjs` hard-codes config defaults. `pkg/src/lib/agent-skill-config-defaults.test.ts` fails when they drift from `pkg/src/lib/config.ts`; update the table when a default changes.
 - After changing a script, run it against a real project (for example `pkg/e2e/` or `docs/`) before finishing.
 - Contributor-only skills in `.github/skills/` must carry `metadata: internal: true` so `npx skills add` does not offer them. Check with `npx skills add . --list` from the repo root.
-- `docs/scripts/skill-bundle.test.ts` checks frontmatter, line counts, and relative links; the docs hygiene tests scan `skills/**/*.md` for outdated script patterns.
+- `docs/scripts/skill-bundle.test.ts` checks frontmatter (an unquoted value must not contain `: ` or ` #`, or `npx skills add` skips the skill), line counts, and relative links; the docs hygiene tests scan `skills/**/*.md` for outdated script patterns.
 
 ### Skill Authoring & Best Practices (agentskills.io)
 
@@ -176,7 +175,7 @@ When updating a skill, follow the official Agent Skills best practices (https://
 
 ## Sidebar
 
-Add new pages to `docs/src/components/docs-sidebar/docs-sidebar.html`. Group under the appropriate `<p class="sidebar-heading">` section.
+Add new pages to `NAV` in `docs/src/lib/nav.ts`, under the appropriate section. `docs/src/components/docs-sidebar/docs-sidebar.html` renders the sidebar headings and links from it at build time.
 
 ## Code in HTML Slots (component-demo pattern)
 
@@ -212,7 +211,7 @@ Use `extractDemoBlock` from `src/lib/md-renderer.ts` inside a `data-bascik-build
     <script data-bascik-build>
       import { extractDemoBlock } from "@/lib/md-renderer.ts";
       export default async () =>
-        await extractDemoBlock("./content/03-scoped-css.md", "source-html");
+        await extractDemoBlock("./content/props.md", "source-html");
     </script>
   </code-block>
 </div>

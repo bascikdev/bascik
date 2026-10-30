@@ -18,10 +18,13 @@ afterEach(async () => {
   dirs = [];
 });
 
-const writeConfig = async (contents: string): Promise<string> => {
+const writeConfig = async (
+  contents: string,
+  name = "bascik.config.js",
+): Promise<string> => {
   const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
   dirs.push(dir);
-  const p = join(dir, "bascik.config.js");
+  const p = join(dir, name);
   await writeFile(p, contents, "utf8");
   return p;
 };
@@ -110,7 +113,7 @@ describe("loadUserConfig", () => {
     expect(mod.default).toEqual({ cacheHttp: true });
   });
 
-  it("loads a bascik.config.ts file (Node 22.18+ strips types natively)", async () => {
+  it("loads a bascik.config.ts file (Node 22.22+ strips types natively)", async () => {
     const { loadUserConfig } = await import("./userConfig.ts");
     const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
     dirs.push(dir);
@@ -123,6 +126,134 @@ describe("loadUserConfig", () => {
     const { config } = await loadUserConfig(p);
     expect(config).toEqual({ scopeScriptBlocks: false });
   });
+
+  it("loads a bascik.config.mjs file", async () => {
+    const { loadUserConfig } = await import("./userConfig.ts");
+    const p = await writeConfig(
+      `export default { scopeScriptBlocks: false };
+       export const dev = { cacheHttp: false };`,
+      "bascik.config.mjs",
+    );
+    const { config, dev } = await loadUserConfig(p);
+    expect(config).toEqual({ scopeScriptBlocks: false });
+    expect(dev).toEqual({ cacheHttp: false });
+  });
+
+  it("treats a bascik.config.mjs without a default export like a .js one: empty config", async () => {
+    const { loadUserConfig } = await import("./userConfig.ts");
+    const mjs = await writeConfig(
+      `export const build = { minify: { css: false } };`,
+      "bascik.config.mjs",
+    );
+    const js = await writeConfig(
+      `export const build = { minify: { css: false } };`,
+    );
+    const fromMjs = await loadUserConfig(mjs);
+    expect(fromMjs).toEqual(await loadUserConfig(js));
+    expect(fromMjs.config).toEqual({});
+    expect(fromMjs.build).toEqual({ minify: { css: false } });
+  });
+
+  // Under vitest a config import goes through vite's transform, which
+  // reports syntax errors its own way, so these spawn plain Node to exercise
+  // the real import path (as the enum test below does).
+  const buildProject = (dir: string, args: string[] = []) =>
+    spawnSync(
+      process.execPath,
+      [
+        join(dirname(fileURLToPath(import.meta.url)), "../index.ts"),
+        "--build",
+        ...args,
+      ],
+      { cwd: dir, encoding: "utf8" },
+    );
+
+  it("names the file, line, and offending token for a syntax error in bascik.config.mjs", async () => {
+    const p = await writeConfig(
+      `export default {\n  minify: true,\n  this is bad\n};\n`,
+      "bascik.config.mjs",
+    );
+    const result = buildProject(dirname(p));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Failed to load bascik.config");
+    expect(result.stderr).toContain(`${p}:3`);
+    expect(result.stderr).toContain("  this is bad\n       ^^");
+    expect(result.stderr).toContain("Unexpected identifier 'is'");
+  }, 30000);
+
+  it("names the line of a syntax error in bascik.config.js and in a --config file", async () => {
+    const js = await writeConfig(`export default {\n  a: 1,,\n};\n`);
+    const fromJs = buildProject(dirname(js));
+    expect(fromJs.status).toBe(1);
+    expect(fromJs.stderr).toContain(`${js}:2`);
+
+    const custom = await writeConfig(
+      `export default {\n\n  a: 1,,\n};\n`,
+      "site.config.mjs",
+    );
+    const fromFlag = buildProject(dirname(custom), [
+      "--config",
+      "site.config.mjs",
+    ]);
+    expect(fromFlag.status).toBe(1);
+    expect(fromFlag.stderr).toContain(`${custom}:3`);
+  }, 30000);
+
+  it("locates a syntax error in a CommonJS bascik.config.js at its real line", async () => {
+    // With no "type" in package.json a .js config loads as CommonJS, where
+    // sloppy-mode syntax such as a legacy octal literal is legal. Checking it
+    // as a module would stop at line 1 instead of the real error on line 3.
+    const p = await writeConfig(
+      `const mode = 0755;\nmodule.exports = {\n  this is bad\n};\n`,
+    );
+    await writeFile(join(dirname(p), "package.json"), `{"name":"c"}`, "utf8");
+    const result = buildProject(dirname(p));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Unexpected identifier 'is'");
+    expect(result.stderr).toContain(`${p}:3`);
+    expect(result.stderr).toContain("  this is bad\n       ^^");
+    expect(result.stderr).not.toContain(`${p}:1`);
+  }, 30000);
+
+  it("names the loaded file, not bascik.config.ts, in configuration errors", async () => {
+    const mjs = await writeConfig(
+      `export default { http: { port: 70000 } };`,
+      "bascik.config.mjs",
+    );
+    const fromMjs = buildProject(dirname(mjs));
+    expect(fromMjs.status).toBe(1);
+    expect(fromMjs.stderr).toContain(
+      "Configuration errors in bascik.config.mjs",
+    );
+    expect(fromMjs.stderr).not.toContain("bascik.config.ts");
+
+    const custom = await writeConfig(
+      `export default { http: { port: 70000 } };`,
+      "site.config.mjs",
+    );
+    const fromFlag = buildProject(dirname(custom), [
+      "--config",
+      "site.config.mjs",
+    ]);
+    expect(fromFlag.status).toBe(1);
+    expect(fromFlag.stderr).toContain(
+      "Configuration errors in site.config.mjs",
+    );
+  }, 30000);
+
+  it("keeps the plain message when the config parses but an import does not link", async () => {
+    // A SyntaxError raised while linking (a missing named export) is not a
+    // parse error in the config itself, so there is no line to add.
+    const p = await writeConfig(
+      `import { nope } from "node:path";\nexport default { nope };\n`,
+      "bascik.config.mjs",
+    );
+    const result = buildProject(dirname(p));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Failed to load bascik.config");
+    expect(result.stderr).toMatch(/does not provide an export named 'nope'/);
+    expect(result.stderr).not.toContain(`${p}:`);
+  }, 30000);
 
   it("handles non-Error exceptions when loading config file fails", async () => {
     const { loadUserConfig } = await import("./userConfig.ts");
@@ -178,6 +309,55 @@ describe("loadUserConfig", () => {
   }, 30000);
 });
 
+describe("checkOutputLocation", () => {
+  const configPath = "C:\\Users\\me\\site\\bascik.config.js";
+  const output = (eol: string) =>
+    [
+      `${configPath}:3`,
+      "  this is bad",
+      "       ^^",
+      "",
+      "SyntaxError: Unexpected identifier 'is'",
+      "    at wrapSafe (node:internal/modules/cjs/loader:1)",
+    ].join(eol);
+
+  it("reads the file, line, source and caret from node --check output", async () => {
+    const { checkOutputLocation } = await import("./userConfig.ts");
+    expect(
+      checkOutputLocation(
+        output("\n"),
+        configPath,
+        "Unexpected identifier 'is'",
+      ),
+    ).toBe(`${configPath}:3\n  this is bad\n       ^^`);
+  });
+
+  it("reads Windows output, where node --check ends lines with CRLF", async () => {
+    const { checkOutputLocation } = await import("./userConfig.ts");
+    expect(
+      checkOutputLocation(
+        output("\r\n"),
+        configPath,
+        "Unexpected identifier 'is'",
+      ),
+    ).toBe(`${configPath}:3\n  this is bad\n       ^^`);
+  });
+
+  it("gives nothing when the output is about another file or another error", async () => {
+    const { checkOutputLocation } = await import("./userConfig.ts");
+    expect(
+      checkOutputLocation(
+        output("\n"),
+        "C:\\other.js",
+        "Unexpected identifier 'is'",
+      ),
+    ).toBe("");
+    expect(
+      checkOutputLocation(output("\n"), configPath, "Unexpected token '}'"),
+    ).toBe("");
+  });
+});
+
 describe("resolveConfigPath", () => {
   it("prefers bascik.config.js over bascik.config.ts when both exist", async () => {
     const { resolveConfigPath } = await import("./userConfig.ts");
@@ -196,6 +376,82 @@ describe("resolveConfigPath", () => {
     const { path, explicit } = await resolveConfigPath([], dir);
     expect(path).toBe(join(dir, "bascik.config.js"));
     expect(explicit).toBe(false);
+  });
+
+  it("discovers bascik.config.mjs when it is the only config", async () => {
+    const { resolveConfigPath } = await import("./userConfig.ts");
+    const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
+    dirs.push(dir);
+    await writeFile(join(dir, "bascik.config.mjs"), `export default {};`);
+    const { path, explicit } = await resolveConfigPath([], dir);
+    expect(path).toBe(join(dir, "bascik.config.mjs"));
+    expect(explicit).toBe(false);
+  });
+
+  it("orders discovery .js, then .mjs, then .ts", async () => {
+    const { resolveConfigPath, CONFIG_FILE_NAMES } =
+      await import("./userConfig.ts");
+    expect(CONFIG_FILE_NAMES).toEqual([
+      "bascik.config.js",
+      "bascik.config.mjs",
+      "bascik.config.ts",
+    ]);
+    const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
+    dirs.push(dir);
+    await writeFile(join(dir, "bascik.config.mjs"), `export default {};`);
+    await writeFile(join(dir, "bascik.config.ts"), `export default {};`);
+    expect((await resolveConfigPath([], dir)).path).toBe(
+      join(dir, "bascik.config.mjs"),
+    );
+    await writeFile(join(dir, "bascik.config.js"), `export default {};`);
+    expect((await resolveConfigPath([], dir)).path).toBe(
+      join(dir, "bascik.config.js"),
+    );
+  });
+
+  it("honors --config with an .mjs path", async () => {
+    const { resolveConfigPath, loadUserConfig } =
+      await import("./userConfig.ts");
+    const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
+    dirs.push(dir);
+    await writeFile(
+      join(dir, "site.config.mjs"),
+      `export default { cacheHttp: true };`,
+    );
+    const resolved = await resolveConfigPath(
+      ["--config", "site.config.mjs"],
+      dir,
+    );
+    expect(resolved).toEqual({
+      path: join(dir, "site.config.mjs"),
+      explicit: true,
+    });
+    const { config } = await loadUserConfig(resolved.path, {
+      explicit: true,
+    });
+    expect(config).toEqual({ cacheHttp: true });
+  });
+
+  it("findConfigFile reports no file, a --config missing its value, and the discovered name", async () => {
+    // config.ts and check.ts name the config from this synchronous lookup,
+    // so it must agree with resolveConfigPath.
+    const { findConfigFile } = await import("./config-file-names.ts");
+    const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
+    dirs.push(dir);
+    expect(findConfigFile([], dir)).toEqual({
+      path: undefined,
+      explicit: false,
+    });
+    // `--config` followed by another flag has no value: not explicit.
+    expect(findConfigFile(["--config", "--build"], dir)).toEqual({
+      path: undefined,
+      explicit: false,
+    });
+    await writeFile(join(dir, "bascik.config.mjs"), `export default {};`);
+    expect(findConfigFile(["--build"], dir)).toEqual({
+      path: join(dir, "bascik.config.mjs"),
+      explicit: false,
+    });
   });
 
   it("falls back to bascik.config.ts when no .js file exists", async () => {
@@ -236,5 +492,14 @@ describe("resolveConfigPath", () => {
     await expect(
       loadUserConfig("/nonexistent/custom.config.js", { explicit: true }),
     ).rejects.toThrow(/does not exist/);
+  });
+
+  it("lists every discoverable filename in the missing --config error", async () => {
+    const { loadUserConfig } = await import("./userConfig.ts");
+    await expect(
+      loadUserConfig("/nonexistent/custom.config.mjs", { explicit: true }),
+    ).rejects.toThrow(
+      /bascik\.config\.js, \.\/bascik\.config\.mjs, or \.\/bascik\.config\.ts/,
+    );
   });
 });

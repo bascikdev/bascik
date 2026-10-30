@@ -150,9 +150,7 @@ The Loop iterates over posts from the database. The Bascik equivalent is a `<scr
   <script data-bascik-build>
     import { readdir, readFile } from "node:fs/promises";
     import matter from "gray-matter";
-
-    const escape = (s) =>
-      String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+    import { html } from "@bascik/bascik/html";
 
     export default async function () {
       const files = (await readdir("./content/posts")).filter((f) =>
@@ -172,25 +170,26 @@ The Loop iterates over posts from the database. The Bascik equivalent is a `<scr
       );
       posts.sort((a, b) => b.date - a.date);
 
-      return posts
-        .map(
-          (p) =>
-            `<li><a href="/blog/${p.slug}/">${escape(p.title)}</a> <time datetime="${p.date.toISOString()}">${p.date.toISOString().slice(0, 10)}</time></li>`,
-        )
-        .join("\n");
+      return html`${posts.map((p) => {
+        const iso = p.date.toISOString();
+        return html`<li>
+          <a href="/blog/${p.slug}/">${p.title}</a>
+          <time datetime="${iso}">${iso.slice(0, 10)}</time>
+        </li>`;
+      })}`;
     }
   </script>
 </ul>
 ```
 
-Install `gray-matter` (`npm install gray-matter`): the scaffold does not include it. A title is text, so escape it before returning. A page that reads files Bascik cannot see as imports (here `readdir`) must be listed in `scripts.cache.exclude`, or a rebuild reuses the old output; see [Build Scripts](/build-scripts#invalidation-limits-cache-exclusions).
+Install `gray-matter` (`npm install gray-matter`): the scaffold does not include it. A title is text: `html` from `@bascik/bascik/html` escapes it, and every other value, for where it lands; see [HTML Helpers](/html-helpers). A page that reads files Bascik cannot see as imports (here `readdir`) must be listed in `scripts.cache.exclude`, or a rebuild reuses the old output; see [Build Scripts](/build-scripts#invalidation-limits-cache-exclusions).
 
 ## Single Posts → Dynamic Routes
 
 `single.php` renders one template for every post. In Bascik, a file named `src/pages/blog/[slug].html` with a `<script data-bascik-routes>` block expands into one static page per post. See [Dynamic Routes](/dynamic-routes) for the full route object format.
 
 ```html
-<!-- src/pages/blog/[slug].html (Bascik - after) -->
+<!-- src/pages/blog/[slug].html (Bascik - after; the routes script, in the page <head>) -->
 <script data-bascik-routes>
   import { readdir } from "node:fs/promises";
 
@@ -317,7 +316,7 @@ await writeFile(
 ```
 
 ```html
-<!-- src/pages/[year]/[month]/[day]/[slug]/index.html (Bascik - after) -->
+<!-- src/pages/[year]/[month]/[day]/[slug]/index.html (Bascik - after; the routes script, in the page <head>) -->
 <script data-bascik-routes>
   import { readFile } from "node:fs/promises";
 

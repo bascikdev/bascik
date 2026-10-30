@@ -309,19 +309,6 @@ describe("scanHtml", () => {
       { numRuns: 4000 },
     );
   });
-
-  it("stays linear on hostile input", () => {
-    const started = performance.now();
-    scanHtml(`<svg>${"<g>".repeat(20_000)}${"</x>".repeat(20_000)}`);
-    scanHtml(
-      `<svg><foreignObject>${"<div>".repeat(20_000)}${"</g>".repeat(20_000)}`,
-    );
-    scanHtml(`<p ${'a="b" '.repeat(50_000)}`);
-    scanHtml(`<script>${"</scripts".repeat(50_000)}`);
-    scanHtml("<!--".repeat(50_000));
-    scanHtml("<".repeat(100_000));
-    expect(performance.now() - started).toBeLessThan(2000);
-  });
 });
 
 describe("removeHtmlRanges", () => {

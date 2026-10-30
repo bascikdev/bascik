@@ -473,6 +473,117 @@ describe("listComponents – companion scripts", () => {
     expect(result["my-btn"].fileContent).not.toContain("spec");
   });
 
+  it("ignores .test.mts and .spec.mts companion files", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/my-btn/my-btn.html",
+      "src/components/my-btn/my-btn.test.mts",
+      "src/components/my-btn/my-btn.spec.mts",
+    ]);
+    mockReadFile.mockResolvedValueOnce(
+      Buffer.from(
+        '<button>Click</button><script src="my-btn.test.mts"></script>',
+      ),
+    );
+
+    const result = await listComponents();
+
+    expect(mockReadFile).toHaveBeenCalledTimes(1);
+    expect(result["my-btn"].fileContent).toContain('src="my-btn.test.mts"');
+  });
+
+  it("inlines and strips TypeScript from a referenced .mts companion script like a .ts one", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/mts-counter/mts-counter.html",
+      "src/components/mts-counter/mts-counter.mts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(
+        Buffer.from(
+          '<span id="count">0</span><script src="mts-counter.mts"></script>',
+        ),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from(
+          "const count = document.getElementById('count') as HTMLElement;\nlet n: number = 0;\ncount.textContent = String(n);\n",
+        ),
+      );
+
+    const result = await listComponents();
+    const html = result["mts-counter"].fileContent as string;
+
+    expect(html).not.toContain('src="mts-counter.mts"');
+    expect(html).not.toContain("as HTMLElement");
+    expect(html).not.toContain(": number");
+    expect(html).toContain("document.getElementById('count')");
+    expect(html).toContain(
+      'data-bascik-source="src/components/mts-counter/mts-counter.mts"',
+    );
+  });
+
+  it("fails an .mts companion with file context when it uses non-erasable syntax", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/enum-comp/enum-comp.html",
+      "src/components/enum-comp/enum-comp.mts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(
+        Buffer.from('<div></div><script src="enum-comp.mts"></script>'),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from("enum Mode { A, B }\nconsole.log(Mode.A);\n"),
+      );
+
+    await expect(listComponents()).rejects.toThrow(
+      /enum-comp\.mts[\s\S]*enum/i,
+    );
+  });
+
+  it('fails an .mts companion with the same import/export diagnostic as .ts when the <script> tag isn\'t type="module"', async () => {
+    // The .m in .mts says "module" to Node and TypeScript, but the browser
+    // only sees the referencing tag. Without type="module" it is a classic
+    // script, so the rule is the same as for a .ts companion.
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/module-widget/module-widget.html",
+      "src/components/module-widget/module-widget.mts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(
+        Buffer.from('<div></div><script src="module-widget.mts"></script>'),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from("export const n: number = 1;\nconsole.log(n);\n"),
+      );
+
+    const error = await listComponents().catch((caught) => caught);
+    expect(error).toBeInstanceOf(TypeScriptTransformError);
+    expect(error.message).toMatch(/module-widget\.mts[\s\S]*import\/export/);
+    expect(error.message).toContain(
+      'Mark the referencing <script src="module-widget.mts"> tag type="module"',
+    );
+  });
+
+  it('inlines an .mts companion with export when the referencing <script> tag is type="module"', async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/module-widget/module-widget.html",
+      "src/components/module-widget/module-widget.mts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(
+        Buffer.from(
+          '<div></div><script type="module" src="module-widget.mts"></script>',
+        ),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from("export const n: number = 1;\nconsole.log(n);\n"),
+      );
+
+    const result = await listComponents();
+    const html = result["module-widget"].fileContent as string;
+    expect(html).toContain("export const n");
+    expect(html).not.toContain(": number");
+    expect(html).not.toContain('src="module-widget.mts"');
+  });
+
   it("strips TypeScript from a referenced .ts companion script without any minify.js configuration", async () => {
     mockDeepReadDirFlat.mockResolvedValue([
       "src/components/demo-counter/demo-counter.html",
@@ -564,6 +675,7 @@ describe("listComponents – companion scripts", () => {
     expect(compiler).toHaveBeenCalledWith("let n: number = 1;\n", {
       sourcePath: "src/components/custom-comp/custom-comp.ts",
       kind: "companion",
+      runtime: "browser",
     });
     expect(result["custom-comp"].fileContent).toContain(
       "// via-custom-compiler",

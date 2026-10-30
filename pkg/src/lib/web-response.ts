@@ -12,7 +12,10 @@
  * after a body has been composed.
  */
 
-/** Sent on every response by every adapter. HSTS is added by hosts that know the scheme. */
+/**
+ * Sent on every response by every adapter unless `security.headers` changes
+ * them. HSTS is added by hosts that know the scheme.
+ */
 export const SECURITY_HEADERS: Readonly<Record<string, string>> = Object.freeze(
   {
     "x-content-type-options": "nosniff",
@@ -23,7 +26,83 @@ export const SECURITY_HEADERS: Readonly<Record<string, string>> = Object.freeze(
   },
 );
 
-export const HSTS_HEADER = "max-age=31536000; includeSubDomains";
+/**
+ * The default Strict-Transport-Security value: one year, this host only.
+ * `includeSubDomains` is opt-in (`security.hsts: { includeSubDomains: true }`)
+ * because it forces every subdomain onto HTTPS for the whole max-age.
+ */
+export const HSTS_HEADER = "max-age=31536000";
+
+/** One year, in seconds: the default `security.hsts.maxAge`. */
+export const HSTS_DEFAULT_MAX_AGE = 31536000;
+
+/**
+ * `security.headers`, `security.hsts` and `security.privateDynamicPages`,
+ * resolved once from the config into what the response builders send.
+ */
+export interface ResponseSecurity {
+  /** The security headers to send, lowercase name to value. */
+  headers: Record<string, string>;
+  /** The Strict-Transport-Security value over HTTPS, or null for none. */
+  hsts: string | null;
+  /** Send `cache-control: private, no-store` on pages composed per request. */
+  privateDynamicPages: boolean;
+}
+
+/** The config shape `resolveResponseSecurity` reads (validated at startup). */
+export interface ResponseSecurityConfig {
+  headers?: boolean | Record<string, string | false | undefined>;
+  hsts?:
+    | boolean
+    | { maxAge?: number; includeSubDomains?: boolean; preload?: boolean };
+  privateDynamicPages?: boolean;
+}
+
+/** Resolve the response half of `security` (absent: every default). */
+export const resolveResponseSecurity = (
+  security?: ResponseSecurityConfig | null,
+): ResponseSecurity => {
+  const headers: Record<string, string> = {};
+  const configured = security?.headers;
+  if (configured !== false) {
+    Object.assign(headers, SECURITY_HEADERS);
+    if (configured && typeof configured === "object") {
+      for (const [name, value] of Object.entries(configured)) {
+        const lower = name.toLowerCase();
+        if (value === false) delete headers[lower];
+        else if (typeof value === "string") headers[lower] = value;
+      }
+    }
+  }
+  const hstsConfig = security?.hsts;
+  let hsts: string | null;
+  if (hstsConfig === false) hsts = null;
+  else if (hstsConfig && typeof hstsConfig === "object") {
+    hsts = `max-age=${hstsConfig.maxAge ?? HSTS_DEFAULT_MAX_AGE}`;
+    if (hstsConfig.includeSubDomains) hsts += "; includeSubDomains";
+    if (hstsConfig.preload) hsts += "; preload";
+  } else hsts = HSTS_HEADER;
+  return {
+    headers,
+    hsts,
+    privateDynamicPages: security?.privateDynamicPages !== false,
+  };
+};
+
+/** Every default: the five headers, one-year HSTS, private dynamic pages. */
+export const DEFAULT_RESPONSE_SECURITY: Readonly<ResponseSecurity> =
+  Object.freeze(resolveResponseSecurity());
+
+/** The security headers, plus HSTS when the connection is HTTPS. */
+const securityHeaders = (
+  security: ResponseSecurity,
+  https: boolean | undefined,
+): Headers => {
+  const headers = new Headers(security.headers);
+  if (https && security.hsts !== null)
+    headers.set("strict-transport-security", security.hsts);
+  return headers;
+};
 
 /**
  * Personalized output must never enter a shared cache. Identical to the value
@@ -50,17 +129,28 @@ export interface DynamicPageHeaderOptions {
   https?: boolean;
   /** Known body length for a buffered response; omitted for streams. */
   contentLength?: number;
+  /** The resolved `security` config; absent means every default. */
+  security?: ResponseSecurity;
+}
+
+/** The options every other builder takes. */
+export interface SecurityResponseOptions {
+  /** Set when the host knows the connection is HTTPS. */
+  https?: boolean;
+  /** The resolved `security` config; absent means every default. */
+  security?: ResponseSecurity;
 }
 
 /** Response headers for a page whose body was composed at request time. */
 export const dynamicPageHeaders = (
   options: DynamicPageHeaderOptions = {},
 ): Headers => {
-  const headers = new Headers(SECURITY_HEADERS);
+  const security = options.security ?? DEFAULT_RESPONSE_SECURITY;
+  const headers = securityHeaders(security, options.https);
   headers.set("content-type", "text/html; charset=utf-8");
   headers.set("vary", "Accept-Encoding");
-  headers.set("cache-control", DYNAMIC_CACHE_CONTROL);
-  if (options.https) headers.set("strict-transport-security", HSTS_HEADER);
+  if (security.privateDynamicPages)
+    headers.set("cache-control", DYNAMIC_CACHE_CONTROL);
   if (options.contentLength !== undefined)
     headers.set("content-length", String(options.contentLength));
   return headers;
@@ -72,10 +162,12 @@ export const dynamicPageHeaders = (
  */
 export const mergeHandlerHeaders = (
   handlerHeaders: Headers,
-  options: { https?: boolean } = {},
+  options: SecurityResponseOptions = {},
 ): Headers => {
-  const headers = new Headers(SECURITY_HEADERS);
-  if (options.https) headers.set("strict-transport-security", HSTS_HEADER);
+  const headers = securityHeaders(
+    options.security ?? DEFAULT_RESPONSE_SECURITY,
+    options.https,
+  );
   handlerHeaders.forEach((value, key) => {
     if (key.toLowerCase() === "set-cookie") return;
     headers.set(key, value);
@@ -91,16 +183,22 @@ export const stripRepresentationHeaders = (headers: Headers): Headers => {
   return headers;
 };
 
-/** Plain-text error response with the security header set. */
+/**
+ * Plain-text error response with the security header set. Always
+ * `private, no-store`: an error is never cached, whatever
+ * `security.privateDynamicPages` says about pages.
+ */
 export const errorResponse = (
   status: number,
   body: string,
-  options: { https?: boolean } = {},
+  options: SecurityResponseOptions = {},
 ): Response => {
-  const headers = new Headers(SECURITY_HEADERS);
+  const headers = securityHeaders(
+    options.security ?? DEFAULT_RESPONSE_SECURITY,
+    options.https,
+  );
   headers.set("content-type", "text/plain; charset=utf-8");
   headers.set("cache-control", DYNAMIC_CACHE_CONTROL);
-  if (options.https) headers.set("strict-transport-security", HSTS_HEADER);
   return new Response(body, { status, headers });
 };
 
@@ -114,9 +212,11 @@ export const GENERIC_500_HTML =
  */
 export const internalErrorPage = (
   custom500?: Uint8Array | string,
-  options: { https?: boolean } = {},
+  options: SecurityResponseOptions = {},
 ): Response => {
   const body = custom500 ?? GENERIC_500_HTML;
-  const headers = dynamicPageHeaders({ https: options.https });
+  const headers = dynamicPageHeaders(options);
+  // A failure page is never cached, whatever privateDynamicPages says.
+  headers.set("cache-control", DYNAMIC_CACHE_CONTROL);
   return new Response(body, { status: 500, headers });
 };

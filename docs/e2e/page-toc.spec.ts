@@ -40,6 +40,62 @@ test.describe('"On this page" table of contents', () => {
     await expect(toc.locator('[aria-current="location"]')).toHaveCount(1);
   });
 
+  // Blocks after the fourth h2 use content-visibility: auto and count at an estimated height until they render.
+  // A smooth scroll aimed with those estimates lands far from the heading unless the click re-aims after it.
+  for (const [path, nth] of [
+    ["/configuration", "last"],
+    ["/configuration", "middle"],
+    ["/stream-scripts", "last"],
+  ] as const) {
+    test(`a smooth-scrolled click on a late link in ${path} (${nth}) lands on its heading`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await page.goto(path);
+      const toc = page.getByRole("navigation", { name: "On this page" });
+      const links = toc.getByRole("link");
+      const count = await links.count();
+      // Past the fourth h2, so the blocks between here and there are still at their estimated size.
+      expect(count).toBeGreaterThan(8);
+      const target = links.nth(
+        nth === "last" ? count - 2 : Math.floor(count * 0.6),
+      );
+      const href = String(await target.getAttribute("href"));
+
+      await target.click();
+
+      const heading = page.locator(`[id="${href.slice(1)}"]`);
+      await expect
+        .poll(
+          () =>
+            heading.evaluate((el) => {
+              const offset = parseFloat(
+                getComputedStyle(document.documentElement).getPropertyValue(
+                  "--anchor-scroll-offset",
+                ),
+              );
+              return Math.abs(
+                Math.round(el.getBoundingClientRect().top - offset),
+              );
+            }),
+          { timeout: 6000 },
+        )
+        .toBeLessThanOrEqual(3);
+      const delta = await heading.evaluate((el) => {
+        const offset = parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--anchor-scroll-offset",
+          ),
+        );
+        return el.getBoundingClientRect().top - offset;
+      });
+      expect(Math.abs(delta)).toBeLessThanOrEqual(3);
+      await expect(page).toHaveURL(new RegExp(`${href}$`));
+      await expect(target).toHaveAttribute("aria-current", "location");
+      await expect(toc.locator('[aria-current="location"]')).toHaveCount(1);
+    });
+  }
+
   test("tracks the anchor offset after opening a search result", async ({
     page,
   }) => {

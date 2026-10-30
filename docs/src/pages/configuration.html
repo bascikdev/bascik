@@ -41,9 +41,64 @@
           <!-- Content rendered from docs/content/configuration.md at build time.
              To update page content, edit the MD file - not this file. -->
           <script data-bascik-build>
-            import { renderMd } from "@/lib/md-renderer.ts";
+            import { renderMdRange } from "@/lib/md-renderer.ts";
             export default async () =>
-              await renderMd("./content/configuration.md");
+              await renderMdRange(
+                "./content/configuration.md",
+                {
+                  to: "`scripts.onServerScriptError`",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+          <!-- No Preview: this docs site uses the default compiler, which rejects an enum. -->
+          <component-demo
+            data-bascik-prop-no-preview="true"
+            data-bascik-prop-file="src/pages/sizes.html"
+          >
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/configuration.md",
+                      "ts-config-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-js">
+              <code-block data-bascik-prop-lang="ts">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/configuration.md",
+                      "ts-config-esbuild",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/configuration.md",
+                      "ts-config-output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/configuration.md", {
+                from: "`scripts.onServerScriptError`",
+              });
           </script>
 
           <docs-pagination />

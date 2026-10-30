@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Server Components Pre Test</title>
+  </head>
+
+  <body>
+    <!-- A server script returns a component inside a <pre>. Under
+         minify.html (--build and --server) the build keeps whitespace and
+         comments inside a <pre> verbatim, so the request-rendered instance,
+         slot text included, must keep its spacing there too (prompt 157). -->
+    <section data-testid="scp-output">
+      <script data-bascik-server>
+        export default function () {
+          return (
+            `<pre data-testid="scp-pre"><server-card data-bascik-prop-title="Pre">` +
+            `<span data-testid="scp-code">if  (x)\n    next</span>` +
+            `</server-card></pre>`
+          );
+        }
+      </script>
+    </section>
+  </body>
+</html>

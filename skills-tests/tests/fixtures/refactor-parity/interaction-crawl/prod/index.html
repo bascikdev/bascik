@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Northwind Tasks</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 Helvetica,
+          Arial,
+          sans-serif;
+      }
+      .site-nav {
+        display: flex;
+        gap: 16px;
+        padding: 16px 40px;
+      }
+      .hero {
+        min-height: 700px;
+        padding: 40px;
+      }
+      .block {
+        min-height: 900px;
+        padding: 40px;
+      }
+      .details-toggle {
+        cursor: pointer;
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <nav class="site-nav" aria-label="Main">
+        <button
+          type="button"
+          id="products-button"
+          aria-expanded="false"
+          aria-controls="products-menu"
+        >
+          Products
+        </button>
+        <ul id="products-menu" hidden>
+          <li><a href="/boards">Boards</a></li>
+          <li><a href="/timelines">Timelines</a></li>
+        </ul>
+        <a href="#pricing">Pricing</a>
+      </nav>
+    </header>
+    <main>
+      <div class="hero">
+        <h1>Plan work your team can see</h1>
+        <button type="button" class="cta">See features</button>
+        <span class="details-toggle">Show details</span>
+        <p class="details" hidden>Free for teams of up to five people.</p>
+      </div>
+      <section class="block" id="features"><h2>Features</h2></section>
+      <section class="block" id="pricing"><h2>Pricing plans</h2></section>
+    </main>
+    <script>
+      const products = document.getElementById("products-button");
+      products.addEventListener("click", () => {
+        const open = products.getAttribute("aria-expanded") === "true";
+        products.setAttribute("aria-expanded", String(!open));
+        document.getElementById("products-menu").hidden = open;
+      });
+      document.querySelector(".cta").addEventListener("click", () => {
+        document
+          .getElementById("features")
+          .scrollIntoView({ behavior: "smooth" });
+      });
+      document
+        .querySelector(".details-toggle")
+        .addEventListener("click", () => {
+          document.querySelector(".details").hidden = false;
+        });
+    </script>
+  </body>
+</html>

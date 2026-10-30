@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Northwind Tasks</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 Helvetica,
+          Arial,
+          sans-serif;
+      }
+      .nav {
+        position: relative;
+        display: flex;
+        gap: 24px;
+        padding: 16px 40px;
+      }
+      .trigger {
+        font: inherit;
+        padding: 8px 12px;
+        border: 0;
+        background: none;
+        cursor: pointer;
+      }
+      .menu {
+        position: absolute;
+        top: 56px;
+        left: 40px;
+        width: 260px;
+        margin: 0;
+        padding: 12px;
+        list-style: none;
+        background: #ffffff;
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        animation: menu-in 0.3s ease-out;
+      }
+      .menu[hidden] {
+        display: none;
+      }
+      .menu a {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px;
+        color: #1d2433;
+        text-decoration: none;
+      }
+      .menu svg,
+      .menu img {
+        width: 16px;
+        height: 16px;
+      }
+      .menu .with-pseudo::before {
+        content: "";
+        width: 16px;
+        height: 16px;
+        background: url("icons/report.svg") center / contain no-repeat;
+      }
+      @keyframes menu-in {
+        from {
+          opacity: 0;
+          transform: translateY(-6px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <nav class="nav" aria-label="Main">
+        <button
+          type="button"
+          class="trigger"
+          aria-expanded="false"
+          aria-controls="products-menu"
+        >
+          Products
+        </button>
+        <ul class="menu" id="products-menu" hidden>
+          <li>
+            <a href="/boards"
+              ><svg viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="8" cy="8" r="6" fill="#d6455d" /></svg
+              >Boards</a
+            >
+          </li>
+          <li>
+            <a href="/timelines"
+              ><img src="icons/timeline.svg" alt="" />Timelines</a
+            >
+          </li>
+          <li><a href="/reports" class="with-pseudo">Reports</a></li>
+        </ul>
+        <a href="/pricing">Pricing</a>
+      </nav>
+    </header>
+    <main><h1>Plan work your team can see</h1></main>
+    <script>
+      const trigger = document.querySelector(".trigger");
+      trigger.addEventListener("click", () => {
+        const open = trigger.getAttribute("aria-expanded") === "true";
+        trigger.setAttribute("aria-expanded", String(!open));
+        document.getElementById("products-menu").hidden = open;
+      });
+    </script>
+  </body>
+</html>

@@ -79,20 +79,18 @@ test.describe("dom-query-test page", () => {
 
   // ── 4. querySelector by name ────────────────────────────────────────────
   //
-  // querySelector("[name='username']") is NOT transformed by bascik because
-  // attribute selector queries aren't in the scoping rewrite ruleset. At
-  // runtime the literal attribute value "username" is searched, but the actual
-  // name in the DOM is the scoped value (bascik__dom-query-test__[hash]__username),
-  // so the query returns null.
+  // `name` ships as written (scoping.attributes.name is off by default), so
+  // the document-wide querySelector("[name='username']") finds the first
+  // instance's hidden field by its authored name.
 
-  test("querySelector(\"[name='username']\") returns null (unscoped attribute selector not supported)", async ({
+  test("querySelector(\"[name='username']\") finds the field by its authored name", async ({
     page,
   }) => {
     const { a } = getInstances(page);
 
     await btn(a, "query-by-name-btn").click();
 
-    await expect(resultBox(a)).toHaveText("name found: null");
+    await expect(resultBox(a)).toHaveText("name found: alice");
   });
 
   // ── 5. getElementsByClassName ───────────────────────────────────────────

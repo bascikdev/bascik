@@ -30,6 +30,8 @@ Migrate a simple static component (such as a card or navigation bar) to get fami
 4. Use `<site-nav></site-nav>` inside `src/pages/index.html` without import statements.
 5. Run `npm run dev` to inspect the scoped output.
 
+To migrate a whole production site with coding agents, matching it at every breakpoint while reaching 100 in all five Lighthouse categories, follow [Migrating with Coding Agents](/how-to/agent-migration).
+
 ## Component Syntax
 
 A Bascik component is a vanilla HTML file. There are no imports, no function declarations, and no JSX. The file name (minus the extension) is the tag name.
@@ -75,13 +77,13 @@ export function Card({ children }) {
 ```
 
 ```html
-<!-- src/components/card/card.html (Bascik - after) -->
+<!-- src/components/my-card/my-card.html (Bascik - after) -->
 <div class="card">
   <div data-bascik-slot>No content provided.</div>
 </div>
 
 <!-- Usage -->
-<card><p>Card content here.</p></card>
+<my-card><p>Card content here.</p></my-card>
 ```
 
 ## Named Render Props / Slot Pattern → Named Slots
@@ -306,20 +308,35 @@ src/App.jsx                  src/pages/
 
 ```html
 <!-- src/pages/blog/[slug]/index.html -->
-<script data-bascik-routes>
-  export default async function () {
-    return [
-      { params: { slug: "my-first-post" }, data: { title: "My first post" } },
-      { params: { slug: "another-post" }, data: { title: "Another post" } },
-    ];
-  }
-</script>
-<script data-bascik-build>
-  export default function () {
-    const route = JSON.parse(process.env.BASCIK_ROUTE || "{}");
-    return `<h1>${route.data.title}</h1>`;
-  }
-</script>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Blog - Acme</title>
+    <script data-bascik-routes>
+      export default async function () {
+        return [
+          {
+            params: { slug: "my-first-post" },
+            data: { title: "My first post" },
+          },
+          { params: { slug: "another-post" }, data: { title: "Another post" } },
+        ];
+      }
+    </script>
+  </head>
+  <body>
+    <main>
+      <script data-bascik-build>
+        import { esc } from "@bascik/bascik/html";
+
+        export default function () {
+          const route = JSON.parse(process.env.BASCIK_ROUTE || "{}");
+          return `<h1>${esc(route.data.title)}</h1>`;
+        }
+      </script>
+    </main>
+  </body>
+</html>
 ```
 
 That builds `/blog/my-first-post/` and `/blog/another-post/`. Do not write a script that generates page files into `src/pages/`. A route parameter cannot contain `/`, so use one template per depth. Routes are decided at build time: a path the build did not produce is a 404, and no code in the browser can create one.
@@ -344,19 +361,7 @@ Data fetched at component mount time in React becomes a `<script data-bascik-bui
   <ul>
     <script data-bascik-build>
       import { readdir } from "node:fs/promises";
-
-      const escape = (text) =>
-        text.replace(
-          /[&<>"']/g,
-          (character) =>
-            ({
-              "&": "&amp;",
-              "<": "&lt;",
-              ">": "&gt;",
-              '"': "&quot;",
-              "'": "&#39;",
-            })[character],
-        );
+      import { html } from "@bascik/bascik/html";
 
       export default async function () {
         const files = await readdir("./content/posts");
@@ -364,18 +369,18 @@ Data fetched at component mount time in React becomes a `<script data-bascik-bui
           .filter((f) => f.endsWith(".md"))
           .map((f) => {
             const slug = f.replace(".md", "");
-            return `<li><a href="/blog/${escape(slug)}">${escape(slug)}</a></li>`;
+            return html`<li><a href="/blog/${slug}">${slug}</a></li>`;
           });
-        return items.join("\n");
+        return html`${items}`;
       }
     </script>
   </ul>
 </main>
 ```
 
-JSX escapes interpolated values for you. A template string does not, so escape every value that comes from a file name, a CMS, or an API before you return it.
+JSX escapes interpolated values for you. A plain template string does not; the `html` tagged template from `@bascik/bascik/html` does, for every value from a file name, a CMS, or an API. See [HTML Helpers](/html-helpers).
 
-> **Build scripts run first:** The output of a `<script data-bascik-build>` block can itself contain Bascik component tags. They are resolved in the next pass. A component that only a build script emits is reported as unused by `bascik --check`.
+> **Build scripts run first:** The output of a `<script data-bascik-build>` block can itself contain Bascik component tags. They are resolved in the next pass. `bascik --check` counts a tag the script writes out as a use; a tag name built in code, such as `` `<card-${kind}>` ``, it cannot follow, so it notes that the component may be used there (see [`bascik --check`](/cli#static-analysis-with-bascik-check)).
 
 The script runs once at build time, so the data is in the HTML that ships. A page that needs data which changes after the build fetches it with `fetch()` in a component `<script>`, which is the browser-side `useEffect`.
 
@@ -412,7 +417,15 @@ export function SiteNav({ logo, children }) {
 <!-- src/components/site-nav/site-nav.html (Bascik - after) -->
 <nav class="nav">
   <div class="logo"><div data-bascik-slot="logo"></div></div>
-  <button class="toggle" id="toggle" aria-expanded="false">Menu</button>
+  <button
+    class="toggle"
+    id="toggle"
+    type="button"
+    aria-controls="links"
+    aria-expanded="false"
+  >
+    Menu
+  </button>
   <ul class="links" id="links">
     <div data-bascik-slot></div>
   </ul>

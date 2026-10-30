@@ -1,0 +1,1384 @@
+/**
+ * Request-time component rendering, attacker lens (prompt 157 security
+ * audit, 2026-10-28). The baseline is documented: a server or stream
+ * script's output is HTML, and its author escapes every visitor value
+ * (server-scripts.md, "Escaping and injection"). What is new is that tags in
+ * that output expand into components. Each test here plays a visitor who
+ * controls one value `q` that a script escapes into a prop, a slot or an
+ * attribute of a returned component tag, and asserts the SAFE outcome:
+ *
+ * - the DOM a browser builds (parse5, scripting on) has the same shape
+ *   (elements and attribute names) whatever `q` is, the same script and
+ *   style texts, and no event-handler attribute, script URL or `srcdoc`
+ *   markup that the benign render does not have;
+ * - the build-time loop gives the same answer for the same usage written in
+ *   a page;
+ * - tags, markers and placeholders an attacker can spell stay text, and
+ *   budgets bound what an injected tag can make the server do.
+ *
+ * A test that fails here is a finding, not a flake: it names a value that an
+ * author who followed the documented escaping cannot stop.
+ */
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { createHash } from "node:crypto";
+import { parse, type DefaultTreeAdapterTypes } from "parse5";
+
+vi.mock("./config.js", () => ({
+  BascikConfig: {
+    base: "/",
+    minify: { identifiers: true, html: false, css: false, js: false },
+    scoping: {
+      scriptBlocks: true,
+      inheritAttributes: true,
+      attributes: { class: true, id: true, name: true },
+      preserve: ["code"],
+      deduplicateCss: true,
+    },
+    directory: {
+      pages: "src/pages",
+      components: ["src/components"],
+      out: "dist",
+    },
+    scripts: {
+      cache: { enabled: true },
+      onBuildScriptError: "error",
+      onServerScriptError: "error",
+      timeout: 30000,
+    },
+    components: { external: [] },
+    isBuild: true,
+  },
+  shouldLog: vi.fn(() => true),
+}));
+
+import { BascikConfig } from "./config.ts";
+import {
+  buildComponentManifest,
+  type ComponentManifest,
+} from "./component-manifest.ts";
+import { manifestCspHashes } from "./component-manifest-file.ts";
+import { expandComponents } from "./component-expansion-core.ts";
+import { BUILD_EXPANSION_LIMITS } from "./component-expansion.ts";
+import { computePageCspHashes } from "./csp-hashes.ts";
+import { createExternalTagMatcher } from "./external-components.ts";
+import { deriveInstanceId, getAttributeNameHash } from "./names.ts";
+import {
+  composeBufferedResponse,
+  type ExecutionPlan,
+  type ScriptJobRunner,
+} from "./request-execution.ts";
+import {
+  REQUEST_RENDER_LIMITS,
+  RequestRenderError,
+  wrapRunner,
+  type RenderHost,
+} from "./request-render.ts";
+import {
+  clearScopingTemplates,
+  scopeComponentInstance,
+} from "./scoping-template.ts";
+import { serverSidecarRegistry } from "./server-sidecar.ts";
+import type { ComponentList } from "./types.ts";
+import { html as htmlTag } from "./html-template.ts";
+
+type MutableConfig = {
+  base: string;
+  minify: { identifiers: boolean; html: boolean };
+  scoping: { deduplicateCss: boolean; inheritAttributes: boolean };
+};
+const config = BascikConfig as unknown as MutableConfig;
+
+const identity = (input: string): string => input;
+const sha256hex = (input: string): string =>
+  createHash("sha256").update(input).digest("hex");
+const HTTP_PATH = "/search";
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+const serverPlan = (...ids: string[]): ExecutionPlan => ({
+  segments: ids.map((id) => ({
+    kind: "script" as const,
+    mode: "server" as const,
+    id,
+  })),
+  firstStreamIndex: -1,
+});
+
+const runnerOf = (output: string): ScriptJobRunner => vi.fn(async () => output);
+
+type TestHost = RenderHost & {
+  runComponentJob: Mock<
+    (id: string, signal: AbortSignal, timeoutMs: number) => Promise<string>
+  >;
+  warnOnce: Mock<(key: string, message: string) => void>;
+};
+
+const makeHost = (
+  manifest: ComponentManifest,
+  overrides: Partial<RenderHost> = {},
+): TestHost =>
+  ({
+    manifest,
+    hashName: manifest.identifiers ? getAttributeNameHash : identity,
+    hashHex: sha256hex,
+    httpPath: HTTP_PATH,
+    timeoutMs: 1000,
+    runComponentJob: vi.fn(async () => ""),
+    warnOnce: vi.fn(),
+    externalTags: createExternalTagMatcher([]),
+    ...overrides,
+  }) as TestHost;
+
+const build = async (list: ComponentList): Promise<ComponentManifest> => {
+  clearScopingTemplates();
+  serverSidecarRegistry.clear();
+  return buildComponentManifest(list, BascikConfig);
+};
+
+/** What `bascik --server` / the Worker send for one server job's output. */
+const renderAtRequest = async (
+  manifest: ComponentManifest,
+  output: string,
+  overrides: Partial<RenderHost> = {},
+): Promise<{ html: string; host: TestHost }> => {
+  const host = makeHost(manifest, overrides);
+  const wrapped = wrapRunner(runnerOf(output), serverPlan("a"), host);
+  return { html: await wrapped("a", new AbortController().signal), host };
+};
+
+/** What the build makes of the same usage written in a page. */
+const renderAtBuild = (
+  list: ComponentList,
+  html: string,
+  warn: (message: string) => void = () => {},
+): string => {
+  clearScopingTemplates();
+  const issuedIds = new Set<string>();
+  return expandComponents(html, list, {
+    scope: scopeComponentInstance,
+    mintId: (name, ordinal) =>
+      deriveInstanceId("src/pages/search.html", name, ordinal, issuedIds),
+    injectAttrProps: "before-scope",
+    numberSourceUrls: false,
+    inheritAttributes: true,
+    instanceState: { ordinalMap: new Map(), issuedIds },
+    limits: BUILD_EXPANSION_LIMITS,
+    onError: (component, stage, error) => {
+      throw new Error(`<${component.name}> failed during ${stage}: ${error}`);
+    },
+    warn,
+  }).transpiledHtmlBody;
+};
+
+// ─── The browser's view (parse5, scripting on) ──────────────────────────────
+
+type Node = DefaultTreeAdapterTypes.ChildNode;
+type Element = DefaultTreeAdapterTypes.Element;
+type ParentNode = DefaultTreeAdapterTypes.ParentNode;
+
+const isElement = (node: Node): node is Element => "tagName" in node;
+
+/** Attributes whose value the browser navigates to or fetches as a URL. */
+const URL_ATTRIBUTES = new Set([
+  "href",
+  "xlink:href",
+  "src",
+  "action",
+  "formaction",
+  "poster",
+  "data",
+  "background",
+  "cite",
+  "ping",
+  "codebase",
+]);
+const SRCSET_ATTRIBUTES = new Set(["srcset", "imagesrcset"]);
+
+/**
+ * A URL as the URL parser reads its scheme: leading and trailing C0 controls
+ * and spaces stripped, every tab and newline removed, ASCII lowercased.
+ */
+const urlScheme = (value: string): string =>
+  value
+    .replace(/^[\u0000- ]+|[\u0000- ]+$/g, "")
+    .replace(/[\t\n\r]/g, "")
+    .toLowerCase();
+
+const isScriptUrl = (value: string, navigates: boolean): boolean => {
+  const url = urlScheme(value);
+  return (
+    url.startsWith("javascript:") ||
+    url.startsWith("vbscript:") ||
+    (navigates && url.startsWith("data:"))
+  );
+};
+
+const attrName = (attr: { name: string; prefix?: string }): string =>
+  attr.prefix ? `${attr.prefix}:${attr.name}` : attr.name;
+
+const textOf = (node: ParentNode): string =>
+  node.childNodes
+    .map((child) =>
+      child.nodeName === "#text"
+        ? (child as DefaultTreeAdapterTypes.TextNode).value
+        : "",
+    )
+    .join("");
+
+interface BrowserView {
+  /** Element tag names (with namespace) and sorted attribute names, in order. */
+  shape: string[];
+  /** Text of every `<script>` (HTML or SVG), in order. */
+  scripts: string[];
+  /** Text of every `<style>`, in order. */
+  styles: string[];
+  /** Executable sinks: event handlers, script URLs, `srcdoc` markup. */
+  sinks: string[];
+}
+
+const view = (html: string): BrowserView => {
+  const result: BrowserView = { shape: [], scripts: [], styles: [], sinks: [] };
+  const visit = (parent: ParentNode, where: string): void => {
+    for (const node of parent.childNodes) {
+      if (!isElement(node)) continue;
+      const ns = node.namespaceURI.endsWith("svg")
+        ? "svg:"
+        : node.namespaceURI.endsWith("MathML")
+          ? "math:"
+          : "";
+      const tag = `${ns}${node.tagName}`;
+      const names = node.attrs.map(attrName).sort();
+      result.shape.push(`${where}${tag}[${names.join(",")}]`);
+      if (node.tagName === "script") result.scripts.push(textOf(node));
+      if (node.tagName === "style") result.styles.push(textOf(node));
+      const navigates = [
+        "a",
+        "area",
+        "form",
+        "button",
+        "input",
+        "iframe",
+        "object",
+        "embed",
+        "base",
+        "frame",
+      ].includes(node.tagName);
+      for (const attr of node.attrs) {
+        const name = attrName(attr).toLowerCase();
+        if (name.startsWith("on"))
+          result.sinks.push(`${tag} ${name}=${attr.value}`);
+        if (URL_ATTRIBUTES.has(name) && isScriptUrl(attr.value, navigates))
+          result.sinks.push(`${tag} ${name}=${attr.value}`);
+        if (SRCSET_ATTRIBUTES.has(name)) {
+          for (const candidate of attr.value.split(","))
+            if (isScriptUrl(candidate.trim().split(/\s+/)[0] ?? "", false))
+              result.sinks.push(`${tag} ${name}=${attr.value}`);
+        }
+        if (name === "srcdoc") {
+          const inner = view(attr.value);
+          // Any element in a srcdoc is markup the visitor may have written.
+          for (const entry of inner.shape)
+            result.shape.push(`${where}srcdoc>${entry}`);
+          for (const sink of inner.sinks) result.sinks.push(`srcdoc> ${sink}`);
+          for (const script of inner.scripts)
+            result.sinks.push(`srcdoc> <script>${script}`);
+        }
+        if (
+          name === "style" &&
+          /javascript:|expression\(|url\(/i.test(attr.value)
+        )
+          result.sinks.push(`${tag} style=${attr.value}`);
+      }
+      if ("content" in node && node.tagName === "template")
+        visit(
+          (node as DefaultTreeAdapterTypes.Template).content,
+          `${where}template>`,
+        );
+      visit(node, where);
+    }
+  };
+  visit(
+    parse(`<!doctype html><html><head></head><body>${html}</body></html>`),
+    "",
+  );
+  return result;
+};
+
+/**
+ * The visitor's value made no difference to what the browser runs: same
+ * elements and attribute names, same script and style texts, no sink the
+ * benign render lacks.
+ */
+const expectSameBrowserView = (
+  benign: string,
+  attacked: string,
+  label: string,
+): void => {
+  const a = view(benign);
+  const b = view(attacked);
+  expect(b.shape, `${label}: element/attribute shape`).toEqual(a.shape);
+  expect(b.scripts, `${label}: script texts`).toEqual(a.scripts);
+  expect(b.styles, `${label}: style texts`).toEqual(a.styles);
+  expect(
+    b.sinks.filter((sink) => !a.sinks.includes(sink)),
+    `${label}: new executable sinks`,
+  ).toEqual([]);
+};
+
+// ─── Escapers an author may use ─────────────────────────────────────────────
+
+/** server-scripts.md's escaper (all five characters). */
+const escapeFull = (value: string): string =>
+  value.replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ]!,
+  );
+/** The escaper in server-scripts.md's "Render a card per search result". */
+const escapeCatalog = (value: string): string =>
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll('"', "&quot;");
+/** A correct escaper for a single-quoted attribute value (& and '). */
+const escapeSingleQuoted = (value: string): string =>
+  value.replaceAll("&", "&amp;").replaceAll("'", "&#39;");
+
+/** Visitor values that try to leave every context a prop can land in. */
+const PAYLOADS = [
+  `<script>alert('xss')</script>`,
+  `"><img src=x onerror=alert('xss')>`,
+  `'><svg onload=alert('xss')>`,
+  `</textarea><script>alert('xss')</script>`,
+  `</style><script>alert('xss')</script>`,
+  `</script><script>alert('xss')</script>`,
+  `</title><img src=x onerror=alert('xss')>`,
+  `</noscript><img src=x onerror=alert('xss')>`,
+  `</xmp><img src=x onerror=alert('xss')>`,
+  `</iframe><img src=x onerror=alert('xss')>`,
+  `--><img src=x onerror=alert('xss')>`,
+  `--!><img src=x onerror=alert('xss')>`,
+  `]]><img src=x onerror=alert('xss')>`,
+  `<![CDATA[<img src=x onerror=alert('xss')>]]>`,
+  `&lt;img src=x onerror=alert('xss')&gt;`,
+  `&#60;img src=x onerror=alert('xss')&#62;`,
+  `&quot; onmouseover=&quot;alert('xss')`,
+  `x' onmouseover='alert(1)`,
+  `x" onmouseover="alert(1)`,
+  ` x onmouseover=alert('xss') `,
+  `<sec-text data-bascik-prop-v="smuggled"></sec-text>`,
+  `<!--__BASCIK_NESTED_COMPONENT_0__-->`,
+  `<script type="text/bascik-server" data-bascik-job="00000000000000000000000000000000:0"></script>`,
+  `$&$'$1$$`,
+  `}</style><style>*{background:url(//xss.example)}`,
+  `alert('xss')`,
+  `alert(document.domain)`,
+  `\u0000<scr\u0000ipt>alert(1)</script>`,
+];
+
+/**
+ * One component per place a prop or a slot can land, each with a root
+ * element of class `r` for inheritance.
+ */
+const SINK_COMPONENTS: ComponentList = Object.fromEntries(
+  Object.entries({
+    "sec-text": `<p class="r" data-bascik-prop-v>fallback</p>`,
+    "sec-title": `<div class="r"><title data-bascik-prop-v>t</title></div>`,
+    "sec-textarea": `<div class="r"><textarea data-bascik-prop-v>t</textarea></div>`,
+    "sec-noscript": `<div class="r"><noscript data-bascik-prop-v>n</noscript></div>`,
+    "sec-xmp": `<div class="r"><xmp data-bascik-prop-v>x</xmp></div>`,
+    "sec-iframe-text": `<div class="r"><iframe data-bascik-prop-v>i</iframe></div>`,
+    "sec-noembed": `<div class="r"><noembed data-bascik-prop-v>e</noembed></div>`,
+    "sec-option": `<select class="r"><option data-bascik-prop-v>o</option></select>`,
+    "sec-style-recv": `<div class="r"><style data-bascik-prop-v>.r { color: red }</style></div>`,
+    "sec-script-recv": `<div class="r"><script data-bascik-prop-v>var a = 1;</script></div>`,
+    "sec-svg-text": `<svg class="r"><text data-bascik-prop-v>s</text></svg>`,
+    "sec-svg-style": `<svg class="r"><style data-bascik-prop-v>text { fill: red }</style></svg>`,
+    "sec-svg-title": `<svg class="r"><title data-bascik-prop-v>s</title></svg>`,
+    "sec-math": `<math class="r"><mi data-bascik-prop-v>m</mi></math>`,
+    "sec-template": `<div class="r"><template><p data-bascik-prop-v>t</p></template></div>`,
+    "sec-attr-title": `<p class="r" title="d" data-bascik-attr-title="v">x</p>`,
+    "sec-attr-data": `<p class="r" data-bascik-attr-data-x="v">x</p>`,
+    "sec-attr-alt": `<img class="r" src="/i.png" alt="d" data-bascik-attr-alt="v">`,
+    "sec-attr-value": `<input class="r" value="d" data-bascik-attr-value="v">`,
+    "sec-attr-in-noscript": `<div class="r"><noscript><p data-bascik-attr-title="v">x</p></noscript></div>`,
+    "sec-attr-in-textarea-title": `<div class="r"><title><p data-bascik-attr-title="v">x</p></title></div>`,
+    "sec-slot": `<div class="r"><div data-bascik-slot>fallback</div></div>`,
+    "sec-slot-named": `<div class="r"><b data-bascik-slot="s">fallback</b></div>`,
+    "sec-slot-textarea": `<div class="r"><textarea data-bascik-slot>fallback</textarea></div>`,
+    "sec-slot-title": `<div class="r"><title data-bascik-slot>fallback</title></div>`,
+    "sec-slot-before-child": `<div class="r"><div data-bascik-slot>fb</div><sec-text data-bascik-prop-v="child"></sec-text></div>`,
+    "sec-forward": `<div class="r"><sec-text data-bascik-attr-data-bascik-prop-v="v"></sec-text></div>`,
+  }).map(([name, fileContent]) => [
+    name,
+    { fileName: `src/components/${name}.html`, fileContent },
+  ]),
+);
+
+/** The usage a script writes for `q`, in every attribute and slot position. */
+const usagesFor = (
+  name: string,
+  q: string,
+  escape: (value: string) => string,
+): Record<string, string> => ({
+  "double-quoted prop": `<${name} data-bascik-prop-v="${escape(q)}"></${name}>`,
+  "single-quoted prop": `<${name} data-bascik-prop-v='${escapeFull(q)}'></${name}>`,
+  "default slot text": `<${name}>${escape(q)}</${name}>`,
+  "named slot text": `<${name}><i data-bascik-slot="s">${escape(q)}</i></${name}>`,
+  "inherited attribute": `<${name} title="${escape(q)}" data-extra="${escape(q)}"></${name}>`,
+  "inherited class": `<${name} class="${escape(q)}"></${name}>`,
+});
+
+beforeEach(() => {
+  config.base = "/";
+  config.minify.identifiers = true;
+  config.minify.html = false;
+  config.scoping.deduplicateCss = true;
+  config.scoping.inheritAttributes = true;
+  serverSidecarRegistry.clear();
+  clearScopingTemplates();
+});
+
+// ─── A. prop and slot values in every escaping position ─────────────────────
+
+describe.each([
+  ["escapeFull (server-scripts.md)", escapeFull],
+  ["escapeCatalog (& < \" only, the docs' search example)", escapeCatalog],
+] as const)(
+  "A. an escaped visitor value never becomes markup: %s",
+  (_label, escape) => {
+    describe.each([true, false])("identifiers %s", (identifiers) => {
+      beforeEach(() => {
+        config.minify.identifiers = identifiers;
+      });
+
+      it.each(Object.keys(SINK_COMPONENTS))(
+        "<%s>: every payload in every usage position renders the benign shape at request time and at build time",
+        async (name) => {
+          const manifest = await build(SINK_COMPONENTS);
+          const failures: string[] = [];
+          for (const [position, benign] of Object.entries(
+            usagesFor(name, "ok", escape),
+          )) {
+            const benignRequest = (await renderAtRequest(manifest, benign))
+              .html;
+            const benignBuild = renderAtBuild(SINK_COMPONENTS, benign);
+            for (const payload of PAYLOADS) {
+              const usage = usagesFor(name, payload, escape)[position];
+              const label = `<${name}> ${position} ${JSON.stringify(payload)}`;
+              for (const [host, before, after] of [
+                [
+                  "request",
+                  benignRequest,
+                  (await renderAtRequest(manifest, usage)).html,
+                ],
+                ["build", benignBuild, renderAtBuild(SINK_COMPONENTS, usage)],
+              ] as const) {
+                try {
+                  expectSameBrowserView(before, after, `${host} ${label}`);
+                } catch (error) {
+                  failures.push(
+                    `${host} ${label}\n    rendered: ${after.replace(/\s+/g, " ").slice(0, 400)}\n    ${String((error as Error).message).split("\n")[0]}`,
+                  );
+                }
+              }
+            }
+          }
+          expect(failures, failures.slice(0, 6).join("\n")).toEqual([]);
+        },
+      );
+    });
+  },
+);
+
+describe("A. inherited attributes keep their quoting when moved onto the root", () => {
+  // HTML lets `"` stand raw in a single-quoted value and `'` in a
+  // double-quoted one; an escaper that is correct for the usage's quote need
+  // not encode the other. The root element must not change the quote.
+  const list: ComponentList = {
+    "sq-root": {
+      fileName: "src/components/sq-root.html",
+      fileContent: `<div class='r' title='t'>x</div>`,
+    },
+    "dq-root": {
+      fileName: "src/components/dq-root.html",
+      fileContent: `<div class="r">x</div>`,
+    },
+  };
+  const benignOf = (name: string) =>
+    `<${name} title="ok" class="ok"></${name}>`;
+
+  it("a single-quoted usage attribute with a raw double quote (escaped correctly for its quote) adds no attribute to the root", async () => {
+    const manifest = await build(list);
+    const q = `x" onmouseover="alert(1)`;
+    const usage = `<dq-root title='${escapeSingleQuoted(q)}' class='${escapeSingleQuoted(q)}'></dq-root>`;
+    const benign = (await renderAtRequest(manifest, benignOf("dq-root"))).html;
+    const request = (await renderAtRequest(manifest, usage)).html;
+    expectSameBrowserView(benign, request, `request ${request}`);
+    expectSameBrowserView(
+      renderAtBuild(list, benignOf("dq-root")),
+      renderAtBuild(list, usage),
+      `build ${renderAtBuild(list, usage)}`,
+    );
+  });
+
+  it("a double-quoted usage class with a raw single quote (the docs' search escaper) adds no attribute to a single-quoted root class", async () => {
+    const manifest = await build(list);
+    const q = `x' onmouseover='alert(1)`;
+    const usage = `<sq-root class="${escapeCatalog(q)}"></sq-root>`;
+    const benign = (await renderAtRequest(manifest, benignOf("sq-root"))).html;
+    const request = (await renderAtRequest(manifest, usage)).html;
+    expectSameBrowserView(benign, request, `request ${request}`);
+    expectSameBrowserView(
+      renderAtBuild(list, benignOf("sq-root")),
+      renderAtBuild(list, usage),
+      `build ${renderAtBuild(list, usage)}`,
+    );
+  });
+
+  it("misuse: an unquoted usage attribute (documented as never) is author error: the escaper cannot stop a space", async () => {
+    const manifest = await build(list);
+    const usage = `<dq-root title=${escapeFull("x onmouseover=alert(1)")}></dq-root>`;
+    const out = (await renderAtRequest(manifest, usage)).html;
+    // Pinned so a change shows up: the handler reaches the root, as it
+    // would reach any element the author wrote with an unquoted attribute.
+    expect(view(out).sinks).toEqual(["div onmouseover=alert(1)"]);
+  });
+});
+
+// ─── B. props bound into URL attributes ─────────────────────────────────────
+
+describe("B. a prop bound with data-bascik-attr-* into a URL attribute", () => {
+  const list: ComponentList = Object.fromEntries(
+    Object.entries({
+      "url-a-href": `<a class="r" href="/d" data-bascik-attr-href="u">go</a>`,
+      "url-area-href": `<map class="r" name="m"><area href="/d" data-bascik-attr-href="u"></map>`,
+      "url-img-src": `<img class="r" src="/d.png" data-bascik-attr-src="u">`,
+      "url-iframe-src": `<iframe class="r" data-bascik-attr-src="u"></iframe>`,
+      "url-form-action": `<form class="r" data-bascik-attr-action="u"><button>go</button></form>`,
+      "url-button-formaction": `<button class="r" data-bascik-attr-formaction="u">go</button>`,
+      "url-svg-xlink": `<svg class="r"><a data-bascik-attr-xlink:href="u"><text>go</text></a></svg>`,
+      "url-svg-href": `<svg class="r"><a data-bascik-attr-href="u"><text>go</text></a></svg>`,
+      "url-img-srcset": `<img class="r" src="/d.png" data-bascik-attr-srcset="u">`,
+      "url-video-poster": `<video class="r" data-bascik-attr-poster="u"></video>`,
+      "url-object-data": `<object class="r" data-bascik-attr-data="u"></object>`,
+      "url-embed-src": `<embed class="r" data-bascik-attr-src="u">`,
+      "url-srcdoc": `<iframe class="r" data-bascik-attr-srcdoc="u"></iframe>`,
+      "url-onclick": `<button class="r" data-bascik-attr-onclick="u">go</button>`,
+      "url-style": `<p class="r" data-bascik-attr-style="u">x</p>`,
+    }).map(([name, fileContent]) => [
+      name,
+      { fileName: `src/components/${name}.html`, fileContent },
+    ]),
+  );
+  const URLS = [
+    "javascript:alert(1)",
+    "JaVaScRiPt:alert(1)",
+    " \t javascript:alert(1)",
+    "java\tscript:alert(1)",
+    "java\nscript:alert(1)",
+    "\u0001javascript:alert(1)",
+    "javascript&colon;alert(1)",
+    "&#106;avascript:alert(1)",
+    "&#x6A;avascript:alert(1)",
+    "vbscript:msgbox(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
+    "/ok, javascript:alert(1) 2x",
+  ];
+
+  it.each(Object.keys(list))(
+    "<%s>: no URL a visitor can type (escaped with the documented escaper) becomes a script URL, handler or srcdoc markup",
+    async (name) => {
+      const manifest = await build(list);
+      const entry = manifest.components[name];
+      const failures: string[] = [];
+      for (const url of URLS) {
+        const usage = `<${name} data-bascik-prop-u="${escapeFull(url)}"></${name}>`;
+        for (const [host, out] of [
+          [
+            entry.unsupported
+              ? `request (unsupported: ${entry.unsupported.reason})`
+              : "request",
+            (await renderAtRequest(manifest, usage)).html,
+          ],
+          ["build", renderAtBuild(list, usage)],
+        ] as const) {
+          const sinks = view(out).sinks;
+          if (sinks.length > 0)
+            failures.push(
+              `${host} ${JSON.stringify(url)} -> ${sinks.join(" | ")}`,
+            );
+        }
+      }
+      expect(failures, failures.join("\n")).toEqual([]);
+    },
+  );
+
+  it('a fragment href ("#root") only ever resolves to an id of the same instance, and an unknown fragment is left as written', async () => {
+    const card: ComponentList = {
+      "frag-card": {
+        fileName: "src/components/frag-card.html",
+        fileContent: `<div class="r"><p id="root">x</p><a href="#" data-bascik-attr-href="u">go</a></div>`,
+      },
+    };
+    const manifest = await build(card);
+    const out = (
+      await renderAtRequest(
+        manifest,
+        `<frag-card data-bascik-prop-u="#root"></frag-card><frag-card data-bascik-prop-u="#elsewhere"></frag-card>`,
+      )
+    ).html;
+    const ids = [...out.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
+    const hrefs = [...out.matchAll(/ href="([^"]+)"/g)].map((m) => m[1]);
+    expect(hrefs[0]).toBe(`#${ids[0]}`);
+    expect(hrefs[1]).toBe("#elsewhere");
+  });
+});
+
+// ─── B. usage attributes inherited onto the root ────────────────────────────
+
+describe("B. a usage attribute that becomes a URL only on the root's real tag gets the URL check; every other one is inherited as written", () => {
+  const list: ComponentList = Object.fromEntries(
+    Object.entries({
+      "inh-object": `<object class="r" type="text/html" width="300" height="100"></object>`,
+      "inh-set": `<set attributeName="href" begin="0s"></set>`,
+      "inh-animate": `<animate attributeName="href" dur="1s"></animate>`,
+      "inh-iframe": `<iframe class="r" title="t"></iframe>`,
+      "inh-a": `<a class="r">go</a>`,
+      "inh-form": `<form class="r"><button>go</button></form>`,
+      "inh-div": `<div class="r">x</div>`,
+      "inh-meta": `<meta name="m"><div class="r">x</div>`,
+      "my-button": `<button class="btn" type="button">go</button>`,
+    }).map(([name, fileContent]) => [
+      name,
+      { fileName: `src/components/${name}.html`, fileContent },
+    ]),
+  );
+  const ROOT_TAG: Record<string, string> = {
+    "inh-object": "object",
+    "inh-set": "set",
+    "inh-animate": "animate",
+    "inh-iframe": "iframe",
+    "inh-a": "a",
+    "inh-form": "form",
+    "inh-div": "div",
+    "inh-meta": "div",
+    "my-button": "button",
+  };
+
+  /** The first element named `tag` in `html`, as the browser parses it. */
+  const findElement = (html: string, tag: string): Element | undefined => {
+    let found: Element | undefined;
+    const visit = (parent: ParentNode): void => {
+      for (const node of parent.childNodes) {
+        if (found) return;
+        if (!isElement(node)) continue;
+        if (node.tagName === tag) {
+          found = node;
+          return;
+        }
+        visit(node);
+      }
+    };
+    visit(
+      parse(`<!doctype html><html><head></head><body>${html}</body></html>`),
+    );
+    return found;
+  };
+  const attrsOf = (element: Element): Record<string, string> =>
+    Object.fromEntries(
+      element.attrs.map((attr) => [attrName(attr).toLowerCase(), attr.value]),
+    );
+
+  /** The attributes of the root element `name` renders, as the browser reads them. */
+  const rootAttrs = (html: string, name: string): Record<string, string> => {
+    const found = findElement(html, ROOT_TAG[name]);
+    if (!found) throw new Error(`no <${ROOT_TAG[name]}> root in ${html}`);
+    return attrsOf(found);
+  };
+
+  /** The attributes of the usage tag itself, as the browser reads them. */
+  const usageAttrs = (usage: string, name: string): Record<string, string> => {
+    const found = findElement(usage, name);
+    if (!found) throw new Error(`no <${name}> in ${usage}`);
+    return attrsOf(found);
+  };
+
+  type Case = { name: string; attr: string; value: string; svg?: boolean };
+  /**
+   * Attributes that are a URL only because of the root's real tag: html``
+   * saw `<inh-object data>` and could not know.
+   */
+  const TAG_DEPENDENT: Case[] = [
+    {
+      name: "inh-object",
+      attr: "data",
+      value: `data:text/html,<script>parent.postMessage('script ran: '+location.protocol,'*')</script>`,
+    },
+    { name: "inh-object", attr: "data", value: "javascript:alert(1)" },
+    { name: "inh-object", attr: "data", value: " java\tscript:alert(1)" },
+    { name: "inh-object", attr: "DATA", value: "JaVaScRiPt:alert(1)" },
+    {
+      name: "inh-set",
+      attr: "to",
+      value: "javascript:alert(1)",
+      svg: true,
+    },
+    {
+      name: "inh-animate",
+      attr: "values",
+      value: "/ok;javascript:alert(1)",
+      svg: true,
+    },
+  ];
+  /** Hand-written entities the browser decodes into a script URL on a tag-dependent attribute. */
+  const HAND_WRITTEN: Case[] = [
+    {
+      name: "inh-object",
+      attr: "data",
+      value: "&#100;ata:text/html,&lt;script&gt;alert(1)&lt;/script&gt;",
+    },
+    { name: "inh-object", attr: "data", value: "&#106;avascript:alert(1)" },
+    { name: "inh-object", attr: "data", value: "javascript&colon;alert(1)" },
+    { name: "inh-object", attr: "data", value: "java&Tab;script:alert(1)" },
+    { name: "inh-object", attr: "data", value: "&#x6A;avascript:alert(1)" },
+    { name: "inh-object", attr: "data", value: "&#106avascript:alert(1)" },
+    {
+      name: "inh-set",
+      attr: "to",
+      value: "&#106;avascript:alert(1)",
+      svg: true,
+    },
+  ];
+
+  const wrap = (c: Case, usage: string): string =>
+    c.svg ? `<svg><a>${usage}</a></svg>` : usage;
+  const handEscaped = (c: Case): string =>
+    wrap(c, `<${c.name} ${c.attr}="${escapeFull(c.value)}"></${c.name}>`);
+  const handWritten = (c: Case): string =>
+    wrap(c, `<${c.name} ${c.attr}="${c.value}"></${c.name}>`);
+  /** The usage as html`` writes it (it refuses no hole here). */
+  const viaHtml = (c: Case): string => {
+    const parts = [
+      `${c.svg ? "<svg><a>" : ""}<${c.name} ${c.attr}="`,
+      `"></${c.name}>${c.svg ? "</a></svg>" : ""}`,
+    ];
+    const strings = Object.assign([...parts], {
+      raw: [...parts],
+    }) as unknown as TemplateStringsArray;
+    return String(htmlTag(strings, c.value));
+  };
+
+  /** Both renders of one usage against `list`, with the warnings each logged. */
+  const renderBoth = async (
+    manifest: ComponentManifest,
+    usage: string,
+  ): Promise<{ out: string; where: string; warnings: string[] }[]> => {
+    const { html, host } = await renderAtRequest(manifest, usage);
+    const buildWarnings: string[] = [];
+    const built = renderAtBuild(list, usage, (m) => buildWarnings.push(m));
+    return [
+      {
+        out: html,
+        where: "request",
+        warnings: host.warnOnce.mock.calls.map((call) => String(call[1])),
+      },
+      { out: built, where: "build", warnings: buildWarnings },
+    ];
+  };
+
+  const expectBlocked = async (
+    manifest: ComponentManifest,
+    c: Case,
+    usage: string,
+    how: string,
+    failures: string[],
+  ): Promise<void> => {
+    const label = `${how} <${c.name} ${c.attr}=${JSON.stringify(c.value)}>`;
+    for (const { out, where, warnings } of await renderBoth(manifest, usage)) {
+      const got = rootAttrs(out, c.name)[c.attr.toLowerCase()];
+      if (got !== "about:invalid")
+        failures.push(
+          `${where} ${label}: ${c.attr}=${JSON.stringify(got)} (want about:invalid)`,
+        );
+      const sinks = view(out).sinks;
+      if (sinks.length > 0)
+        failures.push(`${where} ${label}: sinks ${sinks.join(" | ")}`);
+      const located = warnings.some(
+        (message) =>
+          message.includes(`<${c.name}> (`) &&
+          message.includes(`components/${c.name}.html): `) &&
+          message.includes(
+            `inherited attribute ${c.attr} received ${
+              /^(&#100;|d)ata/i.test(c.value)
+                ? "a data: URL"
+                : "a script URL such as javascript:"
+            }, so ${c.attr} on the root <`,
+          ),
+      );
+      if (!located)
+        failures.push(
+          `${where} ${label}: no located warning (got ${JSON.stringify(warnings)})`,
+        );
+    }
+  };
+
+  it("an html`` value on <object data> and on an SVG animation's to/values lands as about:invalid, with a located warning", async () => {
+    const manifest = await build(list);
+    const failures: string[] = [];
+    for (const c of TAG_DEPENDENT)
+      await expectBlocked(manifest, c, viaHtml(c), "html``", failures);
+    expect(failures, failures.join("\n")).toEqual([]);
+  });
+
+  it("the reported repro: html`<x-embed data=${q}>` with a data:text/html document onto an <object> root", async () => {
+    const manifest = await build(list);
+    const q = `data:text/html,<script>parent.postMessage('script ran: '+location.protocol,'*')</script>`;
+    const usage = String(htmlTag`<inh-object data="${q}"></inh-object>`);
+    const { html, host } = await renderAtRequest(manifest, usage);
+    expect(rootAttrs(html, "inh-object").data).toBe("about:invalid");
+    expect(host.warnOnce.mock.calls.map((call) => call[1])).toContain(
+      `[bascik] <inh-object> (components/inh-object.html): inherited attribute data received a data: URL, so data on the root <object> is set to about:invalid. (in server-script output at "${HTTP_PATH}")`,
+    );
+  });
+
+  it("a hand-escaped value (the docs' full escaper) gets the same check", async () => {
+    const manifest = await build(list);
+    const failures: string[] = [];
+    for (const c of TAG_DEPENDENT)
+      await expectBlocked(manifest, c, handEscaped(c), "escaped", failures);
+    expect(failures, failures.join("\n")).toEqual([]);
+  });
+
+  it("hand-written entities are judged as the browser decodes them (&#106;, &colon;, &Tab;, no-semicolon numeric)", async () => {
+    const manifest = await build(list);
+    const failures: string[] = [];
+    for (const c of HAND_WRITTEN)
+      await expectBlocked(manifest, c, handWritten(c), "raw", failures);
+    expect(failures, failures.join("\n")).toEqual([]);
+  });
+
+  it.each([
+    [
+      "a page's own <my-button onclick> keeps its handler",
+      "my-button",
+      `<my-button onclick="go()"></my-button>`,
+    ],
+    [
+      "href was already a URL by name on <x-link>: javascript:void(0) onto an <a> root is unchanged",
+      "inh-a",
+      `<inh-a href="javascript:void(0)"></inh-a>`,
+    ],
+    [
+      "src and srcdoc onto an <iframe> root are inherited as written",
+      "inh-iframe",
+      `<inh-iframe src="javascript:alert(2)" srcdoc="&lt;script&gt;alert(document.domain)&lt;/script&gt;"></inh-iframe>`,
+    ],
+    [
+      "action onto a <form> root is inherited as written",
+      "inh-form",
+      `<inh-form action="javascript:alert(1)" onsubmit="check(event)"></inh-form>`,
+    ],
+    [
+      "style, handlers and unknown attributes onto a <div> root are inherited as written",
+      "inh-div",
+      `<inh-div style="background:url(javascript:alert(1)); width: expression(1)" onload="init()" ONMOUSEOVER="hover()" attributeName="x" http-equiv="refresh"></inh-div>`,
+    ],
+    [
+      "entities in a by-name URL are inherited as written",
+      "inh-a",
+      `<inh-a href="&#106;avascript:alert(1)"></inh-a>`,
+    ],
+  ])(
+    "%s, at build and request time, without a warning",
+    async (_label, name, usage) => {
+      const manifest = await build(list);
+      const wrote = usageAttrs(usage, name);
+      for (const { out, where, warnings } of await renderBoth(
+        manifest,
+        usage,
+      )) {
+        const attrs = rootAttrs(out, name);
+        for (const [attr, value] of Object.entries(wrote))
+          expect(attrs[attr], `${where} ${attr}`).toBe(value);
+        expect(warnings, where).toEqual([]);
+      }
+    },
+  );
+
+  it("a <meta> before the root never takes http-equiv or content: inheritance skips metadata elements", async () => {
+    const manifest = await build(list);
+    const usage = `<inh-meta http-equiv="refresh" content="0;url=javascript:alert(1)"></inh-meta>`;
+    for (const out of [
+      (await renderAtRequest(manifest, usage)).html,
+      renderAtBuild(list, usage),
+    ]) {
+      expect(out).toMatch(/<meta name="m">/);
+      expect(out).not.toMatch(/<meta[^>]*http-equiv/);
+    }
+  });
+
+  it("safe values are inherited unchanged and without a warning: https and relative URLs, an <object> file, class, id, aria-*, data-*, a plain style", async () => {
+    const manifest = await build(list);
+    const cases: [string, string, Record<string, string>][] = [
+      [
+        "inh-a",
+        `<inh-a href="https://example.com/x?a=1&amp;b=2#c" aria-label="Go" data-x="javascript:not-a-url" title="javascript:alert(1)"></inh-a>`,
+        {
+          href: "https://example.com/x?a=1&b=2#c",
+          "aria-label": "Go",
+          "data-x": "javascript:not-a-url",
+          title: "javascript:alert(1)",
+        },
+      ],
+      [
+        "inh-iframe",
+        `<inh-iframe src="/embed/1" loading="lazy"></inh-iframe>`,
+        { src: "/embed/1", loading: "lazy" },
+      ],
+      [
+        "inh-object",
+        `<inh-object data="files/a.pdf"></inh-object>`,
+        { data: "files/a.pdf" },
+      ],
+      [
+        "inh-object",
+        `<inh-object data="https://example.com/a.pdf?x=1&amp;y=2"></inh-object>`,
+        { data: "https://example.com/a.pdf?x=1&y=2" },
+      ],
+      [
+        "inh-form",
+        `<inh-form action="/search" method="get"></inh-form>`,
+        { action: "/search", method: "get" },
+      ],
+      [
+        "inh-div",
+        `<inh-div style="color: red; background: url(/bg.png)" onboarding-step="2" role="note" data="javascript:not-a-url-on-a-div"></inh-div>`,
+        {
+          style: "color: red; background: url(/bg.png)",
+          "onboarding-step": "2",
+          role: "note",
+          data: "javascript:not-a-url-on-a-div",
+        },
+      ],
+    ];
+    for (const [name, usage, expected] of cases) {
+      for (const { out, where, warnings } of await renderBoth(
+        manifest,
+        usage,
+      )) {
+        const attrs = rootAttrs(out, name);
+        for (const [attr, value] of Object.entries(expected))
+          expect(attrs[attr], `${where} ${name} ${attr}`).toBe(value);
+        expect(warnings, `${where} ${name}`).toEqual([]);
+      }
+    }
+  });
+});
+
+describe("B. a class or style merged onto the root never reads text an earlier inherited value carries", () => {
+  const list: ComponentList = Object.fromEntries(
+    Object.entries({
+      "x-badge": `<span>badge</span>`,
+      "x-sty": `<button class="b">go</button>`,
+      "scroll-list": `<ul class="list">x</ul>`,
+      "status-dot": `<span class="dot"></span>`,
+    }).map(([name, fileContent]) => [
+      name,
+      { fileName: `src/components/${name}.html`, fileContent },
+    ]),
+  );
+
+  /** The attributes of the first element in the body, as the browser reads them. */
+  const rootAttrs = (html: string): Record<string, string> => {
+    const doc = parse(
+      `<!doctype html><html><head></head><body>${html}</body></html>`,
+    );
+    const htmlEl = doc.childNodes.find(isElement)!;
+    const body = htmlEl.childNodes.filter(isElement)[1];
+    const root = body.childNodes.find(isElement);
+    if (!root) throw new Error(`no root element in ${html}`);
+    return Object.fromEntries(
+      root.attrs.map((attr) => [attrName(attr).toLowerCase(), attr.value]),
+    );
+  };
+
+  /** Both renders of one usage, with the warnings each logged. */
+  const renderBoth = async (
+    usage: string,
+  ): Promise<{ out: string; where: string; warnings: string[] }[]> => {
+    const manifest = await build(list);
+    const { html, host } = await renderAtRequest(manifest, usage);
+    const buildWarnings: string[] = [];
+    const built = renderAtBuild(list, usage, (m) => buildWarnings.push(m));
+    return [
+      {
+        out: html,
+        where: "request",
+        warnings: host.warnOnce.mock.calls.map((call) => String(call[1])),
+      },
+      { out: built, where: "build", warnings: buildWarnings },
+    ];
+  };
+
+  it.each([
+    [
+      "an html`` title holding ` class=x onfocus=...` before a literal class, on a root with no class",
+      " class=x onfocus=alert(document.domain) autofocus tabindex=1 ",
+      (q: string) =>
+        String(htmlTag`<x-badge title="${q}" class="big"></x-badge>`),
+      "title",
+      { class: "big" },
+    ],
+    [
+      "an html`` aria-label holding ` style=x onfocus=...` before a literal style, on a root with no style",
+      " style=x onfocus=document.title=document.domain autofocus ",
+      (q: string) =>
+        String(htmlTag`<x-sty aria-label="${q}" style="color:red"></x-sty>`),
+      "aria-label",
+      { class: "b", style: "color:red" },
+    ],
+    [
+      "a double-quote-escaped title holding ` class='x' onfocus=...` (the single-quoted variant)",
+      " class='x' onfocus=alert(1) autofocus ",
+      (q: string) =>
+        `<x-badge title="${q.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}" class="big"></x-badge>`,
+      "title",
+      { class: "big" },
+    ],
+    [
+      "a double-quote-escaped title holding ` style='x' onfocus=...` before a style",
+      " style='x' onfocus=alert(1) autofocus ",
+      (q: string) =>
+        `<x-badge title="${q.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}" style="color:red"></x-badge>`,
+      "title",
+      { style: "color:red" },
+    ],
+  ])(
+    "%s adds no handler, and the value round-trips",
+    async (_label, q, usageOf, carrier, expected) => {
+      for (const { out, where, warnings } of await renderBoth(usageOf(q))) {
+        const attrs = rootAttrs(out);
+        expect(Object.keys(attrs).sort(), `${where}: ${out}`).toEqual(
+          [carrier, ...Object.keys(expected)].sort(),
+        );
+        expect(attrs[carrier], where).toBe(q);
+        for (const [name, value] of Object.entries(expected))
+          expect(attrs[name], `${where} ${name}`).toBe(value);
+        expect(view(out).sinks, where).toEqual([]);
+        expect(warnings, where).toEqual([]);
+      }
+    },
+  );
+
+  it("a plain style with scroll-behavior, overscroll-behavior or a quoted 'Data: ...' string is inherited whole, without a warning", async () => {
+    for (const style of [
+      "overscroll-behavior: contain; max-height: 20rem",
+      "scroll-behavior: smooth",
+      "--caption: 'Data: Q3 sales'",
+    ]) {
+      const usage = `<scroll-list style="${style}"></scroll-list>`;
+      for (const { out, where, warnings } of await renderBoth(usage)) {
+        expect(rootAttrs(out).style, `${where} ${style}`).toBe(style);
+        expect(warnings, `${where} ${style}`).toEqual([]);
+      }
+    }
+  });
+
+  it("an attribute that starts with on but is no event handler (online, one, onboarding) is inherited, without a warning", async () => {
+    const usage = `<status-dot online one="1" onboarding="step-2"></status-dot>`;
+    for (const { out, where, warnings } of await renderBoth(usage)) {
+      const attrs = rootAttrs(out);
+      expect(attrs.online, where).toBe("");
+      expect(attrs.one, where).toBe("1");
+      expect(attrs.onboarding, where).toBe("step-2");
+      expect(warnings, where).toEqual([]);
+    }
+  });
+});
+
+// ─── C. script gadgets under a hash-only CSP ────────────────────────────────
+
+describe("C. what an injected component tag gains under generate.cspHashes", () => {
+  const list: ComponentList = {
+    "gadget-card": {
+      fileName: "src/components/gadget-card.html",
+      fileContent:
+        `<div class="g" data-bascik-attr-data-cfg="cfg"><span class="n" data-bascik-prop-n>n</span>` +
+        `<div data-bascik-slot>s</div></div>` +
+        `<script>document.querySelectorAll(".g").forEach((el) => el.classList.add("ready"));</script>`,
+      cssFileContent: ".g { color: red } .n { color: blue }",
+    },
+    "plain-card": {
+      fileName: "src/components/plain-card.html",
+      fileContent: `<p class="p" data-bascik-prop-n>n</p>`,
+      cssFileContent: ".p { color: green }",
+    },
+  };
+  const page = async (manifest: ComponentManifest, output: string) => {
+    const plan: ExecutionPlan = {
+      segments: [
+        { kind: "static", bytes: enc.encode("<!doctype html><html><body>") },
+        { kind: "script", mode: "server", id: "a" },
+        { kind: "static", bytes: enc.encode("</body></html>") },
+      ],
+      firstStreamIndex: -1,
+    };
+    const host = makeHost(manifest);
+    const wrapped = wrapRunner(runnerOf(output), plan, host);
+    return dec.decode(await composeBufferedResponse(plan, wrapped));
+  };
+
+  it("every inline script and style a request renders is one the route's widened hashes list, and no prop, slot or id the attacker picks changes any of their texts", async () => {
+    const manifest = await build(list);
+    const allowed = manifestCspHashes(manifest);
+    // An author who forgot to escape: the visitor writes the tags.
+    const injected =
+      `<gadget-card data-bascik-prop-cfg="{&quot;evil&quot;:1}" data-bascik-prop-n="</script><script>alert(1)</script>" id="steer" class="steer">` +
+      `<script>alert('raw')</script><style>*{x:y}</style></gadget-card>` +
+      `<plain-card data-bascik-prop-n="${"x".repeat(50)}"></plain-card>`;
+    const out = await page(manifest, injected);
+    const hashes = computePageCspHashes(out);
+    // The raw <script> and <style> the visitor wrote are NOT listed: a
+    // hash-only policy blocks them, as it does without components.
+    const unlisted = {
+      scripts: hashes.scripts.filter((h) => !allowed.scripts.includes(h)),
+      styles: hashes.styles.filter((h) => !allowed.styles.includes(h)),
+    };
+    expect(unlisted.scripts).toHaveLength(1);
+    expect(unlisted.styles).toHaveLength(1);
+    // What the injection gains is exactly the site's own listed component
+    // code, with the same text as for a benign usage.
+    const benign = await page(
+      manifest,
+      `<gadget-card data-bascik-prop-n="ok"></gadget-card><plain-card></plain-card>`,
+    );
+    const benignHashes = computePageCspHashes(benign);
+    for (const hash of benignHashes.scripts)
+      expect(hashes.scripts).toContain(hash);
+    expect(
+      hashes.scripts.filter(
+        (h) => allowed.scripts.includes(h) && !benignHashes.scripts.includes(h),
+      ),
+    ).toEqual([]);
+  });
+
+  it("request-time instance ids depend on the route, job and ordinal only: props, slots and inherited attributes cannot steer the minted ids", async () => {
+    const anchored: ComponentList = {
+      "anchor-card": {
+        fileName: "src/components/anchor-card.html",
+        fileContent: `<div class="g"><p id="anchor" data-bascik-prop-n>a</p></div>`,
+      },
+    };
+    const manifest = await build(anchored);
+    const scopedIds = async (output: string) =>
+      [
+        ...(await renderAtRequest(manifest, output)).html.matchAll(
+          /<p id="([^"]+)"/g,
+        ),
+      ].map((m) => m[1]);
+    const a = await scopedIds(
+      `<anchor-card data-bascik-prop-n="a"></anchor-card><anchor-card></anchor-card>`,
+    );
+    const b = await scopedIds(
+      `<anchor-card data-bascik-prop-n="r0000000" id="r0000000" data-bascik-instance="r0000000">r0000000</anchor-card>` +
+        `<anchor-card class="r1111111" data-bascik-prop-anchor="x"></anchor-card>`,
+    );
+    expect(a).toHaveLength(2);
+    expect(b).toEqual(a);
+    expect(b.join(" ")).not.toMatch(/r0000000|r1111111/);
+  });
+
+  it("the job-marker nonce never reaches the response: a component with a nested server script leaves no data-bascik-job and no nonce", async () => {
+    const nested: ComponentList = {
+      "srv-card": {
+        fileName: "src/components/srv-card.html",
+        fileContent: `<div class="w"><script data-bascik-server>export default () => "<b>live</b>";</script></div>`,
+      },
+    };
+    const manifest = await build(nested);
+    const { html, host } = await renderAtRequest(
+      manifest,
+      `<srv-card></srv-card><srv-card></srv-card>`,
+      { runComponentJob: vi.fn(async () => "<b>live</b>") },
+    );
+    expect(host.runComponentJob).toHaveBeenCalledTimes(2);
+    expect(html).not.toContain("data-bascik-job");
+    expect(html).not.toMatch(/[0-9a-f]{32}/);
+  });
+});
+
+// ─── D. nested server jobs ──────────────────────────────────────────────────
+
+describe("D. nested component jobs an injected tag can start", () => {
+  const list: ComponentList = {
+    "srv-card": {
+      fileName: "src/components/srv-card.html",
+      fileContent: `<div class="w"><script data-bascik-server>export default (request) => new URL(request.url).pathname;</script></div>`,
+    },
+  };
+
+  it("a nested job receives only its staged id, the render signal and the remaining budget: no prop, slot or attribute of the usage", async () => {
+    const manifest = await build(list);
+    const { host } = await renderAtRequest(
+      manifest,
+      `<srv-card data-bascik-prop-url="http://169.254.169.254/" data-url="http://169.254.169.254/">http://169.254.169.254/</srv-card>`,
+    );
+    expect(host.runComponentJob).toHaveBeenCalledTimes(1);
+    const args = host.runComponentJob.mock.calls[0];
+    expect(args).toHaveLength(3);
+    expect(args[0]).toMatch(/^component_script_[0-9a-f]+$/);
+    expect(JSON.stringify(args[0])).not.toContain("169.254");
+    expect(args[1]).toBeInstanceOf(AbortSignal);
+    expect(typeof args[2]).toBe("number");
+  });
+
+  it("1000 injected tags with a nested script start no job at all: the 64-job budget is checked before any runs", async () => {
+    const manifest = await build(list);
+    const output = "<srv-card></srv-card>".repeat(1000);
+    const host = makeHost(manifest);
+    const wrapped = wrapRunner(runnerOf(output), serverPlan("a"), host);
+    await expect(wrapped("a", new AbortController().signal)).rejects.toThrow(
+      RequestRenderError,
+    );
+    expect(host.runComponentJob).not.toHaveBeenCalled();
+  });
+
+  it(`at most ${REQUEST_RENDER_LIMITS.maxNestedScripts} nested jobs per response, each with what is left of the page budget`, async () => {
+    const manifest = await build(list);
+    const output = "<srv-card></srv-card>".repeat(
+      REQUEST_RENDER_LIMITS.maxNestedScripts,
+    );
+    const { host } = await renderAtRequest(manifest, output, {
+      timeoutMs: 50,
+    });
+    expect(host.runComponentJob).toHaveBeenCalledTimes(
+      REQUEST_RENDER_LIMITS.maxNestedScripts,
+    );
+    for (const call of host.runComponentJob.mock.calls)
+      expect(call[2]).toBeLessThanOrEqual(50);
+  });
+});
+
+// ─── E. tag smuggling ───────────────────────────────────────────────────────
+
+describe("E. tags an attacker can spell in escaped or raw-text positions stay text", () => {
+  const list: ComponentList = {
+    "srv-card": {
+      fileName: "src/components/srv-card.html",
+      fileContent: `<div class="w"><script data-bascik-server>export default () => "<b>live</b>";</script></div>`,
+    },
+    "x-card": {
+      fileName: "src/components/x-card.html",
+      fileContent: `<p class="x" data-bascik-prop-v>x</p><div data-bascik-slot>s</div>`,
+    },
+  };
+  const SMUGGLED = [
+    "<srv-card></srv-card>",
+    "<SRV-CARD></SRV-CARD>",
+    "<srv-card/>",
+    "<srv\u0000-card></srv\u0000-card>",
+    "<srv-card\u0000></srv-card>",
+    "&lt;srv-card&gt;&lt;/srv-card&gt;",
+    "&#60;srv-card&#62;",
+    "<!--<srv-card></srv-card>-->",
+    "<![CDATA[<srv-card></srv-card>]]>",
+    `<script type="text/bascik-server" data-bascik-server-id="component_script_${Buffer.from("srv-card::1").toString("hex")}"></script>`,
+    `<script type="text/bascik-server" data-bascik-job="${"0".repeat(32)}:0"></script>`,
+    "<!--bascik-job:0-->",
+  ];
+
+  it("escaped into a prop or slot of a rendered component, no smuggled tag, marker or placeholder ever runs a job or expands", async () => {
+    const manifest = await build(list);
+    for (const q of SMUGGLED) {
+      const output =
+        `<x-card data-bascik-prop-v="${escapeCatalog(q)}">${escapeCatalog(q)}</x-card>` +
+        `<x-card data-bascik-prop-v="${escapeFull(q)}"><i data-bascik-slot>${escapeFull(q)}</i></x-card>`;
+      const { html, host } = await renderAtRequest(manifest, output);
+      expect(host.runComponentJob, q).not.toHaveBeenCalled();
+      expect(
+        view(html).shape.filter((s) => /srv|script/i.test(s)),
+        q,
+      ).toEqual([]);
+    }
+  });
+
+  it.each([
+    ["textarea", "<textarea>", "</textarea>"],
+    ["style", "<style>", "</style>"],
+    ["script", "<script>", "</script>"],
+    ["comment", "<!--", "-->"],
+    ["attribute value", `<p title="`, `">x</p>`],
+  ])(
+    "author error (raw tag) inside a %s: Bascik does not expand it and runs no job",
+    async (_where, open, close) => {
+      const manifest = await build(list);
+      const output = `${open}<srv-card></srv-card>${close}`;
+      const { html, host } = await renderAtRequest(manifest, output);
+      expect(host.runComponentJob).not.toHaveBeenCalled();
+      expect(html).toBe(output);
+    },
+  );
+
+  it.each([
+    ["title", "<title>", "</title>"],
+    ["noscript", "<noscript>", "</noscript>"],
+    ["xmp", "<xmp>", "</xmp>"],
+    ["iframe", "<iframe>", "</iframe>"],
+    ["noembed", "<noembed>", "</noembed>"],
+    ["noframes", "<noframes>", "</noframes>"],
+    ["template", "<template>", "</template>"],
+    ["svg", "<svg>", "</svg>"],
+    ["math", "<math>", "</math>"],
+  ])(
+    "author error (raw tag) inside a %s: whatever Bascik expands, the browser runs no visitor markup from it",
+    async (_where, open, close) => {
+      const manifest = await build(list);
+      const output = `${open}<x-card data-bascik-prop-v="&lt;img src=x onerror=alert(1)&gt;"></x-card>${close}`;
+      const { html } = await renderAtRequest(manifest, output);
+      expect(view(html).sinks).toEqual([]);
+    },
+  );
+});
+
+// ─── F. other request-time surfaces ─────────────────────────────────────────
+
+describe("F. prototype keys, replacement patterns and response framing", () => {
+  const list: ComponentList = {
+    "p-card": {
+      fileName: "src/components/p-card.html",
+      fileContent:
+        `<div class="p"><b data-bascik-prop-__proto__>a</b><i data-bascik-prop-constructor>b</i>` +
+        `<u data-bascik-slot="__proto__">c</u><s data-bascik-slot="hasOwnProperty">d</s>` +
+        `<a href="/x" data-bascik-attr-href="toString">e</a></div>`,
+    },
+  };
+
+  it("props and slots named after Object.prototype members are plain data: no pollution, no native code, no throw", async () => {
+    const manifest = await build(list);
+    const before = Object.getOwnPropertyNames(Object.prototype).sort();
+    const { html } = await renderAtRequest(
+      manifest,
+      `<p-card data-bascik-prop-__proto__="P" data-bascik-prop-constructor="C" data-bascik-prop-polluted="Z">` +
+        `<u data-bascik-slot="__proto__">S</u><s data-bascik-slot="hasOwnProperty">H</s></p-card><p-card></p-card>`,
+    );
+    expect(Object.getOwnPropertyNames(Object.prototype).sort()).toEqual(before);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(html).not.toContain("[native code]");
+    expect(html).not.toContain("[object Object]");
+  });
+
+  it("CR, LF and header-shaped text in a script's output stay in the body: the renderer returns a string, never headers", async () => {
+    const manifest = await build(list);
+    const q = "\r\nSet-Cookie: pwned=1\r\nVary: *\r\n\r\n<h1>split</h1>";
+    const { html } = await renderAtRequest(
+      manifest,
+      `<p-card data-bascik-prop-constructor="${escapeFull(q)}">${escapeFull(q)}</p-card>`,
+    );
+    expect(html).toContain("Set-Cookie: pwned=1");
+    expect(view(html).shape.filter((s) => s.startsWith("h1"))).toEqual([]);
+  });
+});

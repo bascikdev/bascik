@@ -11,29 +11,34 @@ metadata:
 
 Requires the `bascik` skill for component rules and the `bascik-scripts` skill for build-time data.
 
+To have coding agents refactor a live site to production parity at every breakpoint and 100 in all five Lighthouse categories, install the opt-in `bascik-refactor` skill (`npx skills add bascikdev/bascik --skill bascik-refactor`) and read `node <skills-dir>/bascik/scripts/read-doc.mjs /how-to/agent-migration`.
+
 ## Procedure
 
 1. **Inventory.** List every URL, shared layout region (`<head>` tags, header, footer, nav), repeated widget, data source, and client behavior. Run `node <skills-dir>/bascik/scripts/list-components.mjs` if Bascik components already exist.
 2. **Read the framework guide.** `node <skills-dir>/bascik/scripts/read-doc.mjs /switch/from-<framework>` (`react`, `next`, `vue`, `svelte`, `astro`, `eleventy`, `hugo`, `wordpress`). Read it before writing any code; it maps each framework feature to its Bascik equivalent.
 3. **Pages first.** One `.html` per URL in `src/pages/`, each with its own `<html>`, `<head>`, and `<body>`. Parameterized URLs become dynamic route templates.
-4. **Extract components.** Shared head becomes `<site-head />`; header, footer, and nav become components; repeated widgets become components with props and slots. Use `scripts/new-component.mjs` for the folder layout.
-5. **Move styles.** Delete framework scoped-style mechanisms and put the CSS in each component's companion `.css`. Class names stay the same; Bascik scopes them. Global styles go to `src/pages/css/styles.css`.
-6. **Move behavior.** Replace state and effects with a plain `<script>` per component, targeting elements by `id`. Prefer HTML and CSS solutions where they exist.
-7. **Move data.** Framework data loaders become `data-bascik-build` scripts that call helpers in `src/lib/`. Escape every interpolated value.
-8. **Verify.** `node <skills-dir>/bascik/scripts/verify.mjs --build`, then compare old and new pages URL by URL.
+4. **Extract components.** Each page ends up as a list of tags, not a pasted block of the old site's HTML. Shared head becomes `<site-head />`; header, footer, and nav become components; each section with a nameable job (hero, pricing, reviews, signup form) becomes a component; repeated widgets become one component with props and slots. Follow the old site's component boundaries where they are sound, but do not copy wrappers that only existed for the framework (providers, layout shells, one-element components) or props threaded through layers: use a slot instead. Use `new-component.mjs` (in the `bascik` skill) for the folder layout, and the `bascik-components` skill for where to split.
+   **Keep or improve the semantics.** Carry over every semantic element the old site has (`<nav>`, `<header>`, `<main>`, `<article>`, `<button>`, `<label>`, heading levels), and never turn semantic markup into `<div>`s to make a component fit. Make each component's root the element for its job (a nav component's root is the `<nav>`, not a `<div>` around it), and replace framework div soup with the right element where it is safe: a clickable `<div>` becomes a `<button type="button">`, a list of links becomes a `<ul>`. Checklist: `node <skills-dir>/bascik/scripts/read-doc.mjs /component-best-practices#use-htmls-elements`.
+5. **Keep TypeScript.** A TypeScript source site stays TypeScript: component logic moves to a `.ts` companion or an inline `<script type="text/typescript">` and keeps its types (prop types become the `@bascik` comment and the types of what the script reads), and data loaders become typed helpers in `src/lib/*.ts`. A JavaScript site gets TypeScript for every new file unless the person says otherwise. Erasable syntax works with no setup; for `enum`, decorators, or npm packages in the browser, use esbuild (the `scripts.typescript` snippet in the `bascik` skill). Docs: `/scoped-javascript#typescript-in-component-scripts`, `/configuration#scriptstypescript`, `/how-to/bundling-npm-packages`.
+6. **Move styles.** Delete framework scoped-style mechanisms and put the CSS in each component's companion `.css`. Class names stay the same; Bascik scopes them. Global styles go to `src/pages/css/styles.css`.
+7. **Move behavior.** Replace state and effects with a TypeScript script per component, targeting elements by `id`. Prefer HTML and CSS solutions where they exist: a framework disclosure becomes `<details>`, a modal becomes `<dialog>`, a dropdown becomes `popover`. Attach click handlers to `<button>` and `<a>` elements, not to `<div>`s, and put state a screen reader needs in ARIA attributes (`aria-expanded`, `aria-pressed`).
+8. **Move data.** Framework data loaders become `data-bascik-build` scripts that call typed helpers in `src/lib/`. Escape every interpolated value.
+9. **Verify.** `node <skills-dir>/bascik/scripts/verify.mjs --build` and `node <skills-dir>/bascik/scripts/audit-components.mjs` (exit 0, or each kept warning explained), then compare old and new pages URL by URL.
 
 ## Cross-framework mapping
 
 | Concept                                                                           | Bascik                                                                                                                                       |
 | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Component file (`.jsx`, `.vue`, `.svelte`, `.astro`)                              | `src/components/<name>/<name>.html` with a hyphenated name (`Card.vue` becomes `info-card`)                                                  |
+| Component file (`.jsx`, `.tsx`, `.vue`, `.svelte`, `.astro`)                      | `src/components/<name>/<name>.html` with a hyphenated name (`Card.vue` becomes `info-card`), plus `<name>.ts` for its behavior               |
+| `.ts` and `.tsx` logic, prop and state types                                      | Typed `<name>.ts` companion or `<script type="text/typescript">`; shared types and helpers in `src/lib/*.ts`                                 |
 | Scoped styles (`<style scoped>`, CSS Modules, Svelte styles)                      | Companion `<name>.css`, scoped automatically                                                                                                 |
 | `children`, `<slot />`, `{@render children()}`                                    | `data-bascik-slot` (no value), fallback inside                                                                                               |
 | Named slots, render props, snippets                                               | `<div data-bascik-slot="x">` in the template and as the wrapper at the usage site                                                            |
 | Props (`defineProps`, `$props()`, `props.x`)                                      | `data-bascik-prop-x`, text only                                                                                                              |
 | Prop bound to an attribute                                                        | `data-bascik-attr-<attribute>="propName"`                                                                                                    |
 | Object, array, or function props                                                  | Not possible: print one component per item from a build script, or embed JSON in `<script type="application/json">` (escape `<` as `\u003c`) |
-| `useState`, `ref`, `$state`                                                       | Variables in the component `<script>`, applied to the DOM by a function                                                                      |
+| `useState`, `ref`, `$state`                                                       | Typed variables in the component script, applied to the DOM by a function                                                                    |
 | Callback props, `$emit`, `v-model`                                                | `dispatchEvent(new CustomEvent('x', { bubbles: true, detail }))`, parent listens on its root                                                 |
 | `v-if`, `{#if}`, conditional JSX                                                  | Build time: a build script prints one branch. Runtime: toggle `hidden`                                                                       |
 | `.map()`, `v-for`, `{#each}`                                                      | Build-time loop in a build script, or clone a `<template>` at runtime                                                                        |
@@ -57,6 +62,7 @@ Requires the `bascik` skill for component rules and the `bascik-scripts` skill f
 - **Production moves component scripts to the end of the document.** Look up elements inside handlers or after `DOMContentLoaded`; keep pre-paint scripts (theme) in `<head>`.
 - **Re-sync form state on `pageshow`** after Back/Forward or reload.
 - **`bascik --check` reports components printed only by build scripts as unused.** That is expected.
+- **Add `"html.validate.scripts": false` to `.vscode/settings.json`** (or run `bascik init`, which merges it in). Otherwise VS Code joins a page's `<script>` blocks into one file and reports false errors such as "A module cannot have multiple default exports".
 - **Do not generate page files into `src/pages/`.** Use dynamic routes.
 - **Exclude data-reading build scripts from the cache** (`scripts.cache.exclude`) and watch `content/` (`pipeline.watchPaths`).
 - **Tailwind:** run it as a `pre` exec script with `scoping.attributes.class: false`; see `read-doc.mjs /libraries`.

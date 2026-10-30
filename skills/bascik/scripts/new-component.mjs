@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Create a Bascik component that follows the conventions: hyphenated lowercase name, folder layout,
-// <style> above the markup, <script> below it, id-based element lookup, and an @bascik metadata comment.
+// <style> above the markup, <script> below it, id-based element lookup, a data-testid on the root, TypeScript
+// scripts unless JavaScript is asked for, an @bascik metadata comment, and a semantic root element picked from the
+// name (site-nav renders a <nav>, customer-review an <article>), which audit-components.mjs checks too.
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { join, relative, resolve } from "node:path";
@@ -12,10 +14,16 @@ import {
   loadProjectConfig,
 } from "./lib/project.mjs";
 import { listComponents, tagNameProblem } from "./lib/components.mjs";
+import { semanticRootFor } from "./lib/semantic.mjs";
 
 const HELP = `Usage: node new-component.mjs <tag-name> [options]
 
 Creates src/components/<tag-name>/<tag-name>.html (in the first component root) following Bascik conventions.
+The root element comes from the last word of the name: *-nav <nav>, *-header <header>, *-footer <footer>,
+*-form <form>, *-post, *-review, or *-testimonial <article>, *-section <section>, *-sidebar <aside>, anything
+else <div> (a *-card too: make it an <article> when it stands on its own, like a post or product, or an <li>
+in a list). Change it to the element that fits the component's job. A *-nav gets no aria-label: pass it on the
+usage tag (<site-nav aria-label="Main" />), since an attribute already on the root wins over the usage tag's.
 
 Options:
   --description <text>  One-line description for the @bascik metadata comment
@@ -24,7 +32,8 @@ Options:
   --slots <a,b>         Add named slots
   --css                 Put styles in a companion <tag-name>.css instead of an inline <style>
   --no-style            Do not create any styles
-  --script <kind>       none (default), inline, js, or ts (ts/js create a companion file loaded with <script src>)
+  --script <kind>       none (default); inline (<script type="text/typescript">) or ts (a companion .ts loaded
+                        with <script src>); inline-js or js only when the person asked for JavaScript
   --flat                Create <root>/<tag-name>.html without a folder
   --root-dir <dir>      Component root to write into (default: first directory.components entry)
   --dry-run             Print the files without writing them
@@ -33,7 +42,8 @@ Options:
 
 Examples:
   node new-component.mjs feature-card --props title,body --slot
-  node new-component.mjs nav-toggle --script ts --css`;
+  node new-component.mjs nav-toggle --script ts --css
+  node new-component.mjs menu-button --script inline`;
 
 const list = (value) =>
   String(value ?? "")
@@ -47,7 +57,7 @@ export function buildComponentFiles(tag, options = {}) {
   const namedSlots = options.slots ?? [];
   const defaultSlot = Boolean(options.slot);
   const style = options.style ?? "inline"; // inline | css | none
-  const script = options.script ?? "none"; // none | inline | js | ts
+  const script = options.script ?? "none"; // none | inline | inline-js | js | ts
 
   for (const name of [...props, ...namedSlots]) {
     if (!/^[a-z][a-z0-9-]*$/.test(name))
@@ -70,17 +80,32 @@ export function buildComponentFiles(tag, options = {}) {
   meta.push("-->");
 
   const css = [`.${tag} {`, "  display: block;", "}", ""].join("\n");
-  const body = [`<div class="${tag}" id="root">`];
+  const element = semanticRootFor(tag) ?? "div";
+  const body = [];
+  // The label goes on the usage tag, not here: an attribute already on the root wins over the same attribute on the
+  // usage tag, so a placeholder label here would replace every page's label.
+  if (element === "nav")
+    body.push(
+      `<!-- Name each navigation on its usage tag: <${tag} aria-label="Main" />. Do not add aria-label here: the root's own value wins over the usage tag's. -->`,
+    );
+  body.push(`<${element} class="${tag}" id="root" data-testid="${tag}">`);
+  if (element === "section") body.push("  <h2>TODO: heading</h2>");
   for (const prop of props) body.push(`  <p data-bascik-prop-${prop}></p>`);
   for (const slot of namedSlots)
     body.push(`  <div data-bascik-slot="${slot}"></div>`);
   if (defaultSlot) body.push("  <div data-bascik-slot></div>");
-  body.push("</div>");
+  body.push(`</${element}>`);
 
-  const scriptBody = [
+  const comment = [
     "// Find elements by id: Bascik rewrites the id per instance, so every copy of this component",
     "// controls only its own elements. Never use querySelector with a class to find a per-instance element.",
-    "const root = document.getElementById('root');",
+  ];
+  const typed = script === "inline" || script === "ts";
+  const scriptBody = [
+    ...comment,
+    typed
+      ? 'const root = document.getElementById("root") as HTMLElement;'
+      : 'const root = document.getElementById("root");',
   ];
 
   const files = {};
@@ -95,9 +120,9 @@ export function buildComponentFiles(tag, options = {}) {
       "</style>",
     );
   html.push(...body);
-  if (script === "inline")
+  if (script === "inline" || script === "inline-js")
     html.push(
-      "<script>",
+      script === "inline" ? '<script type="text/typescript">' : "<script>",
       ...scriptBody.map((line) => `  ${line}`),
       "</script>",
     );
@@ -106,10 +131,7 @@ export function buildComponentFiles(tag, options = {}) {
   files[`${tag}.html`] = `${html.join("\n")}\n`;
   if (style === "css") files[`${tag}.css`] = css;
   if (script === "js" || script === "ts") {
-    files[`${tag}.${script}`] =
-      script === "ts"
-        ? `${scriptBody.slice(0, 2).join("\n")}\nconst root = document.getElementById('root') as HTMLElement;\n`
-        : `${scriptBody.join("\n")}\n`;
+    files[`${tag}.${script}`] = `${scriptBody.join("\n")}\n`;
   }
   return files;
 }
@@ -127,7 +149,7 @@ export function usageSnippet(tag, options = {}) {
 }
 
 async function main() {
-  const { values, positionals } = parseArgs({
+  const { values, positionals } = parseCliArgs("new-component", {
     allowPositionals: true,
     options: {
       description: { type: "string" },
@@ -148,8 +170,11 @@ async function main() {
   const tag = positionals[0];
   const problem = tagNameProblem(tag);
   if (problem) fail(`new-component: ${problem}.\n\n${HELP}`, 2);
-  if (!["none", "inline", "js", "ts"].includes(values.script))
-    fail("new-component: --script must be none, inline, js, or ts.", 2);
+  if (!["none", "inline", "inline-js", "js", "ts"].includes(values.script))
+    fail(
+      "new-component: --script must be none, inline, ts, inline-js, or js.",
+      2,
+    );
 
   const root = findProjectRoot();
   const config = await loadProjectConfig(root);
@@ -211,3 +236,30 @@ async function main() {
 }
 
 if (isMain(import.meta.url)) await main();
+
+/**
+ * `parseArgs`, with a short message naming the flag and the valid ones, and
+ * exit code 2, in place of Node's stack trace on a mistyped or missing flag.
+ */
+function parseCliArgs(name, config) {
+  try {
+    return parseArgs(config);
+  } catch (error) {
+    if (!String(error?.code).startsWith("ERR_PARSE_ARGS_")) throw error;
+    const valid = Object.entries(config.options ?? {})
+      .map(
+        ([long, option]) =>
+          `${option.short ? `-${option.short}, ` : ""}--${long}`,
+      )
+      .join(", ");
+    const flag = /'([^']+)'/.exec(error.message)?.[1];
+    const problem =
+      error.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" && flag
+        ? `unknown option "${flag}"`
+        : error.message.split(". ")[0].replace(/\.$/, "");
+    process.stderr.write(
+      `${name}: ${problem}. Valid options: ${valid}. Run with --help.\n`,
+    );
+    process.exit(2);
+  }
+}

@@ -20,8 +20,28 @@ describe("component-demo component", () => {
 
     // 3. Should not contain any client runtime <script> tag
     const clientScriptRegex =
-      /<script(?![^>]*data-bascik-build)[^>]*>[\s\S]*?<\/script>/gi;
+      /<script\b(?![^>]*data-bascik-build)[^>]*>[\s\S]*?<\/script(?=[\s/>])[^>]*>/gi;
     expect(clientScriptRegex.test(html)).toBe(false);
+  });
+
+  it("keeps each radio group inside a form of its own, so repeated demos do not share one group", async () => {
+    // `name` ships as written, and radios with one name and no form owner are
+    // one group across the page: a page with two demos would have one
+    // Preview/Source/Output choice between them.
+    const html = await readFile(componentPath, "utf8");
+    // Comments and style blocks end where the HTML parser ends them, so a form
+    // tag after a --!> or a </style > is still counted.
+    const markup = html
+      .replace(/<!--(?:-?>|[\s\S]*?(?:--!?>|$))/g, "")
+      .replace(/<style\b[\s\S]*?(?:<\/style(?=[\s/>])[^>]*>|$)/gi, "");
+    let depth = 0;
+    for (const match of markup.matchAll(/<(\/?)form\b[^>]*>|<input\b[^>]*>/g)) {
+      if (match[0].startsWith("<input")) {
+        if (/type="radio"/.test(match[0])) expect(depth, match[0]).toBe(1);
+      } else depth += match[1] ? -1 : 1;
+    }
+    expect(depth).toBe(0);
+    expect(markup.match(/<form\b/g)?.length).toBe(3);
   });
 
   it("supports no-preview prop marker and CSS rules for hiding preview tab", async () => {

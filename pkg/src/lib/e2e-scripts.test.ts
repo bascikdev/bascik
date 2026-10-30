@@ -20,12 +20,30 @@ describe("E2E script composition", () => {
       resolve(process.cwd(), "package.json"),
     );
 
-    expect(rootScripts["pkg:e2e:all"]).toContain("pkg:e2e:dev");
-    expect(rootScripts["pkg:e2e:all"]).toContain("pkg:e2e");
-    expect(rootScripts["pkg:e2e:all"]).toContain("pkg:e2e:prod");
+    // The serial chains name each mode.
+    for (const mode of ["pkg:e2e", "pkg:e2e:dev", "pkg:e2e:prod"])
+      expect(rootScripts["pkg:e2e:all:serial"]).toContain(mode);
+    for (const mode of ["e2e", "e2e:dev", "e2e:prod"])
+      expect(packageScripts["e2e:all:serial"]).toContain(mode);
 
-    expect(packageScripts["e2e:all"]).toContain("e2e:dev");
-    expect(packageScripts["e2e:all"]).toContain("e2e");
-    expect(packageScripts["e2e:all"]).toContain("e2e:prod");
+    // The parallel entry points start the lane runner with no lane names, so it
+    // runs its default set, which must be all four modes.
+    expect(rootScripts["pkg:e2e:all"]).toMatch(
+      /node e2e\/scripts\/run-lanes\.ts$/,
+    );
+    expect(packageScripts["e2e:all"]).toBe("node e2e/scripts/run-lanes.ts");
+    const runner = await readFile(
+      resolve(process.cwd(), "e2e/scripts/run-lanes.ts"),
+      "utf8",
+    );
+    for (const config of [
+      'static: "playwright.config.ts"',
+      'dev: "playwright.dev.config.ts"',
+      'http1: "playwright.server.config.ts"',
+      'http2: "playwright.server-http2.config.ts"',
+    ])
+      expect(runner).toContain(config);
+    // That the runner defaults to all four lanes is a behavior, pinned by
+    // e2e/scripts/run-lanes.test.ts ("runs all four lanes when no lane is named").
   });
 });

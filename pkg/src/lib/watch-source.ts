@@ -8,10 +8,12 @@ import { getExecErrorAction, stopAfterExecFailure } from "./exec-policy.ts";
 import { withCompilationPublisher } from "./compilation-events.ts";
 import { clearBuildScriptCaches } from "./build-scripts.ts";
 import {
+  componentsHaveBuildScripts,
   componentsImportingStylesheet,
   invalidateComponentListCache,
 } from "./components.ts";
 import { mem } from "./mem.ts";
+import { getHttpPath } from "./paths.ts";
 import { processAllPages, processPageBatch, removePage } from "./processing.ts";
 import {
   copyStaticAssets,
@@ -21,6 +23,7 @@ import {
 } from "./file-system.ts";
 import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 import { sourceWatchRoot } from "./watch-root.ts";
+import { privateDirFor } from "./private-dir.ts";
 
 /** One filesystem observer owns source/exec overlap, including page edits.
  * Outputs are ignored unconditionally. No timestamp or self-write heuristic
@@ -44,6 +47,9 @@ export const watchSourceCycles = async (
     resolve(root),
   );
   const outRoot = resolve(BascikConfig.directory.out);
+  // Bascik's private build folder beside the output (private-dir.ts) is
+  // output too: a watch path over the project root must not see its writes.
+  const privateRoot = privateDirFor(outRoot);
   const inside = (path: string, root: string) =>
     path === root || path.startsWith(root + sep);
   const changes = new Map<string, string>();
@@ -53,6 +59,15 @@ export const watchSourceCycles = async (
     entries,
     run: runScript,
     emitter: eventEmitter,
+    // A page open in a browser reloads the moment it is stored, ahead of the pages still compiling.
+    publishEarly: (event, payload) => {
+      if (event !== "transpiled") return false;
+      const { relativePagePath } = payload as { relativePagePath?: string };
+      if (typeof relativePagePath !== "string") return false;
+      const route = (path: string) => path.replace(/\/$/, "") || "/";
+      const pageRoute = route(getHttpPath(relativePagePath));
+      return mem.openPages.some((open) => route(open) === pageRoute);
+    },
     // Under the default dev action ('warn') the cycle already reported a
     // build-error and retries on the next edit. Under 'error' the session ends.
     onExecFailure: (error) => {
@@ -110,6 +125,24 @@ export const watchSourceCycles = async (
           }
           if (shouldInvalidateComponents || shouldClearAllBuildCaches) {
             invalidateComponentListCache();
+          }
+          // A page with a server-script plan renders component tags from its
+          // scripts' output with the manifest of the component list it was
+          // stored against (prompt 157, D6). When the list is invalidated by
+          // a component input, every such page is rebuilt with the next one,
+          // which re-stores it with the new manifest and reloads its open
+          // tabs: a component used only in script output, which no page
+          // depends on by name, still live-reloads. A cache clear (a watched
+          // input or asset) can change a component only through its build
+          // script, which may read that file and which only the manifest
+          // build ran, so it counts when some component has one; otherwise
+          // these pages stay as they are, like any page not depending on it.
+          if (
+            shouldInvalidateComponents ||
+            (shouldClearAllBuildCaches && componentsHaveBuildScripts())
+          ) {
+            for (const page of mem.pagesWithServerScriptPlan())
+              pages.add(resolve(page));
           }
           for (const path of paths) {
             const kind = batchChanges.get(path)!;
@@ -198,7 +231,8 @@ export const watchSourceCycles = async (
       followSymlinks: true,
       atomic: true,
       awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 20 },
-      ignored: (path) => inside(resolve(path), outRoot),
+      ignored: (path) =>
+        inside(resolve(path), outRoot) || inside(resolve(path), privateRoot),
     },
   );
   watcher.on("all", (kind, changed) => {
@@ -220,15 +254,26 @@ export const watchSourceCycles = async (
     await watcher.close();
     await cycle.idle();
   });
+  // Chokidar 6 reports scan failures as `error` events, and an `error` event
+  // without a listener throws, so one listener stays for the watcher's life:
+  // the first failure before `ready` rejects boot, every other one is reported.
   await new Promise<void>((resolveReady, reject) => {
-    watcher.once("ready", resolveReady);
-    watcher.once("error", reject);
+    let settled = false;
+    watcher.once("ready", () => {
+      settled = true;
+      resolveReady();
+    });
+    watcher.on("error", (error) => {
+      if (!settled) {
+        settled = true;
+        reject(error);
+        return;
+      }
+      eventEmitter.emit("build-error", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
   });
-  watcher.on("error", (error) =>
-    eventEmitter.emit("build-error", {
-      message: error instanceof Error ? error.message : String(error),
-    }),
-  );
   const compileInitialSources = async (): Promise<void> => {
     await Promise.all([copyStaticAssets(), processAllPages()]);
   };

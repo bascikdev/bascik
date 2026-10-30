@@ -14,6 +14,7 @@ import {
   processAllPages,
   selectivelyProcessPages,
   processPagesImportingStylesheet,
+  processPagesDependentOnFile,
   removePage,
   pageWriteIdle,
 } from "./processing.ts";
@@ -21,7 +22,11 @@ import { collectAllScriptDeps } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { manifestCollector } from "./manifest.ts";
 import { cspHashCollector } from "./csp-hashes.ts";
-import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
+import { LIVE_RELOAD_SCRIPT, LIVE_RELOAD_VERSION_ATTR } from "./live-reload.ts";
+
+/** Compiled output without its live-reload page version, which counts up per compile. */
+const withoutPageVersion = (html: string | undefined): string | undefined =>
+  html?.replace(new RegExp(` ${LIVE_RELOAD_VERSION_ATTR}="\\d+"`), "");
 import { BuildScriptError } from "./build-error.ts";
 
 // Disable all scoping so tests produce predictable, readable HTML
@@ -97,6 +102,7 @@ vi.mock("./mem.js", () => ({
     removePage: vi.fn(),
     removeByRelativePath: vi.fn(),
     pagesThisComponentIsUsedOn: vi.fn(() => []),
+    pagesWithServerScriptPlan: vi.fn(() => []),
     pagesDependentOnFile: vi.fn(() => []),
     recordFailedDependencies: vi.fn(),
     clearFailedDependencies: vi.fn(),
@@ -134,6 +140,16 @@ vi.mock("./worker-pool.js", () => {
         };
       });
       this.terminate = vi.fn(async () => {});
+      // processAllPages starts the pool before expansion and trims it to the
+      // job count, so the stand-in tracks its size like the real one.
+      this.size = arguments[1];
+      this.shrink = vi.fn(async (n: number) => {
+        this.size = Math.min(this.size, n);
+      });
+      this.grow = vi.fn((n: number) => {
+        this.size = Math.max(this.size, n);
+      });
+      this.configure = vi.fn();
     }),
   };
 });
@@ -152,12 +168,40 @@ vi.mock("./components.js", async (importOriginal) => {
   return {
     ...actual,
     invalidateComponentListCache: vi.fn(),
+  };
+});
+
+// The dev manifest build (prompt 157) is wrapped, not replaced: the real
+// implementation stages component jobs in the sidecar registry, and the
+// wrapper counts how many times a publication built it.
+vi.mock("./component-manifest.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  return {
+    ...actual,
+    buildComponentManifest: vi.fn(actual.buildComponentManifest),
+  };
+});
+
+// The expansion loop imports the leaf modules directly (prompt 157: it must
+// bundle for the Web, and the `./components.js` barrel pulls in node:fs), so
+// the simulated stage failures are injected there, not on the barrel.
+vi.mock("./component-props.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  return {
+    ...actual,
     injectProps: (fileContent: any, props: any) => {
       if (fileContent && fileContent.includes("fail-during-prop-injection")) {
         throw new Error("Simulated prop injection failure");
       }
       return actual.injectProps(fileContent, props);
     },
+  };
+});
+
+vi.mock("./component-slots.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  return {
+    ...actual,
     replaceNamedSlots: (fileContent: any, slots: any) => {
       if (fileContent && fileContent.includes("fail-during-slot-resolution")) {
         throw new Error("Simulated slot resolution failure");
@@ -1079,7 +1123,7 @@ describe("pageProcessing – $-pattern safety in body/head reassembly", () => {
       "<!DOCTYPE html><html><head><title>Test</title></head><body><textarea></body></textarea><p>tail</p></body></html>";
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const result = await transpilePage(PAGE_PATH, {});
-    expect(result?.distHtml).toBe(
+    expect(withoutPageVersion(result?.distHtml)).toBe(
       "<!DOCTYPE html><html><head><title>Test</title></head><body><textarea></body></textarea><p>tail</p>" +
         LIVE_RELOAD_SCRIPT +
         "</body></html>",
@@ -1091,7 +1135,7 @@ describe("pageProcessing – $-pattern safety in body/head reassembly", () => {
       '<!DOCTYPE html><html><head><script>const closing = "</head>";</script><title>Test</title></head><body><p>body</p></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const result = await transpilePage(PAGE_PATH, {});
-    expect(result?.distHtml).toBe(
+    expect(withoutPageVersion(result?.distHtml)).toBe(
       '<!DOCTYPE html><html><head><script>const closing = "</head>";</script><title>Test</title></head><body><p>body</p>' +
         LIVE_RELOAD_SCRIPT +
         "</body></html>",
@@ -1115,7 +1159,7 @@ describe("transpilePage – base path transform", () => {
       '<!DOCTYPE html><html><head><link href="/app.css"></head><body><a href="/about">About</a></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const result = await transpilePage(PAGE_PATH, {});
-    expect(result?.distHtml).toBe(
+    expect(withoutPageVersion(result?.distHtml)).toBe(
       html.replace("</body>", `${LIVE_RELOAD_SCRIPT}</body>`),
     );
   });
@@ -1345,6 +1389,38 @@ describe("selectivelyProcessPagesForWatchPath", () => {
   });
 });
 
+describe("processPagesDependentOnFile", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (BascikConfig as any).assets = { inlineStyles: false, exclude: [] };
+    (mem.pagesDependentOnFile as ReturnType<typeof vi.fn>).mockReturnValue([]);
+  });
+
+  it("rebuilds only the pages that depend on the file", async () => {
+    (mem.pagesDependentOnFile as ReturnType<typeof vi.fn>).mockReturnValueOnce([
+      "src/pages/cli.html",
+    ]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "<html><body>cli content</body></html>",
+    );
+    await processPagesDependentOnFile("src/pages/client.ts");
+    const { eventEmitter } = await import("./events.ts");
+    expect(mem.pagesDependentOnFile).toHaveBeenCalledWith(
+      "src/pages/client.ts",
+    );
+    expect(eventEmitter.emit).toHaveBeenCalledExactlyOnceWith("transpiled", {
+      relativePagePath: "pages/cli.html",
+    });
+  });
+
+  it("does nothing, not even a component reload, when no page depends on the file", async () => {
+    await processPagesDependentOnFile("src/pages/unused.ts");
+    const { eventEmitter } = await import("./events.ts");
+    expect(eventEmitter.emit).not.toHaveBeenCalled();
+    expect(invalidateComponentListCache).not.toHaveBeenCalled();
+  });
+});
+
 describe("partitionByOpenPages", () => {
   beforeEach(() => {
     // Reset openPages to empty between tests
@@ -1546,6 +1622,97 @@ describe("processPageBatch – open page priority & instant reloading", () => {
     expect(callSequence).toContain("emit:pages/index.html");
     expect(callSequence).toContain("store:pages/getting-started.html");
     expect(callSequence).toContain("emit:pages/getting-started.html");
+  });
+
+  // Gate the first `inFlight` page reads so the batch is observably mid-way,
+  // then release them. Two lanes per core, so one core keeps two pages in
+  // flight while the rest wait on the queue.
+  const startGatedBatch = async (pages: string[], inFlight = 2) => {
+    const realCpus = cpus();
+    (cpus as ReturnType<typeof vi.fn>).mockReturnValue(
+      realCpus.slice(0, inFlight / 2),
+    );
+    const readOrder: string[] = [];
+    const gates: PromiseWithResolvers<string>[] = [];
+    (readFile as ReturnType<typeof vi.fn>).mockImplementation(
+      (path: string) => {
+        readOrder.push(path);
+        if (readOrder.length > inFlight)
+          return Promise.resolve("<html><body>test</body></html>");
+        const gate = Promise.withResolvers<string>();
+        gates.push(gate);
+        return gate.promise;
+      },
+    );
+    const batch = processPageBatch(pages, {});
+    await vi.waitFor(() => expect(readOrder).toHaveLength(inFlight));
+    const release = async () => {
+      for (const gate of gates) gate.resolve("<html><body>test</body></html>");
+      try {
+        return await batch;
+      } finally {
+        (cpus as ReturnType<typeof vi.fn>).mockReturnValue(realCpus);
+      }
+    };
+    return { readOrder, release };
+  };
+
+  it("a page tracked via mem.trackOpenPage after processPageBatch started is compiled before untouched pages (workers off)", async () => {
+    const pages = [
+      "src/pages/a.html",
+      "src/pages/b.html",
+      "src/pages/c.html",
+      "src/pages/d.html",
+      "src/pages/late.html",
+    ];
+    const { readOrder, release } = await startGatedBatch(pages);
+    expect(readOrder).toEqual(["src/pages/a.html", "src/pages/b.html"]);
+
+    // A tab for /late connects while a and b are still compiling.
+    (mem as any).openPages = ["/late"];
+    const result = await release();
+
+    // The next free lane picks the open page, ahead of c and d.
+    expect(readOrder).toEqual([
+      "src/pages/a.html",
+      "src/pages/b.html",
+      "src/pages/late.html",
+      "src/pages/c.html",
+      "src/pages/d.html",
+    ]);
+    // The batch still reports its pages in input order, not pick order.
+    expect(result).toEqual([
+      "pages/a.html",
+      "pages/b.html",
+      "pages/c.html",
+      "pages/d.html",
+      "pages/late.html",
+    ]);
+  });
+
+  it("build mode keeps input order", async () => {
+    (BascikConfig as Record<string, unknown>).isBuild = true;
+    try {
+      // The home page is listed after other pages and must stay there.
+      const pages = [
+        "src/pages/about.html",
+        "src/pages/faq.html",
+        "src/pages/index.html",
+        "src/pages/zed.html",
+      ];
+      const { readOrder, release } = await startGatedBatch(pages);
+      expect(readOrder).toEqual(["src/pages/about.html", "src/pages/faq.html"]);
+      const result = await release();
+      expect(readOrder).toEqual(pages);
+      expect(result).toEqual([
+        "pages/about.html",
+        "pages/faq.html",
+        "pages/index.html",
+        "pages/zed.html",
+      ]);
+    } finally {
+      (BascikConfig as Record<string, unknown>).isBuild = false;
+    }
   });
 
   it("reports only active per-page work time, excluding a shared batch wait", async () => {
@@ -1789,7 +1956,7 @@ describe("pageProcessing – live-reload script injection", () => {
     await pageProcessing(PAGE_PATH, {});
     const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock
       .calls[0][0];
-    const checkIdx = pageContent.indexOf("if (wasConnected)");
+    const checkIdx = pageContent.indexOf("if (wasConnected");
     const assignIdx = pageContent.indexOf("wasConnected = true");
     expect(checkIdx).toBeGreaterThan(-1);
     expect(assignIdx).toBeGreaterThan(-1);
@@ -2648,6 +2815,16 @@ describe("processAllPages – side effects", () => {
           };
         });
         this.terminate = vi.fn(async () => {});
+        // processAllPages starts the pool before expansion and trims it to the
+        // job count, so the stand-in tracks its size like the real one.
+        this.size = arguments[1];
+        this.shrink = vi.fn(async (n: number) => {
+          this.size = Math.min(this.size, n);
+        });
+        this.grow = vi.fn((n: number) => {
+          this.size = Math.max(this.size, n);
+        });
+        this.configure = vi.fn();
       });
 
       await processAllPages({ useWorkers: true });
@@ -2746,6 +2923,37 @@ describe("selectivelyProcessPages", () => {
       );
     } finally {
       importers.mockRestore();
+      (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>)
+        .mockReset()
+        .mockReturnValue([]);
+    }
+  });
+
+  it("also rebuilds every page with a server-script plan, which no component usage links to the edit (prompt 157)", async () => {
+    // /catalog never uses my-nav in its markup: its server script returns the
+    // tag at request time, so the only thing tying it to the edit is the
+    // manifest its publication built. A component-list invalidation must
+    // re-store it (with the next manifest) alongside the pages that use the
+    // component by name, and store each page once.
+    (
+      mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>
+    ).mockReturnValue(["src/pages/index.html"]);
+    (mem.pagesWithServerScriptPlan as ReturnType<typeof vi.fn>).mockReturnValue(
+      ["src/pages/catalog.html", "src/pages/index.html"],
+    );
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+    try {
+      await selectivelyProcessPages("src/components/my-nav.html");
+      const stored = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls
+        .map(([args]) => args.absolutePagePath)
+        .sort();
+      expect(stored).toEqual(
+        ["src/pages/catalog.html", "src/pages/index.html"].sort(),
+      );
+    } finally {
+      (mem.pagesWithServerScriptPlan as ReturnType<typeof vi.fn>)
+        .mockReset()
+        .mockReturnValue([]);
       (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>)
         .mockReset()
         .mockReturnValue([]);
@@ -2989,5 +3197,275 @@ describe("component load failures (a component build script that throws)", () =>
   it("does not publish when the batch has no pages, because nothing asked for the components", async () => {
     await expect(processPageBatch([])).resolves.toEqual([]);
     expect(await emitted()).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dev component manifest (prompt 157, D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("dev component manifest (prompt 157)", () => {
+  // In dev the manifest is built inside the same compile publication that
+  // re-stores pages, right after the component list is loaded, memoized on
+  // the ComponentList object (one build per publication, never per page).
+  // Building it stages every component server/stream script in
+  // `serverSidecarRegistry` as `component_script_<hex(name::ordinal)>`, which
+  // is how a request-rendered instance's nested job resolves. Each stored
+  // page carries the manifest of its own publication.
+  const hex = (text: string): string => Buffer.from(text).toString("hex");
+  const cardJobId = `component_script_${hex("server-card::1")}`;
+  const serverCardList = (marker: string) => ({
+    "server-card": {
+      fileName: "src/components/server-card/server-card.html",
+      fileContent: `<div class="card"><script data-bascik-server>export default () => '<p class="line">${marker}</p>';</script></div>`,
+      cssFileContent: ".card { margin: 0 } .line { color: red }",
+    },
+  });
+  const SERVER_PAGE_HTML =
+    '<!DOCTYPE html><html lang="en"><head></head><body>' +
+    "<script data-bascik-server>export default () => '<server-card></server-card>';</script>" +
+    "</body></html>";
+
+  let listComponentsSpy: ReturnType<typeof vi.spyOn>;
+  let buildManifest: ReturnType<typeof vi.fn>;
+  let serverSidecarRegistry: (typeof import("./server-sidecar.ts"))["serverSidecarRegistry"];
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    (BascikConfig as Record<string, unknown>).isBuild = false;
+    (BascikConfig as Record<string, unknown>).useWorkers = false;
+    const componentsModule = await import("./components.ts");
+    listComponentsSpy = vi
+      .spyOn(componentsModule, "listComponents")
+      .mockResolvedValue(serverCardList("v1"));
+    const manifestModule = await import("./component-manifest.ts");
+    buildManifest = manifestModule.buildComponentManifest as ReturnType<
+      typeof vi.fn
+    >;
+    buildManifest.mockClear();
+    ({ serverSidecarRegistry } = await import("./server-sidecar.ts"));
+    serverSidecarRegistry.clear();
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
+      "src/pages/index.html",
+      "src/pages/about.html",
+    ]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(SERVER_PAGE_HTML);
+  });
+
+  afterEach(() => {
+    listComponentsSpy.mockRestore();
+    serverSidecarRegistry.clear();
+  });
+
+  const storedManifests = () =>
+    (mem.storePage as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([args]) => args.componentManifest,
+    );
+
+  it("registers component_script ids in serverSidecarRegistry when the manifest is built, and attaches the manifest to every stored page", async () => {
+    await processAllPages({ useWorkers: false });
+
+    const staged = serverSidecarRegistry.getScript(cardJobId);
+    expect(
+      staged,
+      `${cardJobId} staged by the dev manifest build`,
+    ).toBeDefined();
+    expect(staged?.mode).toBe("server");
+    expect(staged?.source).toContain("v1");
+
+    const manifests = storedManifests();
+    expect(manifests).toHaveLength(2);
+    for (const manifest of manifests) {
+      expect(manifest?.components["server-card"]).toMatchObject({
+        name: "server-card",
+        jobs: [expect.objectContaining({ id: cardJobId, mode: "server" })],
+      });
+    }
+  });
+
+  it("builds the manifest once per publication, never per page, memoized on the ComponentList object", async () => {
+    await processAllPages({ useWorkers: false });
+    expect(buildManifest).toHaveBeenCalledTimes(1);
+    const [first, second] = storedManifests();
+    expect(first).toBeDefined();
+    expect(second).toBe(first);
+
+    // A selective batch under the same (unchanged) component list reuses it.
+    await processPageBatch(["src/pages/index.html"]);
+    expect(buildManifest).toHaveBeenCalledTimes(1);
+    expect(storedManifests()[2]).toBe(first);
+  });
+
+  it("re-registers component jobs and attaches a new manifest after a component-list invalidation", async () => {
+    await processAllPages({ useWorkers: false });
+    const [before] = storedManifests();
+    const firstStaged = serverSidecarRegistry.getScript(cardJobId);
+    expect(firstStaged, `${cardJobId} staged by the first build`).toBeDefined();
+    expect(firstStaged?.source).toContain("v1");
+
+    // The watcher invalidated the list (a component edit); the next
+    // publication loads a new ComponentList object with the edited script.
+    listComponentsSpy.mockResolvedValue(serverCardList("v2"));
+    await processAllPages({ useWorkers: false });
+
+    expect(buildManifest).toHaveBeenCalledTimes(2);
+    const staged = serverSidecarRegistry.getScript(cardJobId);
+    expect(staged?.source).toContain("v2");
+    expect(staged?.source).not.toContain("v1");
+    const after = storedManifests().at(-1);
+    expect(after).toBeDefined();
+    expect(after).not.toBe(before);
+    expect(after?.components["server-card"].jobs[0]?.id).toBe(cardJobId);
+  });
+
+  it("a page keeps its own publication's component scripts after a later publication re-stages the same ids (no mixed versions)", async () => {
+    // Job ids are stable across versions (name::ordinal) and the registry is
+    // global, so a manifest whose jobs were first resolved after the next
+    // publication staged its scripts would pair the old template with the
+    // new script. The jobs are resolved when the manifest is built.
+    const { loadComponentJobs } = await import("./request-render-node.ts");
+    await processAllPages({ useWorkers: false });
+    const [first] = storedManifests();
+    expect(first).toBeDefined();
+
+    listComponentsSpy.mockResolvedValue(serverCardList("v2"));
+    await processAllPages({ useWorkers: false });
+    const second = storedManifests().at(-1);
+    expect(second).not.toBe(first);
+    expect(serverSidecarRegistry.getScript(cardJobId)?.source).toContain("v2");
+
+    // First use of the older manifest, after v2 was staged.
+    const olderJob = loadComponentJobs(first!)[cardJobId];
+    expect(olderJob.scriptContent).toContain("v1");
+    expect(olderJob.scriptContent).not.toContain("v2");
+    expect(loadComponentJobs(second!)[cardJobId].scriptContent).toContain("v2");
+  });
+
+  it("a watched-path edit also re-stores every page with a server-script plan when some component has a build script (D6)", async () => {
+    // A component build script may read the edited file; only the manifest
+    // build ran it for a component met in script output, so no page
+    // depends on the file by name. Without one, only the dependents rebuild.
+    const componentsModule = await import("./components.ts");
+    const haveBuildScripts = vi
+      .spyOn(componentsModule, "componentsHaveBuildScripts")
+      .mockReturnValue(false);
+    (mem.pagesDependentOnFile as ReturnType<typeof vi.fn>).mockReturnValue([
+      "src/pages/about.html",
+    ]);
+    (mem.pagesWithServerScriptPlan as ReturnType<typeof vi.fn>).mockReturnValue(
+      ["src/pages/index.html"],
+    );
+    const stored = () =>
+      (mem.storePage as ReturnType<typeof vi.fn>).mock.calls
+        .map(([args]) => args.absolutePagePath)
+        .sort();
+    try {
+      await selectivelyProcessPagesForWatchPath("content/menu.json");
+      expect(stored()).toEqual(["src/pages/about.html"]);
+
+      (mem.storePage as ReturnType<typeof vi.fn>).mockClear();
+      haveBuildScripts.mockReturnValue(true);
+      await selectivelyProcessPagesForWatchPath("content/menu.json");
+      expect(stored()).toEqual(
+        ["src/pages/about.html", "src/pages/index.html"].sort(),
+      );
+    } finally {
+      haveBuildScripts.mockRestore();
+      (mem.pagesDependentOnFile as ReturnType<typeof vi.fn>)
+        .mockReset()
+        .mockReturnValue([]);
+      (mem.pagesWithServerScriptPlan as ReturnType<typeof vi.fn>)
+        .mockReset()
+        .mockReturnValue([]);
+    }
+  });
+
+  describe("a component build script that throws (scripts.onBuildScriptError: error)", () => {
+    const brokenFile = "src/components/broken-card/broken-card.html";
+    const brokenList = {
+      ...serverCardList("v1"),
+      "broken-card": {
+        fileName: brokenFile,
+        fileContent: `<div class="broken"><script data-bascik-build>Strin.fromCharCode(1)</script></div>`,
+      },
+    };
+    const STATIC_PAGE_HTML =
+      '<!DOCTYPE html><html lang="en"><head></head><body><p>static</p></body></html>';
+    const failure = () =>
+      new BuildScriptError(
+        `[bascik] build script error in "${brokenFile}" at (line 1, column 2):\nStrin is not defined`,
+        { sourceFile: brokenFile, line: 1, column: 2 },
+      );
+    const emitted = async () => {
+      const { eventEmitter } = await import("./events.ts");
+      return (eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([event]) => event === "build-error",
+      );
+    };
+    let execute: ReturnType<typeof vi.fn>;
+    let originalExecute: ReturnType<typeof execute.getMockImplementation>;
+
+    beforeEach(async () => {
+      listComponentsSpy.mockResolvedValue(brokenList);
+      (readFile as ReturnType<typeof vi.fn>).mockImplementation(
+        async (path: string) =>
+          String(path).includes("about") ? STATIC_PAGE_HTML : SERVER_PAGE_HTML,
+      );
+      const buildScripts = await import("./build-scripts.ts");
+      execute = buildScripts.executeBuildScripts as ReturnType<typeof vi.fn>;
+      originalExecute = execute.getMockImplementation();
+      execute.mockImplementation(async (html: string) => {
+        if (html.includes("Strin.")) throw failure();
+        return html;
+      });
+    });
+
+    afterEach(() => {
+      if (originalExecute) execute.mockImplementation(originalExecute);
+      else execute.mockReset();
+    });
+
+    const storedPaths = () =>
+      (mem.storePage as ReturnType<typeof vi.fn>).mock.calls.map(
+        ([args]) => args.absolutePagePath as string,
+      );
+
+    it("fails every server-script page of the publication with a build-error naming the component file and line; a static page still stores", async () => {
+      // The manifest covers every component (any of them can be returned),
+      // so, as under --build, one that cannot be built stops the pages that
+      // render at request time, even those that never return its tag.
+      await processAllPages({ useWorkers: false });
+
+      const stored = storedPaths();
+      expect(stored.some((path) => path.includes("about"))).toBe(true);
+      expect(stored.some((path) => path.includes("index"))).toBe(false);
+      const errors = await emitted();
+      expect(errors).toHaveLength(1);
+      expect(errors[0][1]).toEqual({
+        message: expect.stringContaining("Strin is not defined"),
+        file: brokenFile,
+        line: 1,
+        column: 2,
+      });
+    });
+
+    it("recovers on the next batch without a restart: the failed build is not kept", async () => {
+      await processAllPages({ useWorkers: false });
+      expect(buildManifest).toHaveBeenCalledTimes(1);
+      expect(storedPaths().some((path) => path.includes("index"))).toBe(false);
+
+      // The author fixes the script; the same ComponentList object is
+      // reused (no component-list invalidation in between), so only the
+      // dropped rejection lets this batch build the manifest again.
+      execute.mockImplementation(async (html: string) => html);
+      await processPageBatch(["src/pages/index.html"]);
+
+      expect(buildManifest).toHaveBeenCalledTimes(2);
+      const last = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls.at(
+        -1,
+      )?.[0];
+      expect(last?.absolutePagePath).toContain("index");
+      expect(last?.componentManifest?.components["broken-card"]).toBeDefined();
+    });
   });
 });

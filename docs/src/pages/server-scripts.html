@@ -23,6 +23,14 @@
       content="Run Node.js code on each request with data-bascik-server scripts. Personalize HTML pages without client JavaScript."
     />
     <title>Server Scripts: Request-Time Node.js in HTML - Bascik</title>
+    <style>
+      .rtc-preview-grid {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+      }
+    </style>
   </head>
 
   <body>
@@ -115,7 +123,217 @@
             export default async () =>
               await renderMdRange(
                 "./content/server-scripts.md",
-                { from: "Handler Signature" },
+                { from: "Handler Signature", to: "Escaping and injection" },
+                { stripDemoBlocks: true },
+              );
+          </script>
+          <!-- No Preview: this static site runs no server script. -->
+          <component-demo
+            data-bascik-prop-no-preview="true"
+            data-bascik-prop-file="src/pages/hello.html"
+          >
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/server-scripts.md",
+                      "ts-server-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/server-scripts.md",
+                      "ts-server-output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/server-scripts.md",
+                {
+                  from: "Escaping and injection",
+                  to: "Render a card per search result",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/server-scripts.md",
+                {
+                  from: "Render a card per search result",
+                  to: "A card with its own server script",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+          <!-- The Preview is the docs site's own static build of the tags the search script returns. -->
+          <component-demo data-bascik-prop-file="src/pages/search.html">
+            <div data-bascik-slot="example">
+              <div class="rtc-preview-grid">
+                <product-card
+                  data-bascik-prop-name="Milk frother"
+                  data-bascik-prop-price="$129"
+                  >Best seller</product-card
+                >
+                <product-card
+                  data-bascik-prop-name="Pour-over kettle"
+                  data-bascik-prop-price="$48"
+                  >New</product-card
+                >
+                <product-card
+                  data-bascik-prop-name="Glass carafe"
+                  data-bascik-prop-price="$31"
+                ></product-card>
+              </div>
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/server-scripts.md",
+                      "rtc-search-source-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/server-scripts.md",
+                      "rtc-search-source-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/server-scripts.md",
+                      "rtc-search-source-css",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-js">
+              <code-block data-bascik-prop-lang="js">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/server-scripts.md",
+                      "rtc-search-source-js",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/server-scripts.md",
+                      "rtc-search-output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/server-scripts.md",
+                {
+                  from: "A card with its own server script",
+                  to: "Rules for returned tags",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+          <!-- No Preview: the stock line exists only per request, and this static site runs no server script. -->
+          <component-demo
+            data-bascik-prop-no-preview="true"
+            data-bascik-prop-file="src/pages/featured.html"
+          >
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/server-scripts.md",
+                      "rtc-live-source-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/server-scripts.md",
+                      "rtc-live-source-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/server-scripts.md",
+                      "rtc-live-source-css",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/server-scripts.md",
+                      "rtc-live-output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/server-scripts.md",
+                { from: "Rules for returned tags" },
                 { stripDemoBlocks: true },
               );
           </script>

@@ -8,6 +8,7 @@ import {
   runRealBuild,
   writeFixtureFile,
 } from "./build-fixtures.ts";
+import { privateDirFor } from "./private-dir.ts";
 
 // A route's `data` reaches build scripts as BASCIK_ROUTE. Linux limits one
 // environment string to 128 KiB (MAX_ARG_STRLEN) and macOS limits the whole
@@ -111,10 +112,20 @@ describe("directive scripts inside printed build output", () => {
     await expect(readFile(join(root, "CANARY"), "utf8")).rejects.toMatchObject({
       code: "ENOENT",
     });
+    // The private folder beside dist/ holds the sidecar. The build state
+    // proves this is the folder the build wrote; only a missing sidecar
+    // (nothing registered) stands in for an empty one.
+    const privateDir = privateDirFor(join(root, "dist"));
+    expect(
+      await readFile(join(privateDir, "build-state.json"), "utf8"),
+    ).toContain('"mode": "build"');
     const sidecar = await readFile(
-      join(root, "dist/.bascik/server-scripts.json"),
+      join(privateDir, "server-scripts.json"),
       "utf8",
-    ).catch(() => "{}");
+    ).catch((err: NodeJS.ErrnoException) => {
+      if (err.code === "ENOENT") return "";
+      throw err;
+    });
     expect(sidecar).not.toContain("SERVER RAN");
     expect(`${stdout}${stderr}`).toMatch(
       /contained <script data-bascik-build>, <script data-bascik-server>/,

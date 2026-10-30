@@ -18,7 +18,7 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { BascikConfig } from "./config.ts";
 import { deepReadDirFlat } from "./file-system.ts";
-import { deriveComponentName } from "./components.ts";
+import { COMPONENT_FILE_RE, deriveComponentName } from "./components.ts";
 
 export interface AddOptions {
   cwd?: string;
@@ -255,10 +255,9 @@ export const addComponents = async (
 
   // Find all existing local component files to build the existing tag collision map
   const localComponentFiles = existsSync(targetComponentsDir)
-    ? ((await deepReadDirFlat(
-        targetComponentsDir,
-        /\.(html|css|js|ts|mjs)$/,
-      ).catch(() => [])) ?? [])
+    ? ((await deepReadDirFlat(targetComponentsDir, COMPONENT_FILE_RE).catch(
+        () => [],
+      )) ?? [])
     : [];
 
   const existingLocalHtmlFiles = (localComponentFiles as string[]).filter(
@@ -292,8 +291,7 @@ export const addComponents = async (
 
     // List all component files in the package's advertised components directory
     const packageFiles =
-      (await deepReadDirFlat(pkgComponentsDir, /\.(html|css|js|ts|mjs)$/)) ??
-      [];
+      (await deepReadDirFlat(pkgComponentsDir, COMPONENT_FILE_RE)) ?? [];
 
     if (packageFiles.length === 0) {
       throw new Error(

@@ -14,16 +14,24 @@ export default defineConfig({
       reporter: ["text", "json-summary", "lcov"],
       reportsDirectory: "./coverage",
       include: ["src/**/*.ts"],
-      exclude: ["src/**/*.test.ts"],
+      // Test helpers too: a calibrated cost ratio's reference work
+      // (linear-time.test-helper.ts) must run at the same speed with and
+      // without coverage.
+      exclude: ["src/**/*.test.ts", "src/**/*.test-helper.ts"],
     },
     projects: [
       {
         test: {
           name: "unit",
-          include: ["src/**/*.test.ts"],
-          exclude: ["src/**/*.integration.test.ts"],
+          include: ["src/**/*.test.ts", "e2e/scripts/**/*.test.ts"],
+          exclude: [
+            "src/**/*.integration.test.ts",
+            "src/**/*.linear-time.test.ts",
+          ],
           // Recompute every reused scoping result and fail on any difference (scoping-template.ts).
           env: { BASCIK_VERIFY_SCOPING_TEMPLATES: "1" },
+          // Whether the run collects coverage, for calibrated cost ratios.
+          globalSetup: ["./vitest.coverage-setup.ts"],
         },
       },
       {
@@ -34,6 +42,23 @@ export default defineConfig({
           // without this `vitest bench` runs every benchmark twice.
           benchmark: { exclude: ["bench/**"] },
           env: { BASCIK_VERIFY_SCOPING_TEMPLATES: "1" },
+          globalSetup: ["./vitest.coverage-setup.ts"],
+        },
+      },
+      {
+        test: {
+          // Checks that work grows linearly on hostile input
+          // (src/lib/linear-time.test-helper.ts). They time CPU growth over
+          // several samples, which takes seconds per check on Windows (15.6 ms
+          // CPU clock ticks), so they run apart from `unit`, once, on Linux.
+          name: "linear-time",
+          include: ["src/**/*.linear-time.test.ts"],
+          benchmark: { exclude: ["bench/**"] },
+          // No project-wide testTimeout: each check passes
+          // LINEAR_TIME_TIMEOUT_MS, which the helper requires, and the helper
+          // refuses to measure in the `unit` project at all.
+          env: { BASCIK_VERIFY_SCOPING_TEMPLATES: "1" },
+          globalSetup: ["./vitest.coverage-setup.ts"],
         },
       },
     ],

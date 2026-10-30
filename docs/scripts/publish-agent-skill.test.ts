@@ -65,6 +65,9 @@ describe("publish-agent-skill", () => {
         true,
       );
     expect(files.has("bascik/scripts/verify.mjs")).toBe(true);
+    // The opt-in skill new projects leave out still ships in the tarball.
+    expect(files.has("bascik-refactor/SKILL.md")).toBe(true);
+    expect(files.has("bascik-refactor/scripts/compare-route.mjs")).toBe(true);
   });
 
   it("publishes an RFC 8615 /.well-known/agent-skills/ index whose archives match their digests", async () => {
@@ -75,6 +78,9 @@ describe("publish-agent-skill", () => {
       await fs.readFile(path.join(wellKnown, "index.json"), "utf8"),
     );
     expect(index.$schema).toBe(DISCOVERY_SCHEMA);
+    expect(index.skills.map((skill: { name: string }) => skill.name)).toContain(
+      "bascik-refactor",
+    );
     expect(index.skills.map((skill: { name: string }) => skill.name)).toEqual(
       await listSkillNames(skillsDir),
     );

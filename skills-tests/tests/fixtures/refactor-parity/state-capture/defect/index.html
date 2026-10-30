@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Northwind Tasks</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 Helvetica,
+          Arial,
+          sans-serif;
+      }
+      .n_x1 {
+        position: relative;
+        display: flex;
+        gap: 24px;
+        padding: 16px 40px;
+      }
+      .t_x2 {
+        font: inherit;
+        padding: 8px 12px;
+        border: 0;
+        background: none;
+        cursor: pointer;
+      }
+      .m_x3 {
+        position: absolute;
+        top: 56px;
+        left: 40px;
+        width: 260px;
+        margin: 0;
+        padding: 12px;
+        list-style: none;
+        background: #ffffff;
+        border-radius: 0;
+        animation: menu-in 0.3s ease-out;
+      }
+      .m_x3[hidden] {
+        display: none;
+      }
+      .m_x3 a {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px;
+        color: #1d2433;
+        text-decoration: none;
+      }
+      .m_x3 svg,
+      .m_x3 img {
+        width: 16px;
+        height: 16px;
+      }
+      .m_x3 .wp_x4::before {
+        content: "";
+        width: 16px;
+        height: 16px;
+        background: url("icons/report.svg") center / contain no-repeat;
+      }
+      @keyframes menu-in {
+        from {
+          opacity: 0;
+          transform: translateY(-6px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <nav class="n_x1" aria-label="Main">
+        <button
+          type="button"
+          class="t_x2"
+          aria-expanded="false"
+          aria-controls="products-menu"
+        >
+          Products
+        </button>
+        <ul class="m_x3" id="products-menu" hidden>
+          <li>
+            <a href="/boards">Boards</a>
+          </li>
+          <li><a href="/timelines">Timelines</a></li>
+          <li><a href="/reports" class="wp_x4">Reports</a></li>
+        </ul>
+        <a href="/pricing">Pricing</a>
+      </nav>
+    </header>
+    <main><h1>Plan work your team can see</h1></main>
+    <script>
+      const trigger = document.querySelector(".t_x2");
+      trigger.addEventListener("click", () => {
+        const open = trigger.getAttribute("aria-expanded") === "true";
+        trigger.setAttribute("aria-expanded", String(!open));
+        document.getElementById("products-menu").hidden = open;
+      });
+    </script>
+  </body>
+</html>

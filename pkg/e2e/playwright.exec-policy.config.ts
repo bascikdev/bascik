@@ -14,6 +14,9 @@ process.env.BASCIK_VERIFY_SCOPING_TEMPLATES ??= "1";
 
 export default defineConfig({
   testDir: "./tests",
+  // Own results dir (pkg/test-results/exec-policy): Playwright clears its outputDir at
+  // run start and keeps .last-run.json there, so lanes must not share one.
+  outputDir: "../test-results/exec-policy",
   testMatch: "**/exec-error-policy.test.ts",
   workers: 1,
   fullyParallel: false,

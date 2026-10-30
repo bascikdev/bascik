@@ -4,10 +4,12 @@
  * The request handler that runs inside a Cloudflare Worker (prompt 134).
  * ─────────────────────────────────────────────────────────────────────────────
  *
- * Portable: no Node imports. It is bundled into the generated `_worker.js`
- * together with the site graph emitted by `serverless-artifacts.ts`, and it
- * drives the same execution core the Node server uses
- * (`lib/request-execution.ts`).
+ * Portable: no Node imports (the request-time component host,
+ * component-host.ts, uses `node:crypto` under `nodejs_compat` and is bundled
+ * only for sites with components, prompt 157). It is bundled into the
+ * generated `_worker.js` together with the site graph emitted by
+ * `serverless-artifacts.ts`, and it drives the same execution core the Node
+ * server uses (`lib/request-execution.ts`).
  *
  * Request flow inside the Worker:
  *
@@ -29,16 +31,21 @@
  * and `process.env` is never touched.
  */
 
+import { componentExecution } from "./component-host.js";
 import {
+  applyOutputScope,
+  decodeOutputScope,
   composeBufferedResponse,
   dispatchApiHandler,
-  invokeWithDeadline,
+  invokeLoadedWithDeadline,
+  scriptTimeoutError,
   streamComposedResponse,
   type ApiHandlerContext,
   type ApiHandlerModule,
   type ExecutionPlan,
   type ExecutionSegment,
   type PlatformContext,
+  type RenderHost,
   type ScriptJobRunner,
   dynamicPageHeaders,
   errorResponse,
@@ -46,13 +53,33 @@ import {
   mergeHandlerHeaders,
   stripRepresentationHeaders,
   GENERATED_CONTROL_PATHS,
-  hasHiddenSegment,
+  isPrivatePathname,
   isUnsafePathname,
   InvalidApiPathError,
   matchApiRoute,
   pageLookupCandidates,
+  stripAnsiEscapeCodes,
+  contentSecurityPolicyHeader,
+  DEFAULT_RESPONSE_SECURITY,
   type ApiRouteDefinition,
+  type ContentSecurityPolicyConfig,
+  type CspRouteHashes,
+  type RequestRenderLimits,
+  type ResponseSecurity,
 } from "@bascik/bascik/runtime";
+
+/**
+ * A job's output with its component's element classes applied, when the job
+ * carries an output scope, as `runServerScriptJob` does on Node. It lives
+ * here, not in component-host.ts, because page jobs carry a scope too (that
+ * of a component placed statically on the page) whether or not the manifest
+ * has anything renderable: a Worker built with the component-host stub must
+ * still scope them. Both helpers are portable (no `node:crypto`).
+ */
+const scopeJobOutput = (job: GraphScriptJob, output: string): string => {
+  const scope = decodeOutputScope(job.outputScope);
+  return scope ? applyOutputScope(output, scope) : output;
+};
 
 // ─── Site graph contract (emitted by serverless-artifacts.ts) ────────────────
 
@@ -60,8 +87,35 @@ import {
 export interface GraphScriptJob {
   id: string;
   mode: "server" | "stream";
+  /**
+   * The component's element classes for this job's output (prompt 157):
+   * set on component scripts, and on a page job a component placed
+   * statically, so their returned markup is styled like the component's own.
+   */
+  outputScope?: string;
+  /**
+   * Where a component script is authored (`server script in
+   * src/components/x.html:12`), set on component jobs (prompt 157): the
+   * bundled stack names only the Worker file, so a failure is located from
+   * this instead.
+   */
+  owner?: string;
   /** Loader for the compiled module; `default` is the handler. */
   load: () => Promise<{ default: unknown }>;
+}
+
+/** The build's component manifest, as the portable renderer reads it. */
+export type ComponentManifest = NonNullable<RenderHost["manifest"]>;
+
+/**
+ * Request-time components (prompt 157): the manifest, emitted by build.ts
+ * only when it lists a component, and the component scripts it names, keyed
+ * by job id. They belong to no page: any page's script may return any
+ * component.
+ */
+export interface GraphComponents {
+  manifest: ComponentManifest;
+  jobs: Record<string, GraphScriptJob>;
 }
 
 export interface GraphPageSegment {
@@ -104,6 +158,38 @@ export interface SiteGraph {
   staticNotFoundPage?: boolean;
   /** Release identity for diagnostics headers. */
   release: string;
+  /** Present when the site renders component tags in script output. */
+  components?: GraphComponents;
+  /**
+   * Opt-in `contentSecurityPolicy`: the policy and the build hashes of each
+   * page the Worker renders (static pages carry theirs in _headers).
+   */
+  contentSecurityPolicy?: {
+    policy: ContentSecurityPolicyConfig;
+    hashes: Record<string, CspRouteHashes>;
+  };
+  /**
+   * The build's `security.headers`, `security.hsts` and
+   * `security.privateDynamicPages`, resolved. Absent: the defaults.
+   */
+  responseSecurity?: ResponseSecurity;
+  /**
+   * Set when the Worker runs before every static file (`run_worker_first:
+   * true` in the authored wrangler config): the build writes no `_headers`
+   * rules, and the Worker adds the security headers, and each listed static
+   * page's CSP, to what the asset layer returns. A header the response
+   * already has (from the author's own `_headers`) is kept.
+   */
+  assetHeaders?: {
+    /** Static pages (paths without the base) whose CSP the Worker sends. */
+    cspRoutes: string[];
+  };
+  /** The build's `security.hideDotfiles`. Absent: true. */
+  hideDotfiles?: boolean;
+  /** The build's `scripts.stripAnsi`. Absent: true. */
+  stripAnsi?: boolean;
+  /** The build's `scripts.renderLimits`. Absent: the defaults. */
+  renderLimits?: Partial<RequestRenderLimits>;
 }
 
 // ─── Cloudflare runtime types (subset, kept local to avoid a type dependency) ─
@@ -177,11 +263,79 @@ const findPage = (
   return undefined;
 };
 
+const missingJob = (id: string): Error =>
+  new Error(
+    `[bascik] server script job "${id}" is missing from the deployment graph.`,
+  );
+
 /**
- * Build a `ScriptJobRunner` for one request. Output handling mirrors
- * `runServerScriptJob`: a string or stringifiable value is the fragment;
- * failure under `onServerScriptError: "error"` throws (500 before commit,
- * empty after), `warn` logs and yields empty, `ignore` yields empty.
+ * Run one graph job under `timeoutMs`. Output handling mirrors
+ * `runServerScriptJob`: a string or stringifiable value is the fragment,
+ * stripped of ANSI escapes, and a job carrying an output scope (a
+ * component's script, prompt 157) gets the component's element classes
+ * applied; a failing job with an owner is located by it; failure under
+ * `onServerScriptError: "error"` throws (500 before commit, empty after),
+ * `warn` logs and yields empty, `ignore` yields empty.
+ */
+const runGraphJob = async (
+  job: GraphScriptJob,
+  id: string,
+  graph: SiteGraph,
+  request: Request,
+  context: { remoteIp: string; platform: PlatformContext },
+  log: (message: string) => void,
+  signal: AbortSignal,
+  timeoutMs: number,
+): Promise<string> => {
+  // The load and the handler run under one deadline, and the handler's own
+  // promise is settled by the shared rule: once the deadline fires or the
+  // client aborts, that is the outcome, exactly as on Node. Calling the
+  // handler directly (not from an async wrapper) keeps a value settled just
+  // before the deadline from being mistaken for a timeout.
+  const result = await invokeLoadedWithDeadline(
+    () => job.load(),
+    (mod, { signal: jobSignal }) => {
+      const handler = mod.default;
+      if (typeof handler !== "function") {
+        throw new TypeError(
+          `Server script "${id}" does not export a default function.`,
+        );
+      }
+      return handler(request, context, { signal: jobSignal });
+    },
+    // Node's message, so a log reads the same on both hosts.
+    { timeoutMs, signal, timeoutError: scriptTimeoutError },
+  );
+  if (result.ok) {
+    const value = result.value;
+    const output =
+      typeof value === "string"
+        ? value
+        : value !== undefined && value !== null
+          ? String(value)
+          : "";
+    // scripts.stripAnsi off: the codes reach the page as printed.
+    return scopeJobOutput(
+      job,
+      graph.stripAnsi === false ? output : stripAnsiEscapeCodes(output),
+    );
+  }
+  if (result.aborted && !result.timedOut) return "";
+  const error = result.error ?? new Error("Server script failed");
+  // Node maps the stack to the authored file; here it names only the bundle,
+  // so a component job (a timeout, a throw or a missing default export deep
+  // inside a rendered tag) is placed by the owner the build recorded.
+  const where = job.owner ? `\n    in the ${job.owner}` : "";
+  const message = `[bascik] server script error at "${new URL(request.url).pathname}":\n${error.stack ?? error.message}${where}`;
+  if (graph.onServerScriptError === "error") throw new Error(message);
+  if (graph.onServerScriptError === "warn") log(message);
+  return "";
+};
+
+/**
+ * Build a `ScriptJobRunner` for one request: the page's own jobs, then the
+ * component scripts of `graph.components` (prompt 157), under the graph's
+ * script deadline and error policy (see `runGraphJob`).
  */
 export const createGraphJobRunner = (
   page: GraphPage,
@@ -191,39 +345,61 @@ export const createGraphJobRunner = (
   log: (message: string) => void,
 ): ScriptJobRunner => {
   return async (id, signal) => {
-    const job = page.jobs[id];
-    if (!job)
-      throw new Error(
-        `[bascik] server script job "${id}" is missing from the deployment graph.`,
-      );
-    const result = await invokeWithDeadline(
-      async ({ signal: jobSignal }) => {
-        const mod = await job.load();
-        const handler = mod.default;
-        if (typeof handler !== "function") {
-          throw new TypeError(
-            `Server script "${id}" does not export a default function.`,
-          );
-        }
-        return handler(request, context, { signal: jobSignal });
-      },
-      { timeoutMs: graph.scriptTimeoutMs, signal },
+    const job = page.jobs[id] ?? graph.components?.jobs[id];
+    if (!job) throw missingJob(id);
+    return runGraphJob(
+      job,
+      id,
+      graph,
+      request,
+      context,
+      log,
+      signal,
+      graph.scriptTimeoutMs,
     );
-    if (result.ok) {
-      const value = result.value;
-      return typeof value === "string"
-        ? value
-        : value !== undefined && value !== null
-          ? String(value)
-          : "";
-    }
-    if (result.aborted && !result.timedOut) return "";
-    const error = result.error ?? new Error("Server script failed");
-    const message = `[bascik] server script error at "${new URL(request.url).pathname}":\n${error.stack ?? error.message}`;
-    if (graph.onServerScriptError === "error") throw new Error(message);
-    if (graph.onServerScriptError === "warn") log(message);
-    return "";
   };
+};
+
+/**
+ * The page's plan and runner for one request. With a component manifest
+ * that has something to render (prompt 157), the runner is wrapped so
+ * component tags in job output are rendered (component-host.ts), and the
+ * component scripts run like page jobs with the parent's remaining budget.
+ * Without one, plan and runner are exactly what they always were.
+ */
+export const createPageExecution = (
+  page: GraphPage,
+  graph: SiteGraph,
+  request: Request,
+  context: { remoteIp: string; platform: PlatformContext },
+  log: (message: string) => void,
+): { plan: ExecutionPlan; run: ScriptJobRunner } => {
+  const run = createGraphJobRunner(page, graph, request, context, log);
+  const components = graph.components;
+  const rendered = components
+    ? componentExecution(
+        page,
+        graph,
+        request,
+        run,
+        (id, signal, budgetMs) => {
+          const job = components.jobs[id];
+          if (!job) return Promise.reject(missingJob(id));
+          return runGraphJob(
+            job,
+            id,
+            graph,
+            request,
+            context,
+            log,
+            signal,
+            budgetMs,
+          );
+        },
+        log,
+      )
+    : null;
+  return rendered ?? { plan: toExecutionPlan(page), run };
 };
 
 export interface CreateWorkerOptions {
@@ -240,6 +416,22 @@ export const createCloudflareWorker = (
   options: CreateWorkerOptions = {},
 ): CloudflareWorker => {
   const log = options.log ?? ((message: string) => console.error(message));
+  // The build's response security (absent: every default); passed to every
+  // response builder so pages, API responses and errors agree with Node.
+  const security = graph.responseSecurity;
+  const hideDotfiles = graph.hideDotfiles !== false;
+  const assetCspRoutes = new Set(graph.assetHeaders?.cspRoutes ?? []);
+
+  /** The opt-in CSP header, from the build's hashes for this page (never its body). */
+  const setPageCsp = (headers: Headers, path: string): void => {
+    const csp = graph.contentSecurityPolicy;
+    if (!csp) return;
+    const { name, value } = contentSecurityPolicyHeader(
+      csp.policy,
+      csp.hashes[path],
+    );
+    headers.set(name, value);
+  };
 
   const forwardToAssets = async (
     request: Request,
@@ -251,9 +443,47 @@ export const createCloudflareWorker = (
       );
       return errorResponse(500, "Internal Server Error", {
         https: isHttps(request),
+        security,
       });
     }
-    return env.ASSETS.fetch(request);
+    const response = await env.ASSETS.fetch(request);
+    return graph.assetHeaders ? withAssetHeaders(request, response) : response;
+  };
+
+  /** The headers _headers would have given a static file, sent by the Worker instead. */
+  const withAssetHeaders = (request: Request, response: Response): Response => {
+    const headers = new Headers(response.headers);
+    const resolved = security ?? DEFAULT_RESPONSE_SECURITY;
+    for (const [name, value] of Object.entries(resolved.headers))
+      if (!headers.has(name)) headers.set(name, value);
+    if (
+      isHttps(request) &&
+      resolved.hsts !== null &&
+      !headers.has("strict-transport-security")
+    )
+      headers.set("strict-transport-security", resolved.hsts);
+    const csp = graph.contentSecurityPolicy;
+    let path: string | null = null;
+    try {
+      path = stripBase(
+        decodeURIComponent(new URL(request.url).pathname),
+        graph.base,
+      );
+    } catch {
+      path = null;
+    }
+    if (csp && path !== null && assetCspRoutes.has(path)) {
+      const { name, value } = contentSecurityPolicyHeader(
+        csp.policy,
+        csp.hashes[path],
+      );
+      if (!headers.has(name)) headers.set(name, value);
+    }
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
   };
 
   const fetchHandler = async (
@@ -267,23 +497,24 @@ export const createCloudflareWorker = (
     try {
       pathname = decodeURIComponent(url.pathname);
     } catch {
-      return errorResponse(400, "Bad Request", { https });
+      return errorResponse(400, "Bad Request", { https, security });
     }
     if (isUnsafePathname(pathname))
-      return errorResponse(400, "Bad Request", { https });
+      return errorResponse(400, "Bad Request", { https, security });
     // Same rule as the Node server: dot segments are private except a leading
-    // RFC 8615 /.well-known/ below the site root, which the asset layer serves.
-    if (hasHiddenSegment(pathname, graph.base))
-      return errorResponse(404, "Not Found", { https });
+    // RFC 8615 /.well-known/ below the site root, which the asset layer serves
+    // (with security.hideDotfiles off, only a first `.bascik` segment is).
+    if (isPrivatePathname(pathname, graph.base, hideDotfiles))
+      return errorResponse(404, "Not Found", { https, security });
 
     const baseRelative = stripBase(pathname, graph.base);
     if (baseRelative === null)
-      return errorResponse(404, "Not Found", { https });
+      return errorResponse(404, "Not Found", { https, security });
     // The bundle and its routing table are deployment control files, never
     // content. Refusing them here makes the guarantee independent of how a
     // host treats underscore-prefixed uploads.
     if (CONTROL_PATHS.has(baseRelative))
-      return errorResponse(404, "Not Found", { https });
+      return errorResponse(404, "Not Found", { https, security });
 
     const platform: PlatformContext = {
       name: "cloudflare",
@@ -300,7 +531,7 @@ export const createCloudflareWorker = (
       apiMatch = matchApiRoute(graph.apiRoutes, pathname, url.pathname);
     } catch (err) {
       if (!(err instanceof InvalidApiPathError)) throw err;
-      return errorResponse(400, "Bad Request", { https });
+      return errorResponse(400, "Bad Request", { https, security });
     }
     if (apiMatch) {
       const route = apiMatch.route as GraphApiRoute;
@@ -311,7 +542,7 @@ export const createCloudflareWorker = (
         log(
           `[bascik] Failed to load API route module ${route.filePath}: ${(err as Error).stack ?? String(err)}`,
         );
-        return errorResponse(500, "Internal Server Error", { https });
+        return errorResponse(500, "Internal Server Error", { https, security });
       }
       const context: ApiHandlerContext = {
         params: apiMatch.params,
@@ -326,7 +557,10 @@ export const createCloudflareWorker = (
             `[bascik] ${message}${error ? `\n${(error as Error).stack ?? String(error)}` : ""}`,
           ),
       });
-      const headers = mergeHandlerHeaders(response.headers, { https });
+      const headers = mergeHandlerHeaders(response.headers, {
+        https,
+        security,
+      });
       return new Response(request.method === "HEAD" ? null : response.body, {
         status: response.status,
         statusText: response.statusText,
@@ -343,7 +577,7 @@ export const createCloudflareWorker = (
       ) {
         if (request.method !== "GET" && request.method !== "HEAD") {
           const headers = new Headers(
-            errorResponse(405, "", { https }).headers,
+            errorResponse(405, "", { https, security }).headers,
           );
           headers.set("allow", "GET, HEAD");
           return new Response("Method Not Allowed", { status: 405, headers });
@@ -372,14 +606,15 @@ export const createCloudflareWorker = (
 
     const isHead = request.method === "HEAD";
     if (request.method !== "GET" && !isHead) {
-      const headers = new Headers(errorResponse(405, "", { https }).headers);
+      const headers = new Headers(
+        errorResponse(405, "", { https, security }).headers,
+      );
       headers.set("allow", "GET, HEAD");
       return new Response("Method Not Allowed", { status: 405, headers });
     }
 
     const status = page.is404 ? 404 : 200;
-    const plan = toExecutionPlan(page);
-    const run = createGraphJobRunner(
+    const { plan, run } = createPageExecution(
       page,
       graph,
       request,
@@ -393,12 +628,14 @@ export const createCloudflareWorker = (
         body = await composeBufferedResponse(plan, run, request.signal);
       } catch (err) {
         log(err instanceof Error ? err.message : String(err));
-        return internalErrorPage(graph.custom500, { https });
+        return internalErrorPage(graph.custom500, { https, security });
       }
       const headers = dynamicPageHeaders({
         https,
+        security,
         contentLength: body.byteLength,
       });
+      setPageCsp(headers, page.path);
       return new Response(isHead ? null : body, { status, headers });
     }
 
@@ -414,9 +651,12 @@ export const createCloudflareWorker = (
       await streamer.ready;
     } catch (err) {
       log(err instanceof Error ? err.message : String(err));
-      return internalErrorPage(graph.custom500, { https });
+      return internalErrorPage(graph.custom500, { https, security });
     }
-    const headers = stripRepresentationHeaders(dynamicPageHeaders({ https }));
+    const headers = stripRepresentationHeaders(
+      dynamicPageHeaders({ https, security }),
+    );
+    setPageCsp(headers, page.path);
     // The edge compresses Worker responses on the fly and, for a streamed
     // body, holds every byte until the stream closes (observed in workerd:
     // only the gzip header leaves early). An explicit identity encoding opts

@@ -7,7 +7,7 @@ description: Architecture, IPC communication, lifecycle management, and error ha
 
 # Node.js Worker Pool & Thread Orchestration in Bascik
 
-Bascik accelerates multi-page builds using Node.js `worker_threads` via `pkg/src/lib/worker-pool.ts` and `pkg/src/lib/page-worker.ts`. By distributing heavy AST parsing, PostCSS transformations, and JS scoping across available CPU cores, build throughput scales linearly with core count.
+Bascik accelerates multi-page builds using Node.js `worker_threads` via `pkg/src/lib/worker-pool.ts` and `pkg/src/lib/page-worker.ts`. By distributing heavy HTML parsing, CSS scoping, and JS scoping across available CPU cores, build throughput scales linearly with core count.
 
 ---
 
@@ -24,7 +24,7 @@ Bascik accelerates multi-page builds using Node.js `worker_threads` via `pkg/src
 
 ### Message Structure
 
-Each worker is initialized once with `workerData = { componentList, globalStylesHtml }` and then receives one `PageJob` (or a bare page path string) per `postMessage`. The pool tracks exactly one in-flight job per worker, so replies carry no correlation id. Shapes below are the real exports from `page-worker.ts`:
+The pool is started before the component list is loaded, so a worker gets its compile inputs from a settings message, `{ kind: "bascik:page-worker-init", componentList, globalStylesHtml }`, posted with `WorkerPool.configure` before any page (`page-worker-messages.ts`). It then receives one `PageJob` (or a bare page path string) per `postMessage`. Settings messages get no reply; `configure` replays them, in order, to any replacement worker before its first task. A page that arrives before the init message is failed, never compiled without components. The pool tracks exactly one in-flight job per worker, so replies carry no correlation id. Shapes below are the real exports from `page-worker.ts`:
 
 ```ts
 // Request: a PageJob from processing.ts (cloned; small)
@@ -70,10 +70,12 @@ Worker threads run in isolated V8 contexts. When working on worker tasks, keep t
 
 ## 3. Worker Lifecycle & Pool Sizing
 
-- **Pool Size:** Defaults to `Math.max(1, os.cpus().length - 1)` to prevent CPU starvation on host systems while reserving 1 core for watcher/main thread I/O.
+- **Pool Size:** `processAllPages` starts the pool as soon as the page list is known (before component loading and route expansion) with one worker per page, capped by `os.cpus().length` and `SYSTEM_MAX_CHILD_PROCESSES`; never fewer than 1. Starting at the page count rather than the CPU count keeps a small site with a dynamic route from loading the compiler in workers it never uses (a worker cannot be stopped until it has loaded). After expansion the pool is fitted to the job count with the same caps: `WorkerPool.grow` adds workers when a dynamic route expanded to more jobs than there are pages, `WorkerPool.shrink` trims it when a routes script found no routes. On any change the workers get a `bascik:child-worker-count` settings message so each re-divides the build-script child budget. A resized pool replaces crashed workers only up to its new size.
+- **Never stop a worker that is still loading:** Node 24 can abort the whole process (`Check failed: (location_) != nullptr`) when a worker is terminated, or the process exits, while the worker is still evaluating an ES module graph with top-level await, and the page worker's graph has them. `page-worker.ts` posts `{ ready: true }` once its entry module has evaluated; with `readySignal: true` (set by `processAllPages`) the pool waits for that signal, up to a 10 s grace period, before terminating a trimmed worker or tearing the pool down. The signal is not a task result.
 - **Worker Recycling & Error Boundaries:**
   - If a worker encounters an unhandled exception or termination (`worker.on('error')`, `worker.on('exit')` with non-zero exit code), the pool must reject the active task, remove the dead worker instance, and instantiate a new worker thread to maintain capacity.
-- **Clean Shutdown:** Calling `pool.destroy()` sends termination signals to all active workers and drains pending queues.
+- **Clean Shutdown:** `pool.terminate()` rejects queued and in-flight tasks and terminates every worker, including ones `shrink` is still stopping. `processAllPages` terminates the pool on every path, including a component load or route expansion that fails before any page is dispatched, and a failure to terminate never replaces the build's own error. `stopPagePools()` stops the pool of a phase that is still running; `watchFiles` calls it in a build when the static asset copy fails first, so the CLI never exits while workers are still loading.
+- **Every exit path stops the pools first:** `processing.ts` registers the page pools with `exit-stoppers.ts`. The crash net (`crash-net.ts`), the CLI's own exits (`exitAfterStopping`) and `runShutdownHandlers` (the dev server's SIGINT / SIGTERM shutdown, an exec failure stop) wait for them, bounded by `STOP_BEFORE_EXIT_TIMEOUT_MS` (10 s). The exit stopper terminates with `pool.terminate({ abandon: true })`: the running phase's tasks (and any later `run`) are dropped without settling, so the phase never reports "WorkerPool terminated" page errors or a page count while the exit waits; the crash or the Ctrl-C stays the only thing reported. While `exitAfterStopping` waits, no SIGINT / SIGTERM listener is left (a second Ctrl-C ends the process at once), a failing exit keeps stdout quiet (no progress or "Build complete" after a crash), and a further crash is logged as `[bascik] Another error while exiting:`, not as a second fatal one. In dev the server's first signal removes both its SIGINT and SIGTERM handlers; the production server (`bascik --server`) keeps the other one, so a SIGTERM after a Ctrl-C cannot cut its connection drain short. With nothing running, the exit stays synchronous. `page-pool-exit.integration.test.ts` crashes and signals the real CLI during worker warm-up repeatedly and checks that stderr carries only the user's failure.
 
 ---
 

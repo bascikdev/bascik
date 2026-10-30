@@ -1,9 +1,15 @@
 import zlib from "node:zlib";
 import { relative, resolve } from "node:path";
 import { getHttpPath } from "./paths.ts";
-import { htmlHasServerScripts, planServerScripts } from "./server-scripts.ts";
+import { eventEmitter } from "./events.ts";
+import {
+  htmlHasServerScripts,
+  planServerScripts,
+  prepareServerScriptPlan,
+} from "./server-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { makeEtag } from "./names.ts";
+import type { ComponentManifest } from "./component-manifest-file.ts";
 import type { StoredPage } from "./types.ts";
 
 export const getBrotliQuality = (
@@ -29,6 +35,8 @@ interface StorePageArgs {
   pageContent: string | Buffer;
   usedComponentsNames?: string[];
   fileDependencies?: string[];
+  /** The manifest of the publication storing the page (prompt 157); see `StoredPage.componentManifest`. */
+  componentManifest?: ComponentManifest | null;
 }
 
 class MemoryStore {
@@ -103,6 +111,7 @@ class MemoryStore {
     pageContent,
     usedComponentsNames = [],
     fileDependencies = [],
+    componentManifest,
   }: StorePageArgs): Promise<void> {
     const httpPath = getHttpPath(relativePagePath);
 
@@ -157,6 +166,12 @@ class MemoryStore {
       }
     }
 
+    // Off the request path too: the renderer's per-page work, so the first
+    // request to this route does not pay for it (prompt 157). Outside the
+    // planner's catch: a failure here is not a plan error of the page.
+    if (serverScriptPlan && !("error" in serverScriptPlan) && componentManifest)
+      prepareServerScriptPlan(serverScriptPlan, componentManifest);
+
     const storedPage: StoredPage = {
       relativePagePath,
       absolutePagePath,
@@ -166,6 +181,9 @@ class MemoryStore {
       usedComponentsSet,
       fileDependenciesSet,
       serverScriptPlan,
+      // Attached only with a plan: a page that never runs a script at request
+      // time has no use for it, and a static site keeps paying nothing.
+      ...(serverScriptPlan && componentManifest ? { componentManifest } : {}),
     };
 
     // Store the raw content immediately so the page is servable right away.
@@ -252,7 +270,12 @@ class MemoryStore {
       }
     });
 
-    //console.log('stored page in memory:', httpPath)
+    // Announce that the page is now servable from memory. Unlike `transpiled`,
+    // which a boot or edit-cycle publication scope holds back until the post
+    // phase has run, this fires at once: it exists so a browser tab waiting on
+    // the boot page for THIS page can reload the moment a request would get
+    // the real page, which is what a manual refresh already shows.
+    eventEmitter.emit("page-stored", { relativePagePath });
   }
 
   getPage(httpPath: string): StoredPage | undefined {
@@ -374,6 +397,20 @@ class MemoryStore {
    */
   pages(): StoredPage[] {
     return [...this.#files.values()];
+  }
+
+  /**
+   * The source paths of every stored page with a server-script plan (prompt
+   * 157). Their scripts render component tags at request time with the
+   * manifest they were stored with, so a component input change (a component
+   * file, a stylesheet a component imports) rebuilds them (every one, open or
+   * not: a tab that opens later must not render the old component) and the
+   * open ones reload like any rebuilt page.
+   */
+  pagesWithServerScriptPlan(): string[] {
+    return [...this.#files.values()]
+      .filter((page) => page.serverScriptPlan !== undefined)
+      .map((page) => page.absolutePagePath);
   }
 
   trackOpenPage(httpPath: string): void {

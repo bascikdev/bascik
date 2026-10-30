@@ -85,6 +85,37 @@ describe("Prompt 39 - Caching Layer Unit Tests", () => {
     );
   });
 
+  // server.ts lowercases the request's extension, so a key written as ".PNG"
+  // (or without the dot) must still match; an exact-case key wins over a
+  // case-folded one.
+  it("matches per-extension keys case-insensitively and with or without the dot", () => {
+    const upper = {
+      ".PNG": "public, max-age=86400",
+      JPG: "public, max-age=60",
+    };
+    expect(resolveCacheControl(".png", upper)).toBe("public, max-age=86400");
+    expect(resolveCacheControl(".PNG", upper)).toBe("public, max-age=86400");
+    expect(resolveCacheControl(".jpg", upper)).toBe("public, max-age=60");
+    expect(resolveCacheControl(".gif", upper)).toBe("public, max-age=3600");
+
+    const both = { ".png": "lower", ".PNG": "upper" };
+    expect(resolveCacheControl(".png", both)).toBe("lower");
+    expect(resolveCacheControl(".PNG", both)).toBe("upper");
+  });
+
+  // The exact-case key wins without a dot too, whatever order the map lists
+  // its keys in, so a file meant to stay uncached is never cached because a
+  // case-folded key happened to come first.
+  it("prefers an exact-case dotless key over a case-folded one, in any key order", () => {
+    const upperFirst = { PNG: "public, max-age=86400", png: "no-store" };
+    const lowerFirst = { png: "no-store", PNG: "public, max-age=86400" };
+    for (const map of [upperFirst, lowerFirst]) {
+      expect(resolveCacheControl(".png", map)).toBe("no-store");
+      expect(resolveCacheControl("png", map)).toBe("no-store");
+      expect(resolveCacheControl(".PNG", map)).toBe("public, max-age=86400");
+    }
+  });
+
   it("emits immutable when configured", () => {
     const config = { ".woff2": "public, max-age=31536000, immutable" };
     expect(resolveCacheControl(".woff2", config)).toContain("immutable");

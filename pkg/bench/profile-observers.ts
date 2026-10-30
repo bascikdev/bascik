@@ -58,7 +58,13 @@ export function observeSubjects(directory: string | undefined) {
           code,
         }),
       );
-      this.prependListener("message", () => {
+      this.prependListener("message", (message: unknown) => {
+        // The page worker's "loaded" signal (`WorkerPool` `readySignal`) is
+        // not a reply and must not close the task dispatched before it.
+        if ((message as { ready?: unknown } | null)?.ready === true) {
+          journal("worker-ready", { workerThreadId });
+          return;
+        }
         journal("reply-received", {
           workerThreadId,
           taskId: this.pending?.taskId,
@@ -70,7 +76,18 @@ export function observeSubjects(directory: string | undefined) {
     override postMessage(
       ...args: Parameters<InstanceType<typeof OriginalWorker>["postMessage"]>
     ) {
-      const input = args[0] as string | { pagePath: string };
+      const input = args[0] as string | { pagePath: string } | { kind: string };
+      // A settings message (`page-worker-messages.ts`, sent through
+      // `WorkerPool.configure`) is not a task and gets no reply, so it must
+      // not open a pending task that the next real reply would close.
+      if (typeof input === "object" && "kind" in input) {
+        journal("settings", {
+          workerThreadId: this.threadId,
+          kind: input.kind,
+        });
+        super.postMessage(...args);
+        return;
+      }
       const task = typeof input === "string" ? input : input.pagePath;
       this.pending = {
         role: "page-worker",

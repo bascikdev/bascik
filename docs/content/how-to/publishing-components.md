@@ -28,14 +28,15 @@ my-component-package/
   README.md
   LICENSE
   components/
-    button/
-      button.html
-      button.css
-    card/
-      card.html
-      card.css
-    badge/
-      badge.html
+    acme-button/
+      acme-button.html
+      acme-button.css
+      acme-button.ts
+    acme-card/
+      acme-card.html
+      acme-card.css
+    acme-badge/
+      acme-badge.html
 ```
 
 Ensure the `files` field in `package.json` includes the components directory (e.g. `"files": ["components"]`), or that `.npmignore` does not exclude it when publishing.
@@ -46,7 +47,7 @@ Bascik does not run a build step or transformation pass when copying components 
 
 Because of this copy-in model:
 
-1. **Do not rely on package-relative build steps:** Write vanilla HTML, standard CSS, and vanilla JavaScript.
+1. **Do not rely on package-relative build steps:** Write vanilla HTML, standard CSS, and TypeScript with erasable syntax only (a companion `.ts` or `<script type="text/typescript">`). The consumer's Bascik strips the types with no setup; `enum`, namespaces, and parameter properties fail their build.
 2. **Component names come from filenames:** Lowercase base filenames determine custom element tag names (e.g. `fancy-button.html` becomes `<fancy-button>`). Subfolders do not create separate namespaces.
 3. **Keep companions co-located:** Keep `.css` and script files paired with their corresponding `.html` template so `bascik add` copies all associated assets.
 

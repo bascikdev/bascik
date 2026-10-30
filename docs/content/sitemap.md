@@ -137,7 +137,7 @@ When `base` is not `/`, every generated absolute URL composes `BASCIK_SITE_URL`,
 
 When using [Dynamic Routes](/dynamic-routes), Bascik discovers all concrete HTML pages generated from your templates and adds their final URLs to `sitemap.xml`. The unexpanded template path with literal brackets (such as `/blog/[slug]`) is omitted from the sitemap.
 
-Parameter segments containing non-ASCII or special characters are automatically percent-encoded (for example, `/products/item%20name`) to ensure valid XML sitemap output.
+Parameter segments containing non-ASCII characters are automatically percent-encoded (for example, `/products/caf%C3%A9` for the param `café`) to ensure valid XML sitemap output. Spaces and characters such as `#`, `%`, `&` and `+` are rejected in route params (see [Error Handling and Diagnostics](/dynamic-routes#error-handling-and-diagnostics)), so they never reach the sitemap.
 
 ## Opting out
 
@@ -164,4 +164,4 @@ If `generate.sitemap` or `generate.robots` is `true` but no site URL is availabl
 
 ## Build-only
 
-Sitemap and robots.txt are only generated during `bascik --build`. The dev server does not write these files.
+Sitemap and robots.txt are only generated during a full `bascik --build`. The dev server does not write these files, and a targeted `--only` build skips them with a warning that the existing files may be stale.

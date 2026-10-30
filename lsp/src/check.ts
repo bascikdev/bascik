@@ -70,7 +70,7 @@ const CONFIG_FILES = [
   "bascik.config.js",
   "bascik.config.mjs",
 ];
-const DEFAULT_EXTENSIONS = ["html", "css", "js", "mjs", "ts"];
+const DEFAULT_EXTENSIONS = ["html", "css", "js", "mjs", "ts", "mts"];
 const TEST_FILE = /\.(test|spec)\.[a-z0-9]+$/i;
 
 /** The nearest directory at or above `start` that holds a Bascik config file. */
@@ -132,7 +132,7 @@ function languageIdFor(
     ? "html"
     : ext === "css"
       ? "css"
-      : ext === "ts"
+      : ext === "ts" || ext === "mts"
         ? "typescript"
         : "javascript";
 }

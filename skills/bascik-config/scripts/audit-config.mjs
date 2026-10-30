@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Audit a project's bascik.config for values that restate defaults and for common mistakes.
-// Dependency-free; Node.js 22.18+ (loads bascik.config.ts natively). Run from the project root.
+// Dependency-free; Node.js 22.22+ (loads bascik.config.ts natively). Run from the project root.
 import { existsSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
@@ -31,11 +31,13 @@ export const KNOWN_DEFAULTS = {
   "directory.out": "dist",
   "directory.api": "src/api",
   "components.external": [],
+  "components.expansionLimits.maxInstances": 10000,
+  "components.expansionLimits.maxPageLength": 52428800,
   "scoping.scriptBlocks": true,
   "scoping.inheritAttributes": true,
   "scoping.attributes.class": true,
   "scoping.attributes.id": true,
-  "scoping.attributes.name": true,
+  "scoping.attributes.name": false,
   "scoping.preserve": ["code"],
   "scoping.deduplicateCss": true,
   "assets.inlineStyles": false,
@@ -56,6 +58,13 @@ export const KNOWN_DEFAULTS = {
   "scripts.onServerScriptError": "error",
   "scripts.timeout": 30000,
   "scripts.importRoot": "src",
+  "scripts.stripAnsi": true,
+  "scripts.renderLimits.maxInstances": 1000,
+  "scripts.renderLimits.maxOutputLength": 4194304,
+  "scripts.renderLimits.maxNestedScripts": 64,
+  "scripts.renderLimits.maxDepth": 4,
+  "scripts.renderLimits.rescanFactor": 16,
+  "scripts.renderLimits.rescanBase": 33554432,
   "http.hostname": "localhost",
   "http.tls.enabled": false,
   "http.rateLimit": true,
@@ -71,6 +80,13 @@ export const KNOWN_DEFAULTS = {
   "logging.deletes": true,
   "logging.transpiles": true,
   base: "/",
+  "security.blockScriptUrls": true,
+  "security.blockCodeBindings": true,
+  "security.headers": true,
+  "security.hsts": true,
+  "security.privateDynamicPages": true,
+  "security.stripDirectiveScripts": true,
+  "security.hideDotfiles": true,
 };
 
 /**
@@ -364,7 +380,11 @@ export function auditConfig(module, { root, exists = existsSync } = {}) {
 function findConfig(start) {
   let dir = resolve(start);
   while (true) {
-    for (const file of ["bascik.config.js", "bascik.config.ts"]) {
+    for (const file of [
+      "bascik.config.js",
+      "bascik.config.mjs",
+      "bascik.config.ts",
+    ]) {
       if (existsSync(join(dir, file)))
         return { root: dir, path: join(dir, file) };
     }
@@ -377,7 +397,7 @@ function findConfig(start) {
 }
 
 async function main() {
-  const { values } = parseArgs({
+  const { values } = parseCliArgs("audit-config", {
     options: {
       json: { type: "boolean", default: false },
       strict: { type: "boolean", default: false },
@@ -390,7 +410,7 @@ async function main() {
   const { root, path } = findConfig(values.root ?? process.cwd());
   if (!path) {
     const message =
-      "No bascik.config.ts or bascik.config.js: the zero-config defaults apply. Nothing to audit.";
+      "No bascik.config.js, bascik.config.mjs, or bascik.config.ts: the zero-config defaults apply. Nothing to audit.";
     console.log(
       values.json
         ? JSON.stringify({ root, config: null, findings: [] }, null, 2)
@@ -432,3 +452,30 @@ const invokedDirectly =
   Boolean(process.argv[1]) &&
   pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
 if (invokedDirectly) await main();
+
+/**
+ * `parseArgs`, with a short message naming the flag and the valid ones, and
+ * exit code 2, in place of Node's stack trace on a mistyped or missing flag.
+ */
+function parseCliArgs(name, config) {
+  try {
+    return parseArgs(config);
+  } catch (error) {
+    if (!String(error?.code).startsWith("ERR_PARSE_ARGS_")) throw error;
+    const valid = Object.entries(config.options ?? {})
+      .map(
+        ([long, option]) =>
+          `${option.short ? `-${option.short}, ` : ""}--${long}`,
+      )
+      .join(", ");
+    const flag = /'([^']+)'/.exec(error.message)?.[1];
+    const problem =
+      error.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" && flag
+        ? `unknown option "${flag}"`
+        : error.message.split(". ")[0].replace(/\.$/, "");
+    process.stderr.write(
+      `${name}: ${problem}. Valid options: ${valid}. Run with --help.\n`,
+    );
+    process.exit(2);
+  }
+}

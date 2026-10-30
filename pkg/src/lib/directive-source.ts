@@ -19,6 +19,10 @@
  * and columns directly, with nothing to remap.
  */
 import {
+  scanAlternatives,
+  type ScanAlternative,
+} from "./element-content-scan.ts";
+import {
   ANY_DIRECTIVE_ATTR_NAME,
   getHtmlAttributeValue,
 } from "./html-patterns.ts";
@@ -40,9 +44,31 @@ const DIRECTIVE_SCRIPT_RE = new RegExp(
  * Each match consumes its contents, so a tag-like string inside one (a
  * `"<script data-bascik-server>"` or a `"<!--"` in a browser script) is never
  * read as a tag. Only a script element's opening tag is ever rewritten.
+ *
+ * This is the regex
+ * `<!--[\s\S]*?-->|<(style|textarea)(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>|(<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?<\/script(?:[\t\n\f\r /][^>]*)?>)`
+ * (flags `gi`), scanned in linear time: the regex retried from every opener
+ * that had no closer or no `>`.
  */
-const SKIPPED_OR_SCRIPT_RE =
-  /<!--[\s\S]*?-->|<(style|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>|(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?<\/script(?:[\t\n\f\r /][^>]*)?>)/gi;
+const SKIPPED_OR_SCRIPT: readonly ScanAlternative[] = [
+  { kind: "comment" },
+  {
+    kind: "element",
+    name: "style",
+    options: { opener: "tag-space", closer: "regex-space" },
+  },
+  {
+    kind: "element",
+    name: "textarea",
+    options: { opener: "tag-space", closer: "regex-space" },
+  },
+  {
+    kind: "element",
+    name: "script",
+    options: { opener: "tag-space", closer: "attributes" },
+  },
+];
+const SCRIPT_ALTERNATIVE = 3;
 
 export interface DirectiveSourcePosition {
   /** The file the script was written in, when it is recorded on the tag. */
@@ -102,20 +128,18 @@ export const stampDirectiveSources = (
 ): string => {
   if (!html.includes("data-bascik-")) return html;
   const encodedFile = encodeURIComponent(sourceFile);
-  return html.replace(
-    SKIPPED_OR_SCRIPT_RE,
-    (
-      match: string,
-      _rawTextTag: string | undefined,
-      openTag: string | undefined,
-      rest: string,
-      index: number,
-    ) => {
-      if (openTag === undefined || !DIRECTIVE_SCRIPT_RE.test(openTag))
-        return match;
-      return stampOpenTag(html, index, openTag, encodedFile) + rest;
-    },
-  );
+  let result = "";
+  let cursor = 0;
+  for (const match of scanAlternatives(html, SKIPPED_OR_SCRIPT)) {
+    if (match.alternative !== SCRIPT_ALTERNATIVE) continue;
+    const openTag = html.slice(match.start, match.contentStart);
+    if (!DIRECTIVE_SCRIPT_RE.test(openTag)) continue;
+    result +=
+      html.slice(cursor, match.start) +
+      stampOpenTag(html, match.start, openTag, encodedFile);
+    cursor = match.contentStart;
+  }
+  return cursor === 0 ? html : result + html.slice(cursor);
 };
 
 /** One directive opening tag with its position added, or unchanged when it already has one. */

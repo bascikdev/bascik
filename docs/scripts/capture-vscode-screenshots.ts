@@ -125,6 +125,45 @@ A small label that marks a person's status.
 </style>
 `;
 
+/** The component the find-references scene opens, with only valid Bascik markup so no squiggle distracts. */
+const productCard = `<!-- @bascik
+Shows one product with a buy button.
+@slot default - The product name and price.
+-->
+<style>
+  .card {
+    padding: 1rem;
+    border: 1px solid #ccc;
+  }
+</style>
+
+<article class="card">
+  <div data-bascik-slot></div>
+  <button type="button">Buy</button>
+</article>
+`;
+
+/** Pages and a component that use product-card, so Find All References has something to list. */
+const productCardUsages: Record<string, string> = {
+  "src/pages/shop.html": `<main>
+  <h1>Shop</h1>
+  <product-card>Milk frother, $49</product-card>
+  <product-card>Pour-over kettle, $65</product-card>
+</main>
+`,
+  "src/pages/gifts.html": `<main>
+  <h1>Gift ideas</h1>
+  <p>Our most popular gift this year:</p>
+  <product-card>Milk frother, $49</product-card>
+</main>
+`,
+  "src/components/featured-row/featured-row.html": `<section class="featured">
+  <h2>Featured</h2>
+  <product-card>Milk frother, $49</product-card>
+</section>
+`,
+};
+
 const siteHeader = `<header>
   <nav>
     <a href="/">Home</a>
@@ -156,6 +195,27 @@ const openSuggestList = async (page: Page) => {
     .catch(() => undefined);
   throw new Error(
     "Suggest widget never showed any rows (screenshot: /tmp/vscode-suggest-failure.png)",
+  );
+};
+
+/**
+ * Opens Peek References (Shift+F12) and waits for its list, retrying while the extension is still indexing the
+ * project. VS Code puts the keyboard focus in the list.
+ */
+const peekReferences = async (page: Page) => {
+  const rows = page.locator(".peekview-widget .monaco-list-row");
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await press(page, "Shift+F12");
+    await page.waitForTimeout(1500);
+    if ((await rows.count()) > 1) return;
+    await press(page, "Escape");
+    await page.waitForTimeout(1000);
+  }
+  await page
+    .screenshot({ path: "/tmp/vscode-references-failure.png" })
+    .catch(() => undefined);
+  throw new Error(
+    "Peek References never listed any usages (screenshot: /tmp/vscode-references-failure.png)",
   );
 };
 
@@ -308,6 +368,38 @@ const scenes: Scene[] = [
     },
   },
   {
+    // server-script-unescaped-markup: the warning on the hole, its hover, then the quick fix, which wraps the
+    // template in html and adds `import { html } from "@bascik/bascik/html";` to the script.
+    name: "unescaped-markup",
+    file: "src/pages/search.html",
+    content: `<main>
+  <script data-bascik-server>
+    export default function (request) {
+      const q = new URL(request.url).searchParams.get("q") ?? "";
+      return \`<p>You searched for \${|q}</p>\`;
+    }
+  </script>
+</main>
+`,
+    lines: 9,
+    extraHeight: 150,
+    width: 900,
+    run: async (page, rec) => {
+      await page.waitForTimeout(3000);
+      await rec.frame(INTRO_HOLD);
+      await hover(page, 0);
+      await rec.frame(2600);
+      await press(page, "Escape");
+      // Cmd+. opens the Quick Fix menu on the warning.
+      await press(page, "Meta+.");
+      await page.waitForTimeout(1500);
+      await rec.frame(2000);
+      await press(page, "Enter");
+      await page.waitForTimeout(2500);
+      await rec.frame(OUTRO_HOLD);
+    },
+  },
+  {
     name: "scoping-warnings",
     file: "src/css/theme.css",
     content: `.card {
@@ -326,6 +418,32 @@ const scenes: Scene[] = [
       // Cursor to the third character, inside the selector, so the hover describes it.
       await press(page, "Home", "ArrowRight", "ArrowRight", "ArrowRight");
       await hover(page, 0);
+      await rec.frame(OUTRO_HOLD);
+    },
+  },
+  {
+    // Find All References from the component's own file: Shift+F12 on its @bascik doc comment lists the pages
+    // and components that use it in Peek References, and Enter on a usage jumps there.
+    name: "find-references",
+    file: "src/components/product-card/product-card.html",
+    content: productCard.replace("Shows one", "Shows| one"),
+    lines: 3,
+    extraHeight: 330,
+    width: 900,
+    run: async (page, rec) => {
+      await page.waitForTimeout(3000);
+      await rec.frame(INTRO_HOLD);
+      await peekReferences(page);
+      await rec.frame(2600);
+      // The list opens on the component's own first line. Down reaches the next file, Right expands it, and
+      // Down selects its usage, which the preview shows.
+      await press(page, "ArrowDown", "ArrowRight");
+      await page.waitForTimeout(500);
+      await press(page, "ArrowDown");
+      await page.waitForTimeout(900);
+      await rec.frame(2200);
+      await press(page, "Enter");
+      await page.waitForTimeout(1500);
       await rec.frame(OUTRO_HOLD);
     },
   },
@@ -393,6 +511,15 @@ async function buildProject(root: string, sceneList: Scene[]): Promise<void> {
   );
   await mkdir(join(root, "src/pages"), { recursive: true });
   await writeFile(join(root, "src/pages/index.html"), "<site-header />\n");
+  await mkdir(join(root, "src/components/product-card"), { recursive: true });
+  await writeFile(
+    join(root, "src/components/product-card/product-card.html"),
+    productCard,
+  );
+  for (const [file, content] of Object.entries(productCardUsages)) {
+    await mkdir(dirname(join(root, file)), { recursive: true });
+    await writeFile(join(root, file), content);
+  }
   // Write every scene up front so VS Code's file index knows them before Quick Open is used.
   for (const scene of sceneList) {
     await mkdir(dirname(join(root, scene.file)), { recursive: true });

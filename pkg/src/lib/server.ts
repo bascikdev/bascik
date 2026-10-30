@@ -1,8 +1,10 @@
 import { stat } from "node:fs/promises";
+import { liveReloadVersionOf } from "./live-reload.ts";
 import { pipeline } from "node:stream/promises";
 import http2 from "node:http2";
-import { extname, resolve, sep } from "node:path";
+import { basename, extname, resolve, sep } from "node:path";
 import type { Server as NetServer } from "node:net";
+import type { BascikConfigOptions } from "./types.ts";
 import { mem } from "./mem.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
 import {
@@ -11,6 +13,7 @@ import {
   runShutdownHandlers,
 } from "./events.ts";
 import { getHttpPath } from "./paths.ts";
+import { cspHeadersForPage } from "./csp-header-node.ts";
 import { MIME_MAP } from "./mime.ts";
 import {
   DEFAULT_SCRIPT_TIMEOUT_MS,
@@ -51,7 +54,15 @@ import {
 } from "./server-lifecycle.ts";
 import { SseManager } from "./sse.ts";
 import { apiRouteRegistry } from "./server-api.ts";
-import { InvalidApiPathError, hasHiddenSegment } from "./route-matching.ts";
+import {
+  InvalidApiPathError,
+  isBascikFolderName,
+  isPrivatePathname,
+} from "./route-matching.ts";
+import {
+  resolveResponseSecurity,
+  type ResponseSecurity,
+} from "./web-response.ts";
 import {
   createWebRequest,
   getRightmostHeaderValue,
@@ -93,17 +104,26 @@ export const resetSseManager = (): void => {
 import { makeEtag } from "./names.ts";
 
 // ─── Security headers sent on every response ──────────────────────────────────
-const SECURITY_HEADERS: Record<string, string> = {
-  "x-content-type-options": "nosniff",
-  "x-frame-options": "SAMEORIGIN",
-  "referrer-policy": "strict-origin-when-cross-origin",
-  "cross-origin-opener-policy": "same-origin-allow-popups",
-  "cross-origin-resource-policy": "cross-origin",
+// `security.headers` / `security.hsts` / `security.privateDynamicPages`,
+// resolved by the portable builder every host shares (web-response.ts).
+// Re-resolved only when the config object changes, so a request pays one
+// identity check.
+let resolvedSecurity: {
+  source: BascikConfigOptions["security"] | undefined;
+  value: ResponseSecurity;
+} | null = null;
+
+export const getResponseSecurity = (): ResponseSecurity => {
+  const source = BascikConfig.security;
+  if (resolvedSecurity === null || resolvedSecurity.source !== source)
+    resolvedSecurity = { source, value: resolveResponseSecurity(source) };
+  return resolvedSecurity.value;
 };
 
 export const getSecurityHeaders = (
   req?: BascikRequest,
 ): Record<string, string> => {
+  const security = getResponseSecurity();
   const isHttps =
     req && req.headers
       ? req.headers[":scheme"] === "https" ||
@@ -112,16 +132,26 @@ export const getSecurityHeaders = (
             req.headers["x-forwarded-proto"],
           )?.toLowerCase() === "https")
       : false;
-  if (isHttps || (BascikConfig.isProdServer && BascikConfig.http.tls.enabled)) {
+  if (
+    security.hsts !== null &&
+    (isHttps || (BascikConfig.isProdServer && BascikConfig.http.tls.enabled))
+  ) {
     return {
-      ...SECURITY_HEADERS,
-      "strict-transport-security": "max-age=31536000; includeSubDomains",
+      ...security.headers,
+      "strict-transport-security": security.hsts,
     };
   }
-  return { ...SECURITY_HEADERS };
+  return { ...security.headers };
 };
 
 // Weak stat-based ETag for static files: no extra file read needed
+/**
+ * Cache-Control for a static page with no policy of its own: the browser may
+ * keep it but must check with the server before each use, so a deploy shows
+ * at once and an unchanged page costs a 304.
+ */
+const PAGE_CACHE_CONTROL = "public, max-age=0, must-revalidate";
+
 export const makeStatEtag = (mtimeMs: number, size: number): string =>
   `W/"${mtimeMs.toString(36)}-${size.toString(36)}"`;
 
@@ -183,6 +213,17 @@ export interface BascikResponse {
   close(code?: number): void;
   on(event: "close" | "drain" | "finish", cb: () => void): void;
   off(event: "close" | "drain" | "finish", cb: () => void): void;
+  /**
+   * The request body was rejected before it was read to the end (over
+   * `http.maxBodySize`). Called once, when the body is rejected: usually
+   * before `respond`, but after it when a response streams the request body
+   * back and the limit trips mid-stream. The transport keeps reading
+   * and discarding the unread body, within its caps, so the client finishes
+   * its upload and reads the response instead of hitting EPIPE/ECONNRESET;
+   * then HTTP/1.x closes the connection and HTTP/2 ends only this stream.
+   * Optional so test doubles and non-socket transports need not implement it.
+   */
+  lingerClose?(): void;
 }
 
 export const isNetworkResetError = (err: unknown): boolean => {
@@ -239,6 +280,7 @@ export const onError = (
         res.respond(500, {
           "content-type": "text/html; charset=utf-8",
           "content-length": bodyBuf.byteLength,
+          "cache-control": "private, no-store",
           ...secHeaders,
         });
         res.end(bodyBuf);
@@ -251,6 +293,7 @@ export const onError = (
       if (!res.headersSent) {
         res.respond(500, {
           "content-type": "text/html; charset=utf-8",
+          "cache-control": "private, no-store",
           ...secHeaders,
         });
       }
@@ -554,7 +597,13 @@ export const createRequestHandler = () => {
 
       // Dot segments are private (dist/.bascik/, .env, .git). The one public
       // exception is a leading RFC 8615 /.well-known/ below the site root.
-      if (hasHiddenSegment(pathname, BascikConfig.base)) {
+      if (
+        isPrivatePathname(
+          pathname,
+          BascikConfig.base,
+          BascikConfig.security?.hideDotfiles !== false,
+        )
+      ) {
         responseStatus = 404;
         res.respond(404, {
           "content-type": "text/plain; charset=utf-8",
@@ -627,7 +676,17 @@ export const createRequestHandler = () => {
       // `extname` ignores a trailing slash, but `/style.css/` names a
       // directory, not the file: it falls through to the page lookup, which
       // answers 404 like a static host unless a dotted directory page exists.
-      const ext = extname(pathname).toLowerCase();
+      // A dotfile (`/.nojekyll`) has no extension to Node's extname; with
+      // security.hideDotfiles off it is a static file too, typed by its name.
+      const dotfileName =
+        BascikConfig.security?.hideDotfiles === false &&
+        !pathname.endsWith("/") &&
+        !extname(pathname)
+          ? basename(pathname)
+          : "";
+      const ext = (
+        extname(pathname) || (dotfileName.startsWith(".") ? dotfileName : "")
+      ).toLowerCase();
       if (ext && !ext.match(/^\.htm.*$/) && !pathname.endsWith("/")) {
         // Path traversal guard: resolved path must stay inside dist/
         const safePath = pathname.replace(/^\/+/, ""); // strip leading slashes
@@ -636,6 +695,22 @@ export const createRequestHandler = () => {
           responseStatus = 400;
           res.respond(400, { ...secHeaders });
           res.end("Bad Request");
+          return;
+        }
+        // dist/.bascik holds server script source and adapter output. The
+        // path check above already refuses it; this guards the file actually
+        // opened, whatever spelling reached it.
+        if (
+          isBascikFolderName(
+            fullPath.slice(distDir.length + 1).split(sep)[0] ?? "",
+          )
+        ) {
+          responseStatus = 404;
+          res.respond(404, {
+            "content-type": "text/plain; charset=utf-8",
+            ...secHeaders,
+          });
+          res.end("Not Found");
           return;
         }
 
@@ -813,10 +888,25 @@ export const createRequestHandler = () => {
         if (openPagePath) mem.trackOpenPage(openPagePath);
 
         const sseManager = getSseManager();
-        const client = sseManager.addClient(res, openPagePath);
+        const storedPage = openPagePath
+          ? mem.getPageExact(openPagePath)
+          : undefined;
+        const client = sseManager.addClient(
+          res,
+          openPagePath,
+          storedPage
+            ? liveReloadVersionOf(storedPage.content.toString())
+            : null,
+        );
         if (!client) {
           return;
         }
+
+        // Normalize trailing slashes: browsers may omit the trailing slash on index routes.
+        const strip = (p: string) => p.replace(/\/$/, "") || "/";
+        const isOpenPage = (relativePagePath: string): boolean =>
+          !openPagePath ||
+          strip(openPagePath) === strip(getHttpPath(relativePagePath));
 
         const eventHandler = ({
           relativePagePath,
@@ -824,12 +914,7 @@ export const createRequestHandler = () => {
           relativePagePath: string;
         }) => {
           if (res.destroyed) return;
-          if (openPagePath) {
-            const httpPath = getHttpPath(relativePagePath);
-            // Normalize trailing slashes: browsers may omit the trailing slash on index routes.
-            const strip = (p: string) => p.replace(/\/$/, "") || "/";
-            if (strip(openPagePath) !== strip(httpPath)) return;
-          }
+          if (!isOpenPage(relativePagePath)) return;
           const gen = sseManager.getNextGeneration();
           sseManager.send(client, `data: reload ${gen}\n\n`);
         };
@@ -840,16 +925,58 @@ export const createRequestHandler = () => {
           sseManager.send(client, `data: reload ${gen}\n\n`);
         };
 
-        // Reload boot pages immediately when the initial scan finishes.
-        const bootDoneHandler = () => {
+        // A boot page reloads once, into the real page. The first signal wins
+        // and retires every other reload listener on this connection, so a
+        // boot connection that is still open is not told to reload again at
+        // boot-done or when the buffered `transpiled` events flush. The real
+        // page's own connection is a separate, non-boot client (see
+        // `pageInMemory` below for how its boot-end reload is kept to one).
+        const sendBootReload = () => {
           if (res.destroyed) return;
+          eventEmitter.removeListener("transpiled", eventHandler);
+          eventEmitter.removeListener("asset-changed", assetChangedHandler);
+          eventEmitter.removeListener("boot-done", bootDoneHandler);
+          eventEmitter.removeListener("page-stored", pageStoredHandler);
           const gen = sseManager.getNextGeneration();
           sseManager.send(client, `data: reload ${gen}\n\n`);
         };
 
+        // Reload boot pages when the initial scan finishes. This also covers a
+        // boot page whose path never compiles (it reloads into the 404 page)
+        // and a boot connection without a Referer, which cannot be matched.
+        const bootDoneHandler = () => sendBootReload();
+
+        // During boot the `transpiled` event is buffered until the post phase
+        // has run (transpile.ts), so a boot page listening for it would spin
+        // long after its page was servable. `page-stored` is never buffered:
+        // it fires the moment the page lands in memory, which is exactly when
+        // a request for it stops getting the boot page.
+        const pageStoredHandler = ({
+          relativePagePath,
+        }: {
+          relativePagePath: string;
+        }) => {
+          if (!isOpenPage(relativePagePath)) return;
+          sendBootReload();
+        };
+
+        // A page already in memory during boot is served for real, and the
+        // boot publication scope flushes its buffered `transpiled` event once
+        // the post phase has run, so its tab reloads at boot end to pick up
+        // post outputs. `boot-done` fires milliseconds later and would reload
+        // that tab a second time, so it is only wired for the boot page itself
+        // and for a connection whose page is not in memory, such as one
+        // without a Referer. Outside boot `boot-done` never fires, so the
+        // check is harmless there.
+        const pageInMemory =
+          !!openPagePath && mem.getPageExact(openPagePath) !== undefined;
+
         eventEmitter.on("transpiled", eventHandler);
         eventEmitter.on("asset-changed", assetChangedHandler);
-        eventEmitter.on("boot-done", bootDoneHandler);
+        if (isBootReloadConnection || !pageInMemory)
+          eventEmitter.on("boot-done", bootDoneHandler);
+        if (isBootReloadConnection && openPagePath)
+          eventEmitter.on("page-stored", pageStoredHandler);
 
         res.on("close", () => {
           if (openPagePath) mem.untrackOpenPage(openPagePath);
@@ -861,11 +988,14 @@ export const createRequestHandler = () => {
           eventEmitter.removeListener("transpiled", eventHandler);
           eventEmitter.removeListener("asset-changed", assetChangedHandler);
           eventEmitter.removeListener("boot-done", bootDoneHandler);
+          eventEmitter.removeListener("page-stored", pageStoredHandler);
         });
 
-        if (isBootReloadConnection && !mem.isBooting && !res.destroyed) {
-          const gen = sseManager.getNextGeneration();
-          sseManager.send(client, `data: reload ${gen}\n\n`);
+        if (isBootReloadConnection && !res.destroyed) {
+          // Boot already finished, or this page landed in memory between the
+          // boot page being served and its SSE connection arriving: nothing
+          // further will announce it, so reload now.
+          if (!mem.isBooting || pageInMemory) sendBootReload();
         }
         return;
       }
@@ -930,10 +1060,12 @@ export const createRequestHandler = () => {
 
       responseStatus = is404Page ? 404 : 200;
 
+      const pageCsp = cspHeadersForPage(page);
       const responseHeaders: Record<string, string | number> = {
         "content-type": "text/html; charset=utf-8",
         vary: "Accept-Encoding",
         ...secHeaders,
+        ...pageCsp,
       };
 
       if (BascikConfig.http.httpCache === false) {
@@ -950,11 +1082,20 @@ export const createRequestHandler = () => {
         // unresolvable sidecar id) is this page's 500; headers are not sent yet.
         if ("error" in page.serverScriptPlan) throw page.serverScriptPlan.error;
         const plan = page.serverScriptPlan;
-        const request = createWebRequest(req, requestOrigin(req));
+        // A script that reads a body over the limit leaves the rest unread;
+        // the transport drains it so the client is not cut off mid-upload.
+        const request = createWebRequest(
+          req,
+          requestOrigin(req),
+          undefined,
+          () => res.lingerClose?.(),
+        );
         const context = { remoteIp: req.remoteIp, platform: NODE_PLATFORM };
         const timeout =
           BascikConfig.scripts.timeout ?? DEFAULT_SCRIPT_TIMEOUT_MS;
-        responseHeaders["cache-control"] = "private, no-store";
+        // security.privateDynamicPages off: the author's host or CDN decides.
+        if (getResponseSecurity().privateDynamicPages)
+          responseHeaders["cache-control"] = "private, no-store";
         // The plan was built at store time (prompt 67): no regex scan and no
         // page.content.toString() on the request path.
 
@@ -968,6 +1109,7 @@ export const createRequestHandler = () => {
             context,
             timeout,
             page.absolutePagePath,
+            page.componentManifest,
           );
           responseHeaders["content-length"] = htmlBuf.byteLength;
           res.respond(responseStatus, responseHeaders);
@@ -992,6 +1134,7 @@ export const createRequestHandler = () => {
             page.absolutePagePath,
             sink,
             abort.signal,
+            page.componentManifest,
           );
           await streamer.ready;
           res.respond(responseStatus, responseHeaders);
@@ -1038,6 +1181,10 @@ export const createRequestHandler = () => {
           ? rawEtag
           : getEncodedEtag(rawEtag, pageEncoding);
 
+      // The 200 and the 304 name the same policy: a validator alone left the
+      // first response to the browser's heuristic freshness.
+      responseHeaders["cache-control"] ??= PAGE_CACHE_CONTROL;
+
       if (
         BascikConfig.http.httpCache !== false &&
         matchesIfNoneMatch(
@@ -1049,11 +1196,10 @@ export const createRequestHandler = () => {
         responseStatus = 304;
         res.respond(304, {
           etag: effectivePageEtag,
-          "cache-control":
-            responseHeaders["cache-control"] ??
-            "public, max-age=0, must-revalidate",
+          "cache-control": responseHeaders["cache-control"],
           vary: "Accept-Encoding",
           ...secHeaders,
+          ...pageCsp,
         });
         return res.end();
       }
@@ -1165,18 +1311,33 @@ export const startServerInstance = async (
   });
 
   process.setMaxListeners(process.getMaxListeners() + 2);
+  // Each handler runs once, so a repeat of the same signal takes the
+  // default action and ends the process at once. In dev the first signal
+  // also removes the other handler: any further Ctrl-C or SIGTERM ends the
+  // process at once while the shutdown waits (for connections to drain, or
+  // for page workers to finish loading). The production server keeps the
+  // other handler (a no-op once shutting down), so a process manager's
+  // SIGTERM after a Ctrl-C cannot cut the connection drain short.
+  const releaseShutdownSignals = () => {
+    process.removeListener("SIGTERM", sigtermHandler);
+    process.removeListener("SIGINT", sigintHandler);
+  };
+  const onFirstSignal = () => {
+    if (!BascikConfig.isProdServer) releaseShutdownSignals();
+  };
   const sigtermHandler = () => {
+    onFirstSignal();
     void gracefulShutdown("SIGTERM");
   };
   const sigintHandler = () => {
+    onFirstSignal();
     void gracefulShutdown("SIGINT");
   };
   process.once("SIGTERM", sigtermHandler);
   process.once("SIGINT", sigintHandler);
 
   server.once("close", () => {
-    process.removeListener("SIGTERM", sigtermHandler);
-    process.removeListener("SIGINT", sigintHandler);
+    releaseShutdownSignals();
     process.setMaxListeners(Math.max(0, process.getMaxListeners() - 2));
   });
 

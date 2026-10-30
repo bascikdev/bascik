@@ -1,0 +1,471 @@
+/**
+ * Syntax highlighting for docs code blocks, run at build time.
+ *
+ * Every `<code-block>` used to carry this tokenizer in its own inline script and highlight itself in the
+ * browser: a third of the bytes of the built HTML were copies of it, each copy needed its own CSP hash, and
+ * code painted plain before it turned colored. md-renderer.ts and examples.ts now emit the highlighted markup,
+ * and the component only has a copy button.
+ *
+ * The output is the escaped source with `<span data-code-token="...">` around tokens. Escaping covers `&`, `<`
+ * and `>`, so the output is safe as element content and its text is exactly the source.
+ */
+
+function e(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+const C = {
+  cm: "cm",
+  str: "str",
+  kw: "kw",
+  num: "num",
+  attr: "attr",
+  val: "val",
+  sel: "sel",
+  fn: "fn",
+};
+
+function tok(token: string, s: string): string {
+  return '<span data-code-token="' + token + '">' + e(s) + "</span>";
+}
+
+export function highlight(src: string, lang: string): string | null {
+  if (lang === "html") return hlHtml(src);
+  if (lang === "css") return hlCss(src);
+  if (
+    lang === "js" ||
+    lang === "javascript" ||
+    lang === "ts" ||
+    lang === "typescript" ||
+    lang === "jsx" ||
+    lang === "tsx"
+  )
+    return hlJs(src);
+  if (lang === "sh" || lang === "bash" || lang === "shell") return hlSh(src);
+  if (lang === "json") return hlJs(src);
+  return null;
+}
+
+// --- HTML ---
+function hlHtml(src: string): string {
+  let out = "",
+    i = 0;
+  const n = src.length;
+  while (i < n) {
+    // Comment
+    if (src[i] === "<" && src.startsWith("!--", i + 1)) {
+      const j = src.indexOf("-->", i + 4);
+      const end = j < 0 ? n : j + 3;
+      out += tok(C.cm, src.slice(i, end));
+      i = end;
+      continue;
+    }
+    // Tag
+    if (
+      src[i] === "<" &&
+      i + 1 < n &&
+      (src[i + 1] === "/" || /[a-zA-Z!]/.test(src[i + 1]))
+    ) {
+      out += e("<");
+      i++;
+      let closing = false,
+        selfClosing = false,
+        typeValue: string | null = null;
+      if (i < n && src[i] === "/") {
+        out += e("/");
+        i++;
+        closing = true;
+      }
+      const nm = /^[\w-]+/.exec(src.slice(i));
+      const tagName = nm ? nm[0].toLowerCase() : "";
+      if (nm) {
+        out += tok(C.kw, nm[0]);
+        i += nm[0].length;
+      }
+      while (i < n && src[i] !== ">") {
+        if (src[i] === "/" && src[i + 1] === ">") {
+          out += e("/>");
+          i += 2;
+          selfClosing = true;
+          break;
+        }
+        if (/\s/.test(src[i])) {
+          out += src[i++];
+          continue;
+        }
+        const am = /^[\w:-]+/.exec(src.slice(i));
+        if (am) {
+          out += tok(C.attr, am[0]);
+          i += am[0].length;
+          if (i < n && src[i] === "=") {
+            out += e("=");
+            i++;
+            if (i < n && (src[i] === '"' || src[i] === "'")) {
+              const q = src[i];
+              const qj = src.indexOf(q, i + 1);
+              const qe = qj < 0 ? n : qj + 1;
+              if (am[0].toLowerCase() === "type")
+                typeValue = src
+                  .slice(i + 1, qe - 1)
+                  .trim()
+                  .toLowerCase();
+              out += tok(C.val, src.slice(i, qe));
+              i = qe;
+            }
+          }
+        } else {
+          out += e(src[i++]);
+        }
+      }
+      if (i < n && src[i] === ">") {
+        out += e(">");
+        i++;
+      }
+      // Embedded <script> and <style> content: highlight with the JS / CSS tokenizers.
+      if (
+        !closing &&
+        !selfClosing &&
+        (tagName === "script" || tagName === "style")
+      ) {
+        const closeMatch = new RegExp("</" + tagName + "\\s*>", "i").exec(
+          src.slice(i),
+        );
+        const end = closeMatch ? i + closeMatch.index : n;
+        const body = src.slice(i, end);
+        let inner: string | null = null;
+        if (tagName === "style") inner = hlCss(body);
+        else if (
+          typeValue === null ||
+          typeValue === "" ||
+          typeValue === "module" ||
+          typeValue === "importmap" ||
+          /(java|ecma|type)script|json/.test(typeValue)
+        )
+          inner = hlJs(body);
+        out += inner === null ? e(body) : inner;
+        i = end;
+      }
+      continue;
+    }
+    out += e(src[i++]);
+  }
+  return out;
+}
+
+// --- CSS ---
+function hlCss(src: string): string {
+  let out = "",
+    i = 0,
+    depth = 0;
+  const n = src.length;
+  while (i < n) {
+    // Comment
+    if (src[i] === "/" && src[i + 1] === "*") {
+      const j = src.indexOf("*/", i + 2);
+      const end = j < 0 ? n : j + 2;
+      out += tok(C.cm, src.slice(i, end));
+      i = end;
+      continue;
+    }
+    // String
+    if (src[i] === '"' || src[i] === "'") {
+      const q = src[i];
+      let j = i + 1;
+      while (j < n && src[j] !== q) {
+        if (src[j] === "\\") j++;
+        j++;
+      }
+      out += tok(C.str, src.slice(i, j + 1));
+      i = j + 1;
+      continue;
+    }
+    // At-rule
+    if (src[i] === "@") {
+      const m = /^@[\w-]+/.exec(src.slice(i));
+      if (m) {
+        out += tok(C.kw, m[0]);
+        i += m[0].length;
+        continue;
+      }
+    }
+    if (src[i] === "{") {
+      out += e("{");
+      depth++;
+      i++;
+      continue;
+    }
+    if (src[i] === "}") {
+      out += e("}");
+      if (depth > 0) depth--;
+      i++;
+      continue;
+    }
+
+    if (depth > 0) {
+      if (/\s/.test(src[i])) {
+        out += src[i++];
+        continue;
+      }
+      if (src[i] === ";") {
+        out += e(";");
+        i++;
+        continue;
+      }
+      // Property: word followed by colon
+      const pm = /^([\w-]+)(\s*:)/.exec(src.slice(i));
+      if (pm) {
+        out += tok(C.attr, pm[1]) + e(pm[2]);
+        i += pm[0].length;
+        // Value until ; or }
+        while (i < n && src[i] !== ";" && src[i] !== "}") {
+          if (src[i] === "/" && src[i + 1] === "*") {
+            const j = src.indexOf("*/", i + 2);
+            const end = j < 0 ? n : j + 2;
+            out += tok(C.cm, src.slice(i, end));
+            i = end;
+          } else if (src[i] === '"' || src[i] === "'") {
+            const q = src[i];
+            let j = i + 1;
+            while (j < n && src[j] !== q) {
+              if (src[j] === "\\") j++;
+              j++;
+            }
+            out += tok(C.str, src.slice(i, j + 1));
+            i = j + 1;
+          } else if (src[i] === "#") {
+            const hm = /^#[0-9a-fA-F]{3,8}/.exec(src.slice(i));
+            if (hm) {
+              out += tok(C.num, hm[0]);
+              i += hm[0].length;
+            } else {
+              out += e(src[i++]);
+            }
+          } else if (
+            /[0-9]/.test(src[i]) ||
+            (src[i] === "-" && /[0-9]/.test(src[i + 1] || ""))
+          ) {
+            const nm = /^-?[\d.]+[\w%]*/.exec(src.slice(i));
+            if (nm) {
+              out += tok(C.num, nm[0]);
+              i += nm[0].length;
+            } else {
+              out += e(src[i++]);
+            }
+          } else if (/[a-zA-Z_]/.test(src[i])) {
+            const wm = /^[\w-]+/.exec(src.slice(i));
+            if (wm) {
+              const we = i + wm[0].length;
+              out +=
+                we < n && src[we] === "("
+                  ? tok(C.fn, wm[0])
+                  : tok(C.val, wm[0]);
+              i = we;
+            } else {
+              out += e(src[i++]);
+            }
+          } else {
+            out += e(src[i++]);
+          }
+        }
+        continue;
+      }
+    } else {
+      // Selector context
+      if (!/\s/.test(src[i]) && src[i] !== "{" && src[i] !== "}") {
+        const sm = /^[^\s{};]+/.exec(src.slice(i));
+        if (sm) {
+          out += tok(C.sel, sm[0]);
+          i += sm[0].length;
+          continue;
+        }
+      }
+    }
+    if (/\s/.test(src[i])) out += src[i++];
+    else out += e(src[i++]);
+  }
+  return out;
+}
+
+// --- JavaScript / TypeScript ---
+const JS_KW = new Set([
+  "const",
+  "let",
+  "var",
+  "function",
+  "return",
+  "if",
+  "else",
+  "for",
+  "while",
+  "do",
+  "switch",
+  "case",
+  "break",
+  "continue",
+  "new",
+  "class",
+  "extends",
+  "import",
+  "export",
+  "default",
+  "from",
+  "async",
+  "await",
+  "try",
+  "catch",
+  "finally",
+  "throw",
+  "typeof",
+  "instanceof",
+  "in",
+  "of",
+  "true",
+  "false",
+  "null",
+  "undefined",
+  "this",
+  "super",
+  "static",
+  "get",
+  "set",
+  "yield",
+  "delete",
+  "void",
+  "type",
+  "interface",
+  "enum",
+  "as",
+  "readonly",
+  "abstract",
+]);
+
+function hlJs(src: string): string {
+  let out = "",
+    i = 0;
+  const n = src.length;
+  while (i < n) {
+    // Line comment
+    if (src[i] === "/" && src[i + 1] === "/") {
+      const j = src.indexOf("\n", i);
+      const end = j < 0 ? n : j;
+      out += tok(C.cm, src.slice(i, end));
+      i = end;
+      continue;
+    }
+    // Block comment
+    if (src[i] === "/" && src[i + 1] === "*") {
+      const j = src.indexOf("*/", i + 2);
+      const end = j < 0 ? n : j + 2;
+      out += tok(C.cm, src.slice(i, end));
+      i = end;
+      continue;
+    }
+    // Template literal
+    if (src[i] === "`") {
+      let j = i + 1;
+      while (j < n && src[j] !== "`") {
+        if (src[j] === "\\") j++;
+        j++;
+      }
+      out += tok(C.str, src.slice(i, j + 1));
+      i = j + 1;
+      continue;
+    }
+    // String
+    if (src[i] === '"' || src[i] === "'") {
+      const q = src[i];
+      let j = i + 1;
+      while (j < n && src[j] !== q && src[j] !== "\n") {
+        if (src[j] === "\\") j++;
+        j++;
+      }
+      out += tok(C.str, src.slice(i, j + 1));
+      i = j + 1;
+      continue;
+    }
+    // Number
+    if (/[0-9]/.test(src[i])) {
+      const m = /^0x[0-9a-fA-F]+|^[\d.]+([eE][+-]?\d+)?/.exec(src.slice(i));
+      if (m) {
+        out += tok(C.num, m[0]);
+        i += m[0].length;
+        continue;
+      }
+    }
+    // Identifier or keyword
+    if (/[a-zA-Z_$]/.test(src[i])) {
+      const m = /^[a-zA-Z_$][\w$]*/.exec(src.slice(i));
+      if (m) {
+        const word = m[0];
+        const after = i + word.length;
+        const isMember = i > 0 && src[i - 1] === ".";
+        if (JS_KW.has(word) && !isMember) out += tok(C.kw, word);
+        else if (after < n && src[after] === "(") out += tok(C.fn, word);
+        else out += e(word);
+        i = after;
+        continue;
+      }
+    }
+    out += e(src[i++]);
+  }
+  return out;
+}
+
+// --- Shell ---
+function hlSh(src: string): string {
+  let out = "",
+    i = 0;
+  const n = src.length;
+  while (i < n) {
+    if (src[i] === "#") {
+      const j = src.indexOf("\n", i);
+      const end = j < 0 ? n : j;
+      out += tok(C.cm, src.slice(i, end));
+      i = end;
+      continue;
+    }
+    if (src[i] === '"' || src[i] === "'") {
+      const q = src[i];
+      let j = i + 1;
+      while (j < n && src[j] !== q) {
+        if (src[j] === "\\") j++;
+        j++;
+      }
+      out += tok(C.str, src.slice(i, j + 1));
+      i = j + 1;
+      continue;
+    }
+    out += e(src[i++]);
+  }
+  return out;
+}
+
+/** Escapes code for element content. */
+export function escapeCode(code: string): string {
+  return e(code);
+}
+
+/**
+ * The markup for a `<code-block>` slot: highlighted when `highlight` knows the language, otherwise escaped.
+ * `lang` is the block's `data-bascik-prop-lang`, compared without case.
+ */
+export function highlightCode(code: string, lang: string): string {
+  const language = lang.trim().toLowerCase();
+  if (!language || language === "text" || !code.trim()) return e(code);
+  return highlight(code, language) ?? e(code);
+}
+
+/** Reverses the escaping marked applies to code, so the source can be highlighted. */
+export function unescapeCode(html: string): string {
+  return html.replace(/&(lt|gt|quot|#39|amp);/g, (_entity, name: string) =>
+    name === "lt"
+      ? "<"
+      : name === "gt"
+        ? ">"
+        : name === "quot"
+          ? '"'
+          : name === "#39"
+            ? "'"
+            : "&",
+  );
+}

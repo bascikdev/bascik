@@ -5,7 +5,7 @@
  */
 
 import { readFile, readdir } from "node:fs/promises";
-import { join, resolve, dirname, relative } from "node:path";
+import { join, resolve, dirname, relative, isAbsolute } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { getHttpPath } from "./paths.ts";
 import { getImportRoot } from "./import-root.ts";
@@ -15,22 +15,39 @@ import {
 } from "./module-specifiers.ts";
 import { scanApiRouteFiles, buildApiRouteTree } from "./api-routes.ts";
 import { withBasePath } from "./base-path.ts";
-import { hasHiddenSegment } from "./route-matching.ts";
+import { isPrivatePathname } from "./route-matching.ts";
 import { getHtmlAttributeValue } from "./html-patterns.ts";
+import { createNamedOpenTagScanner } from "./element-content-scan.ts";
 import {
   SIDECAR_SCHEMA_VERSION,
+  sidecarHasPageEntries,
   type ServerScriptEntry,
   type ServerScriptsSidecar,
 } from "./server-sidecar.ts";
+import {
+  readComponentManifest,
+  type ComponentManifest,
+} from "./component-manifest.ts";
 import { DEFAULT_SCRIPT_TIMEOUT_MS } from "./server-scripts.ts";
+import { resolveResponseSecurity } from "./web-response.ts";
+import { REQUEST_RENDER_LIMITS } from "./request-render.ts";
+import type { RenderLimitsOptions, SecurityOptions } from "./types.ts";
 import { createHash } from "node:crypto";
 import type {
+  ContentSecurityPolicyConfig,
+  CspRouteHashes,
+} from "./content-security-policy.ts";
+import type {
   SiteGraph,
+  SiteGraphComponents,
+  SiteGraphContentSecurityPolicy,
   SiteGraphPage,
   SiteGraphJob,
   SiteGraphApiRoute,
   DistPageSegment,
 } from "./adapter-contract.ts";
+import { privateDirFor } from "./private-dir.ts";
+import { compileDirectiveTypeScript } from "./typescript.ts";
 
 export type { DistPageSegment };
 
@@ -74,23 +91,29 @@ export const splitDistPageIntoSegments = (
   const segments: DistPageSegment[] = [];
   const scriptIds: string[] = [];
   let cursor = 0;
-  // Fresh stateful regex per call: it is driven through `lastIndex`.
-  const openTagRe = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
-  let open: RegExpExecArray | null;
-  while ((open = openTagRe.exec(html)) !== null) {
-    const openTag = open[0];
+  // The script open tags `/<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>/gi`
+  // finds, in linear time.
+  const openTags = createNamedOpenTagScanner(html, "script");
+  let searchFrom = 0;
+  for (
+    let open = openTags.next(searchFrom);
+    open !== null;
+    open = openTags.next(searchFrom)
+  ) {
+    searchFrom = open.end;
+    const openTag = html.slice(open.start, open.end);
     if (!isPlaceholderOpenTag(openTag)) continue;
-    const end = matchPlaceholderEndTag(html, openTagRe.lastIndex);
+    const end = matchPlaceholderEndTag(html, open.end);
     if (end === -1) continue;
     const id = getHtmlAttributeValue(openTag, "data-bascik-server-id");
     if (!id) continue;
-    const index = open.index;
+    const index = open.start;
     if (index > cursor)
       segments.push({ kind: "static", text: html.slice(cursor, index) });
     segments.push({ kind: "script", id });
     scriptIds.push(id);
     cursor = end;
-    openTagRe.lastIndex = cursor;
+    searchFrom = cursor;
   }
   if (cursor < html.length || segments.length === 0)
     segments.push({ kind: "static", text: html.slice(cursor) });
@@ -123,10 +146,17 @@ export const pageAliasesFor = (httpPath: string, base: string): string[] => {
   return aliases;
 };
 
-/** Whether a dist-relative path may be uploaded as a public static file. */
-export const isPublicAssetPath = (distRelativePath: string): boolean => {
+/**
+ * Whether a dist-relative path may be uploaded as a public static file.
+ * `hideDotfiles` is `security.hideDotfiles`: off, dotfiles deploy, but
+ * `.bascik/`, source maps and precompressed siblings never do.
+ */
+export const isPublicAssetPath = (
+  distRelativePath: string,
+  hideDotfiles = true,
+): boolean => {
   const normalized = distRelativePath.replace(/\\/g, "/");
-  if (hasHiddenSegment(normalized)) return false;
+  if (isPrivatePathname(normalized, "/", hideDotfiles)) return false;
   if (normalized.endsWith(".map")) return false;
   if (/\.(br|gz)$/i.test(normalized) || /\.bmeta$/i.test(normalized))
     return false;
@@ -188,6 +218,13 @@ export interface ReadSiteGraphOptions {
   onServerScriptError?: "error" | "warn" | "ignore";
   pagesDir?: string;
   apiDir?: string;
+  contentSecurityPolicy?: ContentSecurityPolicyConfig;
+  /** The build's `security` config (default: `BascikConfig.security`). */
+  security?: Partial<SecurityOptions>;
+  /** `scripts.stripAnsi` (default: `BascikConfig.scripts.stripAnsi`). */
+  stripAnsi?: boolean;
+  /** `scripts.renderLimits` (default: `BascikConfig.scripts.renderLimits`). */
+  renderLimits?: Partial<RenderLimitsOptions>;
 }
 
 export const readSiteGraph = async (
@@ -208,9 +245,22 @@ export const readSiteGraph = async (
     BascikConfig?.scripts?.onServerScriptError ??
     "error";
   const importRoot = getImportRoot();
+  // The build's security and render settings, for a host that has no
+  // config of its own (the Worker): resolved here, so every host sends the
+  // same headers and applies the same limits.
+  const security = options.security ?? BascikConfig?.security;
+  const responseSecurity = resolveResponseSecurity(security);
+  const hideDotfiles = security?.hideDotfiles !== false;
+  const stripAnsi =
+    (options.stripAnsi ?? BascikConfig?.scripts?.stripAnsi) !== false;
+  const renderLimits: RenderLimitsOptions = {
+    ...REQUEST_RENDER_LIMITS,
+    ...definedFields(BascikConfig?.scripts?.renderLimits),
+    ...definedFields(options.renderLimits),
+  };
 
   // Read server sidecar
-  const sidecarPath = join(distDir, ".bascik", "server-scripts.json");
+  const sidecarPath = join(privateDirFor(distDir), "server-scripts.json");
   let sidecar: ServerScriptsSidecar | undefined;
   try {
     const raw = await readFile(sidecarPath, "utf8");
@@ -229,6 +279,125 @@ export const readSiteGraph = async (
   }
   const sidecarScripts: Record<string, ServerScriptEntry> =
     sidecar?.scripts ?? {};
+  // An inline script marked type="text/typescript" is compiled here, as the
+  // Node host compiles it before running it, so every host stages and
+  // bundles JavaScript. A `.ts` src module is left to the bundler, which
+  // reads TypeScript by its extension.
+  const compiledSources = new Map<string, string>();
+  for (const [id, entry] of Object.entries(sidecarScripts)) {
+    if (!entry.typescript || entry.modulePath) continue;
+    const sourceFile = entry.sourceFile
+      ? relative(projectRoot, resolve(projectRoot, entry.sourceFile)).replace(
+          /\\/g,
+          "/",
+        )
+      : id;
+    compiledSources.set(
+      id,
+      await compileDirectiveTypeScript(
+        entry.source,
+        sourceFile,
+        "inline",
+        entry.sourceLine !== undefined
+          ? { line: entry.sourceLine, column: entry.sourceColumn ?? 1 }
+          : undefined,
+        // The source is the body as written, so it starts where the body does.
+        entry.sourceLine !== undefined
+          ? { line: entry.sourceLine, column: entry.sourceColumn ?? 1 }
+          : undefined,
+      ),
+    );
+  }
+
+  // One host-neutral job from a sidecar entry: a `src=` module by path, an
+  // inline script with its specifiers rewritten for staging.
+  const jobFor = (
+    id: string,
+    entry: ServerScriptEntry,
+    owner: string,
+  ): SiteGraphJob => {
+    // A component script's markup gets the component's element classes on
+    // every host (prompt 157); the key is absent for page-level scripts.
+    const scope = entry.outputScope ? { outputScope: entry.outputScope } : {};
+    const containingDir = entry.sourceFile
+      ? dirname(resolve(projectRoot, entry.sourceFile))
+      : projectRoot;
+    if (entry.modulePath) {
+      const modulePath = resolveScriptSrcPath(
+        entry.modulePath,
+        containingDir,
+        importRoot,
+      );
+      return {
+        id,
+        mode: entry.mode,
+        source: { kind: "module", path: modulePath },
+        owner,
+        ...scope,
+      };
+    }
+    const rewritten = rewriteModuleSpecifiers(
+      compiledSources.get(id) ?? entry.source,
+      containingDir,
+      {
+        importRoot,
+      },
+    );
+    return {
+      id,
+      mode: entry.mode,
+      source: { kind: "inline", code: rewritten, stagedPath: "" },
+      owner,
+      ...scope,
+    };
+  };
+
+  // Page-owned entries mean the release renders component tags from script
+  // output through .bascik/dist/components.json (prompt 157); a dist without
+  // a compatible manifest is a stale build, as it is for `bascik --server`.
+  // The manifest and the component scripts it names form the graph's
+  // `components` section; they belong to no page, since any page's script
+  // may return any component. A job the sidecar lacks is the same stale
+  // build the production boot refuses.
+  let components: SiteGraphComponents | undefined;
+  if (sidecarHasPageEntries(sidecarScripts)) {
+    const manifest: ComponentManifest | null =
+      await readComponentManifest(distDir);
+    if (!manifest) {
+      throw new Error(
+        `[bascik] --target: the sidecar has server-script entries but .bascik/dist/components.json is missing. Run \`bascik --build\` again.`,
+      );
+    }
+    const jobs: Record<string, SiteGraphJob> = {};
+    for (const component of Object.values(manifest.components)) {
+      for (const job of component.jobs) {
+        const entry = sidecarScripts[job.id];
+        if (!entry) {
+          throw new Error(
+            `[bascik] --target: component script "${job.id}" of <${component.name}> (${component.filePath}) ` +
+              `is listed in .bascik/dist/components.json but missing from the sidecar. Run \`bascik --build\` again.`,
+          );
+        }
+        // The manifest records the component file project-relative; the
+        // sidecar's path is whatever the builder listed (absolute on a real
+        // build), so the owner is shown from the manifest when it has one.
+        const sourceFile = job.sourceFile ?? entry.sourceFile;
+        const shownFile = sourceFile
+          ? (isAbsolute(sourceFile)
+              ? relative(projectRoot, sourceFile)
+              : sourceFile
+            ).replace(/\\/g, "/")
+          : component.filePath;
+        const line = job.sourceLine ?? entry.sourceLine;
+        jobs[job.id] = jobFor(
+          job.id,
+          entry,
+          `${entry.mode} script in ${shownFile}${line ? `:${line}` : ""}`,
+        );
+      }
+    }
+    components = { manifest, jobs };
+  }
 
   const distFiles = await readDistFiles(distDir);
   const publicFiles: string[] = [];
@@ -237,7 +406,7 @@ export const readSiteGraph = async (
 
   for (const rel of distFiles) {
     if (rel.startsWith(".bascik/")) continue;
-    if (!isPublicAssetPath(rel)) continue;
+    if (!isPublicAssetPath(rel, hideDotfiles)) continue;
     if (/\.html?$/i.test(rel)) {
       const html = await readFile(join(distDir, rel), "utf8");
       const { segments, scriptIds } = splitDistPageIntoSegments(html);
@@ -260,35 +429,7 @@ export const readSiteGraph = async (
             ? relative(projectRoot, entry.sourceFile).replace(/\\/g, "/")
             : rel
         }${entry.sourceLine ? `:${entry.sourceLine}` : ""}`;
-        const containingDir = entry.sourceFile
-          ? dirname(resolve(projectRoot, entry.sourceFile))
-          : projectRoot;
-
-        if (entry.modulePath) {
-          const modulePath = resolveScriptSrcPath(
-            entry.modulePath,
-            containingDir,
-            importRoot,
-          );
-          jobs[id] = {
-            id,
-            mode: entry.mode,
-            source: { kind: "module", path: modulePath },
-            owner,
-          };
-        } else {
-          const rewritten = rewriteModuleSpecifiers(
-            entry.source,
-            containingDir,
-            { importRoot },
-          );
-          jobs[id] = {
-            id,
-            mode: entry.mode,
-            source: { kind: "inline", code: rewritten, stagedPath: "" },
-            owner,
-          };
-        }
+        jobs[id] = jobFor(id, entry, owner);
       }
 
       pages[httpPath] = {
@@ -328,6 +469,27 @@ export const readSiteGraph = async (
     }),
   )}`;
 
+  // Opt-in contentSecurityPolicy: the policy, every route's build hashes,
+  // and the static pages a host serves without its runtime.
+  let contentSecurityPolicy: SiteGraphContentSecurityPolicy | undefined;
+  const policy =
+    options.contentSecurityPolicy ?? BascikConfig?.contentSecurityPolicy;
+  if (policy) {
+    let hashes: Record<string, CspRouteHashes> = {};
+    try {
+      hashes = JSON.parse(
+        await readFile(join(privateDirFor(distDir), "csp-hashes.json"), "utf8"),
+      ) as Record<string, CspRouteHashes>;
+    } catch {
+      hashes = {};
+    }
+    const staticRoutes = publicFiles
+      .filter((rel) => /\.html?$/i.test(rel))
+      .map((rel) => getHttpPath(rel, pagesDir))
+      .sort();
+    contentSecurityPolicy = { policy, hashes, staticRoutes };
+  }
+
   return {
     base,
     release,
@@ -339,5 +501,17 @@ export const readSiteGraph = async (
     apiRoutes,
     custom500,
     importRoot,
+    responseSecurity,
+    hideDotfiles,
+    stripAnsi,
+    renderLimits,
+    ...(components ? { components } : {}),
+    ...(contentSecurityPolicy ? { contentSecurityPolicy } : {}),
   };
 };
+
+/** The fields of `obj` that are set, so an `undefined` never hides a default. */
+const definedFields = <T extends object>(obj: T | undefined): Partial<T> =>
+  Object.fromEntries(
+    Object.entries(obj ?? {}).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;

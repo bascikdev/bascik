@@ -66,9 +66,14 @@ export class SseManager {
     return this.generation;
   }
 
+  /**
+   * `version` is the stored version of the client's page, sent with the
+   * connected message so a page that loaded before its rebuild reloads.
+   */
   public addClient(
     res: BascikResponse,
     openPagePath?: string | null,
+    version?: string | null,
   ): SseClient | null {
     if (this.destroyed) {
       return null;
@@ -104,7 +109,7 @@ export class SseManager {
     this.clients.set(client.id, client);
 
     // Send initial connected payload
-    this.send(client, "data: connected\n\n");
+    this.send(client, `data: connected${version ? ` ${version}` : ""}\n\n`);
 
     return client;
   }

@@ -14,7 +14,7 @@ user-invocable: true
 argument-hint: "Specify the PR number, branch name, or diff range to review..."
 ---
 
-You are a specialized code reviewer for the **Bascik** monorepo (`pkg/`, `docs/`, `create/`, `extensions/vscode-bascik/`).
+You are a specialized code reviewer for the **Bascik** monorepo (`pkg/`, `docs/`, `create/`, `extensions/vscode-bascik/`, `adapters/cloudflare/`, `lsp/`).
 
 ## Review Objectives
 

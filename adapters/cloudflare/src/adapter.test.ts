@@ -390,6 +390,121 @@ describe("cloudflare adapter definition and execution", () => {
     }
   });
 
+  it("carries authored previews, preview_urls and bindings into the generated config, also when the name comes from the environment", async () => {
+    const testDir = join(tmpdir(), `bascik-cf-authored-carry-${Date.now()}`);
+    const distDir = join(testDir, "dist");
+    const outDir = join(distDir, ".bascik/cloudflare");
+    await mkdir(outDir, { recursive: true });
+    await writeFile(
+      join(testDir, "wrangler.jsonc"),
+      `{
+  // the demo's shape
+  "name": "authored-name",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "preview_urls": true,
+  "previews": {},
+  "vars": { "MODE": "demo" },
+  "assets": { "html_handling": "drop-trailing-slash" },
+}
+`,
+      "utf8",
+    );
+    const graph: SiteGraph = {
+      base: "/",
+      release: "test-rel",
+      scriptTimeoutMs: 1000,
+      apiTimeoutMs: 1000,
+      onServerScriptError: "error",
+      publicFiles: [],
+      pages: {},
+      apiRoutes: [],
+      importRoot: testDir,
+    };
+    const logs: string[] = [];
+    const run = () =>
+      adapter.build({
+        graph,
+        distDir,
+        outDir,
+        projectRoot: testDir,
+        variant: "workers",
+        log: (m: string) => logs.push(m),
+        runtimeEntry: "",
+      });
+    const read = async () =>
+      JSON.parse(await readFile(join(outDir, "wrangler.jsonc"), "utf8"));
+    try {
+      await run();
+      const generated = await read();
+      expect(generated.name).toBe("authored-name");
+      expect(generated.preview_urls).toBe(true);
+      expect(generated.previews).toEqual({});
+      expect(generated.vars).toEqual({ MODE: "demo" });
+      expect(generated.assets.html_handling).toBe("drop-trailing-slash");
+      expect(generated.assets.binding).toBe("ASSETS");
+      expect(logs).toEqual([]);
+
+      process.env.CLOUDFLARE_WORKER_NAME = "env-name";
+      await run();
+      const fromEnv = await read();
+      expect(fromEnv.name).toBe("env-name");
+      expect(fromEnv.preview_urls).toBe(true);
+      expect(fromEnv.vars).toEqual({ MODE: "demo" });
+    } finally {
+      delete process.env.CLOUDFLARE_WORKER_NAME;
+      await rm(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it("misuse: an authored main is reported through the build log, and a renamed assets binding fails the build", async () => {
+    const testDir = join(tmpdir(), `bascik-cf-authored-owned-${Date.now()}`);
+    const distDir = join(testDir, "dist");
+    const outDir = join(distDir, ".bascik/cloudflare");
+    await mkdir(outDir, { recursive: true });
+    const graph: SiteGraph = {
+      base: "/",
+      release: "test-rel",
+      scriptTimeoutMs: 1000,
+      apiTimeoutMs: 1000,
+      onServerScriptError: "error",
+      publicFiles: [],
+      pages: {},
+      apiRoutes: [],
+      importRoot: testDir,
+    };
+    const logs: string[] = [];
+    const run = () =>
+      adapter.build({
+        graph,
+        distDir,
+        outDir,
+        projectRoot: testDir,
+        variant: "workers",
+        log: (m: string) => logs.push(m),
+        runtimeEntry: "",
+      });
+    try {
+      await writeFile(
+        join(testDir, "wrangler.jsonc"),
+        `{ "main": "src/index.ts" }`,
+      );
+      await run();
+      expect(
+        logs.some((l) => /wrangler\.jsonc: "main" is ignored/.test(l)),
+      ).toBe(true);
+      await writeFile(
+        join(testDir, "wrangler.jsonc"),
+        `{ "assets": { "binding": "STATIC" } }`,
+      );
+      await expect(run()).rejects.toThrow(
+        /wrangler\.jsonc: "assets\.binding" must be "ASSETS"/,
+      );
+    } finally {
+      await rm(testDir, { recursive: true, force: true });
+    }
+  });
+
   it("preserves and merges compatibility flags from authored wrangler.toml", async () => {
     const testDir = join(tmpdir(), `bascik-cf-authored-toml-${Date.now()}`);
     const distDir = join(testDir, "dist");
@@ -453,6 +568,65 @@ describe("cloudflare adapter definition and execution", () => {
       await rm(testDir, { recursive: true, force: true });
     }
   });
+
+  // dist/ is read before the private build folder moved beside it, by a
+  // custom graph, or on a case-insensitive filesystem: a path whose first
+  // segment opens a .bascik folder is never staged into what Cloudflare
+  // deploys, whatever the graph lists.
+  it.each(["pages", "workers"] as const)(
+    "%s: never stages a .bascik path into public/, in any spelling",
+    async (variant) => {
+      const testDir = join(
+        tmpdir(),
+        `bascik-cf-private-${variant}-${Date.now()}`,
+      );
+      const distDir = join(testDir, "dist");
+      const outDir = join(distDir, `.bascik/cloudflare-${variant}`);
+      await mkdir(join(distDir, ".bascik"), { recursive: true });
+      await mkdir(join(distDir, ".Bascik"), { recursive: true });
+      await mkdir(outDir, { recursive: true });
+      await writeFile(join(distDir, "index.html"), "<p>home</p>");
+      await writeFile(join(distDir, ".bascik/ownership.json"), "{}");
+      await writeFile(join(distDir, ".Bascik/server-scripts.json"), "{}");
+      const graph: SiteGraph = {
+        base: "/",
+        release: "test-rel",
+        scriptTimeoutMs: 1000,
+        apiTimeoutMs: 1000,
+        onServerScriptError: "error",
+        publicFiles: [
+          "index.html",
+          ".bascik/ownership.json",
+          ".Bascik/server-scripts.json",
+        ],
+        pages: {},
+        apiRoutes: [],
+        importRoot: testDir,
+      };
+      try {
+        await adapter.build({
+          graph,
+          distDir,
+          outDir,
+          projectRoot: testDir,
+          variant,
+          log: () => {},
+          runtimeEntry: "",
+        });
+        expect(await readFile(join(outDir, "public/index.html"), "utf8")).toBe(
+          "<p>home</p>",
+        );
+        await expect(
+          readFile(join(outDir, "public/.bascik/ownership.json")),
+        ).rejects.toThrow();
+        await expect(
+          readFile(join(outDir, "public/.Bascik/server-scripts.json")),
+        ).rejects.toThrow();
+      } finally {
+        await rm(testDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("throws on unknown variant naming both valid ones", async () => {
     const testDir = join(tmpdir(), `bascik-cf-invalid-${Date.now()}`);

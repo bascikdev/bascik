@@ -20,6 +20,11 @@ import { existsSync, statSync, accessSync, constants } from "node:fs";
 import { resolve, sep } from "node:path";
 import { SITE_URL_ENV_VAR, validateSiteUrl } from "./environment.ts";
 import { LOG_LEVELS } from "./log-level.ts";
+import {
+  CSP_DIRECTIVES,
+  CSP_KEYWORDS,
+  isSourceListDirective,
+} from "./content-security-policy-rules.ts";
 import { sourceWatchRoot } from "./watch-root.ts";
 
 export interface ConfigValidationError {
@@ -65,6 +70,9 @@ const defaultFs: ConfigValidationFs = {
   },
 };
 
+/** One extension, dot optional: `.css` or `css`, never `*.css` or `a/b.css`. */
+const CACHE_CONTROL_EXTENSION = /^\.?[^./\\*?\s]+$/;
+
 const isPlainObject = (val: unknown): val is Record<string, unknown> =>
   val !== null && typeof val === "object" && !Array.isArray(val);
 
@@ -73,7 +81,10 @@ const isPlainObject = (val: unknown): val is Record<string, unknown> =>
 /** Nested map of every known config key. Leaf value is null. */
 const KNOWN_KEYS: Record<string, unknown> = {
   directory: { pages: null, components: null, out: null, api: null },
-  components: { external: null },
+  components: {
+    external: null,
+    expansionLimits: { maxInstances: null, maxPageLength: null },
+  },
   scoping: {
     scriptBlocks: null,
     inheritAttributes: null,
@@ -99,6 +110,15 @@ const KNOWN_KEYS: Record<string, unknown> = {
     onServerScriptError: null,
     timeout: null,
     importRoot: null,
+    stripAnsi: null,
+    renderLimits: {
+      maxInstances: null,
+      maxOutputLength: null,
+      maxNestedScripts: null,
+      maxDepth: null,
+      rescanFactor: null,
+      rescanBase: null,
+    },
   },
   onMinifyError: null,
   http: {
@@ -123,7 +143,69 @@ const KNOWN_KEYS: Record<string, unknown> = {
     transpiles: null,
   },
   base: null,
+  contentSecurityPolicy: {
+    directives: null,
+    hashes: { scripts: null, styles: null },
+    reportOnly: null,
+  },
+  security: {
+    blockScriptUrls: null,
+    blockCodeBindings: null,
+    // Header names are checked by validateSecurity (case-insensitive, with
+    // their own redirect messages), so the generic walker skips them.
+    headers: null,
+    hsts: { maxAge: null, includeSubDomains: null, preload: null },
+    privateDynamicPages: null,
+    stripDirectiveScripts: null,
+    hideDotfiles: null,
+  },
 };
+
+/** The response headers `security.headers` can change, in lowercase. */
+export const SECURITY_HEADER_NAMES = [
+  "x-content-type-options",
+  "x-frame-options",
+  "referrer-policy",
+  "cross-origin-opener-policy",
+  "cross-origin-resource-policy",
+] as const;
+
+const SECURITY_BOOLEAN_KEYS = [
+  "blockScriptUrls",
+  "blockCodeBindings",
+  "privateDynamicPages",
+  "stripDirectiveScripts",
+  "hideDotfiles",
+] as const;
+
+const SECURITY_KEYS = [
+  "blockScriptUrls",
+  "blockCodeBindings",
+  "headers",
+  "hsts",
+  "privateDynamicPages",
+  "stripDirectiveScripts",
+  "hideDotfiles",
+] as const;
+
+export const RENDER_LIMIT_KEYS = [
+  "maxInstances",
+  "maxOutputLength",
+  "maxNestedScripts",
+  "maxDepth",
+  "rescanFactor",
+  "rescanBase",
+] as const;
+
+export const EXPANSION_LIMIT_KEYS = ["maxInstances", "maxPageLength"] as const;
+
+/** Settings that only take effect when pages and components are built. */
+const BUILD_TIME_ONLY_KEYS: readonly (readonly [string, string])[] = [
+  ["security", "blockScriptUrls"],
+  ["security", "blockCodeBindings"],
+  ["security", "stripDirectiveScripts"],
+  ["components", "expansionLimits"],
+];
 
 const KNOWN_EXEC_ENTRY_KEYS = [
   "script",
@@ -311,6 +393,9 @@ export const validateConfigShape = (
     errors.push({ key, value, message });
   };
 
+  // Protections first: a mistake here changes what the site ships.
+  validateSecurity(raw.security, push);
+
   /* directory */
   if (isPlainObject(raw.directory)) {
     const dir = raw.directory;
@@ -492,6 +577,31 @@ export const validateConfigShape = (
         }
       }
     }
+    if (http.cacheControl !== undefined && http.cacheControl !== null) {
+      const cacheControl = http.cacheControl;
+      if (isPlainObject(cacheControl)) {
+        for (const [ext, value] of Object.entries(cacheControl)) {
+          const key = `http.cacheControl[${JSON.stringify(ext)}]`;
+          // Matched against the file's last extension, with or without the
+          // dot; a glob or a path would silently never match.
+          if (!CACHE_CONTROL_EXTENSION.test(ext)) {
+            push(
+              key,
+              ext,
+              'expected a file extension such as ".css" (matched against the last extension of the file name)',
+            );
+          } else if (typeof value !== "string") {
+            push(key, value, "expected a Cache-Control string");
+          }
+        }
+      } else if (typeof cacheControl !== "string") {
+        push(
+          "http.cacheControl",
+          cacheControl,
+          'expected a Cache-Control string, or a per-extension map such as { ".css": "public, max-age=31536000, immutable" }',
+        );
+      }
+    }
     if (http.timeouts !== undefined) {
       const timeouts = http.timeouts;
       if (!isPlainObject(timeouts)) {
@@ -501,23 +611,31 @@ export const validateConfigShape = (
           "expected an object with timeout values",
         );
       } else {
-        for (const key of [
-          "request",
-          "headers",
-          "keepAlive",
-          "drain",
-        ] as const) {
+        // Node's servers take request, headers and keepAlive as integers and
+        // throw at startup on anything else, so a fraction reports here.
+        for (const key of ["request", "headers", "keepAlive"] as const) {
           const val = timeouts[key];
           if (
             val !== undefined &&
-            (typeof val !== "number" || Number.isNaN(val) || val <= 0)
+            (typeof val !== "number" || !Number.isInteger(val) || val <= 0)
           ) {
             push(
               `http.timeouts.${key}`,
               val,
-              "expected a positive number (milliseconds)",
+              "expected a positive whole number (milliseconds)",
             );
           }
+        }
+        const drain = timeouts.drain;
+        if (
+          drain !== undefined &&
+          (typeof drain !== "number" || Number.isNaN(drain) || drain <= 0)
+        ) {
+          push(
+            "http.timeouts.drain",
+            drain,
+            "expected a positive number (milliseconds)",
+          );
         }
       }
     }
@@ -577,6 +695,17 @@ export const validateConfigShape = (
         );
       }
     }
+    if (
+      scripts.stripAnsi !== undefined &&
+      typeof scripts.stripAnsi !== "boolean"
+    )
+      push("scripts.stripAnsi", scripts.stripAnsi, "expected true or false");
+    validatePositiveIntegers(
+      scripts.renderLimits,
+      "scripts.renderLimits",
+      RENDER_LIMIT_KEYS,
+      push,
+    );
   }
 
   if (
@@ -736,6 +865,14 @@ export const validateConfigShape = (
     }
   }
 
+  if (isPlainObject(raw.components))
+    validatePositiveIntegers(
+      raw.components.expansionLimits,
+      "components.expansionLimits",
+      EXPANSION_LIMIT_KEYS,
+      push,
+    );
+
   /* scoping */
   if (isPlainObject(raw.scoping) && raw.scoping.preserve !== undefined) {
     const preserve = raw.scoping.preserve;
@@ -793,7 +930,247 @@ export const validateConfigShape = (
     }
   }
 
+  validateContentSecurityPolicy(raw.contentSecurityPolicy, push);
+
   return errors;
+};
+
+type Push = (key: string, value: unknown, message: string) => void;
+
+/**
+ * An optional object of positive whole numbers (the render and expansion
+ * limits). `0`, negatives, fractions, strings, NaN, Infinity and numbers past
+ * Number.MAX_SAFE_INTEGER are all rejected.
+ */
+const validatePositiveIntegers = (
+  value: unknown,
+  prefix: string,
+  keys: readonly string[],
+  push: Push,
+): void => {
+  if (value === undefined) return;
+  if (!isPlainObject(value)) {
+    push(
+      prefix,
+      value,
+      `expected an object { ${keys.map((k) => `${k}?`).join(", ")} }`,
+    );
+    return;
+  }
+  for (const key of keys) {
+    const field = value[key];
+    if (field === undefined) continue;
+    if (typeof field !== "number" || !Number.isSafeInteger(field) || field <= 0)
+      push(`${prefix}.${key}`, field, "expected a positive whole number");
+  }
+};
+
+/** `security`: seven named protections, no master switch. */
+const validateSecurity = (security: unknown, push: Push): void => {
+  if (security === undefined) return;
+  const key = "security";
+  if (!isPlainObject(security)) {
+    push(
+      key,
+      security,
+      `expected an object; turn each protection off by name (${SECURITY_KEYS.join(", ")})`,
+    );
+    return;
+  }
+  for (const name of SECURITY_BOOLEAN_KEYS) {
+    const value = security[name];
+    if (value !== undefined && typeof value !== "boolean")
+      push(`${key}.${name}`, value, "expected true or false");
+  }
+
+  const headers = security.headers;
+  if (headers !== undefined && typeof headers !== "boolean") {
+    if (!isPlainObject(headers)) {
+      push(
+        `${key}.headers`,
+        headers,
+        "expected true, false, or an object of header names",
+      );
+    } else {
+      const seen = new Map<string, string>();
+      for (const [name, value] of Object.entries(headers)) {
+        const at = `${key}.headers.${name}`;
+        const lower = name.toLowerCase();
+        const earlier = seen.get(lower);
+        if (earlier !== undefined) {
+          push(
+            at,
+            value,
+            `names the same header as "${earlier}"; keep one (header names ignore letter case)`,
+          );
+          continue;
+        }
+        seen.set(lower, name);
+        if (!(SECURITY_HEADER_NAMES as readonly string[]).includes(lower)) {
+          let message: string;
+          if (lower === "strict-transport-security")
+            message = "set it with security.hsts";
+          else if (
+            lower === "content-security-policy" ||
+            lower === "content-security-policy-report-only"
+          )
+            message = "set it with contentSecurityPolicy";
+          else {
+            const suggestion = suggestKey(
+              lower,
+              [...SECURITY_HEADER_NAMES],
+              `${key}.headers.`,
+            );
+            message = suggestion.startsWith("did you mean")
+              ? suggestion
+              : `security.headers changes only the headers Bascik sends by default (${SECURITY_HEADER_NAMES.join(", ")}); send other headers from your host or an API route`;
+          }
+          push(at, value, message);
+          continue;
+        }
+        if (value === false) continue;
+        if (typeof value !== "string") {
+          push(
+            at,
+            value,
+            "expected a header value string, or false to remove the header",
+          );
+        } else if (value.trim() === "") {
+          push(at, value, "use false to remove the header");
+        } else if (/[\u0000-\u0008\u000a-\u001f\u007f]/.test(value)) {
+          push(
+            at,
+            value,
+            "header values cannot contain line breaks or control characters",
+          );
+        } else {
+          // Node's setHeader and the Worker's Headers refuse anything else on
+          // every response, so a pasted dash or curly quote fails here.
+          const outside = /[^\t\u0020-\u007e\u0080-\u00ff]/.exec(value);
+          if (outside)
+            push(
+              at,
+              value,
+              `header values can hold only printable ASCII and Latin-1 characters; U+${outside[0].codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")} at index ${outside.index} cannot be sent (a pasted dash or curly quote?)`,
+            );
+        }
+      }
+    }
+  }
+
+  const hsts = security.hsts;
+  if (hsts !== undefined && typeof hsts !== "boolean") {
+    if (!isPlainObject(hsts)) {
+      push(
+        `${key}.hsts`,
+        hsts,
+        "expected true, false, or an object { maxAge?, includeSubDomains?, preload? }",
+      );
+    } else {
+      const maxAge = hsts.maxAge;
+      if (
+        maxAge !== undefined &&
+        (typeof maxAge !== "number" ||
+          !Number.isSafeInteger(maxAge) ||
+          maxAge < 0)
+      )
+        push(
+          `${key}.hsts.maxAge`,
+          maxAge,
+          "expected a whole number of seconds, 0 or more (31536000 is one year)",
+        );
+      for (const flag of ["includeSubDomains", "preload"] as const)
+        if (hsts[flag] !== undefined && typeof hsts[flag] !== "boolean")
+          push(`${key}.hsts.${flag}`, hsts[flag], "expected true or false");
+    }
+  }
+};
+
+/** `contentSecurityPolicy`: directive names, source lists, and the two flags. */
+const validateContentSecurityPolicy = (
+  csp: unknown,
+  push: (key: string, value: unknown, message: string) => void,
+): void => {
+  if (csp === undefined) return;
+  const key = "contentSecurityPolicy";
+  if (!isPlainObject(csp)) {
+    push(key, csp, "expected an object with directives");
+    return;
+  }
+  if (csp.reportOnly !== undefined && typeof csp.reportOnly !== "boolean")
+    push(`${key}.reportOnly`, csp.reportOnly, "expected a boolean");
+  const hashes = csp.hashes;
+  if (isPlainObject(hashes)) {
+    for (const kind of ["scripts", "styles"] as const)
+      if (hashes[kind] !== undefined && typeof hashes[kind] !== "boolean")
+        push(`${key}.hashes.${kind}`, hashes[kind], "expected a boolean");
+  } else if (hashes !== undefined && typeof hashes !== "boolean")
+    push(
+      `${key}.hashes`,
+      hashes,
+      "expected a boolean, or { scripts, styles } booleans to hash only one kind",
+    );
+  const directives = csp.directives;
+  if (!isPlainObject(directives)) {
+    push(
+      `${key}.directives`,
+      directives,
+      'expected an object of directives, for example { "script-src": ["\'self\'"] }',
+    );
+    return;
+  }
+  for (const [name, sources] of Object.entries(directives)) {
+    const lower = name.toLowerCase();
+    if (!CSP_DIRECTIVES.includes(lower)) {
+      let best = "";
+      let bestDistance = Infinity;
+      for (const candidate of CSP_DIRECTIVES) {
+        const distance = editDistance(lower, candidate);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = candidate;
+        }
+      }
+      push(
+        `${key}.directives`,
+        name,
+        bestDistance <= 2
+          ? `"${name}" is not a CSP directive. Did you mean "${best}"?`
+          : `"${name}" is not a CSP directive.`,
+      );
+      continue;
+    }
+    const at = `${key}.directives.${name}`;
+    if (
+      !Array.isArray(sources) ||
+      sources.some((source) => typeof source !== "string")
+    ) {
+      push(
+        at,
+        sources,
+        "expected an array of sources (strings), for example [\"'self'\"]",
+      );
+      continue;
+    }
+    sources.forEach((source: string, index) => {
+      if (source.trim() === "" || /[\s;,]/.test(source)) {
+        push(
+          `${at}[${index}]`,
+          source,
+          "expected one source with no spaces, ';' or ','. List each source as its own string.",
+        );
+      } else if (
+        isSourceListDirective(lower) &&
+        CSP_KEYWORDS.has(source.toLowerCase())
+      ) {
+        push(
+          `${at}[${index}]`,
+          source,
+          `write ${source} as '${source}' (with single quotes).`,
+        );
+      }
+    });
+  }
 };
 
 /* ── I/O validation half ──────────────────────────────────────────────── */
@@ -927,10 +1304,192 @@ export const collectConfigWarnings = (
     }
   }
 
+  if (isPlainObject(raw.security) && isPlainObject(raw.security.hsts)) {
+    const hsts = raw.security.hsts;
+    const maxAge = typeof hsts.maxAge === "number" ? hsts.maxAge : 31536000;
+    if (
+      hsts.preload === true &&
+      (hsts.includeSubDomains !== true || maxAge < 31536000)
+    )
+      warnings.push({
+        key: "security.hsts.preload",
+        value: true,
+        message:
+          "the browser preload list requires includeSubDomains and a max-age of at least one year (maxAge: 31536000); browsers ignore the preload request until both are set",
+      });
+  }
+
+  if (
+    isPlainObject(raw.security) &&
+    isPlainObject(raw.security.hsts) &&
+    raw.security.hsts.maxAge === 0 &&
+    raw.security.hsts.includeSubDomains === true
+  )
+    warnings.push({
+      key: "security.hsts.includeSubDomains",
+      value: true,
+      message:
+        "maxAge 0 clears the policy, so includeSubDomains has no effect; keep maxAge 0 alone to reset browsers, or set a maxAge to apply HTTPS to subdomains",
+    });
+
+  const csp = raw.contentSecurityPolicy;
+  if (isPlainObject(csp) && isPlainObject(csp.directives)) {
+    const directives = csp.directives;
+    // Directive names are case-insensitive; the header builder lowercases them.
+    const valueOf = (name: string): unknown =>
+      Object.entries(directives).find(
+        ([written]) => written.toLowerCase() === name,
+      )?.[1];
+    const sourcesOf = (name: string): string[] => {
+      const value = valueOf(name);
+      return Array.isArray(value)
+        ? (value as unknown[]).filter((s): s is string => typeof s === "string")
+        : [];
+    };
+    const hashScripts =
+      csp.hashes !== false &&
+      !(isPlainObject(csp.hashes) && csp.hashes.scripts === false);
+    // script-src-elem decides which <script> elements run when written, so
+    // it gets the same warnings as script-src.
+    for (const name of ["script-src", "script-src-elem"]) {
+      const at = `contentSecurityPolicy.directives.${name}`;
+      if (hashScripts && sourcesOf(name).includes("'unsafe-inline'"))
+        warnings.push({
+          key: at,
+          value: valueOf(name),
+          message: `${at} lists 'unsafe-inline', so every inline script runs, including one injected into a page, and Bascik adds no script hashes to it. Remove 'unsafe-inline' to allow only the scripts from your build.`,
+        });
+      for (const wide of sourcesOf(name).filter(
+        (s) => s === "*" || s.toLowerCase() === "https:" || s === "http:",
+      ))
+        warnings.push({
+          key: at,
+          value: wide,
+          message: `${at} lists ${wide}, so a script from any site may run. List the origins you load scripts from instead.`,
+        });
+    }
+    if (
+      csp.reportOnly === true &&
+      !("report-to" in directives) &&
+      !("report-uri" in directives)
+    )
+      warnings.push({
+        key: "contentSecurityPolicy.reportOnly",
+        value: true,
+        message:
+          "contentSecurityPolicy.reportOnly is on but no report-to or report-uri directive says where to send reports; violations show only in the browser console.",
+      });
+  }
+
+  return warnings;
+};
+
+/**
+ * Settings in the `server` export that only take effect when pages and
+ * components are built. `bascik --server` serves what the build wrote, so
+ * these do nothing there; the author is told where to put them instead.
+ */
+export const collectModeOverrideWarnings = (
+  modeOverrides: unknown,
+  userConfig: unknown = {},
+): ConfigValidationError[] => {
+  const warnings: ConfigValidationError[] = [];
+  if (!isPlainObject(modeOverrides)) return warnings;
+
+  // security.hideDotfiles acts twice: the build decides whether dotfiles in
+  // src/pages are published, and the server whether it answers them. The
+  // build uses the default export plus `build`; `bascik --server` the default
+  // export plus `server`. When those disagree, one half undoes the other.
+  const hideDotfilesIn = (layer: unknown): unknown =>
+    isPlainObject(layer) && isPlainObject(layer.security)
+      ? layer.security.hideDotfiles
+      : undefined;
+  const base = hideDotfilesIn(userConfig) ?? true;
+  const atBuild = hideDotfilesIn(modeOverrides.build) ?? base;
+  const atServer = hideDotfilesIn(modeOverrides.server) ?? base;
+  if (
+    typeof atBuild === "boolean" &&
+    typeof atServer === "boolean" &&
+    atBuild !== atServer
+  )
+    warnings.push({
+      key: "security.hideDotfiles",
+      value: { build: atBuild, server: atServer },
+      message:
+        "the build and the server must agree: the build decides whether dotfiles are published and the server whether it answers them, so with different values dotfiles are either left out of the build or published but answered with 404. Set it once in the default export",
+    });
+
+  if (!isPlainObject(modeOverrides.server)) return warnings;
+  const server = modeOverrides.server;
+  for (const [group, name] of BUILD_TIME_ONLY_KEYS) {
+    const section = server[group];
+    if (!isPlainObject(section) || section[name] === undefined) continue;
+    warnings.push({
+      key: `${group}.${name}`,
+      value: section[name],
+      message:
+        "has no effect in the server export: it applies when pages and components are built; set it in the default or build export",
+    });
+  }
   return warnings;
 };
 
 /* ── Orchestration ────────────────────────────────────────────────────── */
+
+/**
+ * The `http.timeouts` defaults in milliseconds (config.ts uses these). The
+ * drain default lives with the shutdown handler in server-lifecycle.ts.
+ */
+export const DEFAULT_HTTP_TIMEOUTS = {
+  request: 30_000,
+  headers: 10_000,
+  keepAlive: 5_000,
+} as const;
+
+/**
+ * The headers timeout used when the config leaves it out: the documented
+ * default, lowered to a request timeout set below it, since Node refuses a
+ * headers timeout longer than the request timeout.
+ */
+export const defaultHeadersTimeout = (request: number): number =>
+  Math.min(DEFAULT_HTTP_TIMEOUTS.headers, request);
+
+const timeoutValue = (
+  layer: unknown,
+  key: "request" | "headers",
+): number | undefined => {
+  if (!isPlainObject(layer) || !isPlainObject(layer.http)) return undefined;
+  const timeouts = layer.http.timeouts;
+  if (!isPlainObject(timeouts)) return undefined;
+  const value = timeouts[key];
+  // A malformed value already reported in the shape pass; skip it here.
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : undefined;
+};
+
+/**
+ * Node refuses to start a server whose headers timeout is longer than its
+ * request timeout (the headers are part of the request), so report the
+ * merged pair as a config error instead of a stack trace at listen time.
+ */
+const checkHttpTimeoutOrder = (
+  base: unknown,
+  override: unknown,
+): ConfigValidationError | undefined => {
+  const requestSet =
+    timeoutValue(override, "request") ?? timeoutValue(base, "request");
+  const headers =
+    timeoutValue(override, "headers") ?? timeoutValue(base, "headers");
+  const request = requestSet ?? DEFAULT_HTTP_TIMEOUTS.request;
+  // An unset headers timeout follows request down (defaultHeadersTimeout).
+  if (headers === undefined || headers <= request) return undefined;
+  return {
+    key: "http.timeouts.headers",
+    value: headers,
+    message: `expected at most http.timeouts.request (${request}${requestSet === undefined ? ", the default" : ""}); the headers are part of the request, so lower headers or raise request`,
+  };
+};
 
 const errorSignature = (error: ConfigValidationError): string =>
   `${error.key}${error.message}${String(error.value)}`;
@@ -966,6 +1525,23 @@ export const validateUserConfig = (
   for (const layer of layers) {
     errors.push(...validateConfigShape(layer, { cwd: deps.cwd }));
     errors.push(...validateConfigPaths(layer, { fs: deps.fs, cwd: deps.cwd }));
+  }
+  // headers <= request holds for the merged values a server runs with, so
+  // check the pair dev and --server each see (build starts no server). A
+  // flat override applies to build and --server only, as in config.ts.
+  const perMode =
+    isPlainObject(modeOverrides) &&
+    ("dev" in modeOverrides ||
+      "build" in modeOverrides ||
+      "server" in modeOverrides);
+  for (const mode of ["dev", "server"] as const) {
+    const override = perMode
+      ? (modeOverrides as Record<string, unknown>)[mode]
+      : mode === "server"
+        ? modeOverrides
+        : undefined;
+    const error = checkHttpTimeoutOrder(userConfig, override);
+    if (error) errors.push(error);
   }
 
   // Site URL: owned by environment.ts, validated here so an invalid value

@@ -6,7 +6,7 @@ Bascik transforms source HTML into deployable HTML by replacing every custom com
 
 Every time a source page or component file changes, `pageProcessing(filePath)` in `processing.ts` is called. This is the top-level entry point for the whole pipeline.
 
-`processing.ts` owns scheduling, generations, and publication queues. Page compilation and artifact accounting live in `page-transpile.ts`, component expansion in `component-expansion.ts`, minifier adapters in `page-minification.ts`, and source locations and error reporting in `page-diagnostics.ts`. The existing `processing.ts` exports remain available. Component discovery stays in `components.ts`; its markup helpers live in the `component-attribute-scan.ts`, `component-tags.ts`, `component-masking.ts`, `component-props.ts`, `component-slots.ts`, and `component-inheritance.ts` modules. Types and constants specific to each responsibility stay in that module.
+`processing.ts` owns scheduling, generations, and publication queues. Page compilation and artifact accounting live in `page-transpile.ts`, component expansion in `component-expansion.ts` (the build's wrapper around the host-neutral loop in `component-expansion-core.ts`, which request-time rendering runs too), minifier adapters in `page-minification.ts`, and source locations and error reporting in `page-diagnostics.ts`. The existing `processing.ts` exports remain available. Component discovery stays in `components.ts`; its markup helpers live in the `component-attribute-scan.ts`, `component-tags.ts`, `component-masking.ts`, `component-props.ts`, `component-slots.ts`, and `component-inheritance.ts` modules. Types and constants specific to each responsibility stay in that module.
 
 Build scripts (`<script data-bascik-build>`) run **first**, before component resolution, so their output can contain component tags. Body HTML minification runs _after_ component resolution so that whitespace-sensitive content from resolved components (e.g. `<pre>` blocks from `<code-block>`) is preserved intact.
 
@@ -47,7 +47,7 @@ durable source-to-output ownership inventory a targeted build used to silently:
   knowledge lived only in the in-memory `templateToGeneratedRelativePaths` map).
 
 Bascik persists a **versioned source-to-output ownership inventory** at
-`dist/.bascik/ownership.json` (see `lib/ownership.ts`). Every output file and
+`.bascik/dist/ownership.json` (see `lib/ownership.ts`). Every output file and
 server-sidecar script is owned by exactly one source page. The inventory is the
 single source of ownership truth; it is never inferred from filename prefixes or
 mutable traversal order.
@@ -118,10 +118,14 @@ On startup (and whenever a component is added), the watch system calls `processA
 
 1. **Hoist shared computation.** `listComponents()` and `resolveInlineStylesHtml()` each run **once**, in parallel, before any page is processed. The results are passed to every page rather than re-computed per page.
 2. **Prioritize open pages first.** In dev mode, `partitionByOpenPages()` separates pages into those currently open in active browser tabs and background pages. Active pages are transpiled, committed to `MemoryStore`, and have their `"transpiled"` reload events emitted immediately, so open browser windows update without waiting for the full site to compile. The home page (`/`) is the next page, then the rest in file order. A build keeps the listing order. See [Compile order](server#open-page-priority-transpilation-partitionbyopenpages).
-3. **Transpile each page.** By default, pages are transpiled on the main thread via `processPageBatch()`. Main-thread dispatch approximates per-page synchronous work by accumulating execution segments around asynchronous pauses. The logged `transpiled: ... in Nms` duration excludes time parked at Bascik's explicit await boundaries, but it is not a measurement of total CPU time and does not include asynchronous callee continuations that run while the page is paused. When `pipeline.workers: true` is configured in `bascik.config.ts`, `processAllPages()` uses a worker pool instead (see [Worker Pool Architecture](server#worker-pool-architecture)).
+3. **Transpile each page.** By default, pages are transpiled on the main thread via `processPageBatch()`. Main-thread dispatch approximates per-page synchronous work by accumulating execution segments around asynchronous pauses. The logged `transpiled: ... in Nms` duration excludes time parked at Bascik's explicit await boundaries, but it is not a measurement of total CPU time and does not include asynchronous callee continuations that run while the page is paused. The build-script child processes it excludes are reported separately on the same line as `(+<time> in N build scripts[, M cached])`, and the `pages transpiled` summary totals the scripts that ran and were served from cache (see [When every script runs again](/build-scripts#when-every-script-runs-again)). When `pipeline.workers: true` is configured in `bascik.config.ts`, `processAllPages()` uses a worker pool instead (see [CPU-aware worker pool](/internals/architecture#cpu-aware-worker-pool-opt-in)).
 4. **Apply side effects on the main thread.** As each page finishes transpilation, the main thread runs `mem.storePage()` and emits the `"transpiled"` event. Brotli compression inside `storePage()` runs in the background and does not block the page from being marked ready or served.
 5. **Write HTML without delaying dev serving.** Build mode awaits each write to `dist/`. In dev mode, Bascik first commits the page to `MemoryStore`, then starts the `dist/` write asynchronously. The server can return the updated page while that disk write is still pending.
 6. **Publish artifacts from the single owner.** In build mode, the main thread is the single owner of disk publication and artifact accounting. A worker transfers the page bytes (UTF-8 `ArrayBuffer`, no structured-clone copy) and the main thread writes them and records the manifest and CSP. See [Artifact Accounting Ownership](#artifact-accounting-ownership).
+
+### Coalesced full rebuilds in dev
+
+In dev mode, several watcher events rebuild every page: a page added or deleted, a component added, and an inlined stylesheet added, changed or deleted. A burst of such events (a `git checkout`, an unzip, a script writing many pages) fires one event per file. `watch.ts` sends all of them through one `coalesceRuns()` helper (`coalesced-run.ts`): the first event starts `processAllPages()`, and every event that arrives while it runs shares one trailing rebuild that starts when it ends. So a burst costs at most two full rebuilds, not one per file, and the trailing rebuild still sees every file the burst wrote. A failed rebuild is logged once as a `[bascik] watch error:`, not once per event. Before this, 300 pages written at once into a 2,000-page site started about 300 overlapping rebuilds; the dev server ran out of file handles (`EMFILE`) and then memory.
 
 ## Generation Ownership: Monotonic Dev Publication
 
@@ -142,7 +146,7 @@ The page phase prepares the source HTML document and orchestrates the component 
 
 For bracket-parameter pages, `<script data-bascik-routes>` runs before page build scripts. Its genuine relative and import-root ESM specifiers are rewritten (relative against the containing page or external routes script file, `@/` against `scripts.importRoot`) before the cached temporary module executes.
 
-1. **Execute build scripts.** Page and per-use component `<script data-bascik-build>` blocks run as Node.js ESM modules. `<script data-bascik-build-once>` runs once without page or route context: in a component during registration, before scoping and expansion, so every use shares it; in a page before its build scripts; and in a dynamic route template once in `expandPageToJobs`, so every route shares it. Relative imports resolve from the script's source, and `@/` uses `scripts.importRoot`; generic data paths use `process.cwd()`. A bare leading `/` is rejected. The default export returns replacement HTML; tags in the output resolve in step 4. Output from both directives is disk-cached (see [Build Script Output Cache](#build-script-output-cache--batch-execution) below).
+1. **Execute build scripts.** Page and per-use component `<script data-bascik-build>` blocks run as Node.js ESM modules. `<script data-bascik-build-once>` runs once without page or route context: in a component during registration, before scoping and expansion, so every use shares it; in a page before its build scripts; and in a dynamic route template once in `expandPageToJobs`, so every route shares it. Relative imports resolve from the script's source, and `@/` uses `scripts.importRoot`; generic data paths use `process.cwd()`. A bare leading `/` is rejected. The default export returns replacement HTML; tags in the output resolve in step 4. Output from both directives is disk-cached (see [Build Script Output Cache](#build-script-output-cache-batch-execution) below).
 2. **Extract body and head.** The inner content of `<body>` and `<head>` are extracted separately so component injection can happen in both zones independently.
 3. **Obtain component list.** On the multi-page startup path (`processAllPages`), the list is pre-computed once and passed in. On a single-page re-transpilation, it is loaded from `src/components/` at this point.
 4. **Run component phase.** `recursivelyTranspile` is called on both the body and head HTML strings. Each call returns a `TranspileResult` containing the resolved HTML and the list of components that were used.
@@ -157,7 +161,7 @@ For bracket-parameter pages, `<script data-bascik-routes>` runs before page buil
 
 ### Printed Output Guards
 
-These apply to step 1. Before a build script's stdout is spliced into the page, `removeOutputDirectives` (`pkg/src/lib/output-directives.ts`) strips every `data-bascik-build`, `data-bascik-server`, `data-bascik-stream`, and `data-bascik-routes` script from it, and the page logs one warning naming them. Without this, the multi-pass loop in `page-transpile.ts` would execute a printed build directive and register a printed server or stream directive, so data printed from a CMS body or an API response could run code. The script cache stores the raw stdout; the removal is reapplied on every use.
+These apply to step 1. Before a build script's stdout is spliced into the page, `removeOutputDirectives` (`pkg/src/lib/output-directives.ts`) strips every `data-bascik-build`, `data-bascik-build-once`, `data-bascik-server`, `data-bascik-stream`, and `data-bascik-routes` script from it, and the page logs one warning naming them. Without this, the multi-pass loop in `page-transpile.ts` would execute a printed build directive and register a printed server or stream directive, so data printed from a CMS body or an API response could run code. The script cache stores the raw stdout; the removal is reapplied on every use.
 
 A `BASCIK_ROUTE` payload over 32 KB is written to a temporary file and restored into `process.env` by a `--import` preload before the script and its imports run (`spillLargeEnv` in `script-runner.ts`). The OS rejects large environment strings with `E2BIG`: 128 KiB per string on Linux, about 1 MiB in total on macOS.
 
@@ -232,7 +236,9 @@ When `pipeline.workers: true` is set, worker threads share the same filesystem a
 
 ## Phase 2: Component Phase (`recursivelyTranspile`)
 
-The component phase recurses until no custom component tags remain in the HTML string. On each pass it finds the first component tag, fully resolves it, and substitutes it. It then repeats until no more tags are found.
+The component phase repeats until no custom component tags remain in the HTML string. On each pass it finds the first component tag, fully resolves it, and substitutes it. It then repeats until no more tags are found. `recursivelyTranspile` (`component-expansion.ts`) plugs the build's scope, instance ids, config and diagnostics into `expandComponents`, the loop in `component-expansion-core.ts`. That module imports nothing from Node, so the request-time renderer runs the same loop on server and stream script output (see [Request-time component rendering](/internals/server#per-request-data-bascik-server-and-data-bascik-stream-execution-server-scriptsts)).
+
+The loop is iterative and stays linear in the page size: everything before the last substitution is already resolved, so the next search resumes at its start, and the raw-text mask is resumed from a checkpoint with the inserted template's mask spliced in rather than re-masking the whole page. `components.expansionLimits` (`maxInstances`, default 10,000, and `maxPageLength`, default 50 MiB) stop a runaway expansion with an error.
 
 ### Fast-path string guards and raw-text masking mechanics
 
@@ -240,9 +246,13 @@ Component tags are valid markup only outside of raw-text elements. Text like `<m
 
 To prevent corruption while maintaining high performance, every tag search operates on a masked copy of the HTML generated by `maskRawTextContent`:
 
-1. **Fast-path string existence guards:** Before running regex operations, `maskRawTextContent` performs a fast string check (`!htmlString.includes("<!--") && !/<(?:script|style|textarea)\b/i.test(...)`). Pages that do not contain comments or raw-text tags bypass masking regexes entirely. Similarly, DOM selector script rewrites (`prefixElementAttribute`), CSS custom property/layer/container scoping, prop injection, and slot replacements use `.includes()` guards to skip regex execution when target identifiers or markers are absent.
+1. **Fast-path string existence guards:** Before running regex operations, `maskRawTextContent` performs a fast string check (`!htmlString.includes("<!--") && !/<(?:script|style|textarea)[\t\n\f\r />]/i.test(...)`). Pages that do not contain comments or raw-text tags bypass masking regexes entirely. Similarly, DOM selector script rewrites (`prefixElementAttribute`), CSS custom property/layer/container scoping, prop injection, and slot replacements use `.includes()` guards to skip regex execution when target identifiers or markers are absent.
 2. **Space-masking and index alignment:** The mask replaces the inner text of `<script>`, `<style>`, and `<textarea>` elements with an equal number of space characters. Because space characters preserve exact string lengths and byte offsets, character indices found in the masked copy (`getFirstComponent`, `findOpenTag`, self-closing fallbacks, and `findMatchingClose` depth counters) match the original string precisely. The compiler slices and splices the original string at those exact indices without allocating secondary offset maps or corrupting raw-text content.
-3. **Unresolved tag scanner:** The unresolved-tag warning scanner uses the same masking approach, stripping raw-text content before checking for leftover hyphenated custom tags.
+3. **Tag names end where the browser ends them:** The HTML tokenizer reads a tag name up to whitespace, `/`, or `>`. So a raw-text element opens only for the exact name (`<style>`, `<style media="print">`, `<style/>`), and `<style-guide>` or `<script-loader>` is an ordinary custom element whose content stays live markup, even when a real `</style>` follows later. Likewise a component tag matches only when the component name is the whole tag name: `<my-card.foo>`, `<my-card:wide>`, and `<my-card</p>` are other tags to a browser, so they are left as written.
+4. **Tags inside other tags are text:** A `<script>`, `<style>` or `<textarea>` written inside another tag opens nothing, so `<p title="Add a <script> tag">` does not hide the page up to the next real `</script>`. That includes an attribute value, an attribute name (`<div <style>>`), and another tag's name (`<p<style>` is one element named `p<style`). The same holds for a component tag: `<p<my-card>`, `</p <my-card>` and a bogus comment such as `<!x<my-card>` or `<?<my-card>` (which runs to the next `>`) are not usages. A comment with no end is the one exception: the browser hides the rest of the page, but the compiler leaves it as text, so tags after it are still expanded.
+5. **End tags end where the browser ends them:** A raw-text element or a component ends at `</name` followed by whitespace, `/` or `>`, and then anything up to the next `>`. So `</style/>`, `</style media="x">` and `</my-card >` are end tags, while `</style\v>` (a vertical tab) or `</style` followed by a no-break space is an end tag of another name and ends nothing.
+6. **Only `<script>`, `<style>` and `<textarea>` are masked:** A component inside `<title>` is expanded, so a component whose template is plain text can fill a page title (`<title><site-name></site-name> | Docs</title>`). A browser would show the tag itself as text there, so only use one whose output is text. Components inside `<noscript>` are expanded too: with scripting off, its content is markup, and that is when it shows. The same goes for the legacy `<xmp>`, `<iframe>`, `<noembed>`, `<noframes>` and `<plaintext>`, whose content a browser reads as text or does not show. In the other direction, a `<style>` inside `<svg>` or `<math>` is masked like any other, although a browser reads its content as markup, so a component tag there is left as written.
+7. **Unresolved tag scanner:** The unresolved-tag warning scanner uses the same masking approach, stripping raw-text content before checking for leftover hyphenated custom tags.
 
 For each component tag found:
 
@@ -251,7 +261,7 @@ For each component tag found:
 A deterministic `instanceId` (an 8-character hex hash derived from page path, component name, and occurrence ordinal via `deriveInstanceId` in `names.ts`) is generated for this occurrence of the component. An ordered list of transform functions is assembled and applied in a pipeline (each step receives the output of the previous):
 
 1. `prefixElementAttribute(c, "id", instanceId)`: scopes `id` attributes and all corresponding JS DOM selector references.
-2. `prefixElementAttribute(c, "name", instanceId)`: scopes `name` attributes and `getElementsByName` calls.
+2. `prefixElementAttribute(c, "name", instanceId)`: scopes `name` attributes and `getElementsByName` calls. Runs only when `scoping.attributes.name` is on; it is off by default, so `name` ships as written.
 3. `prefixElementAttribute(c, "class", instanceId)`: scopes class names in HTML attributes, CSS, and JS selector calls.
 4. `namespaceScriptTags(c)`: wraps every inline `<script>` in an IIFE, pads it to the source line recorded when the component file was read, and appends a `//# sourceURL` comment for browser DevTools source attribution. The second and later instances of a component get `?instance=N` on that URL after the pipeline runs.
 
@@ -273,7 +283,7 @@ Each step is skipped if disabled in `bascik.config.ts`.
 The recursion terminates when `getFirstComponent` no longer finds any custom tag in the HTML string, i.e., when all recognized component names have been replaced with vanilla HTML.
 
 <div class="callout">
-<p><strong>Performance note:</strong> Each call to <code>recursivelyTranspile</code> uses the same in-memory <code>ComponentList</code> built once at the start of the pipeline. In the multi-page startup path, this list is pre-computed once and passed to every worker via <code>workerData</code>, components are never re-read from disk per page or per worker.</p>
+<p><strong>Performance note:</strong> Each call to <code>recursivelyTranspile</code> uses the same in-memory <code>ComponentList</code> built once at the start of the pipeline. In the multi-page startup path, this list is pre-computed once and sent to every worker in one settings message before its first page (the pool itself starts earlier, while the list is still loading), components are never re-read from disk per page or per worker.</p>
 </div>
 
 ## Selective Re-transpilation
@@ -291,7 +301,7 @@ All scoped attribute names follow this pattern:
 ```text
 bascik__<componentName>__<instanceId>__<originalName>
 
-# id and name attributes include instanceId for uniqueness:
+# id attributes (and name, with scoping.attributes.name: true) include instanceId for uniqueness:
 bascik__my-nav__a1b2c3d4__search-input
 
 # class attributes use component name only (no instanceId):

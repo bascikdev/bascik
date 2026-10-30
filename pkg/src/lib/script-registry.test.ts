@@ -26,6 +26,7 @@ import {
   resolveModuleIdentity,
   _identityTestHooks,
 } from "./script-registry.ts";
+import { nativeClock } from "./clock.ts";
 
 describe("ScriptRegistry", () => {
   let tempDir: string;
@@ -270,6 +271,24 @@ describe("ScriptRegistry", () => {
     expect(stderrSpy).not.toHaveBeenCalled();
 
     stderrSpy.mockRestore();
+  });
+
+  // 8a. Some client libraries reject with a plain object carrying the reset
+  // code. The code is read from the raw rejection, not from the Error it is
+  // wrapped in for reporting, which only keeps its String() form.
+  it("misuse: classifies a non-Error rejection carrying a reset code as a network reset", async () => {
+    const filePath = join(tempDir, "disconnect-plain.mjs");
+    await writeFile(
+      filePath,
+      `export default async function() { throw { code: 'ECONNRESET' }; }`,
+    );
+
+    const registry = new ScriptRegistry({ isDev: false });
+    const result = await registry.invoke(filePath, []);
+
+    expect(result.ok).toBe(false);
+    expect(result.isNetworkReset).toBe(true);
+    expect(result.error).toBeInstanceOf(Error);
   });
 
   // 8b. An upstream abort (the response sink's "client disconnected" reason,
@@ -597,6 +616,209 @@ describe("ScriptRegistry", () => {
 
     expect(result.ok).toBe(true);
     expect(result.value).toEqual(["x", { k: 1 }, "object"]);
+  });
+
+  // A fired deadline (or an upstream abort) decides the outcome, the same
+  // rule the Worker applies through invokeWithDeadline: a script that settles
+  // after the signal aborted, even synchronously inside its own abort
+  // listener, is a timeout, never a success with what it returned. The
+  // handlers are plain functions returning a native promise, so no async
+  // wrapper adds the microtasks that used to let the abort win by accident;
+  // the deadline is fired by hand through the clock option.
+  describe("a fired deadline wins", () => {
+    const manualClock = () => {
+      let fire: (() => void) | undefined;
+      const setTimeoutSpy = vi.fn((cb: () => void) => {
+        fire = cb;
+        return 1 as unknown as ReturnType<typeof setTimeout>;
+      });
+      return {
+        clock: {
+          ...nativeClock,
+          setTimeout: setTimeoutSpy,
+          clearTimeout: vi.fn(),
+        },
+        setTimeoutSpy,
+        fire: () => {
+          if (!fire) throw new Error("no deadline was scheduled");
+          fire();
+        },
+      };
+    };
+    const edge = globalThis as {
+      __bascikEdgeResolve?: (v: string) => void;
+      __bascikEdgeStarted?: boolean;
+    };
+    afterEach(() => {
+      delete edge.__bascikEdgeResolve;
+      delete edge.__bascikEdgeStarted;
+    });
+    // The deadline must fire after the handler is running and listening;
+    // fired earlier, the registry never calls it and the case proves nothing.
+    const handlerStarted = async () => {
+      for (let i = 0; i < 50 && !edge.__bascikEdgeStarted; i++) {
+        await new Promise<void>((r) => setImmediate(r));
+      }
+      expect(edge.__bascikEdgeStarted).toBe(true);
+    };
+
+    const loaded = async (name: string, source: string) => {
+      const filePath = join(tempDir, name);
+      await writeFile(filePath, source);
+      const manual = manualClock();
+      const registry = new ScriptRegistry({
+        isDev: false,
+        clock: manual.clock,
+      });
+      await registry.load(filePath);
+      return { filePath, registry, ...manual };
+    };
+
+    const RESOLVES_ON_ABORT = `export default function (context, opts) { globalThis.__bascikEdgeStarted = true;
+      return new Promise((resolve) => {
+        opts.signal.addEventListener("abort", () => resolve("late"), { once: true });
+      });
+    }`;
+
+    it("misuse: a script that resolves synchronously inside its abort listener at the deadline is a timeout, not its value", async () => {
+      const { filePath, registry, fire } = await loaded(
+        "resolve-in-listener.mjs",
+        RESOLVES_ON_ABORT,
+      );
+      const pending = registry.invoke(filePath, [{}], { timeoutMs: 50 });
+      await handlerStarted();
+      fire();
+      const result = await pending;
+      expect(result.ok).toBe(false);
+      expect(result.value).toBeUndefined();
+      expect(result.timedOut).toBe(true);
+      expect(result.error?.message).toContain(
+        "Script execution timed out after 50ms",
+      );
+    });
+
+    it("misuse: a script that resolves in a microtask after the abort is a timeout", async () => {
+      const { filePath, registry, fire } = await loaded(
+        "resolve-microtask.mjs",
+        `export default function (context, opts) { globalThis.__bascikEdgeStarted = true;
+          return new Promise((resolve) => {
+            opts.signal.addEventListener("abort", () => queueMicrotask(() => resolve("late")));
+          });
+        }`,
+      );
+      const pending = registry.invoke(filePath, [{}], { timeoutMs: 50 });
+      await handlerStarted();
+      fire();
+      const result = await pending;
+      expect(result).toMatchObject({ ok: false, timedOut: true });
+    });
+
+    it("misuse: a script that ignores the signal and resolves after the deadline is a timeout", async () => {
+      const { filePath, registry, fire } = await loaded(
+        "ignores-signal.mjs",
+        `export default function () { globalThis.__bascikEdgeStarted = true;
+          return new Promise((resolve) => { globalThis.__bascikEdgeResolve = resolve; });
+        }`,
+      );
+      const pending = registry.invoke(filePath, [{}], { timeoutMs: 50 });
+      await handlerStarted();
+      fire();
+      edge.__bascikEdgeResolve!("late");
+      const result = await pending;
+      expect(result).toMatchObject({ ok: false, timedOut: true });
+    });
+
+    it("misuse: a script that rejects with a non-Error inside its abort listener is a timeout carrying the timeout error", async () => {
+      const { filePath, registry, fire } = await loaded(
+        "reject-non-error.mjs",
+        `export default function (context, opts) { globalThis.__bascikEdgeStarted = true;
+          return new Promise((_, reject) => {
+            opts.signal.addEventListener("abort", () => reject("not an error"));
+          });
+        }`,
+      );
+      const pending = registry.invoke(filePath, [{}], { timeoutMs: 50 });
+      await handlerStarted();
+      fire();
+      const result = await pending;
+      expect(result.ok).toBe(false);
+      expect(result.timedOut).toBe(true);
+      expect(result.error).toBeInstanceOf(Error);
+      expect(result.error?.message).toContain(
+        "Script execution timed out after 50ms",
+      );
+    });
+
+    it("boundary: a script that resolved before the deadline keeps its value when the timer fires in the same tick", async () => {
+      const { filePath, registry, fire } = await loaded(
+        "edge-resolve.mjs",
+        `export default function () { globalThis.__bascikEdgeStarted = true;
+          return new Promise((resolve) => { globalThis.__bascikEdgeResolve = resolve; });
+        }`,
+      );
+      const pending = registry.invoke(filePath, [{}], { timeoutMs: 50 });
+      // Let the invoke reach the handler, then settle and fire in one tick.
+      await handlerStarted();
+      edge.__bascikEdgeResolve!("in time");
+      fire();
+      const result = await pending;
+      expect(result).toEqual({ ok: true, value: "in time" });
+    });
+
+    it("misuse: an upstream abort the script answers by resolving inside its listener is a failure that is not a timeout", async () => {
+      const { filePath, registry } = await loaded(
+        "upstream-resolve.mjs",
+        RESOLVES_ON_ABORT,
+      );
+      const upstream = new AbortController();
+      const pending = registry.invoke(filePath, [{}], {
+        timeoutMs: 50,
+        signal: upstream.signal,
+      });
+      await handlerStarted();
+      upstream.abort(new Error("client went away"));
+      const result = await pending;
+      expect(result.ok).toBe(false);
+      expect(result.value).toBeUndefined();
+      expect(result.timedOut).toBe(false);
+    });
+
+    it("misuse: an already aborted upstream signal never runs the script and is not a timeout", async () => {
+      const { filePath, registry } = await loaded(
+        "pre-aborted.mjs",
+        `export default function () { globalThis.__bascikEdgeStarted = true; return "ran"; }`,
+      );
+      const upstream = new AbortController();
+      upstream.abort();
+      const result = await registry.invoke(filePath, [{}], {
+        timeoutMs: 50,
+        signal: upstream.signal,
+      });
+      expect(edge.__bascikEdgeStarted).toBeUndefined();
+      expect(result).toMatchObject({ ok: false, timedOut: false });
+    });
+
+    it("misuse: a timeout of 0 or unset schedules no deadline and a late value is a success", async () => {
+      for (const timeoutMs of [0, undefined]) {
+        const { filePath, registry, setTimeoutSpy } = await loaded(
+          `no-deadline-${timeoutMs}.mjs`,
+          `export default function () { globalThis.__bascikEdgeStarted = true;
+            return new Promise((resolve) => { globalThis.__bascikEdgeResolve = resolve; });
+          }`,
+        );
+        const pending = registry.invoke(filePath, [{}], { timeoutMs });
+        await handlerStarted();
+        edge.__bascikEdgeResolve!("late but fine");
+        const result = await pending;
+        expect(setTimeoutSpy, String(timeoutMs)).not.toHaveBeenCalled();
+        expect(result, String(timeoutMs)).toEqual({
+          ok: true,
+          value: "late but fine",
+        });
+        delete edge.__bascikEdgeResolve;
+        delete edge.__bascikEdgeStarted;
+      }
+    });
   });
 });
 

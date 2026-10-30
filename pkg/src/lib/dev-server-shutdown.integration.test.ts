@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, dirname, resolve } from "node:path";
@@ -14,6 +14,16 @@ const PKG_ENTRY = resolve(
 
 let portCounter = 9800 + (process.pid % 100);
 const nextPort = (): number => portCounter++;
+
+// Every spawned server, so one a timed-out test never reached `finally` for
+// is still killed instead of left listening.
+const spawned = new Set<ChildProcess>();
+afterEach(() => {
+  for (const child of spawned)
+    if (child.exitCode === null && child.signalCode === null)
+      child.kill("SIGKILL");
+  spawned.clear();
+});
 
 interface RunningServer {
   child: ChildProcess;
@@ -38,6 +48,7 @@ const spawnDevServer = async (
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  spawned.add(child);
 
   let output = "";
   const onData = (d: Buffer) => {
@@ -46,15 +57,26 @@ const spawnDevServer = async (
   child.stdout?.on("data", onData);
   child.stderr?.on("data", onData);
 
-  // Wait for server ready line
+  // Wait for server ready line. The server moves to the next port when the
+  // requested one is taken (by a parallel test file or a stray server), so
+  // the URL comes from the line it prints, never from the requested port.
+  let url = "";
   await new Promise<void>((res, rej) => {
     const timer = setTimeout(() => {
       rej(new Error(`Server failed to boot within 15s. Output:\n${output}`));
     }, 15000);
 
     const check = () => {
-      if (output.includes("Server running at")) {
+      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+      const ready = output
+        .replace(
+          new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[A-Za-z]`, "g"),
+          "",
+        )
+        .match(/Server running at\s+(https?:\/\/\S+)\s/);
+      if (ready) {
         clearTimeout(timer);
+        url = ready[1].replace(/\/$/, "");
         res();
       } else if (child.exitCode !== null) {
         clearTimeout(timer);
@@ -71,10 +93,11 @@ const spawnDevServer = async (
   });
 
   const scheme = options.tls ? "https" : "http";
+  expect(url.startsWith(`${scheme}://`)).toBe(true);
   return {
     child,
-    port,
-    url: `${scheme}://localhost:${port}`,
+    port: Number(new URL(url).port),
+    url,
     output: () => output,
   };
 };

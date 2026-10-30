@@ -109,10 +109,11 @@ export default defineConfig({
 <!-- src/pages/catalog.html -->
 <script data-bascik-build>
   import { readFileSync } from "node:fs";
+  import { html } from "@bascik/bascik/html";
 
   export default function () {
     const catalog = JSON.parse(readFileSync("dist/catalog.json", "utf8"));
-    return catalog.items.map((item) => `<li>${item.title}</li>`).join("");
+    return html`${catalog.items.map((item) => html`<li>${item.title}</li>`)}`;
   }
 </script>
 ```
@@ -184,7 +185,7 @@ A `parallel` script never blocks dev startup or later page compilation. Pages mu
 
 In a one-shot build, parallel scripts genuinely run alongside compilation. Post starts after compilation, without waiting for parallel. The build waits for both branches to settle before finalizing metadata or declaring success, and under the default `onExecError: 'error'` reports any failure with a nonzero exit status.
 
-Because metadata is finalized after post settles, a post script cannot read `dist/.bascik/` files such as `csp-hashes.json`, `server-scripts.json`, or the asset manifest: they are not on disk yet. A post script that needs CSP hashes, for example to write host headers, computes them from the emitted HTML in `dist/` it already sees.
+Because metadata is finalized after post settles, a post script cannot read the private build folder's files (`.bascik/dist/`) such as `csp-hashes.json`, `server-scripts.json`, or the asset manifest: they are not on disk yet. A post script that needs CSP hashes, for example to write host headers, computes them from the emitted HTML in `dist/` it already sees. With `generate.cspHashes` on, the build takes `csp-hashes.json` from the pages as `post` and `parallel` scripts left them, so a script that edits inline code ships with matching hashes. A script must keep each server-script placeholder (`<script type="text/bascik-server" data-bascik-server-id="…">`) it finds: one that removes a placeholder fails the build, with a message that names the page and the tag to paste back.
 
 ### Overlapping watches share one cycle
 

@@ -23,6 +23,14 @@ Inside a `<script>` tag, IntelliSense suggests the mutually exclusive execution 
 
 Cmd/Ctrl-click custom component tags to open their HTML definitions. Hover over a component to see the contract you need at the call site, including its description, inferred props, named and default slots, source location, and included styles or scripts. Component tag suggestions display the same contract before insertion.
 
+### Several Scripts in One File
+
+VS Code's built-in HTML checker joins every classic `<script>` (one without `type="module"`) in a file into one JavaScript file, so a Bascik page with two scripts that each `export default` shows the false error "A module cannot have multiple default exports." Bascik runs each script on its own. Setting `"html.validate.scripts": false` in a project's `.vscode/settings.json` turns off only VS Code's check of code inside `<script>` tags in `.html` files.
+
+A project gets the setting from `npm create bascik`, from `bascik init`, or from this extension. When the extension starts in a workspace with a `bascik.config.js`, `bascik.config.mjs`, or `bascik.config.ts` and nobody has set `html.validate.scripts` in the user, workspace, or folder settings, it asks once: **Add to workspace settings** writes the setting to `.vscode/settings.json` in each Bascik folder, keeping what is there, and **Don't ask again** stops the message for that workspace. The extension never changes the setting without that click, never touches user settings, and never asks in a folder that is not a Bascik project. You can also paste the setting into `.vscode/settings.json` yourself.
+
+With the setting off, VS Code no longer reports JavaScript syntax or semantic errors inside `<script>` tags in `.html` files. A syntax error in a build or server script still fails when Bascik loads it, with the file and line, and one in a script for the browser shows in the browser console.
+
 ### Filtering Generic Word Suggestions
 
 VS Code by default provides word-based completions harvested from other words in the active document. Because VS Code merges those suggestions independently of language extensions, generic words from neighboring elements may appear alongside Bascik completions. To restrict HTML completions to semantic language and Bascik completions only, add the following to your VS Code settings:
@@ -102,6 +110,8 @@ The header must precede markup, styles, and scripts. It can describe only member
 
 ## Navigation and Editor Intelligence
 
+Press `Shift+F12` on a component tag, or on the first line, `<!-- @bascik` comment, or root tag line of a component file, to list every page and component that uses it with VS Code's standard Find All References. Usages that only appear in build script, Markdown, or server script output are not listed, because the index reads source files.
+
 Import navigation resolves `./`, `../`, and `@/` paths in build, routes, and server scripts, including script `src` attributes. Dedicated highlighting makes Bascik attributes easy to recognize alongside standard HTML.
 
 ## Diagnostics That Understand Bascik
@@ -119,11 +129,11 @@ The extension reports high-signal problems in the editor and Problems panel:
 - standalone CSS attribute selectors and bare elements in `:is()`, `:where()`, or `:has()`
 - runtime ID changes, attribute DOM queries, dynamic class templates, and runtime CSS custom-property names
 
-Server and stream scripts receive additional contract and interpolation-sink checks. JavaScript and TypeScript files under `src/api/` receive HTTP method, return type, handler, and JSON parsing checks. Built-in snippets (`bascik-api`, `bascik-get`, `bascik-post`) scaffold typed route handlers with `Request` and `context` arguments.
+Server and stream scripts receive additional contract and interpolation-sink checks. A markup template that interpolates a value without `html` from `@bascik/bascik/html` gets `server-script-unescaped-markup`, with a Quick Fix that wraps the template in `html` and adds the import. JavaScript and TypeScript files under `src/api/` receive HTTP method, return type, handler, and JSON parsing checks. Built-in snippets (`bascik-api`, `bascik-get`, `bascik-post`) scaffold typed route handlers with `Request` and `context` arguments.
 
 ## Nested Projects and Custom Configuration
 
-The extension reads `directory.components` and `scripts.importRoot` from `bascik.config.ts`, `bascik.config.js`, or `bascik.config.mjs`. It discovers configs recursively, assigns each file to its closest enclosing Bascik project, and keeps nested projects and separate workspace folders isolated.
+The extension reads `directory.components` and `scripts.importRoot` from the project's config file, found in the same order the CLI uses: `bascik.config.js`, then `bascik.config.mjs`, then `bascik.config.ts`. When a folder holds more than one, the first in that order wins, so the editor and the build read the same file. It discovers configs recursively, assigns each file to its closest enclosing Bascik project, and keeps nested projects and separate workspace folders isolated.
 
 Projects without a config use Bascik's defaults: `src/components` for components and `src` for the `@/` import root. Config, component, and HTML changes refresh automatically without restarting VS Code.
 

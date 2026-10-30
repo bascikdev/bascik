@@ -83,6 +83,8 @@ Two timeout surfaces are directly visible to users:
 - **API routes:** `http.apiTimeout` defaults to `10000` ms. On timeout, Bascik returns `504 Gateway Timeout` and aborts handler work via `AbortSignal`.
 - **Server scripts:** `scripts.timeout` defaults to `30000` ms. Timeout is enforced through `ScriptRegistry` aborts. If `scripts.onServerScriptError` is `error`, request handling fails into the standard server error path. If set to `warn`, the timed-out script output is replaced with an empty string and the rest of the page continues rendering.
 
+On both surfaces, and on every host, once the deadline has fired the outcome is a timeout even if the handler settles afterwards, including synchronously inside its own abort listener. A handler that settled before the deadline fired keeps its value even when the timer fires in the same tick.
+
 ## Related Pages
 
 - [Server Architecture](/internals/server)

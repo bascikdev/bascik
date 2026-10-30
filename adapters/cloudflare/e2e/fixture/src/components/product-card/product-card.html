@@ -1,0 +1,34 @@
+<!-- @bascik
+A product tile for the catalog demo, rendered from server and stream script
+output at request time (prompt 157). A prop for the name and one for the
+price; the default slot carries an optional badge.
+
+  <product-card data-bascik-prop-name="Milk frother" data-bascik-prop-price="$129">
+    <span>Best seller</span>
+  </product-card>
+-->
+<!--
+  No page of this demo uses <product-card> in its own markup: the only usages
+  are the strings the scripts on catalog.html and catalog-stream.html return,
+  so every tile on those pages is rendered by the Worker per request, never by
+  the build. Keep the markup free of prop bindings to id, name or class: those
+  make a component unsupported at request time.
+-->
+<article id="tile" class="tile" data-testid="product-card">
+  <h3 class="tile-name" data-testid="product-card-name" data-bascik-prop-name>
+    Unnamed product
+  </h3>
+  <p class="tile-price" data-testid="product-card-price" data-bascik-prop-price>
+    Price on request
+  </p>
+  <!-- The slot element is replaced by what the usage puts inside the tag, so
+       the badge container that tests and styles target sits around it. -->
+  <div class="tile-badge" data-testid="product-card-badge">
+    <span data-bascik-slot>Standard</span>
+  </div>
+  <!-- Client script: counts its own runs, so a test can prove it ran once per
+       rendered tile without depending on how selectors are scoped. -->
+  <script>
+    window.__productCards = (window.__productCards ?? 0) + 1;
+  </script>
+</article>

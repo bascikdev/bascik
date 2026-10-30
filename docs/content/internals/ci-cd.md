@@ -1,46 +1,97 @@
 # CI / CD
 
-Bascik uses two GitHub Actions workflows: one for continuous integration on every push and pull request, and one for publishing releases to npm when a version tag is pushed.
+Bascik uses three GitHub Actions workflows: one for continuous integration on every branch push and on pull requests from forks (which also deploys the docs and the Cloudflare adapter demo), one for CodeQL code scanning (`.github/workflows/codeql.yml`, `actions` and `javascript-typescript`, also run weekly), and one for publishing releases to npm when a version tag is pushed.
 
 ## Continuous Integration
 
-The CI workflow (`.github/workflows/ci.yml`) runs on every push to `main` and on every pull request targeting `main`.
+The CI workflow (`.github/workflows/ci.yml`) runs on every push to any branch, and on pull requests targeting `main`.
 
 ```yaml
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
     branches: [main]
+
+concurrency:
+  group: ${{ github.ref == 'refs/heads/main' && format('ci-main-{0}', github.run_id) || format('ci-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 ```
 
-It executes across three structured stages on Node 24:
+- **Tags never run it.** A `push` filter that lists only `branches` skips tag pushes; the release workflow handles tags.
+- **Each commit is tested once.** A pull request from a branch of this repository is already tested by that branch's push run. The four Stage 1 jobs skip on such a `pull_request` event (`if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository`), and every later job needs them directly or through another stage, so the rest of that run skips as well: a job whose `needs` was skipped is skipped, not failed. The push run's checks are on the branch's head commit, the same commit the pull request points at, so they show on the pull request. Its Checks list also shows the skipped `pull_request` jobs under the same names, and GitHub reports a skipped job as successful, so a required status check should be one the push run reports. A same-repo branch is tested as its own commit, not merged with `main`.
+- **A fork's pull request** gets Stages 1 to 4 on the merge commit (`refs/pull/<n>/merge`) and never Stage 5.
+- **A newer push to a branch cancels the older run**, its Preview upload included. Runs on `main` each get their own concurrency group, so none is canceled or left pending behind another. No job has a group of its own: a shared group holds only one pending job, so on `main` an older commit's deploy that queued later would cancel the newer commit's pending deploy.
 
-### Stage 1: Static Analysis, Typechecks, Standards & Unit Tests (Parallel)
+It runs four gated test stages on Node 24 and Ubuntu, with a Windows job and a Node 22.22 job inside them, then a fifth stage that deploys. Every job in a stage waits for every job in the stage before it, so CI fails fast: a type error or a spelling mistake stops the run before any test starts, a failing unit test stops it before the slower integration tests, an integration failure stops it before the end-to-end matrix, and nothing deploys until every test has passed.
 
+### Stage 1: Static Analysis, Typechecks, and Standards
+
+- **Semgrep Static Analysis (`semgrep`)**: Security and vulnerability rulesets via `semgrep-action` (`p/default`).
 - **Jelly Static Analysis (`jelly`)**: Object spread and control flow analysis via `@cs-au-dk/jelly` on `pkg/src/index.ts`.
-- **Workspace Typechecks (`typecheck`)**: Runs `yarn typecheck:all` across `pkg/`, `create/`, `docs/`, `extensions/vscode-bascik/`, and `adapters/cloudflare/`.
-- **Spelling & Web Standards (`standards`)**: Runs `yarn check:spelling` (codespell) and `yarn check:standards` (webhint).
-- **Unit Test Matrix**: Parallel test execution with coverage across `@bascik/bascik` (`yarn pkg:test:ci`), `create-bascik` (`yarn create:test:ci`), `bascik-docs` (`yarn docs:test`), `extensions/vscode-bascik` (`yarn ext:unit`), and `@bascik/adapter-cloudflare` (`yarn adapter:cf:test:ci`).
-- **Framework Integration Tests (`integration-pkg`)**: Runs `yarn pkg:integration` in its own job, separate from the fast unit suite, because integration tests spawn real processes, servers, and worker threads.
+- **Workspace Typechecks (`typecheck`)**: Runs `yarn typecheck:all` across `pkg/`, `create/`, `docs/`, `extensions/vscode-bascik/`, `adapters/cloudflare/`, `lsp/`, and `skills-tests/`.
+- **Spelling & Web Standards (`standards`)**: Runs `yarn check:format` (Prettier), `yarn check:spelling` (codespell), and `yarn check:standards` (webhint).
 
-### Stage 2: End-to-End Test Matrix (Parallel)
+### Stage 2: Unit Tests
 
-Runs after all Stage 1 jobs pass. Installs Chromium via `playwright install chromium` and executes:
+Unit tests with coverage across `@bascik/bascik` (`yarn pkg:test:ci`), `create-bascik` (`yarn create:test:ci`), `bascik-docs` (`yarn docs:unit`), `bascik-skills-tests` (`yarn skills:unit`, job `unit-skills`), `extensions/vscode-bascik` (`yarn ext:unit`), `@bascik/adapter-cloudflare` (`yarn adapter:cf:test:ci`), and `@bascik/language-server` (`yarn lsp:test:ci`, job `unit-lsp`). The Windows job (`unit-windows`, `windows-latest`) runs the framework, language server, Cloudflare adapter, and `create-bascik` unit tests in this stage too, because Windows is a supported platform.
+
+### Stage 3: Integration Tests and the Node 22.22 Floor
+
+Integration tests spawn real processes, servers, browsers, and worker threads, so they start only after every unit job passes:
+
+- **Framework Integration Tests (`integration-pkg`)**: `yarn pkg:integration`.
+- **Docs Integration Tests (`integration-docs`)**: `yarn docs:integration`.
+- **Agent Skills Integration Tests (`integration-skills`)**: `yarn skills:integration`, with Chromium installed for the `bascik-refactor` parity checks.
+- **Node 22.22 Floor (`node-floor`)**: Builds every workspace and runs `yarn typecheck:all`, every workspace's unit tests, and the framework integration tests on the published engine floor, to prove the packages still work there.
+
+### Stage 4: End-to-End Test Matrix
+
+Runs after every Stage 3 job passes. Installs Chromium via `playwright install chromium` and executes:
 
 - **Framework E2E (Static)**: `yarn pkg:e2e`
-- **Framework E2E (Dev Server & Dev Exec Lifecycle)**: `yarn pkg:e2e:dev` and `yarn pkg:e2e:dev:exec`
+- **Framework E2E (Dev Server)**: `yarn pkg:e2e:dev`, `yarn pkg:e2e:dev:exec` (dev exec lifecycle), `yarn pkg:e2e:exec:policy` (exec failure policy), and `yarn pkg:e2e:exec:build` (build exec lifecycle)
 - **Framework E2E (Production HTTP/1.1 Server)**: `yarn pkg:e2e:prod:http1`
 - **Framework E2E (Production HTTP/2 TLS Server)**: `yarn pkg:e2e:prod:http2`
 - **Cloudflare Adapter E2E (local workerd)**: `yarn adapter:cf:e2e`
 - **Docs Site E2E**: `yarn docs:e2e`
 - **Create Scaffold E2E**: `yarn create:test-site`
 
-### Stage 3: Semgrep Static Analysis
+Each `pkg` lane runs as its own job, so CI does not use the local `yarn pkg:e2e:all` runner, which starts the same four lanes in parallel on one machine. Each lane uses its own ports and its own output directory (`BASCIK_E2E_OUT`, such as `pkg/e2e/dist-dev`), so the two setups behave the same. `pkg/e2e/scripts/run-lanes.test.ts` fails when a Playwright config in `pkg/e2e/` has no package script that a CI job runs, or when a published workspace's unit tests leave the Linux jobs that the end-to-end stage waits on.
 
-Runs comprehensive security and vulnerability rulesets via `semgrep-action` (`p/default`) after all E2E test suites pass.
+### Stage 5: Deploy to Cloudflare
 
-All jobs enforce least-privilege with `permissions: contents: read`.
+Runs after every Stage 4 job passes, only for a branch push in this repository (never for a `pull_request` event, a tag, or a fork's own copy of the workflow), and deploys the two Cloudflare Workers this repo owns: the docs (`bascik`, served at bascik.dev) and the adapter demo (`cloudflare-adapter`, served at cloudflare-adapter.bascik.dev). `DEPLOYMENT.md` in the repository root is the runbook: credentials, manual deploys, and how to check what is live.
+
+- **Deploy Docs (`deploy-docs`)**: checks out the full git history (`docs/scripts/generate-git-dates.ts` reads it for sitemap `lastmod` and article dates), runs `yarn pkg:build && yarn docs:build`, then runs Wrangler from `docs/`.
+- **Deploy Adapter Demo (`deploy-demo`)**: runs `yarn adapter:cf:demo:build`, which builds the fixture in `adapters/cloudflare/e2e/fixture` with `--target cloudflare`, then runs Wrangler with `--config e2e/fixture/dist/.bascik/cloudflare/wrangler.jsonc` from `adapters/cloudflare`.
+- **Publish Preview URLs (`preview-comment`)**: on a branch other than `main`, waits for both deploy jobs, writes both Preview URLs to the run's job summary, and, when the branch has an open pull request in this repository, creates or updates one comment on it that lists both URLs and the commit they were built from (`github.sha`, the branch commit the run tested). A branch without a pull request gets the summary only. The job is skipped when a deploy job uploaded nothing because its commit was no longer the newest.
+
+What each event does:
+
+| Event                                   | Stage 5                                                                                                                                                                                                                            |
+| :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Push to `main`                          | `wrangler deploy` for both Workers, then a check of `https://bascik.dev/` and `https://cloudflare-adapter.bascik.dev/catalog`. Never a Preview.                                                                                    |
+| Push to any other branch                | `wrangler versions upload --preview-alias <alias>` for both Workers: a Preview version that does not touch production. The alias comes from the branch name, so each branch keeps the same two URLs. Each Preview is then checked. |
+| Pull request from a branch of this repo | Skipped with the rest of the run; the branch's push run deploys its Previews.                                                                                                                                                      |
+| Pull request from a fork                | Skipped. Stage 5 runs only on push, and a fork's pull request gets no secrets.                                                                                                                                                     |
+| Tag                                     | CI does not run.                                                                                                                                                                                                                   |
+
+The helpers live in `.github/scripts/` and are tested by `pkg/e2e/scripts/ci-deploy.test.ts` in the framework unit tests:
+
+- `preview-alias.mjs` turns the branch name (`github.ref_name`) into the alias. A name that is already a valid alias (lowercase `a-z`, `0-9` and `-`, starting with a letter, short enough) is used as is. Any other name is lowercased, every run of other characters becomes one `-`, a leading digit gets a `b-` prefix, and a hash of the full branch name is appended, so `feature/x` and `feature-x` do not share an alias and overwrite each other's Preview. A name too long for `<alias>-cloudflare-adapter` to fit in one 63-character DNS label is shortened before the hash.
+- `newest-commit.mjs` compares the commit a run built with the branch tip from `git ls-remote`, so a deploy job skips Wrangler when the branch has moved on.
+- `wrangler-preview-url.mjs` reads the Preview alias URL from Wrangler's machine-readable output (`WRANGLER_OUTPUT_FILE_PATH`, one JSON object per line), so no step parses Wrangler's log text.
+- `smoke-test.mjs` requests each path without following redirects and fails the job unless every one answers with the expected status, retrying for about a minute while a new version propagates. The docs check includes the `301` redirects from `_redirects` and the `404` page.
+- `preview-comment.mjs` writes the job summary, looks up the branch's open pull requests (`GET /repos/{owner}/{repo}/pulls?head=<owner>:<branch>&state=open`), finds the comment by a hidden marker, written by `github-actions[bot]` only, and edits it, or creates it the first time.
+
+On a branch a newer push cancels the running upload along with the rest of the older run, so a branch has one upload at a time. On `main` no deploy is canceled or waits for another, because the deploy jobs have no concurrency group of their own (a shared group would let a later-queued older deploy cancel a newer one that was pending). Runs still finish in any order, so when an older commit's tests finish after a newer commit has deployed, `newest-commit.mjs`, run right before Wrangler, skips the older upload or deploy instead of putting older code live. Two `main` deploys could only overlap if a newer commit were pushed, tested and deployed during the minute between an older run's check and the end of its `wrangler deploy`.
+
+On `main`, `wrangler deploy` also attaches the custom domains in each config's `routes`. Wrangler runs without a terminal in CI and then replaces a conflicting custom domain or DNS record without asking, so a hostname goes into `routes` only once it is meant to move to that Worker.
+
+The test also reads `ci.yml` and fails when a job is outside the five stages, when a job does not wait on every job of the stage before it, when an upload, deploy or smoke step is not gated on the newest-commit check, when a job has its own concurrency group, or when the Cloudflare token reaches anything but a Stage 5 Wrangler step. It evaluates the workflow's own `if:` conditions for a push to `main`, a branch push, a tag, a same-repo pull request, a fork's pull request and a push in a fork, and fails when `main` would get only a Preview, a branch push would not preview both Workers, a pull request or a tag would deploy, or a same-repo pull request would be tested twice.
+
+All jobs enforce least-privilege with `permissions: contents: read`. The Preview URL job adds `pull-requests: write`. The Cloudflare credentials (secret `CLOUDFLARE_API_TOKEN`, variable `CLOUDFLARE_ACCOUNT_ID`) are set only on the Wrangler steps, not on the builds.
 
 ## Release Workflow
 

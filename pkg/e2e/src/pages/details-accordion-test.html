@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Details Accordion Test</title>
+  </head>
+  <body>
+    <h1>Exclusive accordion from one component per item</h1>
+    <section data-testid="accordion">
+      <accordion-item data-testid="item-shipping">
+        <span data-bascik-slot="question">Shipping</span>
+        Ships in two days.
+      </accordion-item>
+      <accordion-item data-testid="item-returns">
+        <span data-bascik-slot="question">Returns</span>
+        Thirty days.
+      </accordion-item>
+      <accordion-item data-testid="item-warranty">
+        <span data-bascik-slot="question">Warranty</span>
+        One year.
+      </accordion-item>
+    </section>
+  </body>
+</html>

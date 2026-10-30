@@ -11,6 +11,7 @@ import {
   InitializedNotification,
   InitializeRequest,
   PublishDiagnosticsNotification,
+  ReferencesRequest,
   ShutdownRequest,
   StreamMessageReader,
   StreamMessageWriter,
@@ -151,5 +152,54 @@ describe("the bundled language server", () => {
       "server-script-missing-default-export",
     );
     expect(diagnostics.every((d) => d.source === "bascik")).toBe(true);
+  });
+
+  it("reports server-script-unescaped-markup from the bundled server, and allows the @bascik/bascik/html import", async () => {
+    const diagnostics = await diagnosticsFor(
+      "src/pages/search.html",
+      "html",
+      '<script data-bascik-server>\nimport { esc } from "@bascik/bascik/html";\nexport default (request) => {\n  const q = new URL(request.url).searchParams.get("q");\n  return `<p>${q}</p>`;\n};\n</script>',
+    );
+    const codes = diagnostics.map((d) => d.code);
+    expect(codes).toContain("server-script-unescaped-markup");
+    expect(codes).not.toContain("server-script-bascik-import");
+  });
+
+  it("answers Find All References for a component", async () => {
+    // A nested project of its own, so its snapshot is built after these files exist.
+    const refs = join(project, "refs");
+    await mkdir(join(refs, "src/components"), { recursive: true });
+    await mkdir(join(refs, "src/pages"), { recursive: true });
+    await writeFile(join(refs, "bascik.config.ts"), "export default {};\n");
+    const component = join(refs, "src/components/promo-tile.html");
+    await writeFile(component, "<!-- @bascik\n  A tile.\n-->\n<div></div>\n");
+    const page = join(refs, "src/pages/index.html");
+    await writeFile(
+      page,
+      "<main>\n  <promo-tile></promo-tile>\n  <!-- <promo-tile> -->\n</main>\n",
+    );
+    const locations = await connection.sendRequest(ReferencesRequest.type, {
+      textDocument: { uri: pathToFileURL(component).toString() },
+      position: { line: 1, character: 2 },
+      context: { includeDeclaration: false },
+    });
+    expect(locations).toEqual([
+      {
+        uri: pathToFileURL(page).toString(),
+        range: {
+          start: { line: 1, character: 3 },
+          end: { line: 1, character: 13 },
+        },
+      },
+    ]);
+  });
+
+  it("is released as 0.5.0, the version that bundles the language server with the html lint", async () => {
+    const { readFile } = await import("node:fs/promises");
+    // The tests compile to CommonJS, so the manifest is found from the working directory (the extension root).
+    const manifest = JSON.parse(
+      await readFile(join(process.cwd(), "package.json"), "utf8"),
+    ) as { version: string };
+    expect(manifest.version).toBe("0.5.0");
   });
 });

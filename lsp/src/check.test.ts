@@ -65,6 +65,21 @@ describe("checkFiles", () => {
     ]);
   });
 
+  it("checks an .mts component script the same way as a .ts one", async () => {
+    const script =
+      "const id: string = 'x';\ndocument.getElementById(`card-${id}`);\n";
+    write("src/components/ts-card.ts", script);
+    write("src/components/mts-card.mts", script);
+    const result = await checkFiles({ cwd: root, targets: ["src/components"] });
+    expect(result.filesChecked).toBe(2);
+    const codesFor = (name: string) =>
+      result.diagnostics
+        .filter((d) => d.filePath.endsWith(name))
+        .map((d) => d.code);
+    expect(codesFor("ts-card.ts")).not.toEqual([]);
+    expect(codesFor("mts-card.mts")).toEqual(codesFor("ts-card.ts"));
+  });
+
   it("applies the API rules in the folder directory.api names", async () => {
     write(
       "server/routes/users.ts",

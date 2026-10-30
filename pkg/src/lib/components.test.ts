@@ -24,8 +24,17 @@ import {
   listComponents,
   invalidateComponentListCache,
   readComponentRoot,
+  isComponentSourceFile,
 } from "./components.ts";
 import { minifyHtml } from "./html-minifier.ts";
+import {
+  createMatchingCloseFinder,
+  mayContainComponent,
+  findMatchingClose,
+} from "./component-tags.ts";
+import { maskRawTextContent } from "./component-masking.ts";
+import { mayChangeMaskedRegions } from "./component-props.ts";
+import { createAttributeValueScanner } from "./component-attribute-scan.ts";
 
 describe("replaceTag", () => {
   it("replaces a single tag", () => {
@@ -134,6 +143,156 @@ describe("getTag", () => {
     const html = `<div><!-- <my-comp></my-comp> --></div>`;
     const result = getFirstComponent(html, cList);
     expect(result.name).toBeUndefined();
+  });
+});
+
+describe("getFirstComponent and getTag on the request path", () => {
+  const list = (): ComponentList => ({
+    "srv-card": { fileName: "srv-card.html", fileContent: "<div></div>" },
+    "srv-card-wide": { fileName: "wide.html", fileContent: "<div></div>" },
+    "plain-box": { fileName: "plain-box.html", fileContent: "<p></p>" },
+  });
+
+  it("keys a frozen list's tag regex on identity: its names are read once, not on every call", () => {
+    const frozen = Object.freeze(list());
+    const keys = vi.spyOn(Object, "keys");
+    try {
+      for (let i = 0; i < 5; i++)
+        expect(
+          getFirstComponent(`<p>x</p><plain-box></plain-box>`, frozen).name,
+        ).toBe("plain-box");
+      expect(keys.mock.calls.filter(([o]) => o === frozen).length).toBe(1);
+    } finally {
+      keys.mockRestore();
+    }
+  });
+
+  it("mayContainComponent is false only when no tag names a listed component", () => {
+    const frozen = Object.freeze(list());
+    expect(mayContainComponent("plain text", frozen)).toBe(false);
+    expect(mayContainComponent("<p>srv-card</p><srv-cards>", frozen)).toBe(
+      false,
+    );
+    expect(mayContainComponent("<p>x</p><SRV-CARD a=1>", frozen)).toBe(true);
+    expect(mayContainComponent("<plain-box/>", frozen)).toBe(true);
+    // Conservative: a name in raw text still says maybe; the search decides.
+    const inScript = `<script>"<plain-box></plain-box>"</script>`;
+    expect(mayContainComponent(inScript, frozen)).toBe(true);
+    expect(getFirstComponent(inScript, frozen)).toEqual({});
+    expect(mayContainComponent("<plain-box>", {})).toBe(false);
+  });
+
+  it("a list that is not frozen is still re-read, so a renamed component is found", () => {
+    const mutable = list();
+    expect(getFirstComponent("<plain-box></plain-box>", mutable).name).toBe(
+      "plain-box",
+    );
+    delete mutable["plain-box"];
+    mutable["other-box"] = { fileContent: "<p></p>" };
+    expect(getFirstComponent("<other-box></other-box>", mutable).name).toBe(
+      "other-box",
+    );
+    expect(getFirstComponent("<plain-box></plain-box>", mutable)).toEqual({});
+  });
+
+  it("misuse: a list searched, edited, then frozen is matched against its names after the edit", () => {
+    // The identity shortcut holds only for a regex built while the list was
+    // already frozen; one cached before the freeze may predate an edit.
+    const late = list();
+    expect(getFirstComponent("<srv-card></srv-card>", late).name).toBe(
+      "srv-card",
+    );
+    delete late["plain-box"];
+    late["late-box"] = { fileContent: "<p></p>" };
+    Object.freeze(late);
+    expect(getFirstComponent("<late-box></late-box>", late).name).toBe(
+      "late-box",
+    );
+    expect(mayContainComponent("<late-box></late-box>", late)).toBe(true);
+    expect(getFirstComponent("<plain-box></plain-box>", late)).toEqual({});
+  });
+
+  it("misuse: an in-place edit that keeps the key count, first and last key still re-reads the names", () => {
+    const edited: ComponentList = {
+      "a-x": { fileContent: "<i></i>" },
+      "b-x": { fileContent: "<i></i>" },
+      "c-x": { fileContent: "<i></i>" },
+    };
+    expect(getFirstComponent("<a-x></a-x>", edited).name).toBe("a-x");
+    delete edited["b-x"];
+    delete edited["c-x"];
+    edited["z-x"] = { fileContent: "<i></i>" };
+    edited["c-x"] = { fileContent: "<i></i>" };
+    expect(getFirstComponent("<p><z-x></z-x></p>", edited).name).toBe("z-x");
+    expect(mayContainComponent("<z-x></z-x>", edited)).toBe(true);
+    // A removed name never matches with no list entry behind it.
+    expect(getFirstComponent("<p><b-x></b-x></p>", edited)).toEqual({});
+    expect(mayContainComponent("<b-x></b-x>", edited)).toBe(false);
+  });
+
+  it("repeated and resumed searches on one list agree with a fresh search, longest name first", () => {
+    const frozen = Object.freeze(list());
+    const html = `<srv-card-wide></srv-card-wide> <srv-card a="<srv-card>"></srv-card> <plain-box/>`;
+    const seen: Array<[string | undefined, number | undefined]> = [];
+    let from = 0;
+    for (let i = 0; i < 4; i++) {
+      const found = getFirstComponent(html, frozen, undefined, from) as {
+        name?: string;
+        index?: number;
+        endIndex?: number;
+      };
+      seen.push([found.name, found.index]);
+      if (found.endIndex === undefined) break;
+      from = found.endIndex;
+    }
+    expect(seen).toEqual([
+      ["srv-card-wide", 0],
+      ["srv-card", 32],
+      ["plain-box", 69],
+      [undefined, undefined],
+    ]);
+    // A second pass over the same list and string finds the same first tag.
+    expect(getFirstComponent(html, frozen, undefined, 5).index).toBe(32);
+    expect(getFirstComponent(html, frozen).index).toBe(0);
+  });
+
+  it("keeps the index fields off the enumerable result, and pairs a close tag written with case or space", () => {
+    const frozen = Object.freeze(list());
+    const html = `<i>a</i><SRV-CARD x="1">in<srv-card></srv-card></Srv-Card  ><b>after</b>`;
+    const found = getFirstComponent(html, frozen) as Record<string, unknown>;
+    expect(found).toEqual({
+      name: "srv-card",
+      index: 8,
+      content: `<SRV-CARD x="1">in<srv-card></srv-card></Srv-Card  >`,
+      innerContent: "in<srv-card></srv-card>",
+      fileName: "srv-card.html",
+      fileContent: "<div></div>",
+    });
+    expect(Object.keys(found)).not.toContain("startIndex");
+    expect([
+      found.startIndex,
+      found.contentStart,
+      found.closeIndex,
+      found.endIndex,
+    ]).toEqual([8, 24, 47, 47 + "</Srv-Card  >".length]);
+    const tag = getTag(html, "srv-card", frozen) as Record<string, unknown>;
+    expect(Object.keys(tag).sort()).toEqual([
+      "content",
+      "fileContent",
+      "fileName",
+      "innerContent",
+    ]);
+    expect(tag.endIndex).toBe(found.endIndex);
+    // An unclosed tag ends at its open tag; a self-closing one at its `/>`.
+    const open = getTag(`<srv-card a=1>tail`, "srv-card") as Record<
+      string,
+      unknown
+    >;
+    expect([open.content, open.closeIndex, open.endIndex]).toEqual([
+      "<srv-card a=1>",
+      -1,
+      14,
+    ]);
   });
 });
 
@@ -254,20 +413,6 @@ describe("getFirstComponent", () => {
       const html =
         '<audit-label><p title="Use </audit-label> exactly">text</p></audit-label>';
       expect(getFirstComponent(html, auditLabel).content).toBe(html);
-    });
-
-    it("handles many tag-like attribute tokens without recursive rescanning", () => {
-      const mentions = "<span><audit-label></audit-label>".repeat(1000);
-      const html = `<p title="${mentions}">text</p><audit-label/>`;
-      const started = performance.now();
-      expect(getFirstComponent(html, auditLabel).content).toBe(
-        "<audit-label/>",
-      );
-      expect(getTag(html, "audit-label").content).toBe("<audit-label/>");
-      expect(replaceTag(html, "audit-label", "replacement")).toBe(
-        `<p title="${mentions}">text</p>replacement`,
-      );
-      expect(performance.now() - started).toBeLessThan(1000);
     });
 
     it("does not match a component tag inside a single-quoted attribute value", () => {
@@ -544,7 +689,108 @@ describe("extractProps", () => {
   });
 });
 
+describe("mayChangeMaskedRegions", () => {
+  it("recognizes every way the HTML tokenizer starts or ends a comment", () => {
+    for (const text of [
+      "a <!-- b",
+      "a --> b",
+      "a --!> b",
+      "a <!--> b",
+      "a <!---> b",
+    ])
+      expect(mayChangeMaskedRegions(text), text).toBe(true);
+  });
+
+  it("recognizes raw-text element tags in any case", () => {
+    for (const text of ["<script>", "</STYLE >", "<textarea rows=2>"])
+      expect(mayChangeMaskedRegions(text), text).toBe(true);
+  });
+
+  it("passes text with no comment or raw-text syntax", () => {
+    for (const text of [
+      "",
+      "plain",
+      "a -- b",
+      "a --! b",
+      "<!- x ->",
+      "<scripts>",
+    ])
+      expect(mayChangeMaskedRegions(text), text).toBe(false);
+  });
+});
+
 describe("injectProps", () => {
+  it("fills every receiver when replaced content holds a --!> or <!--> comment", () => {
+    for (const content of ["a --!> b", "<!-- a --!>", "<!-->", "<!--->"])
+      expect(
+        injectProps(
+          `<p data-bascik-prop-title>${content}</p><b data-bascik-prop-title>${content}</b>`,
+          { title: "Hi" },
+        ),
+        content,
+      ).toBe("<p>Hi</p><b>Hi</b>");
+  });
+
+  it("fills a receiver after a comment the browser ends at --!>, <!--> or <!--->", () => {
+    // These close a comment in the browser, so the receiver after one is live
+    // markup; a later `-->` must not stretch the comment over it.
+    for (const comment of ["<!-- note --!>", "<!-->", "<!--->"])
+      expect(
+        injectProps(
+          `${comment}<p data-bascik-prop-title>f</p><!-- <b data-bascik-prop-title></b> -->`,
+          { title: "Hi" },
+        ),
+      ).toBe(`${comment}<p>Hi</p><!-- <b data-bascik-prop-title></b> -->`);
+  });
+
+  it("leaves a receiver inside an unclosed comment as written", () => {
+    expect(
+      injectProps(
+        "<p data-bascik-prop-title>f</p><!-- <b data-bascik-prop-title></b>",
+        {
+          title: "Hi",
+        },
+      ),
+    ).toBe("<p>Hi</p><!-- <b data-bascik-prop-title></b>");
+  });
+
+  it.each([
+    [
+      "<b data-bascik-prop-t><script></b><b data-bascik-prop-t>in</b></script><b data-bascik-prop-t>after</b>",
+      "<b><script></b><b data-bascik-prop-t>in</b></script><b>v</b>",
+    ],
+    [
+      '<b data-bascik-prop-t><a title="<script>"></a></b><b data-bascik-prop-t>x</b></script><b data-bascik-prop-t>y</b>',
+      '<b><a title="<script>"></a></b><b data-bascik-prop-t>x</b></script><b>y</b>',
+    ],
+    [
+      "<b data-bascik-prop-t><script>s</script><style></b><b data-bascik-prop-t>z</b>",
+      "<b>v</b><b>v</b>",
+    ],
+    [
+      "<b data-bascik-prop-t>--></b><b data-bascik-prop-t>q</b>",
+      "<b>v</b><b>v</b>",
+    ],
+    [
+      "<b data-bascik-prop-t><!--</b>--><b data-bascik-prop-t>r</b>",
+      "<b><!--</b>--><b>v</b>",
+    ],
+  ])(
+    "misuse: unbalanced raw-text or comment syntax in or around a receiver is filled exactly as before: %j",
+    (template, expected) => {
+      // Outputs recorded from the splice-per-receiver implementation.
+      expect(injectProps(template, { t: "v" })).toBe(expected);
+    },
+  );
+
+  it("fills receivers around raw text, comments, self-closing markers and unclosed receivers exactly as before", () => {
+    const template =
+      '<b data-bascik-prop-t>1</b><script>"<b data-bascik-prop-t>"</script><!-- <b data-bascik-prop-t>c</b> --><br data-bascik-prop-t/><b data-bascik-prop-t><b>in</b></b><b data-bascik-prop-t>open';
+    expect(injectProps(template, { t: "<&>" })).toBe(
+      '<b>&lt;&amp;&gt;</b><script>"<b data-bascik-prop-t>"</script><!-- <b data-bascik-prop-t>c</b> --><br data-bascik-prop-t/><b>&lt;&amp;&gt;</b><b>open',
+    );
+  });
+
   it("injects a prop value as element inner content", () => {
     const template = "<p data-bascik-prop-title></p>";
     expect(injectProps(template, { title: "Hello" })).toBe("<p>Hello</p>");
@@ -642,6 +888,18 @@ describe("injectProps", () => {
 });
 
 describe("injectPropAttributes", () => {
+  it("binds an attribute after a comment the browser ends at --!>, <!--> or <!--->", () => {
+    for (const comment of ["<!-- note --!>", "<!-->", "<!--->"])
+      expect(
+        injectPropAttributes(
+          `${comment}<a data-bascik-attr-href="link">About</a><!-- <a data-bascik-attr-href="link"> -->`,
+          { link: "/about" },
+        ),
+      ).toBe(
+        `${comment}<a href="/about">About</a><!-- <a data-bascik-attr-href="link"> -->`,
+      );
+  });
+
   it("injects a simple attribute and strips the directive", () => {
     const result = injectPropAttributes(
       '<a data-bascik-attr-href="link">About</a>',
@@ -658,6 +916,48 @@ describe("injectPropAttributes", () => {
         { label: "Details", foo: "bar" },
       ),
     ).toBe('<div aria-label="Details" data-foo="bar"></div>');
+  });
+
+  it("passes the target attribute name and value through `rewriteValue` before escaping (prompt 157)", () => {
+    // A request-time renderer injects bindings after scoping and maps id
+    // references per target; the same prop can land on an id-reference
+    // target and a plain one, so the rewrite sees the target.
+    const rewriteValue = vi.fn((target: string, value: string) =>
+      target === "for" ? `scoped-${value}` : value,
+    );
+    expect(
+      injectPropAttributes(
+        '<label data-bascik-attr-for="p" data-bascik-attr-title="p">L</label>',
+        { p: "x<y" },
+        rewriteValue,
+      ),
+    ).toBe('<label for="scoped-x&lt;y" title="x&lt;y">L</label>');
+    expect(rewriteValue.mock.calls).toEqual([
+      ["for", "x<y"],
+      ["title", "x<y"],
+    ]);
+  });
+
+  it("routes its warnings through `warn` when given (prompt 157)", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.fn();
+    injectPropAttributes(
+      '<div title="old" data-bascik-attr-title="t" data-bascik-attr-id></div>',
+      { t: "new" },
+      undefined,
+      warn,
+    );
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(warn.mock.calls.map(([message]) => message)).toEqual([
+      expect.stringMatching(/Attribute binding conflict: attribute "title"/),
+      expect.stringMatching(/Ignoring malformed data-bascik-attr-id/),
+    ]);
+    expect(
+      extractProps('<x-c data-bascik-prop-t="say "hello""></x-c>', warn),
+    ).toEqual({});
+    expect(warn).toHaveBeenCalledTimes(3);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 
   it("removes a missing-prop directive without adding the target attribute", () => {
@@ -816,6 +1116,14 @@ describe("extractNamedSlotContent", () => {
 });
 
 describe("replaceNamedSlots", () => {
+  it("fills wrappers in document order around text, nested same-tag fallbacks and wrappers inside a child usage", () => {
+    const template =
+      '<a>1<div data-bascik-slot="x"><div>fb</div></div>2<my-card><i data-bascik-slot="x">kept</i></my-card>3<i data-bascik-slot="y">y</i>4</a>';
+    expect(replaceNamedSlots(template, { x: "X" }, new Set(["my-card"]))).toBe(
+      '<a>1X2<my-card><i data-bascik-slot="x">kept</i></my-card>3y4</a>',
+    );
+  });
+
   it("replaces a named slot placeholder with provided content", () => {
     const template =
       '<footer><div data-bascik-slot="footer-links"></div></footer>';
@@ -876,6 +1184,12 @@ describe("replaceNamedSlots", () => {
 });
 
 describe("replaceDefaultSlots", () => {
+  it("replaces every repeated marker with the content and keeps the text between them in order", () => {
+    const template = `<a><b data-bascik-slot>1</b>-<c data-bascik-slot>2</c>-<d data-bascik-slot></d></a>`;
+    expect(replaceDefaultSlots(template, "X")).toBe("<a>X-X-X</a>");
+    expect(replaceDefaultSlots(template, "")).toBe("<a>1-2-</a>");
+  });
+
   it("replaces a default slot marker with provided content", () => {
     const template = "<div><div data-bascik-slot></div></div>";
     expect(replaceDefaultSlots(template, "<p>content</p>")).toBe(
@@ -1011,6 +1325,28 @@ describe("listComponents", () => {
   });
 });
 
+describe("isComponentSourceFile", () => {
+  // The dev watcher uses this to decide which component-root edits rebuild
+  // pages; it must accept every companion script listComponents inlines.
+  it.each([
+    "card.html",
+    "card.css",
+    "card.js",
+    "card.mjs",
+    "card.ts",
+    "card.mts",
+  ])("accepts %s", (file) => {
+    expect(isComponentSourceFile(`src/components/card/${file}`)).toBe(true);
+  });
+
+  it.each(["card.md", "card.cts", "card.cjs", "card.tsx", "card.mts.bak"])(
+    "ignores %s",
+    (file) => {
+      expect(isComponentSourceFile(`src/components/card/${file}`)).toBe(false);
+    },
+  );
+});
+
 describe("readComponentRoot", () => {
   const withProject = async (run: (cwd: string) => Promise<void>) => {
     const cwd = await mkdtemp(join(tmpdir(), "bascik-component-root-"));
@@ -1079,6 +1415,19 @@ describe("readComponentRoot", () => {
       await expect(
         readComponentRoot(join(cwd, "src/components"), cwd),
       ).resolves.toEqual([join(cwd, "src/components/cards/promo-card.html")]);
+    });
+  });
+
+  it("lists .mts companion scripts next to .ts, .js, and .mjs ones", async () => {
+    await withProject(async (cwd) => {
+      const dir = join(cwd, "src/components/mts-counter");
+      await mkdir(dir, { recursive: true });
+      for (const name of ["mts-counter.html", "mts-counter.mts", "helper.cts"])
+        await writeFile(join(dir, name), "");
+      const files = await readComponentRoot(join(cwd, "src/components"), cwd);
+      expect(files.sort()).toEqual(
+        [join(dir, "mts-counter.html"), join(dir, "mts-counter.mts")].sort(),
+      );
     });
   });
 
@@ -1311,6 +1660,59 @@ describe("mergeAttributesOntoRoot", () => {
     // Should not override existing id
     expect(result).toContain('id="main-nav"');
     expect(result).not.toContain('id="override"');
+  });
+
+  describe("a data-testid on the usage tag replaces the root's own", () => {
+    // Every root can carry a default test id, and a page still names one
+    // instance (`<site-nav data-testid="footer-nav">`) without .nth().
+    it.each([
+      [
+        '<nav data-testid="site-nav" class="nav">',
+        '<nav data-testid="footer-nav" class="nav">',
+      ],
+      ["<nav data-testid='site-nav'>", "<nav data-testid='footer-nav'>"],
+      ["<nav data-testid=site-nav>", '<nav data-testid="footer-nav">'],
+      ["<nav data-testid>", '<nav data-testid="footer-nav">'],
+      ['<nav DATA-TESTID="site-nav">', '<nav DATA-TESTID="footer-nav">'],
+    ])("%s", (root, expected) => {
+      expect(
+        mergeAttributesOntoRoot(`${root}<a>Home</a></nav>`, {
+          "data-testid": "footer-nav",
+        }),
+      ).toBe(`${expected}<a>Home</a></nav>`);
+    });
+
+    it("in place, with the class merge and new attributes beside it", () => {
+      expect(
+        mergeAttributesOntoRoot(
+          '<nav class="nav" data-testid="site-nav" aria-label="Main">',
+          {
+            "data-testid": 'a"b',
+            class: "sticky",
+            "aria-label": "Footer",
+            id: "x",
+          },
+        ),
+      ).toBe(
+        '<nav class="nav sticky" data-testid="a&quot;b" aria-label="Main" id="x">',
+      );
+    });
+
+    it("only the first of a duplicated root data-testid, which is the one the browser keeps", () => {
+      expect(
+        mergeAttributesOntoRoot('<nav data-testid="a" data-testid="b">', {
+          "data-testid": "c",
+        }),
+      ).toBe('<nav data-testid="c" data-testid="b">');
+    });
+
+    it("other test hooks keep the root's own value, like every other attribute", () => {
+      expect(
+        mergeAttributesOntoRoot('<nav data-cy="site-nav">', {
+          "data-cy": "footer-nav",
+        }),
+      ).toBe('<nav data-cy="site-nav">');
+    });
   });
 
   it("merges attribute even if root tag contains data- or prefix matching attribute", () => {
@@ -1714,6 +2116,54 @@ describe("injectProps – quote-aware scanning", () => {
     const template = "<p data-bascik-prop-title='featured'></p>";
     expect(injectProps(template, { title: "Hi" })).toBe(template);
   });
+
+  // Misuse lens: unbalanced quotes around a receiver. The fallback content a
+  // receiver loses can hold the quote that closes an attribute value the
+  // close finder reads the rest of the template through, so the result is
+  // the one a fresh scan of each spliced string gives (pinned against the
+  // splice-per-receiver implementation).
+  it("misuse: removed fallback content that closes a quoted value leaves the next receiver as a fresh scan does", () => {
+    // The scan reads a tag name as the browser does: `x="<b` is one name
+    // (its `"` starts no value), so the quotes after its `>` are text, and
+    // both receivers are filled. `<i' ... x='>'</i>` is one tag to the
+    // browser (`</i` after the quoted value is an attribute name), so `<i'`
+    // has no close and `<my-card>` is filled.
+    expect(
+      injectProps(
+        `<x="<b data-bascik-prop-t>""</B><b data-bascik-prop-t></b>`,
+        { t: "v" },
+      ),
+    ).toBe(`<x="<b>v</B><b>v</b>`);
+    expect(
+      injectProps(
+        `<i' data-bascik-prop-t x='>'</i><my-card data-bascik-prop-t></my-card>`,
+        { t: "v" },
+      ),
+    ).toBe(`<i' x='>'</i><my-card>v</my-card>`);
+  });
+
+  it("still fills every receiver when the removed fallback holds balanced quotes in text", () => {
+    expect(
+      injectProps(
+        `<p data-bascik-prop-t>it's "quoted"</p><b data-bascik-prop-t>'</b>`,
+        { t: "v" },
+      ),
+    ).toBe(`<p>v</p><b>v</b>`);
+  });
+
+  // Misuse lens: a marker spelled with U+212A KELVIN SIGN, which
+  // toLowerCase folds to "k". The receiver test lowercases names, so the
+  // tag prefilter must never skip a tag that test accepts.
+  it("misuse: a receiver whose name has a Kelvin sign is filled, as its lowercased name matches", () => {
+    expect(injectProps(`<p data-bascik-prop-K></p>`, { k: "V" })).toBe(
+      `<p>V</p>`,
+    );
+    expect(
+      injectProps(`<p data-bascik-prop-t></p><b data-basciK-prop-t></b>`, {
+        t: "V",
+      }),
+    ).toBe(`<p>V</p><b>V</b>`);
+  });
 });
 
 // Regression: the quote-aware ATTR_VALUE scan previously used
@@ -2079,5 +2529,49 @@ describe("masked string caching performance helpers", () => {
     expect(getFirstComponent(html2, list).name).toBe("my-button");
     // Repeating on the same ComponentList object should return consistent results
     expect(getFirstComponent(html1, list).name).toBe("my-card");
+  });
+});
+
+describe("createMatchingCloseFinder", () => {
+  // Strings where the depth count is easy to get wrong: closes and opens
+  // inside quoted and unquoted attribute values, self-closing same-name tags,
+  // raw text, comments, mixed case, a close with whitespace, and unclosed or
+  // over-closed runs.
+  const samples = [
+    '<i a="</i>">x<i>y</i></i></i>',
+    "<i><i/><I>a</i ></I><i b='<i>'>c</i>",
+    "<i><script></i></script></i><!-- </i> --></i>",
+    "<i x=</i>>q</i><i>r<i>s</i>",
+    "<i><i><i></i>",
+    "</i></i><i>t</i></i>",
+    "<i title=\"<i>\"><i data-x='</i>'></i></i><i>",
+    "<i\n data-a='1'\n>m</i\t><textarea><i></textarea></i>",
+  ];
+  it.each(samples)(
+    "agrees with a depth count from every position of %j",
+    (html) => {
+      const masked = maskRawTextContent(html);
+      const find = createMatchingCloseFinder(html, masked);
+      for (const tag of ["i", "I", "b"])
+        for (let start = 0; start <= html.length; start++)
+          expect([tag, start, find(tag, start)]).toEqual([
+            tag,
+            start,
+            findMatchingClose(
+              html,
+              tag,
+              start,
+              masked,
+              createAttributeValueScanner(masked),
+            ),
+          ]);
+    },
+  );
+
+  it("misuse: an invalid tag name finds nothing instead of throwing", () => {
+    const html = "<i>a</i>";
+    const find = createMatchingCloseFinder(html, maskRawTextContent(html));
+    expect(find("i)(", 3)).toBe(-1);
+    expect(find("", 3)).toBe(-1);
   });
 });

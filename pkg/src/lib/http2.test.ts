@@ -30,13 +30,14 @@ const { mockServer, mockCreateSecureServer, mockStartHttpServer } = vi.hoisted(
 vi.mock("node:http2", () => ({
   default: {
     createSecureServer: mockCreateSecureServer,
-    constants: { NGHTTP2_INTERNAL_ERROR: 2 },
+    constants: { NGHTTP2_INTERNAL_ERROR: 2, NGHTTP2_NO_ERROR: 0 },
   },
 }));
 
 vi.mock("./http.js", () => ({
   startHttpServer: mockStartHttpServer,
   adaptHttp1: vi.fn(() => ({ req: {}, res: {} })),
+  handleCheckContinue: vi.fn(() => () => {}),
 }));
 
 vi.mock("node:fs/promises", () => ({
@@ -89,6 +90,62 @@ describe("startHttp2Server", () => {
         allowHTTP1: true,
       }),
     );
+  });
+
+  it("applies http.timeouts to the HTTP/1.1 fallback of the TLS server", async () => {
+    await startHttp2Server();
+    // Node 22's constructor overwrites these options with its own defaults
+    // when allowHTTP1 is set, so they must be assigned after construction.
+    expect((mockServer as any).requestTimeout).toBe(30000);
+    expect((mockServer as any).headersTimeout).toBe(10000);
+    expect((mockServer as any).connectionsCheckingInterval).toBe(5000);
+    expect((mockServer as any).keepAliveTimeout).toBe(5000);
+  });
+
+  it("closes an HTTP/2 session idle for keepAlive, but never one with an open stream", async () => {
+    vi.useFakeTimers();
+    try {
+      await startHttp2Server();
+      const onSession = mockServer.on.mock.calls.find(
+        (c) => c[0] === "session",
+      )![1];
+      const { EventEmitter } = await import("node:events");
+      const session: any = Object.assign(new EventEmitter(), {
+        close: vi.fn(),
+        closed: false,
+        destroyed: false,
+      });
+      onSession(session);
+
+      // A session that never sends a request closes after keepAlive.
+      vi.advanceTimersByTime(4999);
+      expect(session.close).not.toHaveBeenCalled();
+
+      // An open stream (an SSE response, a slow download) holds it open
+      // however long it is silent.
+      const stream = new EventEmitter();
+      session.emit("stream", stream);
+      vi.advanceTimersByTime(60_000);
+      expect(session.close).not.toHaveBeenCalled();
+
+      // Idle again once the last stream closes: keepAlive from that moment.
+      stream.emit("close");
+      vi.advanceTimersByTime(4999);
+      expect(session.close).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(session.close).toHaveBeenCalledTimes(1);
+
+      // A closed session drops its timer.
+      const other: any = Object.assign(new EventEmitter(), {
+        close: vi.fn(),
+      });
+      onSession(other);
+      other.emit("close");
+      vi.advanceTimersByTime(10_000);
+      expect(other.close).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("handles HTTP/1.1 fallback requests via the 'request' listener and ignores HTTP/2 compatibility requests", async () => {
@@ -199,5 +256,70 @@ describe("adaptHttp2", () => {
     emitter.emit("close");
     expect(drains).toBe(1);
     expect(closes).toBe(1);
+  });
+});
+
+describe("adaptHttp2 connection headers and lingering close", () => {
+  const makeStream = async () => {
+    const { PassThrough } = await import("node:stream");
+    const body = new PassThrough();
+    const stream: any = Object.assign(body, {
+      headersSent: false,
+      session: { socket: { remoteAddress: "127.0.0.1" } },
+      respond: vi.fn(),
+      write: vi.fn(),
+      end: vi.fn(),
+      close: vi.fn(),
+    });
+    return stream;
+  };
+
+  it("strips HTTP/1 connection-specific headers, which stream.respond would throw on", async () => {
+    const stream = await makeStream();
+    const { res } = adaptHttp2(stream, { ":method": "POST", ":path": "/" });
+    res.respond(413, {
+      Connection: "close",
+      "Keep-Alive": "timeout=5",
+      "proxy-connection": "keep-alive",
+      "Transfer-Encoding": "chunked",
+      upgrade: "h2c",
+      "http2-settings": "AAA",
+      "content-type": "text/plain",
+    });
+    expect(stream.respond).toHaveBeenCalledWith({
+      ":status": 413,
+      "content-type": "text/plain",
+    });
+  });
+
+  it("a drained stream is left to close on its own; the session is never touched", async () => {
+    const stream = await makeStream();
+    const { res } = adaptHttp2(stream, { ":method": "POST", ":path": "/" });
+    res.lingerClose!();
+    res.respond(413, {});
+    res.end("Payload Too Large");
+    // `write`/`end` are the response side (mocked); `push` is the client's.
+    stream.push(Buffer.alloc(10));
+    stream.push(null);
+    await new Promise((r) => stream.once("end", r));
+    expect(stream.close).not.toHaveBeenCalled();
+  });
+
+  it("at a cap the stream is reset with NO_ERROR, only after the response ended", async () => {
+    vi.useFakeTimers();
+    try {
+      const stream = await makeStream();
+      const { res } = adaptHttp2(stream, { ":method": "POST", ":path": "/" });
+      res.lingerClose!();
+      // A slow handler: the time cap passes before the response is written.
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(stream.close).not.toHaveBeenCalled();
+      res.respond(413, {});
+      res.end("Payload Too Large");
+      expect(stream.end).toHaveBeenCalledWith("Payload Too Large");
+      expect(stream.close).toHaveBeenCalledWith(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

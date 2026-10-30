@@ -250,6 +250,44 @@ export function validateProcessCoverage(
 
 export const digest = (body: Buffer | string) =>
   createHash("sha256").update(body).digest("hex");
+/**
+ * Digests of the harness files that shape a workload capture, keyed by file
+ * name, so a captured run can be tied to the harness that produced it. The
+ * set is every bench module `profile-runner.ts` reaches through a static or
+ * dynamic import or a module URL built from import.meta.url (spawned
+ * subjects, `--import` preloads), so a new harness file is never left out.
+ */
+export async function harnessDigests(
+  benchDirectory: string,
+  entry = "profile-runner.ts",
+): Promise<Record<string, string>> {
+  const digests: Record<string, string> = {};
+  const pending = [entry];
+  while (pending.length) {
+    const file = pending.pop()!;
+    if (Object.hasOwn(digests, file)) continue;
+    let body: Buffer;
+    try {
+      body = await readFile(join(benchDirectory, file));
+    } catch (error) {
+      throw new Error(
+        `harness file ${file} is missing from ${benchDirectory}: ${error}`,
+      );
+    }
+    digests[file] = digest(body);
+    for (const [, reference] of body
+      .toString("utf8")
+      .matchAll(
+        /(?:from\s+|import\(\s*|new URL\(\s*)["']\.\/([\w.-]+\.ts)["']/g,
+      ))
+      pending.push(reference);
+  }
+  return Object.fromEntries(
+    Object.entries(digests).sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
+  );
+}
 export function validateResponses(
   expected: ExpectedResponse[],
   responses: ObservedResponse[],
@@ -776,6 +814,24 @@ export function summarizeCpuProfile(value: unknown, name: string) {
   }
   return { samples: profile.samples.length, inclusive, self };
 }
+/**
+ * How to check a file a capture left behind. 0x streams the V8 isolate log
+ * into isolate-*-v8.json and exits without waiting for that stream, so under
+ * load the file can stay cut short: it is 0x's intermediate log, not the
+ * capture, and is kept as a non-empty artifact rather than parsed.
+ */
+export function capturedArtifactKind(
+  tool: string,
+  path: string,
+): "cpu" | "json" | "html" | "binary" {
+  if (path.endsWith(".cpuprofile")) return "cpu";
+  if (path.endsWith(".html")) return "html";
+  if (!path.endsWith(".json")) return "binary";
+  if (tool === "0x" && /(^|[\\/])isolate-[^\\/]*\.json$/.test(path))
+    return "binary";
+  return "json";
+}
+
 export async function validateArtifact(
   path: string,
   kind: "cpu" | "json" | "html" | "binary",
@@ -783,8 +839,17 @@ export async function validateArtifact(
   assert((await stat(path)).isFile(), `not an artifact file: ${path}`);
   const content = await readFile(path);
   assert(content.length > 0, `empty artifact: ${path}`);
-  if (kind === "cpu") decodeCpuProfile(JSON.parse(content.toString("utf8")));
-  if (kind === "json") JSON.parse(content.toString("utf8"));
+  try {
+    if (kind === "cpu") decodeCpuProfile(JSON.parse(content.toString("utf8")));
+    if (kind === "json") JSON.parse(content.toString("utf8"));
+  } catch (error) {
+    throw new Error(
+      `invalid ${kind} artifact ${path} (${content.length} bytes)`,
+      {
+        cause: error,
+      },
+    );
+  }
   if (kind === "html")
     assert(
       /<html[\s>]/i.test(content.toString("utf8")),

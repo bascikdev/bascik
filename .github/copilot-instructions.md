@@ -4,6 +4,14 @@ Repository-wide instructions are labeled accordingly.
 
 **Docs work:** the rules for creating or editing anything under `/docs/` live in `.github/instructions/docs.instructions.md` (scoped with `applyTo: "docs/**"`). Read that file before touching docs pages, `docs/content/*.md`, the public agent skills in `skills/`, or any docs image or diagram.
 
+## House Rules for Examples, Skills, Scaffolds, and Docs
+
+- **TypeScript by default.** New code in docs examples, skills, scaffolds, and examples is TypeScript: `.ts` companions, `type="text/typescript"` blocks, `.ts` helpers and exec scripts. Keep TypeScript as TypeScript in refactors. JavaScript only when a page is about JavaScript or the user asks.
+- **Component-first pages.** A page reads like a list of component tags, not big blocks of HTML. Balance it: no tiny single-use wrappers and no props passed through components that do not use them.
+- **Semantic HTML.** Pick the element the HTML standard defines for the job; a component's root is that element, not a wrapper `<div>`.
+- **`data-testid`** on every component root (`<name>`) and interactive part (`<name>-<part>`); carry existing test hooks over when refactoring.
+- **Demo product names:** the demo product is the Milk frother. Never use "grinder" in examples, and check sample names against app names.
+
 ## Keeping the Changelog Up to Date
 
 `CHANGELOG.md` is not actively maintained during pre-1.0 development: the 1.0.0 release entry will be written as a high-level announcement. **Once 1.0.0 ships**, resume normal changelog discipline: add an entry to `[Unreleased]` whenever you add a feature, fix a bug, or make any user-visible change to `pkg/src/`. One bullet per change, grouped under `### Added`, `### Fixed`, or `### Changed`.
@@ -12,12 +20,13 @@ Repository-wide instructions are labeled accordingly.
 
 `docs/content/compatibility.md` tracks which CSS and JavaScript patterns Bascik's scoping engine handles. **Whenever a CSS or JS scoping capability is added, changed, or fixed**, update the relevant table row (or add a new one) in that file before finishing the task.
 
-- New capability: add a row with ✅ and a concise Notes entry.
+- Use only the page's legend in the Status column: ✓ supported, △ partial, ✕ intentionally unsupported, – not yet supported.
+- New capability: add a row with ✓ and a concise Notes entry.
 - Fixed or improved: update the Status and/or Notes of the existing row.
-- Intentionally unsupported: add a row with 🚫 and an explanation.
-- If the change affects a rule summarized in `skills/bascik-compatibility/SKILL.md` (its list of surprises and its lint rule table), update the skill too. A new rule in `compatibility-rules.json` must get a row in the skill's lint rule table; `docs/scripts/skill-compat-monorepo.test.ts` fails otherwise. The skill's `lookup.mjs` parses the built `/compatibility` page, and `docs/e2e/skill-compat-lookup.spec.ts` fails if the page's table markup changes in a way the script cannot read.
+- Intentionally unsupported: add a row with ✕ and an explanation.
+- If the change affects a rule summarized in `skills/bascik-compatibility/SKILL.md` (its list of surprises and its lint rule table), update the skill too. A new rule in `compatibility-rules.json` must get a row in the skill's lint rule table; `skills-tests/tests/skill-compat-monorepo.test.ts` fails otherwise. The skill's `lookup.mjs` parses the built `/compatibility` page, and `docs/e2e/skill-compat-lookup.spec.ts` fails if the page's table markup changes in a way the script cannot read.
 
-After editing `compatibility.md`, do not run `#pre-push.prompt.md` or pre-push scripts automatically. The user handles running pre-push steps.
+After editing `compatibility.md`, do not run the `pre-push` skill (`.github/skills/pre-push/SKILL.md`) or pre-push scripts automatically. The user handles running pre-push steps.
 
 ## Keeping Docs in Sync with the Package
 
@@ -39,11 +48,15 @@ yarn docs:build
 
 Then inspect the relevant `docs/dist/` output to confirm the pkg change has the intended effect.
 
+## Deploying the Docs and the Adapter Demo
+
+Both Workers deploy from CI stage 5 in `.github/workflows/ci.yml`, after every test stage passes: a push to `main` runs `wrangler deploy` for each, and a push to any other branch of this repo uploads a Preview version of each under a per-branch alias, lists both URLs in the run summary, and posts them in one comment on the branch's open pull request, if it has one. `DEPLOYMENT.md` is the runbook (credentials, manual emergency deploys, read-only checks, the one-time dashboard steps). Each Worker is defined by a committed config: `docs/wrangler.jsonc` (the docs, an assets-only Worker) and `adapters/cloudflare/e2e/fixture/wrangler.jsonc` (the demo, carried into the generated config by the adapter). Change deployment settings there, not in the dashboard. A hostname added to a config's `routes` is taken over on the next `main` deploy without a prompt (CI runs Wrangler non-interactively). Never run `wrangler deploy` (without `--dry-run`), `wrangler versions upload` or `wrangler preview` from an agent session. The deploy helpers in `.github/scripts/` are tested by `pkg/e2e/scripts/ci-deploy.test.ts`, which also checks the five-stage job graph; a new stage 4 job must be added to the `needs` of both deploy jobs.
+
 ## Keeping Docs Visuals in Sync
 
 Docs visuals have three kinds, each with one home. Do not add a second mechanism for the same job.
 
-- **Recordings** (real editor, browser, or terminal) are WebP or animated WebP produced by the single script `docs/scripts/capture-demos.ts`, and shown as Markdown images. Run from `docs/`: `node scripts/capture-demos.ts <scene>`. Use Node 24 (`~/.nvm/versions/node/v24.17.0/bin`). Images are only for things that must be a picture of a real program.
+- **Recordings** (real editor, browser, or terminal) are WebP or animated WebP produced by the single script `docs/scripts/capture-demos.ts`, and shown as Markdown images. Run from `docs/`: `node scripts/capture-demos.ts <scene>`. Use Node 24 (`nvm use 24` first, or run `"$(nvm which 24)" scripts/capture-demos.ts <scene>`). Images are only for things that must be a picture of a real program.
 - **Diagrams** (flows, file trees, "you write / Bascik emits" comparisons) are the `diagram-*` Bascik components placed in the page shell. Their code lives in `<!-- demo:id -->` blocks in `docs/src/diagrams/<page>.md`, not in `docs/content/`.
 - **Live examples** that must run in the page are `<component-demo>` blocks.
 
@@ -53,10 +66,11 @@ Docs visuals have three kinds, each with one home. Do not add a second mechanism
 
 **When adding, removing, or significantly changing tests in `pkg/src/` or `pkg/e2e/`:**
 
-- The testing docs (`docs/content/internals/testing.md`) describe the test approach, not an enumerated list of files. The "Test Files" section links to GitHub which is always current. You only need to update the prose if the testing _patterns_ change (e.g. a new mock strategy, a new test runner, new helpers, or a new E2E server mode).
-- `pkg/` has two Vitest projects configured in `pkg/vite.config.js`: `unit` (fast, excludes `*.integration.test.ts`) and `integration` (only `*.integration.test.ts`). Integration tests spawn real processes, servers, and worker threads, so they run in their own project, their own command (`yarn pkg:integration`), and their own CI job. Run `yarn integration:all` (currently `pkg` only) when a change touches a real process, server, or worker boundary.
-- E2E tests support four Bascik server modes: static production (`playwright.config.ts`), HTTP/1.1 production server (`playwright.server.config.ts`), HTTP/2 production server (`playwright.server-http2.config.ts` via `yarn pkg:e2e:prod`), and live dev server (`playwright.dev.config.ts` via `yarn pkg:e2e:dev`). Two additional `pkg` lanes cover exec lifecycle ownership: `playwright.dev-exec.config.ts` plus `playwright.dev-exec-gated.config.ts` (via `yarn pkg:e2e:dev:exec`) and `playwright.exec-build.config.ts`. `playwright.exec-policy.config.ts` (via `yarn pkg:e2e:exec:policy`) covers `pipeline.onExecError` by spawning the CLI in temporary projects. The Cloudflare adapter lane lives in the `@bascik/adapter-cloudflare` workspace (`yarn adapter:cf:e2e`), not in `pkg/e2e/`.
-- The coverage numbers shown on the testing page are read from `pkg/test-coverage.json` (unit tests) and `pkg/e2e-test-coverage.json` (E2E build-step coverage) at docs build time. `pkg/test-coverage.json` is generated from the `unit` project only, so it must never include integration coverage. Do not run `#pre-push.prompt.md` or pre-push scripts automatically after adding tests. The user handles running pre-push steps.
+- The testing docs (`docs/content/internals/testing.md`) describe the test approach, not an enumerated list of files. The "Unit Test Files" and "E2E Test Files" sections link to GitHub, which is always current. You only need to update the prose if the testing _patterns_ change (e.g. a new mock strategy, a new test runner, new helpers, or a new E2E server mode).
+- `pkg/` has three Vitest projects configured in `pkg/vite.config.js`: `unit` (fast, excludes `*.integration.test.ts` and `*.linear-time.test.ts`), `integration` (only `*.integration.test.ts`), and `linear-time` (only `*.linear-time.test.ts`). Integration tests spawn real processes, servers, and worker threads, so they run in their own project, their own command (`yarn pkg:integration`), and their own CI job. Run `yarn integration:all` (`pkg`, `docs`, and `skills-tests`) when a change touches a real process, server, or worker boundary.
+- A test that measures growth with `pkg/src/lib/linear-time.test-helper.ts` (`expectLinearTime`, `expectCostRatio`, and so on, with `LINEAR_TIME_TIMEOUT_MS`) goes in a sibling `<module>.linear-time.test.ts`, never in a unit test file: CPU-time sampling takes seconds per check on Windows. The helper throws in the `unit` project. Run them with `yarn pkg:linear-time` (or `yarn linear-time:all`); CI runs them once, on Linux, next to integration.
+- E2E tests support four Bascik server modes: static production (`playwright.config.ts`), HTTP/1.1 production server (`playwright.server.config.ts`), HTTP/2 production server (`playwright.server-http2.config.ts` via `yarn pkg:e2e:prod`), and live dev server (`playwright.dev.config.ts` via `yarn pkg:e2e:dev`). Three exec lanes run outside `pkg:e2e:all` (CI runs each; run them by hand when you change exec): `playwright.dev-exec.config.ts` plus `playwright.dev-exec-gated.config.ts` (via `yarn pkg:e2e:dev:exec`) cover dev-server exec lifecycle ownership, `playwright.exec-build.config.ts` (via `yarn pkg:e2e:exec:build`) covers pre/parallel/post ordering and failure in `bascik --build`, and `playwright.exec-policy.config.ts` (via `yarn pkg:e2e:exec:policy`) covers `pipeline.onExecError`. The last two spawn the CLI in temporary projects. The Cloudflare adapter lane lives in the `@bascik/adapter-cloudflare` workspace (`yarn adapter:cf:e2e`), not in `pkg/e2e/`. `yarn pkg:e2e:all [lane ...] [playwright args]` runs the four main lanes in parallel through `pkg/e2e/scripts/run-lanes.ts` (`yarn pkg:e2e:all:serial` keeps the old chain). Each lane has its own ports and builds into its own `BASCIK_E2E_OUT` directory (`pkg/e2e/dist-<lane>`), so specs read output only through `pkg/e2e/tests/helpers/out-dir.ts`, never a literal `dist/`.
+- The coverage table on the testing page reads every coverage JSON file listed under "Coverage JSON Files" below at docs build time (`docs/src/lib/coverage-table.ts`). `pkg/test-coverage.json` is generated from the `unit` project only, so it must never include integration coverage. Do not run the `pre-push` skill or pre-push scripts automatically after adding tests. The user handles running pre-push steps.
 
 **The VS Code extension is a thin client of `@bascik/language-server`** (`extensions/vscode-bascik/build.mjs` bundles the server from `lsp/src` into the VSIX). Every diagnostic, completion, hover, and definition is implemented once, in `lsp/src/`; never add analysis code to the extension. When you change `lsp/src/server.ts` (project discovery, file watching, workspace folders, publishing), also run `yarn ext:unit` (starts the real server bundle) and `yarn ext:e2e` (real VS Code); fakes do not reproduce editor timing. See the `bascik-vscode-extension` skill.
 
@@ -67,24 +81,27 @@ Update `docs/content/internals/server.md` to reflect the change. This page is th
 
 ### Coverage JSON Files
 
-Five coverage files feed the testing page (`docs/src/pages/internals/testing.html`), each read at docs build time:
+Eight coverage files are generated. The testing page (`docs/src/pages/internals/testing.html`) shows all eight in one table, read at docs build time by `docs/src/lib/coverage-table.ts` in the order of the root `README.md` coverage table (its test fails when the two orders differ). A new coverage file needs a row in both tables and an entry in `pipeline.watchPaths` in `docs/bascik.config.ts`:
 
-| File                                          | Generated by                                  |
-| --------------------------------------------- | --------------------------------------------- |
-| `pkg/test-coverage.json`                      | `yarn pkg:coverage` (unit project only)       |
-| `pkg/e2e-test-coverage.json`                  | `yarn pkg:coverage` (E2E build-step coverage) |
-| `create/test-coverage.json`                   | `yarn create:coverage`                        |
-| `extensions/vscode-bascik/test-coverage.json` | `yarn ext:coverage`                           |
-| `adapters/cloudflare/test-coverage.json`      | `yarn adapter:cf:coverage`                    |
-| `lsp/test-coverage.json`                      | `yarn lsp:coverage`                           |
+| File                                          | Generated by                                                           |
+| --------------------------------------------- | ---------------------------------------------------------------------- |
+| `pkg/test-coverage.json`                      | `yarn pkg:coverage` (unit project only)                                |
+| `pkg/e2e-test-coverage.json`                  | `yarn pkg:coverage` (E2E build-step coverage)                          |
+| `create/test-coverage.json`                   | `yarn create:coverage`                                                 |
+| `extensions/vscode-bascik/test-coverage.json` | `yarn ext:coverage`                                                    |
+| `adapters/cloudflare/test-coverage.json`      | `yarn adapter:cf:coverage`                                             |
+| `lsp/test-coverage.json`                      | `yarn lsp:coverage`                                                    |
+| `docs/test-coverage.json`                     | `yarn docs:coverage`                                                   |
+| `skills-tests/test-coverage.json`             | `yarn skills:coverage` (unit project only, measures `skills/**/*.mjs`) |
 
-`yarn coverage:all` regenerates all seven. `pkg/test-coverage.json` is generated from the `unit` project only, so it must never include integration coverage.
+`yarn coverage:all` regenerates all eight. `pkg/test-coverage.json` is generated from the `unit` project only, so it must never include integration coverage.
 
 ### Public Agent Skills (`skills/`)
 
-The repo-root `skills/` folder is the source of truth for the user-facing agent skills (`bascik`, `bascik-components`, `bascik-compatibility`, `bascik-scripts`, `bascik-seo`, `bascik-config`, `bascik-testing`, `bascik-migrate`) and their `scripts/`. Skills hold rules and route to docs pages; they hold no reference copies of the docs. Example code lives once, in the repo-root `examples/` folder, rendered on `/example-components/*` docs pages and published as `/assets/examples.json` for `skills/bascik/scripts/add-example.mjs` (see `.github/instructions/docs.instructions.md`, "Examples"). It is distributed these ways: `npx skills add bascikdev/bascik` (reads GitHub), `npx skills add https://bascik.dev` (reads `/.well-known/agent-skills/index.json`), `https://bascik.dev/assets/skills.tar.gz` and `https://bascik.dev/assets/SKILL.md` (all three published by `docs/scripts/publish-agent-skill.ts`), and the `create-bascik` scaffold.
+The repo-root `skills/` folder is the source of truth for the user-facing agent skills (`bascik`, `bascik-components`, `bascik-compatibility`, `bascik-scripts`, `bascik-seo`, `bascik-config`, `bascik-testing`, `bascik-migrate`, and the opt-in `bascik-refactor`) and their `scripts/`. Skills hold rules and route to docs pages; they hold no reference copies of the docs. Example code lives once, in the repo-root `examples/` folder, rendered on `/example-components/*` docs pages and published as `/assets/examples.json` for `skills/bascik/scripts/add-example.mjs` (see `.github/instructions/docs.instructions.md`, "Examples"). It is distributed these ways: `npx skills add bascikdev/bascik` (reads GitHub), `npx skills add https://bascik.dev` (reads `/.well-known/agent-skills/index.json`), `https://bascik.dev/assets/skills.tar.gz` and `https://bascik.dev/assets/SKILL.md` (all three published by `docs/scripts/publish-agent-skill.ts`), and `npm create bascik` / `bascik init`, which run the skills CLI on GitHub at the matching release tag.
 
-- `create/assets/skills/` is a byte-identical copy enforced by `create/src/skill-sync.test.ts`. After editing `skills/`, run `yarn create:prepack` in the same task or `yarn unit:all` fails.
+- `create-bascik` bundles no copy of the skills. `PROJECT_SKILLS` in `create/src/agent-setup.ts` (identical copy at `pkg/src/lib/agent-setup.ts`) names the skills new projects get: every `skills/` folder minus the opt-in `bascik-refactor`, enforced by `create/src/agent-setup.test.ts`. When you add or rename a skill, update that list in both copies. Readers install `bascik-refactor` with `npx skills add bascikdev/bascik --skill bascik-refactor`.
+- The skills' tests and fixtures live in the `skills-tests/` workspace (`bascik-skills-tests`: `yarn skills:unit`, `yarn skills:integration`, `yarn skills:typecheck`), not in `skills/` (it ships to users) and not in `docs/`. Every `bascik-refactor` script has a `skills-tests/tests/refactor-<script>.test.ts`; the parity check browser tests (`*.integration.test.ts`, Chromium) read `skills-tests/tests/fixtures/refactor-parity/`. Only tests of how the docs site publishes the skills (`docs/scripts/skill-bundle.test.ts`, `docs/scripts/publish-agent-skill.test.ts`) and the docs e2e specs stay in `docs/`.
 - `pkg/src/lib/agent-skill-config-defaults.test.ts` checks the defaults table in `skills/bascik-config/scripts/audit-config.mjs` against `pkg/src/lib/config.ts`. When a config default changes, update that table.
 - When a `pkg/src/` change alters user-facing behavior that a skill describes, update the skill in the same task. Authoring rules are in `.github/instructions/docs.instructions.md` under "Updating the Agent Skills".
 
@@ -128,9 +145,9 @@ Do **not** delete the root `LICENSE`: GitHub reads it for repo-level license det
 
 ## Node 24: Native TypeScript Support
 
-This project runs on **Node 24**. Node natively strips TypeScript types, with no transpiler or extra flags needed for erasable syntax.
+This project is developed and tested on **Node 24**; the published packages support Node 22.22 and newer. Node natively strips TypeScript types, with no transpiler or extra flags needed for erasable syntax.
 
-- `node example.ts` works directly (Node 22.18+ with only erasable syntax, no flags required).
+- `node example.ts` works directly (Node 22.22+ with only erasable syntax, no flags required).
 - Erasable syntax: type annotations, interfaces, type aliases, `import type`. These are stripped at runtime.
 - Non-erasable syntax (`enum`, parameter properties, namespaces with runtime code) is **not** supported: a separate transpile step is required for those.
 - Node does **not** type-check. Run `npx tsc --noEmit` separately for type checking.
@@ -149,12 +166,12 @@ When locating behavior or tracing dependencies in `pkg/`, use the `bascik-code-n
 This repo ships its own agent customizations. Know which is which before editing:
 
 - `.github/copilot-instructions.md` (this file): repo-wide rules, always loaded.
-- `.github/skills/<name>/SKILL.md`: 12 project skills (Bascik-specific domain knowledge such as `bascik-css-scoping`, `bascik-server-architecture`, `bascik-playwright-e2e`). These are authored in-repo and safe to edit.
+- `.github/skills/<name>/SKILL.md`: Use the project skills (Bascik-specific domain knowledge such as `bascik-css-scoping`, `bascik-server-architecture`, `bascik-playwright-e2e`). These are authored in-repo and safe to edit.
 - `.github/agents/*.agent.md`: 8 agent definitions (developer, docs, planner, PR reviewer, pre-push, profiler, regression, supervisor).
 - `.agents/skills/<name>/SKILL.md`: 3 externally sourced skills (`playwright-cli`, `specmap`, `vitest`) tracked by `skills-lock.json` with a `computedHash`. Do not hand-edit these; the lock file records their upstream source and hash.
-- `skills/<name>/SKILL.md`: 8 public, user-facing skills for people building with Bascik (not for working on this repo). See "Public Agent Skills" above.
+- `skills/<name>/SKILL.md`: 9 public, user-facing skills (8 installed by `create-bascik`, plus the opt-in `bascik-refactor`) for people building with Bascik (not for working on this repo). See "Public Agent Skills" above.
 - Contributor skills in `.github/skills/` carry `metadata: internal: true` so `npx skills add bascikdev/bascik` does not offer them. Keep that on any new contributor skill.
-- `create/` copies the public skills into a new project at `.agents/skills/` and `.claude/skills/`.
+- `create/` installs the public skills, except `bascik-refactor`, into a new project at `.agents/skills/` and `.claude/skills/` by running the skills CLI against the matching release tag.
 
 When a skill's guidance conflicts with this file, this file wins. When you change a skill, check whether the corresponding `docs/content/*.md` page needs the same change.
 
@@ -181,8 +198,10 @@ Root script prefixes map to workspaces:
 | `docs:`       | `bascik-docs`                |
 | `ext:`        | `bascik-vscode`              |
 | `adapter:cf:` | `@bascik/adapter-cloudflare` |
+| `lsp:`        | `@bascik/language-server`    |
+| `skills:`     | `bascik-skills-tests`        |
 
-Aggregators (`unit:all`, `integration:all`, `e2e:all`, `coverage:all`, `typecheck:all`, `check:all`, `test:all`) fan out across all workspaces.
+Aggregators (`unit:all`, `integration:all`, `linear-time:all`, `e2e:all`, `coverage:all`, `typecheck:all`, `check:all`, `test:all`) fan out across all workspaces.
 
 ### Formatting (Prettier)
 
@@ -206,7 +225,7 @@ If one of these commands hangs or cannot access the required resource, the comma
 
 ### Token-Efficient Test Execution & Output Parsing
 
-- **Unit tests, typechecks, checks, E2E, and Lighthouse**: To run all tests across all monorepo packages (`pkg`, `docs`, `create`, `extensions/vscode-bascik`, `adapters/cloudflare`), use `yarn test:all`. For unit tests only, use `yarn unit:all`. For the long-running integration suite, use `yarn integration:all` (currently `pkg` only).
+- **Unit tests, typechecks, checks, E2E, and Lighthouse**: To run all tests across all monorepo packages (`pkg`, `docs`, `create`, `extensions/vscode-bascik`, `adapters/cloudflare`, `lsp`, `skills-tests`), use `yarn test:all`. For unit tests only, use `yarn unit:all`. For the long-running integration suite, use `yarn integration:all` (`pkg`, `docs`, and `skills-tests`). For the linear-time checks, use `yarn linear-time:all` (`pkg` and `lsp`).
 - **E2E tests**: Playwright E2E tests are configured in package scripts (`yarn pkg:e2e`, `yarn pkg:e2e:dev`, `yarn pkg:e2e:prod`, `yarn adapter:cf:e2e`, `yarn e2e:all`) with `--reporter=line` output to preserve context tokens. `yarn e2e:all` includes static build, live dev server, production HTTP/1.1, production HTTP/2, docs, and Cloudflare adapter configurations.
 - **Efficient output parsing**:
   - Always check the overall status first: **Did it pass or fail?**
@@ -235,7 +254,7 @@ The project uses **Vitest 5** (`"vitest": "^5.0.3"`). Behavior that affects how 
 - `vi.mock()`, `vi.unmock()`, and `vi.hoisted()` must be at module top level; nested calls throw. Use `vi.doMock()` when a mock must be registered inside a test.
 - Unawaited `.resolves` / `.rejects` assertions fail the test. Always `await` them.
 - `-t` matches the `>`-joined full name (`-t 'suite > test'`), not a space-joined one.
-- Inline projects inherit the root config (arrays merge). `pkg/vite.config.js` excludes `bench/**` from the `integration` project's benchmarks for this reason.
+- Inline projects inherit the root config (arrays merge). `pkg/vite.config.js` excludes `bench/**` from the `integration` and `linear-time` projects' benchmarks for this reason.
 - `vite` is a peer of `vitest` and Yarn does not install peers, so every workspace that runs Vitest lists `vite` in `devDependencies`.
 - Benchmarks use the `bench` test-context fixture: `test("name", async ({ bench }) => { await bench.compare(bench("a", fn), bench("b", fn)); })`. The top-level `bench()` import is gone.
 
@@ -262,16 +281,15 @@ Always choose clear, unambiguous names. When something could be confused with an
 npx --prefix pkg tsc -p pkg/tsconfig.json --noEmit
 ```
 
-`create/`, `docs/`, `extensions/vscode-bascik/`, and `adapters/cloudflare/` have their own tsconfigs; check them when editing files in those packages:
+`create/`, `docs/`, `extensions/vscode-bascik/`, `adapters/cloudflare/`, and `lsp/` have their own tsconfigs; check them when editing files in those packages (or run that workspace's `typecheck` script):
 
 ```sh
 npx --prefix create tsc -p create/tsconfig.json --noEmit
 npx --prefix pkg tsc -p docs/tsconfig.json --noEmit
 npx --prefix extensions/vscode-bascik tsc -p extensions/vscode-bascik/tsconfig.json --noEmit
 npx --prefix adapters/cloudflare tsc -p adapters/cloudflare/tsconfig.json --noEmit
+npx --prefix lsp tsc -p lsp/tsconfig.json --noEmit
 ```
-
-(`docs/` does not have its own typescript package, so use `pkg`'s tsc for it.)
 
 Fix all errors before finishing. Do not suppress errors with `// @ts-ignore` or `as any` when a proper type fix is straightforward.
 
@@ -281,5 +299,5 @@ Fix all errors before finishing. Do not suppress errors with `// @ts-ignore` or 
 - Maintain clean source code and documentation by running `codespell` to check for spelling errors.
 - Web standards are checked using `webhint`.
 - Recommended extensions are configured in `.vscode/extensions.json`. Install both `Codespell.ai` (`codespellai.codespellai-vscode`) and `webhint` (`webhint.vscode-webhint`) in VS Code for automated spelling and web quality checks.
-- Code spelling, quality, and static analysis checks are integrated into the pre-push workspace checklist `.github/prompts/pre-push.prompt.md`. Running `yarn check:spelling` (`codespell`), `yarn check:standards` (`webhint`), and static analysis (Jelly and Semgrep if installed) via CLI is part of the required pre-push routine.
-- `yarn check:spelling` covers `pkg/src`, `docs/content`, `docs/src`, and `create/src` only. It does **not** scan `extensions/vscode-bascik/` or `adapters/cloudflare/`; run codespell directly on those paths if you edit them.
+- Code spelling, quality, and static analysis checks are integrated into the pre-push workspace checklist, the `pre-push` skill (`.github/skills/pre-push/SKILL.md`). Running `yarn check:spelling` (`codespell`), `yarn check:standards` (`webhint`), and static analysis (Jelly and Semgrep if installed) via CLI is part of the required pre-push routine.
+- `yarn check:spelling` covers `pkg/src`, `docs/content`, `docs/src`, and `create/src` only. It does **not** scan `extensions/vscode-bascik/`, `adapters/cloudflare/`, `lsp/`, or `skills/`; run codespell directly on those paths if you edit them.

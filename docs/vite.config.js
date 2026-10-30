@@ -30,13 +30,8 @@ export default defineConfig({
         },
       },
     ],
-    // Top-level include kept for coverage collection across all test files.
-    include: [
-      "src/**/*.test.ts",
-      "scripts/**/*.test.ts",
-      "lighthouse/**/*.test.ts",
-      "src/**/*.integration.test.ts",
-    ],
+    // No top-level `include`: inline projects inherit it (arrays merge, Vitest 5), which made the
+    // integration project run every unit test too. Coverage collects from `coverage.include`.
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary", "lcov"],

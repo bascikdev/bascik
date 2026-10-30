@@ -8,12 +8,18 @@ vi.mock("./config.js", () => ({
   },
 }));
 
-import { computePageCspHashes, cspHashCollector } from "./csp-hashes.ts";
+import {
+  computePageCspHashes,
+  cspHashCollector,
+  widenRouteCspHashes,
+  type CspHashesManifest,
+} from "./csp-hashes.ts";
 import { BascikConfig } from "./config.ts";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
+import { privateDirFor } from "./private-dir.ts";
 
 describe("computePageCspHashes end tags", () => {
   const sha = (body: string) =>
@@ -115,7 +121,7 @@ describe("csp-hashes manifest", () => {
     expect(res).toBeNull();
   });
 
-  it("generate.cspHashes: true writes dist/.bascik/csp-hashes.json with correct format and post-minification hashes", async () => {
+  it("generate.cspHashes: true writes .bascik/dist/csp-hashes.json with correct format and post-minification hashes", async () => {
     const outDir = join(tmpdir(), `bascik-csp-test-${Date.now()}`);
     (BascikConfig as any).directory.out = outDir;
 
@@ -138,6 +144,7 @@ describe("csp-hashes manifest", () => {
     expect(manifest["/index"].scripts).toContain(expectedScriptHash);
 
     await rm(outDir, { recursive: true, force: true });
+    await rm(privateDirFor(outDir), { recursive: true, force: true });
   });
 
   it("deduplicates identical inline script/style blocks within a page", () => {
@@ -176,17 +183,61 @@ describe("csp-hashes manifest", () => {
 
     await cspHashCollector.writeCspHashes();
     const run1 = await readFile(
-      join(outDir, ".bascik", "csp-hashes.json"),
+      join(privateDirFor(outDir), "csp-hashes.json"),
       "utf8",
     );
 
     await cspHashCollector.writeCspHashes();
     const run2 = await readFile(
-      join(outDir, ".bascik", "csp-hashes.json"),
+      join(privateDirFor(outDir), "csp-hashes.json"),
       "utf8",
     );
 
     expect(run1).toBe(run2);
     await rm(outDir, { recursive: true, force: true });
+    await rm(privateDirFor(outDir), { recursive: true, force: true });
+  });
+});
+
+/**
+ * Prompt 157 (D5): a page whose server or stream script may return a
+ * component tag can render any manifest component at request time, so its
+ * route lists every CSP-stable component style hash and first-instance script
+ * hash. The hashes fold into the route's own entry; there is no new section.
+ */
+describe("widenRouteCspHashes (prompt 157)", () => {
+  const base: CspHashesManifest = {
+    "/a": { scripts: ["sha256-a-script"], styles: ["sha256-a-style"] },
+    "/b": { scripts: [], styles: ["sha256-b-style"] },
+  };
+  const component = {
+    scripts: ["sha256-comp-script"],
+    styles: ["sha256-comp-style", "sha256-a-style"],
+  };
+
+  it("adds the component hashes to the named routes only, deduplicated and sorted, and leaves the rest untouched", () => {
+    const widened = widenRouteCspHashes(base, ["/a"], component);
+    expect(widened["/a"]).toEqual({
+      scripts: ["sha256-a-script", "sha256-comp-script"].sort(),
+      styles: ["sha256-a-style", "sha256-comp-style"].sort(),
+    });
+    expect(widened["/b"]).toEqual(base["/b"]);
+    // Pure: the input manifest is not mutated.
+    expect(base["/a"].styles).toEqual(["sha256-a-style"]);
+  });
+
+  it("creates an entry for a named route the manifest does not list yet", () => {
+    const widened = widenRouteCspHashes(base, ["/c"], component);
+    expect(widened["/c"]).toEqual({
+      scripts: ["sha256-comp-script"],
+      styles: ["sha256-a-style", "sha256-comp-style"].sort(),
+    });
+  });
+
+  it("returns an equal manifest when there is nothing to add", () => {
+    expect(
+      widenRouteCspHashes(base, ["/a", "/b"], { scripts: [], styles: [] }),
+    ).toEqual(base);
+    expect(widenRouteCspHashes(base, [], component)).toEqual(base);
   });
 });

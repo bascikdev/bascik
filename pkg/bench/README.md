@@ -104,6 +104,8 @@ yarn workspace @bascik/bascik profile:workload --tools bubbleprof --scenarios ht
 
 Tool choices are `control`, `doctor`, `bubbleprof`, `heapprofiler`, `0x`, and `cpu`. Rounds must be between 1 and 100.
 
+The `cpu` tool profiles the main subject through `profile-main.ts`, an `--import` preload, instead of native `--cpu-prof`. Native `--cpu-prof` samples from bootstrap, and on Node 24/macOS a sampled thread that takes OpenSSL's provider-store lock for the first time can block on it forever: `import "node:http"` reaches `crypto.getCiphers()` through undici, http2, and tls, and about 5% of 200 concurrent processes stalled there, which a loaded test run reported as `capture deadline exceeded`. The preload warms that state, the default and system CA stores, and the builtins unsampled (`profile-warmup.ts`), starts the inspector profiler at the native 1 ms interval, and writes the profile at exit under the native main-thread name (`CPU.<date>.<time>.<pid>.0.001.cpuprofile`). `profile-isolate.ts` warms the same state before it samples a page worker or script child. The profile leaves out only the warm-up.
+
 ### What makes a capture valid
 
 The fixtures check byte-identical asset delivery, API responses, complete streamed responses, source-edit publication, and serial/worker build output. Static hosting checks file delivery only. Failed commands, missing output, invalid response bytes, incomplete tasks, and missing required profiles invalidate the run; exit code zero alone is not enough. Clinic datasets must decode and render. Allocation samples must reference nodes in their captured tree. Incomplete or unattributed captures fail and stay private.
@@ -114,7 +116,7 @@ Cold and warm phases describe application-cache state, not physical disk-cache s
 
 Every capture command has a 150-second deadline, which leaves cleanup time before the worker profiling test's 180-second limit. At 120 seconds the runner records its own resource state. On macOS it also writes `sample` stack reports for up to four processes in the capture's process group, so a stalled capture keeps evidence of where its threads were waiting.
 
-On POSIX systems, every command (successful, failed, interrupted, or past its deadline) settles its own process group before reporting an outcome. Remaining descendants receive termination, get 500 ms to exit, and are then force-killed, and group absence is checked within one second. The command's exit code or error is preserved, and a settlement failure is reported alongside it. Windows has no process groups, so only the leader is owned there. Cancellation stops the capture loop. This does not cover uncatchable parent termination or descendants that deliberately leave the process group.
+On POSIX systems, every command (successful, failed, interrupted, or past its deadline) settles its own process group before reporting an outcome. Remaining descendants receive termination, get 500 ms to exit, and are then force-killed, and group absence is checked within one second. On macOS a group whose remaining members have exited but are not yet reaped answers `EPERM`: it still counts as present, a signal to it is a no-op, and the check waits for the members to be reaped. The command's exit code or error is preserved, and a settlement failure is reported alongside it. Windows has no process groups, so only the leader is owned there. Cancellation stops the capture loop. This does not cover uncatchable parent termination or descendants that deliberately leave the process group.
 
 ### Event journals
 
@@ -123,6 +125,10 @@ CPU captures append owner-only event journals as worker dispatch, listener entry
 ### Manifests
 
 Manifests record runtime and profiler versions, hardware, source hashes, configuration, commands, task counts, response hashes, phase timings, memory, and artifact hashes. The profiler and its target must use the same stable project working directory.
+
+### Comparing captures across commits
+
+The subject imports the code under test from `../src`, relative to the harness, so running `profile:workload` from an older checkout runs that checkout's harness too. Since the `cpu` tool moved to `profile-main.ts`, an older harness samples from bootstrap with native `--cpu-prof`, does not warm script children before sampling, and can still stall on the OpenSSL lock, so its bootstrap frames, early hot spots and script-child latency differ for reasons unrelated to the code. To compare a change against an older commit, run this commit's harness on both: in a detached worktree of the older commit, replace `pkg/bench` with a copy of the current one and capture from there. `harnessHashes` in each `manifest.json` records a digest of every bench module the runner reaches (imports, spawned subjects and `--import` preloads), and it must be identical in the two manifests being compared. If the current harness cannot drive the older source, say so next to every number instead of comparing.
 
 ### HTTP/2 and TLS
 
@@ -209,7 +215,7 @@ Rounds (1 to 10) swap which compiler runs first. Cold runs remove the fixture's 
 
 ## Module Retention Experiments
 
-`src/lib/module-retention.integration.test.ts` runs bounded native-process experiments with changing-source and stable-source controls. It checks completed responses, framework-owned references, and strong heap retainer paths separately. Framework cache cleanup does not evict Node's ESM cache, and allocation samples alone do not prove reclamation. See [Module Lifetime](https://bascik.dev/internals/server#module-lifetime) for the runtime behavior being measured.
+`src/lib/module-retention.integration.test.ts` runs bounded native-process experiments with changing-source and stable-source controls. It checks completed responses, framework-owned references, and strong heap retainer paths separately. Framework cache cleanup does not evict Node's ESM cache, and allocation samples alone do not prove reclamation. See "Module Lifetime" under [In-Process Script Module Registry](https://bascik.dev/internals/server#in-process-script-module-registry) for the runtime behavior being measured.
 
 To keep a capture for inspection, run the helper directly from the repository root. This example keeps a changing-source dev capture of 60 rounds in a new temporary directory:
 
@@ -246,6 +252,6 @@ Interruption cancels the capture and terminates its owned POSIX process group wi
 
 ## Known Platform Limitations
 
-- **Worker CPU profiling on macOS with Node 24.** Sampled page workers can block indefinitely on a process-wide native loader lock. `profile:workload` rejects worker CPU recording there, and `profile:compiler` refuses `--worker-cpu all` and `first`. `inspector` usually completes but can still stall, in which case the capture deadline stops it. Unprofiled worker execution and timelines remain available.
+- **Worker CPU profiling on macOS with Node 24.** Sampled page workers can block indefinitely on a process-wide native loader lock. `profile:workload` skips the `cpu-workers` capture there and records it under `skipped` in the manifest with the reason (a run that asks for nothing else fails), and `profile:compiler` refuses `--worker-cpu all` and `first`. `inspector` usually completes but can still stall, in which case the capture deadline stops it. Unprofiled worker execution and timelines remain available.
 - **Clinic trace joins on Node 24.** See [Clinic integration](#clinic-integration) for the `premature close` recovery.
 - **Windows.** Process-group ownership and the `sample` stack reports are POSIX and macOS features. Only the leader process is owned on Windows.

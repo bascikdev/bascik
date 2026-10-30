@@ -51,9 +51,9 @@ Pages that request geolocation or notification permission on load fail their aud
 
 ## Trust and Safety Headers
 
-Lighthouse also checks response headers that protect users from cross-site attacks: a Content Security Policy, HTTP Strict Transport Security (HSTS), cross-origin opener isolation, and clickjacking protection. These headers belong to your host or CDN edge, not to the page, so configure them where you deploy.
+Lighthouse also checks response headers that protect users from cross-site attacks: a Content Security Policy, HTTP Strict Transport Security (HSTS), cross-origin opener isolation, and clickjacking protection. When Bascik serves the page (`bascik --server` or the Cloudflare Worker), it sends `x-frame-options`, `cross-origin-opener-policy` and the other default security headers, plus HSTS over HTTPS; see [`security`](/configuration#security). A Content Security Policy is opt-in: set [`contentSecurityPolicy`](/configuration#contentsecuritypolicy) and Bascik sends your directives plus each route's inline script and style hashes. On a static host, configure these headers where you deploy.
 
-For a Content Security Policy that does not rely on `'unsafe-inline'`, Bascik can produce the hashes for you. Component `<style>` blocks and wrapped component `<script>` blocks are inlined, so a strict policy needs their exact SHA-256 hashes. Set `generate.cspHashes: true`:
+For a static host's Content Security Policy that does not rely on `'unsafe-inline'`, Bascik can produce the hashes for you. Component `<style>` blocks and wrapped component `<script>` blocks are inlined, so a strict policy needs their exact SHA-256 hashes. Set `generate.cspHashes: true`:
 
 ```ts
 // bascik.config.ts
@@ -66,6 +66,6 @@ export default defineConfig({
 });
 ```
 
-The build writes `dist/.bascik/csp-hashes.json`, mapping each page to the hashes of its inline scripts and styles. See [Content Security Policy](/how-to/content-security-policy) for a worked recipe, and the [FAQ](/faq) for why Bascik emits hashes instead of setting the policy itself.
+The build writes `.bascik/dist/csp-hashes.json`, mapping each page to the hashes of its inline scripts and styles. See [Content Security Policy](/how-to/content-security-policy) for a recipe per host.
 
 > **Treat the header audits as informational.** They report what your host sends, so a perfect score may require platform-specific configuration. Check them against the production URL, not `localhost`.

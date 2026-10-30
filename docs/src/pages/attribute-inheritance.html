@@ -119,6 +119,74 @@
             export default async () =>
               await renderMdRange("./content/attribute-inheritance.md", {
                 from: "How It Works",
+                to: "Attributes That Become URLs on the Root",
+              });
+          </script>
+
+          <!-- The rule for inherited attributes that become URLs on the root, then its demo box. -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/attribute-inheritance.md",
+                {
+                  from: "Attributes That Become URLs on the Root",
+                  to: "What Happens with `id`",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo data-bascik-prop-file="src/components/my-embed/">
+            <div data-bascik-slot="example">
+              <my-embed
+                data="https://example.com/frother-manual.html"
+              ></my-embed>
+              <my-embed data="javascript:alert(1)"></my-embed>
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/attribute-inheritance.md",
+                      "url-root-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/attribute-inheritance.md",
+                      "url-root-source-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/attribute-inheritance.md",
+                      "url-root-output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/attribute-inheritance.md", {
+                from: "What Happens with `id`",
                 to: "Interaction with Scoped Classes",
               });
           </script>

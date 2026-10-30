@@ -649,6 +649,46 @@ describe("startHttp2Server – stream handler", () => {
     });
   });
 
+  it("sends the same Cache-Control on a page's 200 as on its 304", async () => {
+    // Before, only the 304 named a policy, so the first response left caching to the browser's heuristics.
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).http.httpCache = true;
+    try {
+      const page = makePage({
+        content: Buffer.from("<html>Home</html>"),
+        compressedContent: Buffer.from("br-compressed"),
+        etag: '"abc"',
+      });
+      mockMem.getPage.mockReturnValue(page);
+      const handler = getStreamHandler()!;
+      const first = makeStream();
+      await handler(first, makeHeaders("/", "GET", "br"));
+      const ok = first.respond.mock.calls[0][0];
+      expect(ok[":status"]).toBe(200);
+      expect(ok["cache-control"]).toBe("public, max-age=0, must-revalidate");
+
+      const again = makeStream();
+      await handler(
+        again,
+        makeHeaders("/", "GET", "br", undefined, {
+          "if-none-match": ok.etag,
+        }),
+      );
+      const notModified = again.respond.mock.calls[0][0];
+      expect(notModified[":status"]).toBe(304);
+      expect(notModified["cache-control"]).toBe(ok["cache-control"]);
+
+      // HEAD and identity responses carry it too.
+      const head = makeStream();
+      await handler(head, makeHeaders("/", "HEAD"));
+      expect(head.respond.mock.calls[0][0]["cache-control"]).toBe(
+        ok["cache-control"],
+      );
+    } finally {
+      (BascikConfig as any).http.httpCache = false;
+    }
+  });
+
   it("sets no-cache headers when BascikConfig.http.httpCache is false", async () => {
     const page = makePage({ content: Buffer.from("<html></html>") });
     mockMem.getPage.mockReturnValue(page);
@@ -829,7 +869,7 @@ describe("startHttp2Server – security headers", () => {
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({
         ...EXPECTED_SECURITY_HEADERS,
-        "strict-transport-security": "max-age=31536000; includeSubDomains",
+        "strict-transport-security": "max-age=31536000",
       }),
     );
   });
@@ -868,7 +908,7 @@ describe("startHttp2Server – security headers", () => {
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({
         ...EXPECTED_SECURITY_HEADERS,
-        "strict-transport-security": "max-age=31536000; includeSubDomains",
+        "strict-transport-security": "max-age=31536000",
       }),
     );
     (BascikConfig as any).http.trustProxy = false;
@@ -889,7 +929,7 @@ describe("startHttp2Server – security headers", () => {
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({
         ...EXPECTED_SECURITY_HEADERS,
-        "strict-transport-security": "max-age=31536000; includeSubDomains",
+        "strict-transport-security": "max-age=31536000",
       }),
     );
     (BascikConfig as any).http.trustProxy = false;
@@ -913,6 +953,186 @@ describe("startHttp2Server – security headers", () => {
       }),
     );
     (BascikConfig as any).http.trustProxy = false;
+  });
+});
+
+// `security.headers`, `security.hsts`, `security.privateDynamicPages` and
+// `security.hideDotfiles` (Collin 2026-10-29). The config is read per
+// request here: the tests set BascikConfig.security after the server starts.
+describe("startHttp2Server – security config toggles", () => {
+  let BascikConfigRef: any;
+  beforeEach(async () => {
+    BascikConfigRef = (await import("./config.ts")).BascikConfig;
+    delete BascikConfigRef.security;
+    await startHttp2Server();
+  });
+  afterEach(() => {
+    delete BascikConfigRef.security;
+    BascikConfigRef.http.trustProxy = false;
+    // A queued stat rejection an early 404 never consumed must not leak.
+    mockStat.mockReset();
+    mockStat.mockResolvedValue({ mtimeMs: 1_705_000_000_000, size: 1_024 });
+  });
+
+  const respondHeaders = (stream: ReturnType<typeof makeStream>) =>
+    stream.respond.mock.calls[0]?.[0] as Record<string, unknown>;
+
+  it("with no security config, HSTS over https is one year without includeSubDomains", async () => {
+    mockMem.getPage.mockReturnValue(makePage());
+    const stream = makeStream();
+    await getStreamHandler()!(
+      stream,
+      makeHeaders("/about", "GET", "", undefined, { ":scheme": "https" }),
+    );
+    expect(respondHeaders(stream)["strict-transport-security"]).toBe(
+      "max-age=31536000",
+    );
+  });
+
+  it("security.headers overrides one header and removes another", async () => {
+    BascikConfigRef.security = {
+      headers: { "x-frame-options": "DENY", "x-content-type-options": false },
+    };
+    mockMem.getPage.mockReturnValue(makePage());
+    const stream = makeStream();
+    await getStreamHandler()!(stream, makeHeaders("/about", "GET"));
+    const headers = respondHeaders(stream);
+    expect(headers["x-frame-options"]).toBe("DENY");
+    expect(headers).not.toHaveProperty("x-content-type-options");
+    expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+  });
+
+  it("security.headers: false sends none of the five, on a page and on a 404", async () => {
+    BascikConfigRef.security = { headers: false };
+    for (const page of [makePage(), undefined]) {
+      mockMem.getPage.mockReturnValue(page);
+      const stream = makeStream();
+      await getStreamHandler()!(stream, makeHeaders("/about", "GET"));
+      const headers = respondHeaders(stream);
+      for (const name of [
+        "x-content-type-options",
+        "x-frame-options",
+        "referrer-policy",
+        "cross-origin-opener-policy",
+        "cross-origin-resource-policy",
+      ])
+        expect(headers, name).not.toHaveProperty(name);
+    }
+  });
+
+  it("security.hsts: false sends no HSTS over https or a trusted proxy", async () => {
+    BascikConfigRef.security = { hsts: false };
+    BascikConfigRef.http.trustProxy = true;
+    mockMem.getPage.mockReturnValue(makePage());
+    for (const extra of [
+      { ":scheme": "https" },
+      { "x-forwarded-proto": "https" },
+    ] as Record<string, string>[]) {
+      const stream = makeStream();
+      await getStreamHandler()!(
+        stream,
+        makeHeaders("/about", "GET", "", undefined, extra),
+      );
+      expect(respondHeaders(stream)).not.toHaveProperty(
+        "strict-transport-security",
+      );
+    }
+  });
+
+  it("an hsts object sets the header under TLS and under trustProxy", async () => {
+    BascikConfigRef.security = {
+      hsts: { maxAge: 63072000, includeSubDomains: true, preload: true },
+    };
+    BascikConfigRef.http.trustProxy = true;
+    mockMem.getPage.mockReturnValue(makePage());
+    for (const extra of [
+      { ":scheme": "https" },
+      { "x-forwarded-proto": "https" },
+    ] as Record<string, string>[]) {
+      const stream = makeStream();
+      await getStreamHandler()!(
+        stream,
+        makeHeaders("/about", "GET", "", undefined, extra),
+      );
+      expect(respondHeaders(stream)["strict-transport-security"]).toBe(
+        "max-age=63072000; includeSubDomains; preload",
+      );
+    }
+  });
+
+  it("getSecurityHeaders follows the config", async () => {
+    const { getSecurityHeaders } = await import("./server.ts");
+    BascikConfigRef.security = {
+      headers: { "referrer-policy": "no-referrer" },
+      hsts: { includeSubDomains: true },
+    };
+    const headers = getSecurityHeaders({
+      method: "GET",
+      path: "/",
+      headers: { ":scheme": "https" },
+      remoteIp: "127.0.0.1",
+    } as never);
+    expect(headers["referrer-policy"]).toBe("no-referrer");
+    expect(headers["strict-transport-security"]).toBe(
+      "max-age=31536000; includeSubDomains",
+    );
+  });
+
+  it("security.privateDynamicPages: false leaves cache-control off a server-script page", async () => {
+    BascikConfigRef.security = { privateDynamicPages: false };
+    const { executeServerScripts } = await import("./server-scripts.ts");
+    (executeServerScripts as any).mockResolvedValueOnce("<p>dyn</p>");
+    mockMem.getPage.mockReturnValue(
+      makePage({
+        content: Buffer.from("<script data-bascik-server>1</script>"),
+        hasServerScripts: true,
+      }),
+    );
+    const stream = makeStream();
+    await getStreamHandler()!(stream, makeHeaders("/dashboard", "GET"));
+    const headers = respondHeaders(stream);
+    expect(headers[":status"]).toBe(200);
+    expect(headers["cache-control"]).not.toBe("private, no-store");
+  });
+
+  it("security.hideDotfiles: false looks /.nojekyll up on disk instead of 404", async () => {
+    BascikConfigRef.security = { hideDotfiles: false };
+    mockStat.mockRejectedValueOnce(
+      Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+    );
+    const stream = makeStream();
+    await getStreamHandler()!(stream, makeHeaders("/.nojekyll", "GET"));
+    expect(mockStat).toHaveBeenCalledTimes(1);
+    expect(
+      String(mockStat.mock.calls[0][0])
+        .replace(/\\/g, "/")
+        .endsWith("/.nojekyll"),
+    ).toBe(true);
+  });
+
+  it.each(["/.bascik/components.json", "/.bascik/server-scripts.json"])(
+    "security.hideDotfiles: false still hides %s (404, no disk access)",
+    async (path) => {
+      BascikConfigRef.security = { hideDotfiles: false };
+      const stream = makeStream();
+      await getStreamHandler()!(stream, makeHeaders(path, "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 404 }),
+      );
+      expect(mockStat).not.toHaveBeenCalled();
+    },
+  );
+
+  it("security.hideDotfiles: false still answers traversal with 400", async () => {
+    BascikConfigRef.security = { hideDotfiles: false };
+    const stream = makeStream();
+    await getStreamHandler()!(
+      stream,
+      makeHeaders("/../../../etc/shadow.cfg", "GET"),
+    );
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 400 }),
+    );
   });
 });
 
@@ -1392,6 +1612,22 @@ describe("onError and server resiliency edge cases", () => {
     const status = onError(new Error("Pre-commit crash"), mockRes);
     expect(status).toBe(500);
     expect(mockRes.respond).toHaveBeenCalledWith(500, expect.any(Object));
+  });
+
+  // The Worker sends its 500 page with `private, no-store`; Node must too, so
+  // a cache in front of either host never keeps a failure.
+  it("onError sends the 500 page with cache-control private, no-store", async () => {
+    const { onError } = await import("./server.ts");
+    const mockRes: any = {
+      headersSent: false,
+      respond: vi.fn(),
+      end: vi.fn(),
+    };
+    expect(onError(new Error("render failed"), mockRes)).toBe(500);
+    expect(mockRes.respond).toHaveBeenCalledWith(
+      500,
+      expect.objectContaining({ "cache-control": "private, no-store" }),
+    );
   });
 
   it("onError returns 499 when headersSent is false on network reset error", async () => {

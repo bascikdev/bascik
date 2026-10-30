@@ -24,7 +24,7 @@ describe("bundling guide fixtures", () => {
   it("the esbuild recipe bundles a real package", async () => {
     const { build } = await import("esbuild");
     const { tmpdir } = await import("node:os");
-    const entry = path.join(FIXTURE_DIR, "confetti-entry.mjs");
+    const entry = path.join(FIXTURE_DIR, "confetti-entry.ts");
     const outfile = path.join(tmpdir(), "bascik-fixture-bundle-test.mjs");
     const result = await build({
       entryPoints: [entry],
@@ -43,14 +43,14 @@ describe("bundling guide fixtures", () => {
   });
 
   it("the fixture entry uses a default import that actually resolves", async () => {
-    const src = await readFixture("confetti-entry.mjs");
+    const src = await readFixture("confetti-entry.ts");
     expect(src).toContain('import confetti from "canvas-confetti"');
     expect(src).toContain("export const celebrate");
   });
 
   it("the exec config uses phase pre so the bundle exists before pages", async () => {
     const config = await readFixture("bundle-config.ts");
-    expect(config).toContain('script: "build-bundle.mjs"');
+    expect(config).toContain('script: "build-bundle.ts"');
     expect(config).toContain('phase: "pre"');
     expect(config).toContain('watch: ["src/client/"]');
   });
@@ -88,7 +88,7 @@ describe("fingerprinting guide fixtures", () => {
       const { execFile } = await import("node:child_process");
       const { promisify } = await import("node:util");
       const run = promisify(execFile);
-      await run("node", [path.join(FIXTURE_DIR, "fingerprint-assets.mjs")], {
+      await run("node", [path.join(FIXTURE_DIR, "fingerprint-assets.ts")], {
         cwd: tempDir,
       });
 
@@ -111,7 +111,7 @@ describe("fingerprinting guide fixtures", () => {
 
   it("the fingerprint exec config uses phase post", async () => {
     const config = await readFixture("fingerprint-config.ts");
-    expect(config).toContain('script: "fingerprint-assets.mjs"');
+    expect(config).toContain('script: "fingerprint-assets.ts"');
     expect(config).toContain('phase: "post"');
   });
 

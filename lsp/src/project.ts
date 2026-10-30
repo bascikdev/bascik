@@ -14,17 +14,68 @@ export interface ProjectSnapshot {
   componentMap: Map<string, string>;
   componentMetadata: Map<string, ComponentMetadata>;
   importRoot: string;
+  /** The pages folder (`directory.pages`, default `src/pages`), resolved. Its HTML is in `htmlUsageByFile`. */
+  pagesRoot?: string;
+  /** The HTML that can use a component outside the component roots: everything under `src` and `pagesRoot`. */
   htmlUsageByFile: Map<string, string>;
+  /**
+   * The text of every component file, keyed by absolute path, including component roots outside `src`.
+   * Find All References reads usages from it and `htmlUsageByFile`.
+   */
+  componentSourceByFile?: Map<string, string>;
+  /**
+   * `scoping.attributes.name`: whether the project opts in to scoping `name` per component instance. Off by
+   * default, when every `name` ships as written.
+   */
+  scopesName?: boolean;
 }
 
+/**
+ * Config filenames in the CLI's discovery order (pkg/src/lib/config-file-names.ts): the first that exists is
+ * the project's config, so the editor reads the same file `bascik` loads when more than one is present.
+ */
 export const CONFIG_FILE_CANDIDATES = [
-  "bascik.config.ts",
   "bascik.config.js",
   "bascik.config.mjs",
+  "bascik.config.ts",
 ];
 const DEFAULT_COMPONENT_ROOTS = ["src/components"];
 const DEFAULT_IMPORT_ROOT = "src";
 const DEFAULT_API_ROOT = "src/api";
+const DEFAULT_PAGES_ROOT = "src/pages";
+
+/** Reads `directory.pages` from the config source. The key must be exactly `pages`. */
+export function parsePagesRoot(source: string | undefined): string {
+  return (
+    /(?<![\w$])pages\s*:\s*['"]([^'"]+)['"]/.exec(source ?? "")?.[1] ??
+    DEFAULT_PAGES_ROOT
+  );
+}
+
+/**
+ * Reads `scoping.attributes.name` from the config source: true only when the `attributes` object sets
+ * `name: true`. Line comments are ignored; a `name` key anywhere else is not the toggle.
+ */
+export function parseScopesName(source: string | undefined): boolean {
+  // Line comments only: a block-comment regex is quadratic on unclosed `/*` runs, and the other config readers
+  // here do not strip them either.
+  const code = (source ?? "").replace(/(^|[^:"'])\/\/[^\n]*/g, "$1");
+  const attributes = /(?<![\w$])attributes\s*:\s*\{([^{}]*)\}/.exec(code);
+  if (!attributes) return false;
+  return /(?<![\w$-])["']?name["']?\s*:\s*true\b/.test(attributes[1]);
+}
+
+/** Is `fsPath` HTML that `htmlUsageByFile` tracks: under `src` or the pages folder? */
+export function isUsageSourcePath(
+  fsPath: string,
+  snapshot: Pick<ProjectSnapshot, "projectRoot" | "pagesRoot">,
+): boolean {
+  return (
+    isPathInside(fsPath, path.join(snapshot.projectRoot, "src")) ||
+    (snapshot.pagesRoot !== undefined &&
+      isPathInside(fsPath, snapshot.pagesRoot))
+  );
+}
 
 /** Reads `directory.api` from the config source. `apiTimeout` does not match: the key must be exactly `api`. */
 export function parseApiRoot(source: string | undefined): string {
@@ -142,10 +193,25 @@ export async function buildSnapshot(
     if (name) componentMap.set(name, filePath);
   }
   const componentMetadata = new Map<string, ComponentMetadata>();
+  const componentSourceByFile = new Map<string, string>();
+  await Promise.all(
+    componentFiles.map(async (filePath) => {
+      try {
+        componentSourceByFile.set(
+          filePath,
+          await fsPromises.readFile(filePath, "utf8"),
+        );
+      } catch {
+        // Ignored if file changed or unreadable
+      }
+    }),
+  );
   await Promise.all(
     Array.from(componentMap, async ([name, filePath]) => {
       try {
-        const source = await fsPromises.readFile(filePath, "utf8");
+        const source =
+          componentSourceByFile.get(filePath) ??
+          (await fsPromises.readFile(filePath, "utf8"));
         componentMetadata.set(
           name,
           analyzeComponentSource(source, {
@@ -161,7 +227,11 @@ export async function buildSnapshot(
   );
 
   const htmlUsageByFile = new Map<string, string>();
-  const usageFiles = await findHtmlFiles([path.join(workspaceRoot, "src")]);
+  const srcRoot = path.join(workspaceRoot, "src");
+  const pagesRoot = path.resolve(workspaceRoot, parsePagesRoot(configSource));
+  const usageFiles = await findHtmlFiles(
+    isPathInside(pagesRoot, srcRoot) ? [srcRoot] : [srcRoot, pagesRoot],
+  );
   await Promise.all(
     usageFiles.map(async (filePath) => {
       try {
@@ -186,7 +256,10 @@ export async function buildSnapshot(
     componentMap,
     componentMetadata,
     importRoot: path.resolve(workspaceRoot, parseImportRoot(configSource)),
+    pagesRoot,
     htmlUsageByFile,
+    componentSourceByFile,
+    scopesName: parseScopesName(configSource),
   };
 }
 
@@ -198,7 +271,7 @@ export function isPathInside(fsPath: string, root: string): boolean {
   );
 }
 
-/** Is `fsPath` a Bascik config file (`bascik.config.ts`, `.js`, or `.mjs`)? */
+/** Is `fsPath` a Bascik config file (`bascik.config.js`, `.mjs`, or `.ts`)? */
 export function isConfigFile(fsPath: string): boolean {
   return CONFIG_FILE_CANDIDATES.includes(path.basename(fsPath));
 }

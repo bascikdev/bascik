@@ -37,10 +37,10 @@ You are the primary specialist developer for **Bascik**, a vanilla HTML componen
 
 1. **Compiler & Scoping Pipeline (`pkg/src/lib/`)**:
    - Maintain HTML component expansion, prop bindings (`data-bascik-prop-*`), slot replacements, and structural shielding.
-   - Build-time CSS selector scoping (`pkg/src/lib/scoped-css.ts`), unique ID generation (`pkg/src/lib/scoped-ids.ts`), and DOM query rewriting in client scripts.
+   - Build-time CSS selector scoping (`pkg/src/lib/styles.ts`), ID and reference rewriting (`pkg/src/lib/id-references.ts`), and DOM query rewriting in client scripts.
    - Respect identifier minification behavior (`minify.identifiers`) by ensuring IDs and classes map deterministically without breaking per-instance isolation (`getElementById`).
 
-2. **Server Architecture & Request Pipeline (`pkg/src/lib/server/`)**:
+2. **Server Architecture & Request Pipeline (`pkg/src/lib/server.ts`, `server-dev.ts`, `server-prod.ts`)**:
    - Maintain dev and production servers supporting HTTP/1.1, HTTP/2, TLS, Server-Sent Events (SSE) live-reload, and file watchers.
    - Handle client disconnects, rapid reloads, and error boundaries gracefully.
 
@@ -70,6 +70,6 @@ You are the primary specialist developer for **Bascik**, a vanilla HTML componen
 - **Transpile Time Monitoring**: Monitor build performance after AST or regex pipeline edits.
 - **Verification Commands**:
   - Typecheck: `npx --prefix pkg tsc -p pkg/tsconfig.json --noEmit`
-  - Unit tests: `yarn workspace @bascik/bascik test`
+  - Unit tests: `yarn pkg:unit`
   - Package build: `yarn pkg:build`
   - Docs build: `yarn docs:build`

@@ -1,19 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { parseCliOptions } from "./cli.js";
+import { USAGE, parseCliOptions } from "./cli.js";
 import {
+  CLOUDFLARE_E2E_APP_SPEC,
+  CLOUDFLARE_GITIGNORE,
   E2E_APP_SPEC,
   FEAT_CARD_CSS,
   FEAT_CARD_HTML,
   FEAT_CARD_TEST,
   GITIGNORE,
+  HELLO_API_ROUTE,
   MY_COUNTER_CSS,
   MY_COUNTER_HTML,
+  CONTACT_FORM_HTML,
+  CONTACT_FORM_CSS,
   MY_COUNTER_TEST,
   PACKAGE_JSON,
   PLAYWRIGHT_CONFIG,
-  SKILLS_DIR,
   SITE_FOOTER_CSS,
   SITE_FOOTER_HTML,
   SITE_FOOTER_TEST,
@@ -25,26 +29,33 @@ import {
   STYLES_CSS,
   VITE_CONFIG,
   VSCODE_LAUNCH_JSON,
+  VSCODE_SETTINGS_JSON,
   aboutPage,
   contactPage,
+  edgePage,
   indexPage,
   notFoundPage,
   scaffold,
   validateProjectName,
 } from "./scaffold.js";
+import { CLAUDE_MD, agentsMd } from "./agent-setup.js";
+import { parseJsonc } from "./vscode-settings.js";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
 vi.mock("node:fs/promises", () => ({
-  cp: vi.fn(async () => undefined),
   mkdir: vi.fn(async () => undefined),
+  // A new project folder has no files yet, so every read finds nothing.
+  readFile: vi.fn(async () => {
+    throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  }),
   writeFile: vi.fn(async () => undefined),
 }));
 
-import { cp, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 
-const mockCp = cp as ReturnType<typeof vi.fn>;
 const mockMkdir = mkdir as ReturnType<typeof vi.fn>;
+const mockReadFile = readFile as ReturnType<typeof vi.fn>;
 const mockWriteFile = writeFile as ReturnType<typeof vi.fn>;
 
 vi.spyOn(console, "log").mockImplementation(() => {});
@@ -66,6 +77,10 @@ describe("parseCliOptions", () => {
       yesFlag: true,
       noDevFlag: false,
       noInstallFlag: false,
+      noSkillsFlag: false,
+      template: undefined,
+      projectName: "my-site",
+      helpFlag: false,
     });
   });
 
@@ -74,6 +89,10 @@ describe("parseCliOptions", () => {
       yesFlag: true,
       noDevFlag: true,
       noInstallFlag: false,
+      noSkillsFlag: false,
+      template: undefined,
+      projectName: "my-site",
+      helpFlag: false,
     });
   });
 
@@ -84,7 +103,115 @@ describe("parseCliOptions", () => {
       yesFlag: true,
       noDevFlag: true,
       noInstallFlag: true,
+      noSkillsFlag: false,
+      template: undefined,
+      projectName: "my-site",
+      helpFlag: false,
     });
+  });
+
+  it("leaves the project name undefined when no positional is given", () => {
+    expect(parseCliOptions(["-y"]).projectName).toBeUndefined();
+    expect(parseCliOptions([]).template).toBeUndefined();
+  });
+
+  it("reads --template as a two-token form without consuming it as the project name", () => {
+    const options = parseCliOptions(["--template", "cloudflare", "my-site"]);
+    expect(options.template).toBe("cloudflare");
+    expect(options.projectName).toBe("my-site");
+    expect(parseCliOptions(["my-site", "--template", "cloudflare"])).toEqual(
+      options,
+    );
+  });
+
+  it("reads --template=<name>", () => {
+    const options = parseCliOptions(["my-site", "--template=cloudflare", "-y"]);
+    expect(options.template).toBe("cloudflare");
+    expect(options.projectName).toBe("my-site");
+    expect(options.yesFlag).toBe(true);
+  });
+
+  it("accepts default and its static alias, ignoring case", () => {
+    expect(parseCliOptions(["--template", "default"]).template).toBe("default");
+    expect(parseCliOptions(["--template=static"]).template).toBe("default");
+    expect(parseCliOptions(["--template", "Cloudflare"]).template).toBe(
+      "cloudflare",
+    );
+  });
+
+  it("rejects an unknown template with the available choices", () => {
+    expect(() => parseCliOptions(["--template", "vercel"])).toThrow(
+      'Unknown template "vercel". Choose one of: default, cloudflare, static.',
+    );
+    expect(() => parseCliOptions(["--template=vercel"])).toThrow(
+      /Unknown template/,
+    );
+  });
+
+  it("rejects --template without a value, including when a flag follows it", () => {
+    expect(() => parseCliOptions(["--template"])).toThrow(
+      "--template needs a value. Choose one of: default, cloudflare, static.",
+    );
+    expect(() => parseCliOptions(["--template", "-y"])).toThrow(
+      /--template needs a value/,
+    );
+    expect(() => parseCliOptions(["--template="])).toThrow(
+      /--template needs a value/,
+    );
+  });
+
+  // `npm create bascik my-site --template cloudflare` (no `--`) reaches the CLI
+  // as ["my-site", "cloudflare"]: npm keeps the flag and forwards its value as a
+  // plain argument, so a second positional must be reported, not dropped.
+  it("rejects a stray second positional and points at the -- form", () => {
+    expect(() => parseCliOptions(["my-site", "cloudflare", "-y"], {})).toThrow(
+      'Unexpected argument "cloudflare". When running through npm create, put flags after "--": npm create bascik@rc my-site -- --template cloudflare',
+    );
+  });
+
+  it("honors npm's consumed -y through npm_config_yes", () => {
+    expect(parseCliOptions(["my-site"], { npm_config_yes: "true" })).toEqual({
+      yesFlag: true,
+      noDevFlag: false,
+      noInstallFlag: false,
+      noSkillsFlag: false,
+      template: undefined,
+      projectName: "my-site",
+      helpFlag: false,
+    });
+    expect(parseCliOptions(["my-site"], {}).yesFlag).toBe(false);
+    expect(parseCliOptions(["my-site"], { npm_config_yes: "" }).yesFlag).toBe(
+      false,
+    );
+  });
+
+  it("honors npm's consumed --template=<name> through npm_config_template", () => {
+    expect(
+      parseCliOptions(["my-site"], { npm_config_template: "cloudflare" })
+        .template,
+    ).toBe("cloudflare");
+    expect(
+      parseCliOptions(["my-site"], { npm_config_template: "static" }).template,
+    ).toBe("default");
+    expect(() =>
+      parseCliOptions(["my-site"], { npm_config_template: "vercel" }),
+    ).toThrow(/Unknown template "vercel"/);
+  });
+
+  it("prefers an explicit --template over npm_config_template", () => {
+    expect(
+      parseCliOptions(["my-site", "--template", "default"], {
+        npm_config_template: "cloudflare",
+      }).template,
+    ).toBe("default");
+  });
+
+  it("reports the two-token form npm reduced to npm_config_template=true", () => {
+    expect(() =>
+      parseCliOptions(["my-site"], { npm_config_template: "true" }),
+    ).toThrow(
+      'npm kept --template for itself and dropped its value. Put flags after "--": npm create bascik@rc my-site -- --template cloudflare',
+    );
   });
 });
 
@@ -160,9 +287,11 @@ describe("PACKAGE_JSON", () => {
         "utf8",
       ),
     ) as {
+      version: string;
       peerDependencies: Record<string, string>;
     };
     const scaffolded = JSON.parse(PACKAGE_JSON("my-app"));
+    const cloudflare = JSON.parse(PACKAGE_JSON("my-app", "cloudflare"));
 
     expect(scaffolded.dependencies["@bascik/bascik"]).toBe(
       `^${pkgJson.version}`,
@@ -173,6 +302,9 @@ describe("PACKAGE_JSON", () => {
     expect(adapterJson.peerDependencies["@bascik/bascik"]).toBe(
       `^${pkgJson.version}`,
     );
+    expect(cloudflare.devDependencies["@bascik/adapter-cloudflare"]).toBe(
+      `^${adapterJson.version}`,
+    );
   });
 
   it("uses the supplied name", () => {
@@ -180,9 +312,56 @@ describe("PACKAGE_JSON", () => {
     expect(pkg.name).toBe("cool-site");
   });
 
-  it("declares a Node 24 engine floor matching the @types/node target", () => {
+  it("declares the same Node 22.22 engine floor as the bascik package", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
-    expect(pkg.engines.node).toBe(">=24.0.0");
+    expect(pkg.engines.node).toBe(">=22.22.0");
+  });
+
+  it("treats the default template the same as no template", () => {
+    expect(PACKAGE_JSON("my-app", "default")).toBe(PACKAGE_JSON("my-app"));
+  });
+
+  it("leaves wrangler and the adapter out of the default template", () => {
+    const pkg = JSON.parse(PACKAGE_JSON("my-app"));
+    expect(pkg.devDependencies["@bascik/adapter-cloudflare"]).toBeUndefined();
+    expect(pkg.devDependencies.wrangler).toBeUndefined();
+    expect(pkg.scripts.preview).toBeUndefined();
+    expect(pkg.scripts.deploy).toBeUndefined();
+  });
+
+  describe("cloudflare template", () => {
+    const pkg = JSON.parse(PACKAGE_JSON("my-app", "cloudflare"));
+
+    it("builds the Cloudflare bundle and keeps the Bascik dev server as the authoring loop", () => {
+      expect(pkg.scripts.dev).toBe("bascik");
+      expect(pkg.scripts.build).toBe("bascik --build --target cloudflare");
+    });
+
+    it("previews and deploys from the emitted target directory", () => {
+      expect(pkg.scripts.preview).toBe(
+        "cd dist/.bascik/cloudflare && wrangler dev",
+      );
+      expect(pkg.scripts.deploy).toBe(
+        "cd dist/.bascik/cloudflare && wrangler deploy",
+      );
+    });
+
+    it("adds the adapter and a caret range on the current wrangler major", () => {
+      expect(pkg.devDependencies["@bascik/adapter-cloudflare"]).toMatch(
+        /^\^\d/,
+      );
+      expect(pkg.devDependencies.wrangler).toMatch(/^\^4\.\d+\.\d+$/);
+    });
+
+    it("keeps every default script and dependency", () => {
+      const base = JSON.parse(PACKAGE_JSON("my-app"));
+      for (const key of Object.keys(base.scripts)) {
+        if (key !== "build") expect(pkg.scripts[key]).toBe(base.scripts[key]);
+      }
+      expect(pkg.dependencies).toEqual(base.dependencies);
+      expect(pkg.devDependencies).toMatchObject(base.devDependencies);
+      expect(pkg.engines).toEqual(base.engines);
+    });
   });
 });
 
@@ -200,6 +379,15 @@ describe("PLAYWRIGHT_CONFIG", () => {
       "npx bascik --build && npx bascik --server --port 8080",
     );
   });
+
+  it("misuse: the webServer runs from the project root, not from e2e/ where Playwright starts it beside the config", () => {
+    // Playwright runs webServer.command in the config file's directory, and
+    // `npm run e2e` points it at e2e/playwright.config.ts: without a cwd the
+    // build looks for e2e/src/pages and the run fails before any test.
+    expect(PLAYWRIGHT_CONFIG).toMatch(
+      /webServer:\s*\{[^}]*\bcwd:\s*(['"])\.\.\1/,
+    );
+  });
 });
 
 describe("E2E_APP_SPEC", () => {
@@ -210,6 +398,68 @@ describe("E2E_APP_SPEC", () => {
     );
     expect(E2E_APP_SPEC).toContain(
       "mobile navigation toggle expands and collapses menu",
+    );
+  });
+
+  it("misuse: the mobile navigation test asserts the menu's visibility, never the literal is-open class the build scopes away", () => {
+    for (const spec of [E2E_APP_SPEC, CLOUDFLARE_E2E_APP_SPEC]) {
+      expect(spec).not.toMatch(/toHaveClass\(\s*\/is-open\//);
+      expect(spec).not.toContain("'is-open'");
+      expect(spec).toContain("await expect(menu).toBeVisible();");
+      expect(spec).toContain("await expect(menu).toBeHidden();");
+    }
+  });
+
+  it("finds only test ids the starter's components and pages write", () => {
+    const markup = [
+      SITE_HEADER_HTML,
+      SITE_FOOTER_HTML,
+      FEAT_CARD_HTML,
+      MY_COUNTER_HTML,
+      CONTACT_FORM_HTML,
+      indexPage("My App", { template: "cloudflare" }),
+      aboutPage("My App"),
+      contactPage("My App"),
+      notFoundPage("My App"),
+      edgePage("My App"),
+    ].join("\n");
+    for (const spec of [E2E_APP_SPEC, CLOUDFLARE_E2E_APP_SPEC])
+      for (const [, id] of spec.matchAll(/getByTestId\('([^']+)'\)/g))
+        expect(markup, id).toContain(`data-testid="${id}"`);
+  });
+
+  it("does not mention the edge page", () => {
+    expect(E2E_APP_SPEC).not.toContain("/edge");
+    // The feature cards' body rules reach the slot content in the browser.
+    for (const spec of [E2E_APP_SPEC, CLOUDFLARE_E2E_APP_SPEC])
+      expect(spec).toContain(
+        "feature card styles the title and text passed through its slot",
+      );
+    expect(CLOUDFLARE_E2E_APP_SPEC).toContain(
+      "await expect(page.getByTestId('edge-greeting')).toHaveCSS('font-size', '16px');",
+    );
+    expect(E2E_APP_SPEC.endsWith("  });\n});\n")).toBe(true);
+  });
+});
+
+describe("CLOUDFLARE_E2E_APP_SPEC", () => {
+  it("extends the default spec with an edge page test", () => {
+    expect(CLOUDFLARE_E2E_APP_SPEC).toContain(
+      "mobile navigation toggle expands and collapses menu",
+    );
+    expect(CLOUDFLARE_E2E_APP_SPEC).toContain("page.goto('/edge?name=Ada')");
+    expect(CLOUDFLARE_E2E_APP_SPEC).toContain("getByTestId('edge-greeting')");
+    expect(CLOUDFLARE_E2E_APP_SPEC.endsWith("  });\n});\n")).toBe(true);
+  });
+
+  it("asserts the <feat-card> the server script returns is rendered, not sent as a tag", () => {
+    expect(CLOUDFLARE_E2E_APP_SPEC).toContain("getByTestId('edge-card')");
+    // The component's scoped CSS reached the browser: .fcard is a flex column.
+    expect(CLOUDFLARE_E2E_APP_SPEC).toContain(
+      "toHaveCSS('flex-direction', 'column')",
+    );
+    expect(CLOUDFLARE_E2E_APP_SPEC).toContain(
+      "expect(html).not.toContain('<feat-card')",
     );
   });
 });
@@ -238,6 +488,200 @@ describe("GITIGNORE", () => {
     expect(GITIGNORE).toContain("dist/");
     expect(GITIGNORE).toContain("coverage/");
     expect(GITIGNORE).toContain(".pem");
+  });
+
+  it("does not ignore .wrangler/ in the default template", () => {
+    expect(GITIGNORE).not.toContain(".wrangler/");
+  });
+});
+
+describe("CLOUDFLARE_GITIGNORE", () => {
+  it("adds .wrangler/ after every default entry", () => {
+    expect(CLOUDFLARE_GITIGNORE.startsWith(GITIGNORE)).toBe(true);
+    expect(CLOUDFLARE_GITIGNORE).toBe(`${GITIGNORE}.wrangler/\n`);
+  });
+});
+
+describe("edgePage", () => {
+  const html = edgePage("My App");
+
+  it("uses the shared page shell with the brand", () => {
+    expect(html).toContain("<title>Edge - My App</title>");
+    expect(html).toContain('<main id="main" data-testid="edge-main">');
+    expect(html).toContain("<site-meta />");
+    expect(html).toContain('<site-header data-bascik-prop-brand="My App" />');
+    expect(html).toContain('<site-footer data-bascik-prop-brand="My App" />');
+  });
+
+  it("renders the greeting from a TypeScript data-bascik-server script with a default export", () => {
+    expect(html).toContain(
+      '<script data-bascik-server type="text/typescript">',
+    );
+    expect(html).toContain(
+      "export default function (request: Request): string",
+    );
+    expect(html).toContain('searchParams.get("name")');
+    expect(html).toContain('data-testid="edge-greeting"');
+  });
+
+  it("returns the starter's <feat-card> around the greeting, so the Worker renders a component per request", () => {
+    // The tag is only in the script's returned string: this page does not
+    // use <feat-card> in its own markup, so the card is rendered at request
+    // time, with the header, default, and footer slots filled.
+    const script = html.slice(
+      html.indexOf('<script data-bascik-server type="text/typescript">'),
+      html.indexOf("</script>"),
+    );
+    expect(script).toContain('<feat-card data-testid="edge-card">');
+    expect(script).toContain('<div data-bascik-slot="header">');
+    expect(script).toContain('<div data-bascik-slot="footer">');
+    expect(script).toContain("</feat-card>");
+    expect(script.indexOf('data-testid="edge-greeting"')).toBeGreaterThan(
+      script.indexOf("<feat-card"),
+    );
+    expect(script.indexOf('data-testid="edge-greeting"')).toBeLessThan(
+      script.indexOf("</feat-card>"),
+    );
+    expect(html.replace(script, "")).not.toContain("<feat-card");
+  });
+
+  it("does not skip a heading level between the page h1 and the card's h3", () => {
+    // The card styles an h3 greeting, so an h2 sits between it and the h1.
+    const levels = [...html.matchAll(/<h([1-6])[\s>]/g)].map((m) =>
+      Number(m[1]),
+    );
+    expect(levels).toEqual([1, 2, 3]);
+  });
+
+  it("escapes the query parameter with html from @bascik/bascik/html, not a handwritten escaper", () => {
+    const script = html.slice(
+      html.indexOf('<script data-bascik-server type="text/typescript">'),
+      html.indexOf("</script>"),
+    );
+    expect(script).toContain('import { html } from "@bascik/bascik/html";');
+    expect(script).toMatch(/return html`/);
+    expect(script).toContain("${name}");
+    expect(script).not.toContain('"&": "&amp;"');
+    expect(script).not.toMatch(/const escape\b/);
+    // One template, so no string concatenation of markup around the value.
+    expect(script).not.toMatch(/'\s*\+\s*\w+\(?name/);
+  });
+
+  it("links to the API route", () => {
+    expect(html).toContain('href="/api/hello"');
+    expect(html).toContain("src/api/hello.ts");
+  });
+});
+
+describe("HELLO_API_ROUTE", () => {
+  it("exports a GET handler returning JSON that names the host platform", () => {
+    expect(HELLO_API_ROUTE).toContain("export const GET = async (");
+    expect(HELLO_API_ROUTE).toContain("request: Request");
+    expect(HELLO_API_ROUTE).toContain("Promise<Response>");
+    expect(HELLO_API_ROUTE).toContain("Response.json({");
+    expect(HELLO_API_ROUTE).toContain("context.platform?.name");
+  });
+});
+
+describe("semantic HTML in the starter", () => {
+  const brand = "Milk frother";
+  const pages = {
+    index: indexPage(brand),
+    about: aboutPage(brand),
+    contact: contactPage(brand),
+    notFound: notFoundPage(brand),
+  };
+  const levels = (html: string) =>
+    [...html.matchAll(/<h([1-6])[\s>]/g)].map((m) => Number(m[1]));
+
+  it('every page has lang, a <main id="main"> for the skip link with a test id named for the page, and one <h1>', () => {
+    const testIds = {
+      index: "home-main",
+      about: "about-main",
+      contact: "contact-main",
+      notFound: "404-main",
+    };
+    for (const [name, html] of Object.entries(pages)) {
+      expect(html, name).toContain('<html lang="en">');
+      expect(html.match(/<main id="main"[^>]*>/g), name).toEqual([
+        `<main id="main" data-testid="${testIds[name as keyof typeof testIds]}">`,
+      ]);
+      expect(html.match(/<h1[\s>]/g), name).toHaveLength(1);
+    }
+  });
+
+  it("no page skips a heading level, counting the headings it passes into <feat-card>", () => {
+    for (const [name, html] of Object.entries(pages)) {
+      let previous = 1;
+      for (const level of levels(html)) {
+        expect(
+          level,
+          `${name}: h${level} after h${previous}`,
+        ).toBeLessThanOrEqual(previous + 1);
+        previous = level;
+      }
+    }
+    expect(levels(pages.about)).toEqual([1, 2, 2]);
+  });
+
+  it("the 404 page's <h1> names the page, and the code is not a heading", () => {
+    expect(pages.notFound).toMatch(/<h1[^>]*>Page not found<\/h1>/);
+    expect(pages.notFound).not.toMatch(/<h[1-6][^>]*>404<\/h[1-6]>/);
+  });
+
+  it("the header starts with a skip link to #main, names its nav, and its menu button is a real toggle", () => {
+    const skip = SITE_HEADER_HTML.indexOf('href="#main"');
+    expect(skip).toBeGreaterThan(-1);
+    expect(skip).toBeLessThan(SITE_HEADER_HTML.indexOf("<nav"));
+    expect(SITE_HEADER_HTML).toMatch(
+      /<a href="#main" class="skip-link"[^>]*>Skip to content<\/a>/,
+    );
+    expect(SITE_HEADER_CSS).toMatch(/\.skip-link:focus/);
+    expect(SITE_HEADER_HTML).toMatch(/<nav class="nav" aria-label="Main"[\s>]/);
+    const toggle = /<button id="nav-toggle"[^>]*>/.exec(SITE_HEADER_HTML)![0];
+    expect(toggle).toContain('type="button"');
+    expect(toggle).toContain('aria-controls="nav-menu"');
+    expect(toggle).toContain('aria-expanded="false"');
+  });
+
+  it("the counter's buttons are type=button with names a screen reader reads, and the count is announced", () => {
+    for (const id of ["btn-dec", "btn-inc"]) {
+      const button = new RegExp(`<button id="${id}"[^>]*>`).exec(
+        MY_COUNTER_HTML,
+      )![0];
+      expect(button, id).toContain('type="button"');
+      expect(button, id).toMatch(/aria-label="(Decrease|Increase)"/);
+    }
+    expect(MY_COUNTER_HTML).toMatch(
+      /<output id="count-val"[^>]*aria-live="polite"/,
+    );
+    expect(MY_COUNTER_HTML).toMatch(/role="group" aria-label="Counter"/);
+  });
+
+  it("the card styles the h2 and h3 that pages pass into its body", () => {
+    expect(FEAT_CARD_CSS).toMatch(/\.fcard-body :is\(h2, h3\) \{/);
+  });
+});
+
+describe("the starter does not rely on name scoping", () => {
+  // `name` ships as written by default, so the contact form's keys are its
+  // literal names: no data-bascik-preserve, no getElementsByName, and no radio
+  // group that would need a <form> of its own per copy.
+  it("CONTACT_FORM_HTML names its fields with literal keys inside its own form", () => {
+    expect(CONTACT_FORM_HTML).not.toContain("data-bascik-preserve");
+    expect(CONTACT_FORM_HTML).not.toContain("getElementsByName");
+    for (const key of ["name", "email", "message"])
+      expect(CONTACT_FORM_HTML).toContain(`name="${key}"`);
+    const openAt = CONTACT_FORM_HTML.indexOf("<form");
+    const closeAt = CONTACT_FORM_HTML.indexOf("</form>");
+    for (const match of CONTACT_FORM_HTML.matchAll(/\sname="/g))
+      expect(match.index).toBeGreaterThan(openAt);
+    expect(
+      [...CONTACT_FORM_HTML.matchAll(/\sname="/g)].every(
+        (match) => match.index! < closeAt,
+      ),
+    ).toBe(true);
+    expect(CONTACT_FORM_HTML).not.toMatch(/type="radio"/);
   });
 });
 
@@ -272,10 +716,12 @@ describe("STYLES_CSS", () => {
     expect(STYLES_CSS).toContain("--text:");
   });
 
-  it("includes button, card, and form rules", () => {
+  it("includes button and card rules, and leaves form rules to <contact-form>", () => {
     expect(STYLES_CSS).toContain(".btn");
     expect(STYLES_CSS).toContain(".card");
-    expect(STYLES_CSS).toContain(".form-group");
+    // A component's classes are scoped, so a global .form-group would never match its fields.
+    expect(STYLES_CSS).not.toContain(".form-group");
+    expect(CONTACT_FORM_CSS).toContain(".field input");
   });
 });
 
@@ -336,9 +782,11 @@ describe("SITE_FOOTER_HTML", () => {
     expect(SITE_FOOTER_HTML).not.toContain("${SITE_FOOTER_CSS}");
   });
 
-  it("uses a build-once script for the year", () => {
-    expect(SITE_FOOTER_HTML).toContain("<script data-bascik-build-once>");
-    expect(SITE_FOOTER_HTML).toContain("export default () =>");
+  it("uses a TypeScript build-once script for the year", () => {
+    expect(SITE_FOOTER_HTML).toContain(
+      '<script data-bascik-build-once type="text/typescript">',
+    );
+    expect(SITE_FOOTER_HTML).toContain("export default (): string =>");
     expect(SITE_FOOTER_HTML).toContain("getFullYear");
   });
 });
@@ -366,8 +814,10 @@ describe("MY_COUNTER_HTML", () => {
     expect(MY_COUNTER_HTML).toContain("btn-inc");
   });
 
-  it("wraps the script in an IIFE", () => {
-    expect(MY_COUNTER_HTML).toMatch(/\(function\s*\(\)/);
+  it("writes its script in TypeScript and leaves the per-instance wrapper to Bascik", () => {
+    expect(MY_COUNTER_HTML).toContain('<script type="text/typescript">');
+    expect(MY_COUNTER_HTML).toContain("let count: number = 0;");
+    expect(MY_COUNTER_HTML).not.toMatch(/\(function\s*\(\)/);
   });
 });
 
@@ -394,6 +844,18 @@ describe("FEAT_CARD_CSS", () => {
   it("has hover lift effect", () => {
     expect(FEAT_CARD_CSS).toContain("translateY");
   });
+
+  it("misuse: styles the slot content's h3 and p through :is(), since scoping turns a bare element selector into a class the usage site's elements never carry", () => {
+    // `.fcard-body h3` scopes to `.<fcard-body> .<h3>`, a class only the
+    // component's own <h3> elements get; slot content keeps plain tags.
+    expect(FEAT_CARD_CSS).not.toMatch(/\.fcard-[a-z]+ +[a-z][a-z0-9]* *[{,]/);
+    expect(FEAT_CARD_CSS).toMatch(
+      /\.fcard-body :is\(h2, h3\) \{[^}]*font-size: 1rem/,
+    );
+    expect(FEAT_CARD_CSS).toMatch(
+      /\.fcard-body :is\(p\) \{[^}]*font-size: 0\.88rem/,
+    );
+  });
 });
 
 describe("MY_COUNTER_CSS", () => {
@@ -405,7 +867,7 @@ describe("MY_COUNTER_CSS", () => {
 describe("page templates", () => {
   it("indexPage uses feat-card with named slots for the features section", () => {
     const html = indexPage("My App");
-    expect(html).toContain("<feat-card>");
+    expect(html).toContain('<feat-card data-testid="feature-zero-runtime">');
     expect(html).toContain('data-bascik-slot="header"');
     expect(html).toContain('data-bascik-slot="footer"');
   });
@@ -419,18 +881,107 @@ describe("page templates", () => {
     expect(html).toContain("<site-meta />");
   });
 
-  it("aboutPage contains two feature cards", () => {
+  it("indexPage adds an edge feature card only for the cloudflare template", () => {
+    const plain = indexPage("My App");
+    const cloudflare = indexPage("My App", { template: "cloudflare" });
+    expect(plain).not.toContain('href="/edge"');
+    expect(plain.match(/<feat-card /g)).toHaveLength(3);
+    expect(indexPage("My App", { template: "default" })).toBe(plain);
+    expect(cloudflare).toContain('href="/edge"');
+    expect(cloudflare.match(/<feat-card /g)).toHaveLength(4);
+    // The extra card is an insertion: everything else on the page is unchanged.
+    const edgeCard =
+      /\n\s*<feat-card data-testid="feature-edge">\s*<div data-bascik-slot="header">Edge<\/div>[\s\S]*?<\/feat-card>/;
+    expect(cloudflare.replace(edgeCard, "")).toBe(plain);
+  });
+
+  it("aboutPage composes two <feat-card> components with test ids", () => {
     const html = aboutPage("My App");
     expect(html).toContain("<site-header");
-    expect(html).toContain("card");
+    expect(html).toContain('<feat-card data-testid="about-mission">');
+    expect(html).toContain('<feat-card data-testid="about-approach">');
+    expect(html).not.toContain('class="card"');
     expect(html).toContain("/contact");
   });
 
-  it("contactPage contains a form with name, email, and message fields", () => {
+  it("contactPage places the <contact-form> component, which has the name, email, and message fields", () => {
     const html = contactPage("My App");
-    expect(html).toContain('<input type="text"');
-    expect(html).toContain('<input type="email"');
-    expect(html).toContain("<textarea");
+    expect(html).toContain("<contact-form />");
+    expect(html).not.toContain("onsubmit");
+    expect(CONTACT_FORM_HTML).toContain('<input type="text"');
+    expect(CONTACT_FORM_HTML).toContain('<input type="email"');
+    expect(CONTACT_FORM_HTML).toContain("<textarea");
+    expect(CONTACT_FORM_HTML).toContain('<script type="text/typescript">');
+  });
+
+  it.each([
+    [
+      "SITE_HEADER_HTML",
+      SITE_HEADER_HTML,
+      [
+        "site-header",
+        "site-header-skip-link",
+        "site-header-nav",
+        "site-header-logo",
+        "site-header-nav-toggle",
+        "site-header-nav-menu",
+        "site-header-home",
+        "site-header-about",
+        "site-header-contact",
+      ],
+    ],
+    [
+      "SITE_FOOTER_HTML",
+      SITE_FOOTER_HTML,
+      [
+        "site-footer",
+        "site-footer-nav",
+        "site-footer-home",
+        "site-footer-about",
+        "site-footer-contact",
+      ],
+    ],
+    [
+      "MY_COUNTER_HTML",
+      MY_COUNTER_HTML,
+      ["my-counter", "my-counter-dec", "my-counter-value", "my-counter-inc"],
+    ],
+    [
+      "CONTACT_FORM_HTML",
+      CONTACT_FORM_HTML,
+      [
+        "contact-form",
+        "contact-form-name",
+        "contact-form-email",
+        "contact-form-message",
+        "contact-form-submit",
+        "contact-form-status",
+      ],
+    ],
+  ])(
+    "%s gives its root and interactive parts a data-testid",
+    (_name, html, ids) => {
+      for (const id of ids) expect(html).toContain(`data-testid="${id}"`);
+      // Every test id names its component: the root's is the component name, and each part's starts with it.
+      const component = ids[0];
+      for (const [, id] of html.matchAll(/data-testid="([^"]+)"/g))
+        expect(id === component || id.startsWith(`${component}-`), id).toBe(
+          true,
+        );
+    },
+  );
+
+  it("gives <feat-card>'s root a data-testid, which each usage's own data-testid replaces", () => {
+    expect(FEAT_CARD_HTML).toMatch(
+      /<article class="fcard" data-testid="feat-card">/,
+    );
+  });
+
+  it("writes every component script in TypeScript", () => {
+    for (const html of [SITE_HEADER_HTML, MY_COUNTER_HTML, CONTACT_FORM_HTML])
+      expect(html.match(/<script\b[^>]*>/gi)).toEqual([
+        '<script type="text/typescript">',
+      ]);
   });
 
   it("notFoundPage contains 404 and a home link", () => {
@@ -456,15 +1007,20 @@ describe("page templates", () => {
 // ─── scaffold ─────────────────────────────────────────────────────────────────
 
 describe("scaffold", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockReadFile.mockImplementation(async () => {
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+  });
 
   it("creates all component, page, and e2e directories", async () => {
     await scaffold("my-app", "/tmp");
     const dirs = mockMkdir.mock.calls.map((c) =>
       String(c[0]).replace(/\\/g, "/"),
     );
-    expect(dirs.some((d) => d.endsWith(".agents/skills"))).toBe(true);
-    expect(dirs.some((d) => d.endsWith(".claude/skills"))).toBe(true);
+    // The skills CLI creates the skills folders when the reader says yes.
+    expect(dirs.some((d) => d.includes("skills"))).toBe(false);
     expect(dirs.some((d) => d.endsWith("e2e"))).toBe(true);
     expect(dirs.some((d) => d.includes("src/pages/assets"))).toBe(true);
     expect(dirs.some((d) => d.includes("src/pages/css"))).toBe(true);
@@ -474,9 +1030,9 @@ describe("scaffold", () => {
     expect(dirs.some((d) => d.includes("site-meta"))).toBe(true);
   });
 
-  it("writes all 26 expected files", async () => {
+  it("writes all 31 expected files", async () => {
     await scaffold("my-app", "/tmp");
-    expect(mockWriteFile.mock.calls.length).toBe(26);
+    expect(mockWriteFile.mock.calls.length).toBe(31);
   });
 
   it("writes E2E config and spec files", async () => {
@@ -488,31 +1044,34 @@ describe("scaffold", () => {
     expect(paths.some((p) => p.endsWith("e2e/app.spec.ts"))).toBe(true);
   });
 
-  it("copies the bundled agent skills into .agents/skills and .claude/skills", async () => {
+  it("writes AGENTS.md and a CLAUDE.md that imports it, with the template's preview command", async () => {
     await scaffold("my-app", "/tmp");
-    expect(mockCp).toHaveBeenCalledTimes(2);
-    const destinations = mockCp.mock.calls.map((c) =>
-      String(c[1]).replace(/\\/g, "/"),
+    expect(writtenTo("/tmp/my-app/AGENTS.md")).toBe(agentsMd());
+    expect(writtenTo("/tmp/my-app/CLAUDE.md")).toBe(CLAUDE_MD);
+    vi.clearAllMocks();
+    await scaffold("edge-app", "/tmp", { template: "cloudflare" });
+    expect(writtenTo("/tmp/edge-app/AGENTS.md")).toBe(
+      agentsMd({ template: "cloudflare" }),
     );
-    expect(destinations).toEqual([
-      "/tmp/my-app/.agents/skills",
-      "/tmp/my-app/.claude/skills",
-    ]);
-    for (const call of mockCp.mock.calls) {
-      expect(call[0]).toBe(SKILLS_DIR);
-      expect(call[2]).toMatchObject({ recursive: true });
-    }
   });
 
-  it("skips only the README at the root of the bundled skills folder", async () => {
+  it("merges into an AGENTS.md and CLAUDE.md the folder already has, and notes what it added", async () => {
+    mockReadFile.mockImplementation(async (path: unknown) => {
+      const file = String(path).replace(/\\/g, "/");
+      if (file.endsWith("/AGENTS.md")) return "# Team rules\n";
+      if (file.endsWith("/CLAUDE.md")) return "# Notes\n";
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+    const { notes } = await scaffold("my-app", "/tmp");
+    expect(writtenTo("AGENTS.md")).toMatch(/^# Team rules\n\n## Bascik\n/);
+    expect(writtenTo("CLAUDE.md")).toBe("# Notes\n\n@AGENTS.md\n");
+    expect(notes).toContain('AGENTS.md: added a "## Bascik" section');
+    expect(notes).toContain("CLAUDE.md: added @AGENTS.md");
+  });
+
+  it("no longer copies agent skills: the CLI installs them with the skills CLI", async () => {
     await scaffold("my-app", "/tmp");
-    const { filter } = mockCp.mock.calls[0][2] as {
-      filter: (source: string) => boolean;
-    };
-    expect(filter(`${SKILLS_DIR}/README.md`)).toBe(false);
-    expect(filter(`${SKILLS_DIR}/bascik/SKILL.md`)).toBe(true);
-    expect(filter(`${SKILLS_DIR}/bascik/references/README.md`)).toBe(true);
-    expect(filter(SKILLS_DIR)).toBe(true);
+    expect(allWrittenPaths().some((p) => p.includes("skills/"))).toBe(false);
   });
 
   it("no longer writes skills into .github/skills", async () => {
@@ -538,6 +1097,77 @@ describe("scaffold", () => {
     expect(JSON.parse(extensionsJson!).recommendations).toContain(
       "bascik.bascik-vscode",
     );
+    expect(writtenTo(".vscode/settings.json")).toBe(VSCODE_SETTINGS_JSON);
+  });
+
+  for (const template of ["default", "cloudflare"] as const) {
+    it(`turns off VS Code's inline-script check in the ${template} template`, async () => {
+      await scaffold("my-app", "/tmp", { template });
+      const settings = writtenTo(".vscode/settings.json");
+      expect(parseJsonc(settings!)).toEqual({
+        "html.validate.scripts": false,
+      });
+      expect(JSON.parse(writtenTo(".vscode/extensions.json")!)).toEqual({
+        recommendations: ["bascik.bascik-vscode"],
+      });
+    });
+  }
+
+  it("misuse: merges into .vscode files the target folder already has", async () => {
+    const existing: Record<string, string> = {
+      "settings.json": '{\n  // mine\n  "editor.tabSize": 4\n}\n',
+      "extensions.json": '{ "recommendations": ["esbenp.prettier-vscode"] }',
+    };
+    mockReadFile.mockImplementation(async (path: unknown) => {
+      const name = String(path).replace(/\\/g, "/").split("/").pop()!;
+      if (String(path).includes(".vscode") && name in existing) {
+        return existing[name];
+      }
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+    const result = await scaffold("my-app", "/tmp");
+    const settings = writtenTo(".vscode/settings.json")!;
+    expect(settings).toContain("// mine");
+    expect(parseJsonc(settings)).toEqual({
+      "html.validate.scripts": false,
+      "editor.tabSize": 4,
+    });
+    expect(parseJsonc(writtenTo(".vscode/extensions.json")!)).toEqual({
+      recommendations: ["bascik.bascik-vscode", "esbenp.prettier-vscode"],
+    });
+    expect(result.notes.join("\n")).toContain(
+      '.vscode/settings.json: added "html.validate.scripts": false',
+    );
+  });
+
+  it("misuse: leaves an unreadable settings file alone and says what to add", async () => {
+    mockReadFile.mockImplementation(async (path: unknown) => {
+      if (String(path).replace(/\\/g, "/").endsWith(".vscode/settings.json")) {
+        return "{ broken";
+      }
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+    const result = await scaffold("my-app", "/tmp");
+    expect(writtenTo(".vscode/settings.json")).toBeUndefined();
+    expect(result.notes.join("\n")).toContain('"html.validate.scripts": false');
+  });
+
+  it("misuse: keeps a launch.json the target folder already has", async () => {
+    mockWriteFile.mockImplementation(async (path: unknown, _data, options) => {
+      if (
+        String(path).replace(/\\/g, "/").endsWith(".vscode/launch.json") &&
+        (options as { flag?: string } | undefined)?.flag === "wx"
+      ) {
+        throw Object.assign(new Error("EEXIST"), { code: "EEXIST" });
+      }
+    });
+    const result = await scaffold("my-app", "/tmp");
+    mockWriteFile.mockImplementation(async () => undefined);
+    const launchCall = mockWriteFile.mock.calls.find((c) =>
+      String(c[0]).replace(/\\/g, "/").endsWith(".vscode/launch.json"),
+    );
+    expect(launchCall?.[2]).toMatchObject({ flag: "wx" });
+    expect(result.notes).toEqual([]);
   });
 
   it("writes all four pages", async () => {
@@ -596,5 +1226,147 @@ describe("scaffold", () => {
       String(c[0]).endsWith("index.html"),
     );
     expect(indexCall?.[1]).toContain("hello-world");
+  });
+
+  const writtenFiles = (): Map<string, string> =>
+    new Map(
+      mockWriteFile.mock.calls.map((c) => [
+        String(c[0]).replace(/\\/g, "/"),
+        typeof c[1] === "string" ? c[1] : Buffer.from(c[1]).toString("base64"),
+      ]),
+    );
+
+  it("writes the same files for an explicit default template as for none", async () => {
+    await scaffold("my-app", "/tmp");
+    const implicit = writtenFiles();
+    vi.clearAllMocks();
+    await scaffold("my-app", "/tmp", { template: "default" });
+    expect(writtenFiles()).toEqual(implicit);
+    expect(
+      mockMkdir.mock.calls.some((c) => String(c[0]).endsWith("src/api")),
+    ).toBe(false);
+  });
+
+  it("keeps the Cloudflare pieces out of the default template", async () => {
+    await scaffold("my-app", "/tmp");
+    const files = writtenFiles();
+    expect(allWrittenPaths().some((p) => p.endsWith("edge.html"))).toBe(false);
+    expect(allWrittenPaths().some((p) => p.includes("src/api/"))).toBe(false);
+    expect(files.get("/tmp/my-app/package.json")).not.toContain("wrangler");
+    expect(files.get("/tmp/my-app/.gitignore")).not.toContain(".wrangler/");
+    expect(files.get("/tmp/my-app/src/pages/index.html")).not.toContain(
+      "/edge",
+    );
+    expect(files.get("/tmp/my-app/e2e/app.spec.ts")).not.toContain("/edge");
+  });
+
+  describe("cloudflare template", () => {
+    beforeEach(() => scaffold("my-app", "/tmp", { template: "cloudflare" }));
+
+    it("writes the 31 default files plus the edge page and API route", () => {
+      expect(mockWriteFile.mock.calls.length).toBe(33);
+      const paths = allWrittenPaths();
+      expect(paths).toContain("/tmp/my-app/src/pages/edge.html");
+      expect(paths).toContain("/tmp/my-app/src/api/hello.ts");
+    });
+
+    it("creates the src/api directory", () => {
+      expect(
+        mockMkdir.mock.calls.some((c) =>
+          String(c[0]).replace(/\\/g, "/").endsWith("/tmp/my-app/src/api"),
+        ),
+      ).toBe(true);
+    });
+
+    it("writes the Cloudflare package.json, .gitignore, index page, and E2E spec", () => {
+      const files = writtenFiles();
+      expect(files.get("/tmp/my-app/package.json")).toBe(
+        PACKAGE_JSON("my-app", "cloudflare"),
+      );
+      expect(files.get("/tmp/my-app/.gitignore")).toBe(CLOUDFLARE_GITIGNORE);
+      expect(files.get("/tmp/my-app/src/pages/index.html")).toBe(
+        indexPage("my-app", { template: "cloudflare" }),
+      );
+      expect(files.get("/tmp/my-app/src/pages/edge.html")).toBe(
+        edgePage("my-app"),
+      );
+      expect(files.get("/tmp/my-app/src/api/hello.ts")).toBe(HELLO_API_ROUTE);
+      expect(files.get("/tmp/my-app/e2e/app.spec.ts")).toBe(
+        CLOUDFLARE_E2E_APP_SPEC,
+      );
+    });
+
+    it("writes the brief with the Worker preview command", () => {
+      expect(writtenFiles().get("/tmp/my-app/AGENTS.md")).toBe(
+        agentsMd({ template: "cloudflare" }),
+      );
+    });
+  });
+});
+
+describe("parseCliOptions --no-skills", () => {
+  it("reads --no-skills, which skips the agent skills question and install", () => {
+    expect(parseCliOptions(["my-site", "--no-skills"]).noSkillsFlag).toBe(true);
+    expect(parseCliOptions(["my-site", "-y", "--no-skills"])).toMatchObject({
+      yesFlag: true,
+      noSkillsFlag: true,
+      projectName: "my-site",
+    });
+  });
+
+  it("honors npm's consumed --no-skills through npm_config_skills, as npm keeps flags written before --", () => {
+    expect(
+      parseCliOptions(["my-site"], { npm_config_skills: "false" }).noSkillsFlag,
+    ).toBe(true);
+    expect(
+      parseCliOptions(["my-site"], { npm_config_skills: "true" }).noSkillsFlag,
+    ).toBe(false);
+  });
+
+  it("misuse: a typo'd flag such as --no-skill is refused with the flag it meant, instead of installing the skills", () => {
+    expect(() => parseCliOptions(["my-site", "--no-skill"])).toThrow(
+      'Unknown option "--no-skill". Did you mean "--no-skills"?',
+    );
+    expect(() => parseCliOptions(["my-site", "--no-instal"])).toThrow(
+      /Did you mean "--no-install"\?/,
+    );
+  });
+
+  it.each([["--help"], ["-h"], ["my-site", "--help"], ["--no-skill", "-h"]])(
+    "%s asks for help, which wins over everything else on the line",
+    (...args) => {
+      expect(parseCliOptions(args).helpFlag).toBe(true);
+    },
+  );
+
+  it("documents every flag it accepts in the usage text", () => {
+    for (const flag of [
+      "--template",
+      "-y",
+      "--yes",
+      "--no-skills",
+      "--no-install",
+      "--no-dev",
+      "-h",
+      "--help",
+    ])
+      expect(USAGE).toContain(flag);
+    expect(USAGE).toContain(
+      "npm create bascik@rc my-site -- --template cloudflare",
+    );
+  });
+
+  it("misuse: --helps is refused, pointing at --help", () => {
+    expect(() => parseCliOptions(["--helps"])).toThrow(
+      'Unknown option "--helps". Did you mean "--help"?',
+    );
+  });
+
+  it("misuse: an unrelated flag is refused with the list of flags and no guess", () => {
+    expect(() =>
+      parseCliOptions(["my-site", "--typescript-everywhere"]),
+    ).toThrow(
+      'Unknown option "--typescript-everywhere". create-bascik accepts -h, --help, -y, --yes, --no-install, --no-dev, --no-skills, --template.',
+    );
   });
 });

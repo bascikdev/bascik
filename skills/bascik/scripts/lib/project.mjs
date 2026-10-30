@@ -1,10 +1,14 @@
-// Shared helpers for the Bascik skill scripts. Dependency-free; Node.js 22.18+.
+// Shared helpers for the Bascik skill scripts. Dependency-free; Node.js 22.22+.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-export const CONFIG_FILES = ["bascik.config.js", "bascik.config.ts"];
+export const CONFIG_FILES = [
+  "bascik.config.js",
+  "bascik.config.mjs",
+  "bascik.config.ts",
+];
 export const DEFAULT_DOCS_URL = "https://bascik.dev";
 
 /** Print a message to stderr and exit with the given code. */
@@ -56,7 +60,7 @@ export function findProjectRoot(start = process.cwd()) {
   }
 }
 
-/** Absolute path of the project's config file (bascik.config.js wins over .ts, matching Bascik), or undefined. */
+/** Absolute path of the project's config file (the first of .js, .mjs, .ts, matching Bascik), or undefined. */
 export function findConfigFile(root) {
   for (const file of CONFIG_FILES) {
     const path = join(root, file);

@@ -9,7 +9,7 @@
     "starter",
     "static site generator"
   ],
-  "version": "1.0.0-rc.9",
+  "version": "1.0.0-rc.10",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
@@ -20,14 +20,13 @@
   "author": "Collin Thomas",
   "type": "module",
   "files": [
-    "assets/",
     "dist/",
     "src/",
     "README.md"
   ],
   "bin": "dist/index.js",
   "engines": {
-    "node": ">=22.18.0"
+    "node": ">=22.22.0"
   },
   "publishConfig": {
     "access": "public"
@@ -35,14 +34,14 @@
   "devDependencies": {
     "@types/node": "^24.19.1",
     "@vitest/coverage-v8": "^5.0.3",
+    "miniflare": "4.20260730.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.2",
+    "vite": "^8.3.4",
     "vitest": "^5.0.3"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "prepare": "([ -d ../skills ] && rm -rf assets/skills && mkdir -p assets && cp -R ../skills assets/skills || true) && tsc -p tsconfig.build.json",
-    "prepack": "rm -rf assets/skills && mkdir -p assets && cp -R ../skills assets/skills",
+    "prepare": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "unit": "vitest run",
     "test": "vitest",

@@ -405,12 +405,22 @@ export const resolveCacheControl = (
     return configCacheControl;
   }
   if (typeof configCacheControl === "object" && configCacheControl !== null) {
-    if (ext in configCacheControl) {
-      return configCacheControl[ext];
-    }
+    // Exact-case keys first, with and without the leading dot, then any key
+    // that matches case-insensitively (with or without its dot): server.ts
+    // lowercases the request's extension, so `".PNG"` in the config must
+    // still match a request for `photo.png`, but an exact-case key always
+    // wins, whatever order the map lists its keys in. Own keys only, so a
+    // name like `"constructor"` never resolves to an Object.prototype member.
     const withDot = ext.startsWith(".") ? ext : `.${ext}`;
-    if (withDot in configCacheControl) {
-      return configCacheControl[withDot];
+    for (const key of [withDot, withDot.slice(1)]) {
+      if (Object.hasOwn(configCacheControl, key)) {
+        return configCacheControl[key];
+      }
+    }
+    const folded = withDot.toLowerCase();
+    for (const [key, value] of Object.entries(configCacheControl)) {
+      const keyWithDot = key.startsWith(".") ? key : `.${key}`;
+      if (keyWithDot.toLowerCase() === folded) return value;
     }
   }
   return "public, max-age=3600";

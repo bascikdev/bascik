@@ -158,7 +158,7 @@ export function listComponents(roots, projectRoot) {
       const tag = basename(file, ".html").toLowerCase();
       const dir = dirname(file);
       const base = basename(file, ".html");
-      const companions = [".css", ".ts", ".js", ".mjs"]
+      const companions = [".css", ".ts", ".mts", ".js", ".mjs"]
         .map((ext) => join(dir, base + ext))
         .filter((path) => existsSync(path))
         .map((path) => relative(projectRoot, path).replace(/\\/g, "/"));

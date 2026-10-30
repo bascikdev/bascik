@@ -110,6 +110,14 @@ async function main() {
   }
 
   if (kind === "build") {
+    // An html\`...\` value from @bascik/bascik/html (a registered-symbol brand)
+    // is HTML a shared helper built; it stringifies to that HTML.
+    if (
+      result !== null &&
+      typeof result === "object" &&
+      typeof result[Symbol.for("bascik.html")] === "string"
+    )
+      result = String(result);
     if (typeof result !== "string") {
       console.error(\`Directive script (data-bascik-build) must return a string (or Promise resolving to a string). Received \${result === null ? "null" : typeof result}.\`);
       process.exit(1);

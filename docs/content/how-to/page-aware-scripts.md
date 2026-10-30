@@ -48,7 +48,7 @@ Use it from any page's `<head>`:
 
 ```html
 <head>
-  <script data-bascik-build>
+  <script data-bascik-build type="text/typescript">
     import { canonical } from "@/lib/canonical.ts";
 
     export default async () => await canonical();
@@ -108,11 +108,11 @@ The script runs on the source HTML before any other build scripts have fired, so
 
 `<script data-bascik-build>` inside a component runs when Bascik expands that component into a page. It receives that page's context, just like a build script written directly in the page. If a component appears more than once, each occurrence has its own build script output. When the script never reads the page context, Bascik reuses its output on other pages instead of running it again (see [Output Caching](/build-scripts#performance-output-caching)).
 
-That means shared components can derive navigation state, breadcrumbs, canonical links, or other output from the page path without a special marker. An imported helper can read `BASCIK_PAGE_PATH` directly:
+That means shared components can derive navigation state, breadcrumbs, canonical links, or other output from the page path without a special marker. An imported helper can read `BASCIK_PAGE_PATH` directly. The script below is `data-bascik-build` because `pagePath()` returns the page being built, so every page gets its own canonical link:
 
 ```html
-<!-- src/components/docs-pagination/docs-pagination.html -->
-<script data-bascik-build>
+<!-- src/components/canonical-link/canonical-link.html -->
+<script data-bascik-build type="text/typescript">
   import { pagePath, siteOrigin } from "@/lib/site.ts";
 
   export default () =>
@@ -124,10 +124,10 @@ For output that is the same at every use of a component, use `data-bascik-build-
 
 ```html
 <!-- src/components/site-footer/site-footer.html -->
-<footer class="site-footer">
+<footer class="site-footer" data-testid="site-footer">
   <p>
     &copy;
-    <script data-bascik-build-once>
+    <script data-bascik-build-once type="text/typescript">
       export default () => String(new Date().getFullYear());
     </script>
     Example Co. All rights reserved.
@@ -155,6 +155,6 @@ Any tag or content block that should be consistent across every page but derived
 
 Write the helper once in `src/lib/`, call it from a page build script or a shared component build script, and every page gets the right output automatically.
 
-The [Site Header](/example-components/site-header) uses the current page path to mark the active link in its navigation. The [Site Footer](/example-components/site-footer) uses a build script too; because its output does not depend on the page, the result is the same at every use.
+The [Site Header](/example-components/site-header) uses the current page path to mark the active link in its navigation, so its script is `data-bascik-build`. The [Site Footer](/example-components/site-footer) prints the same links and year on every page, so its scripts are `data-bascik-build-once`.
 
 > **Next Steps:** Learn how to test build helpers that read page context by mocking environment variables in the [Build Scripts Testing Guide](/testing/build-scripts).

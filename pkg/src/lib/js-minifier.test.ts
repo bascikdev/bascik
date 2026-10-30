@@ -383,6 +383,67 @@ describe("minifyJs – statement separation (ASI)", () => {
       minifyJs("const value = fields[field]\ninput.setAttribute('x', 'y');"),
     ).toBe("const value=fields[field];input.setAttribute('x','y');");
   });
+
+  // `else`, `while`, `catch` and `finally` only continue a preceding `}` block.
+  // After a value token they start a new statement, and joining them with a
+  // space produced `...??null while(...)`, a syntax error in the browser.
+  it("inserts semicolon before a while loop that follows a semicolon-free statement", () => {
+    const input =
+      "let target = scrollBtn.closest('section')?.nextElementSibling ?? null\nwhile (target && target.tagName !== 'SECTION') {\n  target = target.nextElementSibling\n}";
+    expect(minifyJs(input)).toBe(
+      "let target=scrollBtn.closest('section')?.nextElementSibling??null;while(target&&target.tagName!=='SECTION'){target=target.nextElementSibling}",
+    );
+  });
+
+  it("inserts semicolon between a braceless do body and its while", () => {
+    expect(minifyJs("do step()\nwhile (cond)")).toBe("do step();while(cond)");
+    // A string in the body splits it across scanner segments.
+    expect(minifyJs("do step('x')\nwhile (cond)")).toBe(
+      "do step('x');while(cond)",
+    );
+  });
+
+  it("inserts semicolon between a braceless if body and its else", () => {
+    expect(minifyJs("if (a)\n  step()\nelse\n  other()")).toBe(
+      "if(a)step();else other()",
+    );
+    expect(minifyJs("if (a) step('x')\nelse other()")).toBe(
+      "if(a)step('x');else other()",
+    );
+  });
+
+  it("still attaches else, catch, finally and while to a preceding block", () => {
+    expect(minifyJs("if (a) {\n  foo()\n}\nelse {\n  bar()\n}")).toBe(
+      "if(a){foo()}else{bar()}",
+    );
+    expect(minifyJs("do {\n  x()\n}\nwhile (c)")).toBe("do{x()}while(c)");
+    expect(
+      minifyJs("try {\n  a()\n}\ncatch (e) {\n  b()\n}\nfinally {\n  c()\n}"),
+    ).toBe("try{a()}catch(e){b()}finally{c()}");
+  });
+
+  it("does not treat identifiers beginning with while, else or instanceof as keywords", () => {
+    expect(minifyJs("const x = 1\nwhileReady()")).toBe(
+      "const x=1;whileReady()",
+    );
+    expect(minifyJs("const x = 1\nelseBranch()")).toBe(
+      "const x=1;elseBranch()",
+    );
+    expect(minifyJs("const x = 1\ninstanceofCheck()")).toBe(
+      "const x=1;instanceofCheck()",
+    );
+    expect(minifyJs("const s = 'a'\nwhileReady()")).toBe(
+      "const s='a';whileReady()",
+    );
+    // After a block-ending `}` the same identifiers start a new statement too.
+    expect(minifyJs("const f = () => {}\nwhileLoop()")).toBe(
+      "const f=()=>{};whileLoop()",
+    );
+    // The real binary operator still continues the expression.
+    expect(minifyJs("const x = a\ninstanceof B")).toBe(
+      "const x=a instanceof B",
+    );
+  });
 });
 
 describe("minifyJs – word token and keyword boundaries", () => {

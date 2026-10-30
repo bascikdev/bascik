@@ -1,0 +1,36 @@
+<!-- @bascik
+The catalog tile with a request-time stock line: the same props and badge
+slot as <product-card>, plus its own server script, which the Worker runs
+once per rendered tile with the current request (a nested job, prompt 157).
+
+  <product-card-live data-bascik-prop-name="Milk frother" data-bascik-prop-price="$129">
+    <span>Live</span>
+  </product-card-live>
+-->
+<!--
+  Keep the server script class-only: a body that embeds the instance id (an
+  id or name selector) would make the component unsupported at request time.
+  Nested scripts receive no props, so the stock line reads the request only.
+-->
+<article id="tile" class="tile" data-testid="product-card-live">
+  <h3 class="tile-name" data-testid="product-card-name" data-bascik-prop-name>
+    Unnamed product
+  </h3>
+  <p class="tile-price" data-testid="product-card-price" data-bascik-prop-price>
+    Price on request
+  </p>
+  <!-- The slot element is replaced by what the usage puts inside the tag, so
+       the badge container that tests and styles target sits around it. -->
+  <div class="tile-badge" data-testid="product-card-badge">
+    <span data-bascik-slot>Standard</span>
+  </div>
+  <script data-bascik-server>
+    export default function (request) {
+      const path = new URL(request.url).pathname;
+      return `<p class="stock" data-testid="product-card-stock">In stock · checked for ${path} at request time</p>`;
+    }
+  </script>
+  <script>
+    window.__productCards = (window.__productCards ?? 0) + 1;
+  </script>
+</article>

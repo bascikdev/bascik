@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Milk frother</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 Helvetica,
+          Arial,
+          sans-serif;
+        color: #1d2433;
+      }
+      .nav {
+        position: relative;
+        padding: 16px 40px;
+      }
+      .menu {
+        position: absolute;
+        top: 56px;
+        left: 40px;
+        width: 260px;
+        margin: 0;
+        padding: 12px;
+        list-style: none;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+      }
+      .menu[hidden] {
+        display: none;
+      }
+      .menu a {
+        display: flex;
+        gap: 8px;
+        padding: 8px;
+        color: #1d2433;
+        text-decoration: none;
+      }
+      .menu svg {
+        width: 16px;
+        height: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <nav class="nav" aria-label="Main">
+        <button id="trig" type="button" aria-expanded="false" aria-controls="m">
+          Products
+        </button>
+        <ul class="menu" id="m" hidden>
+          <li><a href="/frothers">Frothers</a></li>
+          <li><a href="/parts">Parts</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main><h1>Milk frother</h1></main>
+    <script>
+      const t = document.querySelector("#trig");
+      t.onclick = () => {
+        const o = t.getAttribute("aria-expanded") === "true";
+        t.setAttribute("aria-expanded", String(!o));
+        document.getElementById("m").hidden = o;
+      };
+    </script>
+  </body>
+</html>

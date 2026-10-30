@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ─── Hoisted mock factories ───────────────────────────────────────────────────
 
+const mockStopPagePools = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined),
+);
+
 const {
   mockWatch,
   getWatcher,
@@ -13,6 +17,7 @@ const {
   mockSelectivelyProcessPages,
   mockSelectivelyProcessPagesForWatchPath,
   mockProcessPagesImportingStylesheet,
+  mockProcessPagesDependentOnFile,
   mockCopyReplicatePath,
   mockCopyStaticAssets,
   mockIsStaticAssetPath,
@@ -45,6 +50,7 @@ const {
   const mockProcessPagesImportingStylesheet = vi
     .fn()
     .mockResolvedValue(undefined);
+  const mockProcessPagesDependentOnFile = vi.fn().mockResolvedValue(undefined);
   const mockCopyReplicatePath = vi.fn().mockResolvedValue(undefined);
   const mockCopyStaticAssets = vi.fn().mockResolvedValue(undefined);
   const mockIsStaticAssetPath = vi.fn().mockReturnValue(true);
@@ -127,6 +133,7 @@ const {
     mockSelectivelyProcessPages,
     mockSelectivelyProcessPagesForWatchPath,
     mockProcessPagesImportingStylesheet,
+    mockProcessPagesDependentOnFile,
     mockCopyReplicatePath,
     mockCopyStaticAssets,
     mockIsStaticAssetPath,
@@ -161,9 +168,11 @@ vi.mock("./processing.js", () => ({
   processAllPages: mockProcessAllPages,
   processPageBatch: mockProcessPageBatch,
   processPagesImportingStylesheet: mockProcessPagesImportingStylesheet,
+  processPagesDependentOnFile: mockProcessPagesDependentOnFile,
   removePage: mockRemovePage,
   selectivelyProcessPages: mockSelectivelyProcessPages,
   selectivelyProcessPagesForWatchPath: mockSelectivelyProcessPagesForWatchPath,
+  stopPagePools: mockStopPagePools,
 }));
 
 vi.mock("./mem.js", () => ({
@@ -303,6 +312,18 @@ describe("watchFiles – watcher setup", () => {
   it("watches the components directory", async () => {
     await watchFiles();
     expect(mockWatch.mock.calls[2][0]).toContain("/project/src/components");
+  });
+
+  it("rebuilds for every companion script extension, .mts included", async () => {
+    await watchFiles();
+    const ignored = mockWatch.mock.calls[2][1].ignored as (
+      path: string,
+      stats?: { isFile(): boolean },
+    ) => boolean;
+    const file = { isFile: () => true };
+    for (const ext of ["html", "css", "js", "mjs", "ts", "mts"])
+      expect(ignored(`/project/src/components/card.${ext}`, file)).toBe(false);
+    expect(ignored("/project/src/components/notes.md", file)).toBe(true);
   });
 
   it("watches every configured component root and follows symlinks there only", async () => {
@@ -638,6 +659,27 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
     },
   );
 
+  it.each(["add", "change", "unlink"])(
+    "rebuilds the pages that read a page's .ts script on '%s', and never copies it to the output",
+    async (event) => {
+      mockIsStaticAssetPath.mockReturnValue(false);
+      mockCopyReplicatePath.mockClear();
+      mockDeleteDistFile.mockClear();
+      mockProcessPagesDependentOnFile.mockClear();
+      try {
+        await getHandler(0, event)?.("/project/src/pages/client.ts");
+        expect(mockProcessPagesDependentOnFile).toHaveBeenCalledExactlyOnceWith(
+          "/project/src/pages/client.ts",
+        );
+        expect(mockCopyReplicatePath).not.toHaveBeenCalled();
+        expect(mockDeleteDistFile).not.toHaveBeenCalled();
+        expect(mockProcessPagesImportingStylesheet).not.toHaveBeenCalled();
+      } finally {
+        mockIsStaticAssetPath.mockReset().mockReturnValue(true);
+      }
+    },
+  );
+
   it("does not look up stylesheet importers for an inline stylesheet, which rebuilds every page", async () => {
     mockIsInlineStylesheet.mockReturnValue(true);
     mockProcessAllPages.mockClear();
@@ -780,8 +822,20 @@ describe("watchFiles – ignored predicates", () => {
     ) => boolean;
     mockIsStaticAssetPath.mockReturnValue(false);
 
-    expect(ignored("/path/to/helper.ts", { isFile: () => true })).toBe(true);
     expect(ignored("/path/to/app.test.js", { isFile: () => true })).toBe(true);
+    expect(ignored("/path/to/app.test.ts", { isFile: () => true })).toBe(true);
+    expect(ignored("/path/to/types.d.ts", { isFile: () => true })).toBe(true);
+    expect(ignored("/path/to/notes.md", { isFile: () => true })).toBe(true);
+  });
+
+  it("watcher 0: watches a page's unpublished script sources (.ts, .mts, .mjs)", () => {
+    const ignored = mockWatch.mock.calls[0][1].ignored as (
+      p: string,
+      s?: { isFile: () => boolean },
+    ) => boolean;
+    mockIsStaticAssetPath.mockReturnValue(false);
+    for (const file of ["client.ts", "mod.mts", "server.mjs"])
+      expect(ignored(`/path/to/${file}`, { isFile: () => true })).toBe(false);
   });
 
   it("watcher 0: returns false when stats is undefined", () => {
@@ -1047,6 +1101,41 @@ describe("watchFiles – isBuild = true", () => {
     expect(processAllPages).toHaveBeenCalledTimes(1);
     expect(mockWatch).not.toHaveBeenCalled();
   });
+
+  // The CLI exits as soon as this rejects; page workers still loading the
+  // compiler at that moment can abort Node 24, so they are stopped first.
+  it("stops the page worker pools before reporting a static asset copy failure", async () => {
+    mockStopPagePools.mockClear();
+    let finishPages!: () => void;
+    mockProcessAllPages.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finishPages = resolve)),
+    );
+    let stopped = false;
+    mockStopPagePools.mockImplementationOnce(async () => {
+      await Promise.resolve();
+      stopped = true;
+    });
+    vi.mocked(copyStaticAssets).mockRejectedValueOnce(new Error("EACCES"));
+    const failed = watchFiles().then(
+      () => "resolved",
+      (error: Error) => ({ message: error.message, stopped }),
+    );
+    await expect(failed).resolves.toEqual({ message: "EACCES", stopped: true });
+    expect(mockStopPagePools).toHaveBeenCalledOnce();
+    finishPages();
+  });
+
+  it("still reports the copy failure when stopping the pools fails", async () => {
+    mockStopPagePools.mockRejectedValueOnce(new Error("stop failed"));
+    vi.mocked(copyStaticAssets).mockRejectedValueOnce(new Error("EACCES"));
+    await expect(watchFiles()).rejects.toThrow("EACCES");
+  });
+
+  it("does not stop the pools when the build succeeds", async () => {
+    mockStopPagePools.mockClear();
+    await watchFiles();
+    expect(mockStopPagePools).not.toHaveBeenCalled();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1113,7 +1202,7 @@ describe("watchFiles – glob watch paths", () => {
     (BascikConfig as any).pipeline = { watchPaths: [] };
   });
 
-  // Chokidar 5 does not expand globs, so a glob is watched from its folder.
+  // Chokidar does not expand globs, so a glob is watched from its folder.
   it("watches the folder a glob starts in", () => {
     expect(mockWatch.mock.calls[3][0]).toEqual([
       "/extra/content",
@@ -1471,5 +1560,246 @@ describe("watchFiles – api route watcher (prompt 112)", () => {
       expect.any(Error),
     );
     errorSpy.mockRestore();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chokidar 6 contract
+// ─────────────────────────────────────────────────────────────────────────────
+
+// WHY: chokidar 6 reports add() failures (EACCES on a watched directory,
+// EMFILE) as `error` events, and Node's EventEmitter throws an `error` event
+// that has no listener, so one unreadable folder in a watched tree crashed
+// `bascik dev`. Chokidar 6 also validates options in its constructor and
+// renamed `interval`/`binaryInterval`; these cases pin both.
+describe("watchFiles – chokidar 6 contract", () => {
+  const withEveryWatcher = async (run: () => Promise<void>): Promise<void> => {
+    const previousVitest = process.env.VITEST;
+    // The config-file watcher is skipped under Vitest; include it here.
+    delete process.env.VITEST;
+    mockExistsSync.mockImplementation(() => true);
+    BascikConfig.pipeline.watchPaths = ["content/*.md"];
+    try {
+      await run();
+    } finally {
+      process.env.VITEST = previousVitest;
+    }
+  };
+
+  it("registers an error listener on every dev watcher", async () => {
+    await withEveryWatcher(async () => {
+      await watchFiles();
+      // pages assets, pages html, components, watchPaths, import root, api, config
+      expect(mockWatch).toHaveBeenCalledTimes(7);
+      for (let i = 0; i < mockWatch.mock.calls.length; i++) {
+        expect(
+          getHandler(i, "error"),
+          `watcher ${i} (${JSON.stringify(mockWatch.mock.calls[i][0])})`,
+        ).toBeTypeOf("function");
+      }
+    });
+  });
+
+  it("logs a watcher error after boot instead of throwing, on every watcher", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await withEveryWatcher(async () => {
+        await watchFiles();
+        for (let i = 0; i < mockWatch.mock.calls.length; i++) {
+          errorSpy.mockClear();
+          const failure = Object.assign(
+            new Error("EACCES: permission denied"),
+            {
+              code: "EACCES",
+            },
+          );
+          expect(() => getHandler(i, "error")?.(failure)).not.toThrow();
+          expect(errorSpy).toHaveBeenCalledWith(
+            "[bascik] watch error:",
+            failure,
+          );
+        }
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("rejects boot when the page watcher fails before it is ready", async () => {
+    const failure = new Error("EACCES: permission denied, scandir");
+    mockWatch.mockImplementation(() => {
+      const handlers = new Map<string, (...args: any[]) => any>();
+      const watcher = {
+        on: vi.fn((event: string, handler: (...args: any[]) => any) => {
+          handlers.set(event, handler);
+          // The html watcher fails during its initial scan instead of
+          // becoming ready.
+          if (event === "error") queueMicrotask(() => handler(failure));
+          return watcher;
+        }),
+      };
+      return watcher;
+    });
+    await expect(watchFiles()).rejects.toBe(failure);
+  });
+
+  it("passes chokidar 6 option validation and uses no deprecated alias", async () => {
+    const { FSWatcher } =
+      await vi.importActual<typeof import("chokidar")>("chokidar");
+    await withEveryWatcher(async () => {
+      await watchFiles();
+      for (const [, options] of mockWatch.mock.calls) {
+        for (const deprecated of ["usePolling", "interval", "binaryInterval"])
+          expect(options).not.toHaveProperty(deprecated);
+        expect(options).not.toMatchObject({ backend: "polling" });
+        // The constructor throws TypeError on invalid options; it does not
+        // touch the filesystem until add().
+        const real = new FSWatcher(
+          options as ConstructorParameters<typeof FSWatcher>[0],
+        );
+        expect(real.options.backend).toBe("auto");
+        await real.close();
+      }
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Full rebuilds are coalesced
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Adding 300 pages at once used to start 300 overlapping full rebuilds of a
+// 2,000-page site: the dev server ran out of file handles (EMFILE), then out
+// of memory. Every watcher event that rebuilds every page now shares one
+// running rebuild and at most one rebuild queued behind it.
+describe("watchFiles – full rebuilds are coalesced", () => {
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  };
+  let finishers: Array<(error?: Error) => void>;
+
+  beforeEach(async () => {
+    await watchFiles();
+    finishers = [];
+    mockProcessAllPages.mockReset().mockImplementation(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          finishers.push((error) => (error ? reject(error) : resolve()));
+        }),
+    );
+  });
+
+  const finishRunning = async (error?: Error): Promise<void> => {
+    finishers.shift()?.(error);
+    await settle();
+  };
+
+  it("runs one rebuild and one trailing rebuild for a burst of page adds", async () => {
+    const add = getHandler(1, "add")!;
+    for (let i = 0; i < 300; i++) add(`/project/src/pages/bulk/p${i}.html`);
+    await settle();
+    expect(processAllPages).toHaveBeenCalledTimes(1);
+
+    await finishRunning();
+    expect(processAllPages).toHaveBeenCalledTimes(2);
+
+    await finishRunning();
+    expect(processAllPages).toHaveBeenCalledTimes(2);
+    expect(finishers).toHaveLength(0);
+  });
+
+  it("removes every deleted page but rebuilds all pages at most twice for a burst of unlinks", async () => {
+    const unlink = getHandler(1, "unlink")!;
+    for (let i = 0; i < 100; i++) unlink(`/project/src/pages/bulk/p${i}.html`);
+    await settle();
+    expect(removePage).toHaveBeenCalledTimes(100);
+    expect(processAllPages).toHaveBeenCalledTimes(1);
+
+    await finishRunning();
+    await finishRunning();
+    expect(processAllPages).toHaveBeenCalledTimes(2);
+    expect(finishers).toHaveLength(0);
+  });
+
+  it("shares one trailing rebuild between page, component and inline stylesheet events", async () => {
+    mockIsInlineStylesheet.mockReturnValue(true);
+    try {
+      const pending = [
+        getHandler(2, "add")!("/project/src/components/new-card.html"),
+        getHandler(0, "add")!("/project/src/pages/inline.css"),
+        getHandler(0, "change")!("/project/src/pages/inline.css"),
+        getHandler(0, "unlink")!("/project/src/pages/inline.css"),
+        getHandler(1, "add")!("/project/src/pages/new.html"),
+        getHandler(1, "unlink")!("/project/src/pages/old.html"),
+        getHandler(2, "add")!("/project/src/components/other.html"),
+      ];
+      await settle();
+      expect(processAllPages).toHaveBeenCalledTimes(1);
+
+      await finishRunning();
+      expect(processAllPages).toHaveBeenCalledTimes(2);
+      await finishRunning();
+      await Promise.all(pending);
+      expect(processAllPages).toHaveBeenCalledTimes(2);
+    } finally {
+      mockIsInlineStylesheet.mockReset().mockReturnValue(false);
+    }
+  });
+
+  it("starts another rebuild for an add that arrives once the trailing rebuild is running", async () => {
+    const add = getHandler(1, "add")!;
+    add("/project/src/pages/a.html");
+    add("/project/src/pages/b.html");
+    await finishRunning();
+    expect(processAllPages).toHaveBeenCalledTimes(2);
+
+    // The trailing rebuild listed the pages before c.html existed.
+    add("/project/src/pages/c.html");
+    await settle();
+    expect(processAllPages).toHaveBeenCalledTimes(2);
+    await finishRunning();
+    expect(processAllPages).toHaveBeenCalledTimes(3);
+    await finishRunning();
+    expect(finishers).toHaveLength(0);
+  });
+
+  it("waits for a component add's rebuild to cover it before its handler settles", async () => {
+    const add = getHandler(2, "add")!;
+    void add("/project/src/components/first.html");
+    let secondDone = false;
+    const second = Promise.resolve(
+      add("/project/src/components/second.html"),
+    ).then(() => (secondDone = true));
+    await finishRunning();
+    // The first rebuild may have read the component list before second.html.
+    expect(secondDone).toBe(false);
+    await finishRunning();
+    await second;
+    expect(secondDone).toBe(true);
+  });
+
+  it("logs a failed rebuild once and still runs the trailing rebuild", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const add = getHandler(1, "add")!;
+      for (let i = 0; i < 20; i++) add(`/project/src/pages/p${i}.html`);
+      await settle();
+      await finishRunning(new Error("compile failed"));
+      expect(
+        errorSpy.mock.calls.filter((c) =>
+          String(c[1]).includes("compile failed"),
+        ),
+      ).toHaveLength(1);
+      expect(processAllPages).toHaveBeenCalledTimes(2);
+      await finishRunning();
+
+      // A later event starts a fresh rebuild.
+      add("/project/src/pages/later.html");
+      await settle();
+      expect(processAllPages).toHaveBeenCalledTimes(3);
+      await finishRunning();
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });

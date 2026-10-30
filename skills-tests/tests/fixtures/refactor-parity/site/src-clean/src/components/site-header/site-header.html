@@ -1,0 +1,49 @@
+<style>
+  .header {
+    position: relative;
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    padding: 16px 40px;
+  }
+</style>
+<header class="header" data-testid="site-header">
+  <nav aria-label="Main" data-testid="site-header-nav">
+    <button
+      type="button"
+      class="trigger"
+      aria-expanded="false"
+      aria-controls="products-menu"
+      data-testid="site-header-products"
+    >
+      Products
+    </button>
+    <ul class="menu" id="products-menu" hidden data-testid="site-header-menu">
+      <li>
+        <a href="/boards" data-testid="site-header-boards"
+          ><svg viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="8" cy="8" r="6" fill="#d6455d" /></svg
+          >Boards</a
+        >
+      </li>
+      <li>
+        <a href="/timelines" data-testid="site-header-timelines"
+          ><svg viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="8" cy="8" r="6" fill="#2a7d4f" /></svg
+          >Timelines</a
+        >
+      </li>
+    </ul>
+    <a class="link" href="/about" data-testid="site-header-about">About</a>
+  </nav>
+</header>
+<script>
+  const trigger = document.querySelector(
+    '[data-testid="site-header-products"]',
+  );
+  trigger.addEventListener("click", () => {
+    const open = trigger.getAttribute("aria-expanded") === "true";
+    trigger.setAttribute("aria-expanded", String(!open));
+    document.querySelector('[data-testid="site-header-menu"]').hidden = open;
+  });
+</script>

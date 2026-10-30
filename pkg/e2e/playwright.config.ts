@@ -5,9 +5,21 @@ import { join } from "node:path";
 // Recompute every reused scoping result and fail on any difference (scoping-template.ts).
 process.env.BASCIK_VERIFY_SCOPING_TEMPLATES ??= "1";
 
+// Each main lane builds into its own output directory (pkg/e2e and
+// base-fixture read it as directory.out) so the lanes can run at the same
+// time without one lane's build or dev-server cleanup erasing another's.
+// Set before the webServer commands start, so it reaches them and the workers.
+process.env.BASCIK_E2E_OUT ??= "dist-static";
+const outName = process.env.BASCIK_E2E_OUT;
+
 const e2eDir = fileURLToPath(new URL(".", import.meta.url));
 const pkgDir = join(e2eDir, "..");
 const baseFixtureDir = join(e2eDir, "base-fixture");
+/** Specs that run against base-fixture (base path, opt-in name scoping). */
+const BASE_FIXTURE_SPECS = [
+  "**/base-serving.test.ts",
+  "**/base-name-scoping.test.ts",
+];
 const staticTestIgnore = [
   // Dedicated to the symlink-enabled live-dev fixture.
   "**/static-asset-symlinks.test.ts",
@@ -17,6 +29,11 @@ const staticTestIgnore = [
   // placeholder is inert. Static output therefore cannot stream, and this
   // suite would only fail for the wrong reason here.
   "**/server-scripts-stream.test.ts",
+  // Request-time components (prompt 157) render server-script output, which
+  // the static harness never runs. Ignored rather than skipped from inside:
+  // detecting the lane from a response would read an unspliced marker or
+  // placeholder, the very failure that suite exists to catch, as a skip.
+  "**/server-components.test.ts",
   "**/api-routes.test.ts",
   "**/dev-server-reload.test.ts",
   "**/prod-server.test.ts",
@@ -26,6 +43,9 @@ const staticTestIgnore = [
   // serves dist/ with a minimal harness server that has none of this, so
   // this suite only runs against playwright.server*.config.ts.
   "**/caching-layer.test.ts",
+  // The security headers, HSTS, private dynamic pages and dotfile 404s are
+  // Bascik server features; the static harness sends none of them.
+  "**/security-defaults.test.ts",
   // bascik-add-dev exercises dynamic component addition during live dev watching
   "**/bascik-add-dev.test.ts",
   // Dev-exec lifecycle runs against its own exec-fixture config
@@ -36,6 +56,9 @@ const staticTestIgnore = [
 
 export default defineConfig({
   testDir: "./tests",
+  // Own results dir (pkg/test-results/static): Playwright clears its outputDir at
+  // run start and keeps .last-run.json there, so lanes must not share one.
+  outputDir: "../test-results/static",
   workers: 4,
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
@@ -46,11 +69,11 @@ export default defineConfig({
   projects: [
     {
       name: "default",
-      testIgnore: [...staticTestIgnore, "**/base-serving.test.ts"],
+      testIgnore: [...staticTestIgnore, ...BASE_FIXTURE_SPECS],
     },
     {
       name: "base-static",
-      testMatch: "**/base-serving.test.ts",
+      testMatch: BASE_FIXTURE_SPECS,
       use: { baseURL: "http://localhost:9550" },
     },
   ],
@@ -59,8 +82,8 @@ export default defineConfig({
       // 1. Build the fixture site using the current pkg dist.
       //    BASCIK_SITE_URL is set through the harness (not a checked-in .env or
       //    config key) so the tests prove the environment-variable path works.
-      // 2. Serve dist/ with the minimal static file server.
-      command: `BASCIK_SITE_URL=http://localhost:4200 node ${pkgDir}/dist/index.js --build && node server.ts 4200`,
+      // 2. Serve the lane's output dir with the minimal static file server.
+      command: `BASCIK_SITE_URL=http://localhost:4200 node ${pkgDir}/dist/index.js --build && node server.ts 4200 ${outName}`,
       cwd: e2eDir,
       url: "http://localhost:4200/scope-test",
       reuseExistingServer: false,
@@ -68,7 +91,7 @@ export default defineConfig({
       stderr: "pipe",
     },
     {
-      command: `BASCIK_SITE_URL=http://localhost:9550 node ${pkgDir}/dist/index.js --build && node ../server.ts 9550 dist /sub/`,
+      command: `BASCIK_SITE_URL=http://localhost:9550 node ${pkgDir}/dist/index.js --build && node ../server.ts 9550 ${outName} /sub/`,
       cwd: baseFixtureDir,
       url: "http://localhost:9550/sub/",
       reuseExistingServer: false,

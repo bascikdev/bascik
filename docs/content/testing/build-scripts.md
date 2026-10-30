@@ -49,10 +49,11 @@ export function generateNavList(items: NavItem[], activeHref?: string): string {
 ### 2. Build Script Usage (`src/pages/index.html`)
 
 ```html
+<!-- src/pages/index.html -->
 <nav>
   <script data-bascik-build>
     import { readFile } from "node:fs/promises";
-    import { generateNavList } from "../lib/nav-generator.js";
+    import { generateNavList } from "../lib/nav-generator.ts";
 
     export default async function () {
       const items = JSON.parse(await readFile("./src/data/nav.json", "utf8"));
@@ -82,7 +83,7 @@ describe("generateNavList", () => {
     expect(html).toContain(
       '<li><a href="/docs" aria-current="page">Docs</a></li>',
     );
-    expect(html).toContain('<li><a href="/" >Home</a></li>');
+    expect(html).toContain('<li><a href="/">Home</a></li>');
   });
 
   it("returns empty string when no navigation items are provided", () => {
@@ -102,6 +103,8 @@ Bascik injects environment variables into every `data-bascik-build` execution su
 | `BASCIK_PAGE_FILE`   | Absolute path to the HTML page currently being compiled                              |
 | `BASCIK_PAGES_DIR`   | Absolute path to the configured pages directory                                      |
 | `BASCIK_SITE_URL`    | The site URL from `--site-url`, the environment, or `.env`; absent when unset        |
+| `BASCIK_BASE`        | The normalized deployment base (`base` in the config, `/` by default)                |
+| `BASCIK_ROUTE`       | The dynamic route object as JSON, on pages generated from a bracket template         |
 
 Page-aware helpers derive canonical tags, Open Graph metadata, breadcrumbs, and schema markup from these variables.
 
@@ -227,7 +230,7 @@ describe("fetchHeroData", () => {
 
 ## Testing Build Lifecycle Hooks (`exec` Scripts)
 
-If your project configures lifecycle build scripts in `bascik.config.ts` via the `exec` option (for example, generating `sitemap.xml`, search indexes, or RSS feeds), write automated tests to verify that generated files are written directly to `dist/` and match expected schema contracts:
+If your project configures lifecycle build scripts in `bascik.config.ts` via the `pipeline.exec` option (for example, generating `sitemap.xml`, search indexes, or RSS feeds), write automated tests to verify that generated files are written directly to `dist/` and match expected schema contracts:
 
 ```ts
 // scripts/generate-sitemap.test.ts
@@ -262,4 +265,4 @@ describe("generateSitemap lifecycle script", () => {
 });
 ```
 
-> **Lifecycle Output Rule:** Build-time generation scripts executed via `exec` in `bascik.config.ts` must always write their output files directly to `dist/`, never to `src/`, keeping the source tree clean.
+> **Lifecycle Output Rule:** Build-time generation scripts executed via `pipeline.exec` in `bascik.config.ts` must always write their output files directly to `dist/`, never to `src/`, keeping the source tree clean.

@@ -7,7 +7,7 @@ import { NAV } from "./nav.js";
  * Naming-convention regression guard.
  *
  * A page's h1 must equal its sidebar (nav) label exactly, with explicit
- * exceptions listed in LABEL_H1_EXCEPTIONS: /compatibility (the full title is
+ * exceptions listed in LABEL_H1_EXCEPTIONS: /component-best-practices and /compatibility (the full title is
  * too long for a sidebar link) and the pages whose sidebar label repeats in
  * another section ("Overview", "Build Scripts"), which need a distinct h1 so
  * their <title> is unique for search engines.
@@ -24,6 +24,12 @@ const LABEL_H1_EXCEPTIONS: Record<string, { label: string; h1: string }> = {
   "/compatibility": {
     label: "Compatibility",
     h1: "Web Standards & Scoping Compatibility",
+  },
+  // The sidebar sits under "Components", so "Component" is implied there; the
+  // h1 keeps the full name for the page title.
+  "/component-best-practices": {
+    label: "Best Practices",
+    h1: "Component Best Practices",
   },
   // SEO: sidebar labels repeat across sections ("Overview", "Build Scripts"),
   // but every <title> must be unique, so these pages carry a distinct h1.

@@ -48,11 +48,7 @@ Markdown posts stay in a `content/` folder outside `src/pages/`. One dynamic rou
 
 ## `{% include %}` → Bascik Component Tags
 
-An Eleventy `{% include 'nav.njk' %}` that renders fixed markup becomes a self-contained Bascik component tag. The file name (hyphenated, without extension) is the tag name. An include that reads variables set by the calling template, such as the base blog's `postslist.njk` with `postslist` and `postslistCounter`, becomes a helper function instead: `renderPostList(posts, counter)` returns the list as HTML
-
-## `{% include %}` → Bascik Component Tags
-
-An Eleventy `{% include 'nav.njk' %}` becomes a self-contained Bascik component tag. The file name (hyphenated, without extension) is the tag name.
+An Eleventy `{% include 'nav.njk' %}` that renders fixed markup becomes a self-contained Bascik component tag. The file name (hyphenated, without extension) is the tag name. An include that reads variables set by the calling template, such as the base blog's `postslist.njk` with `postslist` and `postslistCounter`, becomes a helper function instead: `renderPostList(posts, counter)` returns the list as HTML.
 
 ```njk
 {# src/_includes/nav.njk (Eleventy - before) #}
@@ -207,12 +203,7 @@ Eleventy's Collections API reads a directory of Markdown files and makes them av
   <script data-bascik-build>
     import { readdir, readFile } from "node:fs/promises";
     import matter from "gray-matter";
-
-    const escape = (s) =>
-      String(s)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll('"', "&quot;");
+    import { html } from "@bascik/bascik/html";
 
     export default async function () {
       const files = (await readdir("./content/blog")).filter((f) =>
@@ -233,14 +224,18 @@ Eleventy's Collections API reads a directory of Markdown files and makes them av
       );
       posts.sort((a, b) => b.date - a.date); // newest first, like `| reverse`
 
-      return posts
-        .map(
-          (post) => `<li>
-        <a href="/blog/${post.slug}/">${escape(post.title)}</a>
-        <time datetime="${post.date.toISOString().slice(0, 10)}">${post.date.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })}</time>
-      </li>`,
-        )
-        .join("\n");
+      return html`${posts.map((post) => {
+        const day = post.date.toISOString().slice(0, 10);
+        const month = post.date.toLocaleDateString("en-US", {
+          month: "long",
+          year: "numeric",
+          timeZone: "UTC",
+        });
+        return html`<li>
+          <a href="/blog/${post.slug}/">${post.title}</a>
+          <time datetime="${day}">${month}</time>
+        </li>`;
+      })}`;
     }
   </script>
 </ul>

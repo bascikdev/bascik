@@ -4,7 +4,7 @@ Bascik operates directly on vanilla HTML, CSS, and JavaScript, making step-debug
 
 ## VS Code Launch Profiles (`.vscode/launch.json`)
 
-Scaffolded Bascik projects include a `.vscode/launch.json` file configured for debugging with press-to-run (`F5`) simplicity:
+Scaffolded Bascik projects include a `.vscode/launch.json` file configured for debugging with press-to-run (`F5`) simplicity. It has the **Debug Dev Server**, **Debug Unit Tests**, and **Launch Chrome** configurations; add the **Debug Build Scripts** entry below yourself to step through a build:
 
 ```json
 {

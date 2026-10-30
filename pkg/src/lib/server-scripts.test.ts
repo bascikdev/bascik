@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { executeServerScripts } from "./server-scripts.ts";
+import {
+  executeServerScripts,
+  pageHasServerScripts,
+  planServerScripts,
+} from "./server-scripts.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import { scriptRegistry } from "./script-registry.ts";
 import { BascikConfig } from "./config.ts";
@@ -257,6 +261,20 @@ describe("executeServerScripts in-process execution", () => {
     expect(result).toBe("<span>&copy; 2026 Built with Bascik</span>");
   });
 
+  it("scripts.stripAnsi: false keeps ANSI codes in server-script output", async () => {
+    (BascikConfig as any).scripts.stripAnsi = false;
+    const html = `<span><script data-bascik-server>export default function() { return '\u001B[33m2026\u001B[39m kept'; }</script></span>`;
+    const result = await executeServerScripts(html, baseRequest, baseContext);
+    expect(result).toBe("<span>\u001B[33m2026\u001B[39m kept</span>");
+  });
+
+  it("scripts.stripAnsi: true (explicit) strips as the default does", async () => {
+    (BascikConfig as any).scripts.stripAnsi = true;
+    const html = `<span><script data-bascik-server>export default function() { return '\u001B[1mbold\u001B[22m'; }</script></span>`;
+    const result = await executeServerScripts(html, baseRequest, baseContext);
+    expect(result).toBe("<span>bold</span>");
+  });
+
   it("throws an error when script tag has both data-bascik-server and data-bascik-build", async () => {
     const html =
       "<script data-bascik-server data-bascik-build>export default function() {}</script>";
@@ -322,5 +340,84 @@ describe("executeServerScripts in-process execution", () => {
     ).rejects.toThrow(
       /must export default a function.*src\/pages\/test\.html/s,
     );
+  });
+});
+
+describe("pageHasServerScripts (the dev manifest decision)", () => {
+  const both = (html: string) => [html, Buffer.from(html)];
+
+  it("is true for a page with a server script, a stream script or a sidecar placeholder, as a string or a Buffer", () => {
+    for (const html of [
+      `<main><script data-bascik-server>export default () => "x";</script></main>`,
+      `<p>a</p><script type="text/bascik-server" data-bascik-stream data-bascik-server-id="s1"></script>`,
+      `<script type="text/bascik-server" data-bascik-server-id="abc"></script>`,
+    ])
+      for (const page of both(html))
+        expect(pageHasServerScripts(page)).toBe(true);
+  });
+
+  it("is false for a page that only mentions the attribute in its text, as docs do, Buffer or string", () => {
+    for (const html of [
+      `<p>Add <code>data-bascik-server</code> to a script.</p>`,
+      `<pre><code>&lt;script data-bascik-server&gt;export default () =&gt; "x";&lt;/script&gt;</code></pre>`,
+      `<p>The placeholder is <code>text/bascik-server</code>.</p>`,
+      `<main>no scripts</main>`,
+    ])
+      for (const page of both(html))
+        expect(pageHasServerScripts(page)).toBe(false);
+  });
+});
+
+describe("sidecar placeholders in every spelling a browser reads as the same attributes", () => {
+  const SOURCE = "export default () => '<b>ran</b>';";
+  const spellings = [
+    // html-minifier-terser --remove-attribute-quotes
+    `<script type=text/bascik-server data-bascik-server-id=ph_1></script>`,
+    `<script type='text/bascik-server' data-bascik-server-id='ph_1'></script>`,
+    `<script data-bascik-server-id="ph_1" type="text/bascik-server"></script>`,
+    `<script  type = "text/bascik-server"\n\tdata-bascik-server-id = "ph_1" ></script>`,
+    `<SCRIPT TYPE="TEXT/BASCIK-SERVER" DATA-BASCIK-SERVER-ID="ph_1"></SCRIPT>`,
+    `<script type=" text/bascik-server " data-bascik-server-id=ph_1></script>`,
+    `<script data-note="a > b" type=text/bascik-server data-bascik-server-id=ph_1></script>`,
+  ];
+
+  for (const tag of spellings)
+    it(`runs the script for ${JSON.stringify(tag)}, as a string or a Buffer page`, async () => {
+      serverSidecarRegistry.recordScript("ph_1", SOURCE);
+      const html = `<main>${tag}</main>`;
+      expect(pageHasServerScripts(html)).toBe(true);
+      expect(pageHasServerScripts(Buffer.from(html))).toBe(true);
+      expect(await executeServerScripts(html, baseRequest, baseContext)).toBe(
+        "<main><b>ran</b></main>",
+      );
+    });
+
+  it("keeps an unquoted stream marker", async () => {
+    serverSidecarRegistry.recordScript(
+      "ph_s",
+      SOURCE,
+      undefined,
+      undefined,
+      undefined,
+      "stream",
+    );
+    const html = `<script type=text/bascik-server data-bascik-server-id=ph_s data-bascik-stream></script>`;
+    const plan = planServerScripts(html);
+    const scripts = plan.segments.filter((s) => s.kind === "script");
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0].kind === "script" && scripts[0].mode).toBe("stream");
+  });
+
+  it("misuse: a type that only looks like the placeholder's is not one", () => {
+    for (const html of [
+      `<script data-type="text/bascik-server" data-bascik-server-id="ph_1"></script>`,
+      `<script type="text/bascik-server-x" data-bascik-server-id="ph_1"></script>`,
+      `<script type=text/bascik-serverx data-bascik-server-id=ph_1></script>`,
+      `<script data-x='type=text/bascik-server' data-bascik-server-id="ph_1"></script>`,
+      `<script data-x="a type=text/bascik-server" data-bascik-server-id="ph_1"></script>`,
+    ]) {
+      expect(pageHasServerScripts(html), html).toBe(false);
+      expect(pageHasServerScripts(Buffer.from(html)), html).toBe(false);
+    }
   });
 });

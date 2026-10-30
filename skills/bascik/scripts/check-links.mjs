@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Find broken internal links, missing assets, and dead #fragments in the built site. Dependency-free; Node 22.18+.
+// Find broken internal links, missing assets, and dead #fragments in the built site. Dependency-free; Node 22.22+.
 // Run from the project root after `bascik --build`.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -214,9 +214,12 @@ function findRoot(start) {
   let dir = resolve(start);
   while (true) {
     if (
-      ["bascik.config.js", "bascik.config.ts", "package.json"].some((f) =>
-        existsSync(join(dir, f)),
-      )
+      [
+        "bascik.config.js",
+        "bascik.config.mjs",
+        "bascik.config.ts",
+        "package.json",
+      ].some((f) => existsSync(join(dir, f)))
     )
       return dir;
     const parent = dirname(dir);
@@ -226,7 +229,7 @@ function findRoot(start) {
 }
 
 async function main() {
-  const { values } = parseArgs({
+  const { values } = parseCliArgs("check-links", {
     options: {
       dist: { type: "string" },
       ignore: { type: "string", multiple: true, default: [] },
@@ -239,7 +242,11 @@ async function main() {
 
   const root = findRoot(process.cwd());
   let config = {};
-  for (const file of ["bascik.config.js", "bascik.config.ts"]) {
+  for (const file of [
+    "bascik.config.js",
+    "bascik.config.mjs",
+    "bascik.config.ts",
+  ]) {
     if (existsSync(join(root, file))) {
       config =
         (await import(pathToFileURL(join(root, file)).href)).default ?? {};
@@ -291,3 +298,30 @@ const invokedDirectly =
   Boolean(process.argv[1]) &&
   pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
 if (invokedDirectly) await main();
+
+/**
+ * `parseArgs`, with a short message naming the flag and the valid ones, and
+ * exit code 2, in place of Node's stack trace on a mistyped or missing flag.
+ */
+function parseCliArgs(name, config) {
+  try {
+    return parseArgs(config);
+  } catch (error) {
+    if (!String(error?.code).startsWith("ERR_PARSE_ARGS_")) throw error;
+    const valid = Object.entries(config.options ?? {})
+      .map(
+        ([long, option]) =>
+          `${option.short ? `-${option.short}, ` : ""}--${long}`,
+      )
+      .join(", ");
+    const flag = /'([^']+)'/.exec(error.message)?.[1];
+    const problem =
+      error.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" && flag
+        ? `unknown option "${flag}"`
+        : error.message.split(". ")[0].replace(/\.$/, "");
+    process.stderr.write(
+      `${name}: ${problem}. Valid options: ${valid}. Run with --help.\n`,
+    );
+    process.exit(2);
+  }
+}

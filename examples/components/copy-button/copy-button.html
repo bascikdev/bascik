@@ -44,10 +44,10 @@ Copies a text value to the clipboard and announces the result to screen readers.
   </button>
   <span class="status" id="status" role="status"></span>
 </span>
-<script>
-  const button = document.getElementById("button");
-  const status = document.getElementById("status");
-  let timer;
+<script type="text/typescript">
+  const button = document.getElementById("button") as HTMLButtonElement;
+  const status = document.getElementById("status") as HTMLElement;
+  let timer: ReturnType<typeof setTimeout> | undefined;
 
   button.addEventListener("click", async () => {
     try {

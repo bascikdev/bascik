@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Worker } from "node:worker_threads";
+import { vi } from "vitest";
 import { WorkerPool } from "./worker-pool.ts";
 
 /**
@@ -176,4 +178,88 @@ describe("WorkerPool real-worker lifecycle settlement", () => {
     // terminate() resolved without leaving a hanging task.
     expect(true).toBe(true);
   }, 10_000);
+});
+
+// A build starts its page workers before it knows how many pages it has and
+// trims the pool afterwards; the trimmed threads must really stop, during
+// startup as well as once idle, and a broken worker module must still settle
+// callers instead of hanging the trimmed pool.
+describe("WorkerPool real-worker shrink", () => {
+  const ECHO = `
+import { parentPort } from "node:worker_threads";
+parentPort.on("message", (task) => parentPort.postMessage({ ok: true, result: task }));
+`;
+
+  const trackTerminated = () => {
+    const terminated: Worker[] = [];
+    const original = Worker.prototype.terminate;
+    const spy = vi
+      .spyOn(Worker.prototype, "terminate")
+      .mockImplementation(function (this: Worker) {
+        terminated.push(this);
+        return original.call(this);
+      });
+    return { terminated, restore: () => spy.mockRestore() };
+  };
+
+  it("stops trimmed threads while they are still starting, and the rest keep working", async () => {
+    const script = await fixture("shrink-start", ECHO);
+    const { terminated, restore } = trackTerminated();
+    const pool = new WorkerPool<unknown, unknown>(script, 4, {});
+    try {
+      // Immediately, before any worker is online: the build trims as soon as
+      // expansion finishes, which can be before the workers have loaded.
+      await pool.shrink(1);
+      expect(pool.size).toBe(1);
+      expect(terminated).toHaveLength(3);
+      // A worker's threadId becomes -1 once its thread has exited.
+      for (const worker of terminated) expect(worker.threadId).toBe(-1);
+      const results = await Promise.all(
+        Array.from({ length: 5 }, (_, i) => pool.run(`task-${i}`)),
+      );
+      expect(results).toEqual([
+        "task-0",
+        "task-1",
+        "task-2",
+        "task-3",
+        "task-4",
+      ]);
+    } finally {
+      await pool.terminate();
+      restore();
+    }
+  }, 15_000);
+
+  it("leaves no thread running after terminate() of a trimmed pool", async () => {
+    const script = await fixture("shrink-term", ECHO);
+    const { terminated, restore } = trackTerminated();
+    const pool = new WorkerPool<unknown, unknown>(script, 3, {});
+    try {
+      await pool.run("warm");
+      await pool.shrink(2);
+      await pool.terminate();
+      expect(terminated).toHaveLength(3);
+      for (const worker of terminated) expect(worker.threadId).toBe(-1);
+    } finally {
+      restore();
+    }
+  }, 15_000);
+
+  it("settles callers when the worker module is broken and the pool was trimmed", async () => {
+    const script = await fixture("shrink-broken", BROKEN_TOP);
+    const pool = new WorkerPool<unknown, unknown>(script, 4, {});
+    try {
+      await pool.shrink(1);
+      const outcome = await Promise.race([
+        pool.run("task").then(
+          () => "resolved",
+          (error: Error) => error.message,
+        ),
+        sleep(8000).then(() => "timed out"),
+      ]);
+      expect(outcome).toMatch(/no viable workers|broken module/);
+    } finally {
+      await pool.terminate();
+    }
+  }, 15_000);
 });

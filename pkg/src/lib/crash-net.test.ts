@@ -4,6 +4,11 @@ import { adaptHttp1 } from "./http.ts";
 import { adaptHttp2 } from "./http2.ts";
 import { isNetworkResetError, createRequestHandler } from "./server.ts";
 import { installProcessCrashHandlers } from "./crash-net.ts";
+import { registerExitStopper } from "./exit-stoppers.ts";
+
+// Off except in the one test that needs a page pool still stopping.
+let pendingStop: Promise<void> | null = null;
+registerExitStopper(() => pendingStop);
 
 describe("Crash Net - Bug 4: isNetworkResetError error codes", () => {
   it("recognizes standard reset codes", () => {
@@ -38,6 +43,7 @@ describe("Crash Net - Bug 1 & 6: HTTP/1.1 stream error handler ignores network r
       url: "/large-file.bin",
       headers: {},
       socket: new EventEmitter() as any,
+      once: vi.fn(),
     };
     mockReqMsg.socket.remoteAddress = "127.0.0.1";
 
@@ -220,5 +226,54 @@ describe("Crash Net - Bug 3 & 5 & 7: Process-level crash handlers", () => {
     expect(exitSpy).toHaveBeenCalledWith(1);
 
     uninstall();
+  });
+
+  it("logs at once but exits only after the page pools stop, so no worker is still loading at exit", async () => {
+    let finishStop!: () => void;
+    pendingStop = new Promise<void>((r) => (finishStop = r));
+    const savedExitCode = process.exitCode;
+    const savedSigint = process.listeners("SIGINT");
+    const savedSigterm = process.listeners("SIGTERM");
+    const uninstall = installProcessCrashHandlers();
+    try {
+      const testException = new Error("user script crashed while loading");
+      process.emit("uncaughtException" as any, testException);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[bascik] Fatal uncaught exception:",
+        testException,
+      );
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+      // A second crash or rejection while the exit waits is still shown, but
+      // not as another fatal crash: the first one is what failed the run.
+      const second = new Error("a follow-on failure");
+      const third = new Error("a follow-on rejection");
+      process.emit("uncaughtException" as any, second);
+      process.emit("unhandledRejection" as any, third, Promise.resolve());
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[bascik] Another error while exiting:",
+        second,
+      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[bascik] Another error while exiting:",
+        third,
+      );
+      const fatalHeadings = consoleErrorSpy.mock.calls.filter(
+        ([heading]: unknown[]) =>
+          typeof heading === "string" && heading.startsWith("[bascik] Fatal"),
+      );
+      expect(fatalHeadings).toHaveLength(1);
+      expect(exitSpy).not.toHaveBeenCalled();
+      finishStop();
+      await new Promise((r) => setImmediate(r));
+      expect(exitSpy).toHaveBeenCalledTimes(1);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      pendingStop = null;
+      uninstall();
+      process.exitCode = savedExitCode;
+      for (const l of savedSigint) process.on("SIGINT", l as any);
+      for (const l of savedSigterm) process.on("SIGTERM", l as any);
+    }
   });
 });

@@ -1,23 +1,27 @@
 # Script Imports
 
-Every Bascik script tag is a standard Node.js ESM module: `data-bascik-build`, `data-bascik-server`, `data-bascik-stream`, and `data-bascik-routes`, plus the `src="…"` attribute on each of them. This page covers how those scripts import shared helpers and npm packages. The rules are the same for all four.
+Every Bascik script tag is a standard Node.js ESM module: `data-bascik-build`, `data-bascik-build-once`, `data-bascik-server`, `data-bascik-stream`, and `data-bascik-routes`, plus the `src="…"` attribute on each of them. This page covers how those scripts import shared helpers and npm packages. The rules are the same for all five.
 
 ## Shared Modules
 
 Write utility functions in your project and import them from any script. No special Bascik API is required:
 
-```js
+```ts
 // src/lib/render-cards.ts
-import { readFile } from 'node:fs/promises';
+import { readFile } from "node:fs/promises";
 
 export async function renderCards(jsonPath: string) {
-  const items = JSON.parse(await readFile(jsonPath, 'utf8'));
-  return items.map(item => `
+  const items = JSON.parse(await readFile(jsonPath, "utf8"));
+  return items
+    .map(
+      (item) => `
     <div class="card">
       <h3>${item.title}</h3>
       <p>${item.description}</p>
     </div>
-  `).join('\n');
+  `,
+    )
+    .join("\n");
 }
 ```
 
@@ -28,13 +32,14 @@ Static imports, bare imports, `export ... from`, and dynamic `import()` all work
 Relative paths change shape with the depth of the file that contains them (`../lib/x.ts` at one level, `../../lib/x.ts` at the next), so the same helper import cannot be pasted into every page. For shared helpers, import from the **import root** instead. The default recommendation is `@/`:
 
 ```html
+<!-- src/pages/cards.html -->
 <script data-bascik-build>
   import { renderCards } from "@/lib/render-cards.ts";
   export default async () => await renderCards("./content/cards.json");
 </script>
 ```
 
-`@/` resolves against `scripts.importRoot` (default `src`), so `@/lib/render-cards.ts` is `src/lib/render-cards.ts` from any page or component, at any nesting depth. The alias works in `<script data-bascik-build>`, `<script data-bascik-server>`, `<script data-bascik-stream>`, `<script data-bascik-routes>`, and in the `src="…"` attribute on those tags.
+`@/` resolves against `scripts.importRoot` (default `src`), so `@/lib/render-cards.ts` is `src/lib/render-cards.ts` from any page or component, at any nesting depth. The alias works in `<script data-bascik-build>`, `<script data-bascik-build-once>`, `<script data-bascik-server>`, `<script data-bascik-stream>`, `<script data-bascik-routes>`, and in the `src="…"` attribute on those tags.
 
 - **Helper resolution:** Helper `.ts` and `.js` files loaded from disk are executed by Node as-is, so a helper that imports another helper must use standard `./` or `../`. The alias is rewritten only inside script blocks.
 - **Data paths:** Quoted data paths passed to functions (`readFile('./content/x.md')`) are not module specifiers and keep their standard `process.cwd()` semantics.
@@ -59,6 +64,7 @@ npm install gray-matter
 ```
 
 ```html
+<!-- src/pages/about.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
   import matter from "gray-matter";

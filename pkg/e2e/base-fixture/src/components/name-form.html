@@ -1,0 +1,16 @@
+<form id="signup" data-bascik-attr-data-testid="testid">
+  <label for="field">Username</label>
+  <input id="field" name="username" data-testid="field" />
+  <!-- Puts "email" in the component's markup, so the script's setAttribute("name", "email") is scoped too. -->
+  <input type="hidden" name="email" value="" />
+  <button id="rename" type="button" data-testid="rename">Rename</button>
+  <output id="keys" data-testid="keys"></output>
+  <script>
+    const form = document.getElementById("signup");
+    const keys = document.getElementById("keys");
+    keys.textContent = [...new FormData(form).keys()].join(", ");
+    document.getElementById("rename").addEventListener("click", () => {
+      document.getElementById("field").setAttribute("name", "email");
+    });
+  </script>
+</form>

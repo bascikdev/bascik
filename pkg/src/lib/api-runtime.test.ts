@@ -6,6 +6,7 @@ import {
   requestOrigin,
 } from "./api-runtime.ts";
 import { scriptRegistry } from "./script-registry.ts";
+import { nativeClock } from "./clock.ts";
 import type { BascikRequest } from "./server.ts";
 
 describe("API runtime execution", () => {
@@ -1412,6 +1413,147 @@ describe("API runtime execution", () => {
         expect(url.searchParams.get("sort")).toBe("desc");
         expect(url.searchParams.get("limit")).toBe("10");
       });
+    });
+  });
+
+  // The rule invokeWithDeadline applies on every host: once the apiTimeout
+  // deadline fired (or the client aborted), the route answers 504 (or 499)
+  // even when the handler hands back a Response afterwards, synchronously
+  // inside its own abort listener included. The deadline is fired by hand
+  // through the clock option, so the boundary is ordering, not sleeps.
+  describe("a fired deadline wins", () => {
+    const manualClock = () => {
+      let fire: (() => void) | undefined;
+      const setTimeoutSpy = vi.fn((cb: () => void) => {
+        fire = cb;
+        return 1 as unknown as ReturnType<typeof setTimeout>;
+      });
+      return {
+        clock: {
+          ...nativeClock,
+          setTimeout: setTimeoutSpy,
+          clearTimeout: vi.fn(),
+        },
+        setTimeoutSpy,
+        fire: () => {
+          if (!fire) throw new Error("no deadline was scheduled");
+          fire();
+        },
+      };
+    };
+    const tickUntil = async (done: () => boolean) => {
+      for (let i = 0; i < 50 && !done(); i++) {
+        await new Promise<void>((r) => setImmediate(r));
+      }
+      expect(done()).toBe(true);
+    };
+    const route = (GET: (...args: any[]) => unknown) => {
+      vi.spyOn(scriptRegistry, "load").mockResolvedValue({
+        filePath: "/app/src/api/deadline.ts",
+        module: { GET },
+        version: 0,
+      });
+    };
+    const run = (
+      clock: ReturnType<typeof manualClock>["clock"],
+      extra: { signal?: AbortSignal; timeoutMs?: number } = {},
+    ) =>
+      executeApiRoute({
+        filePath: "/app/src/api/deadline.ts",
+        request: new Request("http://localhost:8080/api/deadline"),
+        params: {},
+        remoteIp: "127.0.0.1",
+        timeoutMs: 50,
+        clock,
+        ...extra,
+      });
+
+    it("misuse: a handler that returns a Response inside its abort listener at the deadline is a 504, not a 200", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      let started = false;
+      route((_r: Request, _c: unknown, { signal }: { signal: AbortSignal }) => {
+        started = true;
+        return new Promise<Response>((resolve) => {
+          signal.addEventListener(
+            "abort",
+            () => resolve(new Response("late")),
+            { once: true },
+          );
+        });
+      });
+      const { clock, fire } = manualClock();
+      const pending = run(clock);
+      await tickUntil(() => started);
+      fire();
+      const res = await pending;
+      expect(res.status).toBe(504);
+      expect(await res.text()).toBe("Gateway Timeout");
+      expect(String(errorSpy.mock.calls[0]?.[0])).toContain("timed out");
+    });
+
+    it("misuse: a handler that rejects with a non-Error inside its abort listener at the deadline is a 504", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      let started = false;
+      route((_r: Request, _c: unknown, { signal }: { signal: AbortSignal }) => {
+        started = true;
+        return new Promise<Response>((_, reject) => {
+          signal.addEventListener("abort", () => reject("not an error"));
+        });
+      });
+      const { clock, fire } = manualClock();
+      const pending = run(clock);
+      await tickUntil(() => started);
+      fire();
+      expect((await pending).status).toBe(504);
+    });
+
+    it("misuse: a handler that returns a Response inside its abort listener on a client abort is a 499, not a 200 or a 504", async () => {
+      let started = false;
+      route((_r: Request, _c: unknown, { signal }: { signal: AbortSignal }) => {
+        started = true;
+        return new Promise<Response>((resolve) => {
+          signal.addEventListener(
+            "abort",
+            () => resolve(new Response("late")),
+            { once: true },
+          );
+        });
+      });
+      const { clock } = manualClock();
+      const upstream = new AbortController();
+      const pending = run(clock, { signal: upstream.signal });
+      await tickUntil(() => started);
+      upstream.abort();
+      expect((await pending).status).toBe(499);
+    });
+
+    it("boundary: a Response returned before the deadline is delivered when the timer fires in the same tick", async () => {
+      let respond: ((r: Response) => void) | undefined;
+      route(
+        () =>
+          new Promise<Response>((resolve) => {
+            respond = resolve;
+          }),
+      );
+      const { clock, fire } = manualClock();
+      const pending = run(clock);
+      await tickUntil(() => respond !== undefined);
+      respond!(new Response("in time"));
+      fire();
+      const res = await pending;
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("in time");
+    });
+
+    it("misuse: an already aborted client signal is a 499 and the handler never runs", async () => {
+      const GET = vi.fn(() => new Response("ran"));
+      route(GET);
+      const { clock } = manualClock();
+      const upstream = new AbortController();
+      upstream.abort();
+      const res = await run(clock, { signal: upstream.signal });
+      expect(res.status).toBe(499);
+      expect(GET).not.toHaveBeenCalled();
     });
   });
 });

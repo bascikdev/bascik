@@ -193,6 +193,7 @@ import {
   startServerInstance,
 } from "./server.ts";
 import { mem } from "./mem.ts";
+import { getLiveReloadScript } from "./live-reload.ts";
 import { BascikConfig } from "./config.ts";
 import { createReadStream } from "node:fs";
 import { stat, readFile, access, open } from "node:fs/promises";
@@ -537,6 +538,32 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
     );
   });
 
+  // A page that loaded before its rebuild finished can miss the reload; the
+  // connect message tells it which version is stored now.
+  it("sends the stored version of the open page with the connected message", async () => {
+    mockMem.getPageExact.mockImplementation((path: string) =>
+      path === "/faq"
+        ? makePage({
+            content: Buffer.from(
+              `<p>faq</p>${getLiveReloadScript("/bascik-live-reload", "41")}`,
+            ),
+          })
+        : undefined,
+    );
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(
+      stream,
+      makeHeaders(
+        "/bascik-live-reload",
+        "GET",
+        "",
+        "https://localhost:8443/faq",
+      ),
+    );
+    expect(stream.write).toHaveBeenCalledWith("data: connected 41\n\n");
+  });
+
   it("calls mem.trackOpenPage with the referer pathname when a connection opens", async () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
@@ -702,6 +729,178 @@ describe("startHttp2Server – SSE boot-done event", () => {
     fireBootDone();
     // Only the initial "data: connected" write should be present, not a reload.
     expect(stream.write).not.toHaveBeenCalledWith("data: reload\n\n");
+  });
+
+  // During boot the `transpiled` event is buffered until the post phase ran,
+  // so a boot page waits on the never-buffered `page-stored` event instead.
+  describe("boot page reloads as soon as its own page is in memory", () => {
+    const BOOT_PATH = "/bascik-live-reload?boot=1";
+    const reloadWrites = (stream: ReturnType<typeof makeStream>) =>
+      stream.write.mock.calls.filter((call: any[]) =>
+        /^data: reload \d+\n\n$/.test(String(call[0])),
+      );
+    const firePageStored = (relativePagePath: string) => {
+      const [, handler] = mockEventEmitter.on.mock.calls.find(
+        (c: any[]) => c[0] === "page-stored",
+      ) as [string, (arg: { relativePagePath: string }) => void];
+      handler({ relativePagePath });
+    };
+
+    beforeEach(() => {
+      mockMem.isBooting = true;
+      mockMem.getPageExact.mockReturnValue(undefined);
+    });
+
+    afterEach(() => {
+      mockMem.isBooting = false;
+      mockMem.getPageExact.mockReset();
+    });
+
+    it("boot=1 client with Referer / reloads when / is stored before boot-done", async () => {
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(
+        stream,
+        makeHeaders(BOOT_PATH, "GET", "", "https://localhost:8443/"),
+      );
+      expect(reloadWrites(stream)).toHaveLength(0);
+
+      // Another page landing in memory is not this tab's page.
+      firePageStored("pages/about.html");
+      expect(reloadWrites(stream)).toHaveLength(0);
+
+      firePageStored("pages/index.html");
+      expect(reloadWrites(stream)).toHaveLength(1);
+      // The tab is leaving the boot page now, so every other reload listener
+      // is retired: boot-done, a later page-stored match, and the buffered
+      // `transpiled` event for this page that flushes at boot end.
+      for (const event of [
+        "boot-done",
+        "page-stored",
+        "transpiled",
+        "asset-changed",
+      ]) {
+        expect(mockEventEmitter.removeListener).toHaveBeenCalledWith(
+          event,
+          expect.any(Function),
+        );
+      }
+    });
+
+    // The real page's own (non-boot) connection reloads once at boot end,
+    // from the flushed `transpiled` event; boot-done would be a second reload
+    // for the same tab milliseconds later.
+    it("does not subscribe a non-boot client whose page is already in memory to boot-done", async () => {
+      mockMem.getPageExact.mockReturnValue(makePage());
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(
+        stream,
+        makeHeaders(
+          "/bascik-live-reload",
+          "GET",
+          "",
+          "https://localhost:8443/",
+        ),
+      );
+      expect(mockMem.getPageExact).toHaveBeenCalledWith("/");
+      const events = mockEventEmitter.on.mock.calls.map((c: any[]) => c[0]);
+      expect(events).not.toContain("boot-done");
+      expect(events).toContain("transpiled");
+      expect(reloadWrites(stream)).toHaveLength(0);
+    });
+
+    it("still subscribes a non-boot client to boot-done when its page is not in memory or it has no Referer", async () => {
+      const handler = getStreamHandler()!;
+      await handler(
+        makeStream(),
+        makeHeaders(
+          "/bascik-live-reload",
+          "GET",
+          "",
+          "https://localhost:8443/about",
+        ),
+      );
+      await handler(makeStream(), makeHeaders("/bascik-live-reload"));
+      const bootDoneSubscriptions = mockEventEmitter.on.mock.calls.filter(
+        (c: any[]) => c[0] === "boot-done",
+      );
+      expect(bootDoneSubscriptions).toHaveLength(2);
+    });
+
+    it("matches an index route whose Referer omits the trailing slash", async () => {
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(
+        stream,
+        makeHeaders(BOOT_PATH, "GET", "", "https://localhost:8443/blog"),
+      );
+      firePageStored("pages/blog/index.html");
+      expect(reloadWrites(stream)).toHaveLength(1);
+    });
+
+    it("reloads immediately on connect when its page is already in memory during boot", async () => {
+      // The page landed between the boot page being served and the SSE
+      // connection arriving, so no later page-stored event will announce it.
+      mockMem.getPageExact.mockReturnValue(makePage());
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(
+        stream,
+        makeHeaders(BOOT_PATH, "GET", "", "https://localhost:8443/about"),
+      );
+      expect(mockMem.getPageExact).toHaveBeenCalledWith("/about");
+      expect(reloadWrites(stream)).toHaveLength(1);
+      expect(mockEventEmitter.removeListener).toHaveBeenCalledWith(
+        "boot-done",
+        expect.any(Function),
+      );
+    });
+
+    it("keeps waiting on connect when its page is not in memory yet", async () => {
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(
+        stream,
+        makeHeaders(BOOT_PATH, "GET", "", "https://localhost:8443/about"),
+      );
+      expect(reloadWrites(stream)).toHaveLength(0);
+      fireBootDone();
+      expect(reloadWrites(stream)).toHaveLength(1);
+    });
+
+    it("does not subscribe a non-boot client, or a boot client without a Referer, to page-stored", async () => {
+      const handler = getStreamHandler()!;
+      await handler(
+        makeStream(),
+        makeHeaders(
+          "/bascik-live-reload",
+          "GET",
+          "",
+          "https://localhost:8443/",
+        ),
+      );
+      await handler(makeStream(), makeHeaders(BOOT_PATH));
+      const events = mockEventEmitter.on.mock.calls.map((c: any[]) => c[0]);
+      expect(events).not.toContain("page-stored");
+    });
+
+    it("removes the page-stored listener when the SSE stream closes", async () => {
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(
+        stream,
+        makeHeaders(BOOT_PATH, "GET", "", "https://localhost:8443/"),
+      );
+      const closeCallback = stream.on.mock.calls.find(
+        (c: any[]) => c[0] === "close",
+      )?.[1] as () => void;
+      closeCallback?.();
+      expect(mockEventEmitter.removeListener).toHaveBeenCalledWith(
+        "page-stored",
+        expect.any(Function),
+      );
+    });
   });
 });
 

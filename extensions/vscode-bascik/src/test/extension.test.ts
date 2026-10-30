@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import type { BascikExtensionApi } from "../extension";
 
 function getBascikExtension(): vscode.Extension<unknown> | undefined {
   return (
@@ -468,6 +469,118 @@ suite("Extension Integration Suite", () => {
           ),
         "The Bascik component provider should not describe built-in elements",
       );
+    });
+  });
+
+  suite("Find All References", () => {
+    /** References at the given offset of a fixture file, as "relative/path:line" strings. */
+    async function referencesAt(
+      relativePath: string,
+      position: vscode.Position,
+    ): Promise<{ where: string[]; texts: string[] }> {
+      const folder = getWorkspaceFolder("primary");
+      const document = await vscode.workspace.openTextDocument(
+        vscode.Uri.file(path.join(folder.uri.fsPath, relativePath)),
+      );
+      const locations =
+        (await vscode.commands.executeCommand<vscode.Location[]>(
+          "vscode.executeReferenceProvider",
+          document.uri,
+          position,
+        )) ?? [];
+      const texts: string[] = [];
+      for (const location of locations) {
+        const target = await vscode.workspace.openTextDocument(location.uri);
+        texts.push(target.getText(location.range));
+      }
+      return {
+        where: locations.map(
+          (location) =>
+            `${path.relative(folder.uri.fsPath, location.uri.fsPath).replace(/\\/g, "/")}:${location.range.start.line}`,
+        ),
+        texts,
+      };
+    }
+
+    test("lists a component's usages from the first line of its own file", async () => {
+      const { where, texts } = await referencesAt(
+        "src/components/my-button.html",
+        new vscode.Position(0, 0),
+      );
+      assert.ok(where.includes("src/component-nav.html:0"), where.join(", "));
+      assert.ok(
+        where.includes("src/unclosed-component.html:1"),
+        where.join(", "),
+      );
+      // VS Code asks with includeDeclaration, so the component file's first line is listed too. VS Code sorts
+      // the list by file itself.
+      const declaration = where.indexOf("src/components/my-button.html:0");
+      assert.ok(declaration >= 0, where.join(", "));
+      assert.ok(
+        texts.every(
+          (text, index) => index === declaration || text === "my-button",
+        ),
+        texts.join(", "),
+      );
+    });
+
+    test("lists the same usages from a usage tag", async () => {
+      const fromUsage = await referencesAt(
+        "src/component-nav.html",
+        new vscode.Position(0, 3),
+      );
+      const fromFile = await referencesAt(
+        "src/components/my-button.html",
+        new vscode.Position(0, 0),
+      );
+      assert.deepStrictEqual(fromUsage.where, fromFile.where);
+    });
+
+    test("returns nothing for a built-in element", async () => {
+      const { where } = await referencesAt(
+        "src/unclosed-component.html",
+        new vscode.Position(0, 2),
+      );
+      assert.deepStrictEqual(where, []);
+    });
+
+    test("drops a deleted page even though listing it left its model open", async () => {
+      const folder = getWorkspaceFolder("primary");
+      const pageUri = vscode.Uri.file(
+        path.join(folder.uri.fsPath, "src/refs-deleted-page.html"),
+      );
+      const listed = async () =>
+        (
+          await referencesAt(
+            "src/components/my-button.html",
+            new vscode.Position(0, 0),
+          )
+        ).where.includes("src/refs-deleted-page.html:0");
+      /** Polls for up to 5 s: the editor reports file changes to the server after a short delay. */
+      const settle = async (expected: boolean, message: string) => {
+        const deadline = Date.now() + 5000;
+        while ((await listed()) !== expected) {
+          if (Date.now() > deadline) assert.fail(message);
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      };
+      await vscode.workspace.fs.writeFile(
+        pageUri,
+        Buffer.from("<my-button></my-button>\n"),
+      );
+      try {
+        // referencesAt opens every listed file, as Peek and the References panel do, so the page's model
+        // stays open after the delete below.
+        await settle(true, "the new page should be listed");
+        await vscode.workspace.fs.delete(pageUri);
+        await settle(false, "the deleted page should no longer be listed");
+      } finally {
+        try {
+          await vscode.workspace.fs.delete(pageUri);
+        } catch {
+          // Already deleted.
+        }
+      }
     });
   });
 
@@ -1867,11 +1980,37 @@ suite("Extension Integration Suite", () => {
       );
     });
 
-    test("warns when a component external form does not preserve name attributes", async () => {
+    test("does not warn for a component external form when name ships as written (the default)", async () => {
+      const workspaceFolder = getWorkspaceFolder("primary");
+      const doc = await vscode.workspace.openTextDocument(
+        vscode.Uri.file(
+          path.join(
+            workspaceFolder.uri.fsPath,
+            "src",
+            "components",
+            "external-form.html",
+          ),
+        ),
+      );
+      // Nothing to wait for: give the server time to publish, then expect no warning.
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      assert.ok(
+        !vscode.languages
+          .getDiagnostics(doc.uri)
+          .some((diagnostic) =>
+            diagnostic.message.includes(
+              'External form actions require data-bascik-preserve="name"',
+            ),
+          ),
+      );
+    });
+
+    test("warns when a component external form does not preserve name attributes in a project that scopes name", async () => {
       const workspaceFolder = getWorkspaceFolder("primary");
       const componentUri = vscode.Uri.file(
         path.join(
           workspaceFolder.uri.fsPath,
+          "nested-project",
           "src",
           "components",
           "external-form.html",
@@ -1949,6 +2088,73 @@ suite("Extension Integration Suite", () => {
               'External form actions require data-bascik-preserve="name"',
             ),
           ),
+      );
+    });
+
+    test("warns on a radio group's name in a component a page uses twice, and clears when the page uses it once", async () => {
+      const workspaceFolder = getWorkspaceFolder("primary");
+      const component = await vscode.workspace.openTextDocument(
+        vscode.Uri.file(
+          path.join(
+            workspaceFolder.uri.fsPath,
+            "src",
+            "components",
+            "size-picker.html",
+          ),
+        ),
+      );
+      await vscode.window.showTextDocument(component);
+      const warning = await waitForDiagnostic(
+        component.uri,
+        (diagnostic) => diagnostic.code === "shared-name-group",
+        "Expected shared-name-group on size-picker.html",
+      );
+      assert.strictEqual(warning.severity, vscode.DiagnosticSeverity.Warning);
+      assert.strictEqual(component.getText(warning.range), 'name="size"');
+      assert.strictEqual(warning.range.start.line, 2);
+      assert.match(
+        warning.message,
+        /used 2 times on src\/name-group-page\.html/,
+      );
+      assert.match(warning.message, /own <form>/);
+      assert.match(warning.message, /data-bascik-attr-name="group"/);
+
+      // Unsaved edits to the page count: with one usage left, the warning goes.
+      const page = await vscode.workspace.openTextDocument(
+        vscode.Uri.file(
+          path.join(workspaceFolder.uri.fsPath, "src", "name-group-page.html"),
+        ),
+      );
+      const original = page.getText();
+      const secondLine = page.lineAt(1).rangeIncludingLineBreak;
+      const remove = new vscode.WorkspaceEdit();
+      remove.delete(page.uri, secondLine);
+      assert.ok(await vscode.workspace.applyEdit(remove));
+      try {
+        await waitFor(
+          () =>
+            !vscode.languages
+              .getDiagnostics(component.uri)
+              .some((diagnostic) => diagnostic.code === "shared-name-group"),
+          "Expected shared-name-group to clear when the page uses size-picker once",
+        );
+      } finally {
+        const restore = new vscode.WorkspaceEdit();
+        restore.replace(
+          page.uri,
+          new vscode.Range(
+            page.positionAt(0),
+            page.positionAt(page.getText().length),
+          ),
+          original,
+        );
+        await vscode.workspace.applyEdit(restore);
+        await page.save();
+      }
+      await waitForDiagnostic(
+        component.uri,
+        (diagnostic) => diagnostic.code === "shared-name-group",
+        "Expected shared-name-group again once the page uses size-picker twice",
       );
     });
 
@@ -2459,7 +2665,9 @@ suite("Extension Integration Suite", () => {
       const doc = await openWorkspaceDocument({
         language: "html",
         content:
-          '<script data-bascik-stream>\nexport default async (request) => {\n  return `<a href="${x}">link</a>`;\n};\n</script>',
+          // A markup template reports the hole as server-script-unescaped-markup instead; a bare attribute
+          // string still gets the URL sink warning.
+          '<script data-bascik-stream>\nexport default async (request) => {\n  return `href="${x}"`;\n};\n</script>',
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find(
@@ -2474,7 +2682,8 @@ suite("Extension Integration Suite", () => {
       ["server-script-sink-unquoted-attribute", "<div title=${request}>"],
       ["server-script-sink-inline-script", "<script>${request}</script>"],
       ["server-script-sink-style", "<style>.x { color: ${request}; }</style>"],
-      ["server-script-sink-text-unescaped", "<p>${request.url}</p>"],
+      // A request value in markup text is covered by server-script-unescaped-markup.
+      ["server-script-unescaped-markup", "<p>${request.url}</p>"],
     ] as const) {
       test(`publishes ${code} through HTML integration`, async () => {
         const document = await openWorkspaceDocument({
@@ -2601,12 +2810,310 @@ suite("Extension Integration Suite", () => {
       const doc = await openWorkspaceDocument({
         language: "html",
         content:
-          '<script data-bascik-server>\nimport { escape } from "@/lib/server.ts";\nexport default async (request, context, { signal }) => {\n  const user = escape(request.headers.get("x-user") ?? "guest");\n  return `<p>Hello ${user}</p>`;\n};\n</script>',
+          '<script data-bascik-server>\nimport { html } from "@bascik/bascik/html";\nexport default async (request, context, { signal }) => {\n  const user = request.headers.get("x-user") ?? "guest";\n  return html`<p>Hello ${user}</p>`;\n};\n</script>',
       });
       const diagnostics = vscode.languages
         .getDiagnostics(doc.uri)
         .filter((d) => d.source === "bascik");
       assert.strictEqual(diagnostics.length, 0);
+    });
+  });
+
+  // VS Code's built-in HTML server joins every <script> without type="module" into one JavaScript file, so two
+  // Bascik scripts that each `export default` show "A module cannot have multiple default exports". The extension
+  // never changes the setting on its own: in a Bascik workspace it asks once, and only a click writes the
+  // workspace folder settings. The "plain" folder has no Bascik config and must be left exactly as VS Code has it.
+  suite("Built-in HTML script check prompt", () => {
+    const TWO_DEFAULT_EXPORTS = [
+      "<p>Hi</p>",
+      "<script data-bascik-server>",
+      "  export default () => 'a';",
+      "</script>",
+      "<script data-bascik-build>",
+      "  export default () => 'b';",
+      "</script>",
+    ].join("\n");
+    const createdPaths: vscode.Uri[] = [];
+    let api: BascikExtensionApi;
+
+    function isMultipleDefaultExports(diagnostic: vscode.Diagnostic): boolean {
+      return diagnostic.message.includes("multiple default exports");
+    }
+
+    async function exists(uri: vscode.Uri): Promise<boolean> {
+      try {
+        await vscode.workspace.fs.stat(uri);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    function folderSetting(name: string) {
+      return vscode.workspace
+        .getConfiguration("html", getWorkspaceFolder(name))
+        .inspect<boolean>("validate.scripts");
+    }
+
+    /** Writes a page with two default-exporting scripts in `folderName` and shows it, as the HTML server needs. */
+    async function showTwoExportPage(
+      folderName: string,
+    ): Promise<vscode.TextDocument> {
+      const folder = getWorkspaceFolder(folderName);
+      const uri = vscode.Uri.file(
+        path.join(
+          folder.uri.fsPath,
+          `tmp-script-check-${createdPaths.length}.html`,
+        ),
+      );
+      await vscode.workspace.fs.writeFile(
+        uri,
+        Buffer.from(TWO_DEFAULT_EXPORTS),
+      );
+      createdPaths.push(uri);
+      const doc = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(doc, { preview: false });
+      return doc;
+    }
+
+    /** Polls for up to 15 seconds; the HTML server debounces and starts lazily. */
+    async function eventually(
+      predicate: () => boolean | Promise<boolean>,
+      message: () => string,
+    ): Promise<void> {
+      const deadline = Date.now() + 15_000;
+      while (Date.now() < deadline) {
+        if (await predicate()) return;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.fail(message());
+    }
+
+    function diagnosticSummary(uri: vscode.Uri): string {
+      return JSON.stringify(
+        vscode.languages
+          .getDiagnostics(uri)
+          .map((diagnostic) => [diagnostic.source, diagnostic.message]),
+      );
+    }
+
+    suiteSetup(async () => {
+      const ext = getBascikExtension();
+      assert.ok(ext);
+      api = (
+        ext.isActive ? ext.exports : await ext.activate()
+      ) as BascikExtensionApi;
+      await api.firstScriptCheck;
+      for (const name of ["primary", "secondary"]) {
+        const dir = vscode.Uri.joinPath(
+          getWorkspaceFolder(name).uri,
+          ".vscode",
+        );
+        assert.ok(
+          !(await exists(dir)),
+          `${dir.fsPath} should not exist before this suite; a previous run may have left it behind`,
+        );
+        createdPaths.push(dir);
+      }
+    });
+
+    suiteTeardown(async () => {
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+      for (const name of ["primary", "secondary"]) {
+        await vscode.workspace
+          .getConfiguration("html", getWorkspaceFolder(name))
+          .update(
+            "validate.scripts",
+            undefined,
+            vscode.ConfigurationTarget.WorkspaceFolder,
+          );
+      }
+      for (const uri of createdPaths) {
+        try {
+          await vscode.workspace.fs.delete(uri, { recursive: true });
+        } catch {}
+      }
+      // Under --extensionTestsPath workspaceState lives in memory for this run only; clearing it keeps a dismissal
+      // from one test out of the next.
+      await api?.scriptCheck.clearDismissal();
+    });
+
+    test("activation in the Bascik workspace shows one prompt for the Bascik folders only", async () => {
+      assert.strictEqual(
+        api.scriptCheck.prompts.length,
+        1,
+        'Expected exactly one prompt at activation. If there is none, a stored "Don\'t ask again" from an earlier run may hide it.',
+      );
+      const [prompt] = api.scriptCheck.prompts;
+      assert.deepStrictEqual([...prompt.folders].sort(), [
+        "primary",
+        "secondary",
+      ]);
+      assert.deepStrictEqual(prompt.buttons, [
+        "Add to workspace settings",
+        "Don't ask again",
+      ]);
+      assert.match(
+        prompt.message,
+        /A module cannot have multiple default exports/,
+      );
+      assert.match(prompt.message, /Bascik runs each script on its own/);
+      const first = await api.firstScriptCheck;
+      assert.strictEqual(first.outcome, "prompted");
+      assert.strictEqual(first.folders.plain, "not-bascik");
+      // At most once per session: checking again shows nothing new.
+      assert.strictEqual(
+        (await api.scriptCheck.check()).outcome,
+        "asked-this-session",
+      );
+      assert.strictEqual(api.scriptCheck.prompts.length, 1);
+    });
+
+    test("a non-Bascik folder gets no prompt and keeps VS Code's script check", async () => {
+      const setting = folderSetting("plain");
+      assert.strictEqual(setting?.workspaceFolderValue, undefined);
+      assert.strictEqual(setting?.workspaceValue, undefined);
+      assert.strictEqual(
+        vscode.workspace
+          .getConfiguration("html", getWorkspaceFolder("plain"))
+          .get("validate.scripts"),
+        true,
+      );
+      assert.ok(
+        !api.scriptCheck.prompts.some((prompt) =>
+          prompt.folders.includes("plain"),
+        ),
+      );
+      const doc = await showTwoExportPage("plain");
+      await eventually(
+        () =>
+          vscode.languages
+            .getDiagnostics(doc.uri)
+            .some(isMultipleDefaultExports),
+        () =>
+          `VS Code should still check scripts outside Bascik projects: ${diagnosticSummary(doc.uri)}`,
+      );
+    });
+
+    test("Add to workspace settings writes the folder settings, keeps other settings, and clears the false error", async () => {
+      const doc = await showTwoExportPage("primary");
+      await eventually(
+        () =>
+          vscode.languages
+            .getDiagnostics(doc.uri)
+            .some(isMultipleDefaultExports),
+        () =>
+          `Before the click, VS Code reports the false error in a Bascik page: ${diagnosticSummary(doc.uri)}`,
+      );
+      // An existing settings file is merged, never replaced.
+      const secondarySettings = vscode.Uri.joinPath(
+        getWorkspaceFolder("secondary").uri,
+        ".vscode",
+        "settings.json",
+      );
+      await vscode.workspace.fs.writeFile(
+        secondarySettings,
+        Buffer.from('{\n  "editor.tabSize": 3\n}\n'),
+      );
+      await eventually(
+        () =>
+          vscode.workspace
+            .getConfiguration("editor", getWorkspaceFolder("secondary"))
+            .inspect("tabSize")?.workspaceFolderValue === 3,
+        () => "VS Code should read the existing secondary settings",
+      );
+      const userValueBefore = folderSetting("primary")?.globalValue;
+
+      const [prompt] = api.scriptCheck.prompts;
+      prompt.answer("Add to workspace settings");
+      await prompt.done;
+
+      for (const name of ["primary", "secondary"]) {
+        const settingsUri = vscode.Uri.joinPath(
+          getWorkspaceFolder(name).uri,
+          ".vscode",
+          "settings.json",
+        );
+        const text = Buffer.from(
+          await vscode.workspace.fs.readFile(settingsUri),
+        ).toString("utf8");
+        assert.match(
+          text,
+          /"html\.validate\.scripts":\s*false/,
+          `${name}: ${text}`,
+        );
+        assert.strictEqual(folderSetting(name)?.workspaceFolderValue, false);
+      }
+      const secondaryText = Buffer.from(
+        await vscode.workspace.fs.readFile(secondarySettings),
+      ).toString("utf8");
+      assert.match(secondaryText, /"editor\.tabSize":\s*3/);
+      assert.strictEqual(
+        folderSetting("primary")?.globalValue,
+        userValueBefore,
+      );
+      assert.strictEqual(
+        folderSetting("plain")?.workspaceFolderValue,
+        undefined,
+      );
+
+      await eventually(
+        () =>
+          !vscode.languages
+            .getDiagnostics(doc.uri)
+            .some(isMultipleDefaultExports),
+        () =>
+          `After the click, the false error should go away: ${diagnosticSummary(doc.uri)}`,
+      );
+    });
+
+    test("a folder that sets the value true or false is never asked", async () => {
+      for (const value of [false, true]) {
+        for (const name of ["primary", "secondary"]) {
+          await vscode.workspace
+            .getConfiguration("html", getWorkspaceFolder(name))
+            .update(
+              "validate.scripts",
+              value,
+              vscode.ConfigurationTarget.WorkspaceFolder,
+            );
+        }
+        api.scriptCheck.forgetSession();
+        const result = await api.scriptCheck.check();
+        assert.strictEqual(result.outcome, "nothing-to-ask", `value ${value}`);
+        assert.strictEqual(result.folders.primary, "already-set");
+        assert.strictEqual(result.folders.secondary, "already-set");
+        assert.strictEqual(api.scriptCheck.prompts.length, 1);
+      }
+    });
+
+    test("Don't ask again is stored for the workspace and outlasts the session", async () => {
+      for (const name of ["primary", "secondary"]) {
+        await vscode.workspace
+          .getConfiguration("html", getWorkspaceFolder(name))
+          .update(
+            "validate.scripts",
+            undefined,
+            vscode.ConfigurationTarget.WorkspaceFolder,
+          );
+      }
+      api.scriptCheck.forgetSession();
+      assert.strictEqual((await api.scriptCheck.check()).outcome, "prompted");
+      const prompt = api.scriptCheck.prompts.at(-1)!;
+      prompt.answer("Don't ask again");
+      await prompt.done;
+      assert.strictEqual(api.scriptCheck.isDismissed(), true);
+
+      // A new session reads workspaceState, not memory, so it stays quiet.
+      api.scriptCheck.forgetSession();
+      assert.strictEqual((await api.scriptCheck.check()).outcome, "dismissed");
+      assert.strictEqual(api.scriptCheck.prompts.length, 2);
+      // Dismissing writes no setting anywhere.
+      assert.strictEqual(
+        folderSetting("primary")?.workspaceFolderValue,
+        undefined,
+      );
+      assert.strictEqual(folderSetting("primary")?.globalValue, undefined);
     });
   });
 });

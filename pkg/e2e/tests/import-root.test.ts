@@ -11,6 +11,10 @@
  *   - src/pages/import-root-test.html      depth 1, uses the component
  *   - src/pages/nested/import-root-test.html  depth 2, same component unchanged
  *   - src/pages/import-root-server-test.html  data-bascik-server with @/ import
+ *     of src/lib/import-root-server-helper.ts (same marker). It is a separate
+ *     file because production servers import it from the source tree at
+ *     request time, and the dev watcher case below rewrites
+ *     import-root-helper.ts while the other lanes may still be running.
  *
  * Applies to every config:
  *   - static build (playwright.config.ts): build-script fixtures
@@ -29,10 +33,10 @@ const MARKER = "import-root-helper-v1";
 
 type ServerMode = "static" | "dev" | "prod";
 
-// The dev server and the HTTP/1.1 production server share a port, so the mode
-// is detected from observable behavior rather than baseURL: only the dev
-// server injects the live-reload client, and only the static harness leaves
-// server-script tags in the page (it cannot execute them).
+// The mode is detected from observable behavior rather than from a lane's port
+// or project name, so the spec keeps working however the lanes are configured:
+// only the dev server injects the live-reload client, and only the static
+// harness leaves server-script tags in the page (it cannot execute them).
 const detectMode = async (
   request: import("@playwright/test").APIRequestContext,
 ): Promise<ServerMode> => {

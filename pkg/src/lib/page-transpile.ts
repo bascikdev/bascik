@@ -10,8 +10,9 @@ import {
   getRelativePath,
 } from "./file-system.ts";
 import { minifyHtml } from "./html-minifier.ts";
-import { BUILD_ATTR_NAME, OPEN_TAG_ATTRS } from "./html-patterns.ts";
-import { getLiveReloadScript } from "./live-reload.ts";
+import { scriptDirectiveFinder } from "./html-patterns.ts";
+import { scanElementContents } from "./element-content-scan.ts";
+import { getLiveReloadScript, nextLiveReloadVersion } from "./live-reload.ts";
 import { getHttpPath } from "./paths.ts";
 
 import {
@@ -19,7 +20,15 @@ import {
   rewriteHtmlBasePaths,
   withBasePath,
 } from "./base-path.ts";
+import {
+  createBuildScriptStats,
+  formatPageBuildScriptStats,
+} from "./build-script-stats.ts";
 import { collectAllScriptDeps, executeBuildScripts } from "./build-scripts.ts";
+import {
+  checkServerScriptTypeScript,
+  inlinePageTypeScriptScripts,
+} from "./page-typescript.ts";
 import { stdout as colorOut } from "./colors.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
 import { computePageCspHashes, cspHashCollector } from "./csp-hashes.ts";
@@ -73,11 +82,10 @@ export type PageWriteInput = Pick<
   generation?: number;
 };
 
-// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const PENDING_BUILD_SCRIPT_RE = new RegExp(
-  String.raw`<script\b${OPEN_TAG_ATTRS}\s${BUILD_ATTR_NAME}`,
-  "i",
-);
+// `<script\b${OPEN_TAG_ATTRS}\s${BUILD_ATTR_NAME}` (flag `i`), in linear time.
+const findPendingBuildScript = scriptDirectiveFinder(["data-bascik-build"]);
+const hasPendingBuildScript = (html: string): boolean =>
+  findPendingBuildScript(html) !== -1;
 
 // Records missing imports so creating a helper can trigger a page rebuild.
 const recordMissingScriptDeps = async (
@@ -176,6 +184,9 @@ export const transpilePage = async (
   const resume = () => {
     seg = performance.now();
   };
+  // Build-script children run while the clock above is paused, so their cost
+  // is counted separately and named on the page's line.
+  const scriptStats = createBuildScriptStats();
 
   const relativePagePath = route
     ? resolveRoutePath(getRelativePath(pagePath, "pages"), route.params)
@@ -223,6 +234,7 @@ export const transpilePage = async (
       options?.onceResolvedHtml ?? rawHtml,
       pagePath,
       route,
+      { stats: scriptStats },
     );
     pause();
     htmlWithBuildOutput = await pendingBuild;
@@ -244,6 +256,17 @@ export const transpilePage = async (
   // transformed and diagnosed in `listComponents`, are not re-inspected here.
   // This is the same pass in dev and build: TypeScript strip first, then
   // scoping, then optional `minify.js`.
+  // A page's own <script src="name.ts"> is compiled and inlined, as a
+  // component's .ts companion is; the file becomes a page dependency.
+  const pendingPageTs = inlinePageTypeScriptScripts(
+    htmlWithBuildOutput,
+    pagePath,
+    rawHtml,
+  );
+  pause();
+  const pageTs = await pendingPageTs;
+  resume();
+  htmlWithBuildOutput = pageTs.html;
   const pendingTs = transformTypeScriptScriptTags(
     htmlWithBuildOutput,
     relativePagePathForDiagnostics(pagePath),
@@ -282,7 +305,7 @@ export const transpilePage = async (
   );
 
   let bodyPasses = 0;
-  while (PENDING_BUILD_SCRIPT_RE.test(transpiledHtmlBody) && bodyPasses < 10) {
+  while (hasPendingBuildScript(transpiledHtmlBody) && bodyPasses < 10) {
     bodyPasses++;
     const pendingBodyBuild = executeBuildScripts(
       transpiledHtmlBody,
@@ -290,6 +313,7 @@ export const transpilePage = async (
       route,
       {
         pageFile: pagePath,
+        stats: scriptStats,
       },
     );
     pause();
@@ -321,10 +345,7 @@ export const transpilePage = async (
   );
 
   let headPasses = 0;
-  while (
-    PENDING_BUILD_SCRIPT_RE.test(transpiledHeadContent) &&
-    headPasses < 10
-  ) {
+  while (hasPendingBuildScript(transpiledHeadContent) && headPasses < 10) {
     headPasses++;
     const pendingHeadBuild = executeBuildScripts(
       transpiledHeadContent,
@@ -332,6 +353,7 @@ export const transpilePage = async (
       route,
       {
         pageFile: pagePath,
+        stats: scriptStats,
       },
     );
     pause();
@@ -427,25 +449,18 @@ export const transpilePage = async (
   if (cssMinifier) {
     // Also minify any inline <style> blocks that came from the page source,
     // preserving their opening and closing tags (such as media="..." attributes).
-    const styleBlockRegex =
-      /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi;
-    const matches: Array<{
-      full: string;
-      open: string;
-      css: string;
-      close: string;
-      index: number;
-    }> = [];
-    let match: RegExpExecArray | null;
-    while ((match = styleBlockRegex.exec(transpiledHead)) !== null) {
-      matches.push({
-        full: match[0],
-        open: match[1],
-        css: match[2],
-        close: match[3],
-        index: match.index,
-      });
-    }
+    // `(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)`
+    // (flags `gi`), in linear time.
+    const matches = scanElementContents(transpiledHead, "style", {
+      opener: "tag-space",
+      closer: "attributes",
+    }).map((match) => ({
+      full: transpiledHead.slice(match.start, match.end),
+      open: transpiledHead.slice(match.start, match.contentStart),
+      css: transpiledHead.slice(match.contentStart, match.contentEnd),
+      close: transpiledHead.slice(match.contentEnd, match.end),
+      index: match.start,
+    }));
     if (matches.length > 0) {
       let newHead = "";
       let lastIndex = 0;
@@ -483,7 +498,7 @@ export const transpilePage = async (
   }
 
   if (!BascikConfig.isBuild) {
-    transpiledHtmlBody = `${transpiledHtmlBody}${getLiveReloadScript(withBasePath("/bascik-live-reload", BascikConfig.base))}`;
+    transpiledHtmlBody = `${transpiledHtmlBody}${getLiveReloadScript(withBasePath("/bascik-live-reload", BascikConfig.base), nextLiveReloadVersion())}`;
   }
 
   // Minify the body AFTER component resolution so that <pre> blocks from resolved
@@ -555,6 +570,16 @@ export const transpilePage = async (
     serverScripts,
     pagePath,
   );
+  // A TypeScript server or stream script that cannot compile fails the page
+  // here, as a build script does, not with a 500 on the first request.
+  const pendingServerTs = checkServerScriptTypeScript(
+    Object.values(serverScripts),
+    pagePath,
+    rawHtml,
+  );
+  pause();
+  await pendingServerTs;
+  resume();
   // Compute the page's inline CSP hashes here, at the single defined point
   // where `distHtml` holds the page's final emitted representation. Both the
   // serial and worker paths carry these hashes onward; the main thread records
@@ -567,6 +592,8 @@ export const transpilePage = async (
   pause();
   const fileDependencies = await pendingDeps;
   resume();
+  for (const dep of pageTs.dependencies)
+    if (!fileDependencies.includes(dep)) fileDependencies.push(dep);
 
   // Even on a "successful" transpile the page may reference a helper that does
   // not yet exist (e.g. the harness swallows the import failure). Track it so
@@ -618,8 +645,10 @@ export const transpilePage = async (
   if (BascikConfig.logging?.transpiles !== false) {
     const configLevel = BascikConfig.logging?.level ?? "info";
     if (shouldLog(configLevel, "info")) {
+      // `in <duration>` stays where it was, and the build-script parenthetical
+      // follows it, so what reads these lines keeps reading the compile time.
       console.log(
-        `${colorOut.green("transpiled:")} ${relativePagePath} ${colorOut.dim(`in ${formatDuration(workMs)}`)}`,
+        `${colorOut.green("transpiled:")} ${relativePagePath} ${colorOut.dim(`in ${formatDuration(workMs)}${formatPageBuildScriptStats(scriptStats)}`)}`,
       );
     }
   }
@@ -632,5 +661,6 @@ export const transpilePage = async (
     fileDependencies,
     serverScripts,
     cspHashes,
+    buildScripts: scriptStats,
   };
 };

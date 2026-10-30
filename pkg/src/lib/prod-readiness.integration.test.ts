@@ -34,6 +34,7 @@ vi.mock("./config.js", () => ({
 }));
 
 import { startProdServer } from "./server-prod.ts";
+import { SIDECAR_SCHEMA_VERSION } from "./server-sidecar.ts";
 import { mem } from "./mem.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import {
@@ -42,6 +43,7 @@ import {
 } from "./server-lifecycle.ts";
 import { BascikConfig } from "./config.ts";
 import { clearCompressedRepresentationCache } from "./caching.ts";
+import { privateDirFor } from "./private-dir.ts";
 
 const setDistDir = (dir: string) => {
   (BascikConfig.directory as { out: string }).out = dir;
@@ -102,9 +104,10 @@ describe("production sidecar readiness integration", () => {
       join(tmpdir(), `bascik-prod-readiness-${process.pid}-`),
     );
     distDir = join(workDir, "dist");
-    await mkdir(join(distDir, ".bascik"), { recursive: true });
+    await mkdir(distDir, { recursive: true });
+    await mkdir(privateDirFor(distDir), { recursive: true });
     await writeFile(
-      join(distDir, ".bascik", "build-state.json"),
+      join(privateDirFor(distDir), "build-state.json"),
       JSON.stringify({ format: 1, mode: "build", version: "test" }),
       "utf8",
     );
@@ -130,7 +133,7 @@ describe("production sidecar readiness integration", () => {
 
   it("rejects development output before it opens a production listener", async () => {
     await writeFile(
-      join(distDir, ".bascik", "build-state.json"),
+      join(privateDirFor(distDir), "build-state.json"),
       JSON.stringify({ format: 1, mode: "development", version: "test" }),
       "utf8",
     );
@@ -151,7 +154,7 @@ describe("production sidecar readiness integration", () => {
       "utf8",
     );
     await writeFile(
-      join(distDir, ".bascik", "server-scripts.json"),
+      join(privateDirFor(distDir), "server-scripts.json"),
       "{corrupt",
       "utf8",
     );
@@ -175,8 +178,12 @@ describe("production sidecar readiness integration", () => {
       "utf8",
     );
     await writeFile(
-      join(distDir, ".bascik", "server-scripts.json"),
-      JSON.stringify({ version: "1", schema: 2, scripts: {} }),
+      join(privateDirFor(distDir), "server-scripts.json"),
+      JSON.stringify({
+        version: "1",
+        schema: SIDECAR_SCHEMA_VERSION,
+        scripts: {},
+      }),
       "utf8",
     );
     const getBound = captureBoundServer();
@@ -196,7 +203,7 @@ describe("production sidecar readiness integration", () => {
       '<script type="text/bascik-server" data-bascik-server-id="missing"></script>',
       "utf8",
     );
-    // No dist/.bascik/server-scripts.json at all.
+    // No .bascik/dist/server-scripts.json at all.
     const getBound = captureBoundServer();
 
     await expect(startProdServer()).rejects.toThrow(

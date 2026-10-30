@@ -19,12 +19,12 @@ A button that switches between light and dark themes and remembers the choice. N
   }
 </style>
 <button class="toggle" id="toggle" type="button" hidden>Dark theme</button>
-<script>
+<script type="text/typescript">
   // aria-pressed tells assistive technology whether dark theme is on; the label stays the same.
-  const toggle = document.getElementById("toggle");
+  const toggle = document.getElementById("toggle") as HTMLButtonElement;
   const media = matchMedia("(prefers-color-scheme: dark)");
-  const preview = toggle.closest("[data-demo-theme]");
-  const themeTarget = preview ?? document.documentElement;
+  const preview = toggle.closest<HTMLElement>("[data-demo-theme]");
+  const themeTarget: HTMLElement = preview ?? document.documentElement;
   const themeAttribute = preview ? "data-demo-theme" : "data-theme";
   const storageKey = preview ? "theme-demo" : "theme";
 
@@ -38,11 +38,11 @@ A button that switches between light and dark themes and remembers the choice. N
     }
   }
 
-  const current = () =>
+  const current = (): string =>
     themeTarget.getAttribute(themeAttribute) ??
     (media.matches ? "dark" : "light");
 
-  const render = () => {
+  const render = (): void => {
     toggle.setAttribute("aria-pressed", String(current() === "dark"));
   };
 

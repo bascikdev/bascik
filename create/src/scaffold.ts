@@ -5,71 +5,88 @@
  * Separated from the CLI entry so it can be unit-tested without I/O.
  */
 
-import { cp, mkdir, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-/** The agent skills bundled from the repo-root skills/ directory (copied in by prepare/prepack). */
-export const SKILLS_DIR = fileURLToPath(
-  new URL("../assets/skills", import.meta.url),
-);
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { agentFilesReportLines, writeAgentFiles } from "./agent-setup.js";
+import { vscodeReportLines, writeVscodeFiles } from "./vscode-settings.js";
 
 /**
- * Project directories that receive the agent skills. `.agents/skills` is the shared location read by GitHub
- * Copilot, Cursor, Codex, Gemini CLI, OpenCode, and others; Claude Code reads `.claude/skills`.
+ * The `@bascik/bascik` release a new project depends on. The agent skills are
+ * installed from the same release's tag, so the two always match.
  */
-export const SKILL_DESTINATIONS = [".agents/skills", ".claude/skills"] as const;
+export const BASCIK_VERSION = "1.0.0-rc.10";
 
-/** Copy every skill directory, skipping the human-facing README at the root of the skills folder. */
-const copySkills = (destination: string): Promise<void> =>
-  cp(SKILLS_DIR, destination, {
-    recursive: true,
-    filter: (source) => resolve(source) !== resolve(SKILLS_DIR, "README.md"),
-  });
+// ─── Templates ────────────────────────────────────────────────────────────────
+
+/**
+ * The starters create-bascik can scaffold. `default` is the plain static site;
+ * `cloudflare` is the same site plus the pieces a Cloudflare Workers deployment
+ * needs: the hosting adapter, Wrangler, and a demo page the Worker renders.
+ */
+export const TEMPLATES = ["default", "cloudflare"] as const;
+export type Template = (typeof TEMPLATES)[number];
 
 // ─── Root files ───────────────────────────────────────────────────────────────
 
-export const PACKAGE_JSON = (name: string): string =>
-  JSON.stringify(
-    {
-      name,
-      version: "0.1.0",
-      type: "module",
-      engines: {
-        node: ">=24.0.0",
-      },
-      scripts: {
-        dev: "bascik",
-        build: "bascik --build",
-        lint: "bascik --check",
-        test: "vitest run",
-        "test:watch": "vitest",
-        "test:coverage": "vitest run --coverage",
-        e2e: "playwright test --config e2e/playwright.config.ts",
-      },
-      dependencies: {
-        "@bascik/bascik": "^1.0.0-rc.9",
-      },
-      devDependencies: {
-        "@bascik/language-server": "^0.1.0-rc.5",
-        "@playwright/test": "^1.62.0",
-        "@types/node": "^24.0.0",
-        "@vitest/coverage-v8": "^4.1.10",
-        vitest: "^4.1.10",
-      },
-    },
-    null,
-    2,
-  ) + "\n";
+/**
+ * Wrangler is pinned to a recent minor, not just the major, because workerd
+ * rejects a compatibility date newer than itself and the adapter pins a recent one.
+ */
+const WRANGLER_VERSION = "^4.153.0";
 
-export const VSCODE_EXTENSIONS_JSON =
-  JSON.stringify(
-    {
-      recommendations: ["bascik.bascik-vscode"],
-    },
-    null,
-    2,
-  ) + "\n";
+export const PACKAGE_JSON = (
+  name: string,
+  template: Template = "default",
+): string => {
+  const cloudflare = template === "cloudflare";
+  return (
+    JSON.stringify(
+      {
+        name,
+        version: "0.1.0",
+        type: "module",
+        engines: {
+          node: ">=22.22.0",
+        },
+        scripts: {
+          dev: "bascik",
+          build: cloudflare
+            ? "bascik --build --target cloudflare"
+            : "bascik --build",
+          // npm puts node_modules/.bin on PATH, so `wrangler` still resolves after the cd.
+          ...(cloudflare && {
+            preview: "cd dist/.bascik/cloudflare && wrangler dev",
+            deploy: "cd dist/.bascik/cloudflare && wrangler deploy",
+          }),
+          lint: "bascik --check",
+          test: "vitest run",
+          "test:watch": "vitest",
+          "test:coverage": "vitest run --coverage",
+          e2e: "playwright test --config e2e/playwright.config.ts",
+        },
+        dependencies: {
+          "@bascik/bascik": `^${BASCIK_VERSION}`,
+        },
+        devDependencies: {
+          ...(cloudflare && { "@bascik/adapter-cloudflare": "^1.0.0-rc.10" }),
+          "@bascik/language-server": "^0.1.0-rc.6",
+          "@playwright/test": "^1.62.0",
+          "@types/node": "^24.0.0",
+          "@vitest/coverage-v8": "^4.1.10",
+          vitest: "^4.1.10",
+          ...(cloudflare && { wrangler: WRANGLER_VERSION }),
+        },
+      },
+      null,
+      2,
+    ) + "\n"
+  );
+};
+
+export {
+  VSCODE_EXTENSIONS_JSON,
+  VSCODE_SETTINGS_JSON,
+} from "./vscode-settings.js";
 
 export const VSCODE_LAUNCH_JSON =
   JSON.stringify(
@@ -130,6 +147,8 @@ export default defineConfig({
     headless: true,
   },
   webServer: {
+    // Playwright runs the command beside this config; the site is one up.
+    cwd: '..',
     command: 'npx bascik --build && npx bascik --server --port 8080',
     url: 'http://localhost:8080',
     reuseExistingServer: !process.env.CI,
@@ -137,7 +156,10 @@ export default defineConfig({
 });
 `;
 
-export const E2E_APP_SPEC = `import { test, expect } from '@playwright/test';
+/** The starter's Playwright spec, with room for a template to append its own tests. */
+const e2eAppSpec = (
+  extraTests = "",
+): string => `import { test, expect } from '@playwright/test';
 
 test.describe('Starter App E2E Tests', () => {
   test('navigates pages and checks titles', async ({ page }) => {
@@ -152,9 +174,9 @@ test.describe('Starter App E2E Tests', () => {
   test('counter component increments and decrements count', async ({ page }) => {
     await page.goto('/');
 
-    const val = page.getByTestId('counter-val').first();
-    const decBtn = page.getByTestId('counter-dec').first();
-    const incBtn = page.getByTestId('counter-inc').first();
+    const val = page.getByTestId('my-counter-value').first();
+    const decBtn = page.getByTestId('my-counter-dec').first();
+    const incBtn = page.getByTestId('my-counter-inc').first();
 
     await expect(val).toHaveText('0');
 
@@ -169,25 +191,74 @@ test.describe('Starter App E2E Tests', () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
 
-    const toggle = page.getByTestId('nav-toggle').first();
-    const menu = page.getByTestId('nav-menu').first();
+    const toggle = page.getByTestId('site-header-nav-toggle').first();
+    const menu = page.getByTestId('site-header-nav-menu').first();
 
+    // Assert what the reader sees, not the class name: the build scopes
+    // .is-open (hashed under minify.identifiers), so the element never
+    // carries the literal class.
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(menu).toBeHidden();
 
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(menu).toHaveClass(/is-open/);
+    await expect(menu).toBeVisible();
 
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(menu).toBeHidden();
   });
-});
+
+  test('contact form answers a submit without leaving the page', async ({ page }) => {
+    await page.goto('/contact');
+    await page.getByTestId('contact-form-name').fill('Ada');
+    await page.getByTestId('contact-form-email').fill('ada@example.com');
+    await page.getByTestId('contact-form-submit').click();
+    await expect(page).toHaveURL('/contact');
+    await expect(page.getByTestId('contact-form-status')).toBeVisible();
+  });
+
+  test('feature card styles the title and text passed through its slot', async ({ page }) => {
+    await page.goto('/');
+    // The card's own sizes (1rem, 0.88rem), not the page's h3 and p.
+    await expect(page.getByRole('heading', { name: 'No framework overhead' })).toHaveCSS('font-size', '16px');
+    await expect(page.getByText('Components compile at build time.')).toHaveCSS('font-size', '14.08px');
+  });
+${extraTests}});
 `;
+
+export const E2E_APP_SPEC = e2eAppSpec();
+
+/** The E2E web server is \`bascik --server\`, which runs server scripts on Node, so the edge page is testable here. */
+export const CLOUDFLARE_E2E_APP_SPEC = e2eAppSpec(`
+  test('edge page renders the request-time greeting', async ({ page }) => {
+    await page.goto('/edge?name=Ada');
+    await expect(page).toHaveTitle(/Edge/);
+    await expect(page.getByTestId('edge-greeting')).toContainText('Ada');
+  });
+
+  test('edge page renders the <feat-card> its server script returns', async ({ page }) => {
+    await page.goto('/edge?name=Ada');
+    const card = page.getByTestId('edge-card');
+    await expect(card).toBeVisible();
+    await expect(card).toContainText('Hello, Ada');
+    // The component's scoped CSS reached the browser: .fcard is a flex column.
+    await expect(card).toHaveCSS('flex-direction', 'column');
+    // The card's title rule reaches the <h3> the script passes through the slot.
+    await expect(page.getByTestId('edge-greeting')).toHaveCSS('font-size', '16px');
+    const html = await page.content();
+    expect(html).not.toContain('<feat-card');
+  });
+`);
 
 export const GITIGNORE = `node_modules/
 dist/
 coverage/
 *.pem
+`;
+
+/** Wrangler keeps its local state (workerd cache, dev vars) in `.wrangler/`. */
+export const CLOUDFLARE_GITIGNORE = `${GITIGNORE}.wrangler/
 `;
 
 // ─── Global CSS ───────────────────────────────────────────────────────────────
@@ -287,22 +358,6 @@ code {
 }
 .callout p { color: var(--text); margin: 0; }
 
-/* ── Form ── */
-.form-group { margin-bottom: 20px; }
-.form-group label {
-  display: block; font-size: 0.88rem; font-weight: 600;
-  color: var(--text); margin-bottom: 6px;
-}
-.form-group input,
-.form-group textarea {
-  width: 100%; background: var(--elevated); border: 1px solid var(--border);
-  border-radius: var(--r-sm); color: var(--text); font-family: inherit;
-  font-size: 0.9rem; padding: 10px 14px; transition: border-color .15s; outline: none;
-}
-.form-group input:focus,
-.form-group textarea:focus { border-color: var(--accent); }
-.form-group textarea { min-height: 120px; resize: vertical; }
-
 /* ── Hero ── */
 .hero { padding: 96px 0 72px; text-align: center; }
 .hero h1 span { color: var(--accent); }
@@ -352,7 +407,20 @@ export const SITE_META_HTML = `<meta charset="UTF-8" />
 <link rel="stylesheet" href="/css/styles.css" />
 `;
 
-export const SITE_HEADER_CSS = `.header {
+export const SITE_HEADER_CSS = `.skip-link {
+  position: absolute;
+  left: 16px;
+  top: -48px;
+  padding: 8px 14px;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: #18191b;
+  font-weight: 600;
+  z-index: 200;
+}
+.skip-link:focus { top: 8px; }
+
+.header {
   position: sticky;
   top: 0;
   z-index: 100;
@@ -442,26 +510,27 @@ export const SITE_HEADER_CSS = `.header {
 /** Sticky top nav with logo (brand prop) and mobile hamburger. */
 export const SITE_HEADER_HTML = `<style>
 ${SITE_HEADER_CSS}</style>
-<header class="header">
+<header class="header" data-testid="site-header">
+  <a href="#main" class="skip-link" data-testid="site-header-skip-link">Skip to content</a>
   <div class="container">
-    <nav class="nav">
-      <a href="/" class="logo" data-bascik-prop-brand>My Site</a>
-      <button id="nav-toggle" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false" data-testid="nav-toggle">
+    <nav class="nav" aria-label="Main" data-testid="site-header-nav">
+      <a href="/" class="logo" data-bascik-prop-brand data-testid="site-header-logo">My Site</a>
+      <button id="nav-toggle" type="button" class="nav-toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle">
         <span></span><span></span><span></span>
       </button>
-      <ul id="nav-menu" class="nav-menu" data-testid="nav-menu">
-        <li><a href="/">Home</a></li>
-        <li><a href="/about">About</a></li>
-        <li><a href="/contact">Contact</a></li>
+      <ul id="nav-menu" class="nav-menu" data-testid="site-header-nav-menu">
+        <li><a href="/" data-testid="site-header-home">Home</a></li>
+        <li><a href="/about" data-testid="site-header-about">About</a></li>
+        <li><a href="/contact" data-testid="site-header-contact">Contact</a></li>
       </ul>
     </nav>
   </div>
 </header>
-<script>
-  var toggle = document.getElementById('nav-toggle');
-  var menu = document.getElementById('nav-menu');
-  toggle.addEventListener('click', function () {
-    var open = toggle.getAttribute('aria-expanded') === 'true';
+<script type="text/typescript">
+  const toggle = document.getElementById('nav-toggle') as HTMLButtonElement;
+  const menu = document.getElementById('nav-menu') as HTMLUListElement;
+  toggle.addEventListener('click', (): void => {
+    const open = toggle.getAttribute('aria-expanded') === 'true';
     toggle.setAttribute('aria-expanded', String(!open));
     menu.classList.toggle('is-open');
   });
@@ -503,17 +572,17 @@ export const SITE_FOOTER_CSS = `.footer {
 /** Footer with brand prop and build-time year. */
 export const SITE_FOOTER_HTML = `<style>
 ${SITE_FOOTER_CSS}</style>
-<footer class="footer">
+<footer class="footer" data-testid="site-footer">
   <div class="container">
     <div class="footer-inner">
       <span class="footer-copy">
-        &copy; <script data-bascik-build-once>export default () => String(new Date().getFullYear());</script>
+        &copy; <script data-bascik-build-once type="text/typescript">export default (): string => String(new Date().getFullYear());</script>
         <span data-bascik-prop-brand>My Site</span>
       </span>
-      <nav class="footer-nav" aria-label="Footer navigation">
-        <a href="/">Home</a>
-        <a href="/about">About</a>
-        <a href="/contact">Contact</a>
+      <nav class="footer-nav" aria-label="Footer navigation" data-testid="site-footer-nav">
+        <a href="/" data-testid="site-footer-home">Home</a>
+        <a href="/about" data-testid="site-footer-about">About</a>
+        <a href="/contact" data-testid="site-footer-contact">Contact</a>
       </nav>
     </div>
   </div>
@@ -546,8 +615,11 @@ export const FEAT_CARD_CSS = `.fcard {
 .fcard-header:empty { display: none; }
 
 .fcard-body { flex: 1; }
-.fcard-body h3 { margin: 0 0 6px; font-size: 1rem; color: var(--text); }
-.fcard-body p  { margin: 0; font-size: 0.88rem; color: var(--text-muted); }
+/* The h3 and p arrive through the slot from the usage site. Scoping turns a
+   bare element selector into a class only this template's own elements get;
+   an element name inside :is() is left as written, so these match. */
+.fcard-body :is(h2, h3) { margin: 0 0 6px; font-size: 1rem; color: var(--text); }
+.fcard-body :is(p) { margin: 0; font-size: 0.88rem; color: var(--text-muted); }
 
 .fcard-footer {
   padding-top: 12px;
@@ -560,13 +632,16 @@ export const FEAT_CARD_CSS = `.fcard {
 /**
  * Card component demonstrating named slots.
  * Slots: header (label/icon area), default (title + body), footer (actions).
+ * A slot marker is replaced by the slot content, its own tag and classes
+ * included, so each styled zone wraps its marker instead of carrying it.
+ * An unfilled slot leaves its zone empty, and `:empty` hides it.
  */
 export const FEAT_CARD_HTML = `<style>
 ${FEAT_CARD_CSS}</style>
-<article class="fcard">
-  <div class="fcard-header" data-bascik-slot="header"></div>
-  <div class="fcard-body" data-bascik-slot></div>
-  <div class="fcard-footer" data-bascik-slot="footer"></div>
+<article class="fcard" data-testid="feat-card">
+  <div class="fcard-header"><div data-bascik-slot="header"></div></div>
+  <div class="fcard-body"><div data-bascik-slot></div></div>
+  <div class="fcard-footer"><div data-bascik-slot="footer"></div></div>
 </article>
 `;
 
@@ -602,22 +677,88 @@ export const MY_COUNTER_CSS = `.counter {
 /** Interactive counter: two instances on a page stay fully independent. */
 export const MY_COUNTER_HTML = `<style>
 ${MY_COUNTER_CSS}</style>
-<div class="counter">
-  <button id="btn-dec" class="btn btn-ghost" data-testid="counter-dec">−</button>
-  <span id="count-val" class="count-val" data-testid="counter-val">0</span>
-  <button id="btn-inc" class="btn btn-primary" data-testid="counter-inc">+</button>
+<div class="counter" role="group" aria-label="Counter" data-testid="my-counter">
+  <button id="btn-dec" type="button" class="btn btn-ghost" aria-label="Decrease" data-testid="my-counter-dec">−</button>
+  <output id="count-val" class="count-val" aria-live="polite" data-testid="my-counter-value">0</output>
+  <button id="btn-inc" type="button" class="btn btn-primary" aria-label="Increase" data-testid="my-counter-inc">+</button>
 </div>
-<script>
-  (function () {
-    var count = 0;
-    var val = document.getElementById('count-val');
-    document.getElementById('btn-dec').addEventListener('click', function () {
-      val.textContent = --count;
-    });
-    document.getElementById('btn-inc').addEventListener('click', function () {
-      val.textContent = ++count;
-    });
-  }());
+<script type="text/typescript">
+  // Each instance runs this with its own ids, so two counters keep their own count.
+  let count: number = 0;
+  const val = document.getElementById('count-val') as HTMLOutputElement;
+  const show = (next: number): void => {
+    count = next;
+    val.textContent = String(count);
+  };
+  document.getElementById('btn-dec')!.addEventListener('click', () => show(count - 1));
+  document.getElementById('btn-inc')!.addEventListener('click', () => show(count + 1));
+</script>
+`;
+
+export const CONTACT_FORM_CSS = `.form { max-width: 520px; }
+
+.field { margin-bottom: 20px; }
+.field label {
+  display: block; font-size: 0.88rem; font-weight: 600;
+  color: var(--text); margin-bottom: 6px;
+}
+.field input,
+.field textarea {
+  width: 100%; background: var(--elevated); border: 1px solid var(--border);
+  border-radius: var(--r-sm); color: var(--text); font-family: inherit;
+  font-size: 0.9rem; padding: 10px 14px; transition: border-color .15s; outline: none;
+}
+.field input:focus,
+.field textarea:focus { border-color: var(--accent); }
+.field textarea { min-height: 120px; resize: vertical; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 22px; border: none; border-radius: var(--r-sm);
+  font-size: 0.9rem; font-weight: 600; cursor: pointer;
+  line-height: 1; transition: filter .15s;
+  background: var(--accent); color: #18191b;
+}
+@media (hover: hover) {
+  .btn:hover { filter: brightness(0.88); }
+}
+
+.status { margin: 16px 0 0; color: var(--accent); }
+`;
+
+/**
+ * Contact form. The starter has no backend, so submitting shows a note in
+ * place of sending: connect the form to your own endpoint in its script.
+ * Field names ship as written, so `new FormData(form)` has the keys name,
+ * email and message.
+ */
+export const CONTACT_FORM_HTML = `<style>
+${CONTACT_FORM_CSS}</style>
+<form id="contact-form" class="form" data-testid="contact-form">
+  <div class="field">
+    <label for="name">Name</label>
+    <input type="text" id="name" name="name" placeholder="Your name" autocomplete="name" data-testid="contact-form-name" />
+  </div>
+  <div class="field">
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" data-testid="contact-form-email" />
+  </div>
+  <div class="field">
+    <label for="message">Message</label>
+    <textarea id="message" name="message" placeholder="How can we help?" data-testid="contact-form-message"></textarea>
+  </div>
+  <button type="submit" class="btn" data-testid="contact-form-submit">Send message</button>
+  <p id="contact-status" class="status" role="status" data-testid="contact-form-status" hidden></p>
+</form>
+<script type="text/typescript">
+  const form = document.getElementById('contact-form') as HTMLFormElement;
+  const status = document.getElementById('contact-status') as HTMLParagraphElement;
+  form.addEventListener('submit', (event: SubmitEvent): void => {
+    // Nothing receives the form yet: send it to your own endpoint here.
+    event.preventDefault();
+    status.textContent = 'Thanks! This starter form does not send anything yet.';
+    status.hidden = false;
+  });
 </script>
 `;
 
@@ -711,12 +852,33 @@ describe('my-counter component', () => {
 });
 `;
 
+export const CONTACT_FORM_TEST = `import { describe, it, expect } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+describe('contact-form component', () => {
+  const path = join(process.cwd(), 'src/components/contact-form/contact-form.html');
+
+  it('labels every field and handles submit in a TypeScript script', async () => {
+    const html = await readFile(path, 'utf8');
+    for (const id of ['name', 'email', 'message']) {
+      expect(html).toContain(\`for="\${id}"\`);
+      expect(html).toContain(\`id="\${id}"\`);
+    }
+    expect(html).toContain('data-testid="contact-form-submit"');
+    expect(html).toContain('<script type="text/typescript">');
+    expect(html).toContain('preventDefault');
+  });
+});
+`;
+
 // ─── Pages ───────────────────────────────────────────────────────────────────
 
 const pageShell = (
   title: string,
   brand: string,
   body: string,
+  page: string,
 ): string => `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -725,7 +887,7 @@ const pageShell = (
 </head>
 <body>
   <site-header data-bascik-prop-brand="${brand}" />
-  <main>
+  <main id="main" data-testid="${page}-main">
 ${body}
   </main>
   <site-footer data-bascik-prop-brand="${brand}" />
@@ -733,7 +895,19 @@ ${body}
 </html>
 `;
 
-export const indexPage = (brand: string): string =>
+/** The extra feature card the Cloudflare template adds, linking to the page the Worker renders. */
+const EDGE_FEAT_CARD = `
+          <feat-card data-testid="feature-edge">
+            <div data-bascik-slot="header">Edge</div>
+            <h3>Rendered per request</h3>
+            <p>Server scripts and API routes run in a Cloudflare Worker. Static pages stay on the CDN.</p>
+            <div data-bascik-slot="footer"><a href="/edge" class="btn btn-ghost">See it run →</a></div>
+          </feat-card>`;
+
+export const indexPage = (
+  brand: string,
+  options: { template?: Template } = {},
+): string =>
   pageShell(
     `Home - ${brand}`,
     brand,
@@ -755,24 +929,24 @@ export const indexPage = (brand: string): string =>
         <h2>Why Bascik</h2>
         <p>Each card below is a <code>&lt;feat-card&gt;</code> component with three named slots: <code>header</code>, default, and <code>footer</code>.</p>
         <div class="grid-3" style="margin-top:28px;">
-          <feat-card>
+          <feat-card data-testid="feature-zero-runtime">
             <div data-bascik-slot="header">Zero runtime</div>
             <h3>No framework overhead</h3>
             <p>Components compile at build time. Nothing extra ships to the browser.</p>
             <div data-bascik-slot="footer"><a href="/about" class="btn btn-ghost">Learn more →</a></div>
           </feat-card>
-          <feat-card>
+          <feat-card data-testid="feature-scoped-css">
             <div data-bascik-slot="header">Scoped CSS</div>
             <h3>Styles that never leak</h3>
             <p>Each component's class names are automatically namespaced at build time.</p>
             <div data-bascik-slot="footer"><a href="/about" class="btn btn-ghost">Learn more →</a></div>
           </feat-card>
-          <feat-card>
+          <feat-card data-testid="feature-named-slots">
             <div data-bascik-slot="header">Named slots</div>
             <h3>Flexible composition</h3>
             <p>Pass header, body, and footer content into components from the usage site.</p>
             <div data-bascik-slot="footer"><a href="/about" class="btn btn-ghost">Learn more →</a></div>
-          </feat-card>
+          </feat-card>${options.template === "cloudflare" ? EDGE_FEAT_CARD : ""}
         </div>
       </div>
     </section>
@@ -788,6 +962,7 @@ export const indexPage = (brand: string): string =>
         </div>
       </div>
     </section>`,
+    "home",
   );
 
 export const aboutPage = (brand: string): string =>
@@ -801,14 +976,16 @@ export const aboutPage = (brand: string): string =>
         <p class="page-intro">This is the about page. Tell visitors who you are and what you do.</p>
 
         <div class="grid-2" style="margin-top:32px;">
-          <div class="card">
+          <feat-card data-testid="about-mission">
+            <div data-bascik-slot="header">Mission</div>
             <h2>Our mission</h2>
             <p>Describe your mission or purpose here. Keep it concise and genuine.</p>
-          </div>
-          <div class="card">
+          </feat-card>
+          <feat-card data-testid="about-approach">
+            <div data-bascik-slot="header">Approach</div>
             <h2>Our approach</h2>
             <p>Explain how you work or what makes you different from others.</p>
-          </div>
+          </feat-card>
         </div>
 
         <div class="callout" style="margin-top:40px;">
@@ -816,6 +993,7 @@ export const aboutPage = (brand: string): string =>
         </div>
       </section>
     </div>`,
+    "about",
   );
 
 export const contactPage = (brand: string): string =>
@@ -828,23 +1006,10 @@ export const contactPage = (brand: string): string =>
         <h1>Get in touch</h1>
         <p class="page-intro">Have a question or want to work together? Fill out the form below.</p>
 
-        <form style="max-width:520px;" onsubmit="return false;">
-          <div class="form-group">
-            <label for="name">Name</label>
-            <input type="text" id="name" name="name" placeholder="Your name" autocomplete="name" />
-          </div>
-          <div class="form-group">
-            <label for="email">Email</label>
-            <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" />
-          </div>
-          <div class="form-group">
-            <label for="message">Message</label>
-            <textarea id="message" name="message" placeholder="How can we help?"></textarea>
-          </div>
-          <button type="submit" class="btn btn-primary">Send message</button>
-        </form>
+        <contact-form />
       </section>
     </div>`,
+    "contact",
   );
 
 export const notFoundPage = (brand: string): string =>
@@ -854,13 +1019,75 @@ export const notFoundPage = (brand: string): string =>
     `    <div class="container">
       <section class="section" style="text-align:center;">
         <p class="section-label">Error</p>
-        <h1 style="font-size:clamp(4rem,12vw,8rem);color:var(--accent);margin-bottom:8px;">404</h1>
-        <h2 style="margin-bottom:12px;">Page not found</h2>
+        <p style="font-size:clamp(4rem,12vw,8rem);font-weight:800;line-height:1;color:var(--accent);margin-bottom:8px;">404</p>
+        <h1 style="margin-bottom:12px;">Page not found</h1>
         <p style="margin-bottom:32px;">The page you're looking for doesn't exist.</p>
         <a href="/" class="btn btn-primary">Go home</a>
       </section>
     </div>`,
+    "404",
   );
+
+// ─── Cloudflare template ──────────────────────────────────────────────────────
+
+/**
+ * A page with a `data-bascik-server` script. The Cloudflare adapter keeps it out
+ * of `public/` and renders it in the Worker on every request; `bascik --server`
+ * renders it on Node. The script returns the starter's `<feat-card>` around its
+ * greeting, and the host renders that tag into the component's markup and
+ * scoped CSS per request: this page does not use the card in its own markup.
+ * The script builds its markup with `html` from @bascik/bascik/html, which
+ * escapes the query parameter for where it lands.
+ */
+export const edgePage = (brand: string): string =>
+  pageShell(
+    `Edge - ${brand}`,
+    brand,
+    `    <div class="container">
+      <section class="section">
+        <p class="section-label">Edge</p>
+        <h1>Rendered per request</h1>
+        <p class="page-intro">The card below comes from a <code>&lt;script data-bascik-server&gt;</code> block. It runs on every request, so the time changes on reload and <a href="/edge?name=Ada">?name=Ada</a> changes the greeting. The script returns a <code>&lt;feat-card&gt;</code> tag, and the server renders it into the component, scoped CSS included.</p>
+
+        <h2 style="margin-top:28px;">Your greeting</h2>
+        <div style="max-width:520px;margin-top:16px;">
+          <script data-bascik-server type="text/typescript">
+            import { html } from "@bascik/bascik/html";
+
+            export default function (request: Request): string {
+              // Query parameters are untrusted: html escapes each value for where it lands.
+              const name = new URL(request.url).searchParams.get("name") ?? "visitor";
+              return html\`<feat-card data-testid="edge-card">
+                <div data-bascik-slot="header">Server script</div>
+                <h3 data-testid="edge-greeting">Hello, \${name}</h3>
+                <p>Rendered at <code>\${new Date().toISOString()}</code></p>
+                <div data-bascik-slot="footer"><a href="/edge" class="btn btn-ghost">Reload →</a></div>
+              </feat-card>\`;
+            }
+          </script>
+        </div>
+
+        <div class="callout" style="margin-top:40px;">
+          <p>The same Worker answers <a href="/api/hello">/api/hello</a>, an API route in <code>src/api/hello.ts</code>.</p>
+        </div>
+      </section>
+    </div>`,
+    "edge",
+  );
+
+/**
+ * An API route served at /api/hello. \`context.platform\` names the host, so the
+ * same handler answers "cloudflare" from the Worker and "node" from \`bascik --server\`.
+ */
+export const HELLO_API_ROUTE = `export const GET = async (
+  request: Request,
+  context: { remoteIp: string; platform?: { name: string } },
+): Promise<Response> =>
+  Response.json({
+    hello: new URL(request.url).searchParams.get("name") ?? "world",
+    platform: context.platform?.name ?? "unknown",
+  });
+`;
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
@@ -880,20 +1107,24 @@ export function validateProjectName(name: string): string | null {
  *
  * @param projectName  The name used for the directory and package.json name.
  * @param targetDir    Parent directory in which to create the project (defaults to cwd).
+ * @param options      `template` picks the starter (defaults to the static `default`).
  */
 export async function scaffold(
   projectName: string,
   targetDir: string = process.cwd(),
-): Promise<void> {
+  options: { template?: Template } = {},
+): Promise<ScaffoldResult> {
   const root = join(targetDir, projectName);
+  const template = options.template ?? "default";
+  const cloudflare = template === "cloudflare";
+  const notes: string[] = [];
 
   // Create all directories up front
   await Promise.all([
-    mkdir(join(root, ".vscode"), { recursive: true }),
-    ...SKILL_DESTINATIONS.map((dir) =>
-      mkdir(join(root, ...dir.split("/")), { recursive: true }),
-    ),
     mkdir(join(root, "e2e"), { recursive: true }),
+    ...(cloudflare
+      ? [mkdir(join(root, "src", "api"), { recursive: true })]
+      : []),
     mkdir(join(root, "src", "pages", "assets"), { recursive: true }),
     mkdir(join(root, "src", "pages", "css"), { recursive: true }),
     mkdir(join(root, "src", "components", "site-meta"), { recursive: true }),
@@ -901,24 +1132,36 @@ export async function scaffold(
     mkdir(join(root, "src", "components", "site-footer"), { recursive: true }),
     mkdir(join(root, "src", "components", "feat-card"), { recursive: true }),
     mkdir(join(root, "src", "components", "my-counter"), { recursive: true }),
+    mkdir(join(root, "src", "components", "contact-form"), { recursive: true }),
   ]);
 
   await Promise.all([
-    // Agent skills (SKILL.md files with their references/ and scripts/)
-    ...SKILL_DESTINATIONS.map((dir) =>
-      copySkills(join(root, ...dir.split("/"))),
-    ),
+    // Coding assistants: merged into an AGENTS.md or CLAUDE.md the folder already has.
+    // The agent skills are installed afterwards by the CLI, with the skills CLI.
+    writeAgentFiles(root, { template }).then((report) => {
+      notes.push(...agentFilesReportLines(report));
+    }),
 
     // Root
-    writeFile(join(root, "package.json"), PACKAGE_JSON(projectName), "utf8"),
-    writeFile(join(root, "vite.config.js"), VITE_CONFIG, "utf8"),
-    writeFile(join(root, ".gitignore"), GITIGNORE, "utf8"),
-    writeFile(join(root, ".vscode", "launch.json"), VSCODE_LAUNCH_JSON, "utf8"),
     writeFile(
-      join(root, ".vscode", "extensions.json"),
-      VSCODE_EXTENSIONS_JSON,
+      join(root, "package.json"),
+      PACKAGE_JSON(projectName, template),
       "utf8",
     ),
+    writeFile(join(root, "vite.config.js"), VITE_CONFIG, "utf8"),
+    writeFile(
+      join(root, ".gitignore"),
+      cloudflare ? CLOUDFLARE_GITIGNORE : GITIGNORE,
+      "utf8",
+    ),
+
+    // Editor: merged into any .vscode files the folder already has, never replaced
+    writeVscodeFiles(root).then(async (report) => {
+      notes.push(...vscodeReportLines(report));
+      if (!(await writeLaunchJsonIfAbsent(root))) {
+        notes.push(".vscode/launch.json: could not be written.");
+      }
+    }),
 
     // E2E
     writeFile(
@@ -926,7 +1169,11 @@ export async function scaffold(
       PLAYWRIGHT_CONFIG,
       "utf8",
     ),
-    writeFile(join(root, "e2e", "app.spec.ts"), E2E_APP_SPEC, "utf8"),
+    writeFile(
+      join(root, "e2e", "app.spec.ts"),
+      cloudflare ? CLOUDFLARE_E2E_APP_SPEC : E2E_APP_SPEC,
+      "utf8",
+    ),
 
     // Assets
     writeFile(
@@ -957,7 +1204,7 @@ export async function scaffold(
     // Pages
     writeFile(
       join(root, "src", "pages", "index.html"),
-      indexPage(projectName),
+      indexPage(projectName, { template }),
       "utf8",
     ),
     writeFile(
@@ -975,6 +1222,22 @@ export async function scaffold(
       notFoundPage(projectName),
       "utf8",
     ),
+
+    // Cloudflare template: the edge demo page and its API route
+    ...(cloudflare
+      ? [
+          writeFile(
+            join(root, "src", "pages", "edge.html"),
+            edgePage(projectName),
+            "utf8",
+          ),
+          writeFile(
+            join(root, "src", "api", "hello.ts"),
+            HELLO_API_ROUTE,
+            "utf8",
+          ),
+        ]
+      : []),
 
     // Components
     writeFile(
@@ -1027,5 +1290,38 @@ export async function scaffold(
       MY_COUNTER_TEST,
       "utf8",
     ),
+    writeFile(
+      join(root, "src", "components", "contact-form", "contact-form.html"),
+      CONTACT_FORM_HTML,
+      "utf8",
+    ),
+    writeFile(
+      join(root, "src", "components", "contact-form", "contact-form.test.ts"),
+      CONTACT_FORM_TEST,
+      "utf8",
+    ),
   ]);
+
+  return { notes };
+}
+
+/** What `scaffold` wants the user to know, such as a file it could not merge. */
+export interface ScaffoldResult {
+  notes: string[];
+}
+
+/**
+ * Write launch.json unless the folder already has one, which stays as it is.
+ * Returns false when it could not be written, such as when `.vscode` is a file.
+ */
+async function writeLaunchJsonIfAbsent(root: string): Promise<boolean> {
+  try {
+    await writeFile(join(root, ".vscode", "launch.json"), VSCODE_LAUNCH_JSON, {
+      encoding: "utf8",
+      flag: "wx",
+    });
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EEXIST";
+  }
 }

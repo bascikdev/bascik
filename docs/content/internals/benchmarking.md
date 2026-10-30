@@ -23,6 +23,7 @@ Microbenchmarks use Vitest's `bench` test-context fixture (`pkg/bench/transpile.
 - **CSS scoping transforms**: `convertCssElementSelectorsToClasses`, `scopeCssCustomProperties`, and `deduplicateCss`.
 - **Component expansion scaling**: `recursivelyTranspile` across 10 to 3,200 flat and nested component instances, plus sequential multi-page simulations.
 - **Masking and segment reuse**: raw-text masking with present and absent tags, plus shared JavaScript code-segment normalization with and without its memo.
+- **`html` helper** (`pkg/bench/html.bench.ts`): `@bascik/bascik/html` rendering 1,000 product cards, against a plain template literal with and without `esc()`.
 
 Run the suite from the repository root:
 
@@ -210,3 +211,7 @@ yarn workspace @bascik/bascik profile:workload \
 ```
 
 Every capture validates response bytes, streamed HTML completion, edit publication, and profiler output integrity before marking the run complete. Process groups are owned and settled with bounded termination deadlines so a timed-out or interrupted profiler never leaves orphan servers or workers behind.
+
+The `cpu` tool profiles the main subject through `profile-main.ts`, an `--import` preload, instead of native `--cpu-prof`. Native `--cpu-prof` samples from bootstrap, and on Node 24/macOS a sampled thread that takes OpenSSL's provider-store lock for the first time can block on it forever: `import "node:http"` reaches `crypto.getCiphers()` through undici, http2, and tls, and about 5% of 200 concurrent processes stalled there, which a loaded test run reported as `capture deadline exceeded`. The preload warms that state, the default and system CA stores, and the builtins unsampled (`profile-warmup.ts`), starts the inspector profiler at the native 1 ms interval, and writes the profile at exit under the native main-thread name (`CPU.<date>.<time>.<pid>.0.001.cpuprofile`). `profile-isolate.ts` warms the same state before it samples a page worker or script child. The profile leaves out only the warm-up.
+
+The subject imports the code under test relative to the harness, so a capture from an older checkout also runs that checkout's harness, which may still sample from bootstrap. To compare against an older commit, copy the current `pkg/bench` into a detached worktree of that commit and capture from there. Each `manifest.json` records `harnessHashes`, a digest of every bench module the runner reaches (imports, spawned subjects and `--import` preloads); two captures are comparable only when those match.

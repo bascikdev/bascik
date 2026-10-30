@@ -1,0 +1,28 @@
+// bascik.dev: the docs site as an assets-only Cloudflare Worker (no `main`, so no Worker code runs and no request
+// is billed as a Worker invocation). Build from the repo root with `yarn pkg:build && yarn docs:build`, then run
+// `npx wrangler deploy` from docs/. The build writes the `_headers` and `_redirects` files into dist/
+// (scripts/generate-pages-headers.ts), which Workers static assets reads the same way Pages did.
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "bascik",
+  "compatibility_date": "2026-08-23",
+  "assets": {
+    "directory": "./dist",
+    // Same URL shape as Pages: /components serves components.html, and /components/ and /components.html
+    // redirect to /components. Workers redirects with 307 where Pages used 308.
+    "html_handling": "auto-trailing-slash",
+    // Same as Pages with a 404.html: an unknown URL gets the nearest 404.html with status 404.
+    "not_found_handling": "404-page",
+  },
+  // bascik.dev is a Workers custom domain, attached by `wrangler deploy` (a preview upload does not touch routes).
+  // Wrangler replaces the Worker's custom domains with this list on deploy. www.bascik.dev redirects here with a
+  // zone redirect rule, not a route.
+  "routes": [{ "pattern": "bascik.dev", "custom_domain": true }],
+  // bascik.dev is the only production host. Pages also served production on bascik.pages.dev, which needed a
+  // noindex rule; turning workers.dev off leaves no second production host to keep out of search results.
+  "workers_dev": false,
+  // Preview URLs on workers.dev for each uploaded version and preview (`wrangler preview`). `_headers` marks
+  // every workers.dev host noindex.
+  "preview_urls": true,
+  "previews": {},
+}

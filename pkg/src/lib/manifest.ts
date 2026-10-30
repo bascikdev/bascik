@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, relative, resolve } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
+import { ensurePrivateDir } from "./private-dir.ts";
 
 export interface ManifestEntry {
   hash: string;
@@ -22,8 +23,9 @@ class ManifestCollector {
     const resolvedPath = resolve(process.cwd(), normalizedOutputPath);
     const rel = relative(outDir, resolvedPath).replace(/\\/g, "/");
 
-    // Do not record files outside dist/ or the manifest file itself
-    if (rel.startsWith("..") || rel === ".bascik/manifest.json") {
+    // Only files in dist/ are recorded: what a deploy publishes. The private
+    // folder (the sidecar, the CSP hashes, this manifest) is beside dist/.
+    if (rel.startsWith("..") || isAbsolute(rel)) {
       return;
     }
 
@@ -66,9 +68,10 @@ class ManifestCollector {
       return;
     }
 
-    const outDir = resolve(process.cwd(), BascikConfig.directory.out);
-    const manifestPath = join(outDir, ".bascik", "manifest.json");
-    await mkdir(dirname(manifestPath), { recursive: true });
+    const manifestPath = join(
+      await ensurePrivateDir(BascikConfig.directory.out),
+      "manifest.json",
+    );
 
     // Prompt 101: the collector writes exactly what THIS process recorded. The
     // ownership reconciliation (requirements: preserve-and-prune owned outputs

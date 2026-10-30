@@ -10,6 +10,11 @@ export interface BascikExtensionConfig {
     serverScriptRules?: boolean;
     apiRouteRules?: boolean;
     disabledRules?: string[];
+    /**
+     * A project's own escaping functions, trusted like esc() by
+     * server-script-unescaped-markup (for example ["escapeHtml"]).
+     */
+    escapeFunctions?: string[];
   };
 }
 

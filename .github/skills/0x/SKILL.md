@@ -26,15 +26,13 @@ This skill provides a complete guide for profiling Node.js applications, diagnos
 
 ## 2. Workspace Quick-Run Commands
 
-When working in this repository (`@bascik/bascik`), pre-configured npm/yarn profiling scripts in `pkg/package.json` can be executed directly to profile the `docs/` site across build, dev, and serve modes:
+When working in this repository (`@bascik/bascik`), 0x runs through the `pkg/bench/` harness, which captures into a private fixture and writes reports to `--report-dir` (options and limits in `pkg/bench/README.md`):
 
-| Target Mode                        | Command                                | Output Destination                           |
-| :--------------------------------- | :------------------------------------- | :------------------------------------------- |
-| **Static Build (`--build`)**       | `yarn --cwd pkg profile:0x:docs-build` | `docs/dist/profile-0x-build/flamegraph.html` |
-| **Dev Server (watch mode)**        | `yarn --cwd pkg profile:0x:docs-dev`   | `docs/dist/profile-0x-dev/flamegraph.html`   |
-| **Production Server (`--server`)** | `yarn --cwd pkg profile:0x:docs-serve` | `docs/dist/profile-0x-serve/flamegraph.html` |
-
-Each command automatically opens the generated flamegraph in your browser upon completion.
+| Target Mode                                  | Command                                                                                              |
+| :------------------------------------------- | :--------------------------------------------------------------------------------------------------- |
+| **Docs site build (`--build`)**              | `yarn workspace @bascik/bascik profile:compiler --tools 0x --modes build --report-dir "$REPORT_DIR"` |
+| **Docs site dev server (watch mode)**        | `yarn workspace @bascik/bascik profile:compiler --tools 0x --modes dev --report-dir "$REPORT_DIR"`   |
+| **Server, static, dev, and build workloads** | `yarn workspace @bascik/bascik profile:workload --tools 0x --report-dir "$REPORT_DIR"`               |
 
 ---
 
