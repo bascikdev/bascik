@@ -14,9 +14,9 @@ After a plain `bascik --build`, `dist/` holds only the site. Bascik keeps its pr
 
 That is all there is to it. There are no runtime servers to manage, no container images to maintain, and no backend hosting bills.
 
-## Deploy to Cloudflare Pages (Recommended)
+## Deploy to Cloudflare (Recommended)
 
-Cloudflare Pages offers unlimited bandwidth, instant global caching across 300+ cities, free automatic SSL certificates, and zero-configuration builds directly from Git.
+Cloudflare serves a static `dist/` from Pages (options A and B) or from Workers static assets (option C). Cloudflare Pages offers unlimited bandwidth, instant global caching across 300+ cities, free automatic SSL certificates, and zero-configuration builds directly from Git.
 
 ### Option A: Automatic Git Deployments
 
@@ -44,6 +44,10 @@ npx bascik --build
 # 2. Deploy dist/ directly to Cloudflare Pages
 npx wrangler pages deploy dist --project-name my-bascik-site
 ```
+
+### Option C: Workers Static Assets
+
+Cloudflare Workers can serve the same `dist/` with no Worker code: a `wrangler.jsonc` in the project root that points `assets.directory` at `./dist`, deployed with `npx wrangler deploy` or from Git with Workers Builds. `_headers`, `_redirects` and `404.html` work as on Pages, and you get [Worker Previews](/deployment/cloudflare#worker-previews) for branches. [Moving a static site from Pages to Workers](/deployment/cloudflare#moving-a-static-site-from-pages-to-workers) has the config, the differences from Pages, and how to move a custom domain without downtime.
 
 > **Dynamic Cloudflare Features:** If your site uses request-time server scripts (`data-bascik-server`), progressive HTML streams (`data-bascik-stream`), or edge API routes (`src/api/`), use the official [Cloudflare Adapter](/deployment/cloudflare) instead of pure static hosting.
 

@@ -12,6 +12,11 @@
     "build": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik --build",
     "serve": "bascik --server",
     "preview": "bascik --server",
+    "deploy": "wrangler deploy",
+    "cf:dev": "wrangler dev",
+    "cf:check": "wrangler deploy --dry-run",
+    "cf:deploy": "wrangler deploy",
+    "cf:preview": "wrangler preview",
     "e2e": "playwright test --config e2e/playwright.config.ts --reporter=line",
     "e2e:serve": "BASCIK_SITE_URL=https://bascik.dev bascik --config e2e/bascik.config.ts --build && bascik --config e2e/bascik.config.ts --server --port 8099",
     "pkg-dev": "node --inspect --watch-path=./bascik.config.ts --watch-path=../pkg/src ../pkg/src/transpile.ts",
@@ -57,7 +62,8 @@
     "sharp": "^0.35.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "wrangler": "^4.152.0"
   },
   "dependenciesMeta": {
     "node-pty": {

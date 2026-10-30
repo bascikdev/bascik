@@ -11,7 +11,7 @@ Most websites built with Bascik fall into one of three deployment models:
 If your site is a marketing page, blog, documentation site, portfolio, or uses build-time scripts (`data-bascik-build`) to fetch data, **static hosting is all you need**.
 
 - **How it works:** Run `bascik --build` to produce `dist/` and upload it to any host or CDN.
-- **Popular hosts:** Cloudflare Pages, GitHub Pages, Netlify, Vercel, AWS S3 / CloudFront, and traditional web servers (NGINX, Caddy, Apache).
+- **Popular hosts:** Cloudflare (Pages or Workers static assets), GitHub Pages, Netlify, Vercel, AWS S3 / CloudFront, and traditional web servers (NGINX, Caddy, Apache).
 - **Zero runtime maintenance:** No Node.js process to keep alive in production, zero compute charges, and instant global caching.
 
 > **Get Started:** Follow our step-by-step, hand-holding [Static Hosting Guide](/deployment/static-hosting) to deploy your site to Cloudflare Pages, GitHub Pages, Netlify, and more in minutes.
@@ -23,7 +23,7 @@ If your site uses request-time server scripts (`data-bascik-server`), progressiv
 - **How it works:** Running `bascik --build --target cloudflare` compiles static assets for the CDN while packaging your server scripts, stream scripts, and API routes into an edge Worker automatically.
 - **Benefits:** Global edge execution, zero origin servers to maintain, and automatic streaming.
 
-> **Read the Guide:** Check out the [Cloudflare Adapter](/deployment/cloudflare) guide for build commands, Wrangler configuration, and edge features, or learn about [Custom Adapters](/deployment/custom-adapters).
+> **Read the Guide:** Check out the [Cloudflare Adapter](/deployment/cloudflare) guide for build commands, keeping your Wrangler configuration in the repo, Workers Builds, Worker Previews, and edge features, or learn about [Custom Adapters](/deployment/custom-adapters).
 
 ### 3. Node.js Production Server (`bascik --server`)
 

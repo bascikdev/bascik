@@ -1,0 +1,26 @@
+// The demo Worker at https://cloudflare-adapter.bascik.dev, defined here so a
+// deploy needs nothing set by hand in the dashboard. `bascik --build --target
+// cloudflare` carries every key below into dist/.bascik/cloudflare/wrangler.jsonc
+// and adds the keys it owns (main, assets). Deploy, preview and dev run from
+// that generated folder: see "Demo Worker" in adapters/cloudflare/README.md.
+//
+// The adapter E2E lane builds this fixture with --target cloudflare-pages,
+// which does not read this file.
+{
+  "$schema": "../../../../node_modules/wrangler/config-schema.json",
+  "name": "bascik-streaming-test",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // The custom domain is attached by `wrangler deploy` (a preview upload does
+  // not touch routes). Wrangler replaces the Worker's custom domains with this
+  // list on deploy.
+  "routes": [
+    { "pattern": "cloudflare-adapter.bascik.dev", "custom_domain": true },
+  ],
+  // No <name>.<subdomain>.workers.dev route: the custom domain serves the demo.
+  "workers_dev": false,
+  // Version Preview URLs, and the `previews` block that `wrangler preview`
+  // requires (empty: the demo has no bindings to swap for Previews).
+  "preview_urls": true,
+  "previews": {},
+}

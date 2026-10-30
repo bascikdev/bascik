@@ -13,6 +13,7 @@ import {
   IMMUTABLE_CACHE_CONTROL,
   PAGES_DEV_NOINDEX_RULE,
   SECURITY_HEADERS_RULE,
+  WORKERS_DEV_NOINDEX_RULE,
 } from "./pages-headers.ts";
 import { VERSIONED_IMAGE_FOLDERS } from "./md-renderer.ts";
 import {
@@ -64,7 +65,7 @@ describe("pages-headers", () => {
     );
     expect(
       headers.startsWith(
-        `${SECURITY_HEADERS_RULE}\n${PAGES_DEV_NOINDEX_RULE}\n`,
+        `${SECURITY_HEADERS_RULE}\n${PAGES_DEV_NOINDEX_RULE}\n${WORKERS_DEV_NOINDEX_RULE}\n`,
       ),
     ).toBe(true);
   });
@@ -113,6 +114,24 @@ describe("pages-headers", () => {
     expect(pathOnlyBlocks.some((block) => block.includes("X-Robots-Tag"))).toBe(
       false,
     );
+  });
+
+  it("keeps every workers.dev host (Worker preview URLs) out of search results without touching the custom domain", () => {
+    const headers = pagesHeaders([]);
+    expect(headers).toContain(
+      "https://:worker.:subdomain.workers.dev/*\n  X-Robots-Tag: noindex",
+    );
+    // Workers static assets turns each host placeholder into one DNS label ([^/.]+), so the rule matches a
+    // preview URL like https://feature-x-bascik.account.workers.dev and never bascik.dev.
+    const hostPattern = new RegExp(
+      `^${"https://:worker.:subdomain.workers.dev/"
+        .replace(/[.]/g, "\\.")
+        .replace(/:[A-Za-z]\w*/g, "[^/.]+")}`,
+    );
+    expect(
+      hostPattern.test("https://feature-x-bascik.account.workers.dev/"),
+    ).toBe(true);
+    expect(hostPattern.test("https://bascik.dev/")).toBe(false);
   });
 
   it("covers exactly the folders whose image URLs are versioned", () => {

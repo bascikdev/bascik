@@ -1,8 +1,9 @@
 /**
- * Writes the Cloudflare Pages `_headers` and `_redirects` files into the output directory.
+ * Writes the Cloudflare `_headers` and `_redirects` files into the output directory.
  *
- * bascik.dev is hosted on Cloudflare Pages, which sets its own Cache-Control and ignores `http.cacheControl`.
- * A `_headers` file is how a Pages site overrides that. Bascik's asset copier skips extensionless files, so the
+ * bascik.dev is served by Cloudflare (Pages, moving to an assets-only Worker defined in docs/wrangler.jsonc),
+ * which sets its own Cache-Control and ignores `http.cacheControl`. A `_headers` file is how the site overrides
+ * that; Pages and Workers static assets read the same syntax. Bascik's asset copier skips extensionless files, so the
  * file is generated here instead of authored in src/pages/. See src/lib/pages-headers.ts for each rule. The
  * `_redirects` file (one 301 per moved page, PAGE_REDIRECTS) is written the same way.
  *

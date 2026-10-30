@@ -1,7 +1,8 @@
 /**
- * Builds the Cloudflare Pages `_headers` file for the docs site.
+ * Builds the `_headers` file for the docs site. Cloudflare Pages and Workers static assets (docs/wrangler.jsonc)
+ * read the same `_headers` and `_redirects` syntax, so one file serves both while bascik.dev moves to a Worker.
  *
- * Pages ignores Bascik's `http.cacheControl` (that option only configures `bascik --server`), so edge caching
+ * Neither reads Bascik's `http.cacheControl` (that option only configures `bascik --server`), so edge caching
  * is set with a `_headers` file at the root of the output. Bascik does not copy extensionless files, so
  * scripts/generate-pages-headers.ts writes this text during the build.
  *
@@ -12,7 +13,8 @@
  * directly, so no zone feature removes them), so a browser cannot get a 304 for a page. The pages keep
  * `max-age=0`, so every visit still asks for the latest deploy, and add `stale-while-revalidate`, so a repeat
  * visit shows the cached page at once while that request runs. A deploy reaches a returning visitor one
- * visit later at most. The rules name pages by URL shape (`/`, `/:page` and `/<folder>/:page` for each folder
+ * visit later at most. Workers static assets does send an ETag for HTML, so there a revalidation can end in a
+ * 304; the same rule still applies. The rules name pages by URL shape (`/`, `/:page` and `/<folder>/:page` for each folder
  * of pages), not with `/*`, because Pages joins a header set by two matching rules with a comma, and `/*`
  * would also match the immutable files.
  *
@@ -23,7 +25,8 @@
  *
  * The production `*.pages.dev` alias serves the same pages as bascik.dev. Pages already sends `noindex` for
  * preview deployments, but not for that alias, so a host-scoped rule keeps it out of search results. The
- * `:project` placeholder matches any project name, so the rule never touches the custom domain.
+ * `:project` placeholder matches any project name, so the rule never touches the custom domain. On Workers the
+ * preview URLs live on workers.dev, so a second host rule marks every workers.dev host `noindex`.
  */
 import { readdirSync } from "node:fs";
 import { relative, sep } from "node:path";
@@ -38,6 +41,13 @@ export const SECURITY_HEADERS_RULE = `/*\n  Content-Security-Policy: frame-ances
 
 export const PAGES_DEV_NOINDEX_RULE =
   "https://:project.pages.dev/*\n  X-Robots-Tag: noindex\n";
+
+/**
+ * Every workers.dev host: the Worker's preview URLs (`<alias>-bascik.<account>.workers.dev`) and its workers.dev
+ * route if it is ever turned on. Each host placeholder matches one DNS label, so bascik.dev is never matched.
+ */
+export const WORKERS_DEV_NOINDEX_RULE =
+  "https://:worker.:subdomain.workers.dev/*\n  X-Robots-Tag: noindex\n";
 
 export interface PagesHeadersOptions {
   /** Site folders that hold pages, like `/deployment/`. See `pageFolders`. */
@@ -55,6 +65,7 @@ export function pagesHeaders(
   return [
     SECURITY_HEADERS_RULE,
     PAGES_DEV_NOINDEX_RULE,
+    WORKERS_DEV_NOINDEX_RULE,
     pageRule("/"),
     pageRule("/:page"),
     ...pageFolders.map((folder) => pageRule(`${folder}:page`)),

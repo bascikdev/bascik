@@ -111,46 +111,162 @@ cd dist/.bascik/cloudflare
 npx wrangler deploy
 ```
 
-Or connect the repository with Cloudflare Workers Builds in the dashboard:
+Always run Wrangler from the generated folder (or pass `--config dist/.bascik/cloudflare/wrangler.jsonc`). Wrangler reads `main` and `assets.directory` relative to the config file, so the generated config points at the `worker.js` and `public/` beside it. A project made with `create-bascik --template cloudflare` has this as `npm run deploy`.
 
-- Build command: `npx bascik --build --target cloudflare`
-- Root directory: `dist/.bascik/cloudflare`
+Set `BASCIK_SITE_URL` as a build environment variable if the site generates a sitemap or robots.txt.
+
+### Deploy from Git with Workers Builds
+
+Workers Builds builds and deploys the Worker on every push to the production branch. In the Cloudflare dashboard, open **Workers & Pages**, then either **Create** > **Import a repository** for a new Worker, or open an existing Worker and use **Settings** > **Build** > **Connect**. Use these build settings for a Bascik project:
+
+| Setting                                    | Value                                                                                          |
+| :----------------------------------------- | :--------------------------------------------------------------------------------------------- |
+| Root directory                             | The folder with your `package.json` (the repository root for most projects)                    |
+| Build command                              | `npm run build`, or `npx bascik --build --target cloudflare`                                   |
+| Deploy command                             | `npm run deploy`, or `npx wrangler deploy --config dist/.bascik/cloudflare/wrangler.jsonc`     |
+| Enable Preview Builds (**Branch control**) | On, if you want a Preview for each branch                                                      |
+| Preview command                            | `npx wrangler preview --config dist/.bascik/cloudflare/wrangler.jsonc`                         |
+| Build variables                            | `BASCIK_SITE_URL` for a sitemap or robots.txt; `NODE_VERSION` (22.22 or newer, 24 recommended) |
+
+The root directory is where the build runs, not the folder Wrangler deploys: the generated folder does not exist until the build command has run. Workers Builds installs your dependencies with the package manager your lock file names, and uses the Wrangler version your `package.json` pins.
+
+The Worker you connect must have the same name the generated config has, so set `name` in your own `wrangler.jsonc` (see [Keeping deployment config in the repo](#keeping-deployment-config-in-the-repo)) or set `CLOUDFLARE_WORKER_NAME` as a build variable. Workers Builds stops the deploy when the names differ.
+
+`npx wrangler preview` needs a `previews` block in the config; see [Worker Previews](#worker-previews). Without one, use `npx wrangler versions upload --config dist/.bascik/cloudflare/wrangler.jsonc`, which uploads a version with a Preview URL and leaves production alone.
+
+### Worker Previews
+
+Cloudflare can serve a build that is not in production yet at its own URL. Two keys in your `wrangler.jsonc` control this, and the adapter carries both into the generated config:
+
+- **`preview_urls: true`** gives every uploaded version a Preview URL on `workers.dev`, such as `<version-prefix>-<worker-name>.<your-subdomain>.workers.dev`. Preview URLs work even with `workers_dev: false`, which only turns off the production `<worker-name>.<your-subdomain>.workers.dev` route.
+- **`previews`** configures the named Previews that `npx wrangler preview` creates. Wrangler refuses to run `wrangler preview` without this block; an empty `previews: {}` is enough when Previews use the same bindings as production. Put the bindings and `vars` a Preview should use instead (a test KV namespace, a staging API URL) inside it. Assets, compatibility settings and placement stay at the top level.
+
+Create, check and remove a Preview from the generated folder:
+
+```sh
+cd dist/.bascik/cloudflare
+npx wrangler preview --name milk-frother-sale
+npx wrangler preview delete --name milk-frother-sale -y
+```
+
+`--name` defaults to the current git branch, which is what Workers Builds uses for branch builds. Wrangler prints the Preview's URLs; `--json` prints them for a script. `wrangler preview` is in open beta, and it uploads code without touching your routes or custom domains.
+
+Preview URLs are public. Cloudflare adds `X-Robots-Tag: noindex` to every `workers.dev` Preview and version URL, so search engines skip those on their own. A Preview URL on a custom domain does not get that header. To keep one out of search results, put Cloudflare Access in front of it, or add a host rule to your `_headers`, written from a `post` [exec script](/exec-scripts) as shown in [Security settings on Cloudflare](#security-settings-on-cloudflare). Previews on `shop.example.com` are served at `<preview-name>.shop.example.com`, and a host placeholder matches one DNS label, so this rule never matches the production domain:
+
+```text
+https://:preview.shop.example.com/*
+  X-Robots-Tag: noindex
+```
+
+`_headers` covers static files. A page or API route the Worker answers gets the header only from your Worker code (see [Sending every header from the Worker](#sending-every-header-from-the-worker)) or from Cloudflare Access.
+
+A custom domain serves Previews when its `routes` entry (the one with `custom_domain: true`) has `previews_enabled: true`. Leave the key out to keep the setting the dashboard shows. See Cloudflare's [Previews documentation](https://developers.cloudflare.com/workers/previews/) for the URL shapes and limits, and [Previews on custom domains](https://developers.cloudflare.com/workers/previews/custom-domains/) for `previews_enabled`.
 
 ### Worker Name Resolution
 
-The generated `name` in `wrangler.jsonc` is automatically resolved in priority order:
+The generated `name` in `wrangler.jsonc` is resolved in this order:
 
-1. **Environment variables:** `CLOUDFLARE_WORKER_NAME` or `WORKER_NAME` (e.g. `CLOUDFLARE_WORKER_NAME=bascik-streaming-test` in Cloudflare dashboard build settings).
-2. **Authored Wrangler config:** An existing `wrangler.jsonc`, `wrangler.json`, or `wrangler.toml` in your project root (matching Wrangler discovery precedence, supporting JSONC comments, trailing commas, and TOML syntax).
-3. **Project `package.json`:** The `name` property from your root `package.json` (with npm `@scope/` prefixes stripped).
-4. **Fallback:** Defaults to `"bascik-site"` only if no project name, config file, or environment variable is found.
+1. **Environment variables:** `CLOUDFLARE_WORKER_NAME`, `WORKER_NAME`, or `CF_PAGES_PROJECT_NAME` (for example `CLOUDFLARE_WORKER_NAME=milk-frother-shop` in the Workers Builds build variables).
+2. **Your Wrangler config:** the `name` in a `wrangler.jsonc`, `wrangler.json`, or `wrangler.toml` in your project root (first match wins, in that order; JSONC comments, trailing commas and TOML are supported).
+3. **Project `package.json`:** the `name` from your root `package.json` (with an npm `@scope/` prefix stripped).
+4. **Fallback:** `"bascik-site"`, only if none of the above is found.
 
-Set `BASCIK_SITE_URL` as a build environment variable if the site generates a sitemap or robots.txt.
+Wrangler itself checks `wrangler.json` before `wrangler.jsonc`, so keep only one of the two in your project root: with both, Bascik reads `wrangler.jsonc` and a Wrangler command run from the project root reads `wrangler.json`.
+
+Your config file is read whichever source names the Worker, so an environment variable changes only the name, never the rest of your settings.
 
 Wrangler configuration files are parsed strictly with the same parsers Wrangler uses (`jsonc-parser` for JSONC and `smol-toml` for TOML). A malformed configuration file (for example, duplicate TOML keys, unclosed strings, or invalid JSONC) fails the build with an actionable error naming the file and location. Bascik never falls back to a lower-precedence configuration file after a malformed file is selected, and error messages never include configuration values or source excerpts.
 
 ## Configuration Ownership and Wrangler Integration
 
-For projects that manage bindings (KV, D1, R2, Vectorize), environment variables (`vars`), named environments (`[env.production]`), custom routes, or observability settings, maintain your own `wrangler.jsonc` (or `wrangler.json` / `wrangler.toml`) in the project root.
+The generated `dist/.bascik/cloudflare/wrangler.jsonc` is rebuilt on every build, so settings you add to it by hand are lost. Settings that belong to your deployment (bindings, `vars`, named environments, routes and custom domains, Previews, observability) go in a `wrangler.jsonc` (or `wrangler.json` / `wrangler.toml`) in your project root, committed with the site.
 
-Bascik never overwrites or modifies your authored configuration. In your root `wrangler.jsonc`, configure `main` and `assets.directory` to point to Bascik's output artifacts:
+### Keeping deployment config in the repo
+
+With a `wrangler.jsonc` in the project root, the build reads it and writes the generated config from it. Bascik never edits your file. Leave out `main` and `assets.directory`: the build supplies both. A shop for the Milk frother might keep this:
 
 ```jsonc
+// wrangler.jsonc (project root)
 {
-  "name": "bascik-site",
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "milk-frother-shop",
+  "compatibility_date": "2026-08-01",
+  "routes": [{ "pattern": "shop.example.com", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": true,
+  "previews": {},
+  "vars": { "ENVIRONMENT": "production" },
+  "kv_namespaces": [{ "binding": "STOCK", "id": "<your KV namespace id>" }],
+  "assets": { "html_handling": "auto-trailing-slash" },
+}
+```
+
+`bascik --build --target cloudflare` then writes this beside `worker.js` (the `run_worker_first` routes come from the site's dynamic pages and API routes):
+
+```jsonc
+// dist/.bascik/cloudflare/wrangler.jsonc (generated)
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "milk-frother-shop",
   "main": "worker.js",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
+  "routes": [{ "pattern": "shop.example.com", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": true,
+  "previews": {},
+  "vars": { "ENVIRONMENT": "production" },
+  "kv_namespaces": [{ "binding": "STOCK", "id": "<your KV namespace id>" }],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
     "not_found_handling": "404-page",
-    "run_worker_first": ["/api/*", "/stream"],
+    "run_worker_first": ["/api/*", "/stock"],
   },
 }
 ```
 
-Static requests are served directly from `./public` by the Cloudflare CDN, while paths in `run_worker_first` route directly to `worker.js`.
+A deploy with a `routes` entry that has `custom_domain: true` attaches that domain. Wrangler replaces the Worker's custom domains with the list in the config on every deploy, so a domain you added in the dashboard and left out of `routes` is removed.
+
+### How the build merges your config
+
+The table describes the top level of your config. Inside each `env.<name>` section the build does less, and Wrangler fills in the rest when you deploy with `--env <name>`:
+
+- `main` is removed, with a warning, so every environment runs `worker.js`.
+- `compatibility_flags`, when the section has them, get `nodejs_compat` added. A section without them inherits the top-level flags from Wrangler.
+- `assets`, when the section has it, is merged with the same rules as the top level. A section without it inherits the top-level `assets`.
+- Paths are rewritten as at the top level.
+- Everything else, `name` and `compatibility_date` included, is copied as written. An environment with no `name` of its own deploys as `<name>-<environment>`, which is Wrangler's default.
+
+| Your key                                      | In the generated config                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| :-------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`                                        | Resolved as in [Worker Name Resolution](#worker-name-resolution).                                                                                                                                                                                                                                                                                                                                                                                 |
+| `main`                                        | Always `worker.js`. Yours is replaced, and the build prints a warning that names the file and the key. An `env.<name>.main` is removed, so every environment runs `worker.js`.                                                                                                                                                                                                                                                                    |
+| `assets.directory`                            | Always `./public`, with a warning if you set it.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `assets.binding`                              | Always `ASSETS`, the binding the generated Worker serves static files through. Any other value stops the build.                                                                                                                                                                                                                                                                                                                                   |
+| `assets.run_worker_first`                     | The routes the build computes from your dynamic pages, API routes and 404 page, followed by the patterns you list (duplicates removed). Your `true`, or a list with `"/*"` and no `!` patterns, gives `true`: every request reaches the Worker (see [Sending every header from the Worker](#sending-every-header-from-the-worker)).                                                                                                               |
+| `assets.not_found_handling`                   | Yours if set (for example `"none"` or `"single-page-application"`), otherwise `"404-page"`.                                                                                                                                                                                                                                                                                                                                                       |
+| Other `assets` keys                           | Kept as written (`html_handling`, `base_path`, and so on). An `assets` value that is not an object is ignored, with a warning.                                                                                                                                                                                                                                                                                                                    |
+| `compatibility_flags`                         | Your flags plus `nodejs_compat`, duplicates removed.                                                                                                                                                                                                                                                                                                                                                                                              |
+| `compatibility_date`                          | Yours if set, otherwise the adapter's pinned date.                                                                                                                                                                                                                                                                                                                                                                                                |
+| Paths Wrangler reads from the config's folder | Rewritten so they name the same files from the generated folder: `$schema`, `tsconfig`, `base_dir`, `build.cwd`, `build.watch_dir`, `d1_databases[].migrations_dir` and `migrations_pattern`, `site.bucket`, `wasm_modules`, `text_blobs`, `data_blobs`, `containers[].build_context`, and a `containers[].image` written as a path. Absolute paths and URLs are kept. A `build.command` without `build.cwd` gets `cwd` set to your project root. |
+| Everything else                               | Copied as written: `preview_urls`, `previews`, `workers_dev`, `routes`, `vars`, every binding, `observability`, `limits`, `placement`, `triggers`, `rules`, and keys the adapter does not know. Wrangler validates them when you run it.                                                                                                                                                                                                          |
+
+The keys come out in this order: `$schema`, `name`, `main`, `compatibility_date`, `compatibility_flags`, your other keys in your order, `env`, `assets`. With no `$schema` of yours, the build writes the path to the `config-schema.json` of the Wrangler your project installs, or leaves the key out when Wrangler is not installed.
+
+Only the `cloudflare` and `cloudflare-workers` targets read your Wrangler config. The `cloudflare-pages` target ignores it.
+
+### Local secrets
+
+Wrangler reads `.dev.vars` from the folder of the config it runs, which is the generated folder, and every build cleans that folder. Keep `.dev.vars` in your project root (and in `.gitignore`), and pass it to `wrangler dev`; Wrangler resolves the path from the generated folder:
+
+```sh
+cd dist/.bascik/cloudflare
+npx wrangler dev --env-file ../../../.dev.vars
+```
+
+Production secrets are not part of any config file. Set them once with `npx wrangler secret put <NAME>` from the generated folder, or in the dashboard under the Worker's **Settings** > **Variables and Secrets**.
 
 ### When `run_worker_first` Applies
 
@@ -170,7 +286,7 @@ Requests **not** listed in `run_worker_first` are served directly by the CDN fro
 
 ### Why a Global Application-Owned Wrapper Must Receive Every Request
 
-If your project has a root-level `wrangler.jsonc` with `main` pointing to your own worker script, **that wrapper receives every request** only if you set `run_worker_first: ["/*"]`. Without the `/*` pattern, the CDN serves static assets directly, and your wrapper never executes for those paths.
+If you deploy your own Worker script that wraps Bascik's (see [Composition and Custom Worker Wrappers](#composition-and-custom-worker-wrappers)), **that wrapper receives every request** only if its config sets `run_worker_first: true` or `["/*"]`. Without the `/*` pattern, the CDN serves static assets directly, and your wrapper never executes for those paths.
 
 Defining `main: "worker.js"` alone does **not** guarantee the Worker executes before asset serving. The `run_worker_first` array is what controls which paths the Worker handles first. If you only list selective paths (e.g. `["/api/*"]`), the CDN will serve everything else directly, and your wrapper will not run for those paths.
 
@@ -197,7 +313,7 @@ Bascik generates an inventory of invocation routes during build (`buildInvocatio
 - `/_routes.json` and `/_worker.js` (generated control files)
 - `/*` if the overflow limit is exceeded
 
-Your application-owned `wrangler.jsonc` `run_worker_first` should reference paths from this generated inventory. Since Bascik writes the `wrangler.jsonc` alongside the build output, the generated routes are stable within a release. If you manually extend `run_worker_first`, ensure the patterns match what Bascik generates, or regenerate after changing page structure or adding API routes.
+You do not copy this inventory into your own config. The build writes it into the generated `wrangler.jsonc` on every build, so it follows new pages and API routes. Patterns you list in your own `assets.run_worker_first` are added after the computed ones, so a path you want the Worker to answer first stays in the list without hiding the routes the build needs.
 
 ### Verified Behavior in Local workerd Tests
 
@@ -215,16 +331,15 @@ The following scenarios were validated against local workerd (via `npx wrangler 
 
 These behaviors are confirmed by the existing integration tests in `adapters/cloudflare/src/serverless-build.integration.test.ts` and `adapters/cloudflare/src/cloudflare.test.ts`.
 
-Bascik supports two clean configuration ownership workflows:
+### Without a config of your own
 
-### 1. Default Generated Configuration (Zero-Configuration Workflow)
-
-By default, running `bascik --build --target cloudflare` generates a complete, self-contained `wrangler.jsonc` in `dist/.bascik/cloudflare/` that points to the compiled `worker.js` and `./public` assets directory.
+With no `wrangler.jsonc`, `wrangler.json` or `wrangler.toml` in the project root, the build writes a complete config from defaults: the name from [Worker Name Resolution](#worker-name-resolution), the adapter's compatibility date and flags, and the `assets` block.
 
 ```jsonc
+// dist/.bascik/cloudflare/wrangler.jsonc (generated, no config of yours)
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "bascik-site",
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "milk-frother-shop",
   "main": "worker.js",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -237,73 +352,47 @@ By default, running `bascik --build --target cloudflare` generates a complete, s
 }
 ```
 
-Static requests are served directly from `./public` by the Cloudflare CDN, while paths in `run_worker_first` route directly to `worker.js`.
+That is enough for `npx wrangler dev` and `npx wrangler deploy` from `dist/.bascik/cloudflare`. Add your own config when you need anything the defaults do not have.
 
-You can run Wrangler commands directly from the output directory:
+### Composition and Custom Worker Wrappers
 
-```sh
-cd dist/.bascik/cloudflare
-npx wrangler dev
-npx wrangler deploy
+If you need custom Cloudflare Worker composition (such as authentication checks, analytics interception, or proxying), you can author an application-owned entry point that wraps Bascik's generated Worker:
+
+```ts
+// worker-wrapper.ts
+import bascikWorker from "./dist/.bascik/cloudflare/worker.js";
+
+export default {
+  async fetch(request: Request, env: Record<string, unknown>, ctx: unknown) {
+    // Perform custom Cloudflare logic or header transformations here
+    return bascikWorker.fetch(request, env, ctx);
+  },
+};
 ```
 
-### 2. Application-Authored Wrangler Configuration (Root Config Workflow)
-
-For projects that manage bindings (KV, D1, R2, Vectorize), environment variables (`vars`), named environments (`[env.production]`), custom routes, or observability settings, maintain your own `wrangler.jsonc` (or `wrangler.json` / `wrangler.toml`) in the project root.
-
-Bascik never overwrites or modifies your authored configuration. In your root `wrangler.jsonc`, configure `main` and `assets.directory` to point to Bascik's output artifacts:
+The wrapper is deployed with its own config, because its `main` is the wrapper, not the generated `worker.js`. Give that file a name the build does not read, such as `wrangler.wrapper.jsonc`, so the build does not warn that its `main` and `assets.directory` are ignored. Point it at the generated output and run Wrangler from the project root:
 
 ```jsonc
+// wrangler.wrapper.jsonc
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "my-application",
-  "main": "dist/.bascik/cloudflare/worker.js",
+  "name": "milk-frother-shop",
+  "main": "worker-wrapper.ts",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "dist/.bascik/cloudflare/public",
     "binding": "ASSETS",
     "not_found_handling": "404-page",
+    "run_worker_first": true,
   },
-  "vars": {
-    "ENVIRONMENT": "production",
-  },
-  "kv_namespaces": [
-    {
-      "binding": "GREETINGS",
-      "id": "xxxxxx",
-    },
-  ],
 }
 ```
 
-With an application-authored root config, run Wrangler from your project root:
-
 ```sh
-# Local workerd preview with your local bindings and .dev.vars
-npx wrangler dev
-
-# Deploy with your project environments and bindings
-npx wrangler deploy
+npx wrangler deploy --config wrangler.wrapper.jsonc
 ```
 
-Local secrets and environment variables can be placed in `.dev.vars` in the project root according to standard Wrangler conventions.
-
-### Composition and Custom Worker Wrappers
-
-If you need custom Cloudflare Worker composition (such as authentication checks, analytics interception, or proxying), you can author an application-owned entry point that wraps Bascik's generated Worker:
-
-```js
-// worker-wrapper.js
-import bascikWorker from "./dist/.bascik/cloudflare/worker.js";
-
-export default {
-  async fetch(request, env, ctx) {
-    // Perform custom Cloudflare logic or header transformations here
-    return bascikWorker.fetch(request, env, ctx);
-  },
-};
-```
+Copy your bindings and `vars` into this file, since it is the config that deploys. `run_worker_first: true` sends every request to the wrapper; see [Why a Global Application-Owned Wrapper Must Receive Every Request](#why-a-global-application-owned-wrapper-must-receive-every-request).
 
 ## Legacy Cloudflare Pages target
 
@@ -321,6 +410,66 @@ npx wrangler pages deploy dist/.bascik/cloudflare-pages/public --project-name <y
 ```
 
 The runtime request handling is identical between both variants; only the packaging and routing files differ.
+
+## Moving a static site from Pages to Workers
+
+A Bascik site with no server scripts, stream scripts or API routes does not need the adapter on Workers either. Workers static assets serves the `dist/` of a plain `bascik --build`, the same folder Cloudflare Pages serves, with a Wrangler config and no Worker code.
+
+### The config
+
+Put a `wrangler.jsonc` in the project root:
+
+```jsonc
+// wrangler.jsonc
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "milk-frother-docs",
+  "compatibility_date": "2026-08-01",
+  "assets": {
+    "directory": "./dist",
+    // /setup serves setup.html; /setup/ and /setup.html redirect to /setup.
+    "html_handling": "auto-trailing-slash",
+    // An unknown URL gets the nearest 404.html with status 404.
+    "not_found_handling": "404-page",
+  },
+  "workers_dev": false,
+  "preview_urls": true,
+  "previews": {},
+}
+```
+
+With no `main`, no Worker code runs and static requests are not billed as Worker invocations. `html_handling: "auto-trailing-slash"` and `not_found_handling: "404-page"` give the URL shape and 404 behavior a Pages site has. `workers_dev: false` leaves your custom domain as the only production host, and `preview_urls` with `previews` turns on [Worker Previews](#worker-previews).
+
+Check the config without deploying: `npx bascik --build`, then `npx wrangler deploy --dry-run` and `npx wrangler dev` to serve `dist/` locally. For Workers Builds, use the same settings as in [Deploy from Git with Workers Builds](#deploy-from-git-with-workers-builds), with `npx bascik --build` as the build command and `npx wrangler deploy` as the deploy command (`npx wrangler preview` for other branches).
+
+Do not add this config to a project that builds with `--target cloudflare`: the adapter reads the same file and ignores its `assets.directory`.
+
+### What carries over
+
+- **`_headers` and `_redirects`** use the same syntax and limits on Workers static assets as on Pages: 100 header rules, 2,000 characters a line, 2,000 static and 100 dynamic redirects, matching header values joined with a comma, and `! Name` to remove a header. Keep writing them into `dist/` from a `post` [exec script](/exec-scripts). Redirects run before asset matching.
+- **Cloudflare Web Analytics** set up automatically for the zone keeps working: the beacon is added at the zone's edge, so it reaches a Worker on a custom domain in that zone. It is not added on `workers.dev` or `pages.dev` hosts. If your Content Security Policy already allows `https://static.cloudflareinsights.com`, nothing changes.
+- **Zone settings** such as a browser cache TTL override apply to the Worker on the same zone as they did to Pages.
+
+### What changes
+
+- **Redirects are `307`, not `308`.** `/setup/` and `/setup.html` redirect to `/setup` with a temporary redirect on Workers, where Pages used a permanent one. No setting changes this.
+- **A 404 gets the `Cache-Control` of the rules its path matches.** Pages sends `no-store` on every 404. Workers sends what your `_headers` rules give that path, and `_headers` cannot match on status. Keep the `Cache-Control` of page-shaped rules short, so a page published at a URL that used to 404 is not hidden behind a cached 404.
+- **HTML responses carry an `ETag`**, so a revisit can end in a `304`.
+- **An `@` in a file path costs a redirect.** Workers redirects a path that differs from its `encodeURIComponent` form, so `/assets/hero@2x.webp` answers `307` to `/assets/hero%402x.webp`. Reference such files with `%40` (Pages serves both spellings), or name them `hero-2x.webp`.
+- **Previews on a custom domain are not marked `noindex`.** Pages added `X-Robots-Tag: noindex` to its preview deployments, and Workers adds it to `workers.dev` Preview URLs. If you serve Previews on a custom domain, add the host rule from [Worker Previews](#worker-previews) to your `_headers` or protect them with Cloudflare Access. Keep any `https://:project.pages.dev/*` rule until the Pages project is deleted.
+- **Build environment variables differ.** Workers Builds sets `WORKERS_CI=1`, `WORKERS_CI_BRANCH` and `WORKERS_CI_COMMIT_SHA`, not `CF_PAGES`, `CF_PAGES_BRANCH` or `CF_PAGES_URL`. A build script that checks for Pages (for example to fetch full git history for page dates) must check for both.
+- **Ignored files.** Workers static assets does not skip `node_modules`, `.git` or `.DS_Store` on its own; list such files in a `.assetsignore` in the assets folder. A Bascik `dist/` holds none of them.
+
+### Moving the domain without downtime
+
+A Pages custom domain is a `CNAME` record, and a Worker custom domain cannot be created on a hostname that already has one. Cloudflare must also be the nameserver for the domain. To switch without a gap:
+
+1. Deploy the Worker and check it on a Preview URL: status codes, redirects, headers and the 404 page.
+2. In the zone, add a Workers route for the domain (for example `docs.example.com/*`) to the new Worker, leaving the Pages custom domain in place. A route runs in front of the proxied hostname, so traffic moves at once, and deleting the route moves it back. Try a narrow route first, such as `docs.example.com/__worker-check*`. An HTML response with an `ETag` came from the Worker; one from Pages has none.
+3. Check the live domain again, including the Web Analytics beacon in a browser.
+4. Then either keep the route, replace the `CNAME` to Pages with a proxied placeholder record (an `AAAA` record to `100::`), and remove the domain from the Pages project; or remove the domain from Pages, delete the `CNAME`, add the domain to the Worker as a custom domain, and delete the route, which leaves a gap of a few seconds.
+5. Put the domain in `routes` in `wrangler.jsonc`, so the repo owns it: the route you kept (`{ "pattern": "docs.example.com/*", "zone_name": "example.com" }`), or the custom domain (`{ "pattern": "docs.example.com", "custom_domain": true }`). A custom domain entry fails to deploy while the hostname still has a `CNAME`.
+6. Pause the Pages project's automatic builds, and delete the project once the Worker has served traffic for a while. Deleting it also ends its `pages.dev` address.
 
 ## Content-Security-Policy
 

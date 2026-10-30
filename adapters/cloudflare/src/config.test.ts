@@ -7,6 +7,7 @@ import {
   parseToml,
   discoverWranglerConfig,
   resolveWorkerName,
+  generateWranglerConfig,
   WRANGLER_CONFIG_FILES,
 } from "./config.ts";
 
@@ -669,5 +670,342 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
     expect(msg).not.toContain(canary);
     expect(msg).not.toContain("api_key");
     expect(msg).not.toContain("broken");
+  });
+});
+
+describe("generateWranglerConfig: the authored config carried into the generated one", () => {
+  const projectRoot = join("/", "site");
+  const outDir = join(projectRoot, "dist", ".bascik", "cloudflare");
+  const base = {
+    projectRoot,
+    outDir,
+    workerName: "my-worker",
+    runWorkerFirst: ["/_routes.json", "/_worker.js"] as string[] | true,
+  };
+  const generate = (
+    values: Record<string, unknown> | undefined,
+    extra: Partial<Parameters<typeof generateWranglerConfig>[0]> = {},
+  ) =>
+    generateWranglerConfig({
+      ...base,
+      authored: values
+        ? {
+            filename: "wrangler.jsonc",
+            filePath: join(projectRoot, "wrangler.jsonc"),
+            values,
+          }
+        : null,
+      ...extra,
+    });
+
+  it("without an authored config writes only what the adapter owns", () => {
+    const { config, warnings } = generate(undefined);
+    expect(config).toEqual({
+      name: "my-worker",
+      main: "worker.js",
+      compatibility_date: "2026-08-01",
+      compatibility_flags: ["nodejs_compat"],
+      assets: {
+        directory: "./public",
+        binding: "ASSETS",
+        not_found_handling: "404-page",
+        run_worker_first: ["/_routes.json", "/_worker.js"],
+      },
+    });
+    expect(warnings).toEqual([]);
+  });
+
+  it("carries every authored key the adapter does not own, verbatim", () => {
+    const authored = {
+      name: "ignored-here-name-comes-from-resolution",
+      compatibility_date: "2026-09-01",
+      preview_urls: true,
+      previews: {},
+      workers_dev: false,
+      routes: [{ pattern: "example.com", custom_domain: true }],
+      vars: { GREETING: "hi" },
+      kv_namespaces: [{ binding: "KV", id: "abc" }],
+      d1_databases: [{ binding: "DB", database_id: "x" }],
+      r2_buckets: [{ binding: "R2", bucket_name: "b" }],
+      observability: { enabled: true },
+      limits: { cpu_ms: 100 },
+      placement: { mode: "smart" },
+      some_future_key: { nested: [1, 2] },
+    };
+    const { config, warnings } = generate(authored);
+    expect(config.name).toBe("my-worker");
+    expect(config.compatibility_date).toBe("2026-09-01");
+    for (const key of [
+      "preview_urls",
+      "previews",
+      "workers_dev",
+      "routes",
+      "vars",
+      "kv_namespaces",
+      "r2_buckets",
+      "observability",
+      "limits",
+      "placement",
+      "some_future_key",
+    ])
+      expect(config[key], key).toEqual(authored[key as keyof typeof authored]);
+    // Carried over, plus the default migrations folder named from outDir.
+    expect(config.d1_databases).toEqual([
+      {
+        binding: "DB",
+        database_id: "x",
+        migrations_dir: "../../../migrations",
+      },
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("unions authored compatibility_flags with the adapter's", () => {
+    const { config } = generate({
+      compatibility_flags: ["custom", "nodejs_compat"],
+    });
+    expect(config.compatibility_flags).toEqual(["custom", "nodejs_compat"]);
+  });
+
+  it("merges authored assets keys; owned keys stay the adapter's, authored not_found_handling wins", () => {
+    const { config, warnings } = generate({
+      assets: {
+        html_handling: "drop-trailing-slash",
+        not_found_handling: "none",
+        binding: "ASSETS",
+      },
+    });
+    expect(config.assets).toEqual({
+      directory: "./public",
+      binding: "ASSETS",
+      html_handling: "drop-trailing-slash",
+      not_found_handling: "none",
+      run_worker_first: ["/_routes.json", "/_worker.js"],
+    });
+    expect(warnings).toEqual([]);
+  });
+
+  it("run_worker_first: true when the Worker runs first; an authored list is unioned with the computed routes", () => {
+    expect(
+      (
+        generate(
+          { assets: { run_worker_first: ["/*"] } },
+          { runWorkerFirst: true },
+        ).config.assets as { run_worker_first: unknown }
+      ).run_worker_first,
+    ).toBe(true);
+    expect(
+      (
+        generate({ assets: { run_worker_first: ["/admin/*", "/_worker.js"] } })
+          .config.assets as { run_worker_first: unknown }
+      ).run_worker_first,
+    ).toEqual(["/_routes.json", "/_worker.js", "/admin/*"]);
+  });
+
+  it("misuse: an authored main is replaced by worker.js with a warning naming the file and key", () => {
+    const { config, warnings } = generate({ main: "src/index.ts" });
+    expect(config.main).toBe("worker.js");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(
+      /^\[bascik\] wrangler\.jsonc: "main" is ignored/,
+    );
+  });
+
+  it("misuse: an authored assets.directory is replaced with a warning", () => {
+    const { config, warnings } = generate({ assets: { directory: "./out" } });
+    expect((config.assets as { directory: string }).directory).toBe("./public");
+    expect(warnings[0]).toMatch(
+      /^\[bascik\] wrangler\.jsonc: "assets\.directory" is ignored/,
+    );
+  });
+
+  it("misuse: an authored assets.binding other than ASSETS is a located error", () => {
+    expect(() => generate({ assets: { binding: "STATIC" } })).toThrowError(
+      /^\[bascik\] wrangler\.jsonc: "assets\.binding" must be "ASSETS"/,
+    );
+  });
+
+  it("rebases path-valued keys from the project root to the output directory", () => {
+    const { config, warnings } = generate({
+      tsconfig: "tsconfig.worker.json",
+      base_dir: "./src",
+      build: { command: "make", watch_dir: ["src", "lib"] },
+      d1_databases: [
+        {
+          binding: "DB",
+          migrations_dir: "migrations",
+          migrations_pattern: "migrations/*.sql",
+        },
+      ],
+      wasm_modules: { W: "./a.wasm" },
+      containers: [
+        {
+          image: "./docker/Dockerfile",
+          image_build_context: "./docker",
+          images: {
+            worker: {
+              dockerfile: "./jobs/Dockerfile",
+              build_context: "./jobs",
+            },
+            pinned: { image: "registry.cloudflare.com/acct/x@sha256:abc" },
+          },
+        },
+        { image: "registry.example/x:1" },
+      ],
+      previews: { d1_databases: [{ binding: "DB", migrations_dir: "./m" }] },
+      absolute: "/abs/path",
+    });
+    expect(config.tsconfig).toBe("../../../tsconfig.worker.json");
+    expect(config.base_dir).toBe("../../../src");
+    expect(config.build).toEqual({
+      command: "make",
+      cwd: "../../..",
+      watch_dir: ["../../../src", "../../../lib"],
+    });
+    expect(config.d1_databases).toEqual([
+      {
+        binding: "DB",
+        migrations_dir: "../../../migrations",
+        migrations_pattern: "../../../migrations/*.sql",
+      },
+    ]);
+    expect(config.wasm_modules).toEqual({ W: "../../../a.wasm" });
+    expect(config.containers).toEqual([
+      {
+        image: "../../../docker/Dockerfile",
+        image_build_context: "../../../docker",
+        images: {
+          worker: {
+            dockerfile: "../../../jobs/Dockerfile",
+            build_context: "../../../jobs",
+          },
+          pinned: { image: "registry.cloudflare.com/acct/x@sha256:abc" },
+        },
+      },
+      { image: "registry.example/x:1" },
+    ]);
+    expect(config.previews).toEqual({
+      d1_databases: [{ binding: "DB", migrations_dir: "../../../m" }],
+    });
+    expect(config.absolute).toBe("/abs/path");
+    expect(warnings).toEqual([]);
+  });
+
+  it("names the default D1 migrations folder, which Wrangler resolves from the config's folder", () => {
+    const { config, warnings } = generate({
+      d1_databases: [{ binding: "DB", database_name: "db" }],
+      previews: { d1_databases: [{ binding: "DB" }] },
+      env: { staging: { d1_databases: [{ binding: "DB" }] } },
+    });
+    const rebasedDefault = {
+      binding: "DB",
+      migrations_dir: "../../../migrations",
+    };
+    expect(config.d1_databases).toEqual([
+      { ...rebasedDefault, database_name: "db" },
+    ]);
+    expect(config.previews).toEqual({ d1_databases: [rebasedDefault] });
+    expect(
+      (config.env as { staging: { d1_databases: unknown } }).staging
+        .d1_databases,
+    ).toEqual([rebasedDefault]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("misuse: leaves migrations_pattern without migrations_dir for Wrangler to report", () => {
+    const { config } = generate({
+      d1_databases: [{ binding: "DB", migrations_pattern: "sql/*.sql" }],
+    });
+    expect(config.d1_databases).toEqual([
+      { binding: "DB", migrations_pattern: "../../../sql/*.sql" },
+    ]);
+  });
+
+  it("keeps an authored build.cwd (rebased) instead of adding one", () => {
+    const { config } = generate({ build: { command: "make", cwd: "tools" } });
+    expect(config.build).toEqual({ command: "make", cwd: "../../../tools" });
+  });
+
+  it("applies the same rules inside each env.<name>", () => {
+    const { config, warnings } = generate({
+      env: {
+        staging: {
+          main: "src/other.ts",
+          vars: { A: "1" },
+          compatibility_flags: ["staging_flag"],
+          assets: { html_handling: "none" },
+          tsconfig: "tsconfig.json",
+        },
+      },
+    });
+    const staging = (config.env as Record<string, Record<string, unknown>>)
+      .staging;
+    expect(staging.main).toBeUndefined();
+    expect(staging.vars).toEqual({ A: "1" });
+    expect(staging.compatibility_flags).toEqual([
+      "staging_flag",
+      "nodejs_compat",
+    ]);
+    expect(staging.assets).toEqual({
+      directory: "./public",
+      binding: "ASSETS",
+      html_handling: "none",
+      not_found_handling: "404-page",
+      run_worker_first: ["/_routes.json", "/_worker.js"],
+    });
+    expect(staging.tsconfig).toBe("../../../tsconfig.json");
+    expect(warnings).toEqual([
+      expect.stringMatching(
+        /^\[bascik\] wrangler\.jsonc: "env\.staging\.main" is ignored/,
+      ),
+    ]);
+  });
+
+  it("$schema: an authored relative path is rebased, a URL kept, and the default points at a resolvable schema or is left out", () => {
+    expect(
+      generate({ $schema: "node_modules/wrangler/config-schema.json" }).config
+        .$schema,
+    ).toBe("../../../node_modules/wrangler/config-schema.json");
+    expect(
+      generate({ $schema: "https://example.com/s.json" }).config.$schema,
+    ).toBe("https://example.com/s.json");
+    expect(generate(undefined).config.$schema).toBeUndefined();
+    expect(
+      generate(undefined, {
+        schemaPath: join(
+          projectRoot,
+          "node_modules",
+          "wrangler",
+          "config-schema.json",
+        ),
+      }).config.$schema,
+    ).toBe("../../../node_modules/wrangler/config-schema.json");
+  });
+
+  it("does not crash on unknown or oddly typed keys (wrangler validates them)", () => {
+    const { config } = generate({
+      compatibilty_date: "typo",
+      assets: "public",
+      env: "nope",
+      build: null,
+      d1_databases: "x",
+    });
+    expect(config.compatibilty_date).toBe("typo");
+    expect(config.env).toBe("nope");
+    expect(config.build).toBeNull();
+    expect(config.d1_databases).toBe("x");
+    expect((config.assets as { directory: string }).directory).toBe("./public");
+  });
+
+  it("reports TOML-authored files by their own filename", () => {
+    const { warnings } = generateWranglerConfig({
+      ...base,
+      authored: {
+        filename: "wrangler.toml",
+        filePath: join(projectRoot, "wrangler.toml"),
+        values: { main: "x.ts" },
+      },
+    });
+    expect(warnings[0]).toMatch(/^\[bascik\] wrangler\.toml: "main"/);
   });
 });

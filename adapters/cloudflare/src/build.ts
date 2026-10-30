@@ -12,6 +12,8 @@ import {
 } from "@bascik/bascik/adapter";
 import { resolve, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
 import { mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
 import {
   CLOUDFLARE_COMPATIBILITY_DATE,
@@ -20,7 +22,11 @@ import {
   classifyNodeBuiltin,
   formatUnsupportedImport,
 } from "./compat.js";
-import { resolveWorkerName } from "./config.js";
+import {
+  discoverWranglerConfig,
+  generateWranglerConfig,
+  resolveWorkerName,
+} from "./config.js";
 import { buildHeadersFile, workerPageHeaderOverrides } from "./headers-file.js";
 import { build as esbuildBuild, type BuildResult, type Message } from "esbuild";
 import {
@@ -105,6 +111,23 @@ export const runsWorkerFirst = (assets: unknown, base: string): boolean => {
   return value.includes("/*") || value.includes(withBasePath("/*", base));
 };
 
+/**
+ * The wrangler/config-schema.json installed for the project, for the
+ * generated config's `$schema` (editor help only; Wrangler ignores it).
+ * Undefined when wrangler is not installed where the project resolves it.
+ */
+const wranglerSchemaPath = (projectRoot: string): string | undefined => {
+  try {
+    const pkg = createRequire(join(projectRoot, "package.json")).resolve(
+      "wrangler/package.json",
+    );
+    const schema = join(dirname(pkg), "config-schema.json");
+    return existsSync(schema) ? schema : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const NO_COMPONENTS = "bascik-no-components";
 
 /**
@@ -132,8 +155,15 @@ export const build = async (
   // 2. Authored wrangler.jsonc / wrangler.json / wrangler.toml in project root
   // 3. Project package.json "name"
   // 4. Fallback to "bascik-site"
+  // The config is discovered even when the name comes from the
+  // environment: its other keys are carried into the generated config.
   const workerConfig =
-    variant === "workers" ? await resolveWorkerName(projectRoot) : undefined;
+    variant === "workers"
+      ? await resolveWorkerName(
+          projectRoot,
+          await discoverWranglerConfig(projectRoot),
+        )
+      : undefined;
   // The author asked for the Worker before every static file: it sends the
   // static files' headers itself, so nothing is written into _headers for
   // them (Cloudflare's rule and line limits no longer apply).
@@ -522,31 +552,19 @@ export const build = async (
     const { workerName, discoveredConfig } =
       workerConfig ?? (await resolveWorkerName(projectRoot));
 
-    const authoredFlags = Array.isArray(
-      discoveredConfig?.values?.compatibility_flags,
-    )
-      ? discoveredConfig.values.compatibility_flags.filter(
-          (f): f is string => typeof f === "string" && f.trim().length > 0,
-        )
-      : [];
-
-    const wrangler = {
-      $schema: "node_modules/wrangler/config-schema.json",
-      name: workerName,
-      main: "worker.js",
-      compatibility_date:
-        (discoveredConfig?.values?.compatibility_date as string | undefined) ??
-        CLOUDFLARE_COMPATIBILITY_DATE,
-      compatibility_flags: [
-        ...new Set([...authoredFlags, ...CLOUDFLARE_COMPATIBILITY_FLAGS]),
-      ],
-      assets: {
-        directory: "./public",
-        binding: "ASSETS",
-        not_found_handling: "404-page",
-        run_worker_first: workerFirst ? true : invocationRoutes.include,
-      },
-    };
+    // The authored config is carried over whole: the adapter owns only the
+    // keys it must (config.ts, generateWranglerConfig).
+    const { config: wrangler, warnings } = generateWranglerConfig({
+      authored: discoveredConfig,
+      projectRoot,
+      outDir,
+      workerName,
+      runWorkerFirst: workerFirst ? true : invocationRoutes.include,
+      schemaPath: wranglerSchemaPath(projectRoot),
+      compatibilityDate: CLOUDFLARE_COMPATIBILITY_DATE,
+      compatibilityFlags: CLOUDFLARE_COMPATIBILITY_FLAGS,
+    });
+    for (const warning of warnings) context.log(warning);
     await writeFile(
       join(outDir, "wrangler.jsonc"),
       `${JSON.stringify(wrangler, null, 2)}\n`,

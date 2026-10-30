@@ -48,6 +48,10 @@ yarn docs:build
 
 Then inspect the relevant `docs/dist/` output to confirm the pkg change has the intended effect.
 
+## Deploying the Docs and the Adapter Demo
+
+`DEPLOYMENT.md` covers how bascik.dev and cloudflare-adapter.bascik.dev deploy: what the repo defines, the one-time dashboard steps, and how to check each. Each Worker is defined by a committed config: `docs/wrangler.jsonc` (the docs, an assets-only Worker) and `adapters/cloudflare/e2e/fixture/wrangler.jsonc` (the demo, carried into the generated config by the adapter). Change deployment settings there, not in the dashboard, and never run a production deploy (`wrangler deploy` without `--dry-run`) from an agent session: Workers Builds deploys on merge once its connection is set up (see `DEPLOYMENT.md` for the current state).
+
 ## Keeping Docs Visuals in Sync
 
 Docs visuals have three kinds, each with one home. Do not add a second mechanism for the same job.
