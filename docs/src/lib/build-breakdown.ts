@@ -9,7 +9,6 @@ import {
   countComponents,
   countSourcePages,
   formatSeconds,
-  millisecondsPerPage,
   readBuildTimings,
   type BuildRunTimings,
   type BuildStatPaths,
@@ -195,13 +194,23 @@ export async function renderBuildBreakdown(
   return (
     `<div class="bb">` +
     `<div class="bb-facts">` +
+    renderFact(
+      `${timings.oneWorker?.pageMedianMs ?? timings.warm.pageMedianMs}ms`,
+      timings.oneWorker
+        ? "median page, warm, one worker"
+        : "median page, warm, contended",
+    ) +
+    (timings.devContentEdit
+      ? renderFact(
+          `${Math.round(timings.devContentEdit.medianDiskMs)}ms`,
+          "dev Markdown edit → updated page on disk",
+        )
+      : "") +
+    `</div>` +
+    `<div class="bb-facts bb-facts-scale">` +
     renderFact(String(pages), "pages") +
     renderFact(String(components), "components") +
     renderFact(String(timings.buildScripts), "build scripts run") +
-    renderFact(
-      `${millisecondsPerPage(timings.warm.pagesSeconds, timings.pages)}ms`,
-      "per page, warm",
-    ) +
     `</div>` +
     `<div class="bb-runs">` +
     renderRun(
@@ -223,7 +232,10 @@ export async function renderBuildBreakdown(
     `</div>` +
     renderParallel(timings) +
     `<p class="bb-foot">${renderPerPage(timings)} ` +
-    `Measured ${escapeHtml(timings.measuredOn)} on ${escapeHtml(timings.machine)} with Node ${escapeHtml(timings.nodeVersion)}. ` +
+    (timings.devContentEdit
+      ? `The dev edit figure is the median of ${timings.devContentEdit.samples} warm-cache saves to this site's getting-started Markdown page, measured ${escapeHtml(timings.devContentEdit.measuredOn)} in a private site copy; it includes watching, rebuild, and disk publication, but not browser reload. `
+      : "") +
+    `Production builds measured ${escapeHtml(timings.measuredOn)} on ${escapeHtml(timings.machine)} with Node ${escapeHtml(timings.nodeVersion)}. ` +
     `Re-measure with <code>yarn docs:measure-build</code>.</p>` +
     `</div>`
   );

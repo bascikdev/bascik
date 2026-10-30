@@ -131,6 +131,38 @@ describe("build-breakdown", () => {
     );
   });
 
+  it("highlights the measured single-page and dev edit latencies, not whole-build averages", async () => {
+    await writeFile(
+      timingsPath,
+      JSON.stringify({
+        ...timings,
+        oneWorker: {
+          pageMedianMs: 20,
+          slowestPage: { path: "pages/components.html", ms: 114 },
+        },
+        devContentEdit: {
+          medianDiskMs: 570.45,
+          samples: 3,
+          measuredOn: "2026-10-30",
+        },
+      }),
+    );
+    const html = await renderBuildBreakdown({
+      timingsPath,
+      pages: 102,
+      components: 41,
+    });
+    expect(html).toContain(
+      '<span class="bb-fact-value">20ms</span><span class="bb-fact-label">median page, warm, one worker</span>',
+    );
+    expect(html).toContain(
+      '<span class="bb-fact-value">570ms</span><span class="bb-fact-label">dev Markdown edit → updated page on disk</span>',
+    );
+    expect(html).toContain("median of 3 warm-cache saves");
+    expect(html).toContain("not browser reload");
+    expect(html).not.toContain("per page, warm");
+  });
+
   it("lists the parallel exec scripts longest first, and says they add no time", async () => {
     const html = await renderBuildBreakdown({
       timingsPath,

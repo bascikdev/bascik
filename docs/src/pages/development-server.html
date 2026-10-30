@@ -43,7 +43,16 @@
             import { renderMdRange } from "@/lib/md-renderer.ts";
             export default async () =>
               await renderMdRange("./content/development-server.md", {
-                to: "Linked Static Assets",
+                to: "This Website's Build: A Real-World Example",
+              });
+          </script>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/development-server.md", {
+                from: "This Website's Build: A Real-World Example",
+                to: "Next Steps",
               });
           </script>
 
@@ -53,7 +62,7 @@
             import { renderMdRange } from "@/lib/md-renderer.ts";
             export default async () =>
               await renderMdRange("./content/development-server.md", {
-                from: "Linked Static Assets",
+                from: "Next Steps",
               });
           </script>
 

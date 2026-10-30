@@ -1,84 +1,18 @@
 {
-  "measuredOn": "2026-10-14",
-  "bascikVersion": "1.0.0-rc.7",
-  "nodeVersion": "24.17.0",
+  "measuredOn": "2026-10-30",
+  "bascikVersion": "1.0.0-rc.10",
+  "nodeVersion": "24.21.0",
   "machine": "Apple M1, 8 cores",
-  "pages": 102,
-  "buildScripts": 965,
+  "pages": 107,
+  "buildScripts": 1096,
   "cold": {
-    "wallSeconds": 19.54,
-    "totalSeconds": 19.4,
-    "startupSeconds": 0.14,
-    "preScriptsSeconds": 0.08,
-    "pagesSeconds": 18.65,
-    "postScriptsSeconds": 0.64,
-    "otherSeconds": 0.03,
-    "execScripts": [
-      {
-        "script": "scripts/publish-heading-anchors.ts",
-        "phase": "pre",
-        "seconds": 0.08
-      },
-      {
-        "script": "scripts/publish-examples.ts",
-        "phase": "parallel",
-        "seconds": 0.22
-      },
-      {
-        "script": "scripts/generate-pages-headers.ts",
-        "phase": "parallel",
-        "seconds": 0.21
-      },
-      {
-        "script": "scripts/publish-agent-skill.ts",
-        "phase": "parallel",
-        "seconds": 0.26
-      },
-      {
-        "script": "scripts/generate-llms-txt.ts",
-        "phase": "parallel",
-        "seconds": 0.27
-      },
-      {
-        "script": "scripts/generate-search-index.ts",
-        "phase": "parallel",
-        "seconds": 0.29
-      },
-      {
-        "script": "scripts/generate-press-kit.ts",
-        "phase": "parallel",
-        "seconds": 0.47
-      },
-      {
-        "script": "scripts/generate-og-images.ts",
-        "phase": "parallel",
-        "seconds": 0.53
-      },
-      {
-        "script": "scripts/generate-git-dates.ts",
-        "phase": "post",
-        "seconds": 0.44
-      },
-      {
-        "script": "scripts/generate-csp-meta.ts",
-        "phase": "post",
-        "seconds": 0.2
-      }
-    ],
-    "pageMedianMs": 60,
-    "slowestPage": {
-      "path": "pages/components.html",
-      "ms": 561
-    }
-  },
-  "warm": {
-    "wallSeconds": 4.09,
-    "totalSeconds": 3.94,
-    "startupSeconds": 0.15,
+    "wallSeconds": 20.13,
+    "totalSeconds": 19.91,
+    "startupSeconds": 0.22,
     "preScriptsSeconds": 0.07,
-    "pagesSeconds": 3.14,
-    "postScriptsSeconds": 0.7,
-    "otherSeconds": 0.03,
+    "pagesSeconds": 19.11,
+    "postScriptsSeconds": 0.68,
+    "otherSeconds": 0.05,
     "execScripts": [
       {
         "script": "scripts/publish-heading-anchors.ts",
@@ -86,55 +20,133 @@
         "seconds": 0.07
       },
       {
-        "script": "scripts/generate-pages-headers.ts",
-        "phase": "parallel",
-        "seconds": 0.2
-      },
-      {
         "script": "scripts/publish-examples.ts",
-        "phase": "parallel",
-        "seconds": 0.21
-      },
-      {
-        "script": "scripts/generate-llms-txt.ts",
-        "phase": "parallel",
-        "seconds": 0.23
-      },
-      {
-        "script": "scripts/generate-search-index.ts",
-        "phase": "parallel",
-        "seconds": 0.25
-      },
-      {
-        "script": "scripts/publish-agent-skill.ts",
-        "phase": "parallel",
-        "seconds": 0.42
-      },
-      {
-        "script": "scripts/generate-og-images.ts",
-        "phase": "parallel",
-        "seconds": 0.52
-      },
-      {
-        "script": "scripts/generate-press-kit.ts",
         "phase": "parallel",
         "seconds": 0.69
       },
       {
+        "script": "scripts/generate-llms-txt.ts",
+        "phase": "parallel",
+        "seconds": 0.7
+      },
+      {
+        "script": "scripts/generate-pages-headers.ts",
+        "phase": "parallel",
+        "seconds": 1
+      },
+      {
+        "script": "scripts/generate-search-index.ts",
+        "phase": "parallel",
+        "seconds": 1.08
+      },
+      {
+        "script": "scripts/generate-press-kit.ts",
+        "phase": "parallel",
+        "seconds": 1.27
+      },
+      {
+        "script": "scripts/generate-og-images.ts",
+        "phase": "parallel",
+        "seconds": 1.52
+      },
+      {
+        "script": "scripts/publish-agent-skill.ts",
+        "phase": "parallel",
+        "seconds": 1.8
+      },
+      {
         "script": "scripts/generate-git-dates.ts",
         "phase": "post",
-        "seconds": 0.44
+        "seconds": 0.49
       },
       {
         "script": "scripts/generate-csp-meta.ts",
         "phase": "post",
-        "seconds": 0.26
+        "seconds": 0.19
       }
     ],
-    "pageMedianMs": 66,
+    "pageMedianMs": 52,
     "slowestPage": {
-      "path": "pages/components.html",
-      "ms": 691
+      "path": "pages/compatibility.html",
+      "ms": 558
     }
+  },
+  "warm": {
+    "wallSeconds": 4.86,
+    "totalSeconds": 4.65,
+    "startupSeconds": 0.21,
+    "preScriptsSeconds": 0.06,
+    "pagesSeconds": 3.92,
+    "postScriptsSeconds": 0.63,
+    "otherSeconds": 0.04,
+    "execScripts": [
+      {
+        "script": "scripts/publish-heading-anchors.ts",
+        "phase": "pre",
+        "seconds": 0.06
+      },
+      {
+        "script": "scripts/publish-examples.ts",
+        "phase": "parallel",
+        "seconds": 0.46
+      },
+      {
+        "script": "scripts/generate-llms-txt.ts",
+        "phase": "parallel",
+        "seconds": 0.46
+      },
+      {
+        "script": "scripts/generate-search-index.ts",
+        "phase": "parallel",
+        "seconds": 0.58
+      },
+      {
+        "script": "scripts/generate-pages-headers.ts",
+        "phase": "parallel",
+        "seconds": 0.64
+      },
+      {
+        "script": "scripts/generate-og-images.ts",
+        "phase": "parallel",
+        "seconds": 0.67
+      },
+      {
+        "script": "scripts/generate-press-kit.ts",
+        "phase": "parallel",
+        "seconds": 0.72
+      },
+      {
+        "script": "scripts/publish-agent-skill.ts",
+        "phase": "parallel",
+        "seconds": 0.97
+      },
+      {
+        "script": "scripts/generate-git-dates.ts",
+        "phase": "post",
+        "seconds": 0.43
+      },
+      {
+        "script": "scripts/generate-csp-meta.ts",
+        "phase": "post",
+        "seconds": 0.2
+      }
+    ],
+    "pageMedianMs": 72,
+    "slowestPage": {
+      "path": "pages/component-best-practices.html",
+      "ms": 481
+    }
+  },
+  "oneWorker": {
+    "pageMedianMs": 21,
+    "slowestPage": {
+      "path": "pages/testing/troubleshooting.html",
+      "ms": 69
+    }
+  },
+  "devContentEdit": {
+    "medianDiskMs": 554.29,
+    "samples": 3,
+    "measuredOn": "2026-10-30"
   }
 }

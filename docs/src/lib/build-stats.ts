@@ -80,6 +80,12 @@ export interface BuildTimings {
    * costs. Absent from timings measured before this run was added, and the panel then says so.
    */
   oneWorker?: PageTimings;
+  /** Median milliseconds from a warm-cache dev-server Markdown edit to updated disk output, not browser reload. */
+  devContentEdit?: {
+    medianDiskMs: number;
+    samples: number;
+    measuredOn: string;
+  };
 }
 
 const round = (value: number, digits = 2): number => {
