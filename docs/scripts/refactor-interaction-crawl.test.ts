@@ -9,6 +9,7 @@ import {
   CHECK,
   INTERACTIVE_SELECTOR,
   diffEffects,
+  effectOf,
   matchAnchor,
   parseCliArgs,
 } from "../../skills/bascik-refactor/scripts/interaction-crawl.mjs";
@@ -216,6 +217,65 @@ describe("diffEffects", () => {
     expect(findings.map((f: { kind: string }) => f.kind)).toEqual([
       "different-effect",
     ]);
+  });
+});
+
+describe("effectOf: where a scrolled-to heading lands", () => {
+  const state = (over: Record<string, unknown> = {}) => ({
+    attrs: {},
+    shown: [],
+    focused: null,
+    scrollY: 0,
+    scrollTarget: null,
+    landing: null,
+    hash: "",
+    url: "/about",
+    ...over,
+  });
+  const banner = "html > body > aside";
+  const header = "html > body > header";
+  const scrolled = (cover: string) =>
+    state({
+      scrollY: 900,
+      scrollTarget: "H2:Specs",
+      landing: { top: 140, covered: true, cover },
+    });
+
+  it("a cover the page puts up by itself (a banner sliding in, a timed modal) is not under what the scroll forgot", () => {
+    const e = effectOf(state(), scrolled(banner), { selectors: [banner] });
+    expect(e.landing).toEqual({ top: 140, covered: false });
+    const findings = diffEffects(
+      [
+        {
+          anchor: anchor(),
+          effect: { ...e, landing: { top: 140, covered: false } },
+        },
+      ],
+      [{ anchor: anchor(), effect: e }],
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("a sticky header over the heading on the target only is still a different effect", () => {
+    const prod = effectOf(
+      state(),
+      state({
+        scrollY: 900,
+        scrollTarget: "H2:Specs",
+        landing: { top: 140, covered: false, cover: null },
+      }),
+      { selectors: [banner] },
+    );
+    const target = effectOf(state(), scrolled(header), { selectors: [banner] });
+    expect(target.landing).toEqual({ top: 140, covered: true });
+    const findings = diffEffects(
+      [{ anchor: anchor(), effect: prod }],
+      [{ anchor: anchor(), effect: target }],
+    );
+    expect(findings.map((f: { kind: string }) => f.kind)).toEqual([
+      "different-effect",
+    ]);
+    expect(findings[0].message).toMatch(/fixed or sticky layer covers it/);
   });
 });
 

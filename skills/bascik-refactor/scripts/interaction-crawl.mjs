@@ -352,16 +352,27 @@ function captureState(arg) {
     if (r.top >= -2 && r.top < innerHeight) {
       scrollTarget = textKey(h);
       // Where it lands, and whether a fixed or sticky layer covers it there (a sticky header without scroll-padding).
-      const hit = document.elementFromPoint(
-        Math.min(
-          innerWidth - 1,
-          Math.max(0, r.left + Math.min(r.width, 40) / 2),
-        ),
-        Math.min(innerHeight - 1, Math.max(0, r.top + r.height / 2)),
-      );
+      // A modal dialog and its backdrop are looked through: a modal covers the whole page, not the spot the scroll
+      // landed on (a newsletter modal on a timer opens mid-measurement on whichever side loaded slower).
+      const modal = (el) => {
+        try {
+          return Boolean(el.closest(":modal"));
+        } catch {
+          return Boolean(el.closest("dialog[open]"));
+        }
+      };
+      const hit = document
+        .elementsFromPoint(
+          Math.min(
+            innerWidth - 1,
+            Math.max(0, r.left + Math.min(r.width, 40) / 2),
+          ),
+          Math.min(innerHeight - 1, Math.max(0, r.top + r.height / 2)),
+        )
+        .find((el) => !modal(el));
       const cover =
         hit && !h.contains(hit) && !hit.contains(h) ? layerOf(hit) : null;
-      landing = { top: Math.round(r.top), covered: Boolean(cover) };
+      landing = { top: Math.round(r.top), covered: Boolean(cover), cover };
       break;
     }
   }
@@ -376,6 +387,17 @@ function captureState(arg) {
     hash: location.hash,
     url: href.startsWith(arg.base) ? `/${href.slice(arg.base.length)}` : href,
   };
+}
+
+/**
+ * Where a scrolled-to heading landed, without a cover the page puts up by itself: a layer whose attributes change with
+ * no activation (a cookie banner that slides in, a modal on a timer) is not what the scroll forgot to clear.
+ */
+function landingOf(landing, skipSelectors) {
+  if (!landing) return null;
+  const { cover, ...rest } = landing;
+  if (cover && skipSelectors.has(cover)) return { ...rest, covered: false };
+  return rest;
 }
 
 /**
@@ -440,7 +462,7 @@ export function effectOf(before, after, volatile = {}) {
         : null,
     landing:
       Math.abs(scrollDelta) >= SCROLL_MIN && !skipShown.has(after.scrollTarget)
-        ? (after.landing ?? null)
+        ? landingOf(after.landing, skipSelectors)
         : null,
     hash: after.hash,
     url: after.url,
@@ -456,6 +478,29 @@ export function effectOf(before, after, volatile = {}) {
 async function afterActivation(arg) {
   await scrollSettled(3000);
   await animationsDone(2000);
+  // Then until every fixed or sticky layer stops moving (at most 1 s): a sticky header that shrinks once the scroll
+  // passes a threshold starts its transition a frame late, and where a heading lands is measured against its final box.
+  const layers = [...document.body.querySelectorAll("*")].filter((el) => {
+    const position = getComputedStyle(el).position;
+    return position === "fixed" || position === "sticky";
+  });
+  const boxes = () =>
+    layers
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        return `${Math.round(r.top)},${Math.round(r.bottom)},${Math.round(r.left)},${Math.round(r.right)}`;
+      })
+      .join(";");
+  const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+  const end = performance.now() + 1000;
+  let last = boxes();
+  for (let still = 0; layers.length && still < 3 && performance.now() < end;) {
+    await frame();
+    const now = boxes();
+    still = now === last ? still + 1 : 0;
+    last = now;
+  }
+  await animationsDone(1000);
   // Then until the DOM outside the masks has been still for 400 ms (at most 2.5 s): a banner that hides itself with a
   // timer once its slide-out transition ends is hidden on both sides before the state is read.
   await new Promise((done) => {
@@ -516,6 +561,10 @@ export async function observeVolatile(
   await page.waitForLoadState("load").catch(() => {});
   await settle(page);
   await parkPointer(page);
+  // Then as after an activation: a section in view at load fades in once its IntersectionObserver fires, a frame or a
+  // slow machine's moment after load. Read before that, its heading counts as changing by itself on one side only,
+  // and an in-page link there scrolls to the next heading instead.
+  await inPage(page, afterActivation, { masks }).catch(() => {});
   const first = await inPage(page, captureState, arg);
   const selectors = new Set();
   const shown = new Set();
