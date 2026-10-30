@@ -55,11 +55,22 @@ const syntaxErrorLocation = (configPath: string, err: unknown): string => {
     encoding: "utf8",
   });
   if (result.status === 0 || !result.stderr) return "";
-  // Node prints "<file>:<line>", the source line, a caret line, a blank
-  // line, then "SyntaxError: <message>" and its stack. Keep the first three.
-  const lines = result.stderr.split("\n");
+  return checkOutputLocation(result.stderr, configPath, err.message);
+};
+
+/**
+ * The location lines from `node --check` output for this file and error, or "". Node prints
+ * "<file>:<line>", the source line, a caret line, a blank line, then "SyntaxError: <message>" and
+ * its stack; keep the first three. Windows ends the lines with CRLF.
+ */
+export const checkOutputLocation = (
+  output: string,
+  configPath: string,
+  message: string,
+): string => {
+  const lines = output.split(/\r?\n/);
   if (!lines[0]?.startsWith(`${configPath}:`)) return "";
-  if (!lines.includes(`SyntaxError: ${err.message}`)) return "";
+  if (!lines.includes(`SyntaxError: ${message}`)) return "";
   return [lines[0], lines[1] ?? "", lines[2] ?? ""].join("\n").trimEnd();
 };
 

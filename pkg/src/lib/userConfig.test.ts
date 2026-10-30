@@ -309,6 +309,55 @@ describe("loadUserConfig", () => {
   }, 30000);
 });
 
+describe("checkOutputLocation", () => {
+  const configPath = "C:\\Users\\me\\site\\bascik.config.js";
+  const output = (eol: string) =>
+    [
+      `${configPath}:3`,
+      "  this is bad",
+      "       ^^",
+      "",
+      "SyntaxError: Unexpected identifier 'is'",
+      "    at wrapSafe (node:internal/modules/cjs/loader:1)",
+    ].join(eol);
+
+  it("reads the file, line, source and caret from node --check output", async () => {
+    const { checkOutputLocation } = await import("./userConfig.ts");
+    expect(
+      checkOutputLocation(
+        output("\n"),
+        configPath,
+        "Unexpected identifier 'is'",
+      ),
+    ).toBe(`${configPath}:3\n  this is bad\n       ^^`);
+  });
+
+  it("reads Windows output, where node --check ends lines with CRLF", async () => {
+    const { checkOutputLocation } = await import("./userConfig.ts");
+    expect(
+      checkOutputLocation(
+        output("\r\n"),
+        configPath,
+        "Unexpected identifier 'is'",
+      ),
+    ).toBe(`${configPath}:3\n  this is bad\n       ^^`);
+  });
+
+  it("gives nothing when the output is about another file or another error", async () => {
+    const { checkOutputLocation } = await import("./userConfig.ts");
+    expect(
+      checkOutputLocation(
+        output("\n"),
+        "C:\\other.js",
+        "Unexpected identifier 'is'",
+      ),
+    ).toBe("");
+    expect(
+      checkOutputLocation(output("\n"), configPath, "Unexpected token '}'"),
+    ).toBe("");
+  });
+});
+
 describe("resolveConfigPath", () => {
   it("prefers bascik.config.js over bascik.config.ts when both exist", async () => {
     const { resolveConfigPath } = await import("./userConfig.ts");
