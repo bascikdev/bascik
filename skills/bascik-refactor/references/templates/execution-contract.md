@@ -24,9 +24,9 @@ export BASCIK_SITE_URL={{LIVE_URL}}                # the public origin, for site
 export REFACTOR=.agents/skills/bascik-refactor/scripts  # wherever the skills are installed
 ```
 
-Compare and audit a production build only: `npx bascik --build && npx bascik --server` (or `npx wrangler dev` for
-the Cloudflare wrapper). Never the dev server. Start it in the background, rebuild after each change, and stop it
-before you hand off.
+Compare and audit a production build only: `npx bascik --build && npx bascik --server` (or
+`npx wrangler dev --config wrangler.wrapper.jsonc` for the Cloudflare wrapper). Never the dev server. Start it in the
+background, rebuild after each change, and stop it before you hand off.
 
 ## Non-negotiables
 

@@ -49,8 +49,9 @@ Record these before writing any page. Every later prompt reads them.
 Set `PROD_URL`, `TARGET_URL` (default `http://localhost:8080`), `BASCIK_SITE_URL` (the public origin; the build
 needs it for the sitemap, robots.txt and canonicals) and `REFACTOR` (the `bascik-refactor/scripts` folder of the
 installed skills). Compare and audit a production build only: `npx bascik --build && npx bascik --server`, or
-`npx wrangler dev` for the Cloudflare wrapper. Copy `llms-txt.mjs` and `worker-response-policy.mjs` into the
-project's `scripts/` folder before the config or the Worker imports them; both import nothing else.
+`npx wrangler dev --config wrangler.wrapper.jsonc` for the Cloudflare wrapper. Copy `llms-txt.mjs` and
+`worker-response-policy.mjs` into the project's `scripts/` folder before the config or the Worker imports them; both
+import nothing else.
 
 ## Capture settings
 
@@ -259,11 +260,15 @@ reviewed }`, verdict pass or issues), from the form or with `review-page.mjs --s
 8. Scroll-driven states need threshold sampling, not screenshots.
 9. Keep the ledger, so intentional fixes are not reported as regressions.
 10. Cloudflare: `bascik --build --target cloudflare`, then a wrapper that imports the default export of
-    `dist/.bascik/cloudflare/worker.js` and calls its `fetch(request, env, ctx)`. A root `wrangler.jsonc` points `main`
-    at the wrapper, with `assets.directory` `dist/.bascik/cloudflare/public`, binding `ASSETS`,
-    `not_found_handling: "404-page"` (or the site's 404.html is never served), and `run_worker_first: ["/*"]` so
-    static pages reach the wrapper too (at the cost of CDN bypass). Run and deploy with `npx wrangler dev` and
-    `npx wrangler deploy` from the root; the starter's `npm run deploy` skips the wrapper.
+    `dist/.bascik/cloudflare/worker.js` and calls its `fetch(request, env, ctx)`. The wrapper deploys with its own
+    config named `wrangler.wrapper.jsonc`, not `wrangler.jsonc`: the build reads a root `wrangler.jsonc` into the
+    generated config and warns that its `main` and `assets.directory` are ignored. That config points `main` at the
+    wrapper, with `assets.directory` `dist/.bascik/cloudflare/public`, binding `ASSETS`,
+    `not_found_handling: "404-page"` (or the site's 404.html is never served), and `run_worker_first: true` so static
+    pages reach the wrapper too (at the cost of CDN bypass), plus the site's bindings and `vars`. Run and deploy from
+    the root with `npx wrangler dev --config wrangler.wrapper.jsonc` and
+    `npx wrangler deploy --config wrangler.wrapper.jsonc`; the starter's `npm run deploy` skips the wrapper. See
+    `/deployment/cloudflare#composition-and-custom-worker-wrappers`.
 
 ## Reference configuration
 

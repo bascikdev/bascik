@@ -762,3 +762,261 @@ jobs:
 
       - name: Run create-bascik scaffold generation test
         run: yarn create:test-site
+
+  # ── Stage 5: Deploy to Cloudflare (after every stage 4 job passes) ──────────────
+  # Pushes to main deploy both Workers to production. A pull request from a branch of this repo uploads a Preview
+  # version of each under one alias per branch and lists the URLs in a single PR comment; a fork's pull request has no
+  # secrets and skips the stage. The token reaches only the Wrangler steps. Runbook: DEPLOYMENT.md.
+
+  deploy-docs:
+    name: Deploy Docs (bascik.dev)
+    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    permissions:
+      contents: read
+    needs:
+      [
+        e2e-pkg-static,
+        e2e-pkg-dev,
+        e2e-pkg-prod-http1,
+        e2e-pkg-prod-http2,
+        e2e-adapter-cloudflare,
+        e2e-docs,
+        e2e-create,
+      ]
+    # One deploy per ref at a time. A newer push to a pull request replaces its running Preview upload; on main a
+    # running production deploy always finishes. The group does not order runs, so the newest-commit step below keeps
+    # an older commit whose tests finished late from replacing a newer one.
+    concurrency:
+      group: deploy-docs-${{ github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    outputs:
+      preview-url: ${{ steps.upload.outputs.url }}
+    steps:
+      # Full history: docs/scripts/generate-git-dates.ts reads it for sitemap lastmod and article dates.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Check Cloudflare credentials
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          [ "$HAS_TOKEN" = "true" ] || { echo "::error::Repository secret CLOUDFLARE_API_TOKEN is not set (see DEPLOYMENT.md)"; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Repository variable CLOUDFLARE_ACCOUNT_ID is not set (see DEPLOYMENT.md)"; exit 1; }
+
+      # docs:build sets BASCIK_SITE_URL=https://bascik.dev itself.
+      - name: Build package and docs
+        run: yarn pkg:build && yarn docs:build
+
+      # Runs inside the concurrency group, right before Wrangler. Skips the upload or deploy when the branch has moved
+      # on: a newer commit that finished testing first has already deployed, or will, and this one must not replace it.
+      - name: Check this is still the newest commit
+        id: newest
+        env:
+          REF: ${{ github.event_name == 'pull_request' && format('refs/heads/{0}', github.head_ref) || github.ref }}
+          SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          newest="$(node .github/scripts/newest-commit.mjs "$REF" "$SHA")"
+          echo "newest=$newest" >> "$GITHUB_OUTPUT"
+
+      - name: Compute the Preview alias
+        if: github.event_name == 'pull_request'
+        id: alias
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          alias="$(node .github/scripts/preview-alias.mjs "$HEAD_REF" bascik bascik-streaming-test)"
+          echo "alias=$alias" >> "$GITHUB_OUTPUT"
+
+      - name: Upload a Preview version
+        if: github.event_name == 'pull_request' && steps.newest.outputs.newest == 'true'
+        id: upload
+        working-directory: docs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-docs.ndjson
+          ALIAS: ${{ steps.alias.outputs.alias }}
+          MESSAGE: "PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.head.sha }} merged into ${{ github.base_ref }}"
+        run: |
+          yarn wrangler versions upload --preview-alias "$ALIAS" --message "$MESSAGE"
+          url="$(node ../.github/scripts/wrangler-preview-url.mjs "$WRANGLER_OUTPUT_FILE_PATH")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test the Preview
+        if: github.event_name == 'pull_request' && steps.newest.outputs.newest == 'true'
+        env:
+          URL: ${{ steps.upload.outputs.url }}
+        run: node .github/scripts/smoke-test.mjs "$URL" /=200 /components=200 /components/=307 /semantic-html=301 /name-attribute=301 /no-such-page=404
+
+      - name: Deploy to production
+        if: github.event_name == 'push' && steps.newest.outputs.newest == 'true'
+        working-directory: docs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          MESSAGE: "main at ${{ github.sha }}"
+        run: yarn wrangler deploy --message "$MESSAGE"
+
+      - name: Smoke-test production
+        if: github.event_name == 'push' && steps.newest.outputs.newest == 'true'
+        run: node .github/scripts/smoke-test.mjs https://bascik.dev /=200 /components=200 /semantic-html=301
+
+  deploy-demo:
+    name: Deploy Adapter Demo (cloudflare-adapter.bascik.dev)
+    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    permissions:
+      contents: read
+    needs:
+      [
+        e2e-pkg-static,
+        e2e-pkg-dev,
+        e2e-pkg-prod-http1,
+        e2e-pkg-prod-http2,
+        e2e-adapter-cloudflare,
+        e2e-docs,
+        e2e-create,
+      ]
+    concurrency:
+      group: deploy-demo-${{ github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    outputs:
+      preview-url: ${{ steps.upload.outputs.url }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Check Cloudflare credentials
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          [ "$HAS_TOKEN" = "true" ] || { echo "::error::Repository secret CLOUDFLARE_API_TOKEN is not set (see DEPLOYMENT.md)"; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Repository variable CLOUDFLARE_ACCOUNT_ID is not set (see DEPLOYMENT.md)"; exit 1; }
+
+      # Builds the package, the adapter, then the fixture with --target cloudflare into
+      # adapters/cloudflare/e2e/fixture/dist/.bascik/cloudflare (config from the fixture's wrangler.jsonc).
+      - name: Build package, adapter, and demo
+        run: yarn adapter:cf:demo:build
+
+      # Runs inside the concurrency group, right before Wrangler. Skips the upload or deploy when the branch has moved
+      # on: a newer commit that finished testing first has already deployed, or will, and this one must not replace it.
+      - name: Check this is still the newest commit
+        id: newest
+        env:
+          REF: ${{ github.event_name == 'pull_request' && format('refs/heads/{0}', github.head_ref) || github.ref }}
+          SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          newest="$(node .github/scripts/newest-commit.mjs "$REF" "$SHA")"
+          echo "newest=$newest" >> "$GITHUB_OUTPUT"
+
+      - name: Compute the Preview alias
+        if: github.event_name == 'pull_request'
+        id: alias
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          alias="$(node .github/scripts/preview-alias.mjs "$HEAD_REF" bascik bascik-streaming-test)"
+          echo "alias=$alias" >> "$GITHUB_OUTPUT"
+
+      - name: Upload a Preview version
+        if: github.event_name == 'pull_request' && steps.newest.outputs.newest == 'true'
+        id: upload
+        working-directory: adapters/cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-demo.ndjson
+          ALIAS: ${{ steps.alias.outputs.alias }}
+          MESSAGE: "PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.head.sha }} merged into ${{ github.base_ref }}"
+        run: |
+          yarn wrangler versions upload --config e2e/fixture/dist/.bascik/cloudflare/wrangler.jsonc --preview-alias "$ALIAS" --message "$MESSAGE"
+          url="$(node ../../.github/scripts/wrangler-preview-url.mjs "$WRANGLER_OUTPUT_FILE_PATH")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test the Preview
+        if: github.event_name == 'pull_request' && steps.newest.outputs.newest == 'true'
+        env:
+          URL: ${{ steps.upload.outputs.url }}
+        run: node .github/scripts/smoke-test.mjs "$URL" /=200 /catalog=200 /catalog-stream=200
+
+      # Also attaches the custom domain listed in the fixture's wrangler.jsonc `routes`.
+      - name: Deploy to production
+        if: github.event_name == 'push' && steps.newest.outputs.newest == 'true'
+        working-directory: adapters/cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          MESSAGE: "main at ${{ github.sha }}"
+        run: yarn wrangler deploy --config e2e/fixture/dist/.bascik/cloudflare/wrangler.jsonc --message "$MESSAGE"
+
+      - name: Smoke-test production
+        if: github.event_name == 'push' && steps.newest.outputs.newest == 'true'
+        run: node .github/scripts/smoke-test.mjs https://cloudflare-adapter.bascik.dev /=200 /catalog=200 /catalog-stream=200
+
+  # Runs after both uploads, so the comment always lists two URLs from the same commit. A run whose commit was no
+  # longer the newest uploaded nothing and leaves the comment to the newer run.
+  preview-comment:
+    name: Comment Preview URLs
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository &&
+      needs.deploy-docs.outputs.preview-url != '' && needs.deploy-demo.outputs.preview-url != ''
+    permissions:
+      contents: read
+      pull-requests: write
+    needs: [deploy-docs, deploy-demo]
+    concurrency:
+      group: preview-comment-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Create or update the Preview comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_SHA: ${{ github.sha }}
+          BASE_REF: ${{ github.base_ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DOCS_PREVIEW_URL: ${{ needs.deploy-docs.outputs.preview-url }}
+          DEMO_PREVIEW_URL: ${{ needs.deploy-demo.outputs.preview-url }}
+        run: node .github/scripts/preview-comment.mjs

@@ -39,7 +39,7 @@ One honest note: do not expect a Lighthouse improvement. The `uses-long-cache-tt
 
 A content hash does not have to be part of the file name. Appending it as a query string (`hero.webp?v=0eace9e1a7`) gives the same guarantee: when the bytes change, the URL changes, so a far-future cache can never serve a stale copy. Nothing is renamed on disk, and there is no post-build rewrite pass. Whatever writes the `<img>` tag computes the hash while it renders, because it already knows the file.
 
-The Bascik docs site works this way for its recorded demos and screenshots. The image helper in `docs/src/lib/md-renderer.ts` hashes each file in `/assets/demos/` and `/assets/vscode/` and emits `?v=<hash>` on the `src` and `srcset` URLs. A build script then writes a Cloudflare Pages `_headers` file that marks only those two folders, and the content-hashed search index, `immutable`:
+The Bascik docs site works this way for its recorded demos and screenshots. The image helper in `docs/src/lib/md-renderer.ts` hashes each file in `/assets/demos/` and `/assets/vscode/` and emits `?v=<hash>` on the `src` and `srcset` URLs. A build script then writes a Cloudflare `_headers` file that marks only those two folders, and the content-hashed search index, `immutable`:
 
 ```text
 /assets/demos/*
@@ -49,9 +49,9 @@ The Bascik docs site works this way for its recorded demos and screenshots. The 
   Cache-Control: public, max-age=31536000, immutable
 ```
 
-Two details matter on Cloudflare Pages:
+Two details matter on Cloudflare (the docs site is a Worker with static assets, and Pages reads `_headers` the same way):
 
-- **`http.cacheControl` does nothing there.** That option configures `bascik --server` only. Pages sets its own headers, and a `_headers` file in the output is how you override them.
+- **`http.cacheControl` does nothing there.** That option configures `bascik --server` only. Cloudflare sets its own headers on static files, and a `_headers` file in the output is how you override them.
 - **Bascik does not copy extensionless files**, so a `_headers` file in `src/pages/` never reaches `dist/`. Write it from a `pipeline.exec` script in the build config.
 
 Only mark a folder `immutable` when every reference to it is versioned. An unversioned URL into that folder would be cached for a year.

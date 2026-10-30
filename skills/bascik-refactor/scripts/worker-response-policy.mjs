@@ -41,9 +41,12 @@
 //
 //    Pass base: "/docs/" when the site's base is not "/", so a request path finds its route in the manifest.
 //
-// 3. Point a root wrangler.jsonc at the wrapper. The wrapper sees static pages only when every request runs the
-//    Worker first, which gives up the CDN's direct static serving:
+// 3. Give the wrapper its own config, wrangler.wrapper.jsonc, in the project root. Do not name it wrangler.jsonc:
+//    the build reads a root wrangler.jsonc into the generated config and warns that its "main" and
+//    "assets.directory" are ignored. The wrapper sees static pages only when every request runs the Worker first,
+//    which gives up the CDN's direct static serving. See /deployment/cloudflare#composition-and-custom-worker-wrappers.
 //
+//      // wrangler.wrapper.jsonc
 //      {
 //        "name": "my-site",
 //        "main": "worker-wrapper.js",
@@ -53,14 +56,19 @@
 //          "directory": "dist/.bascik/cloudflare/public",
 //          "binding": "ASSETS",
 //          "not_found_handling": "404-page",
-//          "run_worker_first": ["/*"]
+//          "run_worker_first": true
 //        },
 //        "vars": { "ENVIRONMENT": "production" }
 //      }
 //
-//    Keep "not_found_handling": "404-page", or a missing page gets an empty 404 instead of your own 404.html.
-//    Run and deploy from the project root (npx wrangler dev, npx wrangler deploy). The generated "deploy" script
-//    deploys dist/.bascik/cloudflare on its own and would bypass this wrapper.
+//    Keep "not_found_handling": "404-page", or a missing page gets an empty 404 instead of your own 404.html. Copy
+//    the site's bindings and vars into this file, since it is the config that deploys. Run and deploy from the
+//    project root:
+//
+//      npx wrangler dev --config wrangler.wrapper.jsonc
+//      npx wrangler deploy --config wrangler.wrapper.jsonc
+//
+//    The generated "deploy" script deploys dist/.bascik/cloudflare on its own and would bypass this wrapper.
 //
 //    Set "ENVIRONMENT" to "preview" (or anything but "production") on preview deployments: every response then
 //    carries X-Robots-Tag: noindex.

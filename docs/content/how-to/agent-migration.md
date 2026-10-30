@@ -122,7 +122,7 @@ Production defects, such as low contrast, a missing focus outline or a blurry im
    npx bascik --build && npx bascik --server
    ```
 
-   It prints `Server running at http://localhost:8080`. If port 8080 is taken it stops with an error instead of picking another port: pass a free one with `--port` and put that URL in `TARGET_URL`. Rebuild after every change. On Cloudflare, use `npx wrangler dev` once the Worker wrapper below exists, and point `TARGET_URL` at the URL it prints.
+   It prints `Server running at http://localhost:8080`. If port 8080 is taken it stops with an error instead of picking another port: pass a free one with `--port` and put that URL in `TARGET_URL`. Rebuild after every change. On Cloudflare, use `npx wrangler dev --config wrangler.wrapper.jsonc` once the Worker wrapper below exists, and point `TARGET_URL` at the URL it prints.
 
 ## Record the Inventories First
 
@@ -665,7 +665,7 @@ Agentic Browsing needs Lighthouse 13.3 or later and Chrome 150 or later. Lightho
 7. **Font subsetting.** Some fonts reach their ff, fi and fl ligatures only through the GSUB table. A subsetter that keeps cmap glyphs only drops them, and words render with gaps. Keep the GSUB glyphs.
 8. **Scroll-driven states need threshold sampling,** not screenshots.
 9. **Keep the decisions ledger,** so intentional fixes are not reported as regressions.
-10. **Cloudflare.** Build with `bascik --build --target cloudflare` and wrap the generated Worker in a thin application Worker for redirects, headers and a few edge API endpoints. The wrapper sees static pages only with `run_worker_first: ["/*"]`, which gives up the CDN's direct static serving. See [Composition and Custom Worker Wrappers](/deployment/cloudflare#composition-and-custom-worker-wrappers).
+10. **Cloudflare.** Build with `bascik --build --target cloudflare` and wrap the generated Worker in a thin application Worker for redirects, headers and a few edge API endpoints. The wrapper sees static pages only with `run_worker_first: true`, which gives up the CDN's direct static serving. See [Composition and Custom Worker Wrappers](/deployment/cloudflare#composition-and-custom-worker-wrappers).
 
 ## Reference Configuration
 
@@ -700,7 +700,7 @@ export default defineConfig({
 });
 ```
 
-For Cloudflare, add a root `wrangler.jsonc` and a wrapper that imports the copied `scripts/worker-response-policy.mjs`. The full commented version is at the top of that file:
+For Cloudflare, add a wrapper that imports the copied `scripts/worker-response-policy.mjs`. The full commented version is at the top of that file:
 
 ```js
 // worker-wrapper.js
@@ -714,8 +714,10 @@ export default withResponsePolicy(bascikWorker, {
 });
 ```
 
+The wrapper deploys with its own config, because its `main` is the wrapper, not the generated `worker.js`. Name that file `wrangler.wrapper.jsonc`, not `wrangler.jsonc`: the build reads a root `wrangler.jsonc` into the generated config and warns that its `main` and `assets.directory` are ignored. See [Composition and Custom Worker Wrappers](/deployment/cloudflare#composition-and-custom-worker-wrappers).
+
 ```jsonc
-// wrangler.jsonc
+// wrangler.wrapper.jsonc
 {
   "name": "my-site",
   "main": "worker-wrapper.js",
@@ -725,13 +727,13 @@ export default withResponsePolicy(bascikWorker, {
     "directory": "dist/.bascik/cloudflare/public",
     "binding": "ASSETS",
     "not_found_handling": "404-page",
-    "run_worker_first": ["/*"],
+    "run_worker_first": true,
   },
   "vars": { "ENVIRONMENT": "production" },
 }
 ```
 
-Run `npx wrangler dev` and `npx wrangler deploy` from the project root. The starter's `npm run deploy` deploys `dist/.bascik/cloudflare` on its own and would skip the wrapper.
+Run `npx wrangler dev --config wrangler.wrapper.jsonc` and `npx wrangler deploy --config wrangler.wrapper.jsonc` from the project root. Copy the site's bindings and `vars` into this file, since it is the config that deploys. The starter's `npm run deploy` deploys `dist/.bascik/cloudflare` on its own and would skip the wrapper.
 
 ## Day-One Checklist
 

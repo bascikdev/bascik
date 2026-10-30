@@ -150,7 +150,7 @@ const x = 1;
         /width="40" height="20" src="\/assets\/plain\.webp"/,
       );
       expect(html).toMatch(
-        /width="20" height="10" src="\/assets\/dense@2x\.webp"/,
+        /width="20" height="10" src="\/assets\/dense%402x\.webp"/,
       );
     } finally {
       cwd.mockRestore();
@@ -179,13 +179,13 @@ const x = 1;
     try {
       const html = await renderMd(mdFile);
       expect(html).toContain(
-        '<picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/demo-still@2x.webp">' +
-          '<img loading="lazy" decoding="async" width="20" height="10" src="/assets/demo@2x.webp" alt="Demo"></picture>',
+        '<picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/demo-still%402x.webp">' +
+          '<img loading="lazy" decoding="async" width="20" height="10" src="/assets/demo%402x.webp" alt="Demo"></picture>',
       );
       // An image with no still copy stays a plain <img>.
       expect(html.match(/<picture>/g)).toHaveLength(1);
       expect(html).toContain(
-        '<img loading="lazy" decoding="async" width="20" height="10" src="/assets/solo@2x.webp" alt="Solo">',
+        '<img loading="lazy" decoding="async" width="20" height="10" src="/assets/solo%402x.webp" alt="Solo">',
       );
     } finally {
       cwd.mockRestore();
@@ -289,8 +289,8 @@ const x = 1;
     const cwd = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
     try {
       expect(await renderMd(mdFile)).toContain(
-        '<picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/demo-still@2x.webp">' +
-          '<img loading="eager" width="20" height="10" src="/assets/demo@2x.webp" alt="Demo"></picture>',
+        '<picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/demo-still%402x.webp">' +
+          '<img loading="eager" width="20" height="10" src="/assets/demo%402x.webp" alt="Demo"></picture>',
       );
     } finally {
       cwd.mockRestore();
@@ -316,9 +316,9 @@ const x = 1;
     try {
       const version = hashOf(webp);
       expect(demoImage("/assets/demos/tour@2x.webp", 'A "quoted" tour')).toBe(
-        `<picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/demos/tour-still@2x.webp?v=${version}">` +
+        `<picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/demos/tour-still%402x.webp?v=${version}">` +
           '<img loading="lazy" decoding="async" class="demo-shot" width="20" height="10" ' +
-          `src="/assets/demos/tour@2x.webp?v=${version}" alt="A &quot;quoted&quot; tour"></picture>`,
+          `src="/assets/demos/tour%402x.webp?v=${version}" alt="A &quot;quoted&quot; tour"></picture>`,
       );
       // Only the recorded demos opt out of the default image frame.
       expect(demoImage("/assets/photo@2x.webp", "Photo")).not.toContain(
@@ -358,13 +358,13 @@ const x = 1;
       const wide = hashOf(webp(1100, 360));
       const tall = hashOf(webp(660, 700));
       expect(sources).toEqual([
-        `<source media="(max-width: 760px) and (prefers-reduced-motion: reduce)" srcset="/assets/demos/tall-still@2x.webp?v=${tall}" width="330" height="350">`,
-        `<source media="(prefers-reduced-motion: reduce)" srcset="/assets/demos/wide-still@2x.webp?v=${wide}">`,
-        `<source media="(max-width: 760px)" srcset="/assets/demos/tall@2x.webp?v=${tall}" width="330" height="350">`,
+        `<source media="(max-width: 760px) and (prefers-reduced-motion: reduce)" srcset="/assets/demos/tall-still%402x.webp?v=${tall}" width="330" height="350">`,
+        `<source media="(prefers-reduced-motion: reduce)" srcset="/assets/demos/wide-still%402x.webp?v=${wide}">`,
+        `<source media="(max-width: 760px)" srcset="/assets/demos/tall%402x.webp?v=${tall}" width="330" height="350">`,
       ]);
       // The <img> keeps the default image's own size.
       expect(html).toContain(
-        `width="550" height="180" src="/assets/demos/wide@2x.webp?v=${wide}"`,
+        `width="550" height="180" src="/assets/demos/wide%402x.webp?v=${wide}"`,
       );
     } finally {
       cwd.mockRestore();
@@ -398,7 +398,7 @@ const x = 1;
     try {
       const first = demoImage("/assets/vscode/hover@2x.webp", "Hover");
       expect(first).toContain(
-        `src="/assets/vscode/hover@2x.webp?v=${hashOf(bytes(1))}"`,
+        `src="/assets/vscode/hover%402x.webp?v=${hashOf(bytes(1))}"`,
       );
       // Same bytes give the same URL; different bytes give a different one, even at the same size.
       expect(demoImage("/assets/vscode/hover@2x.webp", "Hover")).toBe(first);
@@ -408,12 +408,140 @@ const x = 1;
       expect(second).not.toBe(first);
       // Folders outside the list are never versioned, because they are not cached forever.
       expect(demoImage("/assets/other/photo@2x.webp", "Photo")).toContain(
-        'src="/assets/other/photo@2x.webp"',
+        'src="/assets/other/photo%402x.webp"',
       );
       // A missing file renders its plain path instead of throwing.
       expect(demoImage("/assets/vscode/missing@2x.webp", "Gone")).toContain(
-        'src="/assets/vscode/missing@2x.webp"',
+        'src="/assets/vscode/missing%402x.webp"',
       );
+    } finally {
+      cwd.mockRestore();
+    }
+  });
+
+  it("emits image URLs with each path segment percent-encoded, so Workers static assets serves them without a redirect", async () => {
+    // Workers static assets 307-redirects any path that differs from its per-segment encodeURIComponent form,
+    // so a raw `@` in `demo@2x.webp` would cost every image a round trip. The file on disk keeps its name.
+    const webp = Buffer.alloc(32);
+    webp.write("RIFF", 0, "latin1");
+    webp.write("WEBP", 8, "latin1");
+    webp.write("VP8 ", 12, "latin1");
+    webp.writeUInt16LE(40, 26);
+    webp.writeUInt16LE(20, 28);
+    const demos = join(tempDir, "src/pages/assets/demos");
+    await mkdir(demos, { recursive: true });
+    await writeFile(join(demos, "tour@2x.webp"), webp);
+    await writeFile(join(demos, "tour-still@2x.webp"), webp);
+    await writeFile(join(demos, "two words@2x.webp"), webp);
+    const mdFile = join(tempDir, "encoded.md");
+    await writeFile(
+      mdFile,
+      "![Tour](/assets/demos/tour@2x.webp)\n\n![Again](/assets/demos/tour%402x.webp)\n",
+    );
+
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+    try {
+      const version = hashOf(webp);
+      const encoded = `/assets/demos/tour%402x.webp?v=${version}`;
+      const still = `/assets/demos/tour-still%402x.webp?v=${version}`;
+      // Markdown images: the raw name and an already-encoded name give the same URL, never `%2540`.
+      const html = await renderMd(mdFile);
+      expect(
+        html.match(
+          new RegExp(`src="${encoded.replace(/[?.]/g, "\\$&")}"`, "g"),
+        ),
+      ).toHaveLength(2);
+      expect(html).toContain(`srcset="${still}"`);
+      expect(html).toContain('width="20" height="10"');
+      expect(html).not.toContain("%25");
+      expect(html).not.toMatch(/(?:src|srcset)="[^"]*@/);
+      // demoImage, including an already-encoded argument and a narrow image.
+      for (const src of [
+        "/assets/demos/tour@2x.webp",
+        "/assets/demos/tour%402x.webp",
+      ]) {
+        const out = demoImage(src, "Tour", {
+          src: "/assets/demos/two words@2x.webp",
+          maxWidth: 760,
+        });
+        expect(out).toContain(`src="${encoded}"`);
+        expect(out).toContain(`srcset="${still}"`);
+        expect(out).toContain(
+          `srcset="/assets/demos/two%20words%402x.webp?v=${version}"`,
+        );
+        expect(out).not.toMatch(/(?:src|srcset)="[^"]*@/);
+      }
+      // Paths outside versioned folders and missing files are encoded too, just not versioned.
+      expect(demoImage("/assets/demos/missing@2x.webp", "Gone")).toContain(
+        'src="/assets/demos/missing%402x.webp"',
+      );
+      // A query string or fragment the author wrote is kept as written, and the path before it is encoded.
+      expect(demoImage("/assets/photo@2x.webp?raw#top", "Photo")).toContain(
+        'src="/assets/photo%402x.webp?raw#top"',
+      );
+      // Absolute and protocol-relative URLs are not site paths: they pass through untouched.
+      expect(demoImage("https://example.com/a@2x.webp", "Remote")).toContain(
+        'src="https://example.com/a@2x.webp"',
+      );
+      expect(demoImage("//example.com/a@2x.webp", "Remote")).toContain(
+        'src="//example.com/a@2x.webp"',
+      );
+      // A malformed escape is left as written instead of throwing, and an encoded `..` is never resolved.
+      expect(demoImage("/assets/demos/bad%E0.webp", "Bad")).toContain(
+        'src="/assets/demos/bad%E0.webp"',
+      );
+      expect(
+        demoImage("/assets/demos/%2E%2E/%2E%2E/secret.webp", "Up"),
+      ).not.toMatch(/width=|\?v=/);
+      // A query string the author wrote is escaped for the attribute it lands in.
+      expect(demoImage('/assets/photo.webp?a=1&b="2"', "Photo")).toContain(
+        'src="/assets/photo.webp?a=1&amp;b=&quot;2&quot;"',
+      );
+    } finally {
+      cwd.mockRestore();
+    }
+  });
+
+  it("reads a Markdown image path through marked's HTML escaping, so names with & or ' find their file", async () => {
+    // marked writes `&` as `&amp;` and `'` as `&#39;` in the src attribute. Read as a raw URL, the first names a
+    // file that does not exist and the `#` of the second starts a fragment that cuts the path short.
+    const webp = Buffer.alloc(32);
+    webp.write("RIFF", 0, "latin1");
+    webp.write("WEBP", 8, "latin1");
+    webp.write("VP8 ", 12, "latin1");
+    webp.writeUInt16LE(40, 26);
+    webp.writeUInt16LE(20, 28);
+    const demos = join(tempDir, "src/pages/assets/demos");
+    await mkdir(demos, { recursive: true });
+    await writeFile(join(demos, "a&b@2x.webp"), webp);
+    await writeFile(join(demos, "it's@2x.webp"), webp);
+    await writeFile(join(demos, "it's-still@2x.webp"), webp);
+    const mdFile = join(tempDir, "entities.md");
+    await writeFile(
+      mdFile,
+      "![Amp](/assets/demos/a&b@2x.webp)\n\n![Apostrophe](/assets/demos/it's@2x.webp)\n\n![Literal](/assets/demos/a&amp;b@2x.webp)\n",
+    );
+
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+    try {
+      const version = hashOf(webp);
+      const html = await renderMd(mdFile);
+      expect(html).toContain(
+        `width="20" height="10" src="/assets/demos/a%26b%402x.webp?v=${version}" alt="Amp"`,
+      );
+      expect(html).toContain(
+        `srcset="/assets/demos/it's-still%402x.webp?v=${version}"`,
+      );
+      expect(html).toContain(
+        `width="20" height="10" src="/assets/demos/it's%402x.webp?v=${version}" alt="Apostrophe"`,
+      );
+      // CommonMark decodes an entity in a link destination, so `&amp;` written in Markdown also means `&`.
+      expect(html).toContain(
+        `width="20" height="10" src="/assets/demos/a%26b%402x.webp?v=${version}" alt="Literal"`,
+      );
+      expect(html).not.toContain("%26amp%3B%402x");
+      expect(html).not.toContain("%26%2339%3B");
+      expect(html).not.toMatch(/src="[^"]*#/);
     } finally {
       cwd.mockRestore();
     }

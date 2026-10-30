@@ -1003,7 +1003,7 @@ describe("withResponsePolicy with the build's csp-hashes.json", () => {
 });
 
 describe("the header comment a reader copies from", () => {
-  it("shows the wrapper import and the root wrangler.jsonc for the Cloudflare target", async () => {
+  it("shows the wrapper import and its own wrangler.wrapper.jsonc for the Cloudflare target", async () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync(
       new URL(
@@ -1019,7 +1019,12 @@ describe("the header comment a reader copies from", () => {
       /"directory":\s*"dist\/\.bascik\/cloudflare\/public"/,
     );
     expect(header).toMatch(/"binding":\s*"ASSETS"/);
-    expect(header).toMatch(/"run_worker_first":\s*\[\s*"\/\*"\s*\]/);
+    expect(header).toMatch(/"run_worker_first":\s*true/);
+    // A root wrangler.jsonc is read into the generated config, and its main is ignored with a warning,
+    // so the wrapper config gets a name the build does not read and deploys with --config.
+    expect(header).toContain("wrangler.wrapper.jsonc");
+    expect(header).toMatch(/wrangler deploy --config wrangler\.wrapper\.jsonc/);
+    expect(header).not.toMatch(/root wrangler\.jsonc at the wrapper/);
     // Without it ASSETS answers a missing page with an empty 404 and the site's own 404.html is never served.
     expect(header).toMatch(/"not_found_handling":\s*"404-page"/);
     // The generated deploy script deploys dist/.bascik/cloudflare and would bypass the wrapper.

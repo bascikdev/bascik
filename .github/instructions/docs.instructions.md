@@ -78,7 +78,7 @@ The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformati
 
 ## Images in `/assets/demos/` and `/assets/vscode/`
 
-Both folders are served with `Cache-Control: public, max-age=31536000, immutable` on Cloudflare Pages (rule written by `docs/scripts/generate-pages-headers.ts`). That is only safe because every reference gets a `?v=<content hash>` from the image helper in `docs/src/lib/md-renderer.ts`. Always reference these images through a Markdown image (`![alt](/assets/demos/x@2x.webp)`) or `demoImage()` in a `data-bascik-build` script. Never write a raw `<img src>`, `<link href>`, or CSS `url()` into them: `docs/src/lib/versioned-image-references.test.ts` fails if you do. When re-recording a demo, keep the same file name; the hash changes on its own.
+Both folders are served with `Cache-Control: public, max-age=31536000, immutable` by Cloudflare (a `_headers` rule written by `docs/scripts/generate-pages-headers.ts`; Workers static assets and Pages read it the same way). That is only safe because every reference gets a `?v=<content hash>` from the image helper in `docs/src/lib/md-renderer.ts`. Always reference these images through a Markdown image (`![alt](/assets/demos/x@2x.webp)`) or `demoImage()` in a `data-bascik-build` script. Never write a raw `<img src>`, `<link href>`, or CSS `url()` into them: `docs/src/lib/versioned-image-references.test.ts` fails if you do. When re-recording a demo, keep the same file name; the hash changes on its own.
 
 ## Visuals
 

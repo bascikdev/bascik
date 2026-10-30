@@ -134,31 +134,99 @@ export const VERSIONED_IMAGE_FOLDERS = [
 const versionCache = new Map<string, { stamp: string; version: string }>();
 
 /**
- * The site path with `?v=<content hash>` appended when it names an image in a versioned folder, otherwise the
- * path unchanged (including when the file is missing). The query string changes whenever the bytes change, so
- * a far-future cache can never serve a stale image, and the file keeps its name: nothing is renamed or rewritten
- * after the build. Hashes are cached per file and recomputed when its size or modified time changes.
+ * `?v=<content hash>` when the site path names an image in a versioned folder, otherwise an empty string
+ * (including when the file is missing). The query string changes whenever the bytes change, so a far-future
+ * cache can never serve a stale image, and the file keeps its name: nothing is renamed or rewritten after the
+ * build. Hashes are cached per file and recomputed when its size or modified time changes.
  */
-function versionedPath(sitePath: string): string {
-  if (!sitePath.startsWith("/") || sitePath.includes("..")) return sitePath;
+function versionQuery(sitePath: string): string {
+  if (!sitePath.startsWith("/") || sitePath.includes("..")) return "";
   if (!VERSIONED_IMAGE_FOLDERS.some((folder) => sitePath.startsWith(folder)))
-    return sitePath;
+    return "";
   try {
     const file = join(process.cwd(), "src/pages", sitePath);
     const { mtimeMs, size } = statSync(file);
     const stamp = `${mtimeMs}:${size}`;
     const cached = versionCache.get(file);
-    if (cached?.stamp === stamp) return `${sitePath}?v=${cached.version}`;
+    if (cached?.stamp === stamp) return `?v=${cached.version}`;
     const version = createHash("sha256")
       .update(readFileSync(file))
       .digest("hex")
       .slice(0, 10);
     versionCache.set(file, { stamp, version });
-    return `${sitePath}?v=${version}`;
+    return `?v=${version}`;
   } catch {
-    return sitePath;
+    return "";
   }
 }
+
+/** A path segment decoded, or null when it holds a malformed escape such as `%E0`. */
+function decodeSegment(segment: string): string | null {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * An image reference split into the file it names and the URL to emit for it.
+ *
+ * Workers static assets answers a path that differs from its per-segment `encodeURIComponent` form with a 307 to
+ * that form, so a raw `demo@2x.webp` costs every visitor an extra round trip. The URL is therefore emitted with
+ * each segment encoded (`demo%402x.webp`), which Pages served too. A reference written already encoded is
+ * decoded first, so it is never encoded twice (`%2540`). A segment with a malformed escape is kept as written.
+ *
+ * `file` is the decoded site path used to find the file in src/pages, or null when the reference is not a plain
+ * site path: an absolute or protocol-relative URL, or one that carries its own query string or fragment, which
+ * is kept as written and never versioned.
+ */
+function imageReference(src: string): { file: string | null; url: string } {
+  if (!src.startsWith("/") || src.startsWith("//"))
+    return { file: null, url: src };
+  const suffixAt = src.search(/[?#]/);
+  const path = suffixAt === -1 ? src : src.slice(0, suffixAt);
+  const suffix = suffixAt === -1 ? "" : src.slice(suffixAt);
+  const decoded: string[] = [];
+  const encoded: string[] = [];
+  for (const segment of path.split("/")) {
+    const plain = decodeSegment(segment);
+    decoded.push(plain ?? segment);
+    encoded.push(plain === null ? segment : encodeURIComponent(plain));
+  }
+  const url = encoded.join("/") + suffix;
+  return { file: suffix ? null : decoded.join("/"), url };
+}
+
+/**
+ * The URL to emit for a site image, escaped for the double-quoted attribute it goes in: per-segment encoded, plus
+ * its content hash in a versioned folder. Escaping matters only for a query string the author wrote, since an
+ * encoded path holds no `&`, `"` or `<`.
+ */
+function imageUrl(src: string): string {
+  const { file, url } = imageReference(src);
+  return escapeAttribute(file === null ? url : url + versionQuery(file));
+}
+
+/** The entities marked writes into an attribute (its `escape` helper), mapped back to their characters. */
+const MARKED_ATTRIBUTE_ENTITIES: Record<string, string> = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+};
+
+/**
+ * A `src` from marked's HTML read back to the path the author wrote. marked escapes it, so `a&b.webp` arrives as
+ * `a&amp;b.webp` and `it's.webp` as `it&#39;s.webp`, whose `#` would otherwise start a fragment. One pass, so a
+ * name that really contains `&amp;` (escaped by marked as `&amp;amp;`) comes back as `&amp;`, not `&`.
+ */
+const unescapeMarkedAttribute = (text: string) =>
+  text.replace(
+    /&(?:amp|lt|gt|quot|#39);/g,
+    (entity) => MARKED_ATTRIBUTE_ENTITIES[entity] ?? entity,
+  );
 
 /**
  * The HTML for one site image: lazy loading, the display size when the file is a PNG or WebP that ships with
@@ -181,7 +249,8 @@ function renderImage(
   narrow?: { src: string; maxWidth: number },
   eager = false,
 ): string {
-  const size = imageSize(src);
+  const file = imageReference(src).file;
+  const size = file === null ? null : imageSize(file);
   const dimensions = size
     ? ` width="${size.width}" height="${size.height}"`
     : "";
@@ -194,29 +263,30 @@ function renderImage(
   // download of an animated recording competed with it (sitemap mobile LCP 1.5 s to 2.4 s in Lighthouse). The
   // browser raises the priority of an image in the viewport on its own.
   const loading = eager ? 'loading="eager"' : 'loading="lazy" decoding="async"';
-  const image = `<img ${loading}${demoClass}${dimensions} src="${versionedPath(src)}"${rest}>`;
+  const image = `<img ${loading}${demoClass}${dimensions} src="${imageUrl(src)}"${rest}>`;
   const sources: string[] = [];
   // The narrow image has a different shape from the default one, so its sources say how big it is. Without
   // that, the browser would reserve the default image's shape and the page would jump when the real one loads.
-  const narrowSize = narrow ? imageSize(narrow.src) : null;
+  const narrowFile = narrow ? imageReference(narrow.src).file : null;
+  const narrowSize = narrowFile === null ? null : imageSize(narrowFile);
   const narrowDimensions = narrowSize
     ? ` width="${narrowSize.width}" height="${narrowSize.height}"`
     : "";
   // Reduced motion wins over screen size, so these sources come first: the browser uses the first match.
-  const still = stillCopyPath(src);
-  const narrowStill = narrow ? stillCopyPath(narrow.src) : null;
+  const still = file === null ? null : stillCopyPath(file);
+  const narrowStill = narrowFile === null ? null : stillCopyPath(narrowFile);
   if (narrow && narrowStill) {
     sources.push(
-      `<source media="(max-width: ${narrow.maxWidth}px) and (prefers-reduced-motion: reduce)" srcset="${versionedPath(narrowStill)}"${narrowDimensions}>`,
+      `<source media="(max-width: ${narrow.maxWidth}px) and (prefers-reduced-motion: reduce)" srcset="${imageUrl(narrowStill)}"${narrowDimensions}>`,
     );
   }
   if (still)
     sources.push(
-      `<source media="(prefers-reduced-motion: reduce)" srcset="${versionedPath(still)}">`,
+      `<source media="(prefers-reduced-motion: reduce)" srcset="${imageUrl(still)}">`,
     );
   if (narrow)
     sources.push(
-      `<source media="(max-width: ${narrow.maxWidth}px)" srcset="${versionedPath(narrow.src)}"${narrowDimensions}>`,
+      `<source media="(max-width: ${narrow.maxWidth}px)" srcset="${imageUrl(narrow.src)}"${narrowDimensions}>`,
     );
   if (sources.length === 0) return image;
   return `<picture>${sources.join("")}${image}</picture>`;
@@ -513,7 +583,7 @@ function _transformMd(
         offset < foldOffset &&
         textBefore(offset) <= LCP_IMAGE_MAX_TEXT_BEFORE;
       if (eager) eagerUsed = true;
-      return renderImage(src, rest, undefined, eager);
+      return renderImage(unescapeMarkedAttribute(src), rest, undefined, eager);
     },
   );
 

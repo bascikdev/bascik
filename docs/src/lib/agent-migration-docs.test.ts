@@ -464,7 +464,7 @@ describe("agent migration page: a newcomer can follow it on day one", () => {
       expect(line.trim().startsWith("//"), line).toBe(true);
   });
 
-  it("the root wrangler.jsonc keeps the site's own 404 page", () => {
+  it("the wrangler.wrapper.jsonc keeps the site's own 404 page", () => {
     const wrangler = fences("jsonc").find((f) =>
       f.includes("run_worker_first"),
     )!;

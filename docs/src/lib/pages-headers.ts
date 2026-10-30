@@ -26,7 +26,8 @@
  * The production `*.pages.dev` alias serves the same pages as bascik.dev. Pages already sends `noindex` for
  * preview deployments, but not for that alias, so a host-scoped rule keeps it out of search results. The
  * `:project` placeholder matches any project name, so the rule never touches the custom domain. On Workers the
- * preview URLs live on workers.dev, so a second host rule marks every workers.dev host `noindex`.
+ * preview URLs live on workers.dev, so a second host rule marks every workers.dev host `noindex` (see
+ * WORKERS_DEV_NOINDEX_RULE for why Cloudflare does not already do that for us).
  */
 import { readdirSync } from "node:fs";
 import { relative, sep } from "node:path";
@@ -39,12 +40,23 @@ export const HTML_CACHE_CONTROL =
 
 export const SECURITY_HEADERS_RULE = `/*\n  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'\n  X-Frame-Options: DENY\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n`;
 
+/**
+ * The production `bascik.pages.dev` alias. The Pages project stays up until bascik.dev has fully moved to the
+ * Worker, and while it serves pages this rule keeps the duplicate host out of search results. On a Worker the
+ * rule matches no host, so it costs nothing there. Remove it, with its test, when the Pages project is deleted.
+ */
 export const PAGES_DEV_NOINDEX_RULE =
   "https://:project.pages.dev/*\n  X-Robots-Tag: noindex\n";
 
 /**
- * Every workers.dev host: the Worker's preview URLs (`<alias>-bascik.<account>.workers.dev`) and its workers.dev
- * route if it is ever turned on. Each host placeholder matches one DNS label, so bascik.dev is never matched.
+ * Every workers.dev host: the Worker's preview URLs (`<alias>-bascik.<account>.workers.dev`, uploaded by CI with
+ * `wrangler versions upload --preview-alias`) and its workers.dev route if it is ever turned on. Each host
+ * placeholder matches one DNS label, so bascik.dev is never matched.
+ *
+ * Cloudflare documents an automatic `X-Robots-Tag: noindex` only for the newer Worker Previews (`wrangler
+ * preview`), not for these version preview URLs, whose docs say only that they are public. The Workers static
+ * assets `_headers` docs recommend exactly this rule ("Prevent your workers.dev URLs showing in search results"),
+ * so it is kept: if the platform starts sending the header too, a duplicate `noindex` is harmless.
  */
 export const WORKERS_DEV_NOINDEX_RULE =
   "https://:worker.:subdomain.workers.dev/*\n  X-Robots-Tag: noindex\n";
