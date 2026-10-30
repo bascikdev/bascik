@@ -16,6 +16,7 @@ import {
   isTypeScriptDirectiveScript,
   compileDirectiveTypeScript,
   checkDirectiveModuleSyntax,
+  __moduleCheckStatsForTests,
   unbundledModuleImports,
 } from "./typescript.ts";
 
@@ -717,6 +718,45 @@ describe("checkDirectiveModuleSyntax: compiled output that is not a valid ES mod
         "src/lib/ok.ts",
       ),
     ).resolves.toBeUndefined();
+  });
+
+  it("parses valid modules in one shared checker, without a process per script", async () => {
+    const before = __moduleCheckStatsForTests.processes;
+    await Promise.all(
+      Array.from({ length: 24 }, (_, i) =>
+        expect(
+          checkDirectiveModuleSyntax(
+            `import { x } from "./m${i}.ts";\nexport const v${i} = await x;\n`,
+            `src/lib/many-${i}.ts`,
+          ),
+        ).resolves.toBeUndefined(),
+      ),
+    );
+    expect(__moduleCheckStatsForTests.processes - before).toBe(0);
+  });
+
+  it("still names the place of an error, and still checks when the shared checker is unavailable", async () => {
+    const failure = checkDirectiveModuleSyntax(
+      "let q = 1;\nlet q = 2;\nexport default q;\n",
+      "src/lib/q.ts",
+    );
+    await expect(failure).rejects.toThrow(
+      /src\/lib\/q\.ts:2:5: Identifier 'q'/,
+    );
+    __moduleCheckStatsForTests.disableChecker = true;
+    try {
+      await expect(
+        checkDirectiveModuleSyntax(
+          "let w = 1;\nlet w = 2;\nexport default w;\n",
+          "src/lib/w.ts",
+        ),
+      ).rejects.toThrow(/src\/lib\/w\.ts:2:5: Identifier 'w'/);
+      await expect(
+        checkDirectiveModuleSyntax("export default 1;\n// w\n", "src/lib/w.ts"),
+      ).resolves.toBeUndefined();
+    } finally {
+      __moduleCheckStatsForTests.disableChecker = false;
+    }
   });
 
   it("never runs the module it checks", async () => {

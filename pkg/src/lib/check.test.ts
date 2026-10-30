@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { BascikConfig } from "./config.ts";
 import {
   extractCustomTags,
+  extractCustomTagOccurrences,
   checkProject,
   formatFindingsHuman,
   formatFindingsJson,
@@ -77,6 +78,23 @@ describe("extractCustomTags", () => {
       '<My-Card></My-Card><site-nav /><input type="text"><br>',
     );
     expect([...tags]).toEqual(["my-card", "site-nav"]);
+  });
+
+  it("ends a tag name where a browser does: tag whitespace (newline included), / or >", () => {
+    const html = [
+      "<p>",
+      "<cta-band", // name ends at the line break
+      '  title="x"></cta-band>',
+      "<tab-band\tx></tab-band><ff-band\fx></ff-band><cr-band\r\n></cr-band>",
+      "<vt-band\vx></vt-band>", // \v is not tag whitespace: the name is `vt-band\v`
+      "<dot-band.x></dot-band.x><end-band",
+    ].join("\n");
+    expect(extractCustomTagOccurrences(html)).toEqual([
+      { tag: "cta-band", line: 2 },
+      { tag: "tab-band", line: 4 },
+      { tag: "ff-band", line: 4 },
+      { tag: "cr-band", line: 4 },
+    ]);
   });
 
   it("ignores non-hyphenated tags and closing-only matches", () => {
@@ -560,6 +578,219 @@ describe("checkProject", () => {
         .filter((i) => i.category === "unused-component")
         .map((i) => i.message);
       expect(unused).toEqual(["truly-unused"]);
+    });
+
+    const unusedNames = (findings: CheckFindings): string[] =>
+      findings.items
+        .filter((i) => i.category === "unused-component")
+        .map((i) => i.message)
+        .sort();
+
+    const mockComponents = (names: string[]) =>
+      listComponentsMock.mockResolvedValue(
+        Object.fromEntries(
+          names.map((name) => [
+            name,
+            { fileName: join(workDir, `components/${name}/${name}.html`) },
+          ]),
+        ),
+      );
+
+    const componentFiles = (names: string[]): Record<string, string> =>
+      Object.fromEntries(
+        names.map((name) => [
+          `components/${name}/${name}.html`,
+          `<div>${name}</div>`,
+        ]),
+      );
+
+    it("a tag whose attributes start on the next line is a use", async () => {
+      const names = ["cta-band", "hero-band", "truly-unused"];
+      await setupProject({
+        "pages/index.html": [
+          "<main>",
+          "  <cta-band",
+          '    data-bascik-prop-title="Join"',
+          "  ></cta-band>",
+          "  <hero-band\r\n></hero-band>",
+          "</main>",
+        ].join("\n"),
+        ...componentFiles(names),
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      mockComponents(names);
+
+      const findings = await checkProject();
+      expect(unusedNames(findings)).toEqual(["truly-unused"]);
+    });
+
+    it("a component's own use of another component across a line break is a dependency (cycle found)", async () => {
+      await setupProject({
+        "pages/index.html": "<ping-a></ping-a>",
+        "components/ping-a/ping-a.html": "<ping-b\n></ping-b>",
+        "components/ping-b/ping-b.html": "<ping-a\n  class=x></ping-a>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      mockComponents(["ping-a", "ping-b"]);
+
+      const findings = await checkProject();
+      expect(
+        findings.items.some(
+          (i) => i.category === "circular-component-reference",
+        ),
+      ).toBe(true);
+    });
+
+    it("a component tag in a build script's template literal is a use", async () => {
+      const names = ["promo-card", "truly-unused"];
+      await setupProject({
+        "pages/index.html": [
+          "<script data-bascik-build>",
+          "  const items = [1, 2];",
+          "  console.log(items.map((n) => `<promo-card",
+          '    data-bascik-prop-n="${n}"></promo-card>`).join(""));',
+          "</script>",
+        ].join("\n"),
+        ...componentFiles(names),
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      mockComponents(names);
+
+      const findings = await checkProject();
+      expect(unusedNames(findings)).toEqual(["truly-unused"]);
+    });
+
+    it("a component tag returned by a local module a script imports is a use (relative, @/, src=, transitive)", async () => {
+      const names = [
+        "deal-card",
+        "news-card",
+        "src-card",
+        "deep-card",
+        "stream-card",
+        "truly-unused",
+      ];
+      await setupProject({
+        "pages/index.html": [
+          "<script data-bascik-build>",
+          '  import { deal } from "./helpers/deal.ts";',
+          '  import { news } from "@/lib/news.ts";',
+          "  console.log(deal() + news());",
+          "</script>",
+          '<script data-bascik-build-once src="./helpers/once.ts"></script>',
+          "<script data-bascik-stream>",
+          '  import { stream } from "@/lib/stream";',
+          "  export default async () => stream();",
+          "</script>",
+        ].join("\n"),
+        "pages/helpers/deal.ts":
+          'export const deal = (): string => "<deal-card></deal-card>";\n',
+        "src/lib/news.ts": [
+          'import { deep } from "./deep.ts";',
+          "export const news = (): string => `<news-card>${deep()}</news-card>`;",
+        ].join("\n"),
+        "src/lib/deep.ts": [
+          'import { news } from "./news.ts";',
+          'export const deep = (): string => "<deep-card/>" + String(news);',
+        ].join("\n"),
+        "pages/helpers/once.ts": 'console.log("<src-card>");\n',
+        "src/lib/stream.ts":
+          'export const stream = () => "<stream-card></stream-card>";\n',
+        ...componentFiles(names),
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      mockComponents(names);
+
+      const findings = await checkProject();
+      expect(unusedNames(findings)).toEqual(["truly-unused"]);
+    });
+
+    it("a server script's src= module and its imports are read", async () => {
+      const names = ["srv-card", "truly-unused"];
+      await setupProject({
+        "pages/index.html":
+          '<script data-bascik-server src="@/server/list.ts"></script>',
+        "src/server/list.ts": [
+          'import { card } from "../lib/card.ts";',
+          "export default () => card();",
+        ].join("\n"),
+        "src/lib/card.ts": 'export const card = () => "<srv-card></srv-card>";',
+        ...componentFiles(names),
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      mockComponents(names);
+
+      const findings = await checkProject();
+      expect(unusedNames(findings)).toEqual(["truly-unused"]);
+    });
+
+    it("a package import, a missing or leading-slash module, and a tag in a client script are not uses (and do not throw)", async () => {
+      const names = ["lone-card"];
+      await setupProject({
+        "pages/index.html": [
+          "<script data-bascik-build>",
+          '  import { x } from "some-package";',
+          '  import { y } from "./missing.ts";',
+          '  import { z } from "/lib/leading-slash.ts";',
+          "</script>",
+          '<script data-bascik-server src="/lib/leading-slash.ts"></script>',
+          '<script data-bascik-server src="./missing-src.ts"></script>',
+          '<script type="module">document.body.innerHTML = "<lone-card></lone-card>";</script>',
+        ].join("\n"),
+        ...componentFiles(names),
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      mockComponents(names);
+
+      const findings = await checkProject();
+      expect(unusedNames(findings)).toEqual(["lone-card"]);
+    });
+
+    it("an unused warning says when a script builds a tag name the check cannot see", async () => {
+      const names = ["pick-a", "pick-b"];
+      await setupProject({
+        "pages/index.html": [
+          "<pick-a></pick-a>",
+          "<script data-bascik-server>",
+          '  import { render } from "@/lib/pick.ts";',
+          "  export default () => render('b');",
+          "</script>",
+        ].join("\n"),
+        "src/lib/pick.ts": [
+          "export const render = (kind: string): string =>",
+          "  `<pick-${kind}></pick-${kind}>`;",
+        ].join("\n"),
+        ...componentFiles(names),
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      mockComponents(names);
+
+      const findings = await checkProject();
+      const item = findings.items.find(
+        (i) => i.category === "unused-component",
+      );
+      expect(item?.message).toBe("pick-b");
+      expect(item?.note).toContain("src/lib/pick.ts:2");
+      expect(formatFindingsHuman(findings)).toContain("src/lib/pick.ts:2");
+      expect(JSON.parse(formatFindingsJson(findings)).findings[0].note).toBe(
+        item?.note,
+      );
+    });
+
+    it("an unused warning has no note when no script builds a tag name", async () => {
+      await setupProject({
+        "pages/index.html":
+          "<script data-bascik-build>console.log(`<p>${1}</p>`);</script>",
+        ...componentFiles(["solo-card"]),
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      mockComponents(["solo-card"]);
+
+      const findings = await checkProject();
+      const item = findings.items.find(
+        (i) => i.category === "unused-component",
+      );
+      expect(item?.message).toBe("solo-card");
+      expect(item?.note).toBeUndefined();
     });
 
     it("produces documented JSON schema with formatFindingsJson driven by same data", async () => {
@@ -1826,8 +2057,10 @@ describe("checkProject – request-time component rendering (prompt 157)", () =>
         "  class names (a stylesheet using url(#id), or scoping.deduplicateCss: false),",
     );
     expect(human).toContain(
-      "Defined but never referenced. Safe to delete, or referenced only from a\n" +
-        "  script this check cannot see (a src= module, or a tag name built in code).",
+      "Never written as a tag in a page, a component, a build, server or stream\n" +
+        "  script, or a local module one imports. Safe to delete, unless a script\n" +
+        "  builds the tag name in code, which this check cannot follow (a note says\n" +
+        "  where one does).",
     );
   });
 

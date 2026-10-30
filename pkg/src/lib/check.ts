@@ -19,8 +19,8 @@
  */
 
 import { readFile, readdir } from "node:fs/promises";
-import { resolve, relative, join } from "node:path";
-import { existsSync } from "node:fs";
+import { resolve, relative, join, dirname, extname } from "node:path";
+import { existsSync, statSync } from "node:fs";
 import { listPages, getRelativePath, deepReadDirFlat } from "./file-system.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import { listComponents } from "./components.ts";
@@ -49,7 +49,18 @@ import {
   PRESERVE_WILDCARD_PATTERN,
 } from "./config-validation.ts";
 import { stdout } from "./colors.ts";
-import { BUILD_ATTR_NAME, BUILD_ONCE_ATTR_NAME } from "./html-patterns.ts";
+import {
+  BUILD_ATTR_NAME,
+  BUILD_ONCE_ATTR_NAME,
+  getHtmlAttributeValue,
+} from "./html-patterns.ts";
+import { getImportRoot } from "./import-root.ts";
+import {
+  classifySpecifier,
+  findModuleSpecifiers,
+  resolveScriptSrcPath,
+  resolveSpecifierPath,
+} from "./module-specifiers.ts";
 import {
   createAttributeScanner,
   createMarkerWalk,
@@ -81,6 +92,8 @@ export interface CheckFinding {
   message: string;
   locations: FindingLocation[];
   suggestion?: string;
+  /** A caveat shown under the finding, such as a use the check cannot see. */
+  note?: string;
   /** `language-server` for per-file findings; absent for the project checks this module owns. */
   source?: "language-server";
 }
@@ -227,21 +240,17 @@ export const extractCustomTagOccurrences = (html: string): TagOccurrence[] => {
   });
   const stripped = stripElementContents(noComments);
   const occurrences: TagOccurrence[] = [];
-  const lines = stripped.split("\n");
-  const re = /<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)[\s\/>]/gi;
-
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-    const lineText = lines[lineIndex];
-    let m: RegExpExecArray | null;
-    re.lastIndex = 0;
-    while ((m = re.exec(lineText)) !== null) {
-      occurrences.push({
-        tag: m[1].toLowerCase(),
-        line: lineIndex + 1,
-      });
-    }
+  // The tag name ends where a browser ends it: at tag whitespace (a newline
+  // included, so attributes may start on the next line), `/` or `>`. The
+  // whole text is scanned at once, not line by line.
+  const re = /<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)(?=[\t\n\f\r \/>])/gi;
+  let counted = 0;
+  let line = 1;
+  for (const m of stripped.matchAll(re)) {
+    for (; counted < m.index; counted++)
+      if (stripped.charCodeAt(counted) === 10) line++;
+    occurrences.push({ tag: m[1].toLowerCase(), line });
   }
-
   return occurrences;
 };
 
@@ -281,56 +290,49 @@ const toDisplay = (filePath: string): string => {
   }
 };
 
-/**
- * Extract all `<script data-bascik-build>` block contents from an HTML string.
- */
 /** Inline `data-bascik-server` and `data-bascik-stream` script attributes. */
 const REQUEST_DIRECTIVE_RE =
   /(?:^|\s)data-bascik-(?:server|stream)(?=[\s=/]|$)/i;
 
 /**
- * The text of each inline server and stream script. The tag names in their
- * templates are static (html refuses a hole in a tag name), so a tag written
- * there is a real use of the component.
+ * The note on an unused component when some script builds a tag name in
+ * code: the component may be used there, so the warning names the places
+ * instead of claiming it is unused. Undefined when no script does.
  */
-const extractRequestScripts = (html: string): string[] => {
-  const scripts: string[] = [];
-  for (const match of scanElementContents(html, "script", {
-    opener: "tag-space",
-    closer: "attributes",
-  })) {
-    const attrs = html.slice(match.start + 7, match.contentStart - 1);
-    if (REQUEST_DIRECTIVE_RE.test(attrs))
-      scripts.push(html.slice(match.contentStart, match.contentEnd));
-  }
-  return scripts;
+const computedTagNote = (sites: FindingLocation[]): string | undefined => {
+  if (sites.length === 0) return undefined;
+  const shown = sites
+    .slice(0, 3)
+    .map((site) => `${site.filePath}:${site.line}`)
+    .join(", ");
+  const more = sites.length > 3 ? ` and ${sites.length - 3} more` : "";
+  return (
+    `may be used: a script builds a tag name in code at ${shown}${more}, ` +
+    `which this check cannot follow`
+  );
 };
 
-/** Whether `source` holds the start tag `<name` (followed by space, / or >). */
-const hasStartTag = (source: string, name: string): boolean => {
-  const needle = `<${name}`;
-  for (
-    let at = source.indexOf(needle);
-    at !== -1;
-    at = source.indexOf(needle, at + 1)
-  ) {
-    const next = source[at + needle.length];
-    if (
-      next === ">" ||
-      next === "/" ||
-      next === " " ||
-      next === "\t" ||
-      next === "\n" ||
-      next === "\r" ||
-      next === "\f"
-    )
-      return true;
-  }
-  return false;
-};
+/** A build, server or stream script in a page or component. */
+interface DirectiveScript {
+  /** The inline body (empty for a `src=` script). */
+  content: string;
+  /** The 0-based line of `content`'s first character in the file. */
+  line: number;
+  /** The `src=` value, when the script names a module. */
+  src?: string;
+}
 
-const extractBuildScripts = (html: string): string[] => {
-  const scripts: string[] = [];
+/**
+ * Every build (`data-bascik-build`, `data-bascik-build-once`), server and
+ * stream script in `html`: its inline body and its `src=`. The tag names in
+ * their templates are static (html refuses a hole in a tag name), so a tag
+ * written there, or in a local module the script imports, is a real use of
+ * the component.
+ */
+const extractDirectiveScripts = (html: string): DirectiveScript[] => {
+  const scripts: DirectiveScript[] = [];
+  let counted = 0;
+  let line = 0;
   // `/<script(?=[\t\n\f\r />])((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi`,
   // in linear time.
   for (const match of scanElementContents(html, "script", {
@@ -338,12 +340,143 @@ const extractBuildScripts = (html: string): string[] => {
     closer: "attributes",
   })) {
     const attrs = html.slice(match.start + 7, match.contentStart - 1);
-    const content = html.slice(match.contentStart, match.contentEnd);
-    if (BUILD_DIRECTIVE_RE.test(attrs)) {
-      scripts.push(content);
-    }
+    if (!BUILD_DIRECTIVE_RE.test(attrs) && !REQUEST_DIRECTIVE_RE.test(attrs))
+      continue;
+    for (; counted < match.contentStart; counted++)
+      if (html.charCodeAt(counted) === 10) line++;
+    const src = getHtmlAttributeValue(`<script ${attrs}>`, "src")?.trim();
+    scripts.push({
+      content: html.slice(match.contentStart, match.contentEnd),
+      line,
+      ...(src ? { src } : {}),
+    });
   }
   return scripts;
+};
+
+/** A start tag's name, read as a browser reads it: up to tag whitespace, `/` or `>`. */
+const START_TAG_NAME_RE = /<([a-zA-Z][^\t\n\f\r />]*)(?=[\t\n\f\r />])/g;
+
+/**
+ * Markup whose tag name is built in code: a template hole in the name
+ * (`` `<${tag}>` ``, `` `<card-${kind}>` ``), or a string that ends in `<` or
+ * a partial name and is concatenated (`"<" + tag`, `'<card-' + kind`).
+ */
+const COMPUTED_TAG_NAME_RE = /<[a-zA-Z0-9-]*\$\{|<[a-zA-Z0-9-]*["']\s*\+/g;
+
+/** What a script (or a module it imports) says about component use. */
+interface ScriptUses {
+  /** Lowercased start-tag names written in it. */
+  tags: Set<string>;
+  /** The text, for the quoted-name check. */
+  text: string;
+  /** 1-based lines where a tag name is built in code. */
+  computedLines: number[];
+}
+
+const scanScriptUses = (text: string, lineOffset: number): ScriptUses => {
+  const tags = new Set<string>();
+  for (const match of text.matchAll(START_TAG_NAME_RE))
+    tags.add(match[1].toLowerCase());
+  const computedLines: number[] = [];
+  let counted = 0;
+  let line = lineOffset + 1;
+  for (const match of text.matchAll(COMPUTED_TAG_NAME_RE)) {
+    for (; counted < match.index; counted++)
+      if (text.charCodeAt(counted) === 10) line++;
+    if (computedLines.at(-1) !== line) computedLines.push(line);
+  }
+  return { tags, text, computedLines };
+};
+
+/** How many local modules `bascik --check` reads while following script imports. */
+const MAX_SCRIPT_MODULES = 2000;
+
+const SCRIPT_MODULE_EXTENSIONS = [".ts", ".mts", ".js", ".mjs", ".cjs"];
+
+/**
+ * The file a local specifier names, trying the script extensions (and
+ * `index.*`) when it has none, and the TypeScript twin of a `.js` / `.mjs`
+ * specifier (`./x.js` written for `./x.ts`). Undefined when none exists.
+ */
+const resolveLocalModuleFile = (base: string): string | undefined => {
+  const clean = base.replace(/[?#].*$/, "");
+  const ext = extname(clean);
+  const candidates = !ext
+    ? [
+        ...SCRIPT_MODULE_EXTENSIONS.map((e) => clean + e),
+        ...SCRIPT_MODULE_EXTENSIONS.map((e) => join(clean, `index${e}`)),
+      ]
+    : ext === ".js" || ext === ".mjs"
+      ? [clean, clean.slice(0, -ext.length) + (ext === ".js" ? ".ts" : ".mts")]
+      : [clean];
+  for (const file of candidates) {
+    try {
+      if (statSync(file).isFile()) return file;
+    } catch {
+      // try the next candidate
+    }
+  }
+  return undefined;
+};
+
+/**
+ * Follows the local modules (`./`, `../`, `@/`) that build, server and stream
+ * scripts import, and their imports in turn, each file once per check and at
+ * most MAX_SCRIPT_MODULES in all. A package, a missing file or a leading-`/`
+ * specifier is not followed.
+ */
+const createScriptModuleReader = () => {
+  const importRoot = getImportRoot();
+  const seen = new Set<string>();
+  const found: Array<{ filePath: string; uses: ScriptUses }> = [];
+
+  const follow = async (text: string, fromDir: string): Promise<void> => {
+    let specifiers: string[];
+    try {
+      specifiers = findModuleSpecifiers(text).map(({ value }) => value);
+    } catch {
+      return;
+    }
+    for (const specifier of specifiers) {
+      const kind = classifySpecifier(specifier);
+      if (kind !== "relative" && kind !== "root") continue;
+      const base = resolveSpecifierPath(specifier, fromDir, importRoot);
+      const file = base && resolveLocalModuleFile(base);
+      if (file) await visit(file);
+    }
+  };
+
+  const visit = async (file: string): Promise<void> => {
+    if (seen.has(file) || seen.size >= MAX_SCRIPT_MODULES) return;
+    seen.add(file);
+    let text: string;
+    try {
+      text = await readFile(file, "utf8");
+    } catch {
+      return;
+    }
+    found.push({ filePath: file, uses: scanScriptUses(text, 0) });
+    await follow(text, dirname(file));
+  };
+
+  /** Read one directive script of `ownerFile`: its body, its `src=` module, and their imports. */
+  const readScript = async (
+    script: DirectiveScript,
+    ownerFile: string,
+  ): Promise<ScriptUses> => {
+    const ownerDir = dirname(ownerFile);
+    if (script.src && classifySpecifier(script.src) !== "root-slash") {
+      const file = resolveLocalModuleFile(
+        resolveScriptSrcPath(script.src, ownerDir, importRoot),
+      );
+      if (file) await visit(file);
+    }
+    await follow(script.content, ownerDir);
+    return scanScriptUses(script.content, script.line);
+  };
+
+  return { readScript, modules: found };
 };
 
 /** `[a-zA-Z0-9:-]` */
@@ -751,16 +884,14 @@ export const checkProject = async (
           filePath,
           html,
           occurrences: extractCustomTagOccurrences(html),
-          buildScripts: extractBuildScripts(html),
-          requestScripts: extractRequestScripts(html),
+          directiveScripts: extractDirectiveScripts(html),
         };
       } catch {
         return {
           filePath,
           html: "",
           occurrences: [],
-          buildScripts: [],
-          requestScripts: [],
+          directiveScripts: [] as DirectiveScript[],
         };
       }
     }),
@@ -784,24 +915,34 @@ export const checkProject = async (
     componentGraph.set(canonical, new Set<string>());
   }
 
-  // Check build script sources for string literal references to components
-  for (const { buildScripts } of scanResults) {
-    for (const scriptContent of buildScripts) {
-      for (const comp of knownComponents) {
-        // String literal check: e.g. "my-card", 'my-card', `my-card`
-        const literalRegex = new RegExp(`["'\`]${comp}["'\`]`);
-        if (literalRegex.test(scriptContent)) {
-          usedComponents.add(comp);
-        }
-      }
-    }
+  // Build, server and stream scripts, their src= modules and the local modules
+  // they import: a component's start tag written there is a use, and so is
+  // its name as a whole string literal ("my-card", for a tag built from it).
+  // A tag name built in code is not; where one is, an unused warning says so.
+  const scriptReader = createScriptModuleReader();
+  const scriptUses: Array<{ filePath: string; uses: ScriptUses }> = [];
+  for (const { filePath, directiveScripts } of scanResults)
+    for (const script of directiveScripts)
+      scriptUses.push({
+        filePath,
+        uses: await scriptReader.readScript(script, filePath),
+      });
+  scriptUses.push(...scriptReader.modules);
+  const computedTagSites: FindingLocation[] = [];
+  for (const { filePath, uses } of scriptUses) {
+    for (const tag of uses.tags)
+      if (knownComponents.has(tag)) usedComponents.add(tag);
+    for (const comp of knownComponents)
+      if (
+        !usedComponents.has(comp) &&
+        (uses.text.includes(`"${comp}"`) ||
+          uses.text.includes(`'${comp}'`) ||
+          uses.text.includes(`\`${comp}\``))
+      )
+        usedComponents.add(comp);
+    for (const line of uses.computedLines)
+      computedTagSites.push({ filePath: toDisplay(filePath), line });
   }
-
-  // Server and stream scripts: a component tag in a template is a use.
-  for (const { requestScripts } of scanResults)
-    for (const scriptContent of requestScripts)
-      for (const comp of knownComponents)
-        if (hasStartTag(scriptContent, comp)) usedComponents.add(comp);
 
   for (const { filePath, html, occurrences } of scanResults) {
     const displayPath = toDisplay(filePath);
@@ -961,6 +1102,7 @@ export const checkProject = async (
 
   // Unused components -> warnings
   const unused = [...knownComponents].filter((c) => !usedComponents.has(c));
+  const computedNote = computedTagNote(computedTagSites);
   for (const comp of unused) {
     const rawPath = componentList[comp]?.fileName;
     const locPath = rawPath ? toDisplay(rawPath) : comp;
@@ -969,6 +1111,7 @@ export const checkProject = async (
       severity: "warning",
       message: comp,
       locations: [{ filePath: locPath }],
+      ...(computedNote ? { note: computedNote } : {}),
     });
   }
 
@@ -1163,7 +1306,7 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
     // A component returned only from a server or stream script is placed on
     // no page by design (prompt 157), so "safe to delete" names those too.
     description:
-      "Defined but never referenced. Safe to delete, or referenced only from a\nscript this check cannot see (a src= module, or a tag name built in code).",
+      "Never written as a tag in a page, a component, a build, server or stream\nscript, or a local module one imports. Safe to delete, unless a script\nbuilds the tag name in code, which this check cannot follow (a note says\nwhere one does).",
   },
   "route-collision": {
     title: "API route collisions",
@@ -1344,6 +1487,7 @@ export const formatFindingsHuman = (findings: CheckFindings): string => {
       } else if (category === "unused-component") {
         const loc = item.locations[0]?.filePath ?? item.message;
         section += `  ${loc}\n`;
+        if (item.note) section += `      ${item.note}\n`;
       } else if (category === "route-collision") {
         section += `  ${item.message}\n`;
         for (const loc of item.locations) {
@@ -1394,6 +1538,8 @@ export interface CheckJsonOutput {
     message: string;
     locations: FindingLocation[];
     suggestion?: string;
+    /** A caveat, such as an unused component a tag name built in code may use. */
+    note?: string;
     /** `language-server` for per-file findings; absent for the project checks. */
     source?: "language-server";
   }>;
@@ -1419,6 +1565,7 @@ export const formatFindingsJson = (findings: CheckFindings): string => {
       message: item.message,
       locations: item.locations,
       ...(item.suggestion ? { suggestion: item.suggestion } : {}),
+      ...(item.note ? { note: item.note } : {}),
       ...(item.source ? { source: item.source } : {}),
     })),
   };
@@ -1427,6 +1574,6 @@ export const formatFindingsJson = (findings: CheckFindings): string => {
 
 /** The open-tag scans `bascik --check` runs, for the linear-time tests. */
 export const __checkScansForTests = {
-  extractBuildScripts,
+  extractDirectiveScripts,
   maskPreservedSubtrees,
 };

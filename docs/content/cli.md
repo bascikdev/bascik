@@ -371,8 +371,10 @@ Components with no matching file (3)
                      did you mean <my-card>?
 
 Unused components (1)
-  Defined but never referenced. Safe to delete, or referenced only from a
-  script this check cannot see (a src= module, or a tag name built in code).
+  Never written as a tag in a page, a component, a build, server or stream
+  script, or a local module one imports. Safe to delete, unless a script
+  builds the tag name in code, which this check cannot follow (a note says
+  where one does).
 
   src/components/legacy-banner/legacy-banner.html
 
@@ -422,6 +424,17 @@ The per-file checks, from `@bascik/language-server`:
 | CSS or JavaScript in a component that cannot be scoped                                              | `css-*`, `js-*`             | Error or warning by rule |
 
 The language server knows more rules than these, such as undeclared props and slots and unsafe patterns in server scripts. They are all reported by `bascik --check` too. See [Linter](/tools/linter) for the full list and how to suppress one by its rule id. Hints, which are advice for the editor, are not reported by `--check`, so they never fail a CI run.
+
+A component counts as used when its start tag is written anywhere `bascik --check` reads markup: a page, another component, the body of a build, server or stream script, the `src=` module of one, or a local module (`./`, `../` or `@/`) any of those import, followed through their own imports. A tag counts whether it sits on one line or its attributes start on the next (`<cta-band` then a line break), the way a browser reads it, and a tag written in a template literal counts too. A tag in a client-side `<script>`, or in a package, does not. What the check cannot see is a tag name built in code, such as `` `<card-${kind}>` `` or `"<" + tag`: when any script does that, each unused component carries a note that names the file and line, because it may be used there:
+
+```text
+Unused components (1)
+  ...
+  src/components/pick-b/pick-b.html
+      may be used: a script builds a tag name in code at src/lib/pick.ts:2, which this check cannot follow
+```
+
+The same note is the `note` field of the finding in `--json` output.
 
 The `dist-html-spec` check requires [parse5](https://parse5.js.org/), the reference WHATWG HTML5 parser, to be installed as a dev dependency. When parse5 is present, `--check` parses every compiled HTML file in `dist/` and reports any spec violation with a `file:line:col [error-code]` location. When parse5 is not installed, `--check` prints a one-line hint but does not fail:
 
@@ -520,7 +533,7 @@ Schema:
 
 `distHtmlChecked` is the number of `dist/` HTML files parse5 validated, or `null` when `dist/` does not exist or parse5 is not installed. `distHtmlSpecHintNeeded` is `true` when `dist/` has HTML files but parse5 is absent.
 
-`perFileChecked` is the number of files the language server checked, or `null` when it is not installed or too old, in which case `perFileHintNeeded` is `true`. `fixedFiles` lists the files `--fix` rewrote. A finding from the language server has `"source": "language-server"` and a `column`; its `category` is the rule id.
+`perFileChecked` is the number of files the language server checked, or `null` when it is not installed or too old, in which case `perFileHintNeeded` is `true`. `fixedFiles` lists the files `--fix` rewrote. A finding from the language server has `"source": "language-server"` and a `column`; its `category` is the rule id. An `unused-component` finding has a `note` when a script builds a tag name in code (see [Static analysis](#static-analysis-with-bascik-check) above).
 
 `bascik --check` exits with code `1` when errors are found (or warnings under `--strict`), which makes it suitable for CI:
 

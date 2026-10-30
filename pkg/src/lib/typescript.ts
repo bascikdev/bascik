@@ -27,6 +27,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { Worker } from "node:worker_threads";
 import { stripTypeScriptTypes } from "node:module";
 import { availableParallelism } from "node:os";
 import { BascikConfig } from "./config.ts";
@@ -318,24 +319,125 @@ const MODULE_CHECK_CONCURRENCY = Math.max(
   Math.min(8, availableParallelism()),
 );
 
+/** Test-only: `node --check` processes started, and a switch that turns the shared checker off. */
+export const __moduleCheckStatsForTests = {
+  processes: 0,
+  disableChecker: false,
+};
+
+/**
+ * The shared checker: one worker thread per thread that builds pages, which
+ * parses each module with `vm.SourceTextModule` (V8's module parse with its
+ * early errors, the same parse `node --check --input-type=module` runs). It
+ * never links or evaluates a module, so imports are not loaded and nothing
+ * runs. `vm.SourceTextModule` needs `--experimental-vm-modules`, which a
+ * worker thread can take for itself without changing the build process.
+ *
+ * It answers only "parses" or "does not": a SyntaxError from it carries no
+ * line, so a module that does not parse is checked again with `node --check`
+ * for the located message. A build of valid scripts starts no process.
+ */
+const CHECKER_SOURCE = `
+const vm = require("node:vm");
+const { parentPort } = require("node:worker_threads");
+// vm.SourceTextModule is experimental; its one-time warning is not the author's concern.
+process.emitWarning = () => {};
+parentPort.on("message", ({ id, code }) => {
+  let parses = true;
+  try {
+    new vm.SourceTextModule(code);
+  } catch (error) {
+    parses = !(error && error.name === "SyntaxError");
+  }
+  parentPort.postMessage({ id, parses });
+});
+`;
+
+interface SharedChecker {
+  worker: Worker;
+  pending: Map<number, (parses: boolean | undefined) => void>;
+  nextId: number;
+}
+
+let sharedChecker: SharedChecker | undefined;
+/** Set once the checker failed to start or crashed: `node --check` takes over. */
+let sharedCheckerBroken = false;
+
+const settleSharedChecker = (checker: SharedChecker): void => {
+  sharedCheckerBroken = true;
+  if (sharedChecker === checker) sharedChecker = undefined;
+  for (const resolveParse of checker.pending.values()) resolveParse(undefined);
+  checker.pending.clear();
+};
+
+const getSharedChecker = (): SharedChecker | undefined => {
+  if (sharedChecker) return sharedChecker;
+  if (sharedCheckerBroken) return undefined;
+  let worker: Worker;
+  try {
+    worker = new Worker(CHECKER_SOURCE, {
+      eval: true,
+      execArgv: ["--experimental-vm-modules"],
+      stdout: true,
+      stderr: true,
+    });
+  } catch {
+    sharedCheckerBroken = true;
+    return undefined;
+  }
+  const checker: SharedChecker = { worker, pending: new Map(), nextId: 0 };
+  // Idle, it never holds the process open; while a parse is pending, it does.
+  worker.unref();
+  worker.on("message", ({ id, parses }: { id: number; parses: boolean }) => {
+    const resolveParse = checker.pending.get(id);
+    if (!resolveParse) return;
+    checker.pending.delete(id);
+    if (checker.pending.size === 0) worker.unref();
+    resolveParse(parses);
+  });
+  worker.on("error", () => settleSharedChecker(checker));
+  worker.on("exit", () => settleSharedChecker(checker));
+  sharedChecker = checker;
+  return checker;
+};
+
+/**
+ * Whether `code` parses as an ES module, by the shared checker. Undefined
+ * when the checker is not available, so the caller asks `node --check`.
+ */
+const parsesInSharedChecker = (code: string): Promise<boolean | undefined> => {
+  if (__moduleCheckStatsForTests.disableChecker)
+    return Promise.resolve(undefined);
+  const checker = getSharedChecker();
+  if (!checker) return Promise.resolve(undefined);
+  return new Promise((resolveParse) => {
+    const id = checker.nextId++;
+    checker.pending.set(id, resolveParse);
+    if (checker.pending.size === 1) checker.worker.ref();
+    try {
+      checker.worker.postMessage({ id, code });
+    } catch {
+      checker.pending.delete(id);
+      resolveParse(undefined);
+    }
+  });
+};
+
 /**
  * Parse `code` as an ES module in a separate `node --check` process, which
  * reads it from stdin and never runs it or loads its imports. Resolves to
  * Node's stderr when the module does not parse, "" when it does, and also ""
  * when the check itself could not run (the script then fails where it runs,
- * as before). Results are cached by text, so a dev rebuild of an unchanged
- * script does not start a process.
+ * as before).
  */
-const nodeModuleCheck = async (code: string): Promise<string> => {
-  const cached = moduleCheckCache.get(code);
-  if (cached !== undefined) return cached;
+const nodeCheckProcess = async (code: string): Promise<string> => {
   if (moduleChecksRunning >= MODULE_CHECK_CONCURRENCY)
     await new Promise<void>((resolveTurn) =>
       moduleCheckQueue.push(resolveTurn),
     );
   moduleChecksRunning++;
   try {
-    const result = await new Promise<string>((resolveCheck) => {
+    return await new Promise<string>((resolveCheck) => {
       // NODE_OPTIONS could preload modules into the check; it parses only.
       const { NODE_OPTIONS: _ignored, ...env } = process.env;
       let child;
@@ -345,6 +447,7 @@ const nodeModuleCheck = async (code: string): Promise<string> => {
           ["--check", "--input-type=module", "-"],
           { env, stdio: ["pipe", "ignore", "pipe"] },
         );
+        __moduleCheckStatsForTests.processes++;
       } catch {
         resolveCheck("");
         return;
@@ -359,14 +462,28 @@ const nodeModuleCheck = async (code: string): Promise<string> => {
       child.stdin.on("error", () => {});
       child.stdin.end(code);
     });
-    if (moduleCheckCache.size >= MODULE_CHECK_CACHE_LIMIT)
-      moduleCheckCache.clear();
-    moduleCheckCache.set(code, result);
-    return result;
   } finally {
     moduleChecksRunning--;
     moduleCheckQueue.shift()?.();
   }
+};
+
+/**
+ * Whether `code` parses as an ES module: "" when it does, else Node's
+ * `node --check` stderr, which names the line and column. The shared checker
+ * answers first, so only a module that does not parse (or a thread where the
+ * checker cannot start) starts a process. Results are cached by text, so a
+ * dev rebuild of an unchanged script does no work.
+ */
+const nodeModuleCheck = async (code: string): Promise<string> => {
+  const cached = moduleCheckCache.get(code);
+  if (cached !== undefined) return cached;
+  const parses = await parsesInSharedChecker(code);
+  const result = parses === true ? "" : await nodeCheckProcess(code);
+  if (moduleCheckCache.size >= MODULE_CHECK_CACHE_LIMIT)
+    moduleCheckCache.clear();
+  moduleCheckCache.set(code, result);
+  return result;
 };
 
 /**

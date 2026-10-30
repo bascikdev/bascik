@@ -357,7 +357,7 @@ const buildTimeCases: HostileCase[] = [
     site: "check: build scripts and preserved subtrees (cubic)",
     input: (size) => repeatTo("<a data-bascik-preserve ", size),
     run: (html) => [
-      __checkScansForTests.extractBuildScripts(html),
+      __checkScansForTests.extractDirectiveScripts(html),
       __checkScansForTests.maskPreservedSubtrees(html),
     ],
   },
