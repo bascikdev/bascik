@@ -2,7 +2,7 @@
 // Audit how a Bascik project's pages are composed from components, and whether its code is TypeScript.
 // Dependency-free; Node.js 22.22+. Run from the project root. Heuristic: every finding is a suggestion to weigh.
 import { existsSync, readFileSync } from "node:fs";
-import { basename, join, relative } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import {
   componentRoots,
@@ -13,6 +13,11 @@ import {
   pagesDirectory,
   walkFiles,
 } from "./lib/project.mjs";
+import {
+  PAGE_CONTEXT_VARS,
+  pageContextOf,
+  resolveLocalImport,
+} from "./lib/build-scripts.mjs";
 import { listComponents, tagNameProblem } from "./lib/components.mjs";
 import {
   countNonBlankLines,
@@ -44,6 +49,11 @@ Rules:
                        let the page fill the child through a slot, or give the value to the child directly
   js-not-ts            A browser <script>, .js companion, or .js/.mjs helper where TypeScript is expected, and a
                        page <script src="x.ts">, which Bascik does not compile (only component companions are)
+  build-once           A <script data-bascik-build> in a component that reads no page context (BASCIK_PAGE_PATH,
+                       BASCIK_PAGE_FILE, BASCIK_ROUTE, here or in a local module it imports): its output is the same
+                       on every page, so use <script data-bascik-build-once>
+  once-reads-page      A <script data-bascik-build-once> that reads page context, which is empty there: use
+                       <script data-bascik-build>, which runs per page
 
 Options:
   --allow-js                 Skip js-not-ts (only when the person asked for JavaScript)
@@ -347,6 +357,61 @@ function checkScripts(doc, options, findings, stats) {
       message: `Inline ${module ? "module " : ""}<script> is JavaScript; new browser code is TypeScript.`,
       suggestion,
     });
+    return false;
+  });
+}
+
+/**
+ * build-once: a component's data-bascik-build script whose output cannot depend on the page. once-reads-page: a
+ * data-bascik-build-once script that reads page context, which is empty there. A script whose `src=` file or local
+ * import cannot be read is left alone: the build reports a missing file.
+ */
+function checkBuildScripts(doc, root, importRoot, findings) {
+  const where = doc.kind === "component" ? `<${doc.tag}>` : "this page";
+  walkElements(doc.tree, (node) => {
+    if (node.tag !== "script") return;
+    const once = "data-bascik-build-once" in node.attrs;
+    const build = "data-bascik-build" in node.attrs;
+    if (!once && !(build && doc.kind === "component")) return false;
+    const fromDir = dirname(doc.path);
+    let code = node.body ?? "";
+    let codeDir = fromDir;
+    const src = node.attrs.src;
+    if (src !== undefined) {
+      const target = resolveLocalImport(src, fromDir, importRoot);
+      if (!target?.found) return false;
+      try {
+        code = readFileSync(target.file, "utf8");
+      } catch {
+        return false;
+      }
+      codeDir = dirname(target.file);
+    }
+    const context = pageContextOf(code, { fromDir: codeDir, importRoot });
+    if (once && context.reads === true) {
+      const from = context.via
+        ? ` (in ${relative(root, context.via).replace(/\\/g, "/")})`
+        : "";
+      findings.push({
+        rule: "once-reads-page",
+        level: "warn",
+        file: doc.file,
+        line: node.line,
+        message: `<script data-bascik-build-once> in ${where} reads ${context.vars.join(", ")}${from}, which is empty there: one run serves every page.`,
+        suggestion:
+          "Use <script data-bascik-build>, which runs once per page with that page's context, or stop reading the page if the output is the same everywhere.",
+      });
+    } else if (!once && context.reads === false) {
+      findings.push({
+        rule: "build-once",
+        level: "warn",
+        file: doc.file,
+        line: node.line,
+        message: `<script data-bascik-build> in ${where} reads no page context (${PAGE_CONTEXT_VARS.join(", ")}), so it prints the same markup on every page that uses it.`,
+        suggestion:
+          "Use <script data-bascik-build-once>: it runs once when the component is registered, every page shares the output, and the markup is scoped like the template. Keep data-bascik-build only when the output depends on the page.",
+      });
+    }
     return false;
   });
 }
@@ -836,6 +901,13 @@ export async function auditProject(root, options = {}) {
       suggestion: `Let the page place ${receiver} itself, inside a slot of <${tag}> (<div data-bascik-slot></div> in the template, or a named slot), and give it the value there. If the layers are not separate jobs, merge them into one component.`,
     });
   }
+
+  // build-once and once-reads-page
+  const importRoot = resolve(
+    root,
+    configModule?.default?.scripts?.importRoot ?? "src",
+  );
+  for (const doc of docs) checkBuildScripts(doc, root, importRoot, findings);
 
   // js-not-ts
   for (const doc of docs) checkScripts(doc, options, findings, stats);

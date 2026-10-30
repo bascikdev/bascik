@@ -22,7 +22,7 @@ Use the linter on its own, without `bascik`, when you want per-file checks and n
 
 - **Component Autocompletion**: Auto-completes custom tags (`<my-counter />`, `<site-nav>`), automatically inserting self-closing tags for void components or slot blocks for components with slots.
 - **Prop & Slot Completion**: Suggests declared and inferred props (`data-bascik-prop-*`) with descriptions and validates named slots (`data-bascik-slot`).
-- **Script Directive Completion**: Contextually completes `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream` on `<script>` tags, enforcing mutual exclusion so you cannot accidentally combine conflicting script runtimes.
+- **Script Directive Completion**: Contextually completes `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream` on `<script>` tags, enforcing mutual exclusion so you cannot accidentally combine conflicting script runtimes. Putting `data-bascik-build` and `data-bascik-build-once` on one tag is an error too: choose one build-script mode.
 - **Hover Documentation**: Hovering over any custom component renders its `<!-- @bascik -->` docblock, author description, declared props, and available slot names.
 - **Jump to Definition**: Jump directly from a custom tag to its HTML source file, or from a script import specifier (`@/...`, `./...`) to the target file.
 - **Find All References**: List every page and component that uses a component, from one of its tags or from the component's own file. See [Find All References](#find-all-references).

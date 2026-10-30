@@ -61,22 +61,40 @@ export default async function (request, context, { signal });
 
 ### TypeScript
 
-Write a server script in TypeScript with a `src=` `.ts` or `.mts` module, or mark an inline block `type="text/typescript"`:
+Write a server script in TypeScript with a `src=` `.ts` or `.mts` module, or mark an inline block `type="text/typescript"`. Bascik strips the types before the script runs, on Node in dev and production and in the [Cloudflare adapter](/deployment/cloudflare)'s Worker bundle. Stripping keeps every line and column, so a stack trace names the page's own lines. A `src=` module is imported as a file and Node strips its types; a [`scripts.typescript`](/configuration#scriptstypescript) function compiles both forms instead. An unmarked inline block is JavaScript.
+
+Both forms are compiled and parsed when the page is built, in dev and by `bascik --build`, so a syntax error, an `enum`, or a redeclared variable fails the build naming the file, line, and column, not the first request. The Node build and the Cloudflare build print the same message.
+
+<!-- demo:ts-server-usage -->
 
 ```html
-<script data-bascik-server type="text/typescript">
-  import { html } from "@bascik/bascik/html";
+<!-- src/pages/hello.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Hello</title>
+  </head>
+  <body>
+    <script data-bascik-server type="text/typescript">
+      import { html } from "@bascik/bascik/html";
 
-  export default (request: Request): string => {
-    const name: string = new URL(request.url).searchParams.get("name") ?? "visitor";
-    return html`<p>Hello, ${name}</p>`;
-  };
-</script>
+      export default (request: Request): string => {
+        const name: string =
+          new URL(request.url).searchParams.get("name") ?? "visitor";
+        return html`<p>Hello, ${name}</p>`;
+      };
+    </script>
+  </body>
+</html>
 ```
 
-Bascik strips the types before the script runs, on Node in dev and production and in the [Cloudflare adapter](/deployment/cloudflare)'s Worker bundle. Stripping keeps every line and column, so a stack trace names the page's own lines. A `src=` module is imported as a file and Node strips its types; a [`scripts.typescript`](/configuration#scriptstypescript) function compiles both forms instead. An unmarked inline block is JavaScript.
+The Output is the `<body>` that `bascik --server` sent for `GET /hello?name=Ada`, built with minification off. There is no Preview because this docs site is static and runs no server script.
 
-Both forms are compiled when the page is built, in dev and by `bascik --build`, so a syntax error or an `enum` fails the build naming the file, line, and column, not the first request.
+<!-- demo:ts-server-output-html -->
+
+```html
+<p>Hello, Ada</p>
+```
 
 ## Escaping and injection
 
@@ -248,7 +266,7 @@ Top-level `await` and ESM imports work seamlessly:
 `<script data-bascik-build>` and `<script data-bascik-server>` compose cleanly on the same page:
 
 ```html
-<!-- runs once at build time: static navigation -->
+<!-- src/pages/account.html: the build script runs once at build time for static navigation -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
   import { html } from "@bascik/bascik/html";
@@ -862,7 +880,7 @@ Use `data-bascik-server` when rendering HTML into the document flow. Use API rou
 - During `bascik --build`, server script tags are stripped and stored in `.bascik/dist/server-scripts.json`, leaving inert `<script type="text/bascik-server">` placeholders in the static HTML.
 - Execution happens when served by `bascik` (dev server), `bascik --server` (production server), or a generated serverless function built with a `--target` such as the [Cloudflare Adapter](/deployment/cloudflare). A static-only host leaves the placeholders inert.
 - On error, `scripts.onServerScriptError` controls behavior: `'error'` responds with HTTP 500, while `'warn'` logs to stderr and replaces the tag with an empty string. Stack traces remap to your original source file line and column.
-- Directives (`data-bascik-server`, `data-bascik-stream`, `data-bascik-build`, `data-bascik-routes`) are mutually exclusive and cannot be combined on the same tag.
+- Directives (`data-bascik-server`, `data-bascik-stream`, `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`) are mutually exclusive and cannot be combined on the same tag.
 
 > **Next:** See [Stream Scripts](/stream-scripts) for chunked streaming scripts (`data-bascik-stream`), or consult the [Production Server](/production-server) reference for server runtime configuration.
 

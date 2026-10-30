@@ -1,6 +1,6 @@
 ---
 name: bascik-scripts
-description: Node.js scripts inside Bascik pages and components. Use when writing <script data-bascik-build> (build-time HTML from files, Markdown, JSON, or APIs), <script data-bascik-routes> with [slug].html dynamic routes, <script data-bascik-server> or <script data-bascik-stream> for per-request rendering, API routes in src/api/, @/ import aliases, BASCIK_* environment variables, the build script cache, escaping untrusted output, or a blog or other Markdown collection with front matter, tags, drafts, and a feed. Includes a new-post script.
+description: Node.js scripts inside Bascik pages and components. Use when writing <script data-bascik-build> (build-time HTML from files, Markdown, JSON, or APIs), <script data-bascik-build-once> (identical HTML shared by every use), <script data-bascik-routes> with [slug].html dynamic routes, <script data-bascik-server> or <script data-bascik-stream> for per-request rendering, API routes in src/api/, @/ import aliases, BASCIK_* environment variables, the build script cache, escaping untrusted output, or a blog or other Markdown collection with front matter, tags, drafts, and a feed. Includes a new-post script.
 license: MIT
 metadata:
   author: bascik
@@ -13,14 +13,14 @@ Bascik runs Node.js code inside special `<script>` tags. Each is a standard ESM 
 
 ## Pick the right tag
 
-| Need                                                             | Tag                                              | Runs                                                             |
-| ---------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------- |
-| Page-specific or per-component-use HTML                          | `data-bascik-build`                              | Build and dev, once per use (cached by inputs)                   |
-| Identical HTML shared by every use of a component or every route | `data-bascik-build-once`                         | Once per file (component registration or route template), cached |
-| Many pages from one `[param].html` template                      | `data-bascik-routes`                             | Build and dev startup                                            |
-| Markup that depends on the request (cookies, headers, query)     | `data-bascik-server`                             | Every request, before the response starts                        |
-| A slow per-request block that should not delay the page shell    | `data-bascik-stream`                             | Every request, streamed in document order                        |
-| A JSON or HTTP endpoint                                          | `src/api/<name>.ts` exporting `GET`, `POST`, ... | Every request                                                    |
+| Need                                                                                      | Tag                                              | Runs                                                             |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------- |
+| HTML that depends on the page or route (BASCIK_PAGE_PATH, BASCIK_PAGE_FILE, BASCIK_ROUTE) | `data-bascik-build`                              | Build and dev, once per use (cached by inputs)                   |
+| Identical HTML shared by every use of a component or every route                          | `data-bascik-build-once`                         | Once per file (component registration or route template), cached |
+| Many pages from one `[param].html` template                                               | `data-bascik-routes`                             | Build and dev startup                                            |
+| Markup that depends on the request (cookies, headers, query)                              | `data-bascik-server`                             | Every request, before the response starts                        |
+| A slow per-request block that should not delay the page shell                             | `data-bascik-stream`                             | Every request, streamed in document order                        |
+| A JSON or HTTP endpoint                                                                   | `src/api/<name>.ts` exporting `GET`, `POST`, ... | Every request                                                    |
 
 Prefer build-time work. Server, stream, and API code needs `bascik --server` (or a serverless target such as Cloudflare); a plain static host cannot run it.
 
@@ -51,7 +51,7 @@ export async function renderMarkdown(path: string): Promise<string> {
 ```
 
 ```html
-<!-- The path stays in the script, where the cache can see it. -->
+<!-- src/pages/about.html: the path stays in the script, where the cache can see it. -->
 <script data-bascik-build>
   import { renderMarkdown } from "@/lib/markdown.ts";
   export default () => renderMarkdown("./content/intro.md");

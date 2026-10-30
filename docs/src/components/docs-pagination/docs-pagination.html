@@ -1,4 +1,5 @@
 <nav class="docs-pagination" aria-label="Page navigation">
+  <!-- Per page, not build-once: renderPagination() reads BASCIK_PAGE_PATH to find this page's neighbors. -->
   <script data-bascik-build>
     import { renderPagination } from "@/lib/render-nav.ts";
     export default async () => renderPagination();

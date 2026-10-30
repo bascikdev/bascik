@@ -190,6 +190,7 @@ In Bascik, you do not need a runtime framework or synthetic data payloads. When 
 - **Per-request server data (`getServerSideProps` equivalent):** Return the `<script type="application/json">` block from `<script data-bascik-server>`.
 
 ```html
+<!-- src/pages/products.html -->
 <script data-bascik-build>
   export default async function () {
     const res = await fetch("https://api.example.com/products");

@@ -154,7 +154,7 @@ node <skills-dir>/bascik/scripts/list-components.mjs      # reuse what exists be
 node <skills-dir>/bascik/scripts/audit-components.mjs     # structure and TypeScript findings with file:line
 ```
 
-`audit-components.mjs` flags `oversized-page`, `oversized-component`, `inline-section`, `repeated-block`, `repeated-pattern` (the same heading group in three or more files), `repeated-text` (the same fact in two or more files), `constant-prop`, `tiny-component`, `prop-drilling`, and `js-not-ts`, and suggests a tag name or the TypeScript form for each. It exits 1 on any warning. Run it with `verify.mjs` before calling a page done.
+`audit-components.mjs` flags `oversized-page`, `oversized-component`, `inline-section`, `repeated-block`, `repeated-pattern` (the same heading group in three or more files), `repeated-text` (the same fact in two or more files), `constant-prop`, `tiny-component`, `prop-drilling`, `js-not-ts`, `build-once` (a component's `data-bascik-build` script that reads no page context, so its output is the same on every page), and `once-reads-page` (a `data-bascik-build-once` script that reads the page context it does not have), and suggests a tag name, the TypeScript form, or the right directive for each. It exits 1 on any warning. Run it with `verify.mjs` before calling a page done.
 
 Fix warnings rather than explaining them away. "The content differs" is not a reason to keep a repeated block, because differing text is what props and slots are for. Keep one only for a reason the person would accept, such as rows of a mock-up that will be replaced, and say which one you kept and why.
 

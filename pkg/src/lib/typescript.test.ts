@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { BascikConfig } from "./config.ts";
 import {
   isTypeScriptScriptTag,
@@ -12,6 +15,7 @@ import {
   TypeScriptTransformError,
   isTypeScriptDirectiveScript,
   compileDirectiveTypeScript,
+  checkDirectiveModuleSyntax,
   unbundledModuleImports,
 } from "./typescript.ts";
 
@@ -702,5 +706,80 @@ describe("directive scripts written in TypeScript", () => {
         { line: 12, column: 5 },
       ),
     ).rejects.toThrow(/compiler broke[\s\S]*src\/pages\/a\.html:12:5/);
+  });
+});
+
+describe("checkDirectiveModuleSyntax: compiled output that is not a valid ES module", () => {
+  it("accepts a module with imports, exports and top-level await", async () => {
+    await expect(
+      checkDirectiveModuleSyntax(
+        'import { x } from "./missing.ts";\nconst y = await Promise.resolve(x);\nexport default () => String(y);\n',
+        "src/lib/ok.ts",
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("never runs the module it checks", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "bascik-module-check-"));
+    const marker = join(dir, "ran");
+    try {
+      await expect(
+        checkDirectiveModuleSyntax(
+          `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, "ran");\nexport default () => "";\n`,
+          "src/lib/side-effect.ts",
+        ),
+      ).resolves.toBeUndefined();
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("names the file line and column of an early error the strip lets through, with a frame and no compiler hint", async () => {
+    const code = await compileDirectiveTypeScript(
+      "const a: number = 1;\nconst a = 2;\nexport default () => String(a);\n",
+      "src/lib/dupe.ts",
+      "companion",
+    );
+    const failure = checkDirectiveModuleSyntax(code, "src/lib/dupe.ts");
+    await expect(failure).rejects.toBeInstanceOf(TypeScriptTransformError);
+    await expect(failure).rejects.toThrow(
+      /\[bascik\] Syntax error in "src\/lib\/dupe\.ts" at src\/lib\/dupe\.ts:2:7: Identifier 'a' has already been declared\n {2}2 \| const a = 2;\n {4}\| {7}\^/,
+    );
+    await expect(failure).rejects.not.toThrow(/scripts\.typescript/);
+  });
+
+  it("counts from the block's origin in the page for an inline block", async () => {
+    await expect(
+      checkDirectiveModuleSyntax(
+        "let n = 1;\nlet n = 2;\nexport default () => String(n);",
+        "src/pages/index.html",
+        { line: 12, column: 5 },
+      ),
+    ).rejects.toThrow(/src\/pages\/index\.html:13:5: Identifier 'n'/);
+  });
+
+  it("names the line within the block when the block's place is unknown", async () => {
+    await expect(
+      checkDirectiveModuleSyntax(
+        "let n = 1;\nlet n = 2;\nexport default () => String(n);",
+        "src/pages/index.html",
+        "unknown",
+      ),
+    ).rejects.toThrow(/at line 2, column 5 of the <script> block/);
+  });
+
+  it("names the scripts.typescript output when a compiler function produced it", async () => {
+    (BascikConfig.scripts as { typescript: unknown }).typescript = () =>
+      "let n = 1;\nlet n = 2;\nexport default () => String(n);";
+    await expect(
+      checkDirectiveModuleSyntax(
+        "let n = 1;\nlet n = 2;\nexport default () => String(n);",
+        "src/pages/index.html",
+        { line: 3, column: 1 },
+      ),
+    ).rejects.toThrow(
+      /Syntax error in the scripts\.typescript output for "src\/pages\/index\.html" at line 2, column 5 of that output: Identifier 'n'/,
+    );
   });
 });

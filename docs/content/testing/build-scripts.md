@@ -49,6 +49,7 @@ export function generateNavList(items: NavItem[], activeHref?: string): string {
 ### 2. Build Script Usage (`src/pages/index.html`)
 
 ```html
+<!-- src/pages/index.html -->
 <nav>
   <script data-bascik-build>
     import { readFile } from "node:fs/promises";

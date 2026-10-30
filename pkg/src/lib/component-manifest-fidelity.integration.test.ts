@@ -95,16 +95,14 @@ interface Root {
 //   build scopes per instance inside the script body;
 // - css-import plans a CSS @import while scoping, which the template
 //   recorder never reuses;
-// - build-breakdown is a build script and nothing else: the build inherits
-//   usage attributes before the script prints (onto no element, so they are
-//   dropped), while a template with the printed markup baked in would put
-//   them on the printed root, so the two cannot agree.
+// (build-breakdown, a component that is only a build script, is supported:
+//   its script is data-bascik-build-once, so its markup is printed when the
+//   component is registered and the template already holds it.)
 const ROOTS: Root[] = [
   {
     dir: "docs",
     components: ["src/components"],
     unsupported: {
-      "build-breakdown": "scoping-template-unavailable",
       "docs-pagination": "build-script-reads-page-context",
       "docs-sidebar": "build-script-reads-page-context",
     },

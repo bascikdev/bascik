@@ -636,6 +636,148 @@ describe("audit-components", () => {
   });
 });
 
+describe("audit-components: build-once and once-reads-page", () => {
+  const footer = (script: string) => `<footer data-testid="site-footer">
+  <p>
+    &copy;
+    ${script}
+  </p>
+</footer>
+`;
+  const withFooter = (script: string, extra: Record<string, string> = {}) =>
+    project({
+      ...clean,
+      "src/components/site-footer/site-footer.html": footer(script),
+      ...extra,
+    });
+
+  it("flags a component's data-bascik-build script that reads no page context, at its file:line", async () => {
+    const root = withFooter(`<script data-bascik-build>
+      export default () => String(new Date().getFullYear());
+    </script>`);
+    const { findings } = await audit(root);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      rule: "build-once",
+      level: "warn",
+      file: "src/components/site-footer/site-footer.html",
+      line: 4,
+    });
+    expect(findings[0].message).toMatch(
+      /<site-footer> reads no page context \(BASCIK_PAGE_PATH, BASCIK_PAGE_FILE, BASCIK_ROUTE\)/,
+    );
+    expect(findings[0].suggestion).toMatch(
+      /Use <script data-bascik-build-once>/,
+    );
+  });
+
+  it("keeps data-bascik-build when the script, or a local module it imports at any depth, reads page context", async () => {
+    for (const [script, extra] of [
+      [
+        `<script data-bascik-build>export default () => process.env.BASCIK_PAGE_PATH ?? "";</script>`,
+        {},
+      ],
+      [
+        `<script data-bascik-build>import { trail } from "./trail.ts"; export default () => trail();</script>`,
+        {
+          "src/components/site-footer/trail.ts": `import { here } from "@/lib/here.ts";\nexport const trail = (): string => here();\n`,
+          "src/lib/here.ts": `export const here = (): string => process.env.BASCIK_ROUTE ?? "";\n`,
+        },
+      ],
+      [
+        `<script data-bascik-build src="./year.ts"></script>`,
+        {
+          "src/components/site-footer/year.ts": `export default (): string => process.env.BASCIK_PAGE_FILE ?? "";\n`,
+        },
+      ],
+    ] as const) {
+      const { findings } = await audit(withFooter(script, extra));
+      expect(rules(findings), script).toEqual([]);
+    }
+  });
+
+  it("follows a src= file: one that reads no page context is flagged at the tag's line", async () => {
+    const root = withFooter(
+      `<script data-bascik-build src="./year.ts"></script>`,
+      {
+        "src/components/site-footer/year.ts": `export default (): string => String(new Date().getFullYear());\n`,
+      },
+    );
+    const { findings } = await audit(root);
+    expect(rules(findings)).toEqual(["build-once"]);
+    expect(findings[0].line).toBe(4);
+  });
+
+  it("misuse: stays quiet when an import or src= cannot be read, leaving the missing file to the build", async () => {
+    for (const script of [
+      `<script data-bascik-build>import { x } from "./gone.ts"; export default () => x;</script>`,
+      `<script data-bascik-build src="./gone.ts"></script>`,
+    ]) {
+      expect(rules((await audit(withFooter(script))).findings)).toEqual([]);
+    }
+  });
+
+  it("leaves a page's data-bascik-build alone (a page runs it once anyway), and a script in a comment", async () => {
+    const root = withFooter(
+      `<!-- <script data-bascik-build>export default () => "x";</script> -->`,
+      {
+        "src/pages/year.html": page(
+          `      <script data-bascik-build>export default () => String(new Date().getFullYear());</script>`,
+        ),
+      },
+    );
+    expect(rules((await audit(root)).findings)).toEqual([]);
+  });
+
+  it("misuse: flags a data-bascik-build-once script that reads page context, naming the variable and the module", async () => {
+    const root = withFooter(
+      `<script data-bascik-build-once>import { hero } from "@/lib/hero.ts"; export default () => hero();</script>`,
+      {
+        "src/lib/hero.ts": `export const hero = (): string => \`<link rel="preload" href="\${process.env.BASCIK_PAGE_PATH}.webp">\`;\n`,
+        "src/pages/post.html": page(
+          `      <script data-bascik-build-once>export default () => process.env.BASCIK_ROUTE ?? "";</script>`,
+        ),
+      },
+    );
+    const { findings } = await audit(root);
+    expect(rules(findings)).toEqual(["once-reads-page", "once-reads-page"]);
+    expect(findings[0].file).toBe(
+      "src/components/site-footer/site-footer.html",
+    );
+    expect(findings[0].message).toMatch(
+      /reads BASCIK_PAGE_PATH \(in src\/lib\/hero\.ts\), which is empty there/,
+    );
+    expect(findings[1].file).toBe("src/pages/post.html");
+    expect(findings[1].message).toMatch(/this page reads BASCIK_ROUTE/);
+    expect(findings[1].suggestion).toMatch(/Use <script data-bascik-build>/);
+  });
+
+  it("resolves @/ from scripts.importRoot in the config", async () => {
+    const root = withFooter(
+      `<script data-bascik-build>import { here } from "@/here.ts"; export default () => here();</script>`,
+      {
+        "bascik.config.ts": `export default { scripts: { importRoot: "shared" } };\n`,
+        "shared/here.ts": `export const here = (): string => process.env.BASCIK_PAGE_PATH ?? "";\n`,
+      },
+    );
+    expect(rules((await audit(root)).findings)).toEqual([]);
+  });
+
+  it("the CLI prints the build-once finding with file:line and exits 1", () => {
+    const root = withFooter(`<script data-bascik-build>
+      export default () => "same everywhere";
+    </script>`);
+    const run = spawnSync(process.execPath, [script, "--root", root], {
+      encoding: "utf8",
+    });
+    expect(run.status).toBe(1);
+    expect(run.stdout).toMatch(
+      /warn {2}build-once {2}src\/components\/site-footer\/site-footer\.html:4 /,
+    );
+    expect(run.stdout).toMatch(/-> Use <script data-bascik-build-once>/);
+  });
+});
+
 describe("audit-components CLI", () => {
   const cli = (args: string[], cwd?: string) =>
     spawnSync(process.execPath, [script, ...args], {
@@ -702,6 +844,8 @@ describe("audit-components CLI", () => {
       "tiny-component",
       "prop-drilling",
       "js-not-ts",
+      "build-once",
+      "once-reads-page",
     ])
       expect(run.stdout).toContain(rule);
   });

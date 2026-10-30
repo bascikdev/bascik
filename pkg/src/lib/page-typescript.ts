@@ -33,6 +33,7 @@ import { getScriptType } from "./script-types.ts";
 import type { ServerScriptEntry } from "./server-sidecar.ts";
 import {
   TypeScriptTransformError,
+  checkDirectiveModuleSyntax,
   compileDirectiveTypeScript,
   hasStaticModuleSyntax,
   isBrowserTypeScriptEnabled,
@@ -217,8 +218,10 @@ export const inlinePageTypeScriptScripts = async (
  * is built (and when dev builds it), so a mistake fails the build with a
  * located message instead of a 500 on the first request: an inline block
  * marked `type="text/typescript"`, and a `src=` module with a `.ts` / `.mts`
- * extension. The same compile runs again when the script runs; this one
- * only reports. `pageFile` is the page's path and `authoredHtml` the page as
+ * extension. The compiled JavaScript is also parsed as an ES module, since
+ * the type strip does not apply JavaScript's early errors (a redeclared
+ * `let` strips cleanly). The same compile runs again when the script runs;
+ * this one only reports. `pageFile` is the page's path and `authoredHtml` the page as
  * read from disk, to place an inline block whose line was not recorded.
  */
 export const checkServerScriptTypeScript = async (
@@ -247,10 +250,10 @@ export const checkServerScriptTypeScript = async (
         // A missing file is reported when the script runs, as before.
         continue;
       }
-      await compileDirectiveTypeScript(
-        code,
-        toProjectPath(filePath),
-        "companion",
+      const label = toProjectPath(filePath);
+      await checkDirectiveModuleSyntax(
+        await compileDirectiveTypeScript(code, label, "companion"),
+        label,
       );
       continue;
     }
@@ -263,11 +266,15 @@ export const checkServerScriptTypeScript = async (
       const at = authoredHtml.indexOf(entry.source);
       if (at >= 0) origin = lineAndColumn(authoredHtml, at);
     }
-    await compileDirectiveTypeScript(
-      entry.source,
+    await checkDirectiveModuleSyntax(
+      await compileDirectiveTypeScript(
+        entry.source,
+        owner,
+        "inline",
+        undefined,
+        origin ?? "unknown",
+      ),
       owner,
-      "inline",
-      undefined,
       origin ?? "unknown",
     );
   }

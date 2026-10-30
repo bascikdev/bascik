@@ -55,7 +55,7 @@ Slot suggestions are not repeated when the element already has a `data-bascik-sl
 
 Inside a `<script>` tag, the extension suggests the four mutually exclusive execution directives:
 
-![The suggest widget listing data-bascik-build, data-bascik-routes, data-bascik-server, and data-bascik-stream](/assets/vscode/complete-script-directives@2x.webp)
+![The suggest widget listing data-bascik-build, data-bascik-build-once, data-bascik-routes, data-bascik-server, and data-bascik-stream](/assets/vscode/complete-script-directives@2x.webp)
 
 Once one directive is on the tag, the others are removed from the list, so conflicting execution modes are prevented before they can be saved.
 
@@ -98,7 +98,7 @@ The comment must appear before component markup, `<style>`, or `<script>` elemen
 Hold `Cmd` on macOS or `Ctrl` on Windows and Linux, then click:
 
 - a **custom element name** to open its component HTML file
-- a relative import, an `@/` import, or a `src` value in a `data-bascik-build`, `data-bascik-routes`, or `data-bascik-server` script
+- a relative import, an `@/` import, or a `src` value in a `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`, or `data-bascik-server` script
 
 ```html
 <user-card data-bascik-prop-role="Lead Engineer"></user-card>
@@ -138,18 +138,18 @@ Diagnostics appear as squiggles in the editor and as entries in the Problems pan
 
 The checks below cover the most common mistakes. Metadata annotation warnings use the current unsaved component text, so they appear as you edit. Hover and completion contracts refresh from disk when component files change.
 
-| Area              | The extension reports                                                                                                                                                                             |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Component naming  | A component filename without the hyphen a custom element name requires                                                                                                                            |
-| Unclosed elements | A non-self-closing component tag with no matching closing tag                                                                                                                                     |
-| Script directives | A script combining more than one of `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream` (error), or a directive on an element other than `<script>` (error) |
-| Props             | A `data-bascik-prop-*` attribute the component does not declare or infer (warning), and a `data-bascik-attr-*` binding whose prop no project caller supplies (hint)                               |
-| Slots             | `data-bascik-slot` outside any parent component, a slot name the containing component does not have, or an empty named slot (errors)                                                              |
-| Imports           | Imports and script `src` values that begin with `/`, with guidance to use `@/` or a relative path                                                                                                 |
-| Styles            | A component that combines an inline `<style>` element with a companion `.css` file (warning). Multiple inline `<style>` elements are supported and are not reported                               |
-| ID references     | `for`, `itemref`, ARIA ID references, and `href="#fragment"` values whose target ID is not declared in the component                                                                              |
-| Preserve          | A `data-bascik-preserve` value other than `id`, `name`, or `class`, and a form that posts to an external URL without `data-bascik-preserve="name"`                                                |
-| Annotations       | An `@prop` or `@slot` line documented twice, or one that does not match a member inferred from the markup (warnings)                                                                              |
+| Area              | The extension reports                                                                                                                                                                                                                                                                    |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Component naming  | A component filename without the hyphen a custom element name requires                                                                                                                                                                                                                   |
+| Unclosed elements | A non-self-closing component tag with no matching closing tag                                                                                                                                                                                                                            |
+| Script directives | A script combining more than one of `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream` (error), including `data-bascik-build` with `data-bascik-build-once`, or a directive on an element other than `<script>` (error) |
+| Props             | A `data-bascik-prop-*` attribute the component does not declare or infer (warning), and a `data-bascik-attr-*` binding whose prop no project caller supplies (hint)                                                                                                                      |
+| Slots             | `data-bascik-slot` outside any parent component, a slot name the containing component does not have, or an empty named slot (errors)                                                                                                                                                     |
+| Imports           | Imports and script `src` values that begin with `/`, with guidance to use `@/` or a relative path                                                                                                                                                                                        |
+| Styles            | A component that combines an inline `<style>` element with a companion `.css` file (warning). Multiple inline `<style>` elements are supported and are not reported                                                                                                                      |
+| ID references     | `for`, `itemref`, ARIA ID references, and `href="#fragment"` values whose target ID is not declared in the component                                                                                                                                                                     |
+| Preserve          | A `data-bascik-preserve` value other than `id`, `name`, or `class`, and a form that posts to an external URL without `data-bascik-preserve="name"`                                                                                                                                       |
+| Annotations       | An `@prop` or `@slot` line documented twice, or one that does not match a member inferred from the markup (warnings)                                                                                                                                                                     |
 
 ### Find Scoping Compatibility Issues Early
 

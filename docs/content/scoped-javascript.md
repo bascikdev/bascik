@@ -229,6 +229,7 @@ Additional rewritten forms include `element.closest()`, `element.matches()`, `el
 `<script data-bascik-build>` blocks run at transpile time as Node.js ESM modules. The script exports a default callable function returning an HTML string, which replaces the tag in the page, useful for pulling in Markdown, JSON, or other external content at build time:
 
 ```html
+<!-- src/pages/about.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
   import { marked } from "marked";
@@ -240,7 +241,7 @@ Additional rewritten forms include `element.closest()`, `element.matches()`, `el
 </script>
 ```
 
-> **Component tags work too.** Build script output is processed in the component resolution step, so its output can contain Bascik component tags. Directive scripts in the output (`data-bascik-build`, `data-bascik-server`, `data-bascik-stream`, `data-bascik-routes`) are removed with a warning and never run; see [Printing HTML You Did Not Write](/build-scripts#printing-html-you-did-not-write).
+> **Component tags work too.** Build script output is processed in the component resolution step, so its output can contain Bascik component tags. Directive scripts in the output (`data-bascik-build`, `data-bascik-build-once`, `data-bascik-server`, `data-bascik-stream`, `data-bascik-routes`) are removed with a warning and never run; see [Printing HTML You Did Not Write](/build-scripts#printing-html-you-did-not-write).
 
 ## Non-JavaScript Script Types
 
@@ -302,6 +303,60 @@ The pipeline order is fixed: TypeScript strip, then scoping (IIFE wrapping, sele
 **Bring your own compiler.** Set [`scripts.typescript`](/configuration#scriptstypescript) to a function to run esbuild, swc, or `tsc` instead of Node's stripper. It receives `(code, { sourcePath, kind, runtime })` and returns JavaScript, and it sits at the same point in the pipeline, so scoping and `minify.js` still run afterwards. This is the path for `enum`, decorators, or downleveling to an older browser target. Set it to `false` to turn the transform off entirely when another tool already compiles what Bascik reads.
 
 > **`minify.js` is not a TypeScript transform.** Never configure `minify.js` merely to strip TypeScript. Bascik strips supported browser TypeScript automatically before this hook runs, so a `minify.js` function always receives plain JavaScript. Add a custom `minify.js` function only when the project requires non-default JavaScript minification.
+
+### Example: A Page's Own TypeScript File
+
+The page below references `counter.ts` from a classic `<script>` at the end of `<body>`. Bascik compiles the file, inlines it in place of the reference, and names the file in a `//# sourceURL` comment so DevTools shows `counter.ts`. The Preview is this docs page running the same file; click the button.
+
+<!-- demo:ts-page-usage -->
+
+```html
+<!-- src/pages/counter.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Counter</title>
+  </head>
+  <body>
+    <button type="button" id="page-counter" data-testid="page-counter">
+      Clicked 0 times
+    </button>
+    <script src="./counter.ts"></script>
+  </body>
+</html>
+```
+
+<!-- demo:ts-page-source-js -->
+
+```ts
+// src/pages/counter.ts
+const button = document.getElementById("page-counter") as HTMLButtonElement;
+let clicks: number = 0;
+button.addEventListener("click", () => {
+  clicks += 1;
+  button.textContent = `Clicked ${clicks} times`;
+});
+```
+
+The Output is the page's `<body>` as `bascik --build` writes it, with minification off: the reference is gone, and the script holds the file's JavaScript with its types removed.
+
+<!-- demo:ts-page-output-html -->
+
+```html
+<button type="button" id="page-counter" data-testid="page-counter">
+  Clicked 0 times
+</button>
+<script>
+  // src/pages/counter.ts
+  const button = document.getElementById("page-counter");
+  let clicks = 0;
+  button.addEventListener("click", () => {
+    clicks += 1;
+    button.textContent = `Clicked ${clicks} times`;
+  });
+  //# sourceURL=src/pages/counter.ts
+</script>
+```
 
 ## How Scoping Works
 

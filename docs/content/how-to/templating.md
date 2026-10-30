@@ -56,6 +56,7 @@ Keep the template in a `.hbs` file so editors can highlight it and the script st
 <!-- demo:handlebars-script -->
 
 ```html
+<!-- src/pages/articles.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
   import Handlebars from "handlebars";
@@ -121,6 +122,7 @@ Use it from a build script:
 <!-- demo:helper-usage -->
 
 ```html
+<!-- src/pages/articles.html -->
 <script data-bascik-build>
   import { interpolate } from "./lib/interpolate.mjs";
 
@@ -148,6 +150,7 @@ npm install ejs
 <!-- demo:ejs-script -->
 
 ```html
+<!-- src/pages/articles.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
   import ejs from "ejs";
@@ -186,6 +189,7 @@ npm install nunjucks
 <!-- demo:njk-script -->
 
 ```html
+<!-- src/pages/articles.html -->
 <script data-bascik-build>
   import nunjucks from "nunjucks";
 
@@ -221,6 +225,7 @@ When a data-driven page needs the same data in several places, fetch or read it 
 <!-- demo:fetch-once-script -->
 
 ```html
+<!-- src/pages/articles.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
   import { html } from "@bascik/bascik/html";
@@ -272,6 +277,7 @@ This is the one approach on this page that **requires client-side JavaScript**, 
 <!-- demo:json-payload-script -->
 
 ```html
+<!-- src/pages/articles.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
   import { html, json } from "@bascik/bascik/html";

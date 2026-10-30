@@ -293,4 +293,4 @@ src/routes/                  src/pages/
       +page.svelte
 ```
 
-For parameterized routes like `[slug]`, generate one HTML file per value at build time using a `<script data-bascik-build>` block in a page template, or create the files directly.
+For parameterized routes like `[slug]`, generate one HTML file per value at build time using a `<script data-bascik-routes>` block in a `[slug].html` page template (see [Dynamic Routes](/dynamic-routes)), or create the files directly.

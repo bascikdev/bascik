@@ -196,7 +196,7 @@ New project: `npm create bascik@rc my-site -y`. It and `bascik init` both write 
 Do not stop at "the file looks right". Run these from the project root:
 
 1. `node <skill-dir>/scripts/verify.mjs` runs `bascik --check` (project and per-file checks) and, for component folders outside the project, the linter, then summarizes each step. Add `--build` to also run a production build.
-2. `node <skill-dir>/scripts/audit-components.mjs` reports oversized pages and components, inline sections that should be components, repeated blocks and heading groups, the same fact typed into several files, props every page passes with the same value, tiny single-use components, props passed through layers, and JavaScript where TypeScript is expected, each with `file:line` and what to do. Pass `--allow-js` only when the person asked for JavaScript.
+2. `node <skill-dir>/scripts/audit-components.mjs` reports oversized pages and components, inline sections that should be components, repeated blocks and heading groups, the same fact typed into several files, props every page passes with the same value, tiny single-use components, props passed through layers, JavaScript where TypeScript is expected, and a component build script that should be `data-bascik-build-once` (or a build-once script that reads the page), each with `file:line` and what to do. Pass `--allow-js` only when the person asked for JavaScript.
 3. `node <skill-dir>/scripts/preview.mjs '<my-card data-bascik-prop-title="Hi" />' --count 2` compiles a snippet with the project's real components and config and prints the unminified output, so you can confirm scoped names, slot placement, and script rewrites.
 4. Read the relevant file in `dist/` after a build. A hyphenated tag still present in `dist/` means no component matched it.
 
@@ -208,17 +208,17 @@ A page is not done until `verify.mjs` passes and `audit-components.mjs` exits 0.
 
 All scripts are dependency-free Node.js (22.22+) and run from the project root. Each prints `--help`.
 
-| Script                                                         | Purpose                                                                                                                    |
-| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| [`scripts/verify.mjs`](scripts/verify.mjs)                     | `bascik --check`, plus the linter on component folders outside the project, with an optional `--build`                     |
-| [`scripts/audit-components.mjs`](scripts/audit-components.mjs) | Page and component structure (too big, inline sections, repeats, tiny wrappers, prop drilling) and JS where TS is expected |
-| [`scripts/preview.mjs`](scripts/preview.mjs)                   | Compile a snippet, file, or existing page in a temporary build and print the result                                        |
-| [`scripts/list-components.mjs`](scripts/list-components.mjs)   | Inventory components with their props, slots, companion files, and `@bascik` descriptions                                  |
-| [`scripts/new-component.mjs`](scripts/new-component.mjs)       | Create a component folder that follows the naming and ordering rules                                                       |
-| [`scripts/search-docs.mjs`](scripts/search-docs.mjs)           | Search the live docs at bascik.dev for a topic                                                                             |
-| [`scripts/read-doc.mjs`](scripts/read-doc.mjs)                 | Print the current text of a docs page, such as `/scoped-javascript`                                                        |
-| [`scripts/add-example.mjs`](scripts/add-example.mjs)           | Copy a tested example component or part of the starter site from bascik.dev into the project (`--list` shows them)         |
-| [`scripts/check-links.mjs`](scripts/check-links.mjs)           | Find broken internal links, missing assets, and dead `#fragments` in the built `dist/`, honoring `base`                    |
+| Script                                                         | Purpose                                                                                                                                          |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`scripts/verify.mjs`](scripts/verify.mjs)                     | `bascik --check`, plus the linter on component folders outside the project, with an optional `--build`                                           |
+| [`scripts/audit-components.mjs`](scripts/audit-components.mjs) | Page and component structure (too big, inline sections, repeats, tiny wrappers, prop drilling), JS where TS is expected, and build vs build-once |
+| [`scripts/preview.mjs`](scripts/preview.mjs)                   | Compile a snippet, file, or existing page in a temporary build and print the result                                                              |
+| [`scripts/list-components.mjs`](scripts/list-components.mjs)   | Inventory components with their props, slots, companion files, and `@bascik` descriptions                                                        |
+| [`scripts/new-component.mjs`](scripts/new-component.mjs)       | Create a component folder that follows the naming and ordering rules                                                                             |
+| [`scripts/search-docs.mjs`](scripts/search-docs.mjs)           | Search the live docs at bascik.dev for a topic                                                                                                   |
+| [`scripts/read-doc.mjs`](scripts/read-doc.mjs)                 | Print the current text of a docs page, such as `/scoped-javascript`                                                                              |
+| [`scripts/add-example.mjs`](scripts/add-example.mjs)           | Copy a tested example component or part of the starter site from bascik.dev into the project (`--list` shows them)                               |
+| [`scripts/check-links.mjs`](scripts/check-links.mjs)           | Find broken internal links, missing assets, and dead `#fragments` in the built `dist/`, honoring `base`                                          |
 
 Run `list-components.mjs` before creating a component so you reuse what exists instead of duplicating it.
 

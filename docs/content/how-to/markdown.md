@@ -17,6 +17,7 @@ npm install marked
 Read a Markdown file and output the HTML:
 
 ```html
+<!-- src/pages/about.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
   import { marked } from "marked";
@@ -172,6 +173,7 @@ Pair it with component CSS. Start selectors with the wrapper class, and put the 
 Have the build script emit the component tag around the parsed Markdown:
 
 ```html
+<!-- src/pages/about.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
   import { marked } from "marked";
@@ -238,6 +240,7 @@ This is the post body.
 ```
 
 ```html
+<!-- src/pages/posts/my-first-post.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
   import { marked } from "marked";
@@ -263,6 +266,7 @@ This is the post body.
 Read an entire folder of Markdown files and generate a list or index page:
 
 ```html
+<!-- src/pages/blog/index.html -->
 <script data-bascik-build>
   import { readdir, readFile } from "node:fs/promises";
   import matter from "gray-matter";
@@ -313,6 +317,7 @@ npm install markdown-it
 ```
 
 ```html
+<!-- src/pages/about.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
   import MarkdownIt from "markdown-it";
@@ -332,6 +337,7 @@ npm install markdown-it highlight.js
 ```
 
 ```html
+<!-- src/pages/about.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
   import MarkdownIt from "markdown-it";
@@ -371,6 +377,7 @@ npm install unified remark-parse remark-html
 ```
 
 ```html
+<!-- src/pages/about.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
   import { unified } from "unified";
@@ -393,6 +400,7 @@ The unified plugin system lets you add transformations like automatic heading ID
 If your content comes from a headless CMS that returns Markdown via an API, fetch it at build time:
 
 ```html
+<!-- src/pages/about.html -->
 <script data-bascik-build>
   import { marked } from "marked";
 

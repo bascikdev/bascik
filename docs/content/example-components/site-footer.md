@@ -22,8 +22,8 @@ A footer for every page: secondary links and a copyright line. The links and the
 
 ## How It Works
 
-- The footer is the same on every page, but its build scripts still run in the context of each use. Their output is identical because it does not depend on the current page. Compare the [Site Header](/example-components/site-header), whose build script reads `BASCIK_PAGE_PATH` to mark a different link on each page.
-- The year comes from a build script, so it is correct as of the last build. Rebuild at least once a year, or print it with a client `<script>` if the site is rarely rebuilt.
+- The footer is the same on every page, so both of its build scripts are [`data-bascik-build-once`](/build-scripts#data-bascik-build-once): each runs once, when Bascik registers the component, and every page shares the output. Compare the [Site Header](/example-components/site-header), whose `data-bascik-build` script reads `BASCIK_PAGE_PATH` to mark a different link on each page.
+- The year comes from a build script, so it is correct as of the last build. Rebuild at least once a year, or print it with a client `<script>` if the site is rarely rebuilt. Build script output is cached, so add `src/components/site-footer/**` to `scripts.cache.exclude` to print a new year when no file changed.
 - The `<nav aria-label="Footer">` label keeps it distinct from the header's navigation for screen reader users.
 
 ## Adapt It

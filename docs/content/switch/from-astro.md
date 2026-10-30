@@ -348,7 +348,7 @@ const apiUrl = import.meta.env.API_URL; // any version
 ```
 
 ```html
-<!-- After (Bascik build script) -->
+<!-- After (a Bascik build script in src/pages/index.html) -->
 <script data-bascik-build>
   const apiUrl = process.env.API_URL;
 

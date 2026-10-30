@@ -512,6 +512,67 @@ describe("Where a TypeScript mistake is, and the build failing for it (real `bas
     );
   }, 60_000);
 
+  // Node's type strip parses TypeScript but does not apply JavaScript's
+  // early errors, so a redeclared binding strips cleanly and used to pass
+  // `bascik --build` on Node, failing only at the first request (the
+  // Cloudflare build caught it in esbuild, naming a staging file).
+  it.each(["server", "stream"])(
+    "fails the build for a syntax error the type strip lets through in a marked inline %s script, naming the page line and column",
+    async (kind) => {
+      const source = page(
+        "Inline redeclared",
+        [
+          `    <p>above</p>`,
+          `    <script data-bascik-${kind} type="text/typescript">`,
+          `      let count: number = 1;`,
+          `      let count = 2;`,
+          `      export default (): string => String(count);`,
+          `    </script>`,
+        ].join("\n"),
+      );
+      const { code, output } = await build({ "src/pages/index.html": source });
+      expect(code).not.toBe(0);
+      expect(output).toContain(
+        `src/pages/index.html:${lineOf(source, "let count = 2")}:11`,
+      );
+      expect(output).toContain("Identifier 'count' has already been declared");
+      expect(output).toContain("      let count = 2;");
+      expect(output).not.toContain("scripts.typescript");
+    },
+    60_000,
+  );
+
+  it("fails the build for a syntax error the type strip lets through in a stream script's .ts src, naming the file line and column", async () => {
+    const { code, output } = await build({
+      "src/pages/index.html": page(
+        "Stream src",
+        `    <script data-bascik-stream src="@/lib/stream.ts"></script>`,
+      ),
+      "src/lib/stream.ts": `const label: string = "x";\nconst label = "y";\nexport default async (): Promise<string> => label;\n`,
+    });
+    expect(code).not.toBe(0);
+    expect(output).toContain("src/lib/stream.ts:2:7");
+    expect(output).toContain("Identifier 'label' has already been declared");
+    expect(output).not.toContain("scripts.typescript");
+  }, 60_000);
+
+  it("still builds a TypeScript server script that awaits at the top level and imports modules", async () => {
+    const { code, output } = await build({
+      "src/pages/index.html": page(
+        "Valid",
+        [
+          `    <script data-bascik-server type="text/typescript">`,
+          `      import { label } from "@/lib/label.ts";`,
+          `      const prefix: string = await Promise.resolve("ok");`,
+          `      export default (): string => \`<p>\${prefix} \${label}</p>\`;`,
+          `    </script>`,
+        ].join("\n"),
+      ),
+      "src/lib/label.ts": `export const label: string = "label";\n`,
+    });
+    expect(code, output).toBe(0);
+  }, 60_000);
+
   it("fails a page module .ts that imports another file, naming the tag, the import and esbuild", async () => {
     const source = page(
       "Module",

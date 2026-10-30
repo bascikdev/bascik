@@ -515,8 +515,16 @@ Selects the compiler for TypeScript in scripts: a component's `.ts`/`.mts` compa
 - `false`: Bascik does not transform browser TypeScript. Marked blocks, `.ts` companions, and a page's `<script src="name.ts">` are emitted exactly as authored, `type` attribute included. Use this when another tool has already compiled the output that Bascik reads. Build, routes, server, and stream scripts written in TypeScript are still stripped, since nothing else compiles them before they run.
 - A function `(code, { sourcePath, kind, runtime }) => string | Promise<string>`: bring your own compiler. `kind` is `'companion'` (then `sourcePath` is the `.ts` file) or `'inline'` (then `sourcePath` is the `.html` file containing the block). `runtime` is `'browser'` for a browser script and `'server'` for a build, routes, server, or stream script, which runs as an ES module: keep its `import` and `export`. The function must return plain JavaScript; a throw or non-JavaScript result fails the build with the source path. Use this for non-erasable syntax (`enum`, parameter properties, decorators), for downleveling to an older browser target, or to run the same compiler you use elsewhere.
 
+A server or stream script's `src=` `.ts` module is imported by Node, which strips its types itself, unless this option is a function: then its compiled text runs in its place. API route files and the modules a script imports are always loaded by Node directly; pass Node flags such as `--experimental-transform-types` through `NODE_OPTIONS` if those files need more than erasable syntax. The Cloudflare adapter bundles server and stream scripts with esbuild, which compiles a `.ts` module by its extension. The unmarked-`<script>` TypeScript diagnostic is independent of this setting and always runs.
+
+Regardless of which compiler runs, if the resulting JavaScript still contains a static `import`/`export` declaration and the target `<script>` tag isn't `type="module"`, the build fails fast rather than emitting a classic-script IIFE that would throw a SyntaxError in the browser. Mark the tag `type="module"`, or have your compiler (or a bundler step beforehand) resolve the module graph so no `import`/`export` remains. See [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts). A `type="module"` `.ts` script whose output still imports a relative, `@/`, or `.ts` path fails the build too, since Bascik inlines it without bundling; a bundling compiler such as esbuild with `bundle: true` clears it.
+
+The demo below sets esbuild as the compiler, so a page can use an `enum`, which Node's strip-only mode rejects. Install esbuild in the project first (`npm install --save-dev esbuild`).
+
+<!-- demo:ts-config-esbuild -->
+
 ```ts
-// bascik.config.ts (illustrative: esbuild as the browser TypeScript compiler)
+// bascik.config.ts
 import { defineConfig } from "@bascik/bascik/config";
 import { transform } from "esbuild";
 
@@ -534,9 +542,45 @@ export default defineConfig({
 });
 ```
 
-A server or stream script's `src=` `.ts` module is imported by Node, which strips its types itself, unless this option is a function: then its compiled text runs in its place. API route files and the modules a script imports are always loaded by Node directly; pass Node flags such as `--experimental-transform-types` through `NODE_OPTIONS` if those files need more than erasable syntax. The Cloudflare adapter bundles server and stream scripts with esbuild, which compiles a `.ts` module by its extension. The unmarked-`<script>` TypeScript diagnostic is independent of this setting and always runs.
+<!-- demo:ts-config-usage -->
 
-Regardless of which compiler runs, if the resulting JavaScript still contains a static `import`/`export` declaration and the target `<script>` tag isn't `type="module"`, the build fails fast rather than emitting a classic-script IIFE that would throw a SyntaxError in the browser. Mark the tag `type="module"`, or have your compiler (or a bundler step beforehand) resolve the module graph so no `import`/`export` remains. See [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts). A `type="module"` `.ts` script whose output still imports a relative, `@/`, or `.ts` path fails the build too, since Bascik inlines it without bundling; a bundling compiler such as esbuild with `bundle: true` clears it.
+```html
+<!-- src/pages/sizes.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Sizes</title>
+  </head>
+  <body>
+    <output id="size"></output>
+    <script type="text/typescript">
+      enum Size {
+        Small = "S",
+        Medium = "M",
+      }
+      const output = document.getElementById("size") as HTMLOutputElement;
+      output.value = Size.Medium;
+    </script>
+  </body>
+</html>
+```
+
+The Output is the page's `<body>` from `bascik --build` with this config and minification off: esbuild turned the `enum` into plain JavaScript. There is no Preview because this docs site uses the default compiler, which rejects an `enum`.
+
+<!-- demo:ts-config-output-html -->
+
+```html
+<output id="size"></output>
+<script>
+  var Size = /* @__PURE__ */ ((Size2) => {
+    Size2["Small"] = "S";
+    Size2["Medium"] = "M";
+    return Size2;
+  })(Size || {});
+  const output = document.getElementById("size");
+  output.value = "M"; /* Medium */
+</script>
+```
 
 ### `scripts.onServerScriptError`
 

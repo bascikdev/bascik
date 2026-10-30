@@ -26,7 +26,9 @@
  * elsewhere; a function is a bring-your-own compiler (esbuild, swc, tsc).
  */
 
+import { spawn } from "node:child_process";
 import { stripTypeScriptTypes } from "node:module";
+import { availableParallelism } from "node:os";
 import { BascikConfig } from "./config.ts";
 import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
 import { getScriptType } from "./script-types.ts";
@@ -243,41 +245,173 @@ export const stripBrowserTypeScript = (
     return stripTypeScriptTypes(code, { mode: "strip" });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    const where = sourceLabel ? ` in "${sourceLabel}"` : "";
     const hint =
       (err as NodeJS.ErrnoException)?.code === "ERR_INVALID_TYPESCRIPT_SYNTAX"
         ? ""
         : NON_ERASABLE_HINT;
-    const position = stripErrorPosition(err, code);
-    if (!position) {
-      throw new TypeScriptTransformError(
-        `[bascik] TypeScript transformation failed${where}: ${detail}${hint}`,
-        { cause: err },
-      );
-    }
-    const { origin } = options;
-    const fileLine = origin ? origin.line + position.line - 1 : position.line;
-    const fileColumn =
-      origin && position.line === 1
-        ? origin.column + position.column - 1
-        : position.column;
-    const at =
-      options.inline && !origin
-        ? ` at line ${position.line}, column ${position.column} of the <script> block`
-        : sourceLabel
-          ? ` at ${sourceLabel}:${fileLine}:${fileColumn}`
-          : ` at line ${fileLine}, column ${fileColumn}`;
-    throw new TypeScriptTransformError(
-      `[bascik] TypeScript transformation failed${where}${at}: ${detail}` +
-        codeFrame(
-          code,
-          position,
-          options.inline && !origin ? position.line : fileLine,
-        ) +
-        hint,
-      { cause: err, located: !(options.inline && !origin) && !!sourceLabel },
+    throw locatedError(
+      "[bascik] TypeScript transformation failed",
+      detail,
+      hint,
+      code,
+      stripErrorPosition(err, code),
+      sourceLabel,
+      options,
+      err,
     );
   }
+};
+
+/**
+ * A `TypeScriptTransformError` whose message is `${title} in "label" at
+ * label:line:column: detail`, a code frame and `hint`. Without a position it
+ * names the file only; for an inline block with no known place, the line
+ * within the block (see `StripOptions`).
+ */
+const locatedError = (
+  title: string,
+  detail: string,
+  hint: string,
+  code: string,
+  position: SourcePosition | undefined,
+  sourceLabel: string | undefined,
+  options: StripOptions,
+  cause: unknown,
+): TypeScriptTransformError => {
+  const where = sourceLabel ? ` in "${sourceLabel}"` : "";
+  if (!position) {
+    return new TypeScriptTransformError(`${title}${where}: ${detail}${hint}`, {
+      cause,
+    });
+  }
+  const { origin } = options;
+  const fileLine = origin ? origin.line + position.line - 1 : position.line;
+  const fileColumn =
+    origin && position.line === 1
+      ? origin.column + position.column - 1
+      : position.column;
+  const at =
+    options.inline && !origin
+      ? ` at line ${position.line}, column ${position.column} of the <script> block`
+      : sourceLabel
+        ? ` at ${sourceLabel}:${fileLine}:${fileColumn}`
+        : ` at line ${fileLine}, column ${fileColumn}`;
+  return new TypeScriptTransformError(
+    `${title}${where}${at}: ${detail}` +
+      codeFrame(
+        code,
+        position,
+        options.inline && !origin ? position.line : fileLine,
+      ) +
+      hint,
+    { cause, located: !(options.inline && !origin) && !!sourceLabel },
+  );
+};
+
+/** What `node --check` said about a module: its stderr, or "" when it parsed. */
+const moduleCheckCache = new Map<string, string>();
+const MODULE_CHECK_CACHE_LIMIT = 500;
+let moduleChecksRunning = 0;
+const moduleCheckQueue: Array<() => void> = [];
+const MODULE_CHECK_CONCURRENCY = Math.max(
+  1,
+  Math.min(8, availableParallelism()),
+);
+
+/**
+ * Parse `code` as an ES module in a separate `node --check` process, which
+ * reads it from stdin and never runs it or loads its imports. Resolves to
+ * Node's stderr when the module does not parse, "" when it does, and also ""
+ * when the check itself could not run (the script then fails where it runs,
+ * as before). Results are cached by text, so a dev rebuild of an unchanged
+ * script does not start a process.
+ */
+const nodeModuleCheck = async (code: string): Promise<string> => {
+  const cached = moduleCheckCache.get(code);
+  if (cached !== undefined) return cached;
+  if (moduleChecksRunning >= MODULE_CHECK_CONCURRENCY)
+    await new Promise<void>((resolveTurn) =>
+      moduleCheckQueue.push(resolveTurn),
+    );
+  moduleChecksRunning++;
+  try {
+    const result = await new Promise<string>((resolveCheck) => {
+      // NODE_OPTIONS could preload modules into the check; it parses only.
+      const { NODE_OPTIONS: _ignored, ...env } = process.env;
+      let child;
+      try {
+        child = spawn(
+          process.execPath,
+          ["--check", "--input-type=module", "-"],
+          { env, stdio: ["pipe", "ignore", "pipe"] },
+        );
+      } catch {
+        resolveCheck("");
+        return;
+      }
+      let stderr = "";
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk: string) => (stderr += chunk));
+      child.on("error", () => resolveCheck(""));
+      child.on("close", (status) =>
+        resolveCheck(status === 0 || !/SyntaxError/.test(stderr) ? "" : stderr),
+      );
+      child.stdin.on("error", () => {});
+      child.stdin.end(code);
+    });
+    if (moduleCheckCache.size >= MODULE_CHECK_CACHE_LIMIT)
+      moduleCheckCache.clear();
+    moduleCheckCache.set(code, result);
+    return result;
+  } finally {
+    moduleChecksRunning--;
+    moduleCheckQueue.shift()?.();
+  }
+};
+
+/**
+ * Fail on JavaScript a directive script would not load: compiled output
+ * that is not a valid ES module. Node's type strip parses TypeScript but
+ * does not apply JavaScript's early errors, so a redeclared `let`, a
+ * duplicate export or `await` in a plain function strips cleanly and would
+ * otherwise fail only when the script is first imported, at request time
+ * for a server or stream script. `code` is the compiled module and the
+ * other arguments are what was passed to `compileDirectiveTypeScript`, so
+ * the message names the same file, line and column a strip error would.
+ * When a `scripts.typescript` function compiled it, the line is the
+ * output's, and the message says so.
+ */
+export const checkDirectiveModuleSyntax = async (
+  code: string,
+  sourcePath: string,
+  origin?: SourcePosition | "unknown",
+): Promise<void> => {
+  const stderr = await nodeModuleCheck(code);
+  if (!stderr) return;
+  const detail =
+    /^SyntaxError: (.*)$/m.exec(stderr)?.[1]?.trim() ?? "invalid JavaScript";
+  const reported = new Error(detail);
+  reported.stack = stderr;
+  const position = stripErrorPosition(reported, code);
+  if (typeof resolveCompilerOption() === "function") {
+    throw new TypeScriptTransformError(
+      `[bascik] Syntax error in the scripts.typescript output for "${sourcePath}"` +
+        (position
+          ? ` at line ${position.line}, column ${position.column} of that output`
+          : "") +
+        `: ${detail}. The compiler returned JavaScript that is not a valid ES module.`,
+    );
+  }
+  throw locatedError(
+    "[bascik] Syntax error",
+    detail,
+    "",
+    code,
+    position,
+    sourcePath,
+    origin === "unknown" ? { inline: true } : { origin },
+    reported,
+  );
 };
 
 /**
