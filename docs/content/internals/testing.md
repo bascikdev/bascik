@@ -31,6 +31,7 @@ yarn docs:unit        # bascik-docs
 yarn ext:unit         # bascik-vscode
 yarn adapter:cf:unit  # @bascik/adapter-cloudflare
 yarn lsp:unit         # @bascik/language-server
+yarn skills:unit      # bascik-skills-tests (the public agent skills)
 
 # Interactive watch mode (pkg)
 yarn pkg:unit:watch
@@ -42,6 +43,7 @@ yarn docs:coverage
 yarn ext:coverage
 yarn adapter:cf:coverage
 yarn lsp:coverage
+yarn skills:coverage
 yarn coverage:all     # update coverage across all packages
 
 # Benchmarks
@@ -61,6 +63,7 @@ yarn integration:all
 # Package-specific integration tests (single run)
 yarn pkg:integration  # @bascik/bascik
 yarn docs:integration # bascik-docs
+yarn skills:integration # bascik-skills-tests (bascik-refactor parity checks in Chromium)
 
 # Interactive watch mode (pkg)
 yarn pkg:integration:watch
@@ -284,6 +287,10 @@ Coverage is collected via V8 and written to `pkg/coverage/`. The CI unit script 
 
 Each library module has a paired test file. See the full list on [GitHub](https://github.com/bascikdev/bascik/tree/main/pkg/src/lib).
 
+## Agent Skill Tests
+
+The public agent skills in `skills/` ship to users, so their tests and fixtures live in their own workspace, `skills-tests/` (`bascik-skills-tests`), not in `skills/` or `docs/`. Unit tests import each skill script and run it against throwaway projects in a temp directory. The integration tests drive the `bascik-refactor` parity checks in Chromium against the fixture pages in `skills-tests/tests/fixtures/refactor-parity/`, and build a two-site monorepo with the real compiler and linter. Tests of how the docs site publishes the skills stay in `docs/scripts/`. See the files on [GitHub](https://github.com/bascikdev/bascik/tree/main/skills-tests/tests).
+
 ## Writing Tests
 
 Tests use the standard Vitest `describe` / `it` / `expect` API. Because library modules depend on `BascikConfig` (a module-level singleton), tests that need a specific configuration use `vi.mock` to stub it:
@@ -380,6 +387,7 @@ yarn docs:typecheck
 yarn ext:typecheck
 yarn adapter:cf:typecheck
 yarn lsp:typecheck
+yarn skills:typecheck
 ```
 
 ## Monorepo Aggregator Commands

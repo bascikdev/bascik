@@ -6,8 +6,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { marked, type Tokens } from "marked";
-import { slugFromHeadingHtml } from "../src/lib/heading-slug.ts";
-import { createExamplesBundle } from "./examples-bundle.ts";
+import { slugFromHeadingHtml } from "../../docs/src/lib/heading-slug.ts";
+import { createExamplesBundle } from "../../docs/scripts/examples-bundle.ts";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const skillsDir = join(repoRoot, "skills");

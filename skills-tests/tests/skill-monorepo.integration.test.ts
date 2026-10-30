@@ -12,7 +12,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { SITE_URL, repoRoot, skillsDir } from "./example-fixtures.ts";
+import {
+  SITE_URL,
+  repoRoot,
+  skillsDir,
+} from "../../docs/scripts/example-fixtures.ts";
 
 let dir: string;
 const write = (path: string, content: string) => {

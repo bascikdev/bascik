@@ -7,7 +7,8 @@
     "docs",
     "extensions/vscode-bascik",
     "adapters/cloudflare",
-    "lsp"
+    "lsp",
+    "skills-tests"
   ],
   "engines": {
     "node": ">=22.22.0"
@@ -107,17 +108,23 @@
     "lsp:typecheck": "yarn workspace @bascik/language-server typecheck",
     "lsp:coverage": "yarn workspace @bascik/language-server coverage",
     "lsp:cover": "yarn lsp:coverage",
+    "skills:typecheck": "yarn workspace bascik-skills-tests typecheck",
+    "skills:unit": "yarn workspace bascik-skills-tests unit",
+    "skills:integration": "yarn workspace bascik-skills-tests integration",
+    "skills:test": "yarn workspace bascik-skills-tests test",
+    "skills:coverage": "yarn workspace bascik-skills-tests coverage",
+    "skills:cover": "yarn skills:coverage",
     "check:spelling": "codespell --ignore-regex \"Analysing data\" -L teY,directroy,scirpt,erorr,buld,afterAll,caf,strin --builtin \"clear,rare,en-GB_to_en-US\" pkg/src docs/content docs/src create/src",
     "check:standards": "npx hint docs/src/pages",
     "check:security": "semgrep --error --config p/default",
     "format": "prettier --write .",
     "check:format": "prettier --check .",
     "check:all": "yarn check:format && yarn check:spelling && yarn check:standards",
-    "typecheck:all": "yarn pkg:typecheck && yarn create:typecheck && yarn docs:typecheck && yarn ext:typecheck && yarn adapter:cf:typecheck && yarn lsp:typecheck",
-    "unit:all": "yarn pkg:unit && yarn create:unit && yarn docs:unit && yarn ext:unit && yarn adapter:cf:unit && yarn lsp:unit",
-    "integration:all": "yarn pkg:integration && yarn docs:integration",
+    "typecheck:all": "yarn pkg:typecheck && yarn create:typecheck && yarn docs:typecheck && yarn ext:typecheck && yarn adapter:cf:typecheck && yarn lsp:typecheck && yarn skills:typecheck",
+    "unit:all": "yarn pkg:unit && yarn create:unit && yarn docs:unit && yarn ext:unit && yarn adapter:cf:unit && yarn lsp:unit && yarn skills:unit",
+    "integration:all": "yarn pkg:integration && yarn docs:integration && yarn skills:integration",
     "e2e:all": "yarn pkg:e2e:all && yarn docs:e2e && yarn adapter:cf:e2e",
-    "coverage:all": "yarn pkg:coverage && yarn create:coverage && yarn docs:coverage && yarn ext:coverage && yarn adapter:cf:coverage && yarn lsp:coverage",
+    "coverage:all": "yarn pkg:coverage && yarn create:coverage && yarn docs:coverage && yarn ext:coverage && yarn adapter:cf:coverage && yarn lsp:coverage && yarn skills:coverage",
     "cover:all": "yarn coverage:all",
     "update-coverage:all": "yarn coverage:all",
     "test:all": "yarn typecheck:all && yarn check:all && yarn unit:all && yarn integration:all && yarn e2e:all && yarn docs:lighthouse"

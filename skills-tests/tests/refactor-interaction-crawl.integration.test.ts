@@ -18,13 +18,13 @@ import {
   diffEffects,
   observeVolatile,
 } from "../../skills/bascik-refactor/scripts/interaction-crawl.mjs";
-import { docsDir } from "./refactor-parity-fixtures.ts";
+import { packageDir } from "./refactor-parity-fixtures.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the project's Playwright, loaded at run time
 let browser: any;
 
 beforeAll(async () => {
-  const { chromium } = await loadPlaywright({ cwd: docsDir });
+  const { chromium } = await loadPlaywright({ cwd: packageDir });
   browser = await chromium.launch();
 }, 60_000);
 

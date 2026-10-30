@@ -249,12 +249,36 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Run docs unit tests
+        run: yarn docs:test
+
+  unit-skills:
+    name: Agent Skills Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
       # The bascik-refactor parity checks drive a real browser on fixture pages.
       - name: Install Playwright Chromium
         run: npx playwright install chromium
 
-      - name: Run docs unit tests
-        run: yarn docs:test
+      # Unit and integration: skills:test builds the package and the language server for skill-monorepo.integration.test.ts.
+      - name: Run agent skills tests
+        run: yarn skills:test
 
   unit-extension:
     name: Extension Unit Tests
@@ -371,6 +395,9 @@ jobs:
       - name: Docs unit tests
         run: yarn docs:unit
 
+      - name: Agent skills unit tests
+        run: yarn skills:unit
+
   standards:
     name: Spelling & Web Standards
     runs-on: ubuntu-latest
@@ -419,6 +446,7 @@ jobs:
         unit-lsp,
         unit-adapter-cloudflare,
         unit-docs,
+        unit-skills,
         unit-extension,
         typecheck,
         standards,
@@ -461,6 +489,7 @@ jobs:
         unit-lsp,
         unit-adapter-cloudflare,
         unit-docs,
+        unit-skills,
         unit-extension,
         typecheck,
         standards,
@@ -512,6 +541,7 @@ jobs:
         unit-lsp,
         unit-adapter-cloudflare,
         unit-docs,
+        unit-skills,
         unit-extension,
         typecheck,
         standards,
@@ -554,6 +584,7 @@ jobs:
         unit-lsp,
         unit-adapter-cloudflare,
         unit-docs,
+        unit-skills,
         unit-extension,
         typecheck,
         standards,
@@ -596,6 +627,7 @@ jobs:
         unit-lsp,
         unit-adapter-cloudflare,
         unit-docs,
+        unit-skills,
         unit-extension,
         typecheck,
         standards,
@@ -638,6 +670,7 @@ jobs:
         unit-lsp,
         unit-adapter-cloudflare,
         unit-docs,
+        unit-skills,
         unit-extension,
         typecheck,
         standards,
@@ -680,6 +713,7 @@ jobs:
         unit-lsp,
         unit-adapter-cloudflare,
         unit-docs,
+        unit-skills,
         unit-extension,
         typecheck,
         standards,

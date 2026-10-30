@@ -27,4 +27,4 @@ pkg/src/lib/html-template-attacks.test.ts
 
 # Parity defect fixtures reproduce exact markup (whitespace between inline
 # elements moves pixels the checks measure), so they stay as written.
-docs/scripts/fixtures/refactor-parity/misses2/
+skills-tests/tests/fixtures/refactor-parity/misses2/

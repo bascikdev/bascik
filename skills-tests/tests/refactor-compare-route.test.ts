@@ -24,7 +24,7 @@ import {
   loadSharp,
 } from "../../skills/bascik-refactor/scripts/lib/project-deps.mjs";
 
-const docsDir = fileURLToPath(new URL("..", import.meta.url));
+const packageDir = fileURLToPath(new URL("..", import.meta.url));
 
 /** A width x height RGBA buffer filled with one color. */
 const solid = (
@@ -746,9 +746,9 @@ describe("project dependencies", () => {
   );
 
   it("loads Playwright and sharp from the project that has them", async () => {
-    const playwright = await loadPlaywright({ cwd: docsDir });
+    const playwright = await loadPlaywright({ cwd: packageDir });
     expect(typeof playwright.chromium?.launch).toBe("function");
-    const sharp = await loadSharp({ cwd: docsDir });
+    const sharp = await loadSharp({ cwd: packageDir });
     expect(typeof sharp).toBe("function");
   });
 });

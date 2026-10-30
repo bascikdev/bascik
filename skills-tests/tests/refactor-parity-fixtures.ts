@@ -1,5 +1,5 @@
 /**
- * Serves the bascik-refactor parity fixtures (scripts/fixtures/refactor-parity/) for the browser tests of the parity
+ * Serves the bascik-refactor parity fixtures (tests/fixtures/refactor-parity/) for the browser tests of the parity
  * checks. Each check has a production page, a target with exactly one defect of its type and a clean target that looks
  * the same as production while its markup differs the way a Bascik build differs (scoped or hashed class names, fewer
  * wrapper elements). The fixtures are copied to a temp directory and served from 127.0.0.1 on a free port, from a
@@ -12,7 +12,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 
-export const docsDir = fileURLToPath(new URL("..", import.meta.url));
+/** The skills-tests workspace root: the checks load Playwright and sharp from here, the way they load them from a reader's project. */
+export const packageDir = fileURLToPath(new URL("..", import.meta.url));
 export const fixturesDir = fileURLToPath(
   new URL("./fixtures/refactor-parity/", import.meta.url),
 );

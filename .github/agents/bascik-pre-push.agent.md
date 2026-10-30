@@ -35,6 +35,7 @@ You are a pre-push auditing specialist for **Bascik**. Your responsibility is au
    - `npx --prefix extensions/vscode-bascik tsc -p extensions/vscode-bascik/tsconfig.json --noEmit`
    - `npx --prefix adapters/cloudflare tsc -p adapters/cloudflare/tsconfig.json --noEmit`
    - `npx --prefix lsp tsc -p lsp/tsconfig.json --noEmit`
+   - `npx --prefix skills-tests tsc -p skills-tests/tsconfig.json --noEmit`
 4. **Unit, E2E & Lighthouse Testing**:
    - Run `yarn unit:all` (or focused unit tests).
    - Rebuild pkg: `yarn pkg:build`
@@ -44,6 +45,7 @@ You are a pre-push auditing specialist for **Bascik**. Your responsibility is au
 5. **Coverage & Skills Sync**:
    - `yarn coverage:all`
    - Verify if `docs/content/` or `pkg/src/` changed user-facing behavior and update the matching skill in `skills/` accordingly.
+   - If a skill or skill script changed, run `yarn skills:test` (the skills' tests and fixtures live in `skills-tests/`).
 
 ## Constraints
 

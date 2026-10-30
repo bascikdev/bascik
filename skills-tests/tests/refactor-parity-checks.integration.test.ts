@@ -1,5 +1,5 @@
 /**
- * The bascik-refactor parity checks in a real browser, against the fixture pairs in scripts/fixtures/refactor-parity/.
+ * The bascik-refactor parity checks in a real browser, against the fixture pairs in tests/fixtures/refactor-parity/.
  *
  * Why: in an agent-driven refactor the automated loop passed pages that a human then caught side by side with
  * production. Each check below owns one issue type, and each has a target with exactly that defect (the check must
@@ -42,7 +42,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadPlaywright } from "../../skills/bascik-refactor/scripts/lib/project-deps.mjs";
 import {
-  docsDir,
+  packageDir,
   serveFixtures,
   type FixtureServer,
 } from "./refactor-parity-fixtures.ts";
@@ -93,7 +93,7 @@ let out: string;
 
 beforeAll(async () => {
   server = await serveFixtures();
-  const { chromium } = await loadPlaywright({ cwd: docsDir });
+  const { chromium } = await loadPlaywright({ cwd: packageDir });
   browser = await chromium.launch();
   out = mkdtempSync(join(tmpdir(), "bascik-parity-out-"));
 }, 60_000);
@@ -529,7 +529,7 @@ describe("10. run-checks: one command per route and matrix case", () => {
         "--settle-ms",
         "0",
       ],
-      { cwd: docsDir, encoding: "utf8", timeout: 300_000 },
+      { cwd: packageDir, encoding: "utf8", timeout: 300_000 },
     );
 
   it("exits 1 on the defect site, naming the check, the route and the element", () => {

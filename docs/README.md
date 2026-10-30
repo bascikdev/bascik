@@ -46,6 +46,7 @@ The documentation site maintains high quality and prevents regressions through a
 
 ```sh
 yarn docs:unit         # Run Vitest unit tests
+yarn skills:test       # The public agent skills' tests (skills-tests/, not docs/)
 yarn docs:coverage     # Run unit tests and generate a coverage report
 ```
 

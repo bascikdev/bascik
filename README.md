@@ -116,7 +116,7 @@ yarn docs:dev       # start docs dev server
 ### Workspace-wide test commands
 
 ```sh
-yarn typecheck:all  # typecheck all packages (pkg, create, docs, extension, adapter, lsp)
+yarn typecheck:all  # typecheck all packages (pkg, create, docs, extension, adapter, lsp, skills-tests)
 yarn check:all      # formatting, spelling (codespell), and web standards (webhint)
 yarn unit:all       # unit tests across all packages
 yarn e2e:all        # E2E tests across all packages (pkg lanes run in parallel)

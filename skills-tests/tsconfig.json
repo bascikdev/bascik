@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noEmit": true,
+    "strict": true,
+    "allowImportingTsExtensions": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "rootDir": "..",
+    "types": ["node"],
+    "lib": ["ESNext"],
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["tests/**/*.ts", "update-coverage.ts"],
+  "exclude": ["node_modules", "tests/fixtures"]
+}

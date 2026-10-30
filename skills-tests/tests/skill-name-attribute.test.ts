@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { NAV } from "../src/lib/nav.ts";
+import { NAV } from "../../docs/src/lib/nav.ts";
 
 const repo = fileURLToPath(new URL("../../", import.meta.url));
 const read = (rel: string) => readFileSync(repo + rel, "utf8");

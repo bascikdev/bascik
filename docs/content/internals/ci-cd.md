@@ -19,9 +19,9 @@ It executes across three structured stages on Node 24 and Ubuntu, plus two lanes
 ### Stage 1: Static Analysis, Typechecks, Standards & Unit Tests (Parallel)
 
 - **Jelly Static Analysis (`jelly`)**: Object spread and control flow analysis via `@cs-au-dk/jelly` on `pkg/src/index.ts`.
-- **Workspace Typechecks (`typecheck`)**: Runs `yarn typecheck:all` across `pkg/`, `create/`, `docs/`, `extensions/vscode-bascik/`, `adapters/cloudflare/`, and `lsp/`.
+- **Workspace Typechecks (`typecheck`)**: Runs `yarn typecheck:all` across `pkg/`, `create/`, `docs/`, `extensions/vscode-bascik/`, `adapters/cloudflare/`, `lsp/`, and `skills-tests/`.
 - **Spelling & Web Standards (`standards`)**: Runs `yarn check:format` (Prettier), `yarn check:spelling` (codespell), and `yarn check:standards` (webhint).
-- **Unit Test Matrix**: Parallel test execution with coverage across `@bascik/bascik` (`yarn pkg:test:ci`), `create-bascik` (`yarn create:test:ci`), `bascik-docs` (`yarn docs:test`, with Chromium installed for the `bascik-refactor` parity checks), `extensions/vscode-bascik` (`yarn ext:unit`), `@bascik/adapter-cloudflare` (`yarn adapter:cf:test:ci`), and `@bascik/language-server` (`yarn lsp:test:ci`, job `unit-lsp`). The Windows and Node floor lanes run the language server unit tests too.
+- **Unit Test Matrix**: Parallel test execution with coverage across `@bascik/bascik` (`yarn pkg:test:ci`), `create-bascik` (`yarn create:test:ci`), `bascik-docs` (`yarn docs:test`), `bascik-skills-tests` (`yarn skills:test`, job `unit-skills`, unit and integration tests for the public agent skills, with Chromium installed for the `bascik-refactor` parity checks), `extensions/vscode-bascik` (`yarn ext:unit`), `@bascik/adapter-cloudflare` (`yarn adapter:cf:test:ci`), and `@bascik/language-server` (`yarn lsp:test:ci`, job `unit-lsp`). The Windows and Node floor lanes run the language server unit tests too, and the Node floor lane runs the skills unit tests.
 - **Framework Integration Tests (`integration-pkg`)**: Runs `yarn pkg:integration` in its own job, separate from the fast unit suite, because integration tests spawn real processes, servers, and worker threads.
 
 ### Stage 2: End-to-End Test Matrix (Parallel)

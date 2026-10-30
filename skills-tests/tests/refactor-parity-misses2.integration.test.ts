@@ -1,6 +1,6 @@
 /**
  * The second round of defects the bascik-refactor parity checks passed, in a real browser, from the fixture pairs in
- * scripts/fixtures/refactor-parity/misses2/. Each pair is a production page and a target with exactly one defect a
+ * tests/fixtures/refactor-parity/misses2/. Each pair is a production page and a target with exactly one defect a
  * reviewer built after run-checks.mjs reported "no findings" on it; the check named for that issue type must now flag
  * it. The production-defects pairs serve production twice (the target copied the defect). The identical pairs at the
  * end must stay clean: a busy marketing site served twice (an autoplay video hero under a tint, sections that fade in
@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadPlaywright } from "../../skills/bascik-refactor/scripts/lib/project-deps.mjs";
 import {
-  docsDir,
+  packageDir,
   serveFixtures,
   type FixtureServer,
 } from "./refactor-parity-fixtures.ts";
@@ -64,7 +64,7 @@ let out: string;
 
 beforeAll(async () => {
   server = await serveFixtures();
-  const { chromium } = await loadPlaywright({ cwd: docsDir });
+  const { chromium } = await loadPlaywright({ cwd: packageDir });
   browser = await chromium.launch();
   out = mkdtempSync(join(tmpdir(), "bascik-parity-misses2-"));
 }, 60_000);

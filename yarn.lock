@@ -2806,6 +2806,21 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"bascik-skills-tests@workspace:skills-tests":
+  version: 0.0.0-use.local
+  resolution: "bascik-skills-tests@workspace:skills-tests"
+  dependencies:
+    "@playwright/test": "npm:^1.63.0"
+    "@types/node": "npm:^24.19.1"
+    "@vitest/coverage-v8": "npm:^5.0.3"
+    marked: "npm:^18.0.14"
+    sharp: "npm:^0.35.5"
+    typescript: "npm:^7.0.2"
+    vite: "npm:^8.3.4"
+    vitest: "npm:^5.0.3"
+  languageName: unknown
+  linkType: soft
+
 "bascik-vscode@workspace:extensions/vscode-bascik":
   version: 0.0.0-use.local
   resolution: "bascik-vscode@workspace:extensions/vscode-bascik"

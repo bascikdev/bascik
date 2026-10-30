@@ -374,7 +374,7 @@ describe("scanning for inline code without regular-expression backtracking", () 
 });
 
 /**
- * Linear-time check, after pkg/src/lib/linear-time.test-helper.ts (the docs typecheck cannot take files outside docs/):
+ * Linear-time check, after pkg/src/lib/linear-time.test-helper.ts (kept local so this workspace does not import pkg test helpers):
  * times a quarter-size and a full-size input in this thread's CPU time, repeated until a sample takes `MIN_SAMPLE_MS`
  * or `TICKS_PER_SAMPLE` steps of the clock (Windows counts CPU time in ticks of about 15.6 ms, and a sample one tick
  * long reads 0), keeps the fastest of `SAMPLES` interleaved samples of each, plus up to `EXTRA_SAMPLES` more while the

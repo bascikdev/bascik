@@ -536,14 +536,14 @@ describe("bascik-refactor skill: files the page hands out", () => {
     }
   });
 
-  it("every script in scripts/ has a matching docs/scripts/refactor-*.test.ts", () => {
+  it("every script in scripts/ has a matching skills-tests/tests/refactor-*.test.ts", () => {
     const scripts = readdirSync(path.join(SKILL_DIR, "scripts")).filter((f) =>
       f.endsWith(".mjs"),
     );
     expect(scripts.sort()).toEqual(SCRIPTS.map((s) => path.basename(s)).sort());
     for (const script of scripts) {
-      const test = `scripts/refactor-${script.replace(/\.mjs$/, "")}.test.ts`;
-      expect(existsSync(path.join(DOCS_ROOT, test)), test).toBe(true);
+      const test = `skills-tests/tests/refactor-${script.replace(/\.mjs$/, "")}.test.ts`;
+      expect(existsSync(path.join(REPO_ROOT, test)), test).toBe(true);
     }
   });
 
@@ -901,7 +901,10 @@ describe("parity checks and review gates", () => {
   });
 
   it("the parity fixtures are generic: every link and image stays on the fixture server", () => {
-    const root = path.join(DOCS_ROOT, "scripts/fixtures/refactor-parity");
+    const root = path.join(
+      REPO_ROOT,
+      "skills-tests/tests/fixtures/refactor-parity",
+    );
     const files = readdirSync(root, { recursive: true, withFileTypes: true })
       .filter((e) => e.isFile())
       .map((e) => path.join(e.parentPath, e.name));

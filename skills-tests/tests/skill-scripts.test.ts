@@ -25,7 +25,7 @@ import {
   postSource,
   slugify,
 } from "../../skills/bascik-scripts/scripts/new-post.mjs";
-import { createExamplesBundle } from "./examples-bundle.ts";
+import { createExamplesBundle } from "../../docs/scripts/examples-bundle.ts";
 
 const examplesDir = fileURLToPath(new URL("../../examples", import.meta.url));
 const starterDir = join(examplesDir, "starter-site");
