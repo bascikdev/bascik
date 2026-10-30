@@ -607,6 +607,50 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
     );
   });
 
+  it("misuse: a malformed package.json names the file and its line and column, without echoing its contents", async () => {
+    const canary = "tok_SECRET_canary_42";
+    await writeFile(
+      join(testDir, "package.json"),
+      `{\n  "name": "app",\n  "token": ${canary}\n}`,
+      "utf8",
+    );
+    let msg = "";
+    try {
+      await resolveWorkerName(testDir);
+    } catch (err) {
+      msg = err instanceof Error ? err.message : String(err);
+    }
+    expect(msg).toMatch(
+      /^\[bascik\] Failed to parse package\.json at line 3, column 12: /,
+    );
+    expect(msg).not.toContain(canary);
+    expect(msg).not.toContain("token");
+  });
+
+  it("misuse: package.json with comments or a trailing comma is rejected as npm rejects it", async () => {
+    for (const text of [`{ "name": "a", }`, `{ // c\n "name": "a" }`]) {
+      await writeFile(join(testDir, "package.json"), text, "utf8");
+      await expect(resolveWorkerName(testDir), text).rejects.toThrow(
+        /\[bascik\] Failed to parse package\.json at line \d+, column \d+/,
+      );
+    }
+  });
+
+  it("misuse: a package.json that is not an object falls back to the default name", async () => {
+    for (const text of ["null", "[]", `"app"`]) {
+      await writeFile(join(testDir, "package.json"), text, "utf8");
+      const resolved = await resolveWorkerName(testDir);
+      expect(resolved.workerName, text).toBe("bascik-site");
+    }
+  });
+
+  it("misuse: a wrangler config path that cannot be read (a directory) names the file", async () => {
+    await mkdir(join(testDir, "wrangler.jsonc"));
+    await expect(discoverWranglerConfig(testDir)).rejects.toThrow(
+      /^\[bascik\] Failed to read wrangler\.jsonc: E/,
+    );
+  });
+
   it("does not disclose secrets in discovery failure messages", async () => {
     const canary = "super-secret-canary-9f3a";
     await writeFile(

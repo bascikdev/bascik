@@ -22,7 +22,7 @@ import {
 } from "./compat.js";
 import { resolveWorkerName } from "./config.js";
 import { buildHeadersFile, workerPageHeaderOverrides } from "./headers-file.js";
-import { build as esbuildBuild } from "esbuild";
+import { build as esbuildBuild, type BuildResult, type Message } from "esbuild";
 import {
   isBascikFolderName,
   manifestHasComponents,
@@ -306,93 +306,130 @@ export const build = async (
 
   // Bundle with esbuild owned by this adapter
   const unsupported: string[] = [];
-  const result = await esbuildBuild({
-    entryPoints: [entryPath],
-    bundle: true,
-    write: false,
-    format: "esm",
-    platform: "neutral",
-    target: "es2022",
-    mainFields: ["workerd", "worker", "browser", "module", "main"],
-    conditions: ["workerd", "worker", "browser", "import", "module", "default"],
-    logLevel: "silent",
-    metafile: true,
-    absWorkingDir: projectRoot,
-    plugins: [
-      {
-        name: "bascik-request-time-graph",
-        setup(buildInstance) {
-          // A site whose manifest has nothing to render never renders a
-          // component, so its Worker gets a stub in place of the component
-          // host (prompt 157): no renderer and no `node:crypto` in its
-          // bundle. (Not byte for byte the bundle before prompt 157:
-          // runtime.ts itself changed.)
-          if (!components) {
+  // esbuild rejects when a build has errors (a missing import, a syntax
+  // error past the core's checks): its own message names only the staging
+  // path, so the errors are formatted here with the authored owner.
+  const bundlingFailed = (errors: Message[]): Error =>
+    new Error(
+      `[bascik] --target cloudflare-${variant}: bundling failed:\n${errors
+        .map((e) => {
+          const at = e.location
+            ? `${e.location.file}:${e.location.line}:${e.location.column}: `
+            : "";
+          const owned = e.location
+            ? owners.get(resolve(projectRoot, e.location.file))
+            : undefined;
+          const from = owned?.size
+            ? `\n    Reached from: ${[...owned].join(", ")}`
+            : "";
+          return `  ${at}${e.text}${from}`;
+        })
+        .join("\n")}`,
+    );
+  let result: BuildResult;
+  try {
+    result = await esbuildBuild({
+      entryPoints: [entryPath],
+      bundle: true,
+      write: false,
+      format: "esm",
+      platform: "neutral",
+      target: "es2022",
+      mainFields: ["workerd", "worker", "browser", "module", "main"],
+      conditions: [
+        "workerd",
+        "worker",
+        "browser",
+        "import",
+        "module",
+        "default",
+      ],
+      logLevel: "silent",
+      metafile: true,
+      absWorkingDir: projectRoot,
+      plugins: [
+        {
+          name: "bascik-request-time-graph",
+          setup(buildInstance) {
+            // A site whose manifest has nothing to render never renders a
+            // component, so its Worker gets a stub in place of the component
+            // host (prompt 157): no renderer and no `node:crypto` in its
+            // bundle. (Not byte for byte the bundle before prompt 157:
+            // runtime.ts itself changed.)
+            if (!components) {
+              buildInstance.onResolve(
+                { filter: /^\.\/component-host\.js$/ },
+                (args) =>
+                  args.importer === runtimeFile
+                    ? { path: "component-host", namespace: NO_COMPONENTS }
+                    : undefined,
+              );
+              buildInstance.onLoad(
+                { filter: /.*/, namespace: NO_COMPONENTS },
+                () => ({ contents: COMPONENT_HOST_STUB, loader: "js" }),
+              );
+            }
+            buildInstance.onResolve({ filter: /^@\// }, (args) => ({
+              errors: [
+                {
+                  text:
+                    `"${args.path}" cannot be resolved from a module file. The @/ alias is available inside ` +
+                    `<script> blocks only; in ${relative(projectRoot, args.importer).replace(/\\/g, "/")} use a relative import.`,
+                },
+              ],
+            }));
+            buildInstance.onResolve({ filter: /^file:/ }, (args) => {
+              const resolved = fileURLToPath(args.path);
+              for (const owner of owners.get(args.importer) ?? [])
+                addOwner(resolved, owner);
+              return { path: resolved };
+            });
+            buildInstance.onResolve({ filter: /^\.\.?\// }, (args) => {
+              const resolved = resolve(dirname(args.importer), args.path);
+              for (const owner of owners.get(args.importer) ?? [])
+                addOwner(resolved, owner);
+              return undefined;
+            });
             buildInstance.onResolve(
-              { filter: /^\.\/component-host\.js$/ },
-              (args) =>
-                args.importer === runtimeFile
-                  ? { path: "component-host", namespace: NO_COMPONENTS }
-                  : undefined,
-            );
-            buildInstance.onLoad(
-              { filter: /.*/, namespace: NO_COMPONENTS },
-              () => ({ contents: COMPONENT_HOST_STUB, loader: "js" }),
-            );
-          }
-          buildInstance.onResolve({ filter: /^@\// }, (args) => ({
-            errors: [
-              {
-                text:
-                  `"${args.path}" cannot be resolved from a module file. The @/ alias is available inside ` +
-                  `<script> blocks only; in ${relative(projectRoot, args.importer).replace(/\\/g, "/")} use a relative import.`,
+              { filter: /^(node:)?[a-z_/]+$/ },
+              (args) => {
+                const kind = classifyNodeBuiltin(args.path);
+                if (kind === "not-builtin") return undefined;
+                if (kind === "provided")
+                  return {
+                    path: args.path.startsWith("node:")
+                      ? args.path
+                      : `node:${args.path}`,
+                    external: true,
+                  };
+                const ownerList = [...(owners.get(args.importer) ?? [])];
+                unsupported.push(
+                  formatUnsupportedImport({
+                    specifier: args.path,
+                    importer: args.importer,
+                    projectRoot,
+                    owners: ownerList,
+                  }),
+                );
+                return { path: args.path, external: true };
               },
-            ],
-          }));
-          buildInstance.onResolve({ filter: /^file:/ }, (args) => {
-            const resolved = fileURLToPath(args.path);
-            for (const owner of owners.get(args.importer) ?? [])
-              addOwner(resolved, owner);
-            return { path: resolved };
-          });
-          buildInstance.onResolve({ filter: /^\.\.?\// }, (args) => {
-            const resolved = resolve(dirname(args.importer), args.path);
-            for (const owner of owners.get(args.importer) ?? [])
-              addOwner(resolved, owner);
-            return undefined;
-          });
-          buildInstance.onResolve({ filter: /^(node:)?[a-z_/]+$/ }, (args) => {
-            const kind = classifyNodeBuiltin(args.path);
-            if (kind === "not-builtin") return undefined;
-            if (kind === "provided")
-              return {
-                path: args.path.startsWith("node:")
-                  ? args.path
-                  : `node:${args.path}`,
-                external: true,
-              };
-            const ownerList = [...(owners.get(args.importer) ?? [])];
-            unsupported.push(
-              formatUnsupportedImport({
-                specifier: args.path,
-                importer: args.importer,
-                projectRoot,
-                owners: ownerList,
-              }),
             );
-            return { path: args.path, external: true };
-          });
+          },
         },
-      },
-    ],
-  });
-
-  if (unsupported.length) throw new Error([...new Set(unsupported)].join("\n"));
-  if (result.errors.length) {
+      ],
+    });
+  } catch (err) {
+    // A failure to bundle (not a crash of esbuild itself) carries its errors.
+    const errors = (err as { errors?: Message[] }).errors;
+    if (!Array.isArray(errors) || !errors.length) throw err;
+    // An unsupported builtin found on the way is reported too.
     throw new Error(
-      `[bascik] --target cloudflare-${variant}: bundling failed:\n${result.errors.map((e) => `  ${e.location?.file ? `${e.location.file}: ` : ""}${e.text}`).join("\n")}`,
+      [...new Set(unsupported), bundlingFailed(errors).message].join("\n"),
     );
   }
+
+  if (unsupported.length) throw new Error([...new Set(unsupported)].join("\n"));
+  if (result.errors.length) throw bundlingFailed(result.errors);
   const workerCode = result.outputFiles?.[0]?.text ?? "";
 
   // Copy public files. The asset layer maps a request URL straight to a file

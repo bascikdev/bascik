@@ -18,6 +18,7 @@ import {
 } from "./build.ts";
 import {
   CLOUDFLARE_COMPATIBILITY_DATE,
+  PAGES_ROUTES_LIMIT,
   classifyNodeBuiltin,
   formatUnsupportedImport,
   WORKERS_SUPPORTED_NODE_BUILTINS,
@@ -61,6 +62,49 @@ describe("buildInvocationRoutes", () => {
       hasApiRoutes: false,
     });
     expect(routes.include).toEqual(["/docs/_routes.json", "/docs/_worker.js"]);
+  });
+});
+
+describe("buildInvocationRoutes: Cloudflare's 100-rule limit", () => {
+  const paths = (n: number) =>
+    Array.from({ length: n }, (_, i) => `/p${String(i).padStart(3, "0")}`);
+
+  it("past the limit, falls back to one wildcard rule under the base and says so", () => {
+    for (const [base, wildcard] of [
+      ["/", "/*"],
+      ["/shop/", "/shop/*"],
+    ] as const) {
+      const routes = buildInvocationRoutes({
+        base,
+        dynamicPagePaths: paths(60),
+        hasApiRoutes: true,
+      });
+      expect(routes, base).toEqual({
+        include: [wildcard],
+        exclude: [],
+        overflowed: true,
+      });
+    }
+  });
+
+  it("at the limit, keeps the exact rules", () => {
+    // Each page has one alias here (no trailing slash form for these paths
+    // is counted separately), plus the two control files.
+    const exact = buildInvocationRoutes({
+      base: "/",
+      dynamicPagePaths: ["/a"],
+      hasApiRoutes: false,
+    });
+    const perPage = exact.include.length - 2;
+    const pages = Math.floor((PAGES_ROUTES_LIMIT - 2) / perPage);
+    const routes = buildInvocationRoutes({
+      base: "/",
+      dynamicPagePaths: paths(pages),
+      hasApiRoutes: false,
+    });
+    expect(routes.overflowed).toBe(false);
+    expect(routes.include.length).toBeLessThanOrEqual(PAGES_ROUTES_LIMIT);
+    expect(routes.include).not.toContain("/*");
   });
 });
 
@@ -666,6 +710,175 @@ describe("build: request-time components in worker-entry.mjs (prompt 157)", () =
     // esbuild may suffix the job's binding (createHash2): the call is the
     // job's own either way.
     expect(worker).toMatch(/createHash\d*\("sha256"\)\.update\("x"\)/);
+  });
+});
+
+// ─── Bundling failures, located (misuse) ─────────────────────────────────────
+
+describe("build: bundling failures name the authored file", () => {
+  it("misuse: a page script importing a file that does not exist fails with a [bascik] error naming the import and the page", async () => {
+    const project = await createProject();
+    const graph = await graphFor(project);
+    const missing = await project.stage(
+      "page-job-missing",
+      `import { price } from "./missing-helper.mjs";\nexport default () => price;`,
+    );
+    graph.pages["/catalog"].jobs[PAGE_JOB_ID] = inlineJob(
+      PAGE_JOB_ID,
+      missing,
+      "server script in src/pages/catalog.html:3",
+    );
+    const error = await runBuild(project, graph).then(
+      () => undefined,
+      (e: Error) => e,
+    );
+    expect(error?.message).toBe(
+      [
+        "[bascik] --target cloudflare-pages: bundling failed:",
+        '  dist/.bascik/cloudflare-pages/.staging/page-job-missing.mjs:1:22: Could not resolve "./missing-helper.mjs"',
+        "    Reached from: server script in src/pages/catalog.html:3",
+      ].join("\n"),
+    );
+  });
+
+  it("misuse: a module with a syntax error past the core's checks fails with a located [bascik] error, every error listed", async () => {
+    const project = await createProject();
+    const graph = await graphFor(project);
+    const broken = await project.stage(
+      "broken-job",
+      "export default () => {\n  return '<p>';\n",
+    );
+    graph.pages["/catalog"].jobs[PAGE_JOB_ID] = inlineJob(
+      PAGE_JOB_ID,
+      broken,
+      "server script in src/pages/catalog.html:3",
+    );
+    const error = await runBuild(project, graph).then(
+      () => undefined,
+      (e: Error) => e,
+    );
+    expect(error?.message).toMatch(
+      /^\[bascik\] --target cloudflare-pages: bundling failed:\n {2}dist\/\.bascik\/cloudflare-pages\/\.staging\/broken-job\.mjs:3:0: Unexpected end of file\n {4}Reached from: server script in src\/pages\/catalog\.html:3$/,
+    );
+  });
+
+  it("misuse: the @/ alias in a module file explains itself, and an unsupported builtin in the same build is still reported", async () => {
+    const project = await createProject();
+    const graph = await graphFor(project);
+    const aliased = await project.stage(
+      "page-job-alias",
+      `import { execFile } from "node:child_process";\nimport { price } from "@/lib/price";\nexport default () => price + typeof execFile;`,
+    );
+    graph.pages["/catalog"].jobs[PAGE_JOB_ID] = inlineJob(
+      PAGE_JOB_ID,
+      aliased,
+      "server script in src/pages/catalog.html:3",
+    );
+    const error = await runBuild(project, graph).then(
+      () => undefined,
+      (e: Error) => e,
+    );
+    expect(error?.message).toContain(
+      '"node:child_process" (imported by dist/.bascik/cloudflare-pages/.staging/page-job-alias.mjs)',
+    );
+    expect(error?.message).toMatch(
+      /\[bascik\] --target cloudflare-pages: bundling failed:\n {2}dist\/\.bascik\/cloudflare-pages\/\.staging\/page-job-alias\.mjs:2:22: "@\/lib\/price" cannot be resolved from a module file\. The @\/ alias is available inside <script> blocks only; in dist\/\.bascik\/cloudflare-pages\/\.staging\/page-job-alias\.mjs use a relative import\.\n {4}Reached from: server script in src\/pages\/catalog\.html:3/,
+    );
+  });
+
+  it("misuse: an unsupported builtin reached through a relative helper names the page that imports the helper", async () => {
+    const project = await createProject();
+    await project.stage(
+      "helper",
+      `import { execFile } from "node:child_process";\nexport const run = () => typeof execFile;`,
+    );
+    const viaHelper = await project.stage(
+      "page-job-helper",
+      `import { run } from "./helper.mjs";\nexport default () => run();`,
+    );
+    const graph = await graphFor(project);
+    graph.pages["/catalog"].jobs[PAGE_JOB_ID] = inlineJob(
+      PAGE_JOB_ID,
+      viaHelper,
+      "server script in src/pages/catalog.html:3",
+    );
+    await expect(runBuild(project, graph)).rejects.toThrow(
+      /"node:child_process" \(imported by dist\/\.bascik\/cloudflare-pages\/\.staging\/helper\.mjs\)[\s\S]*Reached from: server script in src\/pages\/catalog\.html:3/,
+    );
+  });
+
+  it("misuse: the same chain through a file: URL import is followed too", async () => {
+    const project = await createProject();
+    const helper = await project.stage(
+      "helper",
+      `import { execFile } from "node:child_process";\nexport const run = () => typeof execFile;`,
+    );
+    const viaUrl = await project.stage(
+      "page-job-url",
+      `import { run } from ${JSON.stringify(pathToFileURL(helper).href)};\nexport default () => run();`,
+    );
+    const graph = await graphFor(project);
+    graph.pages["/catalog"].jobs[PAGE_JOB_ID] = inlineJob(
+      PAGE_JOB_ID,
+      viaUrl,
+      "server script in src/pages/catalog.html:3",
+    );
+    await expect(runBuild(project, graph)).rejects.toThrow(
+      /"node:child_process"[\s\S]*Reached from: server script in src\/pages\/catalog\.html:3/,
+    );
+  });
+
+  it("misuse: an API route module importing an unsupported builtin names the route", async () => {
+    const project = await createProject();
+    const routeFile = join(project.root, "src/api/run.ts");
+    await mkdir(join(project.root, "src/api"), { recursive: true });
+    await writeFile(
+      routeFile,
+      `import { execFile } from "node:child_process";\nexport const GET = () => new Response(typeof execFile);`,
+      "utf8",
+    );
+    const graph = await graphFor(project);
+    graph.apiRoutes = [
+      {
+        path: "/api/run",
+        filePath: routeFile,
+        paramNames: [],
+        isDynamic: false,
+      },
+    ];
+    await expect(runBuild(project, graph)).rejects.toThrow(
+      /"node:child_process" \(imported by src\/api\/run\.ts\)[\s\S]*Reached from: API route \/api\/run/,
+    );
+  });
+
+  it("emits API routes with a project-relative filePath and pages in sorted order, whatever order the graph lists them", async () => {
+    const project = await createProject();
+    const routeFile = join(project.root, "src/api/ping.ts");
+    await mkdir(join(project.root, "src/api"), { recursive: true });
+    await writeFile(
+      routeFile,
+      `export const GET = () => new Response("pong");`,
+      "utf8",
+    );
+    const graph = await graphFor(project);
+    const catalog = graph.pages["/catalog"];
+    graph.pages = { "/z": { ...catalog, path: "/z" }, "/catalog": catalog };
+    graph.apiRoutes = [
+      {
+        path: "/api/ping",
+        filePath: routeFile,
+        paramNames: [],
+        isDynamic: false,
+      },
+    ];
+    await runBuild(project, graph);
+    const entry = await readEntry(project);
+    expect(entry).toContain(
+      '{ path: "/api/ping", filePath: "src/api/ping.ts", paramNames: [], isDynamic: false, load: () => import("<root>/src/api/ping.ts") }',
+    );
+    expect(entry.indexOf('"/catalog": {')).toBeLessThan(
+      entry.indexOf('"/z": {'),
+    );
   });
 });
 

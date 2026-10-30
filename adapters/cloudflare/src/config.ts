@@ -131,6 +131,30 @@ export function parseToml(
 }
 
 /**
+ * Parses package.json as strict JSON (no comments, no trailing commas, as
+ * npm reads it). An error is located by line and column and, like the
+ * Wrangler parsers, never quotes the file: `JSON.parse`'s own message
+ * includes a source excerpt. A value that is not an object has no name.
+ */
+function parsePackageJson(text: string): { name?: unknown } | null {
+  const errors: ParseError[] = [];
+  const parsed: unknown = parseJsoncRaw(text, errors, {
+    allowTrailingComma: false,
+    disallowComments: true,
+  });
+  if (errors.length > 0) {
+    const first = errors[0];
+    const { line, character } = lineAndCharacterAt(text, first.offset);
+    throw new Error(
+      `[bascik] Failed to parse package.json at line ${line}, column ${character}: ${printParseErrorCode(first.error)}.`,
+    );
+  }
+  return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+    ? (parsed as { name?: unknown })
+    : null;
+}
+
+/**
  * Discovers and parses the highest precedence Wrangler configuration file in the project root.
  * Returns null if no Wrangler configuration file exists.
  * Throws an actionable error if the discovered configuration file is malformed.
@@ -147,7 +171,9 @@ export async function discoverWranglerConfig(
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         continue;
       }
-      throw err;
+      // The bare fs message (EISDIR, EACCES) names no file.
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`[bascik] Failed to read ${filename}: ${msg}`);
     }
 
     // The file exists: parse it according to its extension
@@ -204,14 +230,19 @@ export async function resolveWorkerName(
     };
   }
 
+  let pkgJsonRaw: string | undefined;
   try {
-    const pkgJsonRaw = await readFile(
-      join(projectRoot, "package.json"),
-      "utf8",
-    );
-    const pkgJson = JSON.parse(pkgJsonRaw) as { name?: string };
+    pkgJsonRaw = await readFile(join(projectRoot, "package.json"), "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`[bascik] Failed to read package.json: ${msg}`);
+    }
+  }
+  if (pkgJsonRaw !== undefined) {
+    const pkgJson = parsePackageJson(pkgJsonRaw);
     if (
-      pkgJson.name &&
+      pkgJson?.name &&
       typeof pkgJson.name === "string" &&
       pkgJson.name.trim()
     ) {
@@ -223,11 +254,6 @@ export async function resolveWorkerName(
           discoveredConfig: discovered,
         };
       }
-    }
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`[bascik] Failed to parse package.json: ${msg}`);
     }
   }
 
