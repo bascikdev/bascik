@@ -44,6 +44,10 @@ const repoDir = join(pkgDir, "..");
 const testsDir = join(e2eDir, "tests");
 const runnerPath = join(e2eDir, "scripts/run-lanes.ts");
 
+// Escapes every regex metacharacter, so a file or script name can only match itself.
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 const MAIN_LANES = {
   static: "playwright.config.ts",
   dev: "playwright.dev.config.ts",
@@ -864,9 +868,7 @@ describe("every lane runs in CI", () => {
     expect(configs).toContain("playwright.exec-build.config.ts");
     const missing: string[] = [];
     for (const config of configs) {
-      const flag = new RegExp(
-        `--config e2e/${config.replace(/\./g, "\\.")}(?=$|\\s)`,
-      );
+      const flag = new RegExp(`--config e2e/${escapeRegExp(config)}(?=$|\\s)`);
       const scripts = Object.keys(pkgScripts).filter((name) =>
         flag.test(pkgScripts[name]),
       );
@@ -926,7 +928,7 @@ describe("every lane runs in CI", () => {
       const text = await readFile(join(repoDir, guide), "utf8");
       for (const name of execScripts) {
         const token = new RegExp(
-          `(?<![\\w:-])(?:pkg:)?${name.replace(/:/g, "\\:")}(?![\\w:-])`,
+          `(?<![\\w:-])(?:pkg:)?${escapeRegExp(name)}(?![\\w:-])`,
         );
         if (!token.test(text)) missing.push(`${guide}: never names ${name}`);
       }
