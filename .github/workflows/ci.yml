@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  # ── Stage 1: Jelly & Unit Tests (Parallel) ───────────────────────────────────
+  # ── Stage 1: Static analysis, typechecks, formatting, and spelling ──────────────
 
   jelly:
     name: Jelly Static Analysis
@@ -38,11 +38,85 @@ jobs:
           echo "$OUTPUT"
           echo "$OUTPUT" | grep -q "Analysis errors: 0" || { echo "$OUTPUT"; exit 1; }
 
+  semgrep:
+    name: Semgrep Static Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run Semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: p/default
+
+  typecheck:
+    name: Workspace Typechecks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build package
+        run: yarn pkg:build
+
+      - name: Typecheck all workspace packages
+        run: yarn typecheck:all
+
+  standards:
+    name: Spelling & Web Standards
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Check formatting
+        run: yarn check:format
+
+      - name: Install codespell
+        run: pipx install codespell
+
+      - name: Check spelling
+        run: yarn check:spelling
+
+      - name: Check web standards
+        run: yarn check:standards
+
+  # ── Stage 2: Unit tests (after every stage 1 job passes) ────────────────────────
+
   unit-pkg:
     name: Framework Unit Tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    needs: [jelly, semgrep, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -64,43 +138,12 @@ jobs:
       - name: Run framework unit tests with coverage
         run: yarn pkg:test:ci
 
-  integration-pkg:
-    name: Framework Integration Tests
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Use Node.js 24
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: "yarn"
-
-      - name: Install dependencies
-        run: yarn install --immutable
-
-      - name: Build package
-        run: yarn pkg:build
-
-      - name: Build language server
-        run: yarn lsp:build
-
-      - name: Install Playwright browsers
-        run: npx playwright install chromium
-
-      - name: Run framework integration tests
-        run: yarn pkg:integration
-
   unit-create:
     name: Create-Bascik Unit Tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    needs: [jelly, semgrep, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -128,6 +171,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    needs: [jelly, semgrep, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -155,6 +199,7 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: read
+    needs: [jelly, semgrep, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -208,6 +253,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    needs: [jelly, semgrep, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -234,6 +280,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    needs: [jelly, semgrep, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -250,13 +297,151 @@ jobs:
         run: yarn install --immutable
 
       - name: Run docs unit tests
-        run: yarn docs:test
+        run: yarn docs:unit
 
   unit-skills:
-    name: Agent Skills Tests
+    name: Agent Skills Unit Tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    needs: [jelly, semgrep, typecheck, standards]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run agent skills unit tests
+        run: yarn skills:unit
+
+  unit-extension:
+    name: Extension Unit Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs: [jelly, semgrep, typecheck, standards]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run extension unit tests
+        run: yarn ext:unit
+
+  # ── Stage 3: Integration tests and the Node 22.22 floor (after every unit job) ───
+
+  integration-pkg:
+    name: Framework Integration Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs:
+      [
+        unit-pkg,
+        unit-create,
+        unit-lsp,
+        unit-windows,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-skills,
+        unit-extension,
+      ]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build package
+        run: yarn pkg:build
+
+      - name: Build language server
+        run: yarn lsp:build
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      - name: Run framework integration tests
+        run: yarn pkg:integration
+
+  integration-docs:
+    name: Docs Integration Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs:
+      [
+        unit-pkg,
+        unit-create,
+        unit-lsp,
+        unit-windows,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-skills,
+        unit-extension,
+      ]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run docs integration tests
+        run: yarn docs:integration
+
+  integration-skills:
+    name: Agent Skills Integration Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs:
+      [
+        unit-pkg,
+        unit-create,
+        unit-lsp,
+        unit-windows,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-skills,
+        unit-extension,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -276,58 +461,9 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install chromium
 
-      # Unit and integration: skills:test builds the package and the language server for skill-monorepo.integration.test.ts.
-      - name: Run agent skills tests
-        run: yarn skills:test
-
-  unit-extension:
-    name: Extension Unit Tests
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Use Node.js 24
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: "yarn"
-
-      - name: Install dependencies
-        run: yarn install --immutable
-
-      - name: Run extension unit tests
-        run: yarn ext:unit
-
-  typecheck:
-    name: Workspace Typechecks
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Use Node.js 24
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: "yarn"
-
-      - name: Install dependencies
-        run: yarn install --immutable
-
-      - name: Build package
-        run: yarn pkg:build
-
-      - name: Typecheck all workspace packages
-        run: yarn typecheck:all
+      # skills:integration builds the package and the language server for skill-monorepo.integration.test.ts.
+      - name: Run agent skills integration tests
+        run: yarn skills:integration
 
   # The published packages declare `engines.node >=22.22.0`, and `bin/bascik.js` enforces it, so one lane proves every
   # workspace still builds and passes its unit tests on that floor, plus the framework integration tests (real builds,
@@ -339,6 +475,17 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    needs:
+      [
+        unit-pkg,
+        unit-create,
+        unit-lsp,
+        unit-windows,
+        unit-adapter-cloudflare,
+        unit-docs,
+        unit-skills,
+        unit-extension,
+      ]
     steps:
       - uses: actions/checkout@v5
 
@@ -398,59 +545,14 @@ jobs:
       - name: Agent skills unit tests
         run: yarn skills:unit
 
-  standards:
-    name: Spelling & Web Standards
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Use Node.js 24
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: "yarn"
-
-      - name: Install dependencies
-        run: yarn install --immutable
-
-      - name: Check formatting
-        run: yarn check:format
-
-      - name: Install codespell
-        run: pipx install codespell
-
-      - name: Check spelling
-        run: yarn check:spelling
-
-      - name: Check web standards
-        run: yarn check:standards
-
-  # ── Stage 2: E2E Tests (Parallel, Depends on Stage 1) ───────────────────────
+  # ── Stage 4: End-to-end tests (after every stage 3 job passes) ──────────────────
 
   e2e-pkg-static:
     name: Framework E2E (Static)
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs:
-      [
-        jelly,
-        unit-pkg,
-        integration-pkg,
-        unit-create,
-        unit-lsp,
-        unit-adapter-cloudflare,
-        unit-docs,
-        unit-skills,
-        unit-extension,
-        typecheck,
-        standards,
-      ]
+    needs: [integration-pkg, integration-docs, integration-skills, node-floor]
     steps:
       - uses: actions/checkout@v5
 
@@ -480,20 +582,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs:
-      [
-        jelly,
-        unit-pkg,
-        integration-pkg,
-        unit-create,
-        unit-lsp,
-        unit-adapter-cloudflare,
-        unit-docs,
-        unit-skills,
-        unit-extension,
-        typecheck,
-        standards,
-      ]
+    needs: [integration-pkg, integration-docs, integration-skills, node-floor]
     steps:
       - uses: actions/checkout@v5
 
@@ -532,20 +621,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs:
-      [
-        jelly,
-        unit-pkg,
-        integration-pkg,
-        unit-create,
-        unit-lsp,
-        unit-adapter-cloudflare,
-        unit-docs,
-        unit-skills,
-        unit-extension,
-        typecheck,
-        standards,
-      ]
+    needs: [integration-pkg, integration-docs, integration-skills, node-floor]
     steps:
       - uses: actions/checkout@v5
 
@@ -575,20 +651,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs:
-      [
-        jelly,
-        unit-pkg,
-        integration-pkg,
-        unit-create,
-        unit-lsp,
-        unit-adapter-cloudflare,
-        unit-docs,
-        unit-skills,
-        unit-extension,
-        typecheck,
-        standards,
-      ]
+    needs: [integration-pkg, integration-docs, integration-skills, node-floor]
     steps:
       - uses: actions/checkout@v5
 
@@ -618,20 +681,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs:
-      [
-        jelly,
-        unit-pkg,
-        integration-pkg,
-        unit-create,
-        unit-lsp,
-        unit-adapter-cloudflare,
-        unit-docs,
-        unit-skills,
-        unit-extension,
-        typecheck,
-        standards,
-      ]
+    needs: [integration-pkg, integration-docs, integration-skills, node-floor]
     steps:
       - uses: actions/checkout@v5
 
@@ -661,20 +711,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs:
-      [
-        jelly,
-        unit-pkg,
-        integration-pkg,
-        unit-create,
-        unit-lsp,
-        unit-adapter-cloudflare,
-        unit-docs,
-        unit-skills,
-        unit-extension,
-        typecheck,
-        standards,
-      ]
+    needs: [integration-pkg, integration-docs, integration-skills, node-floor]
     steps:
       - uses: actions/checkout@v5
 
@@ -704,20 +741,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs:
-      [
-        jelly,
-        unit-pkg,
-        integration-pkg,
-        unit-create,
-        unit-lsp,
-        unit-adapter-cloudflare,
-        unit-docs,
-        unit-skills,
-        unit-extension,
-        typecheck,
-        standards,
-      ]
+    needs: [integration-pkg, integration-docs, integration-skills, node-floor]
     steps:
       - uses: actions/checkout@v5
 
@@ -738,28 +762,3 @@ jobs:
 
       - name: Run create-bascik scaffold generation test
         run: yarn create:test-site
-
-  # ── Stage 3: Semgrep Static Analysis (Depends on E2E Tests) ──────────────────
-
-  semgrep:
-    name: Semgrep Static Analysis
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    needs:
-      [
-        e2e-pkg-static,
-        e2e-pkg-dev,
-        e2e-pkg-prod-http1,
-        e2e-pkg-prod-http2,
-        e2e-adapter-cloudflare,
-        e2e-docs,
-        e2e-create,
-      ]
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Run Semgrep
-        uses: semgrep/semgrep-action@v1
-        with:
-          config: p/default

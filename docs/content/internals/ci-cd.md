@@ -14,19 +14,31 @@ on:
     branches: [main]
 ```
 
-It executes across three structured stages on Node 24 and Ubuntu, plus two lanes that the later stages do not wait for: a Node 22.22 lane (`node-floor`) that builds every workspace, runs `yarn typecheck:all`, every workspace's unit tests, and the framework integration tests on the published engine floor to prove the packages still work there, and a Windows lane (`unit-windows`, `windows-latest`) that runs the framework, language server, and `create-bascik` unit tests:
+It runs four gated stages on Node 24 and Ubuntu, with a Windows job and a Node 22.22 job inside them. Every job in a stage waits for every job in the stage before it, so CI fails fast: a type error or a spelling mistake stops the run before any test starts, a failing unit test stops it before the slower integration tests, and an integration failure stops it before the end-to-end matrix.
 
-### Stage 1: Static Analysis, Typechecks, Standards & Unit Tests (Parallel)
+### Stage 1: Static Analysis, Typechecks, and Standards
 
+- **Semgrep Static Analysis (`semgrep`)**: Security and vulnerability rulesets via `semgrep-action` (`p/default`).
 - **Jelly Static Analysis (`jelly`)**: Object spread and control flow analysis via `@cs-au-dk/jelly` on `pkg/src/index.ts`.
 - **Workspace Typechecks (`typecheck`)**: Runs `yarn typecheck:all` across `pkg/`, `create/`, `docs/`, `extensions/vscode-bascik/`, `adapters/cloudflare/`, `lsp/`, and `skills-tests/`.
 - **Spelling & Web Standards (`standards`)**: Runs `yarn check:format` (Prettier), `yarn check:spelling` (codespell), and `yarn check:standards` (webhint).
-- **Unit Test Matrix**: Parallel test execution with coverage across `@bascik/bascik` (`yarn pkg:test:ci`), `create-bascik` (`yarn create:test:ci`), `bascik-docs` (`yarn docs:test`), `bascik-skills-tests` (`yarn skills:test`, job `unit-skills`, unit and integration tests for the public agent skills, with Chromium installed for the `bascik-refactor` parity checks), `extensions/vscode-bascik` (`yarn ext:unit`), `@bascik/adapter-cloudflare` (`yarn adapter:cf:test:ci`), and `@bascik/language-server` (`yarn lsp:test:ci`, job `unit-lsp`). The Windows and Node floor lanes run the language server unit tests too, and the Node floor lane runs the skills unit tests.
-- **Framework Integration Tests (`integration-pkg`)**: Runs `yarn pkg:integration` in its own job, separate from the fast unit suite, because integration tests spawn real processes, servers, and worker threads.
 
-### Stage 2: End-to-End Test Matrix (Parallel)
+### Stage 2: Unit Tests
 
-Runs after the Stage 1 jobs above pass (not `node-floor` or `unit-windows`). Installs Chromium via `playwright install chromium` and executes:
+Unit tests with coverage across `@bascik/bascik` (`yarn pkg:test:ci`), `create-bascik` (`yarn create:test:ci`), `bascik-docs` (`yarn docs:unit`), `bascik-skills-tests` (`yarn skills:unit`, job `unit-skills`), `extensions/vscode-bascik` (`yarn ext:unit`), `@bascik/adapter-cloudflare` (`yarn adapter:cf:test:ci`), and `@bascik/language-server` (`yarn lsp:test:ci`, job `unit-lsp`). The Windows job (`unit-windows`, `windows-latest`) runs the framework, language server, Cloudflare adapter, and `create-bascik` unit tests in this stage too, because Windows is a supported platform.
+
+### Stage 3: Integration Tests and the Node 22.22 Floor
+
+Integration tests spawn real processes, servers, browsers, and worker threads, so they start only after every unit job passes:
+
+- **Framework Integration Tests (`integration-pkg`)**: `yarn pkg:integration`.
+- **Docs Integration Tests (`integration-docs`)**: `yarn docs:integration`.
+- **Agent Skills Integration Tests (`integration-skills`)**: `yarn skills:integration`, with Chromium installed for the `bascik-refactor` parity checks.
+- **Node 22.22 Floor (`node-floor`)**: Builds every workspace and runs `yarn typecheck:all`, every workspace's unit tests, and the framework integration tests on the published engine floor, to prove the packages still work there.
+
+### Stage 4: End-to-End Test Matrix
+
+Runs after every Stage 3 job passes. Installs Chromium via `playwright install chromium` and executes:
 
 - **Framework E2E (Static)**: `yarn pkg:e2e`
 - **Framework E2E (Dev Server)**: `yarn pkg:e2e:dev`, `yarn pkg:e2e:dev:exec` (dev exec lifecycle), `yarn pkg:e2e:exec:policy` (exec failure policy), and `yarn pkg:e2e:exec:build` (build exec lifecycle)
@@ -36,11 +48,7 @@ Runs after the Stage 1 jobs above pass (not `node-floor` or `unit-windows`). Ins
 - **Docs Site E2E**: `yarn docs:e2e`
 - **Create Scaffold E2E**: `yarn create:test-site`
 
-Each `pkg` lane runs as its own job, so CI does not use the local `yarn pkg:e2e:all` runner, which starts the same four lanes in parallel on one machine. Each lane uses its own ports and its own output directory (`BASCIK_E2E_OUT`, such as `pkg/e2e/dist-dev`), so the two setups behave the same. `pkg/e2e/scripts/run-lanes.test.ts` fails when a Playwright config in `pkg/e2e/` has no package script that a CI job runs, or when a published workspace's unit tests leave the Linux jobs that Stage 2 waits on.
-
-### Stage 3: Semgrep Static Analysis
-
-Runs comprehensive security and vulnerability rulesets via `semgrep-action` (`p/default`) after all E2E test suites pass.
+Each `pkg` lane runs as its own job, so CI does not use the local `yarn pkg:e2e:all` runner, which starts the same four lanes in parallel on one machine. Each lane uses its own ports and its own output directory (`BASCIK_E2E_OUT`, such as `pkg/e2e/dist-dev`), so the two setups behave the same. `pkg/e2e/scripts/run-lanes.test.ts` fails when a Playwright config in `pkg/e2e/` has no package script that a CI job runs, or when a published workspace's unit tests leave the Linux jobs that the end-to-end stage waits on.
 
 All jobs enforce least-privilege with `permissions: contents: read`.
 

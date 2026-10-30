@@ -934,9 +934,17 @@ describe("every lane runs in CI", () => {
     expect(missing).toEqual([]);
   });
 
-  it("runs every published workspace's unit tests in a Linux stage-1 job the E2E stage waits on", async () => {
+  it("runs every published workspace's unit tests in a Linux job the E2E stage waits on", async () => {
     const jobs = await readCi();
-    const e2eNeeds = new Set(jobs.get("e2e-pkg-static")?.needs ?? []);
+    // Stages chain (static, unit, integration, E2E), so follow needs transitively.
+    const e2eNeeds = new Set<string>();
+    const pending = [...(jobs.get("e2e-pkg-static")?.needs ?? [])];
+    while (pending.length) {
+      const id = pending.pop()!;
+      if (e2eNeeds.has(id)) continue;
+      e2eNeeds.add(id);
+      pending.push(...(jobs.get(id)?.needs ?? []));
+    }
     expect(e2eNeeds.size, "e2e-pkg-static lists no needs").toBeGreaterThan(0);
     const missing: string[] = [];
     for (const script of [
