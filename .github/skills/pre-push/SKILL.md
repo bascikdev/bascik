@@ -1,5 +1,7 @@
 ---
 name: pre-push
+metadata:
+  internal: true
 description: "Pre-push checklist: code review & TDD, doc/README updates, check spelling/standards, test workspace (including Lighthouse CLI), update coverage, update the agent skills in skills/, and propagate."
 disable-model-invocation: true
 ---
