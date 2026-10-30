@@ -407,7 +407,20 @@ export const SITE_META_HTML = `<meta charset="UTF-8" />
 <link rel="stylesheet" href="/css/styles.css" />
 `;
 
-export const SITE_HEADER_CSS = `.header {
+export const SITE_HEADER_CSS = `.skip-link {
+  position: absolute;
+  left: 16px;
+  top: -48px;
+  padding: 8px 14px;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: #18191b;
+  font-weight: 600;
+  z-index: 200;
+}
+.skip-link:focus { top: 8px; }
+
+.header {
   position: sticky;
   top: 0;
   z-index: 100;
@@ -498,10 +511,11 @@ export const SITE_HEADER_CSS = `.header {
 export const SITE_HEADER_HTML = `<style>
 ${SITE_HEADER_CSS}</style>
 <header class="header" data-testid="site-header">
+  <a href="#main" class="skip-link" data-testid="skip-link">Skip to content</a>
   <div class="container">
-    <nav class="nav">
+    <nav class="nav" aria-label="Main">
       <a href="/" class="logo" data-bascik-prop-brand data-testid="site-logo">My Site</a>
-      <button id="nav-toggle" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false" data-testid="nav-toggle">
+      <button id="nav-toggle" type="button" class="nav-toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="nav-toggle">
         <span></span><span></span><span></span>
       </button>
       <ul id="nav-menu" class="nav-menu" data-testid="nav-menu">
@@ -604,7 +618,7 @@ export const FEAT_CARD_CSS = `.fcard {
 /* The h3 and p arrive through the slot from the usage site. Scoping turns a
    bare element selector into a class only this template's own elements get;
    an element name inside :is() is left as written, so these match. */
-.fcard-body :is(h3) { margin: 0 0 6px; font-size: 1rem; color: var(--text); }
+.fcard-body :is(h2, h3) { margin: 0 0 6px; font-size: 1rem; color: var(--text); }
 .fcard-body :is(p) { margin: 0; font-size: 0.88rem; color: var(--text-muted); }
 
 .fcard-footer {
@@ -663,15 +677,15 @@ export const MY_COUNTER_CSS = `.counter {
 /** Interactive counter: two instances on a page stay fully independent. */
 export const MY_COUNTER_HTML = `<style>
 ${MY_COUNTER_CSS}</style>
-<div class="counter" data-testid="my-counter">
-  <button id="btn-dec" class="btn btn-ghost" data-testid="counter-dec">−</button>
-  <span id="count-val" class="count-val" data-testid="counter-val">0</span>
-  <button id="btn-inc" class="btn btn-primary" data-testid="counter-inc">+</button>
+<div class="counter" role="group" aria-label="Counter" data-testid="my-counter">
+  <button id="btn-dec" type="button" class="btn btn-ghost" aria-label="Decrease" data-testid="counter-dec">−</button>
+  <output id="count-val" class="count-val" aria-live="polite" data-testid="counter-val">0</output>
+  <button id="btn-inc" type="button" class="btn btn-primary" aria-label="Increase" data-testid="counter-inc">+</button>
 </div>
 <script type="text/typescript">
   // Each instance runs this with its own ids, so two counters keep their own count.
   let count: number = 0;
-  const val = document.getElementById('count-val') as HTMLSpanElement;
+  const val = document.getElementById('count-val') as HTMLOutputElement;
   const show = (next: number): void => {
     count = next;
     val.textContent = String(count);
@@ -872,7 +886,7 @@ const pageShell = (
 </head>
 <body>
   <site-header data-bascik-prop-brand="${brand}" />
-  <main>
+  <main id="main">
 ${body}
   </main>
   <site-footer data-bascik-prop-brand="${brand}" />
@@ -962,12 +976,12 @@ export const aboutPage = (brand: string): string =>
         <div class="grid-2" style="margin-top:32px;">
           <feat-card data-testid="about-mission">
             <div data-bascik-slot="header">Mission</div>
-            <h3>Our mission</h3>
+            <h2>Our mission</h2>
             <p>Describe your mission or purpose here. Keep it concise and genuine.</p>
           </feat-card>
           <feat-card data-testid="about-approach">
             <div data-bascik-slot="header">Approach</div>
-            <h3>Our approach</h3>
+            <h2>Our approach</h2>
             <p>Explain how you work or what makes you different from others.</p>
           </feat-card>
         </div>
@@ -1001,8 +1015,8 @@ export const notFoundPage = (brand: string): string =>
     `    <div class="container">
       <section class="section" style="text-align:center;">
         <p class="section-label">Error</p>
-        <h1 style="font-size:clamp(4rem,12vw,8rem);color:var(--accent);margin-bottom:8px;">404</h1>
-        <h2 style="margin-bottom:12px;">Page not found</h2>
+        <p style="font-size:clamp(4rem,12vw,8rem);font-weight:800;line-height:1;color:var(--accent);margin-bottom:8px;">404</p>
+        <h1 style="margin-bottom:12px;">Page not found</h1>
         <p style="margin-bottom:32px;">The page you're looking for doesn't exist.</p>
         <a href="/" class="btn btn-primary">Go home</a>
       </section>

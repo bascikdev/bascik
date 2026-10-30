@@ -11,9 +11,11 @@ describe("docs-sidebar component", () => {
   it("renders sidebar navigation build script and preloading script", async () => {
     const html = await readFile(componentPath, "utf8");
 
+    // A navigation landmark, named "Documentation" (screen readers add "navigation"), not a complementary <aside>.
     expect(html).toContain(
-      '<aside class="docs-sidebar-nav" aria-label="Documentation navigation">',
+      '<nav class="docs-sidebar-nav" aria-label="Documentation">',
     );
+    expect(html).not.toContain("<aside");
     expect(html).toContain('from "@/lib/nav.ts"');
     expect(html).toContain('link.rel = "prefetch"');
   });

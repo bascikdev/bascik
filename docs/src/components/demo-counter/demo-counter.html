@@ -74,12 +74,30 @@
 </style>
 <div class="ctr">
   <span class="ctr-label" data-bascik-prop-label>Counter</span>
-  <span class="ctr-count" id="count" data-testid="counter-count">0</span>
+  <output
+    class="ctr-count"
+    id="count"
+    aria-live="polite"
+    data-testid="counter-count"
+    >0</output
+  >
   <div class="ctr-btns">
-    <button class="ctr-dec" id="dec" type="button" data-testid="counter-dec">
+    <button
+      class="ctr-dec"
+      id="dec"
+      type="button"
+      aria-label="Decrease"
+      data-testid="counter-dec"
+    >
       −
     </button>
-    <button class="ctr-inc" id="inc" type="button" data-testid="counter-inc">
+    <button
+      class="ctr-inc"
+      id="inc"
+      type="button"
+      aria-label="Increase"
+      data-testid="counter-inc"
+    >
       +
     </button>
   </div>

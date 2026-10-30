@@ -198,8 +198,9 @@ test.describe("sidebar", () => {
     page,
   }) => {
     await page.goto("/testing/unit-testing");
-    const sidebar = page.getByRole("complementary", {
-      name: "Documentation navigation",
+    const sidebar = page.getByRole("navigation", {
+      name: "Documentation",
+      exact: true,
     });
     const active = sidebar.locator('a[aria-current="page"]');
     await expect(active).toHaveCount(1);
@@ -207,7 +208,7 @@ test.describe("sidebar", () => {
     await expect
       .poll(() =>
         active.evaluate((link) => {
-          const nav = link.closest("aside") as HTMLElement;
+          const nav = link.closest("nav") as HTMLElement;
           const box = link.getBoundingClientRect();
           const area = nav.getBoundingClientRect();
           return (
@@ -227,12 +228,12 @@ test.describe("sidebar", () => {
     await page.goto("/testing/unit-testing");
     await page.setViewportSize({ width: 1440, height: 900 });
     const active = page
-      .getByRole("complementary", { name: "Documentation navigation" })
+      .getByRole("navigation", { name: "Documentation", exact: true })
       .locator('a[aria-current="page"]');
     await expect
       .poll(() =>
         active.evaluate((link) => {
-          const nav = link.closest("aside") as HTMLElement;
+          const nav = link.closest("nav") as HTMLElement;
           const box = link.getBoundingClientRect();
           const area = nav.getBoundingClientRect();
           return (
@@ -246,7 +247,7 @@ test.describe("sidebar", () => {
   test("prefetches a page on hover", async ({ page }) => {
     await page.goto("/cli");
     const link = page
-      .getByRole("complementary", { name: "Documentation navigation" })
+      .getByRole("navigation", { name: "Documentation", exact: true })
       .locator('a[href="/testing/unit-testing"]');
     const prefetch = page.locator(
       'head link[rel="prefetch"][href="/testing/unit-testing"]',
@@ -324,7 +325,7 @@ test.describe("prerendered pages", () => {
       page.getByRole("button", { name: "Switch to dark theme" }),
     ).toBeVisible();
     const active = page
-      .getByRole("complementary", { name: "Documentation navigation" })
+      .getByRole("navigation", { name: "Documentation", exact: true })
       .locator('a[aria-current="page"]');
     await expect(active).toHaveAttribute("href", "/testing/unit-testing");
     await expect(active).toBeInViewport();

@@ -90,10 +90,14 @@
 <!-- src/components/demo-counter/demo-counter.html -->
 <div class="ctr">
   <span class="ctr-label" data-bascik-prop-label> Counter </span>
-  <span class="ctr-count" id="count">0</span>
+  <output class="ctr-count" id="count" aria-live="polite">0</output>
   <div class="ctr-btns">
-    <button class="ctr-dec" id="dec">−</button>
-    <button class="ctr-inc" id="inc">+</button>
+    <button class="ctr-dec" id="dec" type="button" aria-label="Decrease">
+      −
+    </button>
+    <button class="ctr-inc" id="inc" type="button" aria-label="Increase">
+      +
+    </button>
   </div>
 </div>
 <script src="demo-counter.ts"></script>
@@ -173,21 +177,26 @@ inc.addEventListener("click", () => {
   <body>
     <div class="bascik__demo-counter__ctr">
       <span class="bascik__demo-counter__ctr-label">Instance A</span>
-      <span
+      <output
         class="bascik__demo-counter__ctr-count"
         id="bascik__demo-counter__a1b2__count"
-        >0</span
+        aria-live="polite"
+        >0</output
       >
       <div class="bascik__demo-counter__ctr-btns">
         <button
           class="bascik__demo-counter__ctr-dec"
           id="bascik__demo-counter__a1b2__dec"
+          type="button"
+          aria-label="Decrease"
         >
           −
         </button>
         <button
           class="bascik__demo-counter__ctr-inc"
           id="bascik__demo-counter__a1b2__inc"
+          type="button"
+          aria-label="Increase"
         >
           +
         </button>
@@ -234,18 +243,18 @@ inc.addEventListener("click", () => {
   }
 </style>
 
-<div class="dialog">
-  <div class="header">
+<section class="dialog">
+  <header class="header">
     <div data-bascik-slot="header">
-      <span>Notice</span>
+      <h2>Notice</h2>
     </div>
-  </div>
+  </header>
   <div class="body">
     <div data-bascik-slot>
       <p>Default content if no slot content was provided.</p>
     </div>
   </div>
-</div>
+</section>
 ```
 
 <!-- demo:home-slot-usage -->
@@ -253,7 +262,7 @@ inc.addEventListener("click", () => {
 ```html
 <!-- src/pages/index.html -->
 <dialog-box>
-  <span data-bascik-slot="header">Account Settings</span>
+  <div data-bascik-slot="header"><h2>Account Settings</h2></div>
   <p>Your components accept slots, attributes, and regular HTML tags.</p>
   <button type="button">Save Changes</button>
 </dialog-box>
@@ -278,15 +287,15 @@ inc.addEventListener("click", () => {
   }
 </style>
 
-<div class="bascik__dialog-box__dialog">
-  <div class="bascik__dialog-box__header">
-    <span>Account Settings</span>
-  </div>
-  <div class="bascik__dialog-box__body">
+<section class="bascik__dialog-box__dialog">
+  <header class="bascik__dialog-box__header">
+    <h2>Account Settings</h2>
+  </header>
+  <div class="body">
     <p>Your components accept slots, attributes, and regular HTML tags.</p>
     <button type="button">Save Changes</button>
   </div>
-</div>
+</section>
 ```
 
 <!-- demo:home-stream-card -->

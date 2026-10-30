@@ -1,0 +1,31 @@
+<style>
+  .like {
+    padding: 0.4rem 0.9rem;
+    border: 1px solid currentColor;
+    border-radius: 6px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .like[aria-pressed="true"] {
+    background: #d3ff8d;
+    color: #111;
+  }
+</style>
+<button
+  class="like"
+  id="like"
+  type="button"
+  aria-pressed="false"
+  data-testid="like-button"
+>
+  Like
+</button>
+<script type="text/typescript">
+  const like = document.getElementById("like") as HTMLButtonElement;
+  like.addEventListener("click", () => {
+    const pressed = like.getAttribute("aria-pressed") === "true";
+    like.setAttribute("aria-pressed", String(!pressed));
+  });
+</script>

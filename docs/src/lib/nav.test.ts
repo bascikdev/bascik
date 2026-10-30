@@ -111,7 +111,7 @@ describe("renderPagination", () => {
     expect(html).toContain('data-pg="next"');
     expect(html).not.toContain('data-pg="prev"');
     expect(html).toContain('data-bascik-prop-section="Overview"');
-    expect(html).toContain('data-bascik-prop-label="Developer Experience"');
+    expect(html).toContain('data-bascik-prop-label="Semantic HTML"');
   });
 
   it("returns prev only on the last page", () => {
@@ -256,7 +256,7 @@ describe("renderPagination", () => {
       const html = renderPagination();
       expect(html).toContain('data-pg="next"');
       expect(html).not.toContain('data-pg="prev"');
-      expect(html).toContain('href="/developer-experience"');
+      expect(html).toContain('href="/semantic-html"');
     } finally {
       process.env.BASCIK_PAGE_PATH = originalPath;
     }

@@ -280,6 +280,18 @@ describe("skill-bundle", () => {
     }
   });
 
+  it("keeps references/ folders out of every public skill but bascik-refactor: the docs are the reference", async () => {
+    const files = await collectSkillFiles(repoSkillsDir);
+    const outside = files
+      .map((file) => file.path)
+      .filter(
+        (file) =>
+          file.split("/")[1] === "references" &&
+          !file.startsWith("bascik-refactor/"),
+      );
+    expect(outside).toEqual([]);
+  });
+
   it("only links to files that exist inside the same skill", async () => {
     const files = await collectSkillFiles(repoSkillsDir);
     const paths = new Set(files.map((file) => file.path));

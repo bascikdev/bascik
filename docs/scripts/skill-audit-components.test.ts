@@ -286,7 +286,7 @@ describe("audit-components", () => {
 
   it("flags the same block pasted several times, with every location, and not its children again", async () => {
     const card = (title: string) => `      <article class="review">
-        <h3>${title}</h3>
+        <h2>${title}</h2>
         <p class="stars">5 stars</p>
         <p class="quote">Great foam.</p>
       </article>`;
@@ -519,7 +519,7 @@ describe("audit-components", () => {
     const root = project({
       ...clean,
       "src/components/plan-box/plan-box.html": `<div class="box">
-  <h3 data-bascik-prop-name></h3>
+  <h2 data-bascik-prop-name></h2>
   <plan-price data-bascik-attr-data-bascik-prop-label="name" />
 </div>
 `,
@@ -778,6 +778,511 @@ describe("audit-components: build-once and once-reads-page", () => {
   });
 });
 
+describe("audit-components: semantic HTML", () => {
+  const only = (findings: Finding[], rule: string) =>
+    findings.filter((f) => f.rule === rule);
+
+  it("reports no semantic findings for the clean project, whose roots, headings, labels, and main are all right", async () => {
+    const { findings } = await audit(project(clean));
+    expect(findings).toEqual([]);
+  });
+
+  it("flags a div or span with onclick, or with role=button, at its file:line and names <button>", async () => {
+    const root = project({
+      ...clean,
+      "src/components/like-toggle/like-toggle.html": `<div class="like" onclick="this.classList.toggle('on')" data-testid="like-toggle">Like</div>
+<span class="more" role="button" tabindex="0">More</span>
+`,
+      "src/pages/likes.html": page(
+        `      <h1>Likes</h1>\n      <like-toggle />\n      <like-toggle />`,
+      ),
+    });
+    const found = only((await audit(root)).findings, "clickable-element");
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/components/like-toggle/like-toggle.html:1",
+      "src/components/like-toggle/like-toggle.html:2",
+    ]);
+    expect(found[0]).toMatchObject({ level: "warn" });
+    expect(found[0].message).toMatch(/<div class="like">.*onclick/);
+    expect(found[1].message).toMatch(/role="button"/);
+    for (const f of found)
+      expect(f.suggestion).toContain('<button type="button">');
+  });
+
+  it("says what role=button and role=link really give: announced, but the keyboard handling is hand-written", async () => {
+    const root = project({
+      ...clean,
+      "src/components/tab-strip/tab-strip.html": `<div class="tabs" data-testid="tab-strip">
+  <span class="tab" role="button" tabindex="0" id="t">Tab</span>
+  <span class="tab" role="button">Other</span>
+  <div class="go" role="link" tabindex="0">Go</div>
+</div>
+`,
+      "src/pages/tabs.html": page(
+        `      <h1>Tabs</h1>\n      <tab-strip />\n      <tab-strip />`,
+      ),
+    });
+    const found = only((await audit(root)).findings, "clickable-element");
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/components/tab-strip/tab-strip.html:2",
+      "src/components/tab-strip/tab-strip.html:3",
+      "src/components/tab-strip/tab-strip.html:4",
+    ]);
+    for (const f of found) {
+      // A role does make a screen reader announce it, and tabindex makes it reachable: the old message said otherwise.
+      expect(f.message).not.toMatch(/keyboard cannot reach|does not announce/);
+      expect(f.message).toMatch(/is announced as a (button|link)/);
+    }
+    expect(found[0].message).toMatch(/Enter and Space/);
+    expect(found[0].message).not.toMatch(/tabindex/);
+    expect(found[1].message).toMatch(/tabindex/);
+    expect(found[0].suggestion).toContain('<button type="button">');
+    expect(found[2].message).toMatch(/role="link"/);
+    expect(found[2].message).not.toMatch(/tabindex/);
+    expect(found[2].suggestion).toContain("<a href");
+  });
+
+  it("flags an <a> or <area> with no href that gets a click handler, since it is plain text to a keyboard", async () => {
+    const root = project({
+      ...clean,
+      "src/components/more-link/more-link.html": `<p class="more-wrap" data-testid="more-link">
+  <a class="more" onclick="toggle()">More</a>
+  <a class="next" href="/next" onclick="track()">Next</a>
+  <a class="prop" data-bascik-attr-href="url" onclick="track()">Prop</a>
+  <a class="opener" id="opener">Open</a>
+</p>
+<map name="m"><area shape="rect" coords="0,0,10,10" alt="Spot" onclick="pick()" /></map>
+<script type="text/typescript">
+  const opener = document.getElementById("opener") as HTMLAnchorElement;
+  opener.addEventListener("click", () => {
+    document.title = "Opened";
+  });
+</script>
+`,
+      "src/pages/more.html": page(
+        `      <h1>More</h1>\n      <more-link data-bascik-prop-url="/x" />\n      <more-link data-bascik-prop-url="/y" />`,
+      ),
+    });
+    const found = only((await audit(root)).findings, "clickable-element");
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/components/more-link/more-link.html:2",
+      "src/components/more-link/more-link.html:5",
+      "src/components/more-link/more-link.html:7",
+    ]);
+    expect(found[0].message).toMatch(/<a class="more">.*no href/);
+    expect(found[0].suggestion).toContain('<button type="button">');
+    expect(found[0].suggestion).toMatch(/href/);
+  });
+
+  it("flags a click listener on a div found by id, in an inline script and in a companion .ts file", async () => {
+    const root = project({
+      ...clean,
+      "src/components/menu-card/menu-card.html": `<article class="card" data-testid="menu-card">
+  <h2>Menu</h2>
+  <div class="opener" id="opener">Open</div>
+  <div class="panel" id="panel" hidden>Items</div>
+</article>
+<script type="text/typescript">
+  const opener = document.getElementById("opener") as HTMLElement;
+  opener.addEventListener("click", () => {
+    (document.getElementById("panel") as HTMLElement).hidden = false;
+  });
+</script>
+`,
+      "src/components/tip-card/tip-card.html": `<article class="card" data-testid="tip-card">
+  <h2>Tip</h2>
+  <span class="close" id="close">x</span>
+</article>
+<script src="tip-card.ts"></script>
+`,
+      "src/components/tip-card/tip-card.ts": `document.getElementById("close")!.onclick = () => {};
+`,
+      "src/pages/menu.html": page(
+        `      <h1>Menu</h1>\n      <menu-card />\n      <tip-card />`,
+      ),
+    });
+    const found = only((await audit(root)).findings, "clickable-element");
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/components/menu-card/menu-card.html:3",
+      "src/components/tip-card/tip-card.html:3",
+    ]);
+    expect(found[0].message).toMatch(/click listener/);
+  });
+
+  it("leaves click listeners on buttons, links, and summary alone, and delegation that reads the event target", async () => {
+    const root = project({
+      ...clean,
+      "src/components/todo-card/todo-card.html": `<article class="card" data-testid="todo-card">
+  <h2>Todo</h2>
+  <button type="button" id="add">Add</button>
+  <ul class="items" id="items"></ul>
+</article>
+<script type="text/typescript">
+  const add = document.getElementById("add") as HTMLButtonElement;
+  add.addEventListener("click", () => {});
+  const items = document.getElementById("items") as HTMLUListElement;
+  items.addEventListener("click", (event) => {
+    const button = (event.target as HTMLElement).closest("button");
+    if (button) button.remove();
+  });
+</script>
+`,
+      "src/pages/todo.html": page(`      <h1>Todo</h1>\n      <todo-card />`),
+    });
+    expect(only((await audit(root)).findings, "clickable-element")).toEqual([]);
+  });
+
+  it("leaves a popover container, a click-to-dismiss backdrop, and a container of links or buttons alone", async () => {
+    const root = project({
+      ...clean,
+      "src/components/menu-popover/menu-popover.html": `<div class="wrap" data-testid="menu-popover">
+  <button type="button" popovertarget="menu">Menu</button>
+  <div id="menu" popover class="menu">
+    <a href="/a">A</a>
+    <a href="/b">B</a>
+  </div>
+  <div id="backdrop" class="backdrop" hidden></div>
+  <div id="sheet" class="sheet" hidden></div>
+  <ul id="links" class="links">
+    <li><a href="/c">C</a></li>
+  </ul>
+</div>
+<script type="text/typescript">
+  const menu = document.getElementById("menu") as HTMLElement;
+  menu.addEventListener("click", () => menu.hidePopover());
+  const backdrop = document.getElementById("backdrop") as HTMLElement;
+  backdrop.addEventListener("click", () => {
+    backdrop.hidden = true;
+  });
+  const sheet = document.getElementById("sheet") as HTMLElement;
+  sheet.addEventListener("click", function () {
+    sheet.classList.remove("open");
+    sheet.hidden = true;
+  });
+  const links = document.getElementById("links") as HTMLElement;
+  links.addEventListener("click", () => {
+    document.body.dataset.navigating = "true";
+  });
+</script>
+`,
+      "src/pages/menu.html": page(
+        `      <h1>Menu</h1>\n      <menu-popover />\n      <menu-popover />`,
+      ),
+    });
+    expect(only((await audit(root)).findings, "clickable-element")).toEqual([]);
+  });
+
+  it("misuse: still flags a hidden-looking div whose click handler does more than hide it", async () => {
+    const root = project({
+      ...clean,
+      "src/components/promo-banner/promo-banner.html": `<div class="promo" data-testid="promo-banner">
+  <div id="deal" class="deal">Half price today</div>
+</div>
+<script type="text/typescript">
+  const deal = document.getElementById("deal") as HTMLElement;
+  deal.addEventListener("click", () => {
+    deal.hidden = true;
+    location.assign("/shop");
+  });
+</script>
+`,
+      "src/pages/promo.html": page(
+        `      <h1>Promo</h1>\n      <promo-banner />\n      <promo-banner />`,
+      ),
+    });
+    const found = only((await audit(root)).findings, "clickable-element");
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/components/promo-banner/promo-banner.html:2",
+    ]);
+  });
+
+  it("flags a generic div root where the component's job has its own element, and the wrapper around one", async () => {
+    const root = project({
+      ...clean,
+      "src/components/main-nav/main-nav.html": `<div class="nav" data-testid="main-nav">
+  <a href="/">Home</a>
+  <a href="/shop">Shop</a>
+</div>
+`,
+      "src/components/page-footer/page-footer.html": `<div class="outer">
+  <footer data-testid="page-footer"><p>Bye</p></footer>
+</div>
+`,
+      "src/components/customer-review/customer-review.html": `<div class="card"><h2 data-bascik-prop-title></h2></div>\n`,
+      // A card is not always an article (WHATWG: article is a self-contained, independently distributable composition):
+      // a stat card or feature card is fine as a <div>, so *-card is not flagged on its name alone.
+      "src/components/product-card/product-card.html": `<div class="card"><h2 data-bascik-prop-title></h2></div>\n`,
+      "src/components/plans-section/plans-section.html": `<div class="plans"><h2>Plans</h2><p>Pick one.</p></div>\n`,
+      "src/components/trust-section/trust-section.html": `<div class="logos"><img src="/a.png" alt="A" /><img src="/b.png" alt="B" /></div>\n`,
+      "src/pages/shop.html": page(`      <h1>Shop</h1>
+      <main-nav />
+      <customer-review data-bascik-prop-title="Ana" />
+      <customer-review data-bascik-prop-title="Ben" />
+      <product-card data-bascik-prop-title="Frother" />
+      <product-card data-bascik-prop-title="Jug" />
+      <plans-section />
+      <trust-section />
+      <page-footer />`),
+    });
+    const found = only((await audit(root)).findings, "generic-root");
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/components/customer-review/customer-review.html:1",
+      "src/components/main-nav/main-nav.html:1",
+      "src/components/page-footer/page-footer.html:1",
+      "src/components/plans-section/plans-section.html:1",
+    ]);
+    const byFile = Object.fromEntries(found.map((f) => [f.file, f]));
+    expect(
+      byFile["src/components/main-nav/main-nav.html"].suggestion,
+    ).toContain("<nav");
+    expect(
+      byFile["src/components/page-footer/page-footer.html"].suggestion,
+    ).toMatch(/Make the <footer> inside it the root/);
+    expect(
+      byFile["src/components/customer-review/customer-review.html"].suggestion,
+    ).toContain("<article");
+    expect(
+      byFile["src/components/plans-section/plans-section.html"].suggestion,
+    ).toContain("<section");
+  });
+
+  it("follows headings through components and slots, and flags a skipped level in the page's output", async () => {
+    const root = project({
+      ...clean,
+      "src/components/fact-card/fact-card.html": `<article class="fact" data-testid="fact-card">
+  <h3 data-bascik-prop-title></h3>
+</article>
+`,
+      "src/components/info-panel/info-panel.html": `<section class="panel" data-testid="info-panel">
+  <h2>Info</h2>
+  <div data-bascik-slot></div>
+</section>
+`,
+      "src/pages/facts.html": page(`      <h1>Facts</h1>
+      <fact-card data-bascik-prop-title="Quiet" />`),
+      "src/pages/info.html": page(`      <h1>Info</h1>
+      <info-panel>
+        <fact-card data-bascik-prop-title="Fast" />
+      </info-panel>`),
+    });
+    const found = only((await audit(root)).findings, "skipped-heading");
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ file: "src/pages/facts.html", line: 10 });
+    expect(found[0].message).toContain(
+      "src/components/fact-card/fact-card.html:2",
+    );
+    expect(found[0].message).toMatch(/<h3>.*after.*<h1>/);
+    expect(found[0].suggestion).toMatch(/<h2>/);
+  });
+
+  it("misuse: does not guess past headings a build script prints, and skips missing-main when a script may print <main>", async () => {
+    const root = project({
+      ...clean,
+      "src/components/note-card/note-card.html": `<article class="note" data-testid="note-card">
+  <h3 data-bascik-prop-title></h3>
+</article>
+`,
+      // The <h1> and <h2> come from Markdown rendered at build time, which the audit cannot see.
+      "src/pages/guide.html": page(`      <script data-bascik-build>
+        export default () => "<h1>Guide</h1><h2>Setup</h2>";
+      </script>
+      <note-card data-bascik-prop-title="Tip" />`),
+      "src/pages/printed.html": `<!doctype html>
+<html lang="en">
+  <head><site-head /></head>
+  <body>
+    <script data-bascik-build>
+      export default () => "<main><h1>Printed</h1></main>";
+    </script>
+  </body>
+</html>
+`,
+    });
+    const { findings } = await audit(root);
+    expect(
+      findings.filter((f) =>
+        ["skipped-heading", "missing-main"].includes(f.rule),
+      ),
+    ).toEqual([]);
+  });
+
+  it("still flags a skip after a build script once the audit has seen a heading again", async () => {
+    const root = project({
+      ...clean,
+      "src/pages/later.html": page(`      <script data-bascik-build>
+        export default () => "<p>Intro</p>";
+      </script>
+      <h2>Seen</h2>
+      <h4>Skipped</h4>`),
+    });
+    const found = (await audit(root)).findings.filter(
+      (f) => f.rule === "skipped-heading",
+    );
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/pages/later.html:13",
+    ]);
+  });
+
+  it("names the job in a generic-root message with correct grammar", async () => {
+    const root = project({
+      ...clean,
+      "src/components/news-sidebar/news-sidebar.html": `<div class="side"><p>News</p></div>\n`,
+      "src/pages/news.html": page(
+        `      <h1>News</h1>\n      <news-sidebar />\n      <news-sidebar />`,
+      ),
+    });
+    const [finding] = (await audit(root)).findings.filter(
+      (f) => f.rule === "generic-root",
+    );
+    expect(finding.message).toContain("a sidebar has its own element, <aside>");
+    expect(finding.message).not.toMatch(/\ba aside\b/);
+  });
+
+  it('flags an <img> with no alt, and accepts alt="" and an alt that comes from a prop', async () => {
+    const root = project({
+      ...clean,
+      "src/components/photo-card/photo-card.html": `<article class="photo" data-testid="photo-card">
+  <h2>Photo</h2>
+  <img src="/a.webp" />
+  <img src="/divider.svg" alt="" />
+  <img data-bascik-attr-src="image" data-bascik-attr-alt="caption" />
+</article>
+`,
+      "src/pages/photos.html": page(
+        `      <h1>Photos</h1>\n      <photo-card data-bascik-prop-image="/b.webp" data-bascik-prop-caption="Foam" />\n      <img src="/c.webp">`,
+      ),
+    });
+    const found = only((await audit(root)).findings, "missing-alt");
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/components/photo-card/photo-card.html:3",
+      "src/pages/photos.html:11",
+    ]);
+    expect(found[0].suggestion).toMatch(/alt=""/);
+  });
+
+  it("flags form controls with no label, and accepts label for, a wrapping label, and aria-label", async () => {
+    const root = project({
+      ...clean,
+      "src/components/order-form/order-form.html": `<form class="order" data-testid="order-form">
+  <label for="qty">Quantity</label>
+  <input id="qty" type="number" />
+  <label>Note <textarea name="note"></textarea></label>
+  <input type="search" aria-label="Search" />
+  <input type="hidden" name="token" value="x" />
+  <input type="email" placeholder="Email" />
+  <select name="size"><option>Small</option></select>
+  <button type="submit">Order</button>
+</form>
+`,
+      "src/pages/order.html": page(
+        `      <h1>Order</h1>\n      <order-form />`,
+      ),
+    });
+    const found = only((await audit(root)).findings, "unlabeled-control");
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/components/order-form/order-form.html:7",
+      "src/components/order-form/order-form.html:8",
+    ]);
+    expect(found[0].message).toMatch(/placeholder/);
+    expect(found[0].suggestion).toMatch(/<label for=/);
+  });
+
+  it("accepts a component control that every use wraps in a <label>, through a slot too, and flags it where one use is bare", async () => {
+    const root = project({
+      ...clean,
+      "src/components/agree-checkbox/agree-checkbox.html": `<input class="box" type="checkbox" name="agree" />\n`,
+      "src/components/news-checkbox/news-checkbox.html": `<input class="box" type="checkbox" name="news" />\n`,
+      "src/components/terms-checkbox/terms-checkbox.html": `<input class="box" type="checkbox" name="terms" />\n`,
+      "src/components/field-label/field-label.html": `<label class="field" data-testid="field-label">
+  <span data-bascik-slot="text"></span>
+  <div data-bascik-slot></div>
+</label>
+`,
+      "src/pages/terms.html": page(`      <h1>Terms</h1>
+      <label>I agree to the terms <agree-checkbox /></label>
+      <label>Send me news <news-checkbox /></label>
+      <field-label>
+        <span data-bascik-slot="text">Accept</span>
+        <terms-checkbox />
+      </field-label>`),
+      "src/pages/news.html": page(
+        `      <h1>News</h1>\n      <news-checkbox />`,
+      ),
+    });
+    const found = only((await audit(root)).findings, "unlabeled-control");
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/components/news-checkbox/news-checkbox.html:1",
+    ]);
+  });
+
+  it("flags a page with no <main>, also when a layout component would supply it, and accepts one from a component", async () => {
+    const root = project({
+      ...clean,
+      "src/components/page-shell/page-shell.html": `<main id="main" data-testid="page-shell"><div data-bascik-slot></div></main>\n`,
+      "src/pages/bare.html": `<!doctype html>
+<html lang="en">
+  <head><site-head /></head>
+  <body>
+    <site-header />
+    <h1>Bare</h1>
+    <site-footer />
+  </body>
+</html>
+`,
+      "src/pages/shelled.html": `<!doctype html>
+<html lang="en">
+  <head><site-head /></head>
+  <body>
+    <site-header />
+    <page-shell><h1>Shelled</h1></page-shell>
+    <site-footer />
+  </body>
+</html>
+`,
+      "src/pages/old.html": `<!doctype html>
+<html lang="en">
+  <head><meta http-equiv="refresh" content="0; url=/new" /></head>
+  <body></body>
+</html>
+`,
+    });
+    const found = only((await audit(root)).findings, "missing-main");
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/pages/bare.html:4",
+    ]);
+    expect(found[0].suggestion).toMatch(/<main id="main">/);
+  });
+
+  it("misuse: a component that uses itself, an unclosed tag, and a missing slot never crash the heading walk", async () => {
+    const root = project({
+      ...clean,
+      "src/components/loop-card/loop-card.html": `<article class="loop"><h2>Loop</h2><loop-card /></article>\n`,
+      "src/pages/loop.html": page(
+        `      <h1>Loop</h1>\n      <loop-card />\n      <section><h2>Open`,
+      ),
+    });
+    const { findings } = await audit(root);
+    expect(only(findings, "skipped-heading")).toEqual([]);
+  });
+
+  it("the CLI prints a semantic finding with file:line and a fix, and exits 1", () => {
+    const root = project({
+      ...clean,
+      "src/pages/gallery.html": page(
+        `      <h1>Gallery</h1>\n      <img src="/a.webp">`,
+      ),
+    });
+    const run = spawnSync(process.execPath, [script, "--root", root], {
+      encoding: "utf8",
+    });
+    expect(run.status).toBe(1);
+    expect(run.stdout).toMatch(
+      /warn {2}missing-alt {2}src\/pages\/gallery\.html:10/,
+    );
+    expect(run.stdout).toMatch(/-> .*alt=/);
+  });
+});
+
 describe("audit-components CLI", () => {
   const cli = (args: string[], cwd?: string) =>
     spawnSync(process.execPath, [script, ...args], {
@@ -805,7 +1310,9 @@ describe("audit-components CLI", () => {
     const root = project(clean);
     const run = cli([], root);
     expect(run.status).toBe(0);
-    expect(run.stdout).toMatch(/No component structure problems found/);
+    expect(run.stdout).toMatch(
+      /No component structure or semantic HTML problems found/,
+    );
     const json = cli(["--json", "--root", root]);
     expect(json.status).toBe(0);
     const parsed = JSON.parse(json.stdout);
@@ -846,6 +1353,12 @@ describe("audit-components CLI", () => {
       "js-not-ts",
       "build-once",
       "once-reads-page",
+      "clickable-element",
+      "generic-root",
+      "skipped-heading",
+      "missing-alt",
+      "unlabeled-control",
+      "missing-main",
     ])
       expect(run.stdout).toContain(rule);
   });
@@ -873,6 +1386,56 @@ describe("new-component scaffolds TypeScript by default", () => {
     expect(files["feature-card.html"]).toMatch(
       /<div class="feature-card" id="root" data-testid="feature-card">/,
     );
+  });
+
+  it("picks the semantic root element from the last word of the name, and a div otherwise", () => {
+    const root = (tag: string) =>
+      /\n<([a-z]+)[^>]*data-testid=/.exec(
+        buildComponentFiles(tag)[`${tag}.html`],
+      )?.[1];
+    expect(root("site-nav")).toBe("nav");
+    expect(root("site-header")).toBe("header");
+    expect(root("site-footer")).toBe("footer");
+    expect(root("signup-form")).toBe("form");
+    expect(root("customer-review")).toBe("article");
+    expect(root("blog-post")).toBe("article");
+    // A card is an <article> only when it stands on its own; the name alone does not say so.
+    expect(root("product-card")).toBe("div");
+    expect(root("pricing-section")).toBe("section");
+    expect(root("docs-sidebar")).toBe("aside");
+    // Only the last word counts: a nav toggle is a control, not a navigation landmark.
+    expect(root("nav-toggle")).toBe("div");
+    // The label belongs on the usage tag (<site-nav aria-label="Main" />): an aria-label on the root would win over
+    // it, and every copy would announce the scaffold's placeholder.
+    const nav = buildComponentFiles("site-nav")["site-nav.html"];
+    expect(nav).toContain(
+      '<nav class="site-nav" id="root" data-testid="site-nav">',
+    );
+    expect(nav).not.toMatch(/<nav\b[^>]*aria-label/);
+    expect(nav).toMatch(/<!--[^]*?usage tag[^]*?aria-label="[^"]*"[^]*?-->/);
+  });
+
+  it("scaffolds every semantic root the audit accepts, with no generic-root finding", async () => {
+    const files: Record<string, string> = { ...clean };
+    const tags = [
+      "main-nav",
+      "promo-section",
+      "customer-testimonial",
+      "news-sidebar",
+    ];
+    for (const tag of tags)
+      for (const [name, text] of Object.entries(
+        buildComponentFiles(tag, { props: ["title"] }) as Record<
+          string,
+          string
+        >,
+      ))
+        files[`src/components/${tag}/${name}`] = text;
+    files["src/pages/parts.html"] = page(
+      `      <h1>Parts</h1>\n${tags.map((tag) => `      <${tag} data-bascik-prop-title="T" />\n      <${tag} data-bascik-prop-title="U" />`).join("\n")}`,
+    );
+    const { findings } = await audit(project(files));
+    expect(findings.filter((f) => f.rule === "generic-root")).toEqual([]);
   });
 
   it("scaffolds components the audit accepts, and flags the inline-js one", async () => {

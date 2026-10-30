@@ -112,7 +112,7 @@ Every Web Component requires JavaScript to be parsed, evaluated, and registered 
 
 Web Components also introduce a non-trivial API surface: custom element registries, shadow DOM, light DOM, lifecycle callbacks, slot distribution rules. For a developer writing a navigation bar, none of that is relevant. It is framework complexity without the framework ecosystem.
 
-Bascik takes a different position: run the component resolution at build time, ship vanilla HTML. A `<site-nav>` tag in source becomes a `<nav>` element in the output. **Zero JavaScript is added to your pages.** Every script in the final HTML was written by you.
+Bascik takes a different position: run the component resolution at build time, ship vanilla HTML. A `<site-nav>` tag in source becomes the `<nav>` element its template holds, so the browser and screen readers see a real navigation landmark. **Zero JavaScript is added to your pages.** Every script in the final HTML was written by you.
 
 ## Bascik and AI
 
@@ -143,6 +143,8 @@ Every decision in Bascik follows three simple rules:
 - **Be fast.** Build times are measured in milliseconds. In development, live reload updates your browser instantly. In production, zero runtime JavaScript is added, giving users maximum page load performance.
 - **Be transparent.** There is no hidden runtime, no virtual DOM abstraction, and no framework black box. What you write in source is what ships in `dist/`: plain HTML, CSS, and JavaScript with deterministic, human-readable scoping prefixes.
 - **Use what exists.** Use the standard HTML, CSS, and JavaScript APIs. Do not invent a template language. Do not add a reactive data system. Do not require a runtime. Do not get between the developer and the browser.
+
+"Use what exists" applies to your markup too. HTML already has an element for most jobs: `<nav>`, `<button>`, `<details>`, `<dialog>`, and a `<label>` for every input. Bascik ships the element you wrote, so a component whose root is a `<nav>` is a navigation landmark in every browser and screen reader, with no ARIA and no script, and a component whose root is a `<div>` is a `<div>`. Bascik guides and warns about this, and never rewrites your markup. [Semantic HTML](/semantic-html) has the checklist.
 
 ![A terminal running bascik on a new project. The line Server running at localhost:8080 stays pinned to the top row while four pages transpile in under a quarter of a second below it. After one file is saved, only that page is rebuilt, in a few milliseconds](/assets/demos/dev-terminal@2x.webp)
 

@@ -333,6 +333,7 @@ ${preview}
 - Pages read like a list of tag names, such as \`<site-header>\` and \`<feat-card>\`, not long blocks of HTML. Give a section its own component in \`src/components/\` when it has its own job, but do not split further, and pass markup through slots instead of handing props down several layers. See [Components](${DOCS}/components) and [Slots](${DOCS}/slots).
 - Write all new code in TypeScript, browser scripts included: a \`.ts\` companion file (\`<script src="counter.ts">\`) or \`<script type="text/typescript">\`. When a script needs full TypeScript or npm packages bundled, run esbuild through [\`scripts.typescript\`](${DOCS}/configuration#scriptstypescript). See [TypeScript in Component Scripts](${DOCS}/scoped-javascript#typescript-in-component-scripts).
 - Build HTML that holds visitor data with \`html\` from \`@bascik/bascik/html\`, which escapes every value. See [HTML Helpers](${DOCS}/html-helpers).
+- Use semantic HTML: the element for the job (\`<nav>\`, \`<main>\`, \`<article>\`, \`<button>\` for actions, \`<a href>\` for links, a \`<label>\` for every input), one \`<h1>\` per page with no skipped heading levels, \`alt\` on every image, and a component root that is the semantic element itself, not a wrapper \`<div>\`. Bascik ships the markup you write. See [Semantic HTML](${DOCS}/semantic-html).
 - Put \`data-testid\` on each component's root element and on its interactive parts.
 - Run \`npx bascik --check\`, and the tests when there are any, before calling work done.
 

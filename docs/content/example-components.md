@@ -2,7 +2,7 @@
 
 Working components that show how Bascik features fit together in real code. They are examples to read and learn from, not a component library: there is nothing to install or upgrade.
 
-Every component works with several instances on one page, passes `bascik --check` and the [linter](/tools/linter), and is tested in a browser on every change. The files live in the [`examples/` folder](https://github.com/bascikdev/bascik/tree/main/examples) of the Bascik repository, and these pages read them directly, so what you see here is the real source.
+Every component works with several instances on one page, uses [semantic HTML](/semantic-html) (a skip link and a `<header>` with a `<nav>` in the site header, a `<form>` for the contact form, a `<dialog>` for the modal), passes `bascik --check` and the [linter](/tools/linter), and is tested in a browser on every change. The files live in the [`examples/` folder](https://github.com/bascikdev/bascik/tree/main/examples) of the Bascik repository, and these pages read them directly, so what you see here is the real source.
 
 ## Components
 

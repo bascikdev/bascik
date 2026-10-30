@@ -564,6 +564,100 @@ describe("HELLO_API_ROUTE", () => {
   });
 });
 
+describe("semantic HTML in the starter", () => {
+  const brand = "Milk frother";
+  const pages = {
+    index: indexPage(brand),
+    about: aboutPage(brand),
+    contact: contactPage(brand),
+    notFound: notFoundPage(brand),
+  };
+  const levels = (html: string) =>
+    [...html.matchAll(/<h([1-6])[\s>]/g)].map((m) => Number(m[1]));
+
+  it('every page has lang, a <main id="main"> for the skip link, and one <h1>', () => {
+    for (const [name, html] of Object.entries(pages)) {
+      expect(html, name).toContain('<html lang="en">');
+      expect(html.match(/<main id="main">/g), name).toHaveLength(1);
+      expect(html.match(/<h1[\s>]/g), name).toHaveLength(1);
+    }
+  });
+
+  it("no page skips a heading level, counting the headings it passes into <feat-card>", () => {
+    for (const [name, html] of Object.entries(pages)) {
+      let previous = 1;
+      for (const level of levels(html)) {
+        expect(
+          level,
+          `${name}: h${level} after h${previous}`,
+        ).toBeLessThanOrEqual(previous + 1);
+        previous = level;
+      }
+    }
+    expect(levels(pages.about)).toEqual([1, 2, 2]);
+  });
+
+  it("the 404 page's <h1> names the page, and the code is not a heading", () => {
+    expect(pages.notFound).toMatch(/<h1[^>]*>Page not found<\/h1>/);
+    expect(pages.notFound).not.toMatch(/<h[1-6][^>]*>404<\/h[1-6]>/);
+  });
+
+  it("the header starts with a skip link to #main, names its nav, and its menu button is a real toggle", () => {
+    const skip = SITE_HEADER_HTML.indexOf('href="#main"');
+    expect(skip).toBeGreaterThan(-1);
+    expect(skip).toBeLessThan(SITE_HEADER_HTML.indexOf("<nav"));
+    expect(SITE_HEADER_HTML).toMatch(
+      /<a href="#main" class="skip-link"[^>]*>Skip to content<\/a>/,
+    );
+    expect(SITE_HEADER_CSS).toMatch(/\.skip-link:focus/);
+    expect(SITE_HEADER_HTML).toMatch(/<nav class="nav" aria-label="Main">/);
+    const toggle = /<button id="nav-toggle"[^>]*>/.exec(SITE_HEADER_HTML)![0];
+    expect(toggle).toContain('type="button"');
+    expect(toggle).toContain('aria-controls="nav-menu"');
+    expect(toggle).toContain('aria-expanded="false"');
+  });
+
+  it("the counter's buttons are type=button with names a screen reader reads, and the count is announced", () => {
+    for (const id of ["btn-dec", "btn-inc"]) {
+      const button = new RegExp(`<button id="${id}"[^>]*>`).exec(
+        MY_COUNTER_HTML,
+      )![0];
+      expect(button, id).toContain('type="button"');
+      expect(button, id).toMatch(/aria-label="(Decrease|Increase)"/);
+    }
+    expect(MY_COUNTER_HTML).toMatch(
+      /<output id="count-val"[^>]*aria-live="polite"/,
+    );
+    expect(MY_COUNTER_HTML).toMatch(/role="group" aria-label="Counter"/);
+  });
+
+  it("the card styles the h2 and h3 that pages pass into its body", () => {
+    expect(FEAT_CARD_CSS).toMatch(/\.fcard-body :is\(h2, h3\) \{/);
+  });
+});
+
+describe("the starter does not rely on name scoping", () => {
+  // `name` ships as written by default, so the contact form's keys are its
+  // literal names: no data-bascik-preserve, no getElementsByName, and no radio
+  // group that would need a <form> of its own per copy.
+  it("CONTACT_FORM_HTML names its fields with literal keys inside its own form", () => {
+    expect(CONTACT_FORM_HTML).not.toContain("data-bascik-preserve");
+    expect(CONTACT_FORM_HTML).not.toContain("getElementsByName");
+    for (const key of ["name", "email", "message"])
+      expect(CONTACT_FORM_HTML).toContain(`name="${key}"`);
+    const openAt = CONTACT_FORM_HTML.indexOf("<form");
+    const closeAt = CONTACT_FORM_HTML.indexOf("</form>");
+    for (const match of CONTACT_FORM_HTML.matchAll(/\sname="/g))
+      expect(match.index).toBeGreaterThan(openAt);
+    expect(
+      [...CONTACT_FORM_HTML.matchAll(/\sname="/g)].every(
+        (match) => match.index! < closeAt,
+      ),
+    ).toBe(true);
+    expect(CONTACT_FORM_HTML).not.toMatch(/type="radio"/);
+  });
+});
+
 describe("component test templates", () => {
   it("SITE_META_TEST asserts head tags", () => {
     expect(SITE_META_TEST).toContain("charset");
@@ -729,7 +823,7 @@ describe("FEAT_CARD_CSS", () => {
     // component's own <h3> elements get; slot content keeps plain tags.
     expect(FEAT_CARD_CSS).not.toMatch(/\.fcard-[a-z]+ +[a-z][a-z0-9]* *[{,]/);
     expect(FEAT_CARD_CSS).toMatch(
-      /\.fcard-body :is\(h3\) \{[^}]*font-size: 1rem/,
+      /\.fcard-body :is\(h2, h3\) \{[^}]*font-size: 1rem/,
     );
     expect(FEAT_CARD_CSS).toMatch(
       /\.fcard-body :is\(p\) \{[^}]*font-size: 0\.88rem/,

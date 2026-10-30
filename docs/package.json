@@ -22,6 +22,7 @@
     "generate:migration-demos": "node scripts/generate-migration-demos.ts",
     "generate:url-root-demos": "node scripts/generate-url-root-demos.ts",
     "generate:name-attribute-demos": "node scripts/generate-name-attribute-demos.ts",
+    "generate:semantic-html-demos": "node scripts/generate-semantic-html-demos.ts",
     "generate:ts-script-demos": "node scripts/generate-ts-script-demos.ts",
     "lhci": "lhci",
     "lighthouse": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik --build && lhci autorun --config=./lighthouse/lighthouserc.json && lhci autorun --config=./lighthouse/lighthouserc.desktop.json && lhci autorun --config=./lighthouse/lighthouserc.light.json",

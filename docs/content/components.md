@@ -550,6 +550,22 @@ When utilizing your components inside pages or other components, choose self-clo
 
 If a component does not use a `<slot>` to accept inner children, always prefer self-closing/void syntax (`<site-nav />`, `<site-footer />`) to keep page markup clean, concise, and readable. A space before `/>` is optional, so `<site-nav />` and `<site-nav/>` compile identically, including when nested inside another instance of the same component. Paired and self-closing forms compile to the exact same output.
 
+## Pick the Root Element
+
+A component's root element is the element that replaces its tag in the output, and the one that attributes from the usage tag land on. Make it the element for the component's job, not a `<div>` around it: a `<site-nav>` renders a `<nav>`, a `<site-footer>` a `<footer>`, a `<customer-review>` an `<article>`, and a `<signup-form>` a `<form>`.
+
+```html
+<!-- src/components/site-nav/site-nav.html -->
+<nav class="nav" aria-label="Main">
+  <ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="/about">About</a></li>
+  </ul>
+</nav>
+```
+
+Bascik never adds or removes a wrapper, so what you pick is what ships. [Semantic HTML](/semantic-html) has a table of jobs and their elements, with good and bad examples built by Bascik.
+
 ## Multiple Root Elements
 
 Unlike traditional JavaScript frameworks (such as React or Vue 2) that historically required a single root wrapper element or explicit fragment components, Bascik component templates naturally support **multiple top-level HTML elements** in a single `.html` file.
@@ -670,7 +686,7 @@ Component templates can also contain multiple `<script>` tags. Bascik handles ea
 
 ## Page Shells vs. Component Templates (Landmarks & Skip Links)
 
-Understanding the distinction between **page shells** (`src/pages/*.html`) and **component templates** (`src/components/*.html`) is key to structuring accessible layouts:
+Understanding the distinction between **page shells** (`src/pages/*.html`) and **component templates** (`src/components/*.html`) is key to structuring accessible layouts (see [Semantic HTML](/semantic-html) for the landmark elements themselves):
 
 - **Component Templates (`src/components/*.html`):** Component markup is scoped at build time. Class names are namespaced, and `id` attributes are hashed per instance (e.g. `id="bascik__comp__a1b2__btn"`).
 - **Page Shells (`src/pages/*.html`):** Page markup is **unscoped vanilla HTML**. IDs, landmarks, and attributes written directly in page files remain literal strings (`id="main-content"`).

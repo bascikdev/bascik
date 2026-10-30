@@ -418,16 +418,16 @@ describe("scaffold-to-compiler integration", () => {
         ),
         `the footer link inside an element with the footer class ${footer}`,
       ).toBe(true);
-      // The body's title and text rules match the slot content: the h3 and
+      // The body's title and text rules match the slot content: the h2 or h3 and
       // p arrive as plain tags inside the body wrapper, so each rule is the
       // wrapper class followed by an element name the build left as written.
       const body =
-        /\.([\w-]+) :is\(h3\)\{margin:0 0 6px;font-size:1rem;color:var\(--text\)/.exec(
+        /\.([\w-]+) :is\(h2, ?h3\)\{margin:0 0 6px;font-size:1rem;color:var\(--text\)/.exec(
           html,
         )?.[1];
       expect(
         body,
-        "the .fcard-body :is(h3) rule in the page's stylesheet",
+        "the .fcard-body :is(h2, h3) rule in the page's stylesheet",
       ).toBeDefined();
       expect(html).toMatch(
         new RegExp(`\\.${body} :is\\(p\\)\\{margin:0;font-size:0\\.88rem`),
@@ -582,6 +582,36 @@ describe("scaffold-to-compiler integration", () => {
     },
     90_000,
   );
+
+  it("the scaffolded default and cloudflare starters pass the bascik skill's semantic HTML audit", async () => {
+    const audit = join(REPO_ROOT, "skills/bascik/scripts/audit-components.mjs");
+    const semantic = new Set([
+      "clickable-element",
+      "generic-root",
+      "skipped-heading",
+      "missing-alt",
+      "unlabeled-control",
+      "missing-main",
+    ]);
+    for (const template of ["default", "cloudflare"] as const) {
+      const parentDir = await createTempDir(`audit-${template}`);
+      await scaffold("audit-site", parentDir, { template });
+      const run = await execFileAsync(
+        process.execPath,
+        [audit, "--json", "--root", join(parentDir, "audit-site")],
+        { encoding: "utf8" },
+      ).catch((err: { stdout?: string }) => ({ stdout: err.stdout ?? "" }));
+      const { findings } = JSON.parse(run.stdout) as {
+        findings: { rule: string; file: string; line: number }[];
+      };
+      expect(
+        findings
+          .filter((f) => semantic.has(f.rule))
+          .map((f) => `${f.rule} ${f.file}:${f.line}`),
+        template,
+      ).toEqual([]);
+    }
+  });
 
   it("negative control: rejects compilation when a required page contains invalid build-script syntax", async () => {
     const parentDir = await createTempDir("negative-control");

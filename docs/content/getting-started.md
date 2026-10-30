@@ -74,6 +74,12 @@ VS Code's built-in HTML checker joins every classic `<script>` (one without `typ
 
 ```html
 <!-- src/components/site-nav.html -->
+<style>
+  .nav {
+    display: flex;
+    gap: 1rem;
+  }
+</style>
 <nav class="nav">
   <a href="/">Home</a>
   <a href="/about">About</a>
@@ -85,34 +91,48 @@ VS Code's built-in HTML checker joins every classic `<script>` (one without `typ
 ```html
 <!-- src/pages/index.html -->
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <title>Home</title>
   </head>
   <body>
     <site-nav></site-nav>
-    <h1>Hello world</h1>
+    <main>
+      <h1>Hello world</h1>
+    </main>
   </body>
 </html>
 ```
 
-At build time, Bascik resolves `<site-nav>` into its component markup and scopes the class names into `dist/index.html`:
+At build time, Bascik replaces `<site-nav>` with its component markup and scopes the class names its CSS uses into `dist/index.html`. The `<nav>` you wrote is the `<nav>` that ships, and the `lang` attribute and `<main>` landmark tell browsers and screen readers what the page is: see [Semantic HTML](/semantic-html) for the elements to pick.
 
 <!-- demo:page-output-html -->
 
 ```html
 <!-- dist/index.html -->
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <title>Home</title>
+
+    <style>
+      .bascik__site-nav__nav {
+        display: flex;
+        gap: 1rem;
+      }
+    </style>
   </head>
   <body>
+    <!-- src/components/site-nav.html -->
+
     <nav class="bascik__site-nav__nav">
       <a href="/">Home</a>
       <a href="/about">About</a>
     </nav>
-    <h1>Hello world</h1>
+
+    <main>
+      <h1>Hello world</h1>
+    </main>
   </body>
 </html>
 ```

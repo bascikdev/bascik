@@ -1,6 +1,6 @@
 # Accessibility
 
-The Lighthouse accessibility audit runs a subset of the axe-core rules: semantic HTML, sufficient color contrast, keyboard navigability, accessible names, and valid ARIA usage. Because Bascik outputs real HTML, every accessibility technique the platform provides is available to you without a plugin or library. Components are plain HTML elements, so their semantics reach the final page unchanged.
+The Lighthouse accessibility audit runs a subset of the axe-core rules: semantic HTML, sufficient color contrast, keyboard navigability, accessible names, and valid ARIA usage. Because Bascik outputs real HTML, every accessibility technique the platform provides is available to you without a plugin or library. Components are plain HTML elements, so their semantics reach the final page unchanged. [Semantic HTML](/semantic-html) covers choosing those elements, including a component's root.
 
 Lighthouse can only check what a machine can verify, so a score of 100 is a floor and not proof that a page is accessible. Test with a keyboard and a screen reader before you ship.
 
@@ -11,15 +11,18 @@ Most failed audits come from a handful of missing basics. Use landmark elements,
 ```html
 <!-- Declare the page language -->
 <html lang="en">
+  <!-- Skip link: the first focusable element, so keyboard users can bypass the navigation -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
   <!-- Use semantic landmark elements -->
   <header>…</header>
   <nav aria-label="Primary navigation">…</nav>
-  <main>…</main>
+  <main id="main-content">…</main>
   <footer>…</footer>
 
   <!-- Every image needs a meaningful alt (or empty alt for decorative images) -->
   <img src="chart.png" alt="Bar chart showing 40% growth in Q3" />
-  <img src="divider.svg" alt="" role="presentation" />
+  <img src="divider.svg" alt="" />
 
   <!-- Buttons must have accessible names -->
   <button type="button" aria-label="Close dialog">
@@ -29,9 +32,6 @@ Most failed audits come from a handful of missing basics. Use landmark elements,
   <!-- Form inputs must be labeled -->
   <label for="email">Email address</label>
   <input type="email" id="email" name="email" autocomplete="email" />
-
-  <!-- Skip link: lets keyboard users bypass the navigation -->
-  <a href="#main-content" class="skip-link">Skip to main content</a>
 </html>
 ```
 
@@ -197,7 +197,7 @@ body:has(.nav-details[open]) {
 The `<dialog>` element provides a native modal with backdrop, focus trapping, and Escape-to-close, behaviors that previously required hundreds of lines of JavaScript to implement correctly:
 
 ```html
-<button onclick="document.getElementById('my-modal').showModal()">Open</button>
+<button id="open-modal" type="button">Open</button>
 
 <dialog id="my-modal">
   <p>Modal content here.</p>
@@ -205,6 +205,12 @@ The `<dialog>` element provides a native modal with backdrop, focus trapping, an
     <button>Close</button>
   </form>
 </dialog>
+<script type="text/typescript">
+  const modal = document.getElementById("my-modal") as HTMLDialogElement;
+  document
+    .getElementById("open-modal")!
+    .addEventListener("click", () => modal.showModal());
+</script>
 ```
 
 ```css

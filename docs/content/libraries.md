@@ -146,7 +146,12 @@ petite-vue's `v-for` and `v-model` work as expected. Filter a list in real time 
 <script src="https://unpkg.com/petite-vue" defer init></script>
 
 <div v-scope="{ query: '', items: ['Astro', 'Eleventy', 'Next.js'] }">
-  <input type="search" v-model="query" placeholder="Filter frameworks…" />
+  <input
+    type="search"
+    v-model="query"
+    placeholder="Filter frameworks…"
+    aria-label="Filter frameworks"
+  />
   <ul>
     <li
       v-for="item in items.filter(i => i.toLowerCase().includes(query.toLowerCase()))"
@@ -166,7 +171,12 @@ petite-vue's `v-for` and `v-model` work as expected. Filter a list in real time 
   items: ['Astro', 'Eleventy', 'Next.js', 'Nuxt', 'SvelteKit']
 }"
 >
-  <input type="search" v-model="query" placeholder="Filter frameworks…" />
+  <input
+    type="search"
+    v-model="query"
+    placeholder="Filter frameworks…"
+    aria-label="Filter frameworks"
+  />
   <ul>
     <template
       v-for="item in items.filter(i =>

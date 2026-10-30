@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Audit how a Bascik project's pages are composed from components, and whether its code is TypeScript.
+// Audit how a Bascik project's pages are composed from components, whether they use semantic HTML, and whether
+// their code is TypeScript.
 // Dependency-free; Node.js 22.22+. Run from the project root. Heuristic: every finding is a suggestion to weigh.
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -20,6 +21,14 @@ import {
 } from "./lib/build-scripts.mjs";
 import { listComponents, tagNameProblem } from "./lib/components.mjs";
 import {
+  checkAlt,
+  checkClickable,
+  checkComposedPage,
+  checkGenericRoot,
+  checkLabels,
+  controlsLabelledByUse,
+} from "./lib/semantic.mjs";
+import {
   countNonBlankLines,
   maskKeepingLines,
   parseMarkup,
@@ -30,8 +39,9 @@ const HELP = `Usage: node audit-components.mjs [--json] [--allow-js] [--root <di
                                   [--max-page-lines <n>] [--max-component-lines <n>]
 
 Checks that pages read like a list of component tags rather than big blocks of HTML, that components are split
-with balance, and that new code is TypeScript. Run it with bascik --check before calling a page done. Each finding
-names file:line and what to do. Exit code 1 when there is a warning, 2 on a usage error.
+with balance, that the markup is semantic HTML, and that new code is TypeScript. Run it with bascik --check before
+calling a page done. Each finding names file:line and what to do. Exit code 1 when there is a warning, 2 on a usage
+error. Every finding is a warning to weigh: Bascik never changes the markup you write.
 
 Rules:
   oversized-page       A page with more than 80 lines of markup (scripts and styles not counted)
@@ -54,6 +64,27 @@ Rules:
                        on every page, so use <script data-bascik-build-once>
   once-reads-page      A <script data-bascik-build-once> that reads page context, which is empty there: use
                        <script data-bascik-build>, which runs per page
+
+Semantic HTML rules (https://html.spec.whatwg.org/multipage/; the lang attribute, one <h1>, and meta tags are
+checked by the bascik-seo audit):
+  clickable-element    A div, span, <a> with no href, or other non-interactive element with onclick, role="button"
+                       or role="link", or a click listener from its script (found by id): use <button type="button">,
+                       or <a href> to navigate. Skips popovers, delegation that reads the event target, handlers
+                       that only hide or close the element, and containers holding links or buttons
+  generic-root         A component whose root is a <div> or <span> when its name says it has a job with its own
+                       element (*-nav: <nav>, *-header: <header>, *-footer: <footer>, *-form: <form>, *-post,
+                       *-review, *-testimonial: <article>, *-section with a heading: <section>, *-sidebar:
+                       <aside>), or a wrapper around one. A *-card is not flagged: it is an <article> only when it
+                       stands on its own
+  skipped-heading      A heading level skipped in a page's output (an <h3> after an <h1>), following headings
+                       through components and slots, reported at the page line that brings the heading in. After a
+                       script that prints markup, whose headings it cannot see, it starts over at the next heading
+  missing-alt          An <img> with no alt attribute (alt="" marks decoration; data-bascik-attr-alt counts)
+  unlabeled-control    An input, select, or textarea with no <label for>, wrapping <label>, aria-label, or
+                       aria-labelledby (a placeholder is not a label). A component's control counts as labeled
+                       when every page that uses it wraps the usage tag in a <label>
+  missing-main         A page whose output, components included, has no <main> element (skipped when a build,
+                       server, or stream script could print it)
 
 Options:
   --allow-js                 Skip js-not-ts (only when the person asked for JavaScript)
@@ -902,6 +933,18 @@ export async function auditProject(root, options = {}) {
     });
   }
 
+  // Semantic HTML: per-file checks on pages and this project's components, then each page's composed output.
+  const componentDocs = new Map(components.map((doc) => [doc.tag, doc]));
+  const labelledByUse = controlsLabelledByUse(pages, componentDocs);
+  for (const doc of docs) {
+    if (doc.kind === "component" && !doc.local) continue;
+    checkClickable(doc, findings);
+    checkAlt(doc, findings);
+    checkLabels(doc, findings, labelledByUse);
+    if (doc.kind === "component") checkGenericRoot(doc, findings);
+  }
+  for (const doc of pages) checkComposedPage(doc, componentDocs, findings);
+
   // build-once and once-reads-page
   const importRoot = resolve(
     root,
@@ -993,7 +1036,7 @@ async function main() {
       console.log(`    -> ${f.suggestion}`);
     }
     if (findings.length === 0)
-      console.log("No component structure problems found.");
+      console.log("No component structure or semantic HTML problems found.");
   }
   process.exitCode = findings.some((f) => f.level === "warn") ? 1 : 0;
 }

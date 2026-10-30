@@ -457,7 +457,15 @@ A realistic nav with a logo slot, link list, and mobile menu toggle.
 <!-- src/components/site-nav/site-nav.html (Bascik - after) -->
 <nav class="nav">
   <div class="logo" data-bascik-prop-logo></div>
-  <button id="toggle" class="toggle" aria-expanded="false">Menu</button>
+  <button
+    id="toggle"
+    class="toggle"
+    type="button"
+    aria-controls="links"
+    aria-expanded="false"
+  >
+    Menu
+  </button>
   <ul id="links" class="links">
     <div data-bascik-slot></div>
   </ul>

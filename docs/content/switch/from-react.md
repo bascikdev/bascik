@@ -414,7 +414,15 @@ export function SiteNav({ logo, children }) {
 <!-- src/components/site-nav/site-nav.html (Bascik - after) -->
 <nav class="nav">
   <div class="logo"><div data-bascik-slot="logo"></div></div>
-  <button class="toggle" id="toggle" aria-expanded="false">Menu</button>
+  <button
+    class="toggle"
+    id="toggle"
+    type="button"
+    aria-controls="links"
+    aria-expanded="false"
+  >
+    Menu
+  </button>
   <ul class="links" id="links">
     <div data-bascik-slot></div>
   </ul>

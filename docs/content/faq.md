@@ -81,6 +81,10 @@ A directory of plain `.html` files (and your assets). No client-side JavaScript 
 
 No. Bascik is a build-time tool. The output is vanilla HTML, CSS, and exactly the JavaScript you wrote. No runtime script is injected into your pages.
 
+## Does Bascik enforce semantic HTML?
+
+No. Bascik ships the markup you wrote and never rewrites or rejects it, so a `<div>` stays a `<div>` and a `<nav>` stays a `<nav>`. It guides and warns instead. [Semantic HTML](/semantic-html) has the checklist, and the `bascik` agent skill's `audit-components.mjs` warns about a clickable `<div>`, a component whose root is a `<div>` where a `<nav>` or `<article>` fits, a skipped heading level, an image with no `alt`, a form control with no label, and a page with no `<main>`.
+
 ## Can I use Bascik with JavaScript libraries like Alpine.js or HTMX?
 
 Yes. Bascik's output is vanilla HTML. Any library that works with HTML works with Bascik. Drop a `<script>` tag in and it loads like it always has. See the [JavaScript Libraries](/libraries) page for examples.

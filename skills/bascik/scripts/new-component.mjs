@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Create a Bascik component that follows the conventions: hyphenated lowercase name, folder layout,
 // <style> above the markup, <script> below it, id-based element lookup, a data-testid on the root, TypeScript
-// scripts unless JavaScript is asked for, and an @bascik metadata comment.
+// scripts unless JavaScript is asked for, an @bascik metadata comment, and a semantic root element picked from the
+// name (site-nav renders a <nav>, customer-review an <article>), which audit-components.mjs checks too.
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { join, relative, resolve } from "node:path";
@@ -13,10 +14,16 @@ import {
   loadProjectConfig,
 } from "./lib/project.mjs";
 import { listComponents, tagNameProblem } from "./lib/components.mjs";
+import { semanticRootFor } from "./lib/semantic.mjs";
 
 const HELP = `Usage: node new-component.mjs <tag-name> [options]
 
 Creates src/components/<tag-name>/<tag-name>.html (in the first component root) following Bascik conventions.
+The root element comes from the last word of the name: *-nav <nav>, *-header <header>, *-footer <footer>,
+*-form <form>, *-post, *-review, or *-testimonial <article>, *-section <section>, *-sidebar <aside>, anything
+else <div> (a *-card too: make it an <article> when it stands on its own, like a post or product, or an <li>
+in a list). Change it to the element that fits the component's job. A *-nav gets no aria-label: pass it on the
+usage tag (<site-nav aria-label="Main" />), since an attribute already on the root wins over the usage tag's.
 
 Options:
   --description <text>  One-line description for the @bascik metadata comment
@@ -73,12 +80,21 @@ export function buildComponentFiles(tag, options = {}) {
   meta.push("-->");
 
   const css = [`.${tag} {`, "  display: block;", "}", ""].join("\n");
-  const body = [`<div class="${tag}" id="root" data-testid="${tag}">`];
+  const element = semanticRootFor(tag) ?? "div";
+  const body = [];
+  // The label goes on the usage tag, not here: an attribute already on the root wins over the same attribute on the
+  // usage tag, so a placeholder label here would replace every page's label.
+  if (element === "nav")
+    body.push(
+      `<!-- Name each navigation on its usage tag: <${tag} aria-label="Main" />. Do not add aria-label here: the root's own value wins over the usage tag's. -->`,
+    );
+  body.push(`<${element} class="${tag}" id="root" data-testid="${tag}">`);
+  if (element === "section") body.push("  <h2>TODO: heading</h2>");
   for (const prop of props) body.push(`  <p data-bascik-prop-${prop}></p>`);
   for (const slot of namedSlots)
     body.push(`  <div data-bascik-slot="${slot}"></div>`);
   if (defaultSlot) body.push("  <div data-bascik-slot></div>");
-  body.push("</div>");
+  body.push(`</${element}>`);
 
   const comment = [
     "// Find elements by id: Bascik rewrites the id per instance, so every copy of this component",

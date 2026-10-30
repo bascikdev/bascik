@@ -41,6 +41,7 @@ export const NAV: NavSection[] = [
     section: "Overview",
     pages: [
       { href: "/why-bascik", label: "Why Bascik" },
+      { href: "/semantic-html", label: "Semantic HTML" },
       { href: "/developer-experience", label: "Developer Experience" },
       { href: "/vs-frameworks", label: "Bascik vs Frameworks" },
       { href: "/getting-started", label: "Getting Started" },

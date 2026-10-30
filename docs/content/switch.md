@@ -32,6 +32,8 @@ The transition follows a consistent five-step workflow:
 
 Move repeating markup patterns (such as navigation, footers, cards, or buttons) into `.html` files in `src/components/`. The hyphenated filename becomes the component tag name.
 
+Keep the semantic elements as you extract, and fix the ones that are missing: a component's root is the element that ships, so a navigation component's root is a `<nav>`, a card's is an `<article>`, and a clickable `<div>` becomes a `<button>`. Never turn semantic markup into `<div>`s. See [Semantic HTML](/semantic-html).
+
 ### 2. Map Slots and Props
 
 Replace framework-specific slots and properties with Bascik equivalents:
